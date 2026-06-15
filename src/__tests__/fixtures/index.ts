@@ -1,0 +1,21 @@
+// Export all fixture paths for easy access
+export const fixtures = {
+  OptionsComponent: new URL('./OptionsComponent.vue', import.meta.url).pathname,
+  SetupComponent: new URL('./SetupComponent.vue', import.meta.url).pathname,
+  RenderFunctionComponent: new URL('./RenderFunctionComponent.vue', import.meta.url).pathname,
+  TypedPropsComponent: new URL('./TypedPropsComponent.vue', import.meta.url).pathname,
+  RuntimePropsComponent: new URL('./RuntimePropsComponent.vue', import.meta.url).pathname,
+  WithDefaultsComponent: new URL('./WithDefaultsComponent.vue', import.meta.url).pathname,
+  TypedEmitsComponent: new URL('./TypedEmitsComponent.vue', import.meta.url).pathname,
+  RuntimeEmitsComponent: new URL('./RuntimeEmitsComponent.vue', import.meta.url).pathname,
+  SlotsComponent: new URL('./SlotsComponent.vue', import.meta.url).pathname,
+  DirectivesComponent: new URL('./DirectivesComponent.vue', import.meta.url).pathname,
+  ComplexTemplate: new URL('./ComplexTemplate.vue', import.meta.url).pathname,
+  ComposablesComponent: new URL('./ComposablesComponent.vue', import.meta.url).pathname,
+  ImportsComponent: new URL('./ImportsComponent.vue', import.meta.url).pathname,
+  ExposeComponent: new URL('./ExposeComponent.vue', import.meta.url).pathname,
+  StatsComponent: new URL('./StatsComponent.vue', import.meta.url).pathname,
+  InvalidComponent: new URL('./InvalidComponent.vue', import.meta.url).pathname,
+  ReportComponent: new URL('./ReportComponent.vue', import.meta.url).pathname,
+  IntegrationComponent: new URL('./IntegrationComponent.vue', import.meta.url).pathname,
+};

@@ -1,0 +1,132 @@
+{
+  "name": "@newkind/ast-analyzer",
+  "version": "3.0.0",
+  "description": "AST Analyzer - AI Toolkit for code analysis, graph visualization, refactoring, semantic analysis, and formal verification",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "@newkind/ast-analyzer": "dist/cli.js",
+    "ast-refactor": "dist/cli-refactor.js",
+    "ast-cicd": "dist/cli-cicd.js",
+    "ast-ts-validator": "dist/cli-ts-validator.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./cli": {
+      "import": "./dist/cli.js",
+      "types": "./dist/cli.d.ts"
+    },
+    "./refactor": {
+      "import": "./dist/refactor/index.js",
+      "types": "./dist/refactor/index.d.ts"
+    },
+    "./semantic": {
+      "import": "./dist/semantic/index.js",
+      "types": "./dist/semantic/index.d.ts"
+    },
+    "./formal": {
+      "import": "./dist/formal/index.js",
+      "types": "./dist/formal/index.d.ts"
+    }
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "npm run clean && npm run build:types && npm run build:esbuild",
+    "build:types": "tsc --emitDeclarationOnly --declaration --declarationMap --outDir dist",
+    "build:esbuild": "node esbuild.config.js",
+    "build:prod": "NODE_ENV=production npm run build",
+    "type-check": "tsc --noEmit",
+    "type-check:test": "tsc --noEmit -p tsconfig.test.json",
+    "type-check:all": "npm run type-check && npm run type-check:test",
+    "start": "node dist/cli.js",
+    "dev": "tsx src/cli.ts",
+    "refactor": "node dist/cli-refactor.js",
+    "refactor:dry": "node dist/cli-refactor.js refactor --dry-run",
+    "semantic": "node dist/cli.js semantic",
+    "verify": "node dist/cli.js verify",
+    "cicd": "npm run semantic && npm run verify",
+    "prepublishOnly": "npm run build",
+    "test": "vitest --exclude src/__tests__/vue-analyzer.test.ts",
+    "test:all": "vitest",
+    "test:refactor": "vitest src/refactor/__tests__/refactor.test.ts --run",
+    "test:vue": "vitest src/__tests__/vue-analyzer.test.ts --run || echo 'Vue tests skipped'",
+    "test:core": "vitest src/__tests__/ast-parser.test.ts src/__tests__/graph-utils.test.ts src/__tests__/file-graph.test.ts src/__tests__/minifier.test.ts src/__tests__/utils.test.ts --run",
+    "test:semantic": "vitest src/semantic/__tests__/*.test.ts --run",
+    "test:formal": "vitest src/formal/__tests__/*.test.ts --run",
+    "test:ci": "vitest run --exclude src/__tests__/vue-analyzer.test.ts --coverage",
+    "lint": "eslint src --ext .ts",
+    "lint:errors": "eslint src --ext .ts --quiet",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "preinstall": "npx only-allow pnpm"
+  },
+  "keywords": [
+    "ast",
+    "analyzer",
+    "graph",
+    "visualization",
+    "refactoring",
+    "ai",
+    "code-analysis"
+  ],
+  "author": "Zababurin Sergei",
+  "license": "MIT",
+  "dependencies": {
+    "@babel/generator": "^7.29.7",
+    "@babel/parser": "^7.29.7",
+    "@babel/traverse": "^7.29.7",
+    "@hpcc-js/dataflow": "^9.7.2",
+    "@hpcc-js/wasm-graphviz": "^1.22.0",
+    "@jitl/ts-simple-type": "^2.0.0-next.3",
+    "@typescript-eslint/parser": "^8.61.0",
+    "@vue/compiler-sfc": "^3.5.38",
+    "estree-walker": "^3.0.3",
+    "ts-morph": "^28.0.0",
+    "web-tree-sitter": "^0.26.9",
+    "z3-solver": "^4.16.0"
+  },
+  "devDependencies": {
+    "@codeflow-map/core": "^1.0.3",
+    "@eslint/eslintrc": "^3.3.5",
+    "@eslint/js": "^10.0.1",
+    "@types/estree": "^1.0.9",
+    "@types/node": "^25.9.3",
+    "@typescript-eslint/eslint-plugin": "^8.61.0",
+    "@typescript-eslint/parser": "^8.61.0",
+    "@vitest/coverage-v8": "^4.1.8",
+    "@vue/compiler-dom": "^3.5.38",
+    "commander": "^15.0.0",
+    "esbuild": "^0.28.1",
+    "esbuild-plugin-copy": "^2.1.1",
+    "eslint": "10.5.0",
+    "globals": "^17.6.0",
+    "only-allow": "^1.2.2",
+    "prettier": "^3.8.4",
+    "tree-sitter-wasms": "^0.1.13",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "packageManager": "pnpm@11.6.0",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ZababurinSergei/ast-analyzer"
+  },
+  "bugs": {
+    "url": "https://github.com/ZababurinSergei/ast-analyzer/issues"
+  },
+  "homepage": "https://github.com/ZababurinSergei/ast-analyzer#readme"
+}

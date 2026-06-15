@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["vitest/globals", "node"],
+    "allowJs": true,
+    "checkJs": false,
+    "strict": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "rootDir": "."
+  },
+  "include": ["src/**/*.test.ts", "src/__tests__/**/*.ts", "src/**/*.spec.ts"],
+  "exclude": ["node_modules", "dist", "vitest.config.ts"]
+}
