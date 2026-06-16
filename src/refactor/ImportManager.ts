@@ -7,6 +7,76 @@ export class ImportManager {
   constructor(private project: Project) {}
 
   /**
+   * Добавляет реэкспорты для модулей, чтобы сохранить публичное API исходного файла
+   */
+  async addReExports(sourcePath: string, modules: ExtractedModule[]): Promise<void> {
+    const sourceFile = this.project.addSourceFileAtPath(sourcePath);
+    if (!sourceFile) return;
+
+    if (modules.length === 0) return;
+
+    console.log(`\n📦 Добавление реэкспортов в ${path.basename(sourcePath)}`);
+
+    // Группируем экспорты по модулям
+    const reExportsByModule = new Map<string, string[]>();
+
+    for (const module of modules) {
+      if (module.exports.length === 0) continue;
+
+      const relativePath = this.getRelativePath(sourcePath, module.path);
+      reExportsByModule.set(relativePath, [...module.exports]);
+    }
+
+    // Находим последний импорт, чтобы вставить реэкспорты после него
+    const imports = sourceFile.getImportDeclarations();
+    let lastImportLine = 0;
+
+    for (const imp of imports) {
+      const line = imp.getStartLineNumber();
+      if (line > lastImportLine) lastImportLine = line;
+    }
+
+    // Формируем блок реэкспортов
+    let reExportBlock = '\n// ============================================\n';
+    reExportBlock += '// РЕЭКСПОРТЫ - сохраняем публичное API\n';
+    reExportBlock += '// ============================================\n';
+
+    let hasReExports = false;
+
+    for (const [modulePath, exports] of reExportsByModule) {
+      // Проверяем, нет ли уже реэкспорта
+      const existingReExport = sourceFile
+        .getText()
+        .includes(`export { ${exports.join(', ')} } from '${modulePath}'`);
+
+      if (!existingReExport && exports.length > 0) {
+        reExportBlock += `export { ${exports.join(', ')} } from '${modulePath}';\n`;
+        console.log(`  🔄 Добавлен реэкспорт: { ${exports.join(', ')} } from '${modulePath}'`);
+        hasReExports = true;
+      }
+    }
+
+    // Вставляем реэкспорты после последнего импорта
+    if (hasReExports && lastImportLine > 0) {
+      const sourceFileText = sourceFile.getText();
+      const lines = sourceFileText.split('\n');
+
+      // Вставляем после последнего импорта
+      lines.splice(lastImportLine, 0, reExportBlock);
+      sourceFile.replaceWithText(lines.join('\n'));
+
+      await sourceFile.save();
+      console.log(`  ✅ Реэкспорты добавлены в ${path.basename(sourcePath)}`);
+    } else if (hasReExports) {
+      // Если нет импортов, добавляем в начало файла
+      const sourceFileText = sourceFile.getText();
+      sourceFile.replaceWithText(reExportBlock + '\n' + sourceFileText);
+      await sourceFile.save();
+      console.log(`  ✅ Реэкспорты добавлены в начало ${path.basename(sourcePath)}`);
+    }
+  }
+
+  /**
    * Обновляет импорты в исходном файле после извлечения модулей
    */
   async updateImports(sourcePath: string, modules: ExtractedModule[]): Promise<void> {
@@ -81,6 +151,9 @@ export class ImportManager {
 
     // Удаляем неиспользуемые импорты
     await this.removeUnusedImports(sourceFile);
+
+    // Добавляем реэкспорты
+    await this.addReExports(sourcePath, modules);
 
     await sourceFile.save();
   }
@@ -280,7 +353,6 @@ export class ImportManager {
     const used = new Set<string>();
     const content = sourceFile.getText();
 
-    // Простой regex для поиска идентификаторов
     const identifierPattern = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\b/g;
     let match;
 
@@ -351,10 +423,14 @@ export class ImportManager {
 
   /**
    * Вычисляет относительный путь между файлами
+   * 🔧 ИСПРАВЛЕНО: сохраняем расширение .js для ES модулей
    */
   private getRelativePath(from: string, to: string): string {
     let relative = path.relative(path.dirname(from), to);
-    relative = relative.replace(/\.(ts|js|tsx|jsx|vue)$/, '');
+
+    // ✅ НЕ удаляем расширение .js - оно нужно для ES модулей
+    // relative = relative.replace(/\.(ts|js|tsx|jsx|vue)$/, '');
+
     if (!relative.startsWith('.') && !relative.startsWith('@')) {
       relative = './' + relative;
     }

@@ -1,9 +1,10 @@
-// src/refactor/ModuleExtractor.ts
-import type { Project, SourceFile } from 'ts-morph';
-import { Node } from 'ts-morph';
+// packages/ast-analyzer/src/refactor/ModuleExtractor.ts
+import type { Project, SourceFile, Node } from 'ts-morph';
+import { Node as TsNode, SyntaxKind } from 'ts-morph';
 import fs from 'fs';
 import path from 'path';
 import type { ExtractedModule } from './index.js';
+import type { Logger } from '../utils/Logger.js';
 
 export interface Cluster {
   name: string;
@@ -11,43 +12,98 @@ export interface Cluster {
   cohesionScore: number;
 }
 
+export interface SharedVariableInfo {
+  name: string;
+  type: string;
+  value?: any;
+  isConst: boolean;
+  node: Node; // Сохраняем оригинальный узел для копирования
+}
+
 export class ModuleExtractor {
   private project: Project;
   private options: any;
+  private logger: Logger;
 
-  constructor(project: Project, options: any) {
+  constructor(project: Project, options: any, logger: Logger) {
     this.project = project;
     this.options = options;
+    this.logger = logger;
   }
 
   async extractModules(sourcePath: string, clusters: Cluster[]): Promise<ExtractedModule[]> {
+    this.logger.info('Starting module extraction', {
+      sourcePath,
+      clustersCount: clusters.length,
+    });
+
     const sourceFile = this.project.addSourceFileAtPath(sourcePath);
     const modulesDir = path.join(path.dirname(sourcePath), this.options.modulesDir || 'modules');
 
     await fs.promises.mkdir(modulesDir, { recursive: true });
+    this.logger.debug('Created modules directory', { modulesDir });
 
     const modules: ExtractedModule[] = [];
-
-    // Собираем все узлы для удаления
-    const nodesToRemoveMap = new Map<Node, string>(); // узел -> имя функции
+    const nodesToRemoveMap = new Map<Node, string>();
 
     for (let i = 0; i < clusters.length; i++) {
       const cluster = clusters[i];
       if (!cluster) continue;
 
+      this.logger.info(`Processing cluster ${i + 1}/${clusters.length}`, {
+        name: cluster.name,
+        functionsCount: cluster.functions.length,
+      });
+
       const moduleName = this.generateModuleName(cluster, i);
       const modulePath = path.join(modulesDir, `${moduleName}.js`);
 
-      // Создаём новый SourceFile в памяти через AST
+      this.logger.debug(`Creating module: ${moduleName}.js`, {
+        exports: cluster.functions,
+      });
+
       const moduleFile = this.project.createSourceFile(modulePath, '', { overwrite: true });
 
-      // Собираем все необходимые импорты через AST
-      const importsMap = new Map<
-        string,
-        { named: Set<string>; default?: string; namespace?: string }
-      >();
+      // 1. Анализируем все зависимости для кластера
+      const { allDependencies, sharedVariables, requiredImports } =
+        await this.analyzeClusterDependencies(sourceFile, cluster);
 
+      this.logger.debug('Cluster analysis complete', {
+        dependenciesCount: allDependencies.size,
+        sharedVariablesCount: sharedVariables.size,
+        importsCount: requiredImports.size,
+      });
+
+      // 2. Добавляем импорты в модуль
+      for (const [importPath, importInfo] of requiredImports) {
+        if (importInfo.namespace) {
+          moduleFile.addImportDeclaration({
+            namespaceImport: importInfo.namespace,
+            moduleSpecifier: importPath,
+          });
+        } else if (importInfo.default) {
+          moduleFile.addImportDeclaration({
+            defaultImport: importInfo.default,
+            namedImports: importInfo.named.size > 0 ? Array.from(importInfo.named) : undefined,
+            moduleSpecifier: importPath,
+          });
+        } else if (importInfo.named.size > 0) {
+          moduleFile.addImportDeclaration({
+            namedImports: Array.from(importInfo.named),
+            moduleSpecifier: importPath,
+          });
+        }
+      }
+
+      // 3. Добавляем общие переменные (shared variables) с копированием оригинального кода
+      const sharedVariablesCode = this.generateSharedVariablesCode(sourceFile, sharedVariables);
+      if (sharedVariablesCode) {
+        moduleFile.addStatements(sharedVariablesCode);
+      }
+
+      // 4. Копируем функции в модуль
       const clusterNodes: Node[] = [];
+      const exportedNames: string[] = [];
 
       for (const funcName of cluster.functions) {
         const node = this.findNode(sourceFile, funcName);
@@ -55,236 +111,240 @@ export class ModuleExtractor {
           clusterNodes.push(node);
           nodesToRemoveMap.set(node, funcName);
 
-          // Находим все импорты, используемые в этом узле, через AST
-          const usedImports = this.findUsedImports(sourceFile, node);
-
-          for (const [importPath, importInfo] of usedImports) {
-            if (!importsMap.has(importPath)) {
-              importsMap.set(importPath, {
-                named: new Set(),
-                default: undefined,
-                namespace: undefined,
-              });
-            }
-            const info = importsMap.get(importPath)!;
-
-            if (importInfo.named) {
-              importInfo.named.forEach(n => info.named.add(n));
-            }
-            if (importInfo.default && !info.default) {
-              info.default = importInfo.default;
-            }
-            if (importInfo.namespace && !info.namespace) {
-              info.namespace = importInfo.namespace;
-            }
+          let text = node.getText();
+          if (!text.trim().startsWith('export')) {
+            text = `export ${text}`;
           }
+
+          moduleFile.addStatements(text);
+          exportedNames.push(funcName);
+        } else {
+          this.logger.warn(`Function not found in source file`, { funcName });
         }
       }
 
-      // Добавляем импорты в модуль через AST
-      for (const [importPath, info] of importsMap) {
-        if (info.namespace) {
-          moduleFile.addImportDeclaration({
-            namespaceImport: info.namespace,
-            moduleSpecifier: importPath,
-          });
-        } else if (info.default) {
-          const namedImports = info.named.size > 0 ? Array.from(info.named) : undefined;
-          moduleFile.addImportDeclaration({
-            defaultImport: info.default,
-            namedImports,
-            moduleSpecifier: importPath,
-          });
-        } else if (info.named.size > 0) {
-          moduleFile.addImportDeclaration({
-            namedImports: Array.from(info.named),
-            moduleSpecifier: importPath,
-          });
-        }
+      // 5. Добавляем зависимости (вспомогательные функции)
+      const dependenciesCode = await this.generateDependenciesCode(
+        sourceFile,
+        cluster,
+        allDependencies
+      );
+      if (dependenciesCode) {
+        moduleFile.addStatements(dependenciesCode);
       }
 
-      const exportedNames: string[] = [];
-
-      // Копируем функции/классы/константы в модуль через AST
-      for (const node of clusterNodes) {
-        // Получаем текст узла через AST
-        let text = node.getText();
-
-        // Добавляем export через AST если его нет
-        if (!text.trim().startsWith('export')) {
-          text = `export ${text}`;
-        }
-
-        // Добавляем в новый файл через AST
-        moduleFile.addStatements(text);
-
-        // Извлекаем имя для экспорта
-        let nodeName = '';
-        if (Node.isFunctionDeclaration(node)) {
-          nodeName = node.getName() || '';
-        } else if (Node.isClassDeclaration(node)) {
-          nodeName = node.getName() || '';
-        } else if (Node.isVariableDeclaration(node)) {
-          nodeName = node.getName();
-        }
-
-        if (nodeName) {
-          exportedNames.push(nodeName);
-        }
-      }
-
-      // Сохраняем модуль через AST
+      // Сохраняем модуль
       await moduleFile.save();
-
-      // Добавляем файл в проект через AST
       this.project.addSourceFileAtPath(modulePath);
+      this.logger.info(`Module created successfully`, {
+        moduleName,
+        exportsCount: exportedNames.length,
+      });
 
       modules.push({
         name: moduleName,
         path: modulePath,
         exports: exportedNames,
-        dependencies: Array.from(importsMap.keys()),
+        dependencies: Array.from(requiredImports.keys()),
         originalNodes: [],
       });
-
-      console.log(`  📦 Создан модуль: ${moduleName}.js (${exportedNames.length} экспортов)`);
     }
 
-    // Удаляем все узлы через метод remove() в ts-morph с безопасной проверкой
+    // Удаляем узлы из исходного файла
     if (nodesToRemoveMap.size > 0) {
+      this.logger.debug('Removing nodes from source file', {
+        nodesCount: nodesToRemoveMap.size,
+      });
       this.removeNodesWithTsMorph(nodesToRemoveMap);
     }
 
-    // Сохраняем изменения в исходном файле через AST
     await sourceFile.save();
+    this.logger.info('Module extraction complete', { modulesCount: modules.length });
 
     return modules;
   }
 
   /**
-   * Удаляет узлы с помощью ts-morph метода remove() с безопасной проверкой
+   * Генерирует код для общих переменных с копированием оригинального кода
+   * Улучшенная версия с гарантией синтаксической корректности
    */
-  private removeNodesWithTsMorph(nodesToRemove: Map<Node, string>): void {
-    const nodesArray = Array.from(nodesToRemove.keys());
-
-    // Сортируем от конца к началу (чтобы не нарушать индексы)
-    nodesArray.sort((a, b) => b.getStart() - a.getStart());
-
-    for (const node of nodesArray) {
-      try {
-        const name = nodesToRemove.get(node) || 'unknown';
-        // Безопасная проверка наличия метода remove
-        if ('remove' in node && typeof (node as any).remove === 'function') {
-          (node as any).remove();
-          console.log(`  🗑️ Удалён узел: ${name}`);
-        } else {
-          console.log(`  ⏭️ Узел ${name} не поддерживает удаление`);
-        }
-      } catch (error) {
-        console.log(`  ⚠️ Не удалось удалить узел: ${error}`);
-      }
-    }
-  }
-
-  /**
-   * Находит узел (функцию, класс, переменную) в файле через AST по имени
-   */
-  private findNode(sourceFile: SourceFile, name: string): Node | undefined {
-    // Ищем функцию через AST
-    const func = sourceFile.getFunction(name);
-    if (func) return func;
-
-    // Ищем класс через AST
-    const cls = sourceFile.getClass(name);
-    if (cls) return cls;
-
-    // Ищем переменную через AST
-    const variable = sourceFile.getVariableDeclaration(name);
-    if (variable) return variable;
-
-    // Ищем интерфейс через AST
-    const intf = sourceFile.getInterface(name);
-    if (intf) return intf;
-
-    // Ищем type alias через AST
-    const typeAlias = sourceFile.getTypeAlias(name);
-    if (typeAlias) return typeAlias;
-
-    // Ищем enum через AST
-    const enumDecl = sourceFile.getEnum(name);
-    if (enumDecl) return enumDecl;
-
-    return undefined;
-  }
-
-  /**
-   * Находит все импорты, используемые в узле, через AST
-   */
-  private findUsedImports(
+  private generateSharedVariablesCode(
     sourceFile: SourceFile,
-    node: Node
-  ): Map<string, { named?: Set<string>; default?: string; namespace?: string }> {
-    const usedImports = new Map();
+    sharedVariables: Map<string, SharedVariableInfo>
+  ): string {
+    if (sharedVariables.size === 0) return '';
 
-    // Получаем все идентификаторы из узла через AST
-    const identifiers = this.findAllIdentifiersInNode(node);
+    let code = '\n// ============================================\n';
+    code += '// ОБЩИЕ ПЕРЕМЕННЫЕ (перенесены из исходного файла)\n';
+    code += '// ============================================\n';
 
-    // Получаем все импорты из файла через AST
-    const imports = sourceFile.getImportDeclarations();
-
-    for (const imp of imports) {
-      const moduleSpec = imp.getModuleSpecifierValue();
-      const defaultImport = imp.getDefaultImport()?.getText();
-      const namespaceImport = imp.getNamespaceImport()?.getText();
-      const namedImports = imp.getNamedImports();
-
-      const usedNamed = new Set<string>();
-
-      // Проверяем default import через AST
-      if (defaultImport && identifiers.has(defaultImport)) {
-        const info = usedImports.get(moduleSpec) || {};
-        info.default = defaultImport;
-        usedImports.set(moduleSpec, info);
-      }
-
-      // Проверяем namespace import через AST
-      if (namespaceImport) {
-        // Ищем использование namespace.xxx
-        const namespacePattern = new RegExp(`${namespaceImport}\\.\\w+`, 'g');
-        const nodeText = node.getText();
-        if (namespacePattern.test(nodeText)) {
-          const info = usedImports.get(moduleSpec) || {};
-          info.namespace = namespaceImport;
-          usedImports.set(moduleSpec, info);
+    for (const [name, info] of sharedVariables) {
+      // Пытаемся получить полное объявление переменной
+      const varDecl = sourceFile.getVariableDeclaration(name);
+      if (varDecl) {
+        const parent = varDecl.getParent();
+        if (parent && parent.getKind() === SyntaxKind.VariableStatement) {
+          const fullText = parent.getText();
+          if (fullText) {
+            code += fullText + '\n';
+            this.logger.debug(`Copied variable declaration: ${name}`, {
+              originalText: fullText.substring(0, 100) + '...',
+            });
+            continue;
+          }
         }
       }
 
-      // Проверяем named imports через AST
-      for (const named of namedImports) {
-        const name = named.getName();
-        if (identifiers.has(name)) {
-          usedNamed.add(name);
-        }
-      }
+      // Fallback: используем старую логику с исправлением
+      const keyword = info.isConst ? 'const' : 'let';
 
-      if (usedNamed.size > 0) {
-        const info = usedImports.get(moduleSpec) || {};
-        info.named = usedNamed;
-        usedImports.set(moduleSpec, info);
+      if (info.value !== undefined) {
+        const valueStr = typeof info.value === 'string' ? `'${info.value}'` : String(info.value);
+        code += `${keyword} ${name} = ${valueStr};\n`;
+        this.logger.debug(`Generated variable from value: ${name}`, { value: valueStr });
+      } else {
+        // Для const без значения - используем let и логируем предупреждение
+        const finalKeyword = info.isConst ? 'let' : keyword;
+        this.logger.warn(
+          `Variable declared as const without initializer, using 'let' as fallback`,
+          {
+            name,
+            originalKeyword: keyword,
+            fallbackKeyword: finalKeyword,
+          }
+        );
+        code += `${finalKeyword} ${name};\n`;
       }
     }
 
-    return usedImports;
+    return code + '\n';
   }
 
   /**
-   * Находит все идентификаторы в узле через обход AST
+   * Анализирует зависимости кластера (обновлённая версия с сохранением узлов)
+   */
+  private async analyzeClusterDependencies(
+    sourceFile: SourceFile,
+    cluster: Cluster
+  ): Promise<{
+    allDependencies: Set<string>;
+    sharedVariables: Map<string, SharedVariableInfo>;
+    requiredImports: Map<string, { named: Set<string>; default?: string; namespace?: string }>;
+  }> {
+    const allDependencies = new Set<string>();
+    const sharedVariables = new Map<string, SharedVariableInfo>();
+    const requiredImports = new Map<
+      string,
+      { named: Set<string>; default?: string; namespace?: string }
+    >();
+
+    // Находим все узлы кластера
+    const clusterNodes: Node[] = [];
+    for (const funcName of cluster.functions) {
+      const node = this.findNode(sourceFile, funcName);
+      if (node) {
+        clusterNodes.push(node);
+      }
+    }
+
+    // Собираем все идентификаторы, используемые в кластере
+    const usedIdentifiers = new Set<string>();
+    for (const node of clusterNodes) {
+      const identifiers = this.findAllIdentifiersInNode(node);
+      for (const id of identifiers) {
+        usedIdentifiers.add(id);
+      }
+    }
+
+    // Находим переменные, объявленные вне функций, но используемые внутри
+    const topLevelStatements = sourceFile.getStatements();
+    for (const stmt of topLevelStatements) {
+      if (TsNode.isVariableStatement(stmt)) {
+        const declarations = stmt.getDeclarations();
+        for (const decl of declarations) {
+          const name = decl.getName();
+          if (usedIdentifiers.has(name) && !cluster.functions.includes(name)) {
+            // Сохраняем информацию о переменной вместе с узлом
+            const initializer = decl.getInitializer();
+            const isConst = stmt.getDeclarationKind() === 'const';
+            sharedVariables.set(name, {
+              name,
+              type: this.inferVariableType(decl),
+              value: initializer ? this.extractValue(initializer) : undefined,
+              isConst,
+              node: decl,
+            });
+            this.logger.debug(`Found shared variable`, {
+              name,
+              isConst,
+              hasInitializer: !!initializer,
+            });
+          }
+        }
+      }
+
+      // Проверяем ImportDeclaration
+      if (TsNode.isImportDeclaration(stmt)) {
+        const moduleSpec = stmt.getModuleSpecifierValue();
+        const identifiersInCluster = Array.from(usedIdentifiers);
+
+        const defaultImport = stmt.getDefaultImport()?.getText();
+        const namespaceImport = stmt.getNamespaceImport()?.getText();
+        const namedImports = stmt.getNamedImports();
+
+        const usedNamed = new Set<string>();
+
+        if (defaultImport && identifiersInCluster.includes(defaultImport)) {
+          const info = requiredImports.get(moduleSpec) || { named: new Set() };
+          info.default = defaultImport;
+          requiredImports.set(moduleSpec, info);
+        }
+
+        if (namespaceImport) {
+          for (const node of clusterNodes) {
+            const nodeText = node.getText();
+            if (nodeText.includes(`${namespaceImport}.`)) {
+              const info = requiredImports.get(moduleSpec) || { named: new Set() };
+              info.namespace = namespaceImport;
+              requiredImports.set(moduleSpec, info);
+              break;
+            }
+          }
+        }
+
+        for (const named of namedImports) {
+          const name = named.getName();
+          if (identifiersInCluster.includes(name)) {
+            usedNamed.add(name);
+          }
+        }
+
+        if (usedNamed.size > 0) {
+          const info = requiredImports.get(moduleSpec) || { named: new Set() };
+          for (const name of usedNamed) {
+            info.named.add(name);
+          }
+          requiredImports.set(moduleSpec, info);
+        }
+      }
+    }
+
+    // Собираем зависимости (функции, которые вызываются, но не входят в кластер)
+    for (const node of clusterNodes) {
+      this.collectDependenciesFromNode(node, cluster, allDependencies);
+    }
+
+    return { allDependencies, sharedVariables, requiredImports };
+  }
+
+  /**
+   * Находит все идентификаторы в узле
    */
   private findAllIdentifiersInNode(node: Node): Set<string> {
     const identifiers = new Set<string>();
 
     node.forEachDescendant(child => {
-      if (Node.isIdentifier(child)) {
+      if (TsNode.isIdentifier(child)) {
         identifiers.add(child.getText());
       }
     });
@@ -293,19 +353,126 @@ export class ModuleExtractor {
   }
 
   /**
-   * Генерирует имя модуля из имени функции
+   * Собирает зависимости из узла
+   */
+  private collectDependenciesFromNode(
+    node: Node,
+    cluster: Cluster,
+    dependencies: Set<string>
+  ): void {
+    node.forEachDescendant(child => {
+      if (TsNode.isCallExpression(child)) {
+        const expression = child.getExpression();
+        if (TsNode.isIdentifier(expression)) {
+          const calledName = expression.getText();
+          if (!cluster.functions.includes(calledName) && !calledName.startsWith('_')) {
+            dependencies.add(calledName);
+          }
+        }
+      }
+    });
+  }
+
+  /**
+   * Определяет тип переменной
+   */
+  private inferVariableType(node: Node): string {
+    const text = node.getText();
+    if (text.includes('=')) {
+      if (text.includes('{')) return 'object';
+      if (text.includes('[')) return 'array';
+      if (text.includes('function') || text.includes('=>')) return 'function';
+      if (text.includes("'") || text.includes('"')) return 'string';
+      if (text.includes('true') || text.includes('false')) return 'boolean';
+      if (text.match(/\d+/)) return 'number';
+    }
+    return 'unknown';
+  }
+
+  /**
+   * Извлекает значение из узла (улучшенная версия)
+   */
+  private extractValue(node: Node): any {
+    const kind = node.getKind();
+
+    if (kind === SyntaxKind.StringLiteral) {
+      const text = node.getText();
+      return text.slice(1, -1);
+    }
+
+    if (kind === SyntaxKind.NumericLiteral) {
+      return parseFloat(node.getText());
+    }
+
+    if (kind === SyntaxKind.TrueKeyword) return true;
+    if (kind === SyntaxKind.FalseKeyword) return false;
+    if (kind === SyntaxKind.NullKeyword) return null;
+
+    // Для сложных выражений возвращаем undefined (будет использован fallback)
+    return undefined;
+  }
+
+  /**
+   * Находит узел по имени
+   */
+  private findNode(sourceFile: SourceFile, name: string): Node | undefined {
+    const func = sourceFile.getFunction(name);
+    if (func) return func;
+
+    const cls = sourceFile.getClass(name);
+    if (cls) return cls;
+
+    const variable = sourceFile.getVariableDeclaration(name);
+    if (variable) return variable;
+
+    const intf = sourceFile.getInterface(name);
+    if (intf) return intf;
+
+    const typeAlias = sourceFile.getTypeAlias(name);
+    if (typeAlias) return typeAlias;
+
+    const enumDecl = sourceFile.getEnum(name);
+    if (enumDecl) return enumDecl;
+
+    return undefined;
+  }
+
+  /**
+   * Удаляет узлы из исходного файла
+   */
+  private removeNodesWithTsMorph(nodesToRemove: Map<Node, string>): void {
+    const nodesArray = Array.from(nodesToRemove.keys());
+    nodesArray.sort((a, b) => b.getStart() - a.getStart());
+
+    for (const node of nodesArray) {
+      try {
+        const name = nodesToRemove.get(node) || 'unknown';
+        if ('remove' in node && typeof (node as any).remove === 'function') {
+          (node as any).remove();
+          this.logger.debug(`Removed node: ${name}`);
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Failed to remove node`, {
+          name: nodesToRemove.get(node),
+          error: errorMessage,
+        });
+      }
+    }
+  }
+
+  /**
+   * Генерирует имя модуля
    */
   private generateModuleName(cluster: Cluster, index: number): string {
     const firstName = cluster.functions.find(f => !f.startsWith('_') && f.length > 2);
 
     if (firstName) {
-      // Преобразуем camelCase в kebab-case
       let name = firstName
         .replace(/([a-z])([A-Z])/g, '$1-$2')
         .replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
         .toLowerCase();
 
-      // Удаляем распространённые префиксы
       const prefixes = ['get-', 'set-', 'is-', 'has-', 'use-', 'fetch-', 'handle-', 'on-'];
       for (const prefix of prefixes) {
         if (name.startsWith(prefix)) {
@@ -323,216 +490,31 @@ export class ModuleExtractor {
   }
 
   /**
-   * Извлекает модули из глобальных функций (без экспортов)
+   * Генерирует код для зависимостей
    */
-  async extractModulesFromGlobals(
-    sourcePath: string,
-    clusters: Cluster[]
-  ): Promise<ExtractedModule[]> {
-    const sourceFile = this.project.addSourceFileAtPath(sourcePath);
-    const modulesDir = path.join(path.dirname(sourcePath), this.options.modulesDir || 'modules');
+  private async generateDependenciesCode(
+    sourceFile: SourceFile,
+    cluster: Cluster,
+    dependencies: Set<string>
+  ): Promise<string> {
+    if (dependencies.size === 0) return '';
 
-    await fs.promises.mkdir(modulesDir, { recursive: true });
+    let code = '\n// ============================================\n';
+    code += '// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (зависимости)\n';
+    code += '// ============================================\n';
 
-    const modules: ExtractedModule[] = [];
-    const nodesToRemove: Node[] = [];
-
-    for (let i = 0; i < clusters.length; i++) {
-      const cluster = clusters[i];
-      if (!cluster) continue;
-
-      const moduleName = this.generateModuleName(cluster, i);
-      const modulePath = path.join(modulesDir, `${moduleName}.js`);
-      const moduleFile = this.project.createSourceFile(modulePath, '', { overwrite: true });
-
-      const exportedNames: string[] = [];
-
-      for (const funcName of cluster.functions) {
-        const node = this.findNode(sourceFile, funcName);
-        if (node) {
-          let text = node.getText();
-
-          // Добавляем export для глобальных функций
-          if (!text.trim().startsWith('export')) {
-            text = `export ${text}`;
-          }
-
-          moduleFile.addStatements(text);
-          exportedNames.push(funcName);
-
-          // Сохраняем узел для удаления
-          nodesToRemove.push(node);
+    for (const depName of dependencies) {
+      const node = this.findNode(sourceFile, depName);
+      if (node && !cluster.functions.includes(depName)) {
+        let text = node.getText();
+        if (text.trim().startsWith('export ')) {
+          text = text.replace(/^export\s+/, '');
         }
-      }
-
-      // Добавляем импорт в исходный файл
-      const relativePath = this.getRelativePath(sourcePath, modulePath);
-      sourceFile.addImportDeclaration({
-        namedImports: exportedNames,
-        moduleSpecifier: relativePath,
-      });
-
-      await moduleFile.save();
-
-      modules.push({
-        name: moduleName,
-        path: modulePath,
-        exports: exportedNames,
-        dependencies: [],
-        originalNodes: [],
-      });
-
-      console.log(`  📦 Создан модуль: ${moduleName}.js (${exportedNames.length} функций)`);
-    }
-
-    // Удаляем все узлы после создания модулей с безопасной проверкой
-    for (const node of nodesToRemove) {
-      try {
-        if ('remove' in node && typeof (node as any).remove === 'function') {
-          (node as any).remove();
-          console.log(`  🗑️ Удалён узел: ${node.getText().slice(0, 50)}...`);
-        } else {
-          console.log('  ⏭️ Узел не поддерживает удаление');
-        }
-      } catch (error) {
-        console.warn(`  ⚠️ Не удалось удалить узел: ${error}`);
+        code += `${text}\n\n`;
+        this.logger.debug(`Added dependency: ${depName}`);
       }
     }
 
-    await sourceFile.save();
-
-    return modules;
-  }
-
-  /**
-   * Вычисляет относительный путь между файлами
-   */
-  private getRelativePath(from: string, to: string): string {
-    let relative = path.relative(path.dirname(from), to);
-    relative = relative.replace(/\.(ts|js|tsx|jsx|vue)$/, '');
-    if (!relative.startsWith('.') && !relative.startsWith('@')) {
-      relative = './' + relative;
-    }
-    return relative.replace(/\\/g, '/');
-  }
-
-  /**
-   * Анализирует созданный модуль через AST
-   */
-  async analyzeModule(modulePath: string): Promise<{
-    exports: string[];
-    imports: string[];
-    dependencies: string[];
-    size: number;
-  }> {
-    const sourceFile = this.project.addSourceFileAtPath(modulePath);
-
-    const exports: string[] = [];
-    // Получаем все экспорты через AST
-    const exportedDeclarations = sourceFile.getExportedDeclarations();
-
-    for (const [, declarations] of exportedDeclarations) {
-      for (const decl of declarations) {
-        let name: string | undefined;
-
-        if (Node.isFunctionDeclaration(decl)) {
-          name = decl.getName();
-        } else if (Node.isClassDeclaration(decl)) {
-          name = decl.getName();
-        } else if (Node.isVariableDeclaration(decl)) {
-          name = decl.getName();
-        } else if (Node.isInterfaceDeclaration(decl)) {
-          name = decl.getName();
-        } else if (Node.isTypeAliasDeclaration(decl)) {
-          name = decl.getName();
-        } else if (Node.isEnumDeclaration(decl)) {
-          name = decl.getName();
-        }
-
-        if (name) {
-          exports.push(name);
-        }
-      }
-    }
-
-    // Получаем все импорты через AST
-    const imports = sourceFile.getImportDeclarations().map(imp => imp.getModuleSpecifierValue());
-
-    // Получаем все зависимости через AST
-    const dependencies = sourceFile.getReferencedSourceFiles().map(sf => sf.getFilePath());
-
-    // Получаем размер через AST
-    const size = sourceFile.getText().length;
-
-    return { exports, imports, dependencies, size };
-  }
-
-  /**
-   * Получает все экспорты из файла через AST
-   */
-  getAllExports(sourceFile: SourceFile): string[] {
-    const exports: string[] = [];
-    const exportedDeclarations = sourceFile.getExportedDeclarations();
-
-    for (const [, declarations] of exportedDeclarations) {
-      for (const decl of declarations) {
-        if (Node.isFunctionDeclaration(decl)) {
-          const name = decl.getName();
-          if (name) exports.push(name);
-        } else if (Node.isClassDeclaration(decl)) {
-          const name = decl.getName();
-          if (name) exports.push(name);
-        } else if (Node.isVariableDeclaration(decl)) {
-          const name = decl.getName();
-          if (name) exports.push(name);
-        }
-      }
-    }
-
-    return exports;
-  }
-
-  /**
-   * Получает все импорты из файла через AST
-   */
-  getAllImports(
-    sourceFile: SourceFile
-  ): { source: string; names: string[]; isDefault: boolean; isNamespace: boolean }[] {
-    const imports: {
-      source: string;
-      names: string[];
-      isDefault: boolean;
-      isNamespace: boolean;
-    }[] = [];
-    const importDeclarations = sourceFile.getImportDeclarations();
-
-    for (const imp of importDeclarations) {
-      const moduleSpec = imp.getModuleSpecifierValue();
-      const defaultImport = imp.getDefaultImport();
-      const namespaceImport = imp.getNamespaceImport();
-      const namedImports = imp.getNamedImports();
-
-      const names: string[] = [];
-
-      if (defaultImport) {
-        names.push(defaultImport.getText());
-        imports.push({ source: moduleSpec, names, isDefault: true, isNamespace: false });
-      }
-
-      if (namespaceImport) {
-        names.push(namespaceImport.getText());
-        imports.push({ source: moduleSpec, names, isDefault: false, isNamespace: true });
-      }
-
-      for (const named of namedImports) {
-        names.push(named.getName());
-      }
-
-      if (names.length > 0 && !defaultImport && !namespaceImport) {
-        imports.push({ source: moduleSpec, names, isDefault: false, isNamespace: false });
-      }
-    }
-
-    return imports;
+    return code;
   }
 }

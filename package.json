@@ -119,7 +119,8 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "src/utils/Logger.ts"
   ],
   "repository": {
     "type": "git",

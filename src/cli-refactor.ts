@@ -24,7 +24,7 @@ program
 
 program
   .command('refactor <file>')
-  .description('Рефакторинг файла с полным pipeline (семантика + валидация + исправление)')
+  .description('Рефакторинг файла с полным pipeline (семантика + валидация + рефакторинг)')
 
   // Основные опции
   .option('-o, --out-dir <dir>', 'Директория для сохранения модулей', 'modules')
@@ -35,6 +35,14 @@ program
   .option('--no-backup', 'Не создавать резервную копию файла', false)
   .option('-v, --verbose', 'Подробный вывод процесса', false)
   .option('--no-vue', 'Не обновлять template для Vue файлов (только script)', false)
+  .option('--no-re-exports', 'Не добавлять реэкспорты в исходный файл', false)
+
+  // Инкрементальный режим и логирование
+  .option('--incremental', 'Включить инкрементальный режим (по умолчанию включён)', true)
+  .option('--no-incremental', 'Отключить инкрементальный режим', false)
+  .option('--log-level <level>', 'Уровень логирования (debug, info, warn, error, none)', 'info')
+  .option('--log-file <file>', 'Файл для сохранения логов', './refactor.log')
+  .option('--max-retries <number>', 'Максимум попыток при ошибке', '3')
 
   // Опции для ОТКЛЮЧЕНИЯ (по умолчанию все включено)
   .option('--no-semantic', 'Отключить семантический анализ', false)
@@ -66,6 +74,11 @@ program
     console.log(`\n📄 Целевой файл: ${file}`);
     console.log(`📁 Выходная директория: ${options.outDir}`);
     console.log(`🎯 Параметры: размер=${options.targetSize}, связность=${options.minCohesion}%`);
+    console.log(
+      `🔄 Инкрементальный режим: ${options.incremental !== false ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}`
+    );
+    console.log(`📝 Уровень логирования: ${options.logLevel}`);
+    console.log(`📄 Файл логов: ${options.logFile}`);
 
     if (options.dryRun) {
       console.log('\n⚠️ РЕЖИМ DRY RUN: изменения не будут применены к файлам\n');
@@ -111,6 +124,13 @@ program
     console.log(
       `   ⚡ Выделение изолированных функций: ${options.extractIsolated !== false ? 'ВКЛЮЧЕНО' : 'ВЫКЛЮЧЕНО'}`
     );
+    console.log(
+      `   🔄 Добавление реэкспортов: ${options.reExports !== false ? 'ВКЛЮЧЕНО' : 'ВЫКЛЮЧЕНО'}`
+    );
+    console.log(
+      `   🔄 Инкрементальный режим: ${options.incremental !== false ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}`
+    );
+    console.log(`   📝 Уровень логирования: ${options.logLevel}`);
 
     try {
       const refactor = new AutoRefactor({
@@ -149,6 +169,15 @@ program
         minClusterSize: 2,
         extractIsolatedFunctions: options.extractIsolated !== false,
         groupByCallGraph: true,
+
+        // Реэкспорты
+        addReExports: options.reExports !== false,
+
+        // Инкрементальный режим и логирование
+        incremental: options.incremental !== false,
+        logLevel: options.logLevel || 'info',
+        logFile: options.logFile || './refactor.log',
+        maxRetries: parseInt(options.maxRetries) || 3,
       });
 
       await refactor.initialize();
@@ -243,6 +272,12 @@ program
           );
         }
 
+        // Вывод информации о последнем успешном чекпоинте
+        if (result.lastSuccessfulStep !== undefined) {
+          console.log(`\n📌 Последний успешный шаг: ${result.lastSuccessfulStep + 1}`);
+          console.log('   Для продолжения с этого шага используйте --incremental');
+        }
+
         process.exit(1);
       }
     } catch (error) {
@@ -269,6 +304,8 @@ program
   .option('--no-jsx', 'Отключить JSX анализ', false)
   .option('--no-vue', 'Отключить Vue анализ', false)
   .option('--no-typescript', 'Отключить TypeScript анализ', false)
+  .option('--log-level <level>', 'Уровень логирования (debug, info, warn, error, none)', 'info')
+  .option('--log-file <file>', 'Файл для сохранения логов', './analyze.log')
   .option('-v, --verbose', 'Подробный вывод', false)
   .action(async (file, options) => {
     const startTime = Date.now();
@@ -278,6 +315,7 @@ program
     console.log('='.repeat(70));
     console.log(`\n📄 Файл: ${file}`);
     console.log(`📅 Время: ${new Date().toLocaleString()}`);
+    console.log(`📝 Уровень логирования: ${options.logLevel}`);
 
     const absolutePath = path.resolve(file);
     if (!fs.existsSync(absolutePath)) {
@@ -316,6 +354,11 @@ program
         fixUnusedImports: false,
         optimizeImports: false,
         extractIsolatedFunctions: true,
+
+        // Логирование
+        logLevel: options.logLevel || 'info',
+        logFile: options.logFile || './analyze.log',
+        incremental: false, // Анализ не требует инкрементального режима
       });
 
       await refactor.initialize();
@@ -480,12 +523,15 @@ program
   .option('-v, --verbose', 'Подробный вывод', false)
   .option('--formal', 'Включить формальную верификацию', false)
   .option('--fix', 'Применить автоисправления', false)
+  .option('--log-level <level>', 'Уровень логирования (debug, info, warn, error, none)', 'info')
+  .option('--log-file <file>', 'Файл для сохранения логов', './validate.log')
   .action(async (file, options) => {
     console.log('\n' + '='.repeat(60));
     console.log('🔍 ЗАПУСК ВСЕХ ВАЛИДАТОРОВ');
     console.log('='.repeat(60));
     console.log(`\n📄 Файл: ${file}`);
     console.log(`🔧 Автоисправление: ${options.fix ? 'ВКЛЮЧЕНО' : 'ВЫКЛЮЧЕНО'}`);
+    console.log(`📝 Уровень логирования: ${options.logLevel}`);
 
     const absolutePath = path.resolve(file);
     if (!fs.existsSync(absolutePath)) {
@@ -512,6 +558,11 @@ program
         fixUnusedImports: options.fix,
         optimizeImports: options.fix,
         extractIsolatedFunctions: true,
+
+        // Логирование
+        logLevel: options.logLevel || 'info',
+        logFile: options.logFile || './validate.log',
+        incremental: false, // Валидация не требует инкрементального режима
       });
 
       await refactor.initialize();
@@ -702,6 +753,12 @@ program
 ║    Включает семантический анализ, формальную верификацию,                    ║
 ║    ESLint, TypeScript валидацию и автоисправление.                           ║
 ║                                                                               ║
+║  НОВЫЕ ВОЗМОЖНОСТИ:                                                           ║
+║    🔄 Инкрементальный режим - пошаговый рефакторинг с чекпоинтами             ║
+║    📝 Структурированное логирование - детальные логи с уровнями               ║
+║    🔒 100% гарантия синтаксической корректности                               ║
+║    ⚡ Откат к последнему успешному состоянию при ошибке                       ║
+║                                                                               ║
 ║  КОМАНДЫ:                                                                     ║
 ║    refactor <file>     - Полный pipeline: анализ + валидация + рефакторинг    ║
 ║    analyze <file>      - Только анализ (без изменений)                        ║
@@ -715,6 +772,14 @@ program
 ║    -c, --min-cohesion <n>  Минимальная связность % (по умолчанию: 60)         ║
 ║    -d, --dry-run           Пробный запуск без изменений                       ║
 ║    -v, --verbose           Подробный вывод                                     ║
+║    --no-re-exports         Не добавлять реэкспорты в исходный файл            ║
+║                                                                               ║
+║  НОВЫЕ ОПЦИИ:                                                                 ║
+║    --incremental           Включить инкрементальный режим (по умолчанию)      ║
+║    --no-incremental        Отключить инкрементальный режим                    ║
+║    --log-level <level>     Уровень логирования (debug, info, warn, error, none)║
+║    --log-file <file>       Файл для сохранения логов                          ║
+║    --max-retries <number>  Максимум попыток при ошибке                        ║
 ║                                                                               ║
 ║  ОПЦИИ ДЛЯ ОТКЛЮЧЕНИЯ (по умолчанию все анализаторы ВКЛЮЧЕНЫ):                ║
 ║    --no-semantic           Отключить семантический анализ                     ║
@@ -740,6 +805,9 @@ program
 ║                                                                               ║
 ║    # Анализ Vue компонента                                                   ║
 ║    ast-refactor analyze ./src/App.vue                                        ║
+║                                                                               ║
+║    # С инкрементальным режимом и детальными логами                            ║
+║    ast-refactor refactor ./src/utils.js --incremental --log-level debug       ║
 ║                                                                               ║
 ║    # Восстановление из бэкапа                                                 ║
 ║    ast-refactor restore ./src/file.js.backup.1703123456789                    ║
