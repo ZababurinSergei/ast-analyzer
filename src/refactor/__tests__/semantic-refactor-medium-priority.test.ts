@@ -57,7 +57,7 @@ describe('Средний приоритет - Комбинации флагов 
       expect(result.success).toBe(true);
       // ✅ Исправлено: в dry-run режиме модули не создаются физически
       // Проверяем только что результат успешный
-      if (!refactor.options?.dryRun) {
+      if (!refactor.isDryRun()) {
         expect(result.modules.length).toBeGreaterThan(0);
       }
 
@@ -1767,7 +1767,7 @@ describe('Средний приоритет - Комбинации флагов 
         <script setup lang="ts">
         import { ref, computed, onMounted } from 'vue';
         
-        interface Props {
+        type Props {
           initialCount?: number;
         }
         

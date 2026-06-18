@@ -175,6 +175,9 @@ export class AutoRefactor {
   private codeFixResults: FixResult[] = [];
   private verificationResults: VerificationResult[] = [];
 
+  public isDryRun(): boolean {
+    return this.options.dryRun || false;
+  }
   constructor(options: RefactorOptions = {}) {
     this.options = {
       modulesDir: 'modules',
