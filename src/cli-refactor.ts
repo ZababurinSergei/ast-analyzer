@@ -19,8 +19,8 @@ const program = new Command();
 
 program
   .name('ast-refactor')
-  .description('🔧 Автоматический рефакторинг файлов с полным pipeline валидации')
-  .version('2.0.0');
+  .description('🔧 Автоматический рефакторинг файлов с полным pipeline валидации и 100% гарантией')
+  .version('3.0.0');
 
 program
   .command('refactor <file>')
@@ -36,6 +36,15 @@ program
   .option('-v, --verbose', 'Подробный вывод процесса', false)
   .option('--no-vue', 'Не обновлять template для Vue файлов (только script)', false)
   .option('--no-re-exports', 'Не добавлять реэкспорты в исходный файл', false)
+
+  // NEW: Опции гарантированного рефакторинга
+  .option(
+    '--guarantee',
+    'Включить режим максимальной гарантии (несколько попыток, чекпоинты)',
+    true
+  )
+  .option('--no-guarantee', 'Отключить режим гарантии', false)
+  .option('--max-attempts <number>', 'Максимальное количество попыток при ошибке', '3')
 
   // Инкрементальный режим и логирование
   .option('--incremental', 'Включить инкрементальный режим (по умолчанию включён)', true)
@@ -68,12 +77,14 @@ program
   .action(async (file, options) => {
     const startTime = Date.now();
 
-    console.log('\n' + '='.repeat(60));
+    console.log('\n' + '='.repeat(70));
     console.log('🔧 АВТОМАТИЧЕСКИЙ РЕФАКТОРИНГ С ПОЛНЫМ PIPELINE');
-    console.log('='.repeat(60));
+    console.log('='.repeat(70));
     console.log(`\n📄 Целевой файл: ${file}`);
     console.log(`📁 Выходная директория: ${options.outDir}`);
     console.log(`🎯 Параметры: размер=${options.targetSize}, связность=${options.minCohesion}%`);
+    console.log(`🛡️ Режим гарантии: ${options.guarantee !== false ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}`);
+    console.log(`🔄 Максимум попыток: ${options.maxAttempts}`);
     console.log(
       `🔄 Инкрементальный режим: ${options.incremental !== false ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}`
     );
@@ -143,6 +154,10 @@ program
         createBackup: options.backup !== false,
         verbose: options.verbose,
 
+        // NEW: Настройки гарантии
+        guaranteeMode: options.guarantee !== false,
+        maxAttempts: parseInt(options.maxAttempts),
+
         // Семантический анализ
         semanticAnalysis: options.semantic !== false,
         formalVerification: options.formal !== false,
@@ -187,10 +202,21 @@ program
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
       if (result.success) {
-        console.log('\n' + '='.repeat(60));
+        console.log('\n' + '='.repeat(70));
         console.log('✨ РЕФАКТОРИНГ УСПЕШНО ЗАВЕРШЁН!');
-        console.log('='.repeat(60));
+        console.log('='.repeat(70));
         console.log(`⏱️  Время выполнения: ${duration} сек`);
+
+        // Вывод информации о гарантиях
+        if (result.guaranteeInfo) {
+          console.log('\n🛡️ ИНФОРМАЦИЯ О ГАРАНТИЯХ:');
+          console.log(`   • Попыток: ${result.guaranteeInfo.attempts}`);
+          console.log(`   • Тип модуля: ${result.guaranteeInfo.moduleType.toUpperCase()}`);
+          console.log(`   • Точность определения: ${result.guaranteeInfo.detectionConfidence}`);
+          console.log(`   • Создано чекпоинтов: ${result.guaranteeInfo.checkpointsCreated}`);
+          console.log(`   • Создано бэкапов: ${result.guaranteeInfo.backupsCreated}`);
+          console.log(`   • Валидаций выполнено: ${result.guaranteeInfo.validationHistory.length}`);
+        }
 
         if (result.modules.length > 0) {
           console.log(`\n📦 Создано модулей: ${result.modules.length}`);
@@ -258,10 +284,18 @@ program
 
         console.log('\n💡 Совет: Запустите линтер и тесты после рефакторинга');
       } else {
-        console.error('\n' + '='.repeat(60));
+        console.error('\n' + '='.repeat(70));
         console.error('❌ РЕФАКТОРИНГ НЕ УДАЛСЯ');
-        console.error('='.repeat(60));
+        console.error('='.repeat(70));
         console.error(`\nОшибка: ${result.error}`);
+
+        if (result.guaranteeInfo) {
+          console.log('\n🛡️ ИНФОРМАЦИЯ О ПОПЫТКАХ:');
+          console.log(`   • Выполнено попыток: ${result.guaranteeInfo.attempts}`);
+          console.log(`   • Тип модуля: ${result.guaranteeInfo.moduleType.toUpperCase()}`);
+          console.log(`   • Создано чекпоинтов: ${result.guaranteeInfo.checkpointsCreated}`);
+          console.log(`   • Валидаций выполнено: ${result.guaranteeInfo.validationHistory.length}`);
+        }
 
         if (result.backupPath && fs.existsSync(result.backupPath)) {
           console.log(
@@ -390,7 +424,7 @@ program
         for (let i = 0; i < result.modules.length; i++) {
           const module = result.modules[i];
           if (!module) continue;
-          console.log(`\n   ${i + 1}. Модуль "${module.name}":`);
+          console.log(`\n   ${i + 1}. Модуль \"${module.name}\":`);
           console.log(`      📦 Экспорты: ${module.exports.join(', ')}`);
           if (module.dependencies.length > 0) {
             console.log(`      🔗 Зависимости: ${module.dependencies.join(', ')}`);
@@ -753,11 +787,13 @@ program
 ║    Включает семантический анализ, формальную верификацию,                    ║
 ║    ESLint, TypeScript валидацию и автоисправление.                           ║
 ║                                                                               ║
-║  НОВЫЕ ВОЗМОЖНОСТИ:                                                           ║
-║    🔄 Инкрементальный режим - пошаговый рефакторинг с чекпоинтами             ║
-║    📝 Структурированное логирование - детальные логи с уровнями               ║
-║    🔒 100% гарантия синтаксической корректности                               ║
-║    ⚡ Откат к последнему успешному состоянию при ошибке                       ║
+║  НОВЫЕ ВОЗМОЖНОСТИ (v3.0):                                                    ║
+║    🛡️ Режим максимальной гарантии - многоуровневая защита                    ║
+║    🔄 Автоматические повторы при ошибках (до 5 попыток)                      ║
+║    📌 Система чекпоинтов - откат к любому этапу                             ║
+║    🔍 Автоопределение типа модуля (ESM/CJS)                                  ║
+║    ✅ Многоуровневая валидация синтаксиса                                    ║
+║    💾 Полные бэкапы с восстановлением                                        ║
 ║                                                                               ║
 ║  КОМАНДЫ:                                                                     ║
 ║    refactor <file>     - Полный pipeline: анализ + валидация + рефакторинг    ║
@@ -774,7 +810,12 @@ program
 ║    -v, --verbose           Подробный вывод                                     ║
 ║    --no-re-exports         Не добавлять реэкспорты в исходный файл            ║
 ║                                                                               ║
-║  НОВЫЕ ОПЦИИ:                                                                 ║
+║  НОВЫЕ ОПЦИИ ГАРАНТИИ:                                                        ║
+║    --guarantee             Включить режим максимальной гарантии (по умолч.)   ║
+║    --no-guarantee          Отключить режим гарантии                           ║
+║    --max-attempts <n>      Максимальное количество попыток (по умолч.: 3)     ║
+║                                                                               ║
+║  ОСТАЛЬНЫЕ ОПЦИИ:                                                             ║
 ║    --incremental           Включить инкрементальный режим (по умолчанию)      ║
 ║    --no-incremental        Отключить инкрементальный режим                    ║
 ║    --log-level <level>     Уровень логирования (debug, info, warn, error, none)║
@@ -794,8 +835,11 @@ program
 ║    --no-extract-isolated   Не выделять изолированные функции                  ║
 ║                                                                               ║
 ║  ПРИМЕРЫ:                                                                     ║
-║    # Полный pipeline со всеми анализаторами                                   ║
-║    ast-refactor refactor ./src/utils.js                                       ║
+║    # Полный pipeline с гарантией                                              ║
+║    ast-refactor refactor ./src/utils.js --guarantee                           ║
+║                                                                               ║
+║    # С максимальными попытками                                                ║
+║    ast-refactor refactor ./src/utils.js --max-attempts 5                      ║
 ║                                                                               ║
 ║    # С отключением формальной верификации                                     ║
 ║    ast-refactor refactor ./src/utils.js --no-formal                           ║

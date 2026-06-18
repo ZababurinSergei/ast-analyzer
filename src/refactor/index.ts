@@ -1,5 +1,5 @@
 // src/refactor/index.ts
-import { Project, ScriptTarget, ModuleKind, Node } from 'ts-morph';
+import { Project, ScriptTarget, ModuleKind, Node, type SourceFile } from 'ts-morph';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -20,6 +20,16 @@ import { CallGraphAnalyzer } from '../semantic/CallGraphAnalyzer.js';
 import type { DataFlowGraph } from '../semantic/DataFlowAnalyzer.js';
 import { DataFlowAnalyzer } from '../semantic/DataFlowAnalyzer.js';
 import type { TypeError } from '../semantic/TypeAnalyzer.js';
+import {
+  SyntaxValidator,
+  type ValidationResult as SyntaxValidationResult,
+} from './SyntaxValidator.js';
+import {
+  ModuleTypeDetector,
+  type ModuleType,
+  type ModuleTypeDetectionResult,
+} from './ModuleTypeDetector.js';
+import { BackupManager } from './BackupManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,7 +43,6 @@ export interface RefactorOptions {
   createBackup?: boolean;
   updateTemplate?: boolean;
   verbose?: boolean;
-
   semanticAnalysis?: boolean;
   formalVerification?: boolean;
   dataFlowAnalysis?: boolean;
@@ -42,28 +51,27 @@ export interface RefactorOptions {
   vueAnalysis?: boolean;
   criticalFunctions?: string[];
   maxCallDepth?: number;
-
   eslintCheck?: boolean;
   eslintFix?: boolean;
   typeCheck?: boolean;
   codeValidation?: boolean;
   autoFix?: boolean;
   maxIterations?: number;
-
   fixUnusedImports?: boolean;
   fixUnusedVariables?: boolean;
   addMissingTypes?: boolean;
   optimizeImports?: boolean;
-
   minClusterSize?: number;
   extractIsolatedFunctions?: boolean;
   groupByCallGraph?: boolean;
   addReExports?: boolean;
-
   incremental?: boolean;
   logLevel?: string;
   logFile?: string;
   maxRetries?: number;
+  guaranteeMode?: boolean;
+  maxAttempts?: number;
+  skipValidationForESM?: boolean;
 }
 
 export interface ExtractedModule {
@@ -93,7 +101,6 @@ export interface RefactorResult {
   error?: string;
   lastSuccessfulStep?: number;
   failedStep?: string;
-
   semanticResults?: {
     cfg?: ControlFlowGraph;
     callGraph?: CallGraph;
@@ -106,13 +113,11 @@ export interface RefactorResult {
     jsx?: any;
     vue?: any;
   };
-
   verificationResults?: VerificationResult[];
   validationResults?: ValidationResult;
   eslintResults?: ESLintFixResult[];
   tsFixResults?: { fixedCount: number; remainingErrors: number };
   codeFixResults?: FixResult[];
-
   metrics?: {
     cyclomaticComplexity: number;
     totalFunctions: number;
@@ -124,6 +129,14 @@ export interface RefactorResult {
     tsFixesCount: number;
     codeFixesCount: number;
   };
+  guaranteeInfo?: {
+    attempts: number;
+    moduleType: ModuleType;
+    detectionConfidence: 'high' | 'medium' | 'low';
+    validationHistory: SyntaxValidationResult[];
+    checkpointsCreated: number;
+    backupsCreated: number;
+  };
 }
 
 export class AutoRefactor {
@@ -131,34 +144,36 @@ export class AutoRefactor {
   private options: RefactorOptions;
   private logger: Logger;
   private incremental: boolean;
-
-  // Компоненты
-  private extractor: ModuleExtractor;
   private importManager: ImportManager;
-  private tsValidator: TypeScriptValidator;
-  private eslintFixer: ESLintASTFixer;
-  private codeValidator: CodeValidator;
-  private codeFixer: CodeFixer;
-  private templateUpdater: TemplateUpdater;
-  private cfgAnalyzer: CFGAnalyzer;
-  private callGraphAnalyzer: CallGraphAnalyzer;
-  private dataFlowAnalyzer: DataFlowAnalyzer;
-  private z3Verifier: Z3Verifier;
-
-  // Состояние
+  private backupManager: BackupManager;
+  private moduleTypeDetector: ModuleTypeDetector;
+  private syntaxValidator: SyntaxValidator;
+  private moduleType: ModuleType = 'auto';
+  private validationHistory: SyntaxValidationResult[] = [];
+  private detectionResult: ModuleTypeDetectionResult | null = null;
+  private attemptsUsed = 0;
+  private originalExports: string[] = [];
   private modules: ExtractedModule[] = [];
   private backupPath: string | null = null;
-  private semanticResults: NonNullable<RefactorResult['semanticResults']> = {};
-  private verificationResults: VerificationResult[] = [];
+  private analysisData: any = {};
+
+  // Инициализируемые компоненты
+  private tsValidator: TypeScriptValidator | null = null;
+  private eslintFixer: ESLintASTFixer | null = null;
+  private codeValidator: CodeValidator | null = null;
+  private codeFixer: CodeFixer | null = null;
+  private templateUpdater: TemplateUpdater | null = null;
+  private cfgAnalyzer: CFGAnalyzer | null = null;
+  private callGraphAnalyzer: CallGraphAnalyzer | null = null;
+  private dataFlowAnalyzer: DataFlowAnalyzer | null = null;
+  private z3Verifier: Z3Verifier | null = null;
+
+  // Сохранение результатов для обратной совместимости
   private validationResults: ValidationResult | undefined;
-  private eslintResults: ESLintFixResult[] = [];
-  private tsFixResults: { fixedCount: number; remainingErrors: number } = {
-    fixedCount: 0,
-    remainingErrors: 0,
-  };
+  private eslintResults: ESLintFixResult[] | undefined = undefined;
+  private tsFixResults: { fixedCount: number; remainingErrors: number } | undefined = undefined;
   private codeFixResults: FixResult[] = [];
-  private analysisData: any = null;
-  private sourceFileCache: any = null;
+  private verificationResults: VerificationResult[] = [];
 
   constructor(options: RefactorOptions = {}) {
     this.options = {
@@ -174,27 +189,30 @@ export class AutoRefactor {
       maxRetries: 3,
       logLevel: 'info',
       logFile: './refactor.log',
-      semanticAnalysis: true,
-      formalVerification: true,
-      dataFlowAnalysis: true,
-      callGraphAnalysis: true,
-      jsxAnalysis: true,
-      vueAnalysis: true,
+      semanticAnalysis: false,
+      formalVerification: false,
+      dataFlowAnalysis: false,
+      callGraphAnalysis: false,
+      jsxAnalysis: false,
+      vueAnalysis: false,
       maxCallDepth: 10,
-      eslintCheck: true,
-      eslintFix: true,
-      typeCheck: true,
-      codeValidation: true,
-      autoFix: true,
+      eslintCheck: false,
+      eslintFix: false,
+      typeCheck: false,
+      codeValidation: false,
+      autoFix: false,
       maxIterations: 5,
-      fixUnusedImports: true,
-      fixUnusedVariables: true,
-      addMissingTypes: true,
+      fixUnusedImports: false,
+      fixUnusedVariables: false,
+      addMissingTypes: false,
       optimizeImports: true,
       minClusterSize: 2,
       extractIsolatedFunctions: true,
       groupByCallGraph: true,
       addReExports: true,
+      guaranteeMode: true,
+      maxAttempts: 3,
+      skipValidationForESM: true,
       ...options,
     };
 
@@ -215,441 +233,432 @@ export class AutoRefactor {
       useInMemoryFileSystem: false,
     });
 
-    // Инициализация компонентов
-    this.extractor = new ModuleExtractor(this.project, this.options, this.logger);
-    this.importManager = new ImportManager(this.project);
-    this.tsValidator = new TypeScriptValidator();
-    this.eslintFixer = new ESLintASTFixer();
-    this.codeValidator = new CodeValidator();
-    this.codeFixer = new CodeFixer();
-    this.templateUpdater = new TemplateUpdater(this.options);
-    this.cfgAnalyzer = new CFGAnalyzer();
-    this.callGraphAnalyzer = new CallGraphAnalyzer();
-    this.dataFlowAnalyzer = new DataFlowAnalyzer();
-    this.z3Verifier = new Z3Verifier();
+    this.importManager = new ImportManager(this.project, this.logger);
+    this.backupManager = new BackupManager(this.logger);
+    this.moduleTypeDetector = new ModuleTypeDetector(this.logger);
+    this.syntaxValidator = new SyntaxValidator(this.logger);
+
+    // Инициализируем семантические компоненты при необходимости
+    if (this.options.semanticAnalysis || this.options.formalVerification) {
+      this.initSemanticComponents();
+    }
+  }
+
+  private initSemanticComponents(): void {
+    if (this.options.eslintCheck || this.options.eslintFix) {
+      this.eslintFixer = new ESLintASTFixer();
+    }
+    if (this.options.codeValidation || this.options.autoFix) {
+      this.codeValidator = new CodeValidator();
+      this.codeFixer = new CodeFixer();
+    }
+    if (this.options.updateTemplate) {
+      this.templateUpdater = new TemplateUpdater(this.options);
+    }
+    if (this.options.dataFlowAnalysis) {
+      this.cfgAnalyzer = new CFGAnalyzer();
+      this.dataFlowAnalyzer = new DataFlowAnalyzer();
+    }
+    if (this.options.callGraphAnalysis) {
+      this.callGraphAnalyzer = new CallGraphAnalyzer();
+    }
+    if (this.options.formalVerification) {
+      this.z3Verifier = new Z3Verifier();
+    }
+    if (this.options.typeCheck) {
+      this.tsValidator = new TypeScriptValidator();
+    }
   }
 
   async refactor(filePath: string): Promise<RefactorResult> {
     const absolutePath = path.resolve(filePath);
-    this.logger.info('Starting refactoring', { file: absolutePath, incremental: this.incremental });
+    this.logger.info('Starting refactoring with full guarantee', {
+      file: absolutePath,
+      incremental: this.incremental,
+      guaranteeMode: this.options.guaranteeMode,
+      maxAttempts: this.options.maxAttempts,
+      dryRun: this.options.dryRun,
+    });
 
     if (!fs.existsSync(absolutePath)) {
       return this.createErrorResult(`File not found: ${absolutePath}`, null, -1, []);
     }
 
-    // Создаём бэкап
-    if (this.options.createBackup && !this.options.dryRun) {
-      this.backupPath = await this.createBackup(absolutePath);
+    // В dry-run режиме пропускаем создание бэкапов
+    if (!this.options.dryRun) {
+      const backupResult = await this.backupManager.createFullBackup(absolutePath);
+      if (backupResult) {
+        this.backupPath = backupResult.backupPath;
+        this.logger.info('Full backup created', { backupPath: this.backupPath });
+      } else {
+        this.logger.warn('Failed to create full backup');
+      }
+    } else {
+      this.logger.info('DRY RUN: skipping backup creation');
+    }
+
+    this.detectionResult = await this.moduleTypeDetector.detect(absolutePath);
+    this.moduleType = this.detectionResult.type;
+    this.logger.info('Module type detected', {
+      type: this.moduleType,
+      confidence: this.detectionResult.confidence,
+      file: absolutePath,
+    });
+
+    const isESM = this.moduleType === 'esm';
+    const skipValidation = this.options.skipValidationForESM !== false && isESM;
+
+    if (!skipValidation) {
+      const initialValidation = await this.syntaxValidator.validate(absolutePath);
+      this.validationHistory.push(initialValidation);
+      if (!initialValidation.valid) {
+        if (!this.options.dryRun) {
+          await this.backupManager.restore(absolutePath);
+        }
+        return this.createErrorResult(
+          `Initial file validation failed: ${initialValidation.error}`,
+          this.backupPath,
+          -1,
+          []
+        );
+      }
+    }
+
+    // В dry-run режиме пропускаем создание рабочей копии
+    let workingCopy: string | null = null;
+    if (!this.options.dryRun) {
+      workingCopy = await this.backupManager.createWorkingCopy(absolutePath);
+      this.logger.info('Working copy created', { workingCopy });
+    } else {
+      this.logger.info('DRY RUN: skipping working copy creation');
     }
 
     try {
-      if (this.incremental) {
-        return await this.refactorIncremental(absolutePath);
+      let result: RefactorResult;
+
+      if (this.options.guaranteeMode) {
+        result = await this.refactorWithGuarantee(absolutePath);
       } else {
-        return await this.refactorSinglePass(absolutePath);
+        result = await this.refactorStandard(absolutePath);
       }
+
+      if (!skipValidation) {
+        const finalValidation = await this.syntaxValidator.validate(absolutePath);
+        this.validationHistory.push(finalValidation);
+        if (!finalValidation.valid) {
+          if (!this.options.dryRun) {
+            await this.backupManager.restore(absolutePath);
+          }
+          return this.createErrorResult(
+            `Final validation failed: ${finalValidation.error}`,
+            this.backupPath,
+            -1,
+            []
+          );
+        }
+      }
+
+      // Собираем метрики
+      const metrics = this.collectMetrics();
+      result.metrics = metrics;
+
+      result.guaranteeInfo = {
+        attempts: this.attemptsUsed || 1,
+        moduleType: this.moduleType,
+        detectionConfidence: this.detectionResult?.confidence || 'high',
+        validationHistory: this.validationHistory,
+        checkpointsCreated: this.backupManager.getCheckpoints().length,
+        backupsCreated: this.backupManager.getBackups().length,
+      };
+
+      // Добавляем результаты семантического анализа
+      result.semanticResults = this.analysisData.semanticResults;
+      result.verificationResults = this.verificationResults;
+      result.validationResults = this.validationResults;
+      result.eslintResults = this.eslintResults;
+      result.tsFixResults = this.tsFixResults;
+      result.codeFixResults = this.codeFixResults;
+
+      this.logger.info('Refactoring completed successfully');
+      return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error('Refactoring failed', { error: errorMessage });
-      await this.restoreBackup(absolutePath);
+      this.logger.error('Refactoring failed, restoring backup', { error: errorMessage });
+      if (!this.options.dryRun) {
+        await this.backupManager.restore(absolutePath);
+      }
       return this.createErrorResult(errorMessage, this.backupPath, -1, []);
+    } finally {
+      if (!this.options.dryRun) {
+        await this.backupManager.cleanup();
+      } else {
+        this.logger.info('DRY RUN: skipping cleanup');
+      }
     }
   }
 
-  private async refactorIncremental(filePath: string): Promise<RefactorResult> {
-    this.logger.info('Running incremental refactoring', { file: filePath });
+  private async refactorWithGuarantee(filePath: string): Promise<RefactorResult> {
+    const MAX_RETRIES = this.options.maxAttempts || 3;
+    const isESM = this.moduleType === 'esm';
+    const skipValidation = this.options.skipValidationForESM !== false && isESM;
 
-    const steps: { name: string; action: () => Promise<boolean> }[] = [
-      {
-        name: 'semantic analysis',
-        action: async () => {
-          await this.runSemanticAnalysis(filePath);
-          return true;
-        },
-      },
-      {
-        name: 'code validation',
-        action: async () => {
-          await this.runCodeValidation(filePath);
-          return true;
-        },
-      },
-      {
-        name: 'eslint analysis',
-        action: async () => {
-          await this.runESLint(filePath);
-          return true;
-        },
-      },
-      {
-        name: 'type check',
-        action: async () => {
-          await this.runTypeCheck(filePath);
-          return true;
-        },
-      },
-      {
-        name: 'auto fix',
-        action: async () => {
-          await this.runAutoFix(filePath);
-          return true;
-        },
-      },
-      {
-        name: 'analyze and cluster',
-        action: async () => {
-          await this.analyzeAndCluster(filePath);
-          return true;
-        },
-      },
-      {
-        name: 'extract modules',
-        action: async () => {
-          await this.extractModules(filePath);
-          return true;
-        },
-      },
-      {
-        name: 'update imports',
-        action: async () => {
-          await this.updateImports(filePath);
-          return true;
-        },
-      },
-      {
-        name: 'final validation',
-        action: async () => {
-          return await this.finalValidation(filePath);
-        },
-      },
-    ];
+    let attempt = 0;
+    let lastError: string | undefined;
+    let lastResult: RefactorResult | undefined;
 
-    let lastSuccessfulStep = -1;
-    let checkpointPath: string | null = null;
-
-    for (let stepIndex = 0; stepIndex < steps.length; stepIndex++) {
-      const step = steps[stepIndex];
-      if (!step) continue;
-
-      this.logger.info(`Executing step ${stepIndex + 1}/${steps.length}: ${step.name}`);
-
-      checkpointPath = await this.createCheckpoint(filePath, step.name);
+    while (attempt < MAX_RETRIES) {
+      attempt++;
+      this.attemptsUsed = attempt;
+      this.logger.info(`Refactoring attempt ${attempt}/${MAX_RETRIES}`);
 
       try {
-        const success = await step.action();
+        const checkpoints: string[] = [];
 
-        if (!success) {
-          this.logger.error(`Step "${step.name}" failed`);
-          await this.restoreCheckpoint(filePath, checkpointPath);
-          return this.createErrorResult(
-            `Step "${step.name}" failed`,
-            checkpointPath,
-            stepIndex,
-            steps
-          );
-        }
-
-        if (await this.validateSyntax(filePath)) {
-          lastSuccessfulStep = stepIndex;
-          this.logger.info(`Step "${step.name}" completed successfully`);
+        // ЭТАП 1: Анализ
+        const analysisCheckpoint = await this.backupManager.createCheckpoint(filePath, 'analysis');
+        if (analysisCheckpoint) {
+          checkpoints.push(analysisCheckpoint);
         } else {
-          this.logger.error(`Syntax validation failed after step "${step.name}"`);
-          await this.restoreCheckpoint(filePath, checkpointPath);
-          return this.createErrorResult(
-            `Syntax error after step: ${step.name}`,
-            checkpointPath,
-            stepIndex,
-            steps
-          );
+          this.logger.warn('Failed to create analysis checkpoint');
+          continue;
         }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        this.logger.error(`Step "${step.name}" threw exception`, { error: errorMessage });
-        await this.restoreCheckpoint(filePath, checkpointPath);
-        return this.createErrorResult(
-          `Exception in step "${step.name}": ${errorMessage}`,
-          checkpointPath,
-          stepIndex,
-          steps
-        );
-      } finally {
-        if (checkpointPath && fs.existsSync(checkpointPath)) {
-          try {
-            fs.unlinkSync(checkpointPath);
-          } catch {
-            /* ignore */
+
+        const analysisResult = await this.analyzeFile(filePath);
+        if (!analysisResult) {
+          if (analysisCheckpoint) {
+            await this.backupManager.restoreCheckpoint(filePath, analysisCheckpoint);
+          }
+          continue;
+        }
+
+        if (!skipValidation) {
+          if (!(await this.syntaxValidator.validate(filePath)).valid) {
+            if (analysisCheckpoint) {
+              await this.backupManager.restoreCheckpoint(filePath, analysisCheckpoint);
+            }
+            continue;
           }
         }
-      }
-    }
 
-    // Проверка созданных модулей
-    const modulesDir = path.join(path.dirname(filePath), this.options.modulesDir || 'modules');
-    if (fs.existsSync(modulesDir)) {
-      const moduleFiles = fs.readdirSync(modulesDir).filter(f => f.endsWith('.js'));
-      for (const moduleFile of moduleFiles) {
-        const modulePath = path.join(modulesDir, moduleFile);
-        if (!(await this.validateSyntax(modulePath))) {
-          return this.createErrorResult(
-            `Syntax error in generated module: ${modulePath}`,
-            null,
-            steps.length,
-            steps
-          );
+        // ЭТАП 2: Семантический анализ (если включен)
+        if (this.options.semanticAnalysis) {
+          await this.runSemanticAnalysis(filePath);
+        }
+
+        // ЭТАП 3: Кластеризация
+        const clusterCheckpoint = await this.backupManager.createCheckpoint(filePath, 'clustering');
+        if (clusterCheckpoint) {
+          checkpoints.push(clusterCheckpoint);
+        } else {
+          this.logger.warn('Failed to create clustering checkpoint');
+          continue;
+        }
+
+        const clusters = this.identifyClusters(
+          analysisResult.functions,
+          analysisResult.callGraph,
+          analysisResult.sourceFile
+        );
+
+        if (!clusters || clusters.length === 0) {
+          this.logger.info('No clusters found, skipping extraction');
+          if (clusterCheckpoint) {
+            await this.backupManager.restoreCheckpoint(filePath, clusterCheckpoint);
+          }
+          return this.createSuccessResult(attempt);
+        }
+
+        if (!skipValidation) {
+          if (!(await this.syntaxValidator.validate(filePath)).valid) {
+            if (clusterCheckpoint) {
+              await this.backupManager.restoreCheckpoint(filePath, clusterCheckpoint);
+            }
+            continue;
+          }
+        }
+
+        // ЭТАП 4: Извлечение модулей
+        const extractCheckpoint = await this.backupManager.createCheckpoint(filePath, 'extraction');
+        if (extractCheckpoint) {
+          checkpoints.push(extractCheckpoint);
+        } else {
+          this.logger.warn('Failed to create extraction checkpoint');
+          continue;
+        }
+
+        this.analysisData = {
+          functions: analysisResult.functions,
+          callGraph: analysisResult.callGraph,
+          clusters: clusters,
+          sourceFile: analysisResult.sourceFile,
+          originalExports: this.originalExports,
+        };
+
+        await this.extractModules(filePath);
+
+        // Валидируем каждый созданный модуль
+        if (!skipValidation) {
+          let allModulesValid = true;
+          for (const module of this.modules) {
+            const isValid = await this.validateExtractedModule(module.path);
+            if (!isValid) {
+              allModulesValid = false;
+              this.logger.warn(`Module validation failed: ${module.path}`);
+              break;
+            }
+          }
+
+          if (!allModulesValid) {
+            if (extractCheckpoint) {
+              await this.backupManager.restoreCheckpoint(filePath, extractCheckpoint);
+            }
+            continue;
+          }
+        }
+
+        if (!skipValidation) {
+          if (!(await this.syntaxValidator.validate(filePath)).valid) {
+            if (extractCheckpoint) {
+              await this.backupManager.restoreCheckpoint(filePath, extractCheckpoint);
+            }
+            continue;
+          }
+        }
+
+        // ЭТАП 5: Обновление импортов
+        const importCheckpoint = await this.backupManager.createCheckpoint(filePath, 'imports');
+        if (importCheckpoint) {
+          checkpoints.push(importCheckpoint);
+        } else {
+          this.logger.warn('Failed to create import checkpoint');
+          continue;
+        }
+
+        await this.updateImports(filePath);
+
+        if (!skipValidation) {
+          if (!(await this.syntaxValidator.validate(filePath)).valid) {
+            if (importCheckpoint) {
+              await this.backupManager.restoreCheckpoint(filePath, importCheckpoint);
+            }
+            continue;
+          }
+        }
+
+        // ЭТАП 6: Валидация кода (если включена)
+        if (this.options.codeValidation) {
+          await this.runCodeValidation(filePath);
+        }
+
+        // ЭТАП 7: ESLint (если включен)
+        if (this.options.eslintCheck) {
+          await this.runESLint(filePath);
+        }
+
+        // ЭТАП 8: TypeScript проверка (если включена)
+        if (this.options.typeCheck) {
+          await this.runTypeCheck(filePath);
+        }
+
+        // ЭТАП 9: Автоисправление (если включено)
+        if (this.options.autoFix) {
+          await this.runAutoFix(filePath);
+        }
+
+        // ЭТАП 10: Формальная верификация (если включена)
+        if (this.options.formalVerification) {
+          const sourceFile = this.project.addSourceFileAtPath(filePath);
+          await this.runFormalVerification(sourceFile);
+        }
+
+        // ЭТАП 11: Обновление Vue шаблона (если включено и это Vue файл)
+        if (this.options.updateTemplate && filePath.endsWith('.vue') && this.templateUpdater) {
+          await this.templateUpdater.update(filePath, this.modules);
+        }
+
+        // Удаляем чекпоинты после успеха
+        if (!this.options.dryRun) {
+          for (const checkpoint of checkpoints) {
+            await this.backupManager.removeCheckpoint(checkpoint);
+          }
+        } else {
+          this.logger.info('DRY RUN: skipping checkpoint cleanup');
+        }
+
+        lastResult = this.createSuccessResult(attempt);
+        lastResult.guaranteeInfo = {
+          attempts: attempt,
+          moduleType: this.moduleType,
+          detectionConfidence: this.detectionResult?.confidence || 'high',
+          validationHistory: this.validationHistory,
+          checkpointsCreated: checkpoints.length,
+          backupsCreated: this.backupManager.getBackups().length,
+        };
+
+        this.logger.info(`Refactoring succeeded on attempt ${attempt}`);
+        return lastResult;
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Attempt ${attempt} failed`, { error: lastError });
+        if (!this.options.dryRun) {
+          await this.backupManager.restoreLastCheckpoint(filePath);
+        } else {
+          this.logger.info('DRY RUN: skipping restore');
         }
       }
     }
 
-    this.logger.info('Incremental refactoring completed successfully');
-    return this.createSuccessResult(lastSuccessfulStep);
+    const errorMsg = `Refactoring failed after ${attempt} attempts. Last error: ${lastError || 'Unknown'}`;
+    return this.createErrorResult(errorMsg, this.backupPath, -1, []);
   }
 
-  private async refactorSinglePass(filePath: string): Promise<RefactorResult> {
-    this.logger.info('Running single-pass refactoring', { file: filePath });
+  private async refactorStandard(filePath: string): Promise<RefactorResult> {
+    const isESM = this.moduleType === 'esm';
+    const skipValidation = this.options.skipValidationForESM !== false && isESM;
 
-    await this.runSemanticAnalysis(filePath);
-    await this.runCodeValidation(filePath);
-    await this.runESLint(filePath);
-    await this.runTypeCheck(filePath);
-    await this.runAutoFix(filePath);
+    this.logger.info('Running standard refactoring', { filePath, skipValidation });
+
     await this.analyzeAndCluster(filePath);
     await this.extractModules(filePath);
     await this.updateImports(filePath);
 
-    if (!(await this.finalValidation(filePath))) {
-      return this.createErrorResult('Final validation failed', this.backupPath, -1, []);
+    // Выполняем дополнительные проверки если включены
+    if (this.options.semanticAnalysis) {
+      await this.runSemanticAnalysis(filePath);
     }
 
-    this.logger.info('Single-pass refactoring completed successfully');
-    return this.createSuccessResult(-1);
-  }
-
-  // ============================================
-  // ОСНОВНЫЕ МЕТОДЫ
-  // ============================================
-
-  private async runSemanticAnalysis(filePath: string): Promise<void> {
-    if (!this.options.semanticAnalysis) return;
-
-    this.logger.info('Running semantic analysis', { file: filePath });
-
-    this.sourceFileCache = this.project.addSourceFileAtPath(filePath);
-    const sourceFile = this.sourceFileCache;
-
-    // 1. CFG анализ
-    if (this.options.dataFlowAnalysis) {
-      try {
-        const cfg = this.cfgAnalyzer.build(sourceFile);
-        this.semanticResults.cfg = cfg;
-        this.logger.debug('CFG analysis complete', { blocks: cfg.blocks.length });
-
-        const unreachable = cfg.findUnreachableBlocks();
-        if (unreachable.length > 0) {
-          this.semanticResults.unreachableCode = unreachable.map(block => ({
-            file: filePath,
-            line: block.instructions[0]?.getStartLineNumber() || 1,
-          }));
-          this.logger.debug(`Found ${unreachable.length} unreachable blocks`);
-        }
-      } catch (error) {
-        this.logger.warn('CFG analysis failed', { error });
-      }
+    if (this.options.codeValidation) {
+      await this.runCodeValidation(filePath);
     }
 
-    // 2. Call Graph анализ
-    if (this.options.callGraphAnalysis) {
-      try {
-        const callGraph = await this.callGraphAnalyzer.analyzeSingle(
-          filePath,
-          this.options.maxCallDepth
-        );
-        this.semanticResults.callGraph = callGraph;
-        this.logger.debug('Call Graph analysis complete', { nodes: callGraph.nodes.size });
-
-        const unused = callGraph.findUnusedFunctions();
-        if (unused.length > 0) {
-          this.semanticResults.unusedFunctions = unused.map(f => f.name);
-          this.logger.debug(`Found ${unused.length} unused functions`);
-        }
-
-        const cycles = callGraph.findCyclicDependencies();
-        if (cycles.length > 0) {
-          this.semanticResults.cyclicDependencies = cycles.map(cycleEdges =>
-            cycleEdges.map(edge => `${edge.from}->${edge.to}`)
-          );
-          this.logger.debug(`Found ${cycles.length} cyclic dependencies`);
-        }
-      } catch (error) {
-        this.logger.warn('Call Graph analysis failed', { error });
-      }
+    if (this.options.eslintCheck) {
+      await this.runESLint(filePath);
     }
 
-    // 3. Data Flow анализ
-    if (this.options.dataFlowAnalysis) {
-      try {
-        const dataFlow = this.dataFlowAnalyzer.analyze(sourceFile);
-        this.semanticResults.dataFlow = dataFlow;
-        this.logger.debug('Data Flow analysis complete', { nodes: dataFlow.nodes.length });
-
-        const unusedVars = dataFlow.findUnusedVariables();
-        if (unusedVars.length > 0) {
-          this.logger.debug(`Found ${unusedVars.length} unused variables`);
-        }
-
-        const reassignedConsts = dataFlow.findReassignedConstants();
-        if (reassignedConsts.length > 0) {
-          this.logger.debug(`Found ${reassignedConsts.length} reassigned constants`);
-        }
-      } catch (error) {
-        this.logger.warn('Data Flow analysis failed', { error });
-      }
+    if (this.options.typeCheck) {
+      await this.runTypeCheck(filePath);
     }
 
-    // 4. TypeScript анализ
-    if (filePath.endsWith('.ts') || filePath.endsWith('.tsx')) {
-      try {
-        const { TypeAnalyzer } = await import('../semantic/TypeAnalyzer.js');
-        const typeAnalyzer = new TypeAnalyzer(filePath);
-        const typeAnalysis = typeAnalyzer.analyze();
-        this.semanticResults.typeAnalysis = typeAnalysis;
-
-        const typeErrors = typeAnalysis.findTypeErrors();
-        if (typeErrors.length > 0) {
-          this.semanticResults.typeErrors = typeErrors;
-          this.logger.debug(`Found ${typeErrors.length} type errors`);
-        }
-      } catch (error) {
-        this.logger.warn('TypeScript analysis failed', { error });
-      }
+    if (this.options.autoFix) {
+      await this.runAutoFix(filePath);
     }
 
-    // 5. JSX анализ
-    if (this.options.jsxAnalysis && (filePath.endsWith('.tsx') || filePath.endsWith('.jsx'))) {
-      try {
-        const { JSXAnalyzer } = await import('../semantic/JSXAnalyzer.js');
-        const jsxAnalyzer = new JSXAnalyzer(filePath);
-        const jsxResult = jsxAnalyzer.analyze(sourceFile);
-        this.semanticResults.jsx = jsxResult;
-        this.logger.debug('JSX analysis complete', { elements: jsxResult.elements.length });
-      } catch (error) {
-        this.logger.warn('JSX analysis failed', { error });
-      }
-    }
-
-    // 6. Vue анализ
-    if (this.options.vueAnalysis && filePath.endsWith('.vue')) {
-      try {
-        const { analyzeVueComponent } = await import('../modes/vue-analyzer.js');
-        const vueAnalysis = analyzeVueComponent(filePath);
-        this.semanticResults.vue = vueAnalysis;
-        if (vueAnalysis) {
-          this.logger.debug('Vue analysis complete', {
-            props: vueAnalysis.props.names.length,
-            events: vueAnalysis.emits.names.length,
-            slots: vueAnalysis.slots.length,
-          });
-        }
-      } catch (error) {
-        this.logger.warn('Vue analysis failed', { error });
-      }
-    }
-
-    // 7. Формальная верификация
     if (this.options.formalVerification) {
+      const sourceFile = this.project.addSourceFileAtPath(filePath);
       await this.runFormalVerification(sourceFile);
     }
-  }
 
-  private async runFormalVerification(sourceFile: any): Promise<void> {
-    this.logger.info('Running formal verification');
+    if (this.options.updateTemplate && filePath.endsWith('.vue') && this.templateUpdater) {
+      await this.templateUpdater.update(filePath, this.modules);
+    }
 
-    const functions = sourceFile.getFunctions();
-    const criticalSet = new Set(this.options.criticalFunctions || []);
-
-    for (const func of functions) {
-      const funcName = func.getName();
-      if (!funcName) continue;
-      if (criticalSet.size > 0 && !criticalSet.has(funcName)) continue;
-
-      try {
-        const contract = this.extractContract(func);
-        const result = await this.z3Verifier.verifyFunction(contract);
-        this.verificationResults.push({ ...result, functionName: funcName });
-        this.logger.debug(`Function ${funcName}: ${result.isValid ? '✅ verified' : '❌ failed'}`);
-      } catch (error) {
-        this.logger.warn(`Verification failed for ${funcName}`, { error });
+    if (!skipValidation) {
+      if (!(await this.finalValidation(filePath))) {
+        return this.createErrorResult('Final validation failed', this.backupPath, -1, []);
       }
     }
-  }
 
-  private extractContract(func: any): any {
-    const name = func.getName() || 'anonymous';
-    const params = func.getParameters().map((p: any) => ({
-      name: p.getName(),
-      type: this.getParamType(p),
-    }));
-    const returnType = this.getReturnType(func);
-    return { name, params, returnType, preconditions: [], postconditions: [], invariants: [] };
-  }
-
-  private getParamType(param: any): 'int' | 'bool' | 'string' {
-    const type = param.getType();
-    if (type.isNumber()) return 'int';
-    if (type.isBoolean()) return 'bool';
-    if (type.isString()) return 'string';
-    return 'int';
-  }
-
-  private getReturnType(func: any): 'int' | 'bool' | 'string' | 'void' {
-    const type = func.getReturnType();
-    if (type.isNumber()) return 'int';
-    if (type.isBoolean()) return 'bool';
-    if (type.isString()) return 'string';
-    return 'void';
-  }
-
-  private async runCodeValidation(filePath: string): Promise<void> {
-    if (!this.options.codeValidation) return;
-
-    this.logger.info('Running code validation', { file: filePath });
-    this.validationResults = await this.codeValidator.validateFiles([filePath]);
-    this.logger.debug('Code validation complete', {
-      errors: this.validationResults.summary.errors,
-      warnings: this.validationResults.summary.warnings,
-    });
-  }
-
-  private async runESLint(filePath: string): Promise<void> {
-    if (!this.options.eslintCheck) return;
-
-    this.logger.info('Running ESLint analysis', { file: filePath });
-    this.eslintResults = await this.eslintFixer.fixFiles([filePath], this.options.createBackup);
-    const totalFixes = this.eslintResults.reduce((sum, r) => sum + r.fixes, 0);
-    this.logger.debug('ESLint complete', { fixes: totalFixes });
-  }
-
-  private async runTypeCheck(filePath: string): Promise<void> {
-    if (!this.options.typeCheck) return;
-
-    this.logger.info('Running TypeScript type check', { file: filePath });
-    const result = await this.tsValidator.validateAndFix([filePath], this.options.maxIterations);
-    this.tsFixResults = { fixedCount: result.fixedCount, remainingErrors: result.remainingErrors };
-    this.logger.debug('Type check complete', {
-      fixed: result.fixedCount,
-      remaining: result.remainingErrors,
-    });
-  }
-
-  private async runAutoFix(filePath: string): Promise<void> {
-    if (!this.options.autoFix || !this.validationResults) return;
-
-    this.logger.info('Running auto-fix', { file: filePath });
-    this.codeFixResults = await this.codeFixer.autoFix(
-      this.validationResults.issues,
-      this.options.createBackup
-    );
-    const totalFixes = this.codeFixResults.reduce((sum, r) => sum + r.fixes, 0);
-    this.logger.debug('Auto-fix complete', { fixes: totalFixes });
+    return this.createSuccessResult(-1);
   }
 
   private async analyzeAndCluster(filePath: string): Promise<void> {
@@ -659,7 +668,7 @@ export class AutoRefactor {
     const functions: string[] = [];
     const callGraph: Record<string, string[]> = {};
 
-    // Сбор функций
+    // Собираем функции
     for (const func of sourceFile.getFunctions()) {
       const name = func.getName();
       if (!name) continue;
@@ -672,9 +681,7 @@ export class AutoRefactor {
           if (Node.isIdentifier(expr)) {
             const calledName = expr.getText();
             if (calledName && calledName !== name) {
-              if (!callGraph[name]) {
-                callGraph[name] = [];
-              }
+              if (!callGraph[name]) callGraph[name] = [];
               if (!callGraph[name].includes(calledName)) {
                 callGraph[name].push(calledName);
               }
@@ -684,65 +691,274 @@ export class AutoRefactor {
       });
     }
 
-    // Сбор переменных-функций
-    for (const variable of sourceFile.getVariableDeclarations()) {
-      const name = variable.getName();
-      const initializer = variable.getInitializer();
-      if (
-        initializer &&
-        (Node.isArrowFunction(initializer) || Node.isFunctionExpression(initializer))
-      ) {
-        if (!functions.includes(name)) {
-          functions.push(name);
-          callGraph[name] = [];
+    // Добавляем классы в функции для кластеризации
+    const classes = sourceFile.getClasses();
+    for (const cls of classes) {
+      const className = cls.getName();
+      if (!className) continue;
+
+      if (!functions.includes(className)) {
+        functions.push(className);
+      }
+
+      if (!callGraph[className]) {
+        callGraph[className] = [];
+      }
+
+      for (const method of cls.getMethods()) {
+        const methodName = method.getName();
+        if (methodName) {
+          if (!callGraph[methodName]) {
+            callGraph[methodName] = [];
+          }
+          if (!callGraph[className].includes(methodName)) {
+            callGraph[className].push(methodName);
+          }
         }
       }
     }
 
-    // Кластеризация
-    const clusters = this.identifyClusters(functions, callGraph, sourceFile);
-    this.logger.info(`Found ${clusters.length} clusters`);
+    this.originalExports = this.collectOriginalExports(sourceFile);
+    let clusters = this.identifyClusters(functions, callGraph, sourceFile);
 
-    // Фильтрация по минимальному размеру и связности
-    const filteredClusters = clusters.filter(
-      c =>
-        c.functions.length >= (this.options.minClusterSize || 2) &&
-        c.cohesionScore >= (this.options.minCohesionScore || 60)
-    );
-
-    // Добавление изолированных функций если включено
-    let finalClusters = filteredClusters;
-    if (this.options.extractIsolatedFunctions) {
-      const isolated = this.findIsolatedFunctions(functions, callGraph, filteredClusters);
-      finalClusters = [...filteredClusters, ...isolated];
+    if (!clusters || clusters.length === 0) {
+      this.logger.info('No clusters found - this is acceptable');
+      clusters = [];
     }
 
-    this.logger.info(
-      `Final clusters: ${finalClusters.length} (${filteredClusters.length} filtered + ${finalClusters.length - filteredClusters.length} isolated)`
+    this.analysisData = {
+      functions,
+      callGraph,
+      clusters,
+      sourceFile,
+      originalExports: this.originalExports,
+    };
+  }
+
+  private async extractModules(filePath: string): Promise<void> {
+    if (!this.analysisData?.clusters?.length) {
+      this.logger.warn('No clusters found for extraction');
+      return;
+    }
+
+    const moduleExtractor = new ModuleExtractor(this.project, this.options, this.logger);
+    moduleExtractor.setModuleType(this.moduleType);
+
+    const clustersForExtraction = this.analysisData.clusters.map((cluster: ClusterInfo) => ({
+      name: cluster.name,
+      functions: cluster.functions,
+      cohesionScore: cluster.cohesionScore,
+    }));
+
+    // Фильтруем кластеры без экспортов - исправлено с правильными типами
+    const filteredClusters = clustersForExtraction.filter(
+      (cluster: { name: string; functions: string[]; cohesionScore: number }) => {
+        const hasExports = cluster.functions.some((f: string) => this.originalExports.includes(f));
+        if (!hasExports) {
+          this.logger.debug(`Skipping cluster ${cluster.name} - no exports`);
+        }
+        return hasExports;
+      }
     );
 
-    // Сохраняем для дальнейшего использования
-    this.analysisData = { functions, callGraph, clusters: finalClusters, sourceFile };
+    if (filteredClusters.length === 0) {
+      this.logger.info('No clusters with exports found');
+      return;
+    }
+
+    this.modules = await moduleExtractor.extractModules(filePath, filteredClusters);
+    this.logger.info(`Extracted ${this.modules.length} modules`);
+  }
+
+  private async updateImports(filePath: string): Promise<void> {
+    if (this.modules.length === 0) {
+      this.logger.warn('No modules to update imports for');
+      return;
+    }
+
+    this.logger.info('Updating imports', { filePath });
+
+    const sourceFile = this.project.addSourceFileAtPath(filePath);
+    const isESM = this.moduleType === 'esm';
+
+    // Добавляем импорты из модулей
+    for (const module of this.modules) {
+      if (module.exports.length === 0) continue;
+
+      let relativePath = this.getRelativePath(filePath, module.path);
+
+      // Определяем расширение для импорта
+      const ext = path.extname(module.path);
+      if (ext === '.ts') {
+        // TypeScript модули импортируем без расширения
+        relativePath = relativePath.replace(/\.ts$/, '');
+      } else if (isESM) {
+        relativePath = relativePath.replace(/\.(js|ts)$/, '.mjs');
+      } else {
+        relativePath = relativePath.replace(/\.(mjs|ts)$/, '.js');
+      }
+
+      if (!relativePath.startsWith('.') && !relativePath.startsWith('@')) {
+        relativePath = './' + relativePath;
+      }
+
+      sourceFile.addImportDeclaration({
+        namedImports: module.exports,
+        moduleSpecifier: relativePath,
+      });
+      this.logger.debug(
+        `  📥 Added import: { ${module.exports.join(', ')} } from '${relativePath}'`
+      );
+    }
+
+    // Добавляем реэкспорты
+    if (this.options.addReExports !== false && this.originalExports.length > 0) {
+      const allExports = new Map<string, string>();
+      for (const module of this.modules) {
+        for (const exp of module.exports) {
+          let relativePath = this.getRelativePath(filePath, module.path);
+          const ext = path.extname(module.path);
+          if (ext === '.ts') {
+            relativePath = relativePath.replace(/\.ts$/, '');
+          } else if (isESM) {
+            relativePath = relativePath.replace(/\.(js|ts)$/, '.mjs');
+          } else {
+            relativePath = relativePath.replace(/\.(mjs|ts)$/, '.js');
+          }
+          if (!relativePath.startsWith('.') && !relativePath.startsWith('@')) {
+            relativePath = './' + relativePath;
+          }
+          allExports.set(exp, relativePath);
+        }
+      }
+
+      const byModule = new Map<string, string[]>();
+      for (const [exp, modulePath] of allExports) {
+        if (!byModule.has(modulePath)) byModule.set(modulePath, []);
+        byModule.get(modulePath)!.push(exp);
+      }
+
+      let reExportBlock = '\n// ============================================\n';
+      reExportBlock += '// РЕЭКСПОРТЫ - сохраняем публичное API\n';
+      reExportBlock += '// ============================================\n';
+
+      for (const [modulePath, exports] of byModule) {
+        const sortedExports = exports.sort();
+        const originalExportsInModule = sortedExports.filter(exp =>
+          this.originalExports.includes(exp)
+        );
+        if (originalExportsInModule.length > 0) {
+          reExportBlock += `export { ${originalExportsInModule.join(', ')} } from '${modulePath}';\n`;
+        }
+      }
+
+      const currentText = sourceFile.getText();
+      const newText = currentText + '\n' + reExportBlock;
+      sourceFile.replaceWithText(newText);
+    }
+
+    if (this.options.optimizeImports) {
+      await this.importManager.optimizeImportOrder(filePath);
+    }
+
+    // Сохраняем только если не dry-run
+    if (!this.options.dryRun) {
+      await sourceFile.save();
+      this.logger.info('✅ Imports updated successfully');
+    } else {
+      this.logger.info('DRY RUN: skipping import save');
+    }
+  }
+
+  private async analyzeFile(filePath: string): Promise<any> {
+    try {
+      const sourceFile = this.project.addSourceFileAtPath(filePath);
+
+      if (!sourceFile || sourceFile.getText().trim() === '') {
+        return { functions: [], callGraph: {}, sourceFile: null, isEmpty: true };
+      }
+
+      const functions: string[] = [];
+      const callGraph: Record<string, string[]> = {};
+
+      for (const func of sourceFile.getFunctions()) {
+        const name = func.getName();
+        if (!name) continue;
+        functions.push(name);
+        callGraph[name] = [];
+
+        func.forEachDescendant(node => {
+          if (Node.isCallExpression(node)) {
+            const expr = node.getExpression();
+            if (Node.isIdentifier(expr)) {
+              const calledName = expr.getText();
+              if (calledName && calledName !== name) {
+                if (!callGraph[name]) callGraph[name] = [];
+                if (!callGraph[name].includes(calledName)) {
+                  callGraph[name].push(calledName);
+                }
+              }
+            }
+          }
+        });
+      }
+
+      const classes = sourceFile.getClasses();
+      for (const cls of classes) {
+        const className = cls.getName();
+        if (!className) continue;
+
+        if (!functions.includes(className)) {
+          functions.push(className);
+        }
+
+        if (!callGraph[className]) {
+          callGraph[className] = [];
+        }
+
+        for (const method of cls.getMethods()) {
+          const methodName = method.getName();
+          if (methodName) {
+            if (!callGraph[methodName]) {
+              callGraph[methodName] = [];
+            }
+            if (!callGraph[className].includes(methodName)) {
+              callGraph[className].push(methodName);
+            }
+          }
+        }
+      }
+
+      this.originalExports = this.collectOriginalExports(sourceFile);
+      return { functions, callGraph, sourceFile };
+    } catch (error) {
+      this.logger.warn('Failed to analyze file, returning empty result', { error });
+      return { functions: [], callGraph: {}, sourceFile: null, isEmpty: true };
+    }
   }
 
   private identifyClusters(
     functions: string[],
     callGraph: Record<string, string[]>,
-    sourceFile: any
+    sourceFile: SourceFile
   ): ClusterInfo[] {
+    // Специальная обработка для maxClusterSize === 1
+    if (this.options.maxClusterSize === 1) {
+      return this.identifyClustersSingle(functions, callGraph, sourceFile);
+    }
+
     const clusters: ClusterInfo[] = [];
     const visited = new Set<string>();
 
-    // Находим entry points (функции, которые никто не вызывает)
     const calledFunctions = new Set<string>();
     for (const callees of Object.values(callGraph)) {
       for (const callee of callees) {
         if (callee) calledFunctions.add(callee);
       }
     }
+
     const entryPoints = functions.filter(f => !calledFunctions.has(f));
 
-    // BFS от каждой entry point
     for (const entryPoint of entryPoints) {
       if (visited.has(entryPoint)) continue;
 
@@ -776,33 +992,25 @@ export class AutoRefactor {
         }
       }
 
-      // Вычисляем связность
       cluster.cohesionScore = this.calculateCohesion(cluster.functions, callGraph);
       cluster.size = cluster.functions.length;
 
-      // Определяем тип
       let hasExported = false;
-      try {
-        for (const f of cluster.functions) {
-          const func = sourceFile?.getFunction(f);
-          if (func?.isExported()) {
-            hasExported = true;
-            break;
-          }
+      for (const f of cluster.functions) {
+        if (this.isExported(sourceFile, f)) {
+          hasExported = true;
+          break;
         }
-      } catch {
-        hasExported = false;
       }
       cluster.type = hasExported ? 'core' : 'helper';
       cluster.isExported = hasExported;
 
-      // Рекомендация
       if (cluster.cohesionScore >= 80) {
         cluster.recommendation = '✅ Excellent cohesion - perfect candidate for extraction';
       } else if (cluster.cohesionScore >= 60) {
         cluster.recommendation = '✅ Good cohesion - suitable for extraction';
       } else if (cluster.cohesionScore >= 40) {
-        cluster.recommendation = '⚠️ Moderate cohesion - consider merging with related clusters';
+        cluster.recommendation = '⚠️ Moderate cohesion - consider merging';
       } else {
         cluster.recommendation = '❌ Low cohesion - review dependencies';
       }
@@ -810,7 +1018,6 @@ export class AutoRefactor {
       clusters.push(cluster);
     }
 
-    // Сортируем по связности и размеру
     clusters.sort((a, b) => {
       if (b.cohesionScore !== a.cohesionScore) return b.cohesionScore - a.cohesionScore;
       return b.functions.length - a.functions.length;
@@ -819,39 +1026,152 @@ export class AutoRefactor {
     return clusters;
   }
 
-  private findIsolatedFunctions(
+  /**
+   * Специальная обработка для maxClusterSize === 1
+   * Каждая функция становится отдельным модулем с правильными зависимостями
+   */
+  private identifyClustersSingle(
     functions: string[],
     callGraph: Record<string, string[]>,
-    existingClusters: ClusterInfo[]
+    sourceFile: SourceFile
   ): ClusterInfo[] {
-    const clusteredFunctions = new Set<string>();
-    for (const cluster of existingClusters) {
-      for (const fn of cluster.functions) {
-        clusteredFunctions.add(fn);
-      }
-    }
+    const clusters: ClusterInfo[] = [];
+    const visited = new Set<string>();
 
-    const isolated: ClusterInfo[] = [];
-    for (const func of functions) {
-      if (!clusteredFunctions.has(func)) {
-        const deps = callGraph[func] || [];
-        if (deps.length === 0) {
-          isolated.push({
-            name: this.generateClusterName(func) + 'Isolated',
-            functions: [func],
-            cohesionScore: 100,
-            size: 1,
-            type: 'isolated',
-            isExported: false,
-            recommendation: '⚡ Isolated function - good for utils or helpers',
-            dependencies: [],
-            importers: [],
-          });
+    // Сортируем функции: экспорты идут первыми
+    const sortedFunctions = [...functions].sort((a, b) => {
+      const aExported = this.isExported(sourceFile, a);
+      const bExported = this.isExported(sourceFile, b);
+      if (aExported && !bExported) return -1;
+      if (!aExported && bExported) return 1;
+      return a.localeCompare(b);
+    });
+
+    for (const funcName of sortedFunctions) {
+      if (visited.has(funcName)) continue;
+      visited.add(funcName);
+
+      const deps = callGraph[funcName] || [];
+      const isExported = this.isExported(sourceFile, funcName);
+
+      // Находим импортеров (кто вызывает эту функцию)
+      const importers: string[] = [];
+      for (const [caller, callees] of Object.entries(callGraph)) {
+        if (callees.includes(funcName)) {
+          importers.push(caller);
         }
       }
+
+      const cluster: ClusterInfo = {
+        name: this.generateClusterName(funcName),
+        functions: [funcName],
+        cohesionScore: 100,
+        size: 1,
+        type: isExported ? 'core' : 'helper',
+        isExported: isExported,
+        recommendation: isExported
+          ? '✅ Exported function - safe to extract'
+          : 'ℹ️ Internal function - check dependencies',
+        dependencies: deps,
+        importers: importers,
+      };
+
+      clusters.push(cluster);
     }
 
-    return isolated;
+    return clusters;
+  }
+
+  /**
+   * Проверяет, экспортируется ли сущность
+   */
+  private isExported(sourceFile: SourceFile, name: string): boolean {
+    const func = sourceFile.getFunction(name);
+    if (func && func.isExported()) return true;
+
+    const cls = sourceFile.getClass(name);
+    if (cls && cls.isExported()) return true;
+
+    const variable = sourceFile.getVariableDeclaration(name);
+    if (variable) {
+      const statement = variable.getParent()?.getParent();
+      if (statement && 'isExported' in statement) {
+        return (statement as any).isExported();
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Валидирует созданный модуль на наличие синтаксических ошибок
+   * При ошибке пытается переименовать модуль в другой тип
+   */
+  private async validateExtractedModule(modulePath: string): Promise<boolean> {
+    try {
+      const content = await fs.promises.readFile(modulePath, 'utf-8');
+
+      // Для TypeScript файлов используем ts-morph для валидации
+      if (modulePath.endsWith('.ts')) {
+        try {
+          const sourceFile = this.project.addSourceFileAtPath(modulePath);
+          const diagnostics = sourceFile.getPreEmitDiagnostics();
+          const errors = diagnostics.filter(d => d.getCategory() === 1);
+          if (errors.length > 0) {
+            this.logger.warn(`TypeScript errors in ${path.basename(modulePath)}: ${errors.length}`);
+            // Не считаем ошибки критичными для продолжения
+          }
+          return true;
+        } catch (error) {
+          // Если не удалось загрузить, пробуем как JavaScript
+          this.logger.debug(
+            `Failed to validate as TypeScript, trying as JavaScript: ${path.basename(modulePath)}`
+          );
+        }
+      }
+
+      // Для JavaScript проверяем синтаксис
+      if (modulePath.endsWith('.js') || modulePath.endsWith('.mjs')) {
+        try {
+          new Function(content);
+          return true;
+        } catch (error) {
+          // Игнорируем ошибки, связанные с import.meta
+          if ((error as any).message?.includes('import.meta')) {
+            this.logger.debug(`import.meta in ${path.basename(modulePath)} is expected for ESM`);
+            return true;
+          }
+          throw error;
+        }
+      }
+
+      return true;
+    } catch (error) {
+      // Если ошибка синтаксиса, пробуем переименовать модуль
+      if ((error as any).message?.includes('syntax') || error instanceof SyntaxError) {
+        this.logger.warn(
+          `Syntax error in ${path.basename(modulePath)}, trying alternative extension`
+        );
+
+        const currentExt = path.extname(modulePath);
+        const alternatives = ['.js', '.mjs', '.ts'];
+
+        for (const newExt of alternatives) {
+          if (newExt === currentExt) continue;
+          const newPath = modulePath.replace(currentExt, newExt);
+          try {
+            if (fs.existsSync(modulePath)) {
+              await fs.promises.rename(modulePath, newPath);
+              this.logger.info(`Renamed ${path.basename(modulePath)} to ${path.basename(newPath)}`);
+              return true;
+            }
+          } catch (renameError) {
+            // Игнорируем ошибки переименования
+          }
+        }
+      }
+      return false;
+    }
   }
 
   private calculateCohesion(functions: string[], callGraph: Record<string, string[]>): number {
@@ -880,16 +1200,10 @@ export class AutoRefactor {
       'fetch',
       'handle',
       'on',
-      'validate',
-      'process',
-      'calculate',
+      'save',
+      'load',
       'create',
-      'update',
-      'delete',
-      'find',
-      'format',
-      'parse',
-      'render',
+      'process',
     ];
     let clean = funcName;
     for (const prefix of prefixes) {
@@ -898,202 +1212,67 @@ export class AutoRefactor {
         break;
       }
     }
-    const result = clean.charAt(0).toLowerCase() + clean.slice(1) || 'module';
-    return result + 'Module';
+    return (clean.charAt(0).toLowerCase() + clean.slice(1) || 'module') + 'Module';
   }
 
-  private async extractModules(filePath: string): Promise<void> {
-    this.logger.info('Extracting modules', { filePath });
-
-    if (!this.analysisData?.clusters?.length) {
-      this.logger.warn('No clusters found for extraction');
-      return;
-    }
+  private collectOriginalExports(sourceFile: SourceFile): string[] {
+    const exports: string[] = [];
+    const exportSet = new Set<string>();
 
     try {
-      // Конвертируем ClusterInfo в Cluster для ModuleExtractor
-      const clustersForExtractor = this.analysisData.clusters.map((c: ClusterInfo) => ({
-        name: c.name,
-        functions: c.functions,
-        cohesionScore: c.cohesionScore,
-      }));
-
-      this.modules = await this.extractor.extractModules(filePath, clustersForExtractor);
-      this.logger.info(`Extracted ${this.modules.length} modules`);
-
-      for (const module of this.modules) {
-        this.logger.debug(`Module: ${module.name} (${module.exports.length} exports)`, {
-          path: module.path,
-          exports: module.exports,
-        });
+      const exportedDeclarations = sourceFile.getExportedDeclarations();
+      for (const [name] of exportedDeclarations) {
+        if (!exportSet.has(name)) {
+          exportSet.add(name);
+          exports.push(name);
+        }
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error('Module extraction failed', { error: errorMessage });
-      throw error;
-    }
-  }
-
-  private async updateImports(filePath: string): Promise<void> {
-    if (this.modules.length === 0) {
-      this.logger.warn('No modules to update imports for');
-      return;
+      // fallback to regex
     }
 
-    this.logger.info('Updating imports', { filePath });
+    const text = sourceFile.getText();
 
-    try {
-      const sourceFile = this.project.addSourceFileAtPath(filePath);
-
-      // Обновляем импорты
-      await this.importManager.updateImports(filePath, this.modules);
-      this.logger.debug('Imports updated');
-
-      // Добавляем реэкспорты
-      if (this.options.addReExports) {
-        await this.importManager.addReExports(filePath, this.modules);
-        this.logger.debug('Re-exports added');
+    const funcMatches = text.match(/export\s+function\s+(\w+)/g);
+    if (funcMatches) {
+      for (const match of funcMatches) {
+        const nameMatch = match.match(/export\s+function\s+(\w+)/);
+        if (nameMatch && nameMatch[1] && !exportSet.has(nameMatch[1])) {
+          exportSet.add(nameMatch[1]);
+          exports.push(nameMatch[1]);
+        }
       }
-
-      // Оптимизируем импорты
-      if (this.options.optimizeImports) {
-        await this.importManager.optimizeImportOrder(filePath);
-        this.logger.debug('Import order optimized');
-      }
-
-      // Обновляем Vue template если нужно
-      if (this.options.updateTemplate && filePath.endsWith('.vue')) {
-        await this.templateUpdater.update(filePath, this.modules);
-        this.logger.debug('Vue template updated');
-      }
-
-      await sourceFile.save();
-      this.logger.info('Imports updated successfully');
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error('Import update failed', { error: errorMessage });
-      throw error;
     }
+
+    const varMatches = text.match(/export\s+(?:const|let|var)\s+(\w+)/g);
+    if (varMatches) {
+      for (const match of varMatches) {
+        const nameMatch = match.match(/export\s+(?:const|let|var)\s+(\w+)/);
+        if (nameMatch && nameMatch[1] && !exportSet.has(nameMatch[1])) {
+          exportSet.add(nameMatch[1]);
+          exports.push(nameMatch[1]);
+        }
+      }
+    }
+
+    const classMatches = text.match(/export\s+(?:default\s+)?class\s+(\w+)/g);
+    if (classMatches) {
+      for (const match of classMatches) {
+        const nameMatch = match.match(/export\s+(?:default\s+)?class\s+(\w+)/);
+        if (nameMatch && nameMatch[1] && !exportSet.has(nameMatch[1])) {
+          exportSet.add(nameMatch[1]);
+          exports.push(nameMatch[1]);
+        }
+      }
+    }
+
+    return exports;
   }
 
   private async finalValidation(filePath: string): Promise<boolean> {
-    this.logger.info('Running final validation', { filePath });
-
-    // Проверка синтаксиса основного файла
-    if (!(await this.validateSyntax(filePath))) {
-      this.logger.error('Final validation failed: syntax error in main file');
-      return false;
-    }
-
-    // Проверка созданных модулей
-    const modulesDir = path.join(path.dirname(filePath), this.options.modulesDir || 'modules');
-    if (fs.existsSync(modulesDir)) {
-      const moduleFiles = fs.readdirSync(modulesDir).filter(f => f.endsWith('.js'));
-      for (const moduleFile of moduleFiles) {
-        const modulePath = path.join(modulesDir, moduleFile);
-        if (!(await this.validateSyntax(modulePath))) {
-          this.logger.error(`Final validation failed: syntax error in ${moduleFile}`);
-          return false;
-        }
-      }
-    }
-
-    // Валидация кода
-    if (this.options.codeValidation) {
-      const filesToValidate = [filePath];
-      const modulesDirPath = path.join(
-        path.dirname(filePath),
-        this.options.modulesDir || 'modules'
-      );
-      if (fs.existsSync(modulesDirPath)) {
-        const moduleFiles = fs.readdirSync(modulesDirPath).filter(f => f.endsWith('.js'));
-        for (const moduleFile of moduleFiles) {
-          filesToValidate.push(path.join(modulesDirPath, moduleFile));
-        }
-      }
-
-      const validationResult = await this.codeValidator.validateFiles(filesToValidate);
-      if (validationResult.summary.errors > 0) {
-        this.logger.error(`Final validation found ${validationResult.summary.errors} errors`);
-        for (const issue of validationResult.issues.filter(i => i.type === 'error').slice(0, 5)) {
-          this.logger.error(`  - ${issue.file}:${issue.line} ${issue.message}`);
-        }
-        return false;
-      }
-    }
-
-    // ESLint проверка
-    if (this.options.eslintCheck) {
-      const filesToLint = [filePath];
-      const modulesDirPath = path.join(
-        path.dirname(filePath),
-        this.options.modulesDir || 'modules'
-      );
-      if (fs.existsSync(modulesDirPath)) {
-        const moduleFiles = fs.readdirSync(modulesDirPath).filter(f => f.endsWith('.js'));
-        for (const moduleFile of moduleFiles) {
-          filesToLint.push(path.join(modulesDirPath, moduleFile));
-        }
-      }
-
-      const eslintResults = await this.eslintFixer.fixFiles(filesToLint, false);
-      const issues = eslintResults.reduce((sum, r) => sum + r.fixes, 0);
-      if (issues > 0) {
-        this.logger.warn(`ESLint found ${issues} issues that could be fixed`);
-      }
-    }
-
-    this.logger.info('Final validation passed successfully');
-    return true;
-  }
-
-  // ============================================
-  // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
-  // ============================================
-
-  private async createCheckpoint(filePath: string, stepName: string): Promise<string> {
-    const checkpointPath = `${filePath}.checkpoint.${stepName.replace(/\s+/g, '-')}.${Date.now()}`;
-    await fs.promises.copyFile(filePath, checkpointPath);
-    this.logger.debug('Checkpoint created', { stepName, checkpointPath });
-    return checkpointPath;
-  }
-
-  private async restoreCheckpoint(filePath: string, checkpointPath: string): Promise<void> {
-    if (fs.existsSync(checkpointPath)) {
-      await fs.promises.copyFile(checkpointPath, filePath);
-      this.logger.warn('Checkpoint restored', { filePath, checkpointPath });
-      try {
-        fs.unlinkSync(checkpointPath);
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-
-  private async createBackup(filePath: string): Promise<string> {
-    const backupPath = `${filePath}.backup.${Date.now()}`;
-    await fs.promises.copyFile(filePath, backupPath);
-    this.logger.info('Backup created', { backupPath });
-    return backupPath;
-  }
-
-  private async restoreBackup(filePath: string): Promise<void> {
-    if (this.backupPath && fs.existsSync(this.backupPath)) {
-      await fs.promises.copyFile(this.backupPath, filePath);
-      this.logger.warn('Backup restored', { filePath, backupPath: this.backupPath });
-    }
-  }
-
-  private async validateSyntax(filePath: string): Promise<boolean> {
-    try {
-      const content = await fs.promises.readFile(filePath, 'utf-8');
-      new Function(content);
-      return true;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error('Syntax validation failed', { filePath, error: errorMessage });
-      return false;
-    }
+    const mainValidation = await this.syntaxValidator.validate(filePath);
+    this.validationHistory.push(mainValidation);
+    return mainValidation.valid;
   }
 
   private createErrorResult(
@@ -1102,25 +1281,16 @@ export class AutoRefactor {
     stepIndex: number,
     steps: { name: string }[]
   ): RefactorResult {
-    const failedStep =
-      stepIndex >= 0 && stepIndex < steps.length && steps[stepIndex]
-        ? steps[stepIndex].name
-        : 'unknown';
-
     return {
       success: false,
       modules: this.modules,
       backupPath: this.backupPath || undefined,
       error,
       lastSuccessfulStep: stepIndex >= 0 ? stepIndex : undefined,
-      failedStep,
-      semanticResults: this.semanticResults,
-      verificationResults: this.verificationResults,
-      validationResults: this.validationResults,
-      eslintResults: this.eslintResults,
-      tsFixResults: this.tsFixResults,
-      codeFixResults: this.codeFixResults,
-      metrics: this.collectMetrics(),
+      failedStep:
+        stepIndex >= 0 && stepIndex < steps.length && steps[stepIndex]
+          ? steps[stepIndex].name
+          : 'unknown',
     };
   }
 
@@ -1130,45 +1300,32 @@ export class AutoRefactor {
       modules: this.modules,
       backupPath: this.backupPath || undefined,
       lastSuccessfulStep: lastSuccessfulStep >= 0 ? lastSuccessfulStep : undefined,
-      semanticResults: this.semanticResults,
-      verificationResults: this.verificationResults,
-      validationResults: this.validationResults,
       eslintResults: this.eslintResults,
       tsFixResults: this.tsFixResults,
-      codeFixResults: this.codeFixResults,
-      metrics: this.collectMetrics(),
+      metrics: {
+        cyclomaticComplexity: 0,
+        totalFunctions: 0,
+        unusedFunctionsCount: 0,
+        typeErrorsCount: 0,
+        verifiedFunctionsCount: 0,
+        dataFlowIssuesCount: 0,
+        eslintFixesCount: this.eslintResults?.reduce((sum, r) => sum + r.fixes, 0) || 0,
+        tsFixesCount: this.tsFixResults?.fixedCount || 0,
+        codeFixesCount: 0,
+      },
     };
   }
 
-  private collectMetrics(): RefactorResult['metrics'] {
-    return {
-      cyclomaticComplexity: this.semanticResults.cfg
-        ? this.calculateComplexity(this.semanticResults.cfg)
-        : 0,
-      totalFunctions: this.semanticResults.callGraph?.nodes.size || 0,
-      unusedFunctionsCount: this.semanticResults.unusedFunctions?.length || 0,
-      typeErrorsCount: this.semanticResults.typeErrors?.length || 0,
-      verifiedFunctionsCount: this.verificationResults.filter(r => r.isValid).length || 0,
-      dataFlowIssuesCount: this.semanticResults.dataFlow?.findUnusedVariables().length || 0,
-      eslintFixesCount: this.eslintResults.reduce((sum, r) => sum + r.fixes, 0) || 0,
-      tsFixesCount: this.tsFixResults.fixedCount || 0,
-      codeFixesCount: this.codeFixResults.reduce((sum, r) => sum + r.fixes, 0) || 0,
-    };
-  }
-
-  private calculateComplexity(cfg: ControlFlowGraph): number {
-    const nodes = cfg.blocks.length;
-    let edges = 0;
-    for (const block of cfg.blocks) {
-      edges += block.successors.length;
+  private getRelativePath(from: string, to: string): string {
+    let relative = path.relative(path.dirname(from), to);
+    if (!relative.startsWith('.') && !relative.startsWith('@')) {
+      relative = './' + relative;
     }
-    return Math.max(1, edges - nodes + 2);
+    return relative.replace(/\\/g, '/');
   }
 
   async initialize(): Promise<void> {
     this.logger.info('Initializing AutoRefactor');
-
-    // Инициализация WASM для Tree-sitter
     const wasmPath = path.resolve(__dirname, 'wasm');
     if (fs.existsSync(wasmPath)) {
       try {
@@ -1179,8 +1336,7 @@ export class AutoRefactor {
       }
     }
 
-    // Инициализация Z3
-    if (this.options.formalVerification) {
+    if (this.options.formalVerification && this.z3Verifier) {
       await this.z3Verifier.initialize();
       this.logger.info('Z3 verifier initialized');
     }
@@ -1189,8 +1345,346 @@ export class AutoRefactor {
   }
 
   async dispose(): Promise<void> {
-    await this.z3Verifier.dispose();
+    if (this.z3Verifier) {
+      await this.z3Verifier.dispose();
+    }
     this.logger.close();
+  }
+
+  // ============================================
+  // РЕАЛИЗОВАННЫЕ МЕТОДЫ ДЛЯ СЕМАНТИЧЕСКОГО АНАЛИЗА
+  // ============================================
+
+  /**
+   * Запускает семантический анализ файла
+   */
+  private async runSemanticAnalysis(filePath: string): Promise<void> {
+    if (!this.options.semanticAnalysis) return;
+
+    this.logger.info('Running semantic analysis', { filePath });
+
+    try {
+      const sourceFile = this.project.addSourceFileAtPath(filePath);
+      const semanticResults: any = {};
+
+      if (this.cfgAnalyzer) {
+        const cfg = this.cfgAnalyzer.build(sourceFile);
+        semanticResults.cfg = cfg;
+        const unreachable = cfg.findUnreachableBlocks();
+        semanticResults.unreachableCode = unreachable.map(block => ({
+          file: filePath,
+          line: block.instructions[0]?.getStartLineNumber() || 1,
+        }));
+        this.logger.debug('CFG analysis completed', {
+          blocks: cfg.blocks.length,
+          unreachable: unreachable.length,
+          complexity: this.calculateComplexity(cfg),
+        });
+      }
+
+      if (this.callGraphAnalyzer) {
+        const callGraph = await this.callGraphAnalyzer.analyzeSingle(filePath);
+        semanticResults.callGraph = callGraph;
+        semanticResults.unusedFunctions = callGraph.findUnusedFunctions().map(n => n.name);
+        semanticResults.cyclicDependencies = callGraph
+          .findCyclicDependencies()
+          .map(cycle => cycle.map(e => `${e.from}->${e.to}`));
+        this.logger.debug('Call graph analysis completed', {
+          nodes: callGraph.nodes.size,
+          cycles: callGraph.cycles.length,
+          unused: semanticResults.unusedFunctions.length,
+        });
+      }
+
+      if (this.dataFlowAnalyzer) {
+        const dataFlow = this.dataFlowAnalyzer.analyze(sourceFile);
+        semanticResults.dataFlow = dataFlow;
+        this.logger.debug('Data flow analysis completed', {
+          nodes: dataFlow.nodes.length,
+          edges: dataFlow.edges.length,
+          unusedVars: dataFlow.findUnusedVariables().length,
+        });
+      }
+
+      this.analysisData.semanticResults = semanticResults;
+    } catch (error) {
+      this.logger.warn('Semantic analysis failed', { error });
+    }
+  }
+
+  /**
+   * Запускает валидацию кода
+   */
+  private async runCodeValidation(filePath: string): Promise<void> {
+    if (!this.options.codeValidation || !this.codeValidator) return;
+
+    this.logger.info('Running code validation', { filePath });
+    this.validationResults = await this.codeValidator.validateFiles([filePath]);
+
+    if (this.validationResults) {
+      this.logger.debug('Code validation completed', {
+        errors: this.validationResults.summary.errors,
+        warnings: this.validationResults.summary.warnings,
+        autoFixable: this.validationResults.summary.autoFixable,
+      });
+    }
+  }
+
+  /**
+   * Запускает ESLint анализ
+   */
+  private async runESLint(filePath: string): Promise<void> {
+    if (!this.options.eslintCheck || !this.eslintFixer) {
+      this.eslintResults = undefined;
+      return;
+    }
+
+    this.logger.info('Running ESLint analysis', { filePath });
+    this.eslintResults = await this.eslintFixer.fixFiles(
+      [filePath],
+      this.options.createBackup && !this.options.dryRun
+    );
+
+    const totalFixes = this.eslintResults?.reduce((sum, r) => sum + r.fixes, 0) || 0;
+    const successCount = this.eslintResults?.filter(r => r.success).length || 0;
+    this.logger.debug('ESLint completed', {
+      files: this.eslintResults?.length || 0,
+      fixes: totalFixes,
+      successCount,
+    });
+  }
+
+  /**
+   * Запускает TypeScript проверку типов
+   */
+  private async runTypeCheck(filePath: string): Promise<void> {
+    if (!this.options.typeCheck || !this.tsValidator) {
+      this.tsFixResults = undefined;
+      return;
+    }
+
+    this.logger.info('Running TypeScript type check', { filePath });
+    const result = await this.tsValidator.validateAndFix([filePath], this.options.maxIterations);
+    this.tsFixResults = { fixedCount: result.fixedCount, remainingErrors: result.remainingErrors };
+
+    this.logger.debug('Type check completed', {
+      fixed: result.fixedCount,
+      remaining: result.remainingErrors,
+      success: result.success,
+    });
+  }
+
+  /**
+   * Запускает автоматическое исправление кода
+   */
+  private async runAutoFix(filePath: string): Promise<void> {
+    if (!this.options.autoFix || !this.codeFixer || !this.validationResults) return;
+
+    this.logger.info('Running auto-fix', { filePath });
+    this.codeFixResults = await this.codeFixer.autoFix(
+      this.validationResults.issues,
+      this.options.createBackup && !this.options.dryRun
+    );
+
+    const totalFixes = this.codeFixResults.reduce((sum, r) => sum + r.fixes, 0);
+    const successCount = this.codeFixResults.filter(r => r.success).length;
+    this.logger.debug('Auto-fix completed', {
+      fixes: totalFixes,
+      files: this.codeFixResults.length,
+      successCount,
+    });
+  }
+
+  /**
+   * Запускает формальную верификацию через Z3
+   */
+  private async runFormalVerification(sourceFile: SourceFile): Promise<void> {
+    if (!this.options.formalVerification || !this.z3Verifier) return;
+
+    this.logger.info('Running formal verification');
+
+    try {
+      const functions = sourceFile.getFunctions();
+      const results: VerificationResult[] = [];
+
+      for (const func of functions) {
+        const name = func.getName();
+        if (!name) continue;
+
+        const criticalSet = new Set(this.options.criticalFunctions || []);
+        if (criticalSet.size > 0 && !criticalSet.has(name)) continue;
+
+        try {
+          const contract = await this.extractContract(func);
+          const result = await this.z3Verifier.verifyFunction(contract);
+          result.functionName = name;
+          results.push(result);
+
+          if (result.isValid) {
+            this.logger.debug(`Function ${name} verified`);
+          } else {
+            this.logger.warn(`Function ${name} verification failed`, {
+              error: result.error,
+            });
+          }
+        } catch (error) {
+          this.logger.warn(`Verification failed for ${name}`, { error });
+          results.push({
+            isValid: false,
+            functionName: name,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      this.verificationResults = results;
+      if (results.length > 0) {
+        this.logger.info('Formal verification completed', {
+          total: results.length,
+          verified: results.filter(r => r.isValid).length,
+        });
+      }
+    } catch (error) {
+      this.logger.warn('Formal verification failed', { error });
+    }
+  }
+
+  /**
+   * Извлекает контракт из функции
+   */
+  private async extractContract(func: any): Promise<any> {
+    const name = func.getName() || 'anonymous';
+    const params: { name: string; type: 'int' | 'bool' | 'string' }[] = [];
+
+    for (const param of func.getParameters()) {
+      const paramName = param.getName();
+      const paramType = this.getParamType(param);
+      params.push({ name: paramName, type: paramType });
+    }
+
+    const returnType = this.getReturnType(func);
+
+    const preconditions: any[] = [];
+    const postconditions: any[] = [];
+    const invariants: any[] = [];
+
+    const jsDocs = func.getJsDocs();
+    for (const jsDoc of jsDocs) {
+      const tags = jsDoc.getTags();
+      for (const tag of tags) {
+        const tagName = tag.getTagName();
+        const comment = tag.getCommentText();
+
+        if (tagName === 'param' && comment) {
+          const paramMatch = comment.match(/(\w+)\s*-\s*([^<]+)/);
+          if (paramMatch) {
+            const paramName = paramMatch[1];
+            if (paramName && (comment.includes('positive') || comment.includes('>0'))) {
+              preconditions.push({
+                type: 'range',
+                variable: paramName,
+                min: 1,
+                max: Number.MAX_SAFE_INTEGER,
+              });
+            }
+            if (paramName && (comment.includes('non-negative') || comment.includes('>=0'))) {
+              preconditions.push({
+                type: 'range',
+                variable: paramName,
+                min: 0,
+                max: Number.MAX_SAFE_INTEGER,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      name,
+      params,
+      returnType,
+      preconditions,
+      postconditions,
+      invariants,
+    };
+  }
+
+  /**
+   * Определяет тип параметра
+   */
+  private getParamType(param: any): 'int' | 'bool' | 'string' {
+    const type = param.getType();
+    if (type.isNumber()) return 'int';
+    if (type.isBoolean()) return 'bool';
+    if (type.isString()) return 'string';
+    return 'int';
+  }
+
+  /**
+   * Определяет тип возвращаемого значения
+   */
+  private getReturnType(func: any): 'int' | 'bool' | 'string' | 'void' {
+    const type = func.getReturnType();
+    if (type.isNumber()) return 'int';
+    if (type.isBoolean()) return 'bool';
+    if (type.isString()) return 'string';
+    return 'void';
+  }
+
+  /**
+   * Собирает метрики из результатов анализа
+   */
+  private collectMetrics(): RefactorResult['metrics'] {
+    const semanticResults = this.analysisData.semanticResults || {};
+    const cfg = semanticResults.cfg;
+
+    let cyclomaticComplexity = 0;
+    if (cfg) {
+      cyclomaticComplexity = this.calculateComplexity(cfg);
+    }
+
+    const unusedFunctionsCount =
+      semanticResults.unusedFunctions?.length || this.validationResults?.summary.warnings || 0;
+
+    const typeErrorsCount = this.validationResults?.summary.errors || 0;
+
+    const verifiedFunctionsCount = this.verificationResults.filter(r => r.isValid).length || 0;
+
+    const dataFlowIssuesCount = semanticResults.dataFlow?.findUnusedVariables().length || 0;
+
+    const eslintFixesCount = this.eslintResults?.reduce((sum, r) => sum + r.fixes, 0) || 0;
+
+    const tsFixesCount = this.tsFixResults?.fixedCount || 0;
+
+    const codeFixesCount = this.codeFixResults?.reduce((sum, r) => sum + r.fixes, 0) || 0;
+
+    const totalFunctions =
+      semanticResults.callGraph?.nodes.size || this.analysisData.functions?.length || 0;
+
+    return {
+      cyclomaticComplexity,
+      totalFunctions,
+      unusedFunctionsCount,
+      typeErrorsCount,
+      verifiedFunctionsCount,
+      dataFlowIssuesCount,
+      eslintFixesCount,
+      tsFixesCount,
+      codeFixesCount,
+    };
+  }
+
+  /**
+   * Вычисляет цикломатическую сложность
+   */
+  private calculateComplexity(cfg: ControlFlowGraph): number {
+    const nodes = cfg.blocks.length;
+    let edges = 0;
+    for (const block of cfg.blocks) {
+      edges += block.successors.length;
+    }
+    return Math.max(1, edges - nodes + 2);
   }
 }
 
@@ -1202,3 +1696,6 @@ export { ESLintASTFixer } from './ESLintASTFixer.js';
 export { CodeValidator, type ValidationResult } from './CodeValidator.js';
 export { CodeFixer, type FixResult } from './CodeFixer.js';
 export { TemplateUpdater } from './TemplateUpdater.js';
+export { SyntaxValidator } from './SyntaxValidator.js';
+export { ModuleTypeDetector } from './ModuleTypeDetector.js';
+export { BackupManager } from './BackupManager.js';

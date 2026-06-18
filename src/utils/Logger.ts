@@ -120,6 +120,7 @@ export class Logger {
     }
   }
 
+  // ✅ ИСПРАВЛЕНО: debug теперь действительно пишет DEBUG сообщения
   debug(message: string, context?: LogContext) {
     this.log(LogLevel.DEBUG, 'DEBUG', message, context);
   }

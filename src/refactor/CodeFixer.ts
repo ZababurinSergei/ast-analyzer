@@ -17,8 +17,10 @@ export class CodeFixer {
   private project: Project;
   private fixesApplied = 0;
   private eslintFixer: ESLintASTFixer;
+  private dryRun: boolean;
 
-  constructor() {
+  constructor(dryRun = false) {
+    this.dryRun = dryRun;
     this.project = new Project({
       compilerOptions: {
         target: 99,
@@ -105,6 +107,10 @@ export class CodeFixer {
     const tsFilesToFix = new Map<string, ValidationIssue[]>();
     const eslintFilesToFix = new Set<string>();
 
+    if (this.dryRun) {
+      console.log('\n⚠️ РЕЖИМ DRY RUN: Исправления не будут применены к файлам\n');
+    }
+
     // Разделяем TypeScript и ESLint проблемы
     for (const issue of issues) {
       if (!issue.autoFixable) continue;
@@ -166,7 +172,13 @@ export class CodeFixer {
       }
     }
 
-    console.log(`\n✨ ВСЕГО ИСПРАВЛЕНО: ${this.fixesApplied} проблем\n`);
+    if (this.dryRun) {
+      console.log(`\n📝 DRY RUN: Всего было бы исправлено ${this.fixesApplied} проблем`);
+      console.log('   Файлы не были изменены\n');
+    } else {
+      console.log(`\n✨ ВСЕГО ИСПРАВЛЕНО: ${this.fixesApplied} проблем\n`);
+    }
+
     return results;
   }
 
@@ -183,7 +195,7 @@ export class CodeFixer {
     let backupPath: string | undefined;
 
     try {
-      if (createBackup) {
+      if (createBackup && !this.dryRun) {
         backupPath = `${filePath}.backup.${Date.now()}`;
         await fs.promises.copyFile(filePath, backupPath);
       }
@@ -200,14 +212,18 @@ export class CodeFixer {
         }
       }
 
-      if (hasChanges) {
+      if (hasChanges && !this.dryRun) {
         await sourceFile.save();
+      } else if (hasChanges && this.dryRun) {
+        console.log(
+          `   📝 DRY RUN: Будет исправлен файл ${path.basename(filePath)} (${fixes} проблем)`
+        );
       }
 
       return { success: true, file: filePath, fixes, errors, backupPath };
     } catch (error: any) {
       errors.push(error.message);
-      if (backupPath && fs.existsSync(backupPath)) {
+      if (backupPath && fs.existsSync(backupPath) && !this.dryRun) {
         await fs.promises.copyFile(backupPath, filePath);
       }
       return { success: false, file: filePath, fixes, errors, backupPath };
@@ -256,7 +272,7 @@ export class CodeFixer {
    * TS2304: Cannot find name - добавляет декларацию через AST
    */
   private fixCannotFindName(sourceFile: any, message: string): boolean {
-    const match = message.match(/Cannot find name ['"](\\w+)['"]/);
+    const match = message.match(/Cannot find name ['\"](\\w+)['\"]/);
     if (!match) return false;
 
     const name = match[1];
@@ -290,7 +306,7 @@ export class CodeFixer {
    * TS2307: Cannot find module - исправляет путь через AST
    */
   private fixCannotFindModule(sourceFile: any, message: string): boolean {
-    const match = message.match(/Cannot find module ['"]([^'"]+)['"]/);
+    const match = message.match(/Cannot find module ['\"]([^'\"]+)['\"]/);
     if (!match) return false;
 
     const modulePath = match[1];
@@ -335,7 +351,9 @@ export class CodeFixer {
    * TS2339: Property does not exist on type - добавляет свойство через AST
    */
   private fixMissingProperty(sourceFile: any, message: string): boolean {
-    const match = message.match(/Property ['"](\\w+)['"] does not exist on type ['"]([^'"]+)['"]/);
+    const match = message.match(
+      /Property ['\"](\\w+)['\"] does not exist on type ['\"]([^'\"]+)['\"]/
+    );
     if (!match) return false;
 
     const property = match[1];
@@ -370,7 +388,7 @@ export class CodeFixer {
    * TS7006: Parameter implicitly has any type - добавляет тип через AST
    */
   private fixImplicitAny(sourceFile: any, message: string): boolean {
-    const match = message.match(/Parameter ['"](\\w+)['"] implicitly has an 'any' type/);
+    const match = message.match(/Parameter ['\"](\\w+)['\"] implicitly has an 'any' type/);
     if (!match) return false;
 
     const paramName = match[1];
@@ -398,7 +416,7 @@ export class CodeFixer {
    * TS7031: Binding element implicitly has any type
    */
   private fixBindingImplicitAny(sourceFile: any, message: string): boolean {
-    const match = message.match(/Binding element ['"](\\w+)['"] implicitly has an 'any' type/);
+    const match = message.match(/Binding element ['\"](\\w+)['\"] implicitly has an 'any' type/);
     if (!match) return false;
 
     const bindingName = match[1];
@@ -452,7 +470,7 @@ export class CodeFixer {
    * TS6133: Variable is declared but never used - добавляет префикс _
    */
   private fixUnusedVariable(sourceFile: any, message: string): boolean {
-    const match = message.match(/['"](\\w+)['"] is declared but never used/);
+    const match = message.match(/['\"](\\w+)['\"] is declared but never used/);
     if (!match) return false;
 
     const varName = match[1];
@@ -506,7 +524,7 @@ export class CodeFixer {
    * TS2552: Typo - исправляет опечатку через AST
    */
   private fixTypo(sourceFile: any, message: string): boolean {
-    const match = message.match(/Cannot find name ['"](\\w+)['"].*Did you mean ['"](\\w+)['"]/);
+    const match = message.match(/Cannot find name ['\"](\\w+)['\"].*Did you mean ['\"](\\w+)['\"]/);
     if (!match) return false;
 
     const wrongName = match[1];
@@ -593,7 +611,7 @@ export class CodeFixer {
    * TS2591: Cannot find type definitions
    */
   private fixMissingTypes(sourceFile: any, message: string): boolean {
-    const match = message.match(/Cannot find name ['"](\\w+)['"]/);
+    const match = message.match(/Cannot find name ['\"](\\w+)['\"]/);
     if (!match) return false;
 
     const name = match[1];

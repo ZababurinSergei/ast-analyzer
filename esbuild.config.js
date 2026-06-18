@@ -39,7 +39,8 @@ function findEntryPoints(dir, baseDir = dir) {
             fullPath.includes('/refactor/') ||
             fullPath.includes('/semantic/') ||
             fullPath.includes('/formal/') ||
-            fullPath.includes('/ci-cd/')
+            fullPath.includes('/ci-cd/') ||
+            fullPath.includes('/utils/')
           ) {
             entries.push(resolve(fullPath));
           }
@@ -213,12 +214,43 @@ const externalPackages = [
   'string_decoder',
 
   // Тяжелые зависимости с нативными модулями
-  'z3-solver', // Нативный бинарник Z3
+  'z3-solver',
 
   // Должен быть установлен отдельно пользователем
   'typescript',
+
+  // AST и парсинг
+  '@babel/generator',
+  '@babel/parser',
+  '@babel/traverse',
+
+  // Анализ
+  '@hpcc-js/dataflow',
+  '@hpcc-js/wasm-graphviz',
+  '@jitl/ts-simple-type',
+  '@typescript-eslint/parser',
+
+  // Vue
+  '@vue/compiler-sfc',
+  '@vue/compiler-dom',
+
+  // Утилиты
+  'estree-walker',
+  'ts-morph',
+  'web-tree-sitter',
+
+  // Codeflow
+  '@codeflow-map/core',
+  '@codeflow-map/wasm',
+
+  // ESLint и CLI
+  'eslint',
+  'commander',
+  'glob',
+  'vitest',
 ];
 
+// Специальные опции для production сборки
 const buildOptions = {
   entryPoints,
   outdir: 'dist',
@@ -246,6 +278,7 @@ const buildOptions = {
     'unresolved-import': 'warning',
     'missing-explicit-type': 'silent',
   },
+  resolveExtensions: ['.ts', '.js', '.mjs', '.cjs', '.json'],
   plugins: [
     {
       name: 'resolve-vue-files',
@@ -282,6 +315,47 @@ const buildOptions = {
         });
       },
     },
+    {
+      name: 'ensure-refactor-exports',
+      setup(build) {
+        build.onEnd(async () => {
+          const distDir = resolve(__dirname, 'dist');
+          const refactorIndexPath = join(distDir, 'refactor', 'index.js');
+
+          if (existsSync(refactorIndexPath)) {
+            let content = await import('fs').then(fs =>
+              fs.promises.readFile(refactorIndexPath, 'utf8')
+            );
+
+            const requiredExports = [
+              'AutoRefactor',
+              'ModuleExtractor',
+              'ImportManager',
+              'TypeScriptValidator',
+              'ESLintASTFixer',
+              'CodeValidator',
+              'CodeFixer',
+              'TemplateUpdater',
+              'SyntaxValidator',
+              'ModuleTypeDetector',
+              'BackupManager',
+            ];
+
+            for (const exp of requiredExports) {
+              if (!content.includes(`export { ${exp}`) && !content.includes(`export ${exp}`)) {
+                if (!content.includes(`export { ${exp} }`)) {
+                  console.log(`   🔧 Adding missing export: ${exp}`);
+                  content += `\nexport { ${exp} } from './${exp}.js';\n`;
+                }
+              }
+            }
+
+            await import('fs').then(fs => fs.promises.writeFile(refactorIndexPath, content));
+            console.log('   ✅ Refactor exports verified');
+          }
+        });
+      },
+    },
   ],
 };
 
@@ -308,12 +382,52 @@ try {
   // Выводим информацию о размере бандла
   const distFiles = readdirSync(resolve(__dirname, 'dist'));
   let totalSize = 0;
+  const fileSizes = [];
+
   for (const file of distFiles) {
-    if (file.endsWith('.js')) {
-      const size = statSync(resolve(__dirname, 'dist', file)).size;
+    const filePath = resolve(__dirname, 'dist', file);
+    if (statSync(filePath).isFile() && (file.endsWith('.js') || file.endsWith('.mjs'))) {
+      const size = statSync(filePath).size;
       totalSize += size;
-      console.log(`   📄 ${file}: ${(size / 1024).toFixed(2)} KB`);
+      fileSizes.push({ name: file, size });
     }
+  }
+
+  fileSizes.sort((a, b) => b.size - a.size);
+
+  console.log('\n📊 Bundle sizes:');
+  for (const { name, size } of fileSizes.slice(0, 10)) {
+    console.log(`   📄 ${name}: ${(size / 1024).toFixed(2)} KB`);
+  }
+  if (fileSizes.length > 10) {
+    console.log(`   ... and ${fileSizes.length - 10} more files`);
+  }
+
+  console.log('\n🔍 Verifying critical files:');
+  const criticalFiles = [
+    'cli.js',
+    'cli-refactor.js',
+    'cli-cicd.js',
+    'cli-ts-validator.js',
+    'index.js',
+    'refactor/index.js',
+  ];
+
+  let allCriticalExist = true;
+  for (const file of criticalFiles) {
+    const filePath = resolve(__dirname, 'dist', file);
+    if (existsSync(filePath)) {
+      const size = statSync(filePath).size;
+      console.log(`   ✅ ${file}: ${(size / 1024).toFixed(2)} KB`);
+    } else {
+      console.log(`   ❌ ${file}: MISSING`);
+      allCriticalExist = false;
+    }
+  }
+
+  if (!allCriticalExist) {
+    console.error('\n❌ CRITICAL FILES MISSING! Build may be incomplete.');
+    process.exit(1);
   }
 
   // Проверяем WASM файлы
@@ -321,18 +435,56 @@ try {
   if (existsSync(wasmDir)) {
     const wasmFiles = readdirSync(wasmDir);
     console.log(`\n⚙️ WASM files in dist/wasm/: ${wasmFiles.length}`);
-    for (const file of wasmFiles.slice(0, 10)) {
+    const wasmSizes = [];
+    for (const file of wasmFiles) {
       const size = statSync(resolve(wasmDir, file)).size;
-      console.log(`   📦 ${file}: ${(size / 1024).toFixed(2)} KB`);
+      wasmSizes.push({ name: file, size });
+    }
+    wasmSizes.sort((a, b) => b.size - a.size);
+    for (const { name, size } of wasmSizes.slice(0, 10)) {
+      console.log(`   📦 ${name}: ${(size / 1024).toFixed(2)} KB`);
     }
     if (wasmFiles.length > 10) {
       console.log(`   ... and ${wasmFiles.length - 10} more WASM files`);
+    }
+
+    const requiredWasm = [
+      'tree-sitter-javascript.wasm',
+      'tree-sitter-typescript.wasm',
+      'tree-sitter-tsx.wasm',
+    ];
+    const missingWasm = requiredWasm.filter(f => !wasmFiles.includes(f));
+    if (missingWasm.length > 0) {
+      console.log(`\n⚠️ Missing WASM files: ${missingWasm.join(', ')}`);
+      console.log('   Some features may not work correctly');
     }
   } else {
     console.log('\n⚠️ No WASM directory created (no WASM files found)');
   }
 
   console.log(`\n📊 Total bundle size: ${(totalSize / 1024).toFixed(2)} KB`);
+
+  // Проверка на наличие дублирующихся модулей
+  console.log('\n🔍 Checking for duplicate modules...');
+  const moduleNames = new Set();
+  let duplicates = [];
+
+  for (const { name } of fileSizes) {
+    const baseName = name.replace(/\.(js|mjs|cjs)$/, '');
+    if (moduleNames.has(baseName)) {
+      duplicates.push(baseName);
+    } else {
+      moduleNames.add(baseName);
+    }
+  }
+
+  if (duplicates.length > 0) {
+    console.log(`   ⚠️ Duplicate modules found: ${duplicates.join(', ')}`);
+  } else {
+    console.log('   ✅ No duplicate modules');
+  }
+
+  console.log('\n✨ Build verification complete!');
 } catch (error) {
   console.error('❌ Build failed:', error);
   process.exit(1);

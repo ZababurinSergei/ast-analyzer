@@ -94,7 +94,7 @@ export class SemanticPipeline {
         checkJs: false,
         skipLibCheck: true,
         esModuleInterop: true,
-        jsx: 2, // Включаем поддержку JSX
+        jsx: 2,
       },
     });
 
@@ -162,7 +162,6 @@ export class SemanticPipeline {
 
         jsxResults.set(filePath, jsxAnalysis);
 
-        // Добавляем issues для JSX
         for (const error of jsxAnalysis.propTypeErrors) {
           issues.push({
             id: `jsx_${Date.now()}_${Math.random()}`,
@@ -225,6 +224,7 @@ export class SemanticPipeline {
         }
       } catch (error) {
         console.error(`  ❌ CFG analysis failed: ${error}`);
+        // Не прерываем выполнение, продолжаем с другими анализаторами
       }
 
       // 2. Call Graph анализ
@@ -269,7 +269,6 @@ export class SemanticPipeline {
           });
         }
 
-        // Анализ JSX компонентов в графе вызовов
         const jsxDeps = this.callGraphAnalyzer.analyzeJSXComponents(sourceFile);
         if (jsxDeps.size > 0) {
           console.log(`     📦 JSX component dependencies: ${jsxDeps.size}`);
@@ -492,7 +491,7 @@ export class SemanticPipeline {
         const comment = tag.getCommentText();
 
         if (tagName === 'param' && comment) {
-          const paramMatch = comment.match(/(\w+)\s*-\s*([^<]+)/);
+          const paramMatch = comment.match(/(\\w+)\\s*-\\s*([^<]+)/);
           if (paramMatch) {
             const paramName = paramMatch[1];
             if (paramName && (comment.includes('positive') || comment.includes('>0'))) {
@@ -577,7 +576,7 @@ export class SemanticPipeline {
 
     const patterns = [
       /if\s*\(\s*(\w+)\s*!==\s*null\s*\)/g,
-      /if\s*\(\s*(\w+)\s*&&\s*\1\./g,
+      /if\s*\(\s*(\w+)\s*&&\s*\1\./g, // ✅ Исправлено: \1 вместо \\1
       /(\w+)\?\./g,
     ];
 
@@ -620,7 +619,6 @@ export class SemanticPipeline {
       `   • Verified functions: ${result.metrics.verifiedFunctions}/${result.verificationResults.length}`
     );
 
-    // JSX статистика
     if (result.jsxAnalysis) {
       console.log('\n⚛️ JSX/TSX Statistics:');
       console.log(`   • JSX elements: ${result.jsxAnalysis.elements.length}`);

@@ -160,7 +160,14 @@ node "$CLI_REFACTOR" refactor "$TARGET_FILE" --dry-run > "$OUTPUT_DIR/dry-run-re
 node "$CLI_REFACTOR" refactor "$TARGET_FILE" \
   -t 2 \
   -c 60 \
-  -v
+  -v \
+  --no-code-validation \
+  --no-typescript \
+  --no-eslint \
+  --guarantee \
+  --max-attempts 5 \
+  --incremental \
+  --log-level debug
 ```
 
 ### 2.4 refactor с параметрами

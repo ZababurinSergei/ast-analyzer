@@ -18,6 +18,12 @@ export class TemplateUpdater {
   }
 
   async update(vuePath: string, modules: ExtractedModule[]): Promise<void> {
+    // Проверяем dry-run режим
+    if (this.options.dryRun) {
+      console.log(`🔍 DRY RUN: Would update Vue file ${vuePath}`);
+      return;
+    }
+
     const content = await fs.promises.readFile(vuePath, 'utf-8');
     const { descriptor, errors } = parseVue(content, { filename: vuePath });
 
@@ -47,7 +53,7 @@ export class TemplateUpdater {
     // Обновляем script блок, если нужно
     const updatedScript = await this.updateScriptImports(descriptor, modules);
 
-    // Записываем обновлённый файл
+    // Записываем обновлённый файл (только если не dry-run)
     await this.writeVueFile(vuePath, updatedScript, updatedTemplate, descriptor.styles);
   }
 
@@ -60,9 +66,9 @@ export class TemplateUpdater {
     // Обновляем вызовы функций в интерполяциях
     for (const [exportName] of exportsMap) {
       const patterns = [
-        new RegExp(`{{\\s*${exportName}\\s*\\(`, 'g'),
-        new RegExp(`@\\w+=\\"\\s*${exportName}\\s*\\(`, 'g'),
-        new RegExp(`:\\w+=\\"\\s*${exportName}\\s*`, 'g'),
+        new RegExp(`{{\\\\s*${exportName}\\\\s*\\\\(`, 'g'),
+        new RegExp(`@\\\\w+=\\\\"\\\\s*${exportName}\\\\s*\\\\(`, 'g'),
+        new RegExp(`:\\\\w+=\\\\"\\\\s*${exportName}\\\\s*`, 'g'),
       ];
 
       for (const pattern of patterns) {
@@ -85,12 +91,12 @@ export class TemplateUpdater {
     // Генерируем импорты
     let imports = '';
     for (const module of modules) {
-      const relativePath = path.relative('.', module.path).replace(/\\/g, '/');
-      imports += `import { ${module.exports.join(', ')} } from '${relativePath}';\n`;
+      const relativePath = path.relative('.', module.path).replace(/\\\\/g, '/');
+      imports += `import { ${module.exports.join(', ')} } from '${relativePath}';\\\\n`;
     }
 
     // Вставляем импорты после существующих
-    const lines = scriptContent.split('\n');
+    const lines = scriptContent.split('\\\\n');
     let insertIndex = 0;
 
     // Находим последний импорт
@@ -102,7 +108,7 @@ export class TemplateUpdater {
 
     lines.splice(insertIndex, 0, imports);
 
-    return lines.join('\n');
+    return lines.join('\\\\n');
   }
 
   private async writeVueFile(
@@ -111,17 +117,23 @@ export class TemplateUpdater {
     template: string,
     styles: any[]
   ): Promise<void> {
+    // Проверяем dry-run режим
+    if (this.options.dryRun) {
+      console.log(`🔍 DRY RUN: Would write Vue file ${vuePath}`);
+      return;
+    }
+
     let content = '';
 
     if (template && template.trim()) {
-      content += `<template>\n${template}\n</template>\n\n`;
+      content += `<template>\\\\n${template}\\\\n</template>\\\\n\\\\n`;
     }
 
-    content += `<script setup lang="ts">\n${script}\n</script>\n\n`;
+    content += `<script setup lang=\\"ts\\">\\\\n${script}\\\\n</script>\\\\n\\\\n`;
 
     for (const style of styles) {
       const scoped = style.scoped ? ' scoped' : '';
-      content += `<style${scoped}>\n${style.content}\n</style>\n`;
+      content += `<style${scoped}>\\\\n${style.content}\\\\n</style>\\\\n`;
     }
 
     await fs.promises.writeFile(vuePath, content, 'utf-8');

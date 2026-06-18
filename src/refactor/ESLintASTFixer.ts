@@ -1392,7 +1392,7 @@ export class ESLintASTFixer {
   /**
    * Основной метод исправления ESLint ошибок через AST
    */
-  async fixFile(filePath: string, createBackup = true): Promise<ESLintFixResult> {
+  async fixFile(filePath: string, createBackup = true, dryRun = false): Promise<ESLintFixResult> {
     let fixes = 0;
     const errors: string[] = [];
     let backupPath: string | undefined;
@@ -1400,7 +1400,7 @@ export class ESLintASTFixer {
     console.log(`\n🔧 Исправление ESLint ошибок в ${path.basename(filePath)}`);
 
     try {
-      if (createBackup) {
+      if (createBackup && !dryRun) {
         backupPath = `${filePath}.backup.${Date.now()}`;
         await fs.promises.copyFile(filePath, backupPath);
       }
@@ -1436,7 +1436,13 @@ export class ESLintASTFixer {
         if (iterationFixes === 0) break;
 
         fixes += iterationFixes;
-        await sourceFile.save();
+
+        // Сохраняем только если не dry-run
+        if (!dryRun) {
+          await sourceFile.save();
+        } else {
+          console.log(`  ℹ️ DRY RUN: не сохраняем изменения в ${path.basename(filePath)}`);
+        }
       }
 
       if (fixes > 0) {
@@ -1446,7 +1452,7 @@ export class ESLintASTFixer {
       return { success: true, file: filePath, fixes, errors };
     } catch (error: any) {
       errors.push(error.message);
-      if (backupPath && fs.existsSync(backupPath)) {
+      if (backupPath && fs.existsSync(backupPath) && !dryRun) {
         await fs.promises.copyFile(backupPath, filePath);
       }
       return { success: false, file: filePath, fixes, errors };
@@ -1456,11 +1462,15 @@ export class ESLintASTFixer {
   /**
    * Исправляет несколько файлов
    */
-  async fixFiles(filePaths: string[], createBackup = true): Promise<ESLintFixResult[]> {
+  async fixFiles(
+    filePaths: string[],
+    createBackup = true,
+    dryRun = false
+  ): Promise<ESLintFixResult[]> {
     const results: ESLintFixResult[] = [];
 
     for (const filePath of filePaths) {
-      const result = await this.fixFile(filePath, createBackup);
+      const result = await this.fixFile(filePath, createBackup, dryRun);
       results.push(result);
 
       if (result.success) {

@@ -25,8 +25,11 @@ export class TypeScriptValidator {
   private project: Project;
   private sourceFiles: Map<string, SourceFile> = new Map();
   private fixHistory: Map<string, string[]> = new Map();
+  private dryRun = false;
 
-  constructor(tsConfigPath?: string) {
+  constructor(tsConfigPath?: string, dryRun = false) {
+    this.dryRun = dryRun;
+
     // Настраиваем Project с правильными типами для Node.js
     this.project = new Project({
       compilerOptions: {
@@ -182,7 +185,9 @@ declare const exports: any;
       { overwrite: true }
     );
 
-    declarationFile.saveSync();
+    if (!this.dryRun) {
+      declarationFile.saveSync();
+    }
   }
 
   private loadFile(filePath: string): SourceFile | undefined {
@@ -221,7 +226,6 @@ declare const exports: any;
 
     const code = diagnostic.getCode();
     const line = diagnostic.getLineNumber() || 1;
-    const category = diagnostic.getCategory();
 
     return {
       code,
@@ -229,8 +233,8 @@ declare const exports: any;
       file: filePath,
       line,
       column: 1,
-      severity: category === 1 ? 'error' : 'warning',
-      category: category === 1 ? 'error' : 'warning',
+      severity: diagnostic.getCategory() === 1 ? 'error' : 'warning',
+      category: diagnostic.getCategory() === 1 ? 'error' : 'warning',
     };
   }
 
@@ -774,6 +778,10 @@ declare const exports: any;
     console.log('\n🔍 TypeScript ВАЛИДАЦИЯ И ИСПРАВЛЕНИЕ (ЧЕРЕЗ AST)');
     console.log('='.repeat(60));
 
+    if (this.dryRun) {
+      console.log('⚠️ РЕЖИМ DRY RUN: Исправления не будут применены\n');
+    }
+
     // Загружаем все файлы
     for (const filePath of filePaths) {
       this.loadFile(filePath);
@@ -825,7 +833,12 @@ declare const exports: any;
         break;
       }
 
-      await this.project.save();
+      // Сохраняем изменения только если не dry-run
+      if (!this.dryRun) {
+        await this.project.save();
+      } else {
+        console.log(`   📝 DRY RUN: Исправления не применяются к файлам`);
+      }
     }
 
     const finalDiagnostics: TSDiagnostic[] = [];
@@ -842,12 +855,21 @@ declare const exports: any;
       }
     }
 
-    await this.project.save();
+    // Сохраняем финальные изменения только если не dry-run
+    if (!this.dryRun) {
+      await this.project.save();
+    } else {
+      console.log('📝 DRY RUN: Финальные изменения не применяются');
+    }
 
     console.log('\n📊 ФИНАЛЬНЫЙ ОТЧЁТ');
     console.log('='.repeat(60));
     console.log(`   ✅ Исправлено всего: ${totalFixes}`);
     console.log(`   ❌ Осталось ошибок: ${finalDiagnostics.length}`);
+
+    if (this.dryRun) {
+      console.log('   🔄 Режим DRY RUN: Файлы не были изменены');
+    }
 
     if (finalDiagnostics.length > 0) {
       console.log('\n   ОСТАВШИЕСЯ ОШИБКИ:');
@@ -861,7 +883,7 @@ declare const exports: any;
       }
     }
 
-    if (this.fixHistory.size > 0) {
+    if (this.fixHistory.size > 0 && !this.dryRun) {
       console.log('\n📝 ИСТОРИЯ ИСПРАВЛЕНИЙ (ЧЕРЕЗ AST):');
       for (const [filePath, fixes] of this.fixHistory) {
         console.log(`   📄 ${path.basename(filePath)}:`);
@@ -924,7 +946,11 @@ declare const exports: any;
   }
 
   async saveAll(): Promise<void> {
-    await this.project.save();
+    if (!this.dryRun) {
+      await this.project.save();
+    } else {
+      console.log('📝 DRY RUN: Пропуск сохранения файлов');
+    }
   }
 
   getFixHistory(): Map<string, string[]> {

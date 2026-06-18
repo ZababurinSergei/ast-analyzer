@@ -2,38 +2,138 @@
 import type { Project, SourceFile } from 'ts-morph';
 import path from 'path';
 import type { ExtractedModule } from './index.js';
+import { Logger } from '../utils/Logger.js';
+import type { ModuleType } from './ModuleTypeDetector.js';
 
 export class ImportManager {
-  constructor(private project: Project) {}
+  private project: Project;
+  private logger: Logger;
+  private options: { dryRun?: boolean };
+
+  constructor(project: Project, logger?: Logger, options: { dryRun?: boolean } = {}) {
+    this.project = project;
+    this.logger = logger || new Logger();
+    this.options = options;
+  }
 
   /**
-   * Добавляет реэкспорты для модулей, чтобы сохранить публичное API исходного файла
+   * Добавляет реэкспорты для всех оригинальных экспортов
    */
-  async addReExports(sourcePath: string, modules: ExtractedModule[]): Promise<void> {
+  async addAllReExports(sourcePath: string, modules: ExtractedModule[]): Promise<void> {
     const sourceFile = this.project.addSourceFileAtPath(sourcePath);
     if (!sourceFile) return;
 
-    if (modules.length === 0) return;
-
-    console.log(`\n📦 Добавление реэкспортов в ${path.basename(sourcePath)}`);
-
-    // Группируем экспорты по модулям
-    const reExportsByModule = new Map<string, string[]>();
-
+    // Собираем все экспорты из модулей
+    const allExports = new Map<string, string>();
     for (const module of modules) {
-      if (module.exports.length === 0) continue;
-
-      const relativePath = this.getRelativePath(sourcePath, module.path);
-      reExportsByModule.set(relativePath, [...module.exports]);
+      for (const exp of module.exports) {
+        const relativePath = this.getRelativePath(sourcePath, module.path);
+        allExports.set(exp, relativePath);
+      }
     }
 
-    // Находим последний импорт, чтобы вставить реэкспорты после него
-    const imports = sourceFile.getImportDeclarations();
-    let lastImportLine = 0;
+    if (allExports.size === 0) {
+      this.logger.debug('No exports to re-export');
+      return;
+    }
 
-    for (const imp of imports) {
-      const line = imp.getStartLineNumber();
-      if (line > lastImportLine) lastImportLine = line;
+    // Группируем по модулям
+    const byModule = new Map<string, string[]>();
+    for (const [exp, modulePath] of allExports) {
+      if (!byModule.has(modulePath)) {
+        byModule.set(modulePath, []);
+      }
+      byModule.get(modulePath)!.push(exp);
+    }
+
+    // Добавляем реэкспорты
+    let reExportBlock = '\n// ============================================\n';
+    reExportBlock += '// РЕЭКСПОРТЫ - сохраняем публичное API\n';
+    reExportBlock += '// ============================================\n';
+
+    for (const [modulePath, exports] of byModule) {
+      const sortedExports = exports.sort();
+      reExportBlock += `export { ${sortedExports.join(', ')} } from '${modulePath}';\n`;
+    }
+
+    // Вставляем перед последним экспортом или в конец файла
+    const text = sourceFile.getText();
+    const lastExportIndex = text.lastIndexOf('export');
+    if (lastExportIndex !== -1) {
+      const insertIndex = text.indexOf('\n', lastExportIndex) + 1;
+      if (insertIndex > 0 && insertIndex < text.length) {
+        const newText = text.slice(0, insertIndex) + reExportBlock + text.slice(insertIndex);
+        sourceFile.replaceWithText(newText);
+      } else {
+        sourceFile.addStatements(reExportBlock);
+      }
+    } else {
+      sourceFile.addStatements(reExportBlock);
+    }
+
+    // ✅ DRY-RUN: сохраняем только если не dry-run
+    if (!this.options.dryRun) {
+      await sourceFile.save();
+      this.logger.info(`Added re-exports for ${allExports.size} exports`);
+    } else {
+      this.logger.info(`DRY RUN: would add re-exports for ${allExports.size} exports`);
+    }
+  }
+
+  /**
+   * Добавляет реэкспорты для сохранения оригинального API
+   */
+  async addReExports(
+    sourcePath: string,
+    modules: ExtractedModule[],
+    originalExports: string[]
+  ): Promise<void> {
+    const sourceFile = this.project.addSourceFileAtPath(sourcePath);
+    if (!sourceFile) return;
+
+    if (modules.length === 0 || originalExports.length === 0) return;
+
+    this.logger.info(`Adding re-exports to ${path.basename(sourcePath)}`);
+
+    // Создаем карту: экспорт -> модуль
+    const exportToModule = new Map<string, string>();
+    for (const module of modules) {
+      for (const exp of module.exports) {
+        if (originalExports.includes(exp)) {
+          let relativePath = this.getRelativePath(sourcePath, module.path);
+
+          // Определяем расширение по фактическому файлу
+          const ext = path.extname(module.path);
+          if (ext === '.mjs' && !relativePath.endsWith('.mjs')) {
+            relativePath = relativePath.replace(/\.(js|ts)$/, '.mjs');
+          } else if (ext === '.js' && !relativePath.endsWith('.js')) {
+            relativePath = relativePath.replace(/\.(mjs|ts)$/, '.js');
+          } else if (ext === '.ts' && !relativePath.endsWith('.ts')) {
+            relativePath = relativePath.replace(/\.(mjs|js)$/, '.ts');
+          }
+
+          exportToModule.set(exp, relativePath);
+        }
+      }
+    }
+
+    // Группируем реэкспорты по модулям
+    const reExportsByModule = new Map<string, string[]>();
+    for (const [exp, modulePath] of exportToModule) {
+      if (!reExportsByModule.has(modulePath)) {
+        reExportsByModule.set(modulePath, []);
+      }
+      reExportsByModule.get(modulePath)!.push(exp);
+    }
+
+    // Находим позицию для вставки реэкспортов (после последнего импорта)
+    const imports = sourceFile.getImportDeclarations();
+    let insertIndex = 0;
+    if (imports.length > 0) {
+      const lastImport = imports[imports.length - 1];
+      if (lastImport) {
+        insertIndex = lastImport.getEnd();
+      }
     }
 
     // Формируем блок реэкспортов
@@ -42,53 +142,56 @@ export class ImportManager {
     reExportBlock += '// ============================================\n';
 
     let hasReExports = false;
-
     for (const [modulePath, exports] of reExportsByModule) {
-      // Проверяем, нет ли уже реэкспорта
+      const sortedExports = exports.sort();
       const existingReExport = sourceFile
         .getText()
-        .includes(`export { ${exports.join(', ')} } from '${modulePath}'`);
+        .includes(`export { ${sortedExports.join(', ')} } from '${modulePath}'`);
 
-      if (!existingReExport && exports.length > 0) {
-        reExportBlock += `export { ${exports.join(', ')} } from '${modulePath}';\n`;
-        console.log(`  🔄 Добавлен реэкспорт: { ${exports.join(', ')} } from '${modulePath}'`);
+      if (!existingReExport && sortedExports.length > 0) {
+        reExportBlock += `export { ${sortedExports.join(', ')} } from '${modulePath}';\n`;
+        this.logger.debug(`Adding re-export: { ${sortedExports.join(', ')} } from '${modulePath}'`);
         hasReExports = true;
       }
     }
 
-    // Вставляем реэкспорты после последнего импорта
-    if (hasReExports && lastImportLine > 0) {
-      const sourceFileText = sourceFile.getText();
-      const lines = sourceFileText.split('\n');
+    if (hasReExports) {
+      if (insertIndex > 0) {
+        const text = sourceFile.getText();
+        const newText = text.slice(0, insertIndex) + reExportBlock + text.slice(insertIndex);
+        sourceFile.replaceWithText(newText);
+      } else {
+        sourceFile.insertText(0, reExportBlock);
+      }
 
-      // Вставляем после последнего импорта
-      lines.splice(lastImportLine, 0, reExportBlock);
-      sourceFile.replaceWithText(lines.join('\n'));
-
-      await sourceFile.save();
-      console.log(`  ✅ Реэкспорты добавлены в ${path.basename(sourcePath)}`);
-    } else if (hasReExports) {
-      // Если нет импортов, добавляем в начало файла
-      const sourceFileText = sourceFile.getText();
-      sourceFile.replaceWithText(reExportBlock + '\n' + sourceFileText);
-      await sourceFile.save();
-      console.log(`  ✅ Реэкспорты добавлены в начало ${path.basename(sourcePath)}`);
+      // ✅ DRY-RUN: сохраняем только если не dry-run
+      if (!this.options.dryRun) {
+        await sourceFile.save();
+        this.logger.info(`Re-exports added to ${path.basename(sourcePath)}`);
+      } else {
+        this.logger.info(`DRY RUN: would add re-exports to ${path.basename(sourcePath)}`);
+      }
+    } else {
+      this.logger.debug('No new re-exports needed');
     }
   }
 
   /**
-   * Обновляет импорты в исходном файле после извлечения модулей
+   * Обновляет импорты в исходном файле
    */
-  async updateImports(sourcePath: string, modules: ExtractedModule[]): Promise<void> {
+  async updateImports(
+    sourcePath: string,
+    modules: ExtractedModule[],
+    _moduleType: ModuleType
+  ): Promise<void> {
     const sourceFile = this.project.addSourceFileAtPath(sourcePath);
     if (!sourceFile) {
-      console.warn(`⚠️ Не удалось загрузить файл: ${sourcePath}`);
+      this.logger.warn(`Failed to load file: ${sourcePath}`);
       return;
     }
 
-    console.log(`\n📦 Обновление импортов в ${path.basename(sourcePath)}`);
+    this.logger.info(`Updating imports in ${path.basename(sourcePath)}`);
 
-    // Собираем все экспорты, которые были перенесены
     const allExportedNames = new Set<string>();
     const moduleMap = new Map<string, ExtractedModule>();
 
@@ -99,7 +202,6 @@ export class ImportManager {
       }
     }
 
-    // Определяем, какие экспорты реально используются в файле
     const usedExportsByModule = new Map<ExtractedModule, Set<string>>();
 
     for (const exp of allExportedNames) {
@@ -114,11 +216,22 @@ export class ImportManager {
       }
     }
 
-    // Добавляем или обновляем импорты для каждого модуля
     for (const [module, usedExports] of usedExportsByModule) {
       if (usedExports.size === 0) continue;
 
-      const relativePath = this.getRelativePath(sourcePath, module.path);
+      let relativePath = this.getRelativePath(sourcePath, module.path);
+
+      // Определяем расширение по фактическому файлу
+      const ext = path.extname(module.path);
+      if (ext === '.mjs' && !relativePath.endsWith('.mjs')) {
+        relativePath = relativePath.replace(/\.(js|ts)$/, '.mjs');
+      } else if (ext === '.js' && !relativePath.endsWith('.js')) {
+        relativePath = relativePath.replace(/\.(mjs|ts)$/, '.js');
+      } else if (ext === '.ts' && !relativePath.endsWith('.ts')) {
+        // Для TypeScript модулей убираем расширение (импорт без расширения)
+        relativePath = relativePath.replace(/\.ts$/, '');
+      }
+
       const existingImport = sourceFile.getImportDeclaration(relativePath);
 
       const usedExportsArray = Array.from(usedExports);
@@ -128,11 +241,10 @@ export class ImportManager {
           namedImports: usedExportsArray,
           moduleSpecifier: relativePath,
         });
-        console.log(
-          `  ➕ Добавлен импорт: { ${usedExportsArray.join(', ')} } from '${relativePath}'`
+        this.logger.debug(
+          `Added import: { ${usedExportsArray.join(', ')} } from '${relativePath}'`
         );
       } else {
-        // Обновляем существующий импорт
         const existingSpecifiers = existingImport.getNamedImports().map(s => s.getName());
         const newSpecifiers = [...new Set([...existingSpecifiers, ...usedExportsArray])];
 
@@ -142,24 +254,26 @@ export class ImportManager {
             namedImports: newSpecifiers,
             moduleSpecifier: relativePath,
           });
-          console.log(
-            `  🔄 Обновлён импорт: { ${newSpecifiers.join(', ')} } from '${relativePath}'`
+          this.logger.debug(
+            `Updated import: { ${newSpecifiers.join(', ')} } from '${relativePath}'`
           );
         }
       }
     }
 
-    // Удаляем неиспользуемые импорты
     await this.removeUnusedImports(sourceFile);
 
-    // Добавляем реэкспорты
-    await this.addReExports(sourcePath, modules);
-
-    await sourceFile.save();
+    // ✅ DRY-RUN: сохраняем только если не dry-run
+    if (!this.options.dryRun) {
+      await sourceFile.save();
+      this.logger.info(`Imports updated in ${path.basename(sourcePath)}`);
+    } else {
+      this.logger.info(`DRY RUN: would update imports in ${path.basename(sourcePath)}`);
+    }
   }
 
   /**
-   * Оптимизирует порядок импортов: внешние → алиасы → внутренние
+   * Оптимизирует порядок импортов
    */
   async optimizeImportOrder(sourcePath: string): Promise<void> {
     const sourceFile = this.project.addSourceFileAtPath(sourcePath);
@@ -193,7 +307,6 @@ export class ImportManager {
 
     const allImports = [...external, ...aliases, ...internal];
 
-    // Проверяем, нужна ли перестановка
     let needsReorder = false;
     for (let i = 0; i < imports.length; i++) {
       if (imports[i] !== allImports[i]) {
@@ -234,57 +347,16 @@ export class ImportManager {
         }
       }
 
-      await sourceFile.save();
-      console.log(`  📋 Оптимизирован порядок импортов в ${path.basename(sourcePath)}`);
+      // ✅ DRY-RUN: сохраняем только если не dry-run
+      if (!this.options.dryRun) {
+        await sourceFile.save();
+        this.logger.debug(`Import order optimized in ${path.basename(sourcePath)}`);
+      } else {
+        this.logger.debug(`DRY RUN: would optimize import order in ${path.basename(sourcePath)}`);
+      }
     }
   }
 
-  /**
-   * Добавляет недостающие импорты
-   */
-  async addMissingImports(sourcePath: string, modules: ExtractedModule[]): Promise<void> {
-    const sourceFile = this.project.addSourceFileAtPath(sourcePath);
-    if (!sourceFile) return;
-
-    const moduleExports = new Map<string, string[]>();
-    for (const module of modules) {
-      const relativePath = this.getRelativePath(sourcePath, module.path);
-      moduleExports.set(relativePath, module.exports);
-    }
-
-    const text = sourceFile.getText();
-    const usedExports = new Map<string, string[]>();
-
-    for (const [modulePath, exports] of moduleExports) {
-      const used: string[] = [];
-      for (const exp of exports) {
-        const regex = new RegExp(`\\b${this.escapeRegex(exp)}\\b`, 'g');
-        if (regex.test(text)) {
-          used.push(exp);
-        }
-      }
-      if (used.length > 0) {
-        usedExports.set(modulePath, used);
-      }
-    }
-
-    for (const [modulePath, exports] of usedExports) {
-      const existingImport = sourceFile.getImportDeclaration(modulePath);
-      if (!existingImport) {
-        sourceFile.addImportDeclaration({
-          namedImports: exports,
-          moduleSpecifier: modulePath,
-        });
-        console.log(`  ➕ Добавлен импорт: { ${exports.join(', ')} } from '${modulePath}'`);
-      }
-    }
-
-    await sourceFile.save();
-  }
-
-  /**
-   * Удаляет неиспользуемые импорты
-   */
   private async removeUnusedImports(sourceFile: SourceFile): Promise<void> {
     const imports = sourceFile.getImportDeclarations();
     const usedIdentifiers = this.collectUsedIdentifiers(sourceFile);
@@ -294,7 +366,7 @@ export class ImportManager {
       const specifiers = imp.getNamedImports();
       const moduleSpec = imp.getModuleSpecifierValue();
 
-      // Пропускаем импорты из modules директории (они нужны)
+      // Не удаляем импорты из модулей (они нужны для реэкспортов)
       if (moduleSpec.includes('/modules/') || moduleSpec.startsWith('./modules/')) {
         continue;
       }
@@ -302,7 +374,7 @@ export class ImportManager {
       const unused = specifiers.filter(s => !usedIdentifiers.has(s.getName()));
 
       if (unused.length === specifiers.length && specifiers.length > 0) {
-        console.log(`  🗑️ Удалён неиспользуемый импорт: ${moduleSpec}`);
+        this.logger.debug(`Removing unused import: ${moduleSpec}`);
         imp.remove();
         removedCount++;
       } else if (unused.length > 0 && unused.length < specifiers.length) {
@@ -312,20 +384,17 @@ export class ImportManager {
           namedImports: keep.map(s => s.getName()),
           moduleSpecifier: moduleSpec,
         });
-        console.log(
-          `  🧹 Удалены неиспользуемые импорты: ${unused.map(s => s.getName()).join(', ')} из ${moduleSpec}`
+        this.logger.debug(
+          `Removed unused imports: ${unused.map(s => s.getName()).join(', ')} from ${moduleSpec}`
         );
       }
     }
 
     if (removedCount > 0) {
-      console.log(`  📊 Удалено неиспользуемых импортов: ${removedCount}`);
+      this.logger.debug(`Removed ${removedCount} unused imports`);
     }
   }
 
-  /**
-   * Проверяет, используется ли экспорт в файле
-   */
   private isExportUsed(sourceFile: SourceFile, exportName: string): boolean {
     const content = sourceFile.getText();
 
@@ -346,9 +415,6 @@ export class ImportManager {
     return false;
   }
 
-  /**
-   * Собирает все используемые идентификаторы в файле
-   */
   private collectUsedIdentifiers(sourceFile: SourceFile): Set<string> {
     const used = new Set<string>();
     const content = sourceFile.getText();
@@ -421,70 +487,15 @@ export class ImportManager {
     return used;
   }
 
-  /**
-   * Вычисляет относительный путь между файлами
-   * 🔧 ИСПРАВЛЕНО: сохраняем расширение .js для ES модулей
-   */
   private getRelativePath(from: string, to: string): string {
     let relative = path.relative(path.dirname(from), to);
-
-    // ✅ НЕ удаляем расширение .js - оно нужно для ES модулей
-    // relative = relative.replace(/\.(ts|js|tsx|jsx|vue)$/, '');
-
     if (!relative.startsWith('.') && !relative.startsWith('@')) {
       relative = './' + relative;
     }
     return relative.replace(/\\/g, '/');
   }
 
-  /**
-   * Экранирует regex специальные символы
-   */
   private escapeRegex(str: string): string {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-
-  /**
-   * Получает статистику по импортам
-   */
-  getImportStats(sourceFile: SourceFile): {
-    total: number;
-    external: number;
-    internal: number;
-    unused: number;
-  } {
-    const imports = sourceFile.getImportDeclarations();
-    const usedIdentifiers = this.collectUsedIdentifiers(sourceFile);
-
-    let external = 0;
-    let internal = 0;
-    let unused = 0;
-
-    for (const imp of imports) {
-      const specifiers = imp.getNamedImports();
-      const moduleSpec = imp.getModuleSpecifierValue();
-      const isExternal = !moduleSpec.startsWith('.') && !moduleSpec.startsWith('@/');
-
-      if (isExternal) {
-        external++;
-      } else {
-        internal++;
-      }
-
-      for (const spec of specifiers) {
-        if (!usedIdentifiers.has(spec.getName())) {
-          unused++;
-        }
-      }
-    }
-
-    return { total: imports.length, external, internal, unused };
-  }
-
-  /**
-   * Проверяет, есть ли несохранённые изменения
-   */
-  hasUnsavedChanges(sourceFile: SourceFile): boolean {
-    return sourceFile.isSaved() === false;
   }
 }
