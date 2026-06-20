@@ -1,4 +1,4 @@
-// src/refactor/index.ts
+// packages/ast-analyzer/src/refactor/index.ts
 import { Project, ScriptTarget, ModuleKind, Node, type SourceFile } from 'ts-morph';
 import fs from 'fs';
 import path from 'path';
@@ -30,6 +30,10 @@ import {
   type ModuleTypeDetectionResult,
 } from './ModuleTypeDetector.js';
 import { BackupManager } from './BackupManager.js';
+import {
+  RefactoringEquivalenceChecker,
+  type RefactoringEquivalenceResult,
+} from '../formal/RefactoringEquivalenceChecker.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -72,6 +76,8 @@ export interface RefactorOptions {
   guaranteeMode?: boolean;
   maxAttempts?: number;
   skipValidationForESM?: boolean;
+  verifyEquivalence?: boolean;
+  equivalenceCheckLevel?: 'full' | 'quick' | 'none';
 }
 
 export interface ExtractedModule {
@@ -137,6 +143,7 @@ export interface RefactorResult {
     checkpointsCreated: number;
     backupsCreated: number;
   };
+  equivalenceResult?: RefactoringEquivalenceResult;
 }
 
 export class AutoRefactor {
@@ -167,6 +174,7 @@ export class AutoRefactor {
   private callGraphAnalyzer: CallGraphAnalyzer | null = null;
   private dataFlowAnalyzer: DataFlowAnalyzer | null = null;
   private z3Verifier: Z3Verifier | null = null;
+  private equivalenceChecker: RefactoringEquivalenceChecker | null = null;
 
   // Сохранение результатов для обратной совместимости
   private validationResults: ValidationResult | undefined;
@@ -174,10 +182,12 @@ export class AutoRefactor {
   private tsFixResults: { fixedCount: number; remainingErrors: number } | undefined = undefined;
   private codeFixResults: FixResult[] = [];
   private verificationResults: VerificationResult[] = [];
+  private equivalenceResult: RefactoringEquivalenceResult | undefined = undefined;
 
   public isDryRun(): boolean {
     return this.options.dryRun || false;
   }
+
   constructor(options: RefactorOptions = {}) {
     this.options = {
       modulesDir: 'modules',
@@ -216,6 +226,8 @@ export class AutoRefactor {
       guaranteeMode: true,
       maxAttempts: 3,
       skipValidationForESM: true,
+      verifyEquivalence: true,
+      equivalenceCheckLevel: 'full',
       ...options,
     };
 
@@ -244,6 +256,11 @@ export class AutoRefactor {
     // Инициализируем семантические компоненты при необходимости
     if (this.options.semanticAnalysis || this.options.formalVerification) {
       this.initSemanticComponents();
+    }
+
+    // Инициализируем проверку эквивалентности
+    if (this.options.verifyEquivalence !== false) {
+      this.equivalenceChecker = new RefactoringEquivalenceChecker();
     }
   }
 
@@ -281,10 +298,24 @@ export class AutoRefactor {
       guaranteeMode: this.options.guaranteeMode,
       maxAttempts: this.options.maxAttempts,
       dryRun: this.options.dryRun,
+      verifyEquivalence: this.options.verifyEquivalence,
     });
 
     if (!fs.existsSync(absolutePath)) {
       return this.createErrorResult(`File not found: ${absolutePath}`, null, -1, []);
+    }
+
+    // Сохраняем оригинальное содержимое для проверки эквивалентности
+    let originalContent: string;
+    let originalBackupPath: string | null = null;
+
+    if (this.options.verifyEquivalence !== false) {
+      originalContent = fs.readFileSync(absolutePath, 'utf-8');
+      originalBackupPath = `${absolutePath}.original-backup.${Date.now()}`;
+      fs.writeFileSync(originalBackupPath, originalContent);
+      this.logger.info('Original content saved for equivalence check', {
+        backupPath: originalBackupPath,
+      });
     }
 
     // В dry-run режиме пропускаем создание бэкапов
@@ -336,6 +367,11 @@ export class AutoRefactor {
       this.logger.info('DRY RUN: skipping working copy creation');
     }
 
+    // Инициализируем проверку эквивалентности
+    if (this.equivalenceChecker) {
+      await this.equivalenceChecker.initialize();
+    }
+
     try {
       let result: RefactorResult;
 
@@ -361,6 +397,70 @@ export class AutoRefactor {
         }
       }
 
+      // ФОРМАЛЬНАЯ ПРОВЕРКА ЭКВИВАЛЕНТНОСТИ
+      if (this.options.verifyEquivalence !== false && originalBackupPath) {
+        this.logger.info('🔬 Running formal equivalence verification...');
+
+        try {
+          const modulesDir = path.join(
+            path.dirname(absolutePath),
+            this.options.modulesDir || 'modules'
+          );
+
+          // Проверяем, существует ли директория с модулями
+          const hasModules = fs.existsSync(modulesDir) && fs.readdirSync(modulesDir).length > 0;
+
+          if (hasModules || this.options.equivalenceCheckLevel === 'full') {
+            const equivResult = await this.equivalenceChecker!.checkRefactoringEquivalence(
+              originalBackupPath,
+              absolutePath,
+              hasModules ? modulesDir : undefined
+            );
+
+            this.equivalenceResult = equivResult;
+
+            if (!equivResult.isEquivalent) {
+              this.logger.error('❌ Formal equivalence check FAILED!');
+              this.logger.error(`   ${equivResult.failedFunctions.length} functions have issues`);
+
+              if (equivResult.signatureChanges.length > 0) {
+                this.logger.error(
+                  `   ${equivResult.signatureChanges.length} signature changes detected`
+                );
+              }
+
+              // Сохраняем отчет об ошибке
+              const reportPath = `${absolutePath}.equivalence-error.md`;
+              fs.writeFileSync(reportPath, equivResult.report);
+              this.logger.error(`📄 Equivalence report saved: ${reportPath}`);
+
+              if (!this.options.dryRun && !this.options.guaranteeMode) {
+                // Восстанавливаем оригинал
+                await this.backupManager.restore(absolutePath);
+                return this.createErrorResult(
+                  'Formal equivalence check failed. Original file restored.',
+                  this.backupPath,
+                  -1,
+                  []
+                );
+              }
+            } else {
+              this.logger.info('✅ Formal equivalence check PASSED!');
+              this.logger.info(
+                `   ✅ ${equivResult.verifiedFunctions}/${equivResult.totalFunctions} functions verified`
+              );
+            }
+
+            result.equivalenceResult = equivResult;
+          } else {
+            this.logger.info('ℹ️ No modules found, skipping equivalence check');
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          this.logger.warn('⚠️ Equivalence check failed, continuing', { error: errorMsg });
+        }
+      }
+
       // Собираем метрики
       const metrics = this.collectMetrics();
       result.metrics = metrics;
@@ -381,6 +481,7 @@ export class AutoRefactor {
       result.eslintResults = this.eslintResults;
       result.tsFixResults = this.tsFixResults;
       result.codeFixResults = this.codeFixResults;
+      result.equivalenceResult = this.equivalenceResult;
 
       this.logger.info('Refactoring completed successfully');
       return result;
@@ -396,6 +497,10 @@ export class AutoRefactor {
         await this.backupManager.cleanup();
       } else {
         this.logger.info('DRY RUN: skipping cleanup');
+      }
+
+      if (this.equivalenceChecker) {
+        await this.equivalenceChecker.dispose();
       }
     }
   }
@@ -1344,12 +1449,20 @@ export class AutoRefactor {
       this.logger.info('Z3 verifier initialized');
     }
 
+    if (this.equivalenceChecker) {
+      await this.equivalenceChecker.initialize();
+      this.logger.info('Equivalence checker initialized');
+    }
+
     this.logger.info('AutoRefactor initialized');
   }
 
   async dispose(): Promise<void> {
     if (this.z3Verifier) {
       await this.z3Verifier.dispose();
+    }
+    if (this.equivalenceChecker) {
+      await this.equivalenceChecker.dispose();
     }
     this.logger.close();
   }
@@ -1688,6 +1801,21 @@ export class AutoRefactor {
       edges += block.successors.length;
     }
     return Math.max(1, edges - nodes + 2);
+  }
+
+  /**
+   * Получает результат проверки эквивалентности
+   */
+  getEquivalenceResult(): RefactoringEquivalenceResult | undefined {
+    return this.equivalenceResult;
+  }
+
+  /**
+   * Проверяет, прошла ли проверка эквивалентности
+   */
+  isEquivalenceVerified(): boolean {
+    if (!this.equivalenceResult) return false;
+    return this.equivalenceResult.isEquivalent;
   }
 }
 

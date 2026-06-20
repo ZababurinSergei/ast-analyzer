@@ -2,7 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["vitest/globals", "node"],
+    "types": ["node"],
     "allowJs": true,
     "checkJs": false,
     "strict": false,

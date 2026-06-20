@@ -7,11 +7,13 @@
  *   npx ast-refactor refactor <file> [options]
  *   npx ast-refactor analyze <file> [options]
  *   npx ast-refactor validate <file> [options]
+ *   npx ast-refactor verify-equivalence <original-file> <refactored-file> [options]
  *   npx ast-refactor help
  */
 
 import { Command } from 'commander';
 import { AutoRefactor } from './refactor/index.js';
+import { RefactoringEquivalenceChecker } from './formal/RefactoringEquivalenceChecker.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -19,8 +21,14 @@ const program = new Command();
 
 program
   .name('ast-refactor')
-  .description('🔧 Автоматический рефакторинг файлов с полным pipeline валидации и 100% гарантией')
+  .description(
+    '🔧 Автоматический рефакторинг файлов с полным pipeline валидации, 100% гарантией и формальной верификацией эквивалентности'
+  )
   .version('3.0.0');
+
+// ============================================
+// КОМАНДА: refactor
+// ============================================
 
 program
   .command('refactor <file>')
@@ -37,7 +45,7 @@ program
   .option('--no-vue', 'Не обновлять template для Vue файлов (только script)', false)
   .option('--no-re-exports', 'Не добавлять реэкспорты в исходный файл', false)
 
-  // NEW: Опции гарантированного рефакторинга
+  // Опции гарантированного рефакторинга
   .option(
     '--guarantee',
     'Включить режим максимальной гарантии (несколько попыток, чекпоинты)',
@@ -66,6 +74,7 @@ program
   .option('--no-fix-imports', 'Отключить исправление импортов', false)
   .option('--no-optimize-imports', 'Отключить оптимизацию импортов', false)
   .option('--no-extract-isolated', 'Не выделять изолированные функции', false)
+  .option('--no-equivalence-check', 'Отключить формальную проверку эквивалентности', false)
 
   // Семантический анализ
   .option('--critical <functions>', 'Критические функции для верификации (через запятую)')
@@ -90,6 +99,9 @@ program
     );
     console.log(`📝 Уровень логирования: ${options.logLevel}`);
     console.log(`📄 Файл логов: ${options.logFile}`);
+    console.log(
+      `🔬 Проверка эквивалентности: ${options.equivalenceCheck !== false ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`
+    );
 
     if (options.dryRun) {
       console.log('\n⚠️ РЕЖИМ DRY RUN: изменения не будут применены к файлам\n');
@@ -117,6 +129,9 @@ program
       );
       console.log(`      ⚛️ JSX/TSX анализ: ${options.jsx !== false ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}`);
       console.log(`      🎯 Vue анализ: ${options.vueAnalysis !== false ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}`);
+      console.log(
+        `      🔬 Проверка эквивалентности: ${options.equivalenceCheck !== false ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`
+      );
     }
     console.log(
       `   📝 ESLint: ${options.eslint !== false ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}${options.eslintFix !== false && options.eslint !== false ? ' (с автоисправлением)' : ''}`
@@ -154,7 +169,7 @@ program
         createBackup: options.backup !== false,
         verbose: options.verbose,
 
-        // NEW: Настройки гарантии
+        // Настройки гарантии
         guaranteeMode: options.guarantee !== false,
         maxAttempts: parseInt(options.maxAttempts),
 
@@ -193,13 +208,77 @@ program
         logLevel: options.logLevel || 'info',
         logFile: options.logFile || './refactor.log',
         maxRetries: parseInt(options.maxRetries) || 3,
+
+        // Проверка эквивалентности - ИСПРАВЛЕНО
+        equivalenceCheckLevel: options.equivalenceCheck !== false ? 'full' : 'none',
       });
 
       await refactor.initialize();
+
+      // Сохраняем оригинальный файл для сравнения
+      const originalContent = fs.readFileSync(absolutePath, 'utf-8');
+      const backupOriginalPath = `${absolutePath}.original-backup.${Date.now()}`;
+      if (!options.dryRun) {
+        fs.writeFileSync(backupOriginalPath, originalContent);
+      }
+
       const result = await refactor.refactor(absolutePath);
       await refactor.dispose();
 
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+
+      // ФОРМАЛЬНАЯ ПРОВЕРКА ЭКВИВАЛЕНТНОСТИ
+      let equivalenceResult = null;
+      if (options.equivalenceCheck !== false && !options.dryRun && result.success) {
+        console.log('\n' + '='.repeat(70));
+        console.log('🔬 ЗАПУСК ФОРМАЛЬНОЙ ПРОВЕРКИ ЭКВИВАЛЕНТНОСТИ');
+        console.log('='.repeat(70));
+
+        try {
+          const checker = new RefactoringEquivalenceChecker();
+          await checker.initialize();
+
+          const modulesDir = path.join(path.dirname(absolutePath), options.outDir || 'modules');
+          equivalenceResult = await checker.checkRefactoringEquivalence(
+            backupOriginalPath,
+            absolutePath,
+            fs.existsSync(modulesDir) ? modulesDir : undefined
+          );
+
+          await checker.dispose();
+
+          // Сохраняем отчет об эквивалентности
+          const reportPath = path.join(path.dirname(absolutePath), 'equivalence-report.md');
+          fs.writeFileSync(reportPath, equivalenceResult.report);
+          console.log(`\n📄 Отчет об эквивалентности сохранен: ${reportPath}`);
+
+          if (!equivalenceResult.isEquivalent) {
+            console.log('\n❌ ФОРМАЛЬНАЯ ПРОВЕРКА НЕ ПРОЙДЕНА!');
+            console.log(`   ❌ Ошибок: ${equivalenceResult.failedFunctions.length}`);
+            console.log(`   📝 Изменений сигнатур: ${equivalenceResult.signatureChanges.length}`);
+            console.log(`   📄 Отчет: ${reportPath}`);
+
+            // Восстанавливаем оригинал
+            fs.copyFileSync(backupOriginalPath, absolutePath);
+            console.log(`\n💾 Файл восстановлен из бэкапа: ${backupOriginalPath}`);
+
+            process.exit(1);
+          } else {
+            console.log('\n✅ ФОРМАЛЬНАЯ ПРОВЕРКА ПРОЙДЕНА!');
+            console.log(
+              `   ✅ Верифицировано: ${equivalenceResult.verifiedFunctions}/${equivalenceResult.totalFunctions} функций`
+            );
+          }
+
+          // Удаляем бэкап оригинала после успешной проверки
+          if (fs.existsSync(backupOriginalPath) && !options.dryRun) {
+            fs.unlinkSync(backupOriginalPath);
+          }
+        } catch (error) {
+          console.error('❌ Ошибка при проверке эквивалентности:', error);
+          // Не прерываем выполнение, продолжаем с результатом рефакторинга
+        }
+      }
 
       if (result.success) {
         console.log('\n' + '='.repeat(70));
@@ -216,6 +295,18 @@ program
           console.log(`   • Создано чекпоинтов: ${result.guaranteeInfo.checkpointsCreated}`);
           console.log(`   • Создано бэкапов: ${result.guaranteeInfo.backupsCreated}`);
           console.log(`   • Валидаций выполнено: ${result.guaranteeInfo.validationHistory.length}`);
+        }
+
+        if (equivalenceResult) {
+          console.log('\n🔬 РЕЗУЛЬТАТ ФОРМАЛЬНОЙ ПРОВЕРКИ:');
+          console.log(
+            `   • Статус: ${equivalenceResult.isEquivalent ? '✅ ЭКВИВАЛЕНТЕН' : '❌ НЕ ЭКВИВАЛЕНТЕН'}`
+          );
+          console.log(`   • Функций проверено: ${equivalenceResult.totalFunctions}`);
+          console.log(`   • Верифицировано: ${equivalenceResult.verifiedFunctions}`);
+          if (equivalenceResult.failedFunctions.length > 0) {
+            console.log(`   • Ошибок: ${equivalenceResult.failedFunctions.length}`);
+          }
         }
 
         if (result.modules.length > 0) {
@@ -325,6 +416,10 @@ program
     }
   });
 
+// ============================================
+// КОМАНДА: analyze
+// ============================================
+
 program
   .command('analyze <file>')
   .description('Только анализ файла без изменений (показывает кластеры и семантические проблемы)')
@@ -392,7 +487,7 @@ program
         // Логирование
         logLevel: options.logLevel || 'info',
         logFile: options.logFile || './analyze.log',
-        incremental: false, // Анализ не требует инкрементального режима
+        incremental: false,
       });
 
       await refactor.initialize();
@@ -551,6 +646,10 @@ program
     }
   });
 
+// ============================================
+// КОМАНДА: validate
+// ============================================
+
 program
   .command('validate <file>')
   .description('Запустить все валидаторы без рефакторинга')
@@ -596,7 +695,7 @@ program
         // Логирование
         logLevel: options.logLevel || 'info',
         logFile: options.logFile || './validate.log',
-        incremental: false, // Валидация не требует инкрементального режима
+        incremental: false,
       });
 
       await refactor.initialize();
@@ -728,6 +827,118 @@ program
     }
   });
 
+// ============================================
+// КОМАНДА: verify-equivalence
+// ============================================
+
+program
+  .command('verify-equivalence <original-file> <refactored-file>')
+  .description('Формальная проверка эквивалентности исходного и рефакторинг-файла')
+  .option('-m, --modules <dir>', 'Директория с модулями', 'modules')
+  .option('-o, --output <file>', 'Сохранить отчет в файл', './equivalence-report.md')
+  .option('-v, --verbose', 'Подробный вывод', false)
+  .action(async (originalFile, refactoredFile, options) => {
+    console.log('\n' + '='.repeat(70));
+    console.log('🔬 ФОРМАЛЬНАЯ ПРОВЕРКА ЭКВИВАЛЕНТНОСТИ');
+    console.log('='.repeat(70));
+    console.log(`\n📄 Исходный файл: ${originalFile}`);
+    console.log(`📄 Рефакторинг: ${refactoredFile}`);
+    console.log(`📁 Модули: ${options.modules}`);
+    console.log(`📝 Уровень логирования: ${options.verbose ? 'debug' : 'info'}`);
+
+    const origPath = path.resolve(originalFile);
+    const refPath = path.resolve(refactoredFile);
+
+    if (!fs.existsSync(origPath)) {
+      console.error(`\n❌ Исходный файл не найден: ${origPath}`);
+      process.exit(1);
+    }
+
+    if (!fs.existsSync(refPath)) {
+      console.error(`\n❌ Рефакторинг-файл не найден: ${refPath}`);
+      process.exit(1);
+    }
+
+    const modulesDir = path.resolve(path.dirname(refPath), options.modules);
+    if (!fs.existsSync(modulesDir)) {
+      console.warn(`\n⚠️ Директория с модулями не найдена: ${modulesDir}`);
+      console.warn('   Продолжаем без проверки модулей');
+    }
+
+    try {
+      const checker = new RefactoringEquivalenceChecker();
+      await checker.initialize();
+
+      const result = await checker.checkRefactoringEquivalence(
+        origPath,
+        refPath,
+        fs.existsSync(modulesDir) ? modulesDir : undefined
+      );
+
+      await checker.dispose();
+
+      // Сохраняем отчет
+      const reportPath = path.resolve(options.output);
+      const reportDir = path.dirname(reportPath);
+      if (!fs.existsSync(reportDir)) {
+        fs.mkdirSync(reportDir, { recursive: true });
+      }
+      fs.writeFileSync(reportPath, result.report);
+
+      console.log(`\n📄 Отчет сохранен: ${reportPath}`);
+      console.log('\n📊 РЕЗУЛЬТАТ:');
+      console.log(`   • Статус: ${result.isEquivalent ? '✅ ЭКВИВАЛЕНТЕН' : '❌ НЕ ЭКВИВАЛЕНТЕН'}`);
+      console.log(`   • Функций проверено: ${result.totalFunctions}`);
+      console.log(`   • Верифицировано: ${result.verifiedFunctions}`);
+
+      if (result.failedFunctions.length > 0) {
+        console.log(`   • Ошибок: ${result.failedFunctions.length}`);
+        console.log('\n❌ ПРОБЛЕМНЫЕ ФУНКЦИИ:');
+        for (const failed of result.failedFunctions.slice(0, 10)) {
+          console.log(`   • ${failed.name}: ${failed.reason}`);
+          if (failed.counterexample) {
+            console.log(
+              `     Контрпример: ${JSON.stringify(Object.fromEntries(failed.counterexample))}`
+            );
+          }
+        }
+        if (result.failedFunctions.length > 10) {
+          console.log(`   ... и ещё ${result.failedFunctions.length - 10} проблем`);
+        }
+      }
+
+      if (result.signatureChanges.length > 0) {
+        console.log('\n📝 ИЗМЕНЕНИЯ СИГНАТУР:');
+        for (const change of result.signatureChanges.slice(0, 5)) {
+          console.log(`   • ${change.name}:`);
+          console.log(
+            `     Оригинал: ${change.original.params.join(', ')} -> ${change.original.returnType}`
+          );
+          console.log(
+            `     Изменено: ${change.modified.params.join(', ')} -> ${change.modified.returnType}`
+          );
+        }
+        if (result.signatureChanges.length > 5) {
+          console.log(`   ... и ещё ${result.signatureChanges.length - 5} изменений`);
+        }
+      }
+
+      process.exit(result.isEquivalent ? 0 : 1);
+    } catch (error) {
+      console.error('\n❌ Ошибка проверки эквивалентности:');
+      console.error(error instanceof Error ? error.message : String(error));
+      if (options.verbose && error instanceof Error && error.stack) {
+        console.error('\nСтек вызовов:');
+        console.error(error.stack);
+      }
+      process.exit(1);
+    }
+  });
+
+// ============================================
+// КОМАНДА: restore
+// ============================================
+
 program
   .command('restore <backup-file>')
   .description('Восстановить файл из резервной копии')
@@ -774,6 +985,10 @@ program
     }
   });
 
+// ============================================
+// КОМАНДА: help
+// ============================================
+
 program
   .command('help')
   .description('Показать подробную справку')
@@ -785,7 +1000,8 @@ program
 ║  ОПИСАНИЕ:                                                                    ║
 ║    Автоматический рефакторинг файлов с выделением модулей.                    ║
 ║    Включает семантический анализ, формальную верификацию,                    ║
-║    ESLint, TypeScript валидацию и автоисправление.                           ║
+║    ESLint, TypeScript валидацию, автоисправление и проверку                  ║
+║    эквивалентности.                                                          ║
 ║                                                                               ║
 ║  НОВЫЕ ВОЗМОЖНОСТИ (v3.0):                                                    ║
 ║    🛡️ Режим максимальной гарантии - многоуровневая защита                    ║
@@ -794,13 +1010,16 @@ program
 ║    🔍 Автоопределение типа модуля (ESM/CJS)                                  ║
 ║    ✅ Многоуровневая валидация синтаксиса                                    ║
 ║    💾 Полные бэкапы с восстановлением                                        ║
+║    🔬 ФОРМАЛЬНАЯ ПРОВЕРКА ЭКВИВАЛЕНТНОСТИ                                   ║
 ║                                                                               ║
 ║  КОМАНДЫ:                                                                     ║
-║    refactor <file>     - Полный pipeline: анализ + валидация + рефакторинг    ║
-║    analyze <file>      - Только анализ (без изменений)                        ║
-║    validate <file>     - Запустить все валидаторы (с опциональным фиксом)     ║
-║    restore <backup>    - Восстановить файл из резервной копии                 ║
-║    help                - Показать эту справку                                 ║
+║    refactor <file>           - Полный pipeline: анализ + валидация +          ║
+║                               рефакторинг + проверка эквивалентности         ║
+║    analyze <file>            - Только анализ (без изменений)                 ║
+║    validate <file>           - Запустить все валидаторы (с опциональным фиксом)║
+║    verify-equivalence <orig> <ref> - Формальная проверка эквивалентности     ║
+║    restore <backup>          - Восстановить файл из резервной копии          ║
+║    help                      - Показать эту справку                          ║
 ║                                                                               ║
 ║  ОСНОВНЫЕ ОПЦИИ (refactor):                                                   ║
 ║    -o, --out-dir <dir>     Директория для модулей (по умолчанию: modules)     ║
@@ -814,6 +1033,10 @@ program
 ║    --guarantee             Включить режим максимальной гарантии (по умолч.)   ║
 ║    --no-guarantee          Отключить режим гарантии                           ║
 ║    --max-attempts <n>      Максимальное количество попыток (по умолч.: 3)     ║
+║                                                                               ║
+║  ОПЦИИ ФОРМАЛЬНОЙ ПРОВЕРКИ:                                                   ║
+║    --no-equivalence-check  Отключить проверку эквивалентности                 ║
+║    --formal                Включить формальную верификацию Z3                 ║
 ║                                                                               ║
 ║  ОСТАЛЬНЫЕ ОПЦИИ:                                                             ║
 ║    --incremental           Включить инкрементальный режим (по умолчанию)      ║
@@ -835,11 +1058,14 @@ program
 ║    --no-extract-isolated   Не выделять изолированные функции                  ║
 ║                                                                               ║
 ║  ПРИМЕРЫ:                                                                     ║
-║    # Полный pipeline с гарантией                                              ║
-║    ast-refactor refactor ./src/utils.js --guarantee                           ║
+║    # Полный pipeline с гарантией и проверкой эквивалентности                 ║
+║    ast-refactor refactor ./src/utils.js --guarantee                          ║
 ║                                                                               ║
 ║    # С максимальными попытками                                                ║
 ║    ast-refactor refactor ./src/utils.js --max-attempts 5                      ║
+║                                                                               ║
+║    # Только формальная проверка эквивалентности                               ║
+║    ast-refactor verify-equivalence ./src/original.js ./src/refactored.js      ║
 ║                                                                               ║
 ║    # С отключением формальной верификации                                     ║
 ║    ast-refactor refactor ./src/utils.js --no-formal                           ║

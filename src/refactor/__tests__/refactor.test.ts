@@ -6,6 +6,7 @@ import { AutoRefactor } from '../index.js';
 import { ModuleExtractor } from '../ModuleExtractor.js';
 import { ImportManager } from '../ImportManager.js';
 import { TemplateUpdater } from '../TemplateUpdater.js';
+import { Logger, LogLevel } from '../../utils/Logger.js';
 
 describe('AutoRefactor', () => {
   const testDir = path.join(process.cwd(), 'test-temp-refactor');
@@ -225,11 +226,12 @@ describe('AutoRefactor', () => {
   describe('ModuleExtractor', () => {
     let project: any;
     let extractor: ModuleExtractor;
+    const testLogger = new Logger(LogLevel.ERROR);
 
     beforeEach(() => {
       const { Project } = require('ts-morph');
       project = new Project({ useInMemoryFileSystem: true });
-      extractor = new ModuleExtractor(project, { modulesDir: 'modules' });
+      extractor = new ModuleExtractor(project, { modulesDir: 'modules' }, testLogger);
     });
 
     it('должен генерировать имя модуля из имени функции', () => {
@@ -272,11 +274,12 @@ describe('AutoRefactor', () => {
   describe('ImportManager', () => {
     let project: any;
     let importManager: ImportManager;
+    const testLogger = new Logger(LogLevel.ERROR);
 
     beforeEach(() => {
       const { Project } = require('ts-morph');
       project = new Project({ useInMemoryFileSystem: true });
-      importManager = new ImportManager(project);
+      importManager = new ImportManager(project, testLogger);
     });
 
     it('должен вычислять относительный путь корректно', () => {

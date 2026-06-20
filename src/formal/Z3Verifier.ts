@@ -3,7 +3,7 @@
 import { init } from 'z3-solver';
 
 export interface VerificationConstraint {
-  type: 'equality' | 'inequality' | 'range' | 'implication' | 'and' | 'or' | 'not';
+  type: 'equality' | 'inequality' | 'range' | 'implication' | 'and' | 'or' | 'not' | 'comparison';
   left?: any;
   right?: any;
   variable?: string;
@@ -13,6 +13,7 @@ export interface VerificationConstraint {
   consequence?: VerificationConstraint;
   constraints?: VerificationConstraint[];
   operand?: VerificationConstraint;
+  operator?: string; // для 'comparison': '>', '<', '>=', '<=', '==', '!='
 }
 
 export interface VerificationResult {
@@ -450,6 +451,29 @@ export class Z3Verifier {
         return null;
       }
 
+      case 'comparison': {
+        const leftComp = this.valueToZ3(constraint.left, variables);
+        const rightComp = this.valueToZ3(constraint.right, variables);
+        if (!leftComp || !rightComp) return this.context.Bool.val(true);
+
+        const operator = constraint.operator || '==';
+        switch (operator) {
+          case '>':
+            return this.context.GT(leftComp, rightComp);
+          case '>=':
+            return this.context.GE(leftComp, rightComp);
+          case '<':
+            return this.context.LT(leftComp, rightComp);
+          case '<=':
+            return this.context.LE(leftComp, rightComp);
+          case '!=':
+            return this.context.Not(this.context.Eq(leftComp, rightComp));
+          case '==':
+          default:
+            return this.context.Eq(leftComp, rightComp);
+        }
+      }
+
       default:
         return this.context.Bool.val(true);
     }
@@ -698,4 +722,12 @@ export function or(...constraints: VerificationConstraint[]): VerificationConstr
 
 export function not(operand: VerificationConstraint): VerificationConstraint {
   return { type: 'not', operand };
+}
+
+export function compare(
+  left: string | number,
+  operator: '>' | '>=' | '<' | '<=' | '==' | '!=',
+  right: string | number
+): VerificationConstraint {
+  return { type: 'comparison', left, operator, right };
 }
