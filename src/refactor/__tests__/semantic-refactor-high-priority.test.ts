@@ -115,7 +115,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -149,7 +149,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -188,7 +188,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -220,7 +220,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -251,7 +251,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -286,7 +286,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -329,7 +329,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -360,7 +360,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -411,7 +411,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -455,7 +455,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -485,9 +485,10 @@ describe('Семантический рефакторинг - Высокий п�
       });
 
       const mockExtractor = {
-        extractModules: vi.fn()
+        extractModules: vi
+          .fn()
           .mockRejectedValueOnce(new Error('Simulated extraction error'))
-          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([]),
       };
       (refactor as any).extractor = mockExtractor;
 
@@ -496,7 +497,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -537,7 +538,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -586,7 +587,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -649,7 +650,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -718,7 +719,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -986,7 +987,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -1035,7 +1036,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -1082,7 +1083,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -1121,7 +1122,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -1162,7 +1163,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -1207,7 +1208,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -1258,7 +1259,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -1308,7 +1309,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -1360,7 +1361,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -1414,7 +1415,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -1465,7 +1466,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();
@@ -1514,7 +1515,6 @@ describe('Семантический рефакторинг - Высокий п�
 
       expect(result).toBeDefined();
     });
-
 
     it('должен обрабатывать файл с отсутствием прав на чтение', async () => {
       const testFile = path.join(testDir, 'no-read.js');
@@ -1690,7 +1690,7 @@ describe('Семантический рефакторинг - Высокий п�
         valid: true,
         moduleType: 'esm',
         diagnostics: [],
-        duration: 0
+        duration: 0,
       });
 
       await refactor.initialize();

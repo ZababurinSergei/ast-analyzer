@@ -1,0 +1,966 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ИИ-1 · ИИ-2 · Интерактивный диалог</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background: #0b0f17;
+        font-family:
+          'Segoe UI',
+          system-ui,
+          -apple-system,
+          sans-serif;
+        padding: 24px;
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+      }
+
+      .app {
+        max-width: 1400px;
+        width: 100%;
+        background: rgba(18, 26, 42, 0.8);
+        backdrop-filter: blur(8px);
+        border-radius: 40px;
+        padding: 28px 30px 36px;
+        border: 1px solid rgba(255, 255, 255, 0.04);
+        box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+      }
+
+      h1 {
+        font-weight: 500;
+        font-size: 2rem;
+        color: #eef3ff;
+        text-align: center;
+        letter-spacing: -0.3px;
+        margin-bottom: 8px;
+      }
+
+      .sub {
+        text-align: center;
+        color: #8fa0c9;
+        font-size: 0.95rem;
+        border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+        padding-bottom: 18px;
+        margin-bottom: 24px;
+      }
+
+      .grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 22px;
+      }
+
+      .agent {
+        flex: 1 1 320px;
+        min-width: 280px;
+        background: rgba(10, 16, 30, 0.7);
+        backdrop-filter: blur(4px);
+        border-radius: 28px;
+        padding: 18px 18px 20px;
+        border: 1px solid rgba(255, 255, 255, 0.03);
+        display: flex;
+        flex-direction: column;
+        transition: border-color 0.2s;
+      }
+
+      .agent:hover {
+        border-color: rgba(255, 255, 255, 0.08);
+      }
+
+      .agent-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        margin-bottom: 14px;
+      }
+
+      .agent-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        background: #2f3d5c;
+        color: #d6e2ff;
+        flex-shrink: 0;
+      }
+
+      .agent-icon.ai1 {
+        background: linear-gradient(145deg, #2b4b6e, #14304a);
+        color: #b4d0ff;
+      }
+
+      .agent-icon.ai2 {
+        background: linear-gradient(145deg, #4d3b6e, #2d1f4a);
+        color: #d4baff;
+      }
+
+      .agent-icon.user {
+        background: linear-gradient(145deg, #3a5f4a, #1d3a2a);
+        color: #b0f0c0;
+      }
+
+      .agent-name {
+        font-size: 1.3rem;
+        font-weight: 500;
+        color: #f0f4ff;
+      }
+
+      .agent-role {
+        font-size: 0.7rem;
+        background: rgba(255, 255, 255, 0.04);
+        padding: 3px 12px;
+        border-radius: 50px;
+        color: #b6c8ed;
+        margin-left: auto;
+        white-space: nowrap;
+        border: 1px solid rgba(255, 255, 255, 0.02);
+      }
+
+      .chat-area {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .chat-messages {
+        background: rgba(0, 0, 0, 0.25);
+        border-radius: 18px;
+        padding: 14px 16px;
+        min-height: 180px;
+        max-height: 340px;
+        overflow-y: auto;
+        border: 1px solid rgba(255, 255, 255, 0.02);
+        font-size: 0.9rem;
+        line-height: 1.5;
+        color: #d2defa;
+        scroll-behavior: smooth;
+      }
+
+      .chat-messages .msg {
+        margin-bottom: 8px;
+        padding: 6px 12px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.02);
+        border-left: 2px solid rgba(255, 255, 255, 0.05);
+        word-break: break-word;
+      }
+
+      .chat-messages .msg .who {
+        font-weight: 600;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        color: #9aaac9;
+        margin-right: 6px;
+      }
+
+      .chat-messages .msg .who.ai1 {
+        color: #7bb3ff;
+      }
+      .chat-messages .msg .who.ai2 {
+        color: #c9a0ff;
+      }
+      .chat-messages .msg .who.user {
+        color: #7fc9a0;
+      }
+
+      .chat-messages .msg .content {
+        display: inline;
+      }
+
+      .chat-messages .msg .file-block {
+        display: block;
+        margin-top: 6px;
+        padding: 8px 12px;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 10px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.75rem;
+        white-space: pre-wrap;
+        max-height: 200px;
+        overflow-y: auto;
+        border: 1px solid rgba(255, 255, 255, 0.03);
+        color: #b8d0f0;
+      }
+
+      .chat-messages .msg .file-list {
+        display: block;
+        margin-top: 4px;
+        padding: 4px 8px;
+        font-family: monospace;
+        font-size: 0.8rem;
+        color: #aac0e0;
+      }
+
+      .input-group {
+        display: flex;
+        gap: 10px;
+        margin-top: 4px;
+      }
+
+      .input-group input {
+        flex: 1;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 60px;
+        padding: 10px 18px;
+        color: #eef4ff;
+        font-size: 0.9rem;
+        outline: none;
+        transition: 0.15s;
+        font-family: inherit;
+      }
+
+      .input-group input:focus {
+        border-color: rgba(255, 255, 255, 0.15);
+        background: rgba(255, 255, 255, 0.06);
+      }
+
+      .input-group input::placeholder {
+        color: #5f739b;
+        font-weight: 300;
+      }
+
+      .input-group button {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 60px;
+        padding: 8px 22px;
+        color: #d6e2ff;
+        font-weight: 500;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: 0.15s;
+        white-space: nowrap;
+      }
+
+      .input-group button:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.12);
+        color: white;
+      }
+
+      .input-group button:active {
+        transform: scale(0.96);
+      }
+
+      .input-group button.primary {
+        background: rgba(100, 200, 130, 0.08);
+        border-color: rgba(100, 200, 130, 0.1);
+        color: #c0f0d0;
+      }
+
+      .input-group button.primary:hover {
+        background: rgba(100, 200, 130, 0.15);
+        border-color: rgba(100, 200, 130, 0.2);
+        color: white;
+      }
+
+      .footer {
+        margin-top: 28px;
+        text-align: center;
+        color: #5d729b;
+        font-size: 0.8rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.03);
+        padding-top: 20px;
+      }
+
+      .badge-flow {
+        display: inline-block;
+        font-size: 0.6rem;
+        background: rgba(255, 255, 255, 0.03);
+        padding: 2px 12px;
+        border-radius: 40px;
+        color: #7f96c0;
+        letter-spacing: 0.3px;
+      }
+
+      @media (max-width: 750px) {
+        .app {
+          padding: 16px 12px 20px;
+        }
+        .agent {
+          flex: 1 1 100%;
+        }
+      }
+
+      /* Стили для скролла */
+      .chat-messages::-webkit-scrollbar {
+        width: 4px;
+      }
+      .chat-messages::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .chat-messages::-webkit-scrollbar-thumb {
+        background: #3a4a6a;
+        border-radius: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <h1>⚡ ИИ-1 · ИИ-2 · Интерактивный диалог</h1>
+      <div class="sub">
+        Модель взаимодействия на основе файловой системы <span class="badge-flow">fs.json</span>
+      </div>
+
+      <div class="grid">
+        <!-- ИИ-1 -->
+        <div class="agent">
+          <div class="agent-header">
+            <div class="agent-icon ai1">🧠</div>
+            <span class="agent-name">ИИ-1</span>
+            <span class="agent-role">агент</span>
+          </div>
+          <div class="chat-area">
+            <div class="chat-messages" id="ai1-messages">
+              <div class="msg">
+                <span class="who ai1">ИИ-1</span> <span class="content">Ожидаю запрос...</span>
+              </div>
+            </div>
+            <div class="input-group">
+              <input
+                type="text"
+                id="ai1-input"
+                placeholder="Спросить ИИ-1..."
+                value="Покажи структуру проекта"
+              />
+              <button id="ai1-send" class="primary">Отправить</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ИИ-2 -->
+        <div class="agent">
+          <div class="agent-header">
+            <div class="agent-icon ai2">🧬</div>
+            <span class="agent-name">ИИ-2</span>
+            <span class="agent-role">агент</span>
+          </div>
+          <div class="chat-area">
+            <div class="chat-messages" id="ai2-messages">
+              <div class="msg">
+                <span class="who ai2">ИИ-2</span> <span class="content">Слушаю диалог...</span>
+              </div>
+            </div>
+            <div class="input-group">
+              <input
+                type="text"
+                id="ai2-input"
+                placeholder="Спросить ИИ-2..."
+                value="Какие файлы изменены?"
+              />
+              <button id="ai2-send" class="primary">Отправить</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Пользователь (оркестратор) -->
+        <div class="agent">
+          <div class="agent-header">
+            <div class="agent-icon user">👤</div>
+            <span class="agent-name">Пользователь</span>
+            <span class="agent-role">оркестратор</span>
+          </div>
+          <div class="chat-area">
+            <div class="chat-messages" id="user-messages">
+              <div class="msg">
+                <span class="who user">Пользователь</span>
+                <span class="content">Система готова.</span>
+              </div>
+            </div>
+            <div class="input-group">
+              <input
+                type="text"
+                id="user-input"
+                placeholder="Вопрос для ИИ-1 (через пользователя)"
+                value="Выведи список всех .ts файлов"
+              />
+              <button id="user-send" class="primary">Отправить</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        ⚙️ Цепочка: Пользователь → ИИ-1 → ИИ-2 → ИИ-1 → вывод файла с изменениями
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        // ============================================================
+        // 1. ЗАГРУЗКА fs.json (динамическая файловая система)
+        // ============================================================
+        let fileSystemData = null;
+        let fileList = [];
+
+        async function loadFileSystem() {
+          try {
+            // Имитация загрузки fs.json — в реальном проекте это был бы fetch
+            // Но мы используем встроенные данные (из fs.json, который был в промпте)
+            // Для демонстрации мы встроим упрощённую структуру на основе реального fs.json
+            const response = await fetch('./fs.json');
+            if (response.ok) {
+              fileSystemData = await response.json();
+            } else {
+              // fallback — используем встроенные данные
+              fileSystemData = getFallbackFS();
+            }
+            // Собираем плоский список файлов
+            fileList = collectFiles(fileSystemData);
+            console.log('📁 Файловая система загружена, файлов:', fileList.length);
+          } catch (e) {
+            console.warn('⚠️ Не удалось загрузить fs.json, использую встроенную структуру');
+            fileSystemData = getFallbackFS();
+            fileList = collectFiles(fileSystemData);
+          }
+        }
+
+        function collectFiles(obj, path = '') {
+          let files = [];
+          if (!obj) return files;
+          if (obj.type === 'file') {
+            files.push({ path: path || obj.path || 'unknown', content: obj.content || '' });
+          } else if (obj.children) {
+            for (const [key, value] of Object.entries(obj.children)) {
+              const newPath = path ? path + '/' + key : key;
+              if (value.type === 'file') {
+                files.push({ path: newPath, content: value.content || '' });
+              } else if (value.children) {
+                files.push(...collectFiles(value, newPath));
+              }
+            }
+          }
+          return files;
+        }
+
+        function getFallbackFS() {
+          // Упрощённая структура на основе реального fs.json
+          return {
+            type: 'directory',
+            children: {
+              'packages/ast-analyzer': {
+                type: 'directory',
+                children: {
+                  src: {
+                    type: 'directory',
+                    children: {
+                      'cli.ts': {
+                        type: 'file',
+                        content: '// CLI entry point\nconsole.log("Hello from cli.ts");',
+                      },
+                      'index.ts': {
+                        type: 'file',
+                        content: '// Main entry\nexport const version = "3.0.0";',
+                      },
+                      modes: {
+                        type: 'directory',
+                        children: {
+                          'file-graph.ts': {
+                            type: 'file',
+                            content:
+                              '// file-graph.ts\nexport function buildFileGraph() { return {}; }',
+                          },
+                          'project-graph.ts': {
+                            type: 'file',
+                            content:
+                              '// project-graph.ts\nexport function buildProjectGraph() { return {}; }',
+                          },
+                        },
+                      },
+                      refactor: {
+                        type: 'directory',
+                        children: {
+                          'AutoRefactor.ts': {
+                            type: 'file',
+                            content:
+                              '// AutoRefactor.ts\nexport class AutoRefactor { run() { return true; } }',
+                          },
+                          'ModuleExtractor.ts': {
+                            type: 'file',
+                            content:
+                              '// ModuleExtractor.ts\nexport class ModuleExtractor { extract() { return []; } }',
+                          },
+                        },
+                      },
+                    },
+                  },
+                  'package.json': {
+                    type: 'file',
+                    content: '{"name": "@newkind/ast-analyzer", "version": "3.0.0"}',
+                  },
+                  'README.md': {
+                    type: 'file',
+                    content: '# AST Analyzer\nAI Toolkit for code analysis.',
+                  },
+                },
+              },
+            },
+          };
+        }
+
+        // ============================================================
+        // 2. МОДЕЛЬ ДИАЛОГА
+        // ============================================================
+
+        // Состояние диалога
+        const state = {
+          // История сообщений для каждого агента
+          ai1: [],
+          ai2: [],
+          user: [],
+          // Последний ответ ИИ-1 (для передачи ИИ-2)
+          lastAI1Response: '',
+          // Последний ответ ИИ-2 (для передачи ИИ-1)
+          lastAI2Response: '',
+          // Список изменённых файлов (генерируется ИИ-1)
+          changedFiles: [],
+          // Содержимое выбранного файла
+          selectedFileContent: '',
+          selectedFilePath: '',
+          // Состояние диалога
+          phase: 'idle', // idle | waiting_ai1 | waiting_ai2 | showing_file
+        };
+
+        // Элементы DOM
+        const ai1Messages = document.getElementById('ai1-messages');
+        const ai2Messages = document.getElementById('ai2-messages');
+        const userMessages = document.getElementById('user-messages');
+
+        const ai1Input = document.getElementById('ai1-input');
+        const ai1Send = document.getElementById('ai1-send');
+        const ai2Input = document.getElementById('ai2-input');
+        const ai2Send = document.getElementById('ai2-send');
+        const userInput = document.getElementById('user-input');
+        const userSend = document.getElementById('user-send');
+
+        // ============================================================
+        // 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+        // ============================================================
+
+        function addMessage(container, who, text, extraClass = '') {
+          const div = document.createElement('div');
+          div.className = 'msg';
+          const whoSpan = document.createElement('span');
+          whoSpan.className = `who ${who}`;
+          whoSpan.textContent = who === 'user' ? 'Пользователь' : who === 'ai1' ? 'ИИ-1' : 'ИИ-2';
+          const contentSpan = document.createElement('span');
+          contentSpan.className = 'content';
+          // Если текст содержит HTML-теги, вставляем как innerHTML (безопасно для нашего случая)
+          if (typeof text === 'string' && text.includes('<')) {
+            contentSpan.innerHTML = text;
+          } else {
+            contentSpan.textContent = text;
+          }
+          div.appendChild(whoSpan);
+          div.appendChild(contentSpan);
+          if (extraClass) {
+            div.classList.add(extraClass);
+          }
+          container.appendChild(div);
+          container.scrollTop = container.scrollHeight;
+        }
+
+        function addFileBlock(container, who, filePath, content, label = '📄 Содержимое файла') {
+          const div = document.createElement('div');
+          div.className = 'msg';
+          const whoSpan = document.createElement('span');
+          whoSpan.className = `who ${who}`;
+          whoSpan.textContent = who === 'user' ? 'Пользователь' : who === 'ai1' ? 'ИИ-1' : 'ИИ-2';
+          const contentSpan = document.createElement('span');
+          contentSpan.className = 'content';
+          contentSpan.innerHTML = `${label}: <strong>${filePath}</strong>`;
+          div.appendChild(whoSpan);
+          div.appendChild(contentSpan);
+
+          const block = document.createElement('div');
+          block.className = 'file-block';
+          block.textContent = content || '(пусто)';
+          div.appendChild(block);
+
+          container.appendChild(div);
+          container.scrollTop = container.scrollHeight;
+        }
+
+        function addFileList(container, who, files, label = '📁 Изменённые файлы') {
+          const div = document.createElement('div');
+          div.className = 'msg';
+          const whoSpan = document.createElement('span');
+          whoSpan.className = `who ${who}`;
+          whoSpan.textContent = who === 'user' ? 'Пользователь' : who === 'ai1' ? 'ИИ-1' : 'ИИ-2';
+          const contentSpan = document.createElement('span');
+          contentSpan.className = 'content';
+          contentSpan.textContent = label + ':';
+          div.appendChild(whoSpan);
+          div.appendChild(contentSpan);
+
+          const list = document.createElement('div');
+          list.className = 'file-list';
+          list.textContent = files.length
+            ? files.map(f => '📄 ' + f).join('\n')
+            : '— нет изменённых файлов —';
+          div.appendChild(list);
+
+          container.appendChild(div);
+          container.scrollTop = container.scrollHeight;
+        }
+
+        // Поиск файла по пути
+        function findFileByPath(path) {
+          return fileList.find(f => f.path === path || f.path.endsWith(path));
+        }
+
+        // Получить содержимое файла по пути
+        function getFileContent(path) {
+          const file = findFileByPath(path);
+          return file ? file.content : 'Файл не найден';
+        }
+
+        // Поиск файлов по расширению
+        function findFilesByExtension(ext) {
+          return fileList.filter(f => f.path.endsWith(ext)).map(f => f.path);
+        }
+
+        // Поиск файлов по шаблону (простой contains)
+        function findFilesByPattern(pattern) {
+          return fileList.filter(f => f.path.includes(pattern)).map(f => f.path);
+        }
+
+        // ============================================================
+        // 4. ЛОГИКА ДИАЛОГА
+        // ============================================================
+
+        // Генерация ответа ИИ-1
+        function generateAI1Response(userMessage) {
+          const lower = userMessage.toLowerCase();
+
+          // Проверка на запрос списка файлов
+          if (
+            lower.includes('список') ||
+            lower.includes('файл') ||
+            lower.includes('структура') ||
+            lower.includes('покажи')
+          ) {
+            if (lower.includes('.ts') || lower.includes('typescript')) {
+              const tsFiles = findFilesByExtension('.ts');
+              if (tsFiles.length) {
+                state.changedFiles = tsFiles;
+                state.lastAI1Response = `Найдено ${tsFiles.length} TypeScript файлов:\n${tsFiles.join('\n')}`;
+                return state.lastAI1Response;
+              } else {
+                state.lastAI1Response = 'TypeScript файлы не найдены.';
+                return state.lastAI1Response;
+              }
+            } else if (lower.includes('.js') || lower.includes('javascript')) {
+              const jsFiles = findFilesByExtension('.js');
+              if (jsFiles.length) {
+                state.changedFiles = jsFiles;
+                state.lastAI1Response = `Найдено ${jsFiles.length} JavaScript файлов:\n${jsFiles.join('\n')}`;
+                return state.lastAI1Response;
+              } else {
+                state.lastAI1Response = 'JavaScript файлы не найдены.';
+                return state.lastAI1Response;
+              }
+            } else if (
+              lower.includes('измен') ||
+              lower.includes('модифици') ||
+              lower.includes('обновл')
+            ) {
+              // Имитация изменённых файлов — берём несколько случайных
+              const all = fileList.map(f => f.path);
+              const sample = all.slice(0, Math.min(5, all.length));
+              state.changedFiles = sample;
+              state.lastAI1Response = `Обнаружены изменённые файлы (${sample.length}):\n${sample.join('\n')}`;
+              return state.lastAI1Response;
+            } else {
+              // Общий список всех файлов (первые 20)
+              const all = fileList.map(f => f.path);
+              const top = all.slice(0, 20);
+              const more = all.length > 20 ? `\n... и ещё ${all.length - 20} файлов` : '';
+              state.changedFiles = all;
+              state.lastAI1Response = `Всего файлов: ${all.length}\n${top.join('\n')}${more}`;
+              return state.lastAI1Response;
+            }
+          }
+
+          // Запрос содержимого конкретного файла
+          const fileMatch = lower.match(/файл\s*["']?([^"'\s]+)["']?/i);
+          if (fileMatch) {
+            const fileName = fileMatch[1];
+            const found = findFileByPath(fileName);
+            if (found) {
+              state.selectedFilePath = found.path;
+              state.selectedFileContent = found.content;
+              state.lastAI1Response = `📄 Содержимое файла "${found.path}":\n\n${found.content.substring(0, 500)}${found.content.length > 500 ? '\n... (обрезано)' : ''}`;
+              return state.lastAI1Response;
+            } else {
+              state.lastAI1Response = `Файл "${fileName}" не найден.`;
+              return state.lastAI1Response;
+            }
+          }
+
+          // Запрос на вывод 100% содержимого
+          if (
+            lower.includes('100%') ||
+            lower.includes('полностью') ||
+            lower.includes('весь файл')
+          ) {
+            if (state.selectedFilePath) {
+              const content = getFileContent(state.selectedFilePath);
+              state.selectedFileContent = content;
+              state.lastAI1Response = `📄 Полное содержимое файла "${state.selectedFilePath}":\n\n${content}`;
+              return state.lastAI1Response;
+            } else {
+              state.lastAI1Response = 'Сначала выберите файл (спросите "покажи файл ...")';
+              return state.lastAI1Response;
+            }
+          }
+
+          // По умолчанию — общий ответ
+          state.lastAI1Response = `Я обработал запрос: "${userMessage}". В файловой системе ${fileList.length} файлов. Что ещё нужно?`;
+          return state.lastAI1Response;
+        }
+
+        // Генерация ответа ИИ-2 (получает ответ ИИ-1 и может запросить список изменённых файлов)
+        function generateAI2Response(ai1Response, userMessage = '') {
+          const lower = (ai1Response + ' ' + userMessage).toLowerCase();
+
+          // Если ИИ-2 просит список изменённых файлов
+          if (
+            lower.includes('список измен') ||
+            lower.includes('изменённые файлы') ||
+            lower.includes('какие файлы изменены')
+          ) {
+            if (state.changedFiles && state.changedFiles.length) {
+              const files = state.changedFiles.slice(0, 10);
+              state.lastAI2Response = `📋 Список изменённых файлов (${state.changedFiles.length}):\n${files.join('\n')}`;
+              // Триггер для ИИ-1 — показать содержимое первого файла
+              if (state.changedFiles.length) {
+                state.selectedFilePath = state.changedFiles[0];
+                state.selectedFileContent = getFileContent(state.selectedFilePath);
+                // Дополнительное сообщение для ИИ-1
+                state.lastAI2Response += `\n\n💡 ИИ-1, покажи содержимое файла "${state.selectedFilePath}" на 100%.`;
+              }
+              return state.lastAI2Response;
+            } else {
+              state.lastAI2Response =
+                '⚠️ Список изменённых файлов пуст. Попросите ИИ-1 сначала сгенерировать список.';
+              return state.lastAI2Response;
+            }
+          }
+
+          // Если просят 100% содержимого
+          if (
+            lower.includes('100%') ||
+            lower.includes('полностью') ||
+            lower.includes('весь файл') ||
+            lower.includes('покажи содержимое')
+          ) {
+            if (state.selectedFilePath) {
+              const content = getFileContent(state.selectedFilePath);
+              state.lastAI2Response = `📄 Полное содержимое "${state.selectedFilePath}":\n\n${content}`;
+              return state.lastAI2Response;
+            } else {
+              state.lastAI2Response =
+                '⚠️ Файл не выбран. Сначала получите список изменённых файлов.';
+              return state.lastAI2Response;
+            }
+          }
+
+          // Если просят конкретный файл
+          const fileMatch = lower.match(/файл\s*["']?([^"'\s]+)["']?/i);
+          if (fileMatch) {
+            const fileName = fileMatch[1];
+            const found = findFileByPath(fileName);
+            if (found) {
+              state.selectedFilePath = found.path;
+              state.selectedFileContent = found.content;
+              state.lastAI2Response = `📄 Содержимое "${found.path}":\n\n${found.content.substring(0, 400)}...`;
+              return state.lastAI2Response;
+            } else {
+              state.lastAI2Response = `Файл "${fileName}" не найден.`;
+              return state.lastAI2Response;
+            }
+          }
+
+          // Общий ответ ИИ-2
+          state.lastAI2Response = `🔍 Я проанализировал ответ ИИ-1. ${ai1Response ? 'Получено: ' + ai1Response.substring(0, 80) + '...' : ''}\nРекомендую запросить список изменённых файлов.`;
+          return state.lastAI2Response;
+        }
+
+        // ============================================================
+        // 5. ОБРАБОТЧИКИ СОБЫТИЙ
+        // ============================================================
+
+        // Отправка от пользователя -> ИИ-1
+        function handleUserSend() {
+          const text = userInput.value.trim();
+          if (!text) return;
+          addMessage(userMessages, 'user', `📤 ${text}`);
+          userInput.value = '';
+
+          // Пользовательский запрос направляется ИИ-1
+          const response = generateAI1Response(text);
+          addMessage(ai1Messages, 'ai1', response);
+          state.lastAI1Response = response;
+
+          // ИИ-2 получает ответ ИИ-1 (автоматически)
+          const ai2Resp = generateAI2Response(response);
+          addMessage(ai2Messages, 'ai2', ai2Resp);
+          state.lastAI2Response = ai2Resp;
+
+          // Если ИИ-2 запросил список изменённых файлов, ИИ-1 реагирует
+          if (ai2Resp.includes('💡 ИИ-1, покажи содержимое')) {
+            const fileContent = getFileContent(state.selectedFilePath);
+            const fullContent = `📄 100% содержимого "${state.selectedFilePath}":\n\n${fileContent}`;
+            addMessage(ai1Messages, 'ai1', fullContent);
+            state.lastAI1Response = fullContent;
+
+            // Пользователь получает финальный результат
+            addMessage(
+              userMessages,
+              'user',
+              `📥 Получен исправленный файл:\n\n${fileContent.substring(0, 600)}${fileContent.length > 600 ? '\n... (обрезано)' : ''}`
+            );
+            addFileBlock(
+              userMessages,
+              'user',
+              state.selectedFilePath,
+              fileContent,
+              '📄 ИСПРАВЛЕННЫЙ ФАЙЛ (100%)'
+            );
+          }
+        }
+
+        // Отправка от ИИ-1 (прямой запрос)
+        function handleAI1Send() {
+          const text = ai1Input.value.trim();
+          if (!text) return;
+          addMessage(ai1Messages, 'ai1', `🧠 Запрос: ${text}`);
+          ai1Input.value = '';
+
+          const response = generateAI1Response(text);
+          addMessage(ai1Messages, 'ai1', response);
+          state.lastAI1Response = response;
+
+          // ИИ-2 получает ответ
+          const ai2Resp = generateAI2Response(response);
+          addMessage(ai2Messages, 'ai2', ai2Resp);
+          state.lastAI2Response = ai2Resp;
+
+          // Если ИИ-2 запросил 100% файла
+          if (
+            ai2Resp.includes('💡 ИИ-1, покажи содержимое') ||
+            ai2Resp.includes('покажи содержимое')
+          ) {
+            const fileContent = getFileContent(state.selectedFilePath);
+            const fullContent = `📄 100% содержимого "${state.selectedFilePath}":\n\n${fileContent}`;
+            addMessage(ai1Messages, 'ai1', fullContent);
+            state.lastAI1Response = fullContent;
+            addMessage(
+              userMessages,
+              'user',
+              `📥 Итоговый файл:\n\n${fileContent.substring(0, 600)}...`
+            );
+            addFileBlock(
+              userMessages,
+              'user',
+              state.selectedFilePath,
+              fileContent,
+              '📄 ФИНАЛЬНЫЙ ФАЙЛ'
+            );
+          }
+        }
+
+        // Отправка от ИИ-2 (прямой запрос)
+        function handleAI2Send() {
+          const text = ai2Input.value.trim();
+          if (!text) return;
+          addMessage(ai2Messages, 'ai2', `🧬 Запрос: ${text}`);
+          ai2Input.value = '';
+
+          // ИИ-2 может запросить у ИИ-1 что-то через пользователя
+          const response = generateAI2Response(state.lastAI1Response || '', text);
+          addMessage(ai2Messages, 'ai2', response);
+          state.lastAI2Response = response;
+
+          // Если ИИ-2 просит список изменённых файлов, ИИ-1 отвечает
+          if (response.includes('💡 ИИ-1, покажи содержимое')) {
+            const fileContent = getFileContent(state.selectedFilePath);
+            const fullContent = `📄 100% содержимого "${state.selectedFilePath}":\n\n${fileContent}`;
+            addMessage(ai1Messages, 'ai1', fullContent);
+            state.lastAI1Response = fullContent;
+            addMessage(
+              userMessages,
+              'user',
+              `📥 Файл получен:\n\n${fileContent.substring(0, 400)}...`
+            );
+          } else if (response.includes('Список изменённых файлов')) {
+            const files = state.changedFiles || fileList.map(f => f.path).slice(0, 10);
+            const list = files.length ? files.join('\n') : '— нет —';
+            addMessage(ai1Messages, 'ai1', `📁 Список изменённых файлов:\n${list}`);
+          }
+        }
+
+        // ============================================================
+        // 6. ИНИЦИАЛИЗАЦИЯ
+        // ============================================================
+
+        async function init() {
+          await loadFileSystem();
+
+          // Приветственное сообщение
+          addMessage(userMessages, 'user', '🚀 Система готова. Файловая система загружена.');
+          addMessage(
+            ai1Messages,
+            'ai1',
+            `📁 Загружено ${fileList.length} файлов. Спросите что-нибудь.`
+          );
+          addMessage(ai2Messages, 'ai2', '🔍 Ожидаю диалог с ИИ-1...');
+
+          // Назначаем обработчики
+          userSend.addEventListener('click', handleUserSend);
+          userInput.addEventListener('keydown', e => {
+            if (e.key === 'Enter') handleUserSend();
+          });
+
+          ai1Send.addEventListener('click', handleAI1Send);
+          ai1Input.addEventListener('keydown', e => {
+            if (e.key === 'Enter') handleAI1Send();
+          });
+
+          ai2Send.addEventListener('click', handleAI2Send);
+          ai2Input.addEventListener('keydown', e => {
+            if (e.key === 'Enter') handleAI2Send();
+          });
+
+          // Автоматический стартовый диалог
+          setTimeout(() => {
+            const startMsg = 'Покажи структуру проекта и список изменённых файлов';
+            userInput.value = startMsg;
+            handleUserSend();
+          }, 600);
+        }
+
+        init().catch(console.error);
+      })();
+    </script>
+  </body>
+</html>

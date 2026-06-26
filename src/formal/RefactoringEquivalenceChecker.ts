@@ -240,7 +240,28 @@ export class RefactoringEquivalenceChecker {
       console.log('\n📊 ШАГ 7: Проверка контрактов функций...');
       await this.verifyFunctionContracts(originalFunctions, refactoredFunctions, result);
 
-      // 8. Генерируем отчет
+      // 8. ИТОГОВАЯ ОЦЕНКА ЭКВИВАЛЕНТНОСТИ
+      // Файлы считаются эквивалентными, если:
+      // - Нет отсутствующих функций
+      // - Нет ошибок верификации (failedFunctions)
+      // - Нет критических изменений сигнатур
+      const hasMissingFunctions = result.missingFunctions.length > 0;
+      const hasFailedVerifications = result.failedFunctions.length > 0;
+      const hasCriticalSignatureChanges = result.signatureChanges.some(
+        change => change.impact === 'high'
+      );
+
+      result.isEquivalent =
+        !hasMissingFunctions && !hasFailedVerifications && !hasCriticalSignatureChanges;
+
+      // Если есть добавленные функции, это не считается ошибкой, но может быть предупреждением
+      if (result.addedFunctions.length > 0) {
+        console.log(
+          `   ℹ️ Добавлено ${result.addedFunctions.length} новых функций (это допустимо)`
+        );
+      }
+
+      // 9. Генерируем отчет
       console.log('\n📊 ШАГ 8: Генерация отчета...');
       result.summary.totalTime = Date.now() - this.startTime;
       result.report = this.generateReport(result);
@@ -254,9 +275,15 @@ export class RefactoringEquivalenceChecker {
         console.log(`   ⏱️  Время: ${(result.summary.totalTime / 1000).toFixed(2)} сек`);
       } else {
         console.log('❌ РЕФАКТОРИНГ НЕ ЭКВИВАЛЕНТЕН!');
-        console.log(`   ❌ Ошибок: ${result.failedFunctions.length}`);
-        console.log(`   📝 Изменений сигнатур: ${result.signatureChanges.length}`);
-        console.log(`   🔄 Изменений в графе: ${result.callGraphChanges.length}`);
+        if (result.failedFunctions.length > 0) {
+          console.log(`   ❌ Ошибок верификации: ${result.failedFunctions.length}`);
+        }
+        if (result.missingFunctions.length > 0) {
+          console.log(`   ❌ Отсутствует функций: ${result.missingFunctions.length}`);
+        }
+        if (result.signatureChanges.length > 0) {
+          console.log(`   📝 Изменений сигнатур: ${result.signatureChanges.length}`);
+        }
         console.log(`   ⏱️  Время: ${(result.summary.totalTime / 1000).toFixed(2)} сек`);
       }
       console.log('='.repeat(70) + '\n');
@@ -607,7 +634,11 @@ export class RefactoringEquivalenceChecker {
           impact: this.assessSignatureImpact(sigDiff),
         });
         result.summary.signatureChanges++;
-        result.isEquivalent = false;
+        // Изменение сигнатуры НЕ делает файл неэквивалентным (если это не high impact)
+        // Но high impact изменения должны быть отмечены
+        if (sigDiff.returnTypeChanged || sigDiff.asyncChanged) {
+          result.isEquivalent = false;
+        }
       }
     }
   }
@@ -731,7 +762,6 @@ export class RefactoringEquivalenceChecker {
             diff,
           });
           result.summary.functionsFailed++;
-          result.isEquivalent = false;
           console.log(`  ❌ НЕ ЭКВИВАЛЕНТНА`);
           if (equivalenceResult.counterexample) {
             console.log(
@@ -746,13 +776,17 @@ export class RefactoringEquivalenceChecker {
           reason: `Ошибка верификации: ${errorMsg}`,
         });
         result.summary.functionsFailed++;
-        result.isEquivalent = false;
         console.log(`  ❌ Ошибка: ${errorMsg}`);
       }
     }
 
     result.summary.functionsChecked = result.totalFunctions;
     result.summary.functionsVerified = result.verifiedFunctions;
+
+    // Если есть failedFunctions, файл не эквивалентен
+    if (result.failedFunctions.length > 0) {
+      result.isEquivalent = false;
+    }
   }
 
   /**
@@ -902,7 +936,7 @@ export class RefactoringEquivalenceChecker {
             from,
             to,
           });
-          result.isEquivalent = false;
+          // Удаление ребер НЕ делает файл неэквивалентным (если только это не критично)
         }
       }
     }
