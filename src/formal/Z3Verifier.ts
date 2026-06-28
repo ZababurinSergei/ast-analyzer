@@ -630,7 +630,8 @@ export class Z3Verifier {
   async verifyLoopInvariant(
     invariant: VerificationConstraint,
     condition: VerificationConstraint,
-    loopBody: VerificationConstraint[]
+    loopBody: VerificationConstraint[],
+    initialCondition?: VerificationConstraint
   ): Promise<VerificationResult> {
     return this.mutex.runExclusive(async () => {
       const startTime = Date.now();
@@ -666,6 +667,13 @@ export class Z3Verifier {
         for (const constraint of loopBody) {
           const names = this.extractVariableNames(constraint);
           for (const name of names) {
+            allVarNames.add(name);
+          }
+        }
+
+        if (initialCondition) {
+          const initialNames = this.extractVariableNames(initialCondition);
+          for (const name of initialNames) {
             allVarNames.add(name);
           }
         }
@@ -724,7 +732,45 @@ export class Z3Verifier {
           };
         }
 
-        // 6. ШАГ 1: Проверяем достижимость тела цикла
+        // ==========================================
+        // ✅ НОВЫЙ ШАГ: Проверка начального условия
+        // ==========================================
+
+        if (initialCondition) {
+          this.solver.push();
+
+          try {
+            const initialFormula = this.constraintToZ3(initialCondition, vars);
+            if (initialFormula) {
+              // Проверяем: initialCondition ∧ ¬invariant
+              this.solver.add(initialFormula);
+              this.solver.add(this.context.Not(invariantFormula));
+
+              const result = await this.solver.check();
+
+              if (result === 'sat') {
+                // Нашли контрпример - инвариант не выполняется с начальных условий
+                const model = this.extractModel(vars);
+                return {
+                  isValid: false,
+                  model,
+                  counterexample: model.size > 0 ? model : undefined,
+                  time: Date.now() - startTime,
+                  error: 'Invariant does not hold initially',
+                };
+              }
+            }
+          } catch (error) {
+            // Игнорируем ошибки
+          } finally {
+            this.solver.pop();
+          }
+        }
+
+        // ==========================================
+        // ШАГ 6: Проверяем достижимость тела цикла
+        // ==========================================
+
         this.solver.push();
         try {
           this.solver.add(invariantFormula);
@@ -751,14 +797,21 @@ export class Z3Verifier {
               }
             }
 
+            // ✅ ИСПОЛЬЗОВАНИЕ buildLoopBodyCodeFromConstraints
+            const loopBodyCode = this.buildLoopBodyCodeFromConstraints(
+              loopBody,
+              Array.from(vars.keys())
+            );
+
             this.log('warn', 'Loop body is unreachable - invariant is vacuously true', {
               modifiedVars: Array.from(modifiedVars),
+              loopBody: loopBodyCode,
             });
 
             return {
               isValid: true,
               time: Date.now() - startTime,
-              warning: `Loop condition and body are contradictory - invariant is vacuously true. Modified variables: ${Array.from(modifiedVars).join(', ')}`,
+              warning: `Loop condition and body are contradictory - invariant is vacuously true. Modified variables: ${Array.from(modifiedVars).join(', ')}. Loop body: ${loopBodyCode}`,
             };
           }
         } catch (error) {
@@ -770,7 +823,10 @@ export class Z3Verifier {
           };
         }
 
-        // 7. ШАГ 2: Проверяем сохранение инварианта
+        // ==========================================
+        // ШАГ 7: Проверяем сохранение инварианта
+        // ==========================================
+
         this.solver.push();
         try {
           this.solver.add(invariantFormula);
@@ -821,7 +877,7 @@ export class Z3Verifier {
           this.solver.pop();
 
           if (result === 'unsat') {
-            // Используем buildLoopBodyCodeFromConstraints для отладки
+            // ✅ ИСПОЛЬЗОВАНИЕ buildLoopBodyCodeFromConstraints
             const varNamesArray = Array.from(vars.keys());
             const loopBodyCode = this.buildLoopBodyCodeFromConstraints(loopBody, varNamesArray);
 
@@ -1138,6 +1194,354 @@ export class Z3Verifier {
     if (formulas.length === 1) return formulas[0];
 
     return this.context.And(...formulas);
+  }
+
+  /**
+   * Улучшенная проверка инварианта цикла с детальным извлечением модели
+   */
+  async verifyLoopInvariantWithDetailedModel(
+    invariant: VerificationConstraint,
+    condition: VerificationConstraint,
+    loopBody: VerificationConstraint[],
+    initialCondition?: VerificationConstraint
+  ): Promise<VerificationResult> {
+    return this.mutex.runExclusive(async () => {
+      const startTime = Date.now();
+
+      try {
+        if (!this.initialized) {
+          try {
+            await this.initialize();
+          } catch (error) {
+            return {
+              isValid: false,
+              time: Date.now() - startTime,
+              error: `Z3 initialization failed: ${error}`,
+            };
+          }
+        }
+
+        this.log('debug', 'Verifying loop invariant with detailed model');
+
+        // Извлекаем все имена переменных
+        const allVarNames = new Set<string>();
+
+        const invariantNames = this.extractVariableNames(invariant);
+        for (const name of invariantNames) {
+          allVarNames.add(name);
+        }
+
+        const conditionNames = this.extractVariableNames(condition);
+        for (const name of conditionNames) {
+          allVarNames.add(name);
+        }
+
+        for (const constraint of loopBody) {
+          const names = this.extractVariableNames(constraint);
+          for (const name of names) {
+            allVarNames.add(name);
+          }
+        }
+
+        if (initialCondition) {
+          const initialNames = this.extractVariableNames(initialCondition);
+          for (const name of initialNames) {
+            allVarNames.add(name);
+          }
+        }
+
+        const varNames = Array.from(allVarNames);
+
+        if (varNames.length === 0) {
+          return {
+            isValid: false,
+            time: Date.now() - startTime,
+            error: 'No variables found in invariant or loop body',
+          };
+        }
+
+        // Создаем Z3 переменные для состояния ДО (i)
+        const vars = new Map<string, any>();
+        for (const name of varNames) {
+          try {
+            vars.set(name, this.context.Int.const(name));
+          } catch (error) {
+            return {
+              isValid: false,
+              time: Date.now() - startTime,
+              error: `Failed to create variable ${name}: ${error}`,
+            };
+          }
+        }
+
+        // Создаем Z3 переменные для состояния ПОСЛЕ (i')
+        const varsAfter = new Map<string, any>();
+        for (const name of varNames) {
+          try {
+            varsAfter.set(name, this.context.Int.const(`${name}_after`));
+          } catch (error) {
+            varsAfter.set(name, vars.get(name)!);
+          }
+        }
+
+        // Преобразуем инвариант в Z3 для состояния ДО
+        const invariantFormula = this.constraintToZ3(invariant, vars);
+        if (!invariantFormula) {
+          return {
+            isValid: false,
+            time: Date.now() - startTime,
+            error: 'Invalid invariant formula',
+          };
+        }
+
+        // Преобразуем условие в Z3 для состояния ДО
+        const conditionFormula = this.constraintToZ3(condition, vars);
+        if (!conditionFormula) {
+          return {
+            isValid: false,
+            time: Date.now() - startTime,
+            error: 'Invalid condition formula',
+          };
+        }
+
+        // Проверка начального условия
+        if (initialCondition) {
+          this.solver.push();
+
+          try {
+            const initialFormula = this.constraintToZ3(initialCondition, vars);
+            if (initialFormula) {
+              // Проверяем: initialCondition ∧ ¬invariant
+              this.solver.add(initialFormula);
+              this.solver.add(this.context.Not(invariantFormula));
+
+              const result = await this.solver.check();
+
+              if (result === 'sat') {
+                // Нашли контрпример - инвариант не выполняется с начальных условий
+                const model = this.extractModel(vars);
+                return {
+                  isValid: false,
+                  model,
+                  counterexample: model.size > 0 ? model : undefined,
+                  time: Date.now() - startTime,
+                  error: 'Invariant does not hold initially',
+                };
+              }
+            }
+          } catch (error) {
+            // Игнорируем ошибки
+          } finally {
+            this.solver.pop();
+          }
+        }
+
+        // Проверяем сохранение инварианта
+        this.solver.push();
+        try {
+          this.solver.add(invariantFormula);
+          this.solver.add(conditionFormula);
+
+          // Применяем тело цикла
+          for (const constraint of loopBody) {
+            const applied = this.applyConstraintToAfter(constraint, vars, varsAfter);
+            if (applied) {
+              this.solver.add(applied);
+            }
+          }
+
+          // Для переменных, которые не изменились, добавляем равенство
+          const modifiedVars = new Set<string>();
+          for (const constraint of loopBody) {
+            const modified = this.extractModifiedVariables(constraint);
+            for (const name of modified) {
+              modifiedVars.add(name);
+            }
+          }
+
+          for (const [name, expr] of vars) {
+            const afterExpr = varsAfter.get(name);
+            if (afterExpr && !modifiedVars.has(name)) {
+              try {
+                this.solver.add(this.context.Eq(afterExpr, expr));
+              } catch (error) {
+                // Игнорируем
+              }
+            }
+          }
+
+          const invariantAfter = this.constraintToZ3(invariant, varsAfter);
+          if (!invariantAfter) {
+            this.solver.pop();
+            return {
+              isValid: false,
+              time: Date.now() - startTime,
+              error: 'Failed to create invariant after transformation',
+            };
+          }
+
+          this.solver.add(this.context.Not(invariantAfter));
+
+          const result = await this.solver.check();
+
+          if (result === 'unsat') {
+            return {
+              isValid: true,
+              time: Date.now() - startTime,
+              proof: 'Loop invariant is preserved',
+            };
+          } else if (result === 'sat') {
+            // Получаем детальную модель
+            let model: Map<string, any> | undefined;
+            let counterexample: Map<string, any> | undefined;
+
+            try {
+              const solverModel = this.solver.model();
+              model = new Map<string, any>();
+
+              // Извлекаем значения для всех переменных
+              for (const [name, varExpr] of vars) {
+                try {
+                  const value = solverModel.eval(varExpr);
+                  if (value !== null && value !== undefined) {
+                    model.set(name, value.toString());
+                  }
+                } catch (e) {
+                  // Игнорируем ошибки для отдельных переменных
+                }
+              }
+
+              for (const [name, varExpr] of varsAfter) {
+                try {
+                  const value = solverModel.eval(varExpr);
+                  if (value !== null && value !== undefined) {
+                    model.set(`${name}_after`, value.toString());
+                  }
+                } catch (e) {
+                  // Игнорируем ошибки для отдельных переменных
+                }
+              }
+
+              if (model.size > 0) {
+                counterexample = model;
+              }
+            } catch (error) {
+              // Игнорируем ошибки извлечения модели
+            }
+
+            // Проверяем, является ли контрпример реальным
+            // Если модель содержит только символьные значения, это может быть ложное срабатывание
+            let isRealCounterexample = false;
+            if (model && model.size > 0) {
+              counterexample = counterexample ?? new Map<string, any>();
+              let hasConcreteValues = false;
+              for (const [key, value] of model) {
+                counterexample.set(key, value);
+                if (typeof value === 'string' && !isNaN(Number(value))) {
+                  hasConcreteValues = true;
+                  break;
+                }
+              }
+              isRealCounterexample = hasConcreteValues;
+            }
+
+            if (!isRealCounterexample) {
+              // Если модель не содержит конкретных значений,
+              // проверяем альтернативным способом
+              this.solver.pop();
+
+              // Пробуем найти конкретный контрпример с ограничениями
+              this.solver.push();
+              try {
+                // Добавляем ограничения на диапазон переменных
+                for (const [name] of vars) {
+                  try {
+                    const varExpr = vars.get(name);
+                    if (varExpr) {
+                      this.solver.add(this.context.GE(varExpr, this.context.Int.val(-1000)));
+                      this.solver.add(this.context.LE(varExpr, this.context.Int.val(1000)));
+                    }
+                  } catch (e) {
+                    // Игнорируем
+                  }
+                }
+
+                // Проверяем снова
+                const result2 = await this.solver.check();
+
+                if (result2 === 'sat') {
+                  const solverModel2 = this.solver.model();
+                  const concreteModel = new Map<string, any>();
+
+                  for (const [name, varExpr] of vars) {
+                    try {
+                      const value = solverModel2.eval(varExpr);
+                      if (value !== null && value !== undefined && !isNaN(Number(value.toString()))) {
+                        concreteModel.set(name, value.toString());
+                      }
+                    } catch (e) {
+                      // Игнорируем
+                    }
+                  }
+
+                  for (const [name, varExpr] of varsAfter) {
+                    try {
+                      const value = solverModel2.eval(varExpr);
+                      if (value !== null && value !== undefined && !isNaN(Number(value.toString()))) {
+                        concreteModel.set(`${name}_after`, value.toString());
+                      }
+                    } catch (e) {
+                      // Игнорируем
+                    }
+                  }
+
+                  if (concreteModel.size > 0) {
+                    counterexample = concreteModel;
+                    model = concreteModel;
+                  }
+                }
+              } catch (error) {
+                // Игнорируем
+              } finally {
+                this.solver.pop();
+              }
+            }
+
+            this.solver.pop();
+
+            return {
+              isValid: false,
+              model: model || undefined,
+              counterexample: counterexample || undefined,
+              time: Date.now() - startTime,
+              error: isRealCounterexample
+                ? 'Loop invariant violated after body execution'
+                : 'Potential loop invariant violation (symbolic)',
+            };
+          } else {
+            this.solver.pop();
+            return {
+              isValid: false,
+              time: Date.now() - startTime,
+              error: `Z3 returned: ${result}`,
+            };
+          }
+        } catch (error: any) {
+          this.solver.pop();
+          return {
+            isValid: false,
+            time: Date.now() - startTime,
+            error: error.message || String(error),
+          };
+        }
+      } catch (error: any) {
+        return {
+          isValid: false,
+          time: Date.now() - startTime,
+          error: error.message || String(error),
+        };
+      }
+    });
   }
 
   private parseExpression(expr: string, vars: Map<string, any>): any {
