@@ -198,6 +198,7 @@ export class Z3Verifier {
               try {
                 const equality = this.context.Eq(resultVar, bodyExpression);
                 this.solver.add(equality);
+                console.log(`  ✅ Added: result == ${bodyExpr}`);
               } catch (error) {
                 console.warn(`  ⚠️ Failed to add equality: ${error}`);
               }
