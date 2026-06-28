@@ -2,6 +2,7 @@
 
 import { init } from 'z3-solver';
 import { Mutex } from 'async-mutex';
+import { FunctionBodyModeler } from './FunctionBodyModeler.js';
 
 // ============================================
 // ТИПЫ ДЛЯ КОНТРАКТОВ
@@ -34,7 +35,8 @@ export interface VerificationConstraint {
     | 'mul'
     | 'div'
     | 'mod'
-    | 'pow';
+    | 'pow'
+    | 'assignment';
   left?: any;
   right?: any;
   variable?: string;
@@ -59,6 +61,7 @@ export interface VerificationResult {
   error?: string;
   functionName?: string;
   failedConstraint?: string;
+  warning?: string;
 }
 
 // ============================================
@@ -71,9 +74,12 @@ export class Z3Verifier {
   private initialized = false;
   private mutex: Mutex;
   private initializationPromise: Promise<void> | null = null;
+  private modeler: FunctionBodyModeler | null = null;
+  private logger: any = null;
 
-  constructor() {
+  constructor(logger?: any) {
     this.mutex = new Mutex();
+    this.logger = logger || null;
   }
 
   async initialize(): Promise<void> {
@@ -89,16 +95,71 @@ export class Z3Verifier {
         const { Context } = Z3Module;
         this.context = new Context('main');
         this.solver = new this.context.Solver();
+        this.modeler = new FunctionBodyModeler(this.context, this.solver);
         this.initialized = true;
-        console.log('✅ Z3 solver initialized');
+        this.log('info', 'Z3 solver initialized');
       } catch (error) {
-        console.error('❌ Failed to initialize Z3:', error);
+        this.log('error', 'Failed to initialize Z3', { error });
         this.initialized = false;
         throw error;
       }
     });
 
     return this.initializationPromise;
+  }
+
+  // ============================================
+  // МЕТОДЫ ЛОГГИРОВАНИЯ
+  // ============================================
+
+  private log(level: 'debug' | 'info' | 'warn' | 'error', message: string, context?: any): void {
+    if (!this.logger) {
+      // Если логгер не передан, используем console
+      const prefix = `[Z3Verifier]`;
+      switch (level) {
+        case 'debug':
+          console.debug(prefix, message, context || '');
+          break;
+        case 'info':
+          console.info(prefix, message, context || '');
+          break;
+        case 'warn':
+          console.warn(prefix, message, context || '');
+          break;
+        case 'error':
+          console.error(prefix, message, context || '');
+          break;
+      }
+      return;
+    }
+
+    // Используем переданный логгер
+    try {
+      switch (level) {
+        case 'debug':
+          if (typeof this.logger.debug === 'function') {
+            this.logger.debug(message, context);
+          }
+          break;
+        case 'info':
+          if (typeof this.logger.info === 'function') {
+            this.logger.info(message, context);
+          }
+          break;
+        case 'warn':
+          if (typeof this.logger.warn === 'function') {
+            this.logger.warn(message, context);
+          }
+          break;
+        case 'error':
+          if (typeof this.logger.error === 'function') {
+            this.logger.error(message, context);
+          }
+          break;
+      }
+    } catch (error) {
+      // Игнорируем ошибки логирования
+    }
   }
 
   // ============================================
@@ -121,6 +182,8 @@ export class Z3Verifier {
             };
           }
         }
+
+        this.log('debug', 'Verifying function', { name: contract.name });
 
         // 1. СОЗДАЕМ ПЕРЕМЕННЫЕ В Z3
         const vars = new Map<string, any>();
@@ -163,23 +226,19 @@ export class Z3Verifier {
           }
         }
 
-        // ⭐ МОДЕЛИРОВАНИЕ ТЕЛА ФУНКЦИИ
+        // МОДЕЛИРОВАНИЕ ТЕЛА ФУНКЦИИ через FunctionBodyModeler
         let bodyExpression: any = null;
 
         if (contract.body && resultVar) {
           try {
-            // Извлекаем выражение из тела функции
             let bodyExpr = contract.body.trim();
 
-            // Убираем 'return ' если есть
             if (bodyExpr.startsWith('return ')) {
               bodyExpr = bodyExpr.substring(7).trim();
             }
-            // Убираем ';' если есть
             if (bodyExpr.endsWith(';')) {
               bodyExpr = bodyExpr.slice(0, -1).trim();
             }
-            // Убираем фигурные скобки если есть
             if (bodyExpr.startsWith('{') && bodyExpr.endsWith('}')) {
               bodyExpr = bodyExpr.slice(1, -1).trim();
               if (bodyExpr.startsWith('return ')) {
@@ -190,21 +249,30 @@ export class Z3Verifier {
               }
             }
 
-            // Парсим выражение
-            bodyExpression = this.parseExpression(bodyExpr, vars);
+            const params = contract.params.map(p => ({
+              name: p.name,
+              type: p.type,
+            }));
 
-            if (bodyExpression) {
-              // ⭐ Связываем result с телом функции
+            const bodyModel = await this.modeler!.modelFunctionBody(
+              `{ return ${bodyExpr}; }`,
+              params,
+              contract.returnType
+            );
+
+            if (bodyModel.success && bodyModel.resultVar) {
+              bodyExpression = bodyModel.resultVar;
+
               try {
                 const equality = this.context.Eq(resultVar, bodyExpression);
                 this.solver.add(equality);
-                console.log(`  ✅ Added: result == ${bodyExpr}`);
+                this.log('debug', 'Added body equality', { body: bodyExpr });
               } catch (error) {
-                console.warn(`  ⚠️ Failed to add equality: ${error}`);
+                this.log('warn', 'Failed to add equality', { error });
               }
             }
           } catch (error) {
-            console.warn(`⚠️ Failed to model function body: ${error}`);
+            this.log('warn', 'Failed to model function body', { error });
           }
         }
 
@@ -299,6 +367,7 @@ export class Z3Verifier {
 
             if (result === 'sat') {
               const model = this.extractModel(vars);
+              this.log('warn', 'Verification failed - postcondition not satisfied', { model });
               return {
                 isValid: false,
                 model,
@@ -307,6 +376,7 @@ export class Z3Verifier {
                 error: 'Postcondition does not follow from preconditions, invariants, and body',
               };
             } else if (result === 'unsat') {
+              this.log('info', 'Function verified successfully', { name: contract.name });
               return {
                 isValid: true,
                 time: Date.now() - startTime,
@@ -362,7 +432,7 @@ export class Z3Verifier {
           }
         }
       } catch (error: any) {
-        console.error('Verification error:', error);
+        this.log('error', 'Verification error', { error });
         return {
           isValid: false,
           time: Date.now() - startTime,
@@ -396,6 +466,11 @@ export class Z3Verifier {
             };
           }
         }
+
+        this.log('debug', 'Verifying equivalence', {
+          original: original.substring(0, 50),
+          modified: modified.substring(0, 50),
+        });
 
         // Создаем переменные
         const vars = new Map<string, any>();
@@ -520,8 +595,10 @@ export class Z3Verifier {
         this.solver.pop();
 
         if (result === 'unsat') {
+          this.log('info', 'Expressions are equivalent');
           return { isValid: true, time: Date.now() - startTime };
         } else if (result === 'sat') {
+          this.log('warn', 'Expressions are NOT equivalent', { counterexample });
           return {
             isValid: false,
             model,
@@ -553,7 +630,7 @@ export class Z3Verifier {
   async verifyLoopInvariant(
     invariant: VerificationConstraint,
     condition: VerificationConstraint,
-    _loopBody: VerificationConstraint[]
+    loopBody: VerificationConstraint[]
   ): Promise<VerificationResult> {
     return this.mutex.runExclusive(async () => {
       const startTime = Date.now();
@@ -571,63 +648,227 @@ export class Z3Verifier {
           }
         }
 
-        const vars = new Map<string, any>();
+        this.log('debug', 'Verifying loop invariant');
 
-        const varNames = this.extractVariableNames(invariant);
+        // 1. Извлекаем все имена переменных
+        const allVarNames = new Set<string>();
+
+        const invariantNames = this.extractVariableNames(invariant);
+        for (const name of invariantNames) {
+          allVarNames.add(name);
+        }
+
+        const conditionNames = this.extractVariableNames(condition);
+        for (const name of conditionNames) {
+          allVarNames.add(name);
+        }
+
+        for (const constraint of loopBody) {
+          const names = this.extractVariableNames(constraint);
+          for (const name of names) {
+            allVarNames.add(name);
+          }
+        }
+
+        const varNames = Array.from(allVarNames);
+
+        if (varNames.length === 0) {
+          return {
+            isValid: false,
+            time: Date.now() - startTime,
+            error: 'No variables found in invariant or loop body',
+          };
+        }
+
+        // 2. Создаем Z3 переменные для состояния ДО (i)
+        const vars = new Map<string, any>();
         for (const name of varNames) {
           try {
             vars.set(name, this.context.Int.const(name));
           } catch (error) {
-            // Игнорируем ошибки
+            return {
+              isValid: false,
+              time: Date.now() - startTime,
+              error: `Failed to create variable ${name}: ${error}`,
+            };
           }
         }
 
-        const invariantFormula = this.constraintToZ3(invariant, vars);
-        const conditionFormula = this.constraintToZ3(condition, vars);
+        // 3. Создаем Z3 переменные для состояния ПОСЛЕ (i')
+        const varsAfter = new Map<string, any>();
+        for (const name of varNames) {
+          try {
+            varsAfter.set(name, this.context.Int.const(`${name}_after`));
+          } catch (error) {
+            varsAfter.set(name, vars.get(name)!);
+          }
+        }
 
-        if (!invariantFormula || !conditionFormula) {
+        // 4. Преобразуем инвариант в Z3 для состояния ДО
+        const invariantFormula = this.constraintToZ3(invariant, vars);
+        if (!invariantFormula) {
           return {
             isValid: false,
             time: Date.now() - startTime,
-            error: 'Invalid invariant or condition',
+            error: 'Invalid invariant formula',
           };
         }
 
-        this.solver.push();
+        // 5. Преобразуем условие в Z3 для состояния ДО
+        const conditionFormula = this.constraintToZ3(condition, vars);
+        if (!conditionFormula) {
+          return {
+            isValid: false,
+            time: Date.now() - startTime,
+            error: 'Invalid condition formula',
+          };
+        }
 
+        // 6. ШАГ 1: Проверяем достижимость тела цикла
+        this.solver.push();
         try {
-          const implication = this.context.Implies(
-            this.context.And(invariantFormula, conditionFormula),
-            invariantFormula
-          );
-          this.solver.add(this.context.Not(implication));
+          this.solver.add(invariantFormula);
+          this.solver.add(conditionFormula);
+
+          // Используем applyConstraintToAfter для добавления присваиваний
+          for (const constraint of loopBody) {
+            const applied = this.applyConstraintToAfter(constraint, vars, varsAfter);
+            if (applied) {
+              this.solver.add(applied);
+            }
+          }
+
+          const reachabilityResult = await this.solver.check();
+          this.solver.pop();
+
+          if (reachabilityResult === 'unsat') {
+            // Проверяем, какие переменные изменяются
+            const modifiedVars = new Set<string>();
+            for (const constraint of loopBody) {
+              const modified = this.extractModifiedVariables(constraint);
+              for (const name of modified) {
+                modifiedVars.add(name);
+              }
+            }
+
+            this.log('warn', 'Loop body is unreachable - invariant is vacuously true', {
+              modifiedVars: Array.from(modifiedVars),
+            });
+
+            return {
+              isValid: true,
+              time: Date.now() - startTime,
+              warning: `Loop condition and body are contradictory - invariant is vacuously true. Modified variables: ${Array.from(modifiedVars).join(', ')}`,
+            };
+          }
         } catch (error) {
           this.solver.pop();
           return {
             isValid: false,
             time: Date.now() - startTime,
-            error: 'Failed to add implication',
+            error: `Failed to check reachability: ${error}`,
           };
         }
 
-        const result = await this.solver.check();
-        this.solver.pop();
+        // 7. ШАГ 2: Проверяем сохранение инварианта
+        this.solver.push();
+        try {
+          this.solver.add(invariantFormula);
+          this.solver.add(conditionFormula);
 
-        if (result === 'unsat') {
-          return { isValid: true, time: Date.now() - startTime };
-        } else if (result === 'sat') {
-          const model = this.extractModel(vars);
+          // Используем applyConstraintToAfter для добавления присваиваний
+          for (const constraint of loopBody) {
+            const applied = this.applyConstraintToAfter(constraint, vars, varsAfter);
+            if (applied) {
+              this.solver.add(applied);
+            }
+          }
+
+          // Для переменных, которые не изменились, добавляем равенство
+          // Используем extractModifiedVariables для определения изменённых переменных
+          const modifiedVars = new Set<string>();
+          for (const constraint of loopBody) {
+            const modified = this.extractModifiedVariables(constraint);
+            for (const name of modified) {
+              modifiedVars.add(name);
+            }
+          }
+
+          for (const [name, expr] of vars) {
+            const afterExpr = varsAfter.get(name);
+            if (afterExpr && !modifiedVars.has(name)) {
+              try {
+                this.solver.add(this.context.Eq(afterExpr, expr));
+              } catch (error) {
+                // Игнорируем
+              }
+            }
+          }
+
+          const invariantAfter = this.constraintToZ3(invariant, varsAfter);
+          if (!invariantAfter) {
+            this.solver.pop();
+            return {
+              isValid: false,
+              time: Date.now() - startTime,
+              error: 'Failed to create invariant after transformation',
+            };
+          }
+
+          this.solver.add(this.context.Not(invariantAfter));
+
+          const result = await this.solver.check();
+          this.solver.pop();
+
+          if (result === 'unsat') {
+            // Используем buildLoopBodyCodeFromConstraints для отладки
+            const varNamesArray = Array.from(vars.keys());
+            const loopBodyCode = this.buildLoopBodyCodeFromConstraints(loopBody, varNamesArray);
+
+            this.log('info', 'Loop invariant is preserved', {
+              loopBody: loopBodyCode,
+            });
+
+            return {
+              isValid: true,
+              time: Date.now() - startTime,
+              proof: `Loop body: ${loopBodyCode}`,
+            };
+          } else if (result === 'sat') {
+            // Получаем модель для контрпримера
+            const model = this.extractModel(vars);
+            const modelAfter = this.extractModel(varsAfter);
+
+            const counterexample = new Map<string, any>();
+            for (const [name, value] of model) {
+              counterexample.set(name, value);
+            }
+            for (const [name, value] of modelAfter) {
+              counterexample.set(`${name}_after`, value);
+            }
+
+            this.log('warn', 'Loop invariant violated', { counterexample });
+
+            return {
+              isValid: false,
+              model: counterexample,
+              counterexample: counterexample.size > 0 ? counterexample : undefined,
+              time: Date.now() - startTime,
+              error: 'Loop invariant violated after body execution',
+            };
+          } else {
+            return {
+              isValid: false,
+              time: Date.now() - startTime,
+              error: `Z3 returned: ${result}`,
+            };
+          }
+        } catch (error: any) {
+          this.solver.pop();
           return {
             isValid: false,
-            model,
-            counterexample: model,
             time: Date.now() - startTime,
-          };
-        } else {
-          return {
-            isValid: false,
-            time: Date.now() - startTime,
-            error: `Z3 returned: ${result}`,
+            error: error.message || String(error),
           };
         }
       } catch (error: any) {
@@ -746,7 +987,7 @@ export class Z3Verifier {
           return null;
       }
     } catch (error) {
-      console.warn(`⚠️ Constraint conversion failed: ${error}`);
+      this.log('warn', 'Constraint conversion failed', { error });
       return null;
     }
   }
@@ -1143,6 +1384,209 @@ export class Z3Verifier {
     return model;
   }
 
+  // ============================================
+  // НОВЫЕ МЕТОДЫ ДЛЯ verifyLoopInvariant
+  // ============================================
+
+  /**
+   * Строит код тела цикла из ограничений
+   */
+  private buildLoopBodyCodeFromConstraints(
+    constraints: VerificationConstraint[],
+    varNames: string[]
+  ): string {
+    const statements: string[] = [];
+
+    for (const constraint of constraints) {
+      const code = this.constraintToCodeString(constraint, varNames);
+      if (code) {
+        statements.push(code);
+      }
+    }
+
+    if (statements.length === 0) {
+      return '{ }';
+    }
+
+    return `{ ${statements.join('; ')}; }`;
+  }
+
+  /**
+   * Преобразует ограничение в строку кода
+   */
+  private constraintToCodeString(
+    constraint: VerificationConstraint,
+    varNames: string[]
+  ): string | null {
+    switch (constraint.type) {
+      case 'equality': {
+        const left = constraint.left;
+        const right = constraint.right;
+
+        if (typeof left === 'string' && varNames.includes(left)) {
+          const rightCode = this.valueToCodeString(right, varNames);
+          if (rightCode) {
+            return `${left} = ${rightCode}`;
+          }
+        }
+        return null;
+      }
+
+      case 'assignment': {
+        const left = constraint.left;
+        const right = constraint.right;
+
+        if (typeof left === 'string' && varNames.includes(left)) {
+          const rightCode = this.valueToCodeString(right, varNames);
+          if (rightCode) {
+            return `${left} = ${rightCode}`;
+          }
+        }
+        return null;
+      }
+
+      case 'range': {
+        const varName = constraint.variable;
+        if (varName && varNames.includes(varName)) {
+          const min = constraint.min ?? -Infinity;
+          const max = constraint.max ?? Infinity;
+          if (isFinite(min) && isFinite(max)) {
+            // Простое увеличение на 1 для демонстрации
+            return `${varName} = ${varName} + 1`;
+          }
+        }
+        return null;
+      }
+
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Преобразует значение в строку кода
+   */
+  private valueToCodeString(value: any, varNames: string[]): string | null {
+    if (typeof value === 'number') {
+      return String(value);
+    }
+
+    if (typeof value === 'string') {
+      if (varNames.includes(value)) {
+        return value;
+      }
+      return `"${value}"`;
+    }
+
+    if (typeof value === 'object' && value !== null) {
+      if (value.type === 'add') {
+        const left = this.valueToCodeString(value.left, varNames);
+        const right = this.valueToCodeString(value.right, varNames);
+        if (left && right) return `(${left} + ${right})`;
+      }
+      if (value.type === 'sub') {
+        const left = this.valueToCodeString(value.left, varNames);
+        const right = this.valueToCodeString(value.right, varNames);
+        if (left && right) return `(${left} - ${right})`;
+      }
+      if (value.type === 'mul') {
+        const left = this.valueToCodeString(value.left, varNames);
+        const right = this.valueToCodeString(value.right, varNames);
+        if (left && right) return `(${left} * ${right})`;
+      }
+      if (value.type === 'div') {
+        const left = this.valueToCodeString(value.left, varNames);
+        const right = this.valueToCodeString(value.right, varNames);
+        if (left && right) return `(${left} / ${right})`;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Применяет ограничение к переменным "после"
+   */
+  private applyConstraintToAfter(
+    constraint: VerificationConstraint,
+    vars: Map<string, any>,
+    varsAfter: Map<string, any>
+  ): any | null {
+    if (!this.context) return null;
+
+    try {
+      // Обработка присваиваний
+      if (constraint.type === 'assignment') {
+        const variable = constraint.left;
+        const value = constraint.right;
+
+        if (typeof variable === 'string' && varsAfter.has(variable)) {
+          const afterVar = varsAfter.get(variable);
+          const valueExpr = this.valueToZ3(value, vars);
+          if (afterVar && valueExpr !== null) {
+            return this.context.Eq(afterVar, valueExpr);
+          }
+        }
+        return null;
+      }
+
+      // Обработка равенств
+      if (constraint.type === 'equality') {
+        const left = constraint.left;
+        const right = constraint.right;
+
+        if (typeof left === 'string' && varsAfter.has(left)) {
+          const afterVar = varsAfter.get(left);
+          const rightExpr = this.valueToZ3(right, vars);
+          if (afterVar && rightExpr !== null) {
+            return this.context.Eq(afterVar, rightExpr);
+          }
+        }
+        return null;
+      }
+
+      // Обработка других типов ограничений (если нужно)
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Извлекает имена переменных, которые изменяются в ограничении
+   */
+  private extractModifiedVariables(constraint: VerificationConstraint): string[] {
+    const modified: string[] = [];
+
+    switch (constraint.type) {
+      case 'equality': {
+        const left = constraint.left;
+        if (typeof left === 'string') {
+          modified.push(left);
+        }
+        break;
+      }
+
+      case 'assignment': {
+        const left = constraint.left;
+        if (typeof left === 'string') {
+          modified.push(left);
+        }
+        break;
+      }
+
+      case 'range': {
+        const varName = constraint.variable;
+        if (varName) {
+          modified.push(varName);
+        }
+        break;
+      }
+    }
+
+    return modified;
+  }
+
   async reset(): Promise<void> {
     return this.mutex.runExclusive(async () => {
       if (this.solver) {
@@ -1161,6 +1605,7 @@ export class Z3Verifier {
       }
       this.initialized = false;
       this.initializationPromise = null;
+      this.modeler = null;
     });
   }
 }
@@ -1234,4 +1679,9 @@ export function compare(
   right: string | number | any
 ): VerificationConstraint {
   return { type: 'comparison', left, operator, right };
+}
+
+// НОВАЯ ФУНКЦИЯ ДЛЯ ПРИСВАИВАНИЙ
+export function assign(variable: string, value: any): VerificationConstraint {
+  return { type: 'assignment', left: variable, right: value };
 }
