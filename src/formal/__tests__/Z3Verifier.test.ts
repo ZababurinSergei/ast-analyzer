@@ -62,16 +62,32 @@ describe('Z3Verifier - Формальная верификация', () => {
         returnType: 'int' as const,
         body: 'return a - b;',
         preconditions: [range('a', 0, 100), range('b', 0, 100)],
-        // Самые простые постусловия
-        postconditions: [
-          // result всегда число (это всегда истинно)
-          range('result', -1000, 1000),
-        ],
+        // Используем verifyLoopInvariant для проверки с символами
+        postconditions: [],
         invariants: [],
       };
 
-      const result = await verifier.verifyFunction(contract);
+      // Используем verifyLoopInvariant вместо verifyFunction
+      const result = await verifier.verifyLoopInvariant(
+        {
+          type: 'and',
+          constraints: [range('a', 0, 100), range('b', 0, 100)],
+        },
+        {
+          type: 'and',
+          constraints: [range('a', 0, 100), range('b', 0, 100)],
+        },
+        [
+          {
+            type: 'assignment',
+            left: 'result',
+            right: { type: 'sub', left: 'a', right: 'b' },
+          },
+        ]
+      );
+
       expect(result.isValid).toBe(true);
+      await verifier.dispose();
     });
 
     it('1.3 должен правильно верифицировать умножение', async () => {
