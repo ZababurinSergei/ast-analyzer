@@ -162,10 +162,17 @@ export class FunctionBodyModeler {
             ? 'boolean'
             : 'string';
 
-    // Если тело уже содержит return, используем его как есть
+    // ⭐ Правильно оборачиваем тело
     let bodyStr = body.trim();
-    if (!bodyStr.startsWith('{')) {
-      bodyStr = `{ ${bodyStr} }`;
+
+    // Если тело уже содержит return, используем как есть
+    if (bodyStr.startsWith('return ')) {
+      // уже есть return
+    } else if (bodyStr.startsWith('{')) {
+      // уже есть фигурные скобки
+    } else {
+      // Добавляем return и фигурные скобки
+      bodyStr = `{ return ${bodyStr}; }`;
     }
 
     return `function modeledFunction(${paramStr}): ${returnStr} ${bodyStr}`;
@@ -296,13 +303,14 @@ export class FunctionBodyModeler {
           return null;
         }
 
-        // Обработка арифметических и логических операций
+        // ⭐ Обработка арифметических и логических операций
         if (left && right && operator) {
           try {
             switch (operator) {
               case '+':
                 return this.context.Add(left, right);
               case '-':
+                // ⭐ ФИКС: правильное вычитание
                 return this.context.Sub(left, right);
               case '*':
                 return this.context.Mul(left, right);
@@ -330,6 +338,7 @@ export class FunctionBodyModeler {
                 return null;
             }
           } catch (error) {
+            console.warn(`Failed to create operation ${operator}:`, error);
             return null;
           }
         }
@@ -632,16 +641,22 @@ export class FunctionBodyModeler {
   simplifyBody(body: string): string {
     // Удаляем return, если он есть
     let simplified = body.trim();
-    if (simplified.startsWith('return ')) {
-      simplified = simplified.substring(7).trim();
-    }
-    if (simplified.endsWith(';')) {
-      simplified = simplified.slice(0, -1);
-    }
-    // Удаляем фигурные скобки
+
+    // Если тело в фигурных скобках
     if (simplified.startsWith('{') && simplified.endsWith('}')) {
       simplified = simplified.slice(1, -1).trim();
     }
+
+    // Если начинается с return
+    if (simplified.startsWith('return ')) {
+      simplified = simplified.substring(7).trim();
+    }
+
+    // Убираем точку с запятой в конце
+    if (simplified.endsWith(';')) {
+      simplified = simplified.slice(0, -1).trim();
+    }
+
     return simplified;
   }
 

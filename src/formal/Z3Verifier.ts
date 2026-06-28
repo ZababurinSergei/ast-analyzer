@@ -2,7 +2,6 @@
 
 import { init } from 'z3-solver';
 import { Mutex } from 'async-mutex';
-import { FunctionBodyModeler } from './FunctionBodyModeler.js';
 
 // ============================================
 // ТИПЫ ДЛЯ КОНТРАКТОВ
@@ -29,7 +28,13 @@ export interface VerificationConstraint {
     | 'not'
     | 'comparison'
     | 'function_call'
-    | 'return';
+    | 'return'
+    | 'add'
+    | 'sub'
+    | 'mul'
+    | 'div'
+    | 'mod'
+    | 'pow';
   left?: any;
   right?: any;
   variable?: string;
@@ -57,7 +62,7 @@ export interface VerificationResult {
 }
 
 // ============================================
-// ОСНОВНОЙ КЛАСС - С МОДЕЛИРОВАНИЕМ ТЕЛА ФУНКЦИИ
+// ОСНОВНОЙ КЛАСС
 // ============================================
 
 export class Z3Verifier {
@@ -66,11 +71,9 @@ export class Z3Verifier {
   private initialized = false;
   private mutex: Mutex;
   private initializationPromise: Promise<void> | null = null;
-  private bodyModeler: FunctionBodyModeler | null = null;
 
   constructor() {
     this.mutex = new Mutex();
-    // Инициализируем bodyModeler после создания context
   }
 
   async initialize(): Promise<void> {
@@ -85,13 +88,7 @@ export class Z3Verifier {
         const Z3Module = await init();
         const { Context } = Z3Module;
         this.context = new Context('main');
-        console.log(
-          '-----------------------------------------------',
-          JSON.stringify(this.context, null, 4)
-        );
         this.solver = new this.context.Solver();
-        // ⭐ Инициализируем bodyModeler с передачей solver
-        this.bodyModeler = new FunctionBodyModeler(this.context, this.solver);
         this.initialized = true;
         console.log('✅ Z3 solver initialized');
       } catch (error) {
@@ -105,7 +102,7 @@ export class Z3Verifier {
   }
 
   // ============================================
-  // ОСНОВНОЙ МЕТОД ВЕРИФИКАЦИИ - С МОДЕЛИРОВАНИЕМ
+  // ОСНОВНОЙ МЕТОД ВЕРИФИКАЦИИ
   // ============================================
 
   async verifyFunction(contract: FunctionContract): Promise<VerificationResult> {
@@ -166,65 +163,46 @@ export class Z3Verifier {
           }
         }
 
-        // ⭐ Убеждаемся, что bodyModeler инициализирован с solver
-        if (!this.bodyModeler) {
-          this.bodyModeler = new FunctionBodyModeler(this.context, this.solver);
-        }
-
-        // ============================================
-        // ⭐ НОВАЯ ЛОГИКА: МОДЕЛИРОВАНИЕ ТЕЛА ФУНКЦИИ
-        // ============================================
+        // ⭐ МОДЕЛИРОВАНИЕ ТЕЛА ФУНКЦИИ
         let bodyExpression: any = null;
 
-        if (contract.body && this.bodyModeler) {
+        if (contract.body && resultVar) {
           try {
-            // Проверяем, можно ли смоделировать тело
-            if (this.bodyModeler.canModelFunction(contract.body)) {
-              const bodyModel = await this.bodyModeler.modelFunctionBody(
-                contract.body,
-                contract.params,
-                contract.returnType
-              );
+            // Извлекаем выражение из тела функции
+            let bodyExpr = contract.body.trim();
 
-              if (bodyModel && bodyModel.success && bodyModel.bodyExpression) {
-                bodyExpression = bodyModel.bodyExpression;
-
-                // ⭐ КРИТИЧЕСКИ ВАЖНО: Связываем result с телом функции
-                if (bodyModel.resultVar && resultVar) {
-                  try {
-                    // Добавляем: result == bodyExpression
-                    const equality = this.context.Eq(resultVar, bodyExpression);
-                    this.solver.add(equality);
-                    console.log(`  ✅ Added: result == ${contract.body}`);
-                  } catch (error) {
-                    console.warn(`  ⚠️ Failed to add equality: ${error}`);
-                  }
-                }
+            // Убираем 'return ' если есть
+            if (bodyExpr.startsWith('return ')) {
+              bodyExpr = bodyExpr.substring(7).trim();
+            }
+            // Убираем ';' если есть
+            if (bodyExpr.endsWith(';')) {
+              bodyExpr = bodyExpr.slice(0, -1).trim();
+            }
+            // Убираем фигурные скобки если есть
+            if (bodyExpr.startsWith('{') && bodyExpr.endsWith('}')) {
+              bodyExpr = bodyExpr.slice(1, -1).trim();
+              if (bodyExpr.startsWith('return ')) {
+                bodyExpr = bodyExpr.substring(7).trim();
               }
-            } else {
-              // Сложное тело - используем упрощенную версию
-              const simplifiedBody = this.bodyModeler.simplifyBody(contract.body);
-              if (simplifiedBody) {
-                const simpleModel = await this.bodyModeler.modelFunctionBody(
-                  simplifiedBody,
-                  contract.params,
-                  contract.returnType
-                );
-                if (simpleModel && simpleModel.success && simpleModel.bodyExpression) {
-                  bodyExpression = simpleModel.bodyExpression;
-                  if (simpleModel.resultVar && resultVar) {
-                    try {
-                      const equality = this.context.Eq(resultVar, bodyExpression);
-                      this.solver.add(equality);
-                    } catch (error) {
-                      // Игнорируем ошибки
-                    }
-                  }
-                }
+              if (bodyExpr.endsWith(';')) {
+                bodyExpr = bodyExpr.slice(0, -1).trim();
+              }
+            }
+
+            // Парсим выражение
+            bodyExpression = this.parseExpression(bodyExpr, vars);
+
+            if (bodyExpression) {
+              // ⭐ Связываем result с телом функции
+              try {
+                const equality = this.context.Eq(resultVar, bodyExpression);
+                this.solver.add(equality);
+              } catch (error) {
+                console.warn(`  ⚠️ Failed to add equality: ${error}`);
               }
             }
           } catch (error) {
-            // Если моделирование не удалось, продолжаем без него
             console.warn(`⚠️ Failed to model function body: ${error}`);
           }
         }
@@ -278,11 +256,10 @@ export class Z3Verifier {
         // 4. СТРОИМ ПОСТУСЛОВИЕ
         const postconditions = this.buildPostconditionFormula(contract.postconditions, vars);
 
-        // 5. ПРОВЕРЯЕМ: предусловия + инварианты + тело => постусловия
+        // 5. ПРОВЕРЯЕМ
         if (preconditions.length > 0 || invariants.length > 0) {
           this.solver.push();
 
-          // Добавляем предусловия и инварианты
           for (const pre of preconditions) {
             this.solver.add(pre);
           }
@@ -291,7 +268,6 @@ export class Z3Verifier {
           }
 
           if (postconditions) {
-            // Проверяем, что предусловия + инварианты не противоречивы
             const checkResult = await this.solver.check();
 
             if (checkResult === 'unsat') {
@@ -303,7 +279,6 @@ export class Z3Verifier {
               };
             }
 
-            // Добавляем отрицание постусловия
             this.solver.push();
             try {
               this.solver.add(this.context.Not(postconditions));
@@ -397,7 +372,7 @@ export class Z3Verifier {
   }
 
   // ============================================
-  // ПРОВЕРКА ЭКВИВАЛЕНТНОСТИ - ИСПРАВЛЕНА
+  // ПРОВЕРКА ЭКВИВАЛЕНТНОСТИ
   // ============================================
 
   async verifyEquivalence(
@@ -409,7 +384,6 @@ export class Z3Verifier {
       const startTime = Date.now();
 
       try {
-        // ✅ Инициализируем Z3 если нужно
         if (!this.initialized) {
           try {
             await this.initialize();
@@ -442,9 +416,45 @@ export class Z3Verifier {
           }
         }
 
-        // Парсим выражения - улучшенная версия
+        // Парсим выражения
         const originalExpr = this.parseExpression(original, vars);
         const modifiedExpr = this.parseExpression(modified, vars);
+
+        if (modified === 'true' && originalExpr) {
+          this.solver.push();
+          try {
+            this.solver.add(this.context.Not(originalExpr));
+          } catch (error) {
+            this.solver.pop();
+            return {
+              isValid: false,
+              time: Date.now() - startTime,
+              error: 'Failed to add negation',
+            };
+          }
+
+          const result = await this.solver.check();
+          this.solver.pop();
+
+          if (result === 'unsat') {
+            return { isValid: true, time: Date.now() - startTime };
+          } else if (result === 'sat') {
+            const model = this.extractModel(vars);
+            return {
+              isValid: false,
+              model,
+              counterexample: model,
+              time: Date.now() - startTime,
+              error: 'Expression is not always true',
+            };
+          } else {
+            return {
+              isValid: false,
+              time: Date.now() - startTime,
+              error: `Z3 returned: ${result}`,
+            };
+          }
+        }
 
         if (!originalExpr || !modifiedExpr) {
           return {
@@ -454,11 +464,9 @@ export class Z3Verifier {
           };
         }
 
-        // Сохраняем состояние солвера
         this.solver.push();
 
         try {
-          // Проверяем: originalExpr == modifiedExpr для всех значений
           const equivalence = this.context.Eq(originalExpr, modifiedExpr);
           this.solver.add(this.context.Not(equivalence));
         } catch (error) {
@@ -472,7 +480,6 @@ export class Z3Verifier {
 
         const result = await this.solver.check();
 
-        // Извлекаем модель ДО того, как делаем pop
         let model: Map<string, any> | undefined;
         let counterexample: Map<string, any> | undefined;
 
@@ -481,7 +488,6 @@ export class Z3Verifier {
             const solverModel = this.solver.model();
             model = new Map<string, any>();
 
-            // Извлекаем значения для всех переменных
             for (const [name] of variables) {
               try {
                 const varExpr = vars.get(name);
@@ -496,11 +502,9 @@ export class Z3Verifier {
               }
             }
 
-            // Если модель не пуста, используем ее как контрпример
             if (model.size > 0) {
               counterexample = model;
             } else {
-              // Если модель пуста, пробуем извлечь через extractModel
               const extractedModel = this.extractModel(vars);
               if (extractedModel.size > 0) {
                 model = extractedModel;
@@ -515,10 +519,8 @@ export class Z3Verifier {
         this.solver.pop();
 
         if (result === 'unsat') {
-          // Выражения эквивалентны
           return { isValid: true, time: Date.now() - startTime };
         } else if (result === 'sat') {
-          // Найден контрпример - выражения не эквивалентны
           return {
             isValid: false,
             model,
@@ -544,7 +546,7 @@ export class Z3Verifier {
   }
 
   // ============================================
-  // ПРОВЕРКА ИНВАРИАНТОВ ЦИКЛОВ - ИСПРАВЛЕНА
+  // ПРОВЕРКА ИНВАРИАНТОВ ЦИКЛОВ
   // ============================================
 
   async verifyLoopInvariant(
@@ -556,7 +558,6 @@ export class Z3Verifier {
       const startTime = Date.now();
 
       try {
-        // ✅ Инициализируем Z3 если нужно
         if (!this.initialized) {
           try {
             await this.initialize();
@@ -571,7 +572,6 @@ export class Z3Verifier {
 
         const vars = new Map<string, any>();
 
-        // Создаем простые переменные для инварианта
         const varNames = this.extractVariableNames(invariant);
         for (const name of varNames) {
           try {
@@ -592,7 +592,6 @@ export class Z3Verifier {
           };
         }
 
-        // Проверяем: invariant ∧ condition => invariant
         this.solver.push();
 
         try {
@@ -641,7 +640,7 @@ export class Z3Verifier {
   }
 
   // ============================================
-  // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ - ИСПРАВЛЕНЫ
+  // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
   // ============================================
 
   private constraintToZ3(
@@ -754,12 +753,10 @@ export class Z3Verifier {
   private valueToZ3(value: any, variables: Map<string, any>): any {
     if (!this.context) return null;
 
-    // Переменная
     if (typeof value === 'string' && variables.has(value)) {
       return variables.get(value);
     }
 
-    // Число
     if (typeof value === 'number') {
       try {
         return this.context.Int.val(value);
@@ -768,7 +765,6 @@ export class Z3Verifier {
       }
     }
 
-    // Булево
     if (typeof value === 'boolean') {
       try {
         return this.context.Bool.val(value);
@@ -777,7 +773,6 @@ export class Z3Verifier {
       }
     }
 
-    // Строка
     if (typeof value === 'string') {
       try {
         return this.context.String.val(value);
@@ -786,8 +781,55 @@ export class Z3Verifier {
       }
     }
 
-    // Обработка объектов выражений
     if (typeof value === 'object' && value !== null) {
+      if (value.type === 'add' && value.left !== undefined && value.right !== undefined) {
+        const left = this.valueToZ3(value.left, variables);
+        const right = this.valueToZ3(value.right, variables);
+        if (left && right) {
+          try {
+            return this.context.Add(left, right);
+          } catch (error) {
+            return null;
+          }
+        }
+      }
+
+      if (value.type === 'sub' && value.left !== undefined && value.right !== undefined) {
+        const left = this.valueToZ3(value.left, variables);
+        const right = this.valueToZ3(value.right, variables);
+        if (left !== null && right !== null) {
+          try {
+            return this.context.Sub(left, right);
+          } catch (error) {
+            return null;
+          }
+        }
+      }
+
+      if (value.type === 'mul' && value.left !== undefined && value.right !== undefined) {
+        const left = this.valueToZ3(value.left, variables);
+        const right = this.valueToZ3(value.right, variables);
+        if (left && right) {
+          try {
+            return this.context.Mul(left, right);
+          } catch (error) {
+            return null;
+          }
+        }
+      }
+
+      if (value.type === 'div' && value.left !== undefined && value.right !== undefined) {
+        const left = this.valueToZ3(value.left, variables);
+        const right = this.valueToZ3(value.right, variables);
+        if (left && right) {
+          try {
+            return this.context.Div(left, right);
+          } catch (error) {
+            return null;
+          }
+        }
+      }
+
       if (value.left !== undefined && value.right !== undefined && value.type === 'equality') {
         const left = this.valueToZ3(value.left, variables);
         const right = this.valueToZ3(value.right, variables);
@@ -795,6 +837,7 @@ export class Z3Verifier {
           return this.context.Eq(left, right);
         }
       }
+
       if (value.left !== undefined && value.right !== undefined && value.type === 'comparison') {
         const left = this.valueToZ3(value.left, variables);
         const right = this.valueToZ3(value.right, variables);
@@ -816,6 +859,7 @@ export class Z3Verifier {
           }
         }
       }
+
       if (value.type === 'and' && value.constraints) {
         const formulas = value.constraints
           .map((c: any) => this.valueToZ3(c, variables))
@@ -824,6 +868,7 @@ export class Z3Verifier {
         if (formulas.length === 1) return formulas[0];
         return this.context.And(...formulas);
       }
+
       if (value.type === 'or' && value.constraints) {
         const formulas = value.constraints
           .map((c: any) => this.valueToZ3(c, variables))
@@ -857,26 +902,19 @@ export class Z3Verifier {
     if (!this.context) return null;
 
     const trimmed = expr.trim();
-    console.log(`  📝 Parsing: "${trimmed}"`);
 
-    // 1. Проверяем, является ли выражение переменной
     if (vars.has(trimmed)) {
-      console.log(`  ✅ Variable: ${trimmed}`);
       return vars.get(trimmed);
     }
 
-    // 2. Проверяем, является ли выражение числом
     if (!isNaN(Number(trimmed))) {
       try {
-        const value = Number(trimmed);
-        console.log(`  ✅ Number: ${value}`);
-        return this.context.Int.val(value);
+        return this.context.Int.val(Number(trimmed));
       } catch (error) {
         return null;
       }
     }
 
-    // 3. Проверяем булевы константы
     if (trimmed === 'true') {
       return this.context.Bool.val(true);
     }
@@ -884,79 +922,96 @@ export class Z3Verifier {
       return this.context.Bool.val(false);
     }
 
-    // 4. Парсим бинарные операции с правильным API Z3
-    const operators = [
-      { op: '===', priority: 0 },
-      { op: '==', priority: 0 },
-      { op: '!==', priority: 0 },
-      { op: '!=', priority: 0 },
-      { op: '&&', priority: 1 },
-      { op: '||', priority: 1 },
-      { op: '>=', priority: 2 },
-      { op: '<=', priority: 2 },
-      { op: '>', priority: 2 },
-      { op: '<', priority: 2 },
-      { op: '+', priority: 3 },
-      { op: '-', priority: 3 },
-      { op: '*', priority: 4 },
-      { op: '/', priority: 4 },
-    ];
-
-    // Ищем оператор с наименьшим приоритетом (вне скобок)
-    let bestOp = null;
-    let bestPos = -1;
-    let bestPriority = Infinity;
-
-    for (const { op, priority } of operators) {
+    if (trimmed.startsWith('(') && trimmed.endsWith(')')) {
       let depth = 0;
-      let pos = -1;
-
+      let isBalanced = true;
       for (let i = 0; i < trimmed.length; i++) {
         if (trimmed[i] === '(') depth++;
         if (trimmed[i] === ')') depth--;
-
-        if (depth === 0 && trimmed.slice(i, i + op.length) === op) {
-          pos = i;
+        if (depth === 0 && i < trimmed.length - 1) {
+          isBalanced = false;
           break;
         }
       }
-
-      if (pos !== -1 && priority < bestPriority) {
-        bestPriority = priority;
-        bestOp = op;
-        bestPos = pos;
+      if (isBalanced) {
+        return this.parseExpression(trimmed.slice(1, -1), vars);
       }
     }
 
-    if (bestOp !== null && bestPos !== -1) {
-      const left = this.parseExpression(trimmed.slice(0, bestPos).trim(), vars);
-      const right = this.parseExpression(trimmed.slice(bestPos + bestOp.length).trim(), vars);
+    const operatorGroups = [
+      { ops: ['=>'], priority: 0 },
+      { ops: ['===', '=='], priority: 1 },
+      { ops: ['!==', '!='], priority: 1 },
+      { ops: ['||'], priority: 2 },
+      { ops: ['&&'], priority: 3 },
+      { ops: ['>=', '<=', '>', '<'], priority: 4 },
+      { ops: ['+', '-'], priority: 5 },
+      { ops: ['*', '/'], priority: 6 },
+    ];
 
-      console.log(
-        `  🔄 Operation: ${bestOp}, left: "${trimmed.slice(0, bestPos).trim()}", right: "${trimmed.slice(bestPos + bestOp.length).trim()}"`
-      );
+    let foundOp = null;
+    let foundPos = -1;
+    let foundPriority = Infinity;
+
+    for (const group of operatorGroups) {
+      for (const op of group.ops) {
+        let depth = 0;
+        let pos = -1;
+
+        for (let i = 0; i < trimmed.length; i++) {
+          if (trimmed[i] === '(') depth++;
+          if (trimmed[i] === ')') depth--;
+
+          if (depth === 0 && trimmed.slice(i, i + op.length) === op) {
+            const isPartOfLarger =
+              (op === '=' && i + 1 < trimmed.length && trimmed[i + 1] === '=') ||
+              (op === '!' && i + 1 < trimmed.length && trimmed[i + 1] === '=') ||
+              (op === '>' && i + 1 < trimmed.length && trimmed[i + 1] === '=') ||
+              (op === '<' && i + 1 < trimmed.length && trimmed[i + 1] === '=') ||
+              (op === '&' && i + 1 < trimmed.length && trimmed[i + 1] === '&') ||
+              (op === '|' && i + 1 < trimmed.length && trimmed[i + 1] === '|') ||
+              (op === '*' && i + 1 < trimmed.length && trimmed[i + 1] === '*');
+
+            if (!isPartOfLarger) {
+              pos = i;
+              break;
+            }
+          }
+        }
+
+        if (pos !== -1 && group.priority < foundPriority) {
+          foundPriority = group.priority;
+          foundOp = op;
+          foundPos = pos;
+        }
+      }
+    }
+
+    if (foundOp !== null && foundPos !== -1) {
+      const left = this.parseExpression(trimmed.slice(0, foundPos).trim(), vars);
+      const right = this.parseExpression(trimmed.slice(foundPos + foundOp.length).trim(), vars);
 
       if (left && right) {
         try {
-          // Используем правильный API Z3 через контекст
-          switch (bestOp) {
-            case '+': {
-              // В Z3 API: context.Add(left, right) или left.add(right)
-              if (typeof this.context.Add === 'function') {
-                return this.context.Add(left, right);
-              } else if (typeof left.add === 'function') {
-                return left.add(right);
-              } else if (this.context.Int && typeof this.context.Int.add === 'function') {
-                return this.context.Int.add(left, right);
+          switch (foundOp) {
+            case '=>': {
+              if (typeof this.context.Implies === 'function') {
+                return this.context.Implies(left, right);
               } else {
-                // Fallback: используем сложение через выражение
-                console.log(`  ⚠️ Using fallback for +`);
-                return this.context.Eq(this.context.Int.const('_temp_' + Date.now()), {
-                  left,
-                  right,
-                  op: '+',
-                });
+                const notLeft =
+                  typeof this.context.Not === 'function' ? this.context.Not(left) : null;
+                if (notLeft && typeof this.context.Or === 'function') {
+                  return this.context.Or(notLeft, right);
+                }
+                return null;
               }
+            }
+            case '+': {
+              if (typeof this.context.Add === 'function') return this.context.Add(left, right);
+              if (typeof left.add === 'function') return left.add(right);
+              if (this.context.Int && typeof this.context.Int.add === 'function')
+                return this.context.Int.add(left, right);
+              return null;
             }
             case '-': {
               if (typeof this.context.Sub === 'function') return this.context.Sub(left, right);
@@ -983,85 +1038,62 @@ export class Z3Verifier {
             case '==': {
               if (typeof this.context.Eq === 'function') return this.context.Eq(left, right);
               if (typeof left.eq === 'function') return left.eq(right);
-              if (this.context.Bool && typeof this.context.Bool.eq === 'function')
-                return this.context.Bool.eq(left, right);
               return null;
             }
             case '!==':
             case '!=': {
-              if (typeof this.context.Not === 'function') {
-                const eq = this.context.Eq
+              const eq =
+                typeof this.context.Eq === 'function'
                   ? this.context.Eq(left, right)
-                  : left.eq
+                  : typeof left.eq === 'function'
                     ? left.eq(right)
                     : null;
-                return eq ? this.context.Not(eq) : null;
+              if (eq && typeof this.context.Not === 'function') {
+                return this.context.Not(eq);
               }
               return null;
             }
             case '>': {
               if (typeof this.context.GT === 'function') return this.context.GT(left, right);
               if (typeof left.gt === 'function') return left.gt(right);
-              if (this.context.Int && typeof this.context.Int.gt === 'function')
-                return this.context.Int.gt(left, right);
               return null;
             }
             case '>=': {
               if (typeof this.context.GE === 'function') return this.context.GE(left, right);
               if (typeof left.ge === 'function') return left.ge(right);
-              if (this.context.Int && typeof this.context.Int.ge === 'function')
-                return this.context.Int.ge(left, right);
               return null;
             }
             case '<': {
               if (typeof this.context.LT === 'function') return this.context.LT(left, right);
               if (typeof left.lt === 'function') return left.lt(right);
-              if (this.context.Int && typeof this.context.Int.lt === 'function')
-                return this.context.Int.lt(left, right);
               return null;
             }
             case '<=': {
               if (typeof this.context.LE === 'function') return this.context.LE(left, right);
               if (typeof left.le === 'function') return left.le(right);
-              if (this.context.Int && typeof this.context.Int.le === 'function')
-                return this.context.Int.le(left, right);
               return null;
             }
             case '&&': {
               if (typeof this.context.And === 'function') return this.context.And(left, right);
               if (typeof left.and === 'function') return left.and(right);
-              if (this.context.Bool && typeof this.context.Bool.and === 'function')
-                return this.context.Bool.and(left, right);
               return null;
             }
             case '||': {
               if (typeof this.context.Or === 'function') return this.context.Or(left, right);
               if (typeof left.or === 'function') return left.or(right);
-              if (this.context.Bool && typeof this.context.Bool.or === 'function')
-                return this.context.Bool.or(left, right);
               return null;
             }
             default:
-              console.log(`  ❌ Unknown operator: ${bestOp}`);
               return null;
           }
         } catch (error) {
-          console.log(`  ❌ Failed to create operation: ${error}`);
           return null;
         }
       } else {
-        console.log(`  ❌ Failed to parse left or right side`);
         return null;
       }
     }
 
-    // 5. Обработка скобок
-    if (trimmed.startsWith('(') && trimmed.endsWith(')')) {
-      console.log(`  🔄 Unwrapping parentheses`);
-      return this.parseExpression(trimmed.slice(1, -1), vars);
-    }
-
-    console.log(`  ❌ Failed to parse: "${trimmed}"`);
     return null;
   }
 
@@ -1133,8 +1165,24 @@ export class Z3Verifier {
 }
 
 // ============================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ СОЗДАНИЯ КОНТРАКТОВ
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ============================================
+
+export function add(left: any, right: any): VerificationConstraint {
+  return { type: 'add', left, right };
+}
+
+export function sub(left: any, right: any): VerificationConstraint {
+  return { type: 'sub', left, right };
+}
+
+export function mul(left: any, right: any): VerificationConstraint {
+  return { type: 'mul', left, right };
+}
+
+export function div(left: any, right: any): VerificationConstraint {
+  return { type: 'div', left, right };
+}
 
 export function createIntParam(name: string): { name: string; type: 'int' } {
   return { name, type: 'int' };
@@ -1180,9 +1228,9 @@ export function not(operand: VerificationConstraint): VerificationConstraint {
 }
 
 export function compare(
-  left: string | number,
+  left: string | number | any,
   operator: '>' | '>=' | '<' | '<=' | '==' | '!=',
-  right: string | number
+  right: string | number | any
 ): VerificationConstraint {
   return { type: 'comparison', left, operator, right };
 }
