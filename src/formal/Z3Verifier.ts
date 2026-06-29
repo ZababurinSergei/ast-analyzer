@@ -1476,7 +1476,11 @@ export class Z3Verifier {
                   for (const [name, varExpr] of vars) {
                     try {
                       const value = solverModel2.eval(varExpr);
-                      if (value !== null && value !== undefined && !isNaN(Number(value.toString()))) {
+                      if (
+                        value !== null &&
+                        value !== undefined &&
+                        !isNaN(Number(value.toString()))
+                      ) {
                         concreteModel.set(name, value.toString());
                       }
                     } catch (e) {
@@ -1487,7 +1491,11 @@ export class Z3Verifier {
                   for (const [name, varExpr] of varsAfter) {
                     try {
                       const value = solverModel2.eval(varExpr);
-                      if (value !== null && value !== undefined && !isNaN(Number(value.toString()))) {
+                      if (
+                        value !== null &&
+                        value !== undefined &&
+                        !isNaN(Number(value.toString()))
+                      ) {
                         concreteModel.set(`${name}_after`, value.toString());
                       }
                     } catch (e) {

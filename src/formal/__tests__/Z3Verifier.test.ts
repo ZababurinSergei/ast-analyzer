@@ -839,7 +839,6 @@ describe('Z3Verifier - Формальная верификация', () => {
       initializeSpy.mockRestore();
     });
 
-
     it('9.4 должен обрабатывать пустой контракт', async () => {
       const contract = {
         name: 'empty',
@@ -881,7 +880,6 @@ describe('Z3Verifier - Формальная верификация', () => {
   // packages/ast-analyzer/src/formal/__tests__/Z3Verifier.test.ts
 
   describe('Loop invariant verification', () => {
-
     // 10.1 - существующий тест
     it('10.1 должен проверять базовый инвариант цикла', async () => {
       const verifier = new Z3Verifier();
@@ -931,7 +929,6 @@ describe('Z3Verifier - Формальная верификация', () => {
 
       await verifier.dispose();
     });
-
 
     it('10.3 должен подтверждать корректный инвариант цикла', async () => {
       console.log('\n=== TEST 10.3: Valid loop invariant verification ===');
@@ -1055,7 +1052,9 @@ describe('Z3Verifier - Формальная верификация', () => {
       console.log(`   ✅ isValid: ${result.isValid}`);
       console.log(`   ⏱️  Time: ${result.time}ms`);
       if (result.counterexample) {
-        console.log(`   🔍 Counterexample: ${JSON.stringify(Object.fromEntries(result.counterexample))}`);
+        console.log(
+          `   🔍 Counterexample: ${JSON.stringify(Object.fromEntries(result.counterexample))}`
+        );
       }
 
       expect(result.isValid).toBe(false);
