@@ -1,5 +1,4 @@
-// src/formal/EquivalenceChecker.ts - ОБНОВЛЕННАЯ ВЕРСИЯ
-// СТРАТЕГИЯ: Z3 для математических выражений, AST для структурного сравнения
+// packages/ast-analyzer/src/formal/EquivalenceChecker.ts
 
 import type { FunctionContract } from './Z3Verifier.js';
 import { Z3Verifier, range, eq, or } from './Z3Verifier.js';
@@ -79,14 +78,17 @@ interface FunctionMatch {
 // ============================================
 
 export class EquivalenceChecker {
-  private z3Verifier: Z3Verifier;
+  private z3Verifier: Z3Verifier | null = null;
   private project: Project;
   private initialized = false;
   private options: EquivalenceOptions;
   private originalCode1 = '';
   private originalCode2 = '';
+  private initPromise: Promise<void> | null = null;
+  private initLock = false;
+  private z3Provided = false;
 
-  constructor(options: EquivalenceOptions = {}) {
+  constructor(options: EquivalenceOptions = {}, z3Verifier?: Z3Verifier) {
     this.options = {
       formalVerification: true,
       structuralCheck: true,
@@ -100,7 +102,13 @@ export class EquivalenceChecker {
       ...options,
     };
 
-    this.z3Verifier = new Z3Verifier();
+    if (z3Verifier) {
+      this.z3Verifier = z3Verifier;
+      this.z3Provided = true;
+      this.initialized = true;
+      console.log('✅ EquivalenceChecker using provided Z3Verifier (already initialized)');
+    }
+
     this.project = new Project({
       compilerOptions: {
         target: ScriptTarget.ES2022,
@@ -117,18 +125,81 @@ export class EquivalenceChecker {
   }
 
   async initialize(): Promise<void> {
-    if (this.initialized) return;
-    await this.z3Verifier.initialize();
-    this.initialized = true;
+    if (this.initialized) {
+      console.log('✅ EquivalenceChecker already initialized');
+      return;
+    }
+
+    if (this.z3Provided && this.z3Verifier) {
+      this.initialized = true;
+      console.log('✅ EquivalenceChecker marked as initialized (Z3 provided externally)');
+      return;
+    }
+
+    if (this.initPromise) {
+      console.log('⏳ EquivalenceChecker initialization in progress, waiting...');
+      await this.initPromise;
+      return;
+    }
+
+    if (this.initLock) {
+      return;
+    }
+
+    this.initLock = true;
+
+    try {
+      this.initPromise = this.doInitialize();
+      await this.initPromise;
+    } finally {
+      this.initLock = false;
+    }
+  }
+
+  private async doInitialize(): Promise<void> {
+    try {
+      console.log('🔧 Initializing EquivalenceChecker...');
+
+      if (!this.z3Verifier) {
+        this.z3Verifier = new Z3Verifier();
+        await this.z3Verifier.initialize();
+      } else if (!this.z3Provided) {
+        await this.z3Verifier.initialize();
+      }
+
+      this.initialized = true;
+      console.log('✅ EquivalenceChecker initialized successfully');
+    } catch (error) {
+      this.initialized = false;
+      throw error;
+    } finally {
+      this.initPromise = null;
+    }
   }
 
   async dispose(): Promise<void> {
-    await this.z3Verifier.dispose();
+    if (this.z3Provided) {
+      this.initialized = false;
+      console.log('✅ EquivalenceChecker disposed (Z3 kept alive)');
+      return;
+    }
+
+    if (this.z3Verifier) {
+      await this.z3Verifier.dispose();
+      this.z3Verifier = null;
+    }
+    this.initialized = false;
+    this.initPromise = null;
+    this.initLock = false;
   }
 
-  // ============================================
-  // ГЛАВНЫЙ МЕТОД: ПРОВЕРКА ФАЙЛОВ
-  // ============================================
+  private async getZ3Verifier(): Promise<Z3Verifier> {
+    await this.initialize();
+    if (!this.z3Verifier) {
+      throw new Error('Z3 verifier not initialized');
+    }
+    return this.z3Verifier;
+  }
 
   async checkFileEquivalence(
     originalPath: string,
@@ -148,7 +219,6 @@ export class EquivalenceChecker {
     console.log(`⏱️ Timeout: ${timeout}ms`);
     console.log(`${'='.repeat(70)}`);
 
-    // ✅ Check timeout
     if (Date.now() - startTime > timeout) {
       return {
         isEquivalent: false,
@@ -188,10 +258,6 @@ export class EquivalenceChecker {
       overwrite: true,
     });
 
-    // ============================================
-    // ЭТАП 1: СТРУКТУРНАЯ ПРОВЕРКА (AST) - ОСНОВНОЙ МЕТОД
-    // ============================================
-
     let astResult: {
       isEquivalent: boolean;
       differences: CodeDifference[];
@@ -199,7 +265,6 @@ export class EquivalenceChecker {
     } | null = null;
 
     if (mergedOptions.structuralCheck !== false) {
-      // ✅ Check timeout before AST analysis
       if (Date.now() - startTime > timeout) {
         return {
           isEquivalent: false,
@@ -250,10 +315,6 @@ export class EquivalenceChecker {
       }
     }
 
-    // ============================================
-    // ЭТАП 2: ФОРМАЛЬНАЯ ВЕРИФИКАЦИЯ (Z3) - ТОЛЬКО ДЛЯ ПРОСТЫХ ВЫРАЖЕНИЙ
-    // ============================================
-
     let formalResult: {
       isValid: boolean;
       counterexample?: Map<string, any>;
@@ -262,13 +323,11 @@ export class EquivalenceChecker {
       results?: any[];
     } | null = null;
 
-    // Запускаем Z3 только если AST нашел различия ИЛИ включен formalVerification
     const shouldRunZ3 =
       mergedOptions.formalVerification !== false &&
       (!astResult?.isEquivalent || astResult?.differences.length > 0);
 
     if (shouldRunZ3) {
-      // ✅ Check timeout before Z3 analysis
       if (Date.now() - startTime > timeout) {
         console.log('\n⚠️ Timeout before Z3 analysis, skipping...');
         formalResult = {
@@ -280,6 +339,8 @@ export class EquivalenceChecker {
         console.log('\n🔬 STEP 2: Formal verification via Z3 (SECONDARY - for expressions)...');
 
         try {
+          const z3 = await this.getZ3Verifier();
+
           const functions1 = this.extractFunctionsAST(sourceFile1);
           const functions2 = this.extractFunctionsAST(sourceFile2);
 
@@ -304,8 +365,6 @@ export class EquivalenceChecker {
             let z3Applied = false;
 
             for (const match of matchedFunctions) {
-              // Проверяем, можно ли применить Z3 к этой функции
-              // Только для простых математических функций без циклов и сложных условий
               if (
                 this.isSimpleMathFunction(match.original.body) &&
                 this.isSimpleMathFunction(match.modified.body)
@@ -319,7 +378,7 @@ export class EquivalenceChecker {
                     match.modified,
                     match.name
                   );
-                  const result = await this.z3Verifier.verifyFunction(contract);
+                  const result = await z3.verifyFunction(contract);
                   verificationResults.push({
                     name: match.name,
                     isValid: result.isValid,
@@ -349,11 +408,10 @@ export class EquivalenceChecker {
                   });
                 }
               } else {
-                // Для сложных функций используем только AST
                 console.log(`      🔍 Function: ${match.name} (AST only - complex)`);
                 verificationResults.push({
                   name: match.name,
-                  isValid: true, // AST уже проверил
+                  isValid: true,
                   note: 'Complex function - AST only',
                 });
               }
@@ -379,7 +437,6 @@ export class EquivalenceChecker {
             }
           }
 
-          // Если Z3 не прошел - возвращаем результат
           if (formalResult && !formalResult.isValid) {
             console.log('\n❌ Formal verification FAILED — files are NOT EQUIVALENT');
             return {
@@ -410,21 +467,15 @@ export class EquivalenceChecker {
       };
     }
 
-    // ============================================
-    // ЭТАП 3: КОМБИНИРОВАННЫЙ РЕЗУЛЬТАТ
-    // ============================================
-
     let isEquivalent: boolean;
     let confidence: number;
     let method: 'formal' | 'structural' | 'formal+structural' | 'ast-only';
 
     if (astResult) {
-      // AST - основной метод
       isEquivalent = astResult.isEquivalent;
       confidence = astResult.confidence;
       method = 'ast-only';
 
-      // Если Z3 прошел и AST нашел различия, повышаем уверенность
       if (formalResult && formalResult.isValid && !astResult.isEquivalent) {
         confidence = Math.max(confidence, 0.9);
         method = 'formal+structural';
@@ -494,7 +545,6 @@ export class EquivalenceChecker {
       allDifferences.push(...astResult.differences);
     }
 
-    // Уникализация различий
     const uniqueDifferences = this.uniqueDifferences(allDifferences);
 
     const result: EquivalenceResult = {
@@ -518,10 +568,6 @@ export class EquivalenceChecker {
     return result;
   }
 
-  // ============================================
-  // ПРОВЕРКА ФУНКЦИЙ
-  // ============================================
-
   async checkFunctionEquivalence(
     originalFunction: string,
     modifiedFunction: string,
@@ -538,7 +584,6 @@ export class EquivalenceChecker {
     console.log(`📋 Method: STRUCTURAL (AST) + FORMAL (Z3)`);
     console.log(`${'='.repeat(60)}`);
 
-    // ✅ Check timeout
     if (Date.now() - startTime > timeout) {
       return {
         isEquivalent: false,
@@ -561,7 +606,6 @@ export class EquivalenceChecker {
     this.originalCode1 = originalFunction;
     this.originalCode2 = modifiedFunction;
 
-    // AST сравнение
     let astResult: {
       isEquivalent: boolean;
       differences: CodeDifference[];
@@ -631,7 +675,6 @@ export class EquivalenceChecker {
       }
     }
 
-    // Z3 проверка - только для простых функций
     let formalResult: {
       isValid: boolean;
       counterexample?: Map<string, any>;
@@ -640,7 +683,6 @@ export class EquivalenceChecker {
     } | null = null;
 
     if (mergedOptions.formalVerification !== false && astResult && !astResult.isEquivalent) {
-      // ✅ Check timeout before Z3
       if (Date.now() - startTime > timeout) {
         console.log('\n⚠️ Timeout before Z3 analysis, skipping...');
         formalResult = {
@@ -652,11 +694,13 @@ export class EquivalenceChecker {
         console.log('\n🔬 STEP 2: Formal verification via Z3 (SECONDARY)...');
 
         try {
+          const z3 = await this.getZ3Verifier();
+
           if (
             this.isSimpleMathFunction(originalFunction) &&
             this.isSimpleMathFunction(modifiedFunction)
           ) {
-            const verifyResult = await this.z3Verifier.verifyFunction(contract);
+            const verifyResult = await z3.verifyFunction(contract);
             formalResult = {
               isValid: verifyResult.isValid,
               counterexample: verifyResult.counterexample,
@@ -692,7 +736,6 @@ export class EquivalenceChecker {
       }
     }
 
-    // Итоговый результат
     let isEquivalent: boolean;
     let confidence: number;
     let method: 'formal' | 'structural' | 'formal+structural' | 'ast-only';
@@ -744,10 +787,6 @@ export class EquivalenceChecker {
     return result;
   }
 
-  // ============================================
-  // ПРОВЕРКА ВЫРАЖЕНИЙ - ТОЛЬКО Z3
-  // ============================================
-
   async checkExpressionEquivalence(
     original: string,
     modified: string,
@@ -765,7 +804,6 @@ export class EquivalenceChecker {
     this.originalCode1 = original;
     this.originalCode2 = modified;
 
-    // ✅ Check timeout
     if (Date.now() - startTime > timeout) {
       return {
         isEquivalent: false,
@@ -795,7 +833,8 @@ export class EquivalenceChecker {
     } | null = null;
 
     try {
-      const verifyResult = await this.z3Verifier.verifyEquivalence(original, modified, variables);
+      const z3 = await this.getZ3Verifier();
+      const verifyResult = await z3.verifyEquivalence(original, modified, variables);
 
       formalResult = {
         isValid: verifyResult.isValid,
@@ -849,18 +888,12 @@ export class EquivalenceChecker {
     }
   }
 
-  // ============================================
-  // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
-  // ============================================
-
   private isSimpleMathFunction(body: string): boolean {
     if (!body) return false;
 
-    // Проверяем, что функция короткая и не содержит сложных конструкций
     const lines = body.split('\n').filter(line => line.trim() && !line.trim().startsWith('//'));
     if (lines.length > 5) return false;
 
-    // Проверяем наличие сложных конструкций
     const complexPatterns = [
       /for\s*\(/,
       /while\s*\(/,
@@ -875,7 +908,6 @@ export class EquivalenceChecker {
       if (pattern.test(body)) return false;
     }
 
-    // Проверяем, что это математическое выражение
     const mathPatterns = [
       /return\s*[a-zA-Z_]\s*[+\-*/]\s*[a-zA-Z_]/,
       /return\s*[a-zA-Z_]\s*[+\-*/]\s*\d+/,
@@ -886,10 +918,8 @@ export class EquivalenceChecker {
       if (pattern.test(body)) return true;
     }
 
-    // Если есть return с простым выражением
     if (/return\s+[^;]+;/.test(body)) {
       const expr = body.match(/return\s+([^;]+);/)?.[1] || '';
-      // Проверяем, что выражение содержит только математические операции
       if (!/[{}()\[\],]/.test(expr) && !/function/.test(expr)) {
         return true;
       }
@@ -984,7 +1014,6 @@ export class EquivalenceChecker {
   ): { isEquivalent: boolean; differences: CodeDifference[]; confidence?: number } {
     const differences: CodeDifference[] = [];
 
-    // ✅ FIX: Check if nodes exist
     if (!node1 || !node2) {
       differences.push({
         type: 'modified',
@@ -1429,9 +1458,7 @@ export class EquivalenceChecker {
   }
 
   isEquivalent(result: EquivalenceResult): boolean {
-    // ✅ FIX: Check that result is not null and has the right properties
     if (!result) return false;
-    // If the method is 'formal+structural' and Z3 says equivalent, trust it
     if (result.method === 'formal+structural' && result.formalResult?.isValid) {
       return true;
     }
@@ -1439,11 +1466,9 @@ export class EquivalenceChecker {
   }
 
   needsReview(result: EquivalenceResult): boolean {
-    // ✅ FIX: needsReview should return true if not equivalent OR low confidence
     if (!result) return true;
     if (!result.isEquivalent) return true;
     if (result.confidence < 0.9) return true;
-    // If there are differences, need review even if marked equivalent
     if (result.differences && result.differences.length > 0) return true;
     return false;
   }
@@ -1454,15 +1479,10 @@ export class EquivalenceChecker {
     return 'low';
   }
 
-  // ============================================
-  // ПУБЛИЧНЫЕ МЕТОДЫ ДЛЯ ТЕСТОВ
-  // ============================================
-
   isASTEqual(node1: any, node2: any): boolean {
     if (!node1 || !node2) return false;
     if (node1.type !== node2.type) return false;
     if (node1.text !== node2.text) return false;
-    // Добавьте другие проверки по необходимости
     return true;
   }
 
@@ -1493,7 +1513,6 @@ export class EquivalenceChecker {
       return differences;
     }
 
-    // Рекурсивное сравнение
     const keys1 = Object.keys(node1);
     const keys2 = Object.keys(node2);
     const allKeys = new Set([...keys1, ...keys2]);

@@ -1,4 +1,4 @@
-// src/formal/Z3Verifier.ts
+// packages/ast-analyzer/src/formal/Z3Verifier.ts
 
 import { init } from 'z3-solver';
 import {
@@ -74,32 +74,69 @@ export class Z3Verifier {
   private functionBodyModeler: FunctionBodyModeler | null = null;
   private equivalenceChecker: EquivalenceChecker | null = null;
   private refactoringEquivalenceChecker: RefactoringEquivalenceChecker | null = null;
+  private initPromise: Promise<void> | null = null;
+  private initLock = false;
 
   async initialize(): Promise<void> {
-    if (this.initialized) return;
+    // Если уже инициализировано - выходим
+    if (this.initialized) {
+      console.log('✅ Z3Verifier already initialized');
+      return;
+    }
+
+    // Если уже идет инициализация - ждем ее завершения
+    if (this.initPromise) {
+      console.log('⏳ Z3Verifier initialization in progress, waiting...');
+      await this.initPromise;
+      return;
+    }
+
+    // Блокируем повторные вызовы
+    if (this.initLock) {
+      return;
+    }
+
+    this.initLock = true;
 
     try {
+      this.initPromise = this.doInitialize();
+      await this.initPromise;
+    } finally {
+      this.initLock = false;
+    }
+  }
+
+  private async doInitialize(): Promise<void> {
+    try {
+      console.log('🔧 Initializing Z3Verifier...');
+
       const Z3Module = await init();
       this.z3 = Z3Module;
       const { Context } = Z3Module;
       this.context = new Context('main');
       this.solver = new this.context.Solver();
 
-      // Инициализируем компоненты
+      // Инициализируем парсеры
       this.expressionParser = new ExpressionParser(this.context);
       this.functionBodyModeler = new FunctionBodyModeler(this.context, this.solver);
-      this.equivalenceChecker = new EquivalenceChecker();
-      this.refactoringEquivalenceChecker = new RefactoringEquivalenceChecker();
 
-      // Инициализируем дочерние компоненты
-      await this.equivalenceChecker.initialize();
-      await this.refactoringEquivalenceChecker.initialize();
+      // ✅ ИСПРАВЛЕНО: Передаем this (Z3Verifier) в EquivalenceChecker
+      // Теперь EquivalenceChecker НЕ будет создавать свой Z3Verifier
+      this.equivalenceChecker = new EquivalenceChecker({}, this);
+
+      // ✅ ИСПРАВЛЕНО: Передаем this (Z3Verifier) в RefactoringEquivalenceChecker
+      this.refactoringEquivalenceChecker = new RefactoringEquivalenceChecker({}, this);
+
+      // Дочерние компоненты уже используют переданный Z3, не нужно их инициализировать отдельно
+      // Они уже инициализированы через конструктор с переданным Z3
 
       this.initialized = true;
       console.log('✅ Z3 solver and all components initialized');
     } catch (error) {
       console.error('❌ Failed to initialize Z3:', error);
       throw error;
+    } finally {
+      this.initPromise = null;
     }
   }
 
@@ -732,18 +769,14 @@ export class Z3Verifier {
     if (this.context) {
       this.context = null;
     }
-    if (this.equivalenceChecker) {
-      await this.equivalenceChecker.dispose();
-      this.equivalenceChecker = null;
-    }
-    if (this.refactoringEquivalenceChecker) {
-      await this.refactoringEquivalenceChecker.dispose();
-      this.refactoringEquivalenceChecker = null;
-    }
+    // Не удаляем equivalenceChecker и refactoringEquivalenceChecker,
+    // так как они используют this и будут удалены вместе с этим объектом
     this.z3 = null;
     this.initialized = false;
     this.expressionParser = null;
     this.functionBodyModeler = null;
+    this.initPromise = null;
+    this.initLock = false;
   }
 }
 

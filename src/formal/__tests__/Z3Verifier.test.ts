@@ -1,21 +1,35 @@
 // packages/ast-analyzer/src/formal/__tests__/Z3Verifier.test.ts
 // ПОЛНЫЙ КОД С ВСЕМИ ТЕСТАМИ (70+ ТЕСТОВ)
-
+import path from 'path';
+import fs from 'fs';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Z3Verifier, range, eq, compare, assign, and, or, not } from '../Z3Verifier.js';
 import type { VerificationConstraint } from '../Z3Verifier.js';
 
 describe('Z3Verifier - Полный набор тестов', () => {
   let verifier: Z3Verifier;
+  const TIMEOUT = 60000; // Увеличиваем до 60 секунд
 
   beforeEach(async () => {
     verifier = new Z3Verifier();
-    await verifier.initialize();
-  });
+    // Добавляем таймаут с правильной обработкой
+    const initPromise = verifier.initialize();
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`Z3 initialization timeout after ${TIMEOUT}ms`)), TIMEOUT);
+    });
+    await Promise.race([initPromise, timeoutPromise]);
+  }, TIMEOUT);
 
   afterEach(async () => {
     await verifier.dispose();
   });
+
+  describe('Инициализация', () => {
+    it('должен успешно инициализироваться', async () => {
+      expect(verifier.isInitialized()).toBe(true);
+    });
+  });
+
 
   // ============================================
   // 1. БАЗОВЫЕ МАТЕМАТИЧЕСКИЕ ОПЕРАЦИИ

@@ -100,14 +100,16 @@ export interface EquivalenceCheckOptions {
 }
 
 export class RefactoringEquivalenceChecker {
-  private verifier: Z3Verifier;
-  private equivalenceChecker: EquivalenceChecker;
+  private verifier: Z3Verifier | null = null;
+  private equivalenceChecker: EquivalenceChecker | null = null;
   private project: Project;
   private options: EquivalenceCheckOptions;
   private callGraphs: Map<string, CallGraph> = new Map();
   private startTime = 0;
+  private z3Provided = false;
+  private initialized = false;
 
-  constructor(options: EquivalenceCheckOptions = {}) {
+  constructor(options: EquivalenceCheckOptions = {}, z3Verifier?: Z3Verifier) {
     this.options = {
       formalVerification: true,
       structuralCheck: true,
@@ -122,8 +124,17 @@ export class RefactoringEquivalenceChecker {
       ...options,
     };
 
-    this.verifier = new Z3Verifier();
-    this.equivalenceChecker = new EquivalenceChecker();
+    // Если Z3 передан извне - используем его
+    if (z3Verifier) {
+      this.verifier = z3Verifier;
+      this.z3Provided = true;
+      this.initialized = true;
+      this.equivalenceChecker = new EquivalenceChecker({}, z3Verifier);
+    } else {
+      this.verifier = new Z3Verifier();
+      this.equivalenceChecker = new EquivalenceChecker();
+    }
+
     this.project = new Project({
       compilerOptions: {
         target: 99,
@@ -138,12 +149,40 @@ export class RefactoringEquivalenceChecker {
   }
 
   async initialize(): Promise<void> {
-    await this.verifier.initialize();
-    await this.equivalenceChecker.initialize();
+    if (this.initialized) {
+      console.log('✅ RefactoringEquivalenceChecker already initialized');
+      return;
+    }
+
+    if (this.z3Provided) {
+      this.initialized = true;
+      console.log(
+        '✅ RefactoringEquivalenceChecker marked as initialized (Z3 provided externally)'
+      );
+      return;
+    }
+
+    await this.verifier!.initialize();
+    await this.equivalenceChecker!.initialize();
+    this.initialized = true;
   }
 
   async dispose(): Promise<void> {
-    await this.verifier.dispose();
+    if (this.z3Provided) {
+      this.initialized = false;
+      console.log('✅ RefactoringEquivalenceChecker disposed (Z3 kept alive)');
+      return;
+    }
+
+    if (this.verifier) {
+      await this.verifier.dispose();
+      this.verifier = null;
+    }
+    if (this.equivalenceChecker) {
+      await this.equivalenceChecker.dispose();
+      this.equivalenceChecker = null;
+    }
+    this.initialized = false;
   }
 
   /**
@@ -241,10 +280,6 @@ export class RefactoringEquivalenceChecker {
       await this.verifyFunctionContracts(originalFunctions, refactoredFunctions, result);
 
       // 8. ИТОГОВАЯ ОЦЕНКА ЭКВИВАЛЕНТНОСТИ
-      // Файлы считаются эквивалентными, если:
-      // - Нет отсутствующих функций
-      // - Нет ошибок верификации (failedFunctions)
-      // - Нет критических изменений сигнатур
       const hasMissingFunctions = result.missingFunctions.length > 0;
       const hasFailedVerifications = result.failedFunctions.length > 0;
       const hasCriticalSignatureChanges = result.signatureChanges.some(
@@ -254,7 +289,6 @@ export class RefactoringEquivalenceChecker {
       result.isEquivalent =
         !hasMissingFunctions && !hasFailedVerifications && !hasCriticalSignatureChanges;
 
-      // Если есть добавленные функции, это не считается ошибкой, но может быть предупреждением
       if (result.addedFunctions.length > 0) {
         console.log(
           `   ℹ️ Добавлено ${result.addedFunctions.length} новых функций (это допустимо)`
@@ -614,7 +648,6 @@ export class RefactoringEquivalenceChecker {
       if (!originalNames.has(name)) {
         result.addedFunctions.push(name);
         result.summary.functionsAdded++;
-        // Добавление функций не считается ошибкой
       }
     }
 
@@ -634,8 +667,6 @@ export class RefactoringEquivalenceChecker {
           impact: this.assessSignatureImpact(sigDiff),
         });
         result.summary.signatureChanges++;
-        // Изменение сигнатуры НЕ делает файл неэквивалентным (если это не high impact)
-        // Но high impact изменения должны быть отмечены
         if (sigDiff.returnTypeChanged || sigDiff.asyncChanged) {
           result.isEquivalent = false;
         }
@@ -699,7 +730,6 @@ export class RefactoringEquivalenceChecker {
       const refFunc = refactored.get(name);
 
       if (!refFunc) {
-        // Функция отсутствует - уже отмечено
         continue;
       }
 
@@ -709,15 +739,13 @@ export class RefactoringEquivalenceChecker {
         let equivalenceResult: EquivalenceResult;
 
         if (this.options.formalVerification) {
-          // Формальная верификация через Z3
-          equivalenceResult = await this.equivalenceChecker.checkFunctionEquivalence(
+          equivalenceResult = await this.equivalenceChecker!.checkFunctionEquivalence(
             origFunc.body,
             refFunc.body,
             origFunc.contract
           );
         } else if (this.options.structuralCheck) {
-          // Структурная проверка
-          equivalenceResult = await this.equivalenceChecker.checkFileEquivalence(
+          equivalenceResult = await this.equivalenceChecker!.checkFileEquivalence(
             origFunc.sourceFile,
             refFunc.sourceFile,
             {
@@ -726,8 +754,7 @@ export class RefactoringEquivalenceChecker {
             }
           );
         } else {
-          // Семантическая проверка
-          equivalenceResult = await this.equivalenceChecker.checkFunctionEquivalence(
+          equivalenceResult = await this.equivalenceChecker!.checkFunctionEquivalence(
             origFunc.body,
             refFunc.body,
             origFunc.contract
@@ -783,7 +810,6 @@ export class RefactoringEquivalenceChecker {
     result.summary.functionsChecked = result.totalFunctions;
     result.summary.functionsVerified = result.verifiedFunctions;
 
-    // Если есть failedFunctions, файл не эквивалентен
     if (result.failedFunctions.length > 0) {
       result.isEquivalent = false;
     }
@@ -936,7 +962,6 @@ export class RefactoringEquivalenceChecker {
             from,
             to,
           });
-          // Удаление ребер НЕ делает файл неэквивалентным (если только это не критично)
         }
       }
     }
@@ -951,7 +976,6 @@ export class RefactoringEquivalenceChecker {
             from,
             to,
           });
-          // Добавление ребер не считается ошибкой
         }
       }
     }
@@ -1110,7 +1134,7 @@ export class RefactoringEquivalenceChecker {
       throw new Error(`Function ${functionName} not found in one of the files`);
     }
 
-    return this.equivalenceChecker.checkFunctionEquivalence(
+    return this.equivalenceChecker!.checkFunctionEquivalence(
       origFunc.body,
       refFunc.body,
       origFunc.contract
