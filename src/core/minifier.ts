@@ -142,9 +142,9 @@ function shouldPreserveValue(node: any): boolean {
   const varName = node.id.name;
   const initNode = node.init;
 
-  // Сохраняем конфигурационные переменные
+  // Сохраняем конфигурационные переменные (UPPER_CASE)
   const preservePatterns = [
-    /^[A-Z][A-Z_]+$/, // UPPER_CASE
+    /^[A-Z][A-Z_]+$/, // UPPER_CASE - конфигурационные константы
     /PATTERNS$/,
     /SELECTORS$/,
     /CONFIG$/,
@@ -155,7 +155,6 @@ function shouldPreserveValue(node: any): boolean {
     /_OPTIONS$/,
     /^pageContext$/,
     /^lastPageState$/,
-    /^lastParentFrameState$/,
     /^syncScheduled$/,
   ];
 

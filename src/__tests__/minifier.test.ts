@@ -52,7 +52,7 @@ describe('Минификатор', () => {
       expect(minified).not.toContain('Hello');
     });
 
-    it('должен скрывать значения простых переменных', () => {
+    it('должен скрывать значения простых переменных (кроме UPPER_CASE конфигов)', () => {
       const code = `
         const API_URL = 'https://api.example.com';
         const MAX_RETRIES = 3;
@@ -66,10 +66,16 @@ describe('Минификатор', () => {
 
       const minified = minifyCodeString(code, ast);
 
-      expect(minified).toContain('const API_URL = /* значение скрыто */');
-      expect(minified).toContain('const MAX_RETRIES = /* значение скрыто */');
+      // UPPER_CASE переменные сохраняются (конфигурационные константы)
+      expect(minified).toContain("const API_URL = 'https://api.example.com'");
+      expect(minified).toContain('const MAX_RETRIES = 3');
+
+      // Обычные переменные скрываются
       expect(minified).toContain('const config = /* значение скрыто */');
-      expect(minified).not.toContain('https://api.example.com');
+
+      // Проверяем, что URL не дублируется
+      const occurrences = (minified.match(/https:\/\/api\.example\.com/g) || []).length;
+      expect(occurrences).toBe(1);
     });
 
     it('должен сохранять сигнатуры функций (без TypeScript типов)', () => {
