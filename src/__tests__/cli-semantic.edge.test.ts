@@ -13,18 +13,27 @@ import { TypeAnalyzer } from '../semantic/TypeAnalyzer.js';
 import { DataFlowAnalyzer } from '../semantic/DataFlowAnalyzer.js';
 
 // ============================================
-// ИСПРАВЛЕНИЕ 1: Правильное мокирование glob через vi.mock
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ СОЗДАНИЯ МОКОВ
 // ============================================
-vi.mock('glob', () => ({
-  glob: vi.fn(),
-}));
 
-// ============================================
-// ИСПРАВЛЕНИЕ 2: Мок для SemanticPipeline
-// ============================================
-vi.mock('../ci-cd/SemanticPipeline.js', () => ({
-  SemanticPipeline: vi.fn().mockImplementation(() => ({
-    run: vi.fn().mockResolvedValue({
+/**
+ * Создает класс-мок, который возвращает переданную реализацию
+ */
+function mockClass(implementation: () => any) {
+  return function () {
+    return implementation();
+  } as any;
+}
+
+/**
+ * Создает мок для SemanticPipeline
+ */
+function createSemanticPipelineMock(options?: { shouldFail?: boolean; errorMessage?: string }) {
+  const runMock = vi.fn();
+  if (options?.shouldFail) {
+    runMock.mockRejectedValue(new Error(options.errorMessage || 'Pipeline error'));
+  } else {
+    runMock.mockResolvedValue({
       success: true,
       metrics: {
         totalFiles: 1,
@@ -43,74 +52,179 @@ vi.mock('../ci-cd/SemanticPipeline.js', () => ({
       verificationResults: [],
       timestamp: new Date().toISOString(),
       duration: 100,
-    }),
-  })),
-}));
+    });
+  }
+  return {
+    run: runMock,
+  };
+}
 
-// ============================================
-// ИСПРАВЛЕНИЕ 3: Мок для Z3Verifier
-// ============================================
-vi.mock('../formal/Z3Verifier.js', () => ({
-  Z3Verifier: vi.fn().mockImplementation(() => ({
-    initialize: vi.fn().mockResolvedValue(undefined),
-    verifyFunction: vi.fn().mockResolvedValue({ isValid: true, time: 100 }),
-    dispose: vi.fn().mockResolvedValue(undefined),
-  })),
-}));
-
-// ============================================
-// ИСПРАВЛЕНИЕ 4: Моки для остальных классов
-// ============================================
-vi.mock('../semantic/CallGraphAnalyzer.js', () => ({
-  CallGraphAnalyzer: vi.fn().mockImplementation(() => ({
-    analyzeSingle: vi.fn().mockResolvedValue({
+/**
+ * Создает мок для CallGraphAnalyzer
+ */
+function createCallGraphAnalyzerMock(options?: { shouldFail?: boolean }) {
+  const analyzeSingle = vi.fn();
+  if (options?.shouldFail) {
+    analyzeSingle.mockRejectedValue(new Error('CallGraph error'));
+  } else {
+    analyzeSingle.mockResolvedValue({
       nodes: new Map(),
       edges: [],
       entryPoints: [],
       cycles: [],
       findUnusedFunctions: () => [],
       findCyclicDependencies: () => [],
-    }),
+    });
+  }
+  return {
+    analyzeSingle,
     exportToJSON: vi.fn().mockReturnValue({ nodes: [], edges: [] }),
-  })),
-}));
+  };
+}
 
-vi.mock('../semantic/CFGAnalyzer.js', () => ({
-  CFGAnalyzer: vi.fn().mockImplementation(() => ({
-    build: vi.fn().mockReturnValue({
+/**
+ * Создает мок для CFGAnalyzer
+ */
+function createCFGAnalyzerMock(options?: { shouldFail?: boolean }) {
+  const build = vi.fn();
+  if (options?.shouldFail) {
+    build.mockImplementation(() => {
+      throw new Error('CFG error');
+    });
+  } else {
+    build.mockReturnValue({
       blocks: [],
       findUnreachableBlocks: () => [],
       findLoops: () => [],
       getDominators: () => new Set(),
-    }),
-  })),
-}));
+    });
+  }
+  return { build };
+}
 
-vi.mock('../semantic/TypeAnalyzer.js', () => ({
-  TypeAnalyzer: vi.fn().mockImplementation(() => ({
-    analyze: vi.fn().mockReturnValue({
+/**
+ * Создает мок для TypeAnalyzer
+ */
+function createTypeAnalyzerMock(options?: { shouldFail?: boolean }) {
+  const analyze = vi.fn();
+  if (options?.shouldFail) {
+    analyze.mockImplementation(() => {
+      throw new Error('TypeAnalyzer error');
+    });
+  } else {
+    analyze.mockReturnValue({
       findTypeErrors: () => [],
-    }),
-  })),
-}));
+    });
+  }
+  return { analyze };
+}
 
-vi.mock('../semantic/DataFlowAnalyzer.js', () => ({
-  DataFlowAnalyzer: vi.fn().mockImplementation(() => ({
-    analyze: vi.fn().mockReturnValue({
+/**
+ * Создает мок для DataFlowAnalyzer
+ */
+function createDataFlowAnalyzerMock(options?: { shouldFail?: boolean }) {
+  const analyze = vi.fn();
+  if (options?.shouldFail) {
+    analyze.mockImplementation(() => {
+      throw new Error('DataFlow error');
+    });
+  } else {
+    analyze.mockReturnValue({
       findUnusedVariables: () => [],
       findReassignedConstants: () => [],
-    }),
-  })),
-}));
+      getVariableStats: () => ({
+        total: 0,
+        used: 0,
+        unused: 0,
+        constants: 0,
+        reassignedConstants: 0,
+      }),
+    });
+  }
+  return { analyze };
+}
 
-vi.mock('ts-morph', () => ({
-  Project: vi.fn().mockImplementation(() => ({
-    addSourceFileAtPath: vi.fn().mockReturnValue({
+/**
+ * Создает мок для Z3Verifier
+ */
+function createZ3VerifierMock(options?: { shouldFail?: boolean; failInit?: boolean }) {
+  const initialize = vi.fn();
+  if (options?.failInit) {
+    initialize.mockRejectedValue(new Error('Z3 initialization failed'));
+  } else {
+    initialize.mockResolvedValue(undefined);
+  }
+
+  const verifyFunction = vi.fn();
+  if (options?.shouldFail) {
+    verifyFunction.mockRejectedValue(new Error('Verification error'));
+  } else {
+    verifyFunction.mockResolvedValue({ isValid: true, time: 100 });
+  }
+
+  return {
+    initialize,
+    verifyFunction,
+    dispose: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+/**
+ * Создает мок для Project (ts-morph)
+ */
+function createProjectMock(options?: { shouldFail?: boolean }) {
+  const addSourceFileAtPath = vi.fn();
+  if (options?.shouldFail) {
+    addSourceFileAtPath.mockImplementation(() => {
+      throw new Error('Project error');
+    });
+  } else {
+    addSourceFileAtPath.mockReturnValue({
       getFunction: vi.fn().mockReturnValue(null),
       getFilePath: vi.fn().mockReturnValue('test.ts'),
       getText: vi.fn().mockReturnValue(''),
-    }),
-  })),
+      getPreEmitDiagnostics: vi.fn().mockReturnValue([]),
+    });
+  }
+  return {
+    addSourceFileAtPath,
+  };
+}
+
+// ============================================
+// МОКИ ДЛЯ ВСЕХ ЗАВИСИМОСТЕЙ
+// ============================================
+
+vi.mock('glob', () => ({
+  glob: vi.fn(),
+}));
+
+vi.mock('../ci-cd/SemanticPipeline.js', () => ({
+  SemanticPipeline: vi.fn(),
+}));
+
+vi.mock('../formal/Z3Verifier.js', () => ({
+  Z3Verifier: vi.fn(),
+}));
+
+vi.mock('../semantic/CallGraphAnalyzer.js', () => ({
+  CallGraphAnalyzer: vi.fn(),
+}));
+
+vi.mock('../semantic/CFGAnalyzer.js', () => ({
+  CFGAnalyzer: vi.fn(),
+}));
+
+vi.mock('../semantic/TypeAnalyzer.js', () => ({
+  TypeAnalyzer: vi.fn(),
+}));
+
+vi.mock('../semantic/DataFlowAnalyzer.js', () => ({
+  DataFlowAnalyzer: vi.fn(),
+}));
+
+vi.mock('ts-morph', () => ({
+  Project: vi.fn(),
   SyntaxKind: {},
   Node: {
     isFunctionDeclaration: vi.fn().mockReturnValue(false),
@@ -124,21 +238,59 @@ describe('cli-semantic - проверка краевых случаев', () => 
   const testDir = path.join(__dirname, 'test-temp-semantic-edge');
   let originalExit: typeof process.exit;
 
+  // Ссылки на моки
+  const mockSemanticPipeline = vi.mocked(SemanticPipeline);
+  const mockCallGraphAnalyzer = vi.mocked(CallGraphAnalyzer);
+  const mockCFGAnalyzer = vi.mocked(CFGAnalyzer);
+  const mockTypeAnalyzer = vi.mocked(TypeAnalyzer);
+  const mockDataFlowAnalyzer = vi.mocked(DataFlowAnalyzer);
+  const mockZ3Verifier = vi.mocked(Z3Verifier);
+  const mockProject = vi.mocked(Project);
+  const mockGlob = vi.mocked(glob);
+
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Создаем тестовую директорию
     if (!fs.existsSync(testDir)) {
       fs.mkdirSync(testDir, { recursive: true });
     }
 
     // Сохраняем оригинальный process.exit
     originalExit = process.exit;
-    // Переопределяем process.exit для тестов
     process.exit = vi.fn((code?: number) => {
       throw new Error(`process.exit called with code ${code}`);
     }) as any;
 
-    // Убеждаемся, что NODE_ENV установлен в 'test'
     process.env.NODE_ENV = 'test';
+
+    // ============================================
+    // ПРАВИЛЬНЫЕ МОКИ - используем mockClass()
+    // ============================================
+
+    // SemanticPipeline
+    mockSemanticPipeline.mockImplementation(mockClass(() => createSemanticPipelineMock()));
+
+    // CallGraphAnalyzer
+    mockCallGraphAnalyzer.mockImplementation(mockClass(() => createCallGraphAnalyzerMock()));
+
+    // CFGAnalyzer
+    mockCFGAnalyzer.mockImplementation(mockClass(() => createCFGAnalyzerMock()));
+
+    // TypeAnalyzer
+    mockTypeAnalyzer.mockImplementation(mockClass(() => createTypeAnalyzerMock()));
+
+    // DataFlowAnalyzer
+    mockDataFlowAnalyzer.mockImplementation(mockClass(() => createDataFlowAnalyzerMock()));
+
+    // Z3Verifier
+    mockZ3Verifier.mockImplementation(mockClass(() => createZ3VerifierMock()));
+
+    // Project (ts-morph)
+    mockProject.mockImplementation(mockClass(() => createProjectMock()));
+
+    // Glob
+    mockGlob.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -150,31 +302,24 @@ describe('cli-semantic - проверка краевых случаев', () => 
       fs.rmSync(testDir, { recursive: true, force: true });
     }
     vi.restoreAllMocks();
-    // Восстанавливаем NODE_ENV
     process.env.NODE_ENV = 'test';
   });
 
   // ============================================
-  // ИСПРАВЛЕНИЕ 5: Улучшенная функция для выполнения команд через parseAsync
+  // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
   // ============================================
-  const runCommand = async (args: string[]): Promise<void> => {
-    // Сохраняем оригинальный process.argv
-    const originalArgv = process.argv;
 
-    // Подменяем аргументы
+  const runCommand = async (args: string[]): Promise<void> => {
+    const originalArgv = process.argv;
     process.argv = ['node', 'cli-semantic', ...args];
 
     try {
       await program.parseAsync(process.argv);
     } finally {
-      // Восстанавливаем process.argv
       process.argv = originalArgv;
     }
   };
 
-  // ============================================
-  // ИСПРАВЛЕНИЕ 6: Вспомогательная функция для проверки ошибок
-  // ============================================
   const expectCommandToThrow = async (args: string[], expectedCode = 1) => {
     let caught = false;
     let errorMessage = '';
@@ -184,13 +329,39 @@ describe('cli-semantic - проверка краевых случаев', () => 
     } catch (error: any) {
       caught = true;
       errorMessage = error.message || String(error);
-      // Проверяем, что ошибка содержит правильный код
+      // Проверяем, что ошибка содержит process.exit called with code
       expect(errorMessage).toContain(`process.exit called with code ${expectedCode}`);
     }
 
-    // Если ошибка не была поймана, проверяем что process.exit был вызван
     if (!caught) {
       expect(process.exit).toHaveBeenCalledWith(expectedCode);
+    }
+  };
+
+  const expectCommandToSucceed = async (args: string[]) => {
+    let errorCaught = false;
+    let caughtError: Error | undefined;
+
+    try {
+      await runCommand(args);
+    } catch (error: any) {
+      errorCaught = true;
+      caughtError = error;
+
+      // Если ошибка - это process.exit с кодом 1, считаем это ошибкой
+      if (error.message && error.message.includes('process.exit called with code 1')) {
+        expect(error.message).not.toContain('code 1');
+      }
+      // Если ошибка - это process.exit с кодом 0, считаем это успехом
+      if (error.message && error.message.includes('process.exit called with code 0')) {
+        // Это успех, просто игнорируем
+        errorCaught = false;
+      }
+    }
+
+    // Если была ошибка и это не process.exit с кодом 0 - провал
+    if (errorCaught) {
+      throw caughtError || new Error('Command failed unexpectedly');
     }
   };
 
@@ -224,27 +395,15 @@ describe('cli-semantic - проверка краевых случаев', () => 
   });
 
   it('должен обрабатывать ошибку инициализации Z3', async () => {
-    // Создаем временный файл
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export function testFunc() { return 1; }');
 
-    const mockZ3Verifier = vi.mocked(Z3Verifier);
-    // Сохраняем оригинальную реализацию
-    const OriginalZ3Verifier = Z3Verifier;
+    // Используем специальный мок для Z3 с ошибкой инициализации
+    mockZ3Verifier.mockImplementationOnce(
+      mockClass(() => createZ3VerifierMock({ failInit: true }))
+    );
 
-    try {
-      // Заменяем конструктор для теста
-      (Z3Verifier as any).mockImplementationOnce(() => ({
-        initialize: vi.fn().mockRejectedValue(new Error('Z3 initialization failed')),
-        verifyFunction: vi.fn(),
-        dispose: vi.fn(),
-      }));
-
-      await expectCommandToThrow(['verify', testFile, '--function', 'testFunc']);
-    } finally {
-      // Восстанавливаем оригинальный конструктор
-      (Z3Verifier as any).mockImplementation(OriginalZ3Verifier);
-    }
+    await expectCommandToThrow(['verify', testFile, '--function', 'testFunc']);
   });
 
   it('должен обрабатывать ошибку парсинга JSON в файле контракта', async () => {
@@ -253,16 +412,19 @@ describe('cli-semantic - проверка краевых случаев', () => 
     const contractFile = path.join(testDir, 'invalid-contract.json');
     fs.writeFileSync(contractFile, 'invalid json {');
 
+    // Проверка должна выбросить ошибку из-за некорректного JSON
+    // Но мы ожидаем, что это будет обработано как exitWithCode(1)
+    // В тесте мы просто проверяем, что команда выбрасывает ошибку
     await expectCommandToThrow(['verify', testFile, '--contract', contractFile]);
   });
 
   it('должен обрабатывать ошибку glob при сборе файлов', async () => {
-    const mockGlob = vi.mocked(glob);
     mockGlob.mockRejectedValue(new Error('Glob error'));
 
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export const test = 1;');
 
+    // Ожидаем, что ошибка glob приведет к exitWithCode(1)
     await expectCommandToThrow(['analyze', testFile, '--recursive']);
   });
 
@@ -270,7 +432,7 @@ describe('cli-semantic - проверка краевых случаев', () => 
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export const test = 1;');
 
-    // Мокаем statSync для выбрасывания ошибки
+    // Мокаем statSync чтобы он выбрасывал ошибку
     vi.spyOn(fs, 'statSync').mockImplementation(() => {
       throw new Error('Stat error');
     });
@@ -282,30 +444,21 @@ describe('cli-semantic - проверка краевых случаев', () => 
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export const test = 1;');
 
-    // Мокаем glob для возврата файла
-    const mockGlob = vi.mocked(glob);
     mockGlob.mockResolvedValue([testFile]);
 
-    // Мокаем SemanticPipeline для выбрасывания ошибки
-    const mockSemanticPipeline = vi.mocked(SemanticPipeline);
-    const originalSemanticPipeline = SemanticPipeline;
+    // Мокаем SemanticPipeline с ошибкой
+    mockSemanticPipeline.mockImplementationOnce(
+      mockClass(() => createSemanticPipelineMock({ shouldFail: true, errorMessage: 'Parse error' }))
+    );
 
-    try {
-      (SemanticPipeline as any).mockImplementationOnce(() => ({
-        run: vi.fn().mockRejectedValue(new Error('Parse error')),
-      }));
-
-      await expectCommandToThrow(['analyze', testDir, '--recursive']);
-    } finally {
-      (SemanticPipeline as any).mockImplementation(originalSemanticPipeline);
-    }
+    // При ошибке пайплайна команда должна завершиться с кодом 1
+    await expectCommandToThrow(['analyze', testDir, '--recursive']);
   });
 
   it('должен обрабатывать ошибку writeFileSync при анализе', async () => {
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export const test = 1;');
 
-    const mockGlob = vi.mocked(glob);
     mockGlob.mockResolvedValue([testFile]);
 
     vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {
@@ -319,144 +472,96 @@ describe('cli-semantic - проверка краевых случаев', () => 
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export const test = 1;');
 
-    const mockCallGraphAnalyzer = vi.mocked(CallGraphAnalyzer);
-    const originalCallGraphAnalyzer = CallGraphAnalyzer;
+    mockCallGraphAnalyzer.mockImplementationOnce(
+      mockClass(() => createCallGraphAnalyzerMock({ shouldFail: true }))
+    );
 
-    try {
-      (CallGraphAnalyzer as any).mockImplementationOnce(() => ({
-        analyzeSingle: vi.fn().mockRejectedValue(new Error('CallGraph error')),
-        exportToJSON: vi.fn().mockReturnValue({ nodes: [], edges: [] }),
-      }));
-
-      await expectCommandToThrow(['callgraph', testFile, '--max-depth', '5']);
-    } finally {
-      (CallGraphAnalyzer as any).mockImplementation(originalCallGraphAnalyzer);
-    }
+    await expectCommandToThrow(['callgraph', testFile, '--max-depth', '5']);
   });
 
   it('должен обрабатывать ошибку CFGAnalyzer', async () => {
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export const test = 1;');
 
-    const mockCFGAnalyzer = vi.mocked(CFGAnalyzer);
-    const originalCFGAnalyzer = CFGAnalyzer;
+    mockCFGAnalyzer.mockImplementationOnce(
+      mockClass(() => createCFGAnalyzerMock({ shouldFail: true }))
+    );
 
-    try {
-      (CFGAnalyzer as any).mockImplementationOnce(() => ({
-        build: vi.fn().mockImplementation(() => {
-          throw new Error('CFG error');
-        }),
-      }));
-
-      await expectCommandToThrow(['cfg', testFile]);
-    } finally {
-      (CFGAnalyzer as any).mockImplementation(originalCFGAnalyzer);
-    }
+    await expectCommandToThrow(['cfg', testFile]);
   });
 
   it('должен обрабатывать ошибку TypeAnalyzer', async () => {
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export const test = 1;');
 
-    const mockTypeAnalyzer = vi.mocked(TypeAnalyzer);
-    const originalTypeAnalyzer = TypeAnalyzer;
+    mockTypeAnalyzer.mockImplementationOnce(
+      mockClass(() => createTypeAnalyzerMock({ shouldFail: true }))
+    );
 
-    try {
-      (TypeAnalyzer as any).mockImplementationOnce(() => ({
-        analyze: vi.fn().mockImplementation(() => {
-          throw new Error('TypeAnalyzer error');
-        }),
-      }));
-
-      await expectCommandToThrow(['types', testFile]);
-    } finally {
-      (TypeAnalyzer as any).mockImplementation(originalTypeAnalyzer);
-    }
+    await expectCommandToThrow(['types', testFile]);
   });
 
   it('должен обрабатывать ошибку DataFlowAnalyzer', async () => {
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export const test = 1;');
 
-    const mockDataFlowAnalyzer = vi.mocked(DataFlowAnalyzer);
-    const originalDataFlowAnalyzer = DataFlowAnalyzer;
+    mockDataFlowAnalyzer.mockImplementationOnce(
+      mockClass(() => createDataFlowAnalyzerMock({ shouldFail: true }))
+    );
 
-    try {
-      (DataFlowAnalyzer as any).mockImplementationOnce(() => ({
-        analyze: vi.fn().mockImplementation(() => {
-          throw new Error('DataFlow error');
-        }),
-      }));
-
-      await expectCommandToThrow(['dataflow', testFile]);
-    } finally {
-      (DataFlowAnalyzer as any).mockImplementation(originalDataFlowAnalyzer);
-    }
+    await expectCommandToThrow(['dataflow', testFile]);
   });
 
   it('должен обрабатывать ситуацию, когда функция не найдена в команде verify', async () => {
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export const test = 1;');
 
-    const mockProject = vi.mocked(Project);
-    const originalProject = Project;
-
-    try {
-      (Project as any).mockImplementationOnce(() => ({
-        addSourceFileAtPath: vi.fn().mockReturnValue({
+    // Мокаем Project чтобы getFunction возвращал null
+    mockProject.mockImplementationOnce(
+      mockClass(() => {
+        const project = createProjectMock();
+        project.addSourceFileAtPath = vi.fn().mockReturnValue({
           getFunction: vi.fn().mockReturnValue(null),
           getFilePath: vi.fn().mockReturnValue(testFile),
           getText: vi.fn().mockReturnValue(''),
-        }),
-      }));
+          getPreEmitDiagnostics: vi.fn().mockReturnValue([]),
+        });
+        return project;
+      })
+    );
 
-      await expectCommandToThrow(['verify', testFile, '--function', 'missingFunc']);
-    } finally {
-      (Project as any).mockImplementation(originalProject);
-    }
+    // Функция не найдена -> должна быть ошибка
+    await expectCommandToThrow(['verify', testFile, '--function', 'missingFunc']);
   });
 
   it('должен обрабатывать ошибку Project в extractContractFromFile', async () => {
-    const mockProject = vi.mocked(Project);
-    const originalProject = Project;
+    const testFile = path.join(testDir, 'test.ts');
+    fs.writeFileSync(testFile, 'export function testFunc() { return 1; }');
 
-    try {
-      (Project as any).mockImplementationOnce(() => {
-        throw new Error('Project error');
-      });
+    mockProject.mockImplementationOnce(mockClass(() => createProjectMock({ shouldFail: true })));
 
-      await expectCommandToThrow(['verify', '/test/file.ts', '--function', 'testFunc']);
-    } finally {
-      (Project as any).mockImplementation(originalProject);
-    }
+    // Project выбрасывает ошибку -> команда должна завершиться с кодом 1
+    await expectCommandToThrow(['verify', testFile, '--function', 'testFunc']);
   });
 
   it('должен обрабатывать ошибку SemanticPipeline при анализе', async () => {
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export const test = 1;');
 
-    const mockGlob = vi.mocked(glob);
     mockGlob.mockResolvedValue([testFile]);
+    mockSemanticPipeline.mockImplementationOnce(
+      mockClass(() =>
+        createSemanticPipelineMock({ shouldFail: true, errorMessage: 'Pipeline error' })
+      )
+    );
 
-    const mockSemanticPipeline = vi.mocked(SemanticPipeline);
-    const originalSemanticPipeline = SemanticPipeline;
-
-    try {
-      (SemanticPipeline as any).mockImplementationOnce(() => ({
-        run: vi.fn().mockRejectedValue(new Error('Pipeline error')),
-      }));
-
-      await expectCommandToThrow(['analyze', testDir, '--recursive']);
-    } finally {
-      (SemanticPipeline as any).mockImplementation(originalSemanticPipeline);
-    }
+    await expectCommandToThrow(['analyze', testDir, '--recursive']);
   });
 
   it('должен обрабатывать ошибку writeFile при генерации отчета', async () => {
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export const test = 1;');
 
-    const mockGlob = vi.mocked(glob);
     mockGlob.mockResolvedValue([testFile]);
 
     vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {
@@ -478,7 +583,6 @@ describe('cli-semantic - проверка краевых случаев', () => 
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export const test = 1;');
 
-    const mockGlob = vi.mocked(glob);
     mockGlob.mockResolvedValue([testFile]);
 
     vi.spyOn(fs, 'mkdirSync').mockImplementation(() => {
@@ -498,46 +602,10 @@ describe('cli-semantic - проверка краевых случаев', () => 
     const testFile = path.join(testDir, 'valid-test.ts');
     fs.writeFileSync(testFile, 'export const test = 1;');
 
-    const mockGlob = vi.mocked(glob);
     mockGlob.mockResolvedValue([testFile]);
 
-    const mockSemanticPipeline = vi.mocked(SemanticPipeline);
-    const originalSemanticPipeline = SemanticPipeline;
-
-    try {
-      (SemanticPipeline as any).mockImplementationOnce(() => ({
-        run: vi.fn().mockResolvedValue({
-          success: true,
-          metrics: {
-            totalFiles: 1,
-            totalFunctions: 0,
-            unusedFunctions: 0,
-            unusedVariables: 0,
-            potentialBugs: 0,
-            verifiedFunctions: 0,
-            cyclomaticComplexity: 0,
-            dataFlowIssues: 0,
-            typeErrors: 0,
-            cyclicDependencies: 0,
-            unreachableBlocks: 0,
-          },
-          issues: [],
-          verificationResults: [],
-          timestamp: new Date().toISOString(),
-          duration: 100,
-        }),
-      }));
-
-      // Сохраняем оригинальный process.exit для этого теста
-      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {});
-
-      await runCommand(['analyze', testDir, '--recursive']);
-
-      expect(exitSpy).not.toHaveBeenCalled();
-      exitSpy.mockRestore();
-    } finally {
-      (SemanticPipeline as any).mockImplementation(originalSemanticPipeline);
-    }
+    // Используем стандартный мок SemanticPipeline (успешный)
+    await expectCommandToSucceed(['analyze', testDir, '--recursive']);
   });
 
   it('должен обрабатывать ошибку "файл не найден" в команде dead', async () => {
@@ -546,7 +614,6 @@ describe('cli-semantic - проверка краевых случаев', () => 
   });
 
   it('должен обрабатывать ситуацию, когда файлы не найдены в команде dead', async () => {
-    const mockGlob = vi.mocked(glob);
     mockGlob.mockResolvedValue([]);
 
     const emptyDir = path.join(testDir, 'empty-dir');
@@ -568,45 +635,10 @@ describe('cli-semantic - проверка краевых случаев', () => 
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export function criticalFunc() { return 1; }');
 
-    const mockGlob = vi.mocked(glob);
     mockGlob.mockResolvedValue([testFile]);
 
-    const mockSemanticPipeline = vi.mocked(SemanticPipeline);
-    const originalSemanticPipeline = SemanticPipeline;
-
-    try {
-      (SemanticPipeline as any).mockImplementationOnce(() => ({
-        run: vi.fn().mockResolvedValue({
-          success: true,
-          metrics: {
-            totalFiles: 1,
-            totalFunctions: 1,
-            unusedFunctions: 0,
-            unusedVariables: 0,
-            potentialBugs: 0,
-            verifiedFunctions: 0,
-            cyclomaticComplexity: 0,
-            dataFlowIssues: 0,
-            typeErrors: 0,
-            cyclicDependencies: 0,
-            unreachableBlocks: 0,
-          },
-          issues: [],
-          verificationResults: [],
-          timestamp: new Date().toISOString(),
-          duration: 100,
-        }),
-      }));
-
-      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {});
-
-      await runCommand(['analyze', testDir, '--recursive', '--critical', 'criticalFunc']);
-
-      expect(exitSpy).not.toHaveBeenCalled();
-      exitSpy.mockRestore();
-    } finally {
-      (SemanticPipeline as any).mockImplementation(originalSemanticPipeline);
-    }
+    // Команда analyze с критическими функциями должна выполниться успешно
+    await expectCommandToSucceed(['analyze', testDir, '--recursive', '--critical', 'criticalFunc']);
   });
 
   it('должен корректно обрабатывать команду callgraph с опцией output', async () => {
@@ -614,113 +646,76 @@ describe('cli-semantic - проверка краевых случаев', () => 
     fs.writeFileSync(testFile, 'export function testFunc() { return 1; }');
     const outputFile = path.join(testDir, 'output.json');
 
-    const mockCallGraphAnalyzer = vi.mocked(CallGraphAnalyzer);
-    const originalCallGraphAnalyzer = CallGraphAnalyzer;
+    // Создаем специальный мок для этого теста
+    const mockAnalyzeSingle = vi.fn().mockResolvedValue({
+      nodes: new Map(),
+      edges: [],
+      entryPoints: [],
+      cycles: [],
+      findUnusedFunctions: () => [],
+      findCyclicDependencies: () => [],
+    });
 
-    try {
-      const mockAnalyzeSingle = vi.fn().mockResolvedValue({
-        nodes: new Map(),
-        edges: [],
-        entryPoints: [],
-        cycles: [],
-        findUnusedFunctions: () => [],
-        findCyclicDependencies: () => [],
-      });
-
-      (CallGraphAnalyzer as any).mockImplementationOnce(() => ({
+    mockCallGraphAnalyzer.mockImplementationOnce(
+      mockClass(() => ({
         analyzeSingle: mockAnalyzeSingle,
         exportToJSON: vi.fn().mockReturnValue({ nodes: [], edges: [] }),
-      }));
+      }))
+    );
 
-      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {});
-
-      await runCommand(['callgraph', testFile, '--max-depth', '5', '--output', outputFile]);
-
-      expect(exitSpy).not.toHaveBeenCalled();
-      expect(mockAnalyzeSingle).toHaveBeenCalled();
-      exitSpy.mockRestore();
-    } finally {
-      (CallGraphAnalyzer as any).mockImplementation(originalCallGraphAnalyzer);
-    }
+    await expectCommandToSucceed([
+      'callgraph',
+      testFile,
+      '--max-depth',
+      '5',
+      '--output',
+      outputFile,
+    ]);
+    expect(mockAnalyzeSingle).toHaveBeenCalled();
   });
 
   it('должен обрабатывать ошибку в команде callgraph с некорректным файлом', async () => {
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export function testFunc() { return 1; }');
 
-    const mockCallGraphAnalyzer = vi.mocked(CallGraphAnalyzer);
-    const originalCallGraphAnalyzer = CallGraphAnalyzer;
+    mockCallGraphAnalyzer.mockImplementationOnce(
+      mockClass(() => createCallGraphAnalyzerMock({ shouldFail: true }))
+    );
 
-    try {
-      (CallGraphAnalyzer as any).mockImplementationOnce(() => ({
-        analyzeSingle: vi.fn().mockRejectedValue(new Error('Invalid file error')),
-        exportToJSON: vi.fn(),
-      }));
-
-      await expectCommandToThrow(['callgraph', testFile, '--max-depth', '5']);
-    } finally {
-      (CallGraphAnalyzer as any).mockImplementation(originalCallGraphAnalyzer);
-    }
+    await expectCommandToThrow(['callgraph', testFile, '--max-depth', '5']);
   });
 
   it('должен обрабатывать ошибку в команде cfg с некорректным файлом', async () => {
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export function testFunc() { return 1; }');
 
-    const mockCFGAnalyzer = vi.mocked(CFGAnalyzer);
-    const originalCFGAnalyzer = CFGAnalyzer;
+    mockCFGAnalyzer.mockImplementationOnce(
+      mockClass(() => createCFGAnalyzerMock({ shouldFail: true }))
+    );
 
-    try {
-      (CFGAnalyzer as any).mockImplementationOnce(() => ({
-        build: vi.fn().mockImplementation(() => {
-          throw new Error('Invalid CFG error');
-        }),
-      }));
-
-      await expectCommandToThrow(['cfg', testFile]);
-    } finally {
-      (CFGAnalyzer as any).mockImplementation(originalCFGAnalyzer);
-    }
+    await expectCommandToThrow(['cfg', testFile]);
   });
 
   it('должен обрабатывать ошибку в команде types с некорректным файлом', async () => {
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export function testFunc() { return 1; }');
 
-    const mockTypeAnalyzer = vi.mocked(TypeAnalyzer);
-    const originalTypeAnalyzer = TypeAnalyzer;
+    mockTypeAnalyzer.mockImplementationOnce(
+      mockClass(() => createTypeAnalyzerMock({ shouldFail: true }))
+    );
 
-    try {
-      (TypeAnalyzer as any).mockImplementationOnce(() => ({
-        analyze: vi.fn().mockImplementation(() => {
-          throw new Error('Invalid Type error');
-        }),
-      }));
-
-      await expectCommandToThrow(['types', testFile]);
-    } finally {
-      (TypeAnalyzer as any).mockImplementation(originalTypeAnalyzer);
-    }
+    await expectCommandToThrow(['types', testFile]);
   });
 
   it('должен обрабатывать ошибку в команде dataflow с некорректным файлом', async () => {
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export function testFunc() { return 1; }');
 
-    const mockDataFlowAnalyzer = vi.mocked(DataFlowAnalyzer);
-    const originalDataFlowAnalyzer = DataFlowAnalyzer;
+    mockDataFlowAnalyzer.mockImplementationOnce(
+      mockClass(() => createDataFlowAnalyzerMock({ shouldFail: true }))
+    );
 
-    try {
-      (DataFlowAnalyzer as any).mockImplementationOnce(() => ({
-        analyze: vi.fn().mockImplementation(() => {
-          throw new Error('Invalid DataFlow error');
-        }),
-      }));
-
-      await expectCommandToThrow(['dataflow', testFile]);
-    } finally {
-      (DataFlowAnalyzer as any).mockImplementation(originalDataFlowAnalyzer);
-    }
+    await expectCommandToThrow(['dataflow', testFile]);
   });
 
   it('должен обрабатывать ошибку в команде verify с некорректным контрактом', async () => {
@@ -729,20 +724,12 @@ describe('cli-semantic - проверка краевых случаев', () => 
     const contractFile = path.join(testDir, 'invalid.json');
     fs.writeFileSync(contractFile, '{"invalid": true}');
 
-    const mockZ3Verifier = vi.mocked(Z3Verifier);
-    const originalZ3Verifier = Z3Verifier;
+    // Мокаем Z3 с ошибкой валидации контракта
+    mockZ3Verifier.mockImplementationOnce(
+      mockClass(() => createZ3VerifierMock({ shouldFail: true }))
+    );
 
-    try {
-      (Z3Verifier as any).mockImplementationOnce(() => ({
-        initialize: vi.fn().mockResolvedValue(undefined),
-        verifyFunction: vi.fn().mockRejectedValue(new Error('Contract validation error')),
-        dispose: vi.fn().mockResolvedValue(undefined),
-      }));
-
-      await expectCommandToThrow(['verify', testFile, '--contract', contractFile]);
-    } finally {
-      (Z3Verifier as any).mockImplementation(originalZ3Verifier);
-    }
+    await expectCommandToThrow(['verify', testFile, '--contract', contractFile]);
   });
 
   it('должен выбрасывать исключение при вызове exitWithCode в тестовой среде', () => {
@@ -754,147 +741,95 @@ describe('cli-semantic - проверка краевых случаев', () => 
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export const test = 1;');
 
-    const mockGlob = vi.mocked(glob);
     mockGlob.mockResolvedValue([testFile]);
 
-    const mockDataFlowAnalyzer = vi.mocked(DataFlowAnalyzer);
-    const originalDataFlowAnalyzer = DataFlowAnalyzer;
+    // Мокаем DataFlowAnalyzer с ошибкой в команде dead
+    mockDataFlowAnalyzer.mockImplementationOnce(
+      mockClass(() => {
+        const mocks = createDataFlowAnalyzerMock({ shouldFail: true });
+        // Добавляем дополнительные методы, которые использует команда dead
+        return {
+          ...mocks,
+          getVariableStats: vi.fn().mockReturnValue({
+            total: 0,
+            used: 0,
+            unused: 0,
+            constants: 0,
+            reassignedConstants: 0,
+          }),
+          findUnusedVariables: vi.fn().mockReturnValue([]),
+          findReassignedConstants: vi.fn().mockReturnValue([]),
+        };
+      })
+    );
 
-    try {
-      (DataFlowAnalyzer as any).mockImplementationOnce(() => ({
-        analyze: vi.fn().mockImplementation(() => {
-          throw new Error('DataFlow error in dead command');
-        }),
-      }));
-
-      // Команда dead должна обработать ошибку и не выбросить исключение
-      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {});
-
-      await runCommand(['dead', testDir, '--recursive']);
-
-      expect(exitSpy).not.toHaveBeenCalled();
-      exitSpy.mockRestore();
-    } finally {
-      (DataFlowAnalyzer as any).mockImplementation(originalDataFlowAnalyzer);
-    }
+    // Команда dead должна завершиться успешно (код 0), даже если есть ошибки в анализаторе
+    await expectCommandToSucceed(['dead', testDir, '--recursive']);
   });
 
   it('должен обрабатывать команду analyze с формальной верификацией', async () => {
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export function testFunc() { return 1; }');
 
-    const mockGlob = vi.mocked(glob);
     mockGlob.mockResolvedValue([testFile]);
 
-    const mockSemanticPipeline = vi.mocked(SemanticPipeline);
-    const originalSemanticPipeline = SemanticPipeline;
-
-    try {
-      (SemanticPipeline as any).mockImplementationOnce(() => ({
-        run: vi.fn().mockResolvedValue({
-          success: true,
-          metrics: {
-            totalFiles: 1,
-            totalFunctions: 1,
-            unusedFunctions: 0,
-            unusedVariables: 0,
-            potentialBugs: 0,
-            verifiedFunctions: 1,
-            cyclomaticComplexity: 0,
-            dataFlowIssues: 0,
-            typeErrors: 0,
-            cyclicDependencies: 0,
-            unreachableBlocks: 0,
-          },
-          issues: [],
-          verificationResults: [{ isValid: true, functionName: 'testFunc', time: 100 }],
-          timestamp: new Date().toISOString(),
-          duration: 100,
-        }),
-      }));
-
-      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {});
-
-      await runCommand(['analyze', testDir, '--recursive', '--formal']);
-
-      expect(exitSpy).not.toHaveBeenCalled();
-      exitSpy.mockRestore();
-    } finally {
-      (SemanticPipeline as any).mockImplementation(originalSemanticPipeline);
-    }
+    // Команда analyze с формальной верификацией должна выполниться успешно
+    await expectCommandToSucceed(['analyze', testDir, '--recursive', '--formal']);
   });
 
   it('должен корректно обрабатывать команду callgraph с опцией json', async () => {
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export function testFunc() { return 1; }');
 
-    const mockCallGraphAnalyzer = vi.mocked(CallGraphAnalyzer);
-    const originalCallGraphAnalyzer = CallGraphAnalyzer;
+    const mockAnalyzeSingle = vi.fn().mockResolvedValue({
+      nodes: new Map(),
+      edges: [],
+      entryPoints: [],
+      cycles: [],
+      findUnusedFunctions: () => [],
+      findCyclicDependencies: () => [],
+    });
 
-    try {
-      const mockAnalyzeSingle = vi.fn().mockResolvedValue({
-        nodes: new Map(),
-        edges: [],
-        entryPoints: [],
-        cycles: [],
-        findUnusedFunctions: () => [],
-        findCyclicDependencies: () => [],
-      });
-
-      (CallGraphAnalyzer as any).mockImplementationOnce(() => ({
+    mockCallGraphAnalyzer.mockImplementationOnce(
+      mockClass(() => ({
         analyzeSingle: mockAnalyzeSingle,
         exportToJSON: vi.fn().mockReturnValue({ nodes: [], edges: [] }),
-      }));
+      }))
+    );
 
-      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {});
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      await runCommand(['callgraph', testFile, '--max-depth', '5', '--json']);
+    await expectCommandToSucceed(['callgraph', testFile, '--max-depth', '5', '--json']);
+    expect(consoleLogSpy).toHaveBeenCalled();
 
-      expect(consoleLogSpy).toHaveBeenCalled();
-      expect(exitSpy).not.toHaveBeenCalled();
-
-      consoleLogSpy.mockRestore();
-      exitSpy.mockRestore();
-    } finally {
-      (CallGraphAnalyzer as any).mockImplementation(originalCallGraphAnalyzer);
-    }
+    consoleLogSpy.mockRestore();
   });
 
   it('должен корректно обрабатывать команду callgraph с опцией dot', async () => {
     const testFile = path.join(testDir, 'test.ts');
     fs.writeFileSync(testFile, 'export function testFunc() { return 1; }');
 
-    const mockCallGraphAnalyzer = vi.mocked(CallGraphAnalyzer);
-    const originalCallGraphAnalyzer = CallGraphAnalyzer;
+    const mockAnalyzeSingle = vi.fn().mockResolvedValue({
+      nodes: new Map(),
+      edges: [],
+      entryPoints: [],
+      cycles: [],
+      findUnusedFunctions: () => [],
+      findCyclicDependencies: () => [],
+    });
 
-    try {
-      const mockAnalyzeSingle = vi.fn().mockResolvedValue({
-        nodes: new Map(),
-        edges: [],
-        entryPoints: [],
-        cycles: [],
-        findUnusedFunctions: () => [],
-        findCyclicDependencies: () => [],
-      });
-
-      (CallGraphAnalyzer as any).mockImplementationOnce(() => ({
+    mockCallGraphAnalyzer.mockImplementationOnce(
+      mockClass(() => ({
         analyzeSingle: mockAnalyzeSingle,
         exportToJSON: vi.fn().mockReturnValue({ nodes: [], edges: [] }),
-      }));
+      }))
+    );
 
-      const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {});
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-      await runCommand(['callgraph', testFile, '--max-depth', '5', '--dot']);
+    await expectCommandToSucceed(['callgraph', testFile, '--max-depth', '5', '--dot']);
+    expect(consoleLogSpy).toHaveBeenCalled();
 
-      expect(consoleLogSpy).toHaveBeenCalled();
-      expect(exitSpy).not.toHaveBeenCalled();
-
-      consoleLogSpy.mockRestore();
-      exitSpy.mockRestore();
-    } finally {
-      (CallGraphAnalyzer as any).mockImplementation(originalCallGraphAnalyzer);
-    }
+    consoleLogSpy.mockRestore();
   });
 });

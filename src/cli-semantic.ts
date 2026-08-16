@@ -58,7 +58,13 @@ export function exitWithCode(code: number): never {
 export function handleErrorAndExit(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`❌ ${message}`);
-  exitWithCode(1);
+
+  // В тестовой среде выбрасываем ошибку с process.exit для консистентности
+  if (process.env.NODE_ENV === 'test') {
+    throw new Error(`process.exit called with code 1: ${message}`);
+  }
+
+  process.exit(1);
 }
 
 // ============================================
@@ -181,7 +187,7 @@ program
 
       console.log(`\n📄 JSON отчёт сохранён: ${jsonPath}`);
 
-      exitWithCode(0);
+      return; // Успешное завершение без exitWithCode
     } catch (error) {
       handleErrorAndExit(error);
     }
@@ -200,7 +206,7 @@ program
   .option('-o, --output <file>', 'Сохранить в файл')
   .action(async (file: string, options: any) => {
     try {
-    console.log('-------------------------------------------------')
+      console.log('-------------------------------------------------')
       console.log('\n' + '='.repeat(70));
       console.log('🕸️ АНАЛИЗ ГРАФА ВЫЗОВОВ');
       console.log('='.repeat(70));
@@ -238,10 +244,10 @@ program
         console.log(`\n📄 Сохранено: ${outputPath}`);
       }
 
-      exitWithCode(0);
+      return; // Успешное завершение без exitWithCode
     } catch (error) {
       console.error('❌ Ошибка при построении графа вызовов:', error);
-      exitWithCode(1);
+      handleErrorAndExit(error);
     }
   });
 
@@ -305,10 +311,10 @@ program
         console.log(`\n📄 Сохранено: ${outputPath}`);
       }
 
-      exitWithCode(0);
+      return; // Успешное завершение без exitWithCode
     } catch (error) {
       console.error('❌ Ошибка при построении графа потока управления:', error);
-      exitWithCode(1);
+      handleErrorAndExit(error);
     }
   });
 
@@ -356,10 +362,10 @@ program
         console.log(`\n📄 Сохранено: ${outputPath}`);
       }
 
-      exitWithCode(0);
+      return; // Успешное завершение без exitWithCode
     } catch (error) {
       console.error('❌ Ошибка при анализе типов:', error);
-      exitWithCode(1);
+      handleErrorAndExit(error);
     }
   });
 
@@ -423,10 +429,10 @@ program
         console.log(`\n📄 Сохранено: ${outputPath}`);
       }
 
-      exitWithCode(0);
+      return; // Успешное завершение без exitWithCode
     } catch (error) {
       console.error('❌ Ошибка при анализе потока данных:', error);
-      exitWithCode(1);
+      handleErrorAndExit(error);
     }
   });
 
@@ -531,7 +537,7 @@ program
       exitWithCode(result.isValid ? 0 : 1);
     } catch (error) {
       console.error('❌ Ошибка при формальной верификации:', error);
-      exitWithCode(1);
+      handleErrorAndExit(error);
     }
   });
 
@@ -654,11 +660,11 @@ program
         exitWithCode(1);
       } else {
         console.log('✅ Мертвый код не найден');
-        exitWithCode(0);
+        return; // Успешное завершение без exitWithCode
       }
     } catch (error) {
       console.error('❌ Ошибка при поиске мёртвого кода:', error);
-      exitWithCode(1);
+      handleErrorAndExit(error);
     }
   });
 
