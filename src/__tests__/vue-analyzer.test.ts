@@ -114,6 +114,7 @@ const message = ref('Hello')
         includeScriptAST: true,
       });
 
+      console.log('analysis:', analysis);
       expect(analysis).not.toBeNull();
       expect(analysis.componentName).toBe('SetupComponent');
       expect(analysis.script.isSetup).toBe(true);
