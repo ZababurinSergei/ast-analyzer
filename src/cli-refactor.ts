@@ -13,7 +13,10 @@
 
 import { Command } from 'commander';
 import { AutoRefactor } from './refactor/index.js';
-import { RefactoringEquivalenceChecker } from './formal/RefactoringEquivalenceChecker.js';
+import {
+  RefactoringEquivalenceChecker,
+} from './formal/index.js';
+
 import fs from 'fs';
 import path from 'path';
 

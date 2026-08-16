@@ -1,5 +1,5 @@
 // src/formal/checkers/FileEquivalenceChecker.ts
-import { EquivalenceChecker as BaseEquivalenceChecker } from '../EquivalenceChecker.js';
+import { EquivalenceChecker as BaseEquivalenceChecker } from './EquivalenceChecker.js';
 import { Z3Verifier } from '../Z3Verifier.js';
 import { ASTComparator } from '../../core/ASTComparator.js';
 import { SignatureComparator } from '../../core/SignatureComparator.js';

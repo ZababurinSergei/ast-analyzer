@@ -12,7 +12,6 @@ import { CodeValidator, type ValidationResult } from './CodeValidator.js';
 import { CodeFixer, type FixResult } from './CodeFixer.js';
 import { TemplateUpdater } from './TemplateUpdater.js';
 import { initTreeSitter } from '@codeflow-map/core';
-import { Z3Verifier, type VerificationResult } from '../formal/Z3Verifier.js';
 import type { ControlFlowGraph } from '../semantic/CFGAnalyzer.js';
 import { CFGAnalyzer } from '../semantic/CFGAnalyzer.js';
 import type { CallGraph } from '../semantic/CallGraphAnalyzer.js';
@@ -32,8 +31,10 @@ import {
 import { BackupManager } from './BackupManager.js';
 import {
   RefactoringEquivalenceChecker,
+  Z3Verifier,
+  type VerificationResult,
   type RefactoringEquivalenceResult,
-} from '../formal/RefactoringEquivalenceChecker.js';
+} from '../formal/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
