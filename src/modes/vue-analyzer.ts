@@ -880,8 +880,78 @@ function extractComposablesFromAST(ast: Program): VueComponentAnalysis['composab
     if (!node) return;
 
     try {
-      if (node.type === 'VariableDeclarator' && node.init && node.init.type === 'CallExpression') {
-        const callee = node.init.callee;
+      // ✅ ИСПРАВЛЕНИЕ: Обработка VariableDeclaration с инициализатором
+      if (node.type === 'VariableDeclaration') {
+        for (const decl of node.declarations) {
+          if (decl.init && decl.init.type === 'CallExpression') {
+            const callee = decl.init.callee;
+            let name: string | null = null;
+
+            if (callee.type === 'Identifier') {
+              name = callee.name;
+            } else if (callee.type === 'MemberExpression' && callee.property.type === 'Identifier') {
+              name = callee.property.name;
+            }
+
+            if (name && name.startsWith('use') && decl.id && decl.id.type === 'Identifier') {
+              const source = decl.id.name;
+              const args = decl.init.arguments.map((arg: any) => {
+                if (arg.type === 'Literal') return String(arg.value);
+                if (arg.type === 'Identifier') return arg.name;
+                if (arg.type === 'ObjectExpression') return '{ ... }';
+                if (arg.type === 'ArrayExpression') return '[ ... ]';
+                return '...';
+              });
+
+              composables.push({
+                name,
+                source,
+                args,
+              });
+            }
+          }
+        }
+      }
+
+      // ✅ НОВОЕ: Обработка AssignmentExpression (const x = ref(...))
+      if (node.type === 'VariableDeclarator') {
+        const init = node.init;
+        if (init && init.type === 'CallExpression') {
+          const callee = init.callee;
+          let name: string | null = null;
+
+          if (callee.type === 'Identifier') {
+            name = callee.name;
+          } else if (callee.type === 'MemberExpression' && callee.property.type === 'Identifier') {
+            name = callee.property.name;
+          }
+
+          if (name && (name.startsWith('use') || name === 'ref' || name === 'computed' || name === 'watch' || name === 'reactive')) {
+            const source = node.id?.type === 'Identifier' ? node.id.name : 'unknown';
+            const args = init.arguments.map((arg: any) => {
+              if (arg.type === 'Literal') return String(arg.value);
+              if (arg.type === 'Identifier') return arg.name;
+              if (arg.type === 'ObjectExpression') return '{ ... }';
+              if (arg.type === 'ArrayExpression') return '[ ... ]';
+              return '...';
+            });
+
+            // ✅ Добавляем только если еще не добавлен
+            const exists = composables.some(c => c.name === name && c.source === source);
+            if (!exists) {
+              composables.push({
+                name,
+                source,
+                args,
+              });
+            }
+          }
+        }
+      }
+
+      // ✅ НОВОЕ: Обработка вызовов в ReturnStatement
+      if (node.type === 'ReturnStatement' && node.argument?.type === 'CallExpression') {
+        const callee = node.argument.callee;
         let name: string | null = null;
 
         if (callee.type === 'Identifier') {
@@ -890,9 +960,9 @@ function extractComposablesFromAST(ast: Program): VueComponentAnalysis['composab
           name = callee.property.name;
         }
 
-        if (name && name.startsWith('use') && node.id && node.id.type === 'Identifier') {
-          const source = node.id.name;
-          const args = node.init.arguments.map((arg: any) => {
+        if (name && (name.startsWith('use') || name === 'ref' || name === 'computed' || name === 'watch' || name === 'reactive')) {
+          const source = 'return';
+          const args = node.argument.arguments.map((arg: any) => {
             if (arg.type === 'Literal') return String(arg.value);
             if (arg.type === 'Identifier') return arg.name;
             if (arg.type === 'ObjectExpression') return '{ ... }';
@@ -907,10 +977,29 @@ function extractComposablesFromAST(ast: Program): VueComponentAnalysis['composab
           });
         }
       }
+
+      // ✅ НОВОЕ: Обработка ObjectExpression (например, { ref } = ...)
+      if (node.type === 'ObjectPattern') {
+        for (const prop of node.properties) {
+          if (prop.type === 'Property' && prop.key?.type === 'Identifier') {
+            const name = prop.key.name;
+            if (name && (name.startsWith('use') || name === 'ref' || name === 'computed' || name === 'watch' || name === 'reactive')) {
+              const source = prop.value?.type === 'Identifier' ? prop.value.name : 'unknown';
+              composables.push({
+                name,
+                source,
+                args: [],
+              });
+            }
+          }
+        }
+      }
+
     } catch (error) {
       // Игнорируем ошибки
     }
 
+    // Рекурсивный обход детей
     for (const key of Object.keys(node)) {
       const child = node[key];
       if (child && typeof child === 'object') {
