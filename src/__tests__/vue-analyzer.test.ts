@@ -597,7 +597,8 @@ h1 { color: blue; }
       const filePath = createTestFile(content, 'ReportComponent.vue');
       const analysis = analyzeVueComponent(filePath);
       const report = generateVueComponentReport(analysis);
-
+      console.log('analysis:', analysis);
+      console.log('report:', report);
       expect(report).toContain('# 🎯 Анализ Vue компонента: ReportComponent');
       expect(report).toContain('## 📊 Статистика');
       expect(report).toContain('## 📥 Props');

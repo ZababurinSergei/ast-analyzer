@@ -145,7 +145,7 @@ function extractPropsFromSource(content: string): VueComponentAnalysis['props'] 
   // 1. ПОДДЕРЖКА withDefaults(defineProps<Props>(), { ... })
   // ============================================
   const withDefaultsMatch = content.match(
-    /withDefaults\s*\(\s*defineProps\s*<\s*(\w+)\s*>\s*\(\s*\)\s*,\s*\{([\s\S]*?)\}\s*\)/
+      /withDefaults\s*\(\s*defineProps\s*<\s*(\w+)\s*>\s*\(\s*\)\s*,\s*\{([\s\S]*?)\}\s*\)/
   );
   if (withDefaultsMatch) {
     const interfaceName = withDefaultsMatch[1];
@@ -154,7 +154,7 @@ function extractPropsFromSource(content: string): VueComponentAnalysis['props'] 
     // Ищем интерфейс
     if (interfaceName) {
       const interfaceMatch = content.match(
-        new RegExp(`interface\\s+${interfaceName}\\s*\\{([\\s\\S]*?)\\}`)
+          new RegExp(`interface\\s+${interfaceName}\\s*\\{([\\s\\S]*?)\\}`)
       );
       if (interfaceMatch) {
         const propsContent = interfaceMatch[1];
@@ -421,7 +421,7 @@ function extractEmitsFromSource(content: string): VueComponentAnalysis['emits'] 
  * Извлекает props из скомпилированного script блока
  */
 function extractPropsFromCompiledScript(
-  compiledScript: SFCScriptBlock | null
+    compiledScript: SFCScriptBlock | null
 ): VueComponentAnalysis['props'] {
   const result: VueComponentAnalysis['props'] = {
     names: [],
@@ -489,7 +489,7 @@ function extractPropsFromCompiledScript(
  * Извлекает emits из скомпилированного script блока
  */
 function extractEmitsFromCompiledScript(
-  compiledScript: SFCScriptBlock | null
+    compiledScript: SFCScriptBlock | null
 ): VueComponentAnalysis['emits'] {
   const result: VueComponentAnalysis['emits'] = {
     names: [],
@@ -670,7 +670,7 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
 
     // Извлекает props из type node
     const extractPropsFromTypeNode = (
-      typeNode: any
+        typeNode: any
     ): { names: string[]; types: Record<string, string>; required: Record<string, boolean> } => {
       const extracted = {
         names: [] as string[],
@@ -755,9 +755,9 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
       if (!node) return null;
 
       if (
-        node.type === 'CallExpression' &&
-        node.callee?.type === 'Identifier' &&
-        node.callee.name === 'defineProps'
+          node.type === 'CallExpression' &&
+          node.callee?.type === 'Identifier' &&
+          node.callee.name === 'defineProps'
       ) {
         return node;
       }
@@ -777,9 +777,9 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
       if (!node) return null;
 
       if (
-        node.type === 'CallExpression' &&
-        node.callee?.type === 'Identifier' &&
-        node.callee.name === 'withDefaults'
+          node.type === 'CallExpression' &&
+          node.callee?.type === 'Identifier' &&
+          node.callee.name === 'withDefaults'
       ) {
         return node;
       }
@@ -803,8 +803,8 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
         if (args && args.length >= 1 && args[0]?.type === 'CallExpression') {
           const definePropsCall = args[0];
           if (
-            definePropsCall.callee?.type === 'Identifier' &&
-            definePropsCall.callee.name === 'defineProps'
+              definePropsCall.callee?.type === 'Identifier' &&
+              definePropsCall.callee.name === 'defineProps'
           ) {
             const typeParams = definePropsCall.typeParameters;
             let typeNode = null;
@@ -922,9 +922,9 @@ function extractEmitsFromAST(ast: Program): VueComponentAnalysis['emits'] {
       if (!node) return null;
 
       if (
-        node.type === 'CallExpression' &&
-        node.callee?.type === 'Identifier' &&
-        node.callee.name === 'defineEmits'
+          node.type === 'CallExpression' &&
+          node.callee?.type === 'Identifier' &&
+          node.callee.name === 'defineEmits'
       ) {
         return node;
       }
@@ -992,9 +992,9 @@ function extractExposeFromAST(ast: Program): string[] {
       if (!node) return null;
 
       if (
-        node.type === 'CallExpression' &&
-        node.callee?.type === 'Identifier' &&
-        node.callee.name === 'defineExpose'
+          node.type === 'CallExpression' &&
+          node.callee?.type === 'Identifier' &&
+          node.callee.name === 'defineExpose'
       ) {
         return node;
       }
@@ -1036,8 +1036,8 @@ function extractExposeFromAST(ast: Program): string[] {
  * ✅ ДОБАВЛЕНО: обработка сокращенных событий (@mouseover)
  */
 function analyzeTemplate(
-  descriptor: SFCDescriptor,
-  options: AnalysisOptions
+    descriptor: SFCDescriptor,
+    options: AnalysisOptions
 ): VueComponentAnalysis['template'] {
   const result: VueComponentAnalysis['template'] = {
     content: null,
@@ -1131,8 +1131,8 @@ function analyzeTemplate(
                 // Если директива v-on, добавляем событие
                 if (directiveName === 'v-on' && prop.arg) {
                   const eventName = typeof prop.arg === 'string'
-                    ? prop.arg
-                    : prop.arg?.content || '';
+                      ? prop.arg
+                      : prop.arg?.content || '';
                   if (eventName && !result.events.includes(eventName)) {
                     result.events.push(eventName);
                   }
@@ -1240,7 +1240,7 @@ function extractImportsFromAST(ast: Program): VueComponentAnalysis['imports'] {
         for (const spec of node.specifiers) {
           if (spec.type === 'ImportSpecifier') {
             const importedName =
-              spec.imported.type === 'Identifier' ? spec.imported.name : spec.imported.value;
+                spec.imported.type === 'Identifier' ? spec.imported.name : spec.imported.value;
             const localName = spec.local.name;
             if (importedName === localName) {
               specifiers.push(importedName);
@@ -1273,10 +1273,14 @@ function extractImportsFromAST(ast: Program): VueComponentAnalysis['imports'] {
 
 /**
  * Анализирует вызовы composables через AST
- * ИСПРАВЛЕНО: теперь собирает только прямые вызовы функций с префиксом 'use'
+ * ИСПРАВЛЕНО: теперь собирает не только функции с префиксом 'use',
+ * но и стандартные Vue композаблы: ref, reactive, computed, watch, watchEffect
  */
 function extractComposablesFromAST(ast: Program): VueComponentAnalysis['composables'] {
   const composables: VueComponentAnalysis['composables'] = [];
+
+  // Расширенный список Vue композаблов
+  const vueComposables = ['ref', 'reactive', 'computed', 'watch', 'watchEffect'];
 
   if (!ast || !ast.body) return composables;
 
@@ -1294,17 +1298,17 @@ function extractComposablesFromAST(ast: Program): VueComponentAnalysis['composab
             if (callee.type === 'Identifier') {
               name = callee.name;
             } else if (
-              callee.type === 'MemberExpression' &&
-              callee.property.type === 'Identifier'
+                callee.type === 'MemberExpression' &&
+                callee.property.type === 'Identifier'
             ) {
               name = callee.property.name;
             }
 
-            // Только функции, начинающиеся с 'use'
-            if (name && name.startsWith('use')) {
+            // Функции, начинающиеся с 'use' ИЛИ стандартные Vue композаблы
+            if (name && (name.startsWith('use') || vueComposables.includes(name))) {
               const source = decl.id?.type === 'Identifier'
-                ? decl.id.name
-                : 'unknown';
+                  ? decl.id.name
+                  : 'unknown';
               const args = decl.init.arguments.map((arg: any) => {
                 if (arg.type === 'Literal') return String(arg.value);
                 if (arg.type === 'Identifier') return arg.name;
@@ -1347,8 +1351,8 @@ function extractComposablesFromAST(ast: Program): VueComponentAnalysis['composab
  * Главная функция анализа Vue компонента
  */
 export function analyzeVueComponent(
-  filePath: string,
-  options: AnalysisOptions = {}
+    filePath: string,
+    options: AnalysisOptions = {}
 ): VueComponentAnalysis | null {
   if (!filePath.endsWith('.vue')) {
     console.error('❌ Файл не является Vue компонентом');
@@ -1512,7 +1516,7 @@ export function generateVueComponentReport(analysis: VueComponentAnalysis): stri
       const type = analysis.props.types[name] || 'any';
       const required = analysis.props.required[name] ? '✅' : '❌';
       const defaultValue =
-        analysis.props.defaults[name] !== undefined ? String(analysis.props.defaults[name]) : '-';
+          analysis.props.defaults[name] !== undefined ? String(analysis.props.defaults[name]) : '-';
       report += `| \`${name}\` | \`${type}\` | ${required} | ${defaultValue} |\n`;
     }
     report += '\n';
@@ -1645,8 +1649,8 @@ export function enhanceWithVueAnalysis(targetFile: string, existingAnalysis: any
  * Быстрый анализ Vue компонента для CLI
  */
 export async function analyzeVueComponentCli(
-  filePath: string,
-  options: AnalysisOptions = {}
+    filePath: string,
+    options: AnalysisOptions = {}
 ): Promise<void> {
   console.log(`\n${'='.repeat(60)}`);
   console.log('🎯 АНАЛИЗ VUE КОМПОНЕНТА');
