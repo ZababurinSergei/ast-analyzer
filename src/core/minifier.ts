@@ -7,34 +7,30 @@ import { parseFile } from './ast-parser.js';
  */
 function collectAllNodes(ast: any): any[] {
   const allNodes: any[] = [];
+  const visited = new Set<any>();
 
   function traverse(node: any) {
-    if (!node) return;
+    if (!node || typeof node !== 'object' || visited.has(node)) return;
+    visited.add(node);
     allNodes.push(node);
 
-    // Рекурсивно обходим все дочерние узлы
-    if (node.body && Array.isArray(node.body)) {
-      node.body.forEach(traverse);
-    }
-    if (node.consequent) traverse(node.consequent);
-    if (node.alternate) traverse(node.alternate);
-    if (node.blockStatement) traverse(node.blockStatement);
-    if (node.declaration) traverse(node.declaration);
-    if (node.init) traverse(node.init);
-    if (node.test) traverse(node.test);
-    if (node.update) traverse(node.update);
-
-    // Обходим свойства объекта
-    if (node.properties && Array.isArray(node.properties)) {
-      node.properties.forEach((prop: any) => {
-        if (prop.value) traverse(prop.value);
-        if (prop.key) traverse(prop.key);
-      });
-    }
-
-    // Обходим элементы массива
-    if (node.elements && Array.isArray(node.elements)) {
-      node.elements.forEach(traverse);
+    // Обходим все свойства узла рекурсивно
+    for (const key of Object.keys(node)) {
+      const value = node[key];
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (item && typeof item === 'object') {
+            traverse(item);
+          }
+        }
+      } else if (value && typeof value === 'object' && !(value instanceof RegExp)) {
+        // Пропускаем RegExp и другие специальные объекты
+        try {
+          traverse(value);
+        } catch (e) {
+          // Игнорируем ошибки
+        }
+      }
     }
   }
 
@@ -61,7 +57,7 @@ export function minifyCodeString(code: string, ast: any): string {
   console.log(`📊 Собрано узлов для обработки: ${allNodes.length}`);
 
   for (const node of allNodes) {
-    // Замена тел функций и методов
+    // Замена тел функций и методов (включая FunctionExpression)
     if (
       (node.type === 'FunctionDeclaration' ||
         node.type === 'FunctionExpression' ||
