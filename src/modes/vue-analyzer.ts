@@ -118,6 +118,7 @@ function compileScriptBlock(descriptor: SFCDescriptor, filePath: string): SFCScr
           }
         },
       },
+      babelParserPlugins: ['typescript', 'jsx'],
     });
 
     return script;
@@ -128,22 +129,368 @@ function compileScriptBlock(descriptor: SFCDescriptor, filePath: string): SFCScr
 }
 
 /**
+ * ✅ Извлекает props из исходного кода с помощью регулярных выражений
+ * (С явным приведением типов для TypeScript)
+ */
+function extractPropsFromSource(content: string): VueComponentAnalysis['props'] {
+  const result: VueComponentAnalysis['props'] = {
+    names: [],
+    types: {},
+    required: {},
+    defaults: {},
+  };
+
+  // Ищем defineProps с TypeScript типом: defineProps<{ prop: type }>()
+  const tsPropsMatch = content.match(/defineProps\s*<\s*\{\s*([\s\S]*?)\s*\}\s*>/);
+  if (tsPropsMatch) {
+    const propsContent = tsPropsMatch[1];
+    if (propsContent) {
+      const propLines = propsContent.split('\n').filter(line => line.trim());
+
+      for (const line of propLines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('//')) continue;
+
+        // Проверяем на optional prop: propName?: type
+        const optionalMatch = trimmed.match(/^\s*(\w+)\s*\?\s*:\s*(.+?)\s*;?\s*$/);
+        if (optionalMatch) {
+          const name = optionalMatch[1];
+          // ✅ Явное приведение к строке с помощью String()
+          const type = String(optionalMatch[2]?.trim() || 'any');
+          if (name) {
+            result.names.push(name);
+            result.types[name] = type;
+            result.required[name] = false;
+          }
+          continue;
+        }
+
+        // Обычный prop: propName: type
+        const requiredMatch = trimmed.match(/^\s*(\w+)\s*:\s*(.+?)\s*;?\s*$/);
+        if (requiredMatch) {
+          const name = requiredMatch[1];
+          // ✅ Явное приведение к строке с помощью String()
+          const type = String(requiredMatch[2]?.trim() || 'any');
+          if (name) {
+            result.names.push(name);
+            result.types[name] = type;
+            result.required[name] = true;
+          }
+        }
+      }
+    }
+    return result;
+  }
+
+  // Ищем defineProps с объектом: defineProps({ ... })
+  const objPropsMatch = content.match(/defineProps\s*\(\s*\{\s*([\s\S]*?)\s*\}\s*\)/);
+  if (objPropsMatch) {
+    const propsContent = objPropsMatch[1];
+    if (propsContent) {
+      const lines = propsContent.split('\n');
+      let i = 0;
+
+      while (i < lines.length) {
+        const line = lines[i];
+        if (!line) {
+          i++;
+          continue;
+        }
+
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('//')) {
+          i++;
+          continue;
+        }
+
+        // Ищем propName:
+        const propMatch = trimmed.match(/^(\w+)\s*:/);
+        if (propMatch) {
+          const name = propMatch[1];
+          if (!name) {
+            i++;
+            continue;
+          }
+
+          // Определяем, что идет после двоеточия
+          const afterColon = trimmed.substring(propMatch[0].length).trim();
+
+          // Вариант 1: сокращенная запись: propName: Type
+          // Например: disabled: Boolean
+          if (afterColon && !afterColon.startsWith('{')) {
+            // Это сокращенная запись
+            const typeMatch = afterColon.match(/^(\w+)/);
+            // ✅ Явное приведение к строке с помощью String()
+            const type = String(typeMatch ? typeMatch[1] : 'any');
+
+            result.names.push(name);
+            result.types[name] = type;
+            result.required[name] = false;
+            result.defaults[name] = undefined;
+
+            i++;
+            continue;
+          }
+
+          // Вариант 2: полная запись: propName: { ... }
+          if (afterColon.startsWith('{')) {
+            // Собираем propBody до закрывающей скобки
+            let propBody = '';
+            let braceDepth = 0;
+            let j = i;
+
+            // Собираем все строки до закрытия всех скобок
+            while (j < lines.length) {
+              const currentLineText = lines[j];
+              if (!currentLineText) {
+                j++;
+                continue;
+              }
+
+              const openBraces = (currentLineText.match(/{/g) || []).length;
+              const closeBraces = (currentLineText.match(/}/g) || []).length;
+              braceDepth += openBraces - closeBraces;
+
+              propBody += currentLineText + '\n';
+              j++;
+
+              if (braceDepth === 0) break;
+            }
+
+            // Парсим required из propBody
+            const requiredMatch = propBody.match(/required\s*:\s*(true|false)/);
+            if (requiredMatch) {
+              result.required[name] = requiredMatch[1] === 'true';
+            } else {
+              result.required[name] = false;
+            }
+
+            // Парсим default из propBody
+            const defaultMatch = propBody.match(/default\s*:\s*(.+?)(?:,|\n|$)/);
+            if (defaultMatch && defaultMatch[1]) {
+              const defaultValue = defaultMatch[1].trim();
+              if (!isNaN(Number(defaultValue))) {
+                result.defaults[name] = Number(defaultValue);
+              } else if (defaultValue === 'true' || defaultValue === 'false') {
+                result.defaults[name] = defaultValue === 'true';
+              } else if (defaultValue.startsWith("'") || defaultValue.startsWith('"')) {
+                result.defaults[name] = defaultValue.slice(1, -1);
+              } else {
+                result.defaults[name] = defaultValue;
+              }
+            }
+
+            // Определяем тип из propBody
+            const typeMatch = propBody.match(/type\s*:\s*(\w+)/);
+            // ✅ Явное приведение к строке с помощью String()
+            const type = String(typeMatch ? typeMatch[1] : 'any');
+
+            result.names.push(name);
+            result.types[name] = type;
+
+            // Перемещаем индекс на последнюю обработанную строку
+            i = j;
+            continue;
+          }
+        }
+
+        i++;
+      }
+    }
+    return result;
+  }
+
+  return result;
+}
+
+/**
+ * ✅ Извлекает emits из исходного кода
+ */
+function extractEmitsFromSource(content: string): VueComponentAnalysis['emits'] {
+  const result: VueComponentAnalysis['emits'] = {
+    names: [],
+    types: {},
+  };
+
+  // Ищем defineEmits с массивом: defineEmits(['update', 'delete'])
+  const arrayMatch = content.match(/defineEmits\s*\(\s*\[([\s\S]*?)\]\s*\)/);
+  if (arrayMatch) {
+    const emitsContent = arrayMatch[1];
+    if (emitsContent) {
+      const emitNames = emitsContent.match(/['"]([^'"]+)['"]/g);
+      if (emitNames) {
+        for (const emit of emitNames) {
+          const name = emit.slice(1, -1);
+          result.names.push(name);
+          result.types[name] = 'any';
+        }
+      }
+    }
+    return result;
+  }
+
+  // Ищем defineEmits с TypeScript типом: defineEmits<{ update: [value: number] }>()
+  const tsMatch = content.match(/defineEmits\s*<\s*\{\s*([\s\S]*?)\s*\}\s*>/);
+  if (tsMatch) {
+    const emitsContent = tsMatch[1];
+    if (emitsContent) {
+      const emitNames = emitsContent.match(/^\s*(\w+)\s*:/gm);
+      if (emitNames) {
+        for (const emit of emitNames) {
+          const name = emit.trim().replace(':', '');
+          result.names.push(name);
+          result.types[name] = 'any';
+        }
+      }
+    }
+    return result;
+  }
+
+  return result;
+}
+
+/**
+ * Извлекает props из скомпилированного script блока
+ */
+function extractPropsFromCompiledScript(
+  compiledScript: SFCScriptBlock | null
+): VueComponentAnalysis['props'] {
+  const result: VueComponentAnalysis['props'] = {
+    names: [],
+    types: {},
+    required: {},
+    defaults: {},
+  };
+
+  if (!compiledScript) return result;
+
+  const props = (compiledScript as any).props;
+  if (!props) return result;
+
+  if (Array.isArray(props)) {
+    for (const name of props) {
+      if (typeof name === 'string') {
+        result.names.push(name);
+        result.types[name] = 'any';
+        result.required[name] = false;
+      }
+    }
+    return result;
+  }
+
+  if (typeof props === 'object') {
+    for (const [name, propData] of Object.entries(props)) {
+      result.names.push(name);
+
+      let type = 'any';
+      if (propData && typeof propData === 'object') {
+        const propDataObj = propData as any;
+        if (propDataObj.type) {
+          if (typeof propDataObj.type === 'string') {
+            type = propDataObj.type;
+          } else if (propDataObj.type.name) {
+            type = propDataObj.type.name;
+          } else if (Array.isArray(propDataObj.type)) {
+            type = propDataObj.type.map((t: any) => t?.name || 'any').join(' | ');
+          }
+        }
+
+        result.required[name] = propDataObj.required === true;
+
+        if (propDataObj.default !== undefined && propDataObj.default !== null) {
+          if (typeof propDataObj.default === 'function') {
+            try {
+              result.defaults[name] = propDataObj.default();
+            } catch {
+              result.defaults[name] = propDataObj.default;
+            }
+          } else {
+            result.defaults[name] = propDataObj.default;
+          }
+        }
+      }
+
+      result.types[name] = type;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Извлекает emits из скомпилированного script блока
+ */
+function extractEmitsFromCompiledScript(
+  compiledScript: SFCScriptBlock | null
+): VueComponentAnalysis['emits'] {
+  const result: VueComponentAnalysis['emits'] = {
+    names: [],
+    types: {},
+  };
+
+  if (!compiledScript) return result;
+
+  const emits = (compiledScript as any).emits;
+  if (!emits) return result;
+
+  if (Array.isArray(emits)) {
+    for (const name of emits) {
+      if (typeof name === 'string') {
+        result.names.push(name);
+        result.types[name] = 'any';
+      }
+    }
+    return result;
+  }
+
+  if (typeof emits === 'object') {
+    for (const [name, emitData] of Object.entries(emits)) {
+      result.names.push(name);
+      let type = 'any';
+      if (emitData && typeof emitData === 'object') {
+        const emitDataObj = emitData as any;
+        if (emitDataObj.type) {
+          if (typeof emitDataObj.type === 'string') {
+            type = emitDataObj.type;
+          } else if (emitDataObj.type.name) {
+            type = emitDataObj.type.name;
+          }
+        }
+      }
+      result.types[name] = type;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Извлекает expose из скомпилированного script блока
+ */
+function extractExposeFromCompiledScript(compiledScript: SFCScriptBlock | null): string[] {
+  if (!compiledScript) return [];
+  const expose = (compiledScript as any).expose;
+  if (!expose) return [];
+  if (Array.isArray(expose)) {
+    return expose.map((e: any) => (typeof e === 'string' ? e : String(e)));
+  }
+  return [];
+}
+
+/**
  * Безопасно извлекает значение из узла AST
  */
 function getNodeValue(node: any): any {
   if (!node) return undefined;
 
-  // Литералы (ESTree)
   if (node.type === 'Literal') {
     return node.value;
   }
 
-  // Идентификаторы
   if (node.type === 'Identifier') {
     return node.name;
   }
 
-  // TypeScript-специфичные литералы
   if (node.type === 'StringLiteral') {
     return node.value;
   }
@@ -163,19 +510,16 @@ function getNodeValue(node: any): any {
     return node.value;
   }
 
-  // Template literal
   if (node.type === 'TemplateLiteral') {
     return node.quasis?.map((q: any) => q.value?.raw || '').join('');
   }
 
-  // Унарные выражения (например, -1)
   if (node.type === 'UnaryExpression' && node.operator === '-') {
     const arg = getNodeValue(node.argument);
     if (typeof arg === 'number') return -arg;
     return undefined;
   }
 
-  // Object expression
   if (node.type === 'ObjectExpression') {
     const result: Record<string, any> = {};
     if (node.properties) {
@@ -191,7 +535,6 @@ function getNodeValue(node: any): any {
     return result;
   }
 
-  // Array expression
   if (node.type === 'ArrayExpression') {
     const result: any[] = [];
     if (node.elements) {
@@ -202,11 +545,7 @@ function getNodeValue(node: any): any {
     return result;
   }
 
-  // Функции
-  if (node.type === 'ArrowFunctionExpression') {
-    return 'function';
-  }
-  if (node.type === 'FunctionExpression') {
+  if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') {
     return 'function';
   }
 
@@ -214,8 +553,7 @@ function getNodeValue(node: any): any {
 }
 
 /**
- * Извлекает props из AST напрямую
- * Поддерживает: defineProps<{ ... }>(), defineProps({ ... }), withDefaults()
+ * Извлекает props из AST напрямую (fallback)
  */
 function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
   const result: VueComponentAnalysis['props'] = {
@@ -228,11 +566,9 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
   if (!ast || !ast.body) return result;
 
   try {
-    // Сначала собираем все интерфейсы и типы, объявленные в файле
     const interfaces = new Map<string, { members: any[] }>();
     const typeAliases = new Map<string, any>();
 
-    // Рекурсивный обход для сбора интерфейсов и type aliases
     const collectTypes = (node: any) => {
       if (!node) return;
 
@@ -250,7 +586,6 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
         }
       }
 
-      // Рекурсивно обходим детей
       for (const key of Object.keys(node)) {
         const child = node[key];
         if (child && typeof child === 'object') {
@@ -259,12 +594,10 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
       }
     };
 
-    // Собираем все типы из AST
     for (const node of ast.body) {
       collectTypes(node);
     }
 
-    // Вспомогательная функция для извлечения пропсов из TSTypeLiteral или TSInterfaceDeclaration
     const extractPropsFromTypeNode = (
       typeNode: any
     ): { names: string[]; types: Record<string, string>; required: Record<string, boolean> } => {
@@ -278,12 +611,9 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
 
       let members: any[] = [];
 
-      // Если это TSTypeLiteral
       if (typeNode.type === 'TSTypeLiteral' && typeNode.members) {
         members = typeNode.members;
-      }
-      // Если это TSTypeReference (ссыллка на интерфейс или type alias)
-      else if (typeNode.type === 'TSTypeReference' && typeNode.typeName) {
+      } else if (typeNode.type === 'TSTypeReference' && typeNode.typeName) {
         let typeName = '';
         if (typeNode.typeName.type === 'Identifier') {
           typeName = typeNode.typeName.name;
@@ -298,7 +628,6 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
           }
         }
 
-        // Ищем интерфейс или type alias с таким именем
         if (interfaces.has(typeName)) {
           const intf = interfaces.get(typeName);
           if (intf) {
@@ -312,9 +641,32 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
         }
       }
 
-      // Извлекаем пропсы из members
       for (const member of members) {
         if (member.type === 'TSPropertySignature' && member.key?.type === 'Identifier') {
+          const name = member.key.name;
+          if (name) {
+            extracted.names.push(name);
+            if (member.typeAnnotation?.typeAnnotation) {
+              const typeNode = member.typeAnnotation.typeAnnotation;
+              if (typeNode.type === 'TSStringKeyword') {
+                extracted.types[name] = 'string';
+              } else if (typeNode.type === 'TSNumberKeyword') {
+                extracted.types[name] = 'number';
+              } else if (typeNode.type === 'TSBooleanKeyword') {
+                extracted.types[name] = 'boolean';
+              } else if (typeNode.type === 'TSArrayType') {
+                extracted.types[name] = 'array';
+              } else if (typeNode.type === 'TSTypeReference' && typeNode.typeName) {
+                extracted.types[name] = typeNode.typeName.name || 'any';
+              } else {
+                extracted.types[name] = 'any';
+              }
+            } else {
+              extracted.types[name] = 'any';
+            }
+            extracted.required[name] = !member.optional;
+          }
+        } else if (member.type === 'Property' && member.key?.type === 'Identifier') {
           const name = member.key.name;
           if (name) {
             extracted.names.push(name);
@@ -327,7 +679,6 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
       return extracted;
     };
 
-    // Рекурсивный поиск defineProps
     const findDefineProps = (node: any): any => {
       if (!node) return null;
 
@@ -337,6 +688,18 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
         node.callee.name === 'defineProps'
       ) {
         return node;
+      }
+
+      if (
+        node.type === 'CallExpression' &&
+        node.callee?.type === 'Identifier' &&
+        node.callee.name === 'withDefaults'
+      ) {
+        const firstArg = node.arguments?.[0];
+        if (firstArg && firstArg.type === 'CallExpression') {
+          const innerCall = findDefineProps(firstArg);
+          if (innerCall) return innerCall;
+        }
       }
 
       for (const key of Object.keys(node)) {
@@ -350,7 +713,6 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
       return null;
     };
 
-    // Рекурсивный поиск withDefaults
     const findWithDefaults = (node: any): any => {
       if (!node) return null;
 
@@ -373,35 +735,35 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
       return null;
     };
 
-    // Проверяем всю AST на наличие defineProps или withDefaults
     for (const node of ast.body) {
-      // Сначала ищем withDefaults
       const withDefaultsCall = findWithDefaults(node);
       if (withDefaultsCall) {
         const args = withDefaultsCall.arguments;
-        if (args.length >= 1 && args[0]?.type === 'CallExpression') {
+        if (args && args.length >= 1 && args[0]?.type === 'CallExpression') {
           const definePropsCall = args[0];
           if (
             definePropsCall.callee?.type === 'Identifier' &&
             definePropsCall.callee.name === 'defineProps'
           ) {
-            const typeParams = (definePropsCall as any).typeParameters;
-            let extractedProps = {
-              names: [] as string[],
-              types: {} as Record<string, string>,
-              required: {} as Record<string, boolean>,
-            };
+            const typeParams = definePropsCall.typeParameters;
+            let typeNode = null;
 
             if (typeParams && typeParams.params && typeParams.params.length > 0) {
-              const typeNode = typeParams.params[0];
-              extractedProps = extractPropsFromTypeNode(typeNode);
+              typeNode = typeParams.params[0];
+            } else if (definePropsCall.arguments && definePropsCall.arguments.length > 0) {
+              const firstArg = definePropsCall.arguments[0];
+              if (firstArg.type === 'TSTypeReference' || firstArg.type === 'TSTypeLiteral') {
+                typeNode = firstArg;
+              }
             }
 
-            result.names = extractedProps.names;
-            result.types = extractedProps.types;
-            result.required = extractedProps.required;
+            if (typeNode) {
+              const extractedProps = extractPropsFromTypeNode(typeNode);
+              result.names = extractedProps.names;
+              result.types = extractedProps.types;
+              result.required = extractedProps.required;
+            }
 
-            // Извлекаем defaults из второго аргумента withDefaults
             if (args.length >= 2 && args[1]?.type === 'ObjectExpression') {
               for (const prop of args[1].properties) {
                 if (prop.type === 'Property' && prop.key?.type === 'Identifier') {
@@ -418,17 +780,24 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
         }
       }
 
-      // Затем ищем defineProps напрямую
       const definePropsCall = findDefineProps(node);
       if (definePropsCall) {
         const args = definePropsCall.arguments;
+        const typeParams = definePropsCall.typeParameters;
 
-        // TypeScript типы: defineProps<{ ... }>() или defineProps<Props>()
-        if (args.length === 0) {
-          const typeParams = (definePropsCall as any).typeParameters;
-          if (typeParams && typeParams.params && typeParams.params.length > 0) {
-            const typeNode = typeParams.params[0];
-            const extracted = extractPropsFromTypeNode(typeNode);
+        if (typeParams && typeParams.params && typeParams.params.length > 0) {
+          const typeNode = typeParams.params[0];
+          const extracted = extractPropsFromTypeNode(typeNode);
+          result.names = extracted.names;
+          result.types = extracted.types;
+          result.required = extracted.required;
+          return result;
+        }
+
+        if (args && args.length === 1 && args[0]) {
+          const firstArg = args[0];
+          if (firstArg.type === 'TSTypeReference' || firstArg.type === 'TSTypeLiteral') {
+            const extracted = extractPropsFromTypeNode(firstArg);
             result.names = extracted.names;
             result.types = extracted.types;
             result.required = extracted.required;
@@ -436,8 +805,7 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
           }
         }
 
-        // Runtime props: defineProps({ propName: { type: String, required: true } })
-        if (args.length === 1 && args[0]?.type === 'ObjectExpression') {
+        if (args && args.length === 1 && args[0]?.type === 'ObjectExpression') {
           for (const prop of args[0].properties) {
             if (prop.type === 'Property' && prop.key?.type === 'Identifier') {
               const name = prop.key.name;
@@ -476,7 +844,7 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
 }
 
 /**
- * Извлекает emits из AST напрямую
+ * Извлекает emits из AST (fallback)
  */
 function extractEmitsFromAST(ast: Program): VueComponentAnalysis['emits'] {
   const result: VueComponentAnalysis['emits'] = {
@@ -487,7 +855,6 @@ function extractEmitsFromAST(ast: Program): VueComponentAnalysis['emits'] {
   if (!ast || !ast.body) return result;
 
   try {
-    // Рекурсивный поиск defineEmits
     const findDefineEmits = (node: any): any => {
       if (!node) return null;
 
@@ -514,27 +881,23 @@ function extractEmitsFromAST(ast: Program): VueComponentAnalysis['emits'] {
       const defineEmitsCall = findDefineEmits(node);
       if (defineEmitsCall) {
         const args = defineEmitsCall.arguments;
+        const typeParams = defineEmitsCall.typeParameters;
 
-        // TypeScript типы: defineEmits<{ ... }>()
-        if (args.length === 0) {
-          const typeParams = (defineEmitsCall as any).typeParameters;
-          if (typeParams && typeParams.params && typeParams.params.length > 0) {
-            const typeNode = typeParams.params[0];
-            if (typeNode?.type === 'TSTypeLiteral' && typeNode.members) {
-              for (const member of typeNode.members) {
-                if (member.type === 'TSPropertySignature' && member.key?.type === 'Identifier') {
-                  const name = member.key.name;
-                  if (name) {
-                    result.names.push(name);
-                    result.types[name] = 'any';
-                  }
+        if (typeParams && typeParams.params && typeParams.params.length > 0) {
+          const typeNode = typeParams.params[0];
+          if (typeNode?.type === 'TSTypeLiteral' && typeNode.members) {
+            for (const member of typeNode.members) {
+              if (member.type === 'TSPropertySignature' && member.key?.type === 'Identifier') {
+                const name = member.key.name;
+                if (name) {
+                  result.names.push(name);
+                  result.types[name] = 'any';
                 }
               }
             }
           }
         }
 
-        // Runtime emits: defineEmits(['update', 'delete'])
         if (args.length === 1 && args[0]?.type === 'ArrayExpression') {
           for (const elem of args[0].elements) {
             const value = getNodeValue(elem);
@@ -554,7 +917,7 @@ function extractEmitsFromAST(ast: Program): VueComponentAnalysis['emits'] {
 }
 
 /**
- * Извлекает expose из AST
+ * Извлекает expose из AST (fallback)
  */
 function extractExposeFromAST(ast: Program): string[] {
   const expose: string[] = [];
@@ -562,7 +925,6 @@ function extractExposeFromAST(ast: Program): string[] {
   if (!ast || !ast.body) return expose;
 
   try {
-    // Рекурсивный поиск defineExpose
     const findDefineExpose = (node: any): any => {
       if (!node) return null;
 
@@ -606,145 +968,7 @@ function extractExposeFromAST(ast: Program): string[] {
 }
 
 /**
- * Нормализует props из скомпилированного скрипта
- */
-function normalizeProps(
-  compiledScript: any,
-  scriptAst: Program | null
-): VueComponentAnalysis['props'] {
-  // Сначала пробуем получить props из AST (для TypeScript-типов)
-  if (scriptAst) {
-    const astProps = extractPropsFromAST(scriptAst);
-    if (astProps.names.length > 0) {
-      return astProps;
-    }
-  }
-
-  // Fallback: используем compiledScript
-  const result: VueComponentAnalysis['props'] = {
-    names: [],
-    types: {},
-    required: {},
-    defaults: {},
-  };
-
-  if (!compiledScript?.props) return result;
-
-  const propsObj = compiledScript.props;
-
-  if (Array.isArray(propsObj)) {
-    for (const name of propsObj) {
-      if (typeof name === 'string') {
-        result.names.push(name);
-        result.types[name] = 'any';
-        result.required[name] = false;
-      }
-    }
-    return result;
-  }
-
-  for (const [name, prop] of Object.entries(propsObj)) {
-    result.names.push(name);
-    const propData = prop as any;
-
-    let type = 'any';
-    if (propData?.type) {
-      if (typeof propData.type === 'string') {
-        type = propData.type;
-      } else if (propData.type?.name) {
-        type = propData.type.name;
-      } else if (Array.isArray(propData.type)) {
-        type = propData.type.map((t: any) => t?.name || 'any').join(' | ');
-      }
-    }
-    result.types[name] = type;
-    result.required[name] = propData?.required === true;
-    if (propData?.default !== undefined && propData?.default !== null) {
-      if (typeof propData.default === 'function') {
-        try {
-          result.defaults[name] = propData.default();
-        } catch {
-          result.defaults[name] = propData.default;
-        }
-      } else {
-        result.defaults[name] = propData.default;
-      }
-    }
-  }
-
-  return result;
-}
-
-/**
- * Нормализует emits из скомпилированного скрипта
- */
-function normalizeEmits(
-  compiledScript: any,
-  scriptAst: Program | null
-): VueComponentAnalysis['emits'] {
-  if (scriptAst) {
-    const astEmits = extractEmitsFromAST(scriptAst);
-    if (astEmits.names.length > 0) {
-      return astEmits;
-    }
-  }
-
-  const result: VueComponentAnalysis['emits'] = {
-    names: [],
-    types: {},
-  };
-
-  if (!compiledScript?.emits) return result;
-
-  const emitsObj = compiledScript.emits;
-
-  if (Array.isArray(emitsObj)) {
-    for (const name of emitsObj) {
-      if (typeof name === 'string') {
-        result.names.push(name);
-        result.types[name] = 'any';
-      }
-    }
-    return result;
-  }
-
-  for (const [name, emit] of Object.entries(emitsObj)) {
-    result.names.push(name);
-    const emitData = emit as any;
-    let type = 'any';
-    if (emitData?.type) {
-      if (typeof emitData.type === 'string') {
-        type = emitData.type;
-      } else if (emitData.type?.name) {
-        type = emitData.type.name;
-      }
-    }
-    result.types[name] = type;
-  }
-
-  return result;
-}
-
-/**
- * Нормализует expose
- */
-function normalizeExpose(compiledScript: any, scriptAst: Program | null): string[] {
-  if (scriptAst) {
-    const astExpose = extractExposeFromAST(scriptAst);
-    if (astExpose.length > 0) {
-      return astExpose;
-    }
-  }
-
-  if (!compiledScript?.expose) return [];
-  if (Array.isArray(compiledScript.expose)) {
-    return compiledScript.expose.map((e: any) => (typeof e === 'string' ? e : String(e)));
-  }
-  return [];
-}
-
-/**
- * Анализирует template и извлекает информацию
+ * Анализирует template
  */
 function analyzeTemplate(
   descriptor: SFCDescriptor,
@@ -880,7 +1104,6 @@ function extractComposablesFromAST(ast: Program): VueComponentAnalysis['composab
     if (!node) return;
 
     try {
-      // ✅ ИСПРАВЛЕНИЕ: Обработка VariableDeclaration с инициализатором
       if (node.type === 'VariableDeclaration') {
         for (const decl of node.declarations) {
           if (decl.init && decl.init.type === 'CallExpression') {
@@ -889,7 +1112,10 @@ function extractComposablesFromAST(ast: Program): VueComponentAnalysis['composab
 
             if (callee.type === 'Identifier') {
               name = callee.name;
-            } else if (callee.type === 'MemberExpression' && callee.property.type === 'Identifier') {
+            } else if (
+              callee.type === 'MemberExpression' &&
+              callee.property.type === 'Identifier'
+            ) {
               name = callee.property.name;
             }
 
@@ -903,17 +1129,15 @@ function extractComposablesFromAST(ast: Program): VueComponentAnalysis['composab
                 return '...';
               });
 
-              composables.push({
-                name,
-                source,
-                args,
-              });
+              const exists = composables.some(c => c.name === name && c.source === source);
+              if (!exists) {
+                composables.push({ name, source, args });
+              }
             }
           }
         }
       }
 
-      // ✅ НОВОЕ: Обработка AssignmentExpression (const x = ref(...))
       if (node.type === 'VariableDeclarator') {
         const init = node.init;
         if (init && init.type === 'CallExpression') {
@@ -926,7 +1150,10 @@ function extractComposablesFromAST(ast: Program): VueComponentAnalysis['composab
             name = callee.property.name;
           }
 
-          if (name && (name.startsWith('use') || name === 'ref' || name === 'computed' || name === 'watch' || name === 'reactive')) {
+          if (
+            name &&
+            (name.startsWith('use') || ['ref', 'computed', 'watch', 'reactive'].includes(name))
+          ) {
             const source = node.id?.type === 'Identifier' ? node.id.name : 'unknown';
             const args = init.arguments.map((arg: any) => {
               if (arg.type === 'Literal') return String(arg.value);
@@ -936,70 +1163,35 @@ function extractComposablesFromAST(ast: Program): VueComponentAnalysis['composab
               return '...';
             });
 
-            // ✅ Добавляем только если еще не добавлен
             const exists = composables.some(c => c.name === name && c.source === source);
             if (!exists) {
-              composables.push({
-                name,
-                source,
-                args,
-              });
+              composables.push({ name, source, args });
             }
           }
         }
       }
 
-      // ✅ НОВОЕ: Обработка вызовов в ReturnStatement
-      if (node.type === 'ReturnStatement' && node.argument?.type === 'CallExpression') {
-        const callee = node.argument.callee;
-        let name: string | null = null;
-
-        if (callee.type === 'Identifier') {
-          name = callee.name;
-        } else if (callee.type === 'MemberExpression' && callee.property.type === 'Identifier') {
-          name = callee.property.name;
-        }
-
-        if (name && (name.startsWith('use') || name === 'ref' || name === 'computed' || name === 'watch' || name === 'reactive')) {
-          const source = 'return';
-          const args = node.argument.arguments.map((arg: any) => {
-            if (arg.type === 'Literal') return String(arg.value);
-            if (arg.type === 'Identifier') return arg.name;
-            if (arg.type === 'ObjectExpression') return '{ ... }';
-            if (arg.type === 'ArrayExpression') return '[ ... ]';
-            return '...';
-          });
-
-          composables.push({
-            name,
-            source,
-            args,
-          });
-        }
-      }
-
-      // ✅ НОВОЕ: Обработка ObjectExpression (например, { ref } = ...)
       if (node.type === 'ObjectPattern') {
         for (const prop of node.properties) {
           if (prop.type === 'Property' && prop.key?.type === 'Identifier') {
             const name = prop.key.name;
-            if (name && (name.startsWith('use') || name === 'ref' || name === 'computed' || name === 'watch' || name === 'reactive')) {
+            if (
+              name &&
+              (name.startsWith('use') || ['ref', 'computed', 'watch', 'reactive'].includes(name))
+            ) {
               const source = prop.value?.type === 'Identifier' ? prop.value.name : 'unknown';
-              composables.push({
-                name,
-                source,
-                args: [],
-              });
+              const exists = composables.some(c => c.name === name && c.source === source);
+              if (!exists) {
+                composables.push({ name, source, args: [] });
+              }
             }
           }
         }
       }
-
     } catch (error) {
       // Игнорируем ошибки
     }
 
-    // Рекурсивный обход детей
     for (const key of Object.keys(node)) {
       const child = node[key];
       if (child && typeof child === 'object') {
@@ -1029,13 +1221,19 @@ export function analyzeVueComponent(
     return null;
   }
 
+  if (!fs.existsSync(filePath)) {
+    console.error(`❌ Файл не найден: ${filePath}`);
+    return null;
+  }
+
   let fileExists = false;
   let fileContent = '';
   try {
     fileContent = fs.readFileSync(filePath, 'utf-8');
     fileExists = true;
   } catch (error) {
-    // Файл не существует, возможно тест с in-memory файлом
+    console.error(`❌ Ошибка чтения файла ${filePath}:`, error);
+    return null;
   }
 
   const parsed = parseVueFile(filePath);
@@ -1045,19 +1243,59 @@ export function analyzeVueComponent(
 
   const { descriptor } = parsed;
 
-  // Компилируем скрипт
   const compiledScript = compileScriptBlock(descriptor, filePath);
-
-  // Анализируем template
   const templateAnalysis = analyzeTemplate(descriptor, options);
 
-  // ✅ ВАЖНО: используем ОРИГИНАЛЬНЫЙ код для AST, а не скомпилированный
-  // Получаем содержимое скрипта из descriptor (оригинальный код)
   const originalScriptContent = descriptor.scriptSetup?.content || descriptor.script?.content || '';
   const isSetup = !!descriptor.scriptSetup;
   const isTS = !!(descriptor.scriptSetup?.lang === 'ts' || descriptor.script?.lang === 'ts');
 
-  // Используем оригинальный код для парсинга AST через @typescript-eslint/parser
+  // ✅ ПЫТАЕМСЯ ИЗВЛЕЧЬ PROPS ИЗ СКОМПИЛИРОВАННОГО СКРИПТА
+  let props = extractPropsFromCompiledScript(compiledScript);
+  let emits = extractEmitsFromCompiledScript(compiledScript);
+  let expose = extractExposeFromCompiledScript(compiledScript);
+
+  // ✅ ЕСЛИ НЕ ПОЛУЧИЛОСЬ - ИСПОЛЬЗУЕМ РЕГУЛЯРНЫЕ ВЫРАЖЕНИЯ (FALLBACK)
+  if (props.names.length === 0) {
+    props = extractPropsFromSource(originalScriptContent);
+
+    if (emits.names.length === 0) {
+      emits = extractEmitsFromSource(originalScriptContent);
+    }
+  }
+
+  // ✅ ЕСЛИ ВСЕ ЕЩЕ НЕТ - ПРОБУЕМ ЧЕРЕЗ AST
+  if (props.names.length === 0 && originalScriptContent) {
+    try {
+      const fallbackAst = parseTS(originalScriptContent, {
+        ecmaVersion: 2022,
+        sourceType: 'module',
+        loc: true,
+        range: true,
+        ecmaFeatures: {
+          jsx: true,
+        },
+      }) as Program;
+
+      const astProps = extractPropsFromAST(fallbackAst);
+      if (astProps.names.length > 0) {
+        props = astProps;
+      }
+
+      const astEmits = extractEmitsFromAST(fallbackAst);
+      if (astEmits.names.length > 0) {
+        emits = astEmits;
+      }
+
+      const astExpose = extractExposeFromAST(fallbackAst);
+      if (astExpose.length > 0) {
+        expose = astExpose;
+      }
+    } catch (error) {
+      // Игнорируем ошибки парсинга
+    }
+  }
+
   let scriptAst: Program | null = null;
   if (originalScriptContent) {
     try {
@@ -1075,21 +1313,13 @@ export function analyzeVueComponent(
     }
   }
 
-  // Извлекаем данные из AST (основной источник для TypeScript)
-  const props = normalizeProps(compiledScript, scriptAst);
-  const emits = normalizeEmits(compiledScript, scriptAst);
-  const expose = normalizeExpose(compiledScript, scriptAst);
-
-  // Импорты и composables извлекаем из AST
   const imports = scriptAst ? extractImportsFromAST(scriptAst) : [];
   const composables = scriptAst ? extractComposablesFromAST(scriptAst) : [];
 
-  // Slots - из template и compiledScript
   const allSlots = [
     ...new Set([...templateAnalysis.slots, ...((compiledScript as any)?.slots || [])]),
   ];
 
-  // Вычисляем размер файла
   let totalSize = 0;
   if (fileExists) {
     try {
@@ -1107,7 +1337,7 @@ export function analyzeVueComponent(
     filePath,
 
     script: {
-      content: originalScriptContent, // ← Используем оригинальный код
+      content: originalScriptContent,
       ast: scriptAst,
       isSetup,
       isTS,

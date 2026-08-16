@@ -114,7 +114,6 @@ const message = ref('Hello')
         includeScriptAST: true,
       });
 
-      console.log('analysis:', analysis);
       expect(analysis).not.toBeNull();
       expect(analysis.componentName).toBe('SetupComponent');
       expect(analysis.script.isSetup).toBe(true);
@@ -183,6 +182,7 @@ defineProps<{
       const filePath = createTestFile(content, 'TypedPropsComponent.vue');
       const analysis = analyzeVueComponent(filePath);
 
+      console.log('----- analysis', analysis);
       expect(analysis.props.names).toEqual([
         'stringProp',
         'numberProp',
@@ -220,6 +220,7 @@ const props = defineProps({
       const filePath = createTestFile(content, 'RuntimePropsComponent.vue');
       const analysis = analyzeVueComponent(filePath);
 
+      console.log('analysis:', analysis);
       expect(analysis.props.names).toContain('title');
       expect(analysis.props.names).toContain('count');
       expect(analysis.props.names).toContain('disabled');
