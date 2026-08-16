@@ -62,6 +62,7 @@
     "===================== UI TESTS =====================": "",
     "test:ui": "vitest --ui",
     "test:ui:src/__tests__": "vitest src/__tests__ --ui --no-open",
+    "test:ui:src/formal/__tests__": "vitest src/formal/__tests__ --ui --no-open",
     "test:ui:src/__tests__/file": "vitest src/__tests__/minifier.test.ts --ui --no-open",
     "test:ui:src/__tests__/file:string": "vitest --ui --no-open  src/__tests__/minifier.test.ts -t \"должен скрывать значения простых переменных\"",
     "semantic:ts": "tsx packages/ast-analyzer/src/cli-semantic.ts",
