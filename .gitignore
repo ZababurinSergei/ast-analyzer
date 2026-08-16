@@ -25,7 +25,7 @@ Directory/**
 fs
 # node-waf configuration
 .lock-wscript
-
+./semantic-reports
 # Compiled binary addons (http://nodejs.org/api/addons.html)
 bin
 # Personal Scripts
