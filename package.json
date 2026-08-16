@@ -61,7 +61,7 @@
     "cicd:status": "node dist/cli-cicd.js status",
     "===================== UI TESTS =====================": "",
     "test:ui": "vitest --ui",
-    "test:ui:src/__tests__/cli-semantic.edge.test.ts:string": "vitest --ui src/__tests__/vue-analyzer.test.ts -t \"should generate comprehensive Markdown report\"",
+    "test:ui:src/__tests__/cli-semantic.edge.test.ts:string": "vitest --ui src/__tests__/vue-analyzer.test.ts -t \"should work with TypeScript AST parser\"",
     "test:ui:src/__tests__/vue-analyzer.test.ts": "vitest src/__tests__/vue-analyzer.test.ts --ui",
     "test:ui:src/__tests__": "vitest src/__tests__ --ui",
     "semantic:ts": "tsx packages/ast-analyzer/src/cli-semantic.ts",

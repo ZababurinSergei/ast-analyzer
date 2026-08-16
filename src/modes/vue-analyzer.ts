@@ -145,7 +145,7 @@ function extractPropsFromSource(content: string): VueComponentAnalysis['props'] 
   // 1. ПОДДЕРЖКА withDefaults(defineProps<Props>(), { ... })
   // ============================================
   const withDefaultsMatch = content.match(
-      /withDefaults\s*\(\s*defineProps\s*<\s*(\w+)\s*>\s*\(\s*\)\s*,\s*\{([\s\S]*?)\}\s*\)/
+    /withDefaults\s*\(\s*defineProps\s*<\s*(\w+)\s*>\s*\(\s*\)\s*,\s*\{([\s\S]*?)\}\s*\)/
   );
   if (withDefaultsMatch) {
     const interfaceName = withDefaultsMatch[1];
@@ -154,7 +154,7 @@ function extractPropsFromSource(content: string): VueComponentAnalysis['props'] 
     // Ищем интерфейс
     if (interfaceName) {
       const interfaceMatch = content.match(
-          new RegExp(`interface\\s+${interfaceName}\\s*\\{([\\s\\S]*?)\\}`)
+        new RegExp(`interface\\s+${interfaceName}\\s*\\{([\\s\\S]*?)\\}`)
       );
       if (interfaceMatch) {
         const propsContent = interfaceMatch[1];
@@ -381,7 +381,8 @@ function extractEmitsFromSource(content: string): VueComponentAnalysis['emits'] 
   };
 
   // Ищем defineEmits с массивом: defineEmits(['update', 'delete'])
-  const arrayMatch = content.match(/defineEmits\s*\(\s*\[([\s\S]*?)\]\s*\)/);
+  // ИСПРАВЛЕНО: экранирование скобок
+  const arrayMatch = content.match(/defineEmits\s*\(\s*\[\s*([\s\S]*?)\s*\]\s*\)/);
   if (arrayMatch) {
     const emitsContent = arrayMatch[1];
     if (emitsContent) {
@@ -421,7 +422,7 @@ function extractEmitsFromSource(content: string): VueComponentAnalysis['emits'] 
  * Извлекает props из скомпилированного script блока
  */
 function extractPropsFromCompiledScript(
-    compiledScript: SFCScriptBlock | null
+  compiledScript: SFCScriptBlock | null
 ): VueComponentAnalysis['props'] {
   const result: VueComponentAnalysis['props'] = {
     names: [],
@@ -489,7 +490,7 @@ function extractPropsFromCompiledScript(
  * Извлекает emits из скомпилированного script блока
  */
 function extractEmitsFromCompiledScript(
-    compiledScript: SFCScriptBlock | null
+  compiledScript: SFCScriptBlock | null
 ): VueComponentAnalysis['emits'] {
   const result: VueComponentAnalysis['emits'] = {
     names: [],
@@ -670,7 +671,7 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
 
     // Извлекает props из type node
     const extractPropsFromTypeNode = (
-        typeNode: any
+      typeNode: any
     ): { names: string[]; types: Record<string, string>; required: Record<string, boolean> } => {
       const extracted = {
         names: [] as string[],
@@ -755,9 +756,9 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
       if (!node) return null;
 
       if (
-          node.type === 'CallExpression' &&
-          node.callee?.type === 'Identifier' &&
-          node.callee.name === 'defineProps'
+        node.type === 'CallExpression' &&
+        node.callee?.type === 'Identifier' &&
+        node.callee.name === 'defineProps'
       ) {
         return node;
       }
@@ -777,9 +778,9 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
       if (!node) return null;
 
       if (
-          node.type === 'CallExpression' &&
-          node.callee?.type === 'Identifier' &&
-          node.callee.name === 'withDefaults'
+        node.type === 'CallExpression' &&
+        node.callee?.type === 'Identifier' &&
+        node.callee.name === 'withDefaults'
       ) {
         return node;
       }
@@ -803,8 +804,8 @@ function extractPropsFromAST(ast: Program): VueComponentAnalysis['props'] {
         if (args && args.length >= 1 && args[0]?.type === 'CallExpression') {
           const definePropsCall = args[0];
           if (
-              definePropsCall.callee?.type === 'Identifier' &&
-              definePropsCall.callee.name === 'defineProps'
+            definePropsCall.callee?.type === 'Identifier' &&
+            definePropsCall.callee.name === 'defineProps'
           ) {
             const typeParams = definePropsCall.typeParameters;
             let typeNode = null;
@@ -922,9 +923,9 @@ function extractEmitsFromAST(ast: Program): VueComponentAnalysis['emits'] {
       if (!node) return null;
 
       if (
-          node.type === 'CallExpression' &&
-          node.callee?.type === 'Identifier' &&
-          node.callee.name === 'defineEmits'
+        node.type === 'CallExpression' &&
+        node.callee?.type === 'Identifier' &&
+        node.callee.name === 'defineEmits'
       ) {
         return node;
       }
@@ -992,9 +993,9 @@ function extractExposeFromAST(ast: Program): string[] {
       if (!node) return null;
 
       if (
-          node.type === 'CallExpression' &&
-          node.callee?.type === 'Identifier' &&
-          node.callee.name === 'defineExpose'
+        node.type === 'CallExpression' &&
+        node.callee?.type === 'Identifier' &&
+        node.callee.name === 'defineExpose'
       ) {
         return node;
       }
@@ -1034,10 +1035,11 @@ function extractExposeFromAST(ast: Program): string[] {
  * Анализирует template
  * ✅ ИСПРАВЛЕНО: корректное извлечение директив и событий из AST @vue/compiler-sfc
  * ✅ ДОБАВЛЕНО: обработка сокращенных событий (@mouseover)
+ * ✅ ДОБАВЛЕНО: FALLBACK через регулярные выражения для случаев, когда AST недоступен
  */
 function analyzeTemplate(
-    descriptor: SFCDescriptor,
-    options: AnalysisOptions
+  descriptor: SFCDescriptor,
+  options: AnalysisOptions
 ): VueComponentAnalysis['template'] {
   const result: VueComponentAnalysis['template'] = {
     content: null,
@@ -1053,6 +1055,9 @@ function analyzeTemplate(
 
   result.content = descriptor.template.content;
 
+  // ============================================
+  // 1. АНАЛИЗ ЧЕРЕЗ AST (если доступен)
+  // ============================================
   if (options.includeTemplateAST && descriptor.template.ast) {
     result.ast = descriptor.template.ast;
 
@@ -1099,7 +1104,8 @@ function analyzeTemplate(
           // Ищем атрибут name у слота
           if (node.props) {
             for (const prop of node.props) {
-              if (prop.type === 6) { // AttributeNode
+              if (prop.type === 6) {
+                // AttributeNode
                 if (prop.name === 'name' && prop.value) {
                   slotName = prop.value.content;
                 }
@@ -1130,9 +1136,8 @@ function analyzeTemplate(
 
                 // Если директива v-on, добавляем событие
                 if (directiveName === 'v-on' && prop.arg) {
-                  const eventName = typeof prop.arg === 'string'
-                      ? prop.arg
-                      : prop.arg?.content || '';
+                  const eventName =
+                    typeof prop.arg === 'string' ? prop.arg : prop.arg?.content || '';
                   if (eventName && !result.events.includes(eventName)) {
                     result.events.push(eventName);
                   }
@@ -1208,12 +1213,132 @@ function analyzeTemplate(
 
     traverseVueAST(descriptor.template.ast);
 
-    // Удаляем дубликаты
+    // Удаляем дубликаты из AST анализа
     result.rootElements = [...new Set(result.rootElements)];
     result.slots = [...new Set(result.slots)];
     result.directives = [...new Set(result.directives)];
     result.events = [...new Set(result.events)];
   }
+
+  // ============================================
+  // 2. FALLBACK: анализ через регулярные выражения
+  //    (работает даже если AST недоступен или не все данные были извлечены)
+  // ============================================
+  const templateText = result.content || '';
+
+  // Извлекаем слоты: <slot name="..." /> или <slot />
+  const slotRegex = /<slot\s+(?:name=["']([^"']+)["'])?\s*\/?>/g;
+  let slotMatch;
+  while ((slotMatch = slotRegex.exec(templateText)) !== null) {
+    const slotName = slotMatch[1] || 'default';
+    if (!result.slots.includes(slotName)) {
+      result.slots.push(slotName);
+    }
+  }
+
+  // Извлекаем корневые элементы (если не найдены через AST)
+  if (result.rootElements.length === 0) {
+    const cleanTemplate = templateText.trim();
+    // Ищем теги на верхнем уровне
+    const rootTagMatches = cleanTemplate.match(/^<(\w+)/);
+    if (rootTagMatches && rootTagMatches[1]) {
+      result.rootElements.push(rootTagMatches[1]);
+    }
+    // Если есть фрагмент с несколькими корневыми элементами
+    const fragmentMatch = cleanTemplate.match(/^<>\s*([\s\S]*)\s*<\/>/);
+    if (fragmentMatch) {
+      const innerContent = fragmentMatch[1];
+      // ИСПРАВЛЕНО: проверка на undefined
+      if (innerContent) {
+        const innerTags = innerContent.match(/<(\w+)/g);
+        if (innerTags) {
+          for (const tag of innerTags) {
+            const tagName = tag.slice(1);
+            if (tagName && !result.rootElements.includes(tagName)) {
+              result.rootElements.push(tagName);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Извлекаем директивы (если не найдены через AST)
+  if (result.directives.length === 0) {
+    const directivePatterns: Record<string, RegExp> = {
+      'v-if': /v-if/g,
+      'v-for': /v-for/g,
+      'v-on': /v-on/g,
+      'v-model': /v-model/g,
+      'v-bind': /v-bind/g,
+      'v-show': /v-show/g,
+      'v-else': /v-else/g,
+      'v-else-if': /v-else-if/g,
+    };
+
+    for (const [directive, pattern] of Object.entries(directivePatterns)) {
+      pattern.lastIndex = 0;
+      if (pattern.test(templateText)) {
+        if (!result.directives.includes(directive)) {
+          result.directives.push(directive);
+        }
+      }
+    }
+
+    // Проверяем сокращенные директивы: @click, :class
+    if (/@\w+/.test(templateText) && !result.directives.includes('v-on')) {
+      result.directives.push('v-on');
+    }
+    if (/:\w+/.test(templateText) && !result.directives.includes('v-bind')) {
+      result.directives.push('v-bind');
+    }
+  }
+
+  // Извлекаем события (если не найдены через AST)
+  if (result.events.length === 0) {
+    // @click, @mouseover и т.д.
+    const eventRegex = /@(\w+)/g;
+    let eventMatch;
+    while ((eventMatch = eventRegex.exec(templateText)) !== null) {
+      const eventName = eventMatch[1];
+      if (eventName && !result.events.includes(eventName)) {
+        result.events.push(eventName);
+      }
+    }
+
+    // v-on:click
+    const vOnRegex = /v-on:(\w+)/g;
+    let vOnMatch;
+    while ((vOnMatch = vOnRegex.exec(templateText)) !== null) {
+      const eventName = vOnMatch[1];
+      if (eventName && !result.events.includes(eventName)) {
+        result.events.push(eventName);
+      }
+    }
+
+    // on{Event} в атрибутах
+    const onEventRegex = /\s+on(\w+)=/g;
+    let onMatch;
+    while ((onMatch = onEventRegex.exec(templateText)) !== null) {
+      const eventName = onMatch[1];
+      if (eventName && !result.events.includes(eventName)) {
+        result.events.push(eventName);
+      }
+    }
+  }
+
+  // Вычисляем сложность (количество тегов и выражений)
+  if (result.complexity === 0) {
+    const tagMatches = templateText.match(/<[^>]+>/g);
+    const expressionMatches = templateText.match(/\{\{[^}]*\}\}/g);
+    result.complexity = (tagMatches?.length || 0) + (expressionMatches?.length || 0);
+  }
+
+  // Удаляем дубликаты
+  result.rootElements = [...new Set(result.rootElements)];
+  result.slots = [...new Set(result.slots)];
+  result.directives = [...new Set(result.directives)];
+  result.events = [...new Set(result.events)];
 
   return result;
 }
@@ -1240,7 +1365,7 @@ function extractImportsFromAST(ast: Program): VueComponentAnalysis['imports'] {
         for (const spec of node.specifiers) {
           if (spec.type === 'ImportSpecifier') {
             const importedName =
-                spec.imported.type === 'Identifier' ? spec.imported.name : spec.imported.value;
+              spec.imported.type === 'Identifier' ? spec.imported.name : spec.imported.value;
             const localName = spec.local.name;
             if (importedName === localName) {
               specifiers.push(importedName);
@@ -1266,6 +1391,60 @@ function extractImportsFromAST(ast: Program): VueComponentAnalysis['imports'] {
     }
   } catch (error) {
     // Игнорируем ошибки
+  }
+
+  return imports;
+}
+
+/**
+ * ✅ НОВАЯ ФУНКЦИЯ: Извлекает импорты из исходного кода через регулярные выражения (fallback)
+ */
+function extractImportsFromSource(content: string): VueComponentAnalysis['imports'] {
+  const imports: VueComponentAnalysis['imports'] = [];
+
+  // Ищем import declarations
+  const importRegex =
+    /import\s+(?:type\s+)?(?:\{([^}]*)\}\s+from\s+['"]([^'"]+)['"]|(\w+)\s+from\s+['"]([^'"]+)['"]|\*\s+as\s+(\w+)\s+from\s+['"]([^'"]+)['"])/g;
+
+  let match;
+  while ((match = importRegex.exec(content)) !== null) {
+    // Проверяем тип импорта
+    if (match[1] && match[2]) {
+      // Named imports: import { a, b } from 'source'
+      const specifiers = match[1]
+        .split(',')
+        .map(s => s.trim())
+        .filter(s => s);
+      const source = match[2];
+      const isTypeOnly = content.includes(`import type { ${specifiers.join(', ')} }`);
+      if (source && specifiers.length > 0) {
+        imports.push({
+          source,
+          specifiers,
+          isTypeOnly,
+        });
+      }
+    } else if (match[3] && match[4]) {
+      // Default import: import something from 'source'
+      const source = match[4];
+      if (source) {
+        imports.push({
+          source: source,
+          specifiers: [`default as ${match[3]}`],
+          isTypeOnly: false,
+        });
+      }
+    } else if (match[5] && match[6]) {
+      // Namespace import: import * as something from 'source'
+      const source = match[6];
+      if (source) {
+        imports.push({
+          source: source,
+          specifiers: [`* as ${match[5]}`],
+          isTypeOnly: false,
+        });
+      }
+    }
   }
 
   return imports;
@@ -1298,17 +1477,15 @@ function extractComposablesFromAST(ast: Program): VueComponentAnalysis['composab
             if (callee.type === 'Identifier') {
               name = callee.name;
             } else if (
-                callee.type === 'MemberExpression' &&
-                callee.property.type === 'Identifier'
+              callee.type === 'MemberExpression' &&
+              callee.property.type === 'Identifier'
             ) {
               name = callee.property.name;
             }
 
             // Функции, начинающиеся с 'use' ИЛИ стандартные Vue композаблы
             if (name && (name.startsWith('use') || vueComposables.includes(name))) {
-              const source = decl.id?.type === 'Identifier'
-                  ? decl.id.name
-                  : 'unknown';
+              const source = decl.id?.type === 'Identifier' ? decl.id.name : 'unknown';
               const args = decl.init.arguments.map((arg: any) => {
                 if (arg.type === 'Literal') return String(arg.value);
                 if (arg.type === 'Identifier') return arg.name;
@@ -1348,11 +1525,149 @@ function extractComposablesFromAST(ast: Program): VueComponentAnalysis['composab
 }
 
 /**
+ * ✅ НОВАЯ ФУНКЦИЯ: Извлекает composables из исходного кода через регулярные выражения (fallback)
+ * Используется когда AST парсинг не сработал (например, для Vue макросов)
+ */
+function extractComposablesFromSource(content: string): VueComponentAnalysis['composables'] {
+  const composables: VueComponentAnalysis['composables'] = [];
+
+  // Полный список Vue composables и функций
+  const vueComposables = [
+    'ref',
+    'reactive',
+    'computed',
+    'watch',
+    'watchEffect',
+    'provide',
+    'inject',
+    'useSlots',
+    'useAttrs',
+    'useModel',
+    'useRouter',
+    'useRoute',
+    'useStore',
+    'useI18n',
+    'useHead',
+    'useAsyncData',
+    'useFetch',
+    'useLazyFetch',
+    'useCookie',
+    'useRuntimeConfig',
+    'useAppConfig',
+    'useRequestHeaders',
+    'useRequestEvent',
+    'useRequestURL',
+    'useSanitizedCookie',
+    'useState',
+    'useHydration',
+    'useNuxtApp',
+  ];
+
+  // Паттерны для поиска различных видов вызовов
+  const patterns = [
+    // const xxx = useXxx(...) или const xxx = computed(...)
+    /const\s+(\w+)\s*=\s*(use\w+|computed|ref|reactive|watch|watchEffect|provide|inject)\(([^)]*)\)/g,
+
+    // const { xxx } = useXxx(...)
+    /const\s*\{\s*([^}]+)\s*\}\s*=\s*(use\w+)\(([^)]*)\)/g,
+
+    // const [ xxx ] = useXxx(...)
+    /const\s*\[\s*([^\]]+)\s*\]\s*=\s*(use\w+)\(([^)]*)\)/g,
+
+    // useXxx() без присваивания (прямой вызов)
+    /(use\w+)\(/g,
+  ];
+
+  for (const pattern of patterns) {
+    pattern.lastIndex = 0;
+    let match;
+    while ((match = pattern.exec(content)) !== null) {
+      let source: string;
+      let name: string;
+      let args: string[] = [];
+
+      // Определяем тип совпадения по содержимому
+      const isDestructure = pattern.source.includes(
+        'const\\s*\\{\\s*([^}]+)\\s*\\}\\s*=\\s*(use\\w+)'
+      );
+      const isArray = pattern.source.includes('const\\s*\\[\\s*([^\\]]+)\\s*\\]\\s*=\\s*(use\\w+)');
+      const isDirectCall =
+        pattern.source.includes('(use\\w+)\\(') && !pattern.source.includes('const');
+
+      if (isDestructure) {
+        // Деструктуризация: const { xxx } = useXxx(...)
+        source = match[1]?.trim() || 'unknown';
+        name = match[2] || 'unknown';
+        args = match[3]
+          ? match[3]
+              .split(',')
+              .map(a => a.trim())
+              .filter(a => a)
+          : [];
+      } else if (isArray) {
+        // Массив: const [ xxx ] = useXxx(...)
+        source = match[1]?.trim() || 'unknown';
+        name = match[2] || 'unknown';
+        args = match[3]
+          ? match[3]
+              .split(',')
+              .map(a => a.trim())
+              .filter(a => a)
+          : [];
+      } else if (isDirectCall) {
+        // Прямой вызов: useXxx()
+        name = match[1] || 'unknown';
+        source = 'direct_call';
+        args = [];
+      } else {
+        // Обычное присваивание: const xxx = useXxx(...)
+        source = match[1]?.trim() || 'unknown';
+        name = match[2] || 'unknown';
+        args = match[3]
+          ? match[3]
+              .split(',')
+              .map(a => a.trim())
+              .filter(a => a)
+          : [];
+      }
+
+      // ✅ Проверяем что name не undefined
+      if (!name || name === 'unknown') continue;
+
+      // Проверяем, что это действительно composable
+      if (name.startsWith('use') || vueComposables.includes(name)) {
+        const exists = composables.some(c => c.name === name && c.source === source);
+        if (!exists) {
+          composables.push({ name, source, args });
+        }
+      }
+    }
+  }
+
+  // Дополнительный проход для деструктуризации, которая могла быть пропущена
+  const destructurePattern = /const\s*\{\s*([^}]+)\s*\}\s*=\s*(use\w+)\(/g;
+  destructurePattern.lastIndex = 0;
+  let destMatch;
+  while ((destMatch = destructurePattern.exec(content)) !== null) {
+    const source = destMatch[1]?.trim() || 'unknown';
+    const name = destMatch[2] || 'unknown';
+    if (name && name.startsWith('use') && name !== 'unknown') {
+      const exists = composables.some(c => c.name === name && c.source === source);
+      if (!exists) {
+        composables.push({ name, source, args: [] });
+      }
+    }
+  }
+
+  return composables;
+}
+
+/**
  * Главная функция анализа Vue компонента
  */
 export function analyzeVueComponent(
-    filePath: string,
-    options: AnalysisOptions = {}
+  filePath: string,
+  options: AnalysisOptions = {}
 ): VueComponentAnalysis | null {
   if (!filePath.endsWith('.vue')) {
     console.error('❌ Файл не является Vue компонентом');
@@ -1443,8 +1758,26 @@ export function analyzeVueComponent(
     }
   }
 
-  const imports = scriptAst ? extractImportsFromAST(scriptAst) : [];
-  const composables = scriptAst ? extractComposablesFromAST(scriptAst) : [];
+  // ✅ ПОЛУЧАЕМ ИМПОРТЫ: СНАЧАЛА ИЗ AST, ЕСЛИ НЕТ - ИЗ РЕГУЛЯРОК
+  let imports = scriptAst ? extractImportsFromAST(scriptAst) : [];
+
+  // ✅ FALLBACK: если AST не дал результатов, используем регулярные выражения
+  if (imports.length === 0 && originalScriptContent) {
+    const fallbackImports = extractImportsFromSource(originalScriptContent);
+    if (fallbackImports.length > 0) {
+      imports = fallbackImports;
+      console.log(`📊 Imports extracted via regex: ${fallbackImports.length}`);
+    }
+  }
+
+  // ✅ ПОЛУЧАЕМ COMPOSABLES: СНАЧАЛА ИЗ AST, ЕСЛИ НЕТ - ИЗ РЕГУЛЯРОК
+  let composables = scriptAst ? extractComposablesFromAST(scriptAst) : [];
+
+  // ✅ FALLBACK: если AST не дал результатов, используем регулярные выражения
+  if (composables.length === 0 && originalScriptContent) {
+    composables = extractComposablesFromSource(originalScriptContent);
+    console.log(`📊 Composables extracted via regex: ${composables.length}`);
+  }
 
   const allSlots = [
     ...new Set([...templateAnalysis.slots, ...((compiledScript as any)?.slots || [])]),
@@ -1516,7 +1849,7 @@ export function generateVueComponentReport(analysis: VueComponentAnalysis): stri
       const type = analysis.props.types[name] || 'any';
       const required = analysis.props.required[name] ? '✅' : '❌';
       const defaultValue =
-          analysis.props.defaults[name] !== undefined ? String(analysis.props.defaults[name]) : '-';
+        analysis.props.defaults[name] !== undefined ? String(analysis.props.defaults[name]) : '-';
       report += `| \`${name}\` | \`${type}\` | ${required} | ${defaultValue} |\n`;
     }
     report += '\n';
@@ -1649,8 +1982,8 @@ export function enhanceWithVueAnalysis(targetFile: string, existingAnalysis: any
  * Быстрый анализ Vue компонента для CLI
  */
 export async function analyzeVueComponentCli(
-    filePath: string,
-    options: AnalysisOptions = {}
+  filePath: string,
+  options: AnalysisOptions = {}
 ): Promise<void> {
   console.log(`\n${'='.repeat(60)}`);
   console.log('🎯 АНАЛИЗ VUE КОМПОНЕНТА');
