@@ -250,7 +250,7 @@ const props = withDefaults(defineProps<Props>(), {
 
       const filePath = createTestFile(content, 'WithDefaultsComponent.vue');
       const analysis = analyzeVueComponent(filePath);
-
+      console.log('analysis:', analysis);
       expect(analysis.props.names).toContain('title');
       expect(analysis.props.names).toContain('count');
       expect(analysis.props.names).toContain('disabled');
@@ -347,6 +347,7 @@ const isVisible = true
       const filePath = createTestFile(content, 'DirectivesComponent.vue');
       const analysis = analyzeVueComponent(filePath, { includeTemplateAST: true });
 
+      console.log('analysis', analysis);
       expect(analysis.template.directives).toContain('v-if');
       expect(analysis.template.directives).toContain('v-for');
       expect(analysis.template.directives).toContain('v-on');
