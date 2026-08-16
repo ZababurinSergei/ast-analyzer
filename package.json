@@ -8,6 +8,7 @@
   "bin": {
     "@newkind/ast-analyzer": "dist/cli.js",
     "ast-refactor": "dist/cli-refactor.js",
+    "ast-semantic": "dist/cli-semantic.js",
     "ast-cicd": "dist/cli-cicd.js",
     "ast-ts-validator": "dist/cli-ts-validator.js"
   },
@@ -35,9 +36,10 @@
   },
   "scripts": {
     "clean": "rm -rf dist",
-    "build": "npm run clean && npm run build:types && npm run build:esbuild",
+    "build": "npm run clean && npm run build:types && npm run build:bundle && npm run build:cli",
     "build:types": "tsc --emitDeclarationOnly --declaration --declarationMap --outDir dist",
-    "build:esbuild": "node esbuild.config.js",
+    "build:bundle": "NODE_ENV=production node esbuild.bundle.config.js",
+    "build:cli": "NODE_ENV=production node esbuild.cli.config.js",
     "build:prod": "NODE_ENV=production npm run build",
     "start": "node dist/cli.js",
     "dev": "tsx src/cli.ts",

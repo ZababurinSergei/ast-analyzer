@@ -1,10 +1,10 @@
-// index.ts
+// packages/ast-analyzer/src/index.ts
 // Точка входа для программы и внешнего API
 
 // ==========================================
 // ЭКСПОРТ ЯДРА (CORE)
 // ==========================================
-import { TypeAnalyzer } from './semantic/TypeAnalyzer.js';
+
 // Парсинг и работа с AST
 export {
   parseFile,
@@ -70,7 +70,7 @@ export {
 } from './modes/vue-analyzer.js';
 
 // ==========================================
-// ЭКСПОРТ СЕМАНТИЧЕСКОГО АНАЛИЗА (НОВЫЙ!)
+// ЭКСПОРТ СЕМАНТИЧЕСКОГО АНАЛИЗА
 // ==========================================
 
 // CFG (Control Flow Graph) анализатор
@@ -108,12 +108,19 @@ export {
 } from './ci-cd/SemanticPipeline.js';
 
 // ==========================================
-// ЭКСПОРТ ФОРМАЛЬНОЙ ВЕРИФИКАЦИИ (НОВЫЙ!)
+// ЭКСПОРТ ФОРМАЛЬНОЙ ВЕРИФИКАЦИИ (ИЗ formal/index.ts)
 // ==========================================
 
-// Z3 верификатор
+// Все экспорты из formal модуля
 export {
+  // Основные классы
   Z3Verifier,
+  ExpressionParser,
+  FunctionBodyModeler,
+  FileEquivalenceChecker,
+  RefactoringEquivalenceChecker,
+
+  // Z3Verifier функции
   createIntParam,
   createBoolParam,
   createStringParam,
@@ -124,13 +131,95 @@ export {
   and,
   or,
   not,
+  if_,
+  compare,
+  assign,
+  add,
+  sub,
+  mul,
+  div,
+  addExpr,
+  subExpr,
+  mulExpr,
+  divExpr,
+
+  // ExpressionParser функции
+  createExpressionParser,
+  parseExpression,
+  validateExpression,
+  extractVariables,
+  isValidForZ3,
+  toZ3String,
+  parseFunctionBody,
+  createFunctionVariables,
+  verifyFunctionWithBody,
+  createContractFromExpression,
+  createContractWithAutoPreconditions,
+  canParseExpression,
+  isSimpleExpression,
+  extractVariablesFromExpression,
+
+  // RefactoringEquivalenceChecker утилиты
+  isRefactoringEquivalent,
+  needsRefactoringReview,
+  hasCriticalIssues,
+
+  // Типы
   type VerificationConstraint,
   type VerificationResult as FormalVerificationResult,
   type FunctionContract,
-} from './formal/Z3Verifier.js';
+  type FunctionBodyModel,
+  type FileEquivalenceResult,
+  type FileEquivalenceOptions,
+  type RefactoringEquivalenceResult,
+  type EquivalenceCheckOptions,
 
-// Проверка эквивалентности
-export { EquivalenceChecker, type EquivalenceResult } from './formal/EquivalenceChecker.js';
+  // Утилиты для контрактов
+  createContractTemplate,
+  addPrecondition,
+  addPostcondition,
+  addInvariant,
+  addBody,
+  buildContract,
+  createContractFromSignature,
+  validatePostconditions,
+  generateVerificationReport,
+  areContractsEquivalent,
+
+  // Фасадные функции
+  checkFileEquivalence,
+  checkRefactoringEquivalence,
+  checkFunctionEquivalence,
+  checkExpressionEquivalence,
+  verifyFunction as formalVerifyFunction,
+
+  // Константы
+  FORMAL_MODULE_VERSION,
+  FORMAL_MODULE_NAME,
+} from './formal/index.js';
+
+// ==========================================
+// ЭКСПОРТ РЕФАКТОРИНГА
+// ==========================================
+
+export {
+  AutoRefactor,
+  ModuleExtractor,
+  ImportManager,
+  TypeScriptValidator,
+  ESLintASTFixer,
+  CodeValidator,
+  CodeFixer,
+  TemplateUpdater,
+  SyntaxValidator,
+  ModuleTypeDetector,
+  BackupManager,
+  type RefactorOptions,
+  type RefactorResult,
+  type ExtractedModule,
+  type ValidationResult,
+  type FixResult,
+} from './refactor/index.js';
 
 // ==========================================
 // ЭКСПОРТ РЕПОРТЕРОВ
@@ -239,11 +328,15 @@ export const NAME = 'ast-analyzer';
 // ==========================================
 
 import type { PipelineResult } from './ci-cd/SemanticPipeline.js';
-import type { VerificationResult as FormalVerificationResult } from './formal/Z3Verifier.js';
+import type { VerificationResult as FormalVerificationResult } from './formal/index.js';
 import type { ControlFlowGraph } from './semantic/CFGAnalyzer.js';
 import type { CallGraph } from './semantic/CallGraphAnalyzer.js';
 import type { TypeAnalysisResult } from './semantic/TypeAnalyzer.js';
 import type { DataFlowGraph } from './semantic/DataFlowAnalyzer.js';
+
+// Импортируем TypeAnalyzer для использования в функции getTypeInfo
+// (он уже экспортирован выше, но для TypeScript нужно явно импортировать для использования)
+import { TypeAnalyzer as TypeAnalyzerClass } from './semantic/TypeAnalyzer.js';
 
 /**
  * Быстрый анализ файла с семантикой
@@ -271,7 +364,7 @@ export async function verifyFunction(
   filePath: string,
   functionName: string
 ): Promise<FormalVerificationResult> {
-  const { Z3Verifier, createIntParam, range } = await import('./formal/Z3Verifier.js');
+  const { Z3Verifier, createIntParam, range } = await import('./formal/index.js');
   const { Project } = await import('ts-morph');
 
   const project = new Project();
@@ -334,8 +427,8 @@ export async function getCallGraph(entryPoint: string, maxDepth = 5): Promise<Ca
  * @param filePath Путь к файлу
  */
 export function getTypeInfo(filePath: string): TypeAnalysisResult {
-  const analyzer = new TypeAnalyzer(filePath);
-
+  // Используем импортированный класс TypeAnalyzerClass
+  const analyzer = new TypeAnalyzerClass(filePath);
   return analyzer.analyze();
 }
 
@@ -353,3 +446,14 @@ export async function getDataFlowGraph(filePath: string): Promise<DataFlowGraph>
 
   return analyzer.analyze(sourceFile);
 }
+
+// ==========================================
+// ЭКСПОРТ ВСЕХ CLI МОДУЛЕЙ (только run функции)
+// ==========================================
+
+// Экспортируем только run функции из CLI модулей
+// program не экспортируется, так как это внутренняя деталь реализации
+export { runCLI as runMainCLI } from './cli.js';
+
+// Для остальных CLI модулей экспортируем только если они экспортируют run функцию
+// Если нет - не экспортируем
