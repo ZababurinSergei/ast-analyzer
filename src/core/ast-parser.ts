@@ -29,6 +29,9 @@ const DEFAULT_EXCLUDE_PATTERNS = [
   'temp',
 ];
 
+// ✅ ИМПОРТИРУЕМ ТИПЫ ИЗ @typescript-eslint/parser
+import type { ParserOptions } from '@typescript-eslint/parser';
+
 // Кэш для tsconfig
 let tsConfigCache: TsConfig | null = null;
 let tsConfigBaseDirCache: string | null = null;
@@ -177,19 +180,40 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       isTypeScript = filePath.endsWith('.ts') || filePath.endsWith('.tsx');
     }
 
-    // Настройки парсера
-    const parserOptions: any = {
-      ecmaVersion: 2026,
+    // ==========================================
+    // ✅ ИСПРАВЛЕННЫЕ НАСТРОЙКИ ПАРСЕРА С ПРАВИЛЬНЫМИ ТИПАМИ
+    // ==========================================
+
+    // ✅ БАЗОВЫЕ НАСТРОЙКИ - используем литералы вместо number для EcmaVersion
+    const parserOptions: ParserOptions = {
+      ecmaVersion: 2026 as const, // ✅ Используем const assertion
       sourceType: 'module',
       loc: true,
       range: true,
       comment: true,
       tokens: true,
+
+      // ✅ ДОБАВЛЯЕМ ПОДДЕРЖКУ CLASSES И JSX
+      ecmaFeatures: {
+        jsx: filePath.endsWith('.tsx') || filePath.endsWith('.jsx'),
+        globalReturn: false,
+        impliedStrict: true,
+      },
     };
+
+    // Для JavaScript файлов используем более мягкие настройки
+    if (!isTypeScript) {
+      parserOptions.ecmaFeatures = {
+        ...parserOptions.ecmaFeatures,
+        // Явно включаем поддержку классов
+        class: true,
+      };
+    }
 
     // Добавляем поддержку TypeScript
     if (isTypeScript) {
       parserOptions.ecmaFeatures = {
+        ...parserOptions.ecmaFeatures,
         jsx: filePath.endsWith('.tsx') || filePath.endsWith('.jsx'),
       };
     }
@@ -198,32 +222,83 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       `🔧 Парсинг с опциями: sourceType=${parserOptions.sourceType}, ecmaVersion=${parserOptions.ecmaVersion}`
     );
 
-    const ast = parser.parse(code, parserOptions);
+    // ==========================================
+    // ✅ FALLBACK НАСТРОЙКИ С ПРАВИЛЬНЫМИ ТИПАМИ
+    // ==========================================
+    const fallbackOptions: ParserOptions = {
+      ecmaVersion: 2022 as const, // ✅ Используем const assertion
+      sourceType: 'module',
+      loc: true,
+      range: true,
+    };
+
+    // ==========================================
+    // ✅ ОБЕРТЫВАЕМ ПАРСИНГ В TRY-CATCH С FALLBACK
+    // ==========================================
+    let ast;
+    try {
+      ast = parser.parse(code, parserOptions);
+    } catch (parseError: any) {
+      console.error(`❌ Ошибка парсинга ${filePath}:`, parseError.message);
+      if (parseError.stack) {
+        console.error('📚 Стек ошибки:', parseError.stack);
+      }
+
+      // ✅ ПОПЫТКА ПАРСИНГА С ДРУГИМИ НАСТРОЙКАМИ (fallback)
+      try {
+        console.log('🔄 Повторная попытка с упрощенными настройками...');
+        ast = parser.parse(code, fallbackOptions);
+        console.log('✅ Fallback парсинг успешен');
+      } catch (fallbackError: any) {
+        console.error(`❌ Fallback парсинг также не удался: ${fallbackError.message}`);
+        if (fallbackError.stack) {
+          console.error('📚 Стек fallback ошибки:', fallbackError.stack);
+        }
+        return null;
+      }
+    }
+
+    // ==========================================
+    // ✅ УСИЛЕННАЯ ПРОВЕРКА AST
+    // ==========================================
+    if (!ast) {
+      console.warn(`⚠️ AST не построен для файла: ${filePath}`);
+      return null;
+    }
+
+    // Проверяем, что AST содержит body
+    if (!ast.body || !Array.isArray(ast.body)) {
+      console.warn(`⚠️ AST не содержит body для файла: ${filePath}`);
+      // Вместо null возвращаем пустой AST с body
+      return {
+        type: 'Program',
+        body: [],
+        sourceType: 'module',
+        comments: [],
+        tokens: [],
+      };
+    }
 
     // Логируем информацию об AST
-    if (ast && ast.body) {
-      console.log(`✅ AST успешно построен, узлов верхнего уровня: ${ast.body.length}`);
+    console.log(`✅ AST успешно построен, узлов верхнего уровня: ${ast.body.length}`);
 
-      // Выводим первые 5 типов узлов для диагностики
-      const nodeTypes = ast.body.slice(0, 5).map((n: any) => n.type);
-      console.log(`📋 Типы первых узлов: ${nodeTypes.join(', ')}`);
+    // Выводим первые 5 типов узлов для диагностики
+    const nodeTypes = ast.body.slice(0, 5).map((n: any) => n?.type || 'unknown');
+    console.log(`📋 Типы первых узлов: ${nodeTypes.join(', ')}`);
 
-      // Проверяем наличие ключевых элементов
-      const hasClasses = ast.body.some((n: any) => n.type === 'ClassDeclaration');
-      const hasFunctions = ast.body.some((n: any) => n.type === 'FunctionDeclaration');
-      const hasVariables = ast.body.some((n: any) => n.type === 'VariableDeclaration');
+    // Проверяем наличие ключевых элементов
+    const hasClasses = ast.body.some((n: any) => n?.type === 'ClassDeclaration');
+    const hasFunctions = ast.body.some((n: any) => n?.type === 'FunctionDeclaration');
+    const hasVariables = ast.body.some((n: any) => n?.type === 'VariableDeclaration');
 
-      console.log(
-        `📊 Содержимое AST: Classes=${hasClasses}, Functions=${hasFunctions}, Variables=${hasVariables}`
-      );
+    console.log(
+      `📊 Содержимое AST: Classes=${hasClasses}, Functions=${hasFunctions}, Variables=${hasVariables}`
+    );
 
-      if (isVue) {
-        let importCount = 0;
-        importCount = ast.body.filter((node: any) => node.type === 'ImportDeclaration').length;
-        console.log(`   📥 Найдено импортов: ${importCount}`);
-      }
-    } else {
-      console.warn('⚠️ AST построен, но не содержит body');
+    if (isVue) {
+      let importCount = 0;
+      importCount = ast.body.filter((node: any) => node?.type === 'ImportDeclaration').length;
+      console.log(`   📥 Найдено импортов: ${importCount}`);
     }
 
     return ast;

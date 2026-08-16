@@ -13,31 +13,49 @@ function collectDeclarationsRecursive(
 ): void {
   if (!node) return;
 
+  // ✅ ПРОВЕРКА, ЧТО node ЯВЛЯЕТСЯ ОБЪЕКТОМ
+  if (typeof node !== 'object') return;
+
   // Проверяем текущий узел на наличие объявлений
   if (node.type === 'FunctionDeclaration' && node.id) {
     declarations[node.id.name] = { type: 'function', node: node };
   }
+
   if (node.type === 'ClassDeclaration' && node.id) {
-    declarations[node.id.name] = { type: 'class', node: node };
-  }
-  if (node.type === 'VariableDeclaration') {
-    node.declarations?.forEach((decl: any) => {
-      if (decl.id?.name) {
-        declarations[decl.id.name] = { type: 'variable', node: decl };
-      }
-    });
+    // ✅ ПРОВЕРКА НА НАЛИЧИЕ body У КЛАССА
+    if (node.body && typeof node.body === 'object') {
+      declarations[node.id.name] = { type: 'class', node: node };
+    } else {
+      console.warn(`⚠️ Класс ${node.id.name} не имеет body, пропускаем`);
+    }
   }
 
-  // Собираем всех детей для рекурсивного обхода
+  if (node.type === 'VariableDeclaration') {
+    // ✅ ПРОВЕРКА, ЧТО declarations СУЩЕСТВУЕТ И ЯВЛЯЕТСЯ МАССИВОМ
+    if (node.declarations && Array.isArray(node.declarations)) {
+      node.declarations.forEach((decl: any) => {
+        if (decl.id?.name) {
+          declarations[decl.id.name] = { type: 'variable', node: decl };
+        }
+      });
+    }
+  }
+
+  // ✅ УЛУЧШЕННЫЙ СБОР ДЕТЕЙ ДЛЯ РЕКУРСИВНОГО ОБХОДА
   const childrenToTraverse: any[] = [];
 
-  // body (FunctionDeclaration, BlockStatement, Program)
+  // body - проверяем, что это массив или объект
   if (node.body) {
     if (Array.isArray(node.body)) {
       childrenToTraverse.push(...node.body);
     } else if (typeof node.body === 'object') {
       childrenToTraverse.push(node.body);
     }
+  }
+
+  // ⭐ ДЛЯ КЛАССОВ - отдельная обработка
+  if (node.type === 'ClassDeclaration' && node.body && Array.isArray(node.body.body)) {
+    childrenToTraverse.push(...node.body.body);
   }
 
   // consequent/alternate (if/else)
@@ -84,11 +102,11 @@ function collectDeclarationsRecursive(
   if (node.argument) childrenToTraverse.push(node.argument);
   if (node.expression) childrenToTraverse.push(node.expression);
 
-  // Рекурсивно обходим всех детей
-  for (const child of childrenToTraverse) {
-    if (child && typeof child === 'object') {
-      collectDeclarationsRecursive(child, declarations);
-    }
+  // ✅ БЕЗОПАСНАЯ ФИЛЬТРАЦИЯ ДЕТЕЙ
+  const validChildren = childrenToTraverse.filter(child => child && typeof child === 'object');
+
+  for (const child of validChildren) {
+    collectDeclarationsRecursive(child, declarations);
   }
 }
 
@@ -106,13 +124,37 @@ export function buildFileInternalGraph(
   // const { maxDepth = 5 } = _options;
 
   const ast = parseFile(filePath);
-  if (!ast) return null;
+
+  // ✅ УСИЛЕННАЯ ПРОВЕРКА AST
+  if (!ast) {
+    console.warn(`⚠️ Не удалось получить AST для файла: ${filePath}`);
+    return null;
+  }
+
+  // ✅ ПРОВЕРКА НА НАЛИЧИЕ body
+  if (!ast.body || !Array.isArray(ast.body)) {
+    console.warn(`⚠️ AST не содержит body для файла: ${filePath}`);
+    // Вместо null возвращаем пустой граф
+    return {
+      rootKey: path.basename(filePath),
+      graph: {},
+    };
+  }
 
   const declarations: Record<string, { type: string; node: any }> = {};
   const relations: { from: string; to: string }[] = [];
 
   // Используем рекурсивный сбор объявлений вместо обхода только верхнего уровня
-  collectDeclarationsRecursive(ast, declarations);
+  try {
+    collectDeclarationsRecursive(ast, declarations);
+  } catch (error) {
+    console.warn(`⚠️ Ошибка при сборе объявлений: ${error}`);
+    // Возвращаем пустой граф вместо null
+    return {
+      rootKey: path.basename(filePath),
+      graph: {},
+    };
+  }
 
   // Поиск связей между объявлениями
   Object.keys(declarations).forEach((currentEntity: string) => {
