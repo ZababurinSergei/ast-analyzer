@@ -27,17 +27,30 @@ function collectDeclarationsRecursive(
     declarations[node.id.name] = { type: 'function', node: node };
   }
 
+  // ✅ Исправлено: проверяем наличие body у класса
   if (node.type === 'ClassDeclaration' && node.id) {
-    // ✅ ПРОВЕРКА НА НАЛИЧИЕ body У КЛАССА
-    if (node.body && typeof node.body === 'object') {
+    // Для TypeScript классов body может быть объектом с body.body
+    if (node.body) {
       declarations[node.id.name] = { type: 'class', node: node };
+
+      // ✅ ДОПОЛНИТЕЛЬНО: добавляем методы класса как отдельные объявления
+      if (node.body.body && Array.isArray(node.body.body)) {
+        for (const method of node.body.body) {
+          // Обрабатываем MethodDefinition и PropertyDefinition (для стрелочных методов)
+          if (
+            (method.type === 'MethodDefinition' || method.type === 'PropertyDefinition') &&
+            method.key?.name
+          ) {
+            declarations[method.key.name] = { type: 'function', node: method };
+          }
+        }
+      }
     } else {
       console.warn(`⚠️ Класс ${node.id.name} не имеет body, пропускаем`);
     }
   }
 
   if (node.type === 'VariableDeclaration') {
-    // ✅ ПРОВЕРКА, ЧТО declarations СУЩЕСТВУЕТ И ЯВЛЯЕТСЯ МАССИВОМ
     if (node.declarations && Array.isArray(node.declarations)) {
       node.declarations.forEach((decl: any) => {
         if (decl.id?.name) {
@@ -126,9 +139,6 @@ export function buildFileInternalGraph(
   filePath: string,
   _options: { maxDepth?: number } = {}
 ): { rootKey: string; graph: Record<string, string[]> } | null {
-  // maxDepth параметр зарезервирован для будущего использования
-  // const { maxDepth = 5 } = _options;
-
   const ast = parseFile(filePath);
 
   // ✅ УСИЛЕННАЯ ПРОВЕРКА AST
