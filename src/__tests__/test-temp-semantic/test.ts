@@ -1,1 +1,1 @@
-export function foo() { return 1; }
+const x = 1; const y = x + 1;

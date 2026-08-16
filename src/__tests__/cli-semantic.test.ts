@@ -18,7 +18,9 @@ describe('cli-semantic', () => {
     }
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Явно ждём завершения всех асинхронных операций
+    await new Promise(resolve => setTimeout(resolve, 100));
     try {
       if (fs.existsSync(testDir)) {
         fs.rmSync(testDir, { recursive: true, force: true });
@@ -27,7 +29,7 @@ describe('cli-semantic', () => {
       console.warn('Could not remove test directory:', error);
     }
     vi.restoreAllMocks();
-  });
+  }, 10000); // Даём время на очистку
 
   // ============================================
   // ТЕСТЫ КОМАНД
@@ -156,26 +158,154 @@ describe('cli-semantic', () => {
       expect(result.exitCode).toBe(0);
     }, 5000);
 
+    // ============================================
+    // ИСПРАВЛЕННЫЙ ТЕСТ: should generate callgraph with JSON output
+    // ============================================
     it('should generate callgraph with JSON output', async () => {
+      // Создаем тестовый файл с функциями для графа вызовов
       const testFile = path.join(testDir, 'test.ts');
-      fs.writeFileSync(testFile, 'export function foo() { return 1; }');
+      fs.writeFileSync(
+        testFile,
+        `
+export function foo() {
+  return 1;
+}
+export function bar() {
+  return foo();
+}
+export function baz() {
+  return bar();
+}
+`
+      );
 
       console.log('📄 Test File:', testFile);
 
-      const result = await execa('npx', ['tsx', cliPath, 'callgraph', testFile, '--json'], {
+      // Явно указываем, что используем tsx для запуска
+      const command = 'tsx';
+      const args = [cliPath, 'callgraph', testFile, '--json'];
+
+      const result = await execa(command, args, {
         cwd: testDir,
         reject: false,
-        timeout: 5000,
+        timeout: 10000,
         env: { ...process.env, NODE_ENV: 'test' },
       });
 
-      console.log('📤 STDOUT:', result.stdout);
+      console.log('📤 STDOUT length:', result.stdout.length);
       console.log('📤 STDERR:', result.stderr);
       console.log('📤 Exit Code:', result.exitCode);
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain('"nodes"');
-    }, 5000);
+
+      // Проверяем, что stdout не пустой и является валидным JSON
+      expect(result.stdout.length).toBeGreaterThan(0);
+
+      try {
+        const jsonData = JSON.parse(result.stdout);
+        expect(jsonData).toHaveProperty('nodes');
+        expect(jsonData).toHaveProperty('edges');
+        expect(jsonData).toHaveProperty('cycles');
+        expect(jsonData).toHaveProperty('stats');
+        expect(jsonData).toHaveProperty('timestamp');
+        expect(jsonData).toHaveProperty('file');
+        // Проверяем, что есть хотя бы один узел
+        expect(jsonData.nodes.length).toBeGreaterThan(0);
+        // Проверяем, что есть хотя бы одно ребро
+        expect(jsonData.edges.length).toBeGreaterThan(0);
+      } catch (parseError) {
+        console.error('❌ Failed to parse JSON:', parseError);
+        console.error('📄 Raw output:', result.stdout);
+        throw new Error('Output is not valid JSON');
+      }
+    }, 10000);
+
+    it('should generate callgraph with JSON output and save to file', async () => {
+      const testFile = path.join(testDir, 'test.ts');
+      fs.writeFileSync(
+        testFile,
+        `
+export function foo() {
+  return 1;
+}
+export function bar() {
+  return foo();
+}
+`
+      );
+
+      const outputFile = path.join(testDir, 'output.json');
+
+      console.log('📄 Test File:', testFile);
+      console.log('📄 Output File:', outputFile);
+
+      const result = await execa(
+        'tsx',
+        [cliPath, 'callgraph', testFile, '--json', '--output', outputFile],
+        {
+          cwd: testDir,
+          reject: false,
+          timeout: 10000,
+          env: { ...process.env, NODE_ENV: 'test' },
+        }
+      );
+
+      console.log('📤 STDOUT:', result.stdout.substring(0, 200));
+      console.log('📤 STDERR:', result.stderr);
+      console.log('📤 Exit Code:', result.exitCode);
+
+      expect(result.exitCode).toBe(0);
+      expect(fs.existsSync(outputFile)).toBe(true);
+
+      const fileContent = fs.readFileSync(outputFile, 'utf-8');
+      expect(fileContent.length).toBeGreaterThan(0);
+
+      try {
+        const jsonData = JSON.parse(fileContent);
+        expect(jsonData).toHaveProperty('nodes');
+        expect(jsonData).toHaveProperty('edges');
+        // Проверяем, что есть хотя бы один узел
+        expect(jsonData.nodes.length).toBeGreaterThan(0);
+        // Проверяем, что есть хотя бы одно ребро
+        expect(jsonData.edges.length).toBeGreaterThan(0);
+      } catch (parseError) {
+        console.error('❌ Failed to parse JSON from file:', parseError);
+        throw new Error('File content is not valid JSON');
+      }
+    }, 10000);
+
+    it('should generate callgraph with JSON output for file with no functions', async () => {
+      const testFile = path.join(testDir, 'test.ts');
+      fs.writeFileSync(testFile, 'export const test = 123;');
+
+      console.log('📄 Test File:', testFile);
+
+      const result = await execa('tsx', [cliPath, 'callgraph', testFile, '--json'], {
+        cwd: testDir,
+        reject: false,
+        timeout: 10000,
+        env: { ...process.env, NODE_ENV: 'test' },
+      });
+
+      console.log('📤 STDOUT length:', result.stdout.length);
+      console.log('📤 STDERR:', result.stderr);
+      console.log('📤 Exit Code:', result.exitCode);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.length).toBeGreaterThan(0);
+
+      try {
+        const jsonData = JSON.parse(result.stdout);
+        expect(jsonData).toHaveProperty('nodes');
+        expect(jsonData.nodes).toBeInstanceOf(Array);
+        // Для файла без функций nodes должен быть пустым массивом
+        expect(jsonData.nodes.length).toBe(0);
+      } catch (parseError) {
+        console.error('❌ Failed to parse JSON:', parseError);
+        console.error('📄 Raw output:', result.stdout);
+        throw new Error('Output is not valid JSON');
+      }
+    }, 10000);
 
     it('should generate callgraph with DOT output', async () => {
       const testFile = path.join(testDir, 'test.ts');
@@ -190,7 +320,7 @@ describe('cli-semantic', () => {
         env: { ...process.env, NODE_ENV: 'test' },
       });
 
-      console.log('📤 STDOUT:', result.stdout);
+      console.log('📤 STDOUT:', result.stdout.substring(0, 200));
       console.log('📤 STDERR:', result.stderr);
       console.log('📤 Exit Code:', result.exitCode);
 
@@ -920,7 +1050,11 @@ describe('cli-semantic', () => {
         }
 
         function processUser(user: User): string {
-          return \`\${user.id}: \${user.name}\`;
+          return ` +
+          '`' +
+          `${user.id}: ${user.name}` +
+          '`' +
+          `;
         }
 
         export function main(id: number): string {
