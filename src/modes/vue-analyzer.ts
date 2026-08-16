@@ -1036,8 +1036,8 @@ function extractExposeFromAST(ast: Program): string[] {
  * ✅ ДОБАВЛЕНО: обработка сокращенных событий (@mouseover)
  */
 function analyzeTemplate(
-    descriptor: SFCDescriptor,
-    options: AnalysisOptions
+  descriptor: SFCDescriptor,
+  options: AnalysisOptions
 ): VueComponentAnalysis['template'] {
   const result: VueComponentAnalysis['template'] = {
     content: null,
@@ -1118,7 +1118,6 @@ function analyzeTemplate(
 
             if (prop.type === 7) {
               // Это директива (v-*)
-              const rawName = prop.rawName || prop.name;
               const fullName = prop.rawName || '';
 
               // Извлекаем имя директивы (v-if, v-for, v-on, v-model)
@@ -1132,8 +1131,8 @@ function analyzeTemplate(
                 // Если директива v-on, добавляем событие
                 if (directiveName === 'v-on' && prop.arg) {
                   const eventName = typeof prop.arg === 'string'
-                      ? prop.arg
-                      : prop.arg?.content || '';
+                    ? prop.arg
+                    : prop.arg?.content || '';
                   if (eventName && !result.events.includes(eventName)) {
                     result.events.push(eventName);
                   }
@@ -1274,6 +1273,7 @@ function extractImportsFromAST(ast: Program): VueComponentAnalysis['imports'] {
 
 /**
  * Анализирует вызовы composables через AST
+ * ИСПРАВЛЕНО: теперь собирает только прямые вызовы функций с префиксом 'use'
  */
 function extractComposablesFromAST(ast: Program): VueComponentAnalysis['composables'] {
   const composables: VueComponentAnalysis['composables'] = [];
@@ -1284,6 +1284,7 @@ function extractComposablesFromAST(ast: Program): VueComponentAnalysis['composab
     if (!node) return;
 
     try {
+      // Ищем VariableDeclaration с вызовом функции
       if (node.type === 'VariableDeclaration') {
         for (const decl of node.declarations) {
           if (decl.init && decl.init.type === 'CallExpression') {
@@ -1299,8 +1300,11 @@ function extractComposablesFromAST(ast: Program): VueComponentAnalysis['composab
               name = callee.property.name;
             }
 
-            if (name && name.startsWith('use') && decl.id && decl.id.type === 'Identifier') {
-              const source = decl.id.name;
+            // Только функции, начинающиеся с 'use'
+            if (name && name.startsWith('use')) {
+              const source = decl.id?.type === 'Identifier'
+                ? decl.id.name
+                : 'unknown';
               const args = decl.init.arguments.map((arg: any) => {
                 if (arg.type === 'Literal') return String(arg.value);
                 if (arg.type === 'Identifier') return arg.name;
@@ -1318,65 +1322,15 @@ function extractComposablesFromAST(ast: Program): VueComponentAnalysis['composab
         }
       }
 
-      if (node.type === 'VariableDeclarator') {
-        const init = node.init;
-        if (init && init.type === 'CallExpression') {
-          const callee = init.callee;
-          let name: string | null = null;
-
-          if (callee.type === 'Identifier') {
-            name = callee.name;
-          } else if (callee.type === 'MemberExpression' && callee.property.type === 'Identifier') {
-            name = callee.property.name;
-          }
-
-          if (
-            name &&
-            (name.startsWith('use') || ['ref', 'computed', 'watch', 'reactive'].includes(name))
-          ) {
-            const source = node.id?.type === 'Identifier' ? node.id.name : 'unknown';
-            const args = init.arguments.map((arg: any) => {
-              if (arg.type === 'Literal') return String(arg.value);
-              if (arg.type === 'Identifier') return arg.name;
-              if (arg.type === 'ObjectExpression') return '{ ... }';
-              if (arg.type === 'ArrayExpression') return '[ ... ]';
-              return '...';
-            });
-
-            const exists = composables.some(c => c.name === name && c.source === source);
-            if (!exists) {
-              composables.push({ name, source, args });
-            }
-          }
-        }
-      }
-
-      if (node.type === 'ObjectPattern') {
-        for (const prop of node.properties) {
-          if (prop.type === 'Property' && prop.key?.type === 'Identifier') {
-            const name = prop.key.name;
-            if (
-              name &&
-              (name.startsWith('use') || ['ref', 'computed', 'watch', 'reactive'].includes(name))
-            ) {
-              const source = prop.value?.type === 'Identifier' ? prop.value.name : 'unknown';
-              const exists = composables.some(c => c.name === name && c.source === source);
-              if (!exists) {
-                composables.push({ name, source, args: [] });
-              }
-            }
-          }
+      // Рекурсивный обход
+      for (const key of Object.keys(node)) {
+        const child = node[key];
+        if (child && typeof child === 'object') {
+          visitNode(child);
         }
       }
     } catch (error) {
       // Игнорируем ошибки
-    }
-
-    for (const key of Object.keys(node)) {
-      const child = node[key];
-      if (child && typeof child === 'object') {
-        visitNode(child);
-      }
     }
   }
 
