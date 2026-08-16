@@ -257,7 +257,8 @@
     "tree-sitter-wasms": "^0.1.13",
     "tsx": "^4.23.12",
     "typescript": "^5.8.3",
-    "vitest": "^3.0.9"
+    "vitest": "^3.0.9",
+    "@vitest/ui": "^3.0.9"
   },
   "engines": {
     "node": ">=18.0.0"
