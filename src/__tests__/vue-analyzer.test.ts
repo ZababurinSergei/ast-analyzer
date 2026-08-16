@@ -411,7 +411,7 @@ const theme = useLocalStorage('theme', 'dark')
 
       const filePath = createTestFile(content, 'ComposablesComponent.vue');
       const analysis = analyzeVueComponent(filePath);
-
+      console.log('analysis:', analysis);
       expect(analysis.composables).toHaveLength(3);
       expect(analysis.composables[0].name).toBe('useAuth');
       expect(analysis.composables[1].name).toBe('useFetch');
