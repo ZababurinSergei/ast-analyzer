@@ -11,10 +11,16 @@ function collectDeclarationsRecursive(
   node: any,
   declarations: Record<string, { type: string; node: any }>
 ): void {
-  if (!node) return;
+  if (!node || typeof node !== 'object') return;
 
-  // ✅ ПРОВЕРКА, ЧТО node ЯВЛЯЕТСЯ ОБЪЕКТОМ
-  if (typeof node !== 'object') return;
+  // ✅ Обработка экспортов
+  if (node.type === 'ExportNamedDeclaration') {
+    if (node.declaration) {
+      // Рекурсивно обрабатываем declaration
+      collectDeclarationsRecursive(node.declaration, declarations);
+    }
+    return; // Не продолжаем дальше, чтобы не дублировать
+  }
 
   // Проверяем текущий узел на наличие объявлений
   if (node.type === 'FunctionDeclaration' && node.id) {

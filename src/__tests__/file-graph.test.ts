@@ -103,15 +103,15 @@ describe('Режим file-graph', () => {
       const testFile = createTestFile(
         `
         class Calculator {
-          add(a, b) {
+          add(a: number, b: number): number {
             return a + b;
           }
           
-          multiply(a, b) {
+          multiply(a: number, b: number): number {
             return a * b;
           }
           
-          calculate(a, b) {
+          calculate(a: number, b: number): { sum: number; product: number } {
             const sum = this.add(a, b);
             const product = this.multiply(a, b);
             return { sum, product };
@@ -120,7 +120,7 @@ describe('Режим file-graph', () => {
         
         const calc = new Calculator();
         `,
-        'test-class.js'
+        'test-class.ts'
       );
 
       const result = buildFileInternalGraph(testFile);
@@ -128,15 +128,10 @@ describe('Режим file-graph', () => {
       expect(result).not.toBeNull();
       if (result) {
         // Проверяем, что методы класса обнаружены
-        // Примечание: методы могут быть не найдены из-за особенностей парсинга
-        // В этом случае просто проверяем, что граф не пустой
-        const hasMethods =
-          result.graph['add'] !== undefined ||
-          result.graph['multiply'] !== undefined ||
-          result.graph['calculate'] !== undefined;
-
-        // Или проверяем, что есть хотя бы один узел
         expect(Object.keys(result.graph).length).toBeGreaterThan(0);
+        expect(result.graph['add']).toBeDefined();
+        expect(result.graph['multiply']).toBeDefined();
+        expect(result.graph['calculate']).toBeDefined();
       }
     });
 
@@ -188,7 +183,7 @@ describe('Режим file-graph', () => {
         
         export const exportedConst = 100;
         `,
-        'test-exports.js'
+        'test-exports.ts'
       );
 
       const result = buildFileInternalGraph(testFile);
