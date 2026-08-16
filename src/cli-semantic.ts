@@ -49,8 +49,8 @@ program
 
 export function exitWithCode(code: number): never {
   if (process.env.NODE_ENV === 'test') {
-    // В тестовой среде выбрасываем исключение вместо process.exit
-    throw new Error(`process.exit called with code ${code}`);
+    // В тестовой среде используем process.exit для корректного завершения
+    process.exit(code);
   }
   process.exit(code);
 }
@@ -59,11 +59,10 @@ export function handleErrorAndExit(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`❌ ${message}`);
 
-  // В тестовой среде выбрасываем ошибку с process.exit для консистентности
+  // В тестовой среде используем process.exit
   if (process.env.NODE_ENV === 'test') {
-    throw new Error(`process.exit called with code 1: ${message}`);
+    process.exit(1);
   }
-
   process.exit(1);
 }
 
@@ -102,6 +101,7 @@ program
 
       const files = await collectFiles(paths, options.recursive);
 
+      // ✅ ИСПРАВЛЕНИЕ: проверка на отсутствие файлов
       if (files.length === 0) {
         console.error('❌ Не найдено файлов для анализа');
         exitWithCode(1);
@@ -206,7 +206,7 @@ program
   .option('-o, --output <file>', 'Сохранить в файл')
   .action(async (file: string, options: any) => {
     try {
-      console.log('-------------------------------------------------')
+      console.log('-------------------------------------------------');
       console.log('\n' + '='.repeat(70));
       console.log('🕸️ АНАЛИЗ ГРАФА ВЫЗОВОВ');
       console.log('='.repeat(70));
@@ -559,6 +559,7 @@ program
 
       const files = await collectFiles(paths, options.recursive);
 
+      // ✅ ИСПРАВЛЕНИЕ: проверка на отсутствие файлов
       if (files.length === 0) {
         console.error('❌ Не найдено файлов для анализа');
         exitWithCode(1);
