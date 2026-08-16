@@ -45,7 +45,17 @@ describe('Z3Verifier - Полный набор тестов', () => {
         ],
         returnType: 'int' as const,
         preconditions: [range('a', 0, 100), range('b', 0, 100)],
-        postconditions: [eq('result', { left: 'a', right: 'b', type: 'equality' } as any)],
+        postconditions: [
+          {
+            type: 'equality' as const,
+            left: 'result',
+            right: {
+              type: 'add' as const,
+              left: 'a',
+              right: 'b',
+            },
+          },
+        ],
         invariants: [],
       };
 

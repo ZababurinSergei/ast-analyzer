@@ -1,30 +1,45 @@
 // src/formal/index.ts
-
-/**
- * Формальная верификация для AST Analyzer
- *
- * Этот модуль предоставляет инструменты для формальной верификации кода:
- * - Z3 верификатор для проверки контрактов функций
- * - Проверка эквивалентности для рефакторинга
- * - Верификация инвариантов циклов
- * - Проверка свойств массивов
- * - Парсинг выражений (ExpressionParser)
- * - Моделирование тела функций (FunctionBodyModeler)
- *
- * @module formal
- */
+// Единая точка входа для всех проверок эквивалентности и формальной верификации
+// Версия: 3.0.0
 
 // ============================================
-// ЭКСПОРТ ТИПОВ ИЗ Z3Verifier
+// ИМПОРТЫ ТИПОВ - ВСЕ В ОДНОМ МЕСТЕ
 // ============================================
 
-import type { VerificationConstraint, FunctionContract, VerificationResult } from './Z3Verifier.js';
+import type { VerificationConstraint, VerificationResult, FunctionContract } from './Z3Verifier.js';
+
+import type { FunctionBodyModel } from './FunctionBodyModeler.js';
+
+import type {
+  FileEquivalenceResult,
+  FileEquivalenceOptions,
+} from './checkers/FileEquivalenceChecker.js';
+
+import type {
+  RefactoringEquivalenceResult,
+  EquivalenceCheckOptions,
+} from './checkers/RefactoringEquivalenceChecker.js';
 
 // ============================================
-// ЭКСПОРТ ВСЕХ КОМПОНЕНТОВ
+// ЭКСПОРТ ТИПОВ
 // ============================================
 
-// 1. Z3 ВЕРИФИКАТОР - основной класс
+export type {
+  VerificationConstraint,
+  VerificationResult,
+  FunctionContract,
+  FunctionBodyModel,
+  FileEquivalenceResult,
+  FileEquivalenceOptions,
+  RefactoringEquivalenceResult,
+  EquivalenceCheckOptions,
+};
+
+// ============================================
+// ЭКСПОРТ КЛАССОВ И ФУНКЦИЙ
+// ============================================
+
+// 1. Z3Verifier - формальная верификация
 export {
   Z3Verifier,
   createIntParam,
@@ -44,12 +59,13 @@ export {
   sub,
   mul,
   div,
-  type VerificationConstraint,
-  type VerificationResult as FormalVerificationResult,
-  type FunctionContract,
+  addExpr,
+  subExpr,
+  mulExpr,
+  divExpr,
 } from './Z3Verifier.js';
 
-// 2. ПАРСЕР ВЫРАЖЕНИЙ - ВСЕ МЕТОДЫ
+// 2. ExpressionParser - парсинг выражений
 export {
   ExpressionParser,
   createExpressionParser,
@@ -58,7 +74,6 @@ export {
   extractVariables,
   isValidForZ3,
   toZ3String,
-  // Методы для работы с выражениями
   parseFunctionBody,
   createFunctionVariables,
   verifyFunctionWithBody,
@@ -69,39 +84,25 @@ export {
   extractVariablesFromExpression,
 } from './ExpressionParser.js';
 
-// 3. МОДЕЛИРОВАНИЕ ТЕЛА ФУНКЦИИ
-export { FunctionBodyModeler, type FunctionBodyModel } from './FunctionBodyModeler.js';
+// 3. FunctionBodyModeler - моделирование тела функций
+export { FunctionBodyModeler } from './FunctionBodyModeler.js';
 
-// 4. ПРОВЕРКА ЭКВИВАЛЕНТНОСТИ
-export {
-  EquivalenceChecker,
-  type EquivalenceResult,
-  type CodeDifference,
-  type EquivalenceOptions,
-  isEquivalent,
-  needsReview,
-  confidenceLevel,
-} from './EquivalenceChecker.js';
+// 4. FileEquivalenceChecker - проверка эквивалентности файлов
+export { FileEquivalenceChecker } from './checkers/FileEquivalenceChecker.js';
 
-// 5. ПРОВЕРКА ЭКВИВАЛЕНТНОСТИ РЕФАКТОРИНГА
+// 5. RefactoringEquivalenceChecker - проверка рефакторинга
 export {
   RefactoringEquivalenceChecker,
-  type RefactoringEquivalenceResult,
-  type FunctionSignature,
-  type FunctionBehavior,
-  type CallGraphEdge,
-  type CallGraph,
-  type EquivalenceCheckOptions,
-  isEquivalent as isRefactoringEquivalent,
-  needsReview as needsRefactoringReview,
+  isRefactoringEquivalent,
+  needsRefactoringReview,
   hasCriticalIssues,
-} from './RefactoringEquivalenceChecker.js';
+} from './checkers/RefactoringEquivalenceChecker.js';
 
 // ============================================
 // КОНСТАНТЫ
 // ============================================
 
-export const FORMAL_MODULE_VERSION = '1.0.0';
+export const FORMAL_MODULE_VERSION = '3.0.0';
 export const FORMAL_MODULE_NAME = '@newkind/ast-analyzer/formal';
 
 // ============================================
@@ -200,6 +201,27 @@ export function buildContract(template: ContractTemplate): FunctionContract {
   };
 }
 
+/**
+ * Создает контракт из сигнатуры функции
+ */
+export function createContractFromSignature(
+  name: string,
+  params: { name: string; type: string }[],
+  returnType: string
+): ContractTemplate {
+  const mappedParams = params.map(p => ({
+    name: p.name,
+    type: p.type === 'number' ? 'int' : p.type === 'boolean' ? 'bool' : 'string',
+  })) as { name: string; type: 'int' | 'bool' | 'string' }[];
+
+  let mappedReturnType: 'int' | 'bool' | 'string' | 'void' = 'void';
+  if (returnType === 'number') mappedReturnType = 'int';
+  else if (returnType === 'boolean') mappedReturnType = 'bool';
+  else if (returnType === 'string') mappedReturnType = 'string';
+
+  return createContractTemplate(name, mappedParams, mappedReturnType);
+}
+
 // ============================================
 // УТИЛИТЫ ДЛЯ ВЕРИФИКАЦИИ
 // ============================================
@@ -208,7 +230,7 @@ export function buildContract(template: ContractTemplate): FunctionContract {
  * Проверяет, что все постусловия выполнены
  */
 export function validatePostconditions(
-  _contract: FunctionContract, // Префикс _ для неиспользуемого параметра
+  _contract: FunctionContract,
   result: VerificationResult
 ): boolean {
   if (!result.isValid) return false;
@@ -261,83 +283,130 @@ export function areContractsEquivalent(
   return true;
 }
 
-export function createContractFromSignature(
-  name: string,
-  params: { name: string; type: string }[],
-  returnType: string
-): ContractTemplate {
-  // Приводим типы к правильному union типу с помощью as утверждения
-  const mappedParams = params.map(p => ({
-    name: p.name,
-    type: p.type === 'number' ? 'int' : p.type === 'boolean' ? 'bool' : 'string',
-  })) as { name: string; type: 'int' | 'bool' | 'string' }[];
+// ============================================
+// ФАСАДНЫЕ ФУНКЦИИ
+// ============================================
 
-  let mappedReturnType: 'int' | 'bool' | 'string' | 'void' = 'void';
-  if (returnType === 'number') mappedReturnType = 'int';
-  else if (returnType === 'boolean') mappedReturnType = 'bool';
-  else if (returnType === 'string') mappedReturnType = 'string';
-
-  return createContractTemplate(name, mappedParams, mappedReturnType);
+/**
+ * Быстрая проверка эквивалентности двух файлов
+ */
+export async function checkFileEquivalence(
+  originalPath: string,
+  modifiedPath: string,
+  options: FileEquivalenceOptions = {}
+): Promise<FileEquivalenceResult> {
+  const { FileEquivalenceChecker } = await import('./checkers/FileEquivalenceChecker.js');
+  const checker = new FileEquivalenceChecker(options);
+  await checker.initialize();
+  const result = await checker.checkFileEquivalence(originalPath, modifiedPath, options);
+  await checker.dispose();
+  return result;
 }
 
-// ============================================
-// ФАСАД ДЛЯ УПРОЩЕННОГО ИСПОЛЬЗОВАНИЯ
-// ============================================
+/**
+ * Быстрая проверка эквивалентности рефакторинга
+ */
+export async function checkRefactoringEquivalence(
+  originalFilePath: string,
+  refactoredFilePath: string,
+  modulesDir?: string,
+  options: EquivalenceCheckOptions = {}
+): Promise<RefactoringEquivalenceResult> {
+  const { RefactoringEquivalenceChecker } =
+    await import('./checkers/RefactoringEquivalenceChecker.js');
+  const checker = new RefactoringEquivalenceChecker(options);
+  await checker.initialize();
+  const result = await checker.checkRefactoringEquivalence(
+    originalFilePath,
+    refactoredFilePath,
+    modulesDir
+  );
+  await checker.dispose();
+  return result;
+}
 
-import {
-  Z3Verifier as Z3VerifierValue,
-  createIntParam as createIntParamValue,
-  createBoolParam as createBoolParamValue,
-  createStringParam as createStringParamValue,
-  eq as eqValue,
-  neq as neqValue,
-  range as rangeValue,
-  implies as impliesValue,
-  and as andValue,
-  or as orValue,
-  not as notValue,
-  if_ as ifValue,
-  compare as compareValue,
-  assign as assignValue,
-  add as addValue,
-  sub as subValue,
-  mul as mulValue,
-  div as divValue,
-} from './Z3Verifier.js';
+/**
+ * Быстрая проверка эквивалентности двух функций
+ */
+export async function checkFunctionEquivalence(
+  originalBody: string,
+  modifiedBody: string,
+  contract: FunctionContract,
+  options: FileEquivalenceOptions = {}
+): Promise<FileEquivalenceResult> {
+  const { FileEquivalenceChecker } = await import('./checkers/FileEquivalenceChecker.js');
+  const checker = new FileEquivalenceChecker(options);
+  await checker.initialize();
+  const result = await checker.checkFunctionEquivalence(originalBody, modifiedBody, contract);
+  await checker.dispose();
+  return result;
+}
 
-import {
-  ExpressionParser as ExpressionParserClass,
-  createExpressionParser as createExpressionParserValue,
-  parseExpression as parseExpressionValue,
-  validateExpression as validateExpressionValue,
-  extractVariables as extractVariablesValue,
-  isValidForZ3 as isValidForZ3Value,
-  toZ3String as toZ3StringValue,
-  parseFunctionBody as parseFunctionBodyValue,
-  createFunctionVariables as createFunctionVariablesValue,
-  verifyFunctionWithBody as verifyFunctionWithBodyValue,
-  createContractFromExpression as createContractFromExpressionValue,
-  createContractWithAutoPreconditions as createContractWithAutoPreconditionsValue,
-  canParseExpression as canParseExpressionValue,
-  isSimpleExpression as isSimpleExpressionValue,
-  extractVariablesFromExpression as extractVariablesFromExpressionValue,
-} from './ExpressionParser.js';
+/**
+ * Быстрая проверка эквивалентности двух выражений
+ * Использует напрямую Z3Verifier для проверки выражений
+ */
+export async function checkExpressionEquivalence(
+  original: string,
+  modified: string,
+  variables: Map<string, 'int' | 'bool' | 'string'>
+): Promise<VerificationResult> {
+  const { Z3Verifier } = await import('./Z3Verifier.js');
+  const verifier = new Z3Verifier();
+  await verifier.initialize();
+  const result = await verifier.verifyEquivalence(original, modified, variables);
+  await verifier.dispose();
+  return result;
+}
 
-import { FunctionBodyModeler as FunctionBodyModelerClass } from './FunctionBodyModeler.js';
+/**
+ * Формальная верификация функции через Z3
+ */
+export async function verifyFunction(
+  filePath: string,
+  functionName: string,
+  options: {
+    preconditions?: VerificationConstraint[];
+    postconditions?: VerificationConstraint[];
+  } = {}
+): Promise<VerificationResult> {
+  const { Z3Verifier, createIntParam, range } = await import('./Z3Verifier.js');
+  const { Project } = await import('ts-morph');
 
-import {
-  EquivalenceChecker as EquivalenceCheckerClass,
-  isEquivalent as isEquivalentValue,
-  needsReview as needsReviewValue,
-  confidenceLevel as confidenceLevelValue,
-} from './EquivalenceChecker.js';
+  const project = new Project();
+  const sourceFile = project.addSourceFileAtPath(filePath);
+  const func = sourceFile.getFunction(functionName);
 
-import {
-  RefactoringEquivalenceChecker as RefactoringEquivalenceCheckerClass,
-  isEquivalent as isRefactoringEquivalentValue,
-  needsReview as needsRefactoringReviewValue,
-  hasCriticalIssues as hasCriticalIssuesValue,
-} from './RefactoringEquivalenceChecker.js';
+  if (!func) {
+    throw new Error(`Function ${functionName} not found in ${filePath}`);
+  }
+
+  const verifier = new Z3Verifier();
+  await verifier.initialize();
+
+  const params = func.getParameters().map(p => createIntParam(p.getName()));
+  const returnType = func.getReturnType();
+  const returnTypeMap: 'int' | 'bool' | 'string' | 'void' = returnType.isNumber()
+    ? 'int'
+    : returnType.isBoolean()
+      ? 'bool'
+      : returnType.isString()
+        ? 'string'
+        : 'void';
+
+  const contract: FunctionContract = {
+    name: functionName,
+    params,
+    returnType: returnTypeMap,
+    preconditions: options.preconditions || params.map(p => range(p.name, -1000, 1000)),
+    postconditions: options.postconditions || [],
+    invariants: [],
+  };
+
+  const result = await verifier.verifyFunction(contract);
+  await verifier.dispose();
+  return result;
+}
 
 // ============================================
 // DEFAULT ЭКСПОРТ
@@ -345,68 +414,78 @@ import {
 
 export default {
   // Классы
-  Z3Verifier: Z3VerifierValue,
-  ExpressionParser: ExpressionParserClass,
-  FunctionBodyModeler: FunctionBodyModelerClass,
-  EquivalenceChecker: EquivalenceCheckerClass,
-  RefactoringEquivalenceChecker: RefactoringEquivalenceCheckerClass,
+  Z3Verifier: require('./Z3Verifier.js').Z3Verifier,
+  ExpressionParser: require('./ExpressionParser.js').ExpressionParser,
+  FunctionBodyModeler: require('./FunctionBodyModeler.js').FunctionBodyModeler,
+  FileEquivalenceChecker: require('./checkers/FileEquivalenceChecker.js').FileEquivalenceChecker,
+  RefactoringEquivalenceChecker: require('./checkers/RefactoringEquivalenceChecker.js')
+    .RefactoringEquivalenceChecker,
 
   // Z3Verifier функции
-  createIntParam: createIntParamValue,
-  createBoolParam: createBoolParamValue,
-  createStringParam: createStringParamValue,
-  eq: eqValue,
-  neq: neqValue,
-  range: rangeValue,
-  implies: impliesValue,
-  and: andValue,
-  or: orValue,
-  not: notValue,
-  if_: ifValue,
-  compare: compareValue,
-  assign: assignValue,
-  add: addValue,
-  sub: subValue,
-  mul: mulValue,
-  div: divValue,
+  createIntParam: require('./Z3Verifier.js').createIntParam,
+  createBoolParam: require('./Z3Verifier.js').createBoolParam,
+  createStringParam: require('./Z3Verifier.js').createStringParam,
+  eq: require('./Z3Verifier.js').eq,
+  neq: require('./Z3Verifier.js').neq,
+  range: require('./Z3Verifier.js').range,
+  implies: require('./Z3Verifier.js').implies,
+  and: require('./Z3Verifier.js').and,
+  or: require('./Z3Verifier.js').or,
+  not: require('./Z3Verifier.js').not,
+  if_: require('./Z3Verifier.js').if_,
+  compare: require('./Z3Verifier.js').compare,
+  assign: require('./Z3Verifier.js').assign,
+  add: require('./Z3Verifier.js').add,
+  sub: require('./Z3Verifier.js').sub,
+  mul: require('./Z3Verifier.js').mul,
+  div: require('./Z3Verifier.js').div,
+  addExpr: require('./Z3Verifier.js').addExpr,
+  subExpr: require('./Z3Verifier.js').subExpr,
+  mulExpr: require('./Z3Verifier.js').mulExpr,
+  divExpr: require('./Z3Verifier.js').divExpr,
 
   // ExpressionParser функции
-  createExpressionParser: createExpressionParserValue,
-  parseExpression: parseExpressionValue,
-  validateExpression: validateExpressionValue,
-  extractVariables: extractVariablesValue,
-  isValidForZ3: isValidForZ3Value,
-  toZ3String: toZ3StringValue,
-  parseFunctionBody: parseFunctionBodyValue,
-  createFunctionVariables: createFunctionVariablesValue,
-  verifyFunctionWithBody: verifyFunctionWithBodyValue,
-  createContractFromExpression: createContractFromExpressionValue,
-  createContractWithAutoPreconditions: createContractWithAutoPreconditionsValue,
-  canParseExpression: canParseExpressionValue,
-  isSimpleExpression: isSimpleExpressionValue,
-  extractVariablesFromExpression: extractVariablesFromExpressionValue,
+  createExpressionParser: require('./ExpressionParser.js').createExpressionParser,
+  parseExpression: require('./ExpressionParser.js').parseExpression,
+  validateExpression: require('./ExpressionParser.js').validateExpression,
+  extractVariables: require('./ExpressionParser.js').extractVariables,
+  isValidForZ3: require('./ExpressionParser.js').isValidForZ3,
+  toZ3String: require('./ExpressionParser.js').toZ3String,
+  parseFunctionBody: require('./ExpressionParser.js').parseFunctionBody,
+  createFunctionVariables: require('./ExpressionParser.js').createFunctionVariables,
+  verifyFunctionWithBody: require('./ExpressionParser.js').verifyFunctionWithBody,
+  createContractFromExpression: require('./ExpressionParser.js').createContractFromExpression,
+  createContractWithAutoPreconditions:
+    require('./ExpressionParser.js').createContractWithAutoPreconditions,
+  canParseExpression: require('./ExpressionParser.js').canParseExpression,
+  isSimpleExpression: require('./ExpressionParser.js').isSimpleExpression,
+  extractVariablesFromExpression: require('./ExpressionParser.js').extractVariablesFromExpression,
 
-  // EquivalenceChecker
-  isEquivalent: isEquivalentValue,
-  needsReview: needsReviewValue,
-  confidenceLevel: confidenceLevelValue,
+  // RefactoringEquivalenceChecker утилиты
+  isRefactoringEquivalent: require('./checkers/RefactoringEquivalenceChecker.js')
+    .isRefactoringEquivalent,
+  needsRefactoringReview: require('./checkers/RefactoringEquivalenceChecker.js')
+    .needsRefactoringReview,
+  hasCriticalIssues: require('./checkers/RefactoringEquivalenceChecker.js').hasCriticalIssues,
 
-  // RefactoringEquivalenceChecker
-  isRefactoringEquivalent: isRefactoringEquivalentValue,
-  needsRefactoringReview: needsRefactoringReviewValue,
-  hasCriticalIssues: hasCriticalIssuesValue,
-
-  // Утилиты
+  // Утилиты для контрактов
   createContractTemplate,
   addPrecondition,
   addPostcondition,
   addInvariant,
   addBody,
   buildContract,
+  createContractFromSignature,
   validatePostconditions,
   generateVerificationReport,
   areContractsEquivalent,
-  createContractFromSignature,
+
+  // Фасадные функции
+  checkFileEquivalence,
+  checkRefactoringEquivalence,
+  checkFunctionEquivalence,
+  checkExpressionEquivalence,
+  verifyFunction,
 
   // Константы
   FORMAL_MODULE_VERSION,

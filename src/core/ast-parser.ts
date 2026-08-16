@@ -130,6 +130,12 @@ export function parseVueSFCFile(filePath: string): VueSFCData | null {
  */
 export function parseFile(filePath: string, _options?: { extractTemplate?: boolean }): any {
   try {
+    // Проверяем существование файла
+    if (!fs.existsSync(filePath)) {
+      console.warn(`⚠️ Файл не найден: ${filePath}`);
+      return null;
+    }
+
     console.log(`📖 Чтение файла: ${filePath}`);
 
     let code = fs.readFileSync(filePath, 'utf-8');
@@ -222,6 +228,11 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
 
     return ast;
   } catch (e) {
+    // Проверяем, является ли ошибка ENOENT (файл не найден)
+    if (e instanceof Error && (e as any).code === 'ENOENT') {
+      console.warn(`⚠️ Файл не найден: ${filePath}`);
+      return null;
+    }
     console.error(
       `❌ Ошибка парсинга файла ${filePath}:`,
       e instanceof Error ? e.message : String(e)

@@ -44,6 +44,37 @@ program
   .version('3.0.0');
 
 // ============================================
+// ЕДИНЫЙ МЕТОД ДЛЯ ВЫХОДА ИЗ ПРОГРАММЫ
+// ============================================
+
+export function exitWithCode(code: number): never {
+  if (process.env.NODE_ENV === 'test') {
+    // В тестовой среде выбрасываем исключение вместо process.exit
+    throw new Error(`process.exit called with code ${code}`);
+  }
+  process.exit(code);
+}
+
+export function handleErrorAndExit(error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`❌ ${message}`);
+  exitWithCode(1);
+}
+
+// ============================================
+// ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ПРОВЕРКИ ФАЙЛА
+// ============================================
+
+function validateFileExists(filePath: string): string {
+  const absolutePath = path.resolve(filePath);
+  if (!fs.existsSync(absolutePath)) {
+    console.error(`❌ Файл не найден: ${absolutePath}`);
+    exitWithCode(1);
+  }
+  return absolutePath;
+}
+
+// ============================================
 // КОМАНДА: analyze — полный семантический анализ
 // ============================================
 
@@ -58,58 +89,55 @@ program
   .option('--format <format>', 'Формат отчёта (json, html, markdown)', 'html')
   .option('-v, --verbose', 'Подробный вывод', false)
   .action(async (paths: string[], options: any) => {
-    console.log('\n' + '='.repeat(70));
-    console.log('🔬 ПОЛНЫЙ СЕМАНТИЧЕСКИЙ АНАЛИЗ');
-    console.log('='.repeat(70));
+    try {
+      console.log('\n' + '='.repeat(70));
+      console.log('🔬 ПОЛНЫЙ СЕМАНТИЧЕСКИЙ АНАЛИЗ');
+      console.log('='.repeat(70));
 
-    const files = await collectFiles(paths, options.recursive);
+      const files = await collectFiles(paths, options.recursive);
 
-    if (files.length === 0) {
-      console.error('❌ Не найдено файлов для анализа');
-      process.exit(1);
-    }
+      if (files.length === 0) {
+        console.error('❌ Не найдено файлов для анализа');
+        exitWithCode(1);
+      }
 
-    console.log(`📁 Найдено файлов: ${files.length}`);
-    console.log(`🔬 Формальная верификация: ${options.formal ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
-    console.log(`📏 Глубина анализа: ${options.maxDepth}`);
+      console.log(`📁 Найдено файлов: ${files.length}`);
+      console.log(`🔬 Формальная верификация: ${options.formal ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
+      console.log(`📏 Глубина анализа: ${options.maxDepth}`);
 
-    // ✅ Обработка critical functions
-    let criticalFunctions: string[] = [];
-    if (options.critical) {
-      criticalFunctions = options.critical.split(',').map((f: string) => f.trim());
-      console.log(`🎯 Критические функции: ${criticalFunctions.join(', ')}`);
+      let criticalFunctions: string[] = [];
+      if (options.critical) {
+        criticalFunctions = options.critical.split(',').map((f: string) => f.trim());
+        console.log(`🎯 Критические функции: ${criticalFunctions.join(', ')}`);
 
-      // Проверяем существование функций (только предупреждение, не ошибка)
-      for (const func of criticalFunctions) {
-        let found = false;
-        for (const file of files) {
-          try {
-            const content = fs.readFileSync(file, 'utf-8');
-            if (
-              content.includes(`function ${func}`) ||
-              content.includes(`const ${func}`) ||
-              content.includes(`export ${func}`) ||
-              content.includes(`export default ${func}`)
-            ) {
-              found = true;
-              break;
+        for (const func of criticalFunctions) {
+          let found = false;
+          for (const file of files) {
+            try {
+              const content = fs.readFileSync(file, 'utf-8');
+              if (
+                content.includes(`function ${func}`) ||
+                content.includes(`const ${func}`) ||
+                content.includes(`export ${func}`) ||
+                content.includes(`export default ${func}`)
+              ) {
+                found = true;
+                break;
+              }
+            } catch (e) {
+              // Игнорируем ошибки чтения
             }
-          } catch (e) {
-            // Игнорируем ошибки чтения
+          }
+          if (!found) {
+            console.warn(`⚠️ Критическая функция '${func}' не найдена в анализируемых файлах`);
           }
         }
-        if (!found) {
-          console.warn(`⚠️ Критическая функция '${func}' не найдена в анализируемых файлах`);
-        }
       }
-    }
 
-    console.log(`📄 Формат отчёта: ${options.format}`);
-    console.log('');
+      console.log(`📄 Формат отчёта: ${options.format}`);
+      console.log('');
 
-    const pipeline = new SemanticPipeline();
-
-    try {
+      const pipeline = new SemanticPipeline();
       const result = await pipeline.run(files, {
         formalVerification: options.formal,
         maxDepth: parseInt(options.maxDepth),
@@ -153,12 +181,9 @@ program
 
       console.log(`\n📄 JSON отчёт сохранён: ${jsonPath}`);
 
-      // ✅ ИСПРАВЛЕНО: всегда возвращаем 0 при успешном анализе
-      // Даже если есть предупреждения, это не критическая ошибка
-      process.exit(0);
+      exitWithCode(0);
     } catch (error) {
-      console.error('❌ Ошибка выполнения анализа:', error);
-      process.exit(1);
+      handleErrorAndExit(error);
     }
   });
 
@@ -174,47 +199,50 @@ program
   .option('--dot', 'Вывод в DOT формате для Graphviz', false)
   .option('-o, --output <file>', 'Сохранить в файл')
   .action(async (file: string, options: any) => {
-    console.log('\n' + '='.repeat(70));
-    console.log('🕸️ АНАЛИЗ ГРАФА ВЫЗОВОВ');
-    console.log('='.repeat(70));
-    console.log(`📄 Файл: ${file}`);
+    try {
+    console.log('-------------------------------------------------')
+      console.log('\n' + '='.repeat(70));
+      console.log('🕸️ АНАЛИЗ ГРАФА ВЫЗОВОВ');
+      console.log('='.repeat(70));
+      console.log(`📄 Файл: ${file}`);
 
-    const absolutePath = path.resolve(file);
-    if (!fs.existsSync(absolutePath)) {
-      console.error(`❌ Файл не найден: ${absolutePath}`);
-      process.exit(1);
-    }
+      // ✅ ПРОВЕРКА СУЩЕСТВОВАНИЯ ФАЙЛА
+      const absolutePath = validateFileExists(file);
 
-    const analyzer = new CallGraphAnalyzer();
-    const callGraph = await analyzer.analyzeSingle(absolutePath, parseInt(options.maxDepth));
+      const analyzer = new CallGraphAnalyzer();
+      const callGraph = await analyzer.analyzeSingle(absolutePath, parseInt(options.maxDepth));
 
-    if (options.json) {
-      const jsonData = analyzer.exportToJSON(true);
-      console.log(JSON.stringify(jsonData, null, 2));
-    } else if (options.dot) {
-      console.log(generateDotFromCallGraph(callGraph));
-    } else {
-      printCallGraphReport(callGraph, absolutePath);
-    }
-
-    if (options.output) {
-      const outputPath = path.resolve(options.output);
-      const ext = path.extname(outputPath);
-      let content: string;
-
-      if (ext === '.json') {
-        content = JSON.stringify(analyzer.exportToJSON(true), null, 2);
-      } else if (ext === '.dot') {
-        content = generateDotFromCallGraph(callGraph);
+      if (options.json) {
+        const jsonData = analyzer.exportToJSON(true);
+        console.log(JSON.stringify(jsonData, null, 2));
+      } else if (options.dot) {
+        console.log(generateDotFromCallGraph(callGraph));
       } else {
-        content = generateCallGraphMarkdown(callGraph, absolutePath);
+        printCallGraphReport(callGraph, absolutePath);
       }
 
-      fs.writeFileSync(outputPath, content);
-      console.log(`\n📄 Сохранено: ${outputPath}`);
-    }
+      if (options.output) {
+        const outputPath = path.resolve(options.output);
+        const ext = path.extname(outputPath);
+        let content: string;
 
-    process.exit(0);
+        if (ext === '.json') {
+          content = JSON.stringify(analyzer.exportToJSON(true), null, 2);
+        } else if (ext === '.dot') {
+          content = generateDotFromCallGraph(callGraph);
+        } else {
+          content = generateCallGraphMarkdown(callGraph, absolutePath);
+        }
+
+        fs.writeFileSync(outputPath, content);
+        console.log(`\n📄 Сохранено: ${outputPath}`);
+      }
+
+      exitWithCode(0);
+    } catch (error) {
+      console.error('❌ Ошибка при построении графа вызовов:', error);
+      exitWithCode(1);
+    }
   });
 
 // ============================================
@@ -228,58 +256,60 @@ program
   .option('--dot', 'Вывод в DOT формате для Graphviz', false)
   .option('-o, --output <file>', 'Сохранить в файл')
   .action(async (file: string, options: any) => {
-    console.log('\n' + '='.repeat(70));
-    console.log('🔀 АНАЛИЗ ПОТОКА УПРАВЛЕНИЯ');
-    console.log('='.repeat(70));
-    console.log(`📄 Файл: ${file}`);
+    try {
+      console.log('\n' + '='.repeat(70));
+      console.log('🔀 АНАЛИЗ ПОТОКА УПРАВЛЕНИЯ');
+      console.log('='.repeat(70));
+      console.log(`📄 Файл: ${file}`);
 
-    const absolutePath = path.resolve(file);
-    if (!fs.existsSync(absolutePath)) {
-      console.error(`❌ Файл не найден: ${absolutePath}`);
-      process.exit(1);
-    }
+      // ✅ ПРОВЕРКА СУЩЕСТВОВАНИЯ ФАЙЛА
+      const absolutePath = validateFileExists(file);
 
-    const project = new Project({
-      compilerOptions: {
-        target: 99,
-        module: 99,
-        allowJs: true,
-        checkJs: false,
-        skipLibCheck: true,
-      },
-    });
+      const project = new Project({
+        compilerOptions: {
+          target: 99,
+          module: 99,
+          allowJs: true,
+          checkJs: false,
+          skipLibCheck: true,
+        },
+      });
 
-    const sourceFile = project.addSourceFileAtPath(absolutePath);
-    const analyzer = new CFGAnalyzer();
-    const cfg = analyzer.build(sourceFile);
+      const sourceFile = project.addSourceFileAtPath(absolutePath);
+      const analyzer = new CFGAnalyzer();
+      const cfg = analyzer.build(sourceFile);
 
-    if (options.json) {
-      const jsonData = exportCFGToJSON(cfg);
-      console.log(JSON.stringify(jsonData, null, 2));
-    } else if (options.dot) {
-      console.log(generateDotFromCFG(cfg));
-    } else {
-      printCFGReport(cfg, absolutePath);
-    }
-
-    if (options.output) {
-      const outputPath = path.resolve(options.output);
-      const ext = path.extname(outputPath);
-      let content: string;
-
-      if (ext === '.json') {
-        content = JSON.stringify(exportCFGToJSON(cfg), null, 2);
-      } else if (ext === '.dot') {
-        content = generateDotFromCFG(cfg);
+      if (options.json) {
+        const jsonData = exportCFGToJSON(cfg);
+        console.log(JSON.stringify(jsonData, null, 2));
+      } else if (options.dot) {
+        console.log(generateDotFromCFG(cfg));
       } else {
-        content = generateCFGMarkdown(cfg, absolutePath);
+        printCFGReport(cfg, absolutePath);
       }
 
-      fs.writeFileSync(outputPath, content);
-      console.log(`\n📄 Сохранено: ${outputPath}`);
-    }
+      if (options.output) {
+        const outputPath = path.resolve(options.output);
+        const ext = path.extname(outputPath);
+        let content: string;
 
-    process.exit(0);
+        if (ext === '.json') {
+          content = JSON.stringify(exportCFGToJSON(cfg), null, 2);
+        } else if (ext === '.dot') {
+          content = generateDotFromCFG(cfg);
+        } else {
+          content = generateCFGMarkdown(cfg, absolutePath);
+        }
+
+        fs.writeFileSync(outputPath, content);
+        console.log(`\n📄 Сохранено: ${outputPath}`);
+      }
+
+      exitWithCode(0);
+    } catch (error) {
+      console.error('❌ Ошибка при построении графа потока управления:', error);
+      exitWithCode(1);
+    }
   });
 
 // ============================================
@@ -292,43 +322,45 @@ program
   .option('--json', 'Вывод в JSON формате', false)
   .option('-o, --output <file>', 'Сохранить в файл')
   .action(async (file: string, options: any) => {
-    console.log('\n' + '='.repeat(70));
-    console.log('📝 АНАЛИЗ ТИПОВ TYPESCRIPT');
-    console.log('='.repeat(70));
-    console.log(`📄 Файл: ${file}`);
+    try {
+      console.log('\n' + '='.repeat(70));
+      console.log('📝 АНАЛИЗ ТИПОВ TYPESCRIPT');
+      console.log('='.repeat(70));
+      console.log(`📄 Файл: ${file}`);
 
-    const absolutePath = path.resolve(file);
-    if (!fs.existsSync(absolutePath)) {
-      console.error(`❌ Файл не найден: ${absolutePath}`);
-      process.exit(1);
-    }
+      // ✅ ПРОВЕРКА СУЩЕСТВОВАНИЯ ФАЙЛА
+      const absolutePath = validateFileExists(file);
 
-    const analyzer = new TypeAnalyzer(absolutePath);
-    const result = analyzer.analyze();
+      const analyzer = new TypeAnalyzer(absolutePath);
+      const result = analyzer.analyze();
 
-    if (options.json) {
-      const jsonData = exportTypeAnalysisToJSON(result);
-      console.log(JSON.stringify(jsonData, null, 2));
-    } else {
-      printTypeReport(result, absolutePath);
-    }
-
-    if (options.output) {
-      const outputPath = path.resolve(options.output);
-      const ext = path.extname(outputPath);
-      let content: string;
-
-      if (ext === '.json') {
-        content = JSON.stringify(exportTypeAnalysisToJSON(result), null, 2);
+      if (options.json) {
+        const jsonData = exportTypeAnalysisToJSON(result);
+        console.log(JSON.stringify(jsonData, null, 2));
       } else {
-        content = generateTypeMarkdown(result, absolutePath);
+        printTypeReport(result, absolutePath);
       }
 
-      fs.writeFileSync(outputPath, content);
-      console.log(`\n📄 Сохранено: ${outputPath}`);
-    }
+      if (options.output) {
+        const outputPath = path.resolve(options.output);
+        const ext = path.extname(outputPath);
+        let content: string;
 
-    process.exit(0);
+        if (ext === '.json') {
+          content = JSON.stringify(exportTypeAnalysisToJSON(result), null, 2);
+        } else {
+          content = generateTypeMarkdown(result, absolutePath);
+        }
+
+        fs.writeFileSync(outputPath, content);
+        console.log(`\n📄 Сохранено: ${outputPath}`);
+      }
+
+      exitWithCode(0);
+    } catch (error) {
+      console.error('❌ Ошибка при анализе типов:', error);
+      exitWithCode(1);
+    }
   });
 
 // ============================================
@@ -342,58 +374,60 @@ program
   .option('--dot', 'Вывод в DOT формате для Graphviz', false)
   .option('-o, --output <file>', 'Сохранить в файл')
   .action(async (file: string, options: any) => {
-    console.log('\n' + '='.repeat(70));
-    console.log('🌊 АНАЛИЗ ПОТОКА ДАННЫХ');
-    console.log('='.repeat(70));
-    console.log(`📄 Файл: ${file}`);
+    try {
+      console.log('\n' + '='.repeat(70));
+      console.log('🌊 АНАЛИЗ ПОТОКА ДАННЫХ');
+      console.log('='.repeat(70));
+      console.log(`📄 Файл: ${file}`);
 
-    const absolutePath = path.resolve(file);
-    if (!fs.existsSync(absolutePath)) {
-      console.error(`❌ Файл не найден: ${absolutePath}`);
-      process.exit(1);
-    }
+      // ✅ ПРОВЕРКА СУЩЕСТВОВАНИЯ ФАЙЛА
+      const absolutePath = validateFileExists(file);
 
-    const project = new Project({
-      compilerOptions: {
-        target: 99,
-        module: 99,
-        allowJs: true,
-        checkJs: false,
-        skipLibCheck: true,
-      },
-    });
+      const project = new Project({
+        compilerOptions: {
+          target: 99,
+          module: 99,
+          allowJs: true,
+          checkJs: false,
+          skipLibCheck: true,
+        },
+      });
 
-    const sourceFile = project.addSourceFileAtPath(absolutePath);
-    const analyzer = new DataFlowAnalyzer();
-    const dataFlow = analyzer.analyze(sourceFile);
+      const sourceFile = project.addSourceFileAtPath(absolutePath);
+      const analyzer = new DataFlowAnalyzer();
+      const dataFlow = analyzer.analyze(sourceFile);
 
-    if (options.json) {
-      const jsonData = exportDataFlowToJSON(dataFlow);
-      console.log(JSON.stringify(jsonData, null, 2));
-    } else if (options.dot) {
-      console.log(generateDotFromDataFlow(dataFlow));
-    } else {
-      printDataFlowReport(dataFlow, absolutePath);
-    }
-
-    if (options.output) {
-      const outputPath = path.resolve(options.output);
-      const ext = path.extname(outputPath);
-      let content: string;
-
-      if (ext === '.json') {
-        content = JSON.stringify(exportDataFlowToJSON(dataFlow), null, 2);
-      } else if (ext === '.dot') {
-        content = generateDotFromDataFlow(dataFlow);
+      if (options.json) {
+        const jsonData = exportDataFlowToJSON(dataFlow);
+        console.log(JSON.stringify(jsonData, null, 2));
+      } else if (options.dot) {
+        console.log(generateDotFromDataFlow(dataFlow));
       } else {
-        content = generateDataFlowMarkdown(dataFlow, absolutePath);
+        printDataFlowReport(dataFlow, absolutePath);
       }
 
-      fs.writeFileSync(outputPath, content);
-      console.log(`\n📄 Сохранено: ${outputPath}`);
-    }
+      if (options.output) {
+        const outputPath = path.resolve(options.output);
+        const ext = path.extname(outputPath);
+        let content: string;
 
-    process.exit(0);
+        if (ext === '.json') {
+          content = JSON.stringify(exportDataFlowToJSON(dataFlow), null, 2);
+        } else if (ext === '.dot') {
+          content = generateDotFromDataFlow(dataFlow);
+        } else {
+          content = generateDataFlowMarkdown(dataFlow, absolutePath);
+        }
+
+        fs.writeFileSync(outputPath, content);
+        console.log(`\n📄 Сохранено: ${outputPath}`);
+      }
+
+      exitWithCode(0);
+    } catch (error) {
+      console.error('❌ Ошибка при анализе потока данных:', error);
+      exitWithCode(1);
+    }
   });
 
 // ============================================
@@ -407,96 +441,98 @@ program
   .option('-c, --contract <file>', 'Файл с контрактом (JSON)')
   .option('-o, --output <file>', 'Сохранить результат')
   .action(async (file: string, options: any) => {
-    console.log('\n' + '='.repeat(70));
-    console.log('🔬 ФОРМАЛЬНАЯ ВЕРИФИКАЦИЯ');
-    console.log('='.repeat(70));
-    console.log(`📄 Файл: ${file}`);
+    try {
+      console.log('\n' + '='.repeat(70));
+      console.log('🔬 ФОРМАЛЬНАЯ ВЕРИФИКАЦИЯ');
+      console.log('='.repeat(70));
+      console.log(`📄 Файл: ${file}`);
 
-    const absolutePath = path.resolve(file);
-    if (!fs.existsSync(absolutePath)) {
-      console.error(`❌ Файл не найден: ${absolutePath}`);
-      process.exit(1);
-    }
+      // ✅ ПРОВЕРКА СУЩЕСТВОВАНИЯ ФАЙЛА
+      const absolutePath = validateFileExists(file);
 
-    const z3 = new Z3Verifier();
-    await z3.initialize();
+      const z3 = new Z3Verifier();
+      await z3.initialize();
 
-    let contract: FunctionContract | null = null;
+      let contract: FunctionContract | null = null;
 
-    if (options.contract) {
-      const contractPath = path.resolve(options.contract);
-      if (!fs.existsSync(contractPath)) {
-        console.error(`❌ Контракт не найден: ${contractPath}`);
-        process.exit(1);
+      if (options.contract) {
+        const contractPath = path.resolve(options.contract);
+        if (!fs.existsSync(contractPath)) {
+          console.error(`❌ Контракт не найден: ${contractPath}`);
+          exitWithCode(1);
+        }
+        contract = JSON.parse(fs.readFileSync(contractPath, 'utf-8'));
+        console.log(`📋 Контракт загружен из: ${contractPath}`);
+      } else if (options.function) {
+        contract = await extractContractFromFile(absolutePath, options.function);
+        if (!contract) {
+          console.error(`❌ Функция '${options.function}' не найдена в файле`);
+          exitWithCode(1);
+        }
+        console.log(`📋 Контракт извлечён из функции: ${options.function}`);
+      } else {
+        console.error('❌ Укажите --function <name> или --contract <file>');
+        exitWithCode(1);
       }
-      contract = JSON.parse(fs.readFileSync(contractPath, 'utf-8'));
-      console.log(`📋 Контракт загружен из: ${contractPath}`);
-    } else if (options.function) {
-      // Извлекаем контракт из кода
-      contract = await extractContractFromFile(absolutePath, options.function);
+
       if (!contract) {
-        console.error(`❌ Функция '${options.function}' не найдена в файле`);
-        process.exit(1);
+        console.error('❌ Контракт не загружен');
+        exitWithCode(1);
       }
-      console.log(`📋 Контракт извлечён из функции: ${options.function}`);
-    } else {
-      console.error('❌ Укажите --function <name> или --contract <file>');
-      process.exit(1);
-    }
 
-    // Проверяем, что контракт не null (TypeScript guard)
-    if (!contract) {
-      console.error('❌ Контракт не загружен');
-      process.exit(1);
-    }
+      console.log('\n📋 КОНТРАКТ:');
+      console.log(`   Функция: ${contract.name}`);
+      console.log(`   Параметры: ${contract.params.map(p => `${p.name}:${p.type}`).join(', ')}`);
+      console.log(`   Возврат: ${contract.returnType}`);
+      console.log(`   Предусловий: ${contract.preconditions.length}`);
+      console.log(`   Постусловий: ${contract.postconditions.length}`);
+      console.log(`   Инвариантов: ${contract.invariants.length}`);
 
-    console.log('\n📋 КОНТРАКТ:');
-    console.log(`   Функция: ${contract.name}`);
-    console.log(`   Параметры: ${contract.params.map(p => `${p.name}:${p.type}`).join(', ')}`);
-    console.log(`   Возврат: ${contract.returnType}`);
-    console.log(`   Предусловий: ${contract.preconditions.length}`);
-    console.log(`   Постусловий: ${contract.postconditions.length}`);
-    console.log(`   Инвариантов: ${contract.invariants.length}`);
+      console.log('\n⏳ Верификация...');
+      const result = await z3.verifyFunction(contract);
 
-    console.log('\n⏳ Верификация...');
-    const result = await z3.verifyFunction(contract);
-
-    if (result.isValid) {
-      console.log('\n✅ ФУНКЦИЯ ВЕРИФИЦИРОВАНА!');
-      console.log(`   ${contract.name} удовлетворяет всем контрактам`);
-    } else {
-      console.log('\n❌ ФУНКЦИЯ НЕ ВЕРИФИЦИРОВАНА!');
-      if (result.counterexample) {
-        console.log('\n🔍 Контрпример:');
-        for (const [key, value] of result.counterexample) {
-          console.log(`   ${key} = ${value}`);
+      if (result.isValid) {
+        console.log('\n✅ ФУНКЦИЯ ВЕРИФИЦИРОВАНА!');
+        console.log(`   ${contract.name} удовлетворяет всем контрактам`);
+      } else {
+        console.log('\n❌ ФУНКЦИЯ НЕ ВЕРИФИЦИРОВАНА!');
+        if (result.counterexample) {
+          console.log('\n🔍 Контрпример:');
+          for (const [key, value] of result.counterexample) {
+            console.log(`   ${key} = ${value}`);
+          }
+        }
+        if (result.error) {
+          console.log(`\n⚠️ Ошибка: ${result.error}`);
         }
       }
-      if (result.error) {
-        console.log(`\n⚠️ Ошибка: ${result.error}`);
+
+      console.log(`\n⏱️ Время: ${result.time}ms`);
+
+      if (options.output) {
+        const outputPath = path.resolve(options.output);
+        const report = {
+          contract,
+          result: {
+            isValid: result.isValid,
+            counterexample: result.counterexample
+              ? Object.fromEntries(result.counterexample)
+              : null,
+            error: result.error,
+            time: result.time,
+          },
+          timestamp: new Date().toISOString(),
+        };
+        fs.writeFileSync(outputPath, JSON.stringify(report, null, 2));
+        console.log(`\n📄 Результат сохранён: ${outputPath}`);
       }
+
+      await z3.dispose();
+      exitWithCode(result.isValid ? 0 : 1);
+    } catch (error) {
+      console.error('❌ Ошибка при формальной верификации:', error);
+      exitWithCode(1);
     }
-
-    console.log(`\n⏱️ Время: ${result.time}ms`);
-
-    if (options.output) {
-      const outputPath = path.resolve(options.output);
-      const report = {
-        contract,
-        result: {
-          isValid: result.isValid,
-          counterexample: result.counterexample ? Object.fromEntries(result.counterexample) : null,
-          error: result.error,
-          time: result.time,
-        },
-        timestamp: new Date().toISOString(),
-      };
-      fs.writeFileSync(outputPath, JSON.stringify(report, null, 2));
-      console.log(`\n📄 Результат сохранён: ${outputPath}`);
-    }
-
-    await z3.dispose();
-    process.exit(result.isValid ? 0 : 1);
   });
 
 // ============================================
@@ -510,118 +546,119 @@ program
   .option('--json', 'Вывод в JSON формате', false)
   .option('-o, --output <file>', 'Сохранить отчёт')
   .action(async (paths: string[], options: any) => {
-    console.log('\n' + '='.repeat(70));
-    console.log('🗑️ ПОИСК МЁРТВОГО КОДА');
-    console.log('='.repeat(70));
+    try {
+      console.log('\n' + '='.repeat(70));
+      console.log('🗑️ ПОИСК МЁРТВОГО КОДА');
+      console.log('='.repeat(70));
 
-    const files = await collectFiles(paths, options.recursive);
+      const files = await collectFiles(paths, options.recursive);
 
-    if (files.length === 0) {
-      console.error('❌ Не найдено файлов для анализа');
-      process.exit(1);
-    }
+      if (files.length === 0) {
+        console.error('❌ Не найдено файлов для анализа');
+        exitWithCode(1);
+      }
 
-    console.log(`📁 Найдено файлов: ${files.length}`);
-    console.log('');
+      console.log(`📁 Найдено файлов: ${files.length}`);
+      console.log('');
 
-    const allIssues: any[] = [];
+      const allIssues: any[] = [];
 
-    for (const file of files) {
-      console.log(`📄 Анализ: ${path.basename(file)}`);
+      for (const file of files) {
+        console.log(`📄 Анализ: ${path.basename(file)}`);
 
-      try {
-        const project = new Project({
-          compilerOptions: {
-            target: 99,
-            module: 99,
-            allowJs: true,
-            checkJs: false,
-            skipLibCheck: true,
-          },
-        });
-
-        const sourceFile = project.addSourceFileAtPath(file);
-        const analyzer = new DataFlowAnalyzer();
-        const dataFlow = analyzer.analyze(sourceFile);
-
-        // ✅ Фильтруем неиспользуемые переменные - пропускаем экспорты и переменные с _
-        const unusedVars = dataFlow.findUnusedVariables().filter((v: any) => {
-          // Проверяем, что переменная не экспортируется
-          const isExported = sourceFile.getVariableDeclaration(v.name)?.isExported() || false;
-          return !isExported && !v.name?.startsWith('_');
-        });
-
-        // ✅ Фильтруем неиспользуемые функции - пропускаем экспорты и функции с _
-        const allUnusedFunctions = findUnusedFunctions(sourceFile);
-        const unusedFunctions = allUnusedFunctions.filter((f: any) => {
-          const name = f.getName();
-          return !f.isExported() && !name?.startsWith('_');
-        });
-
-        if (unusedVars.length > 0 || unusedFunctions.length > 0) {
-          allIssues.push({
-            file,
-            unusedFunctions: unusedFunctions.map((f: any) => ({
-              name: f.getName() || 'anonymous',
-              line: f.getStartLineNumber(),
-            })),
-            unusedVariables: unusedVars.map((v: any) => ({
-              name: v.name,
-              line: v.line,
-            })),
+        try {
+          const project = new Project({
+            compilerOptions: {
+              target: 99,
+              module: 99,
+              allowJs: true,
+              checkJs: false,
+              skipLibCheck: true,
+            },
           });
 
-          if (unusedFunctions.length > 0) {
-            console.log(
-              `   ⚠️ Неиспользуемые функции: ${unusedFunctions.map((f: any) => f.getName()).join(', ')}`
-            );
+          const sourceFile = project.addSourceFileAtPath(file);
+          const analyzer = new DataFlowAnalyzer();
+          const dataFlow = analyzer.analyze(sourceFile);
+
+          const unusedVars = dataFlow.findUnusedVariables().filter((v: any) => {
+            const isExported = sourceFile.getVariableDeclaration(v.name)?.isExported() || false;
+            return !isExported && !v.name?.startsWith('_');
+          });
+
+          const allUnusedFunctions = findUnusedFunctions(sourceFile);
+          const unusedFunctions = allUnusedFunctions.filter((f: any) => {
+            const name = f.getName();
+            return !f.isExported() && !name?.startsWith('_');
+          });
+
+          if (unusedVars.length > 0 || unusedFunctions.length > 0) {
+            allIssues.push({
+              file,
+              unusedFunctions: unusedFunctions.map((f: any) => ({
+                name: f.getName() || 'anonymous',
+                line: f.getStartLineNumber(),
+              })),
+              unusedVariables: unusedVars.map((v: any) => ({
+                name: v.name,
+                line: v.line,
+              })),
+            });
+
+            if (unusedFunctions.length > 0) {
+              console.log(
+                `   ⚠️ Неиспользуемые функции: ${unusedFunctions.map((f: any) => f.getName()).join(', ')}`
+              );
+            }
+            if (unusedVars.length > 0) {
+              console.log(
+                `   ⚠️ Неиспользуемые переменные: ${unusedVars.map((v: any) => v.name).join(', ')}`
+              );
+            }
+          } else {
+            console.log('   ✅ Мёртвый код не найден');
           }
-          if (unusedVars.length > 0) {
-            console.log(
-              `   ⚠️ Неиспользуемые переменные: ${unusedVars.map((v: any) => v.name).join(', ')}`
-            );
-          }
-        } else {
-          console.log('   ✅ Мёртвый код не найден');
+        } catch (error: any) {
+          console.error(`   ❌ Ошибка анализа: ${error.message}`);
         }
-      } catch (error: any) {
-        console.error(`   ❌ Ошибка анализа: ${error.message}`);
       }
-    }
 
-    if (options.json) {
-      console.log(JSON.stringify(allIssues, null, 2));
-    }
+      if (options.json) {
+        console.log(JSON.stringify(allIssues, null, 2));
+      }
 
-    if (options.output) {
-      const outputPath = path.resolve(options.output);
-      const ext = path.extname(outputPath);
-      let content: string;
+      if (options.output) {
+        const outputPath = path.resolve(options.output);
+        const ext = path.extname(outputPath);
+        let content: string;
 
-      if (ext === '.json') {
-        content = JSON.stringify(allIssues, null, 2);
+        if (ext === '.json') {
+          content = JSON.stringify(allIssues, null, 2);
+        } else {
+          content = generateDeadCodeReport(allIssues);
+        }
+
+        fs.writeFileSync(outputPath, content);
+        console.log(`\n📄 Отчёт сохранён: ${outputPath}`);
+      }
+
+      const totalIssues = allIssues.reduce(
+        (sum: number, f: any) => sum + f.unusedFunctions.length + f.unusedVariables.length,
+        0
+      );
+
+      console.log(`\n📊 ИТОГО: ${totalIssues} проблем в ${allIssues.length} файлах`);
+
+      if (totalIssues > 0) {
+        console.log('❌ Найден мертвый код');
+        exitWithCode(1);
       } else {
-        content = generateDeadCodeReport(allIssues);
+        console.log('✅ Мертвый код не найден');
+        exitWithCode(0);
       }
-
-      fs.writeFileSync(outputPath, content);
-      console.log(`\n📄 Отчёт сохранён: ${outputPath}`);
-    }
-
-    const totalIssues = allIssues.reduce(
-      (sum: number, f: any) => sum + f.unusedFunctions.length + f.unusedVariables.length,
-      0
-    );
-
-    console.log(`\n📊 ИТОГО: ${totalIssues} проблем в ${allIssues.length} файлах`);
-
-    // ✅ ИСПРАВЛЕНО: возвращаем 0 если нет мертвого кода
-    if (totalIssues > 0) {
-      console.log('❌ Найден мертвый код');
-      process.exit(1);
-    } else {
-      console.log('✅ Мертвый код не найден');
-      process.exit(0);
+    } catch (error) {
+      console.error('❌ Ошибка при поиске мёртвого кода:', error);
+      exitWithCode(1);
     }
   });
 
@@ -672,7 +709,6 @@ async function collectFiles(paths: string[], recursive: boolean): Promise<string
   return [...new Set(files)];
 }
 
-// ✅ ИСПРАВЛЕНО: функция findUnusedFunctions - не возвращает экспорты
 function findUnusedFunctions(sourceFile: any): any[] {
   const functions = sourceFile.getFunctions();
   const used = new Set<string>();
@@ -684,7 +720,6 @@ function findUnusedFunctions(sourceFile: any): any[] {
     if (func.isExported()) continue;
     if (name.startsWith('_')) continue;
 
-    // Проверяем использование
     const regex = new RegExp(`\\b${name}\\s*\\(`, 'g');
     let isUsed = false;
 
@@ -692,7 +727,6 @@ function findUnusedFunctions(sourceFile: any): any[] {
     if (matches) {
       for (const match of matches) {
         const pos = text.indexOf(match);
-        // Проверяем, что это не объявление функции
         const before = text.substring(Math.max(0, pos - 20), pos);
         if (!before.includes('function') && !before.includes('=>')) {
           isUsed = true;
@@ -706,7 +740,6 @@ function findUnusedFunctions(sourceFile: any): any[] {
     }
   }
 
-  // ✅ Возвращаем только неиспользуемые НЕЭКСПОРТИРУЕМЫЕ функции
   return functions.filter((f: any) => {
     const name = f.getName();
     return name && used.has(name) && !f.isExported();
@@ -1241,8 +1274,13 @@ function generateDeadCodeReport(issues: any[]): string {
 // ЗАПУСК CLI
 // ============================================
 
-if (process.argv.length <= 2) {
-  program.help();
+// Запускаем программу только если мы не в тестовой среде
+// или если файл запущен напрямую (не импортирован)
+const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+const isTestEnv = process.env.NODE_ENV === 'test';
+
+if (isMainModule && !isTestEnv) {
+  program.parse();
 }
 
-program.parse();
+export { program };

@@ -1,4 +1,4 @@
-// packages/ast-analyzer/src/formal/Z3Verifier.ts
+// src/formal/Z3Verifier.ts
 
 import { init } from 'z3-solver';
 import {
@@ -10,8 +10,6 @@ import {
   toZ3String,
 } from './ExpressionParser.js';
 import { FunctionBodyModeler } from './FunctionBodyModeler.js';
-import { EquivalenceChecker } from './EquivalenceChecker.js';
-import { RefactoringEquivalenceChecker } from './RefactoringEquivalenceChecker.js';
 
 export interface VerificationConstraint {
   type: 'equality' | 'inequality' | 'range' | 'implication' | 'and' | 'or' | 'not' | 'if';
@@ -61,9 +59,7 @@ function createIntVal(value: number, context: any): any {
   return context.Int.val(value);
 }
 
-function createBoolVal(value: boolean, context: any): any {
-  return context.Bool.val(value);
-}
+// createBoolVal - удалена, так как не используется
 
 export class Z3Verifier {
   private z3: any = null;
@@ -72,26 +68,21 @@ export class Z3Verifier {
   private initialized = false;
   private expressionParser: ExpressionParser | null = null;
   private functionBodyModeler: FunctionBodyModeler | null = null;
-  private equivalenceChecker: EquivalenceChecker | null = null;
-  private refactoringEquivalenceChecker: RefactoringEquivalenceChecker | null = null;
   private initPromise: Promise<void> | null = null;
   private initLock = false;
 
   async initialize(): Promise<void> {
-    // Если уже инициализировано - выходим
     if (this.initialized) {
       console.log('✅ Z3Verifier already initialized');
       return;
     }
 
-    // Если уже идет инициализация - ждем ее завершения
     if (this.initPromise) {
       console.log('⏳ Z3Verifier initialization in progress, waiting...');
       await this.initPromise;
       return;
     }
 
-    // Блокируем повторные вызовы
     if (this.initLock) {
       return;
     }
@@ -116,19 +107,8 @@ export class Z3Verifier {
       this.context = new Context('main');
       this.solver = new this.context.Solver();
 
-      // Инициализируем парсеры
       this.expressionParser = new ExpressionParser(this.context);
       this.functionBodyModeler = new FunctionBodyModeler(this.context, this.solver);
-
-      // ✅ ИСПРАВЛЕНО: Передаем this (Z3Verifier) в EquivalenceChecker
-      // Теперь EquivalenceChecker НЕ будет создавать свой Z3Verifier
-      this.equivalenceChecker = new EquivalenceChecker({}, this);
-
-      // ✅ ИСПРАВЛЕНО: Передаем this (Z3Verifier) в RefactoringEquivalenceChecker
-      this.refactoringEquivalenceChecker = new RefactoringEquivalenceChecker({}, this);
-
-      // Дочерние компоненты уже используют переданный Z3, не нужно их инициализировать отдельно
-      // Они уже инициализированы через конструктор с переданным Z3
 
       this.initialized = true;
       console.log('✅ Z3 solver and all components initialized');
@@ -159,20 +139,6 @@ export class Z3Verifier {
    */
   getFunctionBodyModeler(): FunctionBodyModeler | null {
     return this.functionBodyModeler;
-  }
-
-  /**
-   * Получить EquivalenceChecker
-   */
-  getEquivalenceChecker(): EquivalenceChecker | null {
-    return this.equivalenceChecker;
-  }
-
-  /**
-   * Получить RefactoringEquivalenceChecker
-   */
-  getRefactoringEquivalenceChecker(): RefactoringEquivalenceChecker | null {
-    return this.refactoringEquivalenceChecker;
   }
 
   /**
@@ -491,40 +457,6 @@ export class Z3Verifier {
   }
 
   /**
-   * Проверяет эквивалентность двух файлов через EquivalenceChecker
-   */
-  async checkFileEquivalence(
-    originalPath: string,
-    modifiedPath: string,
-    options?: any
-  ): Promise<any> {
-    if (!this.initialized) await this.initialize();
-    if (!this.equivalenceChecker) {
-      throw new Error('EquivalenceChecker not initialized');
-    }
-    return this.equivalenceChecker.checkFileEquivalence(originalPath, modifiedPath, options);
-  }
-
-  /**
-   * Проверяет эквивалентность рефакторинга через RefactoringEquivalenceChecker
-   */
-  async checkRefactoringEquivalence(
-    originalFilePath: string,
-    refactoredFilePath: string,
-    modulesDir?: string
-  ): Promise<any> {
-    if (!this.initialized) await this.initialize();
-    if (!this.refactoringEquivalenceChecker) {
-      throw new Error('RefactoringEquivalenceChecker not initialized');
-    }
-    return this.refactoringEquivalenceChecker.checkRefactoringEquivalence(
-      originalFilePath,
-      refactoredFilePath,
-      modulesDir
-    );
-  }
-
-  /**
    * Моделирует тело функции через FunctionBodyModeler
    */
   async modelFunctionBody(
@@ -639,22 +571,130 @@ export class Z3Verifier {
   private valueToZ3(value: any, variables: Map<string, any>): any {
     if (!this.context) return null;
 
+    // Число
     if (typeof value === 'number') {
-      return createIntVal(value, this.context);
+      try {
+        return this.context.Int.val(value);
+      } catch {
+        return null;
+      }
     }
+
+    // Булево значение
     if (typeof value === 'boolean') {
-      return createBoolVal(value, this.context);
+      try {
+        return this.context.Bool.val(value);
+      } catch {
+        return null;
+      }
     }
+
+    // Строка - переменная или литерал
     if (typeof value === 'string') {
       if (variables.has(value)) {
         return variables.get(value);
       }
-      return this.context.String.val(value);
+      // Проверяем, может быть это число в строке
+      if (!isNaN(Number(value))) {
+        try {
+          return this.context.Int.val(Number(value));
+        } catch {
+          return null;
+        }
+      }
+      try {
+        return this.context.String.val(value);
+      } catch {
+        return null;
+      }
     }
-    if (value === null || value === undefined) {
-      return this.context.Bool.val(true);
+
+    // Обработка арифметических выражений
+    if (value && typeof value === 'object') {
+      try {
+        switch (value.type) {
+          case 'add': {
+            const left = this.valueToZ3(value.left, variables);
+            const right = this.valueToZ3(value.right, variables);
+            if (left && right) {
+              return this.context.Int.add(left, right);
+            }
+            return null;
+          }
+          case 'sub': {
+            const left = this.valueToZ3(value.left, variables);
+            const right = this.valueToZ3(value.right, variables);
+            if (left && right) {
+              return this.context.Int.sub(left, right);
+            }
+            return null;
+          }
+          case 'mul': {
+            const left = this.valueToZ3(value.left, variables);
+            const right = this.valueToZ3(value.right, variables);
+            if (left && right) {
+              return this.context.Int.mul(left, right);
+            }
+            return null;
+          }
+          case 'div': {
+            const left = this.valueToZ3(value.left, variables);
+            const right = this.valueToZ3(value.right, variables);
+            if (left && right) {
+              return this.context.Int.div(left, right);
+            }
+            return null;
+          }
+          case 'eq': {
+            const left = this.valueToZ3(value.left, variables);
+            const right = this.valueToZ3(value.right, variables);
+            if (left && right) {
+              return this.context.Eq(left, right);
+            }
+            return null;
+          }
+          case 'gt': {
+            const left = this.valueToZ3(value.left, variables);
+            const right = this.valueToZ3(value.right, variables);
+            if (left && right) {
+              return this.context.GT(left, right);
+            }
+            return null;
+          }
+          case 'gte': {
+            const left = this.valueToZ3(value.left, variables);
+            const right = this.valueToZ3(value.right, variables);
+            if (left && right) {
+              return this.context.GE(left, right);
+            }
+            return null;
+          }
+          case 'lt': {
+            const left = this.valueToZ3(value.left, variables);
+            const right = this.valueToZ3(value.right, variables);
+            if (left && right) {
+              return this.context.LT(left, right);
+            }
+            return null;
+          }
+          case 'lte': {
+            const left = this.valueToZ3(value.left, variables);
+            const right = this.valueToZ3(value.right, variables);
+            if (left && right) {
+              return this.context.LE(left, right);
+            }
+            return null;
+          }
+          default:
+            return null;
+        }
+      } catch (error) {
+        console.warn('Failed to evaluate arithmetic expression:', error);
+        return null;
+      }
     }
-    return value;
+
+    return null;
   }
 
   private computeWeakestPrecondition(
@@ -769,8 +809,6 @@ export class Z3Verifier {
     if (this.context) {
       this.context = null;
     }
-    // Не удаляем equivalenceChecker и refactoringEquivalenceChecker,
-    // так как они используют this и будут удалены вместе с этим объектом
     this.z3 = null;
     this.initialized = false;
     this.expressionParser = null;
@@ -940,6 +978,62 @@ export function div(left: string, right: string): VerificationConstraint {
   return { type: 'equality', left, right: { left, right, type: 'div' } };
 }
 
+/**
+ * Создает выражение сложения для Z3
+ */
+export function addExpr(
+  left: string | number,
+  right: string | number
+): {
+  type: 'add';
+  left: string | number;
+  right: string | number;
+} {
+  return { type: 'add', left, right };
+}
+
+/**
+ * Создает выражение вычитания для Z3
+ */
+export function subExpr(
+  left: string | number,
+  right: string | number
+): {
+  type: 'sub';
+  left: string | number;
+  right: string | number;
+} {
+  return { type: 'sub', left, right };
+}
+
+/**
+ * Создает выражение умножения для Z3
+ */
+export function mulExpr(
+  left: string | number,
+  right: string | number
+): {
+  type: 'mul';
+  left: string | number;
+  right: string | number;
+} {
+  return { type: 'mul', left, right };
+}
+
+/**
+ * Создает выражение деления для Z3
+ */
+export function divExpr(
+  left: string | number,
+  right: string | number
+): {
+  type: 'div';
+  left: string | number;
+  right: string | number;
+} {
+  return { type: 'div', left, right };
+}
+
 // Экспорт дополнительных функций из ExpressionParser
 export {
   parseExpression,
@@ -949,6 +1043,3 @@ export {
   toZ3String,
   ExpressionParser,
 };
-
-// Экспорт классов для внешнего использования
-export { EquivalenceChecker, RefactoringEquivalenceChecker, FunctionBodyModeler };
