@@ -2,7 +2,7 @@
 import esbuild from 'esbuild';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { readdirSync, existsSync, statSync, copyFileSync, mkdirSync, writeFileSync } from 'fs';
+import fs from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isProduction = process.env.NODE_ENV === 'production';
@@ -57,24 +57,51 @@ function copyWasmFiles() {
   console.log('\n📋 Copying WASM files...');
 
   const wasmDestDir = resolve(__dirname, 'dist/wasm');
-  if (!existsSync(wasmDestDir)) {
-    mkdirSync(wasmDestDir, { recursive: true });
+  if (!fs.existsSync(wasmDestDir)) {
+    fs.mkdirSync(wasmDestDir, { recursive: true });
   }
 
   let copiedCount = 0;
+  const copiedFiles = [];
 
-  // 1. Копируем из tree-sitter-wasms/out
-  const tsWasmDir = resolve(process.cwd(), 'node_modules/tree-sitter-wasms/out');
-  if (existsSync(tsWasmDir)) {
+  // 1. Копируем из src/grammars (основные WASM файлы)
+  const srcGrammarsDir = resolve(__dirname, 'src/grammars');
+  if (fs.existsSync(srcGrammarsDir)) {
     try {
-      const files = readdirSync(tsWasmDir);
+      const files = fs.readdirSync(srcGrammarsDir);
+      console.log(`   📂 Found ${files.length} files in src/grammars`);
+      for (const file of files) {
+        if (file.endsWith('.wasm')) {
+          const srcPath = join(srcGrammarsDir, file);
+          const destPath = join(wasmDestDir, file);
+          fs.copyFileSync(srcPath, destPath);
+          console.log(`   ✅ Copied: ${file} (from src/grammars)`);
+          copiedCount++;
+          copiedFiles.push(file);
+        }
+      }
+    } catch (error) {
+      console.warn(`   ⚠️ Could not copy from src/grammars: ${error}`);
+    }
+  }
+
+  // 2. Копируем из tree-sitter-wasms/out
+  const tsWasmDir = resolve(process.cwd(), 'node_modules/tree-sitter-wasms/out');
+  if (fs.existsSync(tsWasmDir)) {
+    try {
+      const files = fs.readdirSync(tsWasmDir);
+      console.log(`   📂 Found ${files.length} files in tree-sitter-wasms/out`);
       for (const file of files) {
         if (file.endsWith('.wasm')) {
           const srcPath = join(tsWasmDir, file);
           const destPath = join(wasmDestDir, file);
-          copyFileSync(srcPath, destPath);
-          console.log(`   ✅ Copied: ${file}`);
-          copiedCount++;
+          // Проверяем, не скопирован ли уже этот файл
+          if (!fs.existsSync(destPath)) {
+            fs.copyFileSync(srcPath, destPath);
+            console.log(`   ✅ Copied: ${file} (from tree-sitter-wasms)`);
+            copiedCount++;
+            copiedFiles.push(file);
+          }
         }
       }
     } catch (error) {
@@ -82,18 +109,22 @@ function copyWasmFiles() {
     }
   }
 
-  // 2. Копируем из @codeflow-map/wasm
+  // 3. Копируем из @codeflow-map/wasm
   const cfWasmDir = resolve(process.cwd(), 'node_modules/@codeflow-map/wasm');
-  if (existsSync(cfWasmDir)) {
+  if (fs.existsSync(cfWasmDir)) {
     try {
-      const files = readdirSync(cfWasmDir);
+      const files = fs.readdirSync(cfWasmDir);
+      console.log(`   📂 Found ${files.length} files in @codeflow-map/wasm`);
       for (const file of files) {
         if (file.endsWith('.wasm')) {
           const srcPath = join(cfWasmDir, file);
           const destPath = join(wasmDestDir, file);
-          copyFileSync(srcPath, destPath);
-          console.log(`   ✅ Copied: ${file}`);
-          copiedCount++;
+          if (!fs.existsSync(destPath)) {
+            fs.copyFileSync(srcPath, destPath);
+            console.log(`   ✅ Copied: ${file} (from @codeflow-map/wasm)`);
+            copiedCount++;
+            copiedFiles.push(file);
+          }
         }
       }
     } catch (error) {
@@ -101,7 +132,69 @@ function copyWasmFiles() {
     }
   }
 
-  console.log(`   📦 Total WASM files copied: ${copiedCount}`);
+  // 4. Дополнительно проверяем наличие tree-sitter.wasm
+  const treeSitterPath = join(wasmDestDir, 'tree-sitter.wasm');
+  if (!fs.existsSync(treeSitterPath)) {
+    console.warn('   ⚠️ tree-sitter.wasm not found! Trying to copy from node_modules...');
+
+    // Ищем tree-sitter.wasm в node_modules
+    const possiblePaths = [
+      resolve(process.cwd(), 'node_modules/web-tree-sitter/tree-sitter.wasm'),
+      resolve(process.cwd(), 'node_modules/tree-sitter-wasms/out/tree-sitter.wasm'),
+      resolve(process.cwd(), 'node_modules/@codeflow-map/wasm/tree-sitter.wasm'),
+      resolve(process.cwd(), 'node_modules/tree-sitter/tree-sitter.wasm'),
+    ];
+
+    let found = false;
+    for (const srcPath of possiblePaths) {
+      if (fs.existsSync(srcPath)) {
+        fs.copyFileSync(srcPath, treeSitterPath);
+        console.log(`   ✅ Copied tree-sitter.wasm from: ${srcPath}`);
+        copiedCount++;
+        copiedFiles.push('tree-sitter.wasm');
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      console.error('   ❌ CRITICAL: tree-sitter.wasm not found anywhere!');
+      console.error('   💡 Please install: npm install web-tree-sitter');
+      console.error('   💡 Or copy tree-sitter.wasm to src/grammars/ manually');
+    }
+  } else {
+    console.log('   ✅ tree-sitter.wasm already exists in dist/wasm');
+  }
+
+  // 5. Проверяем наличие всех необходимых WASM файлов
+  const requiredFiles = [
+    'tree-sitter.wasm',
+    'tree-sitter-typescript.wasm',
+    'tree-sitter-javascript.wasm',
+    'tree-sitter-vue.wasm',
+    'tree-sitter-tsx.wasm',
+  ];
+
+  console.log('\n   📋 Checking required WASM files:');
+  let allRequiredFound = true;
+  for (const required of requiredFiles) {
+    const filePath = join(wasmDestDir, required);
+    if (fs.existsSync(filePath)) {
+      console.log(`   ✅ ${required}`);
+    } else {
+      console.log(`   ❌ ${required} - MISSING!`);
+      allRequiredFound = false;
+    }
+  }
+
+  if (!allRequiredFound) {
+    console.warn('\n   ⚠️ Some required WASM files are missing!');
+    console.warn('   💡 Call Graph analysis for some languages may be limited.');
+  }
+
+  console.log(`\n   📦 Total WASM files copied: ${copiedCount}`);
+  console.log(`   📋 Files: ${copiedFiles.join(', ')}`);
+
   if (copiedCount === 0) {
     console.log('   ⚠️ No WASM files found! Call Graph analysis will be limited.');
   }
@@ -118,7 +211,7 @@ const buildOptions = {
   minify: isProduction,
   keepNames: true,
   treeShaking: true,
-  external: external,
+  external,
   packages: 'external',
   mainFields: ['module', 'main'],
   loader: {
@@ -141,8 +234,7 @@ const buildOptions = {
         }));
 
         build.onLoad({ filter: /\.vue$/, namespace: 'vue-file' }, async args => {
-          const fsModule = await import('fs');
-          const content = await fsModule.promises.readFile(args.path, 'utf8');
+          const content = await fs.promises.readFile(args.path, 'utf8');
           const scriptMatch = content.match(/<script[^>]*>([\s\S]*?)<\/script>/);
           if (scriptMatch && scriptMatch[1]) {
             return { contents: scriptMatch[1], loader: 'ts' };
@@ -156,6 +248,28 @@ const buildOptions = {
       setup(build) {
         build.onEnd(() => {
           copyWasmFiles();
+        });
+      },
+    },
+    {
+      name: 'ensure-wasm-permissions',
+      setup(build) {
+        build.onEnd(async () => {
+          const wasmDir = resolve(__dirname, 'dist/wasm');
+          if (fs.existsSync(wasmDir)) {
+            try {
+              const files = fs.readdirSync(wasmDir);
+              for (const file of files) {
+                if (file.endsWith('.wasm')) {
+                  const filePath = join(wasmDir, file);
+                  fs.chmodSync(filePath, 0o644);
+                }
+              }
+              console.log('   ✅ WASM file permissions set');
+            } catch (error) {
+              console.warn(`   ⚠️ Could not set permissions: ${error}`);
+            }
+          }
         });
       },
     },
@@ -180,8 +294,23 @@ try {
   }
 
   // Проверяем размер бандла
-  const stats = statSync(resolve(__dirname, 'dist/index.js'));
+  const stats = fs.statSync(resolve(__dirname, 'dist/index.js'));
   console.log(`📊 Bundle size: ${(stats.size / 1024).toFixed(2)} KB`);
+
+  // Проверяем наличие WASM файлов после сборки
+  const wasmDir = resolve(__dirname, 'dist/wasm');
+  if (fs.existsSync(wasmDir)) {
+    const wasmFiles = fs.readdirSync(wasmDir).filter(f => f.endsWith('.wasm'));
+    console.log(`📊 WASM files in dist/wasm: ${wasmFiles.length}`);
+
+    // Проверяем tree-sitter.wasm
+    if (wasmFiles.includes('tree-sitter.wasm')) {
+      console.log('   ✅ tree-sitter.wasm present');
+    } else {
+      console.error('   ❌ tree-sitter.wasm is MISSING!');
+      console.error('   💡 This will cause errors when using Call Graph analysis');
+    }
+  }
 
   console.log('\n✨ Bundle build complete!');
 } catch (error) {

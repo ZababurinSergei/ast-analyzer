@@ -15,11 +15,42 @@
 import { Command } from 'commander';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { glob } from 'glob';
 import readline from 'readline';
 import { CICPipeline, AutoTypeScriptFixer } from './ci-cd/index.js';
 import { TypeScriptValidator } from './refactor/TypeScriptValidator.js';
 import { ESLintPipeline } from './ci-cd/ESLintPipeline.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Автоматическое определение WASM пути
+function getWasmPath(): string {
+  const possiblePaths = [
+    path.resolve(__dirname, 'wasm'), // рядом с dist
+    path.resolve(__dirname, '../dist/wasm'), // из src/
+    path.resolve(process.cwd(), 'grammars'), // в проекте
+    path.resolve(process.cwd(), 'packages/ast-analyzer/dist/wasm'), // в монорепозитории
+    path.resolve(process.cwd(), 'node_modules/@newkind/ast-analyzer/dist/wasm'),
+  ];
+
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      try {
+        const files = fs.readdirSync(p);
+        if (files.some(f => f.endsWith('.wasm'))) {
+          return p;
+        }
+      } catch {
+        // Игнорируем ошибки чтения
+      }
+    }
+  }
+
+  // Возвращаем путь по умолчанию
+  return path.resolve(__dirname, 'wasm');
+}
 
 // Тип для результата проверки TypeScript
 export interface CIResult {
@@ -528,6 +559,20 @@ program
     console.log(`📁 Найдено JSX/TSX файлов: ${jsxFiles.length}\n`);
 
     const analysisResults: any[] = [];
+    const wasmPath = getWasmPath();
+
+    // Проверяем наличие WASM файлов
+    if (fs.existsSync(wasmPath)) {
+      try {
+        const wasmFiles = fs.readdirSync(wasmPath).filter(f => f.endsWith('.wasm'));
+        console.log(`📂 WASM директория: ${wasmPath} (${wasmFiles.length} файлов)\n`);
+      } catch {
+        console.warn(`⚠️ Не удалось прочитать WASM директорию: ${wasmPath}\n`);
+      }
+    } else {
+      console.warn(`⚠️ WASM директория не найдена: ${wasmPath}`);
+      console.warn('   Анализ JSX будет ограничен\n');
+    }
 
     for (const file of jsxFiles) {
       console.log(`📄 Анализ: ${path.basename(file)}`);
@@ -535,6 +580,18 @@ program
       try {
         const { Project } = await import('ts-morph');
         const { JSXAnalyzer } = await import('./semantic/JSXAnalyzer.js');
+
+        // Инициализируем Tree-sitter если есть WASM
+        try {
+          const { initTreeSitter } = await import('@codeflow-map/core');
+          if (fs.existsSync(wasmPath)) {
+            await initTreeSitter(wasmPath);
+            console.log(`   ✅ Tree-sitter инициализирован`);
+          }
+        } catch (error) {
+          // Игнорируем ошибки инициализации
+          console.warn(`   ⚠️ Tree-sitter не инициализирован: ${error}`);
+        }
 
         const project = new Project({
           compilerOptions: {
@@ -556,16 +613,28 @@ program
           elementCount: analysis.elements.length,
           components: Array.from(analysis.componentProps.keys()),
           propErrors: analysis.propTypeErrors.length,
+          lintingIssues: analysis.jsxLintingIssues.length,
+          missingImports: analysis.missingImports,
         });
 
         console.log(`   ⚛️ Компонентов: ${analysis.componentProps.size}`);
         console.log(`   🧩 Элементов: ${analysis.elements.length}`);
+        console.log(`   ⚠️ Linting проблем: ${analysis.jsxLintingIssues.length}`);
+
         if (analysis.componentProps.size > 0) {
-          console.log(
-            `   📦 Компоненты: ${Array.from(analysis.componentProps.keys()).slice(0, 5).join(', ')}`
-          );
-          if (analysis.componentProps.size > 5)
+          const componentList = Array.from(analysis.componentProps.keys()).slice(0, 5);
+          console.log(`   📦 Компоненты: ${componentList.join(', ')}`);
+          if (analysis.componentProps.size > 5) {
             console.log(`      ... и ещё ${analysis.componentProps.size - 5}`);
+          }
+        }
+
+        if (analysis.propTypeErrors.length > 0) {
+          console.log(`   ❌ Ошибок пропсов: ${analysis.propTypeErrors.length}`);
+        }
+
+        if (analysis.missingImports.length > 0) {
+          console.log(`   📦 Отсутствующие импорты: ${analysis.missingImports.join(', ')}`);
         }
       } catch (error: any) {
         console.error(`   ❌ Ошибка анализа: ${error.message}`);
@@ -578,11 +647,19 @@ program
 
     // Сохраняем результаты
     const outputPath = path.resolve(options.output);
+    const reportDir = path.dirname(outputPath);
+    if (!fs.existsSync(reportDir)) {
+      fs.mkdirSync(reportDir, { recursive: true });
+    }
     fs.writeFileSync(outputPath, JSON.stringify(analysisResults, null, 2));
 
     console.log('\n📊 ИТОГИ АНАЛИЗА:');
     const totalComponents = analysisResults.reduce((sum, r) => sum + (r.componentCount || 0), 0);
+    const totalErrors = analysisResults.reduce((sum, r) => sum + (r.propErrors || 0), 0);
+    const totalLinting = analysisResults.reduce((sum, r) => sum + (r.lintingIssues || 0), 0);
     console.log(`   ⚛️ Всего компонентов: ${totalComponents}`);
+    console.log(`   ❌ Всего ошибок пропсов: ${totalErrors}`);
+    console.log(`   ⚠️ Всего linting проблем: ${totalLinting}`);
     console.log(`   📄 Проанализировано файлов: ${analysisResults.length}`);
     console.log(`   ✅ Отчёт сохранён: ${outputPath}`);
   });

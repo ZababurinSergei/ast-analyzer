@@ -35,6 +35,7 @@ import { TypeAnalyzer, type TypeAnalysisResult } from './semantic/TypeAnalyzer.j
 import { DataFlowAnalyzer, type DataFlowGraph } from './semantic/DataFlowAnalyzer.js';
 import { Z3Verifier, type FunctionContract } from './formal/Z3Verifier.js';
 import { Project } from 'ts-morph';
+import { findWasmPath } from './utils/wasm-utils.js';
 
 const program = new Command();
 
@@ -143,7 +144,11 @@ program
       console.log(`📄 Формат отчёта: ${options.format}`);
       console.log('');
 
-      const pipeline = new SemanticPipeline();
+      // Автоматически определяем WASM путь
+      const wasmPath = findWasmPath();
+      console.log(`🔧 WASM path: ${wasmPath}`);
+
+      const pipeline = new SemanticPipeline({ wasmPath });
       const result = await pipeline.run(files, {
         formalVerification: options.formal,
         maxDepth: parseInt(options.maxDepth),
@@ -215,7 +220,11 @@ program
       // ✅ ПРОВЕРКА СУЩЕСТВОВАНИЯ ФАЙЛА
       const absolutePath = validateFileExists(file);
 
-      const analyzer = new CallGraphAnalyzer();
+      // Автоматически определяем WASM путь
+      const wasmPath = findWasmPath();
+      console.log(`🔧 WASM path: ${wasmPath}`);
+
+      const analyzer = new CallGraphAnalyzer(wasmPath);
       const callGraph = await analyzer.analyzeSingle(absolutePath, parseInt(options.maxDepth));
 
       if (options.json) {
@@ -722,11 +731,9 @@ async function collectFiles(paths: string[], recursive: boolean): Promise<string
         files.push(...matched);
       } catch (error) {
         console.error(`❌ Ошибка при сканировании ${resolvedPath}:`, error);
-        // В тестовой среде выбрасываем ошибку для корректного перехвата
         if (process.env.NODE_ENV === 'test') {
           throw error;
         }
-        // В продакшене продолжаем работу
         console.warn(`⚠️ Пропускаем директорию: ${resolvedPath}`);
       }
     }

@@ -13,6 +13,7 @@ import { JSXAnalyzer } from '../semantic/JSXAnalyzer';
 import fs from 'fs';
 import path from 'path';
 import { glob } from 'glob';
+import { findWasmPath } from '../utils/wasm-utils.js';
 
 export interface PipelineResult {
   success: boolean;
@@ -75,6 +76,7 @@ export interface PipelineOptions {
   reportFormat?: 'json' | 'html' | 'markdown';
   outputDir?: string;
   failOnWarnings?: boolean;
+  wasmPath?: string;
 }
 
 export class SemanticPipeline {
@@ -84,8 +86,18 @@ export class SemanticPipeline {
   private z3Verifier: Z3Verifier;
   private dataFlowAnalyzer: DataFlowAnalyzer;
   private initialized = false;
+  private wasmPath: string;
 
-  constructor() {
+  constructor(options?: { wasmPath?: string }) {
+    // Определяем путь к WASM
+    if (options?.wasmPath) {
+      this.wasmPath = options.wasmPath;
+    } else {
+      this.wasmPath = findWasmPath();
+    }
+
+    console.log(`🔧 WASM path: ${this.wasmPath}`);
+
     this.project = new Project({
       compilerOptions: {
         target: 99,
@@ -99,7 +111,7 @@ export class SemanticPipeline {
     });
 
     this.cfgAnalyzer = new CFGAnalyzer();
-    this.callGraphAnalyzer = new CallGraphAnalyzer();
+    this.callGraphAnalyzer = new CallGraphAnalyzer(this.wasmPath);
     this.dataFlowAnalyzer = new DataFlowAnalyzer();
     this.z3Verifier = new Z3Verifier();
   }
@@ -131,6 +143,15 @@ export class SemanticPipeline {
     let typeErrors = 0;
     let cyclicDependencies = 0;
     let unreachableBlocks = 0;
+
+    // Проверяем доступность WASM
+    const wasmAvailable =
+      fs.existsSync(this.wasmPath) && fs.readdirSync(this.wasmPath).some(f => f.endsWith('.wasm'));
+
+    if (!wasmAvailable) {
+      console.warn('⚠️ WASM not available, Call Graph analysis will be skipped');
+      console.warn(`   Looking for WASM in: ${this.wasmPath}`);
+    }
 
     for (const filePath of filePaths) {
       if (!fs.existsSync(filePath)) {
@@ -227,57 +248,61 @@ export class SemanticPipeline {
         // Не прерываем выполнение, продолжаем с другими анализаторами
       }
 
-      // 2. Call Graph анализ
-      console.log('  🕸️ Building Call Graph...');
-      try {
-        const callGraph = await this.callGraphAnalyzer.analyze(filePath, options.maxDepth || 10);
-        const unused = callGraph.findUnusedFunctions();
-        const cycles = callGraph.findCyclicDependencies();
+      // 2. Call Graph анализ (только если WASM доступен)
+      if (wasmAvailable) {
+        console.log('  🕸️ Building Call Graph...');
+        try {
+          const callGraph = await this.callGraphAnalyzer.analyze(filePath, options.maxDepth || 10);
+          const unused = callGraph.findUnusedFunctions();
+          const cycles = callGraph.findCyclicDependencies();
 
-        totalFunctions += callGraph.nodes.size;
-        unusedFunctions += unused.length;
+          totalFunctions += callGraph.nodes.size;
+          unusedFunctions += unused.length;
 
-        for (const func of unused) {
-          issues.push({
-            id: `unused_func_${Date.now()}_${Math.random()}`,
-            type: 'unused_function',
-            severity: 'warning',
-            file: func.file,
-            line: func.line,
-            column: func.column,
-            message: `Function '${func.name}' is never used`,
-            suggestion: func.isExported
-              ? 'Remove export or use the function elsewhere'
-              : 'Remove the function or add a reference',
-            code: func.name,
-          });
-        }
-
-        for (const cycle of cycles) {
-          cyclicDependencies++;
-          const cycleStr = cycle.map(e => `${e.from} → ${e.to}`).join(' → ');
-          issues.push({
-            id: `cycle_${Date.now()}_${Math.random()}`,
-            type: 'cyclic_dependency',
-            severity: 'error',
-            file: filePath,
-            line: 1,
-            column: 1,
-            message: `Cyclic dependency detected: ${cycleStr}`,
-            suggestion:
-              'Refactor to break the cycle using dependency inversion, extract common code, or use event emitters',
-          });
-        }
-
-        const jsxDeps = this.callGraphAnalyzer.analyzeJSXComponents(sourceFile);
-        if (jsxDeps.size > 0) {
-          console.log(`     📦 JSX component dependencies: ${jsxDeps.size}`);
-          for (const [component, deps] of jsxDeps) {
-            console.log(`       ${component} → ${deps.join(', ')}`);
+          for (const func of unused) {
+            issues.push({
+              id: `unused_func_${Date.now()}_${Math.random()}`,
+              type: 'unused_function',
+              severity: 'warning',
+              file: func.file,
+              line: func.line,
+              column: func.column,
+              message: `Function '${func.name}' is never used`,
+              suggestion: func.isExported
+                ? 'Remove export or use the function elsewhere'
+                : 'Remove the function or add a reference',
+              code: func.name,
+            });
           }
+
+          for (const cycle of cycles) {
+            cyclicDependencies++;
+            const cycleStr = cycle.map(e => `${e.from} → ${e.to}`).join(' → ');
+            issues.push({
+              id: `cycle_${Date.now()}_${Math.random()}`,
+              type: 'cyclic_dependency',
+              severity: 'error',
+              file: filePath,
+              line: 1,
+              column: 1,
+              message: `Cyclic dependency detected: ${cycleStr}`,
+              suggestion:
+                'Refactor to break the cycle using dependency inversion, extract common code, or use event emitters',
+            });
+          }
+
+          const jsxDeps = this.callGraphAnalyzer.analyzeJSXComponents(sourceFile);
+          if (jsxDeps.size > 0) {
+            console.log(`     📦 JSX component dependencies: ${jsxDeps.size}`);
+            for (const [component, deps] of jsxDeps) {
+              console.log(`       ${component} → ${deps.join(', ')}`);
+            }
+          }
+        } catch (error) {
+          console.error(`  ❌ Call graph analysis failed: ${error}`);
         }
-      } catch (error) {
-        console.error(`  ❌ Call graph analysis failed: ${error}`);
+      } else {
+        console.log('  ⏭️ Call Graph analysis skipped (WASM not available)');
       }
 
       // 3. Type анализ
@@ -491,7 +516,7 @@ export class SemanticPipeline {
         const comment = tag.getCommentText();
 
         if (tagName === 'param' && comment) {
-          const paramMatch = comment.match(/(\\w+)\\s*-\\s*([^<]+)/);
+          const paramMatch = comment.match(/(\w+)\s*-\s*([^<]+)/);
           if (paramMatch) {
             const paramName = paramMatch[1];
             if (paramName && (comment.includes('positive') || comment.includes('>0'))) {
@@ -576,7 +601,7 @@ export class SemanticPipeline {
 
     const patterns = [
       /if\s*\(\s*(\w+)\s*!==\s*null\s*\)/g,
-      /if\s*\(\s*(\w+)\s*&&\s*\1\./g, // ✅ Исправлено: \1 вместо \\1
+      /if\s*\(\s*(\w+)\s*&&\s*\1\./g,
       /(\w+)\?\./g,
     ];
 
@@ -1080,7 +1105,7 @@ export async function runSemanticPipeline(
   paths: string[],
   options: PipelineOptions = {}
 ): Promise<PipelineResult> {
-  const pipeline = new SemanticPipeline();
+  const pipeline = new SemanticPipeline({ wasmPath: options.wasmPath });
 
   const files: string[] = [];
   for (const p of paths) {

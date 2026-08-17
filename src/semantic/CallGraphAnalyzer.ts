@@ -10,6 +10,7 @@ import {
 } from '@codeflow-map/core';
 import path from 'path';
 import fs from 'fs';
+import { findWasmPath } from '../utils/wasm-utils.js';
 
 export interface CallGraphNode {
   name: string;
@@ -40,13 +41,9 @@ export class CallGraphAnalyzer {
   private wasmPath: string;
 
   constructor(wasmPath?: string) {
-    // ✅ Используем переданный путь или ищем по умолчанию
-    this.wasmPath = wasmPath || path.resolve(process.cwd(), 'grammars');
+    this.wasmPath = wasmPath || findWasmPath();
   }
 
-  /**
-   * Инициализация Tree-sitter (однократная)
-   */
   private async ensureInitialized(): Promise<void> {
     if (this.initialized) return;
 
@@ -76,24 +73,15 @@ export class CallGraphAnalyzer {
     }
   }
 
-  /**
-   * ✅ Установить путь к WASM директории
-   */
   setWasmPath(wasmPath: string): void {
     this.wasmPath = wasmPath;
-    this.initialized = false; // Требует переинициализации
+    this.initialized = false;
   }
 
-  /**
-   * ✅ Получить текущий путь к WASM директории
-   */
   getWasmPath(): string {
     return this.wasmPath;
   }
 
-  /**
-   * ✅ Проверить, инициализирован ли анализатор
-   */
   isInitialized(): boolean {
     return this.initialized;
   }
@@ -143,9 +131,6 @@ export class CallGraphAnalyzer {
     };
   }
 
-  /**
-   * Анализирует только один файл, без рекурсивного обхода директории
-   */
   async analyzeSingle(filePath: string, _maxDepth = 5): Promise<CallGraph> {
     await this.ensureInitialized();
 
@@ -161,7 +146,6 @@ export class CallGraphAnalyzer {
       };
     }
 
-    // Очищаем состояние для нового анализа
     this.nodes.clear();
     this.parsedFiles.clear();
     this.callEdges = [];
@@ -205,12 +189,39 @@ export class CallGraphAnalyzer {
     }
 
     try {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const extension = path.extname(filePath).slice(1);
-
+      let content = fs.readFileSync(filePath, 'utf-8');
       let language: 'typescript' | 'javascript' = 'typescript';
-      if (['js', 'jsx', 'mjs', 'cjs'].includes(extension)) {
+      let isVue = false;
+
+      if (filePath.endsWith('.vue')) {
+        isVue = true;
+        const scriptMatch = content.match(/<script[^>]*>([\s\S]*?)<\/script>/);
+        if (scriptMatch && scriptMatch[1]) {
+          content = scriptMatch[1];
+          const langMatch = scriptMatch[0].match(/lang=["']([^"']+)["']/);
+          if (langMatch && langMatch[1] === 'ts') {
+            language = 'typescript';
+          } else {
+            language = 'javascript';
+          }
+          content = content.trim();
+          console.log(`  📄 Vue script extracted: ${path.basename(filePath)} (${language})`);
+        } else {
+          console.warn(`  ⚠️ No script found in Vue file: ${filePath}`);
+          this.parsedFiles.set(filePath, { functions: [], calls: [] });
+          return;
+        }
+      }
+
+      const extension = path.extname(filePath).slice(1);
+      if (['js', 'jsx', 'mjs', 'cjs'].includes(extension) && !isVue) {
         language = 'javascript';
+      }
+
+      if (!content || content.trim() === '') {
+        console.warn(`  ⚠️ Empty content in: ${filePath}`);
+        this.parsedFiles.set(filePath, { functions: [], calls: [] });
+        return;
       }
 
       const parsed = await parseFile(content, filePath, this.wasmPath, language);
@@ -225,269 +236,6 @@ export class CallGraphAnalyzer {
     }
   }
 
-  /**
-   * Анализирует JSX компоненты в файле
-   * @param sourceFile - исходный файл (SourceFile из ts-morph)
-   * @returns Map зависимостей компонентов
-   */
-  analyzeJSXComponents(sourceFile: any): Map<string, string[]> {
-    const componentDeps = new Map<string, string[]>();
-
-    const visit = (node: any) => {
-      if (!node) return;
-
-      // JSX элементы (открывающие и закрывающие теги)
-      const kind = node.getKind?.();
-
-      // Проверка на JSX элемент (Kind = 286 для JsxElement в ts-morph)
-      if (kind === 286) {
-        // JsxElement
-        const jsxElement = node;
-        const openingElement = jsxElement.getOpeningElement?.();
-        if (openingElement) {
-          const tagNameNode = openingElement.getTagNameNode?.();
-          const tagName = tagNameNode?.getText?.() || 'unknown';
-
-          // React компоненты начинаются с заглавной буквы
-          if (tagName && tagName[0] === tagName[0].toUpperCase()) {
-            const currentFunction = this.getCurrentFunction(node);
-            if (currentFunction) {
-              if (!componentDeps.has(currentFunction)) {
-                componentDeps.set(currentFunction, []);
-              }
-              const deps = componentDeps.get(currentFunction);
-              if (deps && !deps.includes(tagName)) {
-                deps.push(tagName);
-              }
-            }
-          }
-        }
-      }
-
-      // JSX самозакрывающиеся элементы (Kind = 287 для JsxSelfClosingElement)
-      if (kind === 287) {
-        // JsxSelfClosingElement
-        const jsxSelfClosing = node;
-        const tagNameNode = jsxSelfClosing.getTagNameNode?.();
-        const tagName = tagNameNode?.getText?.() || 'unknown';
-
-        if (tagName && tagName[0] === tagName[0].toUpperCase()) {
-          const currentFunction = this.getCurrentFunction(node);
-          if (currentFunction) {
-            if (!componentDeps.has(currentFunction)) {
-              componentDeps.set(currentFunction, []);
-            }
-            const deps = componentDeps.get(currentFunction);
-            if (deps && !deps.includes(tagName)) {
-              deps.push(tagName);
-            }
-          }
-        }
-      }
-
-      // Фрагменты JSX (Kind = 288 для JsxFragment)
-      if (kind === 288) {
-        // JsxFragment
-        const currentFunction = this.getCurrentFunction(node);
-        if (currentFunction) {
-          if (!componentDeps.has(currentFunction)) {
-            componentDeps.set(currentFunction, []);
-          }
-          const deps = componentDeps.get(currentFunction);
-          if (deps && !deps.includes('Fragment')) {
-            deps.push('Fragment');
-          }
-        }
-      }
-
-      // Рекурсивный обход детей
-      if (node.forEachChild) {
-        node.forEachChild(visit);
-      } else if (node.getChildren) {
-        const children = node.getChildren();
-        if (children) {
-          children.forEach(visit);
-        }
-      }
-    };
-
-    if (sourceFile && sourceFile.forEachChild) {
-      sourceFile.forEachChild(visit);
-    }
-
-    return componentDeps;
-  }
-
-  /**
-   * Находит текущую функцию для узла
-   */
-  private getCurrentFunction(node: any): string | null {
-    let current = node;
-    const maxDepth = 50; // Предотвращаем бесконечный цикл
-    let depth = 0;
-
-    while (current && depth < maxDepth) {
-      depth++;
-      const kind = current.getKind?.();
-
-      // FunctionDeclaration (Kind = 174)
-      if (kind === 174) {
-        const func = current;
-        const name = func.getName?.();
-        if (name) return name;
-      }
-
-      // VariableDeclaration (Kind = 201) для стрелочных функций
-      if (kind === 201) {
-        const varDecl = current;
-        const name = varDecl.getName?.();
-        const initializer = varDecl.getInitializer?.();
-        if (name && initializer) {
-          const initKind = initializer.getKind?.();
-          // ArrowFunction (Kind = 215) или FunctionExpression (Kind = 173)
-          if (initKind === 215 || initKind === 173) {
-            return name;
-          }
-        }
-      }
-
-      // MethodDeclaration (Kind = 178)
-      if (kind === 178) {
-        const method = current;
-        const name = method.getName?.();
-        if (name) return name;
-      }
-
-      // ArrowFunction (Kind = 215) - ищем родительскую переменную
-      if (kind === 215) {
-        const parent = current.getParent?.();
-        if (parent) {
-          const parentKind = parent.getKind?.();
-          if (parentKind === 201) {
-            // VariableDeclaration
-            const name = parent.getName?.();
-            if (name) return name;
-          }
-        }
-      }
-
-      current = current.getParent?.();
-    }
-
-    return null;
-  }
-
-  /**
-   * Извлекает все импорты React компонентов из файла
-   */
-  extractReactImports(sourceFile: any): Map<string, string[]> {
-    const imports = new Map<string, string[]>();
-
-    const visit = (node: any) => {
-      if (!node) return;
-
-      const kind = node.getKind?.();
-
-      // ImportDeclaration (Kind = 262)
-      if (kind === 262) {
-        const importDecl = node;
-        const source = importDecl.getModuleSpecifier?.()?.getLiteralValue?.();
-
-        if (source === 'react' || source?.startsWith('react-')) {
-          const namedImports = importDecl.getNamedImports?.() || [];
-          const defaultImport = importDecl.getDefaultImport?.();
-
-          const components: string[] = [];
-
-          if (defaultImport) {
-            const defaultName = defaultImport.getText?.();
-            if (defaultName) components.push(defaultName);
-          }
-
-          for (const named of namedImports) {
-            const name = named.getName?.();
-            if (name) components.push(name);
-          }
-
-          if (components.length > 0) {
-            imports.set(source, components);
-          }
-        }
-      }
-
-      node.forEachChild?.(visit);
-    };
-
-    if (sourceFile && sourceFile.forEachChild) {
-      sourceFile.forEachChild(visit);
-    }
-
-    return imports;
-  }
-
-  /**
-   * Проверяет, является ли компонент пользовательским (не встроенным HTML тегом)
-   */
-  isCustomComponent(componentName: string, reactImports: Map<string, string[]>): boolean {
-    // Добавлена проверка, что строка не пустая
-    if (!componentName || componentName.length === 0) return false;
-
-    // Встроенные HTML теги
-    const htmlTags = new Set([
-      'div',
-      'span',
-      'p',
-      'a',
-      'button',
-      'input',
-      'form',
-      'label',
-      'ul',
-      'ol',
-      'li',
-      'table',
-      'tr',
-      'td',
-      'th',
-      'thead',
-      'tbody',
-      'section',
-      'article',
-      'header',
-      'footer',
-      'nav',
-      'main',
-      'aside',
-      'h1',
-      'h2',
-      'h3',
-      'h4',
-      'h5',
-      'h6',
-      'img',
-      'video',
-      'audio',
-      'canvas',
-      'svg',
-      'path',
-      'circle',
-      'rect',
-      'g',
-      'defs',
-    ]);
-
-    if (htmlTags.has(componentName)) return false;
-
-    // Проверяем, импортирован ли компонент из react
-    for (const [, components] of reactImports) {
-      if (components.includes(componentName)) return true;
-    }
-
-    // Компоненты с заглавной буквы считаются пользовательскими
-    const firstChar = componentName.charAt(0);
-    return firstChar === firstChar.toUpperCase();
-  }
-
   private async parseDirectory(dir: string, maxDepth: number, currentDepth = 0): Promise<void> {
     if (currentDepth > maxDepth) return;
 
@@ -500,12 +248,10 @@ export class CallGraphAnalyzer {
       return;
     }
 
-    // Проверяем, что files не пустой и является массивом
     if (!files || files.length === 0) {
       return;
     }
 
-    // Используем for...of вместо for с индексами (чище)
     for (const file of files) {
       if (!file) continue;
 
@@ -533,18 +279,38 @@ export class CallGraphAnalyzer {
     if (this.parsedFiles.has(filePath)) return;
 
     try {
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const extension = path.extname(filePath).slice(1);
-
-      // Определяем язык по расширению с поддержкой JSX/TSX
+      let content = fs.readFileSync(filePath, 'utf-8');
       let language: 'typescript' | 'javascript' = 'typescript';
-      if (['js', 'jsx', 'mjs', 'cjs'].includes(extension)) {
+      let isVue = false;
+
+      if (filePath.endsWith('.vue')) {
+        isVue = true;
+        const scriptMatch = content.match(/<script[^>]*>([\s\S]*?)<\/script>/);
+        if (scriptMatch && scriptMatch[1]) {
+          content = scriptMatch[1];
+          const langMatch = scriptMatch[0].match(/lang=["']([^"']+)["']/);
+          if (langMatch && langMatch[1] === 'ts') {
+            language = 'typescript';
+          } else {
+            language = 'javascript';
+          }
+          content = content.trim();
+        } else {
+          console.warn(`  ⚠️ No script found in Vue file: ${filePath}`);
+          this.parsedFiles.set(filePath, { functions: [], calls: [] });
+          return;
+        }
+      }
+
+      const extension = path.extname(filePath).slice(1);
+      if (['js', 'jsx', 'mjs', 'cjs'].includes(extension) && !isVue) {
         language = 'javascript';
       }
 
-      // Для JSX/TSX файлов используем специальные настройки
-      if (extension === 'jsx' || extension === 'tsx') {
-        console.log(`  ⚛️ Parsing JSX/TSX file: ${path.basename(filePath)}`);
+      if (!content || content.trim() === '') {
+        console.warn(`  ⚠️ Empty content in: ${filePath}`);
+        this.parsedFiles.set(filePath, { functions: [], calls: [] });
+        return;
       }
 
       const parsed = await parseFile(content, filePath, this.wasmPath, language);
@@ -575,7 +341,6 @@ export class CallGraphAnalyzer {
       this.nodes.set(func.name, node);
     }
 
-    // Связываем узлы
     for (const edge of this.callEdges) {
       const fromNode = this.nodes.get(edge.from);
       const toNode = this.nodes.get(edge.to);
@@ -599,7 +364,6 @@ export class CallGraphAnalyzer {
 
     const dfs = (nodeName: string) => {
       if (recursionStack.has(nodeName)) {
-        // Нашли цикл
         const cycleStart = stack.indexOf(nodeName);
         const cycleNodes = stack.slice(cycleStart);
         const cycleEdges: CallEdge[] = [];
@@ -611,7 +375,6 @@ export class CallGraphAnalyzer {
           if (edge) cycleEdges.push(edge);
         }
 
-        // Добавляем последнее ребро, замыкающее цикл
         if (cycleNodes.length > 1) {
           const lastEdge = this.callEdges.find(
             e => e.from === cycleNodes[cycleNodes.length - 1] && e.to === cycleNodes[0]
@@ -663,14 +426,10 @@ export class CallGraphAnalyzer {
   }
 
   private isSupportedFile(file: string): boolean {
-    // Поддерживаем JSX и TSX наравне с обычными файлами
-    const supported = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
+    const supported = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.vue'];
     return supported.includes(path.extname(file));
   }
 
-  /**
-   * Получить все JSX/TSX файлы в проекте
-   */
   getJSXFiles(rootDir: string): string[] {
     const jsxFiles: string[] = [];
 
@@ -685,7 +444,7 @@ export class CallGraphAnalyzer {
             if (!this.shouldIgnore(file)) {
               walk(fullPath);
             }
-          } else if (file.endsWith('.jsx') || file.endsWith('.tsx')) {
+          } else if (file.endsWith('.jsx') || file.endsWith('.tsx') || file.endsWith('.vue')) {
             jsxFiles.push(fullPath);
           }
         }
@@ -698,24 +457,18 @@ export class CallGraphAnalyzer {
     return jsxFiles;
   }
 
-  /**
-   * Анализирует все JSX компоненты в проекте
-   */
   async analyzeAllJSXComponents(rootDir: string): Promise<Map<string, string[]>> {
     const jsxFiles = this.getJSXFiles(rootDir);
     const allComponentDeps = new Map<string, string[]>();
 
     for (const file of jsxFiles) {
       await this.parseFile(file);
-      console.log(`  ⚛️ Found JSX file: ${path.basename(file)}`);
+      console.log(`  ⚛️ Found JSX/Vue file: ${path.basename(file)}`);
     }
 
     return allComponentDeps;
   }
 
-  /**
-   * Экспорт графа вызовов в формате JSON с поддержкой JSX
-   */
   exportToJSON(includeJSXInfo = false): any {
     const exportData: any = {
       nodes: Array.from(this.nodes.entries()).map(([name, node]) => ({
@@ -744,11 +497,8 @@ export class CallGraphAnalyzer {
     return exportData;
   }
 
-  /**
-   * Генерация отчета о JSX компонентах
-   */
   generateJSXReport(): string {
-    let report = '# ⚛️ JSX/TSX Components Report\n\n';
+    let report = '# ⚛️ JSX/Vue Components Report\n\n';
 
     const jsxComponents = Array.from(this.nodes.values()).filter(
       node =>
@@ -787,6 +537,219 @@ export class CallGraphAnalyzer {
       if (jsxComponents.length > 20) {
         report += `\n*... and ${jsxComponents.length - 20} more components*\n`;
       }
+    }
+
+    return report;
+  }
+
+  extractVueFunctions(content: string): { functions: string[]; calls: Record<string, string[]> } {
+    const functions: string[] = [];
+    const calls: Record<string, string[]> = {};
+
+    const functionMatches = content.match(/function\s+(\w+)\s*\(/g);
+    if (functionMatches) {
+      for (const match of functionMatches) {
+        const name = match.replace(/function\s+/, '').replace(/\s*\(/, '');
+        if (name) {
+          functions.push(name);
+          calls[name] = [];
+        }
+      }
+    }
+
+    const arrowMatches = content.match(/const\s+(\w+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>/g);
+    if (arrowMatches) {
+      for (const match of arrowMatches) {
+        const name = match.replace(/const\s+/, '').replace(/\s*=.*/, '');
+        if (name && !functions.includes(name)) {
+          functions.push(name);
+          calls[name] = [];
+        }
+      }
+    }
+
+    const vueMacros = ['defineProps', 'defineEmits', 'defineExpose', 'withDefaults'];
+    for (const macro of vueMacros) {
+      const macroMatches = content.match(new RegExp(`\\b${macro}\\s*\\(`, 'g'));
+      if (macroMatches) {
+        if (!functions.includes(macro)) {
+          functions.push(macro);
+          calls[macro] = [];
+        }
+      }
+    }
+
+    for (const func of functions) {
+      const callMatches = content.match(new RegExp(`\\b${func}\\s*\\(`, 'g'));
+      if (callMatches && callMatches.length > 0) {
+        const allCalls = content.match(/\b(\w+)\s*\(/g);
+        if (allCalls) {
+          for (const call of allCalls) {
+            const calledName = call.replace(/\s*\(/, '');
+            if (calledName && calledName !== func && functions.includes(calledName)) {
+              if (!calls[func]) calls[func] = [];
+              if (!calls[func].includes(calledName)) {
+                calls[func].push(calledName);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return { functions, calls };
+  }
+
+  async analyzeVueFile(filePath: string): Promise<{
+    functions: string[];
+    calls: Record<string, string[]>;
+    imports: string[];
+    composables: string[];
+  }> {
+    const result = {
+      functions: [] as string[],
+      calls: {} as Record<string, string[]>,
+      imports: [] as string[],
+      composables: [] as string[],
+    };
+
+    if (!filePath.endsWith('.vue')) {
+      return result;
+    }
+
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const scriptMatch = content.match(/<script[^>]*>([\s\S]*?)<\/script>/);
+      if (!scriptMatch || !scriptMatch[1]) {
+        return result;
+      }
+
+      const script = scriptMatch[1];
+
+      const importMatches = script.match(/import\s+.*?from\s+['"][^'"]+['"]/g);
+      if (importMatches) {
+        for (const imp of importMatches) {
+          const sourceMatch = imp.match(/from\s+['"]([^'"]+)['"]/);
+          if (sourceMatch && sourceMatch[1]) {
+            result.imports.push(sourceMatch[1]);
+          }
+        }
+      }
+
+      const composableMatches = script.match(/\b(use\w+)\s*\(/g);
+      if (composableMatches) {
+        for (const match of composableMatches) {
+          const name = match.replace(/\s*\(/, '');
+          if (name && !result.composables.includes(name)) {
+            result.composables.push(name);
+          }
+        }
+      }
+
+      const vueFunctions = this.extractVueFunctions(script);
+      result.functions = vueFunctions.functions;
+      result.calls = vueFunctions.calls;
+
+      for (const comp of result.composables) {
+        if (!result.functions.includes(comp)) {
+          result.functions.push(comp);
+          result.calls[comp] = [];
+        }
+      }
+    } catch (error) {
+      console.error(`  ❌ Error analyzing Vue file ${filePath}:`, error);
+    }
+
+    return result;
+  }
+
+  async analyzeAllVueFiles(rootDir: string, maxDepth = 5): Promise<Map<string, any>> {
+    const results = new Map<string, any>();
+
+    const walk = async (dir: string, depth: number) => {
+      if (depth > maxDepth) return;
+
+      try {
+        const files = fs.readdirSync(dir);
+        for (const file of files) {
+          const fullPath = path.join(dir, file);
+          const stat = fs.statSync(fullPath);
+
+          if (stat.isDirectory()) {
+            if (!this.shouldIgnore(file)) {
+              await walk(fullPath, depth + 1);
+            }
+          } else if (file.endsWith('.vue')) {
+            console.log(`  📄 Analyzing Vue file: ${file}`);
+            const analysis = await this.analyzeVueFile(fullPath);
+            results.set(fullPath, analysis);
+          }
+        }
+      } catch (error) {
+        console.warn(`⚠️ Error walking ${dir}:`, error);
+      }
+    };
+
+    await walk(rootDir, 0);
+    return results;
+  }
+
+  /**
+   * ✅ ИСПРАВЛЕНО: используем filePath в отчете
+   */
+  generateVueReport(analysisMap: Map<string, any>): string {
+    let report = '# 🎯 Vue Components Analysis Report\n\n';
+
+    let totalFunctions = 0;
+    let totalComposables = 0;
+    let totalImports = 0;
+
+    for (const [, analysis] of analysisMap) {
+      totalFunctions += analysis.functions?.length || 0;
+      totalComposables += analysis.composables?.length || 0;
+      totalImports += analysis.imports?.length || 0;
+    }
+
+    report += '## 📊 Statistics\n\n';
+    report += '| Metric | Value |\n';
+    report += '|--------|-------|\n';
+    report += `| Total Vue files | ${analysisMap.size} |\n`;
+    report += `| Total functions | ${totalFunctions} |\n`;
+    report += `| Total composables | ${totalComposables} |\n`;
+    report += `| Total imports | ${totalImports} |\n\n`;
+
+    for (const [filePath, analysis] of analysisMap) {
+      const fileName = path.basename(filePath);
+      report += `## 📄 ${fileName}\n\n`;
+      report += `**Path:** \`${filePath}\`\n\n`;
+
+      if (analysis.functions && analysis.functions.length > 0) {
+        report += '### Functions\n\n';
+        for (const func of analysis.functions) {
+          const calls = analysis.calls?.[func] || [];
+          const callStr = calls.length > 0 ? ` → calls: ${calls.join(', ')}` : '';
+          report += `- \`${func}\`${callStr}\n`;
+        }
+        report += '\n';
+      }
+
+      if (analysis.composables && analysis.composables.length > 0) {
+        report += '### Composables\n\n';
+        for (const comp of analysis.composables) {
+          report += `- \`${comp}\`\n`;
+        }
+        report += '\n';
+      }
+
+      if (analysis.imports && analysis.imports.length > 0) {
+        report += '### Imports\n\n';
+        for (const imp of analysis.imports) {
+          report += `- \`${imp}\`\n`;
+        }
+        report += '\n';
+      }
+
+      report += '---\n\n';
     }
 
     return report;

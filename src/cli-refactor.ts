@@ -13,12 +13,41 @@
 
 import { Command } from 'commander';
 import { AutoRefactor } from './refactor/index.js';
-import {
-  RefactoringEquivalenceChecker,
-} from './formal/index.js';
+import { RefactoringEquivalenceChecker } from './formal/index.js';
 
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Автоматическое определение WASM пути
+function getWasmPath(): string {
+  const possiblePaths = [
+    path.resolve(__dirname, 'wasm'), // рядом с dist
+    path.resolve(__dirname, '../dist/wasm'), // из src/
+    path.resolve(process.cwd(), 'grammars'), // в проекте
+    path.resolve(process.cwd(), 'packages/ast-analyzer/dist/wasm'), // в монорепозитории
+    path.resolve(process.cwd(), 'node_modules/@newkind/ast-analyzer/dist/wasm'),
+  ];
+
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      try {
+        const files = fs.readdirSync(p);
+        if (files.some(f => f.endsWith('.wasm'))) {
+          return p;
+        }
+      } catch {
+        // Игнорируем ошибки чтения
+      }
+    }
+  }
+
+  // Возвращаем путь по умолчанию
+  return path.resolve(__dirname, 'wasm');
+}
 
 const program = new Command();
 
@@ -212,8 +241,11 @@ program
         logFile: options.logFile || './refactor.log',
         maxRetries: parseInt(options.maxRetries) || 3,
 
-        // Проверка эквивалентности - ИСПРАВЛЕНО
+        // Проверка эквивалентности
         equivalenceCheckLevel: options.equivalenceCheck !== false ? 'full' : 'none',
+
+        // WASM путь - автоматическое определение
+        wasmPath: getWasmPath(),
       });
 
       await refactor.initialize();
@@ -491,6 +523,9 @@ program
         logLevel: options.logLevel || 'info',
         logFile: options.logFile || './analyze.log',
         incremental: false,
+
+        // WASM путь - автоматическое определение
+        wasmPath: getWasmPath(),
       });
 
       await refactor.initialize();
@@ -699,6 +734,9 @@ program
         logLevel: options.logLevel || 'info',
         logFile: options.logFile || './validate.log',
         incremental: false,
+
+        // WASM путь - автоматическое определение
+        wasmPath: getWasmPath(),
       });
 
       await refactor.initialize();

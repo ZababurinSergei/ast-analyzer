@@ -39,6 +39,33 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Автоматическое определение WASM пути
+function getDefaultWasmPath(): string {
+  const possiblePaths = [
+    path.resolve(__dirname, 'wasm'), // рядом с dist
+    path.resolve(__dirname, '../dist/wasm'), // из src/
+    path.resolve(process.cwd(), 'grammars'), // в проекте
+    path.resolve(process.cwd(), 'packages/ast-analyzer/dist/wasm'), // в монорепозитории
+    path.resolve(process.cwd(), 'node_modules/@newkind/ast-analyzer/dist/wasm'),
+  ];
+
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      try {
+        const files = fs.readdirSync(p);
+        if (files.some(f => f.endsWith('.wasm'))) {
+          return p;
+        }
+      } catch {
+        // Игнорируем ошибки чтения
+      }
+    }
+  }
+
+  // Возвращаем путь по умолчанию
+  return path.resolve(__dirname, 'wasm');
+}
+
 export interface RefactorOptions {
   modulesDir?: string;
   targetClusterSize?: number;
@@ -79,6 +106,7 @@ export interface RefactorOptions {
   skipValidationForESM?: boolean;
   verifyEquivalence?: boolean;
   equivalenceCheckLevel?: 'full' | 'quick' | 'none';
+  wasmPath?: string;
 }
 
 export interface ExtractedModule {
@@ -164,6 +192,7 @@ export class AutoRefactor {
   private modules: ExtractedModule[] = [];
   private backupPath: string | null = null;
   private analysisData: any = {};
+  private wasmPath: string;
 
   // Инициализируемые компоненты
   private tsValidator: TypeScriptValidator | null = null;
@@ -229,8 +258,12 @@ export class AutoRefactor {
       skipValidationForESM: true,
       verifyEquivalence: true,
       equivalenceCheckLevel: 'full',
+      wasmPath: '',
       ...options,
     };
+
+    // Устанавливаем WASM путь
+    this.wasmPath = this.options.wasmPath || getDefaultWasmPath();
 
     const logLevel = parseLogLevel(this.options.logLevel || 'info');
     this.logger = new Logger(logLevel, this.options.logFile, true);
@@ -281,7 +314,7 @@ export class AutoRefactor {
       this.dataFlowAnalyzer = new DataFlowAnalyzer();
     }
     if (this.options.callGraphAnalysis) {
-      this.callGraphAnalyzer = new CallGraphAnalyzer();
+      this.callGraphAnalyzer = new CallGraphAnalyzer(this.wasmPath);
     }
     if (this.options.formalVerification) {
       this.z3Verifier = new Z3Verifier();
@@ -1435,7 +1468,7 @@ export class AutoRefactor {
 
   async initialize(): Promise<void> {
     this.logger.info('Initializing AutoRefactor');
-    const wasmPath = path.resolve(__dirname, 'wasm');
+    const wasmPath = path.resolve(this.wasmPath);
     if (fs.existsSync(wasmPath)) {
       try {
         await initTreeSitter(wasmPath);

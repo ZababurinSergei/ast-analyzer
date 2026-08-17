@@ -33,6 +33,9 @@ import { AutoRefactor } from './refactor/index.js';
 import { SemanticPipeline } from './ci-cd/SemanticPipeline.js';
 import { Z3Verifier, createIntParam, eq, range } from './formal/Z3Verifier.js';
 
+// Hybrid Report
+import { runHybridReport } from './modes/hybrid-report.js';
+
 // Reporters
 import { generateHTMLReport } from './reporters/html-reporter.js';
 
@@ -98,6 +101,27 @@ function parseArgs(): ParsedArgs | null {
     showHelp();
     process.argv = originalArgv;
     return null;
+  }
+
+  // НОВЫЙ РЕЖИМ: hybrid-report - гибридный отчет (модули + функции)
+  if (mode === 'hybrid-report' || mode === 'hybrid') {
+    const targetPath = cleanArgs[1];
+    const depth = cleanArgs[2] || '5';
+
+    if (!targetPath) {
+      console.error('❌ Укажите путь к файлу для гибридного отчета');
+      process.argv = originalArgv;
+      return null;
+    }
+
+    process.argv = originalArgv;
+    return {
+      mode: 'hybrid-report',
+      targetPath,
+      extraArg: depth,
+      outputDir,
+      tsconfigPath,
+    };
   }
 
   // НОВЫЙ РЕЖИМ: semantic - семантический анализ
@@ -678,6 +702,34 @@ export async function runCLI(): Promise<void> {
   }
 
   try {
+    // НОВЫЙ РЕЖИМ: hybrid-report - гибридный отчет (модули + функции)
+    if (mode === 'hybrid-report' || mode === 'hybrid') {
+      console.log(`\n${'='.repeat(60)}`);
+      console.log('🔀 ГИБРИДНЫЙ ОТЧЕТ: МОДУЛИ + ФУНКЦИИ');
+      console.log(`${'='.repeat(60)}\n`);
+      console.log(`📄 Точка входа: ${currentTargetPath}`);
+
+      const depth = parseInt(extraArg || '5', 10);
+      console.log(`📏 Глубина: ${depth}`);
+      console.log(`📁 Выходная директория: ${process.cwd()}\n`);
+
+      // ✅ ИСПРАВЛЕНО: Ждем завершения промиса
+      const report = await runHybridReport(currentTargetPath, depth, process.cwd());
+
+      console.log('\n✅ ГИБРИДНЫЙ ОТЧЕТ СОЗДАН!');
+      console.log('📄 Файлы отчета:');
+      console.log(`   - hybrid-report.json (полные данные)`);
+      console.log(`   - hybrid-report.md (Markdown отчет)`);
+      console.log(`   - hybrid-report.dot (DOT граф)`);
+      console.log(`   - hybrid-report.html (HTML визуализация)`);
+
+      if (report && report.stats && report.stats.cycles > 0) {
+        console.log(`\n⚠️ Обнаружено ${report.stats.cycles} циклических зависимостей!`);
+      }
+
+      return;
+    }
+
     // НОВЫЙ РЕЖИМ: semantic - семантический анализ
     if (mode === 'semantic') {
       console.log(`\n${'='.repeat(60)}`);
@@ -690,7 +742,9 @@ export async function runCLI(): Promise<void> {
         paths = paths.concat(extraArg.split(','));
       }
 
-      const pipeline = new SemanticPipeline();
+      const pipeline = new SemanticPipeline({
+        wasmPath: path.resolve(__dirname, 'wasm')
+      });
       const result = await pipeline.run(paths, {
         formalVerification: options?.formalVerification || false,
         maxDepth: options?.maxDepth || 5,
@@ -790,7 +844,9 @@ export async function runCLI(): Promise<void> {
         console.log('🔬 СЕМАНТИЧЕСКАЯ ПРОВЕРКА РЕЗУЛЬТАТА');
         console.log(`${'='.repeat(60)}\n`);
 
-        const pipeline = new SemanticPipeline();
+        const pipeline = new SemanticPipeline({
+          wasmPath: path.resolve(__dirname, 'wasm')
+        });
         const semanticResult = await pipeline.run([currentTargetPath], {
           formalVerification: false,
           maxDepth: 3,
@@ -842,7 +898,7 @@ export async function runCLI(): Promise<void> {
         for (let i = 0; i < result.modules.length; i++) {
           const module = result.modules[i];
           if (!module) continue;
-          console.log(`\n   ${i + 1}. Модуль "${module.name}":`);
+          console.log(`\n   ${i + 1}. Модуль \"${module.name}\":`);
           console.log(`      Экспорты: ${module.exports.join(', ')}`);
         }
       } else {
