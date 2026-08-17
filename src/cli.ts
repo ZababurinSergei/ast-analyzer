@@ -34,7 +34,7 @@ import { SemanticPipeline } from './ci-cd/SemanticPipeline.js';
 import { Z3Verifier, createIntParam, eq, range } from './formal/Z3Verifier.js';
 
 // Hybrid Report
-import { runHybridReport } from './modes/hybrid-report.js';
+import { runHybridReport } from './modes/hybrid-report/index.js';
 
 // Reporters
 import { generateHTMLReport } from './reporters/html-reporter.js';
