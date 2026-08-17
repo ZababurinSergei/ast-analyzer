@@ -1,0 +1,20 @@
+{
+  "success": true,
+  "metrics": {
+    "totalFiles": 1,
+    "totalFunctions": 0,
+    "unusedFunctions": 0,
+    "unusedVariables": 0,
+    "potentialBugs": 0,
+    "verifiedFunctions": 0,
+    "cyclomaticComplexity": 0,
+    "dataFlowIssues": 0,
+    "typeErrors": 0,
+    "cyclicDependencies": 0,
+    "unreachableBlocks": 0
+  },
+  "issues": [],
+  "verificationResults": [],
+  "timestamp": "2026-08-17T20:40:47.710Z",
+  "duration": 100
+}

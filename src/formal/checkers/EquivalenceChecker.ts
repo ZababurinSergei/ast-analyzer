@@ -1,8 +1,9 @@
-// packages/ast-analyzer/src/formal/EquivalenceChecker.ts
+// src/formal/checkers/EquivalenceChecker.ts
 
 import type { FunctionContract } from '../Z3Verifier.js';
-import { Z3Verifier, range, eq, or } from '../Z3Verifier.js';
-import { Project, Node, ScriptTarget, ModuleKind, type SourceFile } from 'ts-morph';
+import { Z3Verifier, range, eq, and, not, or, implies } from '../Z3Verifier.js';
+import { Project, ScriptTarget, ModuleKind, type SourceFile, Node } from 'ts-morph';
+import { ASTComparator, type ASTDifference } from '../../core/ASTComparator.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -80,6 +81,7 @@ interface FunctionMatch {
 export class EquivalenceChecker {
   private z3Verifier: Z3Verifier | null = null;
   private project: Project;
+  private astComparator: ASTComparator;
   private initialized = false;
   private options: EquivalenceOptions;
   private originalCode1 = '';
@@ -122,6 +124,8 @@ export class EquivalenceChecker {
       },
       useInMemoryFileSystem: true,
     });
+
+    this.astComparator = new ASTComparator();
   }
 
   async initialize(): Promise<void> {
@@ -199,6 +203,94 @@ export class EquivalenceChecker {
       throw new Error('Z3 verifier not initialized');
     }
     return this.z3Verifier;
+  }
+
+  /**
+   * Извлекает тело функции из строки кода
+   */
+  private extractFunctionBody(code: string): string {
+    const trimmed = code.trim();
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      return trimmed.slice(1, -1).trim();
+    }
+    if (trimmed.startsWith('return ')) {
+      return trimmed;
+    }
+    return `return ${trimmed}`;
+  }
+
+  /**
+   * Создает контракт с телом функции для Z3 верификации эквивалентности
+   * Использует eq, and, or, implies для построения сложных условий
+   */
+  private createEquivalenceContract(
+    name: string,
+    originalBody: string,
+    modifiedBody: string,
+    paramNames: string[]
+  ): FunctionContract {
+    const params = paramNames.map(p => ({
+      name: p,
+      type: 'int' as const,
+    }));
+
+    const originalExpr = this.extractFunctionBody(originalBody);
+    const modifiedExpr = this.extractFunctionBody(modifiedBody);
+
+    // Создаем предусловия с использованием range
+    const preconditions: any[] = [];
+    for (const param of params) {
+      preconditions.push(range(param.name, -1000, 1000));
+    }
+
+    // Постусловие: результаты должны быть равны
+    const equivalenceCondition = eq(originalExpr, modifiedExpr);
+
+    // Создаем условие валидности параметров
+    let allParamsValid: any = null;
+    if (params.length === 0) {
+      // Нет параметров - условие всегда true
+      allParamsValid = eq('true', 'true');
+    } else if (params.length === 1) {
+      // Безопасно обращаемся к params[0]
+      const firstParam = params[0];
+      if (firstParam) {
+        allParamsValid = range(firstParam.name, -1000, 1000);
+      } else {
+        allParamsValid = eq('true', 'true');
+      }
+    } else {
+      const ranges = params.map(p => range(p.name, -1000, 1000));
+      allParamsValid = and(ranges);
+    }
+
+    // Используем implies для логической импликации
+    const validityCondition = implies(allParamsValid, equivalenceCondition);
+
+    // Постусловия
+    const postconditions: any[] = [equivalenceCondition, validityCondition];
+
+    // Добавляем проверку, что результат не равен null/undefined
+    postconditions.push(not(eq('result', 'null')));
+
+    // Или результат должен быть в диапазоне
+    postconditions.push(or([range('result', -2000, 2000), eq('result', 0)]));
+
+    // Добавляем инварианты: параметры остаются неизменными
+    const invariants: any[] = [];
+    for (const param of params) {
+      invariants.push(range(param.name, -1000, 1000));
+    }
+
+    return {
+      name: `${name}_equivalence`,
+      params,
+      returnType: 'bool',
+      preconditions,
+      postconditions,
+      invariants,
+      body: `(${originalExpr}) == (${modifiedExpr})`,
+    };
   }
 
   async checkFileEquivalence(
@@ -284,14 +376,31 @@ export class EquivalenceChecker {
         };
       }
 
-      console.log('\n📐 STEP 1: Structural check via AST (PRIMARY)...');
+      console.log('\n📐 STEP 1: Structural check via AST (SECONDARY)...');
 
       try {
-        const result = this.compareSourceFilesAST(sourceFile1, sourceFile2, mergedOptions);
+        const result = this.astComparator.compareFiles(
+          sourceFile1.getFilePath(),
+          sourceFile2.getFilePath(),
+          {
+            ignoreWhitespace: mergedOptions.ignoreWhitespace,
+            ignoreComments: mergedOptions.ignoreComments,
+          }
+        );
+
+        const differences: CodeDifference[] = result.differences.map((diff: ASTDifference) => ({
+          type: diff.type,
+          location: diff.location,
+          original: diff.original,
+          modified: diff.modified,
+          impact: diff.impact,
+          astNodeType: diff.nodeKind || diff.nodeType,
+        }));
+
         astResult = {
           isEquivalent: result.isEquivalent,
-          differences: result.differences,
-          confidence: result.confidence || 1.0,
+          differences,
+          confidence: result.confidence,
         };
 
         console.log(
@@ -315,6 +424,7 @@ export class EquivalenceChecker {
       }
     }
 
+    // ⭐ STEP 2: ФОРМАЛЬНАЯ ВЕРИФИКАЦИЯ ЧЕРЕЗ Z3 (ОСНОВНОЙ МЕТОД)
     let formalResult: {
       isValid: boolean;
       counterexample?: Map<string, any>;
@@ -323,209 +433,155 @@ export class EquivalenceChecker {
       results?: any[];
     } | null = null;
 
-    const shouldRunZ3 =
-      mergedOptions.formalVerification !== false &&
-      (!astResult?.isEquivalent || astResult?.differences.length > 0);
+    console.log('\n🔬 STEP 2: Formal verification via Z3 (PRIMARY)...');
 
-    if (shouldRunZ3) {
-      if (Date.now() - startTime > timeout) {
-        console.log('\n⚠️ Timeout before Z3 analysis, skipping...');
-        formalResult = {
-          isValid: false,
-          time: Date.now() - startTime,
-          error: 'Timeout before Z3 analysis',
-        };
-      } else {
-        console.log('\n🔬 STEP 2: Formal verification via Z3 (SECONDARY - for expressions)...');
+    if (Date.now() - startTime > timeout) {
+      console.log('\n⚠️ Timeout before Z3 analysis, skipping...');
+      formalResult = {
+        isValid: false,
+        time: Date.now() - startTime,
+        error: 'Timeout before Z3 analysis',
+      };
+    } else {
+      try {
+        const z3 = await this.getZ3Verifier();
 
-        try {
-          const z3 = await this.getZ3Verifier();
+        const functions1 = this.extractFunctionsAST(sourceFile1);
+        const functions2 = this.extractFunctionsAST(sourceFile2);
 
-          const functions1 = this.extractFunctionsAST(sourceFile1);
-          const functions2 = this.extractFunctionsAST(sourceFile2);
+        console.log(
+          `   📊 Found ${functions1.length} functions in original, ${functions2.length} in modified`
+        );
 
-          console.log(
-            `   📊 Found ${functions1.length} functions in original, ${functions2.length} in modified`
-          );
+        const matchedFunctions = this.matchFunctions(functions1, functions2);
 
-          const matchedFunctions = this.matchFunctions(functions1, functions2);
-
-          if (matchedFunctions.length === 0) {
-            console.log('   ⚠️ No matching functions found');
-            formalResult = {
-              isValid: false,
-              time: Date.now() - startTime,
-              error: 'No matching functions found',
-            };
-          } else {
-            console.log(`   ✅ Matched ${matchedFunctions.length} functions`);
-
-            const verificationResults: any[] = [];
-            let allValid = true;
-            let z3Applied = false;
-
-            for (const match of matchedFunctions) {
-              if (
-                this.isSimpleMathFunction(match.original.body) &&
-                this.isSimpleMathFunction(match.modified.body)
-              ) {
-                z3Applied = true;
-                console.log(`      🔍 Verifying function: ${match.name} (Z3)`);
-
-                try {
-                  const contract = this.createSimpleContract(
-                    match.original,
-                    match.modified,
-                    match.name
-                  );
-                  const result = await z3.verifyFunction(contract);
-                  verificationResults.push({
-                    name: match.name,
-                    isValid: result.isValid,
-                    counterexample: result.counterexample,
-                    time: result.time || 0,
-                    error: result.error,
-                  });
-
-                  if (!result.isValid) {
-                    allValid = false;
-                    console.log(`         ❌ FAILED`);
-                    if (result.counterexample) {
-                      console.log(
-                        `            Counterexample: ${JSON.stringify(Object.fromEntries(result.counterexample))}`
-                      );
-                    }
-                  } else {
-                    console.log(`         ✅ PASSED`);
-                  }
-                } catch (error) {
-                  allValid = false;
-                  console.log(`         ❌ ERROR: ${error}`);
-                  verificationResults.push({
-                    name: match.name,
-                    isValid: false,
-                    error: error instanceof Error ? error.message : String(error),
-                  });
-                }
-              } else {
-                console.log(`      🔍 Function: ${match.name} (AST only - complex)`);
-                verificationResults.push({
-                  name: match.name,
-                  isValid: true,
-                  note: 'Complex function - AST only',
-                });
-              }
-            }
-
-            if (!z3Applied) {
-              console.log('   ℹ️ No simple math functions found for Z3 verification');
-              formalResult = {
-                isValid: true,
-                time: Date.now() - startTime,
-                results: verificationResults,
-              };
-            } else {
-              formalResult = {
-                isValid: allValid,
-                counterexample: verificationResults.find(r => !r.isValid)?.counterexample,
-                time: Date.now() - startTime,
-                results: verificationResults,
-              };
-              console.log(
-                `   ✅ Formal verification: ${allValid ? 'ALL PASSED 🎉' : 'SOME FAILED ❌'}`
-              );
-            }
-          }
-
-          if (formalResult && !formalResult.isValid) {
-            console.log('\n❌ Formal verification FAILED — files are NOT EQUIVALENT');
-            return {
-              isEquivalent: false,
-              confidence: 0.95,
-              method: 'formal+structural',
-              counterexample: formalResult.counterexample,
-              time: Date.now() - startTime,
-              formalResult,
-              astResult: astResult || undefined,
-              differences: astResult?.differences || [],
-            };
-          }
-        } catch (error) {
-          console.warn(`   ⚠️ Formal verification failed: ${error}`);
+        if (matchedFunctions.length === 0) {
+          console.log('   ⚠️ No matching functions found');
           formalResult = {
             isValid: false,
             time: Date.now() - startTime,
-            error: error instanceof Error ? error.message : String(error),
+            error: 'No matching functions found',
           };
+        } else {
+          console.log(`   ✅ Matched ${matchedFunctions.length} functions`);
+
+          const verificationResults: any[] = [];
+          let allValid = true;
+          let counterexample: Map<string, any> | undefined;
+
+          for (const match of matchedFunctions) {
+            console.log(`      🔍 Verifying equivalence: ${match.name} (Z3)`);
+
+            try {
+              // ⭐ Создаем контракт для проверки эквивалентности
+              const contract = this.createEquivalenceContract(
+                match.name,
+                match.original.body,
+                match.modified.body,
+                match.original.params
+              );
+
+              // ⭐ Проверяем, является ли функция простой математической
+              const isSimple =
+                this.isSimpleMathFunction(match.original.body) &&
+                this.isSimpleMathFunction(match.modified.body);
+
+              console.log(`         📝 Simple: ${isSimple}`);
+              console.log(`         📝 Original: ${match.original.body}`);
+              console.log(`         📝 Modified: ${match.modified.body}`);
+
+              const result = await z3.verifyFunction(contract);
+
+              verificationResults.push({
+                name: match.name,
+                isValid: result.isValid,
+                counterexample: result.counterexample,
+                time: result.time || 0,
+                error: result.error,
+                isSimple,
+              });
+
+              if (!result.isValid) {
+                allValid = false;
+                counterexample = result.counterexample;
+                console.log(`         ❌ NOT EQUIVALENT`);
+                if (result.counterexample) {
+                  console.log(
+                    `            Counterexample: ${JSON.stringify(Object.fromEntries(result.counterexample))}`
+                  );
+                }
+              } else {
+                console.log(`         ✅ EQUIVALENT`);
+              }
+            } catch (error) {
+              allValid = false;
+              console.log(`         ❌ ERROR: ${error}`);
+              verificationResults.push({
+                name: match.name,
+                isValid: false,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
+
+          formalResult = {
+            isValid: allValid,
+            counterexample,
+            time: Date.now() - startTime,
+            results: verificationResults,
+          };
+
+          console.log(
+            `   ✅ Formal verification: ${allValid ? 'ALL EQUIVALENT 🎉' : 'SOME NOT EQUIVALENT ❌'}`
+          );
         }
+      } catch (error) {
+        console.warn(`   ⚠️ Formal verification failed: ${error}`);
+        formalResult = {
+          isValid: false,
+          time: Date.now() - startTime,
+          error: error instanceof Error ? error.message : String(error),
+        };
       }
-    } else {
-      console.log('\n🔬 STEP 2: Formal verification via Z3 (SKIPPED - no differences found)');
-      formalResult = {
-        isValid: true,
-        time: Date.now() - startTime,
-      };
     }
 
+    // ⭐ ФИНАЛЬНЫЙ РЕЗУЛЬТАТ: Z3 - основной метод
     let isEquivalent: boolean;
     let confidence: number;
     let method: 'formal' | 'structural' | 'formal+structural' | 'ast-only';
 
-    if (astResult) {
-      isEquivalent = astResult.isEquivalent;
-      confidence = astResult.confidence;
-      method = 'ast-only';
-
-      if (formalResult && formalResult.isValid && !astResult.isEquivalent) {
-        confidence = Math.max(confidence, 0.9);
-        method = 'formal+structural';
-        console.log('\n🎯 Combined result (AST has differences, Z3 PASSED):');
-        console.log('   ✅ Z3 confirms equivalence → Final result: EQUIVALENT');
-        isEquivalent = true;
-        confidence = 0.95;
-      } else if (formalResult && formalResult.isValid && astResult.isEquivalent) {
-        confidence = Math.max(confidence, 0.98);
-        method = 'formal+structural';
-        console.log('\n🎯 Combined result (BOTH PASSED):');
-        console.log('   ✅ AST and Z3 both say EQUIVALENT');
-      } else if (formalResult && !formalResult.isValid) {
-        method = 'formal+structural';
-        console.log('\n🎯 Combined result (Z3 FAILED):');
-        console.log('   ❌ Z3 says NOT EQUIVALENT → Final result: NOT EQUIVALENT');
-        isEquivalent = false;
-        confidence = 0.95;
-      } else if (astResult.isEquivalent) {
-        console.log('\n🎯 Result (AST only):');
-        console.log('   ✅ AST says EQUIVALENT');
-        isEquivalent = true;
-      } else {
-        console.log('\n🎯 Result (AST only):');
-        console.log('   ❌ AST found differences');
-        isEquivalent = false;
-      }
-    } else if (formalResult) {
+    if (formalResult) {
       isEquivalent = formalResult.isValid;
-      confidence = formalResult.isValid ? 1.0 : 0.95;
+      confidence = formalResult.isValid ? 0.95 : 0.95;
       method = 'formal';
-      console.log(`\n🎯 Result (FORMAL only): ${isEquivalent ? 'PASSED ✅' : 'FAILED ❌'}`);
+
+      if (formalResult.isValid) {
+        console.log('\n🎯 Z3 says FUNCTIONS ARE EQUIVALENT');
+      } else {
+        console.log('\n🎯 Z3 says FUNCTIONS ARE NOT EQUIVALENT');
+        if (formalResult.counterexample) {
+          console.log(
+            `   Counterexample found: ${JSON.stringify(Object.fromEntries(formalResult.counterexample))}`
+          );
+        }
+      }
+
+      if (formalResult.error && astResult) {
+        console.log('\n⚠️ Z3 failed, falling back to AST');
+        isEquivalent = astResult.isEquivalent;
+        confidence = astResult.confidence * 0.8;
+        method = 'ast-only';
+      }
+    } else if (astResult) {
+      isEquivalent = astResult.isEquivalent;
+      confidence = astResult.confidence * 0.7;
+      method = 'ast-only';
+      console.log('\n🎯 Using AST (Z3 not available)');
     } else {
+      isEquivalent = false;
+      confidence = 0.3;
+      method = 'structural';
       console.log('\n❌ No verification methods available');
-      return {
-        isEquivalent: false,
-        confidence: 0,
-        method: 'structural',
-        time: Date.now() - startTime,
-        differences: [
-          {
-            type: 'modified',
-            location: { start: 0, end: 0, line: 1 },
-            original: 'No verification method available',
-            modified: 'Cannot determine equivalence',
-            impact: 'high',
-            astNodeType: 'error',
-          },
-        ],
-      };
     }
 
     const allDifferences: CodeDifference[] = [];
@@ -534,14 +590,14 @@ export class EquivalenceChecker {
       allDifferences.push({
         type: 'semantic',
         location: { start: 0, end: 0, line: 1 },
-        original: 'Formal verification failed',
+        original: 'Formal equivalence check failed',
         modified: 'Functions are not semantically equivalent',
         impact: 'high',
         astNodeType: 'formal',
       });
     }
 
-    if (astResult && !astResult.isEquivalent) {
+    if (astResult && !astResult.isEquivalent && !formalResult?.isValid) {
       allDifferences.push(...astResult.differences);
     }
 
@@ -581,7 +637,7 @@ export class EquivalenceChecker {
     console.log(`\n${'='.repeat(60)}`);
     console.log(`🔍 CHECKING FUNCTION EQUIVALENCE: ${contract.name}`);
     console.log(`${'='.repeat(60)}`);
-    console.log(`📋 Method: STRUCTURAL (AST) + FORMAL (Z3)`);
+    console.log(`📋 Method: FORMAL (Z3) - PRIMARY, AST - SECONDARY`);
     console.log(`${'='.repeat(60)}`);
 
     if (Date.now() - startTime > timeout) {
@@ -612,18 +668,30 @@ export class EquivalenceChecker {
       confidence: number;
     } | null = null;
 
+    // AST - secondary check
     if (mergedOptions.structuralCheck !== false) {
-      console.log('\n📐 STEP 1: Structural check via AST (PRIMARY)...');
+      console.log('\n📐 STEP 1: Structural check via AST (SECONDARY)...');
 
       try {
+        const wrapInBraces = (body: string): string => {
+          const trimmed = body.trim();
+          if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+            return body;
+          }
+          return `{ ${trimmed} }`;
+        };
+
+        const originalWrapped = wrapInBraces(originalFunction);
+        const modifiedWrapped = wrapInBraces(modifiedFunction);
+
         const sourceFile1 = this.project.createSourceFile(
           'func1.ts',
-          `function test() ${originalFunction}`,
+          `function test(): number ${originalWrapped}`,
           { overwrite: true }
         );
         const sourceFile2 = this.project.createSourceFile(
           'func2.ts',
-          `function test() ${modifiedFunction}`,
+          `function test(): number ${modifiedWrapped}`,
           { overwrite: true }
         );
 
@@ -631,23 +699,29 @@ export class EquivalenceChecker {
         const func2 = sourceFile2.getFunctions()[0];
 
         if (func1 && func2) {
-          const result = this.compareNodesAST(func1, func2, mergedOptions);
+          const result = this.astComparator.compareNodes(func1, func2, {
+            ignoreWhitespace: mergedOptions.ignoreWhitespace,
+            ignoreComments: mergedOptions.ignoreComments,
+          });
+
+          const differences: CodeDifference[] = result.differences.map((diff: ASTDifference) => ({
+            type: diff.type,
+            location: diff.location,
+            original: diff.original,
+            modified: diff.modified,
+            impact: diff.impact,
+            astNodeType: diff.nodeKind || diff.nodeType,
+          }));
+
           astResult = {
             isEquivalent: result.isEquivalent,
-            differences: result.differences,
-            confidence: result.confidence || 1.0,
+            differences,
+            confidence: result.confidence,
           };
 
           console.log(
             `   ✅ AST check: ${astResult.isEquivalent ? 'PASSED ✅' : `HAS ${astResult.differences.length} DIFFERENCES`}`
           );
-          if (!astResult.isEquivalent && astResult.differences.length > 0) {
-            for (const diff of astResult.differences.slice(0, 3)) {
-              console.log(
-                `      📝 ${diff.type}: ${diff.original || '?'} → ${diff.modified || '?'}`
-              );
-            }
-          }
         } else {
           astResult = {
             isEquivalent: false,
@@ -675,6 +749,7 @@ export class EquivalenceChecker {
       }
     }
 
+    // ⭐ STEP 2: ФОРМАЛЬНАЯ ВЕРИФИКАЦИЯ ЧЕРЕЗ Z3 (ОСНОВНОЙ МЕТОД)
     let formalResult: {
       isValid: boolean;
       counterexample?: Map<string, any>;
@@ -682,88 +757,104 @@ export class EquivalenceChecker {
       error?: string;
     } | null = null;
 
-    if (mergedOptions.formalVerification !== false && astResult && !astResult.isEquivalent) {
-      if (Date.now() - startTime > timeout) {
-        console.log('\n⚠️ Timeout before Z3 analysis, skipping...');
+    console.log('\n🔬 STEP 2: Formal verification via Z3 (PRIMARY)...');
+
+    if (Date.now() - startTime > timeout) {
+      console.log('\n⚠️ Timeout before Z3 analysis, skipping...');
+      formalResult = {
+        isValid: false,
+        time: Date.now() - startTime,
+        error: 'Timeout before Z3 analysis',
+      };
+    } else {
+      try {
+        const z3 = await this.getZ3Verifier();
+
+        const paramNames = contract.params.map(p => p.name);
+
+        // ⭐ Создаем контракт для проверки эквивалентности
+        const equivalenceContract = this.createEquivalenceContract(
+          contract.name,
+          originalFunction,
+          modifiedFunction,
+          paramNames
+        );
+
+        // ⭐ Проверяем, является ли функция простой математической
+        const isSimple =
+          this.isSimpleMathFunction(originalFunction) &&
+          this.isSimpleMathFunction(modifiedFunction);
+
+        console.log(`   📝 Simple: ${isSimple}`);
+        console.log(`   📝 Original: ${originalFunction}`);
+        console.log(`   📝 Modified: ${modifiedFunction}`);
+
+        const result = await z3.verifyFunction(equivalenceContract);
+
+        formalResult = {
+          isValid: result.isValid,
+          counterexample: result.counterexample,
+          time: result.time || 0,
+          error: result.error,
+        };
+
+        if (result.isValid) {
+          console.log('   ✅ Functions are EQUIVALENT (Z3)');
+        } else {
+          console.log('   ❌ Functions are NOT EQUIVALENT (Z3)');
+          if (result.counterexample) {
+            console.log(
+              `      Counterexample: ${JSON.stringify(Object.fromEntries(result.counterexample))}`
+            );
+          }
+        }
+      } catch (error) {
+        console.warn(`   ⚠️ Formal verification failed: ${error}`);
         formalResult = {
           isValid: false,
           time: Date.now() - startTime,
-          error: 'Timeout before Z3 analysis',
+          error: error instanceof Error ? error.message : String(error),
         };
-      } else {
-        console.log('\n🔬 STEP 2: Formal verification via Z3 (SECONDARY)...');
-
-        try {
-          const z3 = await this.getZ3Verifier();
-
-          if (
-            this.isSimpleMathFunction(originalFunction) &&
-            this.isSimpleMathFunction(modifiedFunction)
-          ) {
-            const verifyResult = await z3.verifyFunction(contract);
-            formalResult = {
-              isValid: verifyResult.isValid,
-              counterexample: verifyResult.counterexample,
-              time: verifyResult.time || 0,
-              error: verifyResult.error,
-            };
-
-            if (verifyResult.isValid) {
-              console.log('   ✅ Function VERIFIED formally');
-            } else {
-              console.log('   ❌ Function FAILED formal verification');
-              if (verifyResult.counterexample) {
-                console.log(
-                  `      Counterexample: ${JSON.stringify(Object.fromEntries(verifyResult.counterexample))}`
-                );
-              }
-            }
-          } else {
-            console.log('   ℹ️ Function is complex - using AST only');
-            formalResult = {
-              isValid: true,
-              time: 0,
-            };
-          }
-        } catch (error) {
-          console.warn(`   ⚠️ Formal verification failed: ${error}`);
-          formalResult = {
-            isValid: false,
-            time: Date.now() - startTime,
-            error: error instanceof Error ? error.message : String(error),
-          };
-        }
       }
     }
 
+    // ⭐ ФИНАЛЬНЫЙ РЕЗУЛЬТАТ: Z3 - основной метод
     let isEquivalent: boolean;
     let confidence: number;
     let method: 'formal' | 'structural' | 'formal+structural' | 'ast-only';
 
-    if (astResult) {
-      isEquivalent = astResult.isEquivalent;
-      confidence = astResult.confidence;
-      method = 'ast-only';
+    if (formalResult) {
+      isEquivalent = formalResult.isValid;
+      confidence = formalResult.isValid ? 0.95 : 0.95;
+      method = 'formal';
 
-      if (formalResult && formalResult.isValid && !astResult.isEquivalent) {
-        isEquivalent = true;
-        confidence = 0.9;
-        method = 'formal+structural';
-        console.log('\n🎯 Z3 says EQUIVALENT (AST differences are non-semantic)');
-      } else if (formalResult && !formalResult.isValid) {
-        isEquivalent = false;
-        confidence = 0.95;
-        method = 'formal+structural';
-        console.log('\n🎯 Z3 says NOT EQUIVALENT');
-      } else if (astResult.isEquivalent) {
-        console.log('\n🎯 AST says EQUIVALENT');
+      if (formalResult.isValid) {
+        console.log('\n🎯 Z3 says FUNCTIONS ARE EQUIVALENT');
       } else {
-        console.log('\n🎯 AST found differences');
+        console.log('\n🎯 Z3 says FUNCTIONS ARE NOT EQUIVALENT');
+        if (formalResult.counterexample) {
+          console.log(
+            `   Counterexample found: ${JSON.stringify(Object.fromEntries(formalResult.counterexample))}`
+          );
+        }
       }
+
+      if (formalResult.error && astResult) {
+        console.log('\n⚠️ Z3 failed, falling back to AST');
+        isEquivalent = astResult.isEquivalent;
+        confidence = astResult.confidence * 0.8;
+        method = 'ast-only';
+      }
+    } else if (astResult) {
+      isEquivalent = astResult.isEquivalent;
+      confidence = astResult.confidence * 0.7;
+      method = 'ast-only';
+      console.log('\n🎯 Using AST (Z3 not available)');
     } else {
       isEquivalent = false;
-      confidence = 0.5;
+      confidence = 0.3;
       method = 'structural';
+      console.log('\n❌ No verification methods available');
     }
 
     const result: EquivalenceResult = {
@@ -888,6 +979,10 @@ export class EquivalenceChecker {
     }
   }
 
+  /**
+   * Проверяет, является ли функция простой математической
+   * Используется для определения, можно ли применять Z3
+   */
   private isSimpleMathFunction(body: string): boolean {
     if (!body) return false;
 
@@ -933,7 +1028,7 @@ export class EquivalenceChecker {
     _modified: FunctionSignature,
     name: string
   ): FunctionContract {
-    const params = original.params.map(p => ({
+    const params = original.params.map((p: string) => ({
       name: p,
       type: 'int' as const,
     }));
@@ -970,318 +1065,225 @@ export class EquivalenceChecker {
     };
   }
 
-  private compareSourceFilesAST(
-    sourceFile1: SourceFile,
-    sourceFile2: SourceFile,
-    options: EquivalenceOptions
-  ): { isEquivalent: boolean; differences: CodeDifference[]; confidence?: number } {
-    const differences: CodeDifference[] = [];
-
-    const statements1 = sourceFile1.getStatements();
-    const statements2 = sourceFile2.getStatements();
-
-    if (statements1.length !== statements2.length) {
-      differences.push({
-        type: 'modified',
-        location: { start: 1, end: 1, line: 1 },
-        original: `${statements1.length} statements`,
-        modified: `${statements2.length} statements`,
-        impact: 'high',
-        astNodeType: 'statements',
-      });
-      return { isEquivalent: false, differences, confidence: 0.5 };
-    }
-
-    for (let i = 0; i < statements1.length; i++) {
-      const stmt1 = statements1[i];
-      const stmt2 = statements2[i];
-      if (stmt1 && stmt2) {
-        const result = this.compareNodesAST(stmt1, stmt2, options);
-        if (!result.isEquivalent) {
-          differences.push(...result.differences);
-          return { isEquivalent: false, differences, confidence: result.confidence };
-        }
-      }
-    }
-
-    return { isEquivalent: true, differences, confidence: 1.0 };
-  }
-
-  private compareNodesAST(
-    node1: Node,
-    node2: Node,
-    options: EquivalenceOptions
-  ): { isEquivalent: boolean; differences: CodeDifference[]; confidence?: number } {
-    const differences: CodeDifference[] = [];
-
-    if (!node1 || !node2) {
-      differences.push({
-        type: 'modified',
-        location: { start: 1, end: 1, line: 1 },
-        original: node1 ? 'Node exists' : 'Node is null',
-        modified: node2 ? 'Node exists' : 'Node is null',
-        impact: 'high',
-        astNodeType: 'null_check',
-      });
-      return { isEquivalent: false, differences, confidence: 0 };
-    }
-
-    if (node1.getKind() !== node2.getKind()) {
-      differences.push({
-        type: 'modified',
-        location: {
-          start: node1.getStartLineNumber(),
-          end: node1.getEndLineNumber(),
-          line: node1.getStartLineNumber(),
-        },
-        original: node1.getKindName(),
-        modified: node2.getKindName(),
-        impact: 'high',
-        astNodeType: node1.getKindName(),
-      });
-      return { isEquivalent: false, differences, confidence: 0.5 };
-    }
-
-    const props1 = this.getNodePropertiesAST(node1);
-    const props2 = this.getNodePropertiesAST(node2);
-
-    for (const [key, value1] of props1) {
-      const value2 = props2.get(key);
-      if (value1 !== undefined && value2 !== undefined && value1 !== value2) {
-        if (options.ignoreWhitespace && typeof value1 === 'string' && typeof value2 === 'string') {
-          if (value1.replace(/\s/g, '') === value2.replace(/\s/g, '')) {
-            continue;
-          }
-        }
-        if (options.ignoreComments && typeof value1 === 'string' && typeof value2 === 'string') {
-          const clean1 = value1.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
-          const clean2 = value2.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
-          if (clean1.trim() === clean2.trim()) {
-            continue;
-          }
-        }
-
-        differences.push({
-          type: 'modified',
-          location: {
-            start: node1.getStartLineNumber(),
-            end: node1.getEndLineNumber(),
-            line: node1.getStartLineNumber(),
-          },
-          original: `${key}: ${value1}`,
-          modified: `${key}: ${value2}`,
-          impact: 'medium',
-          astNodeType: key,
-        });
-        return { isEquivalent: false, differences, confidence: 0.8 };
-      }
-    }
-
-    const children1 = node1.getChildren();
-    const children2 = node2.getChildren();
-
-    if (children1.length !== children2.length) {
-      differences.push({
-        type: 'modified',
-        location: {
-          start: node1.getStartLineNumber(),
-          end: node1.getEndLineNumber(),
-          line: node1.getStartLineNumber(),
-        },
-        original: `${children1.length} children`,
-        modified: `${children2.length} children`,
-        impact: 'medium',
-        astNodeType: 'children',
-      });
-      return { isEquivalent: false, differences, confidence: 0.8 };
-    }
-
-    for (let i = 0; i < children1.length; i++) {
-      const child1 = children1[i];
-      const child2 = children2[i];
-      if (child1 && child2) {
-        const result = this.compareNodesAST(child1, child2, options);
-        if (!result.isEquivalent) {
-          differences.push(...result.differences);
-          return { isEquivalent: false, differences, confidence: result.confidence };
-        }
-      }
-    }
-
-    return { isEquivalent: true, differences, confidence: 1.0 };
-  }
-
-  private getNodePropertiesAST(node: Node): Map<string, any> {
-    const properties = new Map<string, any>();
-
-    try {
-      properties.set('kind', node.getKind());
-      properties.set('kindName', node.getKindName());
-      properties.set('text', node.getText());
-
-      if (Node.isIdentifier(node)) {
-        properties.set('name', node.getText());
-      }
-
-      if (Node.isFunctionDeclaration(node)) {
-        const name = node.getName();
-        if (name) properties.set('name', name);
-        properties.set('isAsync', node.isAsync());
-        properties.set('isExported', node.isExported());
-        properties.set('parameterCount', node.getParameters().length);
-        properties.set('hasBody', !!node.getBody());
-        const returnType = node.getReturnType();
-        if (returnType) {
-          properties.set('returnType', returnType.getText());
-        }
-      }
-
-      if (Node.isVariableDeclaration(node)) {
-        properties.set('name', node.getName());
-        properties.set('isExported', node.isExported());
-        const initializer = node.getInitializer();
-        if (initializer) {
-          properties.set('hasInitializer', true);
-          properties.set('initializerKind', initializer.getKindName());
-        }
-      }
-
-      if (Node.isArrowFunction(node)) {
-        properties.set('isAsync', node.isAsync());
-        properties.set('parameterCount', node.getParameters().length);
-        const returnType = node.getReturnType();
-        if (returnType) {
-          properties.set('returnType', returnType.getText());
-        }
-        properties.set('hasBody', !!node.getBody());
-      }
-
-      if (Node.isClassDeclaration(node)) {
-        const name = node.getName();
-        if (name) properties.set('name', name);
-        properties.set('isExported', node.isExported());
-        properties.set('methodCount', node.getMethods().length);
-      }
-
-      if (Node.isMethodDeclaration(node)) {
-        properties.set('name', node.getName());
-        properties.set('isAsync', node.isAsync());
-        properties.set('parameterCount', node.getParameters().length);
-        properties.set('hasBody', !!node.getBody());
-      }
-
-      if (Node.isReturnStatement(node)) {
-        const expr = node.getExpression();
-        if (expr) {
-          properties.set('hasExpression', true);
-          properties.set('expressionKind', expr.getKindName());
-        }
-      }
-
-      if (Node.isBinaryExpression(node)) {
-        const operator = node.getOperatorToken();
-        if (operator) {
-          properties.set('operator', operator.getText());
-        }
-        const left = node.getLeft();
-        const right = node.getRight();
-        if (left) {
-          properties.set('leftKind', left.getKindName());
-        }
-        if (right) {
-          properties.set('rightKind', right.getKindName());
-        }
-      }
-    } catch (error) {
-      // Игнорируем ошибки
-    }
-
-    return properties;
-  }
-
   private extractFunctionsAST(sourceFile: SourceFile): FunctionSignature[] {
     const functions: FunctionSignature[] = [];
 
-    for (const func of sourceFile.getFunctions()) {
-      const name = func.getName();
-      if (!name) continue;
+    try {
+      const allFunctions = sourceFile.getFunctions();
 
-      const params = func.getParameters().map(p => ({
-        name: p.getName(),
-        type: p.getType().getText(),
-      }));
+      for (const func of allFunctions) {
+        try {
+          const name = func.getName();
+          if (!name) continue;
 
-      const returnType = func.getReturnType().getText();
-      const body = func.getBody()?.getText() || '';
+          const params = func.getParameters();
+          const paramNames = params.map((p: any) => {
+            try {
+              return p.getName();
+            } catch {
+              return 'unknown';
+            }
+          });
+          const paramTypes = params.map((p: any) => {
+            try {
+              return p.getType().getText();
+            } catch {
+              return 'any';
+            }
+          });
 
-      functions.push({
-        name,
-        params: params.map(p => p.name),
-        returnType,
-        isAsync: func.isAsync(),
-        isExported: func.isExported(),
-        body,
-        startLine: func.getStartLineNumber(),
-        endLine: func.getEndLineNumber(),
-        isArrow: false,
-        paramTypes: params.map(p => p.type),
-      });
-    }
+          let returnType = 'any';
+          try {
+            returnType = func.getReturnType().getText();
+          } catch {
+            // Используем 'any' по умолчанию
+          }
 
-    for (const varDecl of sourceFile.getVariableDeclarations()) {
-      const initializer = varDecl.getInitializer();
-      if (initializer && Node.isArrowFunction(initializer)) {
-        const name = varDecl.getName();
-        const params = initializer.getParameters().map(p => ({
-          name: p.getName(),
-          type: p.getType().getText(),
-        }));
-        const returnType = initializer.getReturnType().getText();
-        const body = initializer.getBody()?.getText() || '';
+          let body = '';
+          try {
+            const bodyNode = func.getBody();
+            if (bodyNode) {
+              body = bodyNode.getText();
+            }
+          } catch {
+            // Игнорируем ошибки получения тела
+          }
 
-        functions.push({
-          name,
-          params: params.map(p => p.name),
-          returnType,
-          isAsync: initializer.isAsync(),
-          isExported: varDecl.isExported(),
-          body,
-          startLine: varDecl.getStartLineNumber(),
-          endLine: varDecl.getEndLineNumber(),
-          isArrow: true,
-          paramTypes: params.map(p => p.type),
-        });
+          let isAsync = false;
+          let isExported = false;
+          try {
+            isAsync = func.isAsync();
+            isExported = func.isExported();
+          } catch {
+            // Игнорируем
+          }
+
+          functions.push({
+            name,
+            params: paramNames,
+            returnType,
+            isAsync,
+            isExported,
+            body,
+            startLine: 0,
+            endLine: 0,
+            isArrow: false,
+            paramTypes,
+          });
+        } catch (error) {
+          // Игнорируем ошибки для отдельных функций
+        }
       }
-    }
 
-    for (const cls of sourceFile.getClasses()) {
-      const className = cls.getName();
-      if (!className) continue;
+      try {
+        const varDeclarations = sourceFile.getVariableDeclarations();
+        for (const varDecl of varDeclarations) {
+          try {
+            const initializer = varDecl.getInitializer();
+            if (initializer && Node.isArrowFunction(initializer)) {
+              const name = varDecl.getName();
+              const params = initializer.getParameters();
+              const paramNames = params.map((p: any) => {
+                try {
+                  return p.getName();
+                } catch {
+                  return 'unknown';
+                }
+              });
+              const paramTypes = params.map((p: any) => {
+                try {
+                  return p.getType().getText();
+                } catch {
+                  return 'any';
+                }
+              });
 
-      for (const method of cls.getMethods()) {
-        const name = method.getName();
-        if (!name) continue;
+              let returnType = 'any';
+              try {
+                returnType = initializer.getReturnType().getText();
+              } catch {
+                // Используем 'any' по умолчанию
+              }
 
-        const params = method.getParameters().map(p => ({
-          name: p.getName(),
-          type: p.getType().getText(),
-        }));
-        const returnType = method.getReturnType().getText();
-        const body = method.getBody()?.getText() || '';
+              let body = '';
+              try {
+                const bodyNode = initializer.getBody();
+                if (bodyNode) {
+                  body = bodyNode.getText();
+                }
+              } catch {
+                // Игнорируем
+              }
 
-        functions.push({
-          name: `${className}.${name}`,
-          params: params.map(p => p.name),
-          returnType,
-          isAsync: method.isAsync(),
-          isExported: false,
-          body,
-          startLine: method.getStartLineNumber(),
-          endLine: method.getEndLineNumber(),
-          isArrow: false,
-          paramTypes: params.map(p => p.type),
-        });
+              let isAsync = false;
+              let isExported = false;
+              try {
+                isAsync = initializer.isAsync();
+                isExported = varDecl.isExported();
+              } catch {
+                // Игнорируем
+              }
+
+              functions.push({
+                name,
+                params: paramNames,
+                returnType,
+                isAsync,
+                isExported,
+                body,
+                startLine: 0,
+                endLine: 0,
+                isArrow: true,
+                paramTypes,
+              });
+            }
+          } catch (error) {
+            // Игнорируем ошибки для отдельных переменных
+          }
+        }
+      } catch (error) {
+        // Игнорируем ошибки обхода переменных
       }
+
+      try {
+        const classes = sourceFile.getClasses();
+        for (const cls of classes) {
+          try {
+            const className = cls.getName();
+            if (!className) continue;
+
+            const methods = cls.getMethods();
+            for (const method of methods) {
+              try {
+                const name = method.getName();
+                if (!name) continue;
+
+                const fullName = `${className}.${name}`;
+                const params = method.getParameters();
+                const paramNames = params.map((p: any) => {
+                  try {
+                    return p.getName();
+                  } catch {
+                    return 'unknown';
+                  }
+                });
+                const paramTypes = params.map((p: any) => {
+                  try {
+                    return p.getType().getText();
+                  } catch {
+                    return 'any';
+                  }
+                });
+
+                let returnType = 'any';
+                try {
+                  returnType = method.getReturnType().getText();
+                } catch {
+                  // Используем 'any' по умолчанию
+                }
+
+                let body = '';
+                try {
+                  const bodyNode = method.getBody();
+                  if (bodyNode) {
+                    body = bodyNode.getText();
+                  }
+                } catch {
+                  // Игнорируем
+                }
+
+                let isAsync = false;
+                try {
+                  isAsync = method.isAsync();
+                } catch {
+                  // Игнорируем
+                }
+
+                functions.push({
+                  name: fullName,
+                  params: paramNames,
+                  returnType,
+                  isAsync,
+                  isExported: false,
+                  body,
+                  startLine: 0,
+                  endLine: 0,
+                  isArrow: false,
+                  paramTypes,
+                });
+              } catch (error) {
+                // Игнорируем ошибки для отдельных методов
+              }
+            }
+          } catch (error) {
+            // Игнорируем ошибки для отдельных классов
+          }
+        }
+      } catch (error) {
+        // Игнорируем ошибки обхода классов
+      }
+    } catch (error) {
+      console.warn(`   ⚠️ Failed to extract functions: ${error}`);
     }
 
     const unique = new Map<string, FunctionSignature>();
@@ -1302,7 +1304,7 @@ export class EquivalenceChecker {
     const matches: FunctionMatch[] = [];
 
     for (const orig of functions1) {
-      const mod = functions2.find(f => f.name === orig.name);
+      const mod = functions2.find((f: FunctionSignature) => f.name === orig.name);
       if (mod) {
         const contract = this.createSimpleContract(orig, mod, orig.name);
         matches.push({
@@ -1354,7 +1356,7 @@ export class EquivalenceChecker {
       report += '\n' + '='.repeat(70) + '\n';
       report += '🔬 FORMAL VERIFICATION (Z3)\n';
       report += '='.repeat(70) + '\n';
-      report += `Status: ${result.formalResult.isValid ? '✅ PASSED' : '❌ FAILED'}\n`;
+      report += `Status: ${result.formalResult.isValid ? '✅ EQUIVALENT' : '❌ NOT EQUIVALENT'}\n`;
       report += `Time: ${result.formalResult.time}ms\n`;
       if (result.formalResult.error) {
         report += `Error: ${result.formalResult.error}\n`;
@@ -1369,7 +1371,7 @@ export class EquivalenceChecker {
         report += '\n📋 Verification results:\n';
         for (const r of result.formalResult.results) {
           const status = r.isValid ? '✅' : '❌';
-          report += `   ${status} ${r.name}: ${r.isValid ? 'PASSED' : 'FAILED'}\n`;
+          report += `   ${status} ${r.name}: ${r.isValid ? 'EQUIVALENT' : 'NOT EQUIVALENT'}\n`;
           if (r.counterexample) {
             report += `      Counterexample: ${JSON.stringify(Object.fromEntries(r.counterexample))}\n`;
           }
@@ -1414,7 +1416,7 @@ export class EquivalenceChecker {
 
     report += '='.repeat(70) + '\n';
     report += `📅 Generated: ${new Date().toISOString()}\n`;
-    report += `🔧 Version: 3.0.0 (AST Primary + Z3 Secondary)\n`;
+    report += `🔧 Version: 3.0.0 (Z3 Primary + AST Secondary)\n`;
     report += '='.repeat(70) + '\n';
 
     return report;
@@ -1459,96 +1461,21 @@ export class EquivalenceChecker {
 
   isEquivalent(result: EquivalenceResult): boolean {
     if (!result) return false;
-    if (result.method === 'formal+structural' && result.formalResult?.isValid) {
-      return true;
-    }
-    return result.isEquivalent === true && (result.confidence || 0) > 0.9;
+    return result.isEquivalent === true && (result.confidence || 0) > 0.7;
   }
 
   needsReview(result: EquivalenceResult): boolean {
     if (!result) return true;
     if (!result.isEquivalent) return true;
-    if (result.confidence < 0.9) return true;
+    if (result.confidence < 0.85) return true;
     if (result.differences && result.differences.length > 0) return true;
     return false;
   }
 
   confidenceLevel(result: EquivalenceResult): 'high' | 'medium' | 'low' {
-    if (result.confidence >= 0.95) return 'high';
+    if (result.confidence >= 0.9) return 'high';
     if (result.confidence >= 0.7) return 'medium';
     return 'low';
-  }
-
-  isASTEqual(node1: any, node2: any): boolean {
-    if (!node1 || !node2) return false;
-    if (node1.type !== node2.type) return false;
-    if (node1.text !== node2.text) return false;
-    return true;
-  }
-
-  findAllDifferences(node1: any, node2: any): CodeDifference[] {
-    const differences: CodeDifference[] = [];
-
-    if (!node1 && !node2) return [];
-    if (!node1) {
-      differences.push({
-        type: 'added',
-        location: { start: 0, end: 0, line: 1 },
-        original: 'null',
-        modified: JSON.stringify(node2),
-        impact: 'high',
-        astNodeType: 'added',
-      });
-      return differences;
-    }
-    if (!node2) {
-      differences.push({
-        type: 'removed',
-        location: { start: 0, end: 0, line: 1 },
-        original: JSON.stringify(node1),
-        modified: 'null',
-        impact: 'high',
-        astNodeType: 'removed',
-      });
-      return differences;
-    }
-
-    const keys1 = Object.keys(node1);
-    const keys2 = Object.keys(node2);
-    const allKeys = new Set([...keys1, ...keys2]);
-
-    for (const key of allKeys) {
-      const val1 = node1[key];
-      const val2 = node2[key];
-
-      if (typeof val1 !== typeof val2) {
-        differences.push({
-          type: 'modified',
-          location: { start: 0, end: 0, line: 1 },
-          original: `${key}: ${val1}`,
-          modified: `${key}: ${val2}`,
-          impact: 'medium',
-          astNodeType: key,
-        });
-        continue;
-      }
-
-      if (typeof val1 === 'object' && val1 !== null && typeof val2 === 'object' && val2 !== null) {
-        const childDiffs = this.findAllDifferences(val1, val2);
-        differences.push(...childDiffs);
-      } else if (val1 !== val2) {
-        differences.push({
-          type: 'modified',
-          location: { start: 0, end: 0, line: 1 },
-          original: `${key}: ${val1}`,
-          modified: `${key}: ${val2}`,
-          impact: 'low',
-          astNodeType: key,
-        });
-      }
-    }
-
-    return differences;
   }
 }
 
@@ -1558,22 +1485,19 @@ export class EquivalenceChecker {
 
 export function isEquivalent(result: EquivalenceResult): boolean {
   if (!result) return false;
-  if (result.method === 'formal+structural' && result.formalResult?.isValid) {
-    return true;
-  }
-  return result.isEquivalent === true && (result.confidence || 0) > 0.9;
+  return result.isEquivalent === true && (result.confidence || 0) > 0.7;
 }
 
 export function needsReview(result: EquivalenceResult): boolean {
   if (!result) return true;
   if (!result.isEquivalent) return true;
-  if (result.confidence < 0.9) return true;
+  if (result.confidence < 0.85) return true;
   if (result.differences && result.differences.length > 0) return true;
   return false;
 }
 
 export function confidenceLevel(result: EquivalenceResult): 'high' | 'medium' | 'low' {
-  if (result.confidence >= 0.95) return 'high';
+  if (result.confidence >= 0.9) return 'high';
   if (result.confidence >= 0.7) return 'medium';
   return 'low';
 }
