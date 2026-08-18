@@ -240,10 +240,10 @@
     "execa": "^10.0.1",
     "ts-morph": "^28.0.0",
     "web-tree-sitter": "^0.26.12",
-    "z3-solver": "^5.1.0"
+    "z3-solver": "^5.1.0",
+    "@codeflow-map/core": "^1.0.3"
   },
   "devDependencies": {
-    "@codeflow-map/core": "^1.0.3",
     "@eslint/eslintrc": "^3.3.6",
     "@eslint/js": "^10.0.1",
     "@types/estree": "^1.0.9",
