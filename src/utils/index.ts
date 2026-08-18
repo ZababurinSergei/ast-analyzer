@@ -13,9 +13,20 @@ export {
 
 export { Logger, LogLevel, parseLogLevel } from './Logger.js';
 
-// ============================================
-// is-main - универсальная проверка main модуля
-// ============================================
 export {
   isMainModule,
 } from './is-main.js';
+
+// ============================================
+// ПУТИ - нормализация для кросс-платформенности
+// ============================================
+export {
+  normalizePathForDisplay,
+  getFileNameForDisplay,
+  getFileNameWithoutExt,
+  normalizeRootKey,
+  normalizeGraphPaths,
+  isAbsolutePath,
+  shortenPath,
+  getRelativePathForDisplay,
+} from './path-utils.js';

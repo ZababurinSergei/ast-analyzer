@@ -1,5 +1,5 @@
-// reporters/html-reporter.ts
-import path from 'path';
+// src/reporters/html-reporter.ts
+import { normalizePathForDisplay, getFileNameForDisplay } from '../utils/path-utils.js';
 
 /**
  * Экранирует HTML специальные символы
@@ -12,7 +12,7 @@ export function escapeHtml(str: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/\\/g, '&#92;'); // ✅ ДОБАВИТЬ экранирование обратных слешей
+    .replace(/\\/g, '&#92;'); // экранирование обратных слешей
 }
 
 /**
@@ -31,6 +31,41 @@ export function generateHTMLReport(
   title: string,
   hasCycles: boolean
 ): string {
+  // ✅ Нормализуем путь для заголовка
+  const normalizedTitle = normalizePathForDisplay(title);
+  const basename = getFileNameForDisplay(normalizedTitle);
+
+  // ✅ Нормализуем пути в JSON контенте
+  let normalizedJson = jsonContent;
+  try {
+    const parsed = JSON.parse(jsonContent);
+    if (parsed && typeof parsed === 'object') {
+      // Нормализуем корневой ключ
+      if (parsed.rootKey) {
+        parsed.rootKey = normalizePathForDisplay(parsed.rootKey);
+      }
+      // Нормализуем все пути в графе
+      if (parsed.graph && typeof parsed.graph === 'object') {
+        const newGraph: Record<string, string[]> = {};
+        for (const [key, deps] of Object.entries(parsed.graph)) {
+          const normalizedKey = normalizePathForDisplay(key);
+          newGraph[normalizedKey] = (deps as string[]).map(d => normalizePathForDisplay(d));
+        }
+        parsed.graph = newGraph;
+      }
+      // Нормализуем циклические зависимости
+      if (parsed.cyclicEdges && Array.isArray(parsed.cyclicEdges)) {
+        parsed.cyclicEdges = parsed.cyclicEdges.map((edge: string) =>
+          normalizePathForDisplay(edge)
+        );
+      }
+      normalizedJson = JSON.stringify(parsed, null, 2);
+    }
+  } catch {
+    // Если не удалось распарсить JSON, оставляем как есть
+    normalizedJson = jsonContent;
+  }
+
   const banner = hasCycles
     ? '<div class="banner error">⚠️ Обнаружены циклические зависимости!</div>'
     : '<div class="banner success">✅ Циклических зависимостей нет</div>';
@@ -39,7 +74,7 @@ export function generateHTMLReport(
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Граф зависимостей - ${path.basename(title)}</title>
+    <title>Граф зависимостей - ${basename}</title>
     <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; margin: 0; padding: 20px; background: #f8fafc; }
@@ -57,7 +92,7 @@ export function generateHTMLReport(
     </style>
 </head>
 <body>
-    <h1>📊 Анализ зависимостей: ${path.basename(title)}</h1>
+    <h1>📊 Анализ зависимостей: ${basename}</h1>
     ${banner}
     <div class="graph-container">
         <div id="graph-wrapper">${svgContent}</div>
@@ -65,7 +100,7 @@ export function generateHTMLReport(
     </div>
     <div class="code-section">
         <div class="code-card"><h3>📝 DOT (Graphviz)</h3><pre>${escapeHtml(dotContent)}</pre></div>
-        <div class="code-card"><h3>📋 JSON (структура)</h3><pre>${escapeHtml(jsonContent)}</pre></div>
+        <div class="code-card"><h3>📋 JSON (структура)</h3><pre>${escapeHtml(normalizedJson)}</pre></div>
     </div>
     <script>
         window.onload = function() {

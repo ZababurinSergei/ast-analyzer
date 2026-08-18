@@ -45,6 +45,7 @@ import type { SplitModuleOptions, MinifyFolderOptions } from './types.js';
 
 // Utils
 import { showHelp, DEFAULT_EXCLUDE_PATTERNS } from './utils.js';
+import { normalizePathForDisplay, normalizeGraphPaths } from './utils/path-utils.js';
 
 // ==========================================
 // CLI ARGUMENT PARSING
@@ -1043,15 +1044,18 @@ export async function runCLI(): Promise<void> {
         return;
       }
 
-      const cyclicEdges = findCyclicEdges(resultData.graph);
+      // ✅ Нормализуем пути в графе
+      const normalizedData = normalizeGraphPaths(resultData);
+
+      const cyclicEdges = findCyclicEdges(normalizedData.graph);
       const hasCycles = cyclicEdges.size > 0;
-      resultData.hasCycles = hasCycles;
-      resultData.cyclicEdges = Array.from(cyclicEdges);
+      normalizedData.hasCycles = hasCycles;
+      normalizedData.cyclicEdges = Array.from(cyclicEdges);
 
-      fs.writeFileSync('output.json', JSON.stringify(resultData, null, 2));
-      console.log(`   ✅ output.json (${Object.keys(resultData.graph).length} узлов)`);
+      fs.writeFileSync('output.json', JSON.stringify(normalizedData, null, 2));
+      console.log(`   ✅ output.json (${Object.keys(normalizedData.graph).length} узлов)`);
 
-      const dotContent = convertToDOT(resultData, cyclicEdges);
+      const dotContent = convertToDOT(normalizedData, cyclicEdges);
       fs.writeFileSync('output.dot', dotContent);
       console.log('   ✅ output.dot');
 
@@ -1061,11 +1065,12 @@ export async function runCLI(): Promise<void> {
       fs.writeFileSync('output.svg', svgContent);
       console.log('   ✅ output.svg');
 
+      // ✅ Генерируем HTML с нормализованным заголовком
       const htmlContent = generateHTMLReport(
         svgContent,
         dotContent,
-        JSON.stringify(resultData, null, 2),
-        currentTargetPath,
+        JSON.stringify(normalizedData, null, 2),
+        normalizePathForDisplay(currentTargetPath),
         hasCycles
       );
       fs.writeFileSync('report.html', htmlContent);
@@ -1089,13 +1094,12 @@ export async function runCLI(): Promise<void> {
           }
         }
 
-        // Выводим в читаемом формате
+        // Выводим в читаемом формате с нормализованными путями
         for (const [from, toSet] of cyclesByFile) {
-          // Сокращаем длинные пути для читаемости
-          const shortFrom = from.length > 80 ? '...' + from.slice(-77) : from;
+          const shortFrom = normalizePathForDisplay(from);
           console.log(`\n📄 ${shortFrom}`);
           for (const to of toSet) {
-            const shortTo = to.length > 80 ? '...' + to.slice(-77) : to;
+            const shortTo = normalizePathForDisplay(to);
             console.log(`   └─ 🔄 зависит от: ${shortTo}`);
           }
         }
@@ -1118,15 +1122,18 @@ export async function runCLI(): Promise<void> {
         return;
       }
 
-      const cyclicEdges = findCyclicEdges(resultData.graph);
+      // ✅ Нормализуем пути в графе
+      const normalizedData = normalizeGraphPaths(resultData);
+
+      const cyclicEdges = findCyclicEdges(normalizedData.graph);
       const hasCycles = cyclicEdges.size > 0;
-      resultData.hasCycles = hasCycles;
-      resultData.cyclicEdges = Array.from(cyclicEdges);
+      normalizedData.hasCycles = hasCycles;
+      normalizedData.cyclicEdges = Array.from(cyclicEdges);
 
-      fs.writeFileSync('output.json', JSON.stringify(resultData, null, 2));
-      console.log(`   ✅ output.json (${Object.keys(resultData.graph).length} узлов)`);
+      fs.writeFileSync('output.json', JSON.stringify(normalizedData, null, 2));
+      console.log(`   ✅ output.json (${Object.keys(normalizedData.graph).length} узлов)`);
 
-      const dotContent = convertToDOT(resultData, cyclicEdges);
+      const dotContent = convertToDOT(normalizedData, cyclicEdges);
       fs.writeFileSync('output.dot', dotContent);
       console.log('   ✅ output.dot');
 
@@ -1136,11 +1143,12 @@ export async function runCLI(): Promise<void> {
       fs.writeFileSync('output.svg', svgContent);
       console.log('   ✅ output.svg');
 
+      // ✅ Генерируем HTML с нормализованным заголовком
       const htmlContent = generateHTMLReport(
         svgContent,
         dotContent,
-        JSON.stringify(resultData, null, 2),
-        currentTargetPath,
+        JSON.stringify(normalizedData, null, 2),
+        normalizePathForDisplay(currentTargetPath),
         hasCycles
       );
       fs.writeFileSync('report.html', htmlContent);

@@ -1,6 +1,7 @@
 // modes/file-graph.ts
 import path from 'path';
 import { parseFile, walk } from '../core/ast-parser.js';
+import { normalizePathForDisplay } from '../utils/path-utils.js';
 
 /**
  * Рекурсивно собирает объявления функций, классов и переменных из AST
@@ -152,7 +153,7 @@ export function buildFileInternalGraph(
     console.warn(`⚠️ AST не содержит body для файла: ${filePath}`);
     // Вместо null возвращаем пустой граф
     return {
-      rootKey: path.basename(filePath),
+      rootKey: normalizePathForDisplay(path.basename(filePath)),
       graph: {},
     };
   }
@@ -167,7 +168,7 @@ export function buildFileInternalGraph(
     console.warn(`⚠️ Ошибка при сборе объявлений: ${error}`);
     // Возвращаем пустой граф вместо null
     return {
-      rootKey: path.basename(filePath),
+      rootKey: normalizePathForDisplay(path.basename(filePath)),
       graph: {},
     };
   }
@@ -193,7 +194,7 @@ export function buildFileInternalGraph(
     });
   });
 
-  // Формирование графа
+  // Формирование графа с нормализованными путями
   const fileGraph: Record<string, string[]> = {};
   Object.keys(declarations).forEach((key: string) => {
     fileGraph[key] = [];
@@ -206,8 +207,11 @@ export function buildFileInternalGraph(
     }
   });
 
+  // ✅ Нормализуем корневой ключ
+  const normalizedRootKey = normalizePathForDisplay(path.basename(filePath));
+
   return {
-    rootKey: path.basename(filePath),
+    rootKey: normalizedRootKey,
     graph: fileGraph,
   };
 }

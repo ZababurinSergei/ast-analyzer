@@ -4,6 +4,7 @@ import fs from 'fs';
 import { parseFile, resolveFilePath, isExternalModule } from '../core/ast-parser.js';
 import { IGNORE_NODE_MODULES } from '../config.js';
 import { walk } from 'estree-walker';
+import { normalizePathForDisplay } from '../utils/path-utils.js';
 
 /**
  * Рекурсивно собирает импорты из AST
@@ -261,5 +262,15 @@ export function buildProjectGraph(
     }
   }
 
-  return { rootKey: path.relative(process.cwd(), rootAbsPath) || rootAbsPath, graph };
+  // ✅ Нормализуем все пути перед возвратом
+  const normalizedGraph: Record<string, string[]> = {};
+  for (const [key, deps] of Object.entries(graph)) {
+    const normalizedKey = normalizePathForDisplay(key);
+    normalizedGraph[normalizedKey] = deps.map(d => normalizePathForDisplay(d));
+  }
+
+  return {
+    rootKey: normalizePathForDisplay(path.relative(process.cwd(), rootAbsPath) || rootAbsPath),
+    graph: normalizedGraph
+  };
 }
