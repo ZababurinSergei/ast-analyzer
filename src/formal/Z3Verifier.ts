@@ -12,7 +12,7 @@ import {
 import { FunctionBodyModeler } from './FunctionBodyModeler.js';
 
 export interface VerificationConstraint {
-  type: 'equality' | 'inequality' | 'range' | 'implication' | 'and' | 'or' | 'not' | 'if';
+  type: 'equality' | 'inequality' | 'range' | 'implication' | 'and' | 'or' | 'not' | 'if' | 'forall';
   left?: any;
   right?: any;
   variable?: string;
@@ -24,6 +24,9 @@ export interface VerificationConstraint {
   operand?: VerificationConstraint;
   then?: VerificationConstraint;
   else?: VerificationConstraint;
+  // Для квантора всеобщности
+  variables?: string[];
+  constraint?: VerificationConstraint;
 }
 
 export interface VerificationResult {
@@ -623,6 +626,76 @@ export class Z3Verifier {
         return null;
       }
 
+      // ✅ НОВЫЙ ОБРАБОТЧИК: квантор всеобщности
+      case 'forall': {
+        if (this.debug) {
+          console.log(`      🔧 Processing forall quantifier`);
+          console.log(`         variables: ${constraint.variables}`);
+          console.log(`         constraint: ${JSON.stringify(constraint.constraint)}`);
+        }
+
+        if (!constraint.variables || !constraint.constraint) {
+          if (this.debug) {
+            console.warn(`   ⚠️ Forall constraint missing variables or constraint`);
+          }
+          return this.context.Bool.val(true);
+        }
+
+        // Получаем Z3 переменные
+        const varNames = constraint.variables as string[];
+        const z3Vars: any[] = [];
+
+        for (const name of varNames) {
+          const varExpr = variables.get(name);
+          if (varExpr) {
+            z3Vars.push(varExpr);
+            if (this.debug) {
+              console.log(`         Found Z3 variable: ${name} -> ${varExpr}`);
+            }
+          } else {
+            // Если переменной нет в Map, создаем новую
+            try {
+              const newVar = this.context.Int.const(name);
+              variables.set(name, newVar);
+              z3Vars.push(newVar);
+              if (this.debug) {
+                console.log(`         Created new Z3 variable: ${name}`);
+              }
+            } catch (error) {
+              console.warn(`         ⚠️ Failed to create variable: ${name}`);
+            }
+          }
+        }
+
+        if (z3Vars.length === 0) {
+          if (this.debug) {
+            console.warn('   ⚠️ No Z3 variables found for forall');
+          }
+          return this.context.Bool.val(true);
+        }
+
+        // Создаем внутреннее ограничение
+        const innerConstraint = this.constraintToZ3(constraint.constraint, variables);
+        if (!innerConstraint) {
+          if (this.debug) {
+            console.warn('   ⚠️ Failed to create inner constraint for forall');
+          }
+          return this.context.Bool.val(true);
+        }
+
+        // Применяем квантор всеобщности
+        try {
+          if (this.debug) {
+            console.log(`   🔄 Creating forall quantifier over: ${varNames.join(', ')}`);
+            console.log(`      Inner constraint: ${innerConstraint}`);
+          }
+          return this.context.ForAll(z3Vars, innerConstraint);
+        } catch (error) {
+          console.warn(`   ⚠️ Failed to create forall quantifier: ${error}`);
+          return this.context.Bool.val(true);
+        }
+      }
+
       default:
         return this.context.Bool.val(true);
     }
@@ -835,7 +908,12 @@ export class Z3Verifier {
 
     const formulas = postconditions.map(p => {
       const result = this.constraintToZ3(p, params);
-      if (this.debug) console.log(`      Postcondition ${p.type}: ${result}`);
+      if (this.debug) {
+        console.log(`      Postcondition ${p.type}: ${result}`);
+        if (p.type === 'forall' && result) {
+          console.log(`      ✅ Forall postcondition created: ${result}`);
+        }
+      }
       return result;
     });
 

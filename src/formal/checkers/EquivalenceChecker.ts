@@ -206,22 +206,42 @@ export class EquivalenceChecker {
   }
 
   /**
-   * Извлекает тело функции из строки кода
+   * ✅ ИСПРАВЛЕНО: Извлекает только выражение после return
+   * Было: извлекало весь оператор "return a + b;"
+   * Стало: извлекает только "a + b"
    */
-  private extractFunctionBody(code: string): string {
-    const trimmed = code.trim();
+  private extractReturnExpression(code: string): string {
+    if (!code) return '';
+
+    let trimmed = code.trim();
+
+    // Убираем фигурные скобки
     if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-      return trimmed.slice(1, -1).trim();
+      trimmed = trimmed.slice(1, -1).trim();
     }
+
+    // Убираем ключевое слово return
     if (trimmed.startsWith('return ')) {
-      return trimmed;
+      trimmed = trimmed.substring(7).trim();
     }
-    return `return ${trimmed}`;
+
+    // Убираем точку с запятой в конце
+    if (trimmed.endsWith(';')) {
+      trimmed = trimmed.slice(0, -1).trim();
+    }
+
+    // Если после всех преобразований остались фигурные скобки
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      trimmed = trimmed.slice(1, -1).trim();
+    }
+
+    return trimmed;
   }
 
   /**
-   * Создает контракт с телом функции для Z3 верификации эквивалентности
-   * Связывает result с обоими выражениями через постусловия
+   * ✅ ИСПРАВЛЕНО: Создает контракт с телом функции для Z3 верификации эквивалентности
+   * Теперь использует extractReturnExpression вместо extractFunctionBody
+   * И использует квантор всеобщности для проверки эквивалентности
    */
   private createEquivalenceContract(
     name: string,
@@ -239,11 +259,12 @@ export class EquivalenceChecker {
       type: 'int' as const,
     }));
 
-    const originalExpr = this.extractFunctionBody(originalBody);
-    const modifiedExpr = this.extractFunctionBody(modifiedBody);
+    // ✅ ИСПРАВЛЕНО: используем extractReturnExpression вместо extractFunctionBody
+    const originalExpr = this.extractReturnExpression(originalBody);
+    const modifiedExpr = this.extractReturnExpression(modifiedBody);
 
-    console.log(`   Extracted original expression: "${originalExpr}"`);
-    console.log(`   Extracted modified expression: "${modifiedExpr}"`);
+    console.log(`   ✅ Extracted original expression: "${originalExpr}"`);
+    console.log(`   ✅ Extracted modified expression: "${modifiedExpr}"`);
 
     // Создаем предусловия с использованием range
     const preconditions: any[] = [];
@@ -252,17 +273,23 @@ export class EquivalenceChecker {
       console.log(`   📌 Added precondition: range(${param.name}, -1000, 1000)`);
     }
 
-    // Постусловия:
-    // 1. result должен быть равен оригинальному выражению
-    // 2. result должен быть равен модифицированному выражению
-    // Из 1 и 2 следует, что originalExpr == modifiedExpr
+    // ✅ ИСПОЛЬЗУЕМ КВАНТОР ВСЕОБЩНОСТИ
+    // Постусловие: для всех a, b выполняется a + b == b + a
+    // В Z3 это выражается как: ∀ a, b: a + b = b + a
     const postconditions: any[] = [
-      eq('result', originalExpr),
-      eq('result', modifiedExpr)
+      {
+        type: 'forall',
+        variables: params.map(p => p.name),
+        constraint: {
+          type: 'equality',
+          left: originalExpr,
+          right: modifiedExpr
+        }
+      }
     ];
 
-    console.log(`   📌 Added postcondition: result == ${originalExpr}`);
-    console.log(`   📌 Added postcondition: result == ${modifiedExpr}`);
+    console.log(`   📌 Added universal quantifier postcondition:`);
+    console.log(`      ∀ ${params.map(p => p.name).join(', ')}: ${originalExpr} == ${modifiedExpr}`);
 
     // Инварианты: параметры остаются в диапазоне
     const invariants: any[] = [];
@@ -284,7 +311,7 @@ export class EquivalenceChecker {
 
     console.log(`   ✅ Contract created:`);
     console.log(`      - ${preconditions.length} preconditions`);
-    console.log(`      - ${postconditions.length} postconditions`);
+    console.log(`      - ${postconditions.length} postconditions (with universal quantifier)`);
     console.log(`      - ${invariants.length} invariants`);
     console.log(`      - ${params.length} params`);
 

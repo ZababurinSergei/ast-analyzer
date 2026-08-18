@@ -1,0 +1,28 @@
+digraph "Dependency Graph" {
+  rankdir=LR;
+  splines=true;
+  node [shape=box, style="filled,rounded", color="#4f46e5", fontname="Arial", fillcolor="#f3f4f6", fontcolor="#1f2937", penwidth=1];
+  edge [color="#9ca3af", arrowhead=vee, penwidth=1];
+  "../../src/cli.ts" [fillcolor="#4f46e5", fontcolor="#ffffff", penwidth=2, label="⭐ ../../src/cli.ts"];
+  "../../src/cli.ts" -> "./utils/is-main.js";
+  "../../src/cli.ts" -> "@hpcc-js/wasm-graphviz";
+  "../../src/cli.ts" -> "./core/minifier.js";
+  "../../src/cli.ts" -> "./core/graph-utils.js";
+  "../../src/cli.ts" -> "./core/tsconfig-resolver.js";
+  "../../src/cli.ts" -> "./modes/project-graph.js";
+  "../../src/cli.ts" -> "./modes/file-graph.js";
+  "../../src/cli.ts" -> "./modes/prompt-pack.js";
+  "../../src/cli.ts" -> "./modes/split-module.js";
+  "../../src/cli.ts" -> "./modes/impact.js";
+  "../../src/cli.ts" -> "./modes/dead-code.js";
+  "../../src/cli.ts" -> "./modes/minify-folder.js";
+  "../../src/cli.ts" -> "./modes/vue-analyzer.js";
+  "../../src/cli.ts" -> "./refactor/index.js";
+  "../../src/cli.ts" -> "./ci-cd/SemanticPipeline.js";
+  "../../src/cli.ts" -> "./formal/Z3Verifier.js";
+  "../../src/cli.ts" -> "./modes/hybrid-report/index.js";
+  "../../src/cli.ts" -> "./reporters/html-reporter.js";
+  "../../src/cli.ts" -> "./types.js";
+  "../../src/cli.ts" -> "./utils.js";
+  "../../src/cli.ts" -> "./utils/path-utils.js";
+}

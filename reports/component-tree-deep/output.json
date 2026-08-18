@@ -1,0 +1,30 @@
+{
+  "rootKey": "../../src/cli.ts",
+  "graph": {
+    "../../src/cli.ts": [
+      "./utils/is-main.js",
+      "@hpcc-js/wasm-graphviz",
+      "./core/minifier.js",
+      "./core/graph-utils.js",
+      "./core/tsconfig-resolver.js",
+      "./modes/project-graph.js",
+      "./modes/file-graph.js",
+      "./modes/prompt-pack.js",
+      "./modes/split-module.js",
+      "./modes/impact.js",
+      "./modes/dead-code.js",
+      "./modes/minify-folder.js",
+      "./modes/vue-analyzer.js",
+      "./refactor/index.js",
+      "./ci-cd/SemanticPipeline.js",
+      "./formal/Z3Verifier.js",
+      "./modes/hybrid-report/index.js",
+      "./reporters/html-reporter.js",
+      "./types.js",
+      "./utils.js",
+      "./utils/path-utils.js"
+    ]
+  },
+  "hasCycles": false,
+  "cyclicEdges": []
+}
