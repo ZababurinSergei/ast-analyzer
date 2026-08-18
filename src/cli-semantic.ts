@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-// packages/ast-analyzer/src/cli-semantic.ts
 import { isMainModule } from './utils/is-main.js';
 /**
  * CLI для семантического анализа кода
@@ -37,6 +36,7 @@ import { Z3Verifier, type FunctionContract } from './formal/Z3Verifier.js';
 import { Project } from 'ts-morph';
 import { findWasmPath } from './utils/wasm-utils.js';
 
+// Создаем программу до экспорта
 const program = new Command();
 
 program
@@ -1054,7 +1054,7 @@ function generateDotFromCFG(cfg: ControlFlowGraph): string {
   for (const block of cfg.blocks) {
     const color = block.isEntry ? '#4f46e5' : block.isExit ? '#ef4444' : '#f3f4f6';
     const fontColor = block.isEntry || block.isExit ? '#ffffff' : '#1f2937';
-    const label = `${block.id}\\n${block.instructions.length} instr${block.isReachable ? '' : '\\n⚠️ недостижим'}`;
+    const label = `${block.id}\n${block.instructions.length} instr${block.isReachable ? '' : '\n⚠️ недостижим'}`;
     dot += `  "${block.id}" [fillcolor="${color}", fontcolor="${fontColor}", label="${label}"];\n`;
   }
 
@@ -1306,6 +1306,9 @@ function generateDeadCodeReport(issues: any[]): string {
 // ============================================
 // ЗАПУСК CLI
 // ============================================
+
+// Экспортируем program для тестов
+export { program };
 
 // Запускаем программу только если мы не в тестовой среде
 // или если файл запущен напрямую (не импортирован)
