@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-
+import { isMainModule } from './utils/is-main.js';
 /**
  * CLI для автоматического рефакторинга файлов с выделением модулей
  *
@@ -1127,9 +1127,11 @@ program
     `);
   });
 
-// Если нет аргументов, показываем справку
-if (process.argv.length <= 2) {
+
+if (isMainModule(import.meta.url) && process.argv.length <= 2) {
   program.help();
 }
 
-program.parse();
+if (isMainModule(import.meta.url)) {
+  program.parse();
+}

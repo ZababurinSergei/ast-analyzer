@@ -4,6 +4,7 @@
  * CLI entry point for graph-analyzer
  * Handles command-line argument parsing and routing to appropriate modes
  */
+import { isMainModule } from './utils/is-main.js';
 
 import fs from 'fs';
 import path from 'path';
@@ -1192,6 +1193,6 @@ export async function runCLI(): Promise<void> {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainModule(import.meta.url)) {
   runCLI().catch(console.error);
 }

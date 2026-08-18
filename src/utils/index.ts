@@ -12,3 +12,10 @@ export {
 } from './askQuestion.js';
 
 export { Logger, LogLevel, parseLogLevel } from './Logger.js';
+
+// ============================================
+// is-main - универсальная проверка main модуля
+// ============================================
+export {
+  isMainModule,
+} from './is-main.js';

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // packages/ast-analyzer/src/cli-semantic.ts
-
+import { isMainModule } from './utils/is-main.js';
 /**
  * CLI для семантического анализа кода
  *
@@ -1309,11 +1309,9 @@ function generateDeadCodeReport(issues: any[]): string {
 
 // Запускаем программу только если мы не в тестовой среде
 // или если файл запущен напрямую (не импортирован)
-const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+
 const isTestEnv = process.env.NODE_ENV === 'test';
 
-if (isMainModule && !isTestEnv) {
+if (isMainModule(import.meta.url) && !isTestEnv) {
   program.parse();
 }
-
-export { program };

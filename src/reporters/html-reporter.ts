@@ -7,7 +7,12 @@ import path from 'path';
  * @returns Экранированная строка
  */
 export function escapeHtml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/\\/g, '&#92;'); // ✅ ДОБАВИТЬ экранирование обратных слешей
 }
 
 /**

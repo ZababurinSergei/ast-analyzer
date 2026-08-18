@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-
+import { isMainModule } from './utils/is-main.js';
 /**
  * CLI для CI/CD проверки TypeScript и автоматического исправления
  *
@@ -737,8 +737,10 @@ function askQuestion(question: string): Promise<string> {
 }
 
 // Запуск CLI
-if (process.argv.length <= 2) {
+if (isMainModule(import.meta.url) && process.argv.length <= 2) {
   program.help();
 }
 
-program.parse();
+if (isMainModule(import.meta.url)) {
+  program.parse();
+}
