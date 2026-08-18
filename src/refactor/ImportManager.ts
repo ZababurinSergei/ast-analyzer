@@ -2,18 +2,19 @@
 import type { Project, SourceFile } from 'ts-morph';
 import path from 'path';
 import type { ExtractedModule } from './index.js';
-import { Logger } from '../utils/Logger.js';
+import type { Logger } from '../utils/Logger.js';
 import type { ModuleType } from './ModuleTypeDetector.js';
+import type { IRefactorContext } from './interfaces/IRefactorContext.js';
 
 export class ImportManager {
   private project: Project;
   private logger: Logger;
   private options: { dryRun?: boolean };
 
-  constructor(project: Project, logger?: Logger, options: { dryRun?: boolean } = {}) {
-    this.project = project;
-    this.logger = logger || new Logger();
-    this.options = options;
+  constructor(context: IRefactorContext) {
+    this.project = context.project;
+    this.logger = context.logger.child('ImportManager');
+    this.options = { dryRun: context.options.dryRun };
   }
 
   /**

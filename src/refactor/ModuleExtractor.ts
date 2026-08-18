@@ -6,6 +6,7 @@ import path from 'path';
 import type { ExtractedModule } from './index.js';
 import type { Logger } from '../utils/Logger.js';
 import type { ModuleType } from './ModuleTypeDetector.js';
+import type { IRefactorContext } from './interfaces/IRefactorContext.js';
 
 export interface Cluster {
   name: string;
@@ -125,10 +126,10 @@ export class ModuleExtractor {
   private allDependencies: Map<string, DependencyInfo> = new Map();
   private constantsModulePath: string | null = null;
 
-  constructor(project: Project, options: any, logger: Logger) {
-    this.project = project;
-    this.options = options;
-    this.logger = logger;
+  constructor(context: IRefactorContext) {
+    this.project = context.project;
+    this.options = context.options;
+    this.logger = context.logger.child('ModuleExtractor');
   }
 
   setModuleType(type: ModuleType): void {

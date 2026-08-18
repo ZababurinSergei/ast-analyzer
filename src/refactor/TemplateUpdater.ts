@@ -1,14 +1,18 @@
 // packages/ast-analyzer/src/refactor/TemplateUpdater.ts
+import type { IRefactorContext } from './interfaces/IRefactorContext.js';
 import { parse as parseVue } from '@vue/compiler-sfc';
 import fs from 'fs';
 import path from 'path';
 import type { ExtractedModule } from './index.js';
+import type { Logger } from '../utils/Logger.js';
 
 export class TemplateUpdater {
   private options: any;
+  private logger: Logger;
 
-  constructor(options: any = {}) {
-    this.options = options;
+  constructor(context: IRefactorContext) {
+    this.options = context.options;
+    this.logger = context.logger.child('TemplateUpdater');
     // Параметры зарезервированы для будущего использования
     if (Object.keys(this.options).length > 0) {
       // Опции будут использоваться в следующих версиях
@@ -20,7 +24,7 @@ export class TemplateUpdater {
   async update(vuePath: string, modules: ExtractedModule[]): Promise<void> {
     // Проверяем dry-run режим
     if (this.options.dryRun) {
-      console.log(`🔍 DRY RUN: Would update Vue file ${vuePath}`);
+      this.logger.info(`🔍 DRY RUN: Would update Vue file ${vuePath}`);
       return;
     }
 
@@ -28,11 +32,11 @@ export class TemplateUpdater {
     const { descriptor, errors } = parseVue(content, { filename: vuePath });
 
     if (errors.length > 0) {
-      console.warn(`⚠️ Ошибки парсинга Vue: ${errors.map(e => e.message).join(', ')}`);
+      this.logger.warn(`⚠️ Ошибки парсинга Vue: ${errors.map(e => e.message).join(', ')}`);
     }
 
     if (!descriptor.template) {
-      console.log('ℹ️ Нет template блока, пропускаем');
+      this.logger.info('ℹ️ Нет template блока, пропускаем');
       return;
     }
 
@@ -66,14 +70,14 @@ export class TemplateUpdater {
     // Обновляем вызовы функций в интерполяциях
     for (const [exportName] of exportsMap) {
       const patterns = [
-        new RegExp(`{{\\\\s*${exportName}\\\\s*\\\\(`, 'g'),
-        new RegExp(`@\\\\w+=\\\\"\\\\s*${exportName}\\\\s*\\\\(`, 'g'),
-        new RegExp(`:\\\\w+=\\\\"\\\\s*${exportName}\\\\s*`, 'g'),
+        new RegExp(`{{\\s*${exportName}\\s*\\(`, 'g'),
+        new RegExp(`@\\w+="\\s*${exportName}\\s*\\(`, 'g'),
+        new RegExp(`:\\w+="\\s*${exportName}\\s*`, 'g'),
       ];
 
       for (const pattern of patterns) {
         if (pattern.test(updated)) {
-          console.log(`  📝 Обновлён вызов: ${exportName}() в template`);
+          this.logger.debug(`  📝 Обновлён вызов: ${exportName}() в template`);
         }
       }
     }
@@ -91,12 +95,12 @@ export class TemplateUpdater {
     // Генерируем импорты
     let imports = '';
     for (const module of modules) {
-      const relativePath = path.relative('.', module.path).replace(/\\\\/g, '/');
-      imports += `import { ${module.exports.join(', ')} } from '${relativePath}';\\\\n`;
+      const relativePath = path.relative('.', module.path).replace(/\\/g, '/');
+      imports += `import { ${module.exports.join(', ')} } from '${relativePath}';\n`;
     }
 
     // Вставляем импорты после существующих
-    const lines = scriptContent.split('\\\\n');
+    const lines = scriptContent.split('\n');
     let insertIndex = 0;
 
     // Находим последний импорт
@@ -108,7 +112,7 @@ export class TemplateUpdater {
 
     lines.splice(insertIndex, 0, imports);
 
-    return lines.join('\\\\n');
+    return lines.join('\n');
   }
 
   private async writeVueFile(
@@ -119,24 +123,24 @@ export class TemplateUpdater {
   ): Promise<void> {
     // Проверяем dry-run режим
     if (this.options.dryRun) {
-      console.log(`🔍 DRY RUN: Would write Vue file ${vuePath}`);
+      this.logger.info(`🔍 DRY RUN: Would write Vue file ${vuePath}`);
       return;
     }
 
     let content = '';
 
     if (template && template.trim()) {
-      content += `<template>\\\\n${template}\\\\n</template>\\\\n\\\\n`;
+      content += `<template>\n${template}\n</template>\n\n`;
     }
 
-    content += `<script setup lang=\\"ts\\">\\\\n${script}\\\\n</script>\\\\n\\\\n`;
+    content += `<script setup lang="ts">\n${script}\n</script>\n\n`;
 
     for (const style of styles) {
       const scoped = style.scoped ? ' scoped' : '';
-      content += `<style${scoped}>\\\\n${style.content}\\\\n</style>\\\\n`;
+      content += `<style${scoped}>\n${style.content}\n</style>\n`;
     }
 
     await fs.promises.writeFile(vuePath, content, 'utf-8');
-    console.log(`  📄 Обновлён Vue файл: ${vuePath}`);
+    this.logger.info(`  📄 Обновлён Vue файл: ${vuePath}`);
   }
 }
