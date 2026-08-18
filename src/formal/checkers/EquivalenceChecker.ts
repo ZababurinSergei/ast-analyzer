@@ -34,7 +34,7 @@ export interface EquivalenceResult {
 }
 
 export interface CodeDifference {
-  type: 'added' | 'removed' | 'modified' | 'moved' | 'semantic';
+  type: 'added' | 'removed' | 'modified' | 'moved' | 'semantic' | 'error';
   location: { start: number; end: number; line?: number };
   original?: string;
   modified?: string;
@@ -205,32 +205,23 @@ export class EquivalenceChecker {
     return this.z3Verifier;
   }
 
-  /**
-   * ✅ ИСПРАВЛЕНО: Извлекает только выражение после return
-   * Было: извлекало весь оператор "return a + b;"
-   * Стало: извлекает только "a + b"
-   */
   private extractReturnExpression(code: string): string {
     if (!code) return '';
 
     let trimmed = code.trim();
 
-    // Убираем фигурные скобки
     if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
       trimmed = trimmed.slice(1, -1).trim();
     }
 
-    // Убираем ключевое слово return
     if (trimmed.startsWith('return ')) {
       trimmed = trimmed.substring(7).trim();
     }
 
-    // Убираем точку с запятой в конце
     if (trimmed.endsWith(';')) {
       trimmed = trimmed.slice(0, -1).trim();
     }
 
-    // Если после всех преобразований остались фигурные скобки
     if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
       trimmed = trimmed.slice(1, -1).trim();
     }
@@ -238,11 +229,6 @@ export class EquivalenceChecker {
     return trimmed;
   }
 
-  /**
-   * ✅ ИСПРАВЛЕНО: Создает контракт с телом функции для Z3 верификации эквивалентности
-   * Теперь использует extractReturnExpression вместо extractFunctionBody
-   * И использует квантор всеобщности для проверки эквивалентности
-   */
   private createEquivalenceContract(
     name: string,
     originalBody: string,
@@ -259,23 +245,18 @@ export class EquivalenceChecker {
       type: 'int' as const,
     }));
 
-    // ✅ ИСПРАВЛЕНО: используем extractReturnExpression вместо extractFunctionBody
     const originalExpr = this.extractReturnExpression(originalBody);
     const modifiedExpr = this.extractReturnExpression(modifiedBody);
 
     console.log(`   ✅ Extracted original expression: "${originalExpr}"`);
     console.log(`   ✅ Extracted modified expression: "${modifiedExpr}"`);
 
-    // Создаем предусловия с использованием range
     const preconditions: any[] = [];
     for (const param of params) {
       preconditions.push(range(param.name, -1000, 1000));
       console.log(`   📌 Added precondition: range(${param.name}, -1000, 1000)`);
     }
 
-    // ✅ ИСПОЛЬЗУЕМ КВАНТОР ВСЕОБЩНОСТИ
-    // Постусловие: для всех a, b выполняется a + b == b + a
-    // В Z3 это выражается как: ∀ a, b: a + b = b + a
     const postconditions: any[] = [
       {
         type: 'forall',
@@ -291,7 +272,6 @@ export class EquivalenceChecker {
     console.log(`   📌 Added universal quantifier postcondition:`);
     console.log(`      ∀ ${params.map(p => p.name).join(', ')}: ${originalExpr} == ${modifiedExpr}`);
 
-    // Инварианты: параметры остаются в диапазоне
     const invariants: any[] = [];
     if (params.length > 0) {
       for (const param of params) {
@@ -344,7 +324,7 @@ export class EquivalenceChecker {
         time: Date.now() - startTime,
         differences: [
           {
-            type: 'modified',
+            type: 'error',
             location: { start: 0, end: 0, line: 1 },
             original: 'Timeout',
             modified: 'Analysis timed out',
@@ -355,8 +335,28 @@ export class EquivalenceChecker {
       };
     }
 
+    // Загружаем файлы с graceful handling
     this.originalCode1 = await this.loadFile(originalPath);
     this.originalCode2 = await this.loadFile(modifiedPath);
+
+    // Проверяем, не пустые ли файлы (ошибка загрузки)
+    if (this.originalCode1 === '' || this.originalCode2 === '') {
+      const diff: CodeDifference = {
+        type: 'error',
+        location: { start: 1, end: 1, line: 1 },
+        original: this.originalCode1 === '' ? 'File not found or empty' : 'OK',
+        modified: this.originalCode2 === '' ? 'File not found or empty' : 'OK',
+        impact: 'high',
+        astNodeType: 'file_error'
+      };
+      return {
+        isEquivalent: false,
+        confidence: 0,
+        method: 'structural',
+        time: Date.now() - startTime,
+        differences: [diff]
+      };
+    }
 
     if (this.originalCode1 === this.originalCode2) {
       console.log('✅ Files are identical');
@@ -365,6 +365,25 @@ export class EquivalenceChecker {
         confidence: 1.0,
         method: 'structural',
         time: Date.now() - startTime,
+      };
+    }
+
+    if (Date.now() - startTime > timeout) {
+      return {
+        isEquivalent: false,
+        confidence: 0.3,
+        method: 'structural',
+        time: Date.now() - startTime,
+        differences: [
+          {
+            type: 'error',
+            location: { start: 0, end: 0, line: 1 },
+            original: 'Timeout',
+            modified: 'Analysis timed out',
+            impact: 'high',
+            astNodeType: 'timeout',
+          },
+        ],
       };
     }
 
@@ -390,7 +409,7 @@ export class EquivalenceChecker {
           time: Date.now() - startTime,
           differences: [
             {
-              type: 'modified',
+              type: 'error',
               location: { start: 0, end: 0, line: 1 },
               original: 'Timeout during AST analysis',
               modified: 'Analysis timed out',
@@ -449,6 +468,46 @@ export class EquivalenceChecker {
       }
     }
 
+    // Извлекаем функции для проверки разницы в количестве
+    const functions1 = this.extractFunctionsAST(sourceFile1);
+    const functions2 = this.extractFunctionsAST(sourceFile2);
+
+    const allDifferences: CodeDifference[] = [];
+
+    // Проверяем разницу в количестве функций
+    if (functions1.length !== functions2.length) {
+      const diff: CodeDifference = {
+        type: functions1.length > functions2.length ? 'removed' : 'added',
+        location: { start: 1, end: 1, line: 1 },
+        original: `Functions count: ${functions1.length}`,
+        modified: `Functions count: ${functions2.length}`,
+        impact: 'high',
+        astNodeType: 'function_count'
+      };
+      allDifferences.push(diff);
+
+      // Возвращаем результат без дальнейшей проверки, т.к. это критическое изменение
+      return {
+        isEquivalent: false,
+        confidence: 0.5,
+        method: 'structural',
+        time: Date.now() - startTime,
+        differences: allDifferences,
+        astResult: {
+          isEquivalent: false,
+          differences: allDifferences.map(d => ({
+            type: d.type,
+            location: d.location,
+            original: d.original,
+            modified: d.modified,
+            impact: d.impact,
+            astNodeType: d.astNodeType
+          })),
+          confidence: 0.5
+        }
+      };
+    }
+
     // ⭐ STEP 2: ФОРМАЛЬНАЯ ВЕРИФИКАЦИЯ ЧЕРЕЗ Z3 (ОСНОВНОЙ МЕТОД)
     let formalResult: {
       isValid: boolean;
@@ -470,9 +529,6 @@ export class EquivalenceChecker {
     } else {
       try {
         const z3 = await this.getZ3Verifier();
-
-        const functions1 = this.extractFunctionsAST(sourceFile1);
-        const functions2 = this.extractFunctionsAST(sourceFile2);
 
         console.log(
           `   📊 Found ${functions1.length} functions in original, ${functions2.length} in modified`
@@ -498,7 +554,6 @@ export class EquivalenceChecker {
             console.log(`      🔍 Verifying equivalence: ${match.name} (Z3)`);
 
             try {
-              // ⭐ Создаем контракт для проверки эквивалентности
               const contract = this.createEquivalenceContract(
                 match.name,
                 match.original.body,
@@ -506,7 +561,6 @@ export class EquivalenceChecker {
                 match.original.params
               );
 
-              // ⭐ Проверяем, является ли функция простой математической
               const isSimple =
                 this.isSimpleMathFunction(match.original.body) &&
                 this.isSimpleMathFunction(match.modified.body);
@@ -609,8 +663,7 @@ export class EquivalenceChecker {
       console.log('\n❌ No verification methods available');
     }
 
-    const allDifferences: CodeDifference[] = [];
-
+    // Добавляем semantic различие если Z3 нашел контрпример
     if (formalResult && !formalResult.isValid) {
       allDifferences.push({
         type: 'semantic',
@@ -673,7 +726,7 @@ export class EquivalenceChecker {
         time: Date.now() - startTime,
         differences: [
           {
-            type: 'modified',
+            type: 'error',
             location: { start: 0, end: 0, line: 1 },
             original: 'Timeout',
             modified: 'Analysis timed out',
@@ -752,7 +805,7 @@ export class EquivalenceChecker {
             isEquivalent: false,
             differences: [
               {
-                type: 'modified',
+                type: 'error',
                 location: { start: 0, end: 0, line: 1 },
                 original: 'Could not parse original function',
                 modified: 'Could not parse modified function',
@@ -797,7 +850,6 @@ export class EquivalenceChecker {
 
         const paramNames = contract.params.map(p => p.name);
 
-        // ⭐ Создаем контракт для проверки эквивалентности
         const equivalenceContract = this.createEquivalenceContract(
           contract.name,
           originalFunction,
@@ -805,7 +857,6 @@ export class EquivalenceChecker {
           paramNames
         );
 
-        // ⭐ Проверяем, является ли функция простой математической
         const isSimple =
           this.isSimpleMathFunction(originalFunction) &&
           this.isSimpleMathFunction(modifiedFunction);
@@ -928,7 +979,7 @@ export class EquivalenceChecker {
         time: Date.now() - startTime,
         differences: [
           {
-            type: 'modified',
+            type: 'error',
             location: { start: 0, end: 0, line: 1 },
             original: 'Timeout',
             modified: 'Analysis timed out',
@@ -992,7 +1043,7 @@ export class EquivalenceChecker {
         },
         differences: [
           {
-            type: 'modified',
+            type: 'error',
             location: { start: 0, end: 0, line: 1 },
             original: 'Formal verification error',
             modified: error instanceof Error ? error.message : String(error),
@@ -1004,10 +1055,6 @@ export class EquivalenceChecker {
     }
   }
 
-  /**
-   * Проверяет, является ли функция простой математической
-   * Используется для определения, можно ли применять Z3
-   */
   private isSimpleMathFunction(body: string): boolean {
     if (!body) return false;
 
@@ -1362,7 +1409,8 @@ export class EquivalenceChecker {
   private async loadFile(filePath: string): Promise<string> {
     const resolvedPath = path.resolve(filePath);
     if (!fs.existsSync(resolvedPath)) {
-      throw new Error(`File not found: ${filePath}`);
+      console.warn(`⚠️ File not found: ${filePath}, returning empty content`);
+      return '';
     }
     return fs.readFileSync(resolvedPath, 'utf-8');
   }
