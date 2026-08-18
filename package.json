@@ -35,6 +35,8 @@
     }
   },
   "scripts": {
+    "start:win": "node ./dist/cli.js project ./src/cli.ts 15 -o ./reports/component-tree-deep",
+    "start:win:abs": "node ./dist/cli.js project %CD%/src/cli.ts 15 -o ./reports/component-tree-deep",
     "clean": "rimraf dist",
     "build": "npm run clean && npm run build:types && npm run build:bundle && npm run build:cli",
     "build:types": "tsc --emitDeclarationOnly --declaration --declarationMap --outDir dist",

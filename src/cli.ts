@@ -45,7 +45,26 @@ import type { SplitModuleOptions, MinifyFolderOptions } from './types.js';
 
 // Utils
 import { showHelp, DEFAULT_EXCLUDE_PATTERNS } from './utils.js';
-import { normalizePathForDisplay, normalizeGraphPaths } from './utils/path-utils.js';
+import { normalizePathForDisplay, normalizeGraphPaths, normalizePathForOS } from './utils/path-utils.js';
+
+// ==========================================
+// ОПРЕДЕЛЕНИЕ ОС
+// ==========================================
+
+const isWindows = process.platform === 'win32';
+const isMac = process.platform === 'darwin';
+// const isLinux = process.platform === 'linux';
+
+// Настройки для Windows
+if (isWindows) {
+  // Включаем поддержку длинных путей и увеличиваем память
+  if (!process.env.NODE_OPTIONS) {
+    process.env.NODE_OPTIONS = '--max-old-space-size=4096';
+  }
+  console.log('🖥️ Windows detected - enabling long path support');
+}
+
+console.log(`🖥️ OS: ${isWindows ? 'Windows' : isMac ? 'macOS' : 'Linux'}`);
 
 // ==========================================
 // CLI ARGUMENT PARSING
@@ -70,23 +89,32 @@ interface GraphResult {
 
 function parseArgs(): ParsedArgs | null {
   const args = process.argv.slice(2);
-  const mode = args[0];
+
+  // ✅ Нормализация путей для Windows
+  const normalizedArgs = args.map(arg => {
+    // Не трогаем опции (начинаются с -)
+    if (arg.startsWith('-')) return arg;
+    // Нормализуем пути
+    return normalizePathForOS(arg);
+  });
+
+  const mode = normalizedArgs[0];
 
   let outputDir: string | undefined;
   let tsconfigPath: string | undefined;
   const cleanArgs: string[] = [];
 
   // Извлекаем -o/--output и --tsconfig из аргументов
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+  for (let i = 0; i < normalizedArgs.length; i++) {
+    const arg = normalizedArgs[i];
     if (arg === '-o' || arg === '--output') {
-      if (arg && args[i + 1]) {
-        outputDir = args[i + 1];
+      if (arg && normalizedArgs[i + 1]) {
+        outputDir = normalizedArgs[i + 1];
         i++; // пропускаем значение
       }
     } else if (arg === '--tsconfig') {
-      if (args[i + 1]) {
-        tsconfigPath = args[i + 1];
+      if (normalizedArgs[i + 1]) {
+        tsconfigPath = normalizedArgs[i + 1];
         i++;
       }
     } else if (arg) {
@@ -647,18 +675,27 @@ export async function runCLI(): Promise<void> {
   // Сохраняем исходную директорию СРАЗУ
   const originalCwd = process.cwd();
 
+  // ✅ Нормализуем targetPath для Windows
+  let normalizedTargetPath = targetPath;
+  if (isWindows) {
+    normalizedTargetPath = normalizePathForOS(targetPath);
+  }
+
   // 1. СНАЧАЛА обрабатываем tsconfig (до смены директории)
   if (tsconfigPath) {
     const resolvedTsconfig = path.isAbsolute(tsconfigPath)
       ? tsconfigPath
       : path.resolve(originalCwd, tsconfigPath);
 
-    if (fs.existsSync(resolvedTsconfig)) {
-      setTsConfigPath(resolvedTsconfig);
-      console.log(`📄 TsConfig: ${resolvedTsconfig}`);
+    // ✅ Нормализуем для Windows
+    const normalizedTsconfig = normalizePathForOS(resolvedTsconfig);
+
+    if (fs.existsSync(normalizedTsconfig)) {
+      setTsConfigPath(normalizedTsconfig);
+      console.log(`📄 TsConfig: ${normalizedTsconfig}`);
 
       // Дополнительно загружаем и показываем алиасы
-      const tsConfig = loadTsConfig(path.dirname(resolvedTsconfig));
+      const tsConfig = loadTsConfig(path.dirname(normalizedTsconfig));
       if (tsConfig?.compilerOptions?.paths) {
         console.log('🔗 Найдены алиасы в tsconfig:');
         Object.entries(tsConfig.compilerOptions.paths).forEach(([alias, targets]) => {
@@ -666,28 +703,33 @@ export async function runCLI(): Promise<void> {
         });
       }
     } else {
-      console.warn(`⚠️ TsConfig не найден: ${resolvedTsconfig}`);
-      console.warn(`   Искали: ${resolvedTsconfig}`);
+      console.warn(`⚠️ TsConfig не найден: ${normalizedTsconfig}`);
+      console.warn(`   Искали: ${normalizedTsconfig}`);
     }
   }
 
   // 2. ПОТОМ обрабатываем outputDir и меняем директорию
   let outputDirChanged = false;
-  let currentTargetPath = targetPath;
+  let currentTargetPath = normalizedTargetPath;
 
   if (outputDir) {
     // Создаем директорию если её нет (относительно originalCwd)
     const absoluteOutputDir = path.resolve(originalCwd, outputDir);
-    if (!fs.existsSync(absoluteOutputDir)) {
-      fs.mkdirSync(absoluteOutputDir, { recursive: true });
-      console.log(`📁 Создана выходная директория: ${absoluteOutputDir}`);
+    // ✅ Нормализуем для Windows
+    const normalizedOutputDir = normalizePathForOS(absoluteOutputDir);
+
+    if (!fs.existsSync(normalizedOutputDir)) {
+      fs.mkdirSync(normalizedOutputDir, { recursive: true });
+      console.log(`📁 Создана выходная директория: ${normalizedOutputDir}`);
     }
 
     // Преобразуем targetPath в абсолютный путь относительно исходной директории
-    if (!path.isAbsolute(targetPath)) {
-      currentTargetPath = path.resolve(originalCwd, targetPath);
+    if (!path.isAbsolute(normalizedTargetPath)) {
+      currentTargetPath = path.resolve(originalCwd, normalizedTargetPath);
+      // ✅ Нормализуем для Windows
+      currentTargetPath = normalizePathForOS(currentTargetPath);
       console.log('📄 Преобразован относительный путь в абсолютный:');
-      console.log(`   Было: ${targetPath}`);
+      console.log(`   Было: ${normalizedTargetPath}`);
       console.log(`   Стало: ${currentTargetPath}`);
     }
 
@@ -698,7 +740,7 @@ export async function runCLI(): Promise<void> {
     }
 
     // Меняем рабочую директорию
-    process.chdir(absoluteOutputDir);
+    process.chdir(normalizedOutputDir);
     outputDirChanged = true;
     console.log(`📂 Выходная директория: ${process.cwd()}\n`);
   }

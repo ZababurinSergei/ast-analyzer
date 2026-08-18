@@ -1,7 +1,12 @@
 // modes/project-graph.ts
 import path from 'path';
 import fs from 'fs';
-import { parseFile, resolveFilePath, isExternalModule } from '../core/ast-parser.js';
+import {
+  parseFile,
+  resolveFilePath,
+  isExternalModule,
+  getTsConfigForFile,
+} from '../core/ast-parser.js';
 import { IGNORE_NODE_MODULES } from '../config.js';
 import { walk } from 'estree-walker';
 import { normalizePathForDisplay } from '../utils/path-utils.js';
@@ -164,6 +169,15 @@ export function buildProjectGraph(
   const rootAbsPath = path.resolve(entryPoint);
   const queue: { path: string; depth: number; isRoot: boolean }[] = [];
 
+  // ✅ Получаем tsconfig для точки входа (с кэшированием)
+  const tsConfig = getTsConfigForFile(rootAbsPath);
+  if (tsConfig?.compilerOptions?.paths) {
+    console.log('🔗 Найдены алиасы в tsconfig:');
+    Object.entries(tsConfig.compilerOptions.paths).forEach(([alias, targets]) => {
+      console.log(`   ${alias} → ${targets[0]}`);
+    });
+  }
+
   queue.push({ path: rootAbsPath, depth: 1, isRoot: true });
 
   while (queue.length > 0) {
@@ -218,7 +232,7 @@ export function buildProjectGraph(
         continue;
       }
 
-      // Пытаемся разрешить путь
+      // ✅ resolveFilePath теперь использует getTsConfigForFile с кэшированием
       let resolvedPath = resolveFilePath(currentDir, target);
 
       // Если не разрешился, пробуем как директорию
@@ -271,6 +285,6 @@ export function buildProjectGraph(
 
   return {
     rootKey: normalizePathForDisplay(path.relative(process.cwd(), rootAbsPath) || rootAbsPath),
-    graph: normalizedGraph
+    graph: normalizedGraph,
   };
 }

@@ -10,6 +10,7 @@ import type { TsConfig } from './tsconfig-resolver.js';
 // ==========================================
 // КОНФИГУРАЦИЯ
 // ==========================================
+
 const SUPPORTED_EXTENSIONS = ['.ts', '.mjs', '.js', '.tsx', '.jsx', '.vue'];
 const DEFAULT_EXCLUDE_PATTERNS = [
   'node_modules',
@@ -29,14 +30,22 @@ const DEFAULT_EXCLUDE_PATTERNS = [
   'temp',
 ];
 
-// ✅ ИМПОРТИРУЕМ ТИПЫ ИЗ @typescript-eslint/parser
 import type { ParserOptions } from '@typescript-eslint/parser';
 
 // Кэш для tsconfig
 let tsConfigCache: TsConfig | null = null;
 let tsConfigBaseDirCache: string | null = null;
 
-function getTsConfigForFile(filePath: string): TsConfig | null {
+// ==========================================
+// ФУНКЦИЯ С КЭШИРОВАНИЕМ
+// ==========================================
+
+/**
+ * Возвращает tsconfig для файла с кэшированием
+ * @param filePath - Путь к файлу для которого нужно получить tsconfig
+ * @returns TsConfig или null если не найден
+ */
+export function getTsConfigForFile(filePath: string): TsConfig | null {
   const dir = path.dirname(filePath);
   if (tsConfigCache && tsConfigBaseDirCache === dir) {
     return tsConfigCache;
@@ -88,7 +97,6 @@ export function parseVueSFCFile(filePath: string): VueSFCData | null {
       scriptType: null,
     };
 
-    // Извлекаем script блоки из дескриптора
     if (descriptor.script) {
       result.script = descriptor.script.content;
       result.scriptType = 'basic';
@@ -102,15 +110,12 @@ export function parseVueSFCFile(filePath: string): VueSFCData | null {
       result.scriptType = descriptor.scriptSetup.lang === 'ts' ? 'tsSetup' : 'setup';
     }
 
-    // Извлекаем template
     if (descriptor.template) {
       result.template = descriptor.template.content;
     }
 
-    // Извлекаем стили
     result.styles = descriptor.styles.map(style => style.content);
 
-    // Извлекаем пользовательские блоки
     for (const [blockName, block] of Object.entries(descriptor.customBlocks || {})) {
       if (!result.customBlocks[blockName]) {
         result.customBlocks[blockName] = [];
@@ -133,14 +138,12 @@ export function parseVueSFCFile(filePath: string): VueSFCData | null {
  */
 export function parseFile(filePath: string, _options?: { extractTemplate?: boolean }): any {
   try {
-    // Проверяем существование файла
     if (!fs.existsSync(filePath)) {
       console.warn(`⚠️ Файл не найден: ${filePath}`);
       return null;
     }
 
     console.log(`📖 Чтение файла: ${filePath}`);
-
     let code = fs.readFileSync(filePath, 'utf-8');
     console.log(`📏 Размер файла: ${code.length} символов`);
 
@@ -149,7 +152,6 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
 
     if (filePath.endsWith('.vue')) {
       isVue = true;
-      // Используем AST-парсер вместо регулярных выражений
       const sfc = parseVueSFCFile(filePath);
 
       if (!sfc) {
@@ -157,11 +159,9 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
         return null;
       }
 
-      // Определяем тип скрипта
       const scriptType = sfc.scriptType || 'unknown';
       isTypeScript = scriptType === 'ts' || scriptType === 'tsSetup';
 
-      // Используем scriptSetup или script
       const scriptContent = sfc.scriptSetup || sfc.script;
 
       if (!scriptContent) {
@@ -176,24 +176,16 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
         console.log(`   🎨 Styles: ${sfc.styles.length} блоков`);
       }
     } else {
-      // Определяем TypeScript по расширению
       isTypeScript = filePath.endsWith('.ts') || filePath.endsWith('.tsx');
     }
 
-    // ==========================================
-    // ✅ ИСПРАВЛЕННЫЕ НАСТРОЙКИ ПАРСЕРА С ПРАВИЛЬНЫМИ ТИПАМИ
-    // ==========================================
-
-    // ✅ БАЗОВЫЕ НАСТРОЙКИ - используем литералы вместо number для EcmaVersion
     const parserOptions: ParserOptions = {
-      ecmaVersion: 2026 as const, // ✅ Используем const assertion
+      ecmaVersion: 2026 as const,
       sourceType: 'module',
       loc: true,
       range: true,
       comment: true,
       tokens: true,
-
-      // ✅ ДОБАВЛЯЕМ ПОДДЕРЖКУ CLASSES И JSX
       ecmaFeatures: {
         jsx: filePath.endsWith('.tsx') || filePath.endsWith('.jsx'),
         globalReturn: false,
@@ -201,16 +193,13 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       },
     };
 
-    // Для JavaScript файлов используем более мягкие настройки
     if (!isTypeScript) {
       parserOptions.ecmaFeatures = {
         ...parserOptions.ecmaFeatures,
-        // Явно включаем поддержку классов
         class: true,
       };
     }
 
-    // Добавляем поддержку TypeScript
     if (isTypeScript) {
       parserOptions.ecmaFeatures = {
         ...parserOptions.ecmaFeatures,
@@ -222,19 +211,13 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       `🔧 Парсинг с опциями: sourceType=${parserOptions.sourceType}, ecmaVersion=${parserOptions.ecmaVersion}`
     );
 
-    // ==========================================
-    // ✅ FALLBACK НАСТРОЙКИ С ПРАВИЛЬНЫМИ ТИПАМИ
-    // ==========================================
     const fallbackOptions: ParserOptions = {
-      ecmaVersion: 2022 as const, // ✅ Используем const assertion
+      ecmaVersion: 2022 as const,
       sourceType: 'module',
       loc: true,
       range: true,
     };
 
-    // ==========================================
-    // ✅ ОБЕРТЫВАЕМ ПАРСИНГ В TRY-CATCH С FALLBACK
-    // ==========================================
     let ast;
     try {
       ast = parser.parse(code, parserOptions);
@@ -244,7 +227,6 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
         console.error('📚 Стек ошибки:', parseError.stack);
       }
 
-      // ✅ ПОПЫТКА ПАРСИНГА С ДРУГИМИ НАСТРОЙКАМИ (fallback)
       try {
         console.log('🔄 Повторная попытка с упрощенными настройками...');
         ast = parser.parse(code, fallbackOptions);
@@ -258,18 +240,13 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       }
     }
 
-    // ==========================================
-    // ✅ УСИЛЕННАЯ ПРОВЕРКА AST
-    // ==========================================
     if (!ast) {
       console.warn(`⚠️ AST не построен для файла: ${filePath}`);
       return null;
     }
 
-    // Проверяем, что AST содержит body
     if (!ast.body || !Array.isArray(ast.body)) {
       console.warn(`⚠️ AST не содержит body для файла: ${filePath}`);
-      // Вместо null возвращаем пустой AST с body
       return {
         type: 'Program',
         body: [],
@@ -279,14 +256,11 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       };
     }
 
-    // Логируем информацию об AST
     console.log(`✅ AST успешно построен, узлов верхнего уровня: ${ast.body.length}`);
 
-    // Выводим первые 5 типов узлов для диагностики
     const nodeTypes = ast.body.slice(0, 5).map((n: any) => n?.type || 'unknown');
     console.log(`📋 Типы первых узлов: ${nodeTypes.join(', ')}`);
 
-    // Проверяем наличие ключевых элементов
     const hasClasses = ast.body.some((n: any) => n?.type === 'ClassDeclaration');
     const hasFunctions = ast.body.some((n: any) => n?.type === 'FunctionDeclaration');
     const hasVariables = ast.body.some((n: any) => n?.type === 'VariableDeclaration');
@@ -303,7 +277,6 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
 
     return ast;
   } catch (e) {
-    // Проверяем, является ли ошибка ENOENT (файл не найден)
     if (e instanceof Error && (e as any).code === 'ENOENT') {
       console.warn(`⚠️ Файл не найден: ${filePath}`);
       return null;
@@ -320,7 +293,6 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
 }
 
 export function isExternalModule(importTarget: string): boolean {
-  // Алиасы (начинаются с @, #, ~ и т.д.) считаем внутренними
   if (
     importTarget.startsWith('@') ||
     importTarget.startsWith('#') ||
@@ -334,74 +306,142 @@ export function isExternalModule(importTarget: string): boolean {
   );
 }
 
+// ==========================================
+// ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ resolveFilePath
+// ==========================================
+
+/**
+ * Разрешает путь импорта в абсолютный путь к файлу
+ * Поддерживает:
+ * - Относительные пути (./, ../)
+ * - Алиасы из tsconfig (@/, #/)
+ * - Разные расширения (.ts, .js, .tsx, .jsx, .mjs, .cjs)
+ * - Автоматическое преобразование .js → .ts (если .ts-файл существует)
+ * - Поиск файлов БЕЗ расширения
+ * - Index файлы в директориях
+ * - Кэширование tsconfig для производительности
+ *
+ * @param baseDir - Абсолютный путь к директории файла
+ * @param targetPath - Путь из import (может быть относительным или алиасом)
+ * @returns Абсолютный путь к файлу или null
+ */
 export function resolveFilePath(baseDir: string, targetPath: string): string | null {
-  // 1. Сначала проверяем алиасы из tsconfig
+  // 1. Проверяем, не абсолютный ли уже путь
+  if (path.isAbsolute(targetPath) && fs.existsSync(targetPath)) {
+    return targetPath;
+  }
+
+  // 2. Используем getTsConfigForFile с кэшированием
   const tsConfig = getTsConfigForFile(baseDir);
-  const tsConfigDir = getTsConfigDir();
+  const tsConfigDir = getTsConfigDir() || baseDir;
 
-  // Для алиасов используем директорию tsconfig как корень
-  const aliasedPath = resolveAliasPath(targetPath, tsConfigDir || baseDir, tsConfig);
-
+  // 3. Проверяем алиасы из tsconfig
+  const aliasedPath = resolveAliasPath(targetPath, tsConfigDir, tsConfig);
   if (aliasedPath && fs.existsSync(aliasedPath)) {
     console.log(`   🔗 Алиас: ${targetPath} → ${path.relative(process.cwd(), aliasedPath)}`);
     return aliasedPath;
   }
 
-  // 2. Обычный резолвинг
+  // 4. Формируем полный путь
   const fullPath = path.resolve(baseDir, targetPath);
 
-  // 2.1 Проверяем как файл
+  // 5. Проверяем файл как есть (с текущим расширением)
   if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
     return fullPath;
   }
 
-  // 2.2 Проверяем как директорию с index файлом
+  // 6. Проверяем файл БЕЗ расширения (если в targetPath нет расширения)
+  const hasExtension = path.extname(targetPath) !== '';
+  if (!hasExtension && fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+    console.log(`   📄 Найден без расширения: ${targetPath}`);
+    return fullPath;
+  }
+
+  // 7. Специальная проверка: .js → .ts (и наоборот)
+  if (targetPath.endsWith('.js')) {
+    const tsPath = fullPath.replace(/\.js$/, '.ts');
+    if (fs.existsSync(tsPath) && fs.statSync(tsPath).isFile()) {
+      console.log(`   🔄 .js → .ts: ${targetPath} → ${path.relative(process.cwd(), tsPath)}`);
+      return tsPath;
+    }
+  }
+  if (targetPath.endsWith('.ts')) {
+    const jsPath = fullPath.replace(/\.ts$/, '.js');
+    if (fs.existsSync(jsPath) && fs.statSync(jsPath).isFile()) {
+      console.log(`   🔄 .ts → .js: ${targetPath} → ${path.relative(process.cwd(), jsPath)}`);
+      return jsPath;
+    }
+  }
+
+  // 8. Проверяем ВСЕ возможные расширения (ВКЛЮЧАЯ то, что уже проверяли)
+  const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', ''];
+
+  for (const ext of extensions) {
+    // ✅ Убрана проверка: if (ext === targetExt) continue;
+    // Теперь проверяем ВСЕ варианты, даже если они совпадают с исходным расширением
+    const testPath = fullPath + ext;
+    if (fs.existsSync(testPath) && fs.statSync(testPath).isFile()) {
+      console.log(`   📄 Найден: ${targetPath} → ${path.relative(process.cwd(), testPath)}`);
+      return testPath;
+    }
+  }
+
+  // 9. Проверяем как директорию с index файлом
   if (fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory()) {
-    for (const ext of SUPPORTED_EXTENSIONS) {
+    for (const ext of extensions) {
       const indexPath = path.join(fullPath, `index${ext}`);
-      if (fs.existsSync(indexPath)) {
+      if (fs.existsSync(indexPath) && fs.statSync(indexPath).isFile()) {
         console.log(`   📁 Директория → index${ext}: ${targetPath}`);
         return indexPath;
       }
     }
   }
 
-  // 3. Проверяем с расширениями
-  for (const ext of SUPPORTED_EXTENSIONS) {
-    const withExt = fullPath + ext;
-    if (fs.existsSync(withExt)) {
-      return withExt;
-    }
-
-    // Проверяем index файлы
-    const indexPath = path.join(fullPath, `index${ext}`);
-    if (fs.existsSync(indexPath)) {
-      console.log(`   📁 Index файл: ${targetPath} → index${ext}`);
-      return indexPath;
-    }
-  }
-
-  // 4. Проверяем относительно директории tsconfig
+  // 10. Проверяем относительно tsconfig директории
   if (tsConfigDir && tsConfigDir !== baseDir) {
     const fromRootPath = path.resolve(tsConfigDir, targetPath);
 
+    // Проверяем файл как есть
     if (fs.existsSync(fromRootPath) && fs.statSync(fromRootPath).isFile()) {
       return fromRootPath;
     }
 
-    if (fs.existsSync(fromRootPath) && fs.statSync(fromRootPath).isDirectory()) {
-      for (const ext of SUPPORTED_EXTENSIONS) {
-        const indexPath = path.join(fromRootPath, `index${ext}`);
-        if (fs.existsSync(indexPath)) {
-          return indexPath;
-        }
+    // Проверяем без расширения
+    if (!hasExtension && fs.existsSync(fromRootPath) && fs.statSync(fromRootPath).isFile()) {
+      return fromRootPath;
+    }
+
+    // .js → .ts
+    if (targetPath.endsWith('.js')) {
+      const tsFromRoot = fromRootPath.replace(/\.js$/, '.ts');
+      if (fs.existsSync(tsFromRoot) && fs.statSync(tsFromRoot).isFile()) {
+        return tsFromRoot;
       }
     }
 
-    for (const ext of SUPPORTED_EXTENSIONS) {
-      const withExt = fromRootPath + ext;
-      if (fs.existsSync(withExt)) {
-        return withExt;
+    // .ts → .js
+    if (targetPath.endsWith('.ts')) {
+      const jsFromRoot = fromRootPath.replace(/\.ts$/, '.js');
+      if (fs.existsSync(jsFromRoot) && fs.statSync(jsFromRoot).isFile()) {
+        return jsFromRoot;
+      }
+    }
+
+    // Проверяем все расширения
+    for (const ext of extensions) {
+      const testPath = fromRootPath + ext;
+      if (fs.existsSync(testPath) && fs.statSync(testPath).isFile()) {
+        return testPath;
+      }
+    }
+
+    // Проверяем index файлы
+    if (fs.existsSync(fromRootPath) && fs.statSync(fromRootPath).isDirectory()) {
+      for (const ext of extensions) {
+        const indexPath = path.join(fromRootPath, `index${ext}`);
+        if (fs.existsSync(indexPath) && fs.statSync(indexPath).isFile()) {
+          return indexPath;
+        }
       }
     }
   }
