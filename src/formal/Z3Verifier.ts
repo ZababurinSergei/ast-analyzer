@@ -59,8 +59,6 @@ function createIntVal(value: number, context: any): any {
   return context.Int.val(value);
 }
 
-// createBoolVal - удалена, так как не используется
-
 export class Z3Verifier {
   private z3: any = null;
   private context: any = null;
@@ -70,6 +68,7 @@ export class Z3Verifier {
   private functionBodyModeler: FunctionBodyModeler | null = null;
   private initPromise: Promise<void> | null = null;
   private initLock = false;
+  private debug = true;
 
   async initialize(): Promise<void> {
     if (this.initialized) {
@@ -149,6 +148,14 @@ export class Z3Verifier {
 
     const startTime = Date.now();
 
+    console.log(`\n🔍 VERIFYING FUNCTION: ${contract.name}`);
+    console.log(`   Params: ${JSON.stringify(contract.params)}`);
+    console.log(`   Return type: ${contract.returnType}`);
+    console.log(`   Body: ${contract.body || '(none)'}`);
+    console.log(`   Preconditions: ${contract.preconditions.length}`);
+    console.log(`   Postconditions: ${contract.postconditions.length}`);
+    console.log(`   Invariants: ${contract.invariants.length}`);
+
     try {
       const variables = new Map<string, any>();
 
@@ -156,10 +163,13 @@ export class Z3Verifier {
       for (const param of contract.params) {
         if (param.type === 'int') {
           variables.set(param.name, createIntVar(param.name, this.context));
+          console.log(`   📌 Created int variable: ${param.name}`);
         } else if (param.type === 'bool') {
           variables.set(param.name, createBoolVar(param.name, this.context));
+          console.log(`   📌 Created bool variable: ${param.name}`);
         } else if (param.type === 'string') {
           variables.set(param.name, this.context.String.const(param.name));
+          console.log(`   📌 Created string variable: ${param.name}`);
         }
       }
 
@@ -167,59 +177,93 @@ export class Z3Verifier {
       if (contract.returnType !== 'void') {
         if (contract.returnType === 'int') {
           variables.set('result', createIntVar('result', this.context));
+          console.log(`   📌 Created int result variable: result`);
         } else if (contract.returnType === 'bool') {
           variables.set('result', createBoolVar('result', this.context));
+          console.log(`   📌 Created bool result variable: result`);
         } else if (contract.returnType === 'string') {
           variables.set('result', this.context.String.const('result'));
+          console.log(`   📌 Created string result variable: result`);
         }
       }
 
       // Парсим тело функции через ExpressionParser
       if (contract.body && this.expressionParser) {
+        console.log(`   📝 Parsing body: "${contract.body}"`);
         const bodyExpr = this.expressionParser.parse(contract.body, variables);
         if (bodyExpr) {
+          console.log(`   ✅ Body parsed successfully`);
           // Добавляем ограничение: result = bodyExpr
           if (variables.has('result')) {
             const resultVar = variables.get('result');
+            console.log(`   ➕ Adding constraint: result == ${contract.body}`);
             this.solver.add(this.context.Eq(resultVar, bodyExpr));
           } else {
             // Если нет result переменной, просто добавляем тело
+            console.log(`   ➕ Adding body constraint`);
             this.solver.add(bodyExpr);
           }
+        } else {
+          console.log(`   ⚠️ Failed to parse body expression`);
         }
       }
 
       // Добавляем предусловия
+      console.log(`   📋 Processing ${contract.preconditions.length} preconditions:`);
       for (const pre of contract.preconditions) {
+        console.log(`      - ${JSON.stringify(pre)}`);
         const constraint = this.constraintToZ3(pre, variables);
         if (constraint) {
+          console.log(`      ✅ Added precondition`);
           this.solver.add(constraint);
+        } else {
+          console.log(`      ⚠️ Failed to add precondition`);
         }
       }
 
       // Добавляем инварианты
+      console.log(`   📋 Processing ${contract.invariants.length} invariants:`);
       for (const inv of contract.invariants) {
+        console.log(`      - ${JSON.stringify(inv)}`);
         const constraint = this.constraintToZ3(inv, variables);
         if (constraint) {
+          console.log(`      ✅ Added invariant`);
           this.solver.add(constraint);
+        } else {
+          console.log(`      ⚠️ Failed to add invariant`);
         }
       }
 
       // Строим постусловие
+      console.log(`   📋 Processing ${contract.postconditions.length} postconditions:`);
       const postFormula = this.buildPostconditionFormula(contract.postconditions, variables);
+
+      if (postFormula) {
+        console.log(`   ✅ Postcondition formula built`);
+      } else {
+        console.log(`   ⚠️ Failed to build postcondition formula`);
+      }
 
       // Проверяем: предусловия + инварианты ⇒ постусловия
       this.solver.push();
 
       if (postFormula) {
+        const notPost = this.context.Not(postFormula);
+        console.log(`   🔍 Checking: NOT(postcondition)`);
         // Проверяем отрицание постусловия (ищем контрпример)
-        this.solver.add(this.context.Not(postFormula));
+        this.solver.add(notPost);
+        console.log(`   ➕ Added NOT(postcondition) to solver`);
+      } else {
+        console.log(`   ⚠️ No postcondition formula, skipping check`);
       }
 
+      console.log(`   🚀 Running Z3 solver...`);
       const result = await this.solver.check();
+      console.log(`   📊 Z3 result: ${result}`);
 
       if (result === 'sat') {
         const model = this.extractModel(variables);
+        console.log(`   🔴 Found counterexample:`, Object.fromEntries(model));
         return {
           isValid: false,
           model,
@@ -227,11 +271,13 @@ export class Z3Verifier {
           time: Date.now() - startTime,
         };
       } else if (result === 'unsat') {
+        console.log(`   ✅ Verification successful: UNSAT - no counterexample found`);
         return {
           isValid: true,
           time: Date.now() - startTime,
         };
       } else {
+        console.log(`   ⚠️ Unknown result from Z3: ${result}`);
         return {
           isValid: false,
           time: Date.now() - startTime,
@@ -239,7 +285,7 @@ export class Z3Verifier {
         };
       }
     } catch (error: any) {
-      console.error('Verification error:', error);
+      console.error('❌ Verification error:', error);
       return {
         isValid: false,
         time: Date.now() - startTime,
@@ -247,6 +293,7 @@ export class Z3Verifier {
       };
     } finally {
       this.solver.pop();
+      console.log(`   ⏱️ Verification took ${Date.now() - startTime}ms\n`);
     }
   }
 
@@ -482,12 +529,25 @@ export class Z3Verifier {
   private constraintToZ3(constraint: VerificationConstraint, variables: Map<string, any>): any {
     if (!this.context) return null;
 
+    if (this.debug) {
+      console.log(`      🔧 constraintToZ3: ${constraint.type}`);
+      console.log(`         left: ${constraint.left}`);
+      console.log(`         right: ${constraint.right}`);
+    }
+
     switch (constraint.type) {
       case 'equality': {
         const left = this.valueToZ3(constraint.left, variables);
         const right = this.valueToZ3(constraint.right, variables);
+        if (this.debug) {
+          console.log(`         left parsed: ${left}`);
+          console.log(`         right parsed: ${right}`);
+        }
         if (left && right) {
           return this.context.Eq(left, right);
+        }
+        if (this.debug) {
+          console.log(`         ⚠️ Could not parse equality, returning true`);
         }
         return this.context.Bool.val(true);
       }
@@ -571,6 +631,67 @@ export class Z3Verifier {
   private valueToZ3(value: any, variables: Map<string, any>): any {
     if (!this.context) return null;
 
+    if (this.debug) {
+      console.log(`         📝 valueToZ3: ${value} (${typeof value})`);
+    }
+
+    // Если value - это строка, пытаемся распарсить её как выражение
+    if (typeof value === 'string') {
+      // Проверяем, является ли это именем переменной
+      if (variables.has(value)) {
+        if (this.debug) console.log(`         ✅ Found variable: ${value}`);
+        return variables.get(value);
+      }
+
+      // Пытаемся распарсить через ExpressionParser
+      if (this.expressionParser) {
+        if (this.debug) console.log(`         🔄 Parsing via ExpressionParser: "${value}"`);
+        const parsed = this.expressionParser.parse(value, variables);
+        if (parsed) {
+          if (this.debug) console.log(`         ✅ Parsed successfully: ${parsed}`);
+          return parsed;
+        } else {
+          if (this.debug) console.log(`         ⚠️ ExpressionParser returned null for: "${value}"`);
+        }
+      }
+
+      // Проверяем, может быть это число в строке
+      if (!isNaN(Number(value))) {
+        try {
+          const num = Number(value);
+          if (this.debug) console.log(`         🔢 Parsed as number: ${num}`);
+          return this.context.Int.val(num);
+        } catch {
+          if (this.debug) console.log(`         ⚠️ Failed to parse as number`);
+        }
+      }
+
+      // Проверяем булевы значения
+      if (value === 'true') {
+        try {
+          return this.context.Bool.val(true);
+        } catch {
+          return null;
+        }
+      }
+      if (value === 'false') {
+        try {
+          return this.context.Bool.val(false);
+        } catch {
+          return null;
+        }
+      }
+
+      // Пробуем создать строковую константу
+      try {
+        if (this.debug) console.log(`         📝 Creating string constant: "${value}"`);
+        return this.context.String.val(value);
+      } catch {
+        if (this.debug) console.log(`         ⚠️ Failed to create string constant`);
+        return null;
+      }
+    }
+
     // Число
     if (typeof value === 'number') {
       try {
@@ -584,26 +705,6 @@ export class Z3Verifier {
     if (typeof value === 'boolean') {
       try {
         return this.context.Bool.val(value);
-      } catch {
-        return null;
-      }
-    }
-
-    // Строка - переменная или литерал
-    if (typeof value === 'string') {
-      if (variables.has(value)) {
-        return variables.get(value);
-      }
-      // Проверяем, может быть это число в строке
-      if (!isNaN(Number(value))) {
-        try {
-          return this.context.Int.val(Number(value));
-        } catch {
-          return null;
-        }
-      }
-      try {
-        return this.context.String.val(value);
       } catch {
         return null;
       }
@@ -723,15 +824,24 @@ export class Z3Verifier {
   ): any {
     if (!this.context) return null;
 
-    if (postconditions.length === 0) return this.context.Bool.val(true);
-
-    const firstPostcondition = postconditions[0];
-    if (postconditions.length === 1 && firstPostcondition) {
-      return this.constraintToZ3(firstPostcondition, params);
+    if (this.debug) {
+      console.log(`   📋 Building postcondition formula from ${postconditions.length} postconditions`);
     }
 
-    const formulas = postconditions.map(p => this.constraintToZ3(p, params));
+    if (postconditions.length === 0) {
+      if (this.debug) console.log(`      No postconditions, returning true`);
+      return this.context.Bool.val(true);
+    }
+
+    const formulas = postconditions.map(p => {
+      const result = this.constraintToZ3(p, params);
+      if (this.debug) console.log(`      Postcondition ${p.type}: ${result}`);
+      return result;
+    });
+
     const validFormulas = formulas.filter(f => f !== null);
+    if (this.debug) console.log(`   Valid formulas: ${validFormulas.length}`);
+
     if (validFormulas.length === 0) return this.context.Bool.val(true);
     if (validFormulas.length === 1) return validFormulas[0];
     return this.context.And(...validFormulas);

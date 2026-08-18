@@ -1,7 +1,7 @@
 // src/formal/checkers/EquivalenceChecker.ts
 
 import type { FunctionContract } from '../Z3Verifier.js';
-import { Z3Verifier, range, eq, and, not, or, implies } from '../Z3Verifier.js';
+import { Z3Verifier, range, eq, or } from '../Z3Verifier.js';
 import { Project, ScriptTarget, ModuleKind, type SourceFile, Node } from 'ts-morph';
 import { ASTComparator, type ASTDifference } from '../../core/ASTComparator.js';
 import fs from 'fs';
@@ -221,7 +221,7 @@ export class EquivalenceChecker {
 
   /**
    * Создает контракт с телом функции для Z3 верификации эквивалентности
-   * Использует eq, and, or, implies для построения сложных условий
+   * Связывает result с обоими выражениями через постусловия
    */
   private createEquivalenceContract(
     name: string,
@@ -229,6 +229,11 @@ export class EquivalenceChecker {
     modifiedBody: string,
     paramNames: string[]
   ): FunctionContract {
+    console.log(`\n📋 Creating equivalence contract for: ${name}`);
+    console.log(`   Original body: "${originalBody}"`);
+    console.log(`   Modified body: "${modifiedBody}"`);
+    console.log(`   Params: ${paramNames.join(', ')}`);
+
     const params = paramNames.map(p => ({
       name: p,
       type: 'int' as const,
@@ -237,60 +242,53 @@ export class EquivalenceChecker {
     const originalExpr = this.extractFunctionBody(originalBody);
     const modifiedExpr = this.extractFunctionBody(modifiedBody);
 
+    console.log(`   Extracted original expression: "${originalExpr}"`);
+    console.log(`   Extracted modified expression: "${modifiedExpr}"`);
+
     // Создаем предусловия с использованием range
     const preconditions: any[] = [];
     for (const param of params) {
       preconditions.push(range(param.name, -1000, 1000));
+      console.log(`   📌 Added precondition: range(${param.name}, -1000, 1000)`);
     }
 
-    // Постусловие: результаты должны быть равны
-    const equivalenceCondition = eq(originalExpr, modifiedExpr);
+    // Постусловия:
+    // 1. result должен быть равен оригинальному выражению
+    // 2. result должен быть равен модифицированному выражению
+    // Из 1 и 2 следует, что originalExpr == modifiedExpr
+    const postconditions: any[] = [
+      eq('result', originalExpr),
+      eq('result', modifiedExpr)
+    ];
 
-    // Создаем условие валидности параметров
-    let allParamsValid: any = null;
-    if (params.length === 0) {
-      // Нет параметров - условие всегда true
-      allParamsValid = eq('true', 'true');
-    } else if (params.length === 1) {
-      // Безопасно обращаемся к params[0]
-      const firstParam = params[0];
-      if (firstParam) {
-        allParamsValid = range(firstParam.name, -1000, 1000);
-      } else {
-        allParamsValid = eq('true', 'true');
-      }
-    } else {
-      const ranges = params.map(p => range(p.name, -1000, 1000));
-      allParamsValid = and(ranges);
-    }
+    console.log(`   📌 Added postcondition: result == ${originalExpr}`);
+    console.log(`   📌 Added postcondition: result == ${modifiedExpr}`);
 
-    // Используем implies для логической импликации
-    const validityCondition = implies(allParamsValid, equivalenceCondition);
-
-    // Постусловия
-    const postconditions: any[] = [equivalenceCondition, validityCondition];
-
-    // Добавляем проверку, что результат не равен null/undefined
-    postconditions.push(not(eq('result', 'null')));
-
-    // Или результат должен быть в диапазоне
-    postconditions.push(or([range('result', -2000, 2000), eq('result', 0)]));
-
-    // Добавляем инварианты: параметры остаются неизменными
+    // Инварианты: параметры остаются в диапазоне
     const invariants: any[] = [];
-    for (const param of params) {
-      invariants.push(range(param.name, -1000, 1000));
+    if (params.length > 0) {
+      for (const param of params) {
+        invariants.push(range(param.name, -1000, 1000));
+        console.log(`   📌 Added invariant: range(${param.name}, -1000, 1000)`);
+      }
     }
 
-    return {
+    const contract = {
       name: `${name}_equivalence`,
       params,
-      returnType: 'bool',
+      returnType: 'int' as const,
       preconditions,
       postconditions,
       invariants,
-      body: `(${originalExpr}) == (${modifiedExpr})`,
     };
+
+    console.log(`   ✅ Contract created:`);
+    console.log(`      - ${preconditions.length} preconditions`);
+    console.log(`      - ${postconditions.length} postconditions`);
+    console.log(`      - ${invariants.length} invariants`);
+    console.log(`      - ${params.length} params`);
+
+    return contract;
   }
 
   async checkFileEquivalence(

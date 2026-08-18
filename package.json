@@ -273,7 +273,8 @@
     "dist",
     "README.md",
     "LICENSE",
-    "src/utils/Logger.ts"
+    "src/utils/Logger.ts",
+    "src/grammars/**/*.wasm"
   ],
   "repository": {
     "type": "git",

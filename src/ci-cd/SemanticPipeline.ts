@@ -291,12 +291,19 @@ export class SemanticPipeline {
             });
           }
 
-          const jsxDeps = this.callGraphAnalyzer.analyzeJSXComponents(sourceFile);
-          if (jsxDeps.size > 0) {
-            console.log(`     📦 JSX component dependencies: ${jsxDeps.size}`);
-            for (const [component, deps] of jsxDeps) {
-              console.log(`       ${component} → ${deps.join(', ')}`);
+          // ✅ ИСПРАВЛЕННЫЙ ВЫЗОВ: используем analyzeAllJSXComponents с правильным параметром
+          try {
+            const rootDir = path.dirname(filePath);
+            const jsxDeps = await this.callGraphAnalyzer.analyzeAllJSXComponents(rootDir);
+            if (jsxDeps.size > 0) {
+              console.log(`     📦 JSX component dependencies: ${jsxDeps.size}`);
+              for (const [component, deps] of jsxDeps) {
+                console.log(`       ${component} → ${deps.join(', ')}`);
+              }
             }
+          } catch (jsxError) {
+            console.warn('     ⚠️ JSX analysis error:', jsxError);
+            // Не прерываем выполнение, продолжаем с другими анализаторами
           }
         } catch (error) {
           console.error(`  ❌ Call graph analysis failed: ${error}`);
@@ -964,8 +971,8 @@ export class SemanticPipeline {
     
     <div class="content">
       ${
-        result.jsxAnalysis && result.jsxAnalysis.elements.length > 0
-          ? `
+      result.jsxAnalysis && result.jsxAnalysis.elements.length > 0
+        ? `
       <div class="jsx-section">
         <h3>⚛️ JSX/TSX Analysis</h3>
         <p><strong>Elements:</strong> ${result.jsxAnalysis.elements.length}</p>
@@ -973,16 +980,16 @@ export class SemanticPipeline {
         <p><strong>Prop Errors:</strong> ${result.jsxAnalysis.propTypeErrors.length}</p>
       </div>
       `
-          : ''
-      }
+        : ''
+    }
       
       <div class="section">
         <h2>⚠️ Issues (${result.issues.length})</h2>
         <div class="issues-list">
           ${result.issues
-            .slice(0, 50)
-            .map(
-              issue => `
+      .slice(0, 50)
+      .map(
+        issue => `
             <div class="issue ${issue.severity}">
               <div class="issue-header">
                 <span class="issue-type">${issue.type}</span>
@@ -993,34 +1000,34 @@ export class SemanticPipeline {
               ${issue.code ? `<div class="issue-code">${this.escapeHtml(issue.code)}</div>` : ''}
             </div>
           `
-            )
-            .join('')}
+      )
+      .join('')}
           ${result.issues.length > 50 ? `<p style="margin-top: 15px; text-align: center;">... and ${result.issues.length - 50} more issues</p>` : ''}
         </div>
       </div>
       
       ${
-        result.verificationResults.length > 0
-          ? `
+      result.verificationResults.length > 0
+        ? `
       <div class="section">
         <h2>🔬 Formal Verification (${result.verificationResults.length})</h2>
         <div class="verification-results">
           ${result.verificationResults
-            .map(
-              vr => `
+          .map(
+            vr => `
             <div class="verification-item ${vr.isValid ? 'valid' : 'invalid'}">
               <div class="verification-icon">${vr.isValid ? '✅' : '❌'}</div>
               <div class="verification-name">${vr.functionName}</div>
               <div class="verification-time">${vr.time}ms</div>
             </div>
           `
-            )
-            .join('')}
+          )
+          .join('')}
         </div>
       </div>
       `
-          : ''
-      }
+        : ''
+    }
     </div>
     
     <div class="footer">
