@@ -3,11 +3,10 @@ import type { Project, SourceFile, Node } from 'ts-morph';
 import { Node as TsNode, SyntaxKind } from 'ts-morph';
 import fs from 'fs';
 import path from 'path';
-import type { ExtractedModule } from './index.js';
 import type { Logger } from '../utils/Logger.js';
 import type { ModuleType } from './ModuleTypeDetector.js';
 import type { IRefactorContext } from './interfaces/IRefactorContext.js';
-
+import type { ExtractedModule } from './types.js';
 export interface Cluster {
   name: string;
   functions: string[];

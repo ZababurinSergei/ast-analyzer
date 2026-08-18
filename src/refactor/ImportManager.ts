@@ -1,7 +1,7 @@
 // src/refactor/ImportManager.ts
 import type { Project, SourceFile } from 'ts-morph';
 import path from 'path';
-import type { ExtractedModule } from './index.js';
+import type { ExtractedModule } from './types.js';
 import type { Logger } from '../utils/Logger.js';
 import type { ModuleType } from './ModuleTypeDetector.js';
 import type { IRefactorContext } from './interfaces/IRefactorContext.js';

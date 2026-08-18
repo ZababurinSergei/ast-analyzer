@@ -70,6 +70,7 @@
       "@typescript-eslint/parser"
     ],
     "src/refactor/index.ts": [
+      "src/refactor/types.ts",
       "src/refactor/AutoRefactor.ts",
       "src/refactor/ModuleExtractor.ts",
       "src/refactor/ImportManager.ts",
@@ -117,6 +118,18 @@
       "src/core/tsconfig-resolver.ts"
     ],
     "src/config.ts": [],
+    "src/refactor/types.ts": [
+      "src/semantic/CFGAnalyzer.ts",
+      "src/semantic/CallGraphAnalyzer.ts",
+      "src/semantic/DataFlowAnalyzer.ts",
+      "src/semantic/TypeAnalyzer.ts",
+      "src/formal/index.ts",
+      "src/refactor/ESLintASTFixer.ts",
+      "src/refactor/CodeValidator.ts",
+      "src/refactor/CodeFixer.ts",
+      "src/refactor/ModuleTypeDetector.ts",
+      "src/refactor/SyntaxValidator.ts"
+    ],
     "src/refactor/AutoRefactor.ts": [
       "src/utils/Logger.ts",
       "src/refactor/ModuleExtractor.ts",
@@ -130,21 +143,21 @@
       "src/semantic/CFGAnalyzer.ts",
       "src/semantic/CallGraphAnalyzer.ts",
       "src/semantic/DataFlowAnalyzer.ts",
-      "src/semantic/TypeAnalyzer.ts",
       "src/refactor/SyntaxValidator.ts",
       "src/refactor/ModuleTypeDetector.ts",
       "src/refactor/BackupManager.ts",
       "src/formal/index.ts",
-      "src/refactor/interfaces/IRefactorContext.ts"
+      "src/refactor/interfaces/IRefactorContext.ts",
+      "src/refactor/types.ts"
     ],
     "src/refactor/ModuleExtractor.ts": [
-      "src/refactor/index.ts",
       "src/utils/Logger.ts",
       "src/refactor/ModuleTypeDetector.ts",
-      "src/refactor/interfaces/IRefactorContext.ts"
+      "src/refactor/interfaces/IRefactorContext.ts",
+      "src/refactor/types.ts"
     ],
     "src/refactor/ImportManager.ts": [
-      "src/refactor/index.ts",
+      "src/refactor/types.ts",
       "src/utils/Logger.ts",
       "src/refactor/ModuleTypeDetector.ts",
       "src/refactor/interfaces/IRefactorContext.ts"
@@ -159,7 +172,7 @@
     "src/refactor/TemplateUpdater.ts": [
       "src/refactor/interfaces/IRefactorContext.ts",
       "@vue/compiler-sfc",
-      "src/refactor/index.ts",
+      "src/refactor/types.ts",
       "src/utils/Logger.ts"
     ],
     "src/refactor/SyntaxValidator.ts": [
@@ -173,7 +186,7 @@
       "src/utils/Logger.ts"
     ],
     "src/refactor/interfaces/IRefactorContext.ts": [
-      "src/refactor/AutoRefactor.ts",
+      "src/refactor/types.ts",
       "src/utils/Logger.ts"
     ],
     "src/semantic/CFGAnalyzer.ts": [],
@@ -221,7 +234,6 @@
     "src/modes/hybrid-report/generators/markdown.ts": [
       "src/modes/hybrid-report/types.ts"
     ],
-    "src/utils/Logger.ts": [],
     "src/formal/index.ts": [
       "src/formal/Z3Verifier.ts",
       "src/formal/FunctionBodyModeler.ts",
@@ -229,6 +241,7 @@
       "src/formal/checkers/RefactoringEquivalenceChecker.ts",
       "src/formal/ExpressionParser.ts"
     ],
+    "src/utils/Logger.ts": [],
     "src/formal/checkers/FileEquivalenceChecker.ts": [
       "src/formal/checkers/EquivalenceChecker.ts",
       "src/formal/Z3Verifier.ts",
@@ -250,16 +263,6 @@
     "src/core/SignatureComparator.ts": [],
     "src/core/CallGraphComparator.ts": []
   },
-  "hasCycles": true,
-  "cyclicEdges": [
-    "src/refactor/index.ts->src/refactor/AutoRefactor.ts",
-    "src/refactor/AutoRefactor.ts->src/refactor/ModuleExtractor.ts",
-    "src/refactor/ModuleExtractor.ts->src/refactor/index.ts",
-    "src/refactor/ModuleExtractor.ts->src/refactor/interfaces/IRefactorContext.ts",
-    "src/refactor/interfaces/IRefactorContext.ts->src/refactor/AutoRefactor.ts",
-    "src/refactor/AutoRefactor.ts->src/refactor/ImportManager.ts",
-    "src/refactor/ImportManager.ts->src/refactor/index.ts",
-    "src/refactor/AutoRefactor.ts->src/refactor/TemplateUpdater.ts",
-    "src/refactor/TemplateUpdater.ts->src/refactor/index.ts"
-  ]
+  "hasCycles": false,
+  "cyclicEdges": []
 }

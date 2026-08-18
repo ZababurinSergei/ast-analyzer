@@ -1,6 +1,6 @@
 // packages/ast-analyzer/src/refactor/interfaces/IRefactorContext.ts
 import type { Project, SourceFile } from 'ts-morph';
-import type { RefactorOptions, ExtractedModule } from '../AutoRefactor.js';
+import type { RefactorOptions, ExtractedModule } from '../types.js';
 import type { Logger } from '../../utils/Logger.js';
 
 export interface IRefactorContext {

@@ -3,7 +3,7 @@ import type { IRefactorContext } from './interfaces/IRefactorContext.js';
 import { parse as parseVue } from '@vue/compiler-sfc';
 import fs from 'fs';
 import path from 'path';
-import type { ExtractedModule } from './index.js';
+import type { ExtractedModule } from './types.js';
 import type { Logger } from '../utils/Logger.js';
 
 export class TemplateUpdater {
