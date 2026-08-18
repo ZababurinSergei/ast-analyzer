@@ -1,6 +1,6 @@
 {
   "name": "@newkind/ast-analyzer",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "AST Analyzer - AI Toolkit for code analysis, graph visualization, refactoring, semantic analysis, and formal verification",
   "type": "module",
   "main": "dist/index.js",
@@ -213,7 +213,7 @@
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
-    "preinstall": "npx only-allow npm"
+    "preinstall": ""
   },
   "keywords": [
     "ast",
