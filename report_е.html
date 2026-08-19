@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Граф зависимостей AST Analyzer</title>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        .header {
+            background: #1e293b;
+            padding: 12px 24px;
+            border-bottom: 1px solid #334155;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+            z-index: 10;
+        }
+        .header h1 {
+            font-size: 18px;
+            color: #60a5fa;
+            font-weight: 600;
+        }
+        .header .sub {
+            font-size: 12px;
+            color: #94a3b8;
+        }
+        .header .stats {
+            display: flex;
+            gap: 20px;
+            font-size: 12px;
+        }
+        .header .stats span {
+            color: #94a3b8;
+        }
+        .header .stats .num {
+            color: #e2e8f0;
+            font-weight: 600;
+        }
+        .header .stats .num.blue { color: #60a5fa; }
+        .header .stats .num.green { color: #4ade80; }
+        .header .stats .num.yellow { color: #fbbf24; }
+        .header .stats .num.purple { color: #a78bfa; }
+        .header .stats .num.red { color: #f87171; }
+
+        /* Graph container */
+        .graph-container {
+            flex: 1;
+            position: relative;
+            background: #0f172a;
+            overflow: hidden;
+        }
+        .graph-container svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Controls */
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            z-index: 20;
+        }
+        .controls button {
+            background: #1e293b;
+            border: 1px solid #334155;
+            color: #e2e8f0;
+            width: 36px;
+            height: 36px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .controls button:hover {
+            background: #334155;
+            border-color: #60a5fa;
+        }
+        .controls .zoom-level {
+            text-align: center;
+            font-size: 11px;
+            color: #94a3b8;
+            padding: 2px 0;
+        }
+
+        /* Legend */
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 10px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            z-index: 20;
+            font-size: 11px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-item .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 1px solid #334155;
+        }
+        .legend-item .dot.function { background: #60a5fa; }
+        .legend-item .dot.class { background: #4ade80; }
+        .legend-item .dot.constant { background: #fbbf24; }
+        .legend-item .dot.interface { background: #a78bfa; }
+        .legend-item .dot.type { background: #f472b6; }
+        .legend-item .dot.variable { background: #22d3ee; }
+        .legend-item .dot.module { background: #f87171; }
+        .legend-item .label { color: #94a3b8; }
+
+        /* Tooltip */
+        .tooltip {
+            position: absolute;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 12px 16px;
+            pointer-events: none;
+            max-width: 400px;
+            display: none;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            z-index: 100;
+        }
+        .tooltip .tt-title {
+            font-weight: 600;
+            color: #60a5fa;
+            font-size: 14px;
+        }
+        .tooltip .tt-info {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 4px;
+        }
+        .tooltip .tt-detail {
+            font-size: 11px;
+            color: #e2e8f0;
+            margin-top: 6px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+
+        /* Details Panel */
+        .details-panel {
+            position: absolute;
+            right: 20px;
+            top: 20px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 16px 20px;
+            max-width: 500px;
+            min-width: 300px;
+            max-height: 80vh;
+            overflow-y: auto;
+            display: none;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            z-index: 50;
+        }
+        .details-panel::-webkit-scrollbar { width: 4px; }
+        .details-panel::-webkit-scrollbar-track { background: transparent; }
+        .details-panel::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        .details-panel .dp-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #60a5fa;
+            margin-bottom: 8px;
+        }
+        .details-panel .dp-close {
+            float: right;
+            background: none;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            font-size: 18px;
+        }
+        .details-panel .dp-close:hover { color: #f87171; }
+        .details-panel .dp-section { margin-top: 10px; }
+        .details-panel .dp-section h4 {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #64748b;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .details-panel .dp-section .item {
+            font-size: 13px;
+            padding: 3px 0;
+            color: #e2e8f0;
+            border-bottom: 1px solid #0f172a;
+        }
+        .details-panel .dp-section .item .module-name {
+            color: #64748b;
+            font-size: 11px;
+            font-family: monospace;
+        }
+
+        /* Search */
+        .search-box {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 30;
+            width: 400px;
+            max-width: 80%;
+        }
+        .search-box input {
+            width: 100%;
+            padding: 8px 16px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            color: #e2e8f0;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .search-box input:focus {
+            border-color: #60a5fa;
+        }
+        .search-box input::placeholder {
+            color: #64748b;
+        }
+
+        @media (max-width: 768px) {
+            .header { flex-wrap: wrap; gap: 8px; }
+            .header .stats { flex-wrap: wrap; gap: 8px; }
+            .search-box { width: 90%; top: 70px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div>
+        <h1>🔀 Граф зависимостей</h1>
+        <div class="sub">Клик на узел — подробности</div>
+    </div>
+    <div class="stats" id="statsBar">
+        <span>Модули: <span class="num blue" id="statModules">0</span></span>
+        <span>Функции: <span class="num green" id="statFunctions">0</span></span>
+        <span>Классы: <span class="num yellow" id="statClasses">0</span></span>
+        <span>Экспорты: <span class="num purple" id="statExports">0</span></span>
+        <span>Циклы: <span class="num red" id="statCycles">0</span></span>
+    </div>
+</div>
+
+<div class="graph-container" id="graphContainer">
+    <svg id="graphSvg"></svg>
+
+    <div class="search-box">
+        <input type="text" id="searchInput" placeholder="🔍 Поиск функций, классов, модулей...">
+    </div>
+
+    <div class="tooltip" id="tooltip">
+        <div class="tt-title" id="ttTitle"></div>
+        <div class="tt-info" id="ttInfo"></div>
+        <div class="tt-detail" id="ttDetail"></div>
+    </div>
+
+    <div class="details-panel" id="detailsPanel">
+        <button class="dp-close" id="dpClose">✕</button>
+        <div class="dp-title" id="dpTitle"></div>
+        <div id="dpContent"></div>
+    </div>
+
+    <div class="controls">
+        <button id="zoomIn">+</button>
+        <div class="zoom-level" id="zoomLevel">100%</div>
+        <button id="zoomOut">−</button>
+        <button id="zoomReset">⟲</button>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><span class="dot function"></span><span class="label">Функция</span></div>
+        <div class="legend-item"><span class="dot class"></span><span class="label">Класс</span></div>
+        <div class="legend-item"><span class="dot constant"></span><span class="label">Константа</span></div>
+        <div class="legend-item"><span class="dot interface"></span><span class="label">Интерфейс</span></div>
+        <div class="legend-item"><span class="dot type"></span><span class="label">Тип</span></div>
+        <div class="legend-item"><span class="dot variable"></span><span class="label">Переменная</span></div>
+        <div class="legend-item"><span class="dot module"></span><span class="label">Модуль</span></div>
+    </div>
+</div>
+
+<script>
+    // ============================================================
+    // 1. ДАННЫЕ ИЗ FS.JSON
+    // ============================================================
+    const graphData = {
+        "rootKey": "packages/ast-analyzer/src/cli.ts",
+        "graph": {
+            "packages/ast-analyzer/src/cli.ts": [
+                "packages/ast-analyzer/src/utils/is-main.ts",
+                "@hpcc-js/wasm-graphviz",
+                "packages/ast-analyzer/src/core/minifier.ts",
+                "packages/ast-analyzer/src/core/graph-utils.ts",
+                "packages/ast-analyzer/src/core/tsconfig-resolver.ts",
+                "packages/ast-analyzer/src/core/ast-parser.ts",
+                "packages/ast-analyzer/src/core/entity-extractor.ts",
+                "packages/ast-analyzer/src/modes/project-graph.ts",
+                "packages/ast-analyzer/src/modes/file-graph.ts",
+                "packages/ast-analyzer/src/modes/prompt-pack.ts",
+                "packages/ast-analyzer/src/modes/split-module.ts",
+                "packages/ast-analyzer/src/modes/impact.ts",
+                "packages/ast-analyzer/src/modes/dead-code.ts",
+                "packages/ast-analyzer/src/modes/minify-folder.ts",
+                "packages/ast-analyzer/src/modes/vue-analyzer.ts",
+                "packages/ast-analyzer/src/refactor/index.ts",
+                "packages/ast-analyzer/src/ci-cd/SemanticPipeline.ts",
+                "packages/ast-analyzer/src/formal/Z3Verifier.ts",
+                "packages/ast-analyzer/src/modes/hybrid-report/index.ts",
+                "packages/ast-analyzer/src/reporters/html-reporter.ts",
+                "packages/ast-analyzer/src/reporters/json-reporter.ts",
+                "packages/ast-analyzer/src/reporters/interactive-reporter.ts",
+                "packages/ast-analyzer/src/types.ts",
+                "packages/ast-analyzer/src/utils.ts",
+                "packages/ast-analyzer/src/utils/path-utils.ts"
+            ],
+            "packages/ast-analyzer/src/utils/is-main.ts": [],
+            "packages/ast-analyzer/src/core/minifier.ts": [
+                "packages/ast-analyzer/src/core/ast-parser.ts"
+            ],
+            "packages/ast-analyzer/src/core/graph-utils.ts": [],
+            "packages/ast-analyzer/src/core/tsconfig-resolver.ts": [
+                "packages/ast-analyzer/src/utils/path-utils.ts"
+            ],
+            "packages/ast-analyzer/src/core/ast-parser.ts": [
+                "@typescript-eslint/parser",
+                "@vue/compiler-sfc",
+                "packages/ast-analyzer/src/core/tsconfig-resolver.ts"
+            ],
+            "packages/ast-analyzer/src/core/entity-extractor.ts": [],
+            "packages/ast-analyzer/src/modes/project-graph.ts": [
+                "packages/ast-analyzer/src/core/ast-parser.ts",
+                "packages/ast-analyzer/src/core/entity-extractor.ts",
+                "packages/ast-analyzer/src/config.ts",
+                "packages/ast-analyzer/src/utils/path-utils.ts"
+            ],
+            "packages/ast-analyzer/src/modes/file-graph.ts": [
+                "packages/ast-analyzer/src/core/ast-parser.ts",
+                "packages/ast-analyzer/src/utils/path-utils.ts"
+            ],
+            "packages/ast-analyzer/src/modes/prompt-pack.ts": [
+                "packages/ast-analyzer/src/modes/project-graph.ts",
+                "packages/ast-analyzer/src/core/minifier.ts"
+            ],
+            "packages/ast-analyzer/src/modes/split-module.ts": [
+                "packages/ast-analyzer/src/core/ast-parser.ts",
+                "packages/ast-analyzer/src/core/minifier.ts",
+                "packages/ast-analyzer/src/modes/file-graph.ts",
+                "packages/ast-analyzer/src/core/graph-utils.ts",
+                "packages/ast-analyzer/src/config.ts",
+                "packages/ast-analyzer/src/modes/vue-analyzer.ts"
+            ],
+            "packages/ast-analyzer/src/modes/impact.ts": [
+                "packages/ast-analyzer/src/core/ast-parser.ts",
+                "packages/ast-analyzer/src/config.ts"
+            ],
+            "packages/ast-analyzer/src/modes/dead-code.ts": [
+                "packages/ast-analyzer/src/core/ast-parser.ts",
+                "packages/ast-analyzer/src/config.ts"
+            ],
+            "packages/ast-analyzer/src/modes/minify-folder.ts": [
+                "packages/ast-analyzer/src/core/minifier.ts",
+                "packages/ast-analyzer/src/config.ts"
+            ],
+            "packages/ast-analyzer/src/modes/vue-analyzer.ts": [
+                "@vue/compiler-sfc",
+                "@typescript-eslint/parser"
+            ],
+            "packages/ast-analyzer/src/refactor/index.ts": [
+                "packages/ast-analyzer/src/refactor/types.ts",
+                "packages/ast-analyzer/src/refactor/AutoRefactor.ts",
+                "packages/ast-analyzer/src/refactor/ModuleExtractor.ts",
+                "packages/ast-analyzer/src/refactor/ImportManager.ts",
+                "packages/ast-analyzer/src/refactor/TypeScriptValidator.ts",
+                "packages/ast-analyzer/src/refactor/ESLintASTFixer.ts",
+                "packages/ast-analyzer/src/refactor/CodeValidator.ts",
+                "packages/ast-analyzer/src/refactor/CodeFixer.ts",
+                "packages/ast-analyzer/src/refactor/TemplateUpdater.ts",
+                "packages/ast-analyzer/src/refactor/SyntaxValidator.ts",
+                "packages/ast-analyzer/src/refactor/ModuleTypeDetector.ts",
+                "packages/ast-analyzer/src/refactor/BackupManager.ts",
+                "packages/ast-analyzer/src/refactor/interfaces/IRefactorContext.ts"
+            ],
+            "packages/ast-analyzer/src/ci-cd/SemanticPipeline.ts": [
+                "packages/ast-analyzer/src/semantic/CFGAnalyzer.ts",
+                "packages/ast-analyzer/src/semantic/CallGraphAnalyzer.ts",
+                "packages/ast-analyzer/src/semantic/TypeAnalyzer.ts",
+                "packages/ast-analyzer/src/semantic/DataFlowAnalyzer.ts",
+                "packages/ast-analyzer/src/formal/Z3Verifier.ts",
+                "packages/ast-analyzer/src/semantic/JSXAnalyzer.ts",
+                "packages/ast-analyzer/src/utils/wasm-utils.ts"
+            ],
+            "packages/ast-analyzer/src/formal/Z3Verifier.ts": [
+                "packages/ast-analyzer/src/formal/ExpressionParser.ts",
+                "packages/ast-analyzer/src/formal/FunctionBodyModeler.ts"
+            ],
+            "packages/ast-analyzer/src/modes/hybrid-report/index.ts": [
+                "packages/ast-analyzer/src/modes/hybrid-report/types.ts",
+                "packages/ast-analyzer/src/modes/hybrid-report/cli.ts",
+                "packages/ast-analyzer/src/modes/hybrid-report/builder.ts",
+                "packages/ast-analyzer/src/modes/hybrid-report/analyzer.ts",
+                "packages/ast-analyzer/src/modes/hybrid-report/generators/dot.ts",
+                "packages/ast-analyzer/src/modes/hybrid-report/generators/html.ts",
+                "packages/ast-analyzer/src/modes/hybrid-report/generators/markdown.ts"
+            ],
+            "packages/ast-analyzer/src/reporters/html-reporter.ts": [
+                "packages/ast-analyzer/src/utils/path-utils.ts"
+            ],
+            "packages/ast-analyzer/src/reporters/json-reporter.ts": [
+                "packages/ast-analyzer/src/core/entity-extractor.ts"
+            ],
+            "packages/ast-analyzer/src/reporters/interactive-reporter.ts": [
+                "packages/ast-analyzer/src/types.ts"
+            ],
+            "packages/ast-analyzer/src/types.ts": [
+                "packages/ast-analyzer/src/core/entity-extractor.ts"
+            ],
+            "packages/ast-analyzer/src/utils.ts": [],
+            "packages/ast-analyzer/src/utils/path-utils.ts": [],
+            "packages/ast-analyzer/src/config.ts": [],
+            "packages/ast-analyzer/src/refactor/types.ts": [
+                "packages/ast-analyzer/src/semantic/CFGAnalyzer.ts",
+                "packages/ast-analyzer/src/semantic/CallGraphAnalyzer.ts",
+                "packages/ast-analyzer/src/semantic/DataFlowAnalyzer.ts",
+                "packages/ast-analyzer/src/semantic/TypeAnalyzer.ts",
+                "packages/ast-analyzer/src/formal/index.ts",
+                "packages/ast-analyzer/src/refactor/ESLintASTFixer.ts",
+                "packages/ast-analyzer/src/refactor/CodeValidator.ts",
+                "packages/ast-analyzer/src/refactor/CodeFixer.ts",
+                "packages/ast-analyzer/src/refactor/ModuleTypeDetector.ts",
+                "packages/ast-analyzer/src/refactor/SyntaxValidator.ts"
+            ],
+            "packages/ast-analyzer/src/refactor/AutoRefactor.ts": [
+                "packages/ast-analyzer/src/utils/Logger.ts",
+                "packages/ast-analyzer/src/refactor/ModuleExtractor.ts",
+                "packages/ast-analyzer/src/refactor/ImportManager.ts",
+                "packages/ast-analyzer/src/refactor/TypeScriptValidator.ts",
+                "packages/ast-analyzer/src/refactor/ESLintASTFixer.ts",
+                "packages/ast-analyzer/src/refactor/CodeValidator.ts",
+                "packages/ast-analyzer/src/refactor/CodeFixer.ts",
+                "packages/ast-analyzer/src/refactor/TemplateUpdater.ts",
+                "@codeflow-map/core",
+                "packages/ast-analyzer/src/semantic/CFGAnalyzer.ts",
+                "packages/ast-analyzer/src/semantic/CallGraphAnalyzer.ts",
+                "packages/ast-analyzer/src/semantic/DataFlowAnalyzer.ts",
+                "packages/ast-analyzer/src/refactor/SyntaxValidator.ts",
+                "packages/ast-analyzer/src/refactor/ModuleTypeDetector.ts",
+                "packages/ast-analyzer/src/refactor/BackupManager.ts",
+                "packages/ast-analyzer/src/formal/index.ts",
+                "packages/ast-analyzer/src/refactor/interfaces/IRefactorContext.ts",
+                "packages/ast-analyzer/src/refactor/types.ts"
+            ],
+            "packages/ast-analyzer/src/refactor/ModuleExtractor.ts": [
+                "packages/ast-analyzer/src/utils/Logger.ts",
+                "packages/ast-analyzer/src/refactor/ModuleTypeDetector.ts",
+                "packages/ast-analyzer/src/refactor/interfaces/IRefactorContext.ts",
+                "packages/ast-analyzer/src/refactor/types.ts"
+            ],
+            "packages/ast-analyzer/src/refactor/ImportManager.ts": [
+                "packages/ast-analyzer/src/refactor/types.ts",
+                "packages/ast-analyzer/src/utils/Logger.ts",
+                "packages/ast-analyzer/src/refactor/ModuleTypeDetector.ts",
+                "packages/ast-analyzer/src/refactor/interfaces/IRefactorContext.ts"
+            ],
+            "packages/ast-analyzer/src/refactor/TypeScriptValidator.ts": [],
+            "packages/ast-analyzer/src/refactor/ESLintASTFixer.ts": [],
+            "packages/ast-analyzer/src/refactor/CodeValidator.ts": [],
+            "packages/ast-analyzer/src/refactor/CodeFixer.ts": [
+                "packages/ast-analyzer/src/refactor/CodeValidator.ts",
+                "packages/ast-analyzer/src/refactor/ESLintASTFixer.ts"
+            ],
+            "packages/ast-analyzer/src/refactor/TemplateUpdater.ts": [
+                "packages/ast-analyzer/src/refactor/interfaces/IRefactorContext.ts",
+                "@vue/compiler-sfc",
+                "packages/ast-analyzer/src/refactor/types.ts",
+                "packages/ast-analyzer/src/utils/Logger.ts"
+            ],
+            "packages/ast-analyzer/src/refactor/SyntaxValidator.ts": [
+                "packages/ast-analyzer/src/utils/Logger.ts",
+                "packages/ast-analyzer/src/refactor/ModuleTypeDetector.ts"
+            ],
+            "packages/ast-analyzer/src/refactor/ModuleTypeDetector.ts": [
+                "packages/ast-analyzer/src/utils/Logger.ts"
+            ],
+            "packages/ast-analyzer/src/refactor/BackupManager.ts": [
+                "packages/ast-analyzer/src/utils/Logger.ts"
+            ],
+            "packages/ast-analyzer/src/refactor/interfaces/IRefactorContext.ts": [
+                "packages/ast-analyzer/src/refactor/types.ts",
+                "packages/ast-analyzer/src/utils/Logger.ts"
+            ],
+            "packages/ast-analyzer/src/semantic/CFGAnalyzer.ts": [],
+            "packages/ast-analyzer/src/semantic/CallGraphAnalyzer.ts": [
+                "@codeflow-map/core",
+                "packages/ast-analyzer/src/utils/wasm-utils.ts"
+            ],
+            "packages/ast-analyzer/src/semantic/TypeAnalyzer.ts": [
+                "@jitl/ts-simple-type"
+            ],
+            "packages/ast-analyzer/src/semantic/DataFlowAnalyzer.ts": [],
+            "packages/ast-analyzer/src/semantic/JSXAnalyzer.ts": [
+                "packages/ast-analyzer/src/semantic/TypeAnalyzer.ts"
+            ],
+            "packages/ast-analyzer/src/utils/wasm-utils.ts": [],
+            "packages/ast-analyzer/src/formal/ExpressionParser.ts": [],
+            "packages/ast-analyzer/src/formal/FunctionBodyModeler.ts": [],
+            "packages/ast-analyzer/src/modes/hybrid-report/types.ts": [],
+            "packages/ast-analyzer/src/modes/hybrid-report/cli.ts": [
+                "packages/ast-analyzer/src/modes/file-graph.ts",
+                "packages/ast-analyzer/src/core/graph-utils.ts",
+                "packages/ast-analyzer/src/modes/hybrid-report/types.ts",
+                "packages/ast-analyzer/src/modes/hybrid-report/builder.ts",
+                "packages/ast-analyzer/src/modes/hybrid-report/generators/dot.ts",
+                "packages/ast-analyzer/src/modes/hybrid-report/generators/html.ts",
+                "packages/ast-analyzer/src/modes/hybrid-report/generators/markdown.ts"
+            ],
+            "packages/ast-analyzer/src/modes/hybrid-report/builder.ts": [
+                "packages/ast-analyzer/src/modes/project-graph.ts",
+                "packages/ast-analyzer/src/core/graph-utils.ts",
+                "packages/ast-analyzer/src/modes/hybrid-report/types.ts",
+                "packages/ast-analyzer/src/modes/hybrid-report/analyzer.ts"
+            ],
+            "packages/ast-analyzer/src/modes/hybrid-report/analyzer.ts": [
+                "packages/ast-analyzer/src/modes/hybrid-report/types.ts"
+            ],
+            "packages/ast-analyzer/src/modes/hybrid-report/generators/dot.ts": [
+                "packages/ast-analyzer/src/modes/hybrid-report/types.ts"
+            ],
+            "packages/ast-analyzer/src/modes/hybrid-report/generators/html.ts": [
+                "@hpcc-js/wasm-graphviz",
+                "packages/ast-analyzer/src/modes/hybrid-report/types.ts",
+                "packages/ast-analyzer/src/modes/hybrid-report/generators/dot.ts"
+            ],
+            "packages/ast-analyzer/src/modes/hybrid-report/generators/markdown.ts": [
+                "packages/ast-analyzer/src/modes/hybrid-report/types.ts"
+            ],
+            "packages/ast-analyzer/src/formal/index.ts": [
+                "packages/ast-analyzer/src/formal/Z3Verifier.ts",
+                "packages/ast-analyzer/src/formal/FunctionBodyModeler.ts",
+                "packages/ast-analyzer/src/formal/checkers/FileEquivalenceChecker.ts",
+                "packages/ast-analyzer/src/formal/checkers/RefactoringEquivalenceChecker.ts",
+                "packages/ast-analyzer/src/formal/ExpressionParser.ts"
+            ],
+            "packages/ast-analyzer/src/utils/Logger.ts": [],
+            "packages/ast-analyzer/src/formal/checkers/FileEquivalenceChecker.ts": [
+                "packages/ast-analyzer/src/formal/checkers/EquivalenceChecker.ts",
+                "packages/ast-analyzer/src/formal/Z3Verifier.ts",
+                "packages/ast-analyzer/src/core/ASTComparator.ts",
+                "packages/ast-analyzer/src/core/SignatureComparator.ts",
+                "packages/ast-analyzer/src/core/CallGraphComparator.ts"
+            ],
+            "packages/ast-analyzer/src/formal/checkers/RefactoringEquivalenceChecker.ts": [
+                "packages/ast-analyzer/src/formal/Z3Verifier.ts",
+                "packages/ast-analyzer/src/core/ASTComparator.ts",
+                "packages/ast-analyzer/src/core/SignatureComparator.ts",
+                "packages/ast-analyzer/src/core/CallGraphComparator.ts"
+            ],
+            "packages/ast-analyzer/src/formal/checkers/EquivalenceChecker.ts": [
+                "packages/ast-analyzer/src/formal/Z3Verifier.ts",
+                "packages/ast-analyzer/src/core/ASTComparator.ts"
+            ],
+            "packages/ast-analyzer/src/core/ASTComparator.ts": [],
+            "packages/ast-analyzer/src/core/SignatureComparator.ts": [],
+            "packages/ast-analyzer/src/core/CallGraphComparator.ts": []
+        },
+        "hasCycles": false,
+        "cyclicEdges": []
+    };
+
+    // ============================================================
+    // 2. СОСТОЯНИЕ
+    // ============================================================
+    const state = {
+        zoom: 1,
+        selectedNode: null,
+        searchQuery: '',
+        highlightedNodes: new Set(),
+        graphNodes: [],
+        graphLinks: [],
+        simulation: null,
+        svg: null,
+        zoomBehavior: null,
+        nodeMap: new Map(),
+    };
+
+    // ============================================================
+    // 3. ПОДГОТОВКА ДАННЫХ
+    // ============================================================
+    function prepareGraphData() {
+        const nodes = [];
+        const links = [];
+        const nodeMap = new Map();
+        const allModules = new Set();
+
+        // Собираем все модули из графа
+        Object.keys(graphData.graph).forEach(key => {
+            allModules.add(key);
+            graphData.graph[key].forEach(dep => {
+                allModules.add(dep);
+            });
+        });
+
+        // Создаем узлы для модулей
+        allModules.forEach(id => {
+            const isEntry = id === graphData.rootKey;
+            const name = id.split('/').pop() || id;
+
+            // Определяем цвет по типу модуля
+            let color = '#94a3b8';
+            let type = 'module';
+            if (id.includes('.vue')) { color = '#4ade80'; type = 'vue'; }
+            else if (id.includes('.ts')) { color = '#60a5fa'; type = 'typescript'; }
+            else if (id.includes('.js')) { color = '#fbbf24'; type = 'javascript'; }
+
+            nodeMap.set(id, {
+                id: id,
+                name: name,
+                fullName: id,
+                type: type,
+                isEntry: isEntry,
+                color: color,
+                size: isEntry ? 30 : 20,
+                level: 0,
+                metadata: { isExported: isEntry }
+            });
+        });
+
+        // Создаем ребра
+        Object.entries(graphData.graph).forEach(([from, deps]) => {
+            deps.forEach(to => {
+                if (nodeMap.has(from) && nodeMap.has(to)) {
+                    const isCycle = graphData.cyclicEdges?.includes(`${from}->${to}`) || false;
+                    links.push({
+                        source: from,
+                        target: to,
+                        type: 'import',
+                        isCycle: isCycle,
+                    });
+                }
+            });
+        });
+
+        state.graphNodes = Array.from(nodeMap.values());
+        state.graphLinks = links;
+        state.nodeMap = nodeMap;
+    }
+
+    // ============================================================
+    // 4. ОТРИСОВКА ГРАФА
+    // ============================================================
+    function initGraph() {
+        const container = document.getElementById('graphContainer');
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+
+        const svg = d3.select('#graphSvg')
+          .attr('width', width)
+          .attr('height', height);
+
+        const g = svg.append('g');
+
+        const zoom = d3.zoom()
+          .scaleExtent([0.1, 4])
+          .on('zoom', function(event) {
+              g.attr('transform', event.transform);
+              document.getElementById('zoomLevel').textContent =
+                Math.round(event.transform.k * 100) + '%';
+              state.zoom = event.transform.k;
+          });
+
+        svg.call(zoom);
+        state.zoomBehavior = zoom;
+        state.svg = svg;
+
+        const simulation = d3.forceSimulation(state.graphNodes)
+          .force('link', d3.forceLink(state.graphLinks)
+            .id(d => d.id)
+            .distance(150)
+          )
+          .force('charge', d3.forceManyBody().strength(-300))
+          .force('center', d3.forceCenter(width / 2, height / 2))
+          .force('collision', d3.forceCollide().radius(d => d.size + 10));
+
+        state.simulation = simulation;
+
+        renderGraph(g, simulation);
+        setupEventListeners();
+        updateStats();
+    }
+
+    function renderGraph(g, simulation) {
+        const searchQuery = state.searchQuery.toLowerCase();
+        let filteredNodes = state.graphNodes;
+        let filteredLinks = state.graphLinks;
+
+        if (searchQuery) {
+            const matchedIds = new Set();
+            state.graphNodes.forEach(n => {
+                if (n.name.toLowerCase().includes(searchQuery) ||
+                  n.fullName.toLowerCase().includes(searchQuery)) {
+                    matchedIds.add(n.id);
+                }
+            });
+
+            const expandedIds = new Set(matchedIds);
+            state.graphLinks.forEach(l => {
+                if (matchedIds.has(l.source) || matchedIds.has(l.target)) {
+                    expandedIds.add(l.source);
+                    expandedIds.add(l.target);
+                }
+            });
+
+            filteredNodes = state.graphNodes.filter(n => expandedIds.has(n.id));
+            filteredLinks = state.graphLinks.filter(l =>
+              expandedIds.has(l.source) && expandedIds.has(l.target)
+            );
+        }
+
+        const nodeMap = new Map();
+        filteredNodes.forEach(n => nodeMap.set(n.id, n));
+
+        g.selectAll('*').remove();
+
+        // Рисуем ребра
+        const link = g.append('g')
+          .selectAll('line')
+          .data(filteredLinks)
+          .enter()
+          .append('line')
+          .attr('stroke', d => d.isCycle ? '#f87171' : '#3b82f6')
+          .attr('stroke-width', d => d.isCycle ? 2.5 : 1.5)
+          .attr('stroke-opacity', d => d.isCycle ? 1 : 0.5)
+          .attr('stroke-dasharray', d => d.isCycle ? '6,3' : 'none');
+
+        // Рисуем узлы
+        const nodeGroup = g.append('g')
+          .selectAll('g')
+          .data(filteredNodes)
+          .enter()
+          .append('g')
+          .attr('cursor', 'pointer')
+          .on('click', function(event, d) { showDetails(d); })
+          .on('mouseover', function(event, d) { showTooltip(event, d); })
+          .on('mouseout', function() { hideTooltip(); })
+          .call(d3.drag()
+            .on('start', dragstarted)
+            .on('drag', dragged)
+            .on('end', dragended));
+
+        // Круги
+        nodeGroup.append('circle')
+          .attr('r', d => d.size || 15)
+          .attr('fill', d => {
+              if (state.highlightedNodes.size > 0) {
+                  return state.highlightedNodes.has(d.id) ? d.color : '#1e293b';
+              }
+              return d.color;
+          })
+          .attr('stroke', d => {
+              if (d.isEntry) return '#fbbf24';
+              if (d.type === 'vue') return '#4ade80';
+              if (d.type === 'typescript') return '#60a5fa';
+              return '#1e293b';
+          })
+          .attr('stroke-width', d => d.isEntry ? 3 : 1.5)
+          .attr('opacity', d => {
+              if (state.highlightedNodes.size === 0) return 1;
+              return state.highlightedNodes.has(d.id) ? 1 : 0.2;
+          });
+
+        // Имена
+        nodeGroup.append('text')
+          .attr('dx', d => (d.size || 15) + 8)
+          .attr('dy', 4)
+          .attr('font-size', d => d.isEntry ? 12 : 10)
+          .attr('fill', '#e2e8f0')
+          .attr('font-family', 'monospace')
+          .text(d => d.isEntry ? '⭐ ' + d.name : d.name)
+          .style('pointer-events', 'none')
+          .attr('opacity', d => {
+              if (state.highlightedNodes.size === 0) return 1;
+              return state.highlightedNodes.has(d.id) ? 1 : 0.2;
+          });
+
+        // Тип модуля
+        nodeGroup.append('text')
+          .attr('dx', d => (d.size || 15) + 8)
+          .attr('dy', 16)
+          .attr('font-size', 8)
+          .attr('fill', '#64748b')
+          .attr('font-family', 'monospace')
+          .text(d => d.type || '')
+          .style('pointer-events', 'none')
+          .attr('opacity', d => {
+              if (state.highlightedNodes.size === 0) return 1;
+              return state.highlightedNodes.has(d.id) ? 1 : 0.2;
+          });
+
+        simulation.nodes(filteredNodes);
+        simulation.force('link').links(filteredLinks);
+        simulation.alpha(1).restart();
+
+        simulation.on('tick', function() {
+            link
+              .attr('x1', d => d.source.x)
+              .attr('y1', d => d.source.y)
+              .attr('x2', d => d.target.x)
+              .attr('y2', d => d.target.y);
+
+            nodeGroup.attr('transform', d => 'translate(' + (d.x || 0) + ',' + (d.y || 0) + ')');
+        });
+
+        state.highlightedNodes.clear();
+
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+    }
+
+    // ============================================================
+    // 5. TOOLTIP И ДЕТАЛИ
+    // ============================================================
+    function showTooltip(event, d) {
+        const tooltip = document.getElementById('tooltip');
+        document.getElementById('ttTitle').textContent = d.name;
+        document.getElementById('ttInfo').textContent = 'Тип: ' + d.type + ' | Модуль: ' + d.fullName;
+
+        let detail = '';
+        if (d.metadata) {
+            if (d.metadata.isExported !== undefined) {
+                detail += 'Экспортирован: ' + (d.metadata.isExported ? 'Да' : 'Нет') + '\n';
+            }
+            if (d.metadata.params) {
+                detail += 'Параметры: ' + d.metadata.params.join(', ') + '\n';
+            }
+        }
+        document.getElementById('ttDetail').textContent = detail || 'Нет дополнительной информации';
+
+        const rect = document.getElementById('graphContainer').getBoundingClientRect();
+        tooltip.style.display = 'block';
+        tooltip.style.left = Math.min(event.clientX - rect.left + 15, rect.width - 420) + 'px';
+        tooltip.style.top = Math.min(event.clientY - rect.top - 10, rect.height - 150) + 'px';
+    }
+
+    function hideTooltip() {
+        document.getElementById('tooltip').style.display = 'none';
+    }
+
+    function showDetails(d) {
+        const panel = document.getElementById('detailsPanel');
+        document.getElementById('dpTitle').textContent = d.name;
+
+        let html = '';
+        html += '<div class="dp-section"><h4>Информация</h4>';
+        html += '<div class="item">Тип: <strong>' + d.type + '</strong></div>';
+        html += '<div class="item">Путь: <span class="module-name">' + d.fullName + '</span></div>';
+        if (d.isEntry) html += '<div class="item">⭐ Точка входа</div>';
+        html += '</div>';
+
+        // Зависимости (исходящие)
+        const outgoing = state.graphLinks.filter(l => l.source === d.id);
+        if (outgoing.length > 0) {
+            html += '<div class="dp-section"><h4>📤 Зависимости</h4>';
+            outgoing.forEach(l => {
+                const target = state.graphNodes.find(n => n.id === l.target);
+                if (target) {
+                    const icon = l.isCycle ? '🔄' : '→';
+                    html += '<div class="item">' + icon + ' ' + target.name +
+                      ' <span class="module-name">(' + l.type + ')</span></div>';
+                }
+            });
+            html += '</div>';
+        }
+
+        // Зависители (входящие)
+        const incoming = state.graphLinks.filter(l => l.target === d.id);
+        if (incoming.length > 0) {
+            html += '<div class="dp-section"><h4>📥 Зависители</h4>';
+            incoming.forEach(l => {
+                const source = state.graphNodes.find(n => n.id === l.source);
+                if (source) {
+                    html += '<div class="item">← ' + source.name +
+                      ' <span class="module-name">(' + l.type + ')</span></div>';
+                }
+            });
+            html += '</div>';
+        }
+
+        document.getElementById('dpContent').innerHTML = html;
+        panel.style.display = 'block';
+        state.selectedNode = d;
+
+        // Подсветка
+        state.highlightedNodes = new Set();
+        state.highlightedNodes.add(d.id);
+        outgoing.forEach(l => state.highlightedNodes.add(l.target));
+        incoming.forEach(l => state.highlightedNodes.add(l.source));
+
+        renderGraph(
+          d3.select('#graphSvg').select('g'),
+          state.simulation
+        );
+    }
+
+    function closeDetails() {
+        document.getElementById('detailsPanel').style.display = 'none';
+        state.selectedNode = null;
+        state.highlightedNodes.clear();
+        renderGraph(
+          d3.select('#graphSvg').select('g'),
+          state.simulation
+        );
+    }
+
+    // ============================================================
+    // 6. СТАТИСТИКА
+    // ============================================================
+    function updateStats() {
+        const modules = state.graphNodes.filter(n => n.type !== 'function');
+        const functions = state.graphNodes.filter(n => n.type === 'function');
+        const exported = state.graphNodes.filter(n => n.metadata?.isExported);
+
+        document.getElementById('statModules').textContent = modules.length;
+        document.getElementById('statFunctions').textContent = functions.length;
+        document.getElementById('statClasses').textContent = 0;
+        document.getElementById('statExports').textContent = exported.length;
+        document.getElementById('statCycles').textContent = graphData.cyclicEdges?.length || 0;
+    }
+
+    // ============================================================
+    // 7. СОБЫТИЯ
+    // ============================================================
+    function setupEventListeners() {
+        document.getElementById('searchInput').addEventListener('input', function(e) {
+            state.searchQuery = e.target.value;
+            renderGraph(
+              d3.select('#graphSvg').select('g'),
+              state.simulation
+            );
+        });
+
+        document.getElementById('zoomIn').addEventListener('click', function() {
+            if (state.zoomBehavior && state.svg) {
+                state.svg.transition().duration(200)
+                  .call(state.zoomBehavior.scaleBy, 1.3);
+            }
+        });
+
+        document.getElementById('zoomOut').addEventListener('click', function() {
+            if (state.zoomBehavior && state.svg) {
+                state.svg.transition().duration(200)
+                  .call(state.zoomBehavior.scaleBy, 0.7);
+            }
+        });
+
+        document.getElementById('zoomReset').addEventListener('click', function() {
+            if (state.zoomBehavior && state.svg) {
+                state.svg.transition().duration(300)
+                  .call(state.zoomBehavior.transform, d3.zoomIdentity);
+            }
+        });
+
+        document.getElementById('dpClose').addEventListener('click', closeDetails);
+
+        document.getElementById('graphContainer').addEventListener('click', function(e) {
+            if (e.target === e.currentTarget || e.target.tagName === 'svg') {
+                closeDetails();
+                hideTooltip();
+            }
+        });
+
+        window.addEventListener('resize', function() {
+            const container = document.getElementById('graphContainer');
+            const svg = d3.select('#graphSvg');
+            svg.attr('width', container.clientWidth)
+              .attr('height', container.clientHeight);
+        });
+    }
+
+    // ============================================================
+    // 8. ИНИЦИАЛИЗАЦИЯ
+    // ============================================================
+    prepareGraphData();
+    initGraph();
+
+    // ============================================================
+    // 9. ГОРЯЧИЕ КЛАВИШИ
+    // ============================================================
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeDetails();
+            hideTooltip();
+        }
+        if (e.key === 'f' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            document.getElementById('searchInput').focus();
+        }
+    });
+
+    console.log('🔀 Граф зависимостей загружен');
+    console.log('📊 Модулей:', state.graphNodes.length);
+    console.log('🔗 Связей:', state.graphLinks.length);
+    console.log('💡 Клик на узел для деталей, Esc для закрытия');
+    console.log('🔍 Ctrl+F для поиска');
+</script>
+
+</body>
+</html>

@@ -474,6 +474,331 @@ export function getAllProjectFiles(
   return filesList;
 }
 
+// ==========================================
+// ✅ НОВЫЕ ФУНКЦИИ ДЛЯ ИЗВЛЕЧЕНИЯ СУЩНОСТЕЙ
+// ==========================================
+
+/**
+ * Извлекает все функции из AST
+ */
+export function extractFunctionsFromAST(ast: any): any[] {
+  const functions: any[] = [];
+
+  if (!ast || !ast.body) return functions;
+
+  walk(ast, {
+    enter(node: any, parent: any) {
+      if ((node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression') && node.id) {
+        const isExported = isNodeExported(node, parent);
+        functions.push({
+          name: node.id.name,
+          line: node.loc?.start?.line || 1,
+          isAsync: node.async || false,
+          isExported,
+          params: node.params.map((p: any) => {
+            if (p.type === 'Identifier') return p.name || 'unknown';
+            if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
+            return 'unknown';
+          }),
+          returnType: node.returnType?.typeName?.name || node.returnType?.name || undefined,
+          startLine: node.loc?.start?.line || 1,
+          endLine: node.loc?.end?.line || 1,
+          body: node.body ? node.body.type : undefined,
+        });
+      }
+
+      // Методы классов
+      if (node.type === 'MethodDefinition' && node.key) {
+        const methodName = node.key.name;
+        const className = parent?.id?.name || 'Anonymous';
+
+        if (methodName) {
+          const isExported = isNodeExported(node, parent);
+          functions.push({
+            name: methodName,
+            line: node.loc?.start?.line || 1,
+            isAsync: node.value?.async || false,
+            isExported,
+            params:
+              node.value?.params?.map((p: any) => {
+                if (p.type === 'Identifier') return p.name || 'unknown';
+                return 'unknown';
+              }) || [],
+            returnType: node.value?.returnType?.typeName?.name || undefined,
+            startLine: node.loc?.start?.line || 1,
+            endLine: node.loc?.end?.line || 1,
+            isMethod: true,
+            className,
+          });
+        }
+      }
+    },
+  });
+
+  return functions;
+}
+
+/**
+ * Извлекает все классы из AST
+ */
+export function extractClassesFromAST(ast: any): any[] {
+  const classes: any[] = [];
+
+  if (!ast || !ast.body) return classes;
+
+  walk(ast, {
+    enter(node: any, parent: any) {
+      if (node.type === 'ClassDeclaration' && node.id) {
+        const name = node.id.name;
+        const isExported = isNodeExported(node, parent);
+
+        const methods: string[] = [];
+        const properties: string[] = [];
+
+        if (node.body?.body) {
+          for (const member of node.body.body) {
+            if (member.type === 'MethodDefinition' && member.key) {
+              methods.push(member.key.name);
+            }
+            if (member.type === 'PropertyDefinition' && member.key) {
+              properties.push(member.key.name);
+            }
+          }
+        }
+
+        classes.push({
+          name,
+          line: node.loc?.start?.line || 1,
+          isExported,
+          methods,
+          properties,
+          extends: node.superClass?.name || undefined,
+          implements: node.implements?.map((i: any) => i.name) || [],
+          startLine: node.loc?.start?.line || 1,
+          endLine: node.loc?.end?.line || 1,
+        });
+      }
+    },
+  });
+
+  return classes;
+}
+
+/**
+ * Извлекает все константы из AST
+ */
+export function extractConstantsFromAST(ast: any): any[] {
+  const constants: any[] = [];
+
+  if (!ast || !ast.body) return constants;
+
+  walk(ast, {
+    enter(node: any, parent: any) {
+      if (node.type === 'VariableDeclaration' && node.kind === 'const') {
+        const isExported = isNodeExported(node, parent);
+
+        for (const decl of node.declarations) {
+          if (decl.id?.type === 'Identifier') {
+            const name = decl.id.name;
+            const value = extractValueFromNode(decl.init);
+
+            constants.push({
+              name,
+              line: decl.loc?.start?.line || node.loc?.start?.line || 1,
+              value,
+              isExported,
+              type: decl.init?.type || undefined,
+            });
+          }
+        }
+      }
+    },
+  });
+
+  return constants;
+}
+
+/**
+ * Извлекает все интерфейсы из AST
+ */
+export function extractInterfacesFromAST(ast: any): any[] {
+  const interfaces: any[] = [];
+
+  if (!ast || !ast.body) return interfaces;
+
+  walk(ast, {
+    enter(node: any, parent: any) {
+      if (node.type === 'TSInterfaceDeclaration' && node.id) {
+        const name = node.id.name;
+        const isExported = isNodeExported(node, parent);
+
+        const properties: string[] = [];
+        if (node.body?.body) {
+          for (const member of node.body.body) {
+            if (member.key?.name) {
+              properties.push(member.key.name);
+            }
+          }
+        }
+
+        interfaces.push({
+          name,
+          line: node.loc?.start?.line || 1,
+          isExported,
+          properties,
+          extends: node.extends?.map((e: any) => e.expression?.name) || [],
+          startLine: node.loc?.start?.line || 1,
+          endLine: node.loc?.end?.line || 1,
+        });
+      }
+    },
+  });
+
+  return interfaces;
+}
+
+/**
+ * Извлекает все типы из AST
+ */
+export function extractTypesFromAST(ast: any): any[] {
+  const types: any[] = [];
+
+  if (!ast || !ast.body) return types;
+
+  walk(ast, {
+    enter(node: any, parent: any) {
+      if (node.type === 'TSTypeAliasDeclaration' && node.id) {
+        const name = node.id.name;
+        const isExported = isNodeExported(node, parent);
+
+        types.push({
+          name,
+          line: node.loc?.start?.line || 1,
+          isExported,
+          definition: node.typeAnnotation?.type || 'unknown',
+        });
+      }
+    },
+  });
+
+  return types;
+}
+
+/**
+ * Извлекает все переменные (let, var) из AST
+ */
+export function extractVariablesFromAST(ast: any): any[] {
+  const variables: any[] = [];
+
+  if (!ast || !ast.body) return variables;
+
+  walk(ast, {
+    enter(node: any, parent: any) {
+      if (node.type === 'VariableDeclaration' && node.kind !== 'const') {
+        const isExported = isNodeExported(node, parent);
+
+        for (const decl of node.declarations) {
+          if (decl.id?.type === 'Identifier') {
+            const name = decl.id.name;
+            variables.push({
+              name,
+              line: decl.loc?.start?.line || node.loc?.start?.line || 1,
+              isExported,
+              type: decl.init?.type || undefined,
+              value: extractValueFromNode(decl.init),
+            });
+          }
+        }
+      }
+    },
+  });
+
+  return variables;
+}
+
+// ==========================================
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ==========================================
+
+/**
+ * Проверяет, экспортируется ли узел
+ */
+function isNodeExported(node: any, parent: any): boolean {
+  if (!node) return false;
+
+  // Прямой export
+  if (node.type === 'ExportNamedDeclaration' || node.type === 'ExportDefaultDeclaration') {
+    return true;
+  }
+
+  // Проверка родителя
+  if (parent) {
+    if (parent.type === 'ExportNamedDeclaration' || parent.type === 'ExportDefaultDeclaration') {
+      return true;
+    }
+    if (parent.type === 'VariableDeclaration' && isNodeExported(parent, parent.parent)) {
+      return true;
+    }
+  }
+
+  // Проверка декораторов
+  if (node.decorators) {
+    for (const decorator of node.decorators) {
+      if (decorator.expression?.name === 'export') {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Извлекает значение из узла
+ */
+function extractValueFromNode(node: any): any {
+  if (!node) return undefined;
+
+  if (node.type === 'Literal') {
+    return node.value;
+  }
+
+  if (node.type === 'Identifier') {
+    return node.name;
+  }
+
+  if (node.type === 'UnaryExpression') {
+    return `${node.operator}${extractValueFromNode(node.argument)}`;
+  }
+
+  if (node.type === 'BinaryExpression') {
+    return `${extractValueFromNode(node.left)} ${node.operator} ${extractValueFromNode(node.right)}`;
+  }
+
+  if (node.type === 'ArrayExpression') {
+    return node.elements
+      .map((e: any) => extractValueFromNode(e))
+      .filter((v: any) => v !== undefined);
+  }
+
+  if (node.type === 'ObjectExpression') {
+    const obj: Record<string, any> = {};
+    for (const prop of node.properties) {
+      if (prop.type === 'Property' && prop.key) {
+        const key = prop.key.name || prop.key.value;
+        obj[key] = extractValueFromNode(prop.value);
+      }
+    }
+    return obj;
+  }
+
+  if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') {
+    return '[Function]';
+  }
+
+  return undefined;
+}
+
 // Реэкспорт walk для удобства использования в других модулях
 export { walk };
 

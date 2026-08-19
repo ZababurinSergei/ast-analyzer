@@ -409,64 +409,113 @@ export async function verifyFunction(
 }
 
 // ============================================
-// DEFAULT ЭКСПОРТ
+// DEFAULT ЭКСПОРТ - ВСЕ ЧЕРЕЗ IMPORT
 // ============================================
+
+// Импортируем все необходимые модули для default экспорта
+import {
+  Z3Verifier as Z3VerifierClass,
+  createIntParam as createIntParamFn,
+  createBoolParam as createBoolParamFn,
+  createStringParam as createStringParamFn,
+  eq as eqFn,
+  neq as neqFn,
+  range as rangeFn,
+  implies as impliesFn,
+  and as andFn,
+  or as orFn,
+  not as notFn,
+  if_ as if_Fn,
+  compare as compareFn,
+  assign as assignFn,
+  add as addFn,
+  sub as subFn,
+  mul as mulFn,
+  div as divFn,
+  addExpr as addExprFn,
+  subExpr as subExprFn,
+  mulExpr as mulExprFn,
+  divExpr as divExprFn,
+} from './Z3Verifier.js';
+
+import {
+  ExpressionParser as ExpressionParserClass,
+  createExpressionParser as createExpressionParserFn,
+  parseExpression as parseExpressionFn,
+  validateExpression as validateExpressionFn,
+  extractVariables as extractVariablesFn,
+  isValidForZ3 as isValidForZ3Fn,
+  toZ3String as toZ3StringFn,
+  parseFunctionBody as parseFunctionBodyFn,
+  createFunctionVariables as createFunctionVariablesFn,
+  verifyFunctionWithBody as verifyFunctionWithBodyFn,
+  createContractFromExpression as createContractFromExpressionFn,
+  createContractWithAutoPreconditions as createContractWithAutoPreconditionsFn,
+  canParseExpression as canParseExpressionFn,
+  isSimpleExpression as isSimpleExpressionFn,
+  extractVariablesFromExpression as extractVariablesFromExpressionFn,
+} from './ExpressionParser.js';
+
+import { FunctionBodyModeler as FunctionBodyModelerClass } from './FunctionBodyModeler.js';
+import { FileEquivalenceChecker as FileEquivalenceCheckerClass } from './checkers/FileEquivalenceChecker.js';
+import {
+  RefactoringEquivalenceChecker as RefactoringEquivalenceCheckerClass,
+  isRefactoringEquivalent as isRefactoringEquivalentFn,
+  needsRefactoringReview as needsRefactoringReviewFn,
+  hasCriticalIssues as hasCriticalIssuesFn,
+} from './checkers/RefactoringEquivalenceChecker.js';
 
 export default {
   // Классы
-  Z3Verifier: require('./Z3Verifier.js').Z3Verifier,
-  ExpressionParser: require('./ExpressionParser.js').ExpressionParser,
-  FunctionBodyModeler: require('./FunctionBodyModeler.js').FunctionBodyModeler,
-  FileEquivalenceChecker: require('./checkers/FileEquivalenceChecker.js').FileEquivalenceChecker,
-  RefactoringEquivalenceChecker: require('./checkers/RefactoringEquivalenceChecker.js')
-    .RefactoringEquivalenceChecker,
+  Z3Verifier: Z3VerifierClass,
+  ExpressionParser: ExpressionParserClass,
+  FunctionBodyModeler: FunctionBodyModelerClass,
+  FileEquivalenceChecker: FileEquivalenceCheckerClass,
+  RefactoringEquivalenceChecker: RefactoringEquivalenceCheckerClass,
 
   // Z3Verifier функции
-  createIntParam: require('./Z3Verifier.js').createIntParam,
-  createBoolParam: require('./Z3Verifier.js').createBoolParam,
-  createStringParam: require('./Z3Verifier.js').createStringParam,
-  eq: require('./Z3Verifier.js').eq,
-  neq: require('./Z3Verifier.js').neq,
-  range: require('./Z3Verifier.js').range,
-  implies: require('./Z3Verifier.js').implies,
-  and: require('./Z3Verifier.js').and,
-  or: require('./Z3Verifier.js').or,
-  not: require('./Z3Verifier.js').not,
-  if_: require('./Z3Verifier.js').if_,
-  compare: require('./Z3Verifier.js').compare,
-  assign: require('./Z3Verifier.js').assign,
-  add: require('./Z3Verifier.js').add,
-  sub: require('./Z3Verifier.js').sub,
-  mul: require('./Z3Verifier.js').mul,
-  div: require('./Z3Verifier.js').div,
-  addExpr: require('./Z3Verifier.js').addExpr,
-  subExpr: require('./Z3Verifier.js').subExpr,
-  mulExpr: require('./Z3Verifier.js').mulExpr,
-  divExpr: require('./Z3Verifier.js').divExpr,
+  createIntParam: createIntParamFn,
+  createBoolParam: createBoolParamFn,
+  createStringParam: createStringParamFn,
+  eq: eqFn,
+  neq: neqFn,
+  range: rangeFn,
+  implies: impliesFn,
+  and: andFn,
+  or: orFn,
+  not: notFn,
+  if_: if_Fn,
+  compare: compareFn,
+  assign: assignFn,
+  add: addFn,
+  sub: subFn,
+  mul: mulFn,
+  div: divFn,
+  addExpr: addExprFn,
+  subExpr: subExprFn,
+  mulExpr: mulExprFn,
+  divExpr: divExprFn,
 
   // ExpressionParser функции
-  createExpressionParser: require('./ExpressionParser.js').createExpressionParser,
-  parseExpression: require('./ExpressionParser.js').parseExpression,
-  validateExpression: require('./ExpressionParser.js').validateExpression,
-  extractVariables: require('./ExpressionParser.js').extractVariables,
-  isValidForZ3: require('./ExpressionParser.js').isValidForZ3,
-  toZ3String: require('./ExpressionParser.js').toZ3String,
-  parseFunctionBody: require('./ExpressionParser.js').parseFunctionBody,
-  createFunctionVariables: require('./ExpressionParser.js').createFunctionVariables,
-  verifyFunctionWithBody: require('./ExpressionParser.js').verifyFunctionWithBody,
-  createContractFromExpression: require('./ExpressionParser.js').createContractFromExpression,
-  createContractWithAutoPreconditions:
-    require('./ExpressionParser.js').createContractWithAutoPreconditions,
-  canParseExpression: require('./ExpressionParser.js').canParseExpression,
-  isSimpleExpression: require('./ExpressionParser.js').isSimpleExpression,
-  extractVariablesFromExpression: require('./ExpressionParser.js').extractVariablesFromExpression,
+  createExpressionParser: createExpressionParserFn,
+  parseExpression: parseExpressionFn,
+  validateExpression: validateExpressionFn,
+  extractVariables: extractVariablesFn,
+  isValidForZ3: isValidForZ3Fn,
+  toZ3String: toZ3StringFn,
+  parseFunctionBody: parseFunctionBodyFn,
+  createFunctionVariables: createFunctionVariablesFn,
+  verifyFunctionWithBody: verifyFunctionWithBodyFn,
+  createContractFromExpression: createContractFromExpressionFn,
+  createContractWithAutoPreconditions: createContractWithAutoPreconditionsFn,
+  canParseExpression: canParseExpressionFn,
+  isSimpleExpression: isSimpleExpressionFn,
+  extractVariablesFromExpression: extractVariablesFromExpressionFn,
 
   // RefactoringEquivalenceChecker утилиты
-  isRefactoringEquivalent: require('./checkers/RefactoringEquivalenceChecker.js')
-    .isRefactoringEquivalent,
-  needsRefactoringReview: require('./checkers/RefactoringEquivalenceChecker.js')
-    .needsRefactoringReview,
-  hasCriticalIssues: require('./checkers/RefactoringEquivalenceChecker.js').hasCriticalIssues,
+  isRefactoringEquivalent: isRefactoringEquivalentFn,
+  needsRefactoringReview: needsRefactoringReviewFn,
+  hasCriticalIssues: hasCriticalIssuesFn,
 
   // Утилиты для контрактов
   createContractTemplate,

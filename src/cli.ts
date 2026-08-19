@@ -14,6 +14,8 @@ import { Graphviz } from '@hpcc-js/wasm-graphviz';
 import { minifyForAI } from './core/minifier.js';
 import { findCyclicEdges, convertToDOT } from './core/graph-utils.js';
 import { setTsConfigPath, loadTsConfig } from './core/tsconfig-resolver.js';
+import { parseFile } from './core/ast-parser.js';
+import { extractEntities } from './core/entity-extractor.js';
 
 // Mode modules
 import { buildProjectGraph } from './modes/project-graph.js';
@@ -30,7 +32,7 @@ import { analyzeVueComponent, generateVueComponentReport } from './modes/vue-ana
 // Auto Refactor
 import { AutoRefactor } from './refactor/index.js';
 
-// Semantic Analysis (НОВЫЙ МОДУЛЬ!)
+// Semantic Analysis
 import { SemanticPipeline } from './ci-cd/SemanticPipeline.js';
 import { Z3Verifier, createIntParam, eq, range } from './formal/Z3Verifier.js';
 
@@ -39,13 +41,19 @@ import { runHybridReport } from './modes/hybrid-report/index.js';
 
 // Reporters
 import { generateHTMLReport } from './reporters/html-reporter.js';
+import { saveModuleGraph, saveEntityGraph, saveFullAnalysis } from './reporters/json-reporter.js';
+import { generateInteractiveHTML } from './reporters/interactive-reporter.js';
 
 // Types
-import type { SplitModuleOptions, MinifyFolderOptions } from './types.js';
+import type { SplitModuleOptions, MinifyFolderOptions, GraphData, FullAnalysis } from './types.js';
 
 // Utils
 import { showHelp, DEFAULT_EXCLUDE_PATTERNS } from './utils.js';
-import { normalizePathForDisplay, normalizeGraphPaths, normalizePathForOS } from './utils/path-utils.js';
+import {
+  normalizePathForDisplay,
+  normalizeGraphPaths,
+  normalizePathForOS,
+} from './utils/path-utils.js';
 
 // ==========================================
 // ОПРЕДЕЛЕНИЕ ОС
@@ -78,13 +86,9 @@ interface ParsedArgs {
   outputDir?: string;
   tsconfigPath?: string;
   options?: SplitModuleOptions | MinifyFolderOptions | any;
-}
-
-interface GraphResult {
-  rootKey: string;
-  graph: Record<string, string[]>;
-  hasCycles?: boolean;
-  cyclicEdges?: string[];
+  includeEntities?: boolean;
+  fromFunction?: string;
+  toFunction?: string;
 }
 
 function parseArgs(): ParsedArgs | null {
@@ -102,6 +106,9 @@ function parseArgs(): ParsedArgs | null {
 
   let outputDir: string | undefined;
   let tsconfigPath: string | undefined;
+  let includeEntities = false;
+  let fromFunction: string | undefined;
+  let toFunction: string | undefined;
   const cleanArgs: string[] = [];
 
   // Извлекаем -o/--output и --tsconfig из аргументов
@@ -115,6 +122,18 @@ function parseArgs(): ParsedArgs | null {
     } else if (arg === '--tsconfig') {
       if (normalizedArgs[i + 1]) {
         tsconfigPath = normalizedArgs[i + 1];
+        i++;
+      }
+    } else if (arg === '--entities') {
+      includeEntities = true;
+    } else if (arg === '--from') {
+      if (normalizedArgs[i + 1]) {
+        fromFunction = normalizedArgs[i + 1];
+        i++;
+      }
+    } else if (arg === '--to') {
+      if (normalizedArgs[i + 1]) {
+        toFunction = normalizedArgs[i + 1];
         i++;
       }
     } else if (arg) {
@@ -151,6 +170,9 @@ function parseArgs(): ParsedArgs | null {
       extraArg: depth,
       outputDir,
       tsconfigPath,
+      includeEntities,
+      fromFunction,
+      toFunction,
     };
   }
 
@@ -210,6 +232,9 @@ function parseArgs(): ParsedArgs | null {
       options,
       outputDir,
       tsconfigPath,
+      includeEntities,
+      fromFunction,
+      toFunction,
     };
   }
 
@@ -247,7 +272,16 @@ function parseArgs(): ParsedArgs | null {
     }
 
     process.argv = originalArgv;
-    return { mode: 'verify', targetPath: targetFile, options, outputDir, tsconfigPath };
+    return {
+      mode: 'verify',
+      targetPath: targetFile,
+      options,
+      outputDir,
+      tsconfigPath,
+      includeEntities,
+      fromFunction,
+      toFunction,
+    };
   }
 
   // Режим: refactor - автоматический рефакторинг с выделением модулей
@@ -316,7 +350,16 @@ function parseArgs(): ParsedArgs | null {
     }
 
     process.argv = originalArgv;
-    return { mode: 'refactor', targetPath, options, outputDir, tsconfigPath };
+    return {
+      mode: 'refactor',
+      targetPath,
+      options,
+      outputDir,
+      tsconfigPath,
+      includeEntities,
+      fromFunction,
+      toFunction,
+    };
   }
 
   // Режим: analyze - анализ файла без изменений
@@ -360,7 +403,16 @@ function parseArgs(): ParsedArgs | null {
     }
 
     process.argv = originalArgv;
-    return { mode: 'analyze', targetPath, options, outputDir, tsconfigPath };
+    return {
+      mode: 'analyze',
+      targetPath,
+      options,
+      outputDir,
+      tsconfigPath,
+      includeEntities,
+      fromFunction,
+      toFunction,
+    };
   }
 
   // Mode: vue-analyze
@@ -400,7 +452,16 @@ function parseArgs(): ParsedArgs | null {
     }
 
     process.argv = originalArgv;
-    return { mode: 'vue-analyze', targetPath, options: options as any, outputDir, tsconfigPath };
+    return {
+      mode: 'vue-analyze',
+      targetPath,
+      options: options as any,
+      outputDir,
+      tsconfigPath,
+      includeEntities,
+      fromFunction,
+      toFunction,
+    };
   }
 
   // Mode: split-module
@@ -492,7 +553,16 @@ function parseArgs(): ParsedArgs | null {
     }
 
     process.argv = originalArgv;
-    return { mode: 'split-module', targetPath, options, outputDir, tsconfigPath };
+    return {
+      mode: 'split-module',
+      targetPath,
+      options,
+      outputDir,
+      tsconfigPath,
+      includeEntities,
+      fromFunction,
+      toFunction,
+    };
   }
 
   // Mode: minify-folder
@@ -557,7 +627,16 @@ function parseArgs(): ParsedArgs | null {
     }
 
     process.argv = originalArgv;
-    return { mode: 'minify-folder', targetPath, options, outputDir, tsconfigPath };
+    return {
+      mode: 'minify-folder',
+      targetPath,
+      options,
+      outputDir,
+      tsconfigPath,
+      includeEntities,
+      fromFunction,
+      toFunction,
+    };
   }
 
   // Mode: dead-code
@@ -569,7 +648,17 @@ function parseArgs(): ParsedArgs | null {
       return null;
     }
     process.argv = originalArgv;
-    return { mode: 'dead-code', targetPath, extraArg: '', depthArg: '', outputDir, tsconfigPath };
+    return {
+      mode: 'dead-code',
+      targetPath,
+      extraArg: '',
+      depthArg: '',
+      outputDir,
+      tsconfigPath,
+      includeEntities,
+      fromFunction,
+      toFunction,
+    };
   }
 
   // Mode: impact
@@ -589,6 +678,9 @@ function parseArgs(): ParsedArgs | null {
       depthArg: '',
       outputDir,
       tsconfigPath,
+      includeEntities,
+      fromFunction,
+      toFunction,
     };
   }
 
@@ -609,6 +701,9 @@ function parseArgs(): ParsedArgs | null {
       depthArg: '',
       outputDir,
       tsconfigPath,
+      includeEntities,
+      fromFunction,
+      toFunction,
     };
   }
 
@@ -621,7 +716,17 @@ function parseArgs(): ParsedArgs | null {
       return null;
     }
     process.argv = originalArgv;
-    return { mode: 'minify', targetPath, extraArg: '', depthArg: '', outputDir, tsconfigPath };
+    return {
+      mode: 'minify',
+      targetPath,
+      extraArg: '',
+      depthArg: '',
+      outputDir,
+      tsconfigPath,
+      includeEntities,
+      fromFunction,
+      toFunction,
+    };
   }
 
   // Mode: project (graph)
@@ -641,6 +746,9 @@ function parseArgs(): ParsedArgs | null {
       depthArg: '',
       outputDir,
       tsconfigPath,
+      includeEntities,
+      fromFunction,
+      toFunction,
     };
   }
 
@@ -653,7 +761,17 @@ function parseArgs(): ParsedArgs | null {
       return null;
     }
     process.argv = originalArgv;
-    return { mode: 'file', targetPath, extraArg: '', depthArg: '', outputDir, tsconfigPath };
+    return {
+      mode: 'file',
+      targetPath,
+      extraArg: '',
+      depthArg: '',
+      outputDir,
+      tsconfigPath,
+      includeEntities,
+      fromFunction,
+      toFunction,
+    };
   }
 
   console.error(`❌ Неизвестный режим: ${mode}`);
@@ -670,7 +788,17 @@ export async function runCLI(): Promise<void> {
   const parsed = parseArgs();
   if (!parsed) return;
 
-  const { mode, targetPath, extraArg, options, outputDir, tsconfigPath } = parsed;
+  const {
+    mode,
+    targetPath,
+    extraArg,
+    options,
+    outputDir,
+    tsconfigPath,
+    includeEntities,
+    fromFunction,
+    toFunction,
+  } = parsed;
 
   // Сохраняем исходную директорию СРАЗУ
   const originalCwd = process.cwd();
@@ -787,7 +915,7 @@ export async function runCLI(): Promise<void> {
       }
 
       const pipeline = new SemanticPipeline({
-        wasmPath: path.resolve(__dirname, 'wasm')
+        wasmPath: path.resolve(__dirname, 'wasm'),
       });
       const result = await pipeline.run(paths, {
         formalVerification: options?.formalVerification || false,
@@ -889,7 +1017,7 @@ export async function runCLI(): Promise<void> {
         console.log(`${'='.repeat(60)}\n`);
 
         const pipeline = new SemanticPipeline({
-          wasmPath: path.resolve(__dirname, 'wasm')
+          wasmPath: path.resolve(__dirname, 'wasm'),
         });
         const semanticResult = await pipeline.run([currentTargetPath], {
           formalVerification: false,
@@ -1080,7 +1208,19 @@ export async function runCLI(): Promise<void> {
         `📁 Построение графа проекта от ${currentTargetPath} (глубина ${maxDepth === Infinity ? '∞' : maxDepth})`
       );
 
-      const resultData = buildProjectGraph(currentTargetPath, maxDepth) as GraphResult;
+      // Передаем fromFunction и toFunction в buildProjectGraph
+      const resultData = buildProjectGraph(
+        currentTargetPath,
+        maxDepth,
+        includeEntities,
+        fromFunction,
+        toFunction
+      ) as GraphData & {
+        packageLockReport?: any;
+        callGraphResult?: any;
+        entities?: Record<string, any>;
+      };
+
       if (!resultData || Object.keys(resultData.graph).length === 0) {
         console.log('⚠️ Зависимости не найдены');
         return;
@@ -1117,6 +1257,340 @@ export async function runCLI(): Promise<void> {
       );
       fs.writeFileSync('report.html', htmlContent);
       console.log('   ✅ report.html');
+
+      // ✅ Сохраняем package-lock отчет, если есть
+      if (resultData.packageLockReport) {
+        const packageLockPath = path.join(process.cwd(), 'package-lock-report.json');
+        fs.writeFileSync(packageLockPath, JSON.stringify(resultData.packageLockReport, null, 2));
+        console.log('   ✅ package-lock-report.json');
+      }
+
+      // ✅ Сохраняем результат графа вызовов, если есть
+      if (resultData.callGraphResult) {
+        const callGraphPath = path.join(process.cwd(), 'call-graph-result.json');
+        fs.writeFileSync(callGraphPath, JSON.stringify(resultData.callGraphResult, null, 2));
+        console.log('   ✅ call-graph-result.json');
+
+        // Выводим результат в консоль
+        if (resultData.callGraphResult.found) {
+          console.log(`\n🔗 Путь от ${fromFunction || '?'} к ${toFunction || '?'}:`);
+          console.log(`   ${resultData.callGraphResult.path.join(' → ')}`);
+          console.log(`\n📊 Узлов в пути: ${resultData.callGraphResult.nodes.length}`);
+          console.log(`📊 Ребер в пути: ${resultData.callGraphResult.edges.length}`);
+        } else {
+          console.log(`\n❌ Путь не найден: ${resultData.callGraphResult.reason}`);
+        }
+      }
+
+      // ✅ Если указан флаг --entities, генерируем графы сущностей и интерактивный HTML
+      if (includeEntities && resultData.entities) {
+        console.log('\n📊 Генерация графов сущностей...');
+
+        // Парсим AST для извлечения сущностей
+        const ast = parseFile(currentTargetPath);
+        if (ast) {
+          const entities = extractEntities(ast, currentTargetPath);
+
+          // ✅ ВАЛИДАЦИЯ: убеждаемся, что calls это массив
+          let totalCalls = 0;
+          for (const func of entities.functions) {
+            if (!Array.isArray(func.calls)) {
+              func.calls = [];
+            }
+            totalCalls += func.calls.length;
+          }
+          console.log(`   📞 Всего вызовов функций: ${totalCalls}`);
+
+          // Сохраняем JSON файлы
+          const moduleGraphPath = path.join(process.cwd(), 'module-graph.json');
+          const entityGraphPath = path.join(process.cwd(), 'entity-graph.json');
+          const fullAnalysisPath = path.join(process.cwd(), 'full-analysis.json');
+
+          saveModuleGraph(normalizedData, entities, moduleGraphPath);
+          console.log(
+            `   ✅ module-graph.json (${entities.functions.length} функций, ${entities.classes.length} классов)`
+          );
+
+          saveEntityGraph(normalizedData, entities, entityGraphPath);
+          console.log(
+            `   ✅ entity-graph.json (${entities.interfaces.length} интерфейсов, ${entities.types.length} типов)`
+          );
+
+          // Строим полный анализ для интерактивного отчета
+          const fullAnalysis: FullAnalysis = {
+            version: '3.0.0',
+            root: currentTargetPath,
+            timestamp: new Date().toISOString(),
+            stats: {
+              totalModules: Object.keys(normalizedData.graph).length,
+              totalEntities:
+                entities.functions.length +
+                entities.classes.length +
+                entities.constants.length +
+                entities.interfaces.length +
+                entities.types.length +
+                entities.variables.length,
+              hasCycles: hasCycles,
+              cycles: normalizedData.cyclicEdges?.map(edge => edge.split('->')) || [],
+            },
+            moduleGraph: {
+              nodes: [],
+              edges: [],
+            },
+            entityGraph: {
+              nodes: [],
+              edges: [],
+            },
+          };
+
+          // Заполняем moduleGraph
+          const allModules = new Set<string>();
+          allModules.add(normalizedData.rootKey);
+          for (const [key, deps] of Object.entries(normalizedData.graph)) {
+            allModules.add(key);
+            for (const dep of deps) {
+              allModules.add(dep);
+            }
+          }
+
+          for (const modulePath of allModules) {
+            let language = 'javascript';
+            if (modulePath.endsWith('.ts') || modulePath.endsWith('.tsx')) language = 'typescript';
+            else if (modulePath.endsWith('.vue')) language = 'vue';
+            else if (modulePath.endsWith('.jsx')) language = 'jsx';
+
+            let size = 0;
+            let lines = 0;
+            try {
+              const absPath = path.resolve(modulePath);
+              if (fs.existsSync(absPath) && fs.statSync(absPath).isFile()) {
+                const content = fs.readFileSync(absPath, 'utf-8');
+                size = content.length;
+                lines = content.split('\n').length;
+              }
+            } catch {
+              // Игнорируем ошибки
+            }
+
+            fullAnalysis.moduleGraph.nodes.push({
+              id: modulePath,
+              name: path.basename(modulePath),
+              type: modulePath.endsWith('.vue') ? 'vue' : 'module',
+              level: modulePath === normalizedData.rootKey ? 0 : 1,
+              metadata: { size, lines, language, isEntry: modulePath === normalizedData.rootKey },
+            });
+          }
+
+          for (const [from, deps] of Object.entries(normalizedData.graph)) {
+            for (const to of deps) {
+              const specifiers: string[] = [];
+              for (const entity of entities.functions) {
+                if (entity.isExported && (to.includes(entity.name) || entity.name.includes(to))) {
+                  specifiers.push(entity.name);
+                }
+              }
+              fullAnalysis.moduleGraph.edges.push({
+                from,
+                to,
+                type: 'import',
+                specifiers:
+                  specifiers.length > 0 ? specifiers : [path.basename(to).replace(/\.[^.]+$/, '')],
+              });
+            }
+          }
+
+          // Заполняем entityGraph с ребрами для вызовов
+          for (const func of entities.functions) {
+            const modulePath = findModuleForEntity(func.name, normalizedData);
+            const nodeId = modulePath ? `${modulePath}#${func.name}` : `#${func.name}`;
+
+            // ✅ Убеждаемся, что calls это массив
+            const calls = Array.isArray(func.calls) ? func.calls : [];
+
+            fullAnalysis.entityGraph.nodes.push({
+              id: nodeId,
+              name: func.name,
+              type: 'function',
+              module: modulePath || 'unknown',
+              line: func.line,
+              metadata: {
+                isAsync: func.isAsync,
+                isExported: func.isExported,
+                params: func.params,
+                returnType: func.returnType,
+                isMethod: func.isMethod,
+                className: func.className,
+                calls: calls,
+                calledBy: func.calledBy || [],
+                startLine: func.startLine,
+                endLine: func.endLine,
+              },
+            });
+
+            // ✅ Добавляем ребра для каждого вызова
+            for (const call of calls) {
+              let targetModule = findModuleForEntity(call, normalizedData);
+              // Если не нашли по точному имени, ищем по частичному совпадению
+              if (!targetModule) {
+                for (const [modPath, deps] of Object.entries(normalizedData.graph)) {
+                  if (modPath.includes(call) || deps.some(d => d.includes(call))) {
+                    targetModule = modPath;
+                    break;
+                  }
+                }
+              }
+              const targetId = targetModule ? `${targetModule}#${call}` : `#${call}`;
+              fullAnalysis.entityGraph.edges.push({
+                from: nodeId,
+                to: targetId,
+                type: 'function_call',
+                line: func.line,
+              });
+            }
+          }
+
+          for (const cls of entities.classes) {
+            const modulePath = findModuleForEntity(cls.name, normalizedData);
+            const nodeId = modulePath ? `${modulePath}#${cls.name}` : `#${cls.name}`;
+            fullAnalysis.entityGraph.nodes.push({
+              id: nodeId,
+              name: cls.name,
+              type: 'class',
+              module: modulePath || 'unknown',
+              line: cls.line,
+              metadata: {
+                isExported: cls.isExported,
+                methods: cls.methods,
+                properties: cls.properties,
+                extends: cls.extends,
+                implements: cls.implements,
+                startLine: cls.startLine,
+                endLine: cls.endLine,
+              },
+            });
+            if (cls.extends) {
+              const targetModule = findModuleForEntity(cls.extends, normalizedData);
+              const targetId = targetModule ? `${targetModule}#${cls.extends}` : `#${cls.extends}`;
+              fullAnalysis.entityGraph.edges.push({
+                from: nodeId,
+                to: targetId,
+                type: 'class_extends',
+              });
+            }
+            for (const impl of cls.implements || []) {
+              const targetModule = findModuleForEntity(impl, normalizedData);
+              const targetId = targetModule ? `${targetModule}#${impl}` : `#${impl}`;
+              fullAnalysis.entityGraph.edges.push({
+                from: nodeId,
+                to: targetId,
+                type: 'class_implements',
+              });
+            }
+          }
+
+          for (const constant of entities.constants) {
+            const modulePath = findModuleForEntity(constant.name, normalizedData);
+            const nodeId = modulePath ? `${modulePath}#${constant.name}` : `#${constant.name}`;
+            fullAnalysis.entityGraph.nodes.push({
+              id: nodeId,
+              name: constant.name,
+              type: 'constant',
+              module: modulePath || 'unknown',
+              line: constant.line,
+              metadata: {
+                value: constant.value,
+                isExported: constant.isExported,
+                type: constant.type,
+              },
+            });
+          }
+
+          for (const intf of entities.interfaces) {
+            const modulePath = findModuleForEntity(intf.name, normalizedData);
+            const nodeId = modulePath ? `${modulePath}#${intf.name}` : `#${intf.name}`;
+            fullAnalysis.entityGraph.nodes.push({
+              id: nodeId,
+              name: intf.name,
+              type: 'interface',
+              module: modulePath || 'unknown',
+              line: intf.line,
+              metadata: {
+                isExported: intf.isExported,
+                properties: intf.properties,
+                extends: intf.extends,
+                startLine: intf.startLine,
+                endLine: intf.endLine,
+              },
+            });
+            for (const ext of intf.extends || []) {
+              const targetModule = findModuleForEntity(ext, normalizedData);
+              const targetId = targetModule ? `${targetModule}#${ext}` : `#${ext}`;
+              fullAnalysis.entityGraph.edges.push({
+                from: nodeId,
+                to: targetId,
+                type: 'interface_extends',
+              });
+            }
+          }
+
+          for (const type of entities.types) {
+            const modulePath = findModuleForEntity(type.name, normalizedData);
+            const nodeId = modulePath ? `${modulePath}#${type.name}` : `#${type.name}`;
+            fullAnalysis.entityGraph.nodes.push({
+              id: nodeId,
+              name: type.name,
+              type: 'type',
+              module: modulePath || 'unknown',
+              line: type.line,
+              metadata: {
+                isExported: type.isExported,
+                definition: type.definition,
+              },
+            });
+          }
+
+          for (const variable of entities.variables) {
+            const modulePath = findModuleForEntity(variable.name, normalizedData);
+            const nodeId = modulePath ? `${modulePath}#${variable.name}` : `#${variable.name}`;
+            fullAnalysis.entityGraph.nodes.push({
+              id: nodeId,
+              name: variable.name,
+              type: 'variable',
+              module: modulePath || 'unknown',
+              line: variable.line,
+              metadata: {
+                isExported: variable.isExported,
+                type: variable.type,
+                value: variable.value,
+              },
+            });
+          }
+
+          saveFullAnalysis(normalizedData, entities, fullAnalysisPath, currentTargetPath);
+          console.log(`   ✅ full-analysis.json (полный отчет)`);
+
+          // ✅ Генерируем интерактивный HTML
+          console.log('\n🌐 Генерация интерактивного HTML отчета...');
+          const htmlPath = path.join(process.cwd(), 'interactive-report.html');
+          await generateInteractiveHTML(fullAnalysis, htmlPath);
+          console.log(`   ✅ interactive-report.html (интерактивный отчет)`);
+
+          console.log('\n📊 Статистика сущностей:');
+          console.log(`   • Функций: ${entities.functions.length}`);
+          console.log(`   • Классов: ${entities.classes.length}`);
+          console.log(`   • Констант: ${entities.constants.length}`);
+          console.log(`   • Интерфейсов: ${entities.interfaces.length}`);
+          console.log(`   • Типов: ${entities.types.length}`);
+          console.log(`   • Переменных: ${entities.variables.length}`);
+          console.log(`   • Вызовов между функциями: ${fullAnalysis.entityGraph.edges.length}`);
+
+          console.log(
+            '\n🌐 Откройте interactive-report.html в браузере для интерактивного просмотра'
+          );
+        } else {
+          console.warn('⚠️ Не удалось извлечь сущности: AST не построен');
+        }
+      }
 
       console.log('\n🎉 Готово! Откройте report.html в браузере');
 
@@ -1158,7 +1632,7 @@ export async function runCLI(): Promise<void> {
     if (mode === 'file') {
       console.log(`📄 Построение внутреннего графа файла ${currentTargetPath}`);
 
-      const resultData = buildFileInternalGraph(currentTargetPath) as GraphResult;
+      const resultData = buildFileInternalGraph(currentTargetPath) as GraphData;
       if (!resultData || Object.keys(resultData.graph).length === 0) {
         console.log('⚠️ Зависимости не найдены');
         return;
@@ -1195,6 +1669,50 @@ export async function runCLI(): Promise<void> {
       );
       fs.writeFileSync('report.html', htmlContent);
       console.log('   ✅ report.html');
+
+      // ✅ Если указан флаг --entities, генерируем графы сущностей для файла
+      if (includeEntities) {
+        console.log('\n📊 Генерация графов сущностей...');
+
+        const ast = parseFile(currentTargetPath);
+        if (ast) {
+          const entities = extractEntities(ast, currentTargetPath);
+
+          // ✅ ВАЛИДАЦИЯ: убеждаемся, что calls это массив
+          for (const func of entities.functions) {
+            if (!Array.isArray(func.calls)) {
+              func.calls = [];
+            }
+          }
+
+          const moduleGraphPath = path.join(process.cwd(), 'module-graph.json');
+          const entityGraphPath = path.join(process.cwd(), 'entity-graph.json');
+          const fullAnalysisPath = path.join(process.cwd(), 'full-analysis.json');
+
+          saveModuleGraph(normalizedData, entities, moduleGraphPath);
+          console.log(
+            `   ✅ module-graph.json (${entities.functions.length} функций, ${entities.classes.length} классов)`
+          );
+
+          saveEntityGraph(normalizedData, entities, entityGraphPath);
+          console.log(
+            `   ✅ entity-graph.json (${entities.interfaces.length} интерфейсов, ${entities.types.length} типов)`
+          );
+
+          saveFullAnalysis(normalizedData, entities, fullAnalysisPath, currentTargetPath);
+          console.log(`   ✅ full-analysis.json (полный отчет)`);
+
+          console.log('\n📊 Статистика сущностей:');
+          console.log(`   • Функций: ${entities.functions.length}`);
+          console.log(`   • Классов: ${entities.classes.length}`);
+          console.log(`   • Констант: ${entities.constants.length}`);
+          console.log(`   • Интерфейсов: ${entities.interfaces.length}`);
+          console.log(`   • Типов: ${entities.types.length}`);
+          console.log(`   • Переменных: ${entities.variables.length}`);
+        } else {
+          console.warn('⚠️ Не удалось извлечь сущности: AST не построен');
+        }
+      }
 
       console.log('\n🎉 Готово! Откройте report.html в браузере');
 
@@ -1241,6 +1759,24 @@ export async function runCLI(): Promise<void> {
       console.log(`\n📂 Возврат в исходную директорию: ${originalCwd}`);
     }
   }
+}
+
+// ==========================================
+// ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ
+// ==========================================
+
+function findModuleForEntity(entityName: string, data: GraphData): string | null {
+  for (const [modulePath, deps] of Object.entries(data.graph)) {
+    if (modulePath.includes(entityName)) {
+      return modulePath;
+    }
+    for (const dep of deps) {
+      if (dep.includes(entityName)) {
+        return dep;
+      }
+    }
+  }
+  return null;
 }
 
 if (isMainModule(import.meta.url)) {

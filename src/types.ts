@@ -128,6 +128,107 @@ export interface AnalysisResult {
 }
 
 // ==========================================
+// ТИПЫ ДЛЯ СУЩНОСТЕЙ (НОВЫЕ)
+// ==========================================
+
+import type {
+  FunctionInfo as EntityFunctionInfo,
+  ClassInfo as EntityClassInfo,
+  ConstantInfo as EntityConstantInfo,
+  InterfaceInfo as EntityInterfaceInfo,
+  TypeInfo as EntityTypeInfo,
+  VariableInfo as EntityVariableInfo,
+  EntitiesResult,
+} from './core/entity-extractor.js';
+
+// Реэкспорт типов сущностей для удобства
+export type {
+  EntityFunctionInfo,
+  EntityClassInfo,
+  EntityConstantInfo,
+  EntityInterfaceInfo,
+  EntityTypeInfo,
+  EntityVariableInfo,
+  EntitiesResult,
+};
+
+// ==========================================
+// ТИПЫ ДЛЯ ГРАФОВ (НОВЫЕ)
+// ==========================================
+
+export interface ModuleGraphNode {
+  id: string;
+  name: string;
+  type: 'module' | 'component' | 'vue';
+  level: number;
+  metadata: {
+    size: number;
+    lines: number;
+    language: string;
+    isEntry: boolean;
+  };
+}
+
+export interface ModuleGraphEdge {
+  from: string;
+  to: string;
+  type: 'import' | 'external' | 're-export';
+  specifiers: string[];
+}
+
+export interface ModuleGraph {
+  nodes: ModuleGraphNode[];
+  edges: ModuleGraphEdge[];
+}
+
+export interface EntityGraphNode {
+  id: string;
+  name: string;
+  type: 'function' | 'class' | 'constant' | 'interface' | 'type' | 'variable';
+  module: string;
+  line: number;
+  metadata: Record<string, any>;
+}
+
+export interface EntityGraphEdge {
+  from: string;
+  to: string;
+  type:
+    | 'function_call'
+    | 'constant_reference'
+    | 'class_extends'
+    | 'class_implements'
+    | 'interface_extends'
+    | 'type_reference'
+    | 'method_call'
+    | 'property_access'
+    | 'import_binding'
+    | 'export_binding'
+    | 'parameter_type'
+    | 'return_type';
+  line?: number;
+}
+
+export interface EntityGraph {
+  nodes: EntityGraphNode[];
+  edges: EntityGraphEdge[];
+}
+
+export interface FullAnalysis {
+  version: string;
+  root: string;
+  timestamp: string;
+  stats: {
+    totalModules: number;
+    totalEntities: number;
+    hasCycles: boolean;
+    cycles: string[][];
+  };
+  moduleGraph: ModuleGraph;
+  entityGraph: EntityGraph;
+}
+
+// ==========================================
 // ТИПЫ ДЛЯ ГРАФОВ И КЛАСТЕРИЗАЦИИ
 // ==========================================
 
@@ -281,17 +382,27 @@ export type CLIMode =
   | 'split-module'
   | 'split'
   | 'impact'
-  | 'dead-code';
+  | 'dead-code'
+  | 'hybrid-report'
+  | 'hybrid'
+  | 'semantic'
+  | 'verify'
+  | 'refactor'
+  | 'analyze'
+  | 'vue-analyze'
+  | 'vue';
 
 export interface ProjectCLIArgs {
   mode: 'project';
   targetPath: string;
   extraArg?: string; // depth
+  includeEntities?: boolean;
 }
 
 export interface FileCLIArgs {
   mode: 'file';
   targetPath: string;
+  includeEntities?: boolean;
 }
 
 export interface MinifyCLIArgs {
@@ -328,6 +439,71 @@ export interface DeadCodeCLIArgs {
   targetPath: string;
 }
 
+export interface HybridReportCLIArgs {
+  mode: 'hybrid-report' | 'hybrid';
+  targetPath: string;
+  extraArg?: string; // depth
+}
+
+export interface SemanticCLIArgs {
+  mode: 'semantic';
+  targetPath: string;
+  extraArg?: string;
+  options?: {
+    recursive?: boolean;
+    formalVerification?: boolean;
+    maxDepth?: number;
+    criticalFunctions?: string[];
+    outputDir?: string;
+  };
+}
+
+export interface VerifyCLIArgs {
+  mode: 'verify';
+  targetPath: string;
+  options?: {
+    functionName?: string;
+    contractPath?: string;
+  };
+}
+
+export interface RefactorCLIArgs {
+  mode: 'refactor';
+  targetPath: string;
+  options?: {
+    modulesDir?: string;
+    targetClusterSize?: number;
+    maxClusterSize?: number;
+    minCohesionScore?: number;
+    dryRun?: boolean;
+    createBackup?: boolean;
+    updateTemplate?: boolean;
+    verbose?: boolean;
+    semanticAnalysis?: boolean;
+  };
+}
+
+export interface AnalyzeCLIArgs {
+  mode: 'analyze';
+  targetPath: string;
+  options?: {
+    targetClusterSize?: number;
+    maxClusterSize?: number;
+    minCohesionScore?: number;
+    dryRun?: boolean;
+  };
+}
+
+export interface VueAnalyzeCLIArgs {
+  mode: 'vue-analyze' | 'vue';
+  targetPath: string;
+  options?: {
+    includeTemplateAST?: boolean;
+    includeScriptAST?: boolean;
+    extractComposableCalls?: boolean;
+  };
+}
+
 export type CLIArgs =
   | ProjectCLIArgs
   | FileCLIArgs
@@ -337,6 +513,12 @@ export type CLIArgs =
   | SplitModuleCLIArgs
   | ImpactCLIArgs
   | DeadCodeCLIArgs
+  | HybridReportCLIArgs
+  | SemanticCLIArgs
+  | VerifyCLIArgs
+  | RefactorCLIArgs
+  | AnalyzeCLIArgs
+  | VueAnalyzeCLIArgs
   | null;
 
 // ==========================================
