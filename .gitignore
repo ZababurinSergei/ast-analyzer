@@ -8,6 +8,8 @@ _sandbox
 /_sandbox_1
 npm-debug.log*
 coverage
+reports
+semantic-reports
 # Runtime data
 pids
 *.pid
