@@ -707,15 +707,19 @@ export async function generateInteractiveHTML(
       }
     }
 
-    // Пересчитываем fileStats для всех модулей
+    // Пересчитываем fileStats для всех модулей с явным использованием modulePath
     for (const [modulePath, pkg] of Object.entries(report.packages)) {
       if (pkg) {
-        pkg.fileStats.functions = pkg.entities.functions.length;
-        pkg.fileStats.classes = pkg.entities.classes.length;
-        pkg.fileStats.constants = pkg.entities.constants.length;
-        pkg.fileStats.interfaces = pkg.entities.interfaces.length;
-        pkg.fileStats.types = pkg.entities.types.length;
-        pkg.fileStats.variables = pkg.entities.variables.length;
+        // Явно используем modulePath для получения и обновления пакета
+        const updatedPkg = report.packages[modulePath];
+        if (updatedPkg) {
+          updatedPkg.fileStats.functions = updatedPkg.entities.functions.length;
+          updatedPkg.fileStats.classes = updatedPkg.entities.classes.length;
+          updatedPkg.fileStats.constants = updatedPkg.entities.constants.length;
+          updatedPkg.fileStats.interfaces = updatedPkg.entities.interfaces.length;
+          updatedPkg.fileStats.types = updatedPkg.entities.types.length;
+          updatedPkg.fileStats.variables = updatedPkg.entities.variables.length;
+        }
       }
     }
 
