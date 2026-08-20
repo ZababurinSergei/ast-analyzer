@@ -7,11 +7,12 @@ import {
   isExternalModule,
   getTsConfigForFile,
 } from '../core/ast-parser.js';
-import { extractEntities, type EntitiesResult } from '../core/entity-extractor.js';
+import type { EntitiesResult } from '../core/entity-extractor.js';
 import { IGNORE_NODE_MODULES } from '../config.js';
 import { walk } from 'estree-walker';
 import { normalizePathForDisplay } from '../utils/path-utils.js';
-import { buildEnhancedPackageLockReport } from '../reporters/json-reporter.js';
+import { buildEnhancedPackageLockReport, type EnhancedEntityInfo } from '../reporters/json-reporter.js';
+import { extractEntitiesFromFile } from '../reporters/json-reporter.js';
 
 // ==========================================
 // ТИП: Информация о функции в формате package-lock
@@ -144,6 +145,78 @@ export interface PackageLockReport {
     >;
   };
   callGraph?: CallGraphResult;
+}
+
+// ==========================================
+// ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ПРЕОБРАЗОВАНИЯ ТИПОВ
+// ==========================================
+
+/**
+ * Преобразует EnhancedEntityInfo в EntitiesResult для совместимости
+ */
+function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult {
+  return {
+    functions: enhanced.functions.map(f => ({
+      name: f.name,
+      line: f.line,
+      isAsync: f.isAsync,
+      isExported: f.isExported,
+      params: f.params,
+      returnType: f.returnType,
+      calls: f.calls || [],
+      calledBy: f.calledBy || [],
+      body: f.body || '',
+      startLine: f.startLine || f.line,
+      endLine: f.endLine || f.line,
+      isMethod: f.isMethod || false,
+      className: f.className,
+    })),
+    classes: enhanced.classes.map(c => ({
+      name: c.name,
+      line: c.line,
+      isExported: c.isExported,
+      methods: c.methods,
+      properties: c.properties,
+      extends: c.extends,
+      implements: c.implements || [],
+      startLine: c.startLine || c.line,
+      endLine: c.endLine || c.line,
+    })),
+    constants: enhanced.constants.map(c => ({
+      name: c.name,
+      line: c.line,
+      isExported: c.isExported,
+      value: c.value,
+      type: c.type,
+    })),
+    interfaces: enhanced.interfaces.map(i => ({
+      name: i.name,
+      line: i.line,
+      isExported: i.isExported,
+      properties: i.properties,
+      extends: i.extends || [],
+      startLine: i.startLine || i.line,
+      endLine: i.endLine || i.line,
+    })),
+    types: enhanced.types.map(t => ({
+      name: t.name,
+      line: t.line,
+      isExported: t.isExported,
+      definition: t.definition,
+    })),
+    variables: enhanced.variables.map(v => ({
+      name: v.name,
+      line: v.line,
+      isExported: v.isExported,
+      type: v.type,
+      value: v.value,
+    })),
+    imports: [],
+    exports: [],
+    callGraph: {},
+    moduleName: '',
+    filePath: '',
+  };
 }
 
 // ==========================================
@@ -385,7 +458,9 @@ export function buildProjectGraph(
 
     // Извлекаем сущности если включено
     if (includeEntities) {
-      const entities = extractEntities(ast, currentPath);
+      // ✅ ИСПОЛЬЗУЕМ extractEntitiesFromFile (с правильными calls)
+      const enhancedEntities = extractEntitiesFromFile(currentPath);
+      const entities = convertEnhancedToEntities(enhancedEntities);
       entitiesMap[relativeKey] = entities;
 
       // Собираем функции для графа вызовов

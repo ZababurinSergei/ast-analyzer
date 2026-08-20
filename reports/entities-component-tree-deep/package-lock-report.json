@@ -9,246 +9,14 @@
       "type": "module",
       "language": "typescript",
       "isEntry": true,
-      "imports": {
-        "./utils/is-main.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "isMainModule"
-          ],
-          "functions": {}
-        },
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "@hpcc-js/wasm-graphviz": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Graphviz"
-          ],
-          "functions": {}
-        },
-        "./core/minifier.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "minifyForAI"
-          ],
-          "functions": {}
-        },
-        "./core/graph-utils.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "findCyclicEdges",
-            "convertToDOT"
-          ],
-          "functions": {}
-        },
-        "./core/tsconfig-resolver.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "setTsConfigPath",
-            "loadTsConfig"
-          ],
-          "functions": {}
-        },
-        "./core/ast-parser.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "parseFile"
-          ],
-          "functions": {}
-        },
-        "./core/entity-extractor.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "extractEntities"
-          ],
-          "functions": {}
-        },
-        "./modes/project-graph.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "buildProjectGraph"
-          ],
-          "functions": {}
-        },
-        "./modes/file-graph.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "buildFileInternalGraph"
-          ],
-          "functions": {}
-        },
-        "./modes/prompt-pack.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "buildAiPromptPack"
-          ],
-          "functions": {}
-        },
-        "./modes/split-module.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "buildSplitModulePrompt"
-          ],
-          "functions": {}
-        },
-        "./modes/impact.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "runImpactAnalysis"
-          ],
-          "functions": {}
-        },
-        "./modes/dead-code.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "findDeadCode"
-          ],
-          "functions": {}
-        },
-        "./modes/minify-folder.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "minifyFolder"
-          ],
-          "functions": {}
-        },
-        "./modes/vue-analyzer.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "analyzeVueComponent",
-            "generateVueComponentReport"
-          ],
-          "functions": {}
-        },
-        "./refactor/index.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "AutoRefactor"
-          ],
-          "functions": {}
-        },
-        "./ci-cd/SemanticPipeline.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "SemanticPipeline"
-          ],
-          "functions": {}
-        },
-        "./formal/Z3Verifier.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "Z3Verifier",
-            "createIntParam",
-            "eq",
-            "range"
-          ],
-          "functions": {}
-        },
-        "./modes/hybrid-report/index.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "runHybridReport"
-          ],
-          "functions": {}
-        },
-        "./reporters/json-reporter.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "saveModuleGraph",
-            "saveEntityGraph",
-            "saveFullAnalysis",
-            "savePackageLockReport as saveEnhancedPackageLockReport"
-          ],
-          "functions": {}
-        },
-        "./reporters/html-reporter.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "generateHTMLReport"
-          ],
-          "functions": {}
-        },
-        "./reporters/interactive-reporter.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "generateInteractiveHTML"
-          ],
-          "functions": {}
-        },
-        "./types.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "SplitModuleOptions",
-            "MinifyFolderOptions",
-            "GraphData",
-            "FullAnalysis"
-          ],
-          "functions": {}
-        },
-        "./utils.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "showHelp",
-            "DEFAULT_EXCLUDE_PATTERNS"
-          ],
-          "functions": {}
-        },
-        "./utils/path-utils.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "normalizePathForDisplay",
-            "normalizeGraphPaths",
-            "normalizePathForOS"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "runCLI": {
           "direction": "outward",
           "type": "export",
           "isAsync": true,
           "params": [],
-          "returns": "any",
+          "returns": "Promise<void>",
           "line": 852,
           "consumers": []
         }
@@ -266,10 +34,10 @@
         "lines": 1874,
         "functions": 5,
         "classes": 0,
-        "constants": 174,
+        "constants": 2,
         "interfaces": 1,
         "types": 0,
-        "variables": 26
+        "variables": 0
       }
     },
     "src/utils/is-main.ts": {
@@ -278,24 +46,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "url": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "fileURLToPath"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "isMainModule": {
           "direction": "outward",
@@ -304,7 +55,7 @@
           "params": [
             "importMetaUrl"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 9,
           "consumers": []
         }
@@ -322,7 +73,7 @@
         "lines": 17,
         "functions": 1,
         "classes": 0,
-        "constants": 2,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
         "variables": 0
@@ -334,24 +85,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "./ast-parser.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "parseFile"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "minifyCodeString": {
           "direction": "outward",
@@ -361,7 +95,7 @@
             "code",
             "ast"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 47,
           "consumers": []
         },
@@ -372,7 +106,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 203,
           "consumers": []
         }
@@ -388,12 +122,12 @@
       "fileStats": {
         "size": 6517,
         "lines": 226,
-        "functions": 5,
+        "functions": 4,
         "classes": 0,
-        "constants": 23,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 1
+        "variables": 0
       }
     },
     "src/core/graph-utils.ts": {
@@ -411,7 +145,7 @@
           "params": [
             "graph"
           ],
-          "returns": "any",
+          "returns": "Set<string>",
           "line": 8,
           "consumers": []
         },
@@ -423,7 +157,7 @@
             "graphData",
             "cyclicEdges"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 60,
           "consumers": []
         },
@@ -437,7 +171,7 @@
             "visited",
             "callback"
           ],
-          "returns": "any",
+          "returns": "void",
           "line": 103,
           "consumers": []
         }
@@ -453,12 +187,12 @@
       "fileStats": {
         "size": 3560,
         "lines": 119,
-        "functions": 4,
+        "functions": 3,
         "classes": 0,
-        "constants": 12,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 2
+        "variables": 0
       }
     },
     "src/core/tsconfig-resolver.ts": {
@@ -467,32 +201,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "../utils/path-utils.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "normalizePathForOS"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "setTsConfigPath": {
           "direction": "outward",
@@ -501,7 +210,7 @@
           "params": [
             "configPath"
           ],
-          "returns": "any",
+          "returns": "void",
           "line": 22,
           "consumers": []
         },
@@ -512,7 +221,7 @@
           "params": [
             "startDir"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
           "line": 33,
           "consumers": []
         },
@@ -521,7 +230,7 @@
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "any",
+          "returns": "string | null",
           "line": 82,
           "consumers": []
         },
@@ -530,7 +239,7 @@
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
           "line": 89,
           "consumers": []
         },
@@ -539,7 +248,7 @@
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "any",
+          "returns": "void",
           "line": 96,
           "consumers": []
         },
@@ -552,7 +261,7 @@
             "baseDir",
             "tsConfig"
           ],
-          "returns": "any",
+          "returns": "string | null",
           "line": 109,
           "consumers": []
         },
@@ -563,7 +272,7 @@
           "params": [
             "tsConfig"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 171,
           "consumers": []
         },
@@ -574,7 +283,7 @@
           "params": [
             "tsConfig"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").AliasMapping",
           "line": 181,
           "consumers": []
         },
@@ -585,7 +294,7 @@
           "params": [
             "tsConfig"
           ],
-          "returns": "any",
+          "returns": "string | null",
           "line": 191,
           "consumers": []
         },
@@ -597,7 +306,7 @@
             "importPath",
             "tsConfig"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 201,
           "consumers": []
         },
@@ -610,7 +319,7 @@
             "tsConfig",
             "baseDir"
           ],
-          "returns": "any",
+          "returns": "string | null",
           "line": 222,
           "consumers": []
         },
@@ -623,7 +332,7 @@
             "alias",
             "target"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
           "line": 263,
           "consumers": []
         },
@@ -635,7 +344,7 @@
             "tsConfig",
             "alias"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
           "line": 287,
           "consumers": []
         }
@@ -653,10 +362,10 @@
         "lines": 311,
         "functions": 13,
         "classes": 0,
-        "constants": 29,
+        "constants": 0,
         "interfaces": 2,
         "types": 0,
-        "variables": 8
+        "variables": 3
       }
     },
     "src/core/ast-parser.ts": {
@@ -665,56 +374,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "@typescript-eslint/parser": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "ParserOptions"
-          ],
-          "functions": {}
-        },
-        "estree-walker": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "walk"
-          ],
-          "functions": {}
-        },
-        "@vue/compiler-sfc": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "parse as parseVueSFC"
-          ],
-          "functions": {}
-        },
-        "./tsconfig-resolver.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "TsConfig"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "getTsConfigForFile": {
           "direction": "outward",
@@ -723,7 +383,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
           "line": 73,
           "consumers": []
         },
@@ -734,7 +394,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/ast-parser\").VueSFCData | null",
           "line": 104,
           "consumers": []
         },
@@ -757,7 +417,7 @@
           "params": [
             "importTarget"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 325,
           "consumers": []
         },
@@ -769,7 +429,7 @@
             "baseDir",
             "targetPath"
           ],
-          "returns": "any",
+          "returns": "string | null",
           "line": 358,
           "consumers": []
         },
@@ -782,7 +442,7 @@
             "filesList",
             "excludePatterns"
           ],
-          "returns": "any",
+          "returns": "string[]",
           "line": 482,
           "consumers": []
         },
@@ -793,7 +453,7 @@
           "params": [
             "ast"
           ],
-          "returns": "any",
+          "returns": "any[]",
           "line": 520,
           "consumers": []
         },
@@ -804,7 +464,7 @@
           "params": [
             "ast"
           ],
-          "returns": "any",
+          "returns": "any[]",
           "line": 580,
           "consumers": []
         },
@@ -815,7 +475,7 @@
           "params": [
             "ast"
           ],
-          "returns": "any",
+          "returns": "any[]",
           "line": 626,
           "consumers": []
         },
@@ -826,7 +486,7 @@
           "params": [
             "ast"
           ],
-          "returns": "any",
+          "returns": "any[]",
           "line": 660,
           "consumers": []
         },
@@ -837,7 +497,7 @@
           "params": [
             "ast"
           ],
-          "returns": "any",
+          "returns": "any[]",
           "line": 699,
           "consumers": []
         },
@@ -848,7 +508,7 @@
           "params": [
             "ast"
           ],
-          "returns": "any",
+          "returns": "any[]",
           "line": 726,
           "consumers": []
         }
@@ -866,10 +526,10 @@
         "lines": 842,
         "functions": 16,
         "classes": 0,
-        "constants": 72,
+        "constants": 2,
         "interfaces": 1,
         "types": 0,
-        "variables": 7
+        "variables": 2
       }
     },
     "src/core/entity-extractor.ts": {
@@ -878,24 +538,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "estree-walker": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "walk"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "extractEntities": {
           "direction": "outward",
@@ -905,7 +548,7 @@
             "ast",
             "filePath"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/entity-extractor\").EntitiesResult",
           "line": 131,
           "consumers": []
         },
@@ -916,7 +559,7 @@
           "params": [
             "ast"
           ],
-          "returns": "any",
+          "returns": "Record<string, string[]>",
           "line": 911,
           "consumers": []
         }
@@ -934,10 +577,10 @@
         "lines": 966,
         "functions": 9,
         "classes": 0,
-        "constants": 95,
+        "constants": 0,
         "interfaces": 9,
         "types": 0,
-        "variables": 14
+        "variables": 0
       }
     },
     "src/modes/project-graph.ts": {
@@ -946,76 +589,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "../core/ast-parser.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "parseFile",
-            "resolveFilePath",
-            "isExternalModule",
-            "getTsConfigForFile"
-          ],
-          "functions": {}
-        },
-        "../core/entity-extractor.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "extractEntities",
-            "EntitiesResult"
-          ],
-          "functions": {}
-        },
-        "../config.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "IGNORE_NODE_MODULES"
-          ],
-          "functions": {}
-        },
-        "estree-walker": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "walk"
-          ],
-          "functions": {}
-        },
-        "../utils/path-utils.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "normalizePathForDisplay"
-          ],
-          "functions": {}
-        },
-        "../reporters/json-reporter.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "buildEnhancedPackageLockReport"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "buildCallGraphBetweenFunctions": {
           "direction": "outward",
@@ -1026,8 +600,8 @@
             "fromFunction",
             "toFunction"
           ],
-          "returns": "any",
-          "line": 152,
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/project-graph\").CallGraphResult",
+          "line": 225,
           "consumers": []
         },
         "buildProjectGraph": {
@@ -1041,8 +615,8 @@
             "fromFunction",
             "toFunction"
           ],
-          "returns": "any",
-          "line": 333,
+          "returns": "{ rootKey: string; graph: Record<string, string[]>; entities?: Record<string, import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/entity-extractor\").EntitiesResult> | undefined; packageLockReport?: import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/project-graph\").PackageLockReport | undefined; callGraphResult?: import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/project-graph\").CallGraphResult | undefined; }",
+          "line": 406,
           "consumers": []
         }
       },
@@ -1055,14 +629,14 @@
         "classes": []
       },
       "fileStats": {
-        "size": 19303,
-        "lines": 633,
-        "functions": 8,
+        "size": 21540,
+        "lines": 708,
+        "functions": 9,
         "classes": 0,
-        "constants": 55,
+        "constants": 0,
         "interfaces": 4,
         "types": 0,
-        "variables": 4
+        "variables": 0
       }
     },
     "src/modes/file-graph.ts": {
@@ -1071,33 +645,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "../core/ast-parser.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "parseFile",
-            "walk"
-          ],
-          "functions": {}
-        },
-        "../utils/path-utils.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "normalizePathForDisplay"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "buildFileInternalGraph": {
           "direction": "outward",
@@ -1107,7 +655,7 @@
             "filePath",
             "_options"
           ],
-          "returns": "any",
+          "returns": "{ rootKey: string; graph: Record<string, string[]>; } | null",
           "line": 139,
           "consumers": []
         }
@@ -1125,7 +673,7 @@
         "lines": 217,
         "functions": 2,
         "classes": 0,
-        "constants": 13,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
         "variables": 0
@@ -1137,40 +685,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "./project-graph.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "buildProjectGraph"
-          ],
-          "functions": {}
-        },
-        "../core/minifier.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "minifyForAI"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "buildAiPromptPack": {
           "direction": "outward",
@@ -1180,7 +695,7 @@
             "entryPointFile",
             "maxDepth"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 13,
           "consumers": []
         }
@@ -1198,10 +713,10 @@
         "lines": 63,
         "functions": 1,
         "classes": 0,
-        "constants": 8,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 2
+        "variables": 0
       }
     },
     "src/modes/split-module.ts": {
@@ -1210,75 +725,34 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "../core/ast-parser.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "parseFile",
-            "walk"
-          ],
-          "functions": {}
-        },
-        "../core/minifier.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "minifyForAI"
-          ],
-          "functions": {}
-        },
-        "./file-graph.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "buildFileInternalGraph"
-          ],
-          "functions": {}
-        },
-        "../core/graph-utils.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "findCyclicEdges"
-          ],
-          "functions": {}
-        },
-        "../config.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "DEFAULT_EXCLUDE_PATTERNS"
-          ],
-          "functions": {}
-        },
-        "./vue-analyzer.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "analyzeVueComponent",
-            "generateVueComponentReport"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
+        "analyzeModuleStructure": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "filePath",
+            "options"
+          ],
+          "returns": "{ filePath: string; fileName: any; stats: { totalLines: any; totalExports: number; totalFunctions: number; totalClasses: number; totalConstants: number; totalInterfaces: number; totalTypes: number; totalImports: number; }; imports: any[]; exports: any[]; functions: any[]; classes: any[]; constants: any[]; interfaces: any[]; types: any[]; callGraph: Record<string, string[]>; fullCode: any; lines: any; } | null",
+          "line": 18,
+          "consumers": []
+        },
+        "identifyClusters": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "functions",
+            "callGraph",
+            "exports",
+            "options"
+          ],
+          "returns": "any[]",
+          "line": 261,
+          "consumers": []
+        },
         "buildSplitModulePrompt": {
           "direction": "outward",
           "type": "export",
@@ -1287,7 +761,7 @@
             "targetFile",
             "options"
           ],
-          "returns": "any",
+          "returns": "{ markdown: string; analysis: { filePath: string; fileName: any; stats: { totalLines: any; totalExports: number; totalFunctions: number; totalClasses: number; totalConstants: number; totalInterfaces: number; totalTypes: number; totalImports: number; }; imports: any[]; exports: any[]; functions: any[]; classes: any[]; constants: any[]; interfaces: any[]; types: any[]; callGraph: Record<string, string[]>; fullCode: any; lines: any; }; outputFiles: { prompt: any; context: string; graph: string; analysis: string; vue: string; }; vueAnalysis: import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/vue-analyzer\").VueComponentAnalysis | null; } | null",
           "line": 374,
           "consumers": []
         }
@@ -1305,10 +779,10 @@
         "lines": 719,
         "functions": 3,
         "classes": 0,
-        "constants": 55,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 6
+        "variables": 0
       }
     },
     "src/modes/impact.ts": {
@@ -1317,35 +791,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "../core/ast-parser.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "parseFile",
-            "walk",
-            "getAllProjectFiles",
-            "resolveFilePath"
-          ],
-          "functions": {}
-        },
-        "../config.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "DEFAULT_EXCLUDE_PATTERNS"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "runImpactAnalysis": {
           "direction": "outward",
@@ -1355,7 +801,7 @@
             "targetFile",
             "entityName"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 12,
           "consumers": []
         }
@@ -1373,10 +819,10 @@
         "lines": 136,
         "functions": 1,
         "classes": 0,
-        "constants": 10,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 4
+        "variables": 0
       }
     },
     "src/modes/dead-code.ts": {
@@ -1385,35 +831,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "../core/ast-parser.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "parseFile",
-            "walk",
-            "getAllProjectFiles",
-            "resolveFilePath"
-          ],
-          "functions": {}
-        },
-        "../config.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "DEFAULT_EXCLUDE_PATTERNS"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "findDeadCode": {
           "direction": "outward",
@@ -1422,7 +840,7 @@
           "params": [
             "targetFile"
           ],
-          "returns": "any",
+          "returns": "string | null",
           "line": 11,
           "consumers": []
         }
@@ -1440,10 +858,10 @@
         "lines": 134,
         "functions": 1,
         "classes": 0,
-        "constants": 16,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 4
+        "variables": 0
       }
     },
     "src/modes/minify-folder.ts": {
@@ -1452,41 +870,36 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "../core/minifier.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "minifyForAI"
-          ],
-          "functions": {}
-        },
-        "../config.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "DEFAULT_EXCLUDE_PATTERNS"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
+        "generateDirectoryTree": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "baseDir",
+            "relativePaths",
+            "_excludePatterns"
+          ],
+          "returns": "string",
+          "line": 24,
+          "consumers": []
+        },
+        "collectFiles": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "dir",
+            "extensions",
+            "excludePatterns",
+            "maxDepth",
+            "currentDepth"
+          ],
+          "returns": "FileInfo[]",
+          "line": 86,
+          "consumers": []
+        },
         "minifyFolder": {
           "direction": "outward",
           "type": "export",
@@ -1495,7 +908,7 @@
             "inputDir",
             "options"
           ],
-          "returns": "any",
+          "returns": "string | null",
           "line": 139,
           "consumers": []
         }
@@ -1511,12 +924,12 @@
       "fileStats": {
         "size": 8905,
         "lines": 289,
-        "functions": 4,
+        "functions": 3,
         "classes": 0,
-        "constants": 30,
+        "constants": 0,
         "interfaces": 2,
         "types": 0,
-        "variables": 9
+        "variables": 0
       }
     },
     "src/modes/vue-analyzer.ts": {
@@ -1525,49 +938,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "@vue/compiler-sfc": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "SFCDescriptor",
-            "SFCScriptBlock"
-          ],
-          "functions": {}
-        },
-        "@typescript-eslint/parser": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "parse as parseTS"
-          ],
-          "functions": {}
-        },
-        "estree": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Program"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "parseVueFile": {
           "direction": "outward",
@@ -1576,7 +947,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "any",
+          "returns": "{ descriptor: import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/node_modules/@vue/compiler-sfc/dist/compiler-sfc\").SFCDescriptor; errors: Error[]; } | null",
           "line": 77,
           "consumers": []
         },
@@ -1588,7 +959,7 @@
             "filePath",
             "options"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/vue-analyzer\").VueComponentAnalysis | null",
           "line": 1668,
           "consumers": []
         },
@@ -1599,7 +970,7 @@
           "params": [
             "analysis"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 1834,
           "consumers": []
         },
@@ -1623,7 +994,7 @@
             "filePath",
             "options"
           ],
-          "returns": "any",
+          "returns": "Promise<void>",
           "line": 1984,
           "consumers": []
         }
@@ -1639,12 +1010,12 @@
       "fileStats": {
         "size": 63753,
         "lines": 2015,
-        "functions": 28,
+        "functions": 20,
         "classes": 0,
-        "constants": 246,
+        "constants": 0,
         "interfaces": 2,
         "types": 0,
-        "variables": 33
+        "variables": 0
       }
     },
     "src/refactor/index.ts": {
@@ -1680,98 +1051,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Project",
-            "SyntaxKind"
-          ],
-          "functions": {}
-        },
-        "../semantic/CFGAnalyzer": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "CFGAnalyzer"
-          ],
-          "functions": {}
-        },
-        "../semantic/CallGraphAnalyzer": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "CallGraphAnalyzer"
-          ],
-          "functions": {}
-        },
-        "../semantic/TypeAnalyzer": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "TypeAnalyzer"
-          ],
-          "functions": {}
-        },
-        "../semantic/DataFlowAnalyzer": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "DataFlowAnalyzer"
-          ],
-          "functions": {}
-        },
-        "../formal/Z3Verifier": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "Z3Verifier",
-            "range"
-          ],
-          "functions": {}
-        },
-        "../semantic/JSXAnalyzer": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "JSXAnalyzer"
-          ],
-          "functions": {}
-        },
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "glob": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "glob"
-          ],
-          "functions": {}
-        },
-        "../utils/wasm-utils.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "findWasmPath"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "runSemanticPipeline": {
           "direction": "outward",
@@ -1781,7 +1061,7 @@
             "paths",
             "options"
           ],
-          "returns": "any",
+          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/ci-cd/SemanticPipeline\").PipelineResult>",
           "line": 1111,
           "consumers": []
         }
@@ -1797,12 +1077,12 @@
       "fileStats": {
         "size": 40536,
         "lines": 1162,
-        "functions": 13,
+        "functions": 1,
         "classes": 1,
-        "constants": 110,
+        "constants": 0,
         "interfaces": 4,
         "types": 0,
-        "variables": 12
+        "variables": 0
       }
     },
     "src/formal/Z3Verifier.ts": {
@@ -1811,37 +1091,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "z3-solver": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "init"
-          ],
-          "functions": {}
-        },
-        "./ExpressionParser.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ExpressionParser",
-            "parseExpression",
-            "validateExpression",
-            "extractVariables",
-            "isValidForZ3",
-            "toZ3String"
-          ],
-          "functions": {}
-        },
-        "./FunctionBodyModeler.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "FunctionBodyModeler"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "createIntParam": {
           "direction": "outward",
@@ -1850,7 +1100,7 @@
           "params": [
             "name"
           ],
-          "returns": "any",
+          "returns": "{ name: string; type: \"int\"; }",
           "line": 1010,
           "consumers": []
         },
@@ -1861,7 +1111,7 @@
           "params": [
             "name"
           ],
-          "returns": "any",
+          "returns": "{ name: string; type: \"bool\"; }",
           "line": 1014,
           "consumers": []
         },
@@ -1872,7 +1122,7 @@
           "params": [
             "name"
           ],
-          "returns": "any",
+          "returns": "{ name: string; type: \"string\"; }",
           "line": 1018,
           "consumers": []
         },
@@ -1884,7 +1134,7 @@
             "left",
             "right"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1022,
           "consumers": []
         },
@@ -1896,7 +1146,7 @@
             "left",
             "right"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1026,
           "consumers": []
         },
@@ -1909,7 +1159,7 @@
             "min",
             "max"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1030,
           "consumers": []
         },
@@ -1921,7 +1171,7 @@
             "condition",
             "consequence"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1034,
           "consumers": []
         },
@@ -1930,9 +1180,9 @@
           "type": "export",
           "isAsync": false,
           "params": [
-            "...args"
+            "args"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1043,
           "consumers": []
         },
@@ -1941,9 +1191,9 @@
           "type": "export",
           "isAsync": false,
           "params": [
-            "...args"
+            "args"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1052,
           "consumers": []
         },
@@ -1954,7 +1204,7 @@
           "params": [
             "operand"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1059,
           "consumers": []
         },
@@ -1967,7 +1217,7 @@
             "thenBranch",
             "elseBranch"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1066,
           "consumers": []
         },
@@ -1980,7 +1230,7 @@
             "operator",
             "right"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1085,
           "consumers": []
         },
@@ -1992,7 +1242,7 @@
             "varName",
             "value"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1149,
           "consumers": []
         },
@@ -2004,7 +1254,7 @@
             "left",
             "right"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1153,
           "consumers": []
         },
@@ -2016,7 +1266,7 @@
             "left",
             "right"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1157,
           "consumers": []
         },
@@ -2028,7 +1278,7 @@
             "left",
             "right"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1161,
           "consumers": []
         },
@@ -2040,7 +1290,7 @@
             "left",
             "right"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1165,
           "consumers": []
         },
@@ -2052,7 +1302,7 @@
             "left",
             "right"
           ],
-          "returns": "any",
+          "returns": "{ type: \"add\"; left: string | number; right: string | number; }",
           "line": 1172,
           "consumers": []
         },
@@ -2064,7 +1314,7 @@
             "left",
             "right"
           ],
-          "returns": "any",
+          "returns": "{ type: \"sub\"; left: string | number; right: string | number; }",
           "line": 1186,
           "consumers": []
         },
@@ -2076,7 +1326,7 @@
             "left",
             "right"
           ],
-          "returns": "any",
+          "returns": "{ type: \"mul\"; left: string | number; right: string | number; }",
           "line": 1200,
           "consumers": []
         },
@@ -2088,7 +1338,7 @@
             "left",
             "right"
           ],
-          "returns": "any",
+          "returns": "{ type: \"div\"; left: string | number; right: string | number; }",
           "line": 1214,
           "consumers": []
         }
@@ -2104,12 +1354,12 @@
       "fileStats": {
         "size": 38647,
         "lines": 1234,
-        "functions": 45,
+        "functions": 24,
         "classes": 1,
-        "constants": 96,
+        "constants": 0,
         "interfaces": 3,
         "types": 0,
-        "variables": 2
+        "variables": 0
       }
     },
     "src/modes/hybrid-report/index.ts": {
@@ -2118,66 +1368,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "./types.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "HybridReport",
-            "HybridModule",
-            "HybridFunction"
-          ],
-          "functions": {}
-        },
-        "./cli.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "runHybridReport"
-          ],
-          "functions": {}
-        },
-        "./builder.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "buildHybridReport"
-          ],
-          "functions": {}
-        },
-        "./analyzer.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "analyzeModule"
-          ],
-          "functions": {}
-        },
-        "./generators/dot.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "generateHybridDOT"
-          ],
-          "functions": {}
-        },
-        "./generators/html.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "generateHybridHTML"
-          ],
-          "functions": {}
-        },
-        "./generators/markdown.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "generateHybridMarkdown"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "hasCyclicDependencies": {
           "direction": "outward",
@@ -2186,7 +1377,7 @@
           "params": [
             "report"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 245,
           "consumers": []
         },
@@ -2198,7 +1389,7 @@
             "report",
             "level"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridModule[]",
           "line": 252,
           "consumers": []
         },
@@ -2209,7 +1400,7 @@
           "params": [
             "report"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridFunction[]",
           "line": 259,
           "consumers": []
         },
@@ -2221,7 +1412,7 @@
             "report",
             "source"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridFunction[]",
           "line": 270,
           "consumers": []
         },
@@ -2232,7 +1423,7 @@
           "params": [
             "report"
           ],
-          "returns": "any",
+          "returns": "{ total: number; self: number; external: number; reExport: number; exported: number; async: number; }",
           "line": 288,
           "consumers": []
         }
@@ -2250,7 +1441,7 @@
         "lines": 306,
         "functions": 5,
         "classes": 0,
-        "constants": 8,
+        "constants": 2,
         "interfaces": 2,
         "types": 0,
         "variables": 0
@@ -2262,41 +1453,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Project",
-            "Node"
-          ],
-          "functions": {}
-        },
-        "../core/entity-extractor.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "EntitiesResult"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "saveModuleGraph": {
           "direction": "outward",
@@ -2307,7 +1464,7 @@
             "entities",
             "outputPath"
           ],
-          "returns": "any",
+          "returns": "void",
           "line": 266,
           "consumers": []
         },
@@ -2320,7 +1477,7 @@
             "entities",
             "outputPath"
           ],
-          "returns": "any",
+          "returns": "void",
           "line": 279,
           "consumers": []
         },
@@ -2334,7 +1491,7 @@
             "outputPath",
             "root"
           ],
-          "returns": "any",
+          "returns": "void",
           "line": 292,
           "consumers": []
         },
@@ -2349,7 +1506,7 @@
             "filePaths",
             "outputPath"
           ],
-          "returns": "any",
+          "returns": "void",
           "line": 307,
           "consumers": []
         },
@@ -2361,7 +1518,7 @@
             "callGraphResult",
             "outputPath"
           ],
-          "returns": "any",
+          "returns": "void",
           "line": 337,
           "consumers": []
         },
@@ -2373,7 +1530,7 @@
             "data",
             "entities"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/json-reporter\").ModuleGraph",
           "line": 349,
           "consumers": []
         },
@@ -2385,7 +1542,7 @@
             "data",
             "entities"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/json-reporter\").EntityGraph",
           "line": 417,
           "consumers": []
         },
@@ -2398,7 +1555,7 @@
             "entities",
             "root"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/json-reporter\").FullAnalysis",
           "line": 594,
           "consumers": []
         },
@@ -2409,7 +1566,7 @@
           "params": [
             "startDir"
           ],
-          "returns": "any",
+          "returns": "string | null",
           "line": 631,
           "consumers": []
         },
@@ -2420,7 +1577,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/json-reporter\").EnhancedEntityInfo",
           "line": 703,
           "consumers": []
         },
@@ -2434,7 +1591,7 @@
             "entitiesMap",
             "filePaths"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/json-reporter\").EnhancedPackageLockReport",
           "line": 993,
           "consumers": []
         }
@@ -2450,12 +1607,12 @@
       "fileStats": {
         "size": 39087,
         "lines": 1345,
-        "functions": 16,
+        "functions": 15,
         "classes": 0,
-        "constants": 153,
+        "constants": 0,
         "interfaces": 17,
         "types": 0,
-        "variables": 20
+        "variables": 0
       }
     },
     "src/reporters/html-reporter.ts": {
@@ -2464,17 +1621,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "../utils/path-utils.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "normalizePathForDisplay",
-            "getFileNameForDisplay"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "escapeHtml": {
           "direction": "outward",
@@ -2483,7 +1630,7 @@
           "params": [
             "str"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 9,
           "consumers": []
         },
@@ -2498,7 +1645,7 @@
             "title",
             "hasCycles"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 27,
           "consumers": []
         }
@@ -2516,10 +1663,10 @@
         "lines": 113,
         "functions": 2,
         "classes": 0,
-        "constants": 6,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 1
+        "variables": 0
       }
     },
     "src/reporters/interactive-reporter.ts": {
@@ -2528,60 +1675,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "../types.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "FullAnalysis",
-            "ModuleGraphNode",
-            "ModuleGraphEdge",
-            "EntityGraphNode",
-            "EntityGraphEdge"
-          ],
-          "functions": {}
-        },
-        "@hpcc-js/wasm-graphviz": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Graphviz"
-          ],
-          "functions": {}
-        },
-        "../core/entity-extractor.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "EntitiesResult"
-          ],
-          "functions": {}
-        },
-        "./json-reporter.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "EnhancedEntityInfo"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "generateInteractiveHTML": {
           "direction": "outward",
@@ -2592,7 +1686,7 @@
             "outputPath",
             "entitiesWithCalls"
           ],
-          "returns": "any",
+          "returns": "Promise<void>",
           "line": 287,
           "consumers": []
         }
@@ -2610,10 +1704,10 @@
         "lines": 889,
         "functions": 6,
         "classes": 0,
-        "constants": 67,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 5
+        "variables": 0
       }
     },
     "src/types.ts": {
@@ -2622,22 +1716,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "./core/entity-extractor.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "FunctionInfo as EntityFunctionInfo",
-            "ClassInfo as EntityClassInfo",
-            "ConstantInfo as EntityConstantInfo",
-            "InterfaceInfo as EntityInterfaceInfo",
-            "TypeInfo as EntityTypeInfo",
-            "VariableInfo as EntityVariableInfo",
-            "EntitiesResult"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -2664,16 +1743,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "escapeHtml": {
           "direction": "outward",
@@ -2682,7 +1752,7 @@
           "params": [
             "str"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 4,
           "consumers": []
         },
@@ -2691,7 +1761,7 @@
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "any",
+          "returns": "void",
           "line": 8,
           "consumers": []
         },
@@ -2702,7 +1772,7 @@
           "params": [
             "bytes"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 100,
           "consumers": []
         },
@@ -2711,7 +1781,7 @@
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "any",
+          "returns": "string",
           "line": 106,
           "consumers": []
         },
@@ -2722,7 +1792,7 @@
           "params": [
             "dirPath"
           ],
-          "returns": "any",
+          "returns": "void",
           "line": 110,
           "consumers": []
         },
@@ -2734,7 +1804,7 @@
             "node",
             "indent"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 116,
           "consumers": []
         }
@@ -2752,10 +1822,10 @@
         "lines": 140,
         "functions": 6,
         "classes": 0,
-        "constants": 6,
+        "constants": 1,
         "interfaces": 0,
         "types": 0,
-        "variables": 2
+        "variables": 0
       }
     },
     "src/utils/path-utils.ts": {
@@ -2764,24 +1834,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "normalizePathForDisplay": {
           "direction": "outward",
@@ -2792,7 +1845,7 @@
             "baseDir",
             "options"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 11,
           "consumers": []
         },
@@ -2803,7 +1856,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 53,
           "consumers": []
         },
@@ -2814,7 +1867,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 63,
           "consumers": []
         },
@@ -2826,7 +1879,7 @@
             "rootKey",
             "baseDir"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 74,
           "consumers": []
         },
@@ -2838,7 +1891,7 @@
             "graph",
             "baseDir"
           ],
-          "returns": "any",
+          "returns": "T",
           "line": 84,
           "consumers": []
         },
@@ -2849,7 +1902,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 105,
           "consumers": []
         },
@@ -2861,7 +1914,7 @@
             "filePath",
             "maxLength"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 118,
           "consumers": []
         },
@@ -2873,7 +1926,7 @@
             "from",
             "to"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 162,
           "consumers": []
         },
@@ -2884,7 +1937,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 177,
           "consumers": []
         },
@@ -2895,7 +1948,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 188,
           "consumers": []
         },
@@ -2907,7 +1960,7 @@
             "from",
             "to"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 220,
           "consumers": []
         },
@@ -2918,7 +1971,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 244,
           "consumers": []
         },
@@ -2929,7 +1982,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 291,
           "consumers": []
         },
@@ -2940,7 +1993,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 312,
           "consumers": []
         }
@@ -2958,10 +2011,10 @@
         "lines": 340,
         "functions": 14,
         "classes": 0,
-        "constants": 20,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 6
+        "variables": 0
       }
     },
     "src/config.ts": {
@@ -2997,97 +2050,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Node"
-          ],
-          "functions": {}
-        },
-        "../semantic/CFGAnalyzer.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ControlFlowGraph"
-          ],
-          "functions": {}
-        },
-        "../semantic/CallGraphAnalyzer.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "CallGraph"
-          ],
-          "functions": {}
-        },
-        "../semantic/DataFlowAnalyzer.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "DataFlowGraph"
-          ],
-          "functions": {}
-        },
-        "../semantic/TypeAnalyzer.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "TypeError"
-          ],
-          "functions": {}
-        },
-        "../formal/index.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "VerificationResult",
-            "RefactoringEquivalenceResult"
-          ],
-          "functions": {}
-        },
-        "./ESLintASTFixer.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ESLintFixResult"
-          ],
-          "functions": {}
-        },
-        "./CodeValidator.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ValidationResult"
-          ],
-          "functions": {}
-        },
-        "./CodeFixer.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "FixResult"
-          ],
-          "functions": {}
-        },
-        "./ModuleTypeDetector.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ModuleType"
-          ],
-          "functions": {}
-        },
-        "./SyntaxValidator.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ValidationResult as SyntaxValidationResult"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -3114,201 +2077,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Project",
-            "ScriptTarget",
-            "ModuleKind",
-            "Node",
-            "SourceFile"
-          ],
-          "functions": {}
-        },
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "url": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "fileURLToPath"
-          ],
-          "functions": {}
-        },
-        "../utils/Logger.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "Logger",
-            "parseLogLevel"
-          ],
-          "functions": {}
-        },
-        "./ModuleExtractor.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ModuleExtractor"
-          ],
-          "functions": {}
-        },
-        "./ImportManager.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ImportManager"
-          ],
-          "functions": {}
-        },
-        "./TypeScriptValidator.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "TypeScriptValidator"
-          ],
-          "functions": {}
-        },
-        "./ESLintASTFixer.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ESLintASTFixer",
-            "ESLintFixResult"
-          ],
-          "functions": {}
-        },
-        "./CodeValidator.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "CodeValidator",
-            "ValidationResult"
-          ],
-          "functions": {}
-        },
-        "./CodeFixer.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "CodeFixer",
-            "FixResult"
-          ],
-          "functions": {}
-        },
-        "./TemplateUpdater.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "TemplateUpdater"
-          ],
-          "functions": {}
-        },
-        "@codeflow-map/core": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "initTreeSitter"
-          ],
-          "functions": {}
-        },
-        "../semantic/CFGAnalyzer.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "CFGAnalyzer"
-          ],
-          "functions": {}
-        },
-        "../semantic/CallGraphAnalyzer.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "CallGraphAnalyzer"
-          ],
-          "functions": {}
-        },
-        "../semantic/DataFlowAnalyzer.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "DataFlowAnalyzer"
-          ],
-          "functions": {}
-        },
-        "./SyntaxValidator.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "SyntaxValidator",
-            "ValidationResult as SyntaxValidationResult"
-          ],
-          "functions": {}
-        },
-        "./ModuleTypeDetector.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ModuleTypeDetector",
-            "ModuleType",
-            "ModuleTypeDetectionResult"
-          ],
-          "functions": {}
-        },
-        "./BackupManager.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "BackupManager"
-          ],
-          "functions": {}
-        },
-        "../formal/index.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "RefactoringEquivalenceChecker",
-            "Z3Verifier",
-            "VerificationResult",
-            "RefactoringEquivalenceResult"
-          ],
-          "functions": {}
-        },
-        "./interfaces/IRefactorContext.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "IRefactorContext"
-          ],
-          "functions": {}
-        },
-        "./types.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "RefactorOptions",
-            "ExtractedModule",
-            "ClusterInfo",
-            "RefactorResult"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -3321,12 +2090,12 @@
       "fileStats": {
         "size": 63897,
         "lines": 1845,
-        "functions": 37,
+        "functions": 1,
         "classes": 1,
-        "constants": 181,
+        "constants": 2,
         "interfaces": 0,
         "types": 0,
-        "variables": 19
+        "variables": 0
       }
     },
     "src/refactor/ModuleExtractor.ts": {
@@ -3335,65 +2104,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Node as TsNode",
-            "SyntaxKind"
-          ],
-          "functions": {}
-        },
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "../utils/Logger.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "Logger"
-          ],
-          "functions": {}
-        },
-        "./ModuleTypeDetector.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ModuleType"
-          ],
-          "functions": {}
-        },
-        "./interfaces/IRefactorContext.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "IRefactorContext"
-          ],
-          "functions": {}
-        },
-        "./types.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ExtractedModule"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -3406,12 +2117,12 @@
       "fileStats": {
         "size": 37998,
         "lines": 1132,
-        "functions": 24,
+        "functions": 4,
         "classes": 1,
-        "constants": 150,
+        "constants": 0,
         "interfaces": 3,
         "types": 0,
-        "variables": 13
+        "variables": 0
       }
     },
     "src/refactor/ImportManager.ts": {
@@ -3420,57 +2131,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Project",
-            "SourceFile"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "./types.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ExtractedModule"
-          ],
-          "functions": {}
-        },
-        "../utils/Logger.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "Logger"
-          ],
-          "functions": {}
-        },
-        "./ModuleTypeDetector.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ModuleType"
-          ],
-          "functions": {}
-        },
-        "./interfaces/IRefactorContext.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "IRefactorContext"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -3483,12 +2144,12 @@
       "fileStats": {
         "size": 16615,
         "lines": 503,
-        "functions": 11,
+        "functions": 0,
         "classes": 1,
-        "constants": 63,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 11
+        "variables": 0
       }
     },
     "src/refactor/TypeScriptValidator.ts": {
@@ -3497,34 +2158,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Project",
-            "Node",
-            "SyntaxKind"
-          ],
-          "functions": {}
-        },
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -3537,12 +2171,12 @@
       "fileStats": {
         "size": 29031,
         "lines": 960,
-        "functions": 27,
+        "functions": 0,
         "classes": 1,
-        "constants": 118,
+        "constants": 0,
         "interfaces": 2,
         "types": 0,
-        "variables": 9
+        "variables": 0
       }
     },
     "src/refactor/ESLintASTFixer.ts": {
@@ -3551,41 +2185,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Project",
-            "Node"
-          ],
-          "functions": {}
-        },
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "eslint": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "ESLint"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -3598,12 +2198,12 @@
       "fileStats": {
         "size": 47338,
         "lines": 1503,
-        "functions": 41,
+        "functions": 0,
         "classes": 1,
-        "constants": 196,
+        "constants": 0,
         "interfaces": 2,
         "types": 0,
-        "variables": 30
+        "variables": 0
       }
     },
     "src/refactor/CodeValidator.ts": {
@@ -3612,32 +2212,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Project"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -3650,12 +2225,12 @@
       "fileStats": {
         "size": 29220,
         "lines": 919,
-        "functions": 17,
+        "functions": 0,
         "classes": 1,
-        "constants": 127,
+        "constants": 0,
         "interfaces": 2,
         "types": 0,
-        "variables": 4
+        "variables": 0
       }
     },
     "src/refactor/CodeFixer.ts": {
@@ -3664,48 +2239,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Project"
-          ],
-          "functions": {}
-        },
-        "./CodeValidator.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ValidationIssue"
-          ],
-          "functions": {}
-        },
-        "./ESLintASTFixer.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ESLintASTFixer"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -3718,12 +2252,12 @@
       "fileStats": {
         "size": 21172,
         "lines": 699,
-        "functions": 25,
+        "functions": 0,
         "classes": 1,
-        "constants": 88,
+        "constants": 0,
         "interfaces": 1,
         "types": 0,
-        "variables": 9
+        "variables": 0
       }
     },
     "src/refactor/TemplateUpdater.ts": {
@@ -3732,56 +2266,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "./interfaces/IRefactorContext.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "IRefactorContext"
-          ],
-          "functions": {}
-        },
-        "@vue/compiler-sfc": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "parse as parseVue"
-          ],
-          "functions": {}
-        },
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "./types.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ExtractedModule"
-          ],
-          "functions": {}
-        },
-        "../utils/Logger.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "Logger"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -3794,12 +2279,12 @@
       "fileStats": {
         "size": 4495,
         "lines": 147,
-        "functions": 5,
+        "functions": 0,
         "classes": 1,
-        "constants": 16,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 4
+        "variables": 0
       }
     },
     "src/refactor/SyntaxValidator.ts": {
@@ -3808,44 +2293,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "../utils/Logger.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "Logger"
-          ],
-          "functions": {}
-        },
-        "./ModuleTypeDetector.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ModuleType",
-            "ModuleTypeDetector"
-          ],
-          "functions": {}
-        },
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Project",
-            "ScriptTarget",
-            "ModuleKind",
-            "Diagnostic"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -3858,9 +2306,9 @@
       "fileStats": {
         "size": 9058,
         "lines": 265,
-        "functions": 10,
+        "functions": 0,
         "classes": 1,
-        "constants": 32,
+        "constants": 0,
         "interfaces": 1,
         "types": 0,
         "variables": 0
@@ -3872,32 +2320,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "../utils/Logger.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "Logger"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -3910,12 +2333,12 @@
       "fileStats": {
         "size": 12557,
         "lines": 420,
-        "functions": 13,
+        "functions": 0,
         "classes": 1,
-        "constants": 23,
+        "constants": 0,
         "interfaces": 1,
         "types": 1,
-        "variables": 8
+        "variables": 0
       }
     },
     "src/refactor/BackupManager.ts": {
@@ -3924,32 +2347,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "../utils/Logger.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "Logger"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -3962,12 +2360,12 @@
       "fileStats": {
         "size": 7963,
         "lines": 272,
-        "functions": 17,
+        "functions": 0,
         "classes": 1,
-        "constants": 13,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 1
+        "variables": 0
       }
     },
     "src/refactor/interfaces/IRefactorContext.ts": {
@@ -3976,34 +2374,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Project",
-            "SourceFile"
-          ],
-          "functions": {}
-        },
-        "../types.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "RefactorOptions",
-            "ExtractedModule"
-          ],
-          "functions": {}
-        },
-        "../../utils/Logger.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "Logger"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -4030,16 +2401,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "SyntaxKind"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -4052,12 +2414,12 @@
       "fileStats": {
         "size": 18413,
         "lines": 636,
-        "functions": 32,
+        "functions": 0,
         "classes": 1,
-        "constants": 61,
+        "constants": 0,
         "interfaces": 2,
         "types": 0,
-        "variables": 6
+        "variables": 0
       }
     },
     "src/semantic/CallGraphAnalyzer.ts": {
@@ -4066,46 +2428,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "@codeflow-map/core": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "parseFile",
-            "buildCallGraph",
-            "detectEntryPoints",
-            "partitionFlows",
-            "initTreeSitter",
-            "CallEdge",
-            "FunctionNode"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "../utils/wasm-utils.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "findWasmPath"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -4118,12 +2441,12 @@
       "fileStats": {
         "size": 23757,
         "lines": 758,
-        "functions": 26,
+        "functions": 0,
         "classes": 1,
-        "constants": 99,
+        "constants": 0,
         "interfaces": 2,
         "types": 0,
-        "variables": 14
+        "variables": 0
       }
     },
     "src/semantic/TypeAnalyzer.ts": {
@@ -4132,24 +2455,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "typescript": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as ts"
-          ],
-          "functions": {}
-        },
-        "@jitl/ts-simple-type": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "SimpleType"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "isTypeCompatible": {
           "direction": "outward",
@@ -4160,7 +2466,7 @@
             "type2",
             "typeChecker"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 358,
           "consumers": []
         },
@@ -4172,7 +2478,7 @@
             "type",
             "typeChecker"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 366,
           "consumers": []
         }
@@ -4188,12 +2494,12 @@
       "fileStats": {
         "size": 11443,
         "lines": 369,
-        "functions": 21,
+        "functions": 2,
         "classes": 1,
-        "constants": 36,
+        "constants": 0,
         "interfaces": 3,
         "types": 0,
-        "variables": 3
+        "variables": 0
       }
     },
     "src/semantic/DataFlowAnalyzer.ts": {
@@ -4202,16 +2508,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "SyntaxKind"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -4224,12 +2521,12 @@
       "fileStats": {
         "size": 11922,
         "lines": 409,
-        "functions": 20,
+        "functions": 0,
         "classes": 1,
-        "constants": 58,
+        "constants": 0,
         "interfaces": 3,
         "types": 0,
-        "variables": 2
+        "variables": 0
       }
     },
     "src/semantic/JSXAnalyzer.ts": {
@@ -4238,24 +2535,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "SyntaxKind"
-          ],
-          "functions": {}
-        },
-        "./TypeAnalyzer.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "TypeAnalyzer"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "isJSXFile": {
           "direction": "outward",
@@ -4264,7 +2544,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 630,
           "consumers": []
         },
@@ -4275,7 +2555,7 @@
           "params": [
             "filePaths"
           ],
-          "returns": "any",
+          "returns": "string[]",
           "line": 634,
           "consumers": []
         }
@@ -4291,12 +2571,12 @@
       "fileStats": {
         "size": 19755,
         "lines": 637,
-        "functions": 23,
+        "functions": 2,
         "classes": 1,
-        "constants": 88,
+        "constants": 0,
         "interfaces": 3,
         "types": 0,
-        "variables": 3
+        "variables": 0
       }
     },
     "src/utils/wasm-utils.ts": {
@@ -4305,39 +2585,14 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "url": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "fileURLToPath"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "findWasmPath": {
           "direction": "outward",
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "any",
+          "returns": "string",
           "line": 14,
           "consumers": []
         },
@@ -4346,7 +2601,7 @@
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "any",
+          "returns": "boolean",
           "line": 66,
           "consumers": []
         },
@@ -4355,7 +2610,7 @@
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "any",
+          "returns": "string[]",
           "line": 75,
           "consumers": []
         },
@@ -4366,7 +2621,7 @@
           "params": [
             "targetPath"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 94,
           "consumers": []
         },
@@ -4377,7 +2632,7 @@
           "params": [
             "targetPath"
           ],
-          "returns": "any",
+          "returns": "number",
           "line": 124,
           "consumers": []
         }
@@ -4395,10 +2650,10 @@
         "lines": 163,
         "functions": 5,
         "classes": 0,
-        "constants": 17,
+        "constants": 2,
         "interfaces": 0,
         "types": 0,
-        "variables": 1
+        "variables": 0
       }
     },
     "src/formal/ExpressionParser.ts": {
@@ -4417,7 +2672,7 @@
             "context",
             "debug"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/ExpressionParser\").ExpressionParser",
           "line": 968,
           "consumers": []
         },
@@ -4442,7 +2697,7 @@
             "expr",
             "context"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 983,
           "consumers": []
         },
@@ -4453,7 +2708,7 @@
           "params": [
             "expr"
           ],
-          "returns": "any",
+          "returns": "string[]",
           "line": 991,
           "consumers": []
         },
@@ -4466,7 +2721,7 @@
             "vars",
             "context"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 999,
           "consumers": []
         },
@@ -4479,7 +2734,7 @@
             "vars",
             "context"
           ],
-          "returns": "any",
+          "returns": "string | null",
           "line": 1007,
           "consumers": []
         },
@@ -4504,7 +2759,7 @@
             "params",
             "context"
           ],
-          "returns": "any",
+          "returns": "Map<string, any>",
           "line": 1050,
           "consumers": []
         },
@@ -4520,7 +2775,7 @@
             "context",
             "solver"
           ],
-          "returns": "any",
+          "returns": "Promise<{ isValid: boolean; counterexample?: Map<string, any> | undefined; error?: string | undefined; time: number; }>",
           "line": 1077,
           "consumers": []
         },
@@ -4561,7 +2816,7 @@
             "expr",
             "context"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 1259,
           "consumers": []
         },
@@ -4573,7 +2828,7 @@
             "expr",
             "context"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 1270,
           "consumers": []
         },
@@ -4584,7 +2839,7 @@
           "params": [
             "expr"
           ],
-          "returns": "any",
+          "returns": "string[]",
           "line": 1280,
           "consumers": []
         }
@@ -4600,12 +2855,12 @@
       "fileStats": {
         "size": 36287,
         "lines": 1286,
-        "functions": 38,
+        "functions": 14,
         "classes": 1,
-        "constants": 109,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 29
+        "variables": 0
       }
     },
     "src/formal/FunctionBodyModeler.ts": {
@@ -4614,19 +2869,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Project",
-            "Node",
-            "SyntaxKind",
-            "SourceFile"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -4639,12 +2882,12 @@
       "fileStats": {
         "size": 21518,
         "lines": 708,
-        "functions": 10,
+        "functions": 0,
         "classes": 1,
-        "constants": 74,
+        "constants": 0,
         "interfaces": 1,
         "types": 0,
-        "variables": 3
+        "variables": 0
       }
     },
     "src/modes/hybrid-report/types.ts": {
@@ -4680,81 +2923,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "../file-graph.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "buildFileInternalGraph"
-          ],
-          "functions": {}
-        },
-        "../../core/graph-utils.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "findCyclicEdges",
-            "convertToDOT"
-          ],
-          "functions": {}
-        },
-        "./types.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "HybridReport"
-          ],
-          "functions": {}
-        },
-        "./builder.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "buildHybridReport"
-          ],
-          "functions": {}
-        },
-        "./generators/dot.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "generateHybridDOT"
-          ],
-          "functions": {}
-        },
-        "./generators/html.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "generateHybridHTML"
-          ],
-          "functions": {}
-        },
-        "./generators/markdown.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "generateHybridMarkdown"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "runHybridReport": {
           "direction": "outward",
@@ -4765,7 +2934,7 @@
             "maxDepth",
             "outputDir"
           ],
-          "returns": "any",
+          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridReport>",
           "line": 20,
           "consumers": []
         }
@@ -4783,10 +2952,10 @@
         "lines": 173,
         "functions": 1,
         "classes": 0,
-        "constants": 16,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 2
+        "variables": 0
       }
     },
     "src/modes/hybrid-report/builder.ts": {
@@ -4795,58 +2964,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "../project-graph.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "buildProjectGraph"
-          ],
-          "functions": {}
-        },
-        "../../core/graph-utils.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "findCyclicEdges"
-          ],
-          "functions": {}
-        },
-        "./types.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "HybridReport",
-            "HybridModule",
-            "HybridNode"
-          ],
-          "functions": {}
-        },
-        "./analyzer.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "analyzeModule"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "buildHybridReport": {
           "direction": "outward",
@@ -4856,7 +2974,7 @@
             "entryPoint",
             "maxDepth"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridReport",
           "line": 16,
           "consumers": []
         }
@@ -4874,10 +2992,10 @@
         "lines": 198,
         "functions": 1,
         "classes": 0,
-        "constants": 30,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 6
+        "variables": 0
       }
     },
     "src/modes/hybrid-report/analyzer.ts": {
@@ -4886,33 +3004,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "./types.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "HybridFunction",
-            "HybridModule"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "analyzeModule": {
           "direction": "outward",
@@ -4922,7 +3014,7 @@
             "filePath",
             "level"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridModule | null",
           "line": 19,
           "consumers": []
         }
@@ -4940,10 +3032,10 @@
         "lines": 317,
         "functions": 1,
         "classes": 0,
-        "constants": 58,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 5
+        "variables": 0
       }
     },
     "src/modes/hybrid-report/generators/dot.ts": {
@@ -4952,17 +3044,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "../types.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "HybridReport",
-            "HybridFunction"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "generateHybridDOT": {
           "direction": "outward",
@@ -4971,7 +3053,7 @@
           "params": [
             "report"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 10,
           "consumers": []
         }
@@ -4989,10 +3071,10 @@
         "lines": 86,
         "functions": 1,
         "classes": 0,
-        "constants": 21,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 1
+        "variables": 0
       }
     },
     "src/modes/hybrid-report/generators/html.ts": {
@@ -5001,34 +3083,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "@hpcc-js/wasm-graphviz": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Graphviz"
-          ],
-          "functions": {}
-        },
-        "../types.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "HybridReport",
-            "HybridModule",
-            "HybridFunction"
-          ],
-          "functions": {}
-        },
-        "./dot.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "generateHybridDOT"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "generateHybridHTML": {
           "direction": "outward",
@@ -5038,7 +3093,7 @@
             "report",
             "maxDepth"
           ],
-          "returns": "any",
+          "returns": "Promise<string>",
           "line": 13,
           "consumers": []
         }
@@ -5056,10 +3111,10 @@
         "lines": 967,
         "functions": 1,
         "classes": 0,
-        "constants": 17,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 3
+        "variables": 0
       }
     },
     "src/modes/hybrid-report/generators/markdown.ts": {
@@ -5068,17 +3123,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "../types.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "HybridReport",
-            "HybridFunction"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "generateHybridMarkdown": {
           "direction": "outward",
@@ -5087,7 +3132,7 @@
           "params": [
             "report"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 10,
           "consumers": []
         }
@@ -5105,10 +3150,10 @@
         "lines": 166,
         "functions": 1,
         "classes": 0,
-        "constants": 16,
+        "constants": 0,
         "interfaces": 0,
         "types": 0,
-        "variables": 1
+        "variables": 0
       }
     },
     "src/formal/index.ts": {
@@ -5117,86 +3162,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "./Z3Verifier.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "Z3Verifier as Z3VerifierClass",
-            "createIntParam as createIntParamFn",
-            "createBoolParam as createBoolParamFn",
-            "createStringParam as createStringParamFn",
-            "eq as eqFn",
-            "neq as neqFn",
-            "range as rangeFn",
-            "implies as impliesFn",
-            "and as andFn",
-            "or as orFn",
-            "not as notFn",
-            "if_ as if_Fn",
-            "compare as compareFn",
-            "assign as assignFn",
-            "add as addFn",
-            "sub as subFn",
-            "mul as mulFn",
-            "div as divFn",
-            "addExpr as addExprFn",
-            "subExpr as subExprFn",
-            "mulExpr as mulExprFn",
-            "divExpr as divExprFn"
-          ],
-          "functions": {}
-        },
-        "./FunctionBodyModeler.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "FunctionBodyModeler as FunctionBodyModelerClass"
-          ],
-          "functions": {}
-        },
-        "./checkers/FileEquivalenceChecker.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "FileEquivalenceChecker as FileEquivalenceCheckerClass"
-          ],
-          "functions": {}
-        },
-        "./checkers/RefactoringEquivalenceChecker.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "RefactoringEquivalenceChecker as RefactoringEquivalenceCheckerClass",
-            "isRefactoringEquivalent as isRefactoringEquivalentFn",
-            "needsRefactoringReview as needsRefactoringReviewFn",
-            "hasCriticalIssues as hasCriticalIssuesFn"
-          ],
-          "functions": {}
-        },
-        "./ExpressionParser.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ExpressionParser as ExpressionParserClass",
-            "createExpressionParser as createExpressionParserFn",
-            "parseExpression as parseExpressionFn",
-            "validateExpression as validateExpressionFn",
-            "extractVariables as extractVariablesFn",
-            "isValidForZ3 as isValidForZ3Fn",
-            "toZ3String as toZ3StringFn",
-            "parseFunctionBody as parseFunctionBodyFn",
-            "createFunctionVariables as createFunctionVariablesFn",
-            "verifyFunctionWithBody as verifyFunctionWithBodyFn",
-            "createContractFromExpression as createContractFromExpressionFn",
-            "createContractWithAutoPreconditions as createContractWithAutoPreconditionsFn",
-            "canParseExpression as canParseExpressionFn",
-            "isSimpleExpression as isSimpleExpressionFn",
-            "extractVariablesFromExpression as extractVariablesFromExpressionFn"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "createContractTemplate": {
           "direction": "outward",
@@ -5207,7 +3173,7 @@
             "params",
             "returnType"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 125,
           "consumers": []
         },
@@ -5219,7 +3185,7 @@
             "contract",
             "precondition"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 143,
           "consumers": []
         },
@@ -5231,7 +3197,7 @@
             "contract",
             "postcondition"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 156,
           "consumers": []
         },
@@ -5243,7 +3209,7 @@
             "contract",
             "invariant"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 169,
           "consumers": []
         },
@@ -5255,7 +3221,7 @@
             "contract",
             "body"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 182,
           "consumers": []
         },
@@ -5266,7 +3232,7 @@
           "params": [
             "template"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").FunctionContract",
           "line": 192,
           "consumers": []
         },
@@ -5279,7 +3245,7 @@
             "params",
             "returnType"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 207,
           "consumers": []
         },
@@ -5291,7 +3257,7 @@
             "_contract",
             "result"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 232,
           "consumers": []
         },
@@ -5303,7 +3269,7 @@
             "contract",
             "result"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 243,
           "consumers": []
         },
@@ -5315,7 +3281,7 @@
             "contract1",
             "contract2"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 272,
           "consumers": []
         },
@@ -5328,7 +3294,7 @@
             "modifiedPath",
             "options"
           ],
-          "returns": "any",
+          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/checkers/FileEquivalenceChecker\").FileEquivalenceResult>",
           "line": 293,
           "consumers": []
         },
@@ -5342,7 +3308,7 @@
             "modulesDir",
             "options"
           ],
-          "returns": "any",
+          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/checkers/RefactoringEquivalenceChecker\").RefactoringEquivalenceResult>",
           "line": 309,
           "consumers": []
         },
@@ -5356,7 +3322,7 @@
             "contract",
             "options"
           ],
-          "returns": "any",
+          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/checkers/FileEquivalenceChecker\").FileEquivalenceResult>",
           "line": 331,
           "consumers": []
         },
@@ -5369,7 +3335,7 @@
             "modified",
             "variables"
           ],
-          "returns": "any",
+          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationResult>",
           "line": 349,
           "consumers": []
         },
@@ -5382,7 +3348,7 @@
             "functionName",
             "options"
           ],
-          "returns": "any",
+          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationResult>",
           "line": 365,
           "consumers": []
         }
@@ -5400,10 +3366,10 @@
         "lines": 543,
         "functions": 15,
         "classes": 0,
-        "constants": 20,
+        "constants": 2,
         "interfaces": 1,
         "types": 0,
-        "variables": 2
+        "variables": 0
       }
     },
     "src/utils/Logger.ts": {
@@ -5412,24 +3378,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "parseLogLevel": {
           "direction": "outward",
@@ -5438,7 +3387,7 @@
           "params": [
             "level"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/utils/Logger\").LogLevel",
           "line": 261,
           "consumers": []
         },
@@ -5447,7 +3396,7 @@
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/utils/Logger\").Logger",
           "line": 277,
           "consumers": []
         },
@@ -5458,7 +3407,7 @@
           "params": [
             "logger"
           ],
-          "returns": "any",
+          "returns": "void",
           "line": 284,
           "consumers": []
         }
@@ -5474,12 +3423,12 @@
       "fileStats": {
         "size": 8385,
         "lines": 290,
-        "functions": 28,
+        "functions": 3,
         "classes": 1,
-        "constants": 26,
+        "constants": 0,
         "interfaces": 1,
         "types": 0,
-        "variables": 2
+        "variables": 1
       }
     },
     "src/formal/checkers/FileEquivalenceChecker.ts": {
@@ -5488,64 +3437,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "./EquivalenceChecker.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "EquivalenceChecker as BaseEquivalenceChecker"
-          ],
-          "functions": {}
-        },
-        "../Z3Verifier.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "Z3Verifier"
-          ],
-          "functions": {}
-        },
-        "../../core/ASTComparator.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ASTComparator"
-          ],
-          "functions": {}
-        },
-        "../../core/SignatureComparator.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "SignatureComparator"
-          ],
-          "functions": {}
-        },
-        "../../core/CallGraphComparator.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "CallGraphComparator"
-          ],
-          "functions": {}
-        },
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "isEquivalencePassed": {
           "direction": "outward",
@@ -5554,7 +3446,7 @@
           "params": [
             "result"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 714,
           "consumers": []
         },
@@ -5565,7 +3457,7 @@
           "params": [
             "result"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 719,
           "consumers": []
         },
@@ -5576,7 +3468,7 @@
           "params": [
             "result"
           ],
-          "returns": "any",
+          "returns": "string",
           "line": 724,
           "consumers": []
         }
@@ -5592,12 +3484,12 @@
       "fileStats": {
         "size": 23662,
         "lines": 731,
-        "functions": 20,
+        "functions": 3,
         "classes": 1,
-        "constants": 44,
+        "constants": 0,
         "interfaces": 2,
         "types": 0,
-        "variables": 6
+        "variables": 0
       }
     },
     "src/formal/checkers/RefactoringEquivalenceChecker.ts": {
@@ -5606,71 +3498,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Project",
-            "Node"
-          ],
-          "functions": {}
-        },
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        },
-        "../Z3Verifier.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "Z3Verifier",
-            "FunctionContract"
-          ],
-          "functions": {}
-        },
-        "../../core/ASTComparator.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ASTComparator",
-            "ASTDifference"
-          ],
-          "functions": {}
-        },
-        "../../core/SignatureComparator.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "SignatureComparator",
-            "FunctionSignature",
-            "SignatureChange"
-          ],
-          "functions": {}
-        },
-        "../../core/CallGraphComparator.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "CallGraphComparator",
-            "CallGraph",
-            "CallGraphChange"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "isRefactoringEquivalent": {
           "direction": "outward",
@@ -5679,7 +3507,7 @@
           "params": [
             "result"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 865,
           "consumers": []
         },
@@ -5690,7 +3518,7 @@
           "params": [
             "result"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 869,
           "consumers": []
         },
@@ -5701,7 +3529,7 @@
           "params": [
             "result"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 873,
           "consumers": []
         }
@@ -5717,12 +3545,12 @@
       "fileStats": {
         "size": 31712,
         "lines": 887,
-        "functions": 17,
+        "functions": 3,
         "classes": 1,
-        "constants": 80,
+        "constants": 0,
         "interfaces": 2,
         "types": 0,
-        "variables": 9
+        "variables": 0
       }
     },
     "src/formal/checkers/EquivalenceChecker.ts": {
@@ -5731,56 +3559,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "../Z3Verifier.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "Z3Verifier",
-            "range",
-            "eq",
-            "or"
-          ],
-          "functions": {}
-        },
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Project",
-            "ScriptTarget",
-            "ModuleKind",
-            "SourceFile",
-            "Node"
-          ],
-          "functions": {}
-        },
-        "../../core/ASTComparator.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "ASTComparator",
-            "ASTDifference"
-          ],
-          "functions": {}
-        },
-        "fs": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as fs"
-          ],
-          "functions": {}
-        },
-        "path": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "default as path"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "isEquivalent": {
           "direction": "outward",
@@ -5789,7 +3568,7 @@
           "params": [
             "result"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 1559,
           "consumers": []
         },
@@ -5800,7 +3579,7 @@
           "params": [
             "result"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 1564,
           "consumers": []
         },
@@ -5811,7 +3590,7 @@
           "params": [
             "result"
           ],
-          "returns": "any",
+          "returns": "\"high\" | \"medium\" | \"low\"",
           "line": 1572,
           "consumers": []
         }
@@ -5827,12 +3606,12 @@
       "fileStats": {
         "size": 49857,
         "lines": 1577,
-        "functions": 25,
+        "functions": 3,
         "classes": 1,
-        "constants": 109,
+        "constants": 0,
         "interfaces": 5,
         "types": 0,
-        "variables": 28
+        "variables": 0
       }
     },
     "src/core/ASTComparator.ts": {
@@ -5841,17 +3620,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Project",
-            "Node"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {},
       "entities": {
         "functions": [],
@@ -5864,12 +3633,12 @@
       "fileStats": {
         "size": 18094,
         "lines": 564,
-        "functions": 9,
+        "functions": 0,
         "classes": 1,
-        "constants": 36,
+        "constants": 0,
         "interfaces": 2,
         "types": 0,
-        "variables": 4
+        "variables": 0
       }
     },
     "src/core/SignatureComparator.ts": {
@@ -5878,22 +3647,7 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Node",
-            "SourceFile",
-            "FunctionDeclaration",
-            "ArrowFunction",
-            "MethodDeclaration",
-            "ClassDeclaration",
-            "VariableDeclaration"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "isSignatureCompatible": {
           "direction": "outward",
@@ -5903,7 +3657,7 @@
             "sig1",
             "sig2"
           ],
-          "returns": "any",
+          "returns": "boolean",
           "line": 781,
           "consumers": []
         },
@@ -5915,7 +3669,7 @@
             "sig1",
             "sig2"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/SignatureComparator\").SignatureChange | null",
           "line": 786,
           "consumers": []
         },
@@ -5927,7 +3681,7 @@
             "signatures",
             "name"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/SignatureComparator\").FunctionSignature | null",
           "line": 794,
           "consumers": []
         },
@@ -5939,7 +3693,7 @@
             "signatures",
             "searchSig"
           ],
-          "returns": "any",
+          "returns": "string | null",
           "line": 801,
           "consumers": []
         }
@@ -5955,12 +3709,12 @@
       "fileStats": {
         "size": 24985,
         "lines": 808,
-        "functions": 19,
+        "functions": 4,
         "classes": 1,
-        "constants": 99,
+        "constants": 0,
         "interfaces": 3,
         "types": 0,
-        "variables": 15
+        "variables": 0
       }
     },
     "src/core/CallGraphComparator.ts": {
@@ -5969,23 +3723,14 @@
       "type": "module",
       "language": "typescript",
       "isEntry": false,
-      "imports": {
-        "ts-morph": {
-          "direction": "inward",
-          "type": "external-import",
-          "specifiers": [
-            "Node"
-          ],
-          "functions": {}
-        }
-      },
+      "imports": {},
       "exports": {
         "createEmptyCallGraph": {
           "direction": "outward",
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/CallGraphComparator\").CallGraph",
           "line": 655,
           "consumers": []
         },
@@ -5996,7 +3741,7 @@
           "params": [
             "graphs"
           ],
-          "returns": "any",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/CallGraphComparator\").CallGraph",
           "line": 663,
           "consumers": []
         }
@@ -6012,12 +3757,12 @@
       "fileStats": {
         "size": 19769,
         "lines": 691,
-        "functions": 20,
+        "functions": 2,
         "classes": 1,
-        "constants": 116,
+        "constants": 0,
         "interfaces": 4,
         "types": 0,
-        "variables": 3
+        "variables": 0
       }
     }
   },
@@ -6992,138 +4737,327 @@
   "callGraph": {
     "findProjectRoot": [],
     "resolveAbsoluteFilePath": [],
-    "parseArgs": [],
-    "runCLI": [],
+    "parseArgs": [
+      "normalizePathForOS",
+      "showHelp",
+      "parseInt"
+    ],
+    "runCLI": [
+      "parseArgs",
+      "normalizePathForOS",
+      "setTsConfigPath",
+      "loadTsConfig",
+      "parseInt",
+      "runHybridReport",
+      "createIntParam",
+      "range",
+      "eq",
+      "analyzeVueComponent",
+      "generateVueComponentReport",
+      "buildSplitModulePrompt",
+      "minifyFolder",
+      "findDeadCode",
+      "runImpactAnalysis",
+      "buildAiPromptPack",
+      "minifyForAI",
+      "parseFloat",
+      "buildProjectGraph",
+      "normalizeGraphPaths",
+      "findCyclicEdges",
+      "convertToDOT",
+      "generateHTMLReport",
+      "normalizePathForDisplay",
+      "findProjectRoot",
+      "resolveAbsoluteFilePath",
+      "saveEnhancedPackageLockReport",
+      "parseFile",
+      "extractEntitiesFromFile",
+      "findModuleForEntity",
+      "generateInteractiveHTML",
+      "buildFileInternalGraph",
+      "extractEntities",
+      "saveModuleGraph",
+      "saveEntityGraph",
+      "saveFullAnalysis"
+    ],
     "findModuleForEntity": [],
-    "isMainModule": [],
-    "collectAllNodes": [],
-    "traverse": [],
-    "minifyCodeString": [],
+    "isMainModule": [
+      "fileURLToPath"
+    ],
+    "collectAllNodes": [
+      "traverse"
+    ],
+    "minifyCodeString": [
+      "collectAllNodes",
+      "shouldPreserveValue"
+    ],
     "shouldPreserveValue": [],
-    "minifyForAI": [],
-    "findCyclicEdges": [],
-    "dfs": [],
+    "minifyForAI": [
+      "parseFile",
+      "minifyCodeString"
+    ],
+    "findCyclicEdges": [
+      "dfs"
+    ],
     "convertToDOT": [],
+    "dfs": [
+      "callback"
+    ],
     "setTsConfigPath": [],
-    "loadTsConfig": [],
+    "loadTsConfig": [
+      "normalizePathForOS"
+    ],
     "getTsConfigDir": [],
     "getCachedTsConfig": [],
     "clearTsConfigCache": [],
-    "resolveAliasPath": [],
+    "resolveAliasPath": [
+      "normalizePathForOS"
+    ],
     "hasAliases": [],
     "getAliases": [],
     "getBaseUrl": [],
     "isAliasPath": [],
-    "resolveAliasPattern": [],
+    "resolveAliasPattern": [
+      "normalizePathForOS"
+    ],
     "addAlias": [],
     "removeAlias": [],
     "resolveAbsolutePath": [],
-    "validateAndResolvePath": [],
-    "getTsConfigForFile": [],
-    "parseVueSFCFile": [],
-    "parseFile": [],
+    "validateAndResolvePath": [
+      "resolveAbsolutePath"
+    ],
+    "getTsConfigForFile": [
+      "loadTsConfig"
+    ],
+    "parseVueSFCFile": [
+      "resolveAbsolutePath",
+      "parseVueSFC"
+    ],
+    "parseFile": [
+      "validateAndResolvePath",
+      "parseVueSFCFile",
+      "String"
+    ],
     "isExternalModule": [],
-    "resolveFilePath": [],
-    "getAllProjectFiles": [],
-    "extractFunctionsFromAST": [],
-    "extractClassesFromAST": [],
-    "extractConstantsFromAST": [],
-    "extractInterfacesFromAST": [],
-    "extractTypesFromAST": [],
-    "extractVariablesFromAST": [],
+    "resolveFilePath": [
+      "getTsConfigForFile",
+      "getTsConfigDir",
+      "resolveAliasPath"
+    ],
+    "getAllProjectFiles": [
+      "String"
+    ],
+    "extractFunctionsFromAST": [
+      "walk",
+      "isNodeExported"
+    ],
+    "extractClassesFromAST": [
+      "walk",
+      "isNodeExported"
+    ],
+    "extractConstantsFromAST": [
+      "walk",
+      "isNodeExported",
+      "extractValueFromNode"
+    ],
+    "extractInterfacesFromAST": [
+      "walk",
+      "isNodeExported"
+    ],
+    "extractTypesFromAST": [
+      "walk",
+      "isNodeExported"
+    ],
+    "extractVariablesFromAST": [
+      "walk",
+      "isNodeExported",
+      "extractValueFromNode"
+    ],
     "isNodeExported": [],
-    "extractValueFromNode": [],
+    "extractValueFromNode": [
+      "isNaN",
+      "Number"
+    ],
     "isArraySafe": [],
     "getNodeType": [],
     "getNodeLocation": [],
-    "extractEntities": [],
-    "isChildNode": [],
-    "extractBodyText": [],
-    "extractValue": [],
-    "extractCallGraph": [],
+    "extractEntities": [
+      "isArraySafe",
+      "getNodeType",
+      "walk",
+      "getNodeLocation",
+      "isNodeExported",
+      "extractBodyText",
+      "extractValue",
+      "isChildNode"
+    ],
+    "isChildNode": [
+      "isArraySafe"
+    ],
+    "extractBodyText": [
+      "String"
+    ],
+    "extractValue": [
+      "isArraySafe"
+    ],
+    "extractCallGraph": [
+      "walk"
+    ],
+    "convertEnhancedToEntities": [],
     "buildCallGraphBetweenFunctions": [],
-    "buildPackageLockReportSync": [],
-    "buildProjectGraph": [],
-    "collectImports": [],
-    "collectReExports": [],
-    "expandFolderReExport": [],
+    "buildPackageLockReportSync": [
+      "buildEnhancedPackageLockReport"
+    ],
+    "buildProjectGraph": [
+      "getTsConfigForFile",
+      "parseFile",
+      "extractEntitiesFromFile",
+      "convertEnhancedToEntities",
+      "collectImports",
+      "collectReExports",
+      "isExternalModule",
+      "resolveFilePath",
+      "expandFolderReExport",
+      "normalizePathForDisplay",
+      "findProjectRoot",
+      "resolveAbsoluteFilePath",
+      "buildPackageLockReportSync",
+      "buildCallGraphBetweenFunctions"
+    ],
+    "collectImports": [
+      "walk"
+    ],
+    "collectReExports": [
+      "walk"
+    ],
+    "expandFolderReExport": [
+      "parseFile",
+      "collectReExports",
+      "resolveFilePath"
+    ],
     "collectDeclarationsRecursive": [],
-    "buildFileInternalGraph": [],
-    "buildAiPromptPack": [],
-    "analyzeModuleStructure": [],
+    "buildFileInternalGraph": [
+      "parseFile",
+      "normalizePathForDisplay",
+      "collectDeclarationsRecursive",
+      "walk"
+    ],
+    "buildAiPromptPack": [
+      "buildProjectGraph",
+      "minifyForAI"
+    ],
+    "analyzeModuleStructure": [
+      "parseFile",
+      "walk"
+    ],
     "identifyClusters": [],
-    "buildSplitModulePrompt": [],
-    "runImpactAnalysis": [],
-    "findDeadCode": [],
-    "generateDirectoryTree": [],
-    "renderNode": [],
+    "buildSplitModulePrompt": [
+      "analyzeVueComponent",
+      "analyzeModuleStructure",
+      "buildFileInternalGraph",
+      "findCyclicEdges",
+      "identifyClusters",
+      "minifyForAI",
+      "generateVueComponentReport"
+    ],
+    "runImpactAnalysis": [
+      "getAllProjectFiles",
+      "parseFile",
+      "walk",
+      "resolveFilePath"
+    ],
+    "findDeadCode": [
+      "parseFile",
+      "walk",
+      "getAllProjectFiles",
+      "resolveFilePath"
+    ],
+    "generateDirectoryTree": [
+      "renderNode"
+    ],
     "collectFiles": [],
-    "minifyFolder": [],
-    "parseVueFile": [],
-    "compileScriptBlock": [],
-    "extractPropsFromSource": [],
+    "minifyFolder": [
+      "collectFiles",
+      "generateDirectoryTree",
+      "minifyForAI"
+    ],
+    "parseVueFile": [
+      "parse"
+    ],
+    "compileScriptBlock": [
+      "compileScript"
+    ],
+    "extractPropsFromSource": [
+      "String",
+      "isNaN",
+      "Number"
+    ],
     "extractEmitsFromSource": [],
     "extractPropsFromCompiledScript": [],
     "extractEmitsFromCompiledScript": [],
-    "extractExposeFromCompiledScript": [],
+    "extractExposeFromCompiledScript": [
+      "String"
+    ],
     "getNodeValue": [],
-    "extractPropsFromAST": [],
-    "collectTypes": [],
-    "extractPropsFromTypeNode": [],
-    "findDefineProps": [],
-    "findWithDefaults": [],
-    "extractEmitsFromAST": [],
-    "findDefineEmits": [],
-    "extractExposeFromAST": [],
-    "findDefineExpose": [],
-    "analyzeTemplate": [],
-    "traverseVueAST": [],
+    "extractPropsFromAST": [
+      "collectTypes",
+      "findDefineProps",
+      "findWithDefaults",
+      "extractPropsFromTypeNode",
+      "getNodeValue"
+    ],
+    "extractEmitsFromAST": [
+      "findDefineEmits",
+      "getNodeValue",
+      "String"
+    ],
+    "extractExposeFromAST": [
+      "findDefineExpose"
+    ],
+    "analyzeTemplate": [
+      "traverseVueAST"
+    ],
     "extractImportsFromAST": [],
     "extractImportsFromSource": [],
-    "extractComposablesFromAST": [],
-    "visitNode": [],
+    "extractComposablesFromAST": [
+      "String",
+      "visitNode"
+    ],
     "extractComposablesFromSource": [],
-    "analyzeVueComponent": [],
-    "generateVueComponentReport": [],
-    "enhanceWithVueAnalysis": [],
-    "analyzeVueComponentCli": [],
-    "SemanticPipeline.constructor": [],
-    "SemanticPipeline.run": [],
-    "SemanticPipeline.initialize": [],
-    "SemanticPipeline.extractContract": [],
-    "SemanticPipeline.checkNullPointers": [],
-    "SemanticPipeline.hasNullCheckBefore": [],
-    "SemanticPipeline.calculateComplexity": [],
-    "SemanticPipeline.printReport": [],
-    "SemanticPipeline.saveReport": [],
-    "SemanticPipeline.generateHTMLReport": [],
-    "SemanticPipeline.generateMarkdownReport": [],
-    "SemanticPipeline.escapeHtml": [],
-    "runSemanticPipeline": [],
+    "analyzeVueComponent": [
+      "parseVueFile",
+      "compileScriptBlock",
+      "analyzeTemplate",
+      "extractPropsFromCompiledScript",
+      "extractEmitsFromCompiledScript",
+      "extractExposeFromCompiledScript",
+      "parseTS",
+      "extractPropsFromAST",
+      "extractPropsFromSource",
+      "extractEmitsFromAST",
+      "extractEmitsFromSource",
+      "extractExposeFromAST",
+      "extractImportsFromAST",
+      "extractImportsFromSource",
+      "extractComposablesFromAST",
+      "extractComposablesFromSource"
+    ],
+    "generateVueComponentReport": [
+      "String"
+    ],
+    "enhanceWithVueAnalysis": [
+      "analyzeVueComponent"
+    ],
+    "analyzeVueComponentCli": [
+      "analyzeVueComponent",
+      "generateVueComponentReport"
+    ],
+    "runSemanticPipeline": [
+      "glob"
+    ],
     "createIntVar": [],
     "createBoolVar": [],
     "createIntVal": [],
-    "Z3Verifier.initialize": [],
-    "Z3Verifier.doInitialize": [],
-    "Z3Verifier.isInitialized": [],
-    "Z3Verifier.getExpressionParser": [],
-    "Z3Verifier.getFunctionBodyModeler": [],
-    "Z3Verifier.verifyFunction": [],
-    "Z3Verifier.verifyEquivalence": [],
-    "Z3Verifier.verifyLoopInvariant": [],
-    "Z3Verifier.verifyArrayProperty": [],
-    "propertyWithArray": [],
-    "Z3Verifier.modelFunctionBody": [],
-    "Z3Verifier.parseExpression": [],
-    "Z3Verifier.constraintToZ3": [],
-    "Z3Verifier.valueToZ3": [],
-    "Z3Verifier.computeWeakestPrecondition": [],
-    "Z3Verifier.substitute": [],
-    "Z3Verifier.buildPostconditionFormula": [],
-    "Z3Verifier.extractModel": [],
-    "Z3Verifier.getCounterexample": [],
-    "Z3Verifier.reset": [],
-    "Z3Verifier.dispose": [],
     "createIntParam": [],
     "createBoolParam": [],
     "createStringParam": [],
@@ -7149,416 +5083,127 @@
     "getModulesByLevel": [],
     "getAllFunctions": [],
     "getFunctionsByExportSource": [],
-    "getFunctionsStats": [],
-    "saveModuleGraph": [],
-    "saveEntityGraph": [],
-    "saveFullAnalysis": [],
-    "savePackageLockReport": [],
+    "getFunctionsStats": [
+      "getAllFunctions"
+    ],
+    "saveModuleGraph": [
+      "buildModuleGraph"
+    ],
+    "saveEntityGraph": [
+      "buildEntityGraph"
+    ],
+    "saveFullAnalysis": [
+      "buildFullAnalysis"
+    ],
+    "savePackageLockReport": [
+      "buildEnhancedPackageLockReport"
+    ],
     "saveCallGraphResult": [],
     "buildModuleGraph": [],
-    "buildEntityGraph": [],
-    "buildFullAnalysis": [],
-    "findFileInProject": [],
-    "walkDir": [],
-    "extractEntitiesFromFile": [],
-    "buildEnhancedPackageLockReport": [],
+    "buildEntityGraph": [
+      "findModuleForEntity"
+    ],
+    "buildFullAnalysis": [
+      "buildModuleGraph",
+      "buildEntityGraph"
+    ],
+    "findFileInProject": [
+      "walkDir"
+    ],
+    "extractEntitiesFromFile": [
+      "extractValueFromNode"
+    ],
+    "buildEnhancedPackageLockReport": [
+      "findProjectRoot",
+      "convertToEnhancedEntityInfo",
+      "findFileInProject"
+    ],
     "convertToEnhancedEntityInfo": [],
     "escapeHtml": [],
-    "generateHTMLReport": [],
-    "generateFullDOT": [],
+    "generateHTMLReport": [
+      "normalizePathForDisplay",
+      "getFileNameForDisplay",
+      "escapeHtml"
+    ],
+    "generateFullDOT": [
+      "getEntityColor",
+      "getEntityShape",
+      "getEdgeColor"
+    ],
     "getEntityColor": [],
     "getEntityShape": [],
     "getEdgeColor": [],
-    "convertEnhancedToEntities": [],
-    "generateInteractiveHTML": [],
+    "generateInteractiveHTML": [
+      "convertEnhancedToEntities",
+      "generateFullDOT"
+    ],
     "showHelp": [],
     "formatFileSize": [],
     "generateTempId": [],
     "ensureDirectoryExists": [],
+    "renderNode": [],
     "normalizePathForDisplay": [],
-    "getFileNameForDisplay": [],
-    "getFileNameWithoutExt": [],
-    "normalizeRootKey": [],
-    "normalizeGraphPaths": [],
+    "getFileNameForDisplay": [
+      "normalizePathForDisplay"
+    ],
+    "getFileNameWithoutExt": [
+      "normalizePathForDisplay"
+    ],
+    "normalizeRootKey": [
+      "normalizePathForDisplay"
+    ],
+    "normalizeGraphPaths": [
+      "normalizeRootKey",
+      "normalizePathForDisplay"
+    ],
     "isAbsolutePath": [],
-    "shortenPath": [],
-    "getRelativePathForDisplay": [],
+    "shortenPath": [
+      "normalizePathForDisplay"
+    ],
+    "getRelativePathForDisplay": [
+      "normalizePathForDisplay"
+    ],
     "normalizePathForOS": [],
-    "fileExistsCaseSensitive": [],
-    "getImportPath": [],
+    "fileExistsCaseSensitive": [
+      "normalizePathForOS"
+    ],
+    "getImportPath": [
+      "normalizePathForOS"
+    ],
     "isValidWindowsPath": [],
     "toWindowsPath": [],
     "toUnixPath": [],
     "getDefaultWasmPath": [],
-    "AutoRefactor.isDryRun": [],
-    "AutoRefactor.constructor": [],
-    "AutoRefactor.initSemanticComponents": [],
-    "AutoRefactor.refactor": [],
-    "AutoRefactor.refactorWithGuarantee": [],
-    "AutoRefactor.refactorStandard": [],
-    "AutoRefactor.analyzeAndCluster": [],
-    "AutoRefactor.extractModules": [],
-    "AutoRefactor.updateImports": [],
-    "AutoRefactor.analyzeFile": [],
-    "AutoRefactor.identifyClusters": [],
-    "AutoRefactor.identifyClustersSingle": [],
-    "AutoRefactor.isExported": [],
-    "AutoRefactor.validateExtractedModule": [],
-    "AutoRefactor.calculateCohesion": [],
-    "AutoRefactor.generateClusterName": [],
-    "AutoRefactor.collectOriginalExports": [],
-    "AutoRefactor.finalValidation": [],
-    "AutoRefactor.createErrorResult": [],
-    "AutoRefactor.createSuccessResult": [],
-    "AutoRefactor.getRelativePath": [],
-    "AutoRefactor.initialize": [],
-    "AutoRefactor.dispose": [],
-    "AutoRefactor.runSemanticAnalysis": [],
-    "AutoRefactor.runCodeValidation": [],
-    "AutoRefactor.runESLint": [],
-    "AutoRefactor.runTypeCheck": [],
-    "AutoRefactor.runAutoFix": [],
-    "AutoRefactor.runFormalVerification": [],
-    "AutoRefactor.extractContract": [],
-    "AutoRefactor.getParamType": [],
-    "AutoRefactor.getReturnType": [],
-    "AutoRefactor.collectMetrics": [],
-    "AutoRefactor.calculateComplexity": [],
-    "AutoRefactor.getEquivalenceResult": [],
-    "AutoRefactor.isEquivalenceVerified": [],
-    "determineModuleExtension": [],
+    "determineModuleExtension": [
+      "hasTypeScriptSyntax",
+      "hasESMSpecificSyntax"
+    ],
     "hasTypeScriptSyntax": [],
     "hasESMSpecificSyntax": [],
     "hasSpecialConstructs": [],
-    "ModuleExtractor.constructor": [],
-    "ModuleExtractor.setModuleType": [],
-    "ModuleExtractor.extractModules": [],
-    "ModuleExtractor.validateModule": [],
-    "ModuleExtractor.generateClusterCode": [],
-    "ModuleExtractor.analyzeGlobalConstants": [],
-    "ModuleExtractor.collectAllDependencies": [],
-    "ModuleExtractor.createConstantsModule": [],
-    "ModuleExtractor.createRemainingExportsModule": [],
-    "ModuleExtractor.analyzeClusterDependencies": [],
-    "ModuleExtractor.generateSharedVariablesCode": [],
-    "ModuleExtractor.generateDependenciesCode": [],
-    "ModuleExtractor.collectOriginalExports": [],
-    "ModuleExtractor.inferVariableType": [],
-    "ModuleExtractor.inferValueType": [],
-    "ModuleExtractor.extractValue": [],
-    "ModuleExtractor.findNode": [],
-    "ModuleExtractor.removeNodesWithTsMorph": [],
-    "ModuleExtractor.generateModuleName": [],
-    "ModuleExtractor.getRelativePath": [],
-    "ImportManager.constructor": [],
-    "ImportManager.addAllReExports": [],
-    "ImportManager.addReExports": [],
-    "ImportManager.updateImports": [],
-    "ImportManager.optimizeImportOrder": [],
-    "sortBySpecifier": [],
-    "ImportManager.removeUnusedImports": [],
-    "ImportManager.isExportUsed": [],
-    "ImportManager.collectUsedIdentifiers": [],
-    "ImportManager.getRelativePath": [],
-    "ImportManager.escapeRegex": [],
-    "TypeScriptValidator.constructor": [],
-    "TypeScriptValidator.addGlobalDeclarations": [],
-    "TypeScriptValidator.loadFile": [],
-    "TypeScriptValidator.getDiagnostics": [],
-    "TypeScriptValidator.getDiagnosticMessage": [],
-    "TypeScriptValidator.formatDiagnostic": [],
-    "TypeScriptValidator.validateFiles": [],
-    "TypeScriptValidator.isFixable": [],
-    "TypeScriptValidator.getFixSuggestion": [],
-    "TypeScriptValidator.fixCannotFindName": [],
-    "TypeScriptValidator.fixCannotFindModule": [],
-    "TypeScriptValidator.fixMissingProperty": [],
-    "TypeScriptValidator.fixImplicitAny": [],
-    "TypeScriptValidator.fixBindingImplicitAny": [],
-    "TypeScriptValidator.fixImplicitAnyIndex": [],
-    "TypeScriptValidator.fixUnusedVariable": [],
-    "TypeScriptValidator.fixTypeMismatch": [],
-    "TypeScriptValidator.fixTypo": [],
-    "TypeScriptValidator.fixUnknownError": [],
-    "TypeScriptValidator.fixImportExtensions": [],
-    "TypeScriptValidator.fixMissingTypes": [],
-    "TypeScriptValidator.addToHistory": [],
-    "TypeScriptValidator.validateAndFix": [],
-    "TypeScriptValidator.fixDiagnostic": [],
-    "TypeScriptValidator.getFixedSourceFile": [],
-    "TypeScriptValidator.saveAll": [],
-    "TypeScriptValidator.getFixHistory": [],
-    "ESLintASTFixer.constructor": [],
-    "ESLintASTFixer.loadFile": [],
-    "ESLintASTFixer.getDiagnostics": [],
-    "ESLintASTFixer.fixDiagnostic": [],
-    "ESLintASTFixer.fixJSXDiagnostic": [],
-    "ESLintASTFixer.fixSelfClosingComponent": [],
-    "ESLintASTFixer.fixJSXBooleanValue": [],
-    "ESLintASTFixer.fixJSXCurlyBraces": [],
-    "ESLintASTFixer.fixJSXPascalCase": [],
-    "ESLintASTFixer.fixJSXClosingBracketLocation": [],
-    "ESLintASTFixer.fixJSXCurlySpacing": [],
-    "ESLintASTFixer.fixJSXEqualsSpacing": [],
-    "ESLintASTFixer.fixJSXIndent": [],
-    "ESLintASTFixer.fixJSXIndentProps": [],
-    "ESLintASTFixer.fixJSXMaxPropsPerLine": [],
-    "ESLintASTFixer.fixJSXNoDuplicateProps": [],
-    "ESLintASTFixer.fixJSXPropsNoMultiSpaces": [],
-    "ESLintASTFixer.fixJSXTagSpacing": [],
-    "ESLintASTFixer.fixJSXWrapMultilines": [],
-    "ESLintASTFixer.fixNoUnusedVars": [],
-    "ESLintASTFixer.fixNoUndef": [],
-    "ESLintASTFixer.fixMissingSemi": [],
-    "ESLintASTFixer.fixQuotes": [],
-    "ESLintASTFixer.fixTrailingSpaces": [],
-    "ESLintASTFixer.fixEOL": [],
-    "ESLintASTFixer.fixMultipleEmptyLines": [],
-    "ESLintASTFixer.fixCommaDangle": [],
-    "ESLintASTFixer.fixPreferConst": [],
-    "ESLintASTFixer.fixEqEqEq": [],
-    "ESLintASTFixer.fixNoVar": [],
-    "ESLintASTFixer.fixObjectShorthand": [],
-    "ESLintASTFixer.fixArrowBodyStyle": [],
-    "ESLintASTFixer.fixNoUnusedExpressions": [],
-    "ESLintASTFixer.findAssignmentsToVariable": [],
-    "ESLintASTFixer.isReservedHtmlTag": [],
-    "ESLintASTFixer.addToHistory": [],
-    "ESLintASTFixer.getFixableRules": [],
-    "ESLintASTFixer.fixFile": [],
-    "ESLintASTFixer.fixFiles": [],
-    "ESLintASTFixer.getFixHistory": [],
-    "ESLintASTFixer.clearHistory": [],
-    "CodeValidator.constructor": [],
-    "CodeValidator.validateFiles": [],
-    "CodeValidator.validateFile": [],
-    "CodeValidator.validateSyntax": [],
-    "CodeValidator.validateImports": [],
-    "CodeValidator.validateExports": [],
-    "CodeValidator.validateUnusedVariables": [],
-    "CodeValidator.validateCircularDeps": [],
-    "CodeValidator.validateTypes": [],
-    "CodeValidator.validateNaming": [],
-    "CodeValidator.validateSecurity": [],
-    "CodeValidator.validatePerformance": [],
-    "CodeValidator.addIssue": [],
-    "CodeValidator.generateSummary": [],
-    "CodeValidator.saveReport": [],
-    "CodeValidator.saveJSONReport": [],
-    "CodeValidator.generateMarkdownReport": [],
-    "CodeFixer.constructor": [],
-    "CodeFixer.getProject": [],
-    "CodeFixer.isTypeScriptFix": [],
-    "CodeFixer.isESLintFix": [],
-    "CodeFixer.isTypeScriptFile": [],
-    "CodeFixer.autoFix": [],
-    "CodeFixer.fixTypeScriptFile": [],
-    "CodeFixer.applyTsFix": [],
-    "CodeFixer.fixCannotFindName": [],
-    "CodeFixer.fixCannotFindModule": [],
-    "CodeFixer.fixMissingProperty": [],
-    "CodeFixer.fixImplicitAny": [],
-    "CodeFixer.fixBindingImplicitAny": [],
-    "CodeFixer.fixImplicitAnyIndex": [],
-    "CodeFixer.fixUnusedVariable": [],
-    "CodeFixer.fixTypeMismatch": [],
-    "CodeFixer.fixTypo": [],
-    "CodeFixer.fixUnknownError": [],
-    "CodeFixer.fixImportExtensions": [],
-    "CodeFixer.fixMissingTypes": [],
-    "CodeFixer.fixESLintIssues": [],
-    "CodeFixer.getStats": [],
-    "CodeFixer.resetStats": [],
-    "CodeFixer.getESLintFixHistory": [],
-    "CodeFixer.isFixable": [],
-    "TemplateUpdater.constructor": [],
-    "TemplateUpdater.update": [],
-    "TemplateUpdater.updateTemplateImports": [],
-    "TemplateUpdater.updateScriptImports": [],
-    "TemplateUpdater.writeVueFile": [],
-    "SyntaxValidator.constructor": [],
-    "SyntaxValidator.validate": [],
-    "SyntaxValidator.validateJavaScriptSoft": [],
-    "SyntaxValidator.validateTypeScript": [],
-    "SyntaxValidator.validateWithNode": [],
-    "SyntaxValidator.validateESMWithMorph": [],
-    "SyntaxValidator.isESModule": [],
-    "SyntaxValidator.getModuleType": [],
-    "SyntaxValidator.clearCache": [],
-    "SyntaxValidator.validateMultiple": [],
-    "ModuleTypeDetector.constructor": [],
-    "ModuleTypeDetector.detect": [],
-    "ModuleTypeDetector.findPackageJson": [],
-    "ModuleTypeDetector.clearCache": [],
-    "ModuleTypeDetector.getExtension": [],
-    "ModuleTypeDetector.getImportSyntax": [],
-    "ModuleTypeDetector.getExportSyntax": [],
-    "ModuleTypeDetector.generateImport": [],
-    "ModuleTypeDetector.generateExport": [],
-    "ModuleTypeDetector.generateReExport": [],
-    "ModuleTypeDetector.getModuleExtension": [],
-    "ModuleTypeDetector.hasTypeScriptSyntax": [],
-    "ModuleTypeDetector.hasESMSyntax": [],
-    "BackupManager.constructor": [],
-    "BackupManager.createFullBackup": [],
-    "BackupManager.createWorkingCopy": [],
-    "BackupManager.createCheckpoint": [],
-    "BackupManager.restoreCheckpoint": [],
-    "BackupManager.restoreLastCheckpoint": [],
-    "BackupManager.restore": [],
-    "BackupManager.removeCheckpoint": [],
-    "BackupManager.cleanup": [],
-    "BackupManager.cleanupDirectory": [],
-    "BackupManager.getBackups": [],
-    "BackupManager.getCheckpoints": [],
-    "BackupManager.clearAllBackups": [],
-    "BackupManager.hasBackups": [],
-    "BackupManager.hasCheckpoints": [],
-    "BackupManager.getLastBackup": [],
-    "BackupManager.getLastCheckpoint": [],
-    "CFGAnalyzer.createEmptyGraph": [],
-    "CFGAnalyzer.build": [],
-    "checkNodes": [],
-    "CFGAnalyzer.buildBasicBlocks": [],
-    "CFGAnalyzer.findLeaders": [],
-    "CFGAnalyzer.buildEdges": [],
-    "CFGAnalyzer.handleIfStatement": [],
-    "CFGAnalyzer.handleLoop": [],
-    "CFGAnalyzer.handleSwitch": [],
-    "CFGAnalyzer.handleTry": [],
-    "CFGAnalyzer.handleReturn": [],
-    "CFGAnalyzer.computeDominators": [],
-    "CFGAnalyzer.identifyLoops": [],
-    "CFGAnalyzer.findLoopBody": [],
-    "CFGAnalyzer.computeReachability": [],
-    "CFGAnalyzer.findUnreachable": [],
-    "CFGAnalyzer.getLoops": [],
-    "CFGAnalyzer.createBlock": [],
-    "CFGAnalyzer.finalizeBlock": [],
-    "CFGAnalyzer.addEdge": [],
-    "CFGAnalyzer.findBlockContainingNode": [],
-    "CFGAnalyzer.getNextBlock": [],
-    "CFGAnalyzer.getNextSibling": [],
-    "CFGAnalyzer.getFirstNode": [],
-    "CFGAnalyzer.getOrderedNodes": [],
-    "collect": [],
-    "CFGAnalyzer.isTerminator": [],
-    "CFGAnalyzer.isBranch": [],
-    "CFGAnalyzer.isPrologue": [],
-    "CFGAnalyzer.intersect": [],
-    "CFGAnalyzer.setsEqual": [],
-    "CallGraphAnalyzer.constructor": [],
-    "CallGraphAnalyzer.ensureInitialized": [],
-    "CallGraphAnalyzer.setWasmPath": [],
-    "CallGraphAnalyzer.getWasmPath": [],
-    "CallGraphAnalyzer.isInitialized": [],
-    "CallGraphAnalyzer.analyze": [],
-    "CallGraphAnalyzer.analyzeSingle": [],
-    "CallGraphAnalyzer.parseSingleFile": [],
-    "CallGraphAnalyzer.parseDirectory": [],
-    "CallGraphAnalyzer.parseFile": [],
-    "CallGraphAnalyzer.buildNodes": [],
-    "CallGraphAnalyzer.detectCycles": [],
-    "CallGraphAnalyzer.findUnused": [],
-    "CallGraphAnalyzer.shouldIgnore": [],
-    "CallGraphAnalyzer.isSupportedFile": [],
-    "CallGraphAnalyzer.getJSXFiles": [],
-    "walk": [],
-    "CallGraphAnalyzer.analyzeAllJSXComponents": [],
-    "CallGraphAnalyzer.exportToJSON": [],
-    "CallGraphAnalyzer.generateJSXReport": [],
-    "CallGraphAnalyzer.extractVueFunctions": [],
-    "CallGraphAnalyzer.analyzeVueFile": [],
-    "CallGraphAnalyzer.analyzeAllVueFiles": [],
-    "CallGraphAnalyzer.generateVueReport": [],
-    "TypeAnalyzer.constructor": [],
-    "TypeAnalyzer.analyze": [],
-    "TypeAnalyzer.getTypeInfo": [],
-    "TypeAnalyzer.getTypeInfoFromSimpleType": [],
-    "TypeAnalyzer.checkTypeCompatibility": [],
-    "TypeAnalyzer.findTypeErrors": [],
-    "visit": [],
-    "TypeAnalyzer.inferFunctionReturnType": [],
-    "TypeAnalyzer.findFunctionDeclaration": [],
-    "TypeAnalyzer.isNullable": [],
-    "TypeAnalyzer.isOptional": [],
-    "TypeAnalyzer.getElementType": [],
-    "TypeAnalyzer.getEnclosingFunction": [],
-    "TypeAnalyzer.parseTypeString": [],
-    "TypeAnalyzer.getNodeLocation": [],
-    "TypeAnalyzer.isArrayType": [],
-    "TypeAnalyzer.isObjectType": [],
-    "TypeAnalyzer.getPropertyOfSimpleType": [],
-    "isTypeCompatible": [],
-    "getTypeString": [],
-    "DataFlowAnalyzer.analyze": [],
-    "DataFlowAnalyzer.collectVariableDeclarations": [],
-    "DataFlowAnalyzer.collectVariableUsages": [],
-    "DataFlowAnalyzer.findUnused": [],
-    "DataFlowAnalyzer.findReassigned": [],
-    "DataFlowAnalyzer.findDependencies": [],
-    "DataFlowAnalyzer.getChain": [],
-    "DataFlowAnalyzer.extractValue": [],
-    "DataFlowAnalyzer.isConstant": [],
-    "DataFlowAnalyzer.isDeclaration": [],
-    "DataFlowAnalyzer.isInScope": [],
-    "DataFlowAnalyzer.getDefinitions": [],
-    "DataFlowAnalyzer.getUsages": [],
-    "DataFlowAnalyzer.isVariableUsed": [],
-    "DataFlowAnalyzer.getVariableStats": [],
-    "DataFlowAnalyzer.exportToDOT": [],
-    "DataFlowAnalyzer.findDataPath": [],
-    "JSXAnalyzer.constructor": [],
-    "JSXAnalyzer.analyze": [],
-    "JSXAnalyzer.parseJSXElement": [],
-    "JSXAnalyzer.parseJSXSelfClosingElement": [],
-    "JSXAnalyzer.parseJSXFragment": [],
-    "JSXAnalyzer.parseJSXAttributes": [],
-    "JSXAnalyzer.parseJSXChildren": [],
-    "JSXAnalyzer.validateJSXProps": [],
-    "JSXAnalyzer.lintJSXElement": [],
-    "JSXAnalyzer.lintJSXSelfClosingElement": [],
-    "JSXAnalyzer.getComponentType": [],
-    "JSXAnalyzer.isIntrinsicElement": [],
-    "JSXAnalyzer.isPropDefined": [],
-    "JSXAnalyzer.isPropTypeCompatible": [],
-    "JSXAnalyzer.getExpectedPropType": [],
-    "JSXAnalyzer.getRequiredProps": [],
-    "JSXAnalyzer.checkReactImport": [],
-    "JSXAnalyzer.getTypeInfo": [],
-    "JSXAnalyzer.generateReport": [],
-    "JSXAnalyzer.applyFixes": [],
+    "isTypeCompatible": [
+      "isAssignableToType"
+    ],
+    "getTypeString": [
+      "typeToString"
+    ],
     "isJSXFile": [],
-    "getJSXFiles": [],
+    "getJSXFiles": [
+      "isJSXFile"
+    ],
     "findWasmPath": [],
-    "isWasmAvailable": [],
-    "getAvailableGrammars": [],
-    "createWasmSymlink": [],
-    "copyWasmFiles": [],
-    "ExpressionParser.constructor": [],
-    "ExpressionParser.parse": [],
-    "ExpressionParser.parseUnaryNot": [],
-    "ExpressionParser.parseBinary": [],
-    "ExpressionParser.parseLogicalOperators": [],
-    "ExpressionParser.parseUnaryOrBinary": [],
-    "ExpressionParser.splitByOperator": [],
-    "ExpressionParser.createBinaryOperation": [],
-    "ExpressionParser.stripOuterParens": [],
-    "ExpressionParser.isSimple": [],
-    "ExpressionParser.extractVariables": [],
-    "ExpressionParser.hasNotOperator": [],
-    "ExpressionParser.hasBooleanOperators": [],
-    "ExpressionParser.hasArithmeticOperators": [],
-    "ExpressionParser.inferExpressionType": [],
-    "ExpressionParser.decompose": [],
-    "ExpressionParser.parseWithTypes": [],
-    "ExpressionParser.parseConditional": [],
-    "ExpressionParser.parseLoopInvariant": [],
-    "ExpressionParser.parseArrayProperty": [],
-    "ExpressionParser.validate": [],
-    "ExpressionParser.getSubExpressions": [],
-    "ExpressionParser.isValidForZ3": [],
-    "ExpressionParser.toZ3String": [],
+    "isWasmAvailable": [
+      "findWasmPath"
+    ],
+    "getAvailableGrammars": [
+      "findWasmPath"
+    ],
+    "createWasmSymlink": [
+      "findWasmPath"
+    ],
+    "copyWasmFiles": [
+      "findWasmPath"
+    ],
     "createExpressionParser": [],
     "parseExpression": [],
     "validateExpression": [],
@@ -7567,35 +5212,49 @@
     "toZ3String": [],
     "parseFunctionBody": [],
     "createFunctionVariables": [],
-    "verifyFunctionWithBody": [],
+    "verifyFunctionWithBody": [
+      "String"
+    ],
     "createContractFromExpression": [],
     "createContractWithAutoPreconditions": [],
     "canParseExpression": [],
     "isSimpleExpression": [],
     "extractVariablesFromExpression": [],
-    "FunctionBodyModeler.constructor": [],
-    "FunctionBodyModeler.modelFunctionBody": [],
-    "FunctionBodyModeler.wrapFunctionCode": [],
-    "FunctionBodyModeler.getOperatorText": [],
-    "FunctionBodyModeler.modelNode": [],
-    "FunctionBodyModeler.canModelFunction": [],
-    "FunctionBodyModeler.simplifyBody": [],
-    "FunctionBodyModeler.isSimpleArithmetic": [],
-    "FunctionBodyModeler.isConditional": [],
-    "FunctionBodyModeler.extractVariables": [],
-    "runHybridReport": [],
-    "buildHybridReport": [],
+    "runHybridReport": [
+      "buildHybridReport",
+      "generateHybridMarkdown",
+      "generateHybridDOT",
+      "generateHybridHTML",
+      "buildFileInternalGraph",
+      "String",
+      "findCyclicEdges",
+      "convertToDOT"
+    ],
+    "buildHybridReport": [
+      "buildProjectGraph",
+      "analyzeModule",
+      "findCyclicEdges"
+    ],
     "analyzeModule": [],
-    "generateHybridDOT": [],
-    "generateHybridHTML": [],
-    "generateHybridMarkdown": [],
+    "generateHybridDOT": [
+      "parseInt"
+    ],
+    "generateHybridHTML": [
+      "generateHybridDOT",
+      "parseInt"
+    ],
+    "generateHybridMarkdown": [
+      "parseInt"
+    ],
     "createContractTemplate": [],
     "addPrecondition": [],
     "addPostcondition": [],
     "addInvariant": [],
     "addBody": [],
     "buildContract": [],
-    "createContractFromSignature": [],
+    "createContractFromSignature": [
+      "createContractTemplate"
+    ],
     "validatePostconditions": [],
     "generateVerificationReport": [],
     "areContractsEquivalent": [],
@@ -7603,157 +5262,43 @@
     "checkRefactoringEquivalence": [],
     "checkFunctionEquivalence": [],
     "checkExpressionEquivalence": [],
-    "verifyFunction": [],
-    "Logger.constructor": [],
-    "Logger.initializeLogFile": [],
-    "Logger.rotateLogFile": [],
-    "Logger.getColor": [],
-    "Logger.getIcon": [],
-    "Logger.format": [],
-    "Logger.formatContext": [],
-    "Logger.log": [],
-    "Logger.debug": [],
-    "Logger.info": [],
-    "Logger.warn": [],
-    "Logger.error": [],
-    "Logger.startOperation": [],
-    "Logger.endOperation": [],
-    "Logger.failOperation": [],
-    "Logger.progress": [],
-    "Logger.createProgressBar": [],
-    "Logger.section": [],
-    "Logger.table": [],
-    "Logger.setLevel": [],
-    "Logger.getLevel": [],
-    "Logger.setMaxFileSize": [],
-    "Logger.setMaxFiles": [],
-    "Logger.close": [],
-    "Logger.child": [],
+    "verifyFunction": [
+      "createIntParam",
+      "range"
+    ],
     "parseLogLevel": [],
     "getGlobalLogger": [],
     "setGlobalLogger": [],
-    "FileEquivalenceChecker.constructor": [],
-    "FileEquivalenceChecker.initialize": [],
-    "FileEquivalenceChecker.checkFileEquivalence": [],
-    "FileEquivalenceChecker.checkFunctionEquivalence": [],
-    "FileEquivalenceChecker.createSuccessResult": [],
-    "FileEquivalenceChecker.createDetailedResult": [],
-    "FileEquivalenceChecker.createErrorResult": [],
-    "FileEquivalenceChecker.createTimeoutResult": [],
-    "FileEquivalenceChecker.generateReport": [],
-    "FileEquivalenceChecker.saveReport": [],
-    "FileEquivalenceChecker.isEquivalent": [],
-    "FileEquivalenceChecker.needsReview": [],
-    "FileEquivalenceChecker.confidenceLevel": [],
-    "FileEquivalenceChecker.dispose": [],
-    "FileEquivalenceChecker.getASTComparator": [],
-    "FileEquivalenceChecker.getSignatureComparator": [],
-    "FileEquivalenceChecker.getCallGraphComparator": [],
     "isEquivalencePassed": [],
     "hasCriticalIssues": [],
     "getSummary": [],
-    "RefactoringEquivalenceChecker.constructor": [],
-    "RefactoringEquivalenceChecker.initialize": [],
-    "RefactoringEquivalenceChecker.dispose": [],
-    "RefactoringEquivalenceChecker.checkRefactoringEquivalence": [],
-    "RefactoringEquivalenceChecker.extractAllFunctions": [],
-    "RefactoringEquivalenceChecker.createContractFromSignature": [],
-    "RefactoringEquivalenceChecker.inferParamType": [],
-    "RefactoringEquivalenceChecker.generateDiff": [],
-    "RefactoringEquivalenceChecker.generateReport": [],
-    "RefactoringEquivalenceChecker.generateErrorReport": [],
-    "RefactoringEquivalenceChecker.signatureToString": [],
-    "RefactoringEquivalenceChecker.exportToJSON": [],
-    "RefactoringEquivalenceChecker.saveReport": [],
-    "RefactoringEquivalenceChecker.checkFunctionEquivalence": [],
     "isRefactoringEquivalent": [],
     "needsRefactoringReview": [],
-    "EquivalenceChecker.constructor": [],
-    "EquivalenceChecker.initialize": [],
-    "EquivalenceChecker.doInitialize": [],
-    "EquivalenceChecker.dispose": [],
-    "EquivalenceChecker.getZ3Verifier": [],
-    "EquivalenceChecker.extractReturnExpression": [],
-    "EquivalenceChecker.createEquivalenceContract": [],
-    "EquivalenceChecker.checkFileEquivalence": [],
-    "EquivalenceChecker.checkFunctionEquivalence": [],
-    "wrapInBraces": [],
-    "EquivalenceChecker.checkExpressionEquivalence": [],
-    "EquivalenceChecker.isSimpleMathFunction": [],
-    "EquivalenceChecker.createSimpleContract": [],
-    "EquivalenceChecker.extractFunctionsAST": [],
-    "EquivalenceChecker.matchFunctions": [],
-    "EquivalenceChecker.uniqueDifferences": [],
-    "EquivalenceChecker.loadFile": [],
-    "EquivalenceChecker.generateReport": [],
-    "EquivalenceChecker.saveReport": [],
-    "EquivalenceChecker.isEquivalent": [],
-    "EquivalenceChecker.needsReview": [],
-    "EquivalenceChecker.confidenceLevel": [],
     "isEquivalent": [],
     "needsReview": [],
     "confidenceLevel": [],
-    "ASTComparator.constructor": [],
-    "ASTComparator.compareNodes": [],
-    "ASTComparator.isOperatorToken": [],
-    "ASTComparator.compareFiles": [],
-    "ASTComparator.extractProperties": [],
-    "ASTComparator.getNodeSummary": [],
-    "ASTComparator.shouldIgnore": [],
-    "ASTComparator.assessImpact": [],
-    "ASTComparator.generateReport": [],
-    "SignatureComparator.extractSignature": [],
-    "SignatureComparator.compareSignatures": [],
-    "SignatureComparator.extractAllSignatures": [],
-    "SignatureComparator.compareAllSignatures": [],
-    "SignatureComparator.findFunctionBySignature": [],
-    "SignatureComparator.isCompatible": [],
-    "SignatureComparator.areTypesCompatible": [],
-    "SignatureComparator.generateReport": [],
-    "SignatureComparator.formatChange": [],
-    "SignatureComparator.signatureToString": [],
-    "SignatureComparator.exportToJSON": [],
-    "SignatureComparator.importFromJSON": [],
-    "SignatureComparator.getDecoratorsSafe": [],
-    "SignatureComparator.hasDecorator": [],
-    "SignatureComparator.isMethodExported": [],
     "isSignatureCompatible": [],
     "compareSignatures": [],
     "findFunctionByName": [],
     "findFunctionBySignature": [],
-    "CallGraphComparator.buildCallGraph": [],
-    "CallGraphComparator.findCalls": [],
-    "CallGraphComparator.addEdge": [],
-    "CallGraphComparator.compareGraphs": [],
-    "CallGraphComparator.findCycles": [],
-    "CallGraphComparator.findUnusedFunctions": [],
-    "CallGraphComparator.findMutualCalls": [],
-    "CallGraphComparator.toDot": [],
-    "CallGraphComparator.generateReport": [],
-    "CallGraphComparator.toJSON": [],
-    "CallGraphComparator.fromJSON": [],
-    "CallGraphComparator.findPath": [],
-    "CallGraphComparator.findDependents": [],
-    "find": [],
-    "CallGraphComparator.findDependencies": [],
     "createEmptyCallGraph": [],
     "mergeCallGraphs": []
   },
   "entityStats": {
-    "totalFunctions": 769,
-    "totalConstants": 3547,
-    "totalVariables": 424,
+    "totalFunctions": 231,
+    "totalConstants": 17,
+    "totalVariables": 6,
     "totalInterfaces": 168,
     "totalTypes": 4,
     "totalClasses": 27,
-    "totalCalls": 0,
-    "totalExportedFunctions": 170,
-    "totalAsyncFunctions": 136
+    "totalCalls": 233,
+    "totalExportedFunctions": 174,
+    "totalAsyncFunctions": 12
   },
   "fileStats": {
     "totalFiles": 62,
-    "totalSize": 1169546,
-    "totalLines": 36672
+    "totalSize": 1171783,
+    "totalLines": 36747
   },
-  "timestamp": "2026-08-20T15:02:35.277Z"
+  "timestamp": "2026-08-20T15:11:06.692Z"
 }
