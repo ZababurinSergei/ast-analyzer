@@ -1669,12 +1669,23 @@ export async function runCLI(): Promise<void> {
             });
           }
 
-          // ✅ ИСПРАВЛЕНО: передаем entitiesWithCalls в generateInteractiveHTML
+          // Находим путь к package-lock-report.json
+          const packageLockPath = path.join(
+            process.cwd(),
+            'reports/entities-component-tree-deep/package-lock-report.json'
+          );
+
+          // ✅ Генерируем интерактивный HTML с передачей пути к package-lock
           console.log('\n🌐 Генерация интерактивного HTML отчета...');
           const htmlPath = path.join(process.cwd(), 'interactive-report.html');
 
-          // ✅ Вызываем функцию с 3 аргументами
-          await generateInteractiveHTML(fullAnalysis, htmlPath, entitiesWithCalls);
+          // ✅ Вызываем функцию с 4 аргументами (включая packageLockPath)
+          await generateInteractiveHTML(
+            fullAnalysis,
+            htmlPath,
+            entitiesWithCalls,
+            packageLockPath
+          );
           console.log(`   ✅ interactive-report.html (интерактивный отчет)`);
 
           console.log('\n📊 Статистика сущностей:');

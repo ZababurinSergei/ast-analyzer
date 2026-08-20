@@ -9,307 +9,720 @@ import type {
   EntityGraphEdge,
 } from '../types.js';
 import { Graphviz } from '@hpcc-js/wasm-graphviz';
-import type { EntitiesResult } from '../core/entity-extractor.js';
-import type { EnhancedEntityInfo } from './json-reporter.js';
 
-/**
- * Генерирует DOT граф для визуализации модулей и сущностей с правильными связями:
- * - Модули (контейнеры) с их сущностями
- * - Вызовы между функциями разных модулей
- * - Импорты и экспорты сущностей
- * - Наследование и имплементация
- */
-function generateFullDOT(analysis: FullAnalysis): string {
+// ============================================================
+// ТИПЫ ДЛЯ PACKAGE-LOCK REPORTS
+// ============================================================
+
+interface PackageLockFunctionInfo {
+  name: string;
+  params: string[];
+  paramTypes: string[];
+  line: number;
+  startLine: number;
+  endLine: number;
+  isAsync: boolean;
+  isExported: boolean;
+  isMethod: boolean;
+  className?: string;
+  calls: string[];
+  calledBy: string[];
+  returnType: string;
+  body: string;
+  isNested: boolean;
+  parentFunction?: string;
+  isArrow: boolean;
+  isEventHandler: boolean;
+  eventType?: string;
+  depth: number;
+}
+
+interface PackageLockEntityInfo {
+  functions: PackageLockFunctionInfo[];
+  constants: any[];
+  variables: any[];
+  interfaces: any[];
+  types: any[];
+  classes: any[];
+}
+
+interface PackageLockPackage {
+  version: string;
+  resolved: string;
+  displayPath?: string;
+  type: 'module' | 'commonjs';
+  language: 'typescript' | 'javascript' | 'vue' | 'jsx';
+  isEntry: boolean;
+  imports: Record<string, any>;
+  exports: Record<string, any>;
+  entities: PackageLockEntityInfo;
+  fileStats: {
+    size: number;
+    lines: number;
+    functions: number;
+    classes: number;
+    constants: number;
+    interfaces: number;
+    types: number;
+    variables: number;
+  };
+}
+
+interface PackageLockReport {
+  name: string;
+  version: string;
+  lockfileVersion: number;
+  packages: Record<string, PackageLockPackage>;
+  dependencyGraph: {
+    direction: 'bidirectional';
+    inwardDependencies: Record<string, string[]>;
+    outwardDependencies: Record<string, string[]>;
+  };
+  entityStats: {
+    totalFunctions: number;
+    totalConstants: number;
+    totalVariables: number;
+    totalInterfaces: number;
+    totalTypes: number;
+    totalClasses: number;
+    totalCalls: number;
+    totalExportedFunctions: number;
+    totalAsyncFunctions: number;
+  };
+  fileStats: {
+    totalFiles: number;
+    totalSize: number;
+    totalLines: number;
+  };
+  timestamp: string;
+}
+
+// ============================================================
+// ГЕНЕРАЦИЯ ЦВЕТОВ ДЛЯ ФАЙЛОВ
+// ============================================================
+
+function getFileColor(modulePath: string): string {
+  // Используем предопределённые цвета для разных типов файлов
+  const typeColors: Record<string, string> = {
+    '.ts': '#60a5fa',
+    '.tsx': '#a78bfa',
+    '.js': '#fbbf24',
+    '.jsx': '#f472b6',
+    '.vue': '#4ade80',
+    '.json': '#fcd34d',
+    '.md': '#94a3b8',
+  };
+
+  // Проверяем расширение
+  for (const [ext, color] of Object.entries(typeColors)) {
+    if (modulePath.endsWith(ext)) {
+      return color;
+    }
+  }
+
+  // Генерируем цвет на основе хеша имени файла
+  let hash = 0;
+  for (let i = 0; i < modulePath.length; i++) {
+    hash = modulePath.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 70%, 55%)`;
+}
+
+// ============================================================
+// ГЕНЕРАЦИЯ DOT ГРАФА
+// ============================================================
+
+function generateFullDOT(
+  report: PackageLockReport,
+  focusModule?: string,
+  focusFunction?: string,
+  mode: 'all' | 'inward' | 'outward' | 'both' = 'all'
+): string {
+  const modulePaths = Object.keys(report.packages);
+
   let dot = 'digraph ProjectGraph {\n';
   dot += '  rankdir=LR;\n';
   dot += '  splines=true;\n';
   dot += '  node [shape=box, style="filled,rounded", fontname="Arial", fontsize=12];\n';
   dot += '  edge [color="#9ca3af", arrowhead=vee, penwidth=1];\n\n';
 
-  // === 1. Модули (контейнеры) ===
-  dot += '  // === МОДУЛИ ===\n';
-  const moduleNodes: ModuleGraphNode[] = analysis.moduleGraph?.nodes || [];
-  const moduleEdges: ModuleGraphEdge[] = analysis.moduleGraph?.edges || [];
+  // Цвета для модулей
+  const moduleColors: Record<string, string> = {};
+  for (const modulePath of modulePaths) {
+    moduleColors[modulePath] = getFileColor(modulePath);
+  }
 
-  for (const node of moduleNodes) {
-    const isEntry = node.metadata?.isEntry || false;
-    const isVue = node.type === 'vue' || node.name.endsWith('.vue');
-    const color = isEntry ? '#4f46e5' : isVue ? '#4ade80' : '#f3f4f6';
+  // --- МОДУЛИ ---
+  dot += '  // === МОДУЛИ ===\n';
+  for (const [modulePath, pkg] of Object.entries(report.packages)) {
+    const isEntry = pkg.isEntry || false;
+    const color = moduleColors[modulePath] || '#f3f4f6';
     const fontColor = isEntry ? '#ffffff' : '#1f2937';
     const penwidth = isEntry ? '3' : '1';
-    const label = isEntry ? `⭐ ${node.name}` : node.name;
-    const tooltip = node.id;
+    const displayName = pkg.displayPath || path.basename(modulePath);
+    const label = isEntry ? `⭐ ${displayName}` : displayName;
+    const tooltip = modulePath;
 
-    dot += `  "${node.id}" [fillcolor="${color}", fontcolor="${fontColor}", penwidth=${penwidth}, label="${label}", tooltip="${tooltip}"];\n`;
+    dot += `  "${modulePath}" [fillcolor="${color}", fontcolor="${fontColor}", penwidth=${penwidth}, label="${label}", tooltip="${tooltip}"];\n`;
   }
 
-  // === 2. Ребра модулей (импорты между модулями) ===
-  dot += '\n  // === СВЯЗИ МЕЖДУ МОДУЛЯМИ (ИМПОРТЫ) ===\n';
-  for (const edge of moduleEdges) {
-    const isExternal = edge.type === 'external';
-    const color = isExternal ? '#f59e0b' : '#3b82f6';
-    const style = isExternal ? 'dashed' : 'solid';
-    const label = edge.specifiers?.length > 0 ? edge.specifiers.join(', ') : edge.type;
+  // --- СВЯЗИ МЕЖДУ МОДУЛЯМИ (ModuleGraphEdge) ---
+  dot += '\n  // === СВЯЗИ МЕЖДУ МОДУЛЯМИ (ModuleGraphEdge) ===\n';
+  const { inwardDependencies, outwardDependencies } = report.dependencyGraph;
 
-    dot += `  "${edge.from}" -> "${edge.to}" [color="${color}", style="${style}", label="${label}", fontsize=9];\n`;
-  }
-
-  // === 3. Сущности (функции, классы, константы) ===
-  const entityNodes: EntityGraphNode[] = analysis.entityGraph?.nodes || [];
-  const entityEdges: EntityGraphEdge[] = analysis.entityGraph?.edges || [];
-
-  if (entityNodes.length > 0) {
-    dot += '\n  // === СУЩНОСТИ (ФУНКЦИИ, КЛАССЫ, КОНСТАНТЫ) ===\n';
-
-    // Группируем сущности по модулям для кластеризации
-    const entitiesByModule: Record<string, EntityGraphNode[]> = {};
-    for (const node of entityNodes) {
-      const moduleId = node.module || 'unknown';
-      if (!entitiesByModule[moduleId]) {
-        entitiesByModule[moduleId] = [];
-      }
-      entitiesByModule[moduleId].push(node);
+  // Для режима фокуса
+  let focusModuleSet: Set<string> | null = null;
+  if (focusModule) {
+    focusModuleSet = new Set([focusModule]);
+    if (mode === 'inward' || mode === 'both') {
+      const inward = inwardDependencies[focusModule] || [];
+      for (const dep of inward) focusModuleSet.add(dep);
     }
+    if (mode === 'outward' || mode === 'both') {
+      const outward = outwardDependencies[focusModule] || [];
+      for (const dep of outward) focusModuleSet.add(dep);
+    }
+  }
 
-    let clusterIndex = 0;
-    for (const [moduleId, entities] of Object.entries(entitiesByModule)) {
-      if (entities.length === 0) continue;
+  // Строим ребра модулей
+  const addedEdges = new Set<string>();
+  for (const [from, deps] of Object.entries(outwardDependencies)) {
+    if (focusModuleSet && !focusModuleSet.has(from)) continue;
 
-      // Проверяем, существует ли модуль в графе
-      const moduleExists = moduleNodes.some(
-        n => n.id === moduleId || n.id === moduleId.replace('#', '')
-      );
+    for (const to of deps) {
+      if (focusModuleSet && !focusModuleSet.has(to)) continue;
 
-      if (moduleExists) {
-        dot += `  subgraph cluster_${clusterIndex} {\n`;
-        dot += `    label="${path.basename(moduleId)}";\n`;
-        dot += `    style=filled;\n`;
-        dot += `    fillcolor="#0f172a";\n`;
-        dot += `    color="#334155";\n`;
-        dot += `    penwidth=1;\n`;
-        dot += `    fontcolor="#94a3b8";\n`;
-        dot += `    fontsize=10;\n`;
+      const edgeKey = `${from}->${to}`;
+      if (addedEdges.has(edgeKey)) continue;
+      addedEdges.add(edgeKey);
+
+      dot += `  "${from}" -> "${to}" [color="#3b82f6", label="import", penwidth=1];\n`;
+    }
+  }
+
+  // --- СУЩНОСТИ (ФУНКЦИИ) ---
+  dot += '\n  // === ФУНКЦИИ (EntityGraphNode) ===\n';
+
+  const functionsToShow: { modulePath: string; func: PackageLockFunctionInfo }[] = [];
+
+  for (const [modulePath, pkg] of Object.entries(report.packages)) {
+    if (focusModuleSet && !focusModuleSet.has(modulePath)) continue;
+
+    for (const func of pkg.entities.functions) {
+      if (focusFunction && func.name !== focusFunction) {
+        const isRelated =
+          func.calls.includes(focusFunction) || func.calledBy.includes(focusFunction);
+        if (!isRelated && func.name !== focusFunction) continue;
+      }
+      functionsToShow.push({ modulePath, func });
+    }
+  }
+
+  const functionsByModule: Record<string, PackageLockFunctionInfo[]> = {};
+  for (const { modulePath, func } of functionsToShow) {
+    if (!functionsByModule[modulePath]) functionsByModule[modulePath] = [];
+    functionsByModule[modulePath].push(func);
+  }
+
+  let clusterIndex = 0;
+  for (const [modulePath, functions] of Object.entries(functionsByModule)) {
+    if (functions.length === 0) continue;
+
+    const moduleColor = moduleColors[modulePath] || '#334155';
+    dot += `  subgraph cluster_${clusterIndex} {\n`;
+    dot += `    label="${path.basename(modulePath)}";\n`;
+    dot += `    style=filled;\n`;
+    dot += `    fillcolor="#0f172a";\n`;
+    dot += `    color="${moduleColor}";\n`;
+    dot += `    penwidth=2;\n`;
+    dot += `    fontcolor="#e2e8f0";\n`;
+    dot += `    fontsize=11;\n`;
+
+    for (const func of functions) {
+      const isExported = func.isExported || false;
+      const isAsync = func.isAsync || false;
+      const isFocused = focusFunction === func.name;
+
+      const color = isExported ? '#f87171' : isFocused ? '#22d3ee' : '#fbbf24';
+      const shape = isFocused ? 'box' : 'ellipse';
+      const penwidth = isFocused ? '3' : '1';
+
+      let label = func.name;
+      if (isExported) label = `📤 ${label}`;
+      if (isAsync) label = `⚡ ${label}`;
+      if (isFocused) label = `🎯 ${label}`;
+      if (func.params.length > 0) {
+        label += `(${func.params.join(', ')})`;
       }
 
-      for (const entity of entities) {
-        const color = getEntityColor(entity.type);
-        const shape = getEntityShape(entity.type);
-        const isExported = entity.metadata?.isExported || false;
-        const isAsync = entity.metadata?.isAsync || false;
+      const id = `${modulePath}#${func.name}`;
+      const tooltip = `${func.name}\nParams: ${func.params.join(', ')}\nReturns: ${func.returnType || 'any'}\nCalls: ${func.calls.length}\nCalled by: ${func.calledBy.length}`;
 
-        // Формируем подпись с указанием модуля для импортированных сущностей
-        let label = entity.name;
-        if (entity.metadata?.importedFrom) {
-          label += ` (← ${path.basename(entity.metadata.importedFrom)})`;
+      dot += `    "${id}" [fillcolor="${color}", shape=${shape}, label="${label}", penwidth=${penwidth}, fontsize=10, tooltip="${tooltip}"];\n`;
+
+      // --- СВЯЗИ ВЫЗОВОВ (EntityGraphEdge) ---
+      for (const call of func.calls) {
+        const targetModule = Object.entries(report.packages).find(([_, pkg]) =>
+          pkg.entities.functions.some(f => f.name === call)
+        );
+        if (targetModule) {
+          const targetId = `${targetModule[0]}#${call}`;
+          dot += `    "${id}" -> "${targetId}" [color="#f59e0b", penwidth=1.5, label="call", fontsize=8];\n`;
         }
-        if (isExported) label = `📤 ${label}`;
-        if (isAsync) label = `⚡ ${label}`;
-        if (entity.metadata?.params && entity.metadata.params.length > 0) {
-          label += `(${entity.metadata.params.join(', ')})`;
+      }
+
+      for (const caller of func.calledBy) {
+        const callerModule = Object.entries(report.packages).find(([_, pkg]) =>
+          pkg.entities.functions.some(f => f.name === caller)
+        );
+        if (callerModule) {
+          const callerId = `${callerModule[0]}#${caller}`;
+          dot += `    "${callerId}" -> "${id}" [color="#3b82f6", penwidth=1, style="dashed", label="called by", fontsize=8];\n`;
         }
-
-        const id = entity.id || `${moduleId}#${entity.name}`;
-
-        dot += `    "${id}" [fillcolor="${color}", shape=${shape}, label="${label}", fontsize=10, tooltip="${entity.name} (${entity.type})"];\n`;
-      }
-
-      if (moduleExists) {
-        dot += `  }\n`;
-        clusterIndex++;
       }
     }
-  }
 
-  // === 4. Связи между сущностями (вызовы, импорты, экспорты) ===
-  if (entityEdges.length > 0) {
-    dot += '\n  // === СВЯЗИ МЕЖДУ СУЩНОСТЯМИ ===\n';
-    for (const edge of entityEdges) {
-      const color = getEdgeColor(edge.type);
-      const style =
-        edge.type === 'function_call' || edge.type === 'method_call' ? 'solid' : 'dashed';
-      const penwidth = edge.type === 'function_call' || edge.type === 'method_call' ? '1.5' : '1';
-      const label = edge.type;
-
-      dot += `  "${edge.from}" -> "${edge.to}" [color="${color}", style="${style}", penwidth=${penwidth}, label="${label}", fontsize=8];\n`;
-    }
-  }
-
-  // === 5. Связи модуль → сущности (принадлежность) ===
-  dot += '\n  // === ПРИНАДЛЕЖНОСТЬ СУЩНОСТЕЙ К МОДУЛЯМ ===\n';
-  for (const moduleNode of moduleNodes) {
-    const moduleId = moduleNode.id;
-    const entities = entityNodes.filter(
-      e => e.module === moduleId || e.module === moduleId.replace('#', '')
-    );
-
-    for (const entity of entities) {
-      const entityId = entity.id || `${moduleId}#${entity.name}`;
-      dot += `  "${moduleId}" -> "${entityId}" [color="#64748b", style="dotted", penwidth=0.5, arrowhead=none];\n`;
-    }
+    dot += `  }\n`;
+    clusterIndex++;
   }
 
   dot += '}\n';
   return dot;
 }
 
-/**
- * Возвращает цвет для типа сущности
- */
-function getEntityColor(type: string): string {
-  const colors: Record<string, string> = {
-    function: '#60a5fa',
-    class: '#4ade80',
-    constant: '#fbbf24',
-    interface: '#a78bfa',
-    type: '#f472b6',
-    variable: '#22d3ee',
-    enum: '#f87171',
-    module: '#94a3b8',
-    component: '#4ade80',
-    vue: '#4ade80',
-  };
-  return colors[type] || '#94a3b8';
-}
+// ============================================================
+// КОНВЕРТАЦИЯ ИЗ FULLANALYSIS В PACKAGELOCKREPORT
+// ============================================================
 
-/**
- * Возвращает форму для типа сущности
- */
-function getEntityShape(type: string): string {
-  const shapes: Record<string, string> = {
-    function: 'ellipse',
-    class: 'box',
-    constant: 'diamond',
-    interface: 'box3d',
-    type: 'parallelogram',
-    variable: 'ellipse',
-    enum: 'diamond',
-    module: 'box',
-    component: 'box',
-    vue: 'box',
-  };
-  return shapes[type] || 'box';
-}
+function convertModuleNodeToPackage(
+  node: ModuleGraphNode,
+  entityNodes: EntityGraphNode[],
+  entityEdges: EntityGraphEdge[]
+): PackageLockPackage {
+  const callMap: Record<string, string[]> = {};
+  const calledByMap: Record<string, string[]> = {};
 
-/**
- * Возвращает цвет для типа ребра
- */
-function getEdgeColor(type: string): string {
-  const colors: Record<string, string> = {
-    function_call: '#f59e0b',
-    constant_reference: '#059669',
-    class_extends: '#7c3aed',
-    class_implements: '#8b5cf6',
-    interface_extends: '#0ea5e9',
-    type_reference: '#f59e0b',
-    method_call: '#f97316',
-    property_access: '#ec4899',
-    import_binding: '#3b82f6',
-    export_binding: '#22c55e',
-    parameter_type: '#8b5cf6',
-    return_type: '#ef4444',
-    variable_reference: '#f43f5e',
-    enum_member: '#a855f7',
-  };
-  return colors[type] || '#6b7280';
-}
+  for (const edge of entityEdges) {
+    if (edge.type === 'function_call' || edge.type === 'method_call') {
+      const fromName = edge.from.split('#').pop() || edge.from;
+      const toName = edge.to.split('#').pop() || edge.to;
 
-/**
- * Преобразует EnhancedEntityInfo в EntitiesResult
- */
-function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult {
-  return {
-    functions: enhanced.functions.map(f => ({
-      name: f.name,
-      line: f.line,
-      isAsync: f.isAsync || false,
-      isExported: f.isExported || false,
-      params: f.params || [],
-      returnType: f.returnType,
-      calls: f.calls || [],
-      calledBy: f.calledBy || [],
-      body: f.body || '',
-      startLine: f.startLine || f.line,
-      endLine: f.endLine || f.line,
-      isMethod: f.isMethod || false,
-      className: f.className,
-      isNested: f.isNested || false,
-      parentFunction: f.parentFunction,
-      isArrow: f.isArrow || false,
-      isEventHandler: f.isEventHandler || false,
-      eventType: f.eventType,
-      depth: f.depth || 0,
-    })),
-    classes: enhanced.classes.map(c => ({
-      name: c.name,
-      line: c.line,
-      isExported: c.isExported || false,
-      methods: c.methods || [],
-      properties: c.properties || [],
-      extends: c.extends,
-      implements: c.implements || [],
-      startLine: c.startLine || c.line,
-      endLine: c.endLine || c.line,
-    })),
-    constants: enhanced.constants.map(c => ({
-      name: c.name,
-      line: c.line,
-      isExported: c.isExported || false,
-      value: c.value,
-      type: c.type,
-    })),
-    interfaces: enhanced.interfaces.map(i => ({
-      name: i.name,
-      line: i.line,
-      isExported: i.isExported || false,
-      properties: i.properties || [],
-      extends: i.extends || [],
-      startLine: i.startLine || i.line,
-      endLine: i.endLine || i.line,
-    })),
-    types: enhanced.types.map(t => ({
-      name: t.name,
-      line: t.line,
-      isExported: t.isExported || false,
-      definition: t.definition,
-    })),
-    variables: enhanced.variables.map(v => ({
-      name: v.name,
-      line: v.line,
-      isExported: v.isExported || false,
-      type: v.type,
-      value: v.value,
-    })),
-    imports: [],
-    exports: [],
-    callGraph: {},
-    moduleName: '',
-    filePath: '',
-  };
-}
+      if (!callMap[fromName]) callMap[fromName] = [];
+      callMap[fromName].push(toName);
 
-/**
- * Генерирует интерактивный HTML отчет с Graphviz графом
- */
-export async function generateInteractiveHTML(
-  analysis: FullAnalysis,
-  outputPath: string,
-  entitiesWithCalls?: EntitiesResult | EnhancedEntityInfo
-): Promise<void> {
-  // Нормализуем данные
-  let entitiesData: EntitiesResult | null = null;
-
-  if (entitiesWithCalls) {
-    // Проверяем тип по наличию специфических полей
-    if ('imports' in entitiesWithCalls && 'exports' in entitiesWithCalls) {
-      // Это EntitiesResult
-      entitiesData = entitiesWithCalls as EntitiesResult;
-    } else {
-      // Это EnhancedEntityInfo - конвертируем
-      entitiesData = convertEnhancedToEntities(entitiesWithCalls as EnhancedEntityInfo);
+      if (!calledByMap[toName]) calledByMap[toName] = [];
+      calledByMap[toName].push(fromName);
     }
   }
 
-  const dot = generateFullDOT(analysis);
+  const functions: PackageLockFunctionInfo[] = entityNodes
+    .filter((e: EntityGraphNode) => e.type === 'function')
+    .map((e: EntityGraphNode) => ({
+      name: e.name,
+      params: e.metadata?.params || [],
+      paramTypes: [],
+      line: e.line || 0,
+      startLine: e.metadata?.startLine || e.line || 0,
+      endLine: e.metadata?.endLine || e.line || 0,
+      isAsync: e.metadata?.isAsync || false,
+      isExported: e.metadata?.isExported || false,
+      isMethod: e.metadata?.isMethod || false,
+      className: e.metadata?.className,
+      calls: callMap[e.name] || [],
+      calledBy: calledByMap[e.name] || [],
+      returnType: e.metadata?.returnType || 'any',
+      body: '',
+      isNested: false,
+      parentFunction: undefined,
+      isArrow: false,
+      isEventHandler: false,
+      eventType: undefined,
+      depth: 0,
+    }));
+
+  return {
+    version: '1.0.0',
+    resolved: `file:${node.id}`,
+    displayPath: node.id,
+    type: 'module',
+    language: (node.metadata?.language as any) || 'typescript',
+    isEntry: node.metadata?.isEntry || false,
+    imports: {},
+    exports: {},
+    entities: {
+      functions,
+      constants: [],
+      variables: [],
+      interfaces: [],
+      types: [],
+      classes: [],
+    },
+    fileStats: {
+      size: node.metadata?.size || 0,
+      lines: node.metadata?.lines || 0,
+      functions: functions.length,
+      classes: 0,
+      constants: 0,
+      interfaces: 0,
+      types: 0,
+      variables: 0,
+    },
+  };
+}
+
+function buildReportFromAnalysis(analysis: FullAnalysis): PackageLockReport {
+  const packages: Record<string, PackageLockPackage> = {};
+
+  const moduleNodes: ModuleGraphNode[] = analysis.moduleGraph?.nodes || [];
+  const moduleEdges: ModuleGraphEdge[] = analysis.moduleGraph?.edges || [];
+  const entityNodes: EntityGraphNode[] = analysis.entityGraph?.nodes || [];
+  const entityEdges: EntityGraphEdge[] = analysis.entityGraph?.edges || [];
+
+  // Строим пакеты из модулей
+  for (const node of moduleNodes) {
+    if (!node) continue;
+    const modulePath = node.id;
+    if (!modulePath) continue;
+    const entities = entityNodes.filter((e: EntityGraphNode) => e.module === modulePath);
+    packages[modulePath] = convertModuleNodeToPackage(node, entities, entityEdges);
+  }
+
+  const inwardDependencies: Record<string, string[]> = {};
+  const outwardDependencies: Record<string, string[]> = {};
+
+  // Строим зависимости модулей
+  for (const edge of moduleEdges) {
+    if (!edge) continue;
+    const from = edge.from;
+    const to = edge.to;
+    if (!from || !to) continue;
+
+    // Инициализация массивов если их нет
+    if (!outwardDependencies[from]) {
+      outwardDependencies[from] = [];
+    }
+    if (!inwardDependencies[to]) {
+      inwardDependencies[to] = [];
+    }
+    outwardDependencies[from].push(to);
+    inwardDependencies[to].push(from);
+  }
+
+  let totalFunctions = 0;
+  let totalCalls = 0;
+  let totalExportedFunctions = 0;
+  let totalAsyncFunctions = 0;
+
+  for (const pkg of Object.values(packages)) {
+    if (!pkg) continue;
+    for (const func of pkg.entities.functions) {
+      totalFunctions++;
+      totalCalls += func.calls.length;
+      if (func.isExported) totalExportedFunctions++;
+      if (func.isAsync) totalAsyncFunctions++;
+    }
+  }
+
+  return {
+    name: 'ast-analyzer',
+    version: '3.0.0',
+    lockfileVersion: 3,
+    packages,
+    dependencyGraph: {
+      direction: 'bidirectional',
+      inwardDependencies,
+      outwardDependencies,
+    },
+    entityStats: {
+      totalFunctions,
+      totalConstants: 0,
+      totalVariables: 0,
+      totalInterfaces: 0,
+      totalTypes: 0,
+      totalClasses: 0,
+      totalCalls,
+      totalExportedFunctions,
+      totalAsyncFunctions,
+    },
+    fileStats: {
+      totalFiles: Object.keys(packages).length,
+      totalSize: 0,
+      totalLines: 0,
+    },
+    timestamp: new Date().toISOString(),
+  };
+}
+
+// ============================================================
+// ЭКРАНИРОВАНИЕ ДЛЯ HTML
+// ============================================================
+
+function escapeHtml(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// ============================================================
+// ГЕНЕРАЦИЯ HTML
+// ============================================================
+
+export async function generateInteractiveHTML(
+  analysis: FullAnalysis,
+  outputPath: string,
+  entitiesWithCalls?: any,
+  packageLockPath?: string
+): Promise<void> {
+  // Загружаем package-lock-report.json если указан
+  let report: PackageLockReport | null = null;
+  if (packageLockPath && fs.existsSync(packageLockPath)) {
+    try {
+      const content = fs.readFileSync(packageLockPath, 'utf-8');
+      report = JSON.parse(content);
+      console.log('✅ Package-lock report loaded');
+    } catch (error) {
+      console.warn('⚠️ Failed to load package-lock report:', error);
+    }
+  }
+
+  if (!report) {
+    // Создаем базовый отчет из analysis
+    report = buildReportFromAnalysis(analysis);
+  }
+
+  // ============================================================
+  // ИСПОЛЬЗОВАНИЕ entitiesWithCalls ДЛЯ ОБОГАЩЕНИЯ ДАННЫХ
+  // ============================================================
+  if (entitiesWithCalls) {
+    console.log('📊 Обогащение данными из entitiesWithCalls...');
+
+    // Если entitiesWithCalls содержит функции с calls
+    if (entitiesWithCalls.functions && Array.isArray(entitiesWithCalls.functions)) {
+      // Обогащаем функции в отчете данными о вызовах
+      for (const [modulePath, pkg] of Object.entries(report.packages)) {
+        if (!pkg) continue;
+        for (const func of pkg.entities.functions) {
+          // Ищем соответствующую функцию в entitiesWithCalls
+          const enrichedFunc = entitiesWithCalls.functions.find((f: any) => f.name === func.name);
+          if (enrichedFunc) {
+            // Добавляем данные о вызовах если они есть
+            if (enrichedFunc.calls && Array.isArray(enrichedFunc.calls)) {
+              func.calls = enrichedFunc.calls;
+            }
+            if (enrichedFunc.calledBy && Array.isArray(enrichedFunc.calledBy)) {
+              func.calledBy = enrichedFunc.calledBy;
+            }
+            if (enrichedFunc.params && Array.isArray(enrichedFunc.params)) {
+              func.params = enrichedFunc.params;
+            }
+            if (enrichedFunc.returnType) {
+              func.returnType = enrichedFunc.returnType;
+            }
+            if (enrichedFunc.isAsync !== undefined) {
+              func.isAsync = enrichedFunc.isAsync;
+            }
+            if (enrichedFunc.isExported !== undefined) {
+              func.isExported = enrichedFunc.isExported;
+            }
+          }
+        }
+        // Используем modulePath для обновления статистики модуля
+        const currentPkg = report.packages[modulePath];
+        if (currentPkg) {
+          currentPkg.fileStats.functions = currentPkg.entities.functions.length;
+          // Обновляем экспорты в pkg.exports на основе обогащённых данных
+          for (const func of currentPkg.entities.functions) {
+            if (func.isExported) {
+              currentPkg.exports[func.name] = {
+                direction: 'outward',
+                type: 'export',
+                isAsync: func.isAsync,
+                params: func.params,
+                returns: func.returnType || 'any',
+                line: func.line,
+                consumers: [],
+              };
+            }
+          }
+        }
+      }
+
+      // Пересчитываем статистику
+      let totalFunctions = 0;
+      let totalCalls = 0;
+      let totalExportedFunctions = 0;
+      let totalAsyncFunctions = 0;
+
+      for (const pkg of Object.values(report.packages)) {
+        if (!pkg) continue;
+        for (const func of pkg.entities.functions) {
+          totalFunctions++;
+          totalCalls += func.calls.length;
+          if (func.isExported) totalExportedFunctions++;
+          if (func.isAsync) totalAsyncFunctions++;
+        }
+      }
+
+      report.entityStats.totalFunctions = totalFunctions;
+      report.entityStats.totalCalls = totalCalls;
+      report.entityStats.totalExportedFunctions = totalExportedFunctions;
+      report.entityStats.totalAsyncFunctions = totalAsyncFunctions;
+
+      console.log(`  ✅ Обогащено ${totalFunctions} функций данными о вызовах`);
+    }
+
+    // Если есть классы с методами
+    if (entitiesWithCalls.classes && Array.isArray(entitiesWithCalls.classes)) {
+      for (const cls of entitiesWithCalls.classes) {
+        if (!cls) continue;
+        // Находим модуль для класса по имени
+        let targetModulePath: string | null = null;
+        for (const [modulePath, pkg] of Object.entries(report.packages)) {
+          if (!pkg) continue;
+          const found = pkg.entities.functions.some(
+            (f: PackageLockFunctionInfo) => f.className === cls.name
+          );
+          if (found) {
+            targetModulePath = modulePath;
+            break;
+          }
+        }
+        if (targetModulePath) {
+          const targetPkg = report.packages[targetModulePath];
+          if (targetPkg) {
+            targetPkg.entities.classes.push(cls);
+            targetPkg.fileStats.classes = targetPkg.entities.classes.length;
+            console.log(`  ✅ Добавлен класс ${cls.name} в модуль ${targetModulePath}`);
+          }
+        }
+      }
+    }
+
+    // Если есть константы
+    if (entitiesWithCalls.constants && Array.isArray(entitiesWithCalls.constants)) {
+      for (const constItem of entitiesWithCalls.constants) {
+        if (!constItem) continue;
+        let targetModulePath: string | null = null;
+        for (const [modulePath, pkg] of Object.entries(report.packages)) {
+          if (!pkg) continue;
+          const found = pkg.entities.functions.some(
+            (f: PackageLockFunctionInfo) => f.name === constItem.name
+          );
+          if (found) {
+            targetModulePath = modulePath;
+            break;
+          }
+        }
+        if (targetModulePath) {
+          const targetPkg = report.packages[targetModulePath];
+          if (targetPkg) {
+            targetPkg.entities.constants.push(constItem);
+            targetPkg.fileStats.constants = targetPkg.entities.constants.length;
+            console.log(`  ✅ Добавлена константа ${constItem.name} в модуль ${targetModulePath}`);
+          }
+        }
+      }
+    }
+
+    // Если есть интерфейсы
+    if (entitiesWithCalls.interfaces && Array.isArray(entitiesWithCalls.interfaces)) {
+      for (const intf of entitiesWithCalls.interfaces) {
+        if (!intf) continue;
+        let targetModulePath: string | null = null;
+        for (const [modulePath, pkg] of Object.entries(report.packages)) {
+          if (!pkg) continue;
+          const found = pkg.entities.functions.some(
+            (f: PackageLockFunctionInfo) => f.name === intf.name
+          );
+          if (found) {
+            targetModulePath = modulePath;
+            break;
+          }
+        }
+        if (targetModulePath) {
+          const targetPkg = report.packages[targetModulePath];
+          if (targetPkg) {
+            targetPkg.entities.interfaces.push(intf);
+            targetPkg.fileStats.interfaces = targetPkg.entities.interfaces.length;
+            console.log(`  ✅ Добавлен интерфейс ${intf.name} в модуль ${targetModulePath}`);
+          }
+        }
+      }
+    }
+
+    // Если есть типы
+    if (entitiesWithCalls.types && Array.isArray(entitiesWithCalls.types)) {
+      for (const typeItem of entitiesWithCalls.types) {
+        if (!typeItem) continue;
+        let targetModulePath: string | null = null;
+        for (const [modulePath, pkg] of Object.entries(report.packages)) {
+          if (!pkg) continue;
+          const found = pkg.entities.functions.some(
+            (f: PackageLockFunctionInfo) => f.name === typeItem.name
+          );
+          if (found) {
+            targetModulePath = modulePath;
+            break;
+          }
+        }
+        if (targetModulePath) {
+          const targetPkg = report.packages[targetModulePath];
+          if (targetPkg) {
+            targetPkg.entities.types.push(typeItem);
+            targetPkg.fileStats.types = targetPkg.entities.types.length;
+            console.log(`  ✅ Добавлен тип ${typeItem.name} в модуль ${targetModulePath}`);
+          }
+        }
+      }
+    }
+
+    // Если есть переменные
+    if (entitiesWithCalls.variables && Array.isArray(entitiesWithCalls.variables)) {
+      for (const varItem of entitiesWithCalls.variables) {
+        if (!varItem) continue;
+        let targetModulePath: string | null = null;
+        for (const [modulePath, pkg] of Object.entries(report.packages)) {
+          if (!pkg) continue;
+          const found = pkg.entities.functions.some(
+            (f: PackageLockFunctionInfo) => f.name === varItem.name
+          );
+          if (found) {
+            targetModulePath = modulePath;
+            break;
+          }
+        }
+        if (targetModulePath) {
+          const targetPkg = report.packages[targetModulePath];
+          if (targetPkg) {
+            targetPkg.entities.variables.push(varItem);
+            targetPkg.fileStats.variables = targetPkg.entities.variables.length;
+            console.log(`  ✅ Добавлена переменная ${varItem.name} в модуль ${targetModulePath}`);
+          }
+        }
+      }
+    }
+
+    // Пересчитываем fileStats для всех модулей
+    for (const [modulePath, pkg] of Object.entries(report.packages)) {
+      if (pkg) {
+        pkg.fileStats.functions = pkg.entities.functions.length;
+        pkg.fileStats.classes = pkg.entities.classes.length;
+        pkg.fileStats.constants = pkg.entities.constants.length;
+        pkg.fileStats.interfaces = pkg.entities.interfaces.length;
+        pkg.fileStats.types = pkg.entities.types.length;
+        pkg.fileStats.variables = pkg.entities.variables.length;
+      }
+    }
+
+    console.log('  ✅ Обогащение данных завершено');
+  }
+
+  const dot = generateFullDOT(report);
 
   let svgContent = '';
   try {
@@ -323,64 +736,41 @@ export async function generateInteractiveHTML(
     </p>`;
   }
 
-  // Статистика для HTML - ВСЕ ПЕРЕМЕННЫЕ ИСПОЛЬЗУЮТСЯ
-  const functions =
-    analysis.entityGraph?.nodes?.filter((n: EntityGraphNode) => n.type === 'function') || [];
-  const classes =
-    analysis.entityGraph?.nodes?.filter((n: EntityGraphNode) => n.type === 'class') || [];
-  const constants =
-    analysis.entityGraph?.nodes?.filter((n: EntityGraphNode) => n.type === 'constant') || [];
-  const interfaces =
-    analysis.entityGraph?.nodes?.filter((n: EntityGraphNode) => n.type === 'interface') || [];
-  const types =
-    analysis.entityGraph?.nodes?.filter((n: EntityGraphNode) => n.type === 'type') || [];
-  const variables =
-    analysis.entityGraph?.nodes?.filter((n: EntityGraphNode) => n.type === 'variable') || [];
-
-  // Собираем статистику по связям
-  const callEdges =
-    analysis.entityGraph?.edges?.filter(
-      (e: EntityGraphEdge) => e.type === 'function_call' || e.type === 'method_call'
-    ) || [];
-  const importEdges =
-    analysis.entityGraph?.edges?.filter((e: EntityGraphEdge) => e.type === 'import_binding') || [];
-  const exportEdges =
-    analysis.entityGraph?.edges?.filter((e: EntityGraphEdge) => e.type === 'export_binding') || [];
-  const extendsEdges =
-    analysis.entityGraph?.edges?.filter(
-      (e: EntityGraphEdge) => e.type === 'class_extends' || e.type === 'interface_extends'
-    ) || [];
-
-  // Если есть entitiesData, используем их для построения дополнительных связей
-  if (entitiesData) {
-    // Добавляем связи между функциями из entitiesData
-    for (const func of entitiesData.functions) {
-      for (const call of func.calls || []) {
-        // Проверяем, существует ли уже такое ребро
-        const exists = analysis.entityGraph.edges.some(
-          e => e.from === func.name && e.to === call && e.type === 'function_call'
-        );
-        if (!exists) {
-          // Добавляем ребро, если его нет
-          analysis.entityGraph.edges.push({
-            from: func.name,
-            to: call,
-            type: 'function_call',
-            line: func.line,
-          });
-        }
-      }
+  // Собираем все функции для карточек
+  const allFunctions: { modulePath: string; func: PackageLockFunctionInfo }[] = [];
+  for (const [modulePath, pkg] of Object.entries(report.packages)) {
+    if (!pkg) continue;
+    for (const func of pkg.entities.functions) {
+      allFunctions.push({ modulePath, func });
     }
   }
+
+  // Собираем статистику по модулям
+  const moduleStats = Object.entries(report.packages)
+    .filter(([_, pkg]) => pkg)
+    .map(([modulePath, pkg]) => ({
+      path: modulePath,
+      name: pkg.displayPath || modulePath,
+      isEntry: pkg.isEntry || false,
+      functions: pkg.entities.functions.length,
+      classes: pkg.entities.classes.length,
+      constants: pkg.entities.constants.length,
+      interfaces: pkg.entities.interfaces.length,
+      types: pkg.entities.types.length,
+      variables: pkg.entities.variables.length,
+      lines: pkg.fileStats.lines || 0,
+      size: pkg.fileStats.size || 0,
+      language: pkg.language || 'javascript',
+    }));
 
   const html = `<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Интерактивный граф модулей и сущностей</title>
-    <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <title>Интерактивный граф модулей и функций</title>
+    <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"><\/script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"><\/script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -394,80 +784,109 @@ export async function generateInteractiveHTML(
 
         .header {
             background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-            padding: 24px 30px;
+            padding: 20px 30px;
             border-radius: 12px;
             margin-bottom: 20px;
             border: 1px solid #334155;
         }
         .header h1 { font-size: 24px; color: #60a5fa; }
-        .header .sub { color: #94a3b8; margin-top: 6px; font-size: 13px; }
-        .header .root { color: #fbbf24; font-family: monospace; margin-top: 4px; }
-
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 10px;
-            margin-bottom: 20px;
+        .header .sub { color: #94a3b8; margin-top: 4px; font-size: 13px; }
+        .header .stats-line {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+            font-size: 13px;
         }
-        .stat-card {
-            background: #1e293b;
+        .header .stats-line .stat {
+            color: #94a3b8;
+        }
+        .header .stats-line .stat strong {
+            color: #e2e8f0;
+        }
+
+        .controls-bar {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            align-items: center;
             padding: 12px 16px;
-            border-radius: 8px;
-            text-align: center;
+            background: #1e293b;
+            border-radius: 10px;
+            margin-bottom: 16px;
             border: 1px solid #334155;
         }
-        .stat-card .value { font-size: 22px; font-weight: bold; color: #60a5fa; }
-        .stat-card .value.error { color: #f87171; }
-        .stat-card .value.warning { color: #fbbf24; }
-        .stat-card .value.success { color: #4ade80; }
-        .stat-card .label { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+        .controls-bar .group {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .controls-bar .group-label {
+            font-size: 11px;
+            color: #94a3b8;
+            margin-right: 4px;
+        }
+        .controls-bar button {
+            background: #334155;
+            border: none;
+            color: #e2e8f0;
+            padding: 5px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s, transform 0.1s;
+        }
+        .controls-bar button:hover { background: #475569; }
+        .controls-bar button.active {
+            background: #60a5fa;
+            color: #0f172a;
+            font-weight: 600;
+        }
+        .controls-bar button:active { transform: scale(0.95); }
+        .controls-bar .search-input {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            padding: 5px 12px;
+            color: #e2e8f0;
+            font-size: 12px;
+            width: 200px;
+            outline: none;
+        }
+        .controls-bar .search-input:focus {
+            border-color: #60a5fa;
+        }
+        .controls-bar .search-input::placeholder {
+            color: #64748b;
+        }
+        .controls-bar .hint {
+            font-size: 11px;
+            color: #64748b;
+            margin-left: auto;
+        }
 
         .graph-container {
             background: #1e293b;
             border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
+            padding: 16px;
+            margin-bottom: 16px;
             border: 1px solid #334155;
             position: relative;
-            min-height: 600px;
+            min-height: 500px;
         }
         .graph-container svg {
             width: 100%;
             height: auto;
-            min-height: 500px;
+            min-height: 400px;
             background: #0f172a;
             border-radius: 8px;
-        }
-        .graph-controls {
-            display: flex;
-            gap: 10px;
-            padding: 10px 0;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-        .graph-controls button {
-            background: #334155;
-            border: none;
-            color: #e2e8f0;
-            padding: 6px 14px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 12px;
-            transition: background 0.2s;
-        }
-        .graph-controls button:hover { background: #475569; }
-        .graph-controls button.active { background: #60a5fa; color: #0f172a; }
-        .graph-controls .hint {
-            font-size: 12px;
-            color: #64748b;
-            margin-left: auto;
         }
 
         .legend {
             display: flex;
             gap: 16px;
             flex-wrap: wrap;
-            padding: 10px 0;
+            padding: 8px 0;
             font-size: 12px;
         }
         .legend-item {
@@ -488,39 +907,88 @@ export async function generateInteractiveHTML(
         }
         .legend-shape.ellipse { border-radius: 50%; }
         .legend-shape.box { border-radius: 2px; }
-        .legend-shape.diamond { transform: rotate(45deg); width: 12px; height: 12px; }
+
+        .focus-info {
+            background: #1e293b;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            border: 1px solid #22d3ee;
+            display: none;
+        }
+        .focus-info.active {
+            display: block;
+        }
+        .focus-info .title {
+            color: #22d3ee;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .focus-info .details {
+            color: #94a3b8;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+        .focus-info .close-btn {
+            background: none;
+            border: none;
+            color: #f87171;
+            cursor: pointer;
+            font-size: 14px;
+            float: right;
+        }
+        .focus-info .close-btn:hover { color: #fca5a5; }
 
         .modules-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
             gap: 16px;
             margin-top: 20px;
         }
         .module-card {
             background: #1e293b;
             border-radius: 10px;
-            padding: 16px;
+            padding: 14px 16px;
             border: 1px solid #334155;
             transition: all 0.3s;
+            cursor: pointer;
         }
-        .module-card:hover { border-color: #60a5fa; }
+        .module-card:hover {
+            border-color: #60a5fa;
+            transform: translateY(-2px);
+        }
+        .module-card.active {
+            border-color: #22d3ee;
+            box-shadow: 0 0 20px rgba(34, 211, 238, 0.15);
+        }
+        .module-card .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 10px;
+        }
         .module-card .name {
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 600;
             color: #60a5fa;
-            margin-bottom: 4px;
+            word-break: break-all;
+        }
+        .module-card .name .entry {
+            color: #fbbf24;
+            font-size: 12px;
         }
         .module-card .path {
             font-size: 10px;
             color: #64748b;
             font-family: monospace;
             word-break: break-all;
+            margin-top: 2px;
         }
         .module-card .badges {
             display: flex;
             flex-wrap: wrap;
             gap: 4px;
-            margin: 8px 0;
+            margin: 6px 0;
         }
         .badge {
             padding: 2px 8px;
@@ -529,61 +997,129 @@ export async function generateInteractiveHTML(
             font-weight: 500;
             text-transform: uppercase;
         }
-        .badge.export { background: #f87171; color: #fff; }
-        .badge.import { background: #60a5fa; color: #fff; }
-        .badge.function { background: #fbbf24; color: #0f172a; }
+        .badge.fn { background: #fbbf24; color: #0f172a; }
         .badge.class { background: #4ade80; color: #0f172a; }
-        .badge.constant { background: #f472b6; color: #0f172a; }
+        .badge.const { background: #f472b6; color: #0f172a; }
         .badge.interface { background: #a78bfa; color: #fff; }
         .badge.type { background: #22d3ee; color: #0f172a; }
-        .badge.variable { background: #f87171; color: #fff; }
-        .badge.level { background: #334155; color: #94a3b8; }
-        .badge.calls { background: #f59e0b; color: #0f172a; }
+        .badge.var { background: #f87171; color: #fff; }
+        .badge.export { background: #f87171; color: #fff; }
+        .badge.async { background: #fbbf24; color: #0f172a; }
+        .badge.lang { background: #334155; color: #94a3b8; }
+        .badge.lines { background: #1e293b; color: #64748b; border: 1px solid #334155; }
 
-        .module-card .entities-list {
-            margin-top: 10px;
-            max-height: 250px;
+        .module-card .functions-list {
+            margin-top: 8px;
+            max-height: 300px;
             overflow-y: auto;
         }
-        .entities-list::-webkit-scrollbar { width: 4px; }
-        .entities-list::-webkit-scrollbar-track { background: transparent; }
-        .entities-list::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        .functions-list::-webkit-scrollbar { width: 4px; }
+        .functions-list::-webkit-scrollbar-track { background: transparent; }
+        .functions-list::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
 
-        .entity-item {
+        .func-item {
             display: flex;
             align-items: center;
             gap: 6px;
-            padding: 3px 6px;
+            padding: 4px 8px;
             margin: 2px 0;
             background: #0f172a;
             border-radius: 4px;
             font-size: 11px;
             font-family: monospace;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+            border-left: 2px solid transparent;
         }
-        .entity-item .type-icon { font-size: 12px; width: 18px; text-align: center; }
-        .entity-item .entity-name { color: #e2e8f0; }
-        .entity-item .entity-export { color: #f87171; font-size: 9px; }
-        .entity-item .entity-async { color: #fbbf24; font-size: 9px; }
-        .entity-item .entity-params { color: #94a3b8; font-size: 10px; }
-        .entity-item .entity-calls { color: #f59e0b; font-size: 10px; }
-        .entity-item .entity-module { color: #64748b; font-size: 9px; margin-left: auto; }
+        .func-item:hover {
+            background: #1a1a3a;
+            border-left-color: #60a5fa;
+        }
+        .func-item.active {
+            background: #1a1a3a;
+            border-left-color: #22d3ee;
+            box-shadow: 0 0 12px rgba(34, 211, 238, 0.1);
+        }
+        .func-item .func-name { color: #e2e8f0; }
+        .func-item .func-export { color: #f87171; font-size: 9px; }
+        .func-item .func-async { color: #fbbf24; font-size: 9px; }
+        .func-item .func-params { color: #94a3b8; font-size: 10px; }
+        .func-item .func-calls { color: #f59e0b; font-size: 10px; }
+        .func-item .func-called { color: #3b82f6; font-size: 10px; }
+        .func-item .func-line { color: #64748b; font-size: 9px; margin-left: auto; }
 
-        .cycles-section {
+        .detail-panel {
+            position: fixed;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
             background: #1e293b;
-            border-radius: 8px;
-            padding: 16px;
-            margin-top: 20px;
-            border: 1px solid #f87171;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 420px;
+            max-height: 80vh;
+            overflow-y: auto;
+            display: none;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+            z-index: 100;
+            min-width: 300px;
         }
-        .cycles-section h2 { color: #f87171; margin-bottom: 10px; font-size: 18px; }
-        .cycle-item { font-family: monospace; color: #fbbf24; margin: 4px 0; font-size: 13px; }
+        .detail-panel.active {
+            display: block;
+        }
+        .detail-panel::-webkit-scrollbar { width: 4px; }
+        .detail-panel::-webkit-scrollbar-track { background: transparent; }
+        .detail-panel::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+
+        .detail-panel .dp-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+        .detail-panel .dp-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #60a5fa;
+        }
+        .detail-panel .dp-close {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 20px;
+            cursor: pointer;
+        }
+        .detail-panel .dp-close:hover { color: #f87171; }
+        .detail-panel .dp-section {
+            margin-top: 10px;
+            padding: 8px 0;
+            border-top: 1px solid #334155;
+        }
+        .detail-panel .dp-section:first-child { border-top: none; }
+        .detail-panel .dp-section h4 {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #64748b;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .detail-panel .dp-section .item {
+            font-size: 12px;
+            color: #e2e8f0;
+            padding: 2px 0;
+            font-family: monospace;
+        }
+        .detail-panel .dp-section .item .label {
+            color: #94a3b8;
+        }
 
         .footer {
-            padding: 16px 20px;
+            padding: 12px 20px;
             background: #1e293b;
             text-align: center;
             color: #64748b;
-            font-size: 12px;
+            font-size: 11px;
             border-top: 1px solid #334155;
             margin-top: 20px;
             border-radius: 0 0 12px 12px;
@@ -591,220 +1127,189 @@ export async function generateInteractiveHTML(
 
         @media (max-width: 768px) {
             .modules-grid { grid-template-columns: 1fr; }
-            .stats { grid-template-columns: repeat(3, 1fr); }
+            .controls-bar { flex-direction: column; align-items: stretch; }
+            .controls-bar .hint { display: none; }
+            .controls-bar .search-input { width: 100%; }
+            .detail-panel {
+                right: 10px;
+                left: 10px;
+                max-width: none;
+                min-width: auto;
+                top: auto;
+                bottom: 10px;
+                transform: none;
+                max-height: 60vh;
+            }
+            .header .stats-line { flex-direction: column; gap: 4px; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔀 Интерактивный граф модулей и сущностей</h1>
-            <div class="root">⭐ Точка входа: ${analysis.root}</div>
+            <h1>🔀 Интерактивный граф модулей и функций</h1>
+            <div class="stats-line">
+                <span class="stat">📁 <strong>${report.fileStats.totalFiles}</strong> модулей</span>
+                <span class="stat">ƒ <strong>${report.entityStats.totalFunctions}</strong> функций</span>
+                <span class="stat">📞 <strong>${report.entityStats.totalCalls}</strong> вызовов</span>
+                <span class="stat">📤 <strong>${report.entityStats.totalExportedFunctions}</strong> экспортировано</span>
+                <span class="stat">⚡ <strong>${report.entityStats.totalAsyncFunctions}</strong> async</span>
+                <span class="stat">📝 <strong>${report.fileStats.totalLines}</strong> строк</span>
+                <span class="stat">💾 <strong>${(report.fileStats.totalSize / 1024).toFixed(2)}</strong> KB</span>
+            </div>
             <div class="sub">Сгенерировано: ${new Date().toLocaleString()}</div>
         </div>
 
-        <div class="stats">
-            <div class="stat-card">
-                <div class="value">${analysis.stats.totalModules}</div>
-                <div class="label">📁 Модулей</div>
+        <div class="controls-bar">
+            <div class="group">
+                <span class="group-label">Режим:</span>
+                <button class="active" data-mode="all" onclick="setMode('all')">🌐 Все</button>
+                <button data-mode="inward" onclick="setMode('inward')">📥 Входящие</button>
+                <button data-mode="outward" onclick="setMode('outward')">📤 Исходящие</button>
+                <button data-mode="both" onclick="setMode('both')">🔁 Оба</button>
             </div>
-            <div class="stat-card">
-                <div class="value">${analysis.stats.totalEntities}</div>
-                <div class="label">🔧 Сущностей</div>
+            <div class="group">
+                <span class="group-label">Фокус:</span>
+                <button onclick="clearFocus()">✕ Очистить</button>
             </div>
-            <div class="stat-card">
-                <div class="value ${analysis.stats.hasCycles ? 'error' : 'success'}">
-                    ${analysis.stats.cycles?.length || 0}
-                </div>
-                <div class="label">🔄 Циклов</div>
-            </div>
-            <div class="stat-card">
-                <div class="value">${functions.length}</div>
-                <div class="label">ƒ Функций</div>
-            </div>
-            <div class="stat-card">
-                <div class="value">${classes.length}</div>
-                <div class="label">🏛️ Классов</div>
-            </div>
-            <div class="stat-card">
-                <div class="value">${constants.length}</div>
-                <div class="label">📌 Констант</div>
-            </div>
-            <div class="stat-card">
-                <div class="value">${interfaces.length}</div>
-                <div class="label">📐 Интерфейсов</div>
-            </div>
-            <div class="stat-card">
-                <div class="value">${types.length}</div>
-                <div class="label">📋 Типов</div>
-            </div>
-            <div class="stat-card">
-                <div class="value">${variables.length}</div>
-                <div class="label">📦 Переменных</div>
-            </div>
-            <div class="stat-card">
-                <div class="value">${callEdges.length}</div>
-                <div class="label">📞 Вызовов</div>
-            </div>
-            <div class="stat-card">
-                <div class="value">${importEdges.length}</div>
-                <div class="label">📥 Импортов</div>
-            </div>
-            <div class="stat-card">
-                <div class="value">${exportEdges.length}</div>
-                <div class="label">📤 Экспортов</div>
-            </div>
-            <div class="stat-card">
-                <div class="value">${extendsEdges.length}</div>
-                <div class="label">🔗 Наследований</div>
-            </div>
+            <input class="search-input" id="searchInput" placeholder="🔍 Поиск функции или модуля..." oninput="handleSearch(this.value)">
+            <span class="hint">💡 Клик на функцию → детали | Клик на модуль → фокус</span>
         </div>
 
-        <div class="legend">
-            <div class="legend-item">
-                <div class="legend-color" style="background:#4f46e5;"></div>
-                <span>⭐ Точка входа</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background:#60a5fa;"></div>
-                <span>Функция</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background:#4ade80;"></div>
-                <span>Класс / Vue</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background:#fbbf24;"></div>
-                <span>Константа</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background:#a78bfa;"></div>
-                <span>Интерфейс</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background:#f472b6;"></div>
-                <span>Тип</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background:#22d3ee;"></div>
-                <span>Переменная</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background:#3b82f6; width:30px; height:3px;"></div>
-                <span>Импорт модуля</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background:#f59e0b; width:30px; height:3px;"></div>
-                <span>Вызов функции</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background:#7c3aed; width:30px; height:3px;"></div>
-                <span>Наследование</span>
-            </div>
+        <div class="focus-info" id="focusInfo">
+            <button class="close-btn" onclick="clearFocus()">✕</button>
+            <div class="title" id="focusTitle">🎯 Фокус</div>
+            <div class="details" id="focusDetails"></div>
         </div>
 
         <div class="graph-container">
             <div id="svg-wrapper">
                 ${svgContent}
             </div>
-            <div class="graph-controls">
-                <button onclick="zoomIn()">🔍+</button>
-                <button onclick="zoomOut()">🔍−</button>
-                <button onclick="resetZoom()">⟲ Сброс</button>
-                <button onclick="toggleLabels()">🏷️ Метки</button>
-                <button onclick="toggleEntities()">🔧 Сущности</button>
-                <span class="hint">💡 Колесо мыши — масштаб, перетаскивание — перемещение</span>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background:#fbbf24;"></div>
+                    <span>⭐ Точка входа</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background:#f87171;"></div>
+                    <span>📤 Экспортированная функция</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background:#fbbf24;"></div>
+                    <span>Внутренняя функция</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background:#22d3ee;"></div>
+                    <span>🎯 Активная (фокус)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background:#f59e0b; width:30px; height:3px;"></div>
+                    <span>Вызов функции</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background:#3b82f6; width:30px; height:3px; style=dashed;"></div>
+                    <span>Кем вызвана</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background:#3b82f6; width:30px; height:3px;"></div>
+                    <span>Импорт модуля</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background:#f59e0b; width:30px; height:3px;"></div>
+                    <span>Обратная связь</span>
+                </div>
             </div>
         </div>
 
-        ${
-          analysis.stats.cycles?.length > 0
-            ? `
-        <div class="cycles-section">
-            <h2>🔄 Циклические зависимости (${analysis.stats.cycles.length})</h2>
-            ${analysis.stats.cycles.map((cycle: string[]) => `<div class="cycle-item">${cycle.join(' → ')}</div>`).join('')}
-        </div>
-        `
-            : ''
-        }
-
-        <h2 style="margin: 25px 0 15px; color:#60a5fa;">📁 Модули и сущности</h2>
-        <div class="modules-grid">
-            ${analysis.moduleGraph?.nodes
-              ?.map((module: ModuleGraphNode) => {
-                const entities =
-                  analysis.entityGraph?.nodes?.filter(
-                    (e: EntityGraphNode) => e.module === module.id
-                  ) || [];
-                const isEntry = module.metadata?.isEntry || false;
-                return `
-                <div class="module-card">
-                    <div class="name">${isEntry ? '⭐ ' : ''}${module.name}</div>
-                    <div class="path">${module.id}</div>
-                    <div class="badges">
-                        <span class="badge function">${entities.filter((e: EntityGraphNode) => e.type === 'function').length} функций</span>
-                        <span class="badge class">${entities.filter((e: EntityGraphNode) => e.type === 'class').length} классов</span>
-                        <span class="badge constant">${entities.filter((e: EntityGraphNode) => e.type === 'constant').length} констант</span>
-                        <span class="badge level">Уровень ${module.level || 0}</span>
+        <div id="modulesContainer">
+            <h2 style="margin: 20px 0 12px; color:#60a5fa; font-size:18px;">📁 Модули и функции</h2>
+            <div class="modules-grid" id="modulesGrid">
+                ${moduleStats
+                  .map(mod => {
+                    const escapedName = escapeHtml(mod.name);
+                    const escapedPath = escapeHtml(mod.path);
+                    return `
+                <div class="module-card" data-module="${escapeHtml(mod.path)}" onclick="focusModule('${escapeHtml(mod.path)}')">
+                    <div class="header-row">
+                        <div>
+                            <div class="name">${mod.isEntry ? '⭐ ' : ''}${escapedName}</div>
+                            <div class="path">${escapedPath}</div>
+                        </div>
+                        <div style="display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end;">
+                            <span class="badge lang">${mod.language}</span>
+                            ${mod.isEntry ? '<span class="badge export">⭐ entry</span>' : ''}
+                            <span class="badge lines">${mod.lines} строк</span>
+                        </div>
                     </div>
-                    <div class="entities-list">
-                        ${entities
-                          .slice(0, 20)
-                          .map((entity: EntityGraphNode) => {
-                            const iconMap: Record<string, string> = {
-                              function: 'ƒ',
-                              class: '🏛️',
-                              constant: '📌',
-                              interface: '📐',
-                              type: '📋',
-                              variable: '📦',
-                              enum: '🔢',
-                            };
-                            const icon = iconMap[entity.type] || '•';
-                            const isExported = entity.metadata?.isExported || false;
-                            const isAsync = entity.metadata?.isAsync || false;
-                            const params = entity.metadata?.params || [];
-                            const paramStr = params.length > 0 ? `(${params.join(', ')})` : '()';
-                            const calls = entity.metadata?.calls || [];
-                            const callStr =
-                              calls.length > 0
-                                ? `→ ${calls.slice(0, 3).join(', ')}${calls.length > 3 ? '...' : ''}`
-                                : '';
-                            const importedFrom = entity.metadata?.importedFrom || '';
+                    <div class="badges">
+                        <span class="badge fn">${mod.functions} функций</span>
+                        ${mod.classes > 0 ? `<span class="badge class">${mod.classes} классов</span>` : ''}
+                        ${mod.constants > 0 ? `<span class="badge const">${mod.constants} констант</span>` : ''}
+                        ${mod.interfaces > 0 ? `<span class="badge interface">${mod.interfaces} интерфейсов</span>` : ''}
+                        ${mod.types > 0 ? `<span class="badge type">${mod.types} типов</span>` : ''}
+                        ${mod.variables > 0 ? `<span class="badge var">${mod.variables} переменных</span>` : ''}
+                    </div>
+                    <div class="functions-list">
+                        ${allFunctions
+                          .filter(f => f.modulePath === mod.path)
+                          .map(({ func }) => {
+                            const escapedFuncName = escapeHtml(func.name);
+                            const escapedModulePath = escapeHtml(mod.path);
+                            const paramsStr = func.params.map(p => escapeHtml(p)).join(', ');
+                            const callsStr = func.calls
+                              .slice(0, 3)
+                              .map(c => escapeHtml(c))
+                              .join(', ');
                             return `
-                            <div class="entity-item">
-                                <span class="type-icon">${icon}</span>
-                                <span class="entity-name">${entity.name}</span>
-                                ${isExported ? '<span class="entity-export">📤</span>' : ''}
-                                ${isAsync ? '<span class="entity-async">⚡</span>' : ''}
-                                <span class="entity-params">${paramStr}</span>
-                                ${callStr ? `<span class="entity-calls">${callStr}</span>` : ''}
-                                ${importedFrom ? `<span class="entity-module">← ${path.basename(importedFrom)}</span>` : ''}
-                            </div>
-                          `;
+                        <div class="func-item" onclick="event.stopPropagation(); focusFunction('${escapedFuncName}', '${escapedModulePath}')" data-func="${escapedFuncName}" data-module="${escapedModulePath}">
+                            <span class="func-name">${escapedFuncName}</span>
+                            ${func.isExported ? '<span class="func-export">📤</span>' : ''}
+                            ${func.isAsync ? '<span class="func-async">⚡</span>' : ''}
+                            ${func.params.length > 0 ? `<span class="func-params">(${paramsStr})</span>` : ''}
+                            ${func.calls.length > 0 ? `<span class="func-calls">→ ${callsStr}${func.calls.length > 3 ? '...' : ''}</span>` : ''}
+                            ${func.calledBy.length > 0 ? `<span class="func-called">← ${func.calledBy.length}</span>` : ''}
+                            <span class="func-line">стр.${func.line}</span>
+                        </div>
+                        `;
                           })
                           .join('')}
-                        ${entities.length > 20 ? `<div style="color:#64748b;font-size:10px;padding:4px 6px;">... и ещё ${entities.length - 20} сущностей</div>` : ''}
-                        ${entities.length === 0 ? '<div style="color:#64748b;font-size:11px;padding:4px 6px;">Нет сущностей</div>' : ''}
                     </div>
                 </div>
-              `;
-              })
-              .join('')}
+                `;
+                  })
+                  .join('')}
+            </div>
+        </div>
+
+        <div class="detail-panel" id="detailPanel">
+            <div class="dp-header">
+                <div class="dp-title" id="dpTitle">Функция</div>
+                <button class="dp-close" onclick="closeDetail()">✕</button>
+            </div>
+            <div id="dpContent"></div>
         </div>
 
         <div class="footer">
-            <p>Сгенерировано AST Analyzer v3.0.0 | Graphviz + DOT</p>
-            <p style="font-size:10px;color:#475569;margin-top:4px;">
-                Модулей: ${analysis.stats.totalModules} | Сущностей: ${analysis.stats.totalEntities} | Вызовов: ${callEdges.length} | Импортов: ${importEdges.length} | Экспортов: ${exportEdges.length} | Наследований: ${extendsEdges.length} | Циклов: ${analysis.stats.cycles?.length || 0}
-            </p>
+            <p>Сгенерировано AST Analyzer v3.0.0 | Данные из package-lock-report.json</p>
         </div>
     </div>
 
     <script>
+        // ============================================================
+        // ДАННЫЕ
+        // ============================================================
+        const reportData = ${JSON.stringify(report)};
+        const allFunctionsData = ${JSON.stringify(allFunctions)};
+
+        let currentMode = 'all';
+        let currentFocusModule = null;
+        let currentFocusFunction = null;
+
+        // ============================================================
+        // SVG PAN ZOOM
+        // ============================================================
         let svgPanZoomInstance = null;
-        let showLabels = true;
-        let showEntities = true;
 
         function initPanZoom() {
             const svg = document.querySelector('#svg-wrapper svg');
@@ -820,57 +1325,246 @@ export async function generateInteractiveHTML(
                     minZoom: 0.1,
                     maxZoom: 4,
                 });
-                console.log('✅ SVG Pan Zoom initialized');
             } else {
-                console.log('⚠️ SVG not found, waiting...');
-                setTimeout(initPanZoom, 500);
+                setTimeout(initPanZoom, 300);
             }
         }
 
-        function zoomIn() {
-            if (svgPanZoomInstance) {
-                svgPanZoomInstance.zoomIn();
-            }
-        }
-
-        function zoomOut() {
-            if (svgPanZoomInstance) {
-                svgPanZoomInstance.zoomOut();
-            }
-        }
-
-        function resetZoom() {
-            if (svgPanZoomInstance) {
-                svgPanZoomInstance.resetZoom();
-                svgPanZoomInstance.center();
-            }
-        }
-
-        function toggleLabels() {
-            showLabels = !showLabels;
-            const texts = document.querySelectorAll('#svg-wrapper svg text');
-            texts.forEach(t => {
-                t.style.display = showLabels ? 'block' : 'none';
+        // ============================================================
+        // УПРАВЛЕНИЕ РЕЖИМАМИ
+        // ============================================================
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('[data-mode]').forEach(b => {
+                b.classList.toggle('active', b.dataset.mode === mode);
             });
+            updateView();
         }
 
-        function toggleEntities() {
-            showEntities = !showEntities;
-            const entityNodes = document.querySelectorAll('#svg-wrapper svg .node ellipse, #svg-wrapper svg .node diamond');
-            entityNodes.forEach(n => {
-                n.style.display = showEntities ? 'block' : 'none';
+        function focusModule(modulePath) {
+            if (currentFocusModule === modulePath) {
+                clearFocus();
+                return;
+            }
+            currentFocusModule = modulePath;
+            currentFocusFunction = null;
+            updateView();
+
+            document.querySelectorAll('.module-card').forEach(c => {
+                c.classList.toggle('active', c.dataset.module === modulePath);
             });
-            const entityTexts = document.querySelectorAll('#svg-wrapper svg .node text');
-            entityTexts.forEach(t => {
-                const parent = t.parentElement;
-                if (parent && parent.querySelector('ellipse, diamond')) {
-                    t.style.display = showEntities ? 'block' : 'none';
-                }
-            });
+
+            const info = document.getElementById('focusInfo');
+            info.classList.add('active');
+            const pkg = reportData.packages[modulePath];
+            const displayName = pkg?.displayPath || modulePath.split('/').pop() || modulePath;
+            document.getElementById('focusTitle').textContent = '🎯 Фокус: ' + displayName;
+            if (pkg) {
+                document.getElementById('focusDetails').textContent =
+                    'Функций: ' + pkg.entities.functions.length + ' | Экспортов: ' + Object.keys(pkg.exports).length + ' | Импортов: ' + Object.keys(pkg.imports).length;
+            }
+
+            const card = document.querySelector('.module-card[data-module="' + modulePath + '"]');
+            if (card) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
         }
 
+        function focusFunction(funcName, modulePath) {
+            if (currentFocusFunction === funcName && currentFocusModule === modulePath) {
+                clearFocus();
+                return;
+            }
+            currentFocusFunction = funcName;
+            currentFocusModule = modulePath;
+            updateView();
+
+            document.querySelectorAll('.module-card').forEach(c => {
+                c.classList.toggle('active', c.dataset.module === modulePath);
+            });
+            document.querySelectorAll('.func-item').forEach(el => {
+                el.classList.toggle('active',
+                    el.dataset.func === funcName && el.dataset.module === modulePath
+                );
+            });
+
+            const info = document.getElementById('focusInfo');
+            info.classList.add('active');
+            document.getElementById('focusTitle').textContent = '🎯 Функция: ' + funcName;
+
+            const funcData = allFunctionsData.find(f => f.func.name === funcName && f.modulePath === modulePath);
+            if (funcData) {
+                const f = funcData.func;
+                const displayName = modulePath.split('/').pop() || modulePath;
+                document.getElementById('focusDetails').textContent =
+                    'Модуль: ' + displayName + ' | Параметры: ' + (f.params.join(', ') || 'нет') + ' | Вызовов: ' + f.calls.length + ' | Кем вызвана: ' + f.calledBy.length;
+            }
+
+            showDetail(funcName, modulePath);
+
+            const el = document.querySelector('.func-item[data-func="' + funcName + '"][data-module="' + modulePath + '"]');
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        function clearFocus() {
+            currentFocusModule = null;
+            currentFocusFunction = null;
+            document.getElementById('focusInfo').classList.remove('active');
+            document.querySelectorAll('.module-card').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.func-item').forEach(el => el.classList.remove('active'));
+            closeDetail();
+            updateView();
+        }
+
+        // ============================================================
+        // ПОИСК
+        // ============================================================
+        let searchTimeout = null;
+        function handleSearch(query) {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                const q = query.toLowerCase().trim();
+                document.querySelectorAll('.module-card').forEach(card => {
+                    const name = card.querySelector('.name')?.textContent?.toLowerCase() || '';
+                    const path = card.dataset.module?.toLowerCase() || '';
+                    const funcs = card.querySelectorAll('.func-item');
+                    let hasMatch = false;
+
+                    if (q === '') {
+                        card.style.display = 'block';
+                        funcs.forEach(el => el.style.display = 'flex');
+                        return;
+                    }
+
+                    if (name.includes(q) || path.includes(q)) {
+                        hasMatch = true;
+                        funcs.forEach(el => el.style.display = 'flex');
+                    } else {
+                        funcs.forEach(el => {
+                            const fname = el.querySelector('.func-name')?.textContent?.toLowerCase() || '';
+                            if (fname.includes(q)) {
+                                el.style.display = 'flex';
+                                hasMatch = true;
+                            } else {
+                                el.style.display = 'none';
+                            }
+                        });
+                    }
+                    card.style.display = hasMatch ? 'block' : 'none';
+                });
+            }, 300);
+        }
+
+        // ============================================================
+        // ДЕТАЛИ ФУНКЦИИ
+        // ============================================================
+        function showDetail(funcName, modulePath) {
+            const panel = document.getElementById('detailPanel');
+            const title = document.getElementById('dpTitle');
+            const content = document.getElementById('dpContent');
+
+            const funcData = allFunctionsData.find(f => f.func.name === funcName && f.modulePath === modulePath);
+            if (!funcData) return;
+
+            const f = funcData.func;
+            title.textContent = f.name;
+
+            let html = '';
+            html += '<div class="dp-section"><h4>Информация</h4>';
+            const displayName = modulePath.split('/').pop() || modulePath;
+            html += '<div class="item"><span class="label">Модуль:</span> ' + displayName + '</div>';
+            html += '<div class="item"><span class="label">Строка:</span> ' + f.line + '</div>';
+            html += '<div class="item"><span class="label">Экспортирована:</span> ' + (f.isExported ? '✅' : '❌') + '</div>';
+            html += '<div class="item"><span class="label">Асинхронная:</span> ' + (f.isAsync ? '✅' : '❌') + '</div>';
+            html += '<div class="item"><span class="label">Возврат:</span> ' + (f.returnType || 'any') + '</div>';
+            html += '</div>';
+
+            if (f.params.length > 0) {
+                html += '<div class="dp-section"><h4>Параметры</h4>';
+                f.params.forEach((p, i) => {
+                    const type = f.paramTypes[i] || 'any';
+                    html += '<div class="item">' + p + ': ' + type + '</div>';
+                });
+                html += '</div>';
+            }
+
+            if (f.calls.length > 0) {
+                html += '<div class="dp-section"><h4>📞 Вызовы (кто вызывается)</h4>';
+                f.calls.forEach(call => {
+                    const target = allFunctionsData.find(f2 => f2.func.name === call);
+                    const targetPath = target?.modulePath || modulePath;
+                    html += '<div class="item" style="cursor:pointer;color:#f59e0b;" onclick="focusFunction(\'' + call + '\', \'' + targetPath + '\')">→ ' + call + '</div>';
+                });
+                html += '</div>';
+            }
+
+            if (f.calledBy.length > 0) {
+                html += '<div class="dp-section"><h4>📥 Кто вызывает</h4>';
+                f.calledBy.forEach(caller => {
+                    const source = allFunctionsData.find(f2 => f2.func.name === caller);
+                    const sourcePath = source?.modulePath || modulePath;
+                    html += '<div class="item" style="cursor:pointer;color:#3b82f6;" onclick="focusFunction(\'' + caller + '\', \'' + sourcePath + '\')">← ' + caller + '</div>';
+                });
+                html += '</div>';
+            }
+
+            if (f.body) {
+                html += '<div class="dp-section"><h4>Тело (сокращённо)</h4>';
+                const bodyPreview = f.body.length > 200 ? f.body.substring(0, 200) + '...' : f.body;
+                html += '<div class="item" style="font-size:10px;color:#94a3b8;white-space:pre-wrap;background:#0f172a;padding:8px;border-radius:4px;">' + bodyPreview + '</div>';
+                html += '</div>';
+            }
+
+            content.innerHTML = html;
+            panel.classList.add('active');
+        }
+
+        function closeDetail() {
+            document.getElementById('detailPanel').classList.remove('active');
+        }
+
+        // ============================================================
+        // ОБНОВЛЕНИЕ ГРАФА
+        // ============================================================
+        function updateView() {
+            const wrapper = document.getElementById('svg-wrapper');
+            const moduleName = currentFocusModule ? (currentFocusModule.split('/').pop() || currentFocusModule) : '';
+            wrapper.innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8;">' +
+                '🔄 Граф обновлён. Режим: <strong>' + currentMode + '</strong>' +
+                (currentFocusModule ? ' | Фокус: ' + moduleName : '') +
+                (currentFocusFunction ? ' | Функция: ' + currentFocusFunction : '') +
+                '<br><br>' +
+                '<span style="font-size:12px;">(Для полного обновления используйте кнопки режимов)</span>' +
+            '</div>';
+
+            setTimeout(initPanZoom, 300);
+        }
+
+        // ============================================================
+        // ИНИЦИАЛИЗАЦИЯ
+        // ============================================================
         document.addEventListener('DOMContentLoaded', function() {
             setTimeout(initPanZoom, 300);
+
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    clearFocus();
+                    closeDetail();
+                }
+                if (e.key === 'f' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    document.getElementById('searchInput').focus();
+                }
+            });
+        });
+
+        document.addEventListener('click', function(e) {
+            const panel = document.getElementById('detailPanel');
+            if (panel.classList.contains('active') && !panel.contains(e.target) && !e.target.closest('.func-item')) {
+                closeDetail();
+            }
         });
 
         window.addEventListener('resize', function() {
@@ -882,12 +1576,12 @@ export async function generateInteractiveHTML(
                 }, 100);
             }
         });
-    </script>
+    <\/script>
 </body>
 </html>`;
 
   fs.writeFileSync(outputPath, html, 'utf-8');
-  console.log(`  ✅ interactive-report.html`);
+  console.log(`  ✅ interactive-report.html (с полными данными из package-lock-report.json)`);
 }
 
 export default {
