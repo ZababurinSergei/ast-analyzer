@@ -1361,7 +1361,7 @@ export async function runCLI(): Promise<void> {
             return resolved || path.resolve(projectRoot, p);
           });
 
-          // ✅ ИСПРАВЛЕНО: передаем entitiesMap в buildEnhancedPackageLockReport
+          // ✅ ИСПРАВЛЕНО: передаем resultData.entities в saveEnhancedPackageLockReport
           saveEnhancedPackageLockReport(
             resultData.rootKey,
             normalizedData.graph,
@@ -1370,7 +1370,9 @@ export async function runCLI(): Promise<void> {
             enhancedReportPath
           );
           console.log(`\n✅ РАСШИРЕННЫЙ ОТЧЕТ СОХРАНЕН: ${enhancedReportPath}`);
-          console.log(`📊 Включает: функции, константы, переменные, интерфейсы, типы, классы, вызовы`);
+          console.log(
+            `📊 Включает: функции, константы, переменные, интерфейсы, типы, классы, вызовы`
+          );
 
           // Выводим статистику
           const stats = resultData.packageLockReport?.entityStats || {};
@@ -1419,7 +1421,7 @@ export async function runCLI(): Promise<void> {
                 entitiesWithCalls.types.length +
                 entitiesWithCalls.variables.length,
               hasCycles: hasCycles,
-              cycles: normalizedData.cyclicEdges?.map(edge => edge.split('->')) || [],
+              cycles: normalizedData.cyclicEdges?.map((edge: string) => edge.split('->')) || [],
             },
             moduleGraph: {
               nodes: [],
@@ -1434,10 +1436,15 @@ export async function runCLI(): Promise<void> {
           // Заполняем moduleGraph
           const allModules = new Set<string>();
           allModules.add(normalizedData.rootKey);
+
+          // ✅ ИСПРАВЛЕНО: добавляем проверку на массив для deps
           for (const [key, deps] of Object.entries(normalizedData.graph)) {
             allModules.add(key);
-            for (const dep of deps) {
-              allModules.add(dep);
+            // Проверяем, что deps является массивом
+            if (Array.isArray(deps)) {
+              for (const dep of deps) {
+                allModules.add(dep);
+              }
             }
           }
 
@@ -1470,20 +1477,25 @@ export async function runCLI(): Promise<void> {
           }
 
           for (const [from, deps] of Object.entries(normalizedData.graph)) {
-            for (const to of deps) {
-              const specifiers: string[] = [];
-              for (const entity of entitiesWithCalls.functions) {
-                if (entity.isExported && (to.includes(entity.name) || entity.name.includes(to))) {
-                  specifiers.push(entity.name);
+            // Проверяем, что deps является массивом
+            if (Array.isArray(deps)) {
+              for (const to of deps) {
+                const specifiers: string[] = [];
+                for (const entity of entitiesWithCalls.functions) {
+                  if (entity.isExported && (to.includes(entity.name) || entity.name.includes(to))) {
+                    specifiers.push(entity.name);
+                  }
                 }
+                fullAnalysis.moduleGraph.edges.push({
+                  from,
+                  to,
+                  type: 'import',
+                  specifiers:
+                    specifiers.length > 0
+                      ? specifiers
+                      : [path.basename(to).replace(/\.[^.]+$/, '')],
+                });
               }
-              fullAnalysis.moduleGraph.edges.push({
-                from,
-                to,
-                type: 'import',
-                specifiers:
-                  specifiers.length > 0 ? specifiers : [path.basename(to).replace(/\.[^.]+$/, '')],
-              });
             }
           }
 
@@ -1521,7 +1533,10 @@ export async function runCLI(): Promise<void> {
               // Если не нашли по точному имени, ищем по частичному совпадению
               if (!targetModule) {
                 for (const [modPath, deps] of Object.entries(normalizedData.graph)) {
-                  if (modPath.includes(call) || deps.some(d => d.includes(call))) {
+                  if (
+                    Array.isArray(deps) &&
+                    (modPath.includes(call) || deps.some(d => d.includes(call)))
+                  ) {
                     targetModule = modPath;
                     break;
                   }
@@ -1657,11 +1672,9 @@ export async function runCLI(): Promise<void> {
           // ✅ ИСПРАВЛЕНО: передаем entitiesWithCalls в generateInteractiveHTML
           console.log('\n🌐 Генерация интерактивного HTML отчета...');
           const htmlPath = path.join(process.cwd(), 'interactive-report.html');
-          await generateInteractiveHTML(
-            fullAnalysis,
-            htmlPath,
-            entitiesWithCalls // ← передаем сущности с calls
-          );
+
+          // ✅ Вызываем функцию с 3 аргументами
+          await generateInteractiveHTML(fullAnalysis, htmlPath, entitiesWithCalls);
           console.log(`   ✅ interactive-report.html (интерактивный отчет)`);
 
           console.log('\n📊 Статистика сущностей:');
@@ -1676,7 +1689,9 @@ export async function runCLI(): Promise<void> {
           console.log(
             '\n🌐 Откройте interactive-report.html в браузере для интерактивного просмотра'
           );
-          console.log('📄 Откройте reports/entities-component-tree-deep/package-lock-report.json для детального анализа');
+          console.log(
+            '📄 Откройте reports/entities-component-tree-deep/package-lock-report.json для детального анализа'
+          );
         } else {
           console.warn('⚠️ Не удалось извлечь сущности: AST не построен');
         }
@@ -1860,9 +1875,11 @@ function findModuleForEntity(entityName: string, data: GraphData): string | null
     if (modulePath.includes(entityName)) {
       return modulePath;
     }
-    for (const dep of deps) {
-      if (dep.includes(entityName)) {
-        return dep;
+    if (Array.isArray(deps)) {
+      for (const dep of deps) {
+        if (dep.includes(entityName)) {
+          return dep;
+        }
       }
     }
   }

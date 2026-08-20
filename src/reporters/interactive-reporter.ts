@@ -221,9 +221,9 @@ function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult
     functions: enhanced.functions.map(f => ({
       name: f.name,
       line: f.line,
-      isAsync: f.isAsync,
-      isExported: f.isExported,
-      params: f.params,
+      isAsync: f.isAsync || false,
+      isExported: f.isExported || false,
+      params: f.params || [],
       returnType: f.returnType,
       calls: f.calls || [],
       calledBy: f.calledBy || [],
@@ -232,44 +232,50 @@ function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult
       endLine: f.endLine || f.line,
       isMethod: f.isMethod || false,
       className: f.className,
+      isNested: f.isNested || false,
+      parentFunction: f.parentFunction,
+      isArrow: f.isArrow || false,
+      isEventHandler: f.isEventHandler || false,
+      eventType: f.eventType,
+      depth: f.depth || 0,
     })),
     classes: enhanced.classes.map(c => ({
       name: c.name,
       line: c.line,
-      isExported: c.isExported,
-      methods: c.methods,
-      properties: c.properties,
+      isExported: c.isExported || false,
+      methods: c.methods || [],
+      properties: c.properties || [],
       extends: c.extends,
-      implements: c.implements,
+      implements: c.implements || [],
       startLine: c.startLine || c.line,
       endLine: c.endLine || c.line,
     })),
     constants: enhanced.constants.map(c => ({
       name: c.name,
       line: c.line,
-      isExported: c.isExported,
+      isExported: c.isExported || false,
       value: c.value,
       type: c.type,
     })),
     interfaces: enhanced.interfaces.map(i => ({
       name: i.name,
       line: i.line,
-      isExported: i.isExported,
-      properties: i.properties,
-      extends: i.extends,
+      isExported: i.isExported || false,
+      properties: i.properties || [],
+      extends: i.extends || [],
       startLine: i.startLine || i.line,
       endLine: i.endLine || i.line,
     })),
     types: enhanced.types.map(t => ({
       name: t.name,
       line: t.line,
-      isExported: t.isExported,
+      isExported: t.isExported || false,
       definition: t.definition,
     })),
     variables: enhanced.variables.map(v => ({
       name: v.name,
       line: v.line,
-      isExported: v.isExported,
+      isExported: v.isExported || false,
       type: v.type,
       value: v.value,
     })),
@@ -712,26 +718,26 @@ export async function generateInteractiveHTML(
         </div>
 
         ${
-    analysis.stats.cycles?.length > 0
-      ? `
+          analysis.stats.cycles?.length > 0
+            ? `
         <div class="cycles-section">
             <h2>🔄 Циклические зависимости (${analysis.stats.cycles.length})</h2>
             ${analysis.stats.cycles.map((cycle: string[]) => `<div class="cycle-item">${cycle.join(' → ')}</div>`).join('')}
         </div>
         `
-      : ''
-  }
+            : ''
+        }
 
         <h2 style="margin: 25px 0 15px; color:#60a5fa;">📁 Модули и сущности</h2>
         <div class="modules-grid">
             ${analysis.moduleGraph?.nodes
-    ?.map((module: ModuleGraphNode) => {
-      const entities =
-        analysis.entityGraph?.nodes?.filter(
-          (e: EntityGraphNode) => e.module === module.id
-        ) || [];
-      const isEntry = module.metadata?.isEntry || false;
-      return `
+              ?.map((module: ModuleGraphNode) => {
+                const entities =
+                  analysis.entityGraph?.nodes?.filter(
+                    (e: EntityGraphNode) => e.module === module.id
+                  ) || [];
+                const isEntry = module.metadata?.isEntry || false;
+                return `
                 <div class="module-card">
                     <div class="name">${isEntry ? '⭐ ' : ''}${module.name}</div>
                     <div class="path">${module.id}</div>
@@ -743,29 +749,29 @@ export async function generateInteractiveHTML(
                     </div>
                     <div class="entities-list">
                         ${entities
-        .slice(0, 20)
-        .map((entity: EntityGraphNode) => {
-          const iconMap: Record<string, string> = {
-            function: 'ƒ',
-            class: '🏛️',
-            constant: '📌',
-            interface: '📐',
-            type: '📋',
-            variable: '📦',
-            enum: '🔢',
-          };
-          const icon = iconMap[entity.type] || '•';
-          const isExported = entity.metadata?.isExported || false;
-          const isAsync = entity.metadata?.isAsync || false;
-          const params = entity.metadata?.params || [];
-          const paramStr = params.length > 0 ? `(${params.join(', ')})` : '()';
-          const calls = entity.metadata?.calls || [];
-          const callStr =
-            calls.length > 0
-              ? `→ ${calls.slice(0, 3).join(', ')}${calls.length > 3 ? '...' : ''}`
-              : '';
-          const importedFrom = entity.metadata?.importedFrom || '';
-          return `
+                          .slice(0, 20)
+                          .map((entity: EntityGraphNode) => {
+                            const iconMap: Record<string, string> = {
+                              function: 'ƒ',
+                              class: '🏛️',
+                              constant: '📌',
+                              interface: '📐',
+                              type: '📋',
+                              variable: '📦',
+                              enum: '🔢',
+                            };
+                            const icon = iconMap[entity.type] || '•';
+                            const isExported = entity.metadata?.isExported || false;
+                            const isAsync = entity.metadata?.isAsync || false;
+                            const params = entity.metadata?.params || [];
+                            const paramStr = params.length > 0 ? `(${params.join(', ')})` : '()';
+                            const calls = entity.metadata?.calls || [];
+                            const callStr =
+                              calls.length > 0
+                                ? `→ ${calls.slice(0, 3).join(', ')}${calls.length > 3 ? '...' : ''}`
+                                : '';
+                            const importedFrom = entity.metadata?.importedFrom || '';
+                            return `
                             <div class="entity-item">
                                 <span class="type-icon">${icon}</span>
                                 <span class="entity-name">${entity.name}</span>
@@ -776,15 +782,15 @@ export async function generateInteractiveHTML(
                                 ${importedFrom ? `<span class="entity-module">← ${path.basename(importedFrom)}</span>` : ''}
                             </div>
                           `;
-        })
-        .join('')}
+                          })
+                          .join('')}
                         ${entities.length > 20 ? `<div style="color:#64748b;font-size:10px;padding:4px 6px;">... и ещё ${entities.length - 20} сущностей</div>` : ''}
                         ${entities.length === 0 ? '<div style="color:#64748b;font-size:11px;padding:4px 6px;">Нет сущностей</div>' : ''}
                     </div>
                 </div>
               `;
-    })
-    .join('')}
+              })
+              .join('')}
         </div>
 
         <div class="footer">

@@ -106,6 +106,12 @@ export interface EnhancedFunctionInfo {
   calledBy: string[];
   returnType?: string;
   body?: string;
+  isNested?: boolean;
+  parentFunction?: string;
+  isArrow?: boolean;
+  isEventHandler?: boolean;
+  eventType?: string;
+  depth?: number;
 }
 
 export interface EnhancedConstantInfo {
@@ -177,6 +183,7 @@ export interface EnhancedEntityInfo {
 export interface EnhancedPackageInfo {
   version: string;
   resolved: string;
+  displayPath?: string;
   type: 'module' | 'commonjs';
   language: 'typescript' | 'javascript' | 'vue' | 'jsx';
   isEntry: boolean;
@@ -780,6 +787,12 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         calledBy: [],
         returnType,
         body: functionDecl.getBody()?.getText()?.substring(0, 200) || '',
+        isNested: false,
+        parentFunction: undefined,
+        isArrow: false,
+        isEventHandler: false,
+        eventType: undefined,
+        depth: 0,
       });
     }
 
@@ -1024,14 +1037,32 @@ export function buildEnhancedPackageLockReport(
   // ✅ Находим корень проекта
   const projectRoot = findProjectRoot(process.cwd()) || process.cwd();
 
-  // ✅ Используем переданные сущности вместо повторного извлечения
+  // ✅ ИСПРАВЛЕНО: Правильно заполняем allFileEntities
   const allFileEntities = new Map<string, EnhancedEntityInfo>();
 
-  // ✅ ПЕРВЫЙ ПРОХОД: сбор статистики и преобразование сущностей
+  // ✅ ПЕРВЫЙ ПРОХОД: преобразуем EntitiesResult в EnhancedEntityInfo
   for (const [modulePath, entities] of Object.entries(entitiesMap)) {
-    // Преобразуем EntitiesResult в EnhancedEntityInfo
     const enhancedEntities = convertToEnhancedEntityInfo(entities);
     allFileEntities.set(modulePath, enhancedEntities);
+  }
+
+  // ✅ ВТОРОЙ ПРОХОД: сбор статистики и построение пакетов
+  let processedCount = 0;
+  const totalModules = Object.keys(entitiesMap).length;
+
+  for (const [modulePath, entities] of Object.entries(entitiesMap)) {
+    processedCount++;
+    const relativePath = path.relative(projectRoot, modulePath);
+
+    // ✅ Используем relativePath для логирования прогресса
+    if (totalModules > 5 && processedCount % 10 === 0) {
+      console.log(`   📊 Обработано ${processedCount}/${totalModules} модулей`);
+    }
+
+    // ✅ Используем relativePath для отладки
+    if (process.env.DEBUG === 'true') {
+      console.log(`   📄 Обработка: ${relativePath}`);
+    }
 
     // Собираем общую статистику
     totalFunctions += entities.functions.length;
@@ -1053,10 +1084,7 @@ export function buildEnhancedPackageLockReport(
       if (func.isExported) totalExportedFunctions++;
       if (func.isAsync) totalAsyncFunctions++;
     }
-  }
 
-  // ✅ ВТОРОЙ ПРОХОД: построение пакетов
-  for (const [modulePath, entities] of Object.entries(entitiesMap)) {
     const isEntry = modulePath === rootKey;
     const ext = path.extname(modulePath);
     let language: EnhancedPackageInfo['language'] = 'typescript';
@@ -1064,8 +1092,8 @@ export function buildEnhancedPackageLockReport(
     else if (ext === '.vue') language = 'vue';
     else if (ext === '.tsx') language = 'jsx';
 
-    const relativePath = path.relative(projectRoot, modulePath);
-    const fileEntities = allFileEntities.get(relativePath) || {
+    // ✅ Берем сущности из allFileEntities
+    const fileEntities = allFileEntities.get(modulePath) || {
       functions: [],
       constants: [],
       variables: [],
@@ -1130,12 +1158,13 @@ export function buildEnhancedPackageLockReport(
     packages[modulePath] = {
       version: '1.0.0',
       resolved: `file:${modulePath}`,
+      displayPath: relativePath, // ✅ добавляем displayPath для отображения в отчете
       type: 'module',
       language,
       isEntry,
       imports,
       exports,
-      entities: fileEntities,
+      entities: fileEntities, // ✅ теперь здесь есть сущности
       fileStats,
     };
   }
@@ -1259,6 +1288,12 @@ function convertToEnhancedEntityInfo(entities: EntitiesResult): EnhancedEntityIn
       calledBy: f.calledBy || [],
       returnType: f.returnType || 'any',
       body: f.body || '',
+      isNested: f.isNested || false,
+      parentFunction: f.parentFunction,
+      isArrow: f.isArrow || false,
+      isEventHandler: f.isEventHandler || false,
+      eventType: f.eventType,
+      depth: f.depth || 0,
     })),
     constants: entities.constants.map(c => ({
       name: c.name,
