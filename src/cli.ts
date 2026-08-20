@@ -39,9 +39,16 @@ import { Z3Verifier, createIntParam, eq, range } from './formal/Z3Verifier.js';
 // Hybrid Report
 import { runHybridReport } from './modes/hybrid-report/index.js';
 
+import { extractEntitiesFromFile } from './reporters/json-reporter.js';
+
 // Reporters
 import { generateHTMLReport } from './reporters/html-reporter.js';
-import { saveModuleGraph, saveEntityGraph, saveFullAnalysis, savePackageLockReport as saveEnhancedPackageLockReport } from './reporters/json-reporter.js';
+import {
+  saveModuleGraph,
+  saveEntityGraph,
+  saveFullAnalysis,
+  savePackageLockReport as saveEnhancedPackageLockReport,
+} from './reporters/json-reporter.js';
 import { generateInteractiveHTML } from './reporters/interactive-reporter.js';
 
 // Types
@@ -1354,10 +1361,11 @@ export async function runCLI(): Promise<void> {
             return resolved || path.resolve(projectRoot, p);
           });
 
+          // ✅ ИСПРАВЛЕНО: передаем entitiesMap в buildEnhancedPackageLockReport
           saveEnhancedPackageLockReport(
             resultData.rootKey,
             normalizedData.graph,
-            resultData.entities,
+            resultData.entities, // ← уже извлеченные сущности
             absoluteFilePaths,
             enhancedReportPath
           );
@@ -1381,11 +1389,14 @@ export async function runCLI(): Promise<void> {
         // Парсим AST для извлечения сущностей для интерактивного отчета
         const ast = parseFile(currentTargetPath);
         if (ast) {
-          const entities = extractEntities(ast, currentTargetPath);
+          // ✅ ИСПРАВЛЕНО: используем extractEntitiesFromFile для получения calls
+          // Вместо extractEntities (который не заполняет calls)
+
+          const entitiesWithCalls = extractEntitiesFromFile(currentTargetPath);
 
           // ✅ ВАЛИДАЦИЯ: убеждаемся, что calls это массив
           let totalCalls = 0;
-          for (const func of entities.functions) {
+          for (const func of entitiesWithCalls.functions) {
             if (!Array.isArray(func.calls)) {
               func.calls = [];
             }
@@ -1401,12 +1412,12 @@ export async function runCLI(): Promise<void> {
             stats: {
               totalModules: Object.keys(normalizedData.graph).length,
               totalEntities:
-                entities.functions.length +
-                entities.classes.length +
-                entities.constants.length +
-                entities.interfaces.length +
-                entities.types.length +
-                entities.variables.length,
+                entitiesWithCalls.functions.length +
+                entitiesWithCalls.classes.length +
+                entitiesWithCalls.constants.length +
+                entitiesWithCalls.interfaces.length +
+                entitiesWithCalls.types.length +
+                entitiesWithCalls.variables.length,
               hasCycles: hasCycles,
               cycles: normalizedData.cyclicEdges?.map(edge => edge.split('->')) || [],
             },
@@ -1461,7 +1472,7 @@ export async function runCLI(): Promise<void> {
           for (const [from, deps] of Object.entries(normalizedData.graph)) {
             for (const to of deps) {
               const specifiers: string[] = [];
-              for (const entity of entities.functions) {
+              for (const entity of entitiesWithCalls.functions) {
                 if (entity.isExported && (to.includes(entity.name) || entity.name.includes(to))) {
                   specifiers.push(entity.name);
                 }
@@ -1477,7 +1488,7 @@ export async function runCLI(): Promise<void> {
           }
 
           // Заполняем entityGraph с ребрами для вызовов
-          for (const func of entities.functions) {
+          for (const func of entitiesWithCalls.functions) {
             const modulePath = findModuleForEntity(func.name, normalizedData);
             const nodeId = modulePath ? `${modulePath}#${func.name}` : `#${func.name}`;
 
@@ -1526,7 +1537,7 @@ export async function runCLI(): Promise<void> {
             }
           }
 
-          for (const cls of entities.classes) {
+          for (const cls of entitiesWithCalls.classes) {
             const modulePath = findModuleForEntity(cls.name, normalizedData);
             const nodeId = modulePath ? `${modulePath}#${cls.name}` : `#${cls.name}`;
             fullAnalysis.entityGraph.nodes.push({
@@ -1565,7 +1576,7 @@ export async function runCLI(): Promise<void> {
             }
           }
 
-          for (const constant of entities.constants) {
+          for (const constant of entitiesWithCalls.constants) {
             const modulePath = findModuleForEntity(constant.name, normalizedData);
             const nodeId = modulePath ? `${modulePath}#${constant.name}` : `#${constant.name}`;
             fullAnalysis.entityGraph.nodes.push({
@@ -1582,7 +1593,7 @@ export async function runCLI(): Promise<void> {
             });
           }
 
-          for (const intf of entities.interfaces) {
+          for (const intf of entitiesWithCalls.interfaces) {
             const modulePath = findModuleForEntity(intf.name, normalizedData);
             const nodeId = modulePath ? `${modulePath}#${intf.name}` : `#${intf.name}`;
             fullAnalysis.entityGraph.nodes.push({
@@ -1610,7 +1621,7 @@ export async function runCLI(): Promise<void> {
             }
           }
 
-          for (const type of entities.types) {
+          for (const type of entitiesWithCalls.types) {
             const modulePath = findModuleForEntity(type.name, normalizedData);
             const nodeId = modulePath ? `${modulePath}#${type.name}` : `#${type.name}`;
             fullAnalysis.entityGraph.nodes.push({
@@ -1626,7 +1637,7 @@ export async function runCLI(): Promise<void> {
             });
           }
 
-          for (const variable of entities.variables) {
+          for (const variable of entitiesWithCalls.variables) {
             const modulePath = findModuleForEntity(variable.name, normalizedData);
             const nodeId = modulePath ? `${modulePath}#${variable.name}` : `#${variable.name}`;
             fullAnalysis.entityGraph.nodes.push({
@@ -1643,19 +1654,23 @@ export async function runCLI(): Promise<void> {
             });
           }
 
-          // ✅ Генерируем интерактивный HTML
+          // ✅ ИСПРАВЛЕНО: передаем entitiesWithCalls в generateInteractiveHTML
           console.log('\n🌐 Генерация интерактивного HTML отчета...');
           const htmlPath = path.join(process.cwd(), 'interactive-report.html');
-          await generateInteractiveHTML(fullAnalysis, htmlPath);
+          await generateInteractiveHTML(
+            fullAnalysis,
+            htmlPath,
+            entitiesWithCalls // ← передаем сущности с calls
+          );
           console.log(`   ✅ interactive-report.html (интерактивный отчет)`);
 
           console.log('\n📊 Статистика сущностей:');
-          console.log(`   • Функций: ${entities.functions.length}`);
-          console.log(`   • Классов: ${entities.classes.length}`);
-          console.log(`   • Констант: ${entities.constants.length}`);
-          console.log(`   • Интерфейсов: ${entities.interfaces.length}`);
-          console.log(`   • Типов: ${entities.types.length}`);
-          console.log(`   • Переменных: ${entities.variables.length}`);
+          console.log(`   • Функций: ${entitiesWithCalls.functions.length}`);
+          console.log(`   • Классов: ${entitiesWithCalls.classes.length}`);
+          console.log(`   • Констант: ${entitiesWithCalls.constants.length}`);
+          console.log(`   • Интерфейсов: ${entitiesWithCalls.interfaces.length}`);
+          console.log(`   • Типов: ${entitiesWithCalls.types.length}`);
+          console.log(`   • Переменных: ${entitiesWithCalls.variables.length}`);
           console.log(`   • Вызовов между функциями: ${fullAnalysis.entityGraph.edges.length}`);
 
           console.log(

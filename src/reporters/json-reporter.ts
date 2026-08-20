@@ -302,6 +302,7 @@ export function saveFullAnalysis(
 
 /**
  * Сохраняет отчет в стиле package-lock.json
+ * ТЕПЕРЬ ИСПОЛЬЗУЕТ entitiesMap ВМЕСТО ПОВТОРНОГО ИЗВЛЕЧЕНИЯ
  */
 export function savePackageLockReport(
   rootKey: string,
@@ -984,6 +985,11 @@ function extractValueFromNode(node: Node): any {
 // НОВАЯ ФУНКЦИЯ: buildEnhancedPackageLockReport (ИСПРАВЛЕНА)
 // ============================================================
 
+/**
+ * Строит расширенный отчет в стиле package-lock
+ * Теперь принимает entitiesMap для избежания повторного извлечения
+ * И ПРАВИЛЬНО считает totalCalls
+ */
 export function buildEnhancedPackageLockReport(
   rootKey: string,
   graph: Record<string, string[]>,
@@ -1018,29 +1024,16 @@ export function buildEnhancedPackageLockReport(
   // ✅ Находим корень проекта
   const projectRoot = findProjectRoot(process.cwd()) || process.cwd();
 
-  // ✅ Извлекаем сущности из каждого файла
+  // ✅ Используем переданные сущности вместо повторного извлечения
   const allFileEntities = new Map<string, EnhancedEntityInfo>();
 
-  for (const filePath of filePaths) {
-    let absolutePath = filePath;
+  // ✅ ПЕРВЫЙ ПРОХОД: сбор статистики и преобразование сущностей
+  for (const [modulePath, entities] of Object.entries(entitiesMap)) {
+    // Преобразуем EntitiesResult в EnhancedEntityInfo
+    const enhancedEntities = convertToEnhancedEntityInfo(entities);
+    allFileEntities.set(modulePath, enhancedEntities);
 
-    // Если файл не существует по переданному пути, ищем его
-    if (!fs.existsSync(absolutePath)) {
-      const foundPath = findFileInProject(filePath, projectRoot);
-      if (foundPath) {
-        absolutePath = foundPath;
-      } else {
-        console.warn(`⚠️ Файл не найден: ${filePath}`);
-        continue;
-      }
-    }
-
-    const relativePath = path.relative(projectRoot, absolutePath);
-    console.log(`📄 Обработка файла: ${relativePath}`);
-
-    const entities = extractEntitiesFromFile(absolutePath);
-    allFileEntities.set(relativePath, entities);
-
+    // Собираем общую статистику
     totalFunctions += entities.functions.length;
     totalConstants += entities.constants.length;
     totalVariables += entities.variables.length;
@@ -1048,19 +1041,21 @@ export function buildEnhancedPackageLockReport(
     totalTypes += entities.types.length;
     totalClasses += entities.classes.length;
 
+    // ✅ Собираем вызовы для callGraph и totalCalls
     for (const func of entities.functions) {
       const key = func.isMethod && func.className ? `${func.className}.${func.name}` : func.name;
       if (!callGraph[key]) {
         callGraph[key] = [];
       }
-      callGraph[key] = func.calls;
-      totalCalls += func.calls.length;
+      const calls = func.calls || [];
+      callGraph[key] = calls;
+      totalCalls += calls.length;
       if (func.isExported) totalExportedFunctions++;
       if (func.isAsync) totalAsyncFunctions++;
     }
   }
 
-  // Строим пакеты с данными из файлов
+  // ✅ ВТОРОЙ ПРОХОД: построение пакетов
   for (const [modulePath, entities] of Object.entries(entitiesMap)) {
     const isEntry = modulePath === rootKey;
     const ext = path.extname(modulePath);
@@ -1092,6 +1087,7 @@ export function buildEnhancedPackageLockReport(
       // Игнорируем ошибки
     }
 
+    // Строим импорты
     const imports: EnhancedPackageInfo['imports'] = {};
     for (const imp of entities.imports) {
       const importKey = imp.source;
@@ -1103,6 +1099,7 @@ export function buildEnhancedPackageLockReport(
       };
     }
 
+    // Строим экспорты
     const exports: EnhancedPackageInfo['exports'] = {};
     for (const func of entities.functions) {
       if (func.isExported) {
@@ -1118,15 +1115,16 @@ export function buildEnhancedPackageLockReport(
       }
     }
 
+    // fileStats берем из entitiesMap (уже извлеченные данные)
     const fileStats = {
       size,
       lines,
-      functions: fileEntities.functions.length,
-      classes: fileEntities.classes.length,
-      constants: fileEntities.constants.length,
-      interfaces: fileEntities.interfaces.length,
-      types: fileEntities.types.length,
-      variables: fileEntities.variables.length,
+      functions: entities.functions.length,
+      classes: entities.classes.length,
+      constants: entities.constants.length,
+      interfaces: entities.interfaces.length,
+      types: entities.types.length,
+      variables: entities.variables.length,
     };
 
     packages[modulePath] = {
@@ -1224,7 +1222,7 @@ export function buildEnhancedPackageLockReport(
       totalInterfaces,
       totalTypes,
       totalClasses,
-      totalCalls,
+      totalCalls, // ✅ ТЕПЕРЬ ПРАВИЛЬНО
       totalExportedFunctions,
       totalAsyncFunctions,
     },
@@ -1234,6 +1232,74 @@ export function buildEnhancedPackageLockReport(
       totalLines,
     },
     timestamp: new Date().toISOString(),
+  };
+}
+
+// ============================================================
+// НОВАЯ ФУНКЦИЯ: convertToEnhancedEntityInfo
+// ============================================================
+
+/**
+ * Преобразует EntitiesResult в EnhancedEntityInfo
+ */
+function convertToEnhancedEntityInfo(entities: EntitiesResult): EnhancedEntityInfo {
+  return {
+    functions: entities.functions.map(f => ({
+      name: f.name,
+      params: f.params,
+      paramTypes: f.params.map(() => 'any'),
+      line: f.line,
+      startLine: f.startLine,
+      endLine: f.endLine,
+      isAsync: f.isAsync,
+      isExported: f.isExported,
+      isMethod: f.isMethod || false,
+      className: f.className,
+      calls: f.calls || [],
+      calledBy: f.calledBy || [],
+      returnType: f.returnType || 'any',
+      body: f.body || '',
+    })),
+    constants: entities.constants.map(c => ({
+      name: c.name,
+      value: c.value,
+      line: c.line,
+      isExported: c.isExported,
+      type: c.type,
+    })),
+    variables: entities.variables.map(v => ({
+      name: v.name,
+      value: v.value,
+      line: v.line,
+      isExported: v.isExported,
+      type: v.type,
+    })),
+    interfaces: entities.interfaces.map(i => ({
+      name: i.name,
+      properties: i.properties,
+      line: i.line,
+      isExported: i.isExported,
+      extends: i.extends,
+      startLine: i.startLine,
+      endLine: i.endLine,
+    })),
+    types: entities.types.map(t => ({
+      name: t.name,
+      definition: t.definition,
+      line: t.line,
+      isExported: t.isExported,
+    })),
+    classes: entities.classes.map(c => ({
+      name: c.name,
+      methods: c.methods,
+      properties: c.properties,
+      line: c.line,
+      isExported: c.isExported,
+      extends: c.extends,
+      implements: c.implements,
+      startLine: c.startLine,
+      endLine: c.endLine,
+    })),
   };
 }
 

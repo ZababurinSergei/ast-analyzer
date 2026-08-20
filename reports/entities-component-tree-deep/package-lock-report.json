@@ -184,14 +184,6 @@
           ],
           "functions": {}
         },
-        "./reporters/html-reporter.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "generateHTMLReport"
-          ],
-          "functions": {}
-        },
         "./reporters/json-reporter.js": {
           "direction": "inward",
           "type": "internal-import",
@@ -200,6 +192,14 @@
             "saveEntityGraph",
             "saveFullAnalysis",
             "savePackageLockReport as saveEnhancedPackageLockReport"
+          ],
+          "functions": {}
+        },
+        "./reporters/html-reporter.js": {
+          "direction": "inward",
+          "type": "internal-import",
+          "specifiers": [
+            "generateHTMLReport"
           ],
           "functions": {}
         },
@@ -249,7 +249,7 @@
           "isAsync": true,
           "params": [],
           "returns": "any",
-          "line": 845,
+          "line": 852,
           "consumers": []
         }
       },
@@ -262,14 +262,14 @@
         "classes": []
       },
       "fileStats": {
-        "size": 61844,
-        "lines": 1859,
-        "functions": 0,
+        "size": 62525,
+        "lines": 1874,
+        "functions": 5,
         "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "constants": 174,
+        "interfaces": 1,
         "types": 0,
-        "variables": 0
+        "variables": 26
       }
     },
     "src/utils/is-main.ts": {
@@ -320,9 +320,9 @@
       "fileStats": {
         "size": 513,
         "lines": 17,
-        "functions": 0,
+        "functions": 1,
         "classes": 0,
-        "constants": 0,
+        "constants": 2,
         "interfaces": 0,
         "types": 0,
         "variables": 0
@@ -388,12 +388,12 @@
       "fileStats": {
         "size": 6517,
         "lines": 226,
-        "functions": 0,
+        "functions": 5,
         "classes": 0,
-        "constants": 0,
+        "constants": 23,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 1
       }
     },
     "src/core/graph-utils.ts": {
@@ -453,12 +453,12 @@
       "fileStats": {
         "size": 3560,
         "lines": 119,
-        "functions": 0,
+        "functions": 4,
         "classes": 0,
-        "constants": 0,
+        "constants": 12,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 2
       }
     },
     "src/core/tsconfig-resolver.ts": {
@@ -651,12 +651,12 @@
       "fileStats": {
         "size": 8772,
         "lines": 311,
-        "functions": 0,
+        "functions": 13,
         "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "constants": 29,
+        "interfaces": 2,
         "types": 0,
-        "variables": 0
+        "variables": 8
       }
     },
     "src/core/ast-parser.ts": {
@@ -864,12 +864,12 @@
       "fileStats": {
         "size": 25251,
         "lines": 842,
-        "functions": 0,
+        "functions": 16,
         "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "constants": 72,
+        "interfaces": 1,
         "types": 0,
-        "variables": 0
+        "variables": 7
       }
     },
     "src/core/entity-extractor.ts": {
@@ -932,12 +932,12 @@
       "fileStats": {
         "size": 30944,
         "lines": 966,
-        "functions": 0,
+        "functions": 9,
         "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "constants": 95,
+        "interfaces": 9,
         "types": 0,
-        "variables": 0
+        "variables": 14
       }
     },
     "src/modes/project-graph.ts": {
@@ -1042,7 +1042,7 @@
             "toFunction"
           ],
           "returns": "any",
-          "line": 332,
+          "line": 333,
           "consumers": []
         }
       },
@@ -1055,14 +1055,14 @@
         "classes": []
       },
       "fileStats": {
-        "size": 19182,
-        "lines": 632,
-        "functions": 0,
+        "size": 19303,
+        "lines": 633,
+        "functions": 8,
         "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "constants": 55,
+        "interfaces": 4,
         "types": 0,
-        "variables": 0
+        "variables": 4
       }
     },
     "src/modes/file-graph.ts": {
@@ -1123,9 +1123,9 @@
       "fileStats": {
         "size": 7178,
         "lines": 217,
-        "functions": 0,
+        "functions": 2,
         "classes": 0,
-        "constants": 0,
+        "constants": 13,
         "interfaces": 0,
         "types": 0,
         "variables": 0
@@ -1196,12 +1196,12 @@
       "fileStats": {
         "size": 2423,
         "lines": 63,
-        "functions": 0,
+        "functions": 1,
         "classes": 0,
-        "constants": 0,
+        "constants": 8,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 2
       }
     },
     "src/modes/split-module.ts": {
@@ -1303,12 +1303,12 @@
       "fileStats": {
         "size": 25294,
         "lines": 719,
-        "functions": 0,
+        "functions": 3,
         "classes": 0,
-        "constants": 0,
+        "constants": 55,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 6
       }
     },
     "src/modes/impact.ts": {
@@ -1371,12 +1371,12 @@
       "fileStats": {
         "size": 5009,
         "lines": 136,
-        "functions": 0,
+        "functions": 1,
         "classes": 0,
-        "constants": 0,
+        "constants": 10,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 4
       }
     },
     "src/modes/dead-code.ts": {
@@ -1438,12 +1438,12 @@
       "fileStats": {
         "size": 4523,
         "lines": 134,
-        "functions": 0,
+        "functions": 1,
         "classes": 0,
-        "constants": 0,
+        "constants": 16,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 4
       }
     },
     "src/modes/minify-folder.ts": {
@@ -1511,12 +1511,12 @@
       "fileStats": {
         "size": 8905,
         "lines": 289,
-        "functions": 0,
+        "functions": 4,
         "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "constants": 30,
+        "interfaces": 2,
         "types": 0,
-        "variables": 0
+        "variables": 9
       }
     },
     "src/modes/vue-analyzer.ts": {
@@ -1639,12 +1639,12 @@
       "fileStats": {
         "size": 63753,
         "lines": 2015,
-        "functions": 0,
+        "functions": 28,
         "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "constants": 246,
+        "interfaces": 2,
         "types": 0,
-        "variables": 0
+        "variables": 33
       }
     },
     "src/refactor/index.ts": {
@@ -1797,12 +1797,12 @@
       "fileStats": {
         "size": 40536,
         "lines": 1162,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 13,
+        "classes": 1,
+        "constants": 110,
+        "interfaces": 4,
         "types": 0,
-        "variables": 0
+        "variables": 12
       }
     },
     "src/formal/Z3Verifier.ts": {
@@ -2104,12 +2104,12 @@
       "fileStats": {
         "size": 38647,
         "lines": 1234,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 45,
+        "classes": 1,
+        "constants": 96,
+        "interfaces": 3,
         "types": 0,
-        "variables": 0
+        "variables": 2
       }
     },
     "src/modes/hybrid-report/index.ts": {
@@ -2248,74 +2248,10 @@
       "fileStats": {
         "size": 9189,
         "lines": 306,
-        "functions": 0,
+        "functions": 5,
         "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
-        "types": 0,
-        "variables": 0
-      }
-    },
-    "src/reporters/html-reporter.ts": {
-      "version": "1.0.0",
-      "resolved": "file:src/reporters/html-reporter.ts",
-      "type": "module",
-      "language": "typescript",
-      "isEntry": false,
-      "imports": {
-        "../utils/path-utils.js": {
-          "direction": "inward",
-          "type": "internal-import",
-          "specifiers": [
-            "normalizePathForDisplay",
-            "getFileNameForDisplay"
-          ],
-          "functions": {}
-        }
-      },
-      "exports": {
-        "escapeHtml": {
-          "direction": "outward",
-          "type": "export",
-          "isAsync": false,
-          "params": [
-            "str"
-          ],
-          "returns": "any",
-          "line": 9,
-          "consumers": []
-        },
-        "generateHTMLReport": {
-          "direction": "outward",
-          "type": "export",
-          "isAsync": false,
-          "params": [
-            "svgContent",
-            "dotContent",
-            "jsonContent",
-            "title",
-            "hasCycles"
-          ],
-          "returns": "any",
-          "line": 27,
-          "consumers": []
-        }
-      },
-      "entities": {
-        "functions": [],
-        "constants": [],
-        "variables": [],
-        "interfaces": [],
-        "types": [],
-        "classes": []
-      },
-      "fileStats": {
-        "size": 4764,
-        "lines": 113,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "constants": 8,
+        "interfaces": 2,
         "types": 0,
         "variables": 0
       }
@@ -2414,7 +2350,7 @@
             "outputPath"
           ],
           "returns": "any",
-          "line": 306,
+          "line": 307,
           "consumers": []
         },
         "saveCallGraphResult": {
@@ -2426,7 +2362,7 @@
             "outputPath"
           ],
           "returns": "any",
-          "line": 336,
+          "line": 337,
           "consumers": []
         },
         "buildModuleGraph": {
@@ -2438,7 +2374,7 @@
             "entities"
           ],
           "returns": "any",
-          "line": 348,
+          "line": 349,
           "consumers": []
         },
         "buildEntityGraph": {
@@ -2450,7 +2386,7 @@
             "entities"
           ],
           "returns": "any",
-          "line": 416,
+          "line": 417,
           "consumers": []
         },
         "buildFullAnalysis": {
@@ -2463,7 +2399,7 @@
             "root"
           ],
           "returns": "any",
-          "line": 593,
+          "line": 594,
           "consumers": []
         },
         "findProjectRoot": {
@@ -2474,7 +2410,7 @@
             "startDir"
           ],
           "returns": "any",
-          "line": 630,
+          "line": 631,
           "consumers": []
         },
         "extractEntitiesFromFile": {
@@ -2485,7 +2421,7 @@
             "filePath"
           ],
           "returns": "any",
-          "line": 702,
+          "line": 703,
           "consumers": []
         },
         "buildEnhancedPackageLockReport": {
@@ -2499,7 +2435,7 @@
             "filePaths"
           ],
           "returns": "any",
-          "line": 987,
+          "line": 993,
           "consumers": []
         }
       },
@@ -2512,14 +2448,78 @@
         "classes": []
       },
       "fileStats": {
-        "size": 37036,
-        "lines": 1279,
-        "functions": 0,
+        "size": 39087,
+        "lines": 1345,
+        "functions": 16,
         "classes": 0,
-        "constants": 0,
+        "constants": 153,
+        "interfaces": 17,
+        "types": 0,
+        "variables": 20
+      }
+    },
+    "src/reporters/html-reporter.ts": {
+      "version": "1.0.0",
+      "resolved": "file:src/reporters/html-reporter.ts",
+      "type": "module",
+      "language": "typescript",
+      "isEntry": false,
+      "imports": {
+        "../utils/path-utils.js": {
+          "direction": "inward",
+          "type": "internal-import",
+          "specifiers": [
+            "normalizePathForDisplay",
+            "getFileNameForDisplay"
+          ],
+          "functions": {}
+        }
+      },
+      "exports": {
+        "escapeHtml": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "str"
+          ],
+          "returns": "any",
+          "line": 9,
+          "consumers": []
+        },
+        "generateHTMLReport": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "svgContent",
+            "dotContent",
+            "jsonContent",
+            "title",
+            "hasCycles"
+          ],
+          "returns": "any",
+          "line": 27,
+          "consumers": []
+        }
+      },
+      "entities": {
+        "functions": [],
+        "constants": [],
+        "variables": [],
+        "interfaces": [],
+        "types": [],
+        "classes": []
+      },
+      "fileStats": {
+        "size": 4764,
+        "lines": 113,
+        "functions": 2,
+        "classes": 0,
+        "constants": 6,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 1
       }
     },
     "src/reporters/interactive-reporter.ts": {
@@ -2564,6 +2564,22 @@
             "Graphviz"
           ],
           "functions": {}
+        },
+        "../core/entity-extractor.js": {
+          "direction": "inward",
+          "type": "internal-import",
+          "specifiers": [
+            "EntitiesResult"
+          ],
+          "functions": {}
+        },
+        "./json-reporter.js": {
+          "direction": "inward",
+          "type": "internal-import",
+          "specifiers": [
+            "EnhancedEntityInfo"
+          ],
+          "functions": {}
         }
       },
       "exports": {
@@ -2573,10 +2589,11 @@
           "isAsync": true,
           "params": [
             "analysis",
-            "outputPath"
+            "outputPath",
+            "entitiesWithCalls"
           ],
           "returns": "any",
-          "line": 217,
+          "line": 287,
           "consumers": []
         }
       },
@@ -2589,14 +2606,14 @@
         "classes": []
       },
       "fileStats": {
-        "size": 30351,
-        "lines": 782,
-        "functions": 0,
+        "size": 33099,
+        "lines": 889,
+        "functions": 6,
         "classes": 0,
-        "constants": 0,
+        "constants": 67,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 5
       }
     },
     "src/types.ts": {
@@ -2636,8 +2653,8 @@
         "functions": 0,
         "classes": 0,
         "constants": 0,
-        "interfaces": 0,
-        "types": 0,
+        "interfaces": 66,
+        "types": 3,
         "variables": 0
       }
     },
@@ -2733,12 +2750,12 @@
       "fileStats": {
         "size": 6364,
         "lines": 140,
-        "functions": 0,
+        "functions": 6,
         "classes": 0,
-        "constants": 0,
+        "constants": 6,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 2
       }
     },
     "src/utils/path-utils.ts": {
@@ -2939,12 +2956,12 @@
       "fileStats": {
         "size": 9791,
         "lines": 340,
-        "functions": 0,
+        "functions": 14,
         "classes": 0,
-        "constants": 0,
+        "constants": 20,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 6
       }
     },
     "src/config.ts": {
@@ -2968,7 +2985,7 @@
         "lines": 22,
         "functions": 0,
         "classes": 0,
-        "constants": 0,
+        "constants": 4,
         "interfaces": 0,
         "types": 0,
         "variables": 0
@@ -3086,7 +3103,7 @@
         "functions": 0,
         "classes": 0,
         "constants": 0,
-        "interfaces": 0,
+        "interfaces": 4,
         "types": 0,
         "variables": 0
       }
@@ -3304,12 +3321,12 @@
       "fileStats": {
         "size": 63897,
         "lines": 1845,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
+        "functions": 37,
+        "classes": 1,
+        "constants": 181,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 19
       }
     },
     "src/refactor/ModuleExtractor.ts": {
@@ -3389,12 +3406,12 @@
       "fileStats": {
         "size": 37998,
         "lines": 1132,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 24,
+        "classes": 1,
+        "constants": 150,
+        "interfaces": 3,
         "types": 0,
-        "variables": 0
+        "variables": 13
       }
     },
     "src/refactor/ImportManager.ts": {
@@ -3466,12 +3483,12 @@
       "fileStats": {
         "size": 16615,
         "lines": 503,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
+        "functions": 11,
+        "classes": 1,
+        "constants": 63,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 11
       }
     },
     "src/refactor/TypeScriptValidator.ts": {
@@ -3520,12 +3537,12 @@
       "fileStats": {
         "size": 29031,
         "lines": 960,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 27,
+        "classes": 1,
+        "constants": 118,
+        "interfaces": 2,
         "types": 0,
-        "variables": 0
+        "variables": 9
       }
     },
     "src/refactor/ESLintASTFixer.ts": {
@@ -3581,12 +3598,12 @@
       "fileStats": {
         "size": 47338,
         "lines": 1503,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 41,
+        "classes": 1,
+        "constants": 196,
+        "interfaces": 2,
         "types": 0,
-        "variables": 0
+        "variables": 30
       }
     },
     "src/refactor/CodeValidator.ts": {
@@ -3633,12 +3650,12 @@
       "fileStats": {
         "size": 29220,
         "lines": 919,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 17,
+        "classes": 1,
+        "constants": 127,
+        "interfaces": 2,
         "types": 0,
-        "variables": 0
+        "variables": 4
       }
     },
     "src/refactor/CodeFixer.ts": {
@@ -3701,12 +3718,12 @@
       "fileStats": {
         "size": 21172,
         "lines": 699,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 25,
+        "classes": 1,
+        "constants": 88,
+        "interfaces": 1,
         "types": 0,
-        "variables": 0
+        "variables": 9
       }
     },
     "src/refactor/TemplateUpdater.ts": {
@@ -3777,12 +3794,12 @@
       "fileStats": {
         "size": 4495,
         "lines": 147,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
+        "functions": 5,
+        "classes": 1,
+        "constants": 16,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 4
       }
     },
     "src/refactor/SyntaxValidator.ts": {
@@ -3841,10 +3858,10 @@
       "fileStats": {
         "size": 9058,
         "lines": 265,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 10,
+        "classes": 1,
+        "constants": 32,
+        "interfaces": 1,
         "types": 0,
         "variables": 0
       }
@@ -3893,12 +3910,12 @@
       "fileStats": {
         "size": 12557,
         "lines": 420,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
-        "types": 0,
-        "variables": 0
+        "functions": 13,
+        "classes": 1,
+        "constants": 23,
+        "interfaces": 1,
+        "types": 1,
+        "variables": 8
       }
     },
     "src/refactor/BackupManager.ts": {
@@ -3945,12 +3962,12 @@
       "fileStats": {
         "size": 7963,
         "lines": 272,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
+        "functions": 17,
+        "classes": 1,
+        "constants": 13,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 1
       }
     },
     "src/refactor/interfaces/IRefactorContext.ts": {
@@ -4002,7 +4019,7 @@
         "functions": 0,
         "classes": 0,
         "constants": 0,
-        "interfaces": 0,
+        "interfaces": 1,
         "types": 0,
         "variables": 0
       }
@@ -4035,12 +4052,12 @@
       "fileStats": {
         "size": 18413,
         "lines": 636,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 32,
+        "classes": 1,
+        "constants": 61,
+        "interfaces": 2,
         "types": 0,
-        "variables": 0
+        "variables": 6
       }
     },
     "src/semantic/CallGraphAnalyzer.ts": {
@@ -4101,12 +4118,12 @@
       "fileStats": {
         "size": 23757,
         "lines": 758,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 26,
+        "classes": 1,
+        "constants": 99,
+        "interfaces": 2,
         "types": 0,
-        "variables": 0
+        "variables": 14
       }
     },
     "src/semantic/TypeAnalyzer.ts": {
@@ -4171,12 +4188,12 @@
       "fileStats": {
         "size": 11443,
         "lines": 369,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 21,
+        "classes": 1,
+        "constants": 36,
+        "interfaces": 3,
         "types": 0,
-        "variables": 0
+        "variables": 3
       }
     },
     "src/semantic/DataFlowAnalyzer.ts": {
@@ -4207,12 +4224,12 @@
       "fileStats": {
         "size": 11922,
         "lines": 409,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 20,
+        "classes": 1,
+        "constants": 58,
+        "interfaces": 3,
         "types": 0,
-        "variables": 0
+        "variables": 2
       }
     },
     "src/semantic/JSXAnalyzer.ts": {
@@ -4274,12 +4291,12 @@
       "fileStats": {
         "size": 19755,
         "lines": 637,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 23,
+        "classes": 1,
+        "constants": 88,
+        "interfaces": 3,
         "types": 0,
-        "variables": 0
+        "variables": 3
       }
     },
     "src/utils/wasm-utils.ts": {
@@ -4376,12 +4393,12 @@
       "fileStats": {
         "size": 4859,
         "lines": 163,
-        "functions": 0,
+        "functions": 5,
         "classes": 0,
-        "constants": 0,
+        "constants": 17,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 1
       }
     },
     "src/formal/ExpressionParser.ts": {
@@ -4583,12 +4600,12 @@
       "fileStats": {
         "size": 36287,
         "lines": 1286,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
+        "functions": 38,
+        "classes": 1,
+        "constants": 109,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 29
       }
     },
     "src/formal/FunctionBodyModeler.ts": {
@@ -4622,12 +4639,12 @@
       "fileStats": {
         "size": 21518,
         "lines": 708,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 10,
+        "classes": 1,
+        "constants": 74,
+        "interfaces": 1,
         "types": 0,
-        "variables": 0
+        "variables": 3
       }
     },
     "src/modes/hybrid-report/types.ts": {
@@ -4652,7 +4669,7 @@
         "functions": 0,
         "classes": 0,
         "constants": 0,
-        "interfaces": 0,
+        "interfaces": 4,
         "types": 0,
         "variables": 0
       }
@@ -4764,12 +4781,12 @@
       "fileStats": {
         "size": 6841,
         "lines": 173,
-        "functions": 0,
+        "functions": 1,
         "classes": 0,
-        "constants": 0,
+        "constants": 16,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 2
       }
     },
     "src/modes/hybrid-report/builder.ts": {
@@ -4855,12 +4872,12 @@
       "fileStats": {
         "size": 6078,
         "lines": 198,
-        "functions": 0,
+        "functions": 1,
         "classes": 0,
-        "constants": 0,
+        "constants": 30,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 6
       }
     },
     "src/modes/hybrid-report/analyzer.ts": {
@@ -4921,12 +4938,12 @@
       "fileStats": {
         "size": 10450,
         "lines": 317,
-        "functions": 0,
+        "functions": 1,
         "classes": 0,
-        "constants": 0,
+        "constants": 58,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 5
       }
     },
     "src/modes/hybrid-report/generators/dot.ts": {
@@ -4970,12 +4987,12 @@
       "fileStats": {
         "size": 3228,
         "lines": 86,
-        "functions": 0,
+        "functions": 1,
         "classes": 0,
-        "constants": 0,
+        "constants": 21,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 1
       }
     },
     "src/modes/hybrid-report/generators/html.ts": {
@@ -5037,12 +5054,12 @@
       "fileStats": {
         "size": 38977,
         "lines": 967,
-        "functions": 0,
+        "functions": 1,
         "classes": 0,
-        "constants": 0,
+        "constants": 17,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 3
       }
     },
     "src/modes/hybrid-report/generators/markdown.ts": {
@@ -5086,12 +5103,12 @@
       "fileStats": {
         "size": 5610,
         "lines": 166,
-        "functions": 0,
+        "functions": 1,
         "classes": 0,
-        "constants": 0,
+        "constants": 16,
         "interfaces": 0,
         "types": 0,
-        "variables": 0
+        "variables": 1
       }
     },
     "src/formal/index.ts": {
@@ -5381,12 +5398,12 @@
       "fileStats": {
         "size": 15822,
         "lines": 543,
-        "functions": 0,
+        "functions": 15,
         "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "constants": 20,
+        "interfaces": 1,
         "types": 0,
-        "variables": 0
+        "variables": 2
       }
     },
     "src/utils/Logger.ts": {
@@ -5457,12 +5474,12 @@
       "fileStats": {
         "size": 8385,
         "lines": 290,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 28,
+        "classes": 1,
+        "constants": 26,
+        "interfaces": 1,
         "types": 0,
-        "variables": 0
+        "variables": 2
       }
     },
     "src/formal/checkers/FileEquivalenceChecker.ts": {
@@ -5575,12 +5592,12 @@
       "fileStats": {
         "size": 23662,
         "lines": 731,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 20,
+        "classes": 1,
+        "constants": 44,
+        "interfaces": 2,
         "types": 0,
-        "variables": 0
+        "variables": 6
       }
     },
     "src/formal/checkers/RefactoringEquivalenceChecker.ts": {
@@ -5700,12 +5717,12 @@
       "fileStats": {
         "size": 31712,
         "lines": 887,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 17,
+        "classes": 1,
+        "constants": 80,
+        "interfaces": 2,
         "types": 0,
-        "variables": 0
+        "variables": 9
       }
     },
     "src/formal/checkers/EquivalenceChecker.ts": {
@@ -5810,12 +5827,12 @@
       "fileStats": {
         "size": 49857,
         "lines": 1577,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 25,
+        "classes": 1,
+        "constants": 109,
+        "interfaces": 5,
         "types": 0,
-        "variables": 0
+        "variables": 28
       }
     },
     "src/core/ASTComparator.ts": {
@@ -5847,12 +5864,12 @@
       "fileStats": {
         "size": 18094,
         "lines": 564,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 9,
+        "classes": 1,
+        "constants": 36,
+        "interfaces": 2,
         "types": 0,
-        "variables": 0
+        "variables": 4
       }
     },
     "src/core/SignatureComparator.ts": {
@@ -5938,12 +5955,12 @@
       "fileStats": {
         "size": 24985,
         "lines": 808,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 19,
+        "classes": 1,
+        "constants": 99,
+        "interfaces": 3,
         "types": 0,
-        "variables": 0
+        "variables": 15
       }
     },
     "src/core/CallGraphComparator.ts": {
@@ -5995,12 +6012,12 @@
       "fileStats": {
         "size": 19769,
         "lines": 691,
-        "functions": 0,
-        "classes": 0,
-        "constants": 0,
-        "interfaces": 0,
+        "functions": 20,
+        "classes": 1,
+        "constants": 116,
+        "interfaces": 4,
         "types": 0,
-        "variables": 0
+        "variables": 3
       }
     }
   },
@@ -6027,8 +6044,8 @@
         "src/ci-cd/SemanticPipeline.ts",
         "src/formal/Z3Verifier.ts",
         "src/modes/hybrid-report/index.ts",
-        "src/reporters/html-reporter.ts",
         "src/reporters/json-reporter.ts",
+        "src/reporters/html-reporter.ts",
         "src/reporters/interactive-reporter.ts",
         "src/types.ts",
         "src/utils.ts",
@@ -6124,15 +6141,17 @@
         "src/modes/hybrid-report/generators/html.ts",
         "src/modes/hybrid-report/generators/markdown.ts"
       ],
-      "src/reporters/html-reporter.ts": [
-        "src/utils/path-utils.ts"
-      ],
       "src/reporters/json-reporter.ts": [
         "src/core/entity-extractor.ts"
       ],
+      "src/reporters/html-reporter.ts": [
+        "src/utils/path-utils.ts"
+      ],
       "src/reporters/interactive-reporter.ts": [
         "src/types.ts",
-        "@hpcc-js/wasm-graphviz"
+        "@hpcc-js/wasm-graphviz",
+        "src/core/entity-extractor.ts",
+        "src/reporters/json-reporter.ts"
       ],
       "src/types.ts": [
         "src/core/entity-extractor.ts"
@@ -6319,6 +6338,7 @@
         "src/cli.ts",
         "src/modes/project-graph.ts",
         "src/reporters/json-reporter.ts",
+        "src/reporters/interactive-reporter.ts",
         "src/types.ts"
       ],
       "src/modes/project-graph.ts": [
@@ -6367,12 +6387,13 @@
       "src/modes/hybrid-report/index.ts": [
         "src/cli.ts"
       ],
-      "src/reporters/html-reporter.ts": [
-        "src/cli.ts"
-      ],
       "src/reporters/json-reporter.ts": [
         "src/cli.ts",
-        "src/modes/project-graph.ts"
+        "src/modes/project-graph.ts",
+        "src/reporters/interactive-reporter.ts"
+      ],
+      "src/reporters/html-reporter.ts": [
+        "src/cli.ts"
       ],
       "src/reporters/interactive-reporter.ts": [
         "src/cli.ts"
@@ -6649,10 +6670,10 @@
       "src/modes/hybrid-report/index.ts": {
         "importsFrom": []
       },
-      "src/reporters/html-reporter.ts": {
+      "src/reporters/json-reporter.ts": {
         "importsFrom": []
       },
-      "src/reporters/json-reporter.ts": {
+      "src/reporters/html-reporter.ts": {
         "importsFrom": []
       },
       "src/reporters/interactive-reporter.ts": {
@@ -6837,10 +6858,10 @@
       "src/modes/hybrid-report/index.ts": {
         "exportsTo": []
       },
-      "src/reporters/html-reporter.ts": {
+      "src/reporters/json-reporter.ts": {
         "exportsTo": []
       },
-      "src/reporters/json-reporter.ts": {
+      "src/reporters/html-reporter.ts": {
         "exportsTo": []
       },
       "src/reporters/interactive-reporter.ts": {
@@ -6971,324 +6992,138 @@
   "callGraph": {
     "findProjectRoot": [],
     "resolveAbsoluteFilePath": [],
-    "parseArgs": [
-      "normalizePathForOS",
-      "showHelp",
-      "parseInt"
-    ],
-    "runCLI": [
-      "parseArgs",
-      "normalizePathForOS",
-      "setTsConfigPath",
-      "loadTsConfig",
-      "parseInt",
-      "runHybridReport",
-      "createIntParam",
-      "range",
-      "eq",
-      "analyzeVueComponent",
-      "generateVueComponentReport",
-      "buildSplitModulePrompt",
-      "minifyFolder",
-      "findDeadCode",
-      "runImpactAnalysis",
-      "buildAiPromptPack",
-      "minifyForAI",
-      "parseFloat",
-      "buildProjectGraph",
-      "normalizeGraphPaths",
-      "findCyclicEdges",
-      "convertToDOT",
-      "generateHTMLReport",
-      "normalizePathForDisplay",
-      "findProjectRoot",
-      "resolveAbsoluteFilePath",
-      "saveEnhancedPackageLockReport",
-      "parseFile",
-      "extractEntities",
-      "findModuleForEntity",
-      "generateInteractiveHTML",
-      "buildFileInternalGraph",
-      "saveModuleGraph",
-      "saveEntityGraph",
-      "saveFullAnalysis"
-    ],
+    "parseArgs": [],
+    "runCLI": [],
     "findModuleForEntity": [],
-    "isMainModule": [
-      "fileURLToPath"
-    ],
-    "collectAllNodes": [
-      "traverse"
-    ],
-    "minifyCodeString": [
-      "collectAllNodes",
-      "shouldPreserveValue"
-    ],
+    "isMainModule": [],
+    "collectAllNodes": [],
+    "traverse": [],
+    "minifyCodeString": [],
     "shouldPreserveValue": [],
-    "minifyForAI": [
-      "parseFile",
-      "minifyCodeString"
-    ],
-    "findCyclicEdges": [
-      "dfs"
-    ],
+    "minifyForAI": [],
+    "findCyclicEdges": [],
+    "dfs": [],
     "convertToDOT": [],
-    "dfs": [
-      "callback"
-    ],
     "setTsConfigPath": [],
-    "loadTsConfig": [
-      "normalizePathForOS"
-    ],
+    "loadTsConfig": [],
     "getTsConfigDir": [],
     "getCachedTsConfig": [],
     "clearTsConfigCache": [],
-    "resolveAliasPath": [
-      "normalizePathForOS"
-    ],
+    "resolveAliasPath": [],
     "hasAliases": [],
     "getAliases": [],
     "getBaseUrl": [],
     "isAliasPath": [],
-    "resolveAliasPattern": [
-      "normalizePathForOS"
-    ],
+    "resolveAliasPattern": [],
     "addAlias": [],
     "removeAlias": [],
     "resolveAbsolutePath": [],
-    "validateAndResolvePath": [
-      "resolveAbsolutePath"
-    ],
-    "getTsConfigForFile": [
-      "loadTsConfig"
-    ],
-    "parseVueSFCFile": [
-      "resolveAbsolutePath",
-      "parseVueSFC"
-    ],
-    "parseFile": [
-      "validateAndResolvePath",
-      "parseVueSFCFile",
-      "String"
-    ],
+    "validateAndResolvePath": [],
+    "getTsConfigForFile": [],
+    "parseVueSFCFile": [],
+    "parseFile": [],
     "isExternalModule": [],
-    "resolveFilePath": [
-      "getTsConfigForFile",
-      "getTsConfigDir",
-      "resolveAliasPath"
-    ],
-    "getAllProjectFiles": [
-      "String"
-    ],
-    "extractFunctionsFromAST": [
-      "walk",
-      "isNodeExported"
-    ],
-    "extractClassesFromAST": [
-      "walk",
-      "isNodeExported"
-    ],
-    "extractConstantsFromAST": [
-      "walk",
-      "isNodeExported",
-      "extractValueFromNode"
-    ],
-    "extractInterfacesFromAST": [
-      "walk",
-      "isNodeExported"
-    ],
-    "extractTypesFromAST": [
-      "walk",
-      "isNodeExported"
-    ],
-    "extractVariablesFromAST": [
-      "walk",
-      "isNodeExported",
-      "extractValueFromNode"
-    ],
+    "resolveFilePath": [],
+    "getAllProjectFiles": [],
+    "extractFunctionsFromAST": [],
+    "extractClassesFromAST": [],
+    "extractConstantsFromAST": [],
+    "extractInterfacesFromAST": [],
+    "extractTypesFromAST": [],
+    "extractVariablesFromAST": [],
     "isNodeExported": [],
-    "extractValueFromNode": [
-      "isNaN",
-      "Number"
-    ],
+    "extractValueFromNode": [],
     "isArraySafe": [],
     "getNodeType": [],
     "getNodeLocation": [],
-    "extractEntities": [
-      "isArraySafe",
-      "getNodeType",
-      "walk",
-      "getNodeLocation",
-      "isNodeExported",
-      "extractBodyText",
-      "extractValue",
-      "isChildNode"
-    ],
-    "isChildNode": [
-      "isArraySafe"
-    ],
-    "extractBodyText": [
-      "String"
-    ],
-    "extractValue": [
-      "isArraySafe"
-    ],
-    "extractCallGraph": [
-      "walk"
-    ],
+    "extractEntities": [],
+    "isChildNode": [],
+    "extractBodyText": [],
+    "extractValue": [],
+    "extractCallGraph": [],
     "buildCallGraphBetweenFunctions": [],
-    "buildPackageLockReportSync": [
-      "buildEnhancedPackageLockReport"
-    ],
-    "buildProjectGraph": [
-      "getTsConfigForFile",
-      "parseFile",
-      "extractEntities",
-      "collectImports",
-      "collectReExports",
-      "isExternalModule",
-      "resolveFilePath",
-      "expandFolderReExport",
-      "normalizePathForDisplay",
-      "findProjectRoot",
-      "resolveAbsoluteFilePath",
-      "buildPackageLockReportSync",
-      "buildCallGraphBetweenFunctions"
-    ],
-    "collectImports": [
-      "walk"
-    ],
-    "collectReExports": [
-      "walk"
-    ],
-    "expandFolderReExport": [
-      "parseFile",
-      "collectReExports",
-      "resolveFilePath"
-    ],
+    "buildPackageLockReportSync": [],
+    "buildProjectGraph": [],
+    "collectImports": [],
+    "collectReExports": [],
+    "expandFolderReExport": [],
     "collectDeclarationsRecursive": [],
-    "buildFileInternalGraph": [
-      "parseFile",
-      "normalizePathForDisplay",
-      "collectDeclarationsRecursive",
-      "walk"
-    ],
-    "buildAiPromptPack": [
-      "buildProjectGraph",
-      "minifyForAI"
-    ],
-    "analyzeModuleStructure": [
-      "parseFile",
-      "walk"
-    ],
+    "buildFileInternalGraph": [],
+    "buildAiPromptPack": [],
+    "analyzeModuleStructure": [],
     "identifyClusters": [],
-    "buildSplitModulePrompt": [
-      "analyzeVueComponent",
-      "analyzeModuleStructure",
-      "buildFileInternalGraph",
-      "findCyclicEdges",
-      "identifyClusters",
-      "minifyForAI",
-      "generateVueComponentReport"
-    ],
-    "runImpactAnalysis": [
-      "getAllProjectFiles",
-      "parseFile",
-      "walk",
-      "resolveFilePath"
-    ],
-    "findDeadCode": [
-      "parseFile",
-      "walk",
-      "getAllProjectFiles",
-      "resolveFilePath"
-    ],
-    "generateDirectoryTree": [
-      "renderNode"
-    ],
+    "buildSplitModulePrompt": [],
+    "runImpactAnalysis": [],
+    "findDeadCode": [],
+    "generateDirectoryTree": [],
+    "renderNode": [],
     "collectFiles": [],
-    "minifyFolder": [
-      "collectFiles",
-      "generateDirectoryTree",
-      "minifyForAI"
-    ],
-    "parseVueFile": [
-      "parse"
-    ],
-    "compileScriptBlock": [
-      "compileScript"
-    ],
-    "extractPropsFromSource": [
-      "String",
-      "isNaN",
-      "Number"
-    ],
+    "minifyFolder": [],
+    "parseVueFile": [],
+    "compileScriptBlock": [],
+    "extractPropsFromSource": [],
     "extractEmitsFromSource": [],
     "extractPropsFromCompiledScript": [],
     "extractEmitsFromCompiledScript": [],
-    "extractExposeFromCompiledScript": [
-      "String"
-    ],
+    "extractExposeFromCompiledScript": [],
     "getNodeValue": [],
-    "extractPropsFromAST": [
-      "collectTypes",
-      "findDefineProps",
-      "findWithDefaults",
-      "extractPropsFromTypeNode",
-      "getNodeValue"
-    ],
-    "extractEmitsFromAST": [
-      "findDefineEmits",
-      "getNodeValue",
-      "String"
-    ],
-    "extractExposeFromAST": [
-      "findDefineExpose"
-    ],
-    "analyzeTemplate": [
-      "traverseVueAST"
-    ],
+    "extractPropsFromAST": [],
+    "collectTypes": [],
+    "extractPropsFromTypeNode": [],
+    "findDefineProps": [],
+    "findWithDefaults": [],
+    "extractEmitsFromAST": [],
+    "findDefineEmits": [],
+    "extractExposeFromAST": [],
+    "findDefineExpose": [],
+    "analyzeTemplate": [],
+    "traverseVueAST": [],
     "extractImportsFromAST": [],
     "extractImportsFromSource": [],
-    "extractComposablesFromAST": [
-      "String",
-      "visitNode"
-    ],
+    "extractComposablesFromAST": [],
+    "visitNode": [],
     "extractComposablesFromSource": [],
-    "analyzeVueComponent": [
-      "parseVueFile",
-      "compileScriptBlock",
-      "analyzeTemplate",
-      "extractPropsFromCompiledScript",
-      "extractEmitsFromCompiledScript",
-      "extractExposeFromCompiledScript",
-      "parseTS",
-      "extractPropsFromAST",
-      "extractPropsFromSource",
-      "extractEmitsFromAST",
-      "extractEmitsFromSource",
-      "extractExposeFromAST",
-      "extractImportsFromAST",
-      "extractImportsFromSource",
-      "extractComposablesFromAST",
-      "extractComposablesFromSource"
-    ],
-    "generateVueComponentReport": [
-      "String"
-    ],
-    "enhanceWithVueAnalysis": [
-      "analyzeVueComponent"
-    ],
-    "analyzeVueComponentCli": [
-      "analyzeVueComponent",
-      "generateVueComponentReport"
-    ],
-    "runSemanticPipeline": [
-      "glob"
-    ],
+    "analyzeVueComponent": [],
+    "generateVueComponentReport": [],
+    "enhanceWithVueAnalysis": [],
+    "analyzeVueComponentCli": [],
+    "SemanticPipeline.constructor": [],
+    "SemanticPipeline.run": [],
+    "SemanticPipeline.initialize": [],
+    "SemanticPipeline.extractContract": [],
+    "SemanticPipeline.checkNullPointers": [],
+    "SemanticPipeline.hasNullCheckBefore": [],
+    "SemanticPipeline.calculateComplexity": [],
+    "SemanticPipeline.printReport": [],
+    "SemanticPipeline.saveReport": [],
+    "SemanticPipeline.generateHTMLReport": [],
+    "SemanticPipeline.generateMarkdownReport": [],
+    "SemanticPipeline.escapeHtml": [],
+    "runSemanticPipeline": [],
     "createIntVar": [],
     "createBoolVar": [],
     "createIntVal": [],
+    "Z3Verifier.initialize": [],
+    "Z3Verifier.doInitialize": [],
+    "Z3Verifier.isInitialized": [],
+    "Z3Verifier.getExpressionParser": [],
+    "Z3Verifier.getFunctionBodyModeler": [],
+    "Z3Verifier.verifyFunction": [],
+    "Z3Verifier.verifyEquivalence": [],
+    "Z3Verifier.verifyLoopInvariant": [],
+    "Z3Verifier.verifyArrayProperty": [],
+    "propertyWithArray": [],
+    "Z3Verifier.modelFunctionBody": [],
+    "Z3Verifier.parseExpression": [],
+    "Z3Verifier.constraintToZ3": [],
+    "Z3Verifier.valueToZ3": [],
+    "Z3Verifier.computeWeakestPrecondition": [],
+    "Z3Verifier.substitute": [],
+    "Z3Verifier.buildPostconditionFormula": [],
+    "Z3Verifier.extractModel": [],
+    "Z3Verifier.getCounterexample": [],
+    "Z3Verifier.reset": [],
+    "Z3Verifier.dispose": [],
     "createIntParam": [],
     "createBoolParam": [],
     "createStringParam": [],
@@ -7314,125 +7149,416 @@
     "getModulesByLevel": [],
     "getAllFunctions": [],
     "getFunctionsByExportSource": [],
-    "getFunctionsStats": [
-      "getAllFunctions"
-    ],
-    "escapeHtml": [],
-    "generateHTMLReport": [
-      "normalizePathForDisplay",
-      "getFileNameForDisplay",
-      "escapeHtml"
-    ],
-    "saveModuleGraph": [
-      "buildModuleGraph"
-    ],
-    "saveEntityGraph": [
-      "buildEntityGraph"
-    ],
-    "saveFullAnalysis": [
-      "buildFullAnalysis"
-    ],
-    "savePackageLockReport": [
-      "buildEnhancedPackageLockReport"
-    ],
+    "getFunctionsStats": [],
+    "saveModuleGraph": [],
+    "saveEntityGraph": [],
+    "saveFullAnalysis": [],
+    "savePackageLockReport": [],
     "saveCallGraphResult": [],
     "buildModuleGraph": [],
-    "buildEntityGraph": [
-      "findModuleForEntity"
-    ],
-    "buildFullAnalysis": [
-      "buildModuleGraph",
-      "buildEntityGraph"
-    ],
-    "findFileInProject": [
-      "walkDir"
-    ],
-    "extractEntitiesFromFile": [
-      "extractValueFromNode"
-    ],
-    "buildEnhancedPackageLockReport": [
-      "findProjectRoot",
-      "findFileInProject",
-      "extractEntitiesFromFile"
-    ],
-    "generateFullDOT": [
-      "getEntityColor",
-      "getEntityShape",
-      "getEdgeColor"
-    ],
+    "buildEntityGraph": [],
+    "buildFullAnalysis": [],
+    "findFileInProject": [],
+    "walkDir": [],
+    "extractEntitiesFromFile": [],
+    "buildEnhancedPackageLockReport": [],
+    "convertToEnhancedEntityInfo": [],
+    "escapeHtml": [],
+    "generateHTMLReport": [],
+    "generateFullDOT": [],
     "getEntityColor": [],
     "getEntityShape": [],
     "getEdgeColor": [],
-    "generateInteractiveHTML": [
-      "generateFullDOT"
-    ],
+    "convertEnhancedToEntities": [],
+    "generateInteractiveHTML": [],
     "showHelp": [],
     "formatFileSize": [],
     "generateTempId": [],
     "ensureDirectoryExists": [],
-    "renderNode": [],
     "normalizePathForDisplay": [],
-    "getFileNameForDisplay": [
-      "normalizePathForDisplay"
-    ],
-    "getFileNameWithoutExt": [
-      "normalizePathForDisplay"
-    ],
-    "normalizeRootKey": [
-      "normalizePathForDisplay"
-    ],
-    "normalizeGraphPaths": [
-      "normalizeRootKey",
-      "normalizePathForDisplay"
-    ],
+    "getFileNameForDisplay": [],
+    "getFileNameWithoutExt": [],
+    "normalizeRootKey": [],
+    "normalizeGraphPaths": [],
     "isAbsolutePath": [],
-    "shortenPath": [
-      "normalizePathForDisplay"
-    ],
-    "getRelativePathForDisplay": [
-      "normalizePathForDisplay"
-    ],
+    "shortenPath": [],
+    "getRelativePathForDisplay": [],
     "normalizePathForOS": [],
-    "fileExistsCaseSensitive": [
-      "normalizePathForOS"
-    ],
-    "getImportPath": [
-      "normalizePathForOS"
-    ],
+    "fileExistsCaseSensitive": [],
+    "getImportPath": [],
     "isValidWindowsPath": [],
     "toWindowsPath": [],
     "toUnixPath": [],
     "getDefaultWasmPath": [],
-    "determineModuleExtension": [
-      "hasTypeScriptSyntax",
-      "hasESMSpecificSyntax"
-    ],
+    "AutoRefactor.isDryRun": [],
+    "AutoRefactor.constructor": [],
+    "AutoRefactor.initSemanticComponents": [],
+    "AutoRefactor.refactor": [],
+    "AutoRefactor.refactorWithGuarantee": [],
+    "AutoRefactor.refactorStandard": [],
+    "AutoRefactor.analyzeAndCluster": [],
+    "AutoRefactor.extractModules": [],
+    "AutoRefactor.updateImports": [],
+    "AutoRefactor.analyzeFile": [],
+    "AutoRefactor.identifyClusters": [],
+    "AutoRefactor.identifyClustersSingle": [],
+    "AutoRefactor.isExported": [],
+    "AutoRefactor.validateExtractedModule": [],
+    "AutoRefactor.calculateCohesion": [],
+    "AutoRefactor.generateClusterName": [],
+    "AutoRefactor.collectOriginalExports": [],
+    "AutoRefactor.finalValidation": [],
+    "AutoRefactor.createErrorResult": [],
+    "AutoRefactor.createSuccessResult": [],
+    "AutoRefactor.getRelativePath": [],
+    "AutoRefactor.initialize": [],
+    "AutoRefactor.dispose": [],
+    "AutoRefactor.runSemanticAnalysis": [],
+    "AutoRefactor.runCodeValidation": [],
+    "AutoRefactor.runESLint": [],
+    "AutoRefactor.runTypeCheck": [],
+    "AutoRefactor.runAutoFix": [],
+    "AutoRefactor.runFormalVerification": [],
+    "AutoRefactor.extractContract": [],
+    "AutoRefactor.getParamType": [],
+    "AutoRefactor.getReturnType": [],
+    "AutoRefactor.collectMetrics": [],
+    "AutoRefactor.calculateComplexity": [],
+    "AutoRefactor.getEquivalenceResult": [],
+    "AutoRefactor.isEquivalenceVerified": [],
+    "determineModuleExtension": [],
     "hasTypeScriptSyntax": [],
     "hasESMSpecificSyntax": [],
     "hasSpecialConstructs": [],
-    "isTypeCompatible": [
-      "isAssignableToType"
-    ],
-    "getTypeString": [
-      "typeToString"
-    ],
+    "ModuleExtractor.constructor": [],
+    "ModuleExtractor.setModuleType": [],
+    "ModuleExtractor.extractModules": [],
+    "ModuleExtractor.validateModule": [],
+    "ModuleExtractor.generateClusterCode": [],
+    "ModuleExtractor.analyzeGlobalConstants": [],
+    "ModuleExtractor.collectAllDependencies": [],
+    "ModuleExtractor.createConstantsModule": [],
+    "ModuleExtractor.createRemainingExportsModule": [],
+    "ModuleExtractor.analyzeClusterDependencies": [],
+    "ModuleExtractor.generateSharedVariablesCode": [],
+    "ModuleExtractor.generateDependenciesCode": [],
+    "ModuleExtractor.collectOriginalExports": [],
+    "ModuleExtractor.inferVariableType": [],
+    "ModuleExtractor.inferValueType": [],
+    "ModuleExtractor.extractValue": [],
+    "ModuleExtractor.findNode": [],
+    "ModuleExtractor.removeNodesWithTsMorph": [],
+    "ModuleExtractor.generateModuleName": [],
+    "ModuleExtractor.getRelativePath": [],
+    "ImportManager.constructor": [],
+    "ImportManager.addAllReExports": [],
+    "ImportManager.addReExports": [],
+    "ImportManager.updateImports": [],
+    "ImportManager.optimizeImportOrder": [],
+    "sortBySpecifier": [],
+    "ImportManager.removeUnusedImports": [],
+    "ImportManager.isExportUsed": [],
+    "ImportManager.collectUsedIdentifiers": [],
+    "ImportManager.getRelativePath": [],
+    "ImportManager.escapeRegex": [],
+    "TypeScriptValidator.constructor": [],
+    "TypeScriptValidator.addGlobalDeclarations": [],
+    "TypeScriptValidator.loadFile": [],
+    "TypeScriptValidator.getDiagnostics": [],
+    "TypeScriptValidator.getDiagnosticMessage": [],
+    "TypeScriptValidator.formatDiagnostic": [],
+    "TypeScriptValidator.validateFiles": [],
+    "TypeScriptValidator.isFixable": [],
+    "TypeScriptValidator.getFixSuggestion": [],
+    "TypeScriptValidator.fixCannotFindName": [],
+    "TypeScriptValidator.fixCannotFindModule": [],
+    "TypeScriptValidator.fixMissingProperty": [],
+    "TypeScriptValidator.fixImplicitAny": [],
+    "TypeScriptValidator.fixBindingImplicitAny": [],
+    "TypeScriptValidator.fixImplicitAnyIndex": [],
+    "TypeScriptValidator.fixUnusedVariable": [],
+    "TypeScriptValidator.fixTypeMismatch": [],
+    "TypeScriptValidator.fixTypo": [],
+    "TypeScriptValidator.fixUnknownError": [],
+    "TypeScriptValidator.fixImportExtensions": [],
+    "TypeScriptValidator.fixMissingTypes": [],
+    "TypeScriptValidator.addToHistory": [],
+    "TypeScriptValidator.validateAndFix": [],
+    "TypeScriptValidator.fixDiagnostic": [],
+    "TypeScriptValidator.getFixedSourceFile": [],
+    "TypeScriptValidator.saveAll": [],
+    "TypeScriptValidator.getFixHistory": [],
+    "ESLintASTFixer.constructor": [],
+    "ESLintASTFixer.loadFile": [],
+    "ESLintASTFixer.getDiagnostics": [],
+    "ESLintASTFixer.fixDiagnostic": [],
+    "ESLintASTFixer.fixJSXDiagnostic": [],
+    "ESLintASTFixer.fixSelfClosingComponent": [],
+    "ESLintASTFixer.fixJSXBooleanValue": [],
+    "ESLintASTFixer.fixJSXCurlyBraces": [],
+    "ESLintASTFixer.fixJSXPascalCase": [],
+    "ESLintASTFixer.fixJSXClosingBracketLocation": [],
+    "ESLintASTFixer.fixJSXCurlySpacing": [],
+    "ESLintASTFixer.fixJSXEqualsSpacing": [],
+    "ESLintASTFixer.fixJSXIndent": [],
+    "ESLintASTFixer.fixJSXIndentProps": [],
+    "ESLintASTFixer.fixJSXMaxPropsPerLine": [],
+    "ESLintASTFixer.fixJSXNoDuplicateProps": [],
+    "ESLintASTFixer.fixJSXPropsNoMultiSpaces": [],
+    "ESLintASTFixer.fixJSXTagSpacing": [],
+    "ESLintASTFixer.fixJSXWrapMultilines": [],
+    "ESLintASTFixer.fixNoUnusedVars": [],
+    "ESLintASTFixer.fixNoUndef": [],
+    "ESLintASTFixer.fixMissingSemi": [],
+    "ESLintASTFixer.fixQuotes": [],
+    "ESLintASTFixer.fixTrailingSpaces": [],
+    "ESLintASTFixer.fixEOL": [],
+    "ESLintASTFixer.fixMultipleEmptyLines": [],
+    "ESLintASTFixer.fixCommaDangle": [],
+    "ESLintASTFixer.fixPreferConst": [],
+    "ESLintASTFixer.fixEqEqEq": [],
+    "ESLintASTFixer.fixNoVar": [],
+    "ESLintASTFixer.fixObjectShorthand": [],
+    "ESLintASTFixer.fixArrowBodyStyle": [],
+    "ESLintASTFixer.fixNoUnusedExpressions": [],
+    "ESLintASTFixer.findAssignmentsToVariable": [],
+    "ESLintASTFixer.isReservedHtmlTag": [],
+    "ESLintASTFixer.addToHistory": [],
+    "ESLintASTFixer.getFixableRules": [],
+    "ESLintASTFixer.fixFile": [],
+    "ESLintASTFixer.fixFiles": [],
+    "ESLintASTFixer.getFixHistory": [],
+    "ESLintASTFixer.clearHistory": [],
+    "CodeValidator.constructor": [],
+    "CodeValidator.validateFiles": [],
+    "CodeValidator.validateFile": [],
+    "CodeValidator.validateSyntax": [],
+    "CodeValidator.validateImports": [],
+    "CodeValidator.validateExports": [],
+    "CodeValidator.validateUnusedVariables": [],
+    "CodeValidator.validateCircularDeps": [],
+    "CodeValidator.validateTypes": [],
+    "CodeValidator.validateNaming": [],
+    "CodeValidator.validateSecurity": [],
+    "CodeValidator.validatePerformance": [],
+    "CodeValidator.addIssue": [],
+    "CodeValidator.generateSummary": [],
+    "CodeValidator.saveReport": [],
+    "CodeValidator.saveJSONReport": [],
+    "CodeValidator.generateMarkdownReport": [],
+    "CodeFixer.constructor": [],
+    "CodeFixer.getProject": [],
+    "CodeFixer.isTypeScriptFix": [],
+    "CodeFixer.isESLintFix": [],
+    "CodeFixer.isTypeScriptFile": [],
+    "CodeFixer.autoFix": [],
+    "CodeFixer.fixTypeScriptFile": [],
+    "CodeFixer.applyTsFix": [],
+    "CodeFixer.fixCannotFindName": [],
+    "CodeFixer.fixCannotFindModule": [],
+    "CodeFixer.fixMissingProperty": [],
+    "CodeFixer.fixImplicitAny": [],
+    "CodeFixer.fixBindingImplicitAny": [],
+    "CodeFixer.fixImplicitAnyIndex": [],
+    "CodeFixer.fixUnusedVariable": [],
+    "CodeFixer.fixTypeMismatch": [],
+    "CodeFixer.fixTypo": [],
+    "CodeFixer.fixUnknownError": [],
+    "CodeFixer.fixImportExtensions": [],
+    "CodeFixer.fixMissingTypes": [],
+    "CodeFixer.fixESLintIssues": [],
+    "CodeFixer.getStats": [],
+    "CodeFixer.resetStats": [],
+    "CodeFixer.getESLintFixHistory": [],
+    "CodeFixer.isFixable": [],
+    "TemplateUpdater.constructor": [],
+    "TemplateUpdater.update": [],
+    "TemplateUpdater.updateTemplateImports": [],
+    "TemplateUpdater.updateScriptImports": [],
+    "TemplateUpdater.writeVueFile": [],
+    "SyntaxValidator.constructor": [],
+    "SyntaxValidator.validate": [],
+    "SyntaxValidator.validateJavaScriptSoft": [],
+    "SyntaxValidator.validateTypeScript": [],
+    "SyntaxValidator.validateWithNode": [],
+    "SyntaxValidator.validateESMWithMorph": [],
+    "SyntaxValidator.isESModule": [],
+    "SyntaxValidator.getModuleType": [],
+    "SyntaxValidator.clearCache": [],
+    "SyntaxValidator.validateMultiple": [],
+    "ModuleTypeDetector.constructor": [],
+    "ModuleTypeDetector.detect": [],
+    "ModuleTypeDetector.findPackageJson": [],
+    "ModuleTypeDetector.clearCache": [],
+    "ModuleTypeDetector.getExtension": [],
+    "ModuleTypeDetector.getImportSyntax": [],
+    "ModuleTypeDetector.getExportSyntax": [],
+    "ModuleTypeDetector.generateImport": [],
+    "ModuleTypeDetector.generateExport": [],
+    "ModuleTypeDetector.generateReExport": [],
+    "ModuleTypeDetector.getModuleExtension": [],
+    "ModuleTypeDetector.hasTypeScriptSyntax": [],
+    "ModuleTypeDetector.hasESMSyntax": [],
+    "BackupManager.constructor": [],
+    "BackupManager.createFullBackup": [],
+    "BackupManager.createWorkingCopy": [],
+    "BackupManager.createCheckpoint": [],
+    "BackupManager.restoreCheckpoint": [],
+    "BackupManager.restoreLastCheckpoint": [],
+    "BackupManager.restore": [],
+    "BackupManager.removeCheckpoint": [],
+    "BackupManager.cleanup": [],
+    "BackupManager.cleanupDirectory": [],
+    "BackupManager.getBackups": [],
+    "BackupManager.getCheckpoints": [],
+    "BackupManager.clearAllBackups": [],
+    "BackupManager.hasBackups": [],
+    "BackupManager.hasCheckpoints": [],
+    "BackupManager.getLastBackup": [],
+    "BackupManager.getLastCheckpoint": [],
+    "CFGAnalyzer.createEmptyGraph": [],
+    "CFGAnalyzer.build": [],
+    "checkNodes": [],
+    "CFGAnalyzer.buildBasicBlocks": [],
+    "CFGAnalyzer.findLeaders": [],
+    "CFGAnalyzer.buildEdges": [],
+    "CFGAnalyzer.handleIfStatement": [],
+    "CFGAnalyzer.handleLoop": [],
+    "CFGAnalyzer.handleSwitch": [],
+    "CFGAnalyzer.handleTry": [],
+    "CFGAnalyzer.handleReturn": [],
+    "CFGAnalyzer.computeDominators": [],
+    "CFGAnalyzer.identifyLoops": [],
+    "CFGAnalyzer.findLoopBody": [],
+    "CFGAnalyzer.computeReachability": [],
+    "CFGAnalyzer.findUnreachable": [],
+    "CFGAnalyzer.getLoops": [],
+    "CFGAnalyzer.createBlock": [],
+    "CFGAnalyzer.finalizeBlock": [],
+    "CFGAnalyzer.addEdge": [],
+    "CFGAnalyzer.findBlockContainingNode": [],
+    "CFGAnalyzer.getNextBlock": [],
+    "CFGAnalyzer.getNextSibling": [],
+    "CFGAnalyzer.getFirstNode": [],
+    "CFGAnalyzer.getOrderedNodes": [],
+    "collect": [],
+    "CFGAnalyzer.isTerminator": [],
+    "CFGAnalyzer.isBranch": [],
+    "CFGAnalyzer.isPrologue": [],
+    "CFGAnalyzer.intersect": [],
+    "CFGAnalyzer.setsEqual": [],
+    "CallGraphAnalyzer.constructor": [],
+    "CallGraphAnalyzer.ensureInitialized": [],
+    "CallGraphAnalyzer.setWasmPath": [],
+    "CallGraphAnalyzer.getWasmPath": [],
+    "CallGraphAnalyzer.isInitialized": [],
+    "CallGraphAnalyzer.analyze": [],
+    "CallGraphAnalyzer.analyzeSingle": [],
+    "CallGraphAnalyzer.parseSingleFile": [],
+    "CallGraphAnalyzer.parseDirectory": [],
+    "CallGraphAnalyzer.parseFile": [],
+    "CallGraphAnalyzer.buildNodes": [],
+    "CallGraphAnalyzer.detectCycles": [],
+    "CallGraphAnalyzer.findUnused": [],
+    "CallGraphAnalyzer.shouldIgnore": [],
+    "CallGraphAnalyzer.isSupportedFile": [],
+    "CallGraphAnalyzer.getJSXFiles": [],
+    "walk": [],
+    "CallGraphAnalyzer.analyzeAllJSXComponents": [],
+    "CallGraphAnalyzer.exportToJSON": [],
+    "CallGraphAnalyzer.generateJSXReport": [],
+    "CallGraphAnalyzer.extractVueFunctions": [],
+    "CallGraphAnalyzer.analyzeVueFile": [],
+    "CallGraphAnalyzer.analyzeAllVueFiles": [],
+    "CallGraphAnalyzer.generateVueReport": [],
+    "TypeAnalyzer.constructor": [],
+    "TypeAnalyzer.analyze": [],
+    "TypeAnalyzer.getTypeInfo": [],
+    "TypeAnalyzer.getTypeInfoFromSimpleType": [],
+    "TypeAnalyzer.checkTypeCompatibility": [],
+    "TypeAnalyzer.findTypeErrors": [],
+    "visit": [],
+    "TypeAnalyzer.inferFunctionReturnType": [],
+    "TypeAnalyzer.findFunctionDeclaration": [],
+    "TypeAnalyzer.isNullable": [],
+    "TypeAnalyzer.isOptional": [],
+    "TypeAnalyzer.getElementType": [],
+    "TypeAnalyzer.getEnclosingFunction": [],
+    "TypeAnalyzer.parseTypeString": [],
+    "TypeAnalyzer.getNodeLocation": [],
+    "TypeAnalyzer.isArrayType": [],
+    "TypeAnalyzer.isObjectType": [],
+    "TypeAnalyzer.getPropertyOfSimpleType": [],
+    "isTypeCompatible": [],
+    "getTypeString": [],
+    "DataFlowAnalyzer.analyze": [],
+    "DataFlowAnalyzer.collectVariableDeclarations": [],
+    "DataFlowAnalyzer.collectVariableUsages": [],
+    "DataFlowAnalyzer.findUnused": [],
+    "DataFlowAnalyzer.findReassigned": [],
+    "DataFlowAnalyzer.findDependencies": [],
+    "DataFlowAnalyzer.getChain": [],
+    "DataFlowAnalyzer.extractValue": [],
+    "DataFlowAnalyzer.isConstant": [],
+    "DataFlowAnalyzer.isDeclaration": [],
+    "DataFlowAnalyzer.isInScope": [],
+    "DataFlowAnalyzer.getDefinitions": [],
+    "DataFlowAnalyzer.getUsages": [],
+    "DataFlowAnalyzer.isVariableUsed": [],
+    "DataFlowAnalyzer.getVariableStats": [],
+    "DataFlowAnalyzer.exportToDOT": [],
+    "DataFlowAnalyzer.findDataPath": [],
+    "JSXAnalyzer.constructor": [],
+    "JSXAnalyzer.analyze": [],
+    "JSXAnalyzer.parseJSXElement": [],
+    "JSXAnalyzer.parseJSXSelfClosingElement": [],
+    "JSXAnalyzer.parseJSXFragment": [],
+    "JSXAnalyzer.parseJSXAttributes": [],
+    "JSXAnalyzer.parseJSXChildren": [],
+    "JSXAnalyzer.validateJSXProps": [],
+    "JSXAnalyzer.lintJSXElement": [],
+    "JSXAnalyzer.lintJSXSelfClosingElement": [],
+    "JSXAnalyzer.getComponentType": [],
+    "JSXAnalyzer.isIntrinsicElement": [],
+    "JSXAnalyzer.isPropDefined": [],
+    "JSXAnalyzer.isPropTypeCompatible": [],
+    "JSXAnalyzer.getExpectedPropType": [],
+    "JSXAnalyzer.getRequiredProps": [],
+    "JSXAnalyzer.checkReactImport": [],
+    "JSXAnalyzer.getTypeInfo": [],
+    "JSXAnalyzer.generateReport": [],
+    "JSXAnalyzer.applyFixes": [],
     "isJSXFile": [],
-    "getJSXFiles": [
-      "isJSXFile"
-    ],
+    "getJSXFiles": [],
     "findWasmPath": [],
-    "isWasmAvailable": [
-      "findWasmPath"
-    ],
-    "getAvailableGrammars": [
-      "findWasmPath"
-    ],
-    "createWasmSymlink": [
-      "findWasmPath"
-    ],
-    "copyWasmFiles": [
-      "findWasmPath"
-    ],
+    "isWasmAvailable": [],
+    "getAvailableGrammars": [],
+    "createWasmSymlink": [],
+    "copyWasmFiles": [],
+    "ExpressionParser.constructor": [],
+    "ExpressionParser.parse": [],
+    "ExpressionParser.parseUnaryNot": [],
+    "ExpressionParser.parseBinary": [],
+    "ExpressionParser.parseLogicalOperators": [],
+    "ExpressionParser.parseUnaryOrBinary": [],
+    "ExpressionParser.splitByOperator": [],
+    "ExpressionParser.createBinaryOperation": [],
+    "ExpressionParser.stripOuterParens": [],
+    "ExpressionParser.isSimple": [],
+    "ExpressionParser.extractVariables": [],
+    "ExpressionParser.hasNotOperator": [],
+    "ExpressionParser.hasBooleanOperators": [],
+    "ExpressionParser.hasArithmeticOperators": [],
+    "ExpressionParser.inferExpressionType": [],
+    "ExpressionParser.decompose": [],
+    "ExpressionParser.parseWithTypes": [],
+    "ExpressionParser.parseConditional": [],
+    "ExpressionParser.parseLoopInvariant": [],
+    "ExpressionParser.parseArrayProperty": [],
+    "ExpressionParser.validate": [],
+    "ExpressionParser.getSubExpressions": [],
+    "ExpressionParser.isValidForZ3": [],
+    "ExpressionParser.toZ3String": [],
     "createExpressionParser": [],
     "parseExpression": [],
     "validateExpression": [],
@@ -7441,49 +7567,35 @@
     "toZ3String": [],
     "parseFunctionBody": [],
     "createFunctionVariables": [],
-    "verifyFunctionWithBody": [
-      "String"
-    ],
+    "verifyFunctionWithBody": [],
     "createContractFromExpression": [],
     "createContractWithAutoPreconditions": [],
     "canParseExpression": [],
     "isSimpleExpression": [],
     "extractVariablesFromExpression": [],
-    "runHybridReport": [
-      "buildHybridReport",
-      "generateHybridMarkdown",
-      "generateHybridDOT",
-      "generateHybridHTML",
-      "buildFileInternalGraph",
-      "String",
-      "findCyclicEdges",
-      "convertToDOT"
-    ],
-    "buildHybridReport": [
-      "buildProjectGraph",
-      "analyzeModule",
-      "findCyclicEdges"
-    ],
+    "FunctionBodyModeler.constructor": [],
+    "FunctionBodyModeler.modelFunctionBody": [],
+    "FunctionBodyModeler.wrapFunctionCode": [],
+    "FunctionBodyModeler.getOperatorText": [],
+    "FunctionBodyModeler.modelNode": [],
+    "FunctionBodyModeler.canModelFunction": [],
+    "FunctionBodyModeler.simplifyBody": [],
+    "FunctionBodyModeler.isSimpleArithmetic": [],
+    "FunctionBodyModeler.isConditional": [],
+    "FunctionBodyModeler.extractVariables": [],
+    "runHybridReport": [],
+    "buildHybridReport": [],
     "analyzeModule": [],
-    "generateHybridDOT": [
-      "parseInt"
-    ],
-    "generateHybridHTML": [
-      "generateHybridDOT",
-      "parseInt"
-    ],
-    "generateHybridMarkdown": [
-      "parseInt"
-    ],
+    "generateHybridDOT": [],
+    "generateHybridHTML": [],
+    "generateHybridMarkdown": [],
     "createContractTemplate": [],
     "addPrecondition": [],
     "addPostcondition": [],
     "addInvariant": [],
     "addBody": [],
     "buildContract": [],
-    "createContractFromSignature": [
-      "createContractTemplate"
-    ],
+    "createContractFromSignature": [],
     "validatePostconditions": [],
     "generateVerificationReport": [],
     "areContractsEquivalent": [],
@@ -7491,43 +7603,157 @@
     "checkRefactoringEquivalence": [],
     "checkFunctionEquivalence": [],
     "checkExpressionEquivalence": [],
-    "verifyFunction": [
-      "createIntParam",
-      "range"
-    ],
+    "verifyFunction": [],
+    "Logger.constructor": [],
+    "Logger.initializeLogFile": [],
+    "Logger.rotateLogFile": [],
+    "Logger.getColor": [],
+    "Logger.getIcon": [],
+    "Logger.format": [],
+    "Logger.formatContext": [],
+    "Logger.log": [],
+    "Logger.debug": [],
+    "Logger.info": [],
+    "Logger.warn": [],
+    "Logger.error": [],
+    "Logger.startOperation": [],
+    "Logger.endOperation": [],
+    "Logger.failOperation": [],
+    "Logger.progress": [],
+    "Logger.createProgressBar": [],
+    "Logger.section": [],
+    "Logger.table": [],
+    "Logger.setLevel": [],
+    "Logger.getLevel": [],
+    "Logger.setMaxFileSize": [],
+    "Logger.setMaxFiles": [],
+    "Logger.close": [],
+    "Logger.child": [],
     "parseLogLevel": [],
     "getGlobalLogger": [],
     "setGlobalLogger": [],
+    "FileEquivalenceChecker.constructor": [],
+    "FileEquivalenceChecker.initialize": [],
+    "FileEquivalenceChecker.checkFileEquivalence": [],
+    "FileEquivalenceChecker.checkFunctionEquivalence": [],
+    "FileEquivalenceChecker.createSuccessResult": [],
+    "FileEquivalenceChecker.createDetailedResult": [],
+    "FileEquivalenceChecker.createErrorResult": [],
+    "FileEquivalenceChecker.createTimeoutResult": [],
+    "FileEquivalenceChecker.generateReport": [],
+    "FileEquivalenceChecker.saveReport": [],
+    "FileEquivalenceChecker.isEquivalent": [],
+    "FileEquivalenceChecker.needsReview": [],
+    "FileEquivalenceChecker.confidenceLevel": [],
+    "FileEquivalenceChecker.dispose": [],
+    "FileEquivalenceChecker.getASTComparator": [],
+    "FileEquivalenceChecker.getSignatureComparator": [],
+    "FileEquivalenceChecker.getCallGraphComparator": [],
     "isEquivalencePassed": [],
     "hasCriticalIssues": [],
     "getSummary": [],
+    "RefactoringEquivalenceChecker.constructor": [],
+    "RefactoringEquivalenceChecker.initialize": [],
+    "RefactoringEquivalenceChecker.dispose": [],
+    "RefactoringEquivalenceChecker.checkRefactoringEquivalence": [],
+    "RefactoringEquivalenceChecker.extractAllFunctions": [],
+    "RefactoringEquivalenceChecker.createContractFromSignature": [],
+    "RefactoringEquivalenceChecker.inferParamType": [],
+    "RefactoringEquivalenceChecker.generateDiff": [],
+    "RefactoringEquivalenceChecker.generateReport": [],
+    "RefactoringEquivalenceChecker.generateErrorReport": [],
+    "RefactoringEquivalenceChecker.signatureToString": [],
+    "RefactoringEquivalenceChecker.exportToJSON": [],
+    "RefactoringEquivalenceChecker.saveReport": [],
+    "RefactoringEquivalenceChecker.checkFunctionEquivalence": [],
     "isRefactoringEquivalent": [],
     "needsRefactoringReview": [],
+    "EquivalenceChecker.constructor": [],
+    "EquivalenceChecker.initialize": [],
+    "EquivalenceChecker.doInitialize": [],
+    "EquivalenceChecker.dispose": [],
+    "EquivalenceChecker.getZ3Verifier": [],
+    "EquivalenceChecker.extractReturnExpression": [],
+    "EquivalenceChecker.createEquivalenceContract": [],
+    "EquivalenceChecker.checkFileEquivalence": [],
+    "EquivalenceChecker.checkFunctionEquivalence": [],
+    "wrapInBraces": [],
+    "EquivalenceChecker.checkExpressionEquivalence": [],
+    "EquivalenceChecker.isSimpleMathFunction": [],
+    "EquivalenceChecker.createSimpleContract": [],
+    "EquivalenceChecker.extractFunctionsAST": [],
+    "EquivalenceChecker.matchFunctions": [],
+    "EquivalenceChecker.uniqueDifferences": [],
+    "EquivalenceChecker.loadFile": [],
+    "EquivalenceChecker.generateReport": [],
+    "EquivalenceChecker.saveReport": [],
+    "EquivalenceChecker.isEquivalent": [],
+    "EquivalenceChecker.needsReview": [],
+    "EquivalenceChecker.confidenceLevel": [],
     "isEquivalent": [],
     "needsReview": [],
     "confidenceLevel": [],
+    "ASTComparator.constructor": [],
+    "ASTComparator.compareNodes": [],
+    "ASTComparator.isOperatorToken": [],
+    "ASTComparator.compareFiles": [],
+    "ASTComparator.extractProperties": [],
+    "ASTComparator.getNodeSummary": [],
+    "ASTComparator.shouldIgnore": [],
+    "ASTComparator.assessImpact": [],
+    "ASTComparator.generateReport": [],
+    "SignatureComparator.extractSignature": [],
+    "SignatureComparator.compareSignatures": [],
+    "SignatureComparator.extractAllSignatures": [],
+    "SignatureComparator.compareAllSignatures": [],
+    "SignatureComparator.findFunctionBySignature": [],
+    "SignatureComparator.isCompatible": [],
+    "SignatureComparator.areTypesCompatible": [],
+    "SignatureComparator.generateReport": [],
+    "SignatureComparator.formatChange": [],
+    "SignatureComparator.signatureToString": [],
+    "SignatureComparator.exportToJSON": [],
+    "SignatureComparator.importFromJSON": [],
+    "SignatureComparator.getDecoratorsSafe": [],
+    "SignatureComparator.hasDecorator": [],
+    "SignatureComparator.isMethodExported": [],
     "isSignatureCompatible": [],
     "compareSignatures": [],
     "findFunctionByName": [],
     "findFunctionBySignature": [],
+    "CallGraphComparator.buildCallGraph": [],
+    "CallGraphComparator.findCalls": [],
+    "CallGraphComparator.addEdge": [],
+    "CallGraphComparator.compareGraphs": [],
+    "CallGraphComparator.findCycles": [],
+    "CallGraphComparator.findUnusedFunctions": [],
+    "CallGraphComparator.findMutualCalls": [],
+    "CallGraphComparator.toDot": [],
+    "CallGraphComparator.generateReport": [],
+    "CallGraphComparator.toJSON": [],
+    "CallGraphComparator.fromJSON": [],
+    "CallGraphComparator.findPath": [],
+    "CallGraphComparator.findDependents": [],
+    "find": [],
+    "CallGraphComparator.findDependencies": [],
     "createEmptyCallGraph": [],
     "mergeCallGraphs": []
   },
   "entityStats": {
-    "totalFunctions": 228,
-    "totalConstants": 17,
-    "totalVariables": 6,
+    "totalFunctions": 769,
+    "totalConstants": 3547,
+    "totalVariables": 424,
     "totalInterfaces": 168,
     "totalTypes": 4,
     "totalClasses": 27,
-    "totalCalls": 230,
-    "totalExportedFunctions": 174,
-    "totalAsyncFunctions": 12
+    "totalCalls": 0,
+    "totalExportedFunctions": 170,
+    "totalAsyncFunctions": 136
   },
   "fileStats": {
     "totalFiles": 62,
-    "totalSize": 1163945,
-    "totalLines": 36483
+    "totalSize": 1169546,
+    "totalLines": 36672
   },
-  "timestamp": "2026-08-20T13:55:50.081Z"
+  "timestamp": "2026-08-20T15:02:35.277Z"
 }

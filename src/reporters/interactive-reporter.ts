@@ -9,6 +9,8 @@ import type {
   EntityGraphEdge,
 } from '../types.js';
 import { Graphviz } from '@hpcc-js/wasm-graphviz';
+import type { EntitiesResult } from '../core/entity-extractor.js';
+import type { EnhancedEntityInfo } from './json-reporter.js';
 
 /**
  * Генерирует DOT граф для визуализации модулей и сущностей с правильными связями:
@@ -212,12 +214,95 @@ function getEdgeColor(type: string): string {
 }
 
 /**
+ * Преобразует EnhancedEntityInfo в EntitiesResult
+ */
+function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult {
+  return {
+    functions: enhanced.functions.map(f => ({
+      name: f.name,
+      line: f.line,
+      isAsync: f.isAsync,
+      isExported: f.isExported,
+      params: f.params,
+      returnType: f.returnType,
+      calls: f.calls || [],
+      calledBy: f.calledBy || [],
+      body: f.body || '',
+      startLine: f.startLine || f.line,
+      endLine: f.endLine || f.line,
+      isMethod: f.isMethod || false,
+      className: f.className,
+    })),
+    classes: enhanced.classes.map(c => ({
+      name: c.name,
+      line: c.line,
+      isExported: c.isExported,
+      methods: c.methods,
+      properties: c.properties,
+      extends: c.extends,
+      implements: c.implements,
+      startLine: c.startLine || c.line,
+      endLine: c.endLine || c.line,
+    })),
+    constants: enhanced.constants.map(c => ({
+      name: c.name,
+      line: c.line,
+      isExported: c.isExported,
+      value: c.value,
+      type: c.type,
+    })),
+    interfaces: enhanced.interfaces.map(i => ({
+      name: i.name,
+      line: i.line,
+      isExported: i.isExported,
+      properties: i.properties,
+      extends: i.extends,
+      startLine: i.startLine || i.line,
+      endLine: i.endLine || i.line,
+    })),
+    types: enhanced.types.map(t => ({
+      name: t.name,
+      line: t.line,
+      isExported: t.isExported,
+      definition: t.definition,
+    })),
+    variables: enhanced.variables.map(v => ({
+      name: v.name,
+      line: v.line,
+      isExported: v.isExported,
+      type: v.type,
+      value: v.value,
+    })),
+    imports: [],
+    exports: [],
+    callGraph: {},
+    moduleName: '',
+    filePath: '',
+  };
+}
+
+/**
  * Генерирует интерактивный HTML отчет с Graphviz графом
  */
 export async function generateInteractiveHTML(
   analysis: FullAnalysis,
-  outputPath: string
+  outputPath: string,
+  entitiesWithCalls?: EntitiesResult | EnhancedEntityInfo
 ): Promise<void> {
+  // Нормализуем данные
+  let entitiesData: EntitiesResult | null = null;
+
+  if (entitiesWithCalls) {
+    // Проверяем тип по наличию специфических полей
+    if ('imports' in entitiesWithCalls && 'exports' in entitiesWithCalls) {
+      // Это EntitiesResult
+      entitiesData = entitiesWithCalls as EntitiesResult;
+    } else {
+      // Это EnhancedEntityInfo - конвертируем
+      entitiesData = convertEnhancedToEntities(entitiesWithCalls as EnhancedEntityInfo);
+    }
+  }
+
   const dot = generateFullDOT(analysis);
 
   let svgContent = '';
@@ -260,6 +345,28 @@ export async function generateInteractiveHTML(
       (e: EntityGraphEdge) => e.type === 'class_extends' || e.type === 'interface_extends'
     ) || [];
 
+  // Если есть entitiesData, используем их для построения дополнительных связей
+  if (entitiesData) {
+    // Добавляем связи между функциями из entitiesData
+    for (const func of entitiesData.functions) {
+      for (const call of func.calls || []) {
+        // Проверяем, существует ли уже такое ребро
+        const exists = analysis.entityGraph.edges.some(
+          e => e.from === func.name && e.to === call && e.type === 'function_call'
+        );
+        if (!exists) {
+          // Добавляем ребро, если его нет
+          analysis.entityGraph.edges.push({
+            from: func.name,
+            to: call,
+            type: 'function_call',
+            line: func.line,
+          });
+        }
+      }
+    }
+  }
+
   const html = `<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -267,6 +374,7 @@ export async function generateInteractiveHTML(
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Интерактивный граф модулей и сущностей</title>
     <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -604,26 +712,26 @@ export async function generateInteractiveHTML(
         </div>
 
         ${
-          analysis.stats.cycles?.length > 0
-            ? `
+    analysis.stats.cycles?.length > 0
+      ? `
         <div class="cycles-section">
             <h2>🔄 Циклические зависимости (${analysis.stats.cycles.length})</h2>
             ${analysis.stats.cycles.map((cycle: string[]) => `<div class="cycle-item">${cycle.join(' → ')}</div>`).join('')}
         </div>
         `
-            : ''
-        }
+      : ''
+  }
 
         <h2 style="margin: 25px 0 15px; color:#60a5fa;">📁 Модули и сущности</h2>
         <div class="modules-grid">
             ${analysis.moduleGraph?.nodes
-              ?.map((module: ModuleGraphNode) => {
-                const entities =
-                  analysis.entityGraph?.nodes?.filter(
-                    (e: EntityGraphNode) => e.module === module.id
-                  ) || [];
-                const isEntry = module.metadata?.isEntry || false;
-                return `
+    ?.map((module: ModuleGraphNode) => {
+      const entities =
+        analysis.entityGraph?.nodes?.filter(
+          (e: EntityGraphNode) => e.module === module.id
+        ) || [];
+      const isEntry = module.metadata?.isEntry || false;
+      return `
                 <div class="module-card">
                     <div class="name">${isEntry ? '⭐ ' : ''}${module.name}</div>
                     <div class="path">${module.id}</div>
@@ -635,29 +743,29 @@ export async function generateInteractiveHTML(
                     </div>
                     <div class="entities-list">
                         ${entities
-                          .slice(0, 20)
-                          .map((entity: EntityGraphNode) => {
-                            const iconMap: Record<string, string> = {
-                              function: 'ƒ',
-                              class: '🏛️',
-                              constant: '📌',
-                              interface: '📐',
-                              type: '📋',
-                              variable: '📦',
-                              enum: '🔢',
-                            };
-                            const icon = iconMap[entity.type] || '•';
-                            const isExported = entity.metadata?.isExported || false;
-                            const isAsync = entity.metadata?.isAsync || false;
-                            const params = entity.metadata?.params || [];
-                            const paramStr = params.length > 0 ? `(${params.join(', ')})` : '()';
-                            const calls = entity.metadata?.calls || [];
-                            const callStr =
-                              calls.length > 0
-                                ? `→ ${calls.slice(0, 3).join(', ')}${calls.length > 3 ? '...' : ''}`
-                                : '';
-                            const importedFrom = entity.metadata?.importedFrom || '';
-                            return `
+        .slice(0, 20)
+        .map((entity: EntityGraphNode) => {
+          const iconMap: Record<string, string> = {
+            function: 'ƒ',
+            class: '🏛️',
+            constant: '📌',
+            interface: '📐',
+            type: '📋',
+            variable: '📦',
+            enum: '🔢',
+          };
+          const icon = iconMap[entity.type] || '•';
+          const isExported = entity.metadata?.isExported || false;
+          const isAsync = entity.metadata?.isAsync || false;
+          const params = entity.metadata?.params || [];
+          const paramStr = params.length > 0 ? `(${params.join(', ')})` : '()';
+          const calls = entity.metadata?.calls || [];
+          const callStr =
+            calls.length > 0
+              ? `→ ${calls.slice(0, 3).join(', ')}${calls.length > 3 ? '...' : ''}`
+              : '';
+          const importedFrom = entity.metadata?.importedFrom || '';
+          return `
                             <div class="entity-item">
                                 <span class="type-icon">${icon}</span>
                                 <span class="entity-name">${entity.name}</span>
@@ -668,15 +776,15 @@ export async function generateInteractiveHTML(
                                 ${importedFrom ? `<span class="entity-module">← ${path.basename(importedFrom)}</span>` : ''}
                             </div>
                           `;
-                          })
-                          .join('')}
+        })
+        .join('')}
                         ${entities.length > 20 ? `<div style="color:#64748b;font-size:10px;padding:4px 6px;">... и ещё ${entities.length - 20} сущностей</div>` : ''}
                         ${entities.length === 0 ? '<div style="color:#64748b;font-size:11px;padding:4px 6px;">Нет сущностей</div>' : ''}
                     </div>
                 </div>
               `;
-              })
-              .join('')}
+    })
+    .join('')}
         </div>
 
         <div class="footer">

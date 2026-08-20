@@ -298,6 +298,7 @@ function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string 
 
 /**
  * Строит отчет в стиле package-lock (синхронная версия)
+ * ✅ ИСПРАВЛЕНО: передаем entitiesMap для избежания повторного извлечения
  */
 function buildPackageLockReportSync(
   rootKey: string,
@@ -305,7 +306,7 @@ function buildPackageLockReportSync(
   entitiesMap: Record<string, EntitiesResult>,
   absoluteFilePaths: string[]
 ): PackageLockReport {
-  // Используем импортированную функцию из json-reporter
+  // ✅ ИСПРАВЛЕНО: передаем entitiesMap в buildEnhancedPackageLockReport
   const enhancedReport = buildEnhancedPackageLockReport(
     rootKey,
     graph,
@@ -498,7 +499,7 @@ export function buildProjectGraph(
     }
     result.entities = normalizedEntities;
 
-    // ✅ Строим отчет в стиле package-lock с АБСОЛЮТНЫМИ ПУТЯМИ
+    // ✅ ИСПРАВЛЕНО: Строим отчет в стиле package-lock с АБСОЛЮТНЫМИ ПУТЯМИ
     const allFiles = Object.keys(normalizedGraph);
     const projectRoot = findProjectRoot(process.cwd()) || process.cwd();
 
@@ -508,7 +509,7 @@ export function buildProjectGraph(
       return resolved || path.resolve(projectRoot, p);
     });
 
-    // ✅ Используем синхронную версию для построения отчета
+    // ✅ ИСПРАВЛЕНО: передаем normalizedEntities в buildPackageLockReportSync
     const packageLockReport = buildPackageLockReportSync(
       result.rootKey,
       normalizedGraph,
