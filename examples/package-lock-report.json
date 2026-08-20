@@ -18,7 +18,7 @@
           "isAsync": true,
           "params": [],
           "returns": "Promise<void>",
-          "line": 1006,
+          "line": 852,
           "consumers": []
         }
       },
@@ -77,37 +77,12 @@
             "depth": 0
           },
           {
-            "name": "extractEntitiesFromPackageLock",
-            "params": [
-              "packageLockReport"
-            ],
-            "paramTypes": [
-              "any"
-            ],
-            "line": 149,
-            "startLine": 149,
-            "endLine": 294,
-            "isAsync": false,
-            "isExported": false,
-            "isMethod": false,
-            "calls": [],
-            "calledBy": [
-              "runCLI"
-            ],
-            "returnType": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/entity-extractor\").EntitiesResult",
-            "body": "{\n  const result: EntitiesResult = {\n    functions: [],\n    classes: [],\n    constants: [],\n    interfaces: [],\n    types: [],\n    variables: [],\n    imports: [],\n    exports: [],\n    callGraph: {},\n ",
-            "isNested": false,
-            "isArrow": false,
-            "isEventHandler": false,
-            "depth": 0
-          },
-          {
             "name": "parseArgs",
             "params": [],
             "paramTypes": [],
-            "line": 313,
-            "startLine": 313,
-            "endLine": 1000,
+            "line": 159,
+            "startLine": 159,
+            "endLine": 846,
             "isAsync": false,
             "isExported": false,
             "isMethod": false,
@@ -130,9 +105,9 @@
             "name": "runCLI",
             "params": [],
             "paramTypes": [],
-            "line": 1006,
-            "startLine": 1006,
-            "endLine": 2261,
+            "line": 852,
+            "startLine": 852,
+            "endLine": 1878,
             "isAsync": true,
             "isExported": true,
             "isMethod": false,
@@ -164,12 +139,11 @@
               "findProjectRoot",
               "resolveAbsoluteFilePath",
               "saveEnhancedPackageLockReport",
-              "extractEntitiesFromPackageLock",
+              "parseFile",
               "extractEntitiesFromFile",
               "findModuleForEntity",
               "generateInteractiveHTML",
               "buildFileInternalGraph",
-              "parseFile",
               "extractEntities",
               "saveModuleGraph",
               "saveEntityGraph",
@@ -193,9 +167,9 @@
               "any",
               "any"
             ],
-            "line": 2267,
-            "startLine": 2267,
-            "endLine": 2281,
+            "line": 1884,
+            "startLine": 1884,
+            "endLine": 1898,
             "isAsync": false,
             "isExported": false,
             "isMethod": false,
@@ -241,20 +215,20 @@
               "fromFunction",
               "toFunction"
             ],
-            "line": 300,
+            "line": 146,
             "isExported": false,
             "extends": [],
-            "startLine": 300,
-            "endLine": 311
+            "startLine": 146,
+            "endLine": 157
           }
         ],
         "types": [],
         "classes": []
       },
       "fileStats": {
-        "size": 75781,
-        "lines": 2286,
-        "functions": 6,
+        "size": 61493,
+        "lines": 1903,
+        "functions": 5,
         "classes": 0,
         "constants": 2,
         "interfaces": 1,
@@ -2337,7 +2311,7 @@
             "toFunction"
           ],
           "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/project-graph\").CallGraphResult",
-          "line": 235,
+          "line": 225,
           "consumers": []
         },
         "buildProjectGraph": {
@@ -2352,7 +2326,7 @@
             "toFunction"
           ],
           "returns": "{ rootKey: string; graph: Record<string, string[]>; entities?: Record<string, import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/entity-extractor\").EntitiesResult> | undefined; packageLockReport?: import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/project-graph\").PackageLockReport | undefined; callGraphResult?: import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/project-graph\").CallGraphResult | undefined; }",
-          "line": 416,
+          "line": 406,
           "consumers": []
         }
       },
@@ -2366,9 +2340,9 @@
             "paramTypes": [
               "any"
             ],
-            "line": 160,
-            "startLine": 160,
-            "endLine": 230,
+            "line": 157,
+            "startLine": 157,
+            "endLine": 220,
             "isAsync": false,
             "isExported": false,
             "isMethod": false,
@@ -2395,9 +2369,9 @@
               "any",
               "any"
             ],
-            "line": 235,
-            "startLine": 235,
-            "endLine": 326,
+            "line": 225,
+            "startLine": 225,
+            "endLine": 316,
             "isAsync": false,
             "isExported": true,
             "isMethod": false,
@@ -2420,9 +2394,9 @@
             "paramTypes": [
               "any"
             ],
-            "line": 331,
-            "startLine": 331,
-            "endLine": 343,
+            "line": 321,
+            "startLine": 321,
+            "endLine": 333,
             "isAsync": false,
             "isExported": false,
             "isMethod": false,
@@ -2447,9 +2421,9 @@
               "any",
               "any"
             ],
-            "line": 349,
-            "startLine": 349,
-            "endLine": 380,
+            "line": 339,
+            "startLine": 339,
+            "endLine": 370,
             "isAsync": false,
             "isExported": false,
             "isMethod": false,
@@ -2478,9 +2452,9 @@
               "any",
               "any"
             ],
-            "line": 386,
-            "startLine": 386,
-            "endLine": 411,
+            "line": 376,
+            "startLine": 376,
+            "endLine": 401,
             "isAsync": false,
             "isExported": false,
             "isMethod": false,
@@ -2513,9 +2487,9 @@
               "any",
               "any"
             ],
-            "line": 416,
-            "startLine": 416,
-            "endLine": 695,
+            "line": 406,
+            "startLine": 406,
+            "endLine": 619,
             "isAsync": false,
             "isExported": true,
             "isMethod": false,
@@ -2551,9 +2525,9 @@
             "paramTypes": [
               "any"
             ],
-            "line": 701,
-            "startLine": 701,
-            "endLine": 731,
+            "line": 625,
+            "startLine": 625,
+            "endLine": 655,
             "isAsync": false,
             "isExported": false,
             "isMethod": false,
@@ -2578,9 +2552,9 @@
             "paramTypes": [
               "any"
             ],
-            "line": 733,
-            "startLine": 733,
-            "endLine": 757,
+            "line": 657,
+            "startLine": 657,
+            "endLine": 681,
             "isAsync": false,
             "isExported": false,
             "isMethod": false,
@@ -2608,9 +2582,9 @@
               "any",
               "any"
             ],
-            "line": 759,
-            "startLine": 759,
-            "endLine": 782,
+            "line": 683,
+            "startLine": 683,
+            "endLine": 706,
             "isAsync": false,
             "isExported": false,
             "isMethod": false,
@@ -2644,11 +2618,11 @@
               "calls",
               "consumers"
             ],
-            "line": 23,
+            "line": 20,
             "isExported": true,
             "extends": [],
-            "startLine": 23,
-            "endLine": 40
+            "startLine": 20,
+            "endLine": 37
           },
           {
             "name": "PackageLockPackage",
@@ -2661,11 +2635,11 @@
               "imports",
               "exports"
             ],
-            "line": 45,
+            "line": 42,
             "isExported": true,
             "extends": [],
-            "startLine": 45,
-            "endLine": 76
+            "startLine": 42,
+            "endLine": 73
           },
           {
             "name": "CallGraphResult",
@@ -2678,11 +2652,11 @@
               "nodes",
               "edges"
             ],
-            "line": 81,
+            "line": 78,
             "isExported": true,
             "extends": [],
-            "startLine": 81,
-            "endLine": 98
+            "startLine": 78,
+            "endLine": 95
           },
           {
             "name": "PackageLockReport",
@@ -2696,19 +2670,19 @@
               "importExportFlow",
               "callGraph"
             ],
-            "line": 103,
+            "line": 100,
             "isExported": true,
             "extends": [],
-            "startLine": 103,
-            "endLine": 151
+            "startLine": 100,
+            "endLine": 148
           }
         ],
         "types": [],
         "classes": []
       },
       "fileStats": {
-        "size": 23716,
-        "lines": 785,
+        "size": 20833,
+        "lines": 708,
         "functions": 9,
         "classes": 0,
         "constants": 0,
@@ -6374,7 +6348,7 @@
         "classes": []
       },
       "fileStats": {
-        "size": 38752,
+        "size": 38858,
         "lines": 1381,
         "functions": 15,
         "classes": 0,
@@ -6681,7 +6655,7 @@
             ],
             "line": 475,
             "startLine": 475,
-            "endLine": 1432,
+            "endLine": 1589,
             "isAsync": true,
             "isExported": true,
             "isMethod": false,
@@ -6791,8 +6765,8 @@
         "classes": []
       },
       "fileStats": {
-        "size": 52873,
-        "lines": 1437,
+        "size": 59058,
+        "lines": 1594,
         "functions": 6,
         "classes": 0,
         "constants": 0,
@@ -15009,7 +14983,6 @@
   "callGraph": {
     "findProjectRoot": [],
     "resolveAbsoluteFilePath": [],
-    "extractEntitiesFromPackageLock": [],
     "parseArgs": [
       "normalizePathForOS",
       "showHelp",
@@ -15043,12 +15016,11 @@
       "findProjectRoot",
       "resolveAbsoluteFilePath",
       "saveEnhancedPackageLockReport",
-      "extractEntitiesFromPackageLock",
+      "parseFile",
       "extractEntitiesFromFile",
       "findModuleForEntity",
       "generateInteractiveHTML",
       "buildFileInternalGraph",
-      "parseFile",
       "extractEntities",
       "saveModuleGraph",
       "saveEntityGraph",
@@ -15561,20 +15533,20 @@
     "mergeCallGraphs": []
   },
   "entityStats": {
-    "totalFunctions": 233,
+    "totalFunctions": 232,
     "totalConstants": 17,
     "totalVariables": 6,
     "totalInterfaces": 172,
     "totalTypes": 4,
     "totalClasses": 27,
-    "totalCalls": 235,
+    "totalCalls": 234,
     "totalExportedFunctions": 174,
     "totalAsyncFunctions": 12
   },
   "fileStats": {
     "totalFiles": 62,
-    "totalSize": 1185361,
-    "totalLines": 38072
+    "totalSize": 1174481,
+    "totalLines": 37769
   },
-  "timestamp": "2026-08-20T23:41:00.711Z"
+  "timestamp": "2026-08-20T20:58:29.704Z"
 }

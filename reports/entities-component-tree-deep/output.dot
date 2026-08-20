@@ -90,8 +90,6 @@ digraph "Dependency Graph" {
   "src/reporters/html-reporter.ts" -> "src/utils/path-utils.ts";
   "src/reporters/interactive-reporter.ts" -> "src/types.ts";
   "src/reporters/interactive-reporter.ts" -> "@hpcc-js/wasm-graphviz";
-  "src/reporters/interactive-reporter.ts" -> "src/core/entity-extractor.ts";
-  "src/reporters/interactive-reporter.ts" -> "src/reporters/json-reporter.ts";
   "src/types.ts" -> "src/core/entity-extractor.ts";
   "src/refactor/types.ts" -> "src/semantic/CFGAnalyzer.ts";
   "src/refactor/types.ts" -> "src/semantic/CallGraphAnalyzer.ts";

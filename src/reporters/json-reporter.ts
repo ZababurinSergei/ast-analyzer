@@ -1158,13 +1158,13 @@ export function buildEnhancedPackageLockReport(
     packages[modulePath] = {
       version: '1.0.0',
       resolved: `file:${modulePath}`,
-      displayPath: relativePath, // ✅ добавляем displayPath для отображения в отчете
+      displayPath: relativePath,
       type: 'module',
       language,
       isEntry,
       imports,
       exports,
-      entities: fileEntities, // ✅ теперь здесь есть сущности
+      entities: fileEntities,
       fileStats,
     };
   }
@@ -1251,7 +1251,7 @@ export function buildEnhancedPackageLockReport(
       totalInterfaces,
       totalTypes,
       totalClasses,
-      totalCalls, // ✅ ТЕПЕРЬ ПРАВИЛЬНО
+      totalCalls,
       totalExportedFunctions,
       totalAsyncFunctions,
     },

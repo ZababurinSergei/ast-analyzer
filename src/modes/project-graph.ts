@@ -11,7 +11,10 @@ import type { EntitiesResult } from '../core/entity-extractor.js';
 import { IGNORE_NODE_MODULES } from '../config.js';
 import { walk } from 'estree-walker';
 import { normalizePathForDisplay } from '../utils/path-utils.js';
-import { buildEnhancedPackageLockReport, type EnhancedEntityInfo } from '../reporters/json-reporter.js';
+import {
+  buildEnhancedPackageLockReport,
+  type EnhancedEntityInfo,
+} from '../reporters/json-reporter.js';
 import { extractEntitiesFromFile } from '../reporters/json-reporter.js';
 
 // ==========================================
@@ -170,6 +173,13 @@ function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult
       endLine: f.endLine || f.line,
       isMethod: f.isMethod || false,
       className: f.className,
+      // ✅ Добавляем недостающие поля для совместимости с FunctionInfo
+      isNested: f.isNested || false,
+      parentFunction: f.parentFunction,
+      isArrow: f.isArrow || false,
+      isEventHandler: f.isEventHandler || false,
+      eventType: f.eventType,
+      depth: f.depth || 0,
     })),
     classes: enhanced.classes.map(c => ({
       name: c.name,
@@ -566,13 +576,79 @@ export function buildProjectGraph(
     graph: normalizedGraph,
   };
 
+  // ✅ ИСПРАВЛЕНО: если includeEntities=true, обязательно заполняем entities
   if (includeEntities) {
+    // ✅ Проверяем, что entitiesMap не пустой
+    if (Object.keys(entitiesMap).length === 0) {
+      console.warn('⚠️ entitiesMap пуст, возможно сущности не были извлечены');
+      console.warn('   💡 Попытка принудительного извлечения сущностей из всех файлов...');
+
+      // ✅ ПРИНУДИТЕЛЬНОЕ ИЗВЛЕЧЕНИЕ сущностей из всех файлов в графе
+      for (const modulePath of Object.keys(normalizedGraph)) {
+        try {
+          const absPath = path.resolve(modulePath);
+          if (fs.existsSync(absPath) && fs.statSync(absPath).isFile()) {
+            const enhancedEntities = extractEntitiesFromFile(absPath);
+            const entities = convertEnhancedToEntities(enhancedEntities);
+            const normalizedKey = normalizePathForDisplay(modulePath);
+            entitiesMap[normalizedKey] = entities;
+
+            // Собираем функции для графа вызовов
+            for (const func of entities.functions) {
+              allFunctions.set(func.name, {
+                module: normalizedKey,
+                line: func.line,
+                isAsync: func.isAsync,
+                calls: func.calls || [],
+              });
+            }
+          }
+        } catch (error) {
+          console.warn(`   ⚠️ Не удалось извлечь сущности из ${modulePath}:`, error);
+        }
+      }
+
+      console.log(
+        `✅ Принудительно извлечено сущностей из ${Object.keys(entitiesMap).length} модулей`
+      );
+    }
+
     const normalizedEntities: Record<string, EntitiesResult> = {};
+    let totalFunctions = 0;
+    let totalClasses = 0;
+    let totalConstants = 0;
+    let totalInterfaces = 0;
+    let totalTypes = 0;
+    let totalVariables = 0;
+    let totalCalls = 0;
+
     for (const [key, entities] of Object.entries(entitiesMap)) {
       const normalizedKey = normalizePathForDisplay(key);
       normalizedEntities[normalizedKey] = entities;
+
+      totalFunctions += entities.functions.length;
+      totalClasses += entities.classes.length;
+      totalConstants += entities.constants.length;
+      totalInterfaces += entities.interfaces.length;
+      totalTypes += entities.types.length;
+      totalVariables += entities.variables.length;
+
+      for (const func of entities.functions) {
+        totalCalls += (func.calls || []).length;
+      }
     }
+
     result.entities = normalizedEntities;
+
+    console.log(`✅ entitiesMap содержит ${Object.keys(entitiesMap).length} модулей с сущностями`);
+    console.log(`📊 Всего сущностей в проекте:`);
+    console.log(`   • Функций: ${totalFunctions}`);
+    console.log(`   • Классов: ${totalClasses}`);
+    console.log(`   • Констант: ${totalConstants}`);
+    console.log(`   • Интерфейсов: ${totalInterfaces}`);
+    console.log(`   • Типов: ${totalTypes}`);
+    console.log(`   • Переменных: ${totalVariables}`);
+    console.log(`   • Вызовов: ${totalCalls}`);
 
     // ✅ ИСПРАВЛЕНО: Строим отчет в стиле package-lock с АБСОЛЮТНЫМИ ПУТЯМИ
     const allFiles = Object.keys(normalizedGraph);

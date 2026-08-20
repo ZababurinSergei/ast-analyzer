@@ -496,234 +496,74 @@ export async function generateInteractiveHTML(
   }
 
   // ============================================================
-  // ИСПОЛЬЗОВАНИЕ entitiesWithCalls ДЛЯ ОБОГАЩЕНИЯ ДАННЫХ
+  // ОБОГАЩЕНИЕ ДАННЫХ СУЩНОСТЯМИ (ЕСЛИ ПЕРЕДАНЫ)
   // ============================================================
   if (entitiesWithCalls) {
     console.log('📊 Обогащение данными из entitiesWithCalls...');
 
-    // Если entitiesWithCalls содержит функции с calls
-    if (entitiesWithCalls.functions && Array.isArray(entitiesWithCalls.functions)) {
-      // Обогащаем функции в отчете данными о вызовах
-      for (const [modulePath, pkg] of Object.entries(report.packages)) {
-        if (!pkg) continue;
-        for (const func of pkg.entities.functions) {
-          // Ищем соответствующую функцию в entitiesWithCalls
-          const enrichedFunc = entitiesWithCalls.functions.find((f: any) => f.name === func.name);
-          if (enrichedFunc) {
-            // Добавляем данные о вызовах если они есть
-            if (enrichedFunc.calls && Array.isArray(enrichedFunc.calls)) {
-              func.calls = enrichedFunc.calls;
-            }
-            if (enrichedFunc.calledBy && Array.isArray(enrichedFunc.calledBy)) {
-              func.calledBy = enrichedFunc.calledBy;
-            }
-            if (enrichedFunc.params && Array.isArray(enrichedFunc.params)) {
-              func.params = enrichedFunc.params;
-            }
-            if (enrichedFunc.returnType) {
-              func.returnType = enrichedFunc.returnType;
-            }
-            if (enrichedFunc.isAsync !== undefined) {
-              func.isAsync = enrichedFunc.isAsync;
-            }
-            if (enrichedFunc.isExported !== undefined) {
-              func.isExported = enrichedFunc.isExported;
-            }
-          }
-        }
-        // Используем modulePath для обновления статистики модуля
-        const currentPkg = report.packages[modulePath];
-        if (currentPkg) {
-          currentPkg.fileStats.functions = currentPkg.entities.functions.length;
-          // Обновляем экспорты в pkg.exports на основе обогащённых данных
-          for (const func of currentPkg.entities.functions) {
-            if (func.isExported) {
-              currentPkg.exports[func.name] = {
-                direction: 'outward',
-                type: 'export',
-                isAsync: func.isAsync,
-                params: func.params,
-                returns: func.returnType || 'any',
-                line: func.line,
-                consumers: [],
-              };
-            }
-          }
-        }
-      }
-
-      // Пересчитываем статистику
-      let totalFunctions = 0;
-      let totalCalls = 0;
-      let totalExportedFunctions = 0;
-      let totalAsyncFunctions = 0;
-
-      for (const pkg of Object.values(report.packages)) {
-        if (!pkg) continue;
-        for (const func of pkg.entities.functions) {
-          totalFunctions++;
-          totalCalls += func.calls.length;
-          if (func.isExported) totalExportedFunctions++;
-          if (func.isAsync) totalAsyncFunctions++;
-        }
-      }
-
-      report.entityStats.totalFunctions = totalFunctions;
-      report.entityStats.totalCalls = totalCalls;
-      report.entityStats.totalExportedFunctions = totalExportedFunctions;
-      report.entityStats.totalAsyncFunctions = totalAsyncFunctions;
-
-      console.log(`  ✅ Обогащено ${totalFunctions} функций данными о вызовах`);
-    }
-
-    // Если есть классы с методами
-    if (entitiesWithCalls.classes && Array.isArray(entitiesWithCalls.classes)) {
-      for (const cls of entitiesWithCalls.classes) {
-        if (!cls) continue;
-        // Находим модуль для класса по имени
-        let targetModulePath: string | null = null;
-        for (const [modulePath, pkg] of Object.entries(report.packages)) {
-          if (!pkg) continue;
-          const found = pkg.entities.functions.some(
-            (f: PackageLockFunctionInfo) => f.className === cls.name
-          );
-          if (found) {
-            targetModulePath = modulePath;
-            break;
-          }
-        }
-        if (targetModulePath) {
-          const targetPkg = report.packages[targetModulePath];
-          if (targetPkg) {
-            targetPkg.entities.classes.push(cls);
-            targetPkg.fileStats.classes = targetPkg.entities.classes.length;
-            console.log(`  ✅ Добавлен класс ${cls.name} в модуль ${targetModulePath}`);
-          }
-        }
-      }
-    }
-
-    // Если есть константы
-    if (entitiesWithCalls.constants && Array.isArray(entitiesWithCalls.constants)) {
-      for (const constItem of entitiesWithCalls.constants) {
-        if (!constItem) continue;
-        let targetModulePath: string | null = null;
-        for (const [modulePath, pkg] of Object.entries(report.packages)) {
-          if (!pkg) continue;
-          const found = pkg.entities.functions.some(
-            (f: PackageLockFunctionInfo) => f.name === constItem.name
-          );
-          if (found) {
-            targetModulePath = modulePath;
-            break;
-          }
-        }
-        if (targetModulePath) {
-          const targetPkg = report.packages[targetModulePath];
-          if (targetPkg) {
-            targetPkg.entities.constants.push(constItem);
-            targetPkg.fileStats.constants = targetPkg.entities.constants.length;
-            console.log(`  ✅ Добавлена константа ${constItem.name} в модуль ${targetModulePath}`);
-          }
-        }
-      }
-    }
-
-    // Если есть интерфейсы
-    if (entitiesWithCalls.interfaces && Array.isArray(entitiesWithCalls.interfaces)) {
-      for (const intf of entitiesWithCalls.interfaces) {
-        if (!intf) continue;
-        let targetModulePath: string | null = null;
-        for (const [modulePath, pkg] of Object.entries(report.packages)) {
-          if (!pkg) continue;
-          const found = pkg.entities.functions.some(
-            (f: PackageLockFunctionInfo) => f.name === intf.name
-          );
-          if (found) {
-            targetModulePath = modulePath;
-            break;
-          }
-        }
-        if (targetModulePath) {
-          const targetPkg = report.packages[targetModulePath];
-          if (targetPkg) {
-            targetPkg.entities.interfaces.push(intf);
-            targetPkg.fileStats.interfaces = targetPkg.entities.interfaces.length;
-            console.log(`  ✅ Добавлен интерфейс ${intf.name} в модуль ${targetModulePath}`);
-          }
-        }
-      }
-    }
-
-    // Если есть типы
-    if (entitiesWithCalls.types && Array.isArray(entitiesWithCalls.types)) {
-      for (const typeItem of entitiesWithCalls.types) {
-        if (!typeItem) continue;
-        let targetModulePath: string | null = null;
-        for (const [modulePath, pkg] of Object.entries(report.packages)) {
-          if (!pkg) continue;
-          const found = pkg.entities.functions.some(
-            (f: PackageLockFunctionInfo) => f.name === typeItem.name
-          );
-          if (found) {
-            targetModulePath = modulePath;
-            break;
-          }
-        }
-        if (targetModulePath) {
-          const targetPkg = report.packages[targetModulePath];
-          if (targetPkg) {
-            targetPkg.entities.types.push(typeItem);
-            targetPkg.fileStats.types = targetPkg.entities.types.length;
-            console.log(`  ✅ Добавлен тип ${typeItem.name} в модуль ${targetModulePath}`);
-          }
-        }
-      }
-    }
-
-    // Если есть переменные
-    if (entitiesWithCalls.variables && Array.isArray(entitiesWithCalls.variables)) {
-      for (const varItem of entitiesWithCalls.variables) {
-        if (!varItem) continue;
-        let targetModulePath: string | null = null;
-        for (const [modulePath, pkg] of Object.entries(report.packages)) {
-          if (!pkg) continue;
-          const found = pkg.entities.functions.some(
-            (f: PackageLockFunctionInfo) => f.name === varItem.name
-          );
-          if (found) {
-            targetModulePath = modulePath;
-            break;
-          }
-        }
-        if (targetModulePath) {
-          const targetPkg = report.packages[targetModulePath];
-          if (targetPkg) {
-            targetPkg.entities.variables.push(varItem);
-            targetPkg.fileStats.variables = targetPkg.entities.variables.length;
-            console.log(`  ✅ Добавлена переменная ${varItem.name} в модуль ${targetModulePath}`);
-          }
-        }
-      }
-    }
-
-    // Пересчитываем fileStats для всех модулей с явным использованием modulePath
+    // Обогащаем функции в отчете данными о вызовах
     for (const [modulePath, pkg] of Object.entries(report.packages)) {
-      if (pkg) {
-        // Явно используем modulePath для получения и обновления пакета
-        const updatedPkg = report.packages[modulePath];
-        if (updatedPkg) {
-          updatedPkg.fileStats.functions = updatedPkg.entities.functions.length;
-          updatedPkg.fileStats.classes = updatedPkg.entities.classes.length;
-          updatedPkg.fileStats.constants = updatedPkg.entities.constants.length;
-          updatedPkg.fileStats.interfaces = updatedPkg.entities.interfaces.length;
-          updatedPkg.fileStats.types = updatedPkg.entities.types.length;
-          updatedPkg.fileStats.variables = updatedPkg.entities.variables.length;
+      if (!pkg) continue;
+
+      for (const func of pkg.entities.functions) {
+        // Ищем соответствующую функцию в entitiesWithCalls по имени и модулю
+        const enrichedFunc = entitiesWithCalls.functions.find((f: any) => {
+          // Проверяем совпадение по имени и модулю
+          const funcModule = f._modulePath || f.modulePath || '';
+          return (
+            f.name === func.name &&
+            (funcModule === modulePath ||
+              funcModule.includes(modulePath) ||
+              modulePath.includes(funcModule))
+          );
+        });
+
+        if (enrichedFunc) {
+          // Добавляем данные о вызовах
+          if (enrichedFunc.calls && Array.isArray(enrichedFunc.calls)) {
+            func.calls = enrichedFunc.calls;
+          }
+          if (enrichedFunc.calledBy && Array.isArray(enrichedFunc.calledBy)) {
+            func.calledBy = enrichedFunc.calledBy;
+          }
+          if (enrichedFunc.params && Array.isArray(enrichedFunc.params)) {
+            func.params = enrichedFunc.params;
+          }
+          if (enrichedFunc.returnType) {
+            func.returnType = enrichedFunc.returnType;
+          }
+          if (enrichedFunc.isAsync !== undefined) {
+            func.isAsync = enrichedFunc.isAsync;
+          }
+          if (enrichedFunc.isExported !== undefined) {
+            func.isExported = enrichedFunc.isExported;
+          }
         }
       }
     }
 
-    console.log('  ✅ Обогащение данных завершено');
+    // Пересчитываем статистику после обогащения
+    let totalFunctions = 0;
+    let totalCalls = 0;
+    let totalExportedFunctions = 0;
+    let totalAsyncFunctions = 0;
+
+    for (const pkg of Object.values(report.packages)) {
+      if (!pkg) continue;
+      for (const func of pkg.entities.functions) {
+        totalFunctions++;
+        totalCalls += func.calls.length;
+        if (func.isExported) totalExportedFunctions++;
+        if (func.isAsync) totalAsyncFunctions++;
+      }
+    }
+
+    report.entityStats.totalFunctions = totalFunctions;
+    report.entityStats.totalCalls = totalCalls;
+    report.entityStats.totalExportedFunctions = totalExportedFunctions;
+    report.entityStats.totalAsyncFunctions = totalAsyncFunctions;
+
+    console.log(`  ✅ Обогащено ${totalFunctions} функций данными о вызовах`);
   }
 
   const dot = generateFullDOT(report);
@@ -773,8 +613,8 @@ export async function generateInteractiveHTML(
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Интерактивный граф модулей и функций</title>
-    <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"><\/script>
-    <script src="https://cdn.jsdelivr.net/npm/d3@7"><\/script>
+    <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -1160,6 +1000,9 @@ export async function generateInteractiveHTML(
                 <span class="stat">⚡ <strong>${report.entityStats.totalAsyncFunctions}</strong> async</span>
                 <span class="stat">📝 <strong>${report.fileStats.totalLines}</strong> строк</span>
                 <span class="stat">💾 <strong>${(report.fileStats.totalSize / 1024).toFixed(2)}</strong> KB</span>
+                <span class="stat">📦 <strong>${report.entityStats.totalConstants || 0}</strong> констант</span>
+                <span class="stat">🧩 <strong>${report.entityStats.totalInterfaces || 0}</strong> интерфейсов</span>
+                <span class="stat">📐 <strong>${report.entityStats.totalTypes || 0}</strong> типов</span>
             </div>
             <div class="sub">Сгенерировано: ${new Date().toLocaleString()}</div>
         </div>
@@ -1580,7 +1423,7 @@ export async function generateInteractiveHTML(
                 }, 100);
             }
         });
-    <\/script>
+    </script>
 </body>
 </html>`;
 

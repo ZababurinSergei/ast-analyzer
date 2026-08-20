@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>🕸 Graph Navigator — package-lock-report.json</title>
+  <style>
+      :root{--bg:#0b1220;--panel:#101a2e;--panel2:#0d1526;--border:#1e2c47;--text:#dbe6f7;--muted:#7c8db0;--accent:#22d3ee;--green:#10b981;--amber:#f59e0b;--violet:#8b5cf6}
+      *{box-sizing:border-box}
+      html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.4 "Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
+      header{height:52px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--border);overflow-x:auto;white-space:nowrap}
+      header .logo{font-weight:700}
+      header .filechip{font-size:11px;color:var(--muted);background:var(--panel2);border:1px solid var(--border);padding:2px 8px;border-radius:20px}
+      .btn{background:#182642;border:1px solid #2a3c63;color:var(--text);padding:4px 9px;border-radius:7px;cursor:pointer;font-size:12px}
+      .btn:hover{background:#22345c}
+      .btn.active{background:#0e7490;border-color:#22d3ee;color:#fff}
+      .group{display:flex;gap:3px;align-items:center;background:var(--panel2);padding:3px;border-radius:9px;border:1px solid var(--border)}
+      .group label{font-size:11px;color:var(--muted);padding:0 5px}
+      select{background:#0a1120;border:1px solid #2a3c63;color:var(--text);border-radius:7px;padding:4px 6px;font-size:12px;outline:none}
+      #focusChip{font-size:11px;background:#082f49;border:1px solid #0e7490;color:#a5f3fc;padding:3px 9px;border-radius:20px;max-width:230px;overflow:hidden;text-overflow:ellipsis}
+      #searchWrap{position:relative}
+      #search{background:#0a1120;border:1px solid #2a3c63;color:var(--text);border-radius:7px;padding:5px 9px;width:180px;outline:none;font-size:12px}
+      #search:focus{border-color:var(--accent)}
+      #searchDrop{position:absolute;top:34px;left:0;width:320px;max-height:300px;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:9px;z-index:50;display:none;box-shadow:0 12px 30px rgba(0,0,0,.5)}
+      #searchDrop .it{padding:6px 10px;cursor:pointer;display:flex;gap:7px;align-items:center;border-bottom:1px solid #16223a;font-size:12px}
+      #searchDrop .it:hover{background:#1a2a4d}
+      #searchDrop .it .sub{color:var(--muted);font-size:10px;margin-left:auto;max-width:140px;overflow:hidden;text-overflow:ellipsis}
+      main{display:flex;height:calc(100% - 52px - 26px)}
+      aside{width:320px;min-width:320px;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:11px;font-size:12.5px}
+      aside h2{font-size:14px;margin:2px 0 7px;word-break:break-all}
+      aside h3{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:13px 0 5px}
+      .badge{display:inline-block;font-size:10px;padding:1px 7px;border-radius:11px;margin:2px 3px 2px 0;border:1px solid var(--border);background:var(--panel2)}
+      .badge.b-async{color:#fcd34d;border-color:#92600e}
+      .badge.b-exp{color:#6ee7b7;border-color:#0f7a58}
+      .badge.b-entry{color:#c4b5fd;border-color:#5b21b6}
+      .badge.b-ext{color:#94a3b8}
+      .row{display:flex;align-items:center;gap:7px;padding:4px 7px;border-radius:7px;cursor:pointer;border:1px solid transparent}
+      .row:hover{background:#16233f;border-color:#26385f}
+      .row .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+      .row .sub2{color:var(--muted);font-size:10px;max-width:110px;overflow:hidden;text-overflow:ellipsis}
+      .row .go{color:var(--accent);font-size:12px}
+      .dot{width:8px;height:8px;border-radius:50%;flex:none}
+      .dot.mod{background:#3b82f6}.dot.fn{background:var(--green)}.dot.ext{background:#64748b}.dot.call{background:#34d399}
+      .muted{color:var(--muted);font-size:11.5px}
+      pre.body{background:#0a1120;border:1px solid var(--border);border-radius:7px;padding:7px;font-size:10px;overflow-x:auto;max-height:160px;color:#a7c4e8;white-space:pre-wrap;word-break:break-all}
+      .stats{display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:11.5px;color:var(--muted)}
+      .stats b{color:var(--text)}
+      #canvasWrap{flex:1;position:relative;overflow:hidden}
+      canvas{display:block;width:100%;height:100%;cursor:grab}
+      canvas.grabbing{cursor:grabbing}
+      #tooltip{position:absolute;pointer-events:none;background:rgba(8,14,28,.95);border:1px solid #2a3c63;color:var(--text);padding:5px 9px;border-radius:7px;font-size:11px;display:none;z-index:30;max-width:320px}
+      #legend{position:absolute;left:10px;bottom:10px;background:rgba(13,21,38,.9);border:1px solid var(--border);border-radius:9px;padding:7px 10px;font-size:10.5px;display:flex;flex-direction:column;gap:4px;z-index:20}
+      #legend .li{display:flex;align-items:center;gap:6px;color:#b9c8e4}
+      .chip{width:10px;height:10px;border-radius:3px;flex:none}
+      #help{position:absolute;right:10px;bottom:10px;background:rgba(13,21,38,.92);border:1px solid var(--border);border-radius:9px;padding:9px 13px;font-size:11.5px;z-index:20;display:none;max-width:320px}
+      #help b{color:var(--accent)}
+      footer{height:26px;display:flex;align-items:center;gap:16px;padding:0 12px;background:var(--panel);border-top:1px solid var(--border);font-size:11px;color:var(--muted)}
+      #fallback{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;background:rgba(11,18,32,.96);z-index:60;text-align:center;padding:20px}
+      input[type=range]{accent-color:var(--accent);width:90px}
+      .chk{display:flex;align-items:center;gap:4px;font-size:11.5px;color:#b9c8e4;cursor:pointer}
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">🕸 Граф</div>
+  <div class="filechip">./package-lock-report.json</div>
+  <div class="group">
+    <button class="btn" id="mModules">Модули</button>
+    <button class="btn" id="mFunctions">Функции</button>
+    <button class="btn" id="mHybrid">Гибрид</button>
+  </div>
+  <div class="group">
+    <button class="btn" id="hBack" title="Назад по истории (←)">⬅</button>
+    <button class="btn" id="hFwd" title="Вперёд по истории (→)">➡</button>
+  </div>
+  <div class="group">
+    <button class="btn" id="dUp" title="Кто зависит / кто вызывает">◀ назад</button>
+    <button class="btn" id="dDown" title="Зависимости / вызовы">вперёд ▶</button>
+    <button class="btn" id="dBoth">⇄</button>
+  </div>
+  <div class="group">
+    <label>глубина <b id="depthVal" style="color:var(--text)">2</b></label>
+    <input type="range" id="depth" min="1" max="8" value="2"/>
+  </div>
+  <div class="group">
+    <label>подписи</label>
+    <select id="selLabels">
+      <option value="auto" selected>авто (зум/выбор)</option>
+      <option value="all">все</option>
+      <option value="sel">только выбранные</option>
+      <option value="none">скрыть</option>
+    </select>
+  </div>
+  <div id="searchWrap">
+    <input id="search" placeholder="🔎 поиск ( / )" autocomplete="off"/>
+    <div id="searchDrop"></div>
+  </div>
+  <div id="focusChip">—</div>
+  <label class="chk"><input type="checkbox" id="cbExt" checked/> внешние</label>
+  <button class="btn" id="btnFit">⛶</button>
+  <button class="btn" id="btnExpandAll">▾ всё</button>
+  <button class="btn" id="btnCollapseAll">▸ свернуть</button>
+  <button class="btn" id="btnReset">Сброс</button>
+  <button class="btn" id="btnHelp">?</button>
+</header>
+<main>
+  <aside><div id="sideContent"></div></aside>
+  <div id="canvasWrap">
+    <canvas id="cv"></canvas>
+    <div id="tooltip"></div>
+    <div id="legend">
+      <div class="li"><span class="chip" style="background:#5b21b6"></span> вход</div>
+      <div class="li"><span class="chip" style="background:#1e40af"></span> модуль</div>
+      <div class="li"><span class="chip" style="background:#2f3b52"></span> внешнее</div>
+      <div class="li"><span class="chip" style="background:#059669;border-radius:50%"></span> exported (★)</div>
+      <div class="li"><span class="chip" style="background:#46617f;border-radius:50%"></span> функция</div>
+      <div class="li"><span class="chip" style="background:none;border:2px solid #f59e0b"></span> async (⚡)</div>
+    </div>
+    <div id="help">
+      <b>Управление</b><br>
+      • клик — выбрать, <b>dbl-click</b> — перейти вперёд (модуль в «Гибриде» — раскрыть/свернуть)<br>
+      • <b>←/→</b> — история переходов, <b>F</b> — вписать, <b>/</b> — поиск, <b>Esc</b> — снять выбор<br>
+      • списки слева: клик = переход (вперёд/назад)<br>
+      • приблизьте колесом — появятся подписи связей (режим «авто»)<br>
+      • наведите на узел — подсветятся его соседи и подписи
+    </div>
+    <div id="fallback">
+      <div style="font-size:16px">Не удалось загрузить <code>./package-lock-report.json</code> через fetch.</div>
+      <div class="muted">Откройте через http-сервер (<code>npx serve</code>) или выберите файл / перетащите его сюда:</div>
+      <button class="btn" id="btnOpenFile" style="font-size:14px;padding:8px 16px">📂 Открыть JSON</button>
+      <input type="file" id="fileInput" accept=".json,application/json" hidden/>
+    </div>
+  </div>
+</main>
+<footer>
+  <span id="stMode">режим: —</span>
+  <span id="stNodes">узлов: —</span>
+  <span id="stEdges">связей: —</span>
+  <span id="stFocus">фокус: —</span>
+  <span style="margin-left:auto" id="stTotal"></span>
+</footer>
+
+<script>
+  'use strict';
+  /* ============================== STATE ============================== */
+  const state = {
+    mode:'hybrid',
+    focusModule:null, focusFunction:null,
+    selected:null,
+    direction:'down',
+    depth:2,
+    labelMode:'auto',           // auto | all | sel | none
+    showExternal:true,
+    expanded:new Set(),
+    history:[], hIndex:-1
+  };
+  let DATA=null, G=null;
+  const nodeById=new Map();
+  let vis={nodes:[],edges:[],nodeSet:new Set()};
+  let alpha=0;
+  const view={x:0,y:0,k:0.8};
+
+  /* размеры/шрифты — компактные */
+  const MOD_W=112, MOD_H=32, MOD_R=52;
+  const FN_R=7, EXT_R=5.5;
+  const F_MOD='bold 10px "Segoe UI"', F_MODSUB='8px "Segoe UI"';
+  const F_FN='9px "Segoe UI"', F_EDGE='7.5px "Segoe UI"';
+  const HALO='rgba(9,14,26,.92)';
+
+  /* ============================== DOM ============================== */
+  const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+  const tooltip=document.getElementById('tooltip');
+  const sideContent=document.getElementById('sideContent');
+  const searchInput=document.getElementById('search'), searchDrop=document.getElementById('searchDrop');
+  let dpr=window.devicePixelRatio||1;
+  function resize(){
+    const r=cv.parentElement.getBoundingClientRect();
+    dpr=window.devicePixelRatio||1;
+    cv.width=Math.max(50,r.width*dpr); cv.height=Math.max(50,r.height*dpr);
+  }
+  window.addEventListener('resize',resize);
+
+  function short(s,max){ s=String(s??''); return s.length>max? s.slice(0,max-1)+'…':s; }
+  function baseName(p){ return String(p??'').split('/').pop(); }
+
+  /* ============================== BUILD GRAPH ============================== */
+  function buildGraph(data){
+    nodeById.clear();
+    G={modules:new Map(),moduleEdges:[],functions:new Map(),fnEdges:[],fnByName:new Map(),extFns:new Map()};
+    const inward=data.dependencyGraph?.inwardDependencies||{};
+    const outward=data.dependencyGraph?.outwardDependencies||{};
+    for(const [name,pkg] of Object.entries(data.packages||{})){
+      const m={id:'mod::'+name,type:'module',name,modName:name,pkg,r:MOD_R,collide:58,
+        deps:[...new Set(inward[name]||[])],dependents:[...new Set(outward[name]||[])]};
+      G.modules.set(name,m); nodeById.set(m.id,m);
+    }
+    for(const deps of Object.values(inward)) for(const b of deps){
+      const id='mod::'+b;
+      if(!G.modules.has(b)&&!nodeById.has(id))
+        nodeById.set(id,{id,type:'module',external:true,name:b,modName:b,r:MOD_R-8,collide:50,deps:[],dependents:[]});
+    }
+    const meSet=new Set();
+    const addModEdge=(a,b)=>{const key='mod::'+a+'>mod::'+b;
+      if(!meSet.has(key)){meSet.add(key);G.moduleEdges.push({source:'mod::'+a,target:'mod::'+b,type:'dep'});}};
+    for(const [a,deps] of Object.entries(inward)) for(const b of deps) addModEdge(a,b);
+    for(const [b,cons] of Object.entries(outward)) for(const a of cons) addModEdge(a,b);
+
+    for(const [modName,pkg] of Object.entries(data.packages||{})){
+      for(const f of (pkg.entities?.functions||[])){
+        const id='fn::'+modName+'::'+f.name;
+        const n={...f,id,type:'function',module:modName,r:FN_R,collide:22,
+          calls:f.calls||[],calledBy:f.calledBy||[]};
+        G.functions.set(id,n); nodeById.set(id,n);
+        if(!G.fnByName.has(f.name)) G.fnByName.set(f.name,[]);
+        G.fnByName.get(f.name).push(id);
+      }
+    }
+    function resolveCallee(caller,name){
+      const cands=G.fnByName.get(name)||[];
+      if(!cands.length) return 'ext::'+name;
+      let c=cands.find(id=>G.functions.get(id).module===caller.module); if(c) return c;
+      const deps=G.modules.get(caller.module)?.deps||[];
+      c=cands.find(id=>deps.includes(G.functions.get(id).module)); if(c) return c;
+      return cands[0];
+    }
+    function resolveCaller(callee,name){
+      const cands=G.fnByName.get(name)||[];
+      if(!cands.length) return 'ext::'+name;
+      let c=cands.find(id=>G.functions.get(id).module===callee.module); if(c) return c;
+      c=cands.find(id=>(G.modules.get(G.functions.get(id).module)?.deps||[]).includes(callee.module)); if(c) return c;
+      return cands[0];
+    }
+    G.resolveCallee=resolveCallee; G.resolveCaller=resolveCaller;
+    const feSet=new Set();
+    function addFnEdge(s,t,label){
+      if(s===t) return;
+      const key=s+'>'+t; if(feSet.has(key)) return; feSet.add(key);
+      for(const id of [s,t]) if(id.startsWith('ext::')&&!G.extFns.has(id)){
+        const n={id,type:'external',name:id.slice(5),r:EXT_R,collide:18};
+        G.extFns.set(id,n); nodeById.set(id,n);
+      }
+      G.fnEdges.push({source:s,target:t,type:'call',label});
+    }
+    for(const f of G.functions.values()){
+      for(const c of f.calls)   addFnEdge(f.id,resolveCallee(f,c),f.name+' → '+c);
+      for(const cb of f.calledBy) addFnEdge(resolveCaller(f,cb),f.id,cb+' → '+f.name);
+    }
+    G.modAdj=buildAdj(G.moduleEdges);
+    G.fnAdj=buildAdj(G.fnEdges);
+  }
+  function buildAdj(edges){
+    const adj=new Map();
+    for(const e of edges){
+      if(!adj.has(e.source)) adj.set(e.source,{out:[],inc:[]});
+      if(!adj.has(e.target)) adj.set(e.target,{out:[],inc:[]});
+      adj.get(e.source).out.push(e.target);
+      adj.get(e.target).inc.push(e.source);
+    }
+    return adj;
+  }
+
+  /* ============================== VISIBILITY ============================== */
+  function bfs(start,adj,direction,depth){
+    const visSet=new Set([start]),dm=new Map([[start,0]]);
+    let frontier=[start];
+    for(let d=0;d<depth;d++){
+      const next=[];
+      for(const id of frontier){
+        const a=adj.get(id)||{out:[],inc:[]};
+        const nbs=[...(direction!=='up'?a.out:[]),...(direction!=='down'?a.inc:[])];
+        for(const nb of nbs) if(!visSet.has(nb)){visSet.add(nb);dm.set(nb,d+1);next.push(nb);}
+      }
+      frontier=next;
+      if(!frontier.length) break;
+    }
+    return {vis:visSet,depthMap:dm};
+  }
+  function computeVisible(){
+    const nodes=[],edges=[],set=new Set();
+    const addN=id=>{const n=nodeById.get(id); if(n&&!set.has(id)){set.add(id);nodes.push(n);}};
+    if(state.mode==='modules'&&state.focusModule){
+      bfs(state.focusModule,G.modAdj,state.direction,state.depth).vis.forEach(id=>{
+        if(!state.showExternal&&nodeById.get(id)?.external) return; addN(id);});
+      for(const e of G.moduleEdges) if(set.has(e.source)&&set.has(e.target)) edges.push(e);
+    } else if(state.mode==='functions'&&state.focusFunction){
+      bfs(state.focusFunction,G.fnAdj,state.direction,state.depth).vis.forEach(id=>{
+        if(!state.showExternal&&nodeById.get(id)?.type==='external') return; addN(id);});
+      for(const e of G.fnEdges) if(set.has(e.source)&&set.has(e.target)) edges.push(e);
+    } else if(state.mode==='hybrid'&&state.focusModule){
+      bfs(state.focusModule,G.modAdj,state.direction,state.depth).vis.forEach(id=>{
+        if(!state.showExternal&&nodeById.get(id)?.external) return; addN(id);});
+      for(const e of G.moduleEdges) if(set.has(e.source)&&set.has(e.target)) edges.push(e);
+      for(const mId of [...set]){
+        if(!mId.startsWith('mod::')) continue;
+        const modName=mId.slice(5), m=nodeById.get(mId);
+        if(m?.external||!state.expanded.has(modName)) continue;
+        for(const [fid,f] of G.functions) if(f.module===modName) addN(fid);
+      }
+      for(const e of G.fnEdges) if(set.has(e.source)&&set.has(e.target)) edges.push(e);
+    }
+    vis={nodes,edges,nodeSet:set};
+    assignInitialPositions();
+    const keys=new Set(edges.map(e=>e.source+'>'+e.target));
+    for(const e of edges){
+      e.curve=keys.has(e.target+'>'+e.source)?0.18:0;
+      const s=nodeById.get(e.source),t=nodeById.get(e.target);
+      if(e.type==='call'&&s?.type==='function'&&t?.type==='function'&&s.module===t.module) e.rest=80;
+      else e.rest=e.type==='call'?125:195;
+      // короткие читаемые подписи рёбер
+      if(e.label){
+        const p=e.label.split(' → ');
+        if(p.length===2) e.shortLabel=short(p[0],11)+'→'+short(p[1],11);
+      }
+    }
+    updateStatus();
+  }
+  function assignInitialPositions(){
+    const focusId=state.mode==='functions'?state.focusFunction:state.focusModule;
+    const adj=state.mode==='functions'?G.fnAdj:G.modAdj;
+    let dm=null;
+    if(focusId) dm=bfs(focusId,adj,'both',12).depthMap;
+    const perLayer=new Map();
+    for(const n of vis.nodes){
+      if(n.x!==undefined) continue;
+      if(n.type==='function'){
+        const m=nodeById.get('mod::'+n.module);
+        if(m&&m.x!==undefined){n.x=m.x+(Math.random()-.5)*130;n.y=m.y+(Math.random()-.5)*130;n.vx=0;n.vy=0;continue;}
+      }
+      let d=dm?.get(n.id); if(d===undefined) d=3;
+      if(!perLayer.has(d)) perLayer.set(d,[]);
+      perLayer.get(d).push(n);
+    }
+    const GA=2.399963; // золотой угол — равномерное распределение
+    for(const [d,layer] of perLayer){
+      layer.forEach((n,i)=>{
+        const ang=i*GA+d*0.9;
+        const rad=d===0?0:200*d+70;
+        n.x=Math.cos(ang)*rad+(Math.random()-.5)*30;
+        n.y=Math.sin(ang)*rad+(Math.random()-.5)*30;
+        n.vx=0;n.vy=0;
+      });
+    }
+  }
+
+  /* ============================== PHYSICS ============================== */
+  function isFocusId(id){
+    return (state.focusModule&&id==='mod::'+state.focusModule)||id===state.focusFunction;
+  }
+  function reheat(){alpha=1;}
+  function tick(){
+    if(alpha<0.004) return;
+    const ns=vis.nodes,es=vis.edges,N=ns.length;
+    // отталкивание
+    for(let i=0;i<N;i++){
+      const a=ns[i]; if(a.x===undefined) continue;
+      for(let j=i+1;j<N;j++){
+        const b=ns[j]; if(b.x===undefined) continue;
+        let dx=a.x-b.x,dy=a.y-b.y,d2=dx*dx+dy*dy;
+        if(d2===0){dx=Math.random()-.5;dy=Math.random()-.5;d2=1;}
+        if(d2>340*340) continue;
+        const d=Math.sqrt(d2),f=Math.min(55,16000/d2),fx=dx/d*f,fy=dy/d*f;
+        a.vx+=fx;a.vy+=fy;b.vx-=fx;b.vy-=fy;
+      }
+    }
+    // пружины
+    for(const e of es){
+      const s=nodeById.get(e.source),t=nodeById.get(e.target);
+      if(!s||!t||s.x===undefined||t.x===undefined) continue;
+      const dx=t.x-s.x,dy=t.y-s.y,d=Math.sqrt(dx*dx+dy*dy)||1;
+      const f=(d-(e.rest||150))*0.015,ux=dx/d,uy=dy/d;
+      if(!s.dragging){s.vx+=ux*f;s.vy+=uy*f;}
+      if(!t.dragging){t.vx-=ux*f;t.vy-=uy*f;}
+    }
+    // гравитация
+    for(const n of ns){
+      if(n.x===undefined) continue;
+      n.vx+=(0-n.x)*0.0022; n.vy+=(0-n.y)*0.0022;
+      if(isFocusId(n.id)){n.vx+=(0-n.x)*0.02;n.vy+=(0-n.y)*0.02;}
+      if(n.type==='function'&&state.mode==='hybrid'){
+        const m=nodeById.get('mod::'+n.module);
+        if(m&&m.x!==undefined){n.vx+=(m.x-n.x)*0.03;n.vy+=(m.y-n.y)*0.03;}
+      }
+      if(n.dragging){n.vx=0;n.vy=0;continue;}
+      n.vx*=0.86;n.vy*=0.86;
+      n.x+=n.vx;n.y+=n.vy;
+    }
+    // жёсткое разведение (чтобы подписи не слипались)
+    for(let i=0;i<N;i++){
+      const a=ns[i]; if(a.x===undefined||a.dragging) continue;
+      for(let j=i+1;j<N;j++){
+        const b=ns[j]; if(b.x===undefined) continue;
+        const minD=(a.collide||24)+(b.collide||24);
+        let dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy);
+        if(d===0){dx=Math.random()-.5;dy=Math.random()-.5;d=1;}
+        if(d<minD){
+          const push=(minD-d)/2/d;
+          if(!a.dragging){a.x-=dx*push;a.y-=dy*push;}
+          if(!b.dragging){b.x+=dx*push;b.y+=dy*push;}
+        }
+      }
+    }
+    alpha*=0.992;
+  }
+
+  /* ============================== DRAW ============================== */
+  function roundRect(x,y,w,h,r){
+    ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
+  }
+  function edgePts(e){
+    const s=nodeById.get(e.source),t=nodeById.get(e.target);
+    if(!s||!t||s.x===undefined||t.x===undefined) return null;
+    const dx=t.x-s.x,dy=t.y-s.y,d=Math.hypot(dx,dy)||1;
+    const sr=(s.r||8)+3,tr=(t.r||8)+7;
+    let cx=(s.x+t.x)/2,cy=(s.y+t.y)/2;
+    if(e.curve){cx+=(-dy/d)*e.curve*d; cy+=(dx/d)*e.curve*d;}
+    return {sx:s.x+dx/d*sr,sy:s.y+dy/d*sr,tx:t.x-dx/d*tr,ty:t.y-dy/d*tr,cx,cy};
+  }
+  let hoverNode=null, hoverNbs=new Set();
+  function isHot(id){ return state.selected===id||hoverNode?.id===id||hoverNbs.has(id); }
+  function edgeHot(e){
+    return (state.selected&&(e.source===state.selected||e.target===state.selected))||
+      (hoverNode&&(e.source===hoverNode.id||e.target===hoverNode.id));
+  }
+  function showFnLabel(n){
+    if(state.labelMode==='none') return false;
+    if(state.labelMode==='all') return true;
+    if(state.labelMode==='sel') return state.selected===n.id||isFocusId(n.id)||hoverNode===n||hoverNbs.has(n.id);
+    return state.selected===n.id||isFocusId(n.id)||hoverNode===n||hoverNbs.has(n.id)||view.k>=0.55;
+  }
+  function showEdgeLabel(e){
+    if(!e.shortLabel||state.labelMode==='none') return false;
+    const hot=edgeHot(e);
+    if(state.labelMode==='all') return true;
+    if(state.labelMode==='sel') return hot;
+    return hot||view.k>=0.9;
+  }
+  function drawEdge(e){
+    const p=edgePts(e); if(!p) return;
+    const hot=edgeHot(e);
+    ctx.strokeStyle=hot?'#fbbf24':e.type==='call'?'rgba(52,211,153,.5)':'rgba(105,145,205,.45)';
+    ctx.lineWidth=hot?1.8:1;
+    ctx.beginPath();ctx.moveTo(p.sx,p.sy);ctx.quadraticCurveTo(p.cx,p.cy,p.tx,p.ty);ctx.stroke();
+    const ang=Math.atan2(p.ty-p.cy,p.tx-p.cx),al=6;
+    ctx.beginPath();
+    ctx.moveTo(p.tx,p.ty);
+    ctx.lineTo(p.tx-al*Math.cos(ang-0.42),p.ty-al*Math.sin(ang-0.42));
+    ctx.lineTo(p.tx-al*Math.cos(ang+0.42),p.ty-al*Math.sin(ang+0.42));
+    ctx.closePath();ctx.fillStyle=ctx.strokeStyle;ctx.fill();
+  }
+  function drawEdgeLabel(e){
+    const p=edgePts(e); if(!p) return;
+    const mx=.25*p.sx+.5*p.cx+.25*p.tx,my=.25*p.sy+.5*p.cy+.25*p.ty;
+    let ang=Math.atan2(p.ty-p.sy,p.tx-p.sx);
+    if(ang>Math.PI/2||ang<-Math.PI/2) ang+=Math.PI;
+    ctx.save();ctx.translate(mx,my);ctx.rotate(ang);
+    ctx.font=F_EDGE;
+    ctx.lineWidth=2.5;ctx.strokeStyle=HALO;ctx.strokeText(e.shortLabel,0,0);
+    ctx.fillStyle=e.type==='call'?'#86efac':'#93c5fd';
+    ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(e.shortLabel,0,0);
+    ctx.restore();
+  }
+  function drawModule(n){
+    const w=MOD_W,h=MOD_H,x=n.x-w/2,y=n.y-h/2;
+    const sel=state.selected===n.id,foc=isFocusId(n.id),hot=isHot(n.id);
+    if(foc){ctx.save();ctx.strokeStyle='#22d3ee';ctx.lineWidth=2;ctx.setLineDash([5,4]);
+      ctx.beginPath();roundRect(x-4,y-4,w+8,h+8,10);ctx.stroke();ctx.restore();}
+    ctx.beginPath();roundRect(x,y,w,h,8);
+    ctx.fillStyle=n.external?'#2f3b52':(n.pkg?.isEntry?'#5b21b6':'#1e40af');
+    ctx.fill();
+    ctx.strokeStyle=sel?'#fde047':hot?'rgba(255,255,255,.5)':'rgba(255,255,255,.16)';
+    ctx.lineWidth=sel?2:1;ctx.stroke();
+    ctx.font=F_MOD;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillStyle='#f1f5f9';
+    ctx.fillText(short(baseName(n.name),18),n.x,n.y-(view.k>=0.9||sel||foc?5:0),w-10);
+    if(view.k>=0.9||sel||foc){
+      ctx.font=F_MODSUB;ctx.fillStyle='rgba(226,232,240,.6)';
+      ctx.fillText(n.external?'внешний':`${n.pkg?.fileStats?.functions??0}fn·${n.pkg?.fileStats?.lines??0}стр`,n.x,n.y+8,w-10);
+    }
+  }
+  function drawFunction(n){
+    const sel=state.selected===n.id,foc=isFocusId(n.id);
+    if(foc){ctx.beginPath();ctx.arc(n.x,n.y,n.r+4,0,7);ctx.strokeStyle='#22d3ee';
+      ctx.setLineDash([4,3]);ctx.lineWidth=1.5;ctx.stroke();ctx.setLineDash([]);}
+    if(sel){ctx.beginPath();ctx.arc(n.x,n.y,n.r+3,0,7);ctx.strokeStyle='#fde047';ctx.lineWidth=2;ctx.stroke();}
+    ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,7);
+    ctx.fillStyle=n.type==='external'?'#3a4358':n.isExported?'#059669':'#46617f';
+    ctx.fill();
+    ctx.strokeStyle=n.isAsync?'#f59e0b':'#0b1220';ctx.lineWidth=n.isAsync?1.6:1;ctx.stroke();
+    if(showFnLabel(n)){
+      const lbl=(n.isAsync?'⚡':'')+(n.isExported?'★':'')+short(n.name,16);
+      ctx.font=F_FN;ctx.textAlign='left';ctx.textBaseline='middle';
+      ctx.lineWidth=2.5;ctx.strokeStyle=HALO;
+      ctx.strokeText(lbl,n.x+n.r+4,n.y);
+      ctx.fillStyle=sel?'#fde68a':(n.type==='external'?'#94a3b8':'#cbd5e1');
+      ctx.fillText(lbl,n.x+n.r+4,n.y);
+    }
+  }
+  function draw(){
+    const w=cv.clientWidth||cv.width/dpr,h=cv.clientHeight||cv.height/dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,w,h);
+    ctx.setTransform(dpr*view.k,0,0,dpr*view.k,dpr*(w/2-view.x*view.k),dpr*(h/2-view.y*view.k));
+    for(const e of vis.edges) drawEdge(e);
+    for(const n of vis.nodes) if(n.type==='module') drawModule(n);
+    for(const n of vis.nodes) if(n.type!=='module') drawFunction(n);
+    for(const e of vis.edges) if(showEdgeLabel(e)) drawEdgeLabel(e);
+  }
+  function loop(){tick();draw();requestAnimationFrame(loop);}
+
+  /* ============================== INTERACTION ============================== */
+  function toWorld(e){
+    const r=cv.getBoundingClientRect();
+    const mx=e.clientX-r.left,my=e.clientY-r.top;
+    return {x:(mx-r.width/2)/view.k+view.x,y:(my-r.height/2)/view.k+view.y,mx,my,cw:r.width,ch:r.height};
+  }
+  function pickNode(p){
+    for(let i=vis.nodes.length-1;i>=0;i--){
+      const n=vis.nodes[i];
+      if(n.type==='module'){if(Math.abs(p.x-n.x)<=MOD_W/2+3&&Math.abs(p.y-n.y)<=MOD_H/2+3) return n;}
+      else{const dx=p.x-n.x,dy=p.y-n.y;if(dx*dx+dy*dy<=(n.r+5)*(n.r+5)) return n;}
+    }
+    return null;
+  }
+  function pickEdge(p){
+    const thr=6/view.k;let best=null,bd=thr;
+    for(const e of vis.edges){
+      const s=nodeById.get(e.source),t=nodeById.get(e.target);
+      if(!s||!t||s.x===undefined||t.x===undefined) continue;
+      const dx=t.x-s.x,dy=t.y-s.y,L2=dx*dx+dy*dy||1;
+      let u=((p.x-s.x)*dx+(p.y-s.y)*dy)/L2;u=Math.max(0,Math.min(1,u));
+      const qx=s.x+u*dx,qy=s.y+u*dy,d=Math.hypot(p.x-qx,p.y-qy);
+      if(d<bd){bd=d;best=e;}
+    }
+    return best;
+  }
+  function setHover(n){
+    if(hoverNode===n) return;
+    hoverNode=n; hoverNbs=new Set();
+    if(n) for(const e of vis.edges){
+      if(e.source===n.id) hoverNbs.add(e.target);
+      if(e.target===n.id) hoverNbs.add(e.source);
+    }
+  }
+  let dragNode=null,panStart=null,mouseDown=null,moved=false;
+  cv.addEventListener('mousedown',e=>{
+    const p=toWorld(e);const n=pickNode(p);
+    mouseDown={x:e.clientX,y:e.clientY};moved=false;
+    if(n){dragNode=n;n.dragging=true;}
+    else{panStart={vx:view.x,vy:view.y,mx:e.clientX,my:e.clientY};cv.classList.add('grabbing');}
+  });
+  window.addEventListener('mousemove',e=>{
+    if(mouseDown&&Math.hypot(e.clientX-mouseDown.x,e.clientY-mouseDown.y)>4) moved=true;
+    if(dragNode&&moved){const p=toWorld(e);dragNode.x=p.x;dragNode.y=p.y;dragNode.vx=0;dragNode.vy=0;alpha=Math.max(alpha,0.25);return;}
+    if(panStart&&moved){view.x=panStart.vx-(e.clientX-panStart.mx)/view.k;view.y=panStart.vy-(e.clientY-panStart.my)/view.k;return;}
+    const p=toWorld(e);const n=pickNode(p);
+    setHover(n);
+    if(n){showTip(e,n.type==='module'
+      ?`<b>${esc(n.name)}</b><br>${n.external?'внешний пакет':(n.pkg?.fileStats?.functions??0)+' функций · '+(n.pkg?.fileStats?.lines??0)+' стр'}<br><span style="color:#7c8db0">dbl-click — перейти${state.mode==='hybrid'&&!n.external?' / раскрыть':''}</span>`
+      :`<b>${esc(n.name)}</b> <span style="color:#7c8db0">${n.type==='external'?'(внешняя)':esc(n.module)}</span><br>${n.isAsync?'async ':''}${n.isExported?'экспортирована':'внутренняя'}${n.line?', стр '+n.line:''}`);return;}
+    const ed=pickEdge(p);
+    if(ed){showTip(e,(ed.type==='call'?'вызов: ':'зависимость: ')+'<b>'+esc(ed.label||shortOf(ed.source)+' → '+shortOf(ed.target))+'</b>');return;}
+    hideTip();
+  });
+  window.addEventListener('mouseup',e=>{
+    cv.classList.remove('grabbing');
+    if(mouseDown&&!moved){
+      const p=toWorld(e);const n=pickNode(p);
+      state.selected=n?n.id:null;renderSidebar();
+    }
+    if(dragNode){dragNode.dragging=false;dragNode=null;}
+    panStart=null;mouseDown=null;
+  });
+  cv.addEventListener('dblclick',e=>{const p=toWorld(e);const n=pickNode(p);if(n) focusOn(n);});
+  cv.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const p=toWorld(e);
+    view.k=Math.max(0.12,Math.min(3.5,view.k*Math.exp(-e.deltaY*0.0012)));
+    view.x=p.x-(p.mx-p.cw/2)/view.k;
+    view.y=p.y-(p.my-p.ch/2)/view.k;
+  },{passive:false});
+  function showTip(e,html){
+    const r=cv.parentElement.getBoundingClientRect();
+    tooltip.innerHTML=html;tooltip.style.display='block';
+    tooltip.style.left=Math.min(e.clientX-r.left+14,r.width-340)+'px';
+    tooltip.style.top=(e.clientY-r.top+14)+'px';
+  }
+  function hideTip(){tooltip.style.display='none';}
+
+  /* ============================== NAVIGATION ============================== */
+  function snapshot(){return{mode:state.mode,fm:state.focusModule,ff:state.focusFunction,dir:state.direction,depth:state.depth,expanded:[...state.expanded]};}
+  function applySnap(s){
+    state.mode=s.mode;state.focusModule=s.fm;state.focusFunction=s.ff;
+    state.direction=s.dir;state.depth=s.depth;state.expanded=new Set(s.expanded);
+    computeVisible();reheat();syncToolbar();renderSidebar();
+  }
+  function pushHistory(){
+    state.history=state.history.slice(0,state.hIndex+1);
+    state.history.push(snapshot());state.hIndex++;syncToolbar();
+  }
+  function historyBack(){if(state.hIndex>0){state.hIndex--;applySnap(state.history[state.hIndex]);}}
+  function historyForward(){if(state.hIndex<state.history.length-1){state.hIndex++;applySnap(state.history[state.hIndex]);}}
+  function gotoNode(n){
+    if(!n) return;
+    if(n.type==='module'){
+      if(state.mode==='functions') state.mode='hybrid';
+      state.focusModule=n.modName;
+      if(state.mode==='hybrid'&&!n.external) state.expanded.add(n.modName);
+    } else {
+      if(state.mode==='modules') state.mode='hybrid';
+      state.focusFunction=n.id;
+      if(n.type==='function'&&state.mode==='hybrid') state.expanded.add(n.module);
+    }
+    state.selected=n.id;
+    pushHistory();computeVisible();reheat();syncToolbar();renderSidebar();
+  }
+  function focusOn(n){
+    if(n.type==='module'&&state.mode==='hybrid'&&state.focusModule===n.modName&&!n.external){
+      toggleExpand(n.modName);return;
+    }
+    gotoNode(n);
+  }
+  function toggleExpand(modName){
+    state.expanded.has(modName)?state.expanded.delete(modName):state.expanded.add(modName);
+    pushHistory();computeVisible();reheat();
+  }
+  function fit(){
+    if(!vis.nodes.length) return;
+    let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
+    for(const n of vis.nodes){
+      if(n.x===undefined) continue;
+      const r=n.type==='module'?70:26;
+      minx=Math.min(minx,n.x-r);maxx=Math.max(maxx,n.x+r);
+      miny=Math.min(miny,n.y-r);maxy=Math.max(maxy,n.y+r);
+    }
+    if(minx>maxx) return;
+    const w=cv.clientWidth,h=cv.clientHeight;
+    view.k=Math.max(0.12,Math.min(1,Math.min(w/(maxx-minx+120),h/(maxy-miny+120))));
+    view.x=(minx+maxx)/2;view.y=(miny+maxy)/2;
+  }
+
+  /* ============================== SIDEBAR ============================== */
+  function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function shortOf(id){return nodeById.get(id)?.name||id;}
+  function rowHtml(id,iconCls,name,sub){
+    return `<div class="row" data-goto="${esc(id)}" title="Перейти: ${esc(name)}">
+    <span class="dot ${iconCls}"></span><span class="nm">${esc(name)}</span>
+    ${sub?`<span class="sub2">${esc(sub)}</span>`:''}<span class="go">⌖</span></div>`;
+  }
+  function renderSidebar(){
+    const id=state.selected;
+    if(!id){sideContent.innerHTML=`<div class="muted" style="padding:8px">
+    Клик — выбрать узел, двойной клик — перейти.<br><br>
+    <b style="color:#22d3ee">⬅ ➡</b> — история · <b style="color:#22d3ee">dbl-click</b> — вперёд<br>
+    Списки: <b>вперёд →</b> и <b>← назад</b></div>`;return;}
+    const n=nodeById.get(id);
+    if(!n){sideContent.innerHTML='';return;}
+    let h='';
+    if(n.type==='module'){
+      const fs=n.pkg?.fileStats||{};
+      h+=`<h2>📦 ${esc(n.name)}</h2>`;
+      h+=`<div>${n.external?'<span class="badge b-ext">внешний</span>':''}
+      ${n.pkg?.isEntry?'<span class="badge b-entry">точка входа</span>':''}</div>`;
+      if(!n.external) h+=`<h3>Файл</h3><div class="stats">
+      <span>строк: <b>${fs.lines??0}</b></span><span>размер: <b>${fs.size??0}</b></span>
+      <span>функций: <b>${fs.functions??0}</b></span><span>классов: <b>${fs.classes??0}</b></span>
+      <span>интерфейсов: <b>${fs.interfaces??0}</b></span><span>констант: <b>${fs.constants??0}</b></span></div>`;
+      h+=`<h3>Вперёд → импортирует (${n.deps.length})</h3>`;
+      h+=n.deps.map(d=>rowHtml('mod::'+d,d.startsWith('@')||!d.includes('/')?'ext':'mod',baseName(d),d.includes('/')?'':'external')).join('')||'<div class="muted">нет</div>';
+      h+=`<h3>← назад — зависит от него (${n.dependents.length})</h3>`;
+      h+=n.dependents.map(d=>rowHtml('mod::'+d,'mod',baseName(d))).join('')||'<div class="muted">нет</div>';
+      const fns=(n.pkg?.entities?.functions||[]);
+      if(fns.length){
+        h+=`<h3>Функции (${fns.length})</h3>`;
+        h+=fns.map(f=>rowHtml('fn::'+n.modName+'::'+f.name,'fn',(f.isAsync?'⚡':'')+(f.isExported?'★':'')+f.name,'стр '+f.line)).join('');
+      }
+    } else {
+      h+=`<h2>ƒ ${esc(n.name)}</h2>`;
+      h+=`<div>${n.type==='external'?'<span class="badge b-ext">внешняя</span>':''}
+      ${n.isAsync?'<span class="badge b-async">⚡ async</span>':''}
+      ${n.isExported?'<span class="badge b-exp">★ export</span>':''}</div>`;
+      if(n.type==='function'){
+        h+=`<h3>Модуль</h3>${rowHtml('mod::'+n.module,'mod',n.module)}`;
+        h+=`<h3>Детали</h3><div class="stats">
+        <span>строка: <b>${n.line??'—'}</b></span><span>до: <b>${n.endLine??'—'}</b></span>
+        <span>параметров: <b>${(n.params||[]).length}</b></span><span>возврат: <b>${esc(short(n.returnType||'—',22))}</b></span></div>`;
+      }
+      h+=`<h3>Вперёд → вызывает (${(n.calls||[]).length})</h3>`;
+      h+=(n.calls||[]).map(c=>{
+        const tid=n.type==='function'?G.resolveCallee(n,c):'ext::'+c;
+        const tn=nodeById.get(tid);
+        return rowHtml(tid,tn?.type==='external'?'ext':'call',c,tn?.module?baseName(tn.module):'external');
+      }).join('')||'<div class="muted">нет</div>';
+      h+=`<h3>← назад — вызывают (${(n.calledBy||[]).length})</h3>`;
+      h+=(n.calledBy||[]).map(cb=>{
+        const sid=n.type==='function'?G.resolveCaller(n,cb):'ext::'+cb;
+        const sn=nodeById.get(sid);
+        return rowHtml(sid,sn?.type==='external'?'ext':'call',cb,sn?.module?baseName(sn.module):'external');
+      }).join('')||'<div class="muted">нет</div>';
+      if(n.body) h+=`<h3>Начало тела</h3><pre class="body">${esc(String(n.body).slice(0,380))}…</pre>`;
+    }
+    sideContent.innerHTML=h;
+  }
+  sideContent.addEventListener('click',e=>{
+    const g=e.target.closest('[data-goto]');
+    if(g) gotoNode(nodeById.get(g.dataset.goto));
+  });
+
+  /* ============================== SEARCH ============================== */
+  let searchMatches=[];
+  function renderSearch(){
+    const q=searchInput.value.trim().toLowerCase();
+    if(!q){searchDrop.style.display='none';return;}
+    const items=[];
+    for(const m of G.modules.values()) if(!m.external) items.push({id:m.id,label:m.name,sub:'модуль',kind:'module'});
+    for(const f of G.functions.values()) items.push({id:f.id,label:f.name,sub:f.module,kind:'function'});
+    searchMatches=items.filter(it=>it.label.toLowerCase().includes(q)||it.sub.toLowerCase().includes(q)).slice(0,14);
+    searchDrop.innerHTML=searchMatches.map((it,i)=>
+      `<div class="it" data-i="${i}"><span class="dot ${it.kind==='module'?'mod':'fn'}"></span>
+     <span>${esc(it.label)}</span><span class="sub">${esc(it.sub)}</span></div>`).join('')||'<div class="it">не найдено</div>';
+    searchDrop.style.display='block';
+  }
+  function pickSearch(i){
+    const it=searchMatches[i]; if(!it) return;
+    gotoNode(nodeById.get(it.id));
+    searchDrop.style.display='none';
+  }
+  searchInput.addEventListener('input',renderSearch);
+  searchInput.addEventListener('keydown',e=>{
+    if(e.key==='Enter') pickSearch(0);
+    if(e.key==='Escape'){searchDrop.style.display='none';searchInput.blur();}
+  });
+  searchDrop.addEventListener('mousedown',e=>{
+    const it=e.target.closest('[data-i]'); if(it) pickSearch(+it.dataset.i);
+  });
+  document.addEventListener('click',e=>{if(!e.target.closest('#searchWrap')) searchDrop.style.display='none';});
+
+  /* ============================== TOOLBAR / STATUS ============================== */
+  function syncToolbar(){
+    document.getElementById('mModules').classList.toggle('active',state.mode==='modules');
+    document.getElementById('mFunctions').classList.toggle('active',state.mode==='functions');
+    document.getElementById('mHybrid').classList.toggle('active',state.mode==='hybrid');
+    document.getElementById('dUp').classList.toggle('active',state.direction==='up');
+    document.getElementById('dDown').classList.toggle('active',state.direction==='down');
+    document.getElementById('dBoth').classList.toggle('active',state.direction==='both');
+    document.getElementById('depth').value=state.depth;
+    document.getElementById('depthVal').textContent=state.depth;
+    document.getElementById('selLabels').value=state.labelMode;
+    document.getElementById('hBack').disabled=state.hIndex<=0;
+    document.getElementById('hFwd').disabled=state.hIndex>=state.history.length-1;
+    const f=state.mode==='functions'?state.focusFunction:state.focusModule;
+    document.getElementById('focusChip').textContent='🎯 '+(f?shortOf(f):'—');
+    const hyb=state.mode==='hybrid';
+    document.getElementById('btnExpandAll').style.display=hyb?'':'none';
+    document.getElementById('btnCollapseAll').style.display=hyb?'':'none';
+  }
+  function updateStatus(){
+    const names={modules:'Модули',functions:'Функции',hybrid:'Гибрид'};
+    document.getElementById('stMode').textContent='режим: '+names[state.mode];
+    document.getElementById('stNodes').textContent='узлов: '+vis.nodes.length;
+    document.getElementById('stEdges').textContent='связей: '+vis.edges.length;
+    const f=state.mode==='functions'?state.focusFunction:state.focusModule;
+    document.getElementById('stFocus').textContent='фокус: '+(f?shortOf(f):'—');
+    if(DATA){
+      const fs=DATA.fileStats||{},es=DATA.entityStats||{};
+      document.getElementById('stTotal').textContent=
+        `всего: ${fs.totalFiles??0} файлов · ${es.totalFunctions??0} функций · ${es.totalCalls??0} вызовов`;
+    }
+  }
+  function setMode(m){state.mode=m;computeVisible();reheat();syncToolbar();renderSidebar();}
+  function setDirection(d){state.direction=d;computeVisible();reheat();syncToolbar();}
+
+  document.getElementById('mModules').onclick=()=>setMode('modules');
+  document.getElementById('mFunctions').onclick=()=>setMode('functions');
+  document.getElementById('mHybrid').onclick=()=>setMode('hybrid');
+  document.getElementById('dUp').onclick=()=>setDirection('up');
+  document.getElementById('dDown').onclick=()=>setDirection('down');
+  document.getElementById('dBoth').onclick=()=>setDirection('both');
+  document.getElementById('hBack').onclick=historyBack;
+  document.getElementById('hFwd').onclick=historyForward;
+  document.getElementById('depth').addEventListener('input',e=>{
+    state.depth=+e.target.value;computeVisible();reheat();syncToolbar();});
+  document.getElementById('selLabels').addEventListener('change',e=>{state.labelMode=e.target.value;});
+  document.getElementById('cbExt').addEventListener('change',e=>{state.showExternal=e.target.checked;computeVisible();reheat();});
+  document.getElementById('btnFit').onclick=fit;
+  document.getElementById('btnExpandAll').onclick=()=>{
+    for(const m of G.modules.values()) if(!m.external) state.expanded.add(m.modName);
+    pushHistory();computeVisible();reheat();};
+  document.getElementById('btnCollapseAll').onclick=()=>{
+    state.expanded.clear();pushHistory();computeVisible();reheat();};
+  document.getElementById('btnReset').onclick=()=>{initFocus();pushHistory();computeVisible();reheat();syncToolbar();renderSidebar();setTimeout(fit,700);};
+  document.getElementById('btnHelp').onclick=()=>{
+    const h=document.getElementById('help');h.style.display=h.style.display==='block'?'none':'block';};
+  window.addEventListener('keydown',e=>{
+    if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT') return;
+    if(e.key==='ArrowLeft'){historyBack();e.preventDefault();}
+    else if(e.key==='ArrowRight'){historyForward();e.preventDefault();}
+    else if(e.key==='f'||e.key==='F') fit();
+    else if(e.key==='/'){e.preventDefault();searchInput.focus();}
+    else if(e.key==='Escape'){state.selected=null;renderSidebar();}
+  });
+
+  /* ============================== BOOT ============================== */
+  function initFocus(){
+    const entry=Object.entries(DATA.packages||{}).find(([,p])=>p.isEntry)?.[0]||Object.keys(DATA.packages||{})[0];
+    state.focusModule=entry||null;
+    const runCli=entry&&G.functions.has('fn::'+entry+'::runCLI')?'fn::'+entry+'::runCLI':G.functions.keys().next().value||null;
+    state.focusFunction=runCli;
+    state.expanded=new Set(entry?[entry]:[]);
+    state.selected=state.mode==='functions'?runCli:(entry?'mod::'+entry:null);
+  }
+  function start(){
+    buildGraph(DATA);
+    initFocus();
+    state.history=[];state.hIndex=-1;
+    computeVisible();pushHistory();syncToolbar();renderSidebar();reheat();
+    setTimeout(fit,700);setTimeout(fit,1800);
+  }
+  async function init(){
+    resize();
+    requestAnimationFrame(loop);
+    try{
+      const res=await fetch('./package-lock-report.json',{cache:'no-store'});
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      DATA=await res.json();
+      start();
+    }catch(err){
+      document.getElementById('fallback').style.display='flex';
+    }
+  }
+  function readFile(f){
+    const r=new FileReader();
+    r.onload=()=>{try{DATA=JSON.parse(r.result);
+      document.getElementById('fallback').style.display='none';start();
+    }catch(err){alert('Не удалось разобрать JSON: '+err.message);}};
+    r.readAsText(f);
+  }
+  document.getElementById('btnOpenFile').onclick=()=>document.getElementById('fileInput').click();
+  document.getElementById('fileInput').addEventListener('change',e=>{if(e.target.files[0]) readFile(e.target.files[0]);});
+  window.addEventListener('dragover',e=>e.preventDefault());
+  window.addEventListener('drop',e=>{e.preventDefault();const f=e.dataTransfer?.files?.[0];if(f) readFile(f);});
+
+  init();
+</script>
+</body>
+</html>

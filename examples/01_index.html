@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AST Analyzer - Graph Navigator</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+  <style>
+      :root {
+          --bg-color: #1e1e2e;
+          --panel-bg: #2a2a3c;
+          --text-color: #cdd6f4;
+          --accent-color: #89b4fa;
+          --highlight-color: #f9e2af;
+          --dimmed-opacity: 0.15;
+          --border-color: #45475a;
+      }
+
+      body {
+          margin: 0;
+          padding: 0;
+          font-family: 'Segoe UI', system-ui, sans-serif;
+          background-color: var(--bg-color);
+          color: var(--text-color);
+          display: flex;
+          flex-direction: column;
+          height: 100vh;
+          overflow: hidden;
+      }
+
+      /* Toolbar */
+      #toolbar {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 15px;
+          background-color: var(--panel-bg);
+          border-bottom: 1px solid var(--border-color);
+          z-index: 10;
+      }
+
+      button {
+          background-color: #45475a;
+          color: var(--text-color);
+          border: 1px solid var(--border-color);
+          padding: 6px 12px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 14px;
+          transition: background 0.2s;
+      }
+      button:hover { background-color: #585b70; }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      button.active { background-color: var(--accent-color); color: #1e1e2e; font-weight: bold; }
+
+      #search-input {
+          flex: 1;
+          max-width: 300px;
+          padding: 6px 10px;
+          background: #1e1e2e;
+          border: 1px solid var(--border-color);
+          color: var(--text-color);
+          border-radius: 4px;
+      }
+
+      .separator { width: 1px; height: 24px; background: var(--border-color); }
+
+      /* Main Layout */
+      #main-container {
+          display: flex;
+          flex: 1;
+          overflow: hidden;
+      }
+
+      /* Graph Area */
+      #cy {
+          flex: 1;
+          background-color: var(--bg-color);
+          position: relative;
+      }
+
+      #drop-zone {
+          position: absolute;
+          top: 0; left: 0; right: 0; bottom: 0;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+          background: rgba(30, 30, 46, 0.95);
+          z-index: 100;
+          border: 2px dashed var(--accent-color);
+          margin: 20px;
+          border-radius: 12px;
+          display: none; /* Hidden by default, shown if fetch fails */
+      }
+      #drop-zone h2 { color: var(--accent-color); }
+      #drop-zone label {
+          margin-top: 15px;
+          padding: 10px 20px;
+          background: var(--accent-color);
+          color: #1e1e2e;
+          border-radius: 6px;
+          cursor: pointer;
+          font-weight: bold;
+      }
+
+      /* Sidebar */
+      #sidebar {
+          width: 350px;
+          background-color: var(--panel-bg);
+          border-left: 1px solid var(--border-color);
+          overflow-y: auto;
+          padding: 15px;
+          display: flex;
+          flex-direction: column;
+          gap: 15px;
+      }
+
+      .sidebar-section {
+          background: #1e1e2e;
+          padding: 12px;
+          border-radius: 6px;
+          border: 1px solid var(--border-color);
+      }
+
+      .sidebar-section h3 {
+          margin: 0 0 10px 0;
+          color: var(--accent-color);
+          font-size: 14px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          border-bottom: 1px solid var(--border-color);
+          padding-bottom: 5px;
+      }
+
+      .stat-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+          font-size: 13px;
+      }
+      .stat-item { display: flex; justify-content: space-between; }
+      .stat-value { color: var(--highlight-color); font-weight: bold; }
+
+      .list-item {
+          font-size: 12px;
+          padding: 4px 0;
+          border-bottom: 1px solid #313244;
+          cursor: pointer;
+          color: #a6adc8;
+      }
+      .list-item:hover { color: var(--highlight-color); }
+      .list-item:last-child { border-bottom: none; }
+
+      .badge {
+          display: inline-block;
+          padding: 2px 6px;
+          border-radius: 4px;
+          font-size: 10px;
+          background: #45475a;
+          margin-right: 5px;
+      }
+
+      /* Loading Spinner */
+      .loader {
+          border: 4px solid #45475a;
+          border-top: 4px solid var(--accent-color);
+          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+          animation: spin 1s linear infinite;
+          margin-bottom: 20px;
+      }
+      @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<div id="toolbar">
+  <button id="btn-back" title="Назад (Alt+Left)">◀ Назад</button>
+  <button id="btn-forward" title="Вперед (Alt+Right)">Вперед ▶</button>
+  <button id="btn-reset" title="Сбросить выделение">⟲ Сброс</button>
+
+  <div class="separator"></div>
+
+  <button id="btn-focus-imports" title="Показать только зависимости (Forward)">🔗 Зависимости</button>
+  <button id="btn-focus-importers" title="Показать только тех, кто импортирует (Backward)">🔙 Импортёры</button>
+
+  <div class="separator"></div>
+
+  <input type="text" id="search-input" placeholder="🔍 Поиск файла...">
+
+  <div style="flex:1"></div>
+  <span id="status-text" style="font-size: 12px; color: #a6adc8;">Загрузка...</span>
+</div>
+
+<div id="main-container">
+  <div id="cy">
+    <div id="drop-zone">
+      <div class="loader" id="loader"></div>
+      <h2 id="drop-title">Загрузка графа...</h2>
+      <p id="drop-desc">Если файл не загрузился автоматически (из-за CORS), перетащите <code>package-lock-report.json</code> сюда или выберите его:</p>
+      <label for="file-input">Выбрать JSON файл</label>
+      <input type="file" id="file-input" accept=".json" style="display: none;">
+    </div>
+  </div>
+
+  <div id="sidebar">
+    <div class="sidebar-section" id="sec-info">
+      <h3>Информация о файле</h3>
+      <div id="file-path" style="font-size: 12px; word-break: break-all; color: #f9e2af; margin-bottom: 10px;">Выберите узел на графе</div>
+      <div class="stat-grid" id="file-stats"></div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>Экспорты (Entities)</h3>
+      <div id="exports-list" style="max-height: 200px; overflow-y: auto;">-</div>
+    </div>
+
+    <div class="sidebar-section">
+      <h3>История навигации</h3>
+      <div id="history-list" style="max-height: 150px; overflow-y: auto; font-size: 12px;">-</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let cy;
+  let reportData = null;
+
+  // Navigation History (Browser-like)
+  let history = [];
+  let historyIndex = -1;
+  let currentFocusMode = 'all'; // 'all', 'imports', 'importers'
+
+  // --- INITIALIZATION ---
+  document.addEventListener('DOMContentLoaded', () => {
+    setupUIEvents();
+    loadData();
+  });
+
+  async function loadData() {
+    try {
+      const response = await fetch('./package-lock-report.json');
+      if (!response.ok) throw new Error('File not found');
+      const data = await response.json();
+      initGraph(data);
+    } catch (e) {
+      console.warn('Fetch failed (likely CORS). Showing file picker.', e);
+      showDropZone();
+    }
+  }
+
+  function showDropZone() {
+    document.getElementById('drop-zone').style.display = 'flex';
+    document.getElementById('loader').style.display = 'none';
+    document.getElementById('drop-title').innerText = 'Требуется файл package-lock-report.json';
+    document.getElementById('status-text').innerText = 'Ожидание файла...';
+  }
+
+  // --- FILE INPUT & DRAG-DROP ---
+  const fileInput = document.getElementById('file-input');
+  const dropZone = document.getElementById('drop-zone');
+
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) readJsonFile(e.target.files[0]);
+  });
+
+  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.borderColor = '#f9e2af'; });
+  dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = 'var(--accent-color)'; });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    if (e.dataTransfer.files.length > 0) readJsonFile(e.dataTransfer.files[0]);
+  });
+
+  function readJsonFile(file) {
+    document.getElementById('drop-title').innerText = 'Обработка файла...';
+    document.getElementById('loader').style.display = 'block';
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        initGraph(data);
+        dropZone.style.display = 'none';
+      } catch (err) {
+        alert('Ошибка парсинга JSON: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // --- GRAPH BUILDING ---
+  function initGraph(data) {
+    reportData = data;
+    document.getElementById('status-text').innerText = 'Построение графа...';
+
+    const elements = [];
+    const nodeIds = new Set(Object.keys(data.packages));
+
+    // 1. Create Nodes
+    nodeIds.forEach(id => {
+      const pkg = data.packages[id];
+      elements.push({
+        data: {
+          id: id,
+          label: getShortName(id),
+          fullPath: id,
+          lines: pkg.fileStats?.lines || 0,
+          size: pkg.fileStats?.size || 0,
+          funcs: pkg.entities?.functions?.length || 0,
+          classes: pkg.entities?.classes?.length || 0
+        }
+      });
+    });
+
+    // 2. Create Edges (from inwardDependencies: A imports B -> A to B)
+    if (data.dependencyGraph && data.dependencyGraph.inwardDependencies) {
+      for (const [source, targets] of Object.entries(data.dependencyGraph.inwardDependencies)) {
+        if (!nodeIds.has(source)) continue;
+        for (const target of targets) {
+          if (nodeIds.has(target)) {
+            elements.push({
+              data: { source: source, target: target, id: `${source}->${target}` }
+            });
+          }
+        }
+      }
+    }
+
+    // 3. Init Cytoscape
+    cy = cytoscape({
+      container: document.getElementById('cy'),
+      elements: elements,
+      style: getCytoscapeStyle(),
+      layout: {
+        name: 'cose',
+        animate: false,
+        nodeDimensionsIncludeLabels: true,
+        idealEdgeLength: 100,
+        nodeOverlap: 20
+      },
+      wheelSensitivity: 0.3,
+      minZoom: 0.1,
+      maxZoom: 3
+    });
+
+    // 4. Events
+    cy.on('tap', 'node', (evt) => {
+      const nodeId = evt.target.id();
+      navigateTo(nodeId);
+    });
+
+    cy.on('tap', (evt) => {
+      if (evt.target === cy) resetHighlight();
+    });
+
+    document.getElementById('status-text').innerText = `Готово | Узлов: ${nodeIds.size}`;
+
+    // Auto-focus entry point if exists
+    const entry = data.executionGraph?.entryPoint;
+    if (entry && cy.getElementById(entry).length > 0) {
+      navigateTo(entry);
+    } else {
+      resetHighlight();
+    }
+  }
+
+  function getCytoscapeStyle() {
+    return [
+      {
+        selector: 'node',
+        style: {
+          'background-color': '#89b4fa',
+          'label': 'data(label)',
+          'color': '#cdd6f4',
+          'text-valign': 'center',
+          'text-halign': 'center',
+          'font-size': '11px',
+          'width': 'label',
+          'height': '24px',
+          'padding': '12px',
+          'shape': 'round-rectangle',
+          'border-width': 1,
+          'border-color': '#45475a'
+        }
+      },
+      {
+        selector: 'edge',
+        style: {
+          'width': 1.5,
+          'line-color': '#585b70',
+          'target-arrow-color': '#585b70',
+          'target-arrow-shape': 'triangle',
+          'curve-style': 'bezier',
+          'arrow-scale': 1
+        }
+      },
+      {
+        selector: '.highlighted',
+        style: {
+          'background-color': '#f9e2af',
+          'line-color': '#f9e2af',
+          'target-arrow-color': '#f9e2af',
+          'border-color': '#f9e2af',
+          'z-index': 9999,
+          'transition-property': 'background-color, line-color, border-color',
+          'transition-duration': '0.2s'
+        }
+      },
+      {
+        selector: '.current-node',
+        style: {
+          'background-color': '#a6e3a1',
+          'border-color': '#a6e3a1',
+          'border-width': 3,
+          'font-weight': 'bold',
+          'z-index': 10000
+        }
+      },
+      {
+        selector: '.dimmed',
+        style: { 'opacity': 0.1 }
+      }
+    ];
+  }
+
+  // --- NAVIGATION & HISTORY ---
+  function navigateTo(nodeId, addToHistory = true) {
+    if (!cy.getElementById(nodeId).length) return;
+
+    if (addToHistory) {
+      // Trim forward history if we branched off
+      history = history.slice(0, historyIndex + 1);
+      history.push(nodeId);
+      historyIndex++;
+    }
+
+    applyFocus(nodeId);
+    updateUIState();
+  }
+
+  function applyFocus(nodeId) {
+    const node = cy.getElementById(nodeId);
+    cy.elements().removeClass('highlighted dimmed current-node');
+
+    // Dim everything
+    cy.elements().addClass('dimmed');
+
+    // Highlight current
+    node.removeClass('dimmed').addClass('current-node');
+
+    let neighborhood;
+    if (currentFocusMode === 'imports') {
+      // Forward: A -> B (outgoing edges)
+      neighborhood = node.outgoers().add(node);
+    } else if (currentFocusMode === 'importers') {
+      // Backward: B -> A (incoming edges)
+      neighborhood = node.incomers().add(node);
+    } else {
+      // All direct connections
+      neighborhood = node.neighborhood().add(node);
+    }
+
+    neighborhood.removeClass('dimmed').addClass('highlighted');
+    node.removeClass('highlighted').addClass('current-node'); // Keep current node green
+
+    // Smooth pan to node
+    cy.animate({
+      center: { eles: node },
+      zoom: Math.max(cy.zoom(), 1.2)
+    }, { duration: 400, easing: 'ease-out-cubic' });
+
+    updateSidebar(nodeId);
+  }
+
+  function goBack() {
+    if (historyIndex > 0) {
+      historyIndex--;
+      applyFocus(history[historyIndex]);
+      updateUIState();
+    }
+  }
+
+  function goForward() {
+    if (historyIndex < history.length - 1) {
+      historyIndex++;
+      applyFocus(history[historyIndex]);
+      updateUIState();
+    }
+  }
+
+  function resetHighlight() {
+    cy.elements().removeClass('highlighted dimmed current-node');
+    currentFocusMode = 'all';
+    updateButtonsState();
+    document.getElementById('file-path').innerText = 'Выберите узел на графе';
+    document.getElementById('file-stats').innerHTML = '';
+    document.getElementById('exports-list').innerHTML = '-';
+  }
+
+  // --- UI UPDATES ---
+  function updateUIState() {
+    document.getElementById('btn-back').disabled = historyIndex <= 0;
+    document.getElementById('btn-forward').disabled = historyIndex >= history.length - 1;
+    updateHistoryList();
+  }
+
+  function updateButtonsState() {
+    document.getElementById('btn-focus-imports').classList.toggle('active', currentFocusMode === 'imports');
+    document.getElementById('btn-focus-importers').classList.toggle('active', currentFocusMode === 'importers');
+
+    if (historyIndex >= 0) {
+      applyFocus(history[historyIndex]);
+    }
+  }
+
+  function updateSidebar(nodeId) {
+    const pkg = reportData.packages[nodeId];
+    if (!pkg) return;
+
+    document.getElementById('file-path').innerText = nodeId;
+
+    const stats = pkg.fileStats || {};
+    document.getElementById('file-stats').innerHTML = `
+                <div class="stat-item"><span>Строк:</span> <span class="stat-value">${stats.lines || 0}</span></div>
+                <div class="stat-item"><span>Размер:</span> <span class="stat-value">${formatBytes(stats.size || 0)}</span></div>
+                <div class="stat-item"><span>Функций:</span> <span class="stat-value">${pkg.entities?.functions?.length || 0}</span></div>
+                <div class="stat-item"><span>Классов:</span> <span class="stat-value">${pkg.entities?.classes?.length || 0}</span></div>
+                <div class="stat-item"><span>Интерфейсов:</span> <span class="stat-value">${pkg.entities?.interfaces?.length || 0}</span></div>
+                <div class="stat-item"><span>Экспортов:</span> <span class="stat-value">${Object.keys(pkg.exports || {}).length}</span></div>
+            `;
+
+    // Exports list
+    const exportsList = document.getElementById('exports-list');
+    const exports = pkg.exports || {};
+    if (Object.keys(exports).length === 0) {
+      exportsList.innerHTML = '<div style="color:#6c7086; font-size:12px;">Нет экспортов</div>';
+    } else {
+      exportsList.innerHTML = Object.entries(exports).map(([name, info]) => {
+        const type = info.isAsync ? 'async' : 'sync';
+        return `<div class="list-item" data-name="${name}">
+                        <span class="badge">${type}</span> ${name}
+                    </div>`;
+      }).join('');
+    }
+  }
+
+  function updateHistoryList() {
+    const listEl = document.getElementById('history-list');
+    if (history.length === 0) {
+      listEl.innerHTML = '<div style="color:#6c7086;">Пусто</div>';
+      return;
+    }
+
+    listEl.innerHTML = history.map((h, i) => {
+      const isCurrent = i === historyIndex;
+      const shortName = getShortName(h);
+      return `<div class="list-item" style="color: ${isCurrent ? 'var(--highlight-color)' : '#a6adc8'}; font-weight: ${isCurrent ? 'bold' : 'normal'};" data-node="${h}">
+                    ${i === historyIndex ? '▶ ' : ''}${shortName}
+                </div>`;
+    }).reverse().join('');
+
+    // Clickable history
+    listEl.querySelectorAll('.list-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const targetNode = el.getAttribute('data-node');
+        const idx = history.indexOf(targetNode);
+        if (idx !== -1) {
+          historyIndex = idx;
+          applyFocus(targetNode);
+          updateUIState();
+        }
+      });
+    });
+  }
+
+  // --- EVENT LISTENERS ---
+  function setupUIEvents() {
+    document.getElementById('btn-back').addEventListener('click', goBack);
+    document.getElementById('btn-forward').addEventListener('click', goForward);
+    document.getElementById('btn-reset').addEventListener('click', resetHighlight);
+
+    document.getElementById('btn-focus-imports').addEventListener('click', () => {
+      currentFocusMode = currentFocusMode === 'imports' ? 'all' : 'imports';
+      updateButtonsState();
+    });
+
+    document.getElementById('btn-focus-importers').addEventListener('click', () => {
+      currentFocusMode = currentFocusMode === 'importers' ? 'all' : 'importers';
+      updateButtonsState();
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); goBack(); }
+      if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); goForward(); }
+    });
+
+    // Search
+    const searchInput = document.getElementById('search-input');
+    searchInput.addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase();
+      if (!query) {
+        cy.elements().style('display', 'element');
+        return;
+      }
+      cy.elements().style('display', 'none');
+      cy.nodes().filter(node => node.data('fullPath').toLowerCase().includes(query)).style('display', 'element');
+      cy.edges().filter(edge => edge.source().style('display') === 'element' && edge.target().style('display') === 'element').style('display', 'element');
+    });
+  }
+
+  // --- HELPERS ---
+  function getShortName(path) {
+    const parts = path.split('/');
+    if (parts.length <= 2) return path;
+    return parts.slice(-2).join('/');
+  }
+
+  function formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  }
+</script>
+</body>
+</html>

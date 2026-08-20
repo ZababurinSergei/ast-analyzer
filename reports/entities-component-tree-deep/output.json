@@ -126,9 +126,7 @@
     ],
     "src/reporters/interactive-reporter.ts": [
       "src/types.ts",
-      "@hpcc-js/wasm-graphviz",
-      "src/core/entity-extractor.ts",
-      "src/reporters/json-reporter.ts"
+      "@hpcc-js/wasm-graphviz"
     ],
     "src/types.ts": [
       "src/core/entity-extractor.ts"
@@ -300,7 +298,11 @@
           "body": "{\n  let currentDir = path.resolve(startDir);\n  const root = path.parse(currentDir).root;\n\n  while (currentDir !== root) {\n    const packagePath = path.join(currentDir, 'package.json');\n    if (fs.exis",
           "startLine": 91,
           "endLine": 103,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "resolveAbsoluteFilePath",
@@ -319,11 +321,37 @@
           "body": "{\n  // Если путь уже абсолютный и существует\n  if (path.isAbsolute(filePath) && fs.existsSync(filePath)) {\n    return filePath;\n  }\n\n  // Пробуем разные варианты\n  const candidates = [\n    path.resolv",
           "startLine": 109,
           "endLine": 140,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
+        },
+        {
+          "name": "extractEntitiesFromPackageLock",
+          "line": 149,
+          "isAsync": false,
+          "isExported": false,
+          "params": [
+            "packageLockReport"
+          ],
+          "returnType": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/entity-extractor\").EntitiesResult",
+          "calls": [],
+          "calledBy": [
+            "runCLI"
+          ],
+          "body": "{\n  const result: EntitiesResult = {\n    functions: [],\n    classes: [],\n    constants: [],\n    interfaces: [],\n    types: [],\n    variables: [],\n    imports: [],\n    exports: [],\n    callGraph: {},\n ",
+          "startLine": 149,
+          "endLine": 294,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "parseArgs",
-          "line": 159,
+          "line": 313,
           "isAsync": false,
           "isExported": false,
           "params": [],
@@ -337,13 +365,17 @@
             "runCLI"
           ],
           "body": "{\n  const args = process.argv.slice(2);\n\n  // ✅ Нормализация путей для Windows\n  const normalizedArgs = args.map(arg => {\n    // Не трогаем опции (начинаются с -)\n    if (arg.startsWith('-')) return a",
-          "startLine": 159,
-          "endLine": 846,
-          "isMethod": false
+          "startLine": 313,
+          "endLine": 1000,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "runCLI",
-          "line": 852,
+          "line": 1006,
           "isAsync": true,
           "isExported": true,
           "params": [],
@@ -376,11 +408,12 @@
             "findProjectRoot",
             "resolveAbsoluteFilePath",
             "saveEnhancedPackageLockReport",
-            "parseFile",
+            "extractEntitiesFromPackageLock",
             "extractEntitiesFromFile",
             "findModuleForEntity",
             "generateInteractiveHTML",
             "buildFileInternalGraph",
+            "parseFile",
             "extractEntities",
             "saveModuleGraph",
             "saveEntityGraph",
@@ -388,13 +421,17 @@
           ],
           "calledBy": [],
           "body": "{\n  const parsed = parseArgs();\n  if (!parsed) return;\n\n  const {\n    mode,\n    targetPath,\n    extraArg,\n    options,\n    outputDir,\n    tsconfigPath,\n    includeEntities,\n    fromFunction,\n    toFun",
-          "startLine": 852,
-          "endLine": 1867,
-          "isMethod": false
+          "startLine": 1006,
+          "endLine": 2261,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "findModuleForEntity",
-          "line": 1873,
+          "line": 2267,
           "isAsync": false,
           "isExported": false,
           "params": [
@@ -407,9 +444,13 @@
             "runCLI"
           ],
           "body": "{\n  for (const [modulePath, deps] of Object.entries(data.graph)) {\n    if (modulePath.includes(entityName)) {\n      return modulePath;\n    }\n    if (Array.isArray(deps)) {\n      for (const dep of deps",
-          "startLine": 1873,
-          "endLine": 1887,
-          "isMethod": false
+          "startLine": 2267,
+          "endLine": 2281,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -430,7 +471,7 @@
       "interfaces": [
         {
           "name": "ParsedArgs",
-          "line": 146,
+          "line": 300,
           "isExported": false,
           "properties": [
             "mode",
@@ -445,8 +486,8 @@
             "toFunction"
           ],
           "extends": [],
-          "startLine": 146,
-          "endLine": 157
+          "startLine": 300,
+          "endLine": 311
         }
       ],
       "types": [],
@@ -475,7 +516,11 @@
           "body": "{\n  if (!process.argv[1]) return false;\n  const currentName = path.basename(fileURLToPath(importMetaUrl));\n  const mainName = path.basename(process.argv[1]);\n  return currentName === mainName;\n}",
           "startLine": 9,
           "endLine": 14,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -509,7 +554,11 @@
           "body": "{\n  const allNodes: any[] = [];\n  const visited = new Set<any>();\n\n  function traverse(node: any) {\n    if (!node || typeof node !== 'object' || visited.has(node)) return;\n    visited.add(node);\n    a",
           "startLine": 8,
           "endLine": 39,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "minifyCodeString",
@@ -531,7 +580,11 @@
           "body": "{\n  if (!ast) {\n    console.warn('⚠️ AST is null, returning original code');\n    return code;\n  }\n\n  const cuts: { start: number; end: number; replaceWith: string }[] = [];\n\n  // Собираем все узлы рек",
           "startLine": 47,
           "endLine": 134,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "shouldPreserveValue",
@@ -549,7 +602,11 @@
           "body": "{\n  if (!node.init || !node.id || !node.id.name) return false;\n\n  const varName = node.id.name;\n  const initNode = node.init;\n\n  // Сохраняем конфигурационные переменные (UPPER_CASE)\n  const preserveP",
           "startLine": 139,
           "endLine": 198,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "minifyForAI",
@@ -568,7 +625,11 @@
           "body": "{\n  console.log(`📄 Минификация файла: ${filePath}`);\n\n  const code = fs.readFileSync(filePath, 'utf-8');\n  console.log(`📏 Исходный размер: ${code.length} символов`);\n\n  const ast = parseFile(filePat",
           "startLine": 203,
           "endLine": 225,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -600,7 +661,11 @@
           "body": "{\n  const visited: Record<string, number> = {};\n  const cyclicEdges = new Set<string>();\n  const recursionStack = new Set<string>();\n\n  // Инициализация статусов: 0 - не посещен, 1 - в процессе, 2 - о",
           "startLine": 8,
           "endLine": 52,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "convertToDOT",
@@ -617,7 +682,11 @@
           "body": "{\n  const { rootKey, graph } = graphData;\n\n  let dot = 'digraph \"Dependency Graph\" {\\n';\n  dot += '  rankdir=LR;\\n';\n  dot += '  splines=true;\\n';\n  dot +=\n    '  node [shape=box, style=\"filled,rounde",
           "startLine": 60,
           "endLine": 94,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "dfs",
@@ -640,7 +709,11 @@
           "body": "{\n  if (visited.has(node)) return;\n\n  visited.add(node);\n  callback(node);\n\n  const neighbors = graph[node] || [];\n  for (const neighbor of neighbors) {\n    dfs(neighbor, graph, visited, callback);\n  ",
           "startLine": 103,
           "endLine": 118,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -670,7 +743,11 @@
           "body": "{\n  explicitTsConfigPath = configPath;\n  cachedTsConfig = null;\n  cachedTsConfigDir = null;\n}",
           "startLine": 22,
           "endLine": 26,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "loadTsConfig",
@@ -688,7 +765,11 @@
           "body": "{\n  // Если указан явный путь, используем его\n  if (explicitTsConfigPath) {\n    const resolvedPath = path.resolve(process.cwd(), explicitTsConfigPath);\n    const normalizedPath = normalizePathForOS(re",
           "startLine": 33,
           "endLine": 77,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getTsConfigDir",
@@ -702,7 +783,11 @@
           "body": "{\n  return cachedTsConfigDir;\n}",
           "startLine": 82,
           "endLine": 84,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getCachedTsConfig",
@@ -716,7 +801,11 @@
           "body": "{\n  return cachedTsConfig;\n}",
           "startLine": 89,
           "endLine": 91,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "clearTsConfigCache",
@@ -730,7 +819,11 @@
           "body": "{\n  cachedTsConfig = null;\n  cachedTsConfigDir = null;\n  explicitTsConfigPath = null;\n}",
           "startLine": 96,
           "endLine": 100,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "resolveAliasPath",
@@ -750,7 +843,11 @@
           "body": "{\n  if (!tsConfig?.compilerOptions?.paths) {\n    return null;\n  }\n\n  const { paths, baseUrl = '.' } = tsConfig.compilerOptions;\n  const baseUrlPath = path.resolve(baseDir, baseUrl);\n\n  for (const [ali",
           "startLine": 109,
           "endLine": 166,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "hasAliases",
@@ -766,7 +863,11 @@
           "body": "{\n  if (!tsConfig?.compilerOptions?.paths) {\n    return false;\n  }\n  return Object.keys(tsConfig.compilerOptions.paths).length > 0;\n}",
           "startLine": 171,
           "endLine": 176,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getAliases",
@@ -782,7 +883,11 @@
           "body": "{\n  if (!tsConfig?.compilerOptions?.paths) {\n    return {};\n  }\n  return tsConfig.compilerOptions.paths;\n}",
           "startLine": 181,
           "endLine": 186,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getBaseUrl",
@@ -798,7 +903,11 @@
           "body": "{\n  if (!tsConfig?.compilerOptions?.baseUrl) {\n    return null;\n  }\n  return tsConfig.compilerOptions.baseUrl;\n}",
           "startLine": 191,
           "endLine": 196,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "isAliasPath",
@@ -815,7 +924,11 @@
           "body": "{\n  if (!tsConfig?.compilerOptions?.paths) {\n    return false;\n  }\n\n  for (const alias of Object.keys(tsConfig.compilerOptions.paths)) {\n    const escapedAlias = alias.replace(/[.*+?^${}()|[\\]\\\\]/g, '",
           "startLine": 201,
           "endLine": 216,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "resolveAliasPattern",
@@ -835,7 +948,11 @@
           "body": "{\n  if (!tsConfig?.compilerOptions?.paths) {\n    return null;\n  }\n\n  const { paths, baseUrl = '.' } = tsConfig.compilerOptions;\n  const baseUrlPath = path.resolve(baseDir, baseUrl);\n\n  for (const [ali",
           "startLine": 222,
           "endLine": 258,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "addAlias",
@@ -853,7 +970,11 @@
           "body": "{\n  if (!tsConfig) {\n    tsConfig = { compilerOptions: {} };\n  }\n\n  if (!tsConfig.compilerOptions) {\n    tsConfig.compilerOptions = {};\n  }\n\n  if (!tsConfig.compilerOptions.paths) {\n    tsConfig.compi",
           "startLine": 263,
           "endLine": 282,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "removeAlias",
@@ -870,7 +991,11 @@
           "body": "{\n  if (!tsConfig?.compilerOptions?.paths) {\n    return tsConfig;\n  }\n\n  delete tsConfig.compilerOptions.paths[alias];\n  return tsConfig;\n}",
           "startLine": 287,
           "endLine": 294,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -946,7 +1071,11 @@
           "body": "{\n  if (!filePath) return '';\n  if (path.isAbsolute(filePath)) return filePath;\n  return path.resolve(process.cwd(), filePath);\n}",
           "startLine": 46,
           "endLine": 50,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "validateAndResolvePath",
@@ -966,7 +1095,11 @@
           "body": "{\n  const absolutePath = resolveAbsolutePath(filePath);\n  if (!fs.existsSync(absolutePath)) {\n    console.warn(`⚠️ Файл не найден: ${absolutePath}`);\n    return null;\n  }\n  return absolutePath;\n}",
           "startLine": 55,
           "endLine": 62,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getTsConfigForFile",
@@ -986,7 +1119,11 @@
           "body": "{\n  const dir = path.dirname(filePath);\n  if (tsConfigCache && tsConfigBaseDirCache === dir) {\n    return tsConfigCache;\n  }\n\n  tsConfigBaseDirCache = dir;\n  tsConfigCache = loadTsConfig(dir);\n  retur",
           "startLine": 73,
           "endLine": 82,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "parseVueSFCFile",
@@ -1007,7 +1144,11 @@
           "body": "{\n  try {\n    const resolvedPath = resolveAbsolutePath(filePath);\n    if (!fs.existsSync(resolvedPath)) {\n      console.warn(`⚠️ Файл не найден: ${resolvedPath}`);\n      return null;\n    }\n\n    const ",
           "startLine": 104,
           "endLine": 162,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "parseFile",
@@ -1028,7 +1169,11 @@
           "body": "{\n  try {\n    // ✅ Нормализуем путь\n    const resolvedPath = validateAndResolvePath(filePath);\n    if (!resolvedPath) return null;\n\n    console.log(`📖 Чтение файла: ${resolvedPath}`);\n    let code = ",
           "startLine": 170,
           "endLine": 323,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "isExternalModule",
@@ -1044,7 +1189,11 @@
           "body": "{\n  if (\n    importTarget.startsWith('@') ||\n    importTarget.startsWith('#') ||\n    importTarget.startsWith('~')\n  ) {\n    return false;\n  }\n\n  return (\n    !importTarget.startsWith('.') && !importTa",
           "startLine": 325,
           "endLine": 337,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "resolveFilePath",
@@ -1065,7 +1214,11 @@
           "body": "{\n  // 1. Проверяем, не абсолютный ли уже путь\n  if (path.isAbsolute(targetPath) && fs.existsSync(targetPath)) {\n    return targetPath;\n  }\n\n  // 2. Используем getTsConfigForFile с кэшированием\n  cons",
           "startLine": 358,
           "endLine": 480,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getAllProjectFiles",
@@ -1085,7 +1238,11 @@
           "body": "{\n  try {\n    const resolvedDir = path.isAbsolute(dir) ? dir : path.resolve(process.cwd(), dir);\n    if (!fs.existsSync(resolvedDir)) {\n      console.warn(`⚠️ Директория не найдена: ${resolvedDir}`);\n",
           "startLine": 482,
           "endLine": 511,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractFunctionsFromAST",
@@ -1104,7 +1261,11 @@
           "body": "{\n  const functions: any[] = [];\n\n  if (!ast || !ast.body) return functions;\n\n  walk(ast, {\n    enter(node: any, parent: any) {\n      if ((node.type === 'FunctionDeclaration' || node.type === 'Functio",
           "startLine": 520,
           "endLine": 575,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractClassesFromAST",
@@ -1123,7 +1284,11 @@
           "body": "{\n  const classes: any[] = [];\n\n  if (!ast || !ast.body) return classes;\n\n  walk(ast, {\n    enter(node: any, parent: any) {\n      if (node.type === 'ClassDeclaration' && node.id) {\n        const name ",
           "startLine": 580,
           "endLine": 621,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractConstantsFromAST",
@@ -1143,7 +1308,11 @@
           "body": "{\n  const constants: any[] = [];\n\n  if (!ast || !ast.body) return constants;\n\n  walk(ast, {\n    enter(node: any, parent: any) {\n      if (node.type === 'VariableDeclaration' && node.kind === 'const') ",
           "startLine": 626,
           "endLine": 655,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractInterfacesFromAST",
@@ -1162,7 +1331,11 @@
           "body": "{\n  const interfaces: any[] = [];\n\n  if (!ast || !ast.body) return interfaces;\n\n  walk(ast, {\n    enter(node: any, parent: any) {\n      if (node.type === 'TSInterfaceDeclaration' && node.id) {\n       ",
           "startLine": 660,
           "endLine": 694,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractTypesFromAST",
@@ -1181,7 +1354,11 @@
           "body": "{\n  const types: any[] = [];\n\n  if (!ast || !ast.body) return types;\n\n  walk(ast, {\n    enter(node: any, parent: any) {\n      if (node.type === 'TSTypeAliasDeclaration' && node.id) {\n        const nam",
           "startLine": 699,
           "endLine": 721,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractVariablesFromAST",
@@ -1201,7 +1378,11 @@
           "body": "{\n  const variables: any[] = [];\n\n  if (!ast || !ast.body) return variables;\n\n  walk(ast, {\n    enter(node: any, parent: any) {\n      if (node.type === 'VariableDeclaration' && node.kind !== 'const') ",
           "startLine": 726,
           "endLine": 753,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "isNodeExported",
@@ -1225,7 +1406,11 @@
           "body": "{\n  if (!node) return false;\n\n  // Прямой export\n  if (node.type === 'ExportNamedDeclaration' || node.type === 'ExportDefaultDeclaration') {\n    return true;\n  }\n\n  // Проверка родителя\n  if (parent) ",
           "startLine": 762,
           "endLine": 790,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractValueFromNode",
@@ -1244,7 +1429,11 @@
           "body": "{\n  if (!node) return undefined;\n\n  if (node.type === 'Literal') {\n    return node.value;\n  }\n\n  if (node.type === 'Identifier') {\n    return node.name;\n  }\n\n  if (node.type === 'UnaryExpression') {\n ",
           "startLine": 795,
           "endLine": 836,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -1347,7 +1536,11 @@
           "body": "{\n  return value && Array.isArray(value);\n}",
           "startLine": 105,
           "endLine": 107,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getNodeType",
@@ -1365,7 +1558,11 @@
           "body": "{\n  if (!node) return 'null';\n  if (typeof node !== 'object') return typeof node;\n  if (node.type) return node.type;\n  if (node.constructor?.name) return node.constructor.name;\n  return 'unknown';\n}",
           "startLine": 112,
           "endLine": 118,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getNodeLocation",
@@ -1383,7 +1580,11 @@
           "body": "{\n  if (!node) return 'unknown';\n  if (node.loc?.start) {\n    return `line ${node.loc.start.line}, column ${node.loc.start.column}`;\n  }\n  if (node.start !== undefined) {\n    return `position ${node.s",
           "startLine": 124,
           "endLine": 133,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "isEventHandler",
@@ -1401,7 +1602,11 @@
           "body": "{\n  if (!node) return false;\n\n  // Проверка вызовов addEventListener, on, once\n  if (node.type === 'CallExpression' && node.callee) {\n    const callee = node.callee;\n    if (callee.type === 'Identifie",
           "startLine": 138,
           "endLine": 173,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractEventType",
@@ -1419,7 +1624,11 @@
           "body": "{\n  if (!node) return undefined;\n\n  if (node.type === 'CallExpression' && node.callee) {\n    // addEventListener('click', handler)\n    if (node.arguments && node.arguments.length > 0) {\n      const fi",
           "startLine": 178,
           "endLine": 202,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractEntities",
@@ -1447,7 +1656,11 @@
           "body": "{\n  // Проверка на null/undefined\n  if (!ast || !ast.body) {\n    return {\n      functions: [],\n      classes: [],\n      constants: [],\n      interfaces: [],\n      types: [],\n      variables: [],\n     ",
           "startLine": 207,
           "endLine": 1011,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "isNodeExported",
@@ -1466,7 +1679,11 @@
           "body": "{\n  if (!node) return false;\n\n  // Прямой export\n  if (node.type === 'ExportNamedDeclaration' || node.type === 'ExportDefaultDeclaration') {\n    return true;\n  }\n\n  // Проверка родителя\n  if (parent) ",
           "startLine": 1016,
           "endLine": 1056,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractBodyText",
@@ -1486,7 +1703,11 @@
           "body": "{\n  if (!body) return undefined;\n\n  if (body.type === 'BlockStatement') {\n    const statements = body.body || [];\n    if (statements.length === 0) return '{}';\n\n    const firstStatement = statements[0",
           "startLine": 1061,
           "endLine": 1095,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractValue",
@@ -1506,7 +1727,11 @@
           "body": "{\n  if (!node) return undefined;\n\n  if (node.type === 'Literal') {\n    return node.value;\n  }\n\n  if (node.type === 'Identifier') {\n    return node.name;\n  }\n\n  if (node.type === 'UnaryExpression') {\n ",
           "startLine": 1100,
           "endLine": 1157,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractCallGraph",
@@ -1524,7 +1749,11 @@
           "body": "{\n  const callGraph: Record<string, string[]> = {};\n  let currentFunction: string | null = null;\n\n  try {\n    walk(ast, {\n      enter(node: any) {\n        if (!node || typeof node !== 'object') return",
           "startLine": 1162,
           "endLine": 1209,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -1703,7 +1932,7 @@
       "functions": [
         {
           "name": "convertEnhancedToEntities",
-          "line": 157,
+          "line": 160,
           "isAsync": false,
           "isExported": false,
           "params": [
@@ -1715,13 +1944,17 @@
             "buildProjectGraph"
           ],
           "body": "{\n  return {\n    functions: enhanced.functions.map(f => ({\n      name: f.name,\n      line: f.line,\n      isAsync: f.isAsync,\n      isExported: f.isExported,\n      params: f.params,\n      returnType: f",
-          "startLine": 157,
-          "endLine": 220,
-          "isMethod": false
+          "startLine": 160,
+          "endLine": 230,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "buildCallGraphBetweenFunctions",
-          "line": 225,
+          "line": 235,
           "isAsync": false,
           "isExported": true,
           "params": [
@@ -1735,13 +1968,17 @@
             "buildProjectGraph"
           ],
           "body": "{\n  // Проверяем существование функций\n  if (!allFunctions.has(fromFunction)) {\n    return {\n      from: fromFunction,\n      to: toFunction,\n      path: [],\n      found: false,\n      reason: `Начальна",
-          "startLine": 225,
-          "endLine": 316,
-          "isMethod": false
+          "startLine": 235,
+          "endLine": 326,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "findProjectRoot",
-          "line": 321,
+          "line": 331,
           "isAsync": false,
           "isExported": false,
           "params": [
@@ -1753,13 +1990,17 @@
             "buildProjectGraph"
           ],
           "body": "{\n  let currentDir = path.resolve(startDir);\n  const root = path.parse(currentDir).root;\n\n  while (currentDir !== root) {\n    const packagePath = path.join(currentDir, 'package.json');\n    if (fs.exis",
-          "startLine": 321,
-          "endLine": 333,
-          "isMethod": false
+          "startLine": 331,
+          "endLine": 343,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "resolveAbsoluteFilePath",
-          "line": 339,
+          "line": 349,
           "isAsync": false,
           "isExported": false,
           "params": [
@@ -1772,13 +2013,17 @@
             "buildProjectGraph"
           ],
           "body": "{\n  // Если путь уже абсолютный и существует\n  if (path.isAbsolute(filePath) && fs.existsSync(filePath)) {\n    return filePath;\n  }\n\n  // Пробуем разные варианты\n  const candidates = [\n    path.resolv",
-          "startLine": 339,
-          "endLine": 370,
-          "isMethod": false
+          "startLine": 349,
+          "endLine": 380,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "buildPackageLockReportSync",
-          "line": 376,
+          "line": 386,
           "isAsync": false,
           "isExported": false,
           "params": [
@@ -1795,13 +2040,17 @@
             "buildProjectGraph"
           ],
           "body": "{\n  // ✅ ИСПРАВЛЕНО: передаем entitiesMap в buildEnhancedPackageLockReport\n  const enhancedReport = buildEnhancedPackageLockReport(\n    rootKey,\n    graph,\n    entitiesMap,\n    absoluteFilePaths\n  );\n",
-          "startLine": 376,
-          "endLine": 401,
-          "isMethod": false
+          "startLine": 386,
+          "endLine": 411,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "buildProjectGraph",
-          "line": 406,
+          "line": 416,
           "isAsync": false,
           "isExported": true,
           "params": [
@@ -1830,13 +2079,17 @@
           ],
           "calledBy": [],
           "body": "{\n  const graph: Record<string, string[]> = {};\n  const visited = new Set<string>();\n  const entitiesMap: Record<string, EntitiesResult> = {};\n  const rootAbsPath = path.resolve(entryPoint);\n  const q",
-          "startLine": 406,
-          "endLine": 619,
-          "isMethod": false
+          "startLine": 416,
+          "endLine": 695,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "collectImports",
-          "line": 625,
+          "line": 701,
           "isAsync": false,
           "isExported": false,
           "params": [
@@ -1850,13 +2103,17 @@
             "buildProjectGraph"
           ],
           "body": "{\n  const imports: string[] = [];\n  if (!ast) return imports;\n\n  walk(ast, {\n    enter(node: any) {\n      if (\n        (node.type === 'ImportDeclaration' ||\n          node.type === 'ExportNamedDeclara",
-          "startLine": 625,
-          "endLine": 655,
-          "isMethod": false
+          "startLine": 701,
+          "endLine": 731,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "collectReExports",
-          "line": 657,
+          "line": 733,
           "isAsync": false,
           "isExported": false,
           "params": [
@@ -1871,13 +2128,17 @@
             "expandFolderReExport"
           ],
           "body": "{\n  const reExports: string[] = [];\n  if (!ast) return reExports;\n\n  walk(ast, {\n    enter(node: any) {\n      if (\n        node.type === 'ExportNamedDeclaration' &&\n        node.source &&\n        node",
-          "startLine": 657,
-          "endLine": 681,
-          "isMethod": false
+          "startLine": 733,
+          "endLine": 757,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "expandFolderReExport",
-          "line": 683,
+          "line": 759,
           "isAsync": false,
           "isExported": false,
           "params": [
@@ -1894,9 +2155,13 @@
             "buildProjectGraph"
           ],
           "body": "{\n  const resolvedFiles: string[] = [];\n\n  for (const ext of ['.ts', '.js', '.mjs', '.cjs']) {\n    const indexPath = path.join(folderPath, `index${ext}`);\n    if (fs.existsSync(indexPath)) {\n      con",
-          "startLine": 683,
-          "endLine": 706,
-          "isMethod": false
+          "startLine": 759,
+          "endLine": 782,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -1904,7 +2169,7 @@
       "interfaces": [
         {
           "name": "PackageLockFunctionInfo",
-          "line": 20,
+          "line": 23,
           "isExported": true,
           "properties": [
             "isAsync",
@@ -1916,12 +2181,12 @@
             "consumers"
           ],
           "extends": [],
-          "startLine": 20,
-          "endLine": 37
+          "startLine": 23,
+          "endLine": 40
         },
         {
           "name": "PackageLockPackage",
-          "line": 42,
+          "line": 45,
           "isExported": true,
           "properties": [
             "version",
@@ -1933,12 +2198,12 @@
             "exports"
           ],
           "extends": [],
-          "startLine": 42,
-          "endLine": 73
+          "startLine": 45,
+          "endLine": 76
         },
         {
           "name": "CallGraphResult",
-          "line": 78,
+          "line": 81,
           "isExported": true,
           "properties": [
             "from",
@@ -1950,12 +2215,12 @@
             "edges"
           ],
           "extends": [],
-          "startLine": 78,
-          "endLine": 95
+          "startLine": 81,
+          "endLine": 98
         },
         {
           "name": "PackageLockReport",
-          "line": 100,
+          "line": 103,
           "isExported": true,
           "properties": [
             "name",
@@ -1968,8 +2233,8 @@
             "callGraph"
           ],
           "extends": [],
-          "startLine": 100,
-          "endLine": 148
+          "startLine": 103,
+          "endLine": 151
         }
       ],
       "types": [],
@@ -1999,7 +2264,11 @@
           "body": "{\n  if (!node || typeof node !== 'object') return;\n\n  // ✅ Обработка экспортов\n  if (node.type === 'ExportNamedDeclaration') {\n    if (node.declaration) {\n      // Рекурсивно обрабатываем declaration\n",
           "startLine": 11,
           "endLine": 131,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "buildFileInternalGraph",
@@ -2021,7 +2290,11 @@
           "body": "{\n  const ast = parseFile(filePath);\n\n  // ✅ УСИЛЕННАЯ ПРОВЕРКА AST\n  if (!ast) {\n    console.warn(`⚠️ Не удалось получить AST для файла: ${filePath}`);\n    return null;\n  }\n\n  // ✅ ПРОВЕРКА НА НАЛИЧИ",
           "startLine": 139,
           "endLine": 217,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -2055,7 +2328,11 @@
           "body": "{\n  const { rootKey, graph } = buildProjectGraph(entryPointFile, maxDepth);\n  const allRelatedFiles = new Set([rootKey]);\n\n  // Собираем все связанные файлы\n  Object.keys(graph).forEach(key => {\n    a",
           "startLine": 13,
           "endLine": 62,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -2091,7 +2368,11 @@
           "body": "{\n  const { maxDepth = 5, excludePatterns = DEFAULT_EXCLUDE_PATTERNS } = options;\n\n  // Проверка на исключение\n  for (const pattern of excludePatterns) {\n    if (filePath.includes(pattern)) {\n      co",
           "startLine": 18,
           "endLine": 256,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "identifyClusters",
@@ -2112,7 +2393,11 @@
           "body": "{\n  const { targetClusterSize = 3, maxClusterSize = 10 } = options;\n\n  const clusters: any[] = [];\n  const processed = new Set();\n\n  // Подсчет частоты вызовов\n  const callFrequency: Record<string, nu",
           "startLine": 261,
           "endLine": 365,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "buildSplitModulePrompt",
@@ -2137,7 +2422,11 @@
           "body": "{\n  const {\n    outputFile = 'ai-split-module-prompt.md',\n    includeFullCode = true,\n    includeMinified = true,\n    includeGraph = true,\n    includeStats = true,\n    includeSuggestions = true,\n    i",
           "startLine": 374,
           "endLine": 712,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -2173,7 +2462,11 @@
           "body": "{\n  const targetAbsPath = path.resolve(targetFile);\n  const targetRelKey = path.relative(process.cwd(), targetAbsPath);\n\n  console.log(`🔍 Поиск использований \"${entityName}\" из \"${targetRelKey}\"...`)",
           "startLine": 12,
           "endLine": 135,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -2208,7 +2501,11 @@
           "body": "{\n  const targetAbsPath = path.resolve(targetFile);\n  const targetRelKey = path.relative(process.cwd(), targetAbsPath);\n  const ast = parseFile(targetAbsPath);\n  if (!ast) return null;\n\n  const declar",
           "startLine": 11,
           "endLine": 133,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -2244,7 +2541,11 @@
           "body": "{\n  const tree: any = {};\n\n  for (const relPath of relativePaths) {\n    const parts = relPath.split(path.sep);\n    let current = tree;\n\n    for (let i = 0; i < parts.length; i++) {\n      const part = ",
           "startLine": 24,
           "endLine": 84,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "collectFiles",
@@ -2266,7 +2567,11 @@
           "body": "{\n  const files: FileInfo[] = [];\n\n  if (currentDepth > maxDepth) return files;\n\n  try {\n    const items = fs.readdirSync(dir);\n\n    for (const item of items) {\n      const fullPath = path.join(dir, i",
           "startLine": 86,
           "endLine": 131,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "minifyFolder",
@@ -2287,7 +2592,11 @@
           "body": "{\n  const {\n    outputFile = 'ai-project-context.md',\n    extensions = ['.js', '.ts', '.tsx', '.jsx', '.vue', '.mjs', '.cjs'],\n    excludePatterns = DEFAULT_EXCLUDE_PATTERNS,\n    maxDepth = 10,\n    sh",
           "startLine": 139,
           "endLine": 285,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -2353,7 +2662,11 @@
           "body": "{\n  try {\n    const source = fs.readFileSync(filePath, 'utf-8');\n    const { descriptor, errors } = parse(source, {\n      filename: filePath,\n      sourceMap: false,\n    });\n\n    if (errors.length > 0",
           "startLine": 77,
           "endLine": 97,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "compileScriptBlock",
@@ -2374,7 +2687,11 @@
           "body": "{\n  try {\n    if (!descriptor.script && !descriptor.scriptSetup) {\n      return null;\n    }\n\n    const script = compileScript(descriptor, {\n      id: filePath,\n      isProd: false,\n      fs: {\n       ",
           "startLine": 102,
           "endLine": 129,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractPropsFromSource",
@@ -2396,7 +2713,11 @@
           "body": "{\n  const result: VueComponentAnalysis['props'] = {\n    names: [],\n    types: {},\n    required: {},\n    defaults: {},\n  };\n\n  // ============================================\n  // 1. ПОДДЕРЖКА withDefa",
           "startLine": 136,
           "endLine": 371,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractEmitsFromSource",
@@ -2414,7 +2735,11 @@
           "body": "{\n  const result: VueComponentAnalysis['emits'] = {\n    names: [],\n    types: {},\n  };\n\n  // Ищем defineEmits с массивом: defineEmits(['update', 'delete'])\n  // ИСПРАВЛЕНО: экранирование скобок\n  cons",
           "startLine": 377,
           "endLine": 419,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractPropsFromCompiledScript",
@@ -2432,7 +2757,11 @@
           "body": "{\n  const result: VueComponentAnalysis['props'] = {\n    names: [],\n    types: {},\n    required: {},\n    defaults: {},\n  };\n\n  if (!compiledScript) return result;\n\n  const props = (compiledScript as an",
           "startLine": 424,
           "endLine": 487,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractEmitsFromCompiledScript",
@@ -2450,7 +2779,11 @@
           "body": "{\n  const result: VueComponentAnalysis['emits'] = {\n    names: [],\n    types: {},\n  };\n\n  if (!compiledScript) return result;\n\n  const emits = (compiledScript as any).emits;\n  if (!emits) return resul",
           "startLine": 492,
           "endLine": 534,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractExposeFromCompiledScript",
@@ -2470,7 +2803,11 @@
           "body": "{\n  if (!compiledScript) return [];\n  const expose = (compiledScript as any).expose;\n  if (!expose) return [];\n  if (Array.isArray(expose)) {\n    return expose.map((e: any) => (typeof e === 'string' ?",
           "startLine": 539,
           "endLine": 547,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getNodeValue",
@@ -2489,7 +2826,11 @@
           "body": "{\n  if (!node) return undefined;\n\n  if (node.type === 'Literal') {\n    return node.value;\n  }\n\n  if (node.type === 'Identifier') {\n    return node.name;\n  }\n\n  if (node.type === 'StringLiteral') {\n   ",
           "startLine": 552,
           "endLine": 622,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractPropsFromAST",
@@ -2513,7 +2854,11 @@
           "body": "{\n  const result: VueComponentAnalysis['props'] = {\n    names: [],\n    types: {},\n    required: {},\n    defaults: {},\n  };\n\n  if (!ast || !ast.body) return result;\n\n  try {\n    const interfaces = new ",
           "startLine": 628,
           "endLine": 908,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractEmitsFromAST",
@@ -2535,7 +2880,11 @@
           "body": "{\n  const result: VueComponentAnalysis['emits'] = {\n    names: [],\n    types: {},\n  };\n\n  if (!ast || !ast.body) return result;\n\n  try {\n    const findDefineEmits = (node: any): any => {\n      if (!no",
           "startLine": 913,
           "endLine": 981,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractExposeFromAST",
@@ -2555,7 +2904,11 @@
           "body": "{\n  const expose: string[] = [];\n\n  if (!ast || !ast.body) return expose;\n\n  try {\n    const findDefineExpose = (node: any): any => {\n      if (!node) return null;\n\n      if (\n        node.type === 'C",
           "startLine": 986,
           "endLine": 1032,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "analyzeTemplate",
@@ -2576,7 +2929,11 @@
           "body": "{\n  const result: VueComponentAnalysis['template'] = {\n    content: null,\n    ast: null,\n    complexity: 0,\n    rootElements: [],\n    slots: [],\n    directives: [],\n    events: [],\n  };\n\n  if (!descri",
           "startLine": 1040,
           "endLine": 1344,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractImportsFromAST",
@@ -2594,7 +2951,11 @@
           "body": "{\n  const imports: VueComponentAnalysis['imports'] = [];\n\n  if (!ast || !ast.body) return imports;\n\n  try {\n    for (const node of ast.body) {\n      if (node.type === 'ImportDeclaration' && node.sourc",
           "startLine": 1349,
           "endLine": 1397,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractImportsFromSource",
@@ -2612,7 +2973,11 @@
           "body": "{\n  const imports: VueComponentAnalysis['imports'] = [];\n\n  // Ищем import declarations\n  const importRegex =\n    /import\\s+(?:type\\s+)?(?:\\{([^}]*)\\}\\s+from\\s+['\"]([^'\"]+)['\"]|(\\w+)\\s+from\\s+['\"]([^'",
           "startLine": 1402,
           "endLine": 1451,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractComposablesFromAST",
@@ -2633,7 +2998,11 @@
           "body": "{\n  const composables: VueComponentAnalysis['composables'] = [];\n\n  // Расширенный список Vue композаблов\n  const vueComposables = ['ref', 'reactive', 'computed', 'watch', 'watchEffect'];\n\n  if (!ast ",
           "startLine": 1458,
           "endLine": 1525,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractComposablesFromSource",
@@ -2651,7 +3020,11 @@
           "body": "{\n  const composables: VueComponentAnalysis['composables'] = [];\n\n  // Полный список Vue composables и функций\n  const vueComposables = [\n    'ref',\n    'reactive',\n    'computed',\n    'watch',\n    'w",
           "startLine": 1531,
           "endLine": 1663,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "analyzeVueComponent",
@@ -2688,7 +3061,11 @@
           "body": "{\n  if (!filePath.endsWith('.vue')) {\n    console.error('❌ Файл не является Vue компонентом');\n    return null;\n  }\n\n  if (!fs.existsSync(filePath)) {\n    console.error(`❌ Файл не найден: ${filePath}`",
           "startLine": 1668,
           "endLine": 1829,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "generateVueComponentReport",
@@ -2708,7 +3085,11 @@
           "body": "{\n  let report = `# 🎯 Анализ Vue компонента: ${analysis.componentName}\\n\\n`;\n\n  report += '## 📊 Статистика\\n';\n  report += `- **Размер файла:** ${(analysis.stats.totalSize / 1024).toFixed(2)} KB\\n`;",
           "startLine": 1834,
           "endLine": 1951,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "enhanceWithVueAnalysis",
@@ -2727,7 +3108,11 @@
           "body": "{\n  if (!targetFile.endsWith('.vue')) {\n    return existingAnalysis;\n  }\n\n  const vueAnalysis = analyzeVueComponent(targetFile);\n  if (!vueAnalysis) {\n    return existingAnalysis;\n  }\n\n  return {\n    ",
           "startLine": 1956,
           "endLine": 1979,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "analyzeVueComponentCli",
@@ -2747,7 +3132,11 @@
           "body": "{\n  console.log(`\\n${'='.repeat(60)}`);\n  console.log('🎯 АНАЛИЗ VUE КОМПОНЕНТА');\n  console.log(`${'='.repeat(60)}\\n`);\n\n  const analysis = analyzeVueComponent(filePath, options);\n\n  if (!analysis) {",
           "startLine": 1984,
           "endLine": 2014,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -2829,7 +3218,11 @@
           "body": "{\n  const pipeline = new SemanticPipeline({ wasmPath: options.wasmPath });\n\n  const files: string[] = [];\n  for (const p of paths) {\n    if (fs.existsSync(p)) {\n      const stat = fs.statSync(p);\n    ",
           "startLine": 1111,
           "endLine": 1161,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [
@@ -2964,7 +3357,11 @@
           "body": "{\n  return context.Int.const(name);\n}",
           "startLine": 53,
           "endLine": 55,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "createBoolVar",
@@ -2981,7 +3378,11 @@
           "body": "{\n  return context.Bool.const(name);\n}",
           "startLine": 57,
           "endLine": 59,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "createIntVal",
@@ -2998,7 +3399,11 @@
           "body": "{\n  return context.Int.val(value);\n}",
           "startLine": 61,
           "endLine": 63,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "createIntParam",
@@ -3014,7 +3419,11 @@
           "body": "{\n  return { name, type: 'int' };\n}",
           "startLine": 1010,
           "endLine": 1012,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "createBoolParam",
@@ -3030,7 +3439,11 @@
           "body": "{\n  return { name, type: 'bool' };\n}",
           "startLine": 1014,
           "endLine": 1016,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "createStringParam",
@@ -3046,7 +3459,11 @@
           "body": "{\n  return { name, type: 'string' };\n}",
           "startLine": 1018,
           "endLine": 1020,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "eq",
@@ -3063,7 +3480,11 @@
           "body": "{\n  return { type: 'equality', left, right };\n}",
           "startLine": 1022,
           "endLine": 1024,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "neq",
@@ -3080,7 +3501,11 @@
           "body": "{\n  return { type: 'inequality', left, right };\n}",
           "startLine": 1026,
           "endLine": 1028,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "range",
@@ -3098,7 +3523,11 @@
           "body": "{\n  return { type: 'range', variable, min, max };\n}",
           "startLine": 1030,
           "endLine": 1032,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "implies",
@@ -3115,7 +3544,11 @@
           "body": "{\n  return { type: 'implication', condition, consequence };\n}",
           "startLine": 1034,
           "endLine": 1039,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "and",
@@ -3131,7 +3564,11 @@
           "body": "{\n  if (args.length === 1 && Array.isArray(args[0])) {\n    return { type: 'and', constraints: args[0] };\n  }\n  return { type: 'and', constraints: args };\n}",
           "startLine": 1043,
           "endLine": 1048,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "or",
@@ -3147,7 +3584,11 @@
           "body": "{\n  if (args.length === 1 && Array.isArray(args[0])) {\n    return { type: 'or', constraints: args[0] };\n  }\n  return { type: 'or', constraints: args };\n}",
           "startLine": 1052,
           "endLine": 1057,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "not",
@@ -3163,7 +3604,11 @@
           "body": "{\n  return { type: 'not', operand };\n}",
           "startLine": 1059,
           "endLine": 1061,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "if_",
@@ -3181,7 +3626,11 @@
           "body": "{\n  return {\n    type: 'if',\n    condition,\n    consequence: thenBranch,\n    ...(elseBranch ? { right: elseBranch } : {}),\n  };\n}",
           "startLine": 1066,
           "endLine": 1077,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "compare",
@@ -3199,7 +3648,11 @@
           "body": "{\n  // Нормализуем оператор\n  let normalizedOp: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte';\n  switch (operator) {\n    case '<':\n      normalizedOp = 'lt';\n      break;\n    case '<=':\n      normalizedO",
           "startLine": 1085,
           "endLine": 1146,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "assign",
@@ -3216,7 +3669,11 @@
           "body": "{\n  return { type: 'equality', left: varName, right: value };\n}",
           "startLine": 1149,
           "endLine": 1151,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "add",
@@ -3233,7 +3690,11 @@
           "body": "{\n  return { type: 'equality', left, right: { left, right, type: 'add' } };\n}",
           "startLine": 1153,
           "endLine": 1155,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "sub",
@@ -3250,7 +3711,11 @@
           "body": "{\n  return { type: 'equality', left, right: { left, right, type: 'sub' } };\n}",
           "startLine": 1157,
           "endLine": 1159,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "mul",
@@ -3267,7 +3732,11 @@
           "body": "{\n  return { type: 'equality', left, right: { left, right, type: 'mul' } };\n}",
           "startLine": 1161,
           "endLine": 1163,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "div",
@@ -3284,7 +3753,11 @@
           "body": "{\n  return { type: 'equality', left, right: { left, right, type: 'div' } };\n}",
           "startLine": 1165,
           "endLine": 1167,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "addExpr",
@@ -3301,7 +3774,11 @@
           "body": "{\n  return { type: 'add', left, right };\n}",
           "startLine": 1172,
           "endLine": 1181,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "subExpr",
@@ -3318,7 +3795,11 @@
           "body": "{\n  return { type: 'sub', left, right };\n}",
           "startLine": 1186,
           "endLine": 1195,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "mulExpr",
@@ -3335,7 +3816,11 @@
           "body": "{\n  return { type: 'mul', left, right };\n}",
           "startLine": 1200,
           "endLine": 1209,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "divExpr",
@@ -3352,7 +3837,11 @@
           "body": "{\n  return { type: 'div', left, right };\n}",
           "startLine": 1214,
           "endLine": 1223,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [
@@ -3483,7 +3972,11 @@
           "body": "{\n  return report.cycles && report.cycles.length > 0;\n}",
           "startLine": 245,
           "endLine": 247,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getModulesByLevel",
@@ -3500,7 +3993,11 @@
           "body": "{\n  return report.modules.filter((m: HybridModule) => m.level === level);\n}",
           "startLine": 252,
           "endLine": 254,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getAllFunctions",
@@ -3518,7 +4015,11 @@
           "body": "{\n  const allFunctions: HybridFunction[] = [];\n  for (const module of report.modules) {\n    allFunctions.push(...module.functions);\n  }\n  return allFunctions;\n}",
           "startLine": 259,
           "endLine": 265,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getFunctionsByExportSource",
@@ -3535,7 +4036,11 @@
           "body": "{\n  const result: HybridFunction[] = [];\n  for (const module of report.modules) {\n    for (const func of module.functions) {\n      if (func.exportSource === source) {\n        result.push(func);\n      ",
           "startLine": 270,
           "endLine": 283,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getFunctionsStats",
@@ -3553,7 +4058,11 @@
           "body": "{\n  const allFunctions = getAllFunctions(report);\n  return {\n    total: allFunctions.length,\n    self: allFunctions.filter((f: HybridFunction) => f.exportSource === 'self').length,\n    external: allFu",
           "startLine": 288,
           "endLine": 305,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -3635,7 +4144,11 @@
           "body": "{\n  const moduleGraph = buildModuleGraph(data, entities);\n  const json = JSON.stringify(moduleGraph, null, 2);\n  fs.writeFileSync(outputPath, json, 'utf-8');\n}",
           "startLine": 273,
           "endLine": 281,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "saveEntityGraph",
@@ -3655,7 +4168,11 @@
           "body": "{\n  const entityGraph = buildEntityGraph(data, entities);\n  const json = JSON.stringify(entityGraph, null, 2);\n  fs.writeFileSync(outputPath, json, 'utf-8');\n}",
           "startLine": 286,
           "endLine": 294,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "saveFullAnalysis",
@@ -3676,7 +4193,11 @@
           "body": "{\n  const fullAnalysis = buildFullAnalysis(data, entities, root);\n  const json = JSON.stringify(fullAnalysis, null, 2);\n  fs.writeFileSync(outputPath, json, 'utf-8');\n}",
           "startLine": 299,
           "endLine": 308,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "savePackageLockReport",
@@ -3698,7 +4219,11 @@
           "body": "{\n  const report = buildEnhancedPackageLockReport(rootKey, graph, entitiesMap, filePaths);\n  const json = JSON.stringify(report, null, 2);\n  const outputDir = path.dirname(outputPath);\n  if (!fs.exist",
           "startLine": 314,
           "endLine": 339,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "saveCallGraphResult",
@@ -3715,7 +4240,11 @@
           "body": "{\n  const json = JSON.stringify(callGraphResult, null, 2);\n  fs.writeFileSync(outputPath, json, 'utf-8');\n}",
           "startLine": 344,
           "endLine": 347,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "buildModuleGraph",
@@ -3735,7 +4264,11 @@
           "body": "{\n  const nodes: ModuleNode[] = [];\n  const edges: ModuleEdge[] = [];\n\n  const allModules = new Set<string>();\n  allModules.add(data.rootKey);\n\n  for (const [key, deps] of Object.entries(data.graph)) ",
           "startLine": 356,
           "endLine": 419,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "buildEntityGraph",
@@ -3757,7 +4290,11 @@
           "body": "{\n  const nodes: EntityNode[] = [];\n  const edges: EntityEdge[] = [];\n\n  for (const func of entities.functions) {\n    const modulePath = findModuleForEntity(func.name, data);\n    const nodeId = module",
           "startLine": 424,
           "endLine": 596,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "buildFullAnalysis",
@@ -3780,7 +4317,11 @@
           "body": "{\n  const allEntities =\n    entities.functions.length +\n    entities.classes.length +\n    entities.constants.length +\n    entities.interfaces.length +\n    entities.types.length +\n    entities.variable",
           "startLine": 601,
           "endLine": 629,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "findProjectRoot",
@@ -3798,7 +4339,11 @@
           "body": "{\n  let currentDir = path.resolve(startDir);\n  const root = path.parse(currentDir).root;\n\n  while (currentDir !== root) {\n    const packagePath = path.join(currentDir, 'package.json');\n    if (fs.exis",
           "startLine": 638,
           "endLine": 650,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "findFileInProject",
@@ -3819,7 +4364,11 @@
           "body": "{\n  const fileName = path.basename(filePath);\n\n  // Проверяем основные пути\n  const candidates = [\n    path.resolve(projectRoot, filePath),\n    path.resolve(projectRoot, 'src', filePath),\n    path.res",
           "startLine": 655,
           "endLine": 701,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractEntitiesFromFile",
@@ -3837,7 +4386,11 @@
           "body": "{\n  const entities: EnhancedEntityInfo = {\n    functions: [],\n    constants: [],\n    variables: [],\n    interfaces: [],\n    types: [],\n    classes: [],\n  };\n\n  const absolutePath = filePath;\n\n  if (!f",
           "startLine": 710,
           "endLine": 947,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractValueFromNode",
@@ -3858,7 +4411,11 @@
           "body": "{\n  try {\n    const text = node.getText();\n\n    if ((text.startsWith('\"') && text.endsWith('\"')) || (text.startsWith(\"'\") && text.endsWith(\"'\"))) {\n      return text.slice(1, -1);\n    }\n\n    if (!isNa",
           "startLine": 952,
           "endLine": 995,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "buildEnhancedPackageLockReport",
@@ -3883,7 +4440,11 @@
           "body": "{\n  const packages: Record<string, EnhancedPackageInfo> = {};\n  const inwardDeps: Record<string, string[]> = {};\n  const outwardDeps: Record<string, string[]> = {};\n  const importsFlow: EnhancedPackag",
           "startLine": 1006,
           "endLine": 1265,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "convertToEnhancedEntityInfo",
@@ -3901,7 +4462,11 @@
           "body": "{\n  return {\n    functions: entities.functions.map(f => ({\n      name: f.name,\n      params: f.params,\n      paramTypes: f.params.map(() => 'any'),\n      line: f.line,\n      startLine: f.startLine,\n  ",
           "startLine": 1274,
           "endLine": 1339,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "findModuleForEntity",
@@ -3920,7 +4485,11 @@
           "body": "{\n  for (const [modulePath, deps] of Object.entries(data.graph)) {\n    if (modulePath.includes(entityName)) return modulePath;\n    for (const dep of deps) {\n      if (dep.includes(entityName)) return ",
           "startLine": 1348,
           "endLine": 1363,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -4235,7 +4804,11 @@
           "body": "{\n  return str\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/\\\\/g, '&#92;'); // экранирование обратных слешей\n}",
           "startLine": 9,
           "endLine": 16,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "generateHTMLReport",
@@ -4259,7 +4832,11 @@
           "body": "{\n  // ✅ Нормализуем путь для заголовка\n  const normalizedTitle = normalizePathForDisplay(title);\n  const basename = getFileNameForDisplay(normalizedTitle);\n\n  // ✅ Нормализуем пути в JSON контенте\n  ",
           "startLine": 27,
           "endLine": 113,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -4276,124 +4853,240 @@
     "src/reporters/interactive-reporter.ts": {
       "functions": [
         {
+          "name": "getFileColor",
+          "line": 104,
+          "isAsync": false,
+          "isExported": false,
+          "params": [
+            "modulePath"
+          ],
+          "returnType": "string",
+          "calls": [],
+          "calledBy": [
+            "generateFullDOT"
+          ],
+          "body": "{\n  // Используем предопределённые цвета для разных типов файлов\n  const typeColors: Record<string, string> = {\n    '.ts': '#60a5fa',\n    '.tsx': '#a78bfa',\n    '.js': '#fbbf24',\n    '.jsx': '#f472b6'",
+          "startLine": 104,
+          "endLine": 130,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
+        },
+        {
           "name": "generateFullDOT",
-          "line": 22,
+          "line": 136,
+          "isAsync": false,
+          "isExported": false,
+          "params": [
+            "report",
+            "focusModule",
+            "focusFunction",
+            "mode"
+          ],
+          "returnType": "string",
+          "calls": [
+            "getFileColor"
+          ],
+          "calledBy": [
+            "generateInteractiveHTML"
+          ],
+          "body": "{\n  const modulePaths = Object.keys(report.packages);\n\n  let dot = 'digraph ProjectGraph {\\n';\n  dot += '  rankdir=LR;\\n';\n  dot += '  splines=true;\\n';\n  dot += '  node [shape=box, style=\"filled,roun",
+          "startLine": 136,
+          "endLine": 292,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
+        },
+        {
+          "name": "convertModuleNodeToPackage",
+          "line": 298,
+          "isAsync": false,
+          "isExported": false,
+          "params": [
+            "node",
+            "entityNodes",
+            "entityEdges"
+          ],
+          "returnType": "PackageLockPackage",
+          "calls": [],
+          "calledBy": [
+            "buildReportFromAnalysis"
+          ],
+          "body": "{\n  const callMap: Record<string, string[]> = {};\n  const calledByMap: Record<string, string[]> = {};\n\n  for (const edge of entityEdges) {\n    if (edge.type === 'function_call' || edge.type === 'metho",
+          "startLine": 298,
+          "endLine": 372,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
+        },
+        {
+          "name": "buildReportFromAnalysis",
+          "line": 374,
           "isAsync": false,
           "isExported": false,
           "params": [
             "analysis"
           ],
-          "returnType": "string",
+          "returnType": "PackageLockReport",
           "calls": [
-            "getEntityColor",
-            "getEntityShape",
-            "getEdgeColor"
+            "convertModuleNodeToPackage"
           ],
           "calledBy": [
             "generateInteractiveHTML"
           ],
-          "body": "{\n  let dot = 'digraph ProjectGraph {\\n';\n  dot += '  rankdir=LR;\\n';\n  dot += '  splines=true;\\n';\n  dot += '  node [shape=box, style=\"filled,rounded\", fontname=\"Arial\", fontsize=12];\\n';\n  dot += ' ",
-          "startLine": 22,
-          "endLine": 153,
-          "isMethod": false
+          "body": "{\n  const packages: Record<string, PackageLockPackage> = {};\n\n  const moduleNodes: ModuleGraphNode[] = analysis.moduleGraph?.nodes || [];\n  const moduleEdges: ModuleGraphEdge[] = analysis.moduleGraph?",
+          "startLine": 374,
+          "endLine": 455,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
-          "name": "getEntityColor",
-          "line": 158,
+          "name": "escapeHtml",
+          "line": 461,
           "isAsync": false,
           "isExported": false,
           "params": [
-            "type"
+            "str"
           ],
           "returnType": "string",
-          "calls": [],
-          "calledBy": [
-            "generateFullDOT"
-          ],
-          "body": "{\n  const colors: Record<string, string> = {\n    function: '#60a5fa',\n    class: '#4ade80',\n    constant: '#fbbf24',\n    interface: '#a78bfa',\n    type: '#f472b6',\n    variable: '#22d3ee',\n    enum: '",
-          "startLine": 158,
-          "endLine": 172,
-          "isMethod": false
-        },
-        {
-          "name": "getEntityShape",
-          "line": 177,
-          "isAsync": false,
-          "isExported": false,
-          "params": [
-            "type"
-          ],
-          "returnType": "string",
-          "calls": [],
-          "calledBy": [
-            "generateFullDOT"
-          ],
-          "body": "{\n  const shapes: Record<string, string> = {\n    function: 'ellipse',\n    class: 'box',\n    constant: 'diamond',\n    interface: 'box3d',\n    type: 'parallelogram',\n    variable: 'ellipse',\n    enum: '",
-          "startLine": 177,
-          "endLine": 191,
-          "isMethod": false
-        },
-        {
-          "name": "getEdgeColor",
-          "line": 196,
-          "isAsync": false,
-          "isExported": false,
-          "params": [
-            "type"
-          ],
-          "returnType": "string",
-          "calls": [],
-          "calledBy": [
-            "generateFullDOT"
-          ],
-          "body": "{\n  const colors: Record<string, string> = {\n    function_call: '#f59e0b',\n    constant_reference: '#059669',\n    class_extends: '#7c3aed',\n    class_implements: '#8b5cf6',\n    interface_extends: '#0e",
-          "startLine": 196,
-          "endLine": 214,
-          "isMethod": false
-        },
-        {
-          "name": "convertEnhancedToEntities",
-          "line": 219,
-          "isAsync": false,
-          "isExported": false,
-          "params": [
-            "enhanced"
-          ],
-          "returnType": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/entity-extractor\").EntitiesResult",
           "calls": [],
           "calledBy": [
             "generateInteractiveHTML"
           ],
-          "body": "{\n  return {\n    functions: enhanced.functions.map(f => ({\n      name: f.name,\n      line: f.line,\n      isAsync: f.isAsync || false,\n      isExported: f.isExported || false,\n      params: f.params ||",
-          "startLine": 219,
-          "endLine": 288,
-          "isMethod": false
+          "body": "{\n  if (!str) return '';\n  return str\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#039;');\n}",
+          "startLine": 461,
+          "endLine": 469,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "generateInteractiveHTML",
-          "line": 293,
+          "line": 475,
           "isAsync": true,
           "isExported": true,
           "params": [
             "analysis",
             "outputPath",
-            "entitiesWithCalls"
+            "entitiesWithCalls",
+            "packageLockPath"
           ],
           "returnType": "Promise<void>",
           "calls": [
-            "convertEnhancedToEntities",
-            "generateFullDOT"
+            "buildReportFromAnalysis",
+            "generateFullDOT",
+            "escapeHtml"
           ],
           "calledBy": [],
-          "body": "{\n  // Нормализуем данные\n  let entitiesData: EntitiesResult | null = null;\n\n  if (entitiesWithCalls) {\n    // Проверяем тип по наличию специфических полей\n    if ('imports' in entitiesWithCalls && 'e",
-          "startLine": 293,
-          "endLine": 891,
-          "isMethod": false
+          "body": "{\n  // Загружаем package-lock-report.json если указан\n  let report: PackageLockReport | null = null;\n  if (packageLockPath && fs.existsSync(packageLockPath)) {\n    try {\n      const content = fs.readF",
+          "startLine": 475,
+          "endLine": 1432,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
       "constants": [],
-      "interfaces": [],
+      "interfaces": [
+        {
+          "name": "PackageLockFunctionInfo",
+          "line": 17,
+          "isExported": false,
+          "properties": [
+            "name",
+            "params",
+            "paramTypes",
+            "line",
+            "startLine",
+            "endLine",
+            "isAsync",
+            "isExported",
+            "isMethod",
+            "className",
+            "calls",
+            "calledBy",
+            "returnType",
+            "body",
+            "isNested",
+            "parentFunction",
+            "isArrow",
+            "isEventHandler",
+            "eventType",
+            "depth"
+          ],
+          "extends": [],
+          "startLine": 17,
+          "endLine": 38
+        },
+        {
+          "name": "PackageLockEntityInfo",
+          "line": 40,
+          "isExported": false,
+          "properties": [
+            "functions",
+            "constants",
+            "variables",
+            "interfaces",
+            "types",
+            "classes"
+          ],
+          "extends": [],
+          "startLine": 40,
+          "endLine": 47
+        },
+        {
+          "name": "PackageLockPackage",
+          "line": 49,
+          "isExported": false,
+          "properties": [
+            "version",
+            "resolved",
+            "displayPath",
+            "type",
+            "language",
+            "isEntry",
+            "imports",
+            "exports",
+            "entities",
+            "fileStats"
+          ],
+          "extends": [],
+          "startLine": 49,
+          "endLine": 69
+        },
+        {
+          "name": "PackageLockReport",
+          "line": 71,
+          "isExported": false,
+          "properties": [
+            "name",
+            "version",
+            "lockfileVersion",
+            "packages",
+            "dependencyGraph",
+            "entityStats",
+            "fileStats",
+            "timestamp"
+          ],
+          "extends": [],
+          "startLine": 71,
+          "endLine": 98
+        }
+      ],
       "types": [],
       "variables": [],
       "imports": [],
@@ -5364,7 +6057,11 @@
           "body": "{\n  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}",
           "startLine": 4,
           "endLine": 6,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "showHelp",
@@ -5378,7 +6075,11 @@
           "body": "{\n  console.log(`\n╔══════════════════════════════════════════════════════════════════╗\n║              🔍 AST ANALYZER - AI TOOLKIT v2.2                  ║\n╠════════════════════════════════════════════",
           "startLine": 8,
           "endLine": 80,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "formatFileSize",
@@ -5394,7 +6095,11 @@
           "body": "{\n  if (bytes < 1024) return `${bytes} B`;\n  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;\n  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;\n}",
           "startLine": 100,
           "endLine": 104,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "generateTempId",
@@ -5408,7 +6113,11 @@
           "body": "{\n  return `tmp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;\n}",
           "startLine": 106,
           "endLine": 108,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "ensureDirectoryExists",
@@ -5424,7 +6133,11 @@
           "body": "{\n  if (!fs.existsSync(dirPath)) {\n    fs.mkdirSync(dirPath, { recursive: true });\n  }\n}",
           "startLine": 110,
           "endLine": 114,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "renderNode",
@@ -5441,7 +6154,11 @@
           "body": "{\n  let result = '';\n  const entries = Object.entries(node);\n\n  for (let i = 0; i < entries.length; i++) {\n    const entry = entries[i];\n    // Проверка на undefined\n    if (!entry) continue;\n\n    con",
           "startLine": 116,
           "endLine": 139,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -5504,7 +6221,11 @@
           "body": "{\n  if (!filePath) return '';\n\n  let normalized = filePath;\n\n  // Если путь абсолютный и нужно сделать относительным\n  if (path.isAbsolute(normalized) && options.relative !== false) {\n    try {\n      ",
           "startLine": 11,
           "endLine": 46,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getFileNameForDisplay",
@@ -5522,7 +6243,11 @@
           "body": "{\n  const normalized = normalizePathForDisplay(filePath);\n  return path.basename(normalized);\n}",
           "startLine": 53,
           "endLine": 56,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getFileNameWithoutExt",
@@ -5540,7 +6265,11 @@
           "body": "{\n  const normalized = normalizePathForDisplay(filePath);\n  return path.basename(normalized, path.extname(normalized));\n}",
           "startLine": 63,
           "endLine": 66,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "normalizeRootKey",
@@ -5561,7 +6290,11 @@
           "body": "{\n  return normalizePathForDisplay(rootKey, baseDir, { relative: true });\n}",
           "startLine": 74,
           "endLine": 76,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "normalizeGraphPaths",
@@ -5581,7 +6314,11 @@
           "body": "{\n  return {\n    ...graph,\n    rootKey: normalizeRootKey(graph.rootKey, baseDir),\n    graph: Object.fromEntries(\n      Object.entries(graph.graph).map(([key, deps]) => [\n        normalizePathForDispla",
           "startLine": 84,
           "endLine": 98,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "isAbsolutePath",
@@ -5597,7 +6334,11 @@
           "body": "{\n  // Проверяем Windows (C:\\), Unix (/home) и сетевые пути (\\\\server\\share)\n  return (\n    /^[a-zA-Z]:\\\\/.test(filePath) || /^\\/[^/]/.test(filePath) || /^\\\\\\\\[^\\\\]+\\\\/.test(filePath)\n  );\n}",
           "startLine": 105,
           "endLine": 110,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "shortenPath",
@@ -5616,7 +6357,11 @@
           "body": "{\n  const normalized = normalizePathForDisplay(filePath);\n  if (normalized.length <= maxLength) return normalized;\n\n  const parts = normalized.split('/');\n  if (parts.length <= 2) return normalized;\n\n",
           "startLine": 118,
           "endLine": 154,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getRelativePathForDisplay",
@@ -5635,7 +6380,11 @@
           "body": "{\n  const relative = path.relative(path.dirname(from), to);\n  return normalizePathForDisplay(relative);\n}",
           "startLine": 162,
           "endLine": 165,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "normalizePathForOS",
@@ -5654,7 +6403,11 @@
           "body": "{\n  if (!filePath) return '';\n  // Заменяем обратные слеши на прямые (Windows → Unix)\n  return filePath.replace(/\\\\/g, '/');\n}",
           "startLine": 177,
           "endLine": 181,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "fileExistsCaseSensitive",
@@ -5672,7 +6425,11 @@
           "body": "{\n  if (!filePath) return false;\n\n  // Нормализуем путь\n  const normalizedPath = normalizePathForOS(filePath);\n\n  if (!fs.existsSync(normalizedPath)) return false;\n\n  // Для Windows/macOS - регистр не",
           "startLine": 188,
           "endLine": 212,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getImportPath",
@@ -5691,7 +6448,11 @@
           "body": "{\n  // Нормализуем пути\n  const normalizedFrom = normalizePathForOS(from);\n  const normalizedTo = normalizePathForOS(to);\n\n  // Получаем относительный путь\n  let relative = path.relative(path.dirname(",
           "startLine": 220,
           "endLine": 237,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "isValidWindowsPath",
@@ -5707,7 +6468,11 @@
           "body": "{\n  if (!filePath) return false;\n\n  // Проверяем длину пути (Windows ограничение 260 символов)\n  if (filePath.length > 260) return false;\n\n  // Проверяем запрещенные символы в Windows\n  const invalidC",
           "startLine": 244,
           "endLine": 284,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "toWindowsPath",
@@ -5723,7 +6488,11 @@
           "body": "{\n  if (!filePath) return '';\n\n  // Если уже Windows-путь, возвращаем как есть\n  if (/^[a-zA-Z]:\\\\/.test(filePath)) return filePath;\n\n  // Если Unix-путь, конвертируем в Windows\n  if (filePath.startsW",
           "startLine": 291,
           "endLine": 305,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "toUnixPath",
@@ -5739,7 +6508,11 @@
           "body": "{\n  if (!filePath) return '';\n\n  // Заменяем обратные слеши на прямые\n  return filePath.replace(/\\\\/g, '/');\n}",
           "startLine": 312,
           "endLine": 317,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -5955,7 +6728,11 @@
           "body": "{\n  const possiblePaths = [\n    path.resolve(__dirname, 'wasm'), // рядом с dist\n    path.resolve(__dirname, '../dist/wasm'), // из src/\n    path.resolve(process.cwd(), 'grammars'), // в проекте\n    p",
           "startLine": 42,
           "endLine": 66,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [
@@ -6085,7 +6862,11 @@
           "body": "{\n  // Если исходный файл TypeScript, используем .ts\n  if (sourcePath.endsWith('.ts') || sourcePath.endsWith('.tsx')) {\n    return '.ts';\n  }\n\n  // Если есть TypeScript-специфичные конструкции, но фай",
           "startLine": 36,
           "endLine": 63,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "hasTypeScriptSyntax",
@@ -6103,7 +6884,11 @@
           "body": "{\n  // Проверяем наличие декораторов\n  if (/@\\w+\\s*(?:\\(\\))?/.test(code)) return true;\n\n  // Проверяем наличие generics (но не HTML теги)\n  if (/<\\s*\\w+\\s*(?:extends\\s+\\w+)?\\s*>/g.test(code) && !/<[a-",
           "startLine": 65,
           "endLine": 87,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "hasESMSpecificSyntax",
@@ -6121,7 +6906,11 @@
           "body": "{\n  // Проверяем наличие import.meta\n  if (/\\bimport\\.meta\\b/.test(code)) return true;\n\n  // Проверяем наличие динамических импортов\n  if (/import\\s*\\(/.test(code)) return true;\n\n  // Проверяем наличи",
           "startLine": 89,
           "endLine": 100,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "hasSpecialConstructs",
@@ -6137,7 +6926,11 @@
           "body": "{\n  const specialPatterns = [\n    /\\bSymbol\\s*\\(/,\n    /\\bProxy\\s*\\{/,\n    /\\bWeakMap\\s*\\(/,\n    /\\bWeakSet\\s*\\(/,\n    /\\bBigInt\\s*\\(/,\n    /\\d+n\\b/, // BigInt literal\n  ];\n\n  for (const pattern of sp",
           "startLine": 102,
           "endLine": 116,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [
@@ -7032,7 +7825,11 @@
           "body": "{\n  return isAssignableToType(type1, type2, typeChecker);\n}",
           "startLine": 358,
           "endLine": 364,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getTypeString",
@@ -7051,7 +7848,11 @@
           "body": "{\n  return typeToString(type, typeChecker);\n}",
           "startLine": 366,
           "endLine": 368,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [
@@ -7248,7 +8049,11 @@
           "body": "{\n  return filePath.endsWith('.tsx') || filePath.endsWith('.jsx');\n}",
           "startLine": 630,
           "endLine": 632,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getJSXFiles",
@@ -7266,7 +8071,11 @@
           "body": "{\n  return filePaths.filter(f => isJSXFile(f));\n}",
           "startLine": 634,
           "endLine": 636,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [
@@ -7379,7 +8188,11 @@
           "body": "{\n  const possiblePaths = [\n    // Относительно текущего файла (из dist/)\n    path.resolve(__dirname, 'wasm'),\n    // Относительно текущего файла (из src/)\n    path.resolve(__dirname, '../dist/wasm'),",
           "startLine": 14,
           "endLine": 60,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "isWasmAvailable",
@@ -7395,7 +8208,11 @@
           "body": "{\n  const wasmPath = findWasmPath();\n  return fs.existsSync(wasmPath) && fs.readdirSync(wasmPath).some(f => f.endsWith('.wasm'));\n}",
           "startLine": 66,
           "endLine": 69,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getAvailableGrammars",
@@ -7411,7 +8228,11 @@
           "body": "{\n  const wasmPath = findWasmPath();\n  if (!fs.existsSync(wasmPath)) return [];\n\n  try {\n    return fs\n      .readdirSync(wasmPath)\n      .filter(f => f.endsWith('.wasm'))\n      .map(f => f.replace('t",
           "startLine": 75,
           "endLine": 87,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "createWasmSymlink",
@@ -7429,7 +8250,11 @@
           "body": "{\n  const wasmSource = findWasmPath();\n  if (!fs.existsSync(wasmSource)) {\n    console.error('❌ WASM source directory not found');\n    return false;\n  }\n\n  const target = path.resolve(process.cwd(), t",
           "startLine": 94,
           "endLine": 117,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "copyWasmFiles",
@@ -7447,7 +8272,11 @@
           "body": "{\n  const wasmSource = findWasmPath();\n  if (!fs.existsSync(wasmSource)) {\n    console.error('❌ WASM source directory not found');\n    return 0;\n  }\n\n  const target = path.resolve(process.cwd(), targe",
           "startLine": 124,
           "endLine": 153,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -7491,7 +8320,11 @@
           "body": "{\n  return new ExpressionParser(context, debug);\n}",
           "startLine": 968,
           "endLine": 970,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "parseExpression",
@@ -7509,7 +8342,11 @@
           "body": "{\n  const parser = new ExpressionParser(context);\n  return parser.parse(expr, vars);\n}",
           "startLine": 975,
           "endLine": 978,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "validateExpression",
@@ -7526,7 +8363,11 @@
           "body": "{\n  const parser = new ExpressionParser(context);\n  return parser.validate(expr);\n}",
           "startLine": 983,
           "endLine": 986,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractVariables",
@@ -7542,7 +8383,11 @@
           "body": "{\n  const parser = new ExpressionParser(null as any);\n  return parser.extractVariables(expr);\n}",
           "startLine": 991,
           "endLine": 994,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "isValidForZ3",
@@ -7560,7 +8405,11 @@
           "body": "{\n  const parser = new ExpressionParser(context);\n  return parser.isValidForZ3(expr, vars);\n}",
           "startLine": 999,
           "endLine": 1002,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "toZ3String",
@@ -7578,7 +8427,11 @@
           "body": "{\n  const parser = new ExpressionParser(context);\n  return parser.toZ3String(expr, vars);\n}",
           "startLine": 1007,
           "endLine": 1010,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "parseFunctionBody",
@@ -7596,7 +8449,11 @@
           "body": "{\n  try {\n    const vars = new Map<string, any>();\n    for (const param of params) {\n      if (param.type === 'int') {\n        vars.set(param.name, context.Int.const(param.name));\n      } else if (par",
           "startLine": 1020,
           "endLine": 1042,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "createFunctionVariables",
@@ -7613,7 +8470,11 @@
           "body": "{\n  const vars = new Map<string, any>();\n  for (const param of params) {\n    if (param.type === 'int') {\n      vars.set(param.name, context.Int.const(param.name));\n    } else if (param.type === 'bool'",
           "startLine": 1050,
           "endLine": 1065,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "verifyFunctionWithBody",
@@ -7636,7 +8497,11 @@
           "body": "{\n  const startTime = Date.now();\n\n  try {\n    const vars = new Map<string, any>();\n    for (const param of params) {\n      if (param.type === 'int') {\n        vars.set(param.name, context.Int.const(p",
           "startLine": 1077,
           "endLine": 1174,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "createContractFromExpression",
@@ -7655,7 +8520,11 @@
           "body": "{\n  return {\n    name,\n    params,\n    returnType,\n    preconditions: [],\n    postconditions: [],\n    invariants: [],\n    body: expression,\n  };\n}",
           "startLine": 1184,
           "endLine": 1199,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "createContractWithAutoPreconditions",
@@ -7675,7 +8544,11 @@
           "body": "{\n  const preconditions = autoPreconditions.map(p => ({\n    type: 'range',\n    variable: p.variable,\n    min: p.min,\n    max: p.max,\n  }));\n\n  const postconditions: any[] = [];\n  if (returnType === 'i",
           "startLine": 1210,
           "endLine": 1251,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "canParseExpression",
@@ -7692,7 +8565,11 @@
           "body": "{\n  const parser = new ExpressionParser(context);\n  return parser.validate(expr);\n}",
           "startLine": 1259,
           "endLine": 1262,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "isSimpleExpression",
@@ -7709,7 +8586,11 @@
           "body": "{\n  const parser = new ExpressionParser(context);\n  return parser.isSimple(expr);\n}",
           "startLine": 1270,
           "endLine": 1273,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "extractVariablesFromExpression",
@@ -7725,7 +8606,11 @@
           "body": "{\n  const parser = new ExpressionParser(null as any);\n  return parser.extractVariables(expr);\n}",
           "startLine": 1280,
           "endLine": 1283,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [
@@ -7957,7 +8842,11 @@
           "body": "{\n  try {\n    console.log('\\n🚀 ЗАПУСК ГЕНЕРАЦИИ ГИБРИДНОГО ОТЧЕТА');\n    console.log('='.repeat(60));\n    console.log(`📄 Точка входа: ${entryPoint}`);\n    console.log(`📏 Глубина: ${maxDepth}`);\n   ",
           "startLine": 20,
           "endLine": 172,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -7992,7 +8881,11 @@
           "body": "{\n  console.log('\\n🔀 ГИБРИДНЫЙ ОТЧЕТ: МОДУЛИ + ФУНКЦИИ');\n  console.log('='.repeat(70));\n  console.log(`📄 Точка входа: ${entryPoint}`);\n  console.log(`📏 Глубина: ${maxDepth}`);\n\n  const startTime =",
           "startLine": 16,
           "endLine": 197,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -8023,7 +8916,11 @@
           "body": "{\n  const absPath = path.resolve(filePath);\n\n  // Проверяем существование файла\n  if (!fs.existsSync(absPath)) {\n    console.warn(`  ⚠️ Файл не существует: ${filePath}`);\n    return null;\n  }\n\n  let c",
           "startLine": 19,
           "endLine": 316,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -8055,7 +8952,11 @@
           "body": "{\n  let dot = 'digraph HybridGraph {\\n';\n  dot += '  rankdir=LR;\\n';\n  dot += '  node [shape=box, style=\"filled,rounded\"];\\n';\n  dot += '  splines=true;\\n';\n  dot += '  ranksep=1.5;\\n';\n  dot += '  no",
           "startLine": 10,
           "endLine": 85,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -8089,7 +8990,11 @@
           "body": "{\n  // Проверка наличия данных\n  if (!report || !report.modules || !report.stats) {\n    console.warn('  ⚠️ Отчет не содержит данных, создаем пустой HTML');\n    return '<html><body><h1>Ошибка: отчет пу",
           "startLine": 13,
           "endLine": 966,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -8121,7 +9026,11 @@
           "body": "{\n  let md = '# 🔀 ГИБРИДНЫЙ ОТЧЕТ: МОДУЛИ + ФУНКЦИИ\\n\\n';\n\n  md += `**Точка входа:** \\`${report.root}\\`\\n`;\n  md += `**Дата:** ${new Date().toLocaleString()}\\n\\n`;\n\n  // =============================",
           "startLine": 10,
           "endLine": 163,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -8155,7 +9064,11 @@
           "body": "{\n  return {\n    name,\n    params,\n    returnType,\n    preconditions: [],\n    postconditions: [],\n    invariants: [],\n  };\n}",
           "startLine": 125,
           "endLine": 138,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "addPrecondition",
@@ -8172,7 +9085,11 @@
           "body": "{\n  return {\n    ...contract,\n    preconditions: [...(contract.preconditions || []), precondition],\n  };\n}",
           "startLine": 143,
           "endLine": 151,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "addPostcondition",
@@ -8189,7 +9106,11 @@
           "body": "{\n  return {\n    ...contract,\n    postconditions: [...(contract.postconditions || []), postcondition],\n  };\n}",
           "startLine": 156,
           "endLine": 164,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "addInvariant",
@@ -8206,7 +9127,11 @@
           "body": "{\n  return {\n    ...contract,\n    invariants: [...(contract.invariants || []), invariant],\n  };\n}",
           "startLine": 169,
           "endLine": 177,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "addBody",
@@ -8223,7 +9148,11 @@
           "body": "{\n  return {\n    ...contract,\n    body,\n  };\n}",
           "startLine": 182,
           "endLine": 187,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "buildContract",
@@ -8239,7 +9168,11 @@
           "body": "{\n  return {\n    name: template.name,\n    params: template.params,\n    returnType: template.returnType,\n    body: template.body,\n    preconditions: template.preconditions || [],\n    postconditions: te",
           "startLine": 192,
           "endLine": 202,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "createContractFromSignature",
@@ -8259,7 +9192,11 @@
           "body": "{\n  const mappedParams = params.map(p => ({\n    name: p.name,\n    type: p.type === 'number' ? 'int' : p.type === 'boolean' ? 'bool' : 'string',\n  })) as { name: string; type: 'int' | 'bool' | 'string'",
           "startLine": 207,
           "endLine": 223,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "validatePostconditions",
@@ -8276,7 +9213,11 @@
           "body": "{\n  if (!result.isValid) return false;\n  return true;\n}",
           "startLine": 232,
           "endLine": 238,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "generateVerificationReport",
@@ -8293,7 +9234,11 @@
           "body": "{\n  let report = '='.repeat(60) + '\\n';\n  report += `🔬 VERIFICATION REPORT: ${contract.name}\\n`;\n  report += '='.repeat(60) + '\\n';\n  report += `Status: ${result.isValid ? '✅ VERIFIED' : '❌ FAILED'}\\",
           "startLine": 243,
           "endLine": 267,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "areContractsEquivalent",
@@ -8310,7 +9255,11 @@
           "body": "{\n  if (contract1.name !== contract2.name) return false;\n  if (contract1.params.length !== contract2.params.length) return false;\n  if (contract1.returnType !== contract2.returnType) return false;\n  i",
           "startLine": 272,
           "endLine": 284,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "checkFileEquivalence",
@@ -8328,7 +9277,11 @@
           "body": "{\n  const { FileEquivalenceChecker } = await import('./checkers/FileEquivalenceChecker.js');\n  const checker = new FileEquivalenceChecker(options);\n  await checker.initialize();\n  const result = await",
           "startLine": 293,
           "endLine": 304,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "checkRefactoringEquivalence",
@@ -8347,7 +9300,11 @@
           "body": "{\n  const { RefactoringEquivalenceChecker } =\n    await import('./checkers/RefactoringEquivalenceChecker.js');\n  const checker = new RefactoringEquivalenceChecker(options);\n  await checker.initialize(",
           "startLine": 309,
           "endLine": 326,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "checkFunctionEquivalence",
@@ -8366,7 +9323,11 @@
           "body": "{\n  const { FileEquivalenceChecker } = await import('./checkers/FileEquivalenceChecker.js');\n  const checker = new FileEquivalenceChecker(options);\n  await checker.initialize();\n  const result = await",
           "startLine": 331,
           "endLine": 343,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "checkExpressionEquivalence",
@@ -8384,7 +9345,11 @@
           "body": "{\n  const { Z3Verifier } = await import('./Z3Verifier.js');\n  const verifier = new Z3Verifier();\n  await verifier.initialize();\n  const result = await verifier.verifyEquivalence(original, modified, va",
           "startLine": 349,
           "endLine": 360,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "verifyFunction",
@@ -8405,7 +9370,11 @@
           "body": "{\n  const { Z3Verifier, createIntParam, range } = await import('./Z3Verifier.js');\n  const { Project } = await import('ts-morph');\n\n  const project = new Project();\n  const sourceFile = project.addSou",
           "startLine": 365,
           "endLine": 409,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [],
@@ -8468,7 +9437,11 @@
           "body": "{\n  const map: Record<string, LogLevel> = {\n    debug: LogLevel.DEBUG,\n    info: LogLevel.INFO,\n    warn: LogLevel.WARN,\n    error: LogLevel.ERROR,\n    none: LogLevel.NONE,\n  };\n  return map[level.toL",
           "startLine": 261,
           "endLine": 270,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getGlobalLogger",
@@ -8482,7 +9455,11 @@
           "body": "{\n  if (!globalLogger) {\n    globalLogger = new Logger(LogLevel.INFO);\n  }\n  return globalLogger;\n}",
           "startLine": 277,
           "endLine": 282,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "setGlobalLogger",
@@ -8498,7 +9475,11 @@
           "body": "{\n  if (globalLogger) {\n    globalLogger.close();\n  }\n  globalLogger = logger;\n}",
           "startLine": 284,
           "endLine": 289,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [
@@ -8589,7 +9570,11 @@
           "body": "{\n  if (!result) return false;\n  return result.isEquivalent && result.confidence >= 0.7;\n}",
           "startLine": 714,
           "endLine": 717,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "hasCriticalIssues",
@@ -8605,7 +9590,11 @@
           "body": "{\n  if (!result) return true;\n  return result.differences.some(d => d.impact === 'high');\n}",
           "startLine": 719,
           "endLine": 722,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "getSummary",
@@ -8621,7 +9610,11 @@
           "body": "{\n  if (!result) return '❌ No result';\n  const status = result.isEquivalent ? '✅ PASSED' : '❌ FAILED';\n  const confidence = (result.confidence * 100).toFixed(1);\n  return `${status} (${confidence}% co",
           "startLine": 724,
           "endLine": 729,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [
@@ -8727,7 +9720,11 @@
           "body": "{\n  return result.isEquivalent && result.failedFunctions.length === 0;\n}",
           "startLine": 865,
           "endLine": 867,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "needsRefactoringReview",
@@ -8743,7 +9740,11 @@
           "body": "{\n  return !result.isEquivalent && result.signatureChanges.length > 0;\n}",
           "startLine": 869,
           "endLine": 871,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "hasCriticalIssues",
@@ -8759,7 +9760,11 @@
           "body": "{\n  return result.failedFunctions.length > 0 || result.missingFunctions.length > 0;\n}",
           "startLine": 873,
           "endLine": 875,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [
@@ -8867,7 +9872,11 @@
           "body": "{\n  if (!result) return false;\n  return result.isEquivalent === true && (result.confidence || 0) > 0.7;\n}",
           "startLine": 1559,
           "endLine": 1562,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "needsReview",
@@ -8883,7 +9892,11 @@
           "body": "{\n  if (!result) return true;\n  if (!result.isEquivalent) return true;\n  if (result.confidence < 0.85) return true;\n  if (result.differences && result.differences.length > 0) return true;\n  return fal",
           "startLine": 1564,
           "endLine": 1570,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "confidenceLevel",
@@ -8899,7 +9912,11 @@
           "body": "{\n  if (result.confidence >= 0.9) return 'high';\n  if (result.confidence >= 0.7) return 'medium';\n  return 'low';\n}",
           "startLine": 1572,
           "endLine": 1576,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [
@@ -9129,7 +10146,11 @@
           "body": "{\n  const comparator = new SignatureComparator();\n  return comparator.isCompatible(sig1, sig2);\n}",
           "startLine": 781,
           "endLine": 784,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "compareSignatures",
@@ -9146,7 +10167,11 @@
           "body": "{\n  const comparator = new SignatureComparator();\n  return comparator.compareSignatures(sig1, sig2);\n}",
           "startLine": 786,
           "endLine": 792,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "findFunctionByName",
@@ -9163,7 +10188,11 @@
           "body": "{\n  return signatures.get(name) || null;\n}",
           "startLine": 794,
           "endLine": 799,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "findFunctionBySignature",
@@ -9180,7 +10209,11 @@
           "body": "{\n  const comparator = new SignatureComparator();\n  return comparator.findFunctionBySignature(signatures, searchSig);\n}",
           "startLine": 801,
           "endLine": 807,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [
@@ -9289,7 +10322,11 @@
           "body": "{\n  return {\n    nodes: new Set(),\n    edges: [],\n    entryPoints: [],\n  };\n}",
           "startLine": 655,
           "endLine": 661,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         },
         {
           "name": "mergeCallGraphs",
@@ -9305,7 +10342,11 @@
           "body": "{\n  const merged: CallGraph = {\n    nodes: new Set(),\n    edges: [],\n    entryPoints: [],\n  };\n\n  for (const graph of graphs) {\n    for (const node of graph.nodes) {\n      merged.nodes.add(node);\n    ",
           "startLine": 663,
           "endLine": 690,
-          "isMethod": false
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
         }
       ],
       "classes": [
@@ -9425,7 +10466,7 @@
             "isAsync": true,
             "params": [],
             "returns": "Promise<void>",
-            "line": 852,
+            "line": 1006,
             "consumers": []
           }
         },
@@ -9484,12 +10525,37 @@
               "depth": 0
             },
             {
+              "name": "extractEntitiesFromPackageLock",
+              "params": [
+                "packageLockReport"
+              ],
+              "paramTypes": [
+                "any"
+              ],
+              "line": 149,
+              "startLine": 149,
+              "endLine": 294,
+              "isAsync": false,
+              "isExported": false,
+              "isMethod": false,
+              "calls": [],
+              "calledBy": [
+                "runCLI"
+              ],
+              "returnType": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/entity-extractor\").EntitiesResult",
+              "body": "{\n  const result: EntitiesResult = {\n    functions: [],\n    classes: [],\n    constants: [],\n    interfaces: [],\n    types: [],\n    variables: [],\n    imports: [],\n    exports: [],\n    callGraph: {},\n ",
+              "isNested": false,
+              "isArrow": false,
+              "isEventHandler": false,
+              "depth": 0
+            },
+            {
               "name": "parseArgs",
               "params": [],
               "paramTypes": [],
-              "line": 159,
-              "startLine": 159,
-              "endLine": 846,
+              "line": 313,
+              "startLine": 313,
+              "endLine": 1000,
               "isAsync": false,
               "isExported": false,
               "isMethod": false,
@@ -9512,9 +10578,9 @@
               "name": "runCLI",
               "params": [],
               "paramTypes": [],
-              "line": 852,
-              "startLine": 852,
-              "endLine": 1867,
+              "line": 1006,
+              "startLine": 1006,
+              "endLine": 2261,
               "isAsync": true,
               "isExported": true,
               "isMethod": false,
@@ -9546,11 +10612,12 @@
                 "findProjectRoot",
                 "resolveAbsoluteFilePath",
                 "saveEnhancedPackageLockReport",
-                "parseFile",
+                "extractEntitiesFromPackageLock",
                 "extractEntitiesFromFile",
                 "findModuleForEntity",
                 "generateInteractiveHTML",
                 "buildFileInternalGraph",
+                "parseFile",
                 "extractEntities",
                 "saveModuleGraph",
                 "saveEntityGraph",
@@ -9574,9 +10641,9 @@
                 "any",
                 "any"
               ],
-              "line": 1873,
-              "startLine": 1873,
-              "endLine": 1887,
+              "line": 2267,
+              "startLine": 2267,
+              "endLine": 2281,
               "isAsync": false,
               "isExported": false,
               "isMethod": false,
@@ -9622,20 +10689,20 @@
                 "fromFunction",
                 "toFunction"
               ],
-              "line": 146,
+              "line": 300,
               "isExported": false,
               "extends": [],
-              "startLine": 146,
-              "endLine": 157
+              "startLine": 300,
+              "endLine": 311
             }
           ],
           "types": [],
           "classes": []
         },
         "fileStats": {
-          "size": 61178,
-          "lines": 1892,
-          "functions": 5,
+          "size": 75781,
+          "lines": 2286,
+          "functions": 6,
           "classes": 0,
           "constants": 2,
           "interfaces": 1,
@@ -11718,7 +12785,7 @@
               "toFunction"
             ],
             "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/project-graph\").CallGraphResult",
-            "line": 225,
+            "line": 235,
             "consumers": []
           },
           "buildProjectGraph": {
@@ -11733,7 +12800,7 @@
               "toFunction"
             ],
             "returns": "{ rootKey: string; graph: Record<string, string[]>; entities?: Record<string, import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/entity-extractor\").EntitiesResult> | undefined; packageLockReport?: import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/project-graph\").PackageLockReport | undefined; callGraphResult?: import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/project-graph\").CallGraphResult | undefined; }",
-            "line": 406,
+            "line": 416,
             "consumers": []
           }
         },
@@ -11747,9 +12814,9 @@
               "paramTypes": [
                 "any"
               ],
-              "line": 157,
-              "startLine": 157,
-              "endLine": 220,
+              "line": 160,
+              "startLine": 160,
+              "endLine": 230,
               "isAsync": false,
               "isExported": false,
               "isMethod": false,
@@ -11776,9 +12843,9 @@
                 "any",
                 "any"
               ],
-              "line": 225,
-              "startLine": 225,
-              "endLine": 316,
+              "line": 235,
+              "startLine": 235,
+              "endLine": 326,
               "isAsync": false,
               "isExported": true,
               "isMethod": false,
@@ -11801,9 +12868,9 @@
               "paramTypes": [
                 "any"
               ],
-              "line": 321,
-              "startLine": 321,
-              "endLine": 333,
+              "line": 331,
+              "startLine": 331,
+              "endLine": 343,
               "isAsync": false,
               "isExported": false,
               "isMethod": false,
@@ -11828,9 +12895,9 @@
                 "any",
                 "any"
               ],
-              "line": 339,
-              "startLine": 339,
-              "endLine": 370,
+              "line": 349,
+              "startLine": 349,
+              "endLine": 380,
               "isAsync": false,
               "isExported": false,
               "isMethod": false,
@@ -11859,9 +12926,9 @@
                 "any",
                 "any"
               ],
-              "line": 376,
-              "startLine": 376,
-              "endLine": 401,
+              "line": 386,
+              "startLine": 386,
+              "endLine": 411,
               "isAsync": false,
               "isExported": false,
               "isMethod": false,
@@ -11894,9 +12961,9 @@
                 "any",
                 "any"
               ],
-              "line": 406,
-              "startLine": 406,
-              "endLine": 619,
+              "line": 416,
+              "startLine": 416,
+              "endLine": 695,
               "isAsync": false,
               "isExported": true,
               "isMethod": false,
@@ -11932,9 +12999,9 @@
               "paramTypes": [
                 "any"
               ],
-              "line": 625,
-              "startLine": 625,
-              "endLine": 655,
+              "line": 701,
+              "startLine": 701,
+              "endLine": 731,
               "isAsync": false,
               "isExported": false,
               "isMethod": false,
@@ -11959,9 +13026,9 @@
               "paramTypes": [
                 "any"
               ],
-              "line": 657,
-              "startLine": 657,
-              "endLine": 681,
+              "line": 733,
+              "startLine": 733,
+              "endLine": 757,
               "isAsync": false,
               "isExported": false,
               "isMethod": false,
@@ -11989,9 +13056,9 @@
                 "any",
                 "any"
               ],
-              "line": 683,
-              "startLine": 683,
-              "endLine": 706,
+              "line": 759,
+              "startLine": 759,
+              "endLine": 782,
               "isAsync": false,
               "isExported": false,
               "isMethod": false,
@@ -12025,11 +13092,11 @@
                 "calls",
                 "consumers"
               ],
-              "line": 20,
+              "line": 23,
               "isExported": true,
               "extends": [],
-              "startLine": 20,
-              "endLine": 37
+              "startLine": 23,
+              "endLine": 40
             },
             {
               "name": "PackageLockPackage",
@@ -12042,11 +13109,11 @@
                 "imports",
                 "exports"
               ],
-              "line": 42,
+              "line": 45,
               "isExported": true,
               "extends": [],
-              "startLine": 42,
-              "endLine": 73
+              "startLine": 45,
+              "endLine": 76
             },
             {
               "name": "CallGraphResult",
@@ -12059,11 +13126,11 @@
                 "nodes",
                 "edges"
               ],
-              "line": 78,
+              "line": 81,
               "isExported": true,
               "extends": [],
-              "startLine": 78,
-              "endLine": 95
+              "startLine": 81,
+              "endLine": 98
             },
             {
               "name": "PackageLockReport",
@@ -12077,19 +13144,19 @@
                 "importExportFlow",
                 "callGraph"
               ],
-              "line": 100,
+              "line": 103,
               "isExported": true,
               "extends": [],
-              "startLine": 100,
-              "endLine": 148
+              "startLine": 103,
+              "endLine": 151
             }
           ],
           "types": [],
           "classes": []
         },
         "fileStats": {
-          "size": 20833,
-          "lines": 708,
+          "size": 23716,
+          "lines": 785,
           "functions": 9,
           "classes": 0,
           "constants": 0,
@@ -15755,7 +16822,7 @@
           "classes": []
         },
         "fileStats": {
-          "size": 38858,
+          "size": 38752,
           "lines": 1381,
           "functions": 15,
           "classes": 0,
@@ -15897,130 +16964,141 @@
             "params": [
               "analysis",
               "outputPath",
-              "entitiesWithCalls"
+              "entitiesWithCalls",
+              "packageLockPath"
             ],
             "returns": "Promise<void>",
-            "line": 293,
+            "line": 475,
             "consumers": []
           }
         },
         "entities": {
           "functions": [
             {
+              "name": "getFileColor",
+              "params": [
+                "modulePath"
+              ],
+              "paramTypes": [
+                "any"
+              ],
+              "line": 104,
+              "startLine": 104,
+              "endLine": 130,
+              "isAsync": false,
+              "isExported": false,
+              "isMethod": false,
+              "calls": [],
+              "calledBy": [
+                "generateFullDOT"
+              ],
+              "returnType": "string",
+              "body": "{\n  // Используем предопределённые цвета для разных типов файлов\n  const typeColors: Record<string, string> = {\n    '.ts': '#60a5fa',\n    '.tsx': '#a78bfa',\n    '.js': '#fbbf24',\n    '.jsx': '#f472b6'",
+              "isNested": false,
+              "isArrow": false,
+              "isEventHandler": false,
+              "depth": 0
+            },
+            {
               "name": "generateFullDOT",
+              "params": [
+                "report",
+                "focusModule",
+                "focusFunction",
+                "mode"
+              ],
+              "paramTypes": [
+                "any",
+                "any",
+                "any",
+                "any"
+              ],
+              "line": 136,
+              "startLine": 136,
+              "endLine": 292,
+              "isAsync": false,
+              "isExported": false,
+              "isMethod": false,
+              "calls": [
+                "getFileColor"
+              ],
+              "calledBy": [
+                "generateInteractiveHTML"
+              ],
+              "returnType": "string",
+              "body": "{\n  const modulePaths = Object.keys(report.packages);\n\n  let dot = 'digraph ProjectGraph {\\n';\n  dot += '  rankdir=LR;\\n';\n  dot += '  splines=true;\\n';\n  dot += '  node [shape=box, style=\"filled,roun",
+              "isNested": false,
+              "isArrow": false,
+              "isEventHandler": false,
+              "depth": 0
+            },
+            {
+              "name": "convertModuleNodeToPackage",
+              "params": [
+                "node",
+                "entityNodes",
+                "entityEdges"
+              ],
+              "paramTypes": [
+                "any",
+                "any",
+                "any"
+              ],
+              "line": 298,
+              "startLine": 298,
+              "endLine": 372,
+              "isAsync": false,
+              "isExported": false,
+              "isMethod": false,
+              "calls": [],
+              "calledBy": [
+                "buildReportFromAnalysis"
+              ],
+              "returnType": "PackageLockPackage",
+              "body": "{\n  const callMap: Record<string, string[]> = {};\n  const calledByMap: Record<string, string[]> = {};\n\n  for (const edge of entityEdges) {\n    if (edge.type === 'function_call' || edge.type === 'metho",
+              "isNested": false,
+              "isArrow": false,
+              "isEventHandler": false,
+              "depth": 0
+            },
+            {
+              "name": "buildReportFromAnalysis",
               "params": [
                 "analysis"
               ],
               "paramTypes": [
                 "any"
               ],
-              "line": 22,
-              "startLine": 22,
-              "endLine": 153,
+              "line": 374,
+              "startLine": 374,
+              "endLine": 455,
               "isAsync": false,
               "isExported": false,
               "isMethod": false,
               "calls": [
-                "getEntityColor",
-                "getEntityShape",
-                "getEdgeColor"
+                "convertModuleNodeToPackage"
               ],
               "calledBy": [
                 "generateInteractiveHTML"
               ],
-              "returnType": "string",
-              "body": "{\n  let dot = 'digraph ProjectGraph {\\n';\n  dot += '  rankdir=LR;\\n';\n  dot += '  splines=true;\\n';\n  dot += '  node [shape=box, style=\"filled,rounded\", fontname=\"Arial\", fontsize=12];\\n';\n  dot += ' ",
+              "returnType": "PackageLockReport",
+              "body": "{\n  const packages: Record<string, PackageLockPackage> = {};\n\n  const moduleNodes: ModuleGraphNode[] = analysis.moduleGraph?.nodes || [];\n  const moduleEdges: ModuleGraphEdge[] = analysis.moduleGraph?",
               "isNested": false,
               "isArrow": false,
               "isEventHandler": false,
               "depth": 0
             },
             {
-              "name": "getEntityColor",
+              "name": "escapeHtml",
               "params": [
-                "type"
+                "str"
               ],
               "paramTypes": [
                 "any"
               ],
-              "line": 158,
-              "startLine": 158,
-              "endLine": 172,
-              "isAsync": false,
-              "isExported": false,
-              "isMethod": false,
-              "calls": [],
-              "calledBy": [
-                "generateFullDOT"
-              ],
-              "returnType": "string",
-              "body": "{\n  const colors: Record<string, string> = {\n    function: '#60a5fa',\n    class: '#4ade80',\n    constant: '#fbbf24',\n    interface: '#a78bfa',\n    type: '#f472b6',\n    variable: '#22d3ee',\n    enum: '",
-              "isNested": false,
-              "isArrow": false,
-              "isEventHandler": false,
-              "depth": 0
-            },
-            {
-              "name": "getEntityShape",
-              "params": [
-                "type"
-              ],
-              "paramTypes": [
-                "any"
-              ],
-              "line": 177,
-              "startLine": 177,
-              "endLine": 191,
-              "isAsync": false,
-              "isExported": false,
-              "isMethod": false,
-              "calls": [],
-              "calledBy": [
-                "generateFullDOT"
-              ],
-              "returnType": "string",
-              "body": "{\n  const shapes: Record<string, string> = {\n    function: 'ellipse',\n    class: 'box',\n    constant: 'diamond',\n    interface: 'box3d',\n    type: 'parallelogram',\n    variable: 'ellipse',\n    enum: '",
-              "isNested": false,
-              "isArrow": false,
-              "isEventHandler": false,
-              "depth": 0
-            },
-            {
-              "name": "getEdgeColor",
-              "params": [
-                "type"
-              ],
-              "paramTypes": [
-                "any"
-              ],
-              "line": 196,
-              "startLine": 196,
-              "endLine": 214,
-              "isAsync": false,
-              "isExported": false,
-              "isMethod": false,
-              "calls": [],
-              "calledBy": [
-                "generateFullDOT"
-              ],
-              "returnType": "string",
-              "body": "{\n  const colors: Record<string, string> = {\n    function_call: '#f59e0b',\n    constant_reference: '#059669',\n    class_extends: '#7c3aed',\n    class_implements: '#8b5cf6',\n    interface_extends: '#0e",
-              "isNested": false,
-              "isArrow": false,
-              "isEventHandler": false,
-              "depth": 0
-            },
-            {
-              "name": "convertEnhancedToEntities",
-              "params": [
-                "enhanced"
-              ],
-              "paramTypes": [
-                "any"
-              ],
-              "line": 219,
-              "startLine": 219,
-              "endLine": 288,
+              "line": 461,
+              "startLine": 461,
+              "endLine": 469,
               "isAsync": false,
               "isExported": false,
               "isMethod": false,
@@ -16028,8 +17106,8 @@
               "calledBy": [
                 "generateInteractiveHTML"
               ],
-              "returnType": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/entity-extractor\").EntitiesResult",
-              "body": "{\n  return {\n    functions: enhanced.functions.map(f => ({\n      name: f.name,\n      line: f.line,\n      isAsync: f.isAsync || false,\n      isExported: f.isExported || false,\n      params: f.params ||",
+              "returnType": "string",
+              "body": "{\n  if (!str) return '';\n  return str\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#039;');\n}",
               "isNested": false,
               "isArrow": false,
               "isEventHandler": false,
@@ -16040,26 +17118,29 @@
               "params": [
                 "analysis",
                 "outputPath",
-                "entitiesWithCalls"
+                "entitiesWithCalls",
+                "packageLockPath"
               ],
               "paramTypes": [
                 "any",
                 "any",
+                "any",
                 "any"
               ],
-              "line": 293,
-              "startLine": 293,
-              "endLine": 891,
+              "line": 475,
+              "startLine": 475,
+              "endLine": 1432,
               "isAsync": true,
               "isExported": true,
               "isMethod": false,
               "calls": [
-                "convertEnhancedToEntities",
-                "generateFullDOT"
+                "buildReportFromAnalysis",
+                "generateFullDOT",
+                "escapeHtml"
               ],
               "calledBy": [],
               "returnType": "Promise<void>",
-              "body": "{\n  // Нормализуем данные\n  let entitiesData: EntitiesResult | null = null;\n\n  if (entitiesWithCalls) {\n    // Проверяем тип по наличию специфических полей\n    if ('imports' in entitiesWithCalls && 'e",
+              "body": "{\n  // Загружаем package-lock-report.json если указан\n  let report: PackageLockReport | null = null;\n  if (packageLockPath && fs.existsSync(packageLockPath)) {\n    try {\n      const content = fs.readF",
               "isNested": false,
               "isArrow": false,
               "isEventHandler": false,
@@ -16068,17 +17149,102 @@
           ],
           "constants": [],
           "variables": [],
-          "interfaces": [],
+          "interfaces": [
+            {
+              "name": "PackageLockFunctionInfo",
+              "properties": [
+                "name",
+                "params",
+                "paramTypes",
+                "line",
+                "startLine",
+                "endLine",
+                "isAsync",
+                "isExported",
+                "isMethod",
+                "className",
+                "calls",
+                "calledBy",
+                "returnType",
+                "body",
+                "isNested",
+                "parentFunction",
+                "isArrow",
+                "isEventHandler",
+                "eventType",
+                "depth"
+              ],
+              "line": 17,
+              "isExported": false,
+              "extends": [],
+              "startLine": 17,
+              "endLine": 38
+            },
+            {
+              "name": "PackageLockEntityInfo",
+              "properties": [
+                "functions",
+                "constants",
+                "variables",
+                "interfaces",
+                "types",
+                "classes"
+              ],
+              "line": 40,
+              "isExported": false,
+              "extends": [],
+              "startLine": 40,
+              "endLine": 47
+            },
+            {
+              "name": "PackageLockPackage",
+              "properties": [
+                "version",
+                "resolved",
+                "displayPath",
+                "type",
+                "language",
+                "isEntry",
+                "imports",
+                "exports",
+                "entities",
+                "fileStats"
+              ],
+              "line": 49,
+              "isExported": false,
+              "extends": [],
+              "startLine": 49,
+              "endLine": 69
+            },
+            {
+              "name": "PackageLockReport",
+              "properties": [
+                "name",
+                "version",
+                "lockfileVersion",
+                "packages",
+                "dependencyGraph",
+                "entityStats",
+                "fileStats",
+                "timestamp"
+              ],
+              "line": 71,
+              "isExported": false,
+              "extends": [],
+              "startLine": 71,
+              "endLine": 98
+            }
+          ],
           "types": [],
           "classes": []
         },
         "fileStats": {
-          "size": 33093,
-          "lines": 896,
+          "size": 52873,
+          "lines": 1437,
           "functions": 6,
           "classes": 0,
           "constants": 0,
-          "interfaces": 0,
+          "interfaces": 4,
           "types": 0,
           "variables": 0
         }
@@ -23452,9 +24618,7 @@
         ],
         "src/reporters/interactive-reporter.ts": [
           "src/types.ts",
-          "@hpcc-js/wasm-graphviz",
-          "src/core/entity-extractor.ts",
-          "src/reporters/json-reporter.ts"
+          "@hpcc-js/wasm-graphviz"
         ],
         "src/types.ts": [
           "src/core/entity-extractor.ts"
@@ -23641,7 +24805,6 @@
           "src/cli.ts",
           "src/modes/project-graph.ts",
           "src/reporters/json-reporter.ts",
-          "src/reporters/interactive-reporter.ts",
           "src/types.ts"
         ],
         "src/modes/project-graph.ts": [
@@ -23692,8 +24855,7 @@
         ],
         "src/reporters/json-reporter.ts": [
           "src/cli.ts",
-          "src/modes/project-graph.ts",
-          "src/reporters/interactive-reporter.ts"
+          "src/modes/project-graph.ts"
         ],
         "src/reporters/html-reporter.ts": [
           "src/cli.ts"
@@ -24295,6 +25457,7 @@
     "callGraph": {
       "findProjectRoot": [],
       "resolveAbsoluteFilePath": [],
+      "extractEntitiesFromPackageLock": [],
       "parseArgs": [
         "normalizePathForOS",
         "showHelp",
@@ -24328,11 +25491,12 @@
         "findProjectRoot",
         "resolveAbsoluteFilePath",
         "saveEnhancedPackageLockReport",
-        "parseFile",
+        "extractEntitiesFromPackageLock",
         "extractEntitiesFromFile",
         "findModuleForEntity",
         "generateInteractiveHTML",
         "buildFileInternalGraph",
+        "parseFile",
         "extractEntities",
         "saveModuleGraph",
         "saveEntityGraph",
@@ -24684,17 +25848,18 @@
         "getFileNameForDisplay",
         "escapeHtml"
       ],
+      "getFileColor": [],
       "generateFullDOT": [
-        "getEntityColor",
-        "getEntityShape",
-        "getEdgeColor"
+        "getFileColor"
       ],
-      "getEntityColor": [],
-      "getEntityShape": [],
-      "getEdgeColor": [],
+      "convertModuleNodeToPackage": [],
+      "buildReportFromAnalysis": [
+        "convertModuleNodeToPackage"
+      ],
       "generateInteractiveHTML": [
-        "convertEnhancedToEntities",
-        "generateFullDOT"
+        "buildReportFromAnalysis",
+        "generateFullDOT",
+        "escapeHtml"
       ],
       "showHelp": [],
       "formatFileSize": [],

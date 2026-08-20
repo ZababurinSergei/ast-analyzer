@@ -52,7 +52,7 @@ import {
 import { generateInteractiveHTML } from './reporters/interactive-reporter.js';
 
 // Types
-import type { SplitModuleOptions, MinifyFolderOptions, GraphData, FullAnalysis } from './types.js';
+import type { SplitModuleOptions, MinifyFolderOptions, GraphData, FullAnalysis, EntitiesResult } from './types.js';
 
 // Utils
 import { showHelp, DEFAULT_EXCLUDE_PATTERNS } from './utils.js';
@@ -137,6 +137,160 @@ function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string 
   }
 
   return null;
+}
+
+// ==========================================
+// ФУНКЦИЯ ДЛЯ ИЗВЛЕЧЕНИЯ СУЩНОСТЕЙ ИЗ PACKAGE-LOCK REPORT
+// ==========================================
+
+/**
+ * Извлекает сущности из packageLockReport для интерактивного отчета
+ */
+function extractEntitiesFromPackageLock(packageLockReport: any): EntitiesResult {
+  const result: EntitiesResult = {
+    functions: [],
+    classes: [],
+    constants: [],
+    interfaces: [],
+    types: [],
+    variables: [],
+    imports: [],
+    exports: [],
+    callGraph: {},
+    moduleName: 'all',
+    filePath: 'all',
+  };
+
+  if (!packageLockReport?.packages) {
+    console.warn('⚠️ packageLockReport не содержит packages');
+    return result;
+  }
+
+  let totalFunctions = 0;
+  let totalCalls = 0;
+
+  for (const [modulePath, pkg] of Object.entries(packageLockReport.packages)) {
+    // Проверяем, что pkg существует и имеет структуру
+    if (!pkg || typeof pkg !== 'object') continue;
+
+    // Приводим к any для безопасного доступа к свойствам
+    const pkgAny = pkg as any;
+
+    // Проверяем наличие entities
+    if (!pkgAny.entities || typeof pkgAny.entities !== 'object') continue;
+
+    // Извлекаем функции с полной информацией
+    if (Array.isArray(pkgAny.entities.functions)) {
+      for (const func of pkgAny.entities.functions) {
+        const calls = Array.isArray(func.calls) ? func.calls : [];
+        totalCalls += calls.length;
+
+        result.functions.push({
+          name: func.name || '',
+          line: func.line || 0,
+          isAsync: func.isAsync || false,
+          isExported: func.isExported || false,
+          params: Array.isArray(func.params) ? func.params : [],
+          returnType: func.returnType || 'any',
+          calls: calls,
+          calledBy: Array.isArray(func.calledBy) ? func.calledBy : [],
+          body: func.body || '',
+          startLine: func.startLine || func.line || 0,
+          endLine: func.endLine || func.line || 0,
+          isMethod: func.isMethod || false,
+          className: func.className || '',
+          _modulePath: modulePath,
+        } as any);
+        totalFunctions++;
+      }
+    }
+
+    // Извлекаем классы
+    if (Array.isArray(pkgAny.entities.classes)) {
+      for (const cls of pkgAny.entities.classes) {
+        result.classes.push({
+          name: cls.name || '',
+          line: cls.line || 0,
+          isExported: cls.isExported || false,
+          methods: Array.isArray(cls.methods) ? cls.methods : [],
+          properties: Array.isArray(cls.properties) ? cls.properties : [],
+          extends: cls.extends || '',
+          implements: Array.isArray(cls.implements) ? cls.implements : [],
+          startLine: cls.startLine || cls.line || 0,
+          endLine: cls.endLine || cls.line || 0,
+          _modulePath: modulePath,
+        } as any);
+      }
+    }
+
+    // Извлекаем константы
+    if (Array.isArray(pkgAny.entities.constants)) {
+      for (const constItem of pkgAny.entities.constants) {
+        result.constants.push({
+          name: constItem.name || '',
+          value: constItem.value,
+          line: constItem.line || 0,
+          isExported: constItem.isExported || false,
+          type: constItem.type || '',
+          _modulePath: modulePath,
+        } as any);
+      }
+    }
+
+    // Извлекаем интерфейсы
+    if (Array.isArray(pkgAny.entities.interfaces)) {
+      for (const intf of pkgAny.entities.interfaces) {
+        result.interfaces.push({
+          name: intf.name || '',
+          properties: Array.isArray(intf.properties) ? intf.properties : [],
+          line: intf.line || 0,
+          isExported: intf.isExported || false,
+          extends: Array.isArray(intf.extends) ? intf.extends : [],
+          startLine: intf.startLine || intf.line || 0,
+          endLine: intf.endLine || intf.line || 0,
+          _modulePath: modulePath,
+        } as any);
+      }
+    }
+
+    // Извлекаем типы
+    if (Array.isArray(pkgAny.entities.types)) {
+      for (const type of pkgAny.entities.types) {
+        result.types.push({
+          name: type.name || '',
+          definition: type.definition || 'unknown',
+          line: type.line || 0,
+          isExported: type.isExported || false,
+          _modulePath: modulePath,
+        } as any);
+      }
+    }
+
+    // Извлекаем переменные
+    if (Array.isArray(pkgAny.entities.variables)) {
+      for (const varItem of pkgAny.entities.variables) {
+        result.variables.push({
+          name: varItem.name || '',
+          value: varItem.value,
+          line: varItem.line || 0,
+          isExported: varItem.isExported || false,
+          type: varItem.type || '',
+          _modulePath: modulePath,
+        } as any);
+      }
+    }
+  }
+
+  console.log(`✅ Извлечено сущностей из packageLockReport:`);
+  console.log(`   • Функций: ${totalFunctions}`);
+  console.log(`   • Классов: ${result.classes.length}`);
+  console.log(`   • Констант: ${result.constants.length}`);
+  console.log(`   • Интерфейсов: ${result.interfaces.length}`);
+  console.log(`   • Типов: ${result.types.length}`);
+  console.log(`   • Переменных: ${result.variables.length}`);
+  console.log(`   • Вызовов: ${totalCalls}`);
+
+  return result;
 }
 
 // ==========================================
@@ -1135,7 +1289,7 @@ export async function runCLI(): Promise<void> {
         for (let i = 0; i < result.modules.length; i++) {
           const module = result.modules[i];
           if (!module) continue;
-          console.log(`\n   ${i + 1}. Модуль \"${module.name}\":`);
+          console.log(`\n   ${i + 1}. Модуль "${module.name}":`);
           console.log(`      Экспорты: ${module.exports.join(', ')}`);
         }
       } else {
@@ -1388,324 +1542,553 @@ export async function runCLI(): Promise<void> {
           console.error(`❌ Ошибка при сохранении расширенного отчета:`, error);
         }
 
-        // Парсим AST для извлечения сущностей для интерактивного отчета
-        const ast = parseFile(currentTargetPath);
-        if (ast) {
-          // ✅ ИСПРАВЛЕНО: используем extractEntitiesFromFile для получения calls
-          // Вместо extractEntities (который не заполняет calls)
+        // ============================================
+        // СБОР СУЩНОСТЕЙ ДЛЯ ИНТЕРАКТИВНОГО ОТЧЕТА
+        // ============================================
+        let entitiesWithCalls: EntitiesResult;
 
-          const entitiesWithCalls = extractEntitiesFromFile(currentTargetPath);
+        // Если resultData.entities уже содержит сущности, используем их
+        if (resultData.entities && Object.keys(resultData.entities).length > 0) {
+          console.log('📊 Использование сущностей из resultData.entities...');
 
-          // ✅ ВАЛИДАЦИЯ: убеждаемся, что calls это массив
-          let totalCalls = 0;
-          for (const func of entitiesWithCalls.functions) {
-            if (!Array.isArray(func.calls)) {
-              func.calls = [];
-            }
-            totalCalls += func.calls.length;
-          }
-          console.log(`   📞 Всего вызовов функций: ${totalCalls}`);
-
-          // Строим полный анализ для интерактивного отчета
-          const fullAnalysis: FullAnalysis = {
-            version: '3.0.0',
-            root: currentTargetPath,
-            timestamp: new Date().toISOString(),
-            stats: {
-              totalModules: Object.keys(normalizedData.graph).length,
-              totalEntities:
-                entitiesWithCalls.functions.length +
-                entitiesWithCalls.classes.length +
-                entitiesWithCalls.constants.length +
-                entitiesWithCalls.interfaces.length +
-                entitiesWithCalls.types.length +
-                entitiesWithCalls.variables.length,
-              hasCycles: hasCycles,
-              cycles: normalizedData.cyclicEdges?.map((edge: string) => edge.split('->')) || [],
-            },
-            moduleGraph: {
-              nodes: [],
-              edges: [],
-            },
-            entityGraph: {
-              nodes: [],
-              edges: [],
-            },
+          // Объединяем сущности из всех модулей
+          entitiesWithCalls = {
+            functions: [],
+            classes: [],
+            constants: [],
+            interfaces: [],
+            types: [],
+            variables: [],
+            imports: [],
+            exports: [],
+            callGraph: {},
+            moduleName: 'all',
+            filePath: 'all',
           };
 
-          // Заполняем moduleGraph
-          const allModules = new Set<string>();
-          allModules.add(normalizedData.rootKey);
+          for (const [modulePath, entities] of Object.entries(resultData.entities)) {
+            if (!entities) continue;
 
-          // ✅ ИСПРАВЛЕНО: добавляем проверку на массив для deps
-          for (const [key, deps] of Object.entries(normalizedData.graph)) {
-            allModules.add(key);
-            // Проверяем, что deps является массивом
-            if (Array.isArray(deps)) {
-              for (const dep of deps) {
-                allModules.add(dep);
-              }
-            }
-          }
-
-          for (const modulePath of allModules) {
-            let language = 'javascript';
-            if (modulePath.endsWith('.ts') || modulePath.endsWith('.tsx')) language = 'typescript';
-            else if (modulePath.endsWith('.vue')) language = 'vue';
-            else if (modulePath.endsWith('.jsx')) language = 'jsx';
-
-            let size = 0;
-            let lines = 0;
-            try {
-              const absPath = path.resolve(modulePath);
-              if (fs.existsSync(absPath) && fs.statSync(absPath).isFile()) {
-                const content = fs.readFileSync(absPath, 'utf-8');
-                size = content.length;
-                lines = content.split('\n').length;
-              }
-            } catch {
-              // Игнорируем ошибки
-            }
-
-            fullAnalysis.moduleGraph.nodes.push({
-              id: modulePath,
-              name: path.basename(modulePath),
-              type: modulePath.endsWith('.vue') ? 'vue' : 'module',
-              level: modulePath === normalizedData.rootKey ? 0 : 1,
-              metadata: { size, lines, language, isEntry: modulePath === normalizedData.rootKey },
-            });
-          }
-
-          for (const [from, deps] of Object.entries(normalizedData.graph)) {
-            // Проверяем, что deps является массивом
-            if (Array.isArray(deps)) {
-              for (const to of deps) {
-                const specifiers: string[] = [];
-                for (const entity of entitiesWithCalls.functions) {
-                  if (entity.isExported && (to.includes(entity.name) || entity.name.includes(to))) {
-                    specifiers.push(entity.name);
-                  }
-                }
-                fullAnalysis.moduleGraph.edges.push({
-                  from,
-                  to,
-                  type: 'import',
-                  specifiers:
-                    specifiers.length > 0
-                      ? specifiers
-                      : [path.basename(to).replace(/\.[^.]+$/, '')],
-                });
-              }
-            }
-          }
-
-          // Заполняем entityGraph с ребрами для вызовов
-          for (const func of entitiesWithCalls.functions) {
-            const modulePath = findModuleForEntity(func.name, normalizedData);
-            const nodeId = modulePath ? `${modulePath}#${func.name}` : `#${func.name}`;
-
-            // ✅ Убеждаемся, что calls это массив
-            const calls = Array.isArray(func.calls) ? func.calls : [];
-
-            fullAnalysis.entityGraph.nodes.push({
-              id: nodeId,
-              name: func.name,
-              type: 'function',
-              module: modulePath || 'unknown',
-              line: func.line,
-              metadata: {
-                isAsync: func.isAsync,
-                isExported: func.isExported,
-                params: func.params,
-                returnType: func.returnType,
-                isMethod: func.isMethod,
-                className: func.className,
-                calls: calls,
+            // Добавляем функции с информацией о модуле
+            for (const func of entities.functions || []) {
+              entitiesWithCalls.functions.push({
+                name: func.name || '',
+                line: func.line || 0,
+                isAsync: func.isAsync || false,
+                isExported: func.isExported || false,
+                params: func.params || [],
+                returnType: func.returnType || 'any',
+                calls: func.calls || [],
                 calledBy: func.calledBy || [],
-                startLine: func.startLine,
-                endLine: func.endLine,
-              },
-            });
+                body: func.body || '',
+                startLine: func.startLine || func.line || 0,
+                endLine: func.endLine || func.line || 0,
+                isMethod: func.isMethod || false,
+                className: func.className || '',
+                _modulePath: modulePath,
+              } as any);
+            }
 
-            // ✅ Добавляем ребра для каждого вызова
-            for (const call of calls) {
-              let targetModule = findModuleForEntity(call, normalizedData);
-              // Если не нашли по точному имени, ищем по частичному совпадению
-              if (!targetModule) {
-                for (const [modPath, deps] of Object.entries(normalizedData.graph)) {
-                  if (
-                    Array.isArray(deps) &&
-                    (modPath.includes(call) || deps.some(d => d.includes(call)))
-                  ) {
-                    targetModule = modPath;
-                    break;
-                  }
-                }
+            // Добавляем классы с приведением типов
+            for (const cls of entities.classes || []) {
+              entitiesWithCalls.classes.push({
+                name: cls.name || '',
+                line: cls.line || 0,
+                isExported: cls.isExported || false,
+                methods: cls.methods || [],
+                properties: cls.properties || [],
+                extends: cls.extends || '',
+                implements: cls.implements || [],
+                startLine: cls.startLine || cls.line || 0,
+                endLine: cls.endLine || cls.line || 0,
+                _modulePath: modulePath,
+              } as any);
+            }
+
+            // Добавляем константы
+            for (const constItem of entities.constants || []) {
+              entitiesWithCalls.constants.push({
+                name: constItem.name || '',
+                value: constItem.value,
+                line: constItem.line || 0,
+                isExported: constItem.isExported || false,
+                type: constItem.type || '',
+                _modulePath: modulePath,
+              } as any);
+            }
+
+            // Добавляем интерфейсы
+            for (const intf of entities.interfaces || []) {
+              entitiesWithCalls.interfaces.push({
+                name: intf.name || '',
+                properties: intf.properties || [],
+                line: intf.line || 0,
+                isExported: intf.isExported || false,
+                extends: intf.extends || [],
+                startLine: intf.startLine || intf.line || 0,
+                endLine: intf.endLine || intf.line || 0,
+                _modulePath: modulePath,
+              } as any);
+            }
+
+            // Добавляем типы
+            for (const type of entities.types || []) {
+              entitiesWithCalls.types.push({
+                name: type.name || '',
+                definition: type.definition || 'unknown',
+                line: type.line || 0,
+                isExported: type.isExported || false,
+                _modulePath: modulePath,
+              } as any);
+            }
+
+            // Добавляем переменные
+            for (const varItem of entities.variables || []) {
+              entitiesWithCalls.variables.push({
+                name: varItem.name || '',
+                value: varItem.value,
+                line: varItem.line || 0,
+                isExported: varItem.isExported || false,
+                type: varItem.type || '',
+                _modulePath: modulePath,
+              } as any);
+            }
+
+            // Объединяем callGraph
+            for (const [funcName, calls] of Object.entries(entities.callGraph || {})) {
+              if (!entitiesWithCalls.callGraph[funcName]) {
+                entitiesWithCalls.callGraph[funcName] = [];
               }
-              const targetId = targetModule ? `${targetModule}#${call}` : `#${call}`;
-              fullAnalysis.entityGraph.edges.push({
-                from: nodeId,
-                to: targetId,
-                type: 'function_call',
-                line: func.line,
-              });
+              if (Array.isArray(calls)) {
+                entitiesWithCalls.callGraph[funcName].push(...calls);
+              }
             }
           }
 
-          for (const cls of entitiesWithCalls.classes) {
-            const modulePath = findModuleForEntity(cls.name, normalizedData);
-            const nodeId = modulePath ? `${modulePath}#${cls.name}` : `#${cls.name}`;
-            fullAnalysis.entityGraph.nodes.push({
-              id: nodeId,
-              name: cls.name,
-              type: 'class',
-              module: modulePath || 'unknown',
-              line: cls.line,
-              metadata: {
-                isExported: cls.isExported,
-                methods: cls.methods,
-                properties: cls.properties,
-                extends: cls.extends,
-                implements: cls.implements,
-                startLine: cls.startLine,
-                endLine: cls.endLine,
-              },
-            });
-            if (cls.extends) {
-              const targetModule = findModuleForEntity(cls.extends, normalizedData);
-              const targetId = targetModule ? `${targetModule}#${cls.extends}` : `#${cls.extends}`;
-              fullAnalysis.entityGraph.edges.push({
-                from: nodeId,
-                to: targetId,
-                type: 'class_extends',
-              });
-            }
-            for (const impl of cls.implements || []) {
-              const targetModule = findModuleForEntity(impl, normalizedData);
-              const targetId = targetModule ? `${targetModule}#${impl}` : `#${impl}`;
-              fullAnalysis.entityGraph.edges.push({
-                from: nodeId,
-                to: targetId,
-                type: 'class_implements',
-              });
-            }
-          }
-
-          for (const constant of entitiesWithCalls.constants) {
-            const modulePath = findModuleForEntity(constant.name, normalizedData);
-            const nodeId = modulePath ? `${modulePath}#${constant.name}` : `#${constant.name}`;
-            fullAnalysis.entityGraph.nodes.push({
-              id: nodeId,
-              name: constant.name,
-              type: 'constant',
-              module: modulePath || 'unknown',
-              line: constant.line,
-              metadata: {
-                value: constant.value,
-                isExported: constant.isExported,
-                type: constant.type,
-              },
-            });
-          }
-
-          for (const intf of entitiesWithCalls.interfaces) {
-            const modulePath = findModuleForEntity(intf.name, normalizedData);
-            const nodeId = modulePath ? `${modulePath}#${intf.name}` : `#${intf.name}`;
-            fullAnalysis.entityGraph.nodes.push({
-              id: nodeId,
-              name: intf.name,
-              type: 'interface',
-              module: modulePath || 'unknown',
-              line: intf.line,
-              metadata: {
-                isExported: intf.isExported,
-                properties: intf.properties,
-                extends: intf.extends,
-                startLine: intf.startLine,
-                endLine: intf.endLine,
-              },
-            });
-            for (const ext of intf.extends || []) {
-              const targetModule = findModuleForEntity(ext, normalizedData);
-              const targetId = targetModule ? `${targetModule}#${ext}` : `#${ext}`;
-              fullAnalysis.entityGraph.edges.push({
-                from: nodeId,
-                to: targetId,
-                type: 'interface_extends',
-              });
-            }
-          }
-
-          for (const type of entitiesWithCalls.types) {
-            const modulePath = findModuleForEntity(type.name, normalizedData);
-            const nodeId = modulePath ? `${modulePath}#${type.name}` : `#${type.name}`;
-            fullAnalysis.entityGraph.nodes.push({
-              id: nodeId,
-              name: type.name,
-              type: 'type',
-              module: modulePath || 'unknown',
-              line: type.line,
-              metadata: {
-                isExported: type.isExported,
-                definition: type.definition,
-              },
-            });
-          }
-
-          for (const variable of entitiesWithCalls.variables) {
-            const modulePath = findModuleForEntity(variable.name, normalizedData);
-            const nodeId = modulePath ? `${modulePath}#${variable.name}` : `#${variable.name}`;
-            fullAnalysis.entityGraph.nodes.push({
-              id: nodeId,
-              name: variable.name,
-              type: 'variable',
-              module: modulePath || 'unknown',
-              line: variable.line,
-              metadata: {
-                isExported: variable.isExported,
-                type: variable.type,
-                value: variable.value,
-              },
-            });
-          }
-
-          // Находим путь к package-lock-report.json
-          const packageLockPath = path.join(
-            process.cwd(),
-            'reports/entities-component-tree-deep/package-lock-report.json'
-          );
-
-          // ✅ Генерируем интерактивный HTML с передачей пути к package-lock
-          console.log('\n🌐 Генерация интерактивного HTML отчета...');
-          const htmlPath = path.join(process.cwd(), 'interactive-report.html');
-
-          // ✅ Вызываем функцию с 4 аргументами (включая packageLockPath)
-          await generateInteractiveHTML(
-            fullAnalysis,
-            htmlPath,
-            entitiesWithCalls,
-            packageLockPath
-          );
-          console.log(`   ✅ interactive-report.html (интерактивный отчет)`);
-
-          console.log('\n📊 Статистика сущностей:');
+          console.log(`✅ Собрано сущностей из resultData.entities:`);
           console.log(`   • Функций: ${entitiesWithCalls.functions.length}`);
           console.log(`   • Классов: ${entitiesWithCalls.classes.length}`);
           console.log(`   • Констант: ${entitiesWithCalls.constants.length}`);
           console.log(`   • Интерфейсов: ${entitiesWithCalls.interfaces.length}`);
           console.log(`   • Типов: ${entitiesWithCalls.types.length}`);
           console.log(`   • Переменных: ${entitiesWithCalls.variables.length}`);
-          console.log(`   • Вызовов между функциями: ${fullAnalysis.entityGraph.edges.length}`);
-
-          console.log(
-            '\n🌐 Откройте interactive-report.html в браузере для интерактивного просмотра'
-          );
-          console.log(
-            '📄 Откройте reports/entities-component-tree-deep/package-lock-report.json для детального анализа'
-          );
+        } else if (resultData.packageLockReport) {
+          // Если resultData.entities пустой, извлекаем из packageLockReport
+          console.log('📊 resultData.entities пуст, извлечение из packageLockReport...');
+          entitiesWithCalls = extractEntitiesFromPackageLock(resultData.packageLockReport);
         } else {
-          console.warn('⚠️ Не удалось извлечь сущности: AST не построен');
+          // Если ничего нет, создаем пустой объект и извлекаем из файлов
+          console.log('📊 Извлечение сущностей из файлов проекта...');
+          entitiesWithCalls = {
+            functions: [],
+            classes: [],
+            constants: [],
+            interfaces: [],
+            types: [],
+            variables: [],
+            imports: [],
+            exports: [],
+            callGraph: {},
+            moduleName: 'all',
+            filePath: 'all',
+          };
+
+          // Извлекаем сущности из каждого файла в графе
+          for (const filePath of Object.keys(normalizedData.graph)) {
+            try {
+              const absPath = path.resolve(filePath);
+              if (fs.existsSync(absPath) && fs.statSync(absPath).isFile()) {
+                const fileEntities = extractEntitiesFromFile(absPath);
+
+                // Добавляем функции с информацией о модуле
+                for (const func of fileEntities.functions || []) {
+                  entitiesWithCalls.functions.push({
+                    name: func.name || '',
+                    line: func.line || 0,
+                    isAsync: func.isAsync || false,
+                    isExported: func.isExported || false,
+                    params: func.params || [],
+                    returnType: func.returnType || 'any',
+                    calls: func.calls || [],
+                    calledBy: func.calledBy || [],
+                    body: func.body || '',
+                    startLine: func.startLine || func.line || 0,
+                    endLine: func.endLine || func.line || 0,
+                    isMethod: func.isMethod || false,
+                    className: func.className || '',
+                    _modulePath: filePath,
+                  } as any);
+                }
+
+                // Добавляем классы
+                for (const cls of fileEntities.classes || []) {
+                  entitiesWithCalls.classes.push({
+                    name: cls.name || '',
+                    line: cls.line || 0,
+                    isExported: cls.isExported || false,
+                    methods: cls.methods || [],
+                    properties: cls.properties || [],
+                    extends: cls.extends || '',
+                    implements: cls.implements || [],
+                    startLine: cls.startLine || cls.line || 0,
+                    endLine: cls.endLine || cls.line || 0,
+                    _modulePath: filePath,
+                  } as any);
+                }
+
+                // Добавляем константы
+                for (const constItem of fileEntities.constants || []) {
+                  entitiesWithCalls.constants.push({
+                    name: constItem.name || '',
+                    value: constItem.value,
+                    line: constItem.line || 0,
+                    isExported: constItem.isExported || false,
+                    type: constItem.type || '',
+                    _modulePath: filePath,
+                  } as any);
+                }
+
+                // Добавляем интерфейсы
+                for (const intf of fileEntities.interfaces || []) {
+                  entitiesWithCalls.interfaces.push({
+                    name: intf.name || '',
+                    properties: intf.properties || [],
+                    line: intf.line || 0,
+                    isExported: intf.isExported || false,
+                    extends: intf.extends || [],
+                    startLine: intf.startLine || intf.line || 0,
+                    endLine: intf.endLine || intf.line || 0,
+                    _modulePath: filePath,
+                  } as any);
+                }
+
+                // Добавляем типы
+                for (const type of fileEntities.types || []) {
+                  entitiesWithCalls.types.push({
+                    name: type.name || '',
+                    definition: type.definition || 'unknown',
+                    line: type.line || 0,
+                    isExported: type.isExported || false,
+                    _modulePath: filePath,
+                  } as any);
+                }
+
+                // Добавляем переменные
+                for (const varItem of fileEntities.variables || []) {
+                  entitiesWithCalls.variables.push({
+                    name: varItem.name || '',
+                    value: varItem.value,
+                    line: varItem.line || 0,
+                    isExported: varItem.isExported || false,
+                    type: varItem.type || '',
+                    _modulePath: filePath,
+                  } as any);
+                }
+              }
+            } catch (error) {
+              // Игнорируем ошибки
+            }
+          }
+
+          console.log(`✅ Извлечено сущностей из файлов:`);
+          console.log(`   • Функций: ${entitiesWithCalls.functions.length}`);
+          console.log(`   • Классов: ${entitiesWithCalls.classes.length}`);
+          console.log(`   • Констант: ${entitiesWithCalls.constants.length}`);
+          console.log(`   • Интерфейсов: ${entitiesWithCalls.interfaces.length}`);
+          console.log(`   • Типов: ${entitiesWithCalls.types.length}`);
+          console.log(`   • Переменных: ${entitiesWithCalls.variables.length}`);
         }
+
+        // Строим полный анализ для интерактивного отчета
+        const fullAnalysis: FullAnalysis = {
+          version: '3.0.0',
+          root: currentTargetPath,
+          timestamp: new Date().toISOString(),
+          stats: {
+            totalModules: Object.keys(normalizedData.graph).length,
+            totalEntities:
+              entitiesWithCalls.functions.length +
+              entitiesWithCalls.classes.length +
+              entitiesWithCalls.constants.length +
+              entitiesWithCalls.interfaces.length +
+              entitiesWithCalls.types.length +
+              entitiesWithCalls.variables.length,
+            hasCycles: hasCycles,
+            cycles: normalizedData.cyclicEdges?.map((edge: string) => edge.split('->')) || [],
+          },
+          moduleGraph: {
+            nodes: [],
+            edges: [],
+          },
+          entityGraph: {
+            nodes: [],
+            edges: [],
+          },
+        };
+
+        // Заполняем moduleGraph
+        const allModules = new Set<string>();
+        allModules.add(normalizedData.rootKey);
+
+        for (const [key, deps] of Object.entries(normalizedData.graph)) {
+          allModules.add(key);
+          if (Array.isArray(deps)) {
+            for (const dep of deps) {
+              allModules.add(dep);
+            }
+          }
+        }
+
+        for (const modulePath of allModules) {
+          let language = 'javascript';
+          if (modulePath.endsWith('.ts') || modulePath.endsWith('.tsx')) language = 'typescript';
+          else if (modulePath.endsWith('.vue')) language = 'vue';
+          else if (modulePath.endsWith('.jsx')) language = 'jsx';
+
+          let size = 0;
+          let lines = 0;
+          try {
+            const absPath = path.resolve(modulePath);
+            if (fs.existsSync(absPath) && fs.statSync(absPath).isFile()) {
+              const content = fs.readFileSync(absPath, 'utf-8');
+              size = content.length;
+              lines = content.split('\n').length;
+            }
+          } catch {
+            // Игнорируем ошибки
+          }
+
+          fullAnalysis.moduleGraph.nodes.push({
+            id: modulePath,
+            name: path.basename(modulePath),
+            type: modulePath.endsWith('.vue') ? 'vue' : 'module',
+            level: modulePath === normalizedData.rootKey ? 0 : 1,
+            metadata: { size, lines, language, isEntry: modulePath === normalizedData.rootKey },
+          });
+        }
+
+        for (const [from, deps] of Object.entries(normalizedData.graph)) {
+          if (Array.isArray(deps)) {
+            for (const to of deps) {
+              const specifiers: string[] = [];
+              for (const entity of entitiesWithCalls.functions) {
+                if (entity.isExported && (to.includes(entity.name) || entity.name.includes(to))) {
+                  specifiers.push(entity.name);
+                }
+              }
+              fullAnalysis.moduleGraph.edges.push({
+                from,
+                to,
+                type: 'import',
+                specifiers: specifiers.length > 0 ? specifiers : [path.basename(to).replace(/\.[^.]+$/, '')],
+              });
+            }
+          }
+        }
+
+        // Заполняем entityGraph с ребрами для вызовов
+        for (const func of entitiesWithCalls.functions) {
+          const modulePath = findModuleForEntity(func.name, normalizedData);
+          const nodeId = modulePath ? `${modulePath}#${func.name}` : `#${func.name}`;
+
+          const calls = Array.isArray(func.calls) ? func.calls : [];
+
+          fullAnalysis.entityGraph.nodes.push({
+            id: nodeId,
+            name: func.name,
+            type: 'function',
+            module: modulePath || 'unknown',
+            line: func.line,
+            metadata: {
+              isAsync: func.isAsync,
+              isExported: func.isExported,
+              params: func.params,
+              returnType: func.returnType,
+              isMethod: func.isMethod,
+              className: func.className,
+              calls: calls,
+              calledBy: func.calledBy || [],
+              startLine: func.startLine,
+              endLine: func.endLine,
+            },
+          });
+
+          for (const call of calls) {
+            let targetModule = findModuleForEntity(call, normalizedData);
+            if (!targetModule) {
+              for (const [modPath, deps] of Object.entries(normalizedData.graph)) {
+                if (Array.isArray(deps) && (modPath.includes(call) || deps.some(d => d.includes(call)))) {
+                  targetModule = modPath;
+                  break;
+                }
+              }
+            }
+            const targetId = targetModule ? `${targetModule}#${call}` : `#${call}`;
+            fullAnalysis.entityGraph.edges.push({
+              from: nodeId,
+              to: targetId,
+              type: 'function_call',
+              line: func.line,
+            });
+          }
+        }
+
+        // Добавляем классы
+        for (const cls of entitiesWithCalls.classes) {
+          const modulePath = findModuleForEntity(cls.name, normalizedData);
+          const nodeId = modulePath ? `${modulePath}#${cls.name}` : `#${cls.name}`;
+          fullAnalysis.entityGraph.nodes.push({
+            id: nodeId,
+            name: cls.name,
+            type: 'class',
+            module: modulePath || 'unknown',
+            line: cls.line,
+            metadata: {
+              isExported: cls.isExported,
+              methods: cls.methods,
+              properties: cls.properties,
+              extends: cls.extends,
+              implements: cls.implements,
+              startLine: cls.startLine,
+              endLine: cls.endLine,
+            },
+          });
+          if (cls.extends) {
+            const targetModule = findModuleForEntity(cls.extends, normalizedData);
+            const targetId = targetModule ? `${targetModule}#${cls.extends}` : `#${cls.extends}`;
+            fullAnalysis.entityGraph.edges.push({
+              from: nodeId,
+              to: targetId,
+              type: 'class_extends',
+            });
+          }
+          for (const impl of cls.implements || []) {
+            const targetModule = findModuleForEntity(impl, normalizedData);
+            const targetId = targetModule ? `${targetModule}#${impl}` : `#${impl}`;
+            fullAnalysis.entityGraph.edges.push({
+              from: nodeId,
+              to: targetId,
+              type: 'class_implements',
+            });
+          }
+        }
+
+        // Добавляем константы
+        for (const constant of entitiesWithCalls.constants) {
+          const modulePath = findModuleForEntity(constant.name, normalizedData);
+          const nodeId = modulePath ? `${modulePath}#${constant.name}` : `#${constant.name}`;
+          fullAnalysis.entityGraph.nodes.push({
+            id: nodeId,
+            name: constant.name,
+            type: 'constant',
+            module: modulePath || 'unknown',
+            line: constant.line,
+            metadata: {
+              value: constant.value,
+              isExported: constant.isExported,
+              type: constant.type,
+            },
+          });
+        }
+
+        // Добавляем интерфейсы
+        for (const intf of entitiesWithCalls.interfaces) {
+          const modulePath = findModuleForEntity(intf.name, normalizedData);
+          const nodeId = modulePath ? `${modulePath}#${intf.name}` : `#${intf.name}`;
+          fullAnalysis.entityGraph.nodes.push({
+            id: nodeId,
+            name: intf.name,
+            type: 'interface',
+            module: modulePath || 'unknown',
+            line: intf.line,
+            metadata: {
+              isExported: intf.isExported,
+              properties: intf.properties,
+              extends: intf.extends,
+              startLine: intf.startLine,
+              endLine: intf.endLine,
+            },
+          });
+          for (const ext of intf.extends || []) {
+            const targetModule = findModuleForEntity(ext, normalizedData);
+            const targetId = targetModule ? `${targetModule}#${ext}` : `#${ext}`;
+            fullAnalysis.entityGraph.edges.push({
+              from: nodeId,
+              to: targetId,
+              type: 'interface_extends',
+            });
+          }
+        }
+
+        // Добавляем типы
+        for (const type of entitiesWithCalls.types) {
+          const modulePath = findModuleForEntity(type.name, normalizedData);
+          const nodeId = modulePath ? `${modulePath}#${type.name}` : `#${type.name}`;
+          fullAnalysis.entityGraph.nodes.push({
+            id: nodeId,
+            name: type.name,
+            type: 'type',
+            module: modulePath || 'unknown',
+            line: type.line,
+            metadata: {
+              isExported: type.isExported,
+              definition: type.definition,
+            },
+          });
+        }
+
+        // Добавляем переменные
+        for (const variable of entitiesWithCalls.variables) {
+          const modulePath = findModuleForEntity(variable.name, normalizedData);
+          const nodeId = modulePath ? `${modulePath}#${variable.name}` : `#${variable.name}`;
+          fullAnalysis.entityGraph.nodes.push({
+            id: nodeId,
+            name: variable.name,
+            type: 'variable',
+            module: modulePath || 'unknown',
+            line: variable.line,
+            metadata: {
+              isExported: variable.isExported,
+              type: variable.type,
+              value: variable.value,
+            },
+          });
+        }
+
+        // Находим путь к package-lock-report.json
+        const packageLockPath = path.join(
+          process.cwd(),
+          'reports/entities-component-tree-deep/package-lock-report.json'
+        );
+
+        // ✅ Генерируем интерактивный HTML с передачей пути к package-lock
+        console.log('\n🌐 Генерация интерактивного HTML отчета...');
+        const htmlPath = path.join(process.cwd(), 'interactive-report.html');
+
+        // ✅ Вызываем функцию с 4 аргументами (включая packageLockPath)
+        await generateInteractiveHTML(
+          fullAnalysis,
+          htmlPath,
+          entitiesWithCalls,
+          packageLockPath
+        );
+        console.log(`   ✅ interactive-report.html (интерактивный отчет)`);
+
+        console.log('\n📊 СТАТИСТИКА СУЩНОСТЕЙ (ВСЕ ФАЙЛЫ):');
+        console.log(`   • Функций: ${entitiesWithCalls.functions.length}`);
+        console.log(`   • Классов: ${entitiesWithCalls.classes.length}`);
+        console.log(`   • Констант: ${entitiesWithCalls.constants.length}`);
+        console.log(`   • Интерфейсов: ${entitiesWithCalls.interfaces.length}`);
+        console.log(`   • Типов: ${entitiesWithCalls.types.length}`);
+        console.log(`   • Переменных: ${entitiesWithCalls.variables.length}`);
+        console.log(`   • Вызовов между функциями: ${fullAnalysis.entityGraph.edges.length}`);
+
+        console.log(
+          '\n🌐 Откройте interactive-report.html в браузере для интерактивного просмотра'
+        );
+        console.log(
+          '📄 Откройте reports/entities-component-tree-deep/package-lock-report.json для детального анализа'
+        );
       }
 
       console.log('\n🎉 Готово! Откройте report.html в браузере');

@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Graph Navigator — package-lock-report.json</title>
+  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+  <style>
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body { font-family:'Segoe UI',system-ui,sans-serif; background:#0d1117; color:#c9d1d9; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+
+      /* ── Toolbar ─────────────────────────── */
+      #toolbar { display:flex; align-items:center; gap:8px; padding:10px 14px; background:#161b22; border-bottom:1px solid #30363d; flex-wrap:wrap; }
+      #toolbar .logo { font-weight:700; color:#58a6ff; margin-right:8px; white-space:nowrap; }
+      .btn { background:#21262d; color:#c9d1d9; border:1px solid #30363d; border-radius:6px; padding:6px 12px; cursor:pointer; font-size:13px; transition:.15s; display:inline-flex; align-items:center; gap:5px; }
+      .btn:hover:not(:disabled) { background:#30363d; border-color:#58a6ff; }
+      .btn:disabled { opacity:.35; cursor:not-allowed; }
+      .btn.primary { background:#1f6feb; border-color:#1f6feb; color:#fff; }
+      .btn.primary:hover:not(:disabled) { background:#388bfd; }
+      .btn.active { background:#1f6feb; border-color:#58a6ff; color:#fff; }
+      #search { background:#0d1117; border:1px solid #30363d; border-radius:6px; color:#c9d1d9; padding:6px 10px; font-size:13px; width:220px; }
+      #search:focus { outline:none; border-color:#58a6ff; }
+      #histInfo { font-size:12px; color:#8b949e; margin-left:6px; }
+      .sep { width:1px; height:24px; background:#30363d; }
+
+      /* ── Layout ──────────────────────────── */
+      #main { flex:1; display:flex; overflow:hidden; }
+      #graph { flex:1; background:#0d1117; position:relative; }
+      #graph .vis-tooltip { background:#161b22 !important; color:#c9d1d9 !important; border:1px solid #30363d !important; border-radius:6px !important; }
+
+      #panel { width:360px; min-width:300px; background:#161b22; border-left:1px solid #30363d; overflow-y:auto; padding:16px; }
+      #panel h2 { font-size:15px; color:#58a6ff; margin-bottom:4px; word-break:break-all; }
+      #panel h3 { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#8b949e; margin:16px 0 6px; }
+      .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; margin-right:4px; margin-bottom:4px; }
+      .b-blue { background:#1f6feb33; color:#58a6ff; border:1px solid #1f6feb66; }
+      .b-green{ background:#2ea04333; color:#3fb950; border:1px solid #2ea04366; }
+      .b-gray { background:#8b949e22; color:#8b949e; border:1px solid #8b949e44; }
+      .stat-row { display:flex; justify-content:space-between; font-size:12px; padding:3px 0; border-bottom:1px dashed #21262d; }
+      .stat-row span:last-child { color:#e6edf3; font-weight:600; }
+      .list-item { display:flex; align-items:center; gap:6px; padding:5px 8px; border-radius:6px; cursor:pointer; font-size:12px; transition:.12s; word-break:break-all; }
+      .list-item:hover { background:#1f6feb22; }
+      .list-item .arrow { color:#3fb950; font-family:monospace; }
+      .list-item .arrow.in { color:#f0883e; }
+      .muted { color:#8b949e; font-size:12px; }
+      code.fn { color:#d2a8ff; }
+
+      /* ── Legend ──────────────────────────── */
+      #legend { position:absolute; bottom:12px; left:12px; background:#161b22ee; border:1px solid #30363d; border-radius:8px; padding:10px 14px; font-size:11px; z-index:5; }
+      #legend div { display:flex; align-items:center; gap:7px; margin:3px 0; }
+      #legend .dot { width:12px; height:12px; border-radius:50%; }
+
+      #status { position:absolute; top:12px; left:50%; transform:translateX(-50%); background:#161b22ee; border:1px solid #30363d; border-radius:8px; padding:8px 18px; font-size:13px; z-index:6; display:none; }
+
+      ::-webkit-scrollbar { width:8px; } ::-webkit-scrollbar-track { background:#161b22; } ::-webkit-scrollbar-thumb { background:#30363d; border-radius:4px; }
+  </style>
+</head>
+<body>
+
+<div id="toolbar">
+  <span class="logo">⬡ Graph Navigator</span>
+  <div class="sep"></div>
+  <button class="btn" id="btnBack"    title="Назад (←)">← Назад</button>
+  <button class="btn" id="btnForward" title="Вперёд (→)">Вперёд →</button>
+  <button class="btn" id="btnUp"      title="Вверх к модулю (↑)">↑ Модуль</button>
+  <span id="histInfo"></span>
+  <div class="sep"></div>
+  <button class="btn" id="btnStep"    title="Шаг вперёд по связям (N)">⏭ Шаг по рёбрам</button>
+  <button class="btn" id="btnFit"     title="Показать весь граф (F)">⊡ Весь граф</button>
+  <div class="sep"></div>
+  <button class="btn active" id="modeModules"   title="Граф модулей">Модули</button>
+  <button class="btn" id="modeFunctions" title="Граф вызовов функций">Функции</button>
+  <button class="btn" id="modeHybrid"    title="Модули + их функции">Гибрид</button>
+  <div class="sep"></div>
+  <input id="search" type="text" placeholder="🔍 поиск модуля / функции…">
+  <div class="sep"></div>
+  <label class="btn" title="Открыть JSON вручную (если fetch недоступен)">📂 Открыть JSON
+    <input type="file" id="filePicker" accept=".json" style="display:none">
+  </label>
+</div>
+
+<div id="main">
+  <div id="graph">
+    <div id="status"></div>
+    <div id="legend">
+      <div><span class="dot" style="background:#3fb950"></span> entry point</div>
+      <div><span class="dot" style="background:#58a6ff"></span> модуль (.ts/.js)</div>
+      <div><span class="dot" style="background:#f0883e"></span> .vue компонент</div>
+      <div><span class="dot" style="background:#d2a8ff"></span> функция</div>
+      <div><span class="dot" style="background:#8b949e"></span> внешний пакет</div>
+    </div>
+  </div>
+  <div id="panel"><div class="muted">Кликни по узлу графа, чтобы увидеть детали.<br><br>
+    Навигация: <b>← →</b> назад/вперёд, <b>N</b> шаг по ребру, <b>F</b> весь граф, <b>Enter</b> в поиске.</div></div>
+</div>
+
+<script>
+  'use strict';
+
+  // ════════════════════════════════════════════════════════════
+  //  Состояние
+  // ════════════════════════════════════════════════════════════
+  let REPORT = null;
+  let network = null;
+  let viewMode = 'modules';          // modules | functions | hybrid
+  let historyStack = [];             // массив id узлов
+  let historyIndex = -1;
+  let suppressSelectEvent = false;
+  const EXTERNAL_PREFIX = 'ext::';
+
+  // ════════════════════════════════════════════════════════════
+  //  Загрузка JSON
+  // ════════════════════════════════════════════════════════════
+  async function loadReport() {
+    try {
+      const res = await fetch('./package-lock-report.json', { cache:'no-cache' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      REPORT = await res.json();
+      initGraph();
+    } catch (e) {
+      showStatus('⚠ fetch недоступен (' + e.message + '). Нажми «📂 Открыть JSON» или запусти через локальный сервер: <code>python3 -m http.server</code>', 0);
+    }
+  }
+
+  document.getElementById('filePicker').addEventListener('change', async ev => {
+    const file = ev.target.files[0];
+    if (!file) return;
+    REPORT = JSON.parse(await file.text());
+    hideStatus();
+    initGraph();
+  });
+
+  function showStatus(msg, timeout = 4000) {
+    const el = document.getElementById('status');
+    el.innerHTML = msg; el.style.display = 'block';
+    if (timeout) setTimeout(hideStatus, timeout);
+  }
+  function hideStatus(){ document.getElementById('status').style.display = 'none'; }
+
+  // ════════════════════════════════════════════════════════════
+  //  Построение данных графа
+  // ════════════════════════════════════════════════════════════
+  function moduleColor(key) {
+    if (REPORT.executionGraph && REPORT.executionGraph.entryPoint === key) return { bg:'#2ea043', border:'#3fb950' };
+    if (key.endsWith('.vue')) return { bg:'#9e4a12', border:'#f0883e' };
+    return { bg:'#1f4b7d', border:'#58a6ff' };
+  }
+
+  function buildModuleGraph() {
+    const nodes = [], edges = [];
+    const outward = REPORT.dependencyGraph.outwardDependencies; // кто от кого зависит
+    const packages = REPORT.packages;
+    const extSet = new Set();
+
+    for (const mod of Object.keys(packages)) {
+      const c = moduleColor(mod);
+      const st = packages[mod].fileStats;
+      nodes.push({ id: mod, label: mod.split('/').pop(), title:
+          `${mod}\nфункций: ${st.functions}, классов: ${st.classes}\nстрок: ${st.lines}, размер: ${(st.size/1024).toFixed(1)} KB`,
+        color: { background:c.bg, border:c.border, highlight:{background:c.bg, border:'#fff'} },
+        shape: 'box', font: { color:'#e6edf3', size:13 }, margin:10 });
+    }
+    // inwardDependencies: модуль → от кого зависит (кого импортирует)
+    for (const [mod, deps] of Object.entries(REPORT.dependencyGraph.inwardDependencies)) {
+      for (const dep of deps) {
+        if (packages[dep]) {
+          edges.push({ from: mod, to: dep, arrows:'to', color:{color:'#30568a', highlight:'#58a6ff'}, title:`${mod} → ${dep}` });
+        } else {
+          extSet.add(dep);
+          edges.push({ from: mod, to: EXTERNAL_PREFIX + dep, arrows:'to', color:{color:'#444', dashes:true}, title:`${mod} → ${dep} (внешний)` });
+        }
+      }
+    }
+    for (const ext of extSet) {
+      nodes.push({ id: EXTERNAL_PREFIX + ext, label: ext, shape:'ellipse',
+        color:{ background:'#21262d', border:'#8b949e' }, font:{color:'#8b949e', size:11}, title:'внешний пакет: ' + ext });
+    }
+    return { nodes, edges };
+  }
+
+  function buildFunctionGraph() {
+    const nodes = [], edges = [];
+    const cg = REPORT.callGraph;
+    // определяем модуль каждой функции
+    const fnModule = {};
+    for (const [mod, pkg] of Object.entries(REPORT.packages)) {
+      for (const f of (pkg.entities.functions || [])) fnModule[f.name] = mod;
+    }
+    for (const fn of Object.keys(cg)) {
+      const mod = fnModule[fn];
+      const info = mod && REPORT.packages[mod].entities.functions.find(f => f.name === fn);
+      nodes.push({ id: 'fn::' + fn, label: fn + '()', title:
+          `${fn}\nмодуль: ${mod || '?'}\nстрок: ${info ? info.line : '?'}${info && info.isAsync ? '\nasync' : ''}`,
+        shape:'ellipse', color:{ background:'#3d2a5e', border:'#d2a8ff', highlight:{background:'#3d2a5e', border:'#fff'} },
+        font:{ color:'#d2a8ff', size:12 } });
+    }
+    for (const [fn, calls] of Object.entries(cg)) {
+      for (const c of calls) {
+        if (cg[c] !== undefined)
+          edges.push({ from:'fn::'+fn, to:'fn::'+c, arrows:'to', color:{color:'#5a3d8a', highlight:'#d2a8ff'}, smooth:{type:'continuous'} });
+      }
+    }
+    return { nodes, edges };
+  }
+
+  function buildHybridGraph() {
+    const { nodes, edges } = buildModuleGraph();
+    const cg = REPORT.callGraph;
+    for (const [mod, pkg] of Object.entries(REPORT.packages)) {
+      for (const f of (pkg.entities.functions || [])) {
+        if (!f.isExported && !(cg[f.name] && cg[f.name].length)) continue; // только значимые
+        nodes.push({ id:'fn::'+f.name, label:f.name+'()', title:`${f.name}\nмодуль: ${mod}\nстрок: ${f.line}`,
+          shape:'ellipse', color:{background:'#3d2a5e', border:'#d2a8ff'}, font:{color:'#d2a8ff', size:11}, size:10 });
+        edges.push({ from: mod, to:'fn::'+f.name, color:{color:'#21262d'}, dashes:[2,3], arrows:'' });
+      }
+    }
+    return { nodes, edges };
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  Инициализация / перерисовка
+  // ════════════════════════════════════════════════════════════
+  function initGraph() {
+    const data = viewMode === 'modules' ? buildModuleGraph()
+      : viewMode === 'functions' ? buildFunctionGraph()
+        : buildHybridGraph();
+
+    const container = document.getElementById('graph');
+    const visData = { nodes: new vis.DataSet(data.nodes), edges: new vis.DataSet(data.edges) };
+    const options = {
+      physics: { solver:'forceAtlas2Based', forceAtlas2Based:{ gravitationalConstant:-80, springLength:130 }, stabilization:{ iterations:200 } },
+      interaction: { hover:true, tooltipDelay:120, navigationButtons:false, keyboard:false },
+      layout: { improvedLayout:true },
+      edges: { width:1.5, selectionWidth:2.5 }
+    };
+
+    if (network) network.destroy();
+    network = new vis.Network(container, visData, options);
+
+    network.on('selectNode', params => {
+      if (suppressSelectEvent) return;
+      const id = params.nodes[0];
+      pushHistory(id);
+    });
+    network.on('deselectNode', () => {});
+
+    // восстановить текущую позицию истории после перестроения
+    if (historyIndex >= 0 && historyStack[historyIndex]) focusNode(historyStack[historyIndex], false);
+    updateHistoryUI();
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  История навигации (вперёд / назад)
+  // ════════════════════════════════════════════════════════════
+  function pushHistory(id) {
+    // обрезать «вперёд» если ушли с середины
+    historyStack = historyStack.slice(0, historyIndex + 1);
+    if (historyStack[historyStack.length - 1] !== id) historyStack.push(id);
+    historyIndex = historyStack.length - 1;
+    focusNode(id, false);
+    updateHistoryUI();
+  }
+
+  function goBack() {
+    if (historyIndex <= 0) return;
+    historyIndex--;
+    focusNode(historyStack[historyIndex], true);
+    updateHistoryUI();
+  }
+
+  function goForward() {
+    if (historyIndex >= historyStack.length - 1) return;
+    historyIndex++;
+    focusNode(historyStack[historyIndex], true);
+    updateHistoryUI();
+  }
+
+  function goUp() {
+    const cur = historyStack[historyIndex];
+    if (!cur || !cur.startsWith('fn::')) return;
+    const fn = cur.slice(4);
+    const mod = findModuleOfFunction(fn);
+    if (mod) pushHistory(mod);
+  }
+
+  /** Авто-шаг: по первому исходящему ребру от текущего узла */
+  function stepForward() {
+    const cur = historyStack[historyIndex];
+    if (!cur) { showStatus('Сначала выбери узел'); return; }
+    const out = getOutgoingNeighbors(cur);
+    if (!out.length) { showStatus('Тупик — нет исходящих связей'); return; }
+    // чередуем соседей при повторных нажатиях
+    stepForward._i = ((stepForward._i || 0) + 1) % (out.length || 1);
+    pushHistory(out[stepForward._i % out.length]);
+  }
+
+  function getOutgoingNeighbors(id) {
+    if (id.startsWith(EXTERNAL_PREFIX)) return [];
+    if (id.startsWith('fn::')) {
+      const fn = id.slice(4);
+      return (REPORT.callGraph[fn] || []).filter(c => REPORT.callGraph[c] !== undefined).map(c => 'fn::' + c);
+    }
+    return (REPORT.dependencyGraph.inwardDependencies[id] || [])
+      .map(d => REPORT.packages[d] ? d : EXTERNAL_PREFIX + d);
+  }
+
+  function findModuleOfFunction(fn) {
+    for (const [mod, pkg] of Object.entries(REPORT.packages))
+      if ((pkg.entities.functions || []).some(f => f.name === fn)) return mod;
+    return null;
+  }
+
+  function focusNode(id, select) {
+    if (!network) return;
+    suppressSelectEvent = true;
+    if (select) network.selectNodes([id]);
+    network.focus(id, { scale:1.1, animation:{ duration:450, easingFunction:'easeInOutQuad' } });
+    suppressSelectEvent = false;
+    showDetails(id);
+  }
+
+  function updateHistoryUI() {
+    document.getElementById('btnBack').disabled = historyIndex <= 0;
+    document.getElementById('btnForward').disabled = historyIndex >= historyStack.length - 1;
+    const cur = historyStack[historyIndex] || '—';
+    document.getElementById('histInfo').textContent =
+      `[${historyIndex + 1}/${historyStack.length}] ${cur.replace('fn::','ƒ ').replace(EXTERNAL_PREFIX,'⬡ ')}`;
+  }
+
+  // ════════════════════════════════════════════════════════════
+  //  Панель деталей
+  // ════════════════════════════════════════════════════════════
+  function showDetails(id) {
+    const panel = document.getElementById('panel');
+    if (!id) return;
+
+    if (id.startsWith(EXTERNAL_PREFIX)) {
+      const name = id.slice(EXTERNAL_PREFIX.length);
+      panel.innerHTML = `<h2>⬡ ${esc(name)}</h2><span class="badge b-gray">внешний пакет</span>
+      <p class="muted" style="margin-top:10px">Зависит от него:</p>` +
+        listFromInward(name);
+      return;
+    }
+
+    if (id.startsWith('fn::')) {
+      const fn = id.slice(4);
+      const mod = findModuleOfFunction(fn);
+      const info = mod && REPORT.packages[mod].entities.functions.find(f => f.name === fn);
+      const calls = REPORT.callGraph[fn] || [];
+      const calledBy = Object.entries(REPORT.callGraph).filter(([,v]) => v.includes(fn)).map(([k]) => k);
+      panel.innerHTML = `
+      <h2>ƒ ${esc(fn)}()</h2>
+      <span class="badge b-blue">функция</span>
+      ${info?.isAsync ? '<span class="badge b-green">async</span>' : ''}
+      ${info?.isExported ? '<span class="badge b-green">exported</span>' : ''}
+      <h3>Расположение</h3>
+      <div class="list-item" onclick="pushHistory('${mod}')">📄 ${esc(mod)} : строка ${info?.line ?? '?'}</div>
+      <h3>Вызывает (${calls.length}) →</h3>
+      ${calls.map(c => `<div class="list-item" onclick="navFn('${escAttr(c)}')"><span class="arrow">→</span><code class="fn">${esc(c)}()</code></div>`).join('') || '<p class="muted">нет</p>'}
+      <h3>Вызывается из (${calledBy.length}) ←</h3>
+      ${calledBy.map(c => `<div class="list-item" onclick="navFn('${escAttr(c)}')"><span class="arrow in">←</span><code class="fn">${esc(c)}()</code></div>`).join('') || '<p class="muted">нет</p>'}`;
+      return;
+    }
+
+    // модуль
+    const pkg = REPORT.packages[id];
+    if (!pkg) return;
+    const st = pkg.fileStats;
+    const inDeps = (REPORT.dependencyGraph.inwardDependencies[id] || []).filter(d => REPORT.packages[d]);
+    const outDeps = (REPORT.dependencyGraph.outwardDependencies[id] || []).filter(d => REPORT.packages[d]);
+    const fns = pkg.entities.functions || [];
+    const isEntry = REPORT.executionGraph?.entryPoint === id;
+
+    panel.innerHTML = `
+    <h2>📄 ${esc(id)}</h2>
+    <span class="badge b-blue">${esc(pkg.language)}</span>
+    ${isEntry ? '<span class="badge b-green">★ entry point</span>' : ''}
+    <h3>Статистика</h3>
+    <div class="stat-row"><span>строк</span><span>${st.lines}</span></div>
+    <div class="stat-row"><span>размер</span><span>${(st.size/1024).toFixed(1)} KB</span></div>
+    <div class="stat-row"><span>функций</span><span>${st.functions}</span></div>
+    <div class="stat-row"><span>классов</span><span>${st.classes}</span></div>
+    <div class="stat-row"><span>интерфейсов</span><span>${st.interfaces}</span></div>
+    <div class="stat-row"><span>констант</span><span>${st.constants}</span></div>
+    <h3>Импортирует (${inDeps.length}) →</h3>
+    ${inDeps.map(d => `<div class="list-item" onclick="pushHistory('${d}')"><span class="arrow">→</span>${esc(d)}</div>`).join('') || '<p class="muted">нет</p>'}
+    <h3>Импортируется из (${outDeps.length}) ←</h3>
+    ${outDeps.map(d => `<div class="list-item" onclick="pushHistory('${d}')"><span class="arrow in">←</span>${esc(d)}</div>`).join('') || '<p class="muted">никто</p>'}
+    <h3>Функции (${fns.length})</h3>
+    ${fns.map(f => `<div class="list-item" onclick="navFn('${escAttr(f.name)}')"><code class="fn">${esc(f.name)}()</code><span class="muted">:${f.line}${f.isAsync?' async':''}</span></div>`).join('') || '<p class="muted">нет</p>'}`;
+  }
+
+  function listFromInward(name) {
+    const res = [];
+    for (const [mod, deps] of Object.entries(REPORT.dependencyGraph.inwardDependencies))
+      if (deps.includes(name)) res.push(`<div class="list-item" onclick="pushHistory('${mod}')"><span class="arrow in">←</span>${esc(mod)}</div>`);
+    return res.join('') || '<p class="muted">никто</p>';
+  }
+
+  window.navFn = name => {
+    if (viewMode === 'modules') switchMode('functions', true);
+    pushHistory('fn::' + name);
+  };
+  window.pushHistory = pushHistory;
+
+  // ════════════════════════════════════════════════════════════
+  //  Режимы, поиск, хоткеи
+  // ════════════════════════════════════════════════════════════
+  function switchMode(mode, keepHistory) {
+    viewMode = mode;
+    if (!keepHistory) { historyStack = []; historyIndex = -1; }
+    ['modeModules','modeFunctions','modeHybrid'].forEach(id => document.getElementById(id).classList.remove('active'));
+    document.getElementById(mode === 'modules' ? 'modeModules' : mode === 'functions' ? 'modeFunctions' : 'modeHybrid').classList.add('active');
+    if (REPORT) initGraph();
+  }
+
+  document.getElementById('modeModules').onclick  = () => switchMode('modules');
+  document.getElementById('modeFunctions').onclick= () => switchMode('functions');
+  document.getElementById('modeHybrid').onclick   = () => switchMode('hybrid');
+  document.getElementById('btnBack').onclick   = goBack;
+  document.getElementById('btnForward').onclick= goForward;
+  document.getElementById('btnUp').onclick     = goUp;
+  document.getElementById('btnStep').onclick   = stepForward;
+  document.getElementById('btnFit').onclick    = () => network && network.fit({ animation:true });
+
+  document.getElementById('search').addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    const q = e.target.value.trim().toLowerCase();
+    if (!q || !network) return;
+    const allIds = network.body.data.nodes.getIds();
+    const match = allIds.find(id => String(id).toLowerCase().includes(q));
+    if (match) {
+      if (viewMode === 'functions' && !match.startsWith('fn::')) switchMode('modules', true);
+      if (viewMode === 'modules' && match.startsWith('fn::')) switchMode('functions', true);
+      pushHistory(match);
+      e.target.value = '';
+    } else showStatus('Ничего не найдено: ' + q);
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.key === 'ArrowLeft')  goBack();
+    if (e.key === 'ArrowRight') goForward();
+    if (e.key === 'ArrowUp')    goUp();
+    if (e.key.toLowerCase() === 'n') stepForward();
+    if (e.key.toLowerCase() === 'f') network && network.fit({ animation:true });
+  });
+
+  // ════════════════════════════════════════════════════════════
+  //  Утилиты
+  // ════════════════════════════════════════════════════════════
+  function esc(s)      { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function escAttr(s)  { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+
+  loadReport();
+</script>
+</body>
+</html>
