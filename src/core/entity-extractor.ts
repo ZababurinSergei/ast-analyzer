@@ -674,13 +674,13 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
     }
   }
 
-  // ✅ ИСПРАВЛЕНО: Заполняем calls для каждой функции с гарантией, что это массив
+  // Заполняем calls для каждой функции с гарантией, что это массив
   for (const func of functions) {
     let allCalls: string[] = [];
 
     const funcCalls = callGraph[func.name];
 
-    // ✅ Проверяем, что funcCalls является массивом
+    // Проверяем, что funcCalls является массивом
     if (Array.isArray(funcCalls)) {
       allCalls = [...allCalls, ...funcCalls];
     } else if (funcCalls && typeof funcCalls === 'object') {

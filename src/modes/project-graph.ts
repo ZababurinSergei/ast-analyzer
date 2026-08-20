@@ -1,4 +1,4 @@
-// modes/project-graph.ts
+// packages/ast-analyzer/src/modes/project-graph.ts
 import path from 'path';
 import fs from 'fs';
 import {
@@ -11,6 +11,7 @@ import { extractEntities, type EntitiesResult } from '../core/entity-extractor.j
 import { IGNORE_NODE_MODULES } from '../config.js';
 import { walk } from 'estree-walker';
 import { normalizePathForDisplay } from '../utils/path-utils.js';
+import { buildEnhancedPackageLockReport } from '../reporters/json-reporter.js';
 
 // ==========================================
 // ТИП: Информация о функции в формате package-lock
@@ -185,7 +186,7 @@ export function buildCallGraphBetweenFunctions(
   const edges: CallGraphResult['edges'] = [];
 
   while (queue.length > 0) {
-    const { func, path } = queue.shift()!;
+    const { func, path: currentPath } = queue.shift()!;
 
     if (visited.has(func)) continue;
     visited.add(func);
@@ -206,7 +207,7 @@ export function buildCallGraphBetweenFunctions(
       return {
         from: fromFunction,
         to: toFunction,
-        path,
+        path: currentPath,
         found: true,
         nodes,
         edges,
@@ -218,7 +219,7 @@ export function buildCallGraphBetweenFunctions(
     if (info) {
       for (const call of info.calls) {
         if (!visited.has(call)) {
-          queue.push({ func: call, path: [...path, call] });
+          queue.push({ func: call, path: [...currentPath, call] });
           edges.push({
             from: func,
             to: call,
@@ -238,6 +239,90 @@ export function buildCallGraphBetweenFunctions(
     reason: `Путь от '${fromFunction}' к '${toFunction}' не найден. Проверьте, что функции связаны цепочкой вызовов.`,
     nodes,
     edges,
+  };
+}
+
+/**
+ * Находит корень проекта (где находится package.json)
+ */
+function findProjectRoot(startDir: string): string | null {
+  let currentDir = path.resolve(startDir);
+  const root = path.parse(currentDir).root;
+
+  while (currentDir !== root) {
+    const packagePath = path.join(currentDir, 'package.json');
+    if (fs.existsSync(packagePath)) {
+      return currentDir;
+    }
+    currentDir = path.dirname(currentDir);
+  }
+  return null;
+}
+
+/**
+ * Разрешает путь к файлу в абсолютный с поиском в нескольких местах
+ * ИСПОЛЬЗУЕТСЯ в buildPackageLockReportSync для преобразования путей
+ */
+function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string | null {
+  // Если путь уже абсолютный и существует
+  if (path.isAbsolute(filePath) && fs.existsSync(filePath)) {
+    return filePath;
+  }
+
+  // Пробуем разные варианты
+  const candidates = [
+    path.resolve(projectRoot, filePath),
+    path.resolve(projectRoot, 'src', filePath),
+    path.resolve(projectRoot, 'packages/ast-analyzer/src', filePath),
+    path.resolve(process.cwd(), filePath),
+    path.resolve(process.cwd(), 'src', filePath),
+  ];
+
+  // Добавляем варианты с нормализованными путями (Windows -> Unix)
+  const normalizedFilePath = filePath.replace(/\\/g, '/');
+  const additionalCandidates = [
+    path.resolve(projectRoot, normalizedFilePath),
+    path.resolve(projectRoot, 'src', normalizedFilePath),
+    path.resolve(projectRoot, 'packages/ast-analyzer/src', normalizedFilePath),
+  ];
+  candidates.push(...additionalCandidates);
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Строит отчет в стиле package-lock (синхронная версия)
+ */
+function buildPackageLockReportSync(
+  rootKey: string,
+  graph: Record<string, string[]>,
+  entitiesMap: Record<string, EntitiesResult>,
+  absoluteFilePaths: string[]
+): PackageLockReport {
+  // Используем импортированную функцию из json-reporter
+  const enhancedReport = buildEnhancedPackageLockReport(
+    rootKey,
+    graph,
+    entitiesMap,
+    absoluteFilePaths
+  );
+
+  // Преобразуем EnhancedPackageLockReport в PackageLockReport
+  return {
+    name: enhancedReport.name,
+    version: enhancedReport.version,
+    lockfileVersion: enhancedReport.lockfileVersion,
+    packages: enhancedReport.packages as Record<string, PackageLockPackage>,
+    dependencyGraph: enhancedReport.dependencyGraph,
+    executionGraph: enhancedReport.executionGraph,
+    importExportFlow: enhancedReport.importExportFlow,
+    callGraph: enhancedReport.callGraph as CallGraphResult | undefined,
   };
 }
 
@@ -413,12 +498,24 @@ export function buildProjectGraph(
     }
     result.entities = normalizedEntities;
 
-    // Строим отчет в стиле package-lock
-    const packageLockReport = buildPackageLockReport(
+    // ✅ Строим отчет в стиле package-lock с АБСОЛЮТНЫМИ ПУТЯМИ
+    const allFiles = Object.keys(normalizedGraph);
+    const projectRoot = findProjectRoot(process.cwd()) || process.cwd();
+
+    // ✅ Используем resolveAbsoluteFilePath для преобразования путей
+    const absoluteFilePaths = allFiles.map(p => {
+      const resolved = resolveAbsoluteFilePath(p, projectRoot);
+      return resolved || path.resolve(projectRoot, p);
+    });
+
+    // ✅ Используем синхронную версию для построения отчета
+    const packageLockReport = buildPackageLockReportSync(
       result.rootKey,
       normalizedGraph,
-      normalizedEntities
+      normalizedEntities,
+      absoluteFilePaths
     );
+
     result.packageLockReport = packageLockReport;
 
     // Если указаны начальная и конечная функции, строим граф вызовов
@@ -443,223 +540,6 @@ export function buildProjectGraph(
   }
 
   return result;
-}
-
-// ==========================================
-// ФУНКЦИЯ ДЛЯ ПОСТРОЕНИЯ ОТЧЕТА В СТИЛЕ PACKAGE-LOCK
-// ==========================================
-function buildPackageLockReport(
-  rootKey: string,
-  graph: Record<string, string[]>,
-  entitiesMap: Record<string, EntitiesResult>
-): PackageLockReport {
-  const packages: Record<string, PackageLockPackage> = {};
-  const inwardDeps: Record<string, string[]> = {};
-  const outwardDeps: Record<string, string[]> = {};
-  const importsFlow: PackageLockReport['importExportFlow']['imports'] = {};
-  const exportsFlow: PackageLockReport['importExportFlow']['exports'] = {};
-
-  // Инициализируем inwardDeps и outwardDeps
-  for (const modulePath of Object.keys(graph)) {
-    inwardDeps[modulePath] = [];
-    outwardDeps[modulePath] = [];
-    importsFlow[modulePath] = { importsFrom: [] };
-    exportsFlow[modulePath] = { exportsTo: [] };
-  }
-
-  // Строим граф зависимостей
-  for (const [from, deps] of Object.entries(graph)) {
-    for (const dep of deps) {
-      if (inwardDeps[from]) {
-        inwardDeps[from].push(dep);
-      }
-      if (outwardDeps[dep]) {
-        outwardDeps[dep].push(from);
-      }
-    }
-  }
-
-  // Строим пакеты
-  for (const [modulePath, entities] of Object.entries(entitiesMap)) {
-    const isEntry = modulePath === rootKey;
-    const ext = path.extname(modulePath);
-    let language: PackageLockPackage['language'] = 'typescript';
-    if (ext === '.js' || ext === '.jsx') language = 'javascript';
-    else if (ext === '.vue') language = 'vue';
-    else if (ext === '.tsx') language = 'jsx';
-
-    // Строим imports
-    const imports: PackageLockPackage['imports'] = {};
-    for (const imp of entities.imports) {
-      const importKey = imp.source;
-      imports[importKey] = {
-        direction: 'inward',
-        type: imp.source.startsWith('.') ? 'internal-import' : 'external-import',
-        specifiers: imp.specifiers,
-        functions: {},
-      };
-
-      // Добавляем импортируемые функции
-      for (const spec of imp.specifiers) {
-        const funcName = spec.replace(/ as .*$/, '');
-        const func = entities.functions.find(f => f.name === funcName);
-        if (func) {
-          imports[importKey].functions[funcName] = {
-            isAsync: func.isAsync,
-            isExported: func.isExported,
-            params: func.params,
-            line: func.line,
-            direction: 'inward',
-            calls: func.calls.map(call => ({
-              target: call,
-              direction: 'inward',
-              isAsync: false,
-            })),
-          };
-        }
-      }
-    }
-
-    // Строим exports
-    const exports: PackageLockPackage['exports'] = {};
-    for (const func of entities.functions) {
-      if (func.isExported) {
-        // Создаем объект экспорта
-        const exportEntry: PackageLockPackage['exports'][string] = {
-          direction: 'outward',
-          type: 'export',
-          isAsync: func.isAsync,
-          params: func.params,
-          returns: func.returnType || 'any',
-          line: func.line,
-          consumers: [],
-        };
-        exports[func.name] = exportEntry;
-
-        // Добавляем потребителей (модули, которые импортируют эту функцию)
-        for (const [otherModule, otherEntities] of Object.entries(entitiesMap)) {
-          if (otherModule === modulePath) continue;
-          for (const otherFunc of otherEntities.functions) {
-            if (otherFunc.calls && otherFunc.calls.includes(func.name)) {
-              const entry = exports[func.name];
-              if (entry && entry.consumers) {
-                entry.consumers.push({
-                  module: otherModule,
-                  direction: 'outward',
-                  type: 'call',
-                });
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Добавляем поток импортов
-    for (const imp of entities.imports) {
-      const impSource = imp.source;
-      if (!importsFlow[modulePath]) {
-        importsFlow[modulePath] = { importsFrom: [] };
-      }
-      const specifiers = imp.specifiers || [];
-      const firstSpecifier = specifiers[0] || '';
-      importsFlow[modulePath].importsFrom.push({
-        module: impSource,
-        type: specifiers.length === 1 && firstSpecifier.includes('default') ? 'default' : 'named',
-        imports: specifiers,
-      });
-    }
-
-    // Добавляем поток экспортов
-    for (const func of entities.functions) {
-      if (func.isExported) {
-        const consumers: { module: string; type: 'named' | 'default'; exports: string[] }[] = [];
-        for (const [otherModule, otherEntities] of Object.entries(entitiesMap)) {
-          if (otherModule === modulePath) continue;
-          for (const otherFunc of otherEntities.functions) {
-            if (otherFunc.calls && otherFunc.calls.includes(func.name)) {
-              consumers.push({
-                module: otherModule,
-                type: 'named',
-                exports: [func.name],
-              });
-            }
-          }
-        }
-        if (consumers.length > 0) {
-          if (!exportsFlow[modulePath]) {
-            exportsFlow[modulePath] = { exportsTo: [] };
-          }
-          for (const consumer of consumers) {
-            exportsFlow[modulePath].exportsTo.push(consumer);
-          }
-        }
-      }
-    }
-
-    packages[modulePath] = {
-      version: '1.0.0',
-      resolved: `file:${modulePath}`,
-      type: 'module',
-      language,
-      isEntry,
-      imports,
-      exports,
-    };
-  }
-
-  // Находим entry функции
-  const entryFunctions: string[] = [];
-  for (const [modulePath, entities] of Object.entries(entitiesMap)) {
-    if (modulePath === rootKey) {
-      for (const func of entities.functions) {
-        if (func.isExported) {
-          entryFunctions.push(func.name);
-        }
-      }
-    }
-  }
-
-  // Строим executionFlow
-  const executionSteps: PackageLockReport['executionGraph']['executionFlow']['steps'] = [];
-  const rootEntities = entitiesMap[rootKey];
-  if (rootEntities) {
-    for (const func of rootEntities.functions) {
-      if (func.isExported) {
-        executionSteps.push({
-          func: func.name,
-          module: rootKey,
-          direction: 'self',
-          isAsync: func.isAsync,
-        });
-      }
-    }
-  }
-
-  return {
-    name: 'ast-analyzer',
-    version: '3.0.0',
-    lockfileVersion: 3,
-    packages,
-    dependencyGraph: {
-      direction: 'bidirectional',
-      inwardDependencies: inwardDeps,
-      outwardDependencies: outwardDeps,
-    },
-    executionGraph: {
-      entryPoint: rootKey,
-      direction: 'top-down',
-      entryFunctions,
-      executionFlow: {
-        type: 'sequential',
-        steps: executionSteps,
-      },
-    },
-    importExportFlow: {
-      imports: importsFlow,
-      exports: exportsFlow,
-    },
-  };
 }
 
 // ==========================================

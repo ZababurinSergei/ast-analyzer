@@ -1,7 +1,12 @@
 // src/reporters/json-reporter.ts
 import fs from 'fs';
 import path from 'path';
+import { Project, Node } from 'ts-morph';
 import type { EntitiesResult } from '../core/entity-extractor.js';
+
+// ============================================================
+// СУЩЕСТВУЮЩИЕ ТИПЫ (ОСТАВЛЯЕМ ДЛЯ СОВМЕСТИМОСТИ)
+// ============================================================
 
 export interface ModuleNode {
   id: string;
@@ -82,86 +87,119 @@ export interface GraphData {
   cyclicEdges?: string[];
 }
 
-// ==========================================
-// НОВЫЕ ТИПЫ: ПАКЕТ-LOCK ФОРМАТ
-// ==========================================
+// ============================================================
+// НОВЫЕ ТИПЫ ДЛЯ РАСШИРЕННОГО ОТЧЕТА
+// ============================================================
 
-export interface PackageLockFunctionInfo {
+export interface EnhancedFunctionInfo {
+  name: string;
+  params: string[];
+  paramTypes?: string[];
+  line: number;
+  startLine?: number;
+  endLine?: number;
   isAsync: boolean;
   isExported: boolean;
-  params: string[];
-  line: number;
-  direction?: 'inward' | 'outward' | 'self';
-  calls?: {
-    target: string;
-    direction: 'inward' | 'outward' | 'self';
-    isAsync: boolean;
-    line?: number;
-  }[];
-  consumers?: {
-    module: string;
-    direction: 'outward';
-    type: 'import' | 'call';
-  }[];
+  isMethod?: boolean;
+  className?: string;
+  calls: string[];
+  calledBy: string[];
+  returnType?: string;
+  body?: string;
 }
 
-export interface PackageLockPackage {
+export interface EnhancedConstantInfo {
+  name: string;
+  value?: any;
+  line: number;
+  isExported: boolean;
+  type?: string;
+}
+
+export interface EnhancedVariableInfo {
+  name: string;
+  value?: any;
+  line: number;
+  isExported: boolean;
+  type?: string;
+}
+
+export interface EnhancedInterfaceInfo {
+  name: string;
+  properties: string[];
+  line: number;
+  isExported: boolean;
+  extends?: string[];
+  startLine?: number;
+  endLine?: number;
+}
+
+export interface EnhancedTypeInfo {
+  name: string;
+  definition: string;
+  line: number;
+  isExported: boolean;
+}
+
+export interface EnhancedClassInfo {
+  name: string;
+  methods: string[];
+  methodDetails?: {
+    name: string;
+    params: string[];
+    returnType?: string;
+    isAsync: boolean;
+    line: number;
+  }[];
+  properties: string[];
+  propertyDetails?: {
+    name: string;
+    type?: string;
+    line: number;
+  }[];
+  line: number;
+  isExported: boolean;
+  extends?: string;
+  implements?: string[];
+  startLine?: number;
+  endLine?: number;
+}
+
+export interface EnhancedEntityInfo {
+  functions: EnhancedFunctionInfo[];
+  constants: EnhancedConstantInfo[];
+  variables: EnhancedVariableInfo[];
+  interfaces: EnhancedInterfaceInfo[];
+  types: EnhancedTypeInfo[];
+  classes: EnhancedClassInfo[];
+}
+
+export interface EnhancedPackageInfo {
   version: string;
   resolved: string;
   type: 'module' | 'commonjs';
   language: 'typescript' | 'javascript' | 'vue' | 'jsx';
   isEntry: boolean;
-  imports: Record<
-    string,
-    {
-      direction: 'inward';
-      type: 'import' | 'external-import' | 'internal-import';
-      specifiers: string[];
-      functions: Record<string, PackageLockFunctionInfo>;
-    }
-  >;
-  exports: Record<
-    string,
-    {
-      direction: 'outward';
-      type: 'export';
-      isAsync: boolean;
-      params: string[];
-      returns: string;
-      line: number;
-      consumers: {
-        module: string;
-        direction: 'outward';
-        type: 'import' | 'call';
-      }[];
-    }
-  >;
+  imports: Record<string, any>;
+  exports: Record<string, any>;
+  entities: EnhancedEntityInfo;
+  fileStats: {
+    size: number;
+    lines: number;
+    functions: number;
+    classes: number;
+    constants: number;
+    interfaces: number;
+    types: number;
+    variables: number;
+  };
 }
 
-export interface CallGraphResult {
-  from: string;
-  to: string;
-  path: string[];
-  found: boolean;
-  reason?: string;
-  nodes: {
-    function: string;
-    module: string;
-    line: number;
-    isAsync: boolean;
-  }[];
-  edges: {
-    from: string;
-    to: string;
-    line?: number;
-  }[];
-}
-
-export interface PackageLockReport {
+export interface EnhancedPackageLockReport {
   name: string;
   version: string;
   lockfileVersion: number;
-  packages: Record<string, PackageLockPackage>;
+  packages: Record<string, EnhancedPackageInfo>;
   dependencyGraph: {
     direction: 'bidirectional';
     inwardDependencies: Record<string, string[]>;
@@ -183,33 +221,44 @@ export interface PackageLockReport {
     };
   };
   importExportFlow: {
-    imports: Record<
-      string,
-      {
-        importsFrom: {
-          module: string;
-          type: 'named' | 'default' | 'namespace';
-          imports: string[];
-        }[];
-      }
-    >;
-    exports: Record<
-      string,
-      {
-        exportsTo: {
-          module: string;
-          type: 'named' | 'default';
-          exports: string[];
-        }[];
-      }
-    >;
+    imports: Record<string, {
+      importsFrom: {
+        module: string;
+        type: 'named' | 'default' | 'namespace';
+        imports: string[];
+      }[];
+    }>;
+    exports: Record<string, {
+      exportsTo: {
+        module: string;
+        type: 'named' | 'default';
+        exports: string[];
+      }[];
+    }>;
   };
-  callGraph?: CallGraphResult;
+  callGraph?: Record<string, string[]>;
+  entityStats?: {
+    totalFunctions: number;
+    totalConstants: number;
+    totalVariables: number;
+    totalInterfaces: number;
+    totalTypes: number;
+    totalClasses: number;
+    totalCalls: number;
+    totalExportedFunctions: number;
+    totalAsyncFunctions: number;
+  };
+  fileStats?: {
+    totalFiles: number;
+    totalSize: number;
+    totalLines: number;
+  };
+  timestamp?: string;
 }
 
-// ==========================================
-// СУЩЕСТВУЮЩИЕ ФУНКЦИИ
-// ==========================================
+// ============================================================
+// СУЩЕСТВУЮЩИЕ ФУНКЦИИ (СОХРАНЯЕМ)
+// ============================================================
 
 /**
  * Сохраняет граф модулей в JSON
@@ -254,22 +303,44 @@ export function saveFullAnalysis(
 /**
  * Сохраняет отчет в стиле package-lock.json
  */
-export function savePackageLockReport(report: PackageLockReport, outputPath: string): void {
+export function savePackageLockReport(
+  rootKey: string,
+  graph: Record<string, string[]>,
+  entitiesMap: Record<string, EntitiesResult>,
+  filePaths: string[],
+  outputPath: string
+): void {
+  const report = buildEnhancedPackageLockReport(rootKey, graph, entitiesMap, filePaths);
   const json = JSON.stringify(report, null, 2);
+  const outputDir = path.dirname(outputPath);
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
   fs.writeFileSync(outputPath, json, 'utf-8');
+  console.log(`✅ Enhanced package-lock report saved: ${outputPath}`);
+  console.log(`📊 Functions: ${report.entityStats?.totalFunctions || 0}`);
+  console.log(`📊 Constants: ${report.entityStats?.totalConstants || 0}`);
+  console.log(`📊 Variables: ${report.entityStats?.totalVariables || 0}`);
+  console.log(`📊 Interfaces: ${report.entityStats?.totalInterfaces || 0}`);
+  console.log(`📊 Types: ${report.entityStats?.totalTypes || 0}`);
+  console.log(`📊 Classes: ${report.entityStats?.totalClasses || 0}`);
+  console.log(`📞 Calls: ${report.entityStats?.totalCalls || 0}`);
+  console.log(`📁 Files: ${report.fileStats?.totalFiles || 0}`);
+  console.log(`📝 Lines: ${report.fileStats?.totalLines || 0}`);
+  console.log(`💾 Size: ${((report.fileStats?.totalSize || 0) / 1024).toFixed(2)} KB`);
 }
 
 /**
  * Сохраняет результат графа вызовов между функциями
  */
-export function saveCallGraphResult(callGraphResult: CallGraphResult, outputPath: string): void {
+export function saveCallGraphResult(callGraphResult: any, outputPath: string): void {
   const json = JSON.stringify(callGraphResult, null, 2);
   fs.writeFileSync(outputPath, json, 'utf-8');
 }
 
-// ==========================================
-// ПОСТРОЕНИЕ ГРАФОВ (СУЩЕСТВУЮЩИЕ)
-// ==========================================
+// ============================================================
+// СУЩЕСТВУЮЩИЕ ФУНКЦИИ ПОСТРОЕНИЯ ГРАФОВ
+// ============================================================
 
 /**
  * Строит граф модулей
@@ -288,7 +359,6 @@ export function buildModuleGraph(data: GraphData, entities: EntitiesResult): Mod
     }
   }
 
-  // Строим узлы
   for (const modulePath of allModules) {
     const isEntry = modulePath === data.rootKey;
 
@@ -310,41 +380,29 @@ export function buildModuleGraph(data: GraphData, entities: EntitiesResult): Mod
       // Игнорируем ошибки
     }
 
-    const moduleNode: ModuleNode = {
+    nodes.push({
       id: modulePath,
       name: path.basename(modulePath),
       type: modulePath.endsWith('.vue') ? 'vue' : 'module',
       level: modulePath === data.rootKey ? 0 : 1,
-      metadata: {
-        size,
-        lines,
-        language,
-        isEntry,
-      },
-    };
-
-    nodes.push(moduleNode);
+      metadata: { size, lines, language, isEntry },
+    });
   }
 
-  // Строим ребра
   for (const [from, deps] of Object.entries(data.graph)) {
     for (const to of deps) {
       const isExternal = to.startsWith('@') || to.includes('/');
-
       const specifiers: string[] = [];
-      const moduleEntity = entities.functions.filter(f => f.isExported);
-      for (const entity of moduleEntity) {
-        if (to.includes(entity.name) || entity.name.includes(to)) {
+      for (const entity of entities.functions) {
+        if (entity.isExported && (to.includes(entity.name) || entity.name.includes(to))) {
           specifiers.push(entity.name);
         }
       }
-
       edges.push({
         from,
         to,
         type: isExternal ? 'external' : 'import',
-        specifiers:
-          specifiers.length > 0 ? specifiers : [path.basename(to).replace(/\.[^.]+$/, '')],
+        specifiers: specifiers.length > 0 ? specifiers : [path.basename(to).replace(/\.[^.]+$/, '')],
       });
     }
   }
@@ -353,20 +411,15 @@ export function buildModuleGraph(data: GraphData, entities: EntitiesResult): Mod
 }
 
 /**
- * Строит граф сущностей с правильными связями между функциями
- * ✅ ИСПРАВЛЕНО: добавляем ребра для вызовов функций
- * ✅ ДОБАВЛЕНО: поиск модулей для вызываемых функций
+ * Строит граф сущностей
  */
 export function buildEntityGraph(data: GraphData, entities: EntitiesResult): EntityGraph {
   const nodes: EntityNode[] = [];
   const edges: EntityEdge[] = [];
 
-  // === ФУНКЦИИ ===
   for (const func of entities.functions) {
     const modulePath = findModuleForEntity(func.name, data);
     const nodeId = modulePath ? `${modulePath}#${func.name}` : `#${func.name}`;
-
-    // ✅ Убеждаемся, что calls это массив
     const calls = Array.isArray(func.calls) ? func.calls : [];
 
     nodes.push({
@@ -386,17 +439,12 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
         calledBy: func.calledBy || [],
         startLine: func.startLine,
         endLine: func.endLine,
-        // Добавляем информацию об импорте, если функция из другого модуля
         importedFrom: modulePath !== data.rootKey ? modulePath : undefined,
       },
     });
 
-    // ✅ Добавляем ребра для каждого вызова функции
     for (const call of calls) {
-      // Ищем модуль для вызываемой функции
       let targetModule = findModuleForEntity(call, data);
-
-      // Если не нашли по точному имени, ищем по частичному совпадению
       if (!targetModule) {
         for (const [modPath, deps] of Object.entries(data.graph)) {
           if (modPath.includes(call) || deps.some(d => d.includes(call))) {
@@ -405,9 +453,7 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
           }
         }
       }
-
       const targetId = targetModule ? `${targetModule}#${call}` : `#${call}`;
-
       edges.push({
         from: nodeId,
         to: targetId,
@@ -417,7 +463,6 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
     }
   }
 
-  // === КЛАССЫ ===
   for (const cls of entities.classes) {
     const modulePath = findModuleForEntity(cls.name, data);
     const nodeId = modulePath ? `${modulePath}#${cls.name}` : `#${cls.name}`;
@@ -458,41 +503,11 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
         type: 'class_implements',
       });
     }
-
-    // Добавляем методы класса как отдельные узлы
-    for (const method of cls.methods) {
-      const methodId = `${modulePath || 'unknown'}#${method}`;
-      // Проверяем, есть ли уже такой узел
-      const exists = nodes.some(n => n.id === methodId);
-      if (!exists) {
-        nodes.push({
-          id: methodId,
-          name: method,
-          type: 'function',
-          module: modulePath || 'unknown',
-          line: cls.line,
-          metadata: {
-            isExported: false,
-            isAsync: false,
-            params: [],
-            isMethod: true,
-            className: cls.name,
-          },
-        });
-      }
-      edges.push({
-        from: nodeId,
-        to: methodId,
-        type: 'method_call',
-      });
-    }
   }
 
-  // === КОНСТАНТЫ ===
   for (const constant of entities.constants) {
     const modulePath = findModuleForEntity(constant.name, data);
     const nodeId = modulePath ? `${modulePath}#${constant.name}` : `#${constant.name}`;
-
     nodes.push({
       id: nodeId,
       name: constant.name,
@@ -507,11 +522,9 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
     });
   }
 
-  // === ИНТЕРФЕЙСЫ ===
   for (const intf of entities.interfaces) {
     const modulePath = findModuleForEntity(intf.name, data);
     const nodeId = modulePath ? `${modulePath}#${intf.name}` : `#${intf.name}`;
-
     nodes.push({
       id: nodeId,
       name: intf.name,
@@ -538,11 +551,9 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
     }
   }
 
-  // === ТИПЫ ===
   for (const type of entities.types) {
     const modulePath = findModuleForEntity(type.name, data);
     const nodeId = modulePath ? `${modulePath}#${type.name}` : `#${type.name}`;
-
     nodes.push({
       id: nodeId,
       name: type.name,
@@ -556,11 +567,9 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
     });
   }
 
-  // === ПЕРЕМЕННЫЕ ===
   for (const variable of entities.variables) {
     const modulePath = findModuleForEntity(variable.name, data);
     const nodeId = modulePath ? `${modulePath}#${variable.name}` : `#${variable.name}`;
-
     nodes.push({
       id: nodeId,
       name: variable.name,
@@ -573,30 +582,6 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
         value: variable.value,
       },
     });
-  }
-
-  // ✅ ДОПОЛНИТЕЛЬНО: добавляем ребра для импортов и экспортов
-  // Импорты: для каждого импорта добавляем связь
-  for (const imp of entities.imports) {
-    const sourceModule = imp.source;
-    const currentModule = entities.moduleName;
-
-    // Находим модуль-источник
-    let fromModule = findModuleForEntity(currentModule, data);
-    let toModule = findModuleForEntity(sourceModule, data);
-
-    if (fromModule && toModule) {
-      for (const spec of imp.specifiers) {
-        const fromId = `${fromModule}#${currentModule}`;
-        const toId = `${toModule}#${spec}`;
-        // Добавляем ребро импорта
-        edges.push({
-          from: fromId,
-          to: toId,
-          type: 'import_binding',
-        });
-      }
-    }
   }
 
   return { nodes, edges };
@@ -635,25 +620,394 @@ export function buildFullAnalysis(
   };
 }
 
-// ==========================================
-// НОВАЯ ФУНКЦИЯ: ПОСТРОЕНИЕ ОТЧЕТА В СТИЛЕ PACKAGE-LOCK
-// ==========================================
+// ============================================================
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ПОИСКА ФАЙЛОВ
+// ============================================================
 
 /**
- * Строит отчет в стиле package-lock.json из данных графа и сущностей
+ * Находит корень проекта (где находится package.json)
  */
-export function buildPackageLockReport(
+export function findProjectRoot(startDir: string): string | null {
+  let currentDir = path.resolve(startDir);
+  const root = path.parse(currentDir).root;
+
+  while (currentDir !== root) {
+    const packagePath = path.join(currentDir, 'package.json');
+    if (fs.existsSync(packagePath)) {
+      return currentDir;
+    }
+    currentDir = path.dirname(currentDir);
+  }
+  return null;
+}
+
+/**
+ * Находит файл в проекте по имени
+ */
+function findFileInProject(filePath: string, projectRoot: string): string | null {
+  const fileName = path.basename(filePath);
+
+  // Проверяем основные пути
+  const candidates = [
+    path.resolve(projectRoot, filePath),
+    path.resolve(projectRoot, 'src', filePath),
+    path.resolve(projectRoot, 'packages/ast-analyzer/src', filePath),
+    path.resolve(process.cwd(), filePath),
+    path.resolve(process.cwd(), 'src', filePath),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+
+  // Рекурсивный поиск по имени файла в src
+  const srcDir = path.resolve(projectRoot, 'src');
+  if (fs.existsSync(srcDir)) {
+    const walkDir = (dir: string): string | null => {
+      try {
+        const files = fs.readdirSync(dir);
+        for (const file of files) {
+          const fullPath = path.join(dir, file);
+          if (fs.statSync(fullPath).isDirectory()) {
+            const result = walkDir(fullPath);
+            if (result) return result;
+          } else if (file === fileName) {
+            return fullPath;
+          }
+        }
+      } catch {
+        // Игнорируем ошибки
+      }
+      return null;
+    };
+
+    const foundPath = walkDir(srcDir);
+    if (foundPath) {
+      return foundPath;
+    }
+  }
+
+  return null;
+}
+
+// ============================================================
+// НОВАЯ ФУНКЦИЯ: extractEntitiesFromFile
+// ============================================================
+
+/**
+ * Извлекает все сущности из файла через ts-morph
+ */
+export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
+  const entities: EnhancedEntityInfo = {
+    functions: [],
+    constants: [],
+    variables: [],
+    interfaces: [],
+    types: [],
+    classes: [],
+  };
+
+  const absolutePath = filePath;
+
+  if (!fs.existsSync(absolutePath)) {
+    console.warn(`⚠️ Файл не найден: ${absolutePath}`);
+    return entities;
+  }
+
+  try {
+    const project = new Project({
+      compilerOptions: {
+        target: 99,
+        module: 99,
+        allowJs: true,
+        checkJs: false,
+        skipLibCheck: true,
+        esModuleInterop: true,
+        allowSyntheticDefaultImports: true,
+        resolveJsonModule: true,
+        jsx: 2,
+      },
+      useInMemoryFileSystem: false,
+    });
+
+    const sourceFile = project.addSourceFileAtPath(absolutePath);
+    if (!sourceFile) {
+      console.warn(`⚠️ Не удалось загрузить файл: ${absolutePath}`);
+      return entities;
+    }
+
+    // ============================================
+    // 1. ИЗВЛЕЧЕНИЕ ФУНКЦИЙ
+    // ============================================
+    const functions = sourceFile.getFunctions();
+    for (const functionDecl of functions) {
+      const name = functionDecl.getName();
+      if (!name) continue;
+
+      const params = functionDecl.getParameters().map(p => p.getName());
+      const returnType = functionDecl.getReturnType().getText();
+      const isAsync = functionDecl.isAsync();
+      const isExported = functionDecl.isExported();
+
+      const calls: string[] = [];
+      functionDecl.forEachDescendant(node => {
+        if (Node.isCallExpression(node)) {
+          const expr = node.getExpression();
+          if (Node.isIdentifier(expr)) {
+            const calledName = expr.getText();
+            if (calledName && calledName !== name) {
+              calls.push(calledName);
+            }
+          }
+        }
+      });
+
+      entities.functions.push({
+        name,
+        params,
+        paramTypes: params.map(() => 'any'),
+        line: functionDecl.getStartLineNumber(),
+        startLine: functionDecl.getStartLineNumber(),
+        endLine: functionDecl.getEndLineNumber(),
+        isAsync,
+        isExported,
+        isMethod: false,
+        className: undefined,
+        calls: [...new Set(calls)],
+        calledBy: [],
+        returnType,
+        body: functionDecl.getBody()?.getText()?.substring(0, 200) || '',
+      });
+    }
+
+    // ============================================
+    // 2. ИЗВЛЕЧЕНИЕ КЛАССОВ
+    // ============================================
+    const classes = sourceFile.getClasses();
+    for (const cls of classes) {
+      const name = cls.getName();
+      if (!name) continue;
+
+      const methods: string[] = [];
+      const methodDetails: EnhancedClassInfo['methodDetails'] = [];
+      const properties: string[] = [];
+      const propertyDetails: EnhancedClassInfo['propertyDetails'] = [];
+
+      for (const method of cls.getMethods()) {
+        const methodName = method.getName();
+        if (methodName) {
+          methods.push(methodName);
+          methodDetails?.push({
+            name: methodName,
+            params: method.getParameters().map(p => p.getName()),
+            returnType: method.getReturnType().getText(),
+            isAsync: method.isAsync(),
+            line: method.getStartLineNumber(),
+          });
+        }
+      }
+
+      for (const prop of cls.getProperties()) {
+        const propName = prop.getName();
+        if (propName) {
+          properties.push(propName);
+          propertyDetails?.push({
+            name: propName,
+            type: prop.getType().getText(),
+            line: prop.getStartLineNumber(),
+          });
+        }
+      }
+
+      entities.classes.push({
+        name,
+        methods,
+        methodDetails,
+        properties,
+        propertyDetails,
+        line: cls.getStartLineNumber(),
+        startLine: cls.getStartLineNumber(),
+        endLine: cls.getEndLineNumber(),
+        isExported: cls.isExported(),
+        extends: cls.getExtends()?.getText(),
+        implements: cls.getImplements().map(i => i.getText()),
+      });
+    }
+
+    // ============================================
+    // 3. ИЗВЛЕЧЕНИЕ КОНСТАНТ И ПЕРЕМЕННЫХ
+    // ============================================
+    const variableDeclarations = sourceFile.getVariableDeclarations();
+    for (const decl of variableDeclarations) {
+      const name = decl.getName();
+      const initializer = decl.getInitializer();
+      const isConst = decl.getVariableStatement()?.getDeclarationKind() === 'const';
+
+      const info = {
+        name,
+        line: decl.getStartLineNumber(),
+        isExported: decl.isExported(),
+        type: initializer ? initializer.getType().getText() : 'any',
+        value: initializer ? extractValueFromNode(initializer) : undefined,
+      };
+
+      if (isConst) {
+        entities.constants.push(info);
+      } else {
+        entities.variables.push(info);
+      }
+    }
+
+    // ============================================
+    // 4. ИЗВЛЕЧЕНИЕ ИНТЕРФЕЙСОВ
+    // ============================================
+    const interfaces = sourceFile.getInterfaces();
+    for (const intf of interfaces) {
+      const name = intf.getName();
+      if (!name) continue;
+
+      const properties: string[] = [];
+      for (const prop of intf.getProperties()) {
+        properties.push(prop.getName());
+      }
+
+      entities.interfaces.push({
+        name,
+        properties,
+        line: intf.getStartLineNumber(),
+        startLine: intf.getStartLineNumber(),
+        endLine: intf.getEndLineNumber(),
+        isExported: intf.isExported(),
+        extends: intf.getExtends().map(e => e.getText()),
+      });
+    }
+
+    // ============================================
+    // 5. ИЗВЛЕЧЕНИЕ ТИПОВ (TYPE ALIASES)
+    // ============================================
+    const typeAliases = sourceFile.getTypeAliases();
+    for (const typeAlias of typeAliases) {
+      const name = typeAlias.getName();
+      if (!name) continue;
+
+      entities.types.push({
+        name,
+        definition: typeAlias.getType().getText(),
+        line: typeAlias.getStartLineNumber(),
+        isExported: typeAlias.isExported(),
+      });
+    }
+
+    // ============================================
+    // 6. ПОСТРОЕНИЕ ГРАФА ВЫЗОВОВ
+    // ============================================
+    const callGraph: Record<string, string[]> = {};
+    for (const func of entities.functions) {
+      callGraph[func.name] = func.calls;
+    }
+
+    for (const func of entities.functions) {
+      for (const otherFunc of entities.functions) {
+        if (otherFunc.calls.includes(func.name) && !func.calledBy.includes(otherFunc.name)) {
+          func.calledBy.push(otherFunc.name);
+        }
+      }
+    }
+
+    const relativePath = path.relative(process.cwd(), absolutePath);
+    console.log(`✅ Извлечено сущностей из ${relativePath}:`);
+    console.log(`   Функций: ${entities.functions.length}`);
+    console.log(`   Классов: ${entities.classes.length}`);
+    console.log(`   Констант: ${entities.constants.length}`);
+    console.log(`   Интерфейсов: ${entities.interfaces.length}`);
+    console.log(`   Типов: ${entities.types.length}`);
+    console.log(`   Переменных: ${entities.variables.length}`);
+
+    return entities;
+  } catch (error) {
+    console.error(`❌ Ошибка при извлечении сущностей из ${absolutePath}:`, error);
+    return entities;
+  }
+}
+
+/**
+ * Вспомогательная функция для извлечения значения из узла
+ */
+function extractValueFromNode(node: Node): any {
+  try {
+    const text = node.getText();
+
+    if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+      return text.slice(1, -1);
+    }
+
+    if (!isNaN(Number(text)) && text !== '') {
+      return Number(text);
+    }
+
+    if (text === 'true') return true;
+    if (text === 'false') return false;
+    if (text === 'null') return null;
+    if (text === 'undefined') return undefined;
+
+    if (Node.isArrayLiteralExpression(node)) {
+      return node.getElements().map(e => extractValueFromNode(e));
+    }
+
+    if (Node.isObjectLiteralExpression(node)) {
+      const result: Record<string, any> = {};
+      for (const prop of node.getProperties()) {
+        if (Node.isPropertyAssignment(prop)) {
+          const name = prop.getName();
+          const initializer = prop.getInitializer();
+          if (initializer) {
+            result[name] = extractValueFromNode(initializer);
+          }
+        }
+      }
+      return result;
+    }
+
+    if (Node.isIdentifier(node)) {
+      return node.getText();
+    }
+
+    return undefined;
+  } catch (error) {
+    return undefined;
+  }
+}
+
+// ============================================================
+// НОВАЯ ФУНКЦИЯ: buildEnhancedPackageLockReport (ИСПРАВЛЕНА)
+// ============================================================
+
+export function buildEnhancedPackageLockReport(
   rootKey: string,
   graph: Record<string, string[]>,
-  entitiesMap: Record<string, EntitiesResult>
-): PackageLockReport {
-  const packages: Record<string, PackageLockPackage> = {};
+  entitiesMap: Record<string, EntitiesResult>,
+  filePaths: string[]
+): EnhancedPackageLockReport {
+  const packages: Record<string, EnhancedPackageInfo> = {};
   const inwardDeps: Record<string, string[]> = {};
   const outwardDeps: Record<string, string[]> = {};
-  const importsFlow: PackageLockReport['importExportFlow']['imports'] = {};
-  const exportsFlow: PackageLockReport['importExportFlow']['exports'] = {};
+  const importsFlow: EnhancedPackageLockReport['importExportFlow']['imports'] = {};
+  const exportsFlow: EnhancedPackageLockReport['importExportFlow']['exports'] = {};
+  const callGraph: Record<string, string[]> = {};
 
-  // Инициализируем
+  let totalFunctions = 0;
+  let totalConstants = 0;
+  let totalVariables = 0;
+  let totalInterfaces = 0;
+  let totalTypes = 0;
+  let totalClasses = 0;
+  let totalCalls = 0;
+  let totalExportedFunctions = 0;
+  let totalAsyncFunctions = 0;
+
+  // Инициализация структур
   for (const modulePath of Object.keys(graph)) {
     inwardDeps[modulePath] = [];
     outwardDeps[modulePath] = [];
@@ -661,29 +1015,84 @@ export function buildPackageLockReport(
     exportsFlow[modulePath] = { exportsTo: [] };
   }
 
-  // Строим граф зависимостей
-  for (const [from, deps] of Object.entries(graph)) {
-    for (const dep of deps) {
-      if (inwardDeps[from]) {
-        inwardDeps[from].push(dep);
+  // ✅ Находим корень проекта
+  const projectRoot = findProjectRoot(process.cwd()) || process.cwd();
+
+  // ✅ Извлекаем сущности из каждого файла
+  const allFileEntities = new Map<string, EnhancedEntityInfo>();
+
+  for (const filePath of filePaths) {
+    let absolutePath = filePath;
+
+    // Если файл не существует по переданному пути, ищем его
+    if (!fs.existsSync(absolutePath)) {
+      const foundPath = findFileInProject(filePath, projectRoot);
+      if (foundPath) {
+        absolutePath = foundPath;
+      } else {
+        console.warn(`⚠️ Файл не найден: ${filePath}`);
+        continue;
       }
-      if (outwardDeps[dep]) {
-        outwardDeps[dep].push(from);
+    }
+
+    const relativePath = path.relative(projectRoot, absolutePath);
+    console.log(`📄 Обработка файла: ${relativePath}`);
+
+    const entities = extractEntitiesFromFile(absolutePath);
+    allFileEntities.set(relativePath, entities);
+
+    totalFunctions += entities.functions.length;
+    totalConstants += entities.constants.length;
+    totalVariables += entities.variables.length;
+    totalInterfaces += entities.interfaces.length;
+    totalTypes += entities.types.length;
+    totalClasses += entities.classes.length;
+
+    for (const func of entities.functions) {
+      const key = func.isMethod && func.className ? `${func.className}.${func.name}` : func.name;
+      if (!callGraph[key]) {
+        callGraph[key] = [];
       }
+      callGraph[key] = func.calls;
+      totalCalls += func.calls.length;
+      if (func.isExported) totalExportedFunctions++;
+      if (func.isAsync) totalAsyncFunctions++;
     }
   }
 
-  // Строим пакеты
+  // Строим пакеты с данными из файлов
   for (const [modulePath, entities] of Object.entries(entitiesMap)) {
     const isEntry = modulePath === rootKey;
     const ext = path.extname(modulePath);
-    let language: PackageLockPackage['language'] = 'typescript';
+    let language: EnhancedPackageInfo['language'] = 'typescript';
     if (ext === '.js' || ext === '.jsx') language = 'javascript';
     else if (ext === '.vue') language = 'vue';
     else if (ext === '.tsx') language = 'jsx';
 
-    // Строим imports
-    const imports: PackageLockPackage['imports'] = {};
+    const relativePath = path.relative(projectRoot, modulePath);
+    const fileEntities = allFileEntities.get(relativePath) || {
+      functions: [],
+      constants: [],
+      variables: [],
+      interfaces: [],
+      types: [],
+      classes: [],
+    };
+
+    let size = 0;
+    let lines = 0;
+    try {
+      const absPath = findFileInProject(modulePath, projectRoot);
+      if (absPath && fs.existsSync(absPath)) {
+        const content = fs.readFileSync(absPath, 'utf-8');
+        size = content.length;
+        lines = content.split('\n').length;
+      }
+    } catch {
+      // Игнорируем ошибки
+    }
+
+    const imports: EnhancedPackageInfo['imports'] = {};
     for (const imp of entities.imports) {
       const importKey = imp.source;
       imports[importKey] = {
@@ -692,32 +1101,9 @@ export function buildPackageLockReport(
         specifiers: imp.specifiers,
         functions: {},
       };
-
-      // Добавляем импортируемые функции
-      for (const spec of imp.specifiers) {
-        const funcName = spec.replace(/ as .*$/, '');
-        const func = entities.functions.find(f => f.name === funcName);
-        if (func) {
-          imports[importKey].functions[funcName] = {
-            isAsync: func.isAsync,
-            isExported: func.isExported,
-            params: func.params,
-            line: func.line,
-            direction: 'inward',
-            calls: func.calls.map(call => ({
-              target: call,
-              direction: 'inward',
-              isAsync: false,
-            })),
-          };
-        }
-      }
     }
 
-    // Строим exports
-    const exports: PackageLockPackage['exports'] = {};
-
-    // Сначала добавляем все экспорты
+    const exports: EnhancedPackageInfo['exports'] = {};
     for (const func of entities.functions) {
       if (func.isExported) {
         exports[func.name] = {
@@ -732,68 +1118,16 @@ export function buildPackageLockReport(
       }
     }
 
-    // Затем добавляем потребителей для каждого экспорта
-    for (const func of entities.functions) {
-      if (func.isExported) {
-        const exportEntry = exports[func.name];
-        if (!exportEntry) continue;
-
-        // Находим модули, которые вызывают эту функцию
-        for (const [otherModule, otherEntities] of Object.entries(entitiesMap)) {
-          if (otherModule === modulePath) continue;
-          for (const otherFunc of otherEntities.functions) {
-            if (otherFunc.calls && otherFunc.calls.includes(func.name)) {
-              exportEntry.consumers.push({
-                module: otherModule,
-                direction: 'outward',
-                type: 'call',
-              });
-            }
-          }
-        }
-      }
-    }
-
-    // Добавляем поток импортов
-    for (const imp of entities.imports) {
-      const impSource = imp.source;
-      if (!importsFlow[modulePath]) {
-        importsFlow[modulePath] = { importsFrom: [] };
-      }
-      const firstSpec = imp.specifiers[0];
-      importsFlow[modulePath].importsFrom.push({
-        module: impSource,
-        type: firstSpec && firstSpec.includes('default') ? 'default' : 'named',
-        imports: imp.specifiers,
-      });
-    }
-
-    // Добавляем поток экспортов
-    for (const func of entities.functions) {
-      if (func.isExported) {
-        const consumers: { module: string; type: 'named' | 'default'; exports: string[] }[] = [];
-        for (const [otherModule, otherEntities] of Object.entries(entitiesMap)) {
-          if (otherModule === modulePath) continue;
-          for (const otherFunc of otherEntities.functions) {
-            if (otherFunc.calls && otherFunc.calls.includes(func.name)) {
-              consumers.push({
-                module: otherModule,
-                type: 'named',
-                exports: [func.name],
-              });
-            }
-          }
-        }
-        if (consumers.length > 0) {
-          if (!exportsFlow[modulePath]) {
-            exportsFlow[modulePath] = { exportsTo: [] };
-          }
-          for (const consumer of consumers) {
-            exportsFlow[modulePath].exportsTo.push(consumer);
-          }
-        }
-      }
-    }
+    const fileStats = {
+      size,
+      lines,
+      functions: fileEntities.functions.length,
+      classes: fileEntities.classes.length,
+      constants: fileEntities.constants.length,
+      interfaces: fileEntities.interfaces.length,
+      types: fileEntities.types.length,
+      variables: fileEntities.variables.length,
+    };
 
     packages[modulePath] = {
       version: '1.0.0',
@@ -803,7 +1137,17 @@ export function buildPackageLockReport(
       isEntry,
       imports,
       exports,
+      entities: fileEntities,
+      fileStats,
     };
+  }
+
+  // Строим граф зависимостей
+  for (const [from, deps] of Object.entries(graph)) {
+    for (const dep of deps) {
+      if (inwardDeps[from]) inwardDeps[from].push(dep);
+      if (outwardDeps[dep]) outwardDeps[dep].push(from);
+    }
   }
 
   // Находим entry функции
@@ -811,14 +1155,12 @@ export function buildPackageLockReport(
   const rootEntities = entitiesMap[rootKey];
   if (rootEntities) {
     for (const func of rootEntities.functions) {
-      if (func.isExported) {
-        entryFunctions.push(func.name);
-      }
+      if (func.isExported) entryFunctions.push(func.name);
     }
   }
 
   // Строим executionFlow
-  const executionSteps: PackageLockReport['executionGraph']['executionFlow']['steps'] = [];
+  const executionSteps: EnhancedPackageLockReport['executionGraph']['executionFlow']['steps'] = [];
   if (rootEntities) {
     for (const func of rootEntities.functions) {
       if (func.isExported) {
@@ -828,6 +1170,25 @@ export function buildPackageLockReport(
           direction: 'self',
           isAsync: func.isAsync,
         });
+      }
+    }
+  }
+
+  // Собираем статистику по файлам
+  let totalFiles = 0;
+  let totalSize = 0;
+  let totalLines = 0;
+
+  for (const filePath of filePaths) {
+    const absPath = findFileInProject(filePath, projectRoot);
+    if (absPath && fs.existsSync(absPath)) {
+      totalFiles++;
+      try {
+        const content = fs.readFileSync(absPath, 'utf-8');
+        totalSize += content.length;
+        totalLines += content.split('\n').length;
+      } catch (error) {
+        // Игнорируем ошибки чтения файлов
       }
     }
   }
@@ -855,254 +1216,54 @@ export function buildPackageLockReport(
       imports: importsFlow,
       exports: exportsFlow,
     },
+    callGraph,
+    entityStats: {
+      totalFunctions,
+      totalConstants,
+      totalVariables,
+      totalInterfaces,
+      totalTypes,
+      totalClasses,
+      totalCalls,
+      totalExportedFunctions,
+      totalAsyncFunctions,
+    },
+    fileStats: {
+      totalFiles,
+      totalSize,
+      totalLines,
+    },
+    timestamp: new Date().toISOString(),
   };
 }
 
-// ==========================================
-// НОВАЯ ФУНКЦИЯ: ПОСТРОЕНИЕ ГРАФА ВЫЗОВОВ МЕЖДУ ФУНКЦИЯМИ
-// ==========================================
-
-/**
- * Строит граф вызовов между двумя функциями с помощью BFS
- */
-export function buildCallGraphBetweenFunctions(
-  allFunctions: Map<string, { module: string; line: number; isAsync: boolean; calls: string[] }>,
-  fromFunction: string,
-  toFunction: string
-): CallGraphResult {
-  // Проверяем существование функций
-  if (!allFunctions.has(fromFunction)) {
-    return {
-      from: fromFunction,
-      to: toFunction,
-      path: [],
-      found: false,
-      reason: `Начальная функция '${fromFunction}' не найдена в проекте`,
-      nodes: [],
-      edges: [],
-    };
-  }
-
-  if (!allFunctions.has(toFunction)) {
-    return {
-      from: fromFunction,
-      to: toFunction,
-      path: [],
-      found: false,
-      reason: `Конечная функция '${toFunction}' не найдена в проекте`,
-      nodes: [],
-      edges: [],
-    };
-  }
-
-  // BFS для поиска пути
-  const visited = new Set<string>();
-  const queue: { func: string; path: string[] }[] = [{ func: fromFunction, path: [fromFunction] }];
-  const nodes: CallGraphResult['nodes'] = [];
-  const edges: CallGraphResult['edges'] = [];
-
-  while (queue.length > 0) {
-    const { func, path } = queue.shift()!;
-
-    if (visited.has(func)) continue;
-    visited.add(func);
-
-    // Добавляем узел
-    const funcInfo = allFunctions.get(func);
-    if (funcInfo) {
-      nodes.push({
-        function: func,
-        module: funcInfo.module,
-        line: funcInfo.line,
-        isAsync: funcInfo.isAsync,
-      });
-    }
-
-    // Если нашли целевую функцию
-    if (func === toFunction) {
-      // Добавляем ребра для пути
-      for (let i = 0; i < path.length - 1; i++) {
-        const from = path[i];
-        const to = path[i + 1];
-        if (from === undefined || to === undefined) continue;
-        const fromInfo = allFunctions.get(from);
-        edges.push({
-          from,
-          to,
-          line: fromInfo ? fromInfo.line : undefined,
-        });
-      }
-
-      return {
-        from: fromFunction,
-        to: toFunction,
-        path,
-        found: true,
-        nodes,
-        edges,
-      };
-    }
-
-    // Добавляем вызовы
-    const info = allFunctions.get(func);
-    if (info) {
-      for (const call of info.calls) {
-        if (!visited.has(call) && allFunctions.has(call)) {
-          queue.push({ func: call, path: [...path, call] });
-        }
-      }
-    }
-  }
-
-  // Путь не найден - анализируем причину
-  let reason = `Путь от '${fromFunction}' к '${toFunction}' не найден.`;
-
-  // Проверяем, достижима ли конечная функция вообще
-  const reachable = new Set<string>();
-  const queueReach = [fromFunction];
-  while (queueReach.length > 0) {
-    const func = queueReach.shift()!;
-    if (reachable.has(func)) continue;
-    reachable.add(func);
-    const info = allFunctions.get(func);
-    if (info) {
-      for (const call of info.calls) {
-        if (allFunctions.has(call) && !reachable.has(call)) {
-          queueReach.push(call);
-        }
-      }
-    }
-  }
-
-  if (!reachable.has(toFunction)) {
-    reason += ` Функция '${toFunction}' не достижима из '${fromFunction}'.`;
-  }
-
-  // Проверяем, нет ли цикла
-  const cycleDetected = detectCycle(allFunctions, fromFunction);
-  if (cycleDetected) {
-    reason += ` Обнаружен цикл в графе вызовов.`;
-  }
-
-  // Добавляем доступные узлы
-  for (const [funcName, info] of allFunctions) {
-    if (reachable.has(funcName)) {
-      nodes.push({
-        function: funcName,
-        module: info.module,
-        line: info.line,
-        isAsync: info.isAsync,
-      });
-    }
-  }
-
-  // Добавляем ребра для достижимых узлов
-  for (const [from, info] of allFunctions) {
-    if (reachable.has(from)) {
-      for (const to of info.calls) {
-        if (reachable.has(to) && allFunctions.has(to)) {
-          edges.push({
-            from,
-            to,
-            line: info.line,
-          });
-        }
-      }
-    }
-  }
-
-  return {
-    from: fromFunction,
-    to: toFunction,
-    path: [],
-    found: false,
-    reason,
-    nodes,
-    edges,
-  };
-}
-
-/**
- * Проверяет наличие цикла в графе вызовов
- */
-function detectCycle(
-  allFunctions: Map<string, { module: string; line: number; isAsync: boolean; calls: string[] }>,
-  start: string
-): boolean {
-  const visited = new Set<string>();
-  const recursionStack = new Set<string>();
-
-  const dfs = (func: string): boolean => {
-    if (recursionStack.has(func)) return true;
-    if (visited.has(func)) return false;
-
-    visited.add(func);
-    recursionStack.add(func);
-
-    const info = allFunctions.get(func);
-    if (info) {
-      for (const call of info.calls) {
-        if (allFunctions.has(call)) {
-          if (dfs(call)) return true;
-        }
-      }
-    }
-
-    recursionStack.delete(func);
-    return false;
-  };
-
-  return dfs(start);
-}
-
-// ==========================================
+// ============================================================
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-// ==========================================
+// ============================================================
 
 /**
  * Находит модуль для сущности
- * ✅ УЛУЧШЕНО: поиск по частичному совпадению
  */
 function findModuleForEntity(entityName: string, data: GraphData): string | null {
-  // 1. Точное совпадение
   for (const [modulePath, deps] of Object.entries(data.graph)) {
-    if (modulePath.includes(entityName)) {
-      return modulePath;
-    }
+    if (modulePath.includes(entityName)) return modulePath;
     for (const dep of deps) {
-      if (dep.includes(entityName)) {
-        return dep;
-      }
+      if (dep.includes(entityName)) return dep;
     }
   }
-
-  // 2. Частичное совпадение (если имя содержит расширение)
   const baseName = entityName.replace(/\.[^.]+$/, '');
   for (const [modulePath, deps] of Object.entries(data.graph)) {
-    if (modulePath.includes(baseName)) {
-      return modulePath;
-    }
+    if (modulePath.includes(baseName)) return modulePath;
     for (const dep of deps) {
-      if (dep.includes(baseName)) {
-        return dep;
-      }
+      if (dep.includes(baseName)) return dep;
     }
   }
-
-  // 3. Поиск по имени файла (без пути)
-  for (const [modulePath] of Object.entries(data.graph)) {
-    const fileName = path.basename(modulePath).replace(/\.[^.]+$/, '');
-    if (fileName === baseName || entityName.includes(fileName)) {
-      return modulePath;
-    }
-  }
-
   return null;
 }
 
-// ==========================================
+// ============================================================
 // ЭКСПОРТ ПО УМОЛЧАНИЮ
-// ==========================================
+// ============================================================
 
 export default {
   saveModuleGraph,
@@ -1113,6 +1274,6 @@ export default {
   buildModuleGraph,
   buildEntityGraph,
   buildFullAnalysis,
-  buildPackageLockReport,
-  buildCallGraphBetweenFunctions,
+  extractEntitiesFromFile,
+  buildEnhancedPackageLockReport,
 };

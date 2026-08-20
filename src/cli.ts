@@ -41,7 +41,7 @@ import { runHybridReport } from './modes/hybrid-report/index.js';
 
 // Reporters
 import { generateHTMLReport } from './reporters/html-reporter.js';
-import { saveModuleGraph, saveEntityGraph, saveFullAnalysis } from './reporters/json-reporter.js';
+import { saveModuleGraph, saveEntityGraph, saveFullAnalysis, savePackageLockReport as saveEnhancedPackageLockReport } from './reporters/json-reporter.js';
 import { generateInteractiveHTML } from './reporters/interactive-reporter.js';
 
 // Types
@@ -73,6 +73,64 @@ if (isWindows) {
 }
 
 console.log(`🖥️ OS: ${isWindows ? 'Windows' : isMac ? 'macOS' : 'Linux'}`);
+
+// ==========================================
+// ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ПОИСКА КОРНЯ ПРОЕКТА
+// ==========================================
+
+/**
+ * Находит корень проекта (где находится package.json)
+ */
+function findProjectRoot(startDir: string): string | null {
+  let currentDir = path.resolve(startDir);
+  const root = path.parse(currentDir).root;
+
+  while (currentDir !== root) {
+    const packagePath = path.join(currentDir, 'package.json');
+    if (fs.existsSync(packagePath)) {
+      return currentDir;
+    }
+    currentDir = path.dirname(currentDir);
+  }
+  return null;
+}
+
+/**
+ * Разрешает путь к файлу в абсолютный с поиском в нескольких местах
+ * ИСПОЛЬЗУЕТСЯ в режиме project для преобразования путей
+ */
+function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string | null {
+  // Если путь уже абсолютный и существует
+  if (path.isAbsolute(filePath) && fs.existsSync(filePath)) {
+    return filePath;
+  }
+
+  // Пробуем разные варианты
+  const candidates = [
+    path.resolve(projectRoot, filePath),
+    path.resolve(projectRoot, 'src', filePath),
+    path.resolve(projectRoot, 'packages/ast-analyzer/src', filePath),
+    path.resolve(process.cwd(), filePath),
+    path.resolve(process.cwd(), 'src', filePath),
+  ];
+
+  // Добавляем варианты с нормализованными путями (Windows -> Unix)
+  const normalizedFilePath = filePath.replace(/\\/g, '/');
+  const additionalCandidates = [
+    path.resolve(projectRoot, normalizedFilePath),
+    path.resolve(projectRoot, 'src', normalizedFilePath),
+    path.resolve(projectRoot, 'packages/ast-analyzer/src', normalizedFilePath),
+  ];
+  candidates.push(...additionalCandidates);
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
 
 // ==========================================
 // CLI ARGUMENT PARSING
@@ -1258,13 +1316,6 @@ export async function runCLI(): Promise<void> {
       fs.writeFileSync('report.html', htmlContent);
       console.log('   ✅ report.html');
 
-      // ✅ Сохраняем package-lock отчет, если есть
-      if (resultData.packageLockReport) {
-        const packageLockPath = path.join(process.cwd(), 'package-lock-report.json');
-        fs.writeFileSync(packageLockPath, JSON.stringify(resultData.packageLockReport, null, 2));
-        console.log('   ✅ package-lock-report.json');
-      }
-
       // ✅ Сохраняем результат графа вызовов, если есть
       if (resultData.callGraphResult) {
         const callGraphPath = path.join(process.cwd(), 'call-graph-result.json');
@@ -1282,11 +1333,52 @@ export async function runCLI(): Promise<void> {
         }
       }
 
-      // ✅ Если указан флаг --entities, генерируем графы сущностей и интерактивный HTML
+      // ✅ Если указан флаг --entities, сохраняем расширенный отчет в package-lock-report.json
       if (includeEntities && resultData.entities) {
-        console.log('\n📊 Генерация графов сущностей...');
+        console.log('\n📊 Генерация расширенного отчета с сущностями...');
 
-        // Парсим AST для извлечения сущностей
+        const allFiles = Object.keys(normalizedData.graph);
+        const reportsDir = path.join(process.cwd(), './');
+        const projectRoot = findProjectRoot(process.cwd()) || process.cwd();
+
+        if (!fs.existsSync(reportsDir)) {
+          fs.mkdirSync(reportsDir, { recursive: true });
+        }
+
+        const enhancedReportPath = path.join(reportsDir, 'package-lock-report.json');
+
+        try {
+          // ✅ Используем resolveAbsoluteFilePath для преобразования путей
+          const absoluteFilePaths = allFiles.map(p => {
+            const resolved = resolveAbsoluteFilePath(p, projectRoot);
+            return resolved || path.resolve(projectRoot, p);
+          });
+
+          saveEnhancedPackageLockReport(
+            resultData.rootKey,
+            normalizedData.graph,
+            resultData.entities,
+            absoluteFilePaths,
+            enhancedReportPath
+          );
+          console.log(`\n✅ РАСШИРЕННЫЙ ОТЧЕТ СОХРАНЕН: ${enhancedReportPath}`);
+          console.log(`📊 Включает: функции, константы, переменные, интерфейсы, типы, классы, вызовы`);
+
+          // Выводим статистику
+          const stats = resultData.packageLockReport?.entityStats || {};
+          console.log(`\n📊 СТАТИСТИКА СУЩНОСТЕЙ:`);
+          console.log(`   • Функций: ${stats.totalFunctions || 0}`);
+          console.log(`   • Классов: ${stats.totalClasses || 0}`);
+          console.log(`   • Констант: ${stats.totalConstants || 0}`);
+          console.log(`   • Интерфейсов: ${stats.totalInterfaces || 0}`);
+          console.log(`   • Типов: ${stats.totalTypes || 0}`);
+          console.log(`   • Переменных: ${stats.totalVariables || 0}`);
+          console.log(`   • Вызовов: ${stats.totalCalls || 0}`);
+        } catch (error) {
+          console.error(`❌ Ошибка при сохранении расширенного отчета:`, error);
+        }
+
+        // Парсим AST для извлечения сущностей для интерактивного отчета
         const ast = parseFile(currentTargetPath);
         if (ast) {
           const entities = extractEntities(ast, currentTargetPath);
@@ -1300,21 +1392,6 @@ export async function runCLI(): Promise<void> {
             totalCalls += func.calls.length;
           }
           console.log(`   📞 Всего вызовов функций: ${totalCalls}`);
-
-          // Сохраняем JSON файлы
-          const moduleGraphPath = path.join(process.cwd(), 'module-graph.json');
-          const entityGraphPath = path.join(process.cwd(), 'entity-graph.json');
-          const fullAnalysisPath = path.join(process.cwd(), 'full-analysis.json');
-
-          saveModuleGraph(normalizedData, entities, moduleGraphPath);
-          console.log(
-            `   ✅ module-graph.json (${entities.functions.length} функций, ${entities.classes.length} классов)`
-          );
-
-          saveEntityGraph(normalizedData, entities, entityGraphPath);
-          console.log(
-            `   ✅ entity-graph.json (${entities.interfaces.length} интерфейсов, ${entities.types.length} типов)`
-          );
 
           // Строим полный анализ для интерактивного отчета
           const fullAnalysis: FullAnalysis = {
@@ -1566,9 +1643,6 @@ export async function runCLI(): Promise<void> {
             });
           }
 
-          saveFullAnalysis(normalizedData, entities, fullAnalysisPath, currentTargetPath);
-          console.log(`   ✅ full-analysis.json (полный отчет)`);
-
           // ✅ Генерируем интерактивный HTML
           console.log('\n🌐 Генерация интерактивного HTML отчета...');
           const htmlPath = path.join(process.cwd(), 'interactive-report.html');
@@ -1587,6 +1661,7 @@ export async function runCLI(): Promise<void> {
           console.log(
             '\n🌐 Откройте interactive-report.html в браузере для интерактивного просмотра'
           );
+          console.log('📄 Откройте reports/entities-component-tree-deep/package-lock-report.json для детального анализа');
         } else {
           console.warn('⚠️ Не удалось извлечь сущности: AST не построен');
         }

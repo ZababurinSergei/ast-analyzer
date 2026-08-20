@@ -216,7 +216,10 @@
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
-    "preinstall": ""
+    "preinstall": "",
+    "project": "tsx ./src/cli.ts project ./src/cli.ts 15 -o ./reports/component-tree-deep",
+    "project:--entities": "tsx ./src/cli.ts project ./src/cli.ts 15 --entities -o ./reports/entities-component-tree-deep",
+    "file": "tsx ./src/cli.ts file ./src/cli.ts 15 -o ./reports/file-tree-deep"
   },
   "keywords": [
     "ast",

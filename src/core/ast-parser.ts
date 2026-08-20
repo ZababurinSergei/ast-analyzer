@@ -37,6 +37,31 @@ let tsConfigCache: TsConfig | null = null;
 let tsConfigBaseDirCache: string | null = null;
 
 // ==========================================
+// НОВЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С ПУТЯМИ
+// ==========================================
+
+/**
+ * Разрешает путь к файлу в абсолютный
+ */
+function resolveAbsolutePath(filePath: string): string {
+  if (!filePath) return '';
+  if (path.isAbsolute(filePath)) return filePath;
+  return path.resolve(process.cwd(), filePath);
+}
+
+/**
+ * Проверяет существование файла и возвращает абсолютный путь
+ */
+function validateAndResolvePath(filePath: string): string | null {
+  const absolutePath = resolveAbsolutePath(filePath);
+  if (!fs.existsSync(absolutePath)) {
+    console.warn(`⚠️ Файл не найден: ${absolutePath}`);
+    return null;
+  }
+  return absolutePath;
+}
+
+// ==========================================
 // ФУНКЦИЯ С КЭШИРОВАНИЕМ
 // ==========================================
 
@@ -78,14 +103,20 @@ export interface VueSFCData {
  */
 export function parseVueSFCFile(filePath: string): VueSFCData | null {
   try {
-    const source = fs.readFileSync(filePath, 'utf-8');
+    const resolvedPath = resolveAbsolutePath(filePath);
+    if (!fs.existsSync(resolvedPath)) {
+      console.warn(`⚠️ Файл не найден: ${resolvedPath}`);
+      return null;
+    }
+
+    const source = fs.readFileSync(resolvedPath, 'utf-8');
     const { descriptor, errors } = parseVueSFC(source, {
-      filename: filePath,
+      filename: resolvedPath,
       sourceMap: false,
     });
 
     if (errors.length > 0) {
-      console.warn(`⚠️ Ошибки парсинга Vue файла ${filePath}:`, errors);
+      console.warn(`⚠️ Ошибки парсинга Vue файла ${resolvedPath}:`, errors);
     }
 
     const result: VueSFCData = {
@@ -131,20 +162,19 @@ export function parseVueSFCFile(filePath: string): VueSFCData | null {
 }
 
 /**
- * Парсит файл в AST с поддержкой Vue SFC
+ * Парсит файл в AST с поддержкой Vue SFC и нормализацией путей
  * @param filePath Путь к файлу
  * @param _options Опции парсинга (зарезервировано)
  * @returns AST дерево или null
  */
 export function parseFile(filePath: string, _options?: { extractTemplate?: boolean }): any {
   try {
-    if (!fs.existsSync(filePath)) {
-      console.warn(`⚠️ Файл не найден: ${filePath}`);
-      return null;
-    }
+    // ✅ Нормализуем путь
+    const resolvedPath = validateAndResolvePath(filePath);
+    if (!resolvedPath) return null;
 
-    console.log(`📖 Чтение файла: ${filePath}`);
-    let code = fs.readFileSync(filePath, 'utf-8');
+    console.log(`📖 Чтение файла: ${resolvedPath}`);
+    let code = fs.readFileSync(resolvedPath, 'utf-8');
     console.log(`📏 Размер файла: ${code.length} символов`);
 
     let isVue = false;
@@ -152,10 +182,10 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
 
     if (filePath.endsWith('.vue')) {
       isVue = true;
-      const sfc = parseVueSFCFile(filePath);
+      const sfc = parseVueSFCFile(resolvedPath);
 
       if (!sfc) {
-        console.warn(`⚠️ Не удалось разобрать Vue файл ${filePath}`);
+        console.warn(`⚠️ Не удалось разобрать Vue файл ${resolvedPath}`);
         return null;
       }
 
@@ -165,12 +195,12 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       const scriptContent = sfc.scriptSetup || sfc.script;
 
       if (!scriptContent) {
-        console.warn(`⚠️ В Vue файле ${filePath} не найден script блок`);
+        console.warn(`⚠️ В Vue файле ${resolvedPath} не найден script блок`);
         return null;
       }
 
       code = scriptContent;
-      console.log(`📄 Vue файл: ${path.basename(filePath)} (${scriptType}, TS: ${isTypeScript})`);
+      console.log(`📄 Vue файл: ${path.basename(resolvedPath)} (${scriptType}, TS: ${isTypeScript})`);
 
       if (sfc.styles.length > 0) {
         console.log(`   🎨 Styles: ${sfc.styles.length} блоков`);
@@ -222,7 +252,7 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
     try {
       ast = parser.parse(code, parserOptions);
     } catch (parseError: any) {
-      console.error(`❌ Ошибка парсинга ${filePath}:`, parseError.message);
+      console.error(`❌ Ошибка парсинга ${resolvedPath}:`, parseError.message);
       if (parseError.stack) {
         console.error('📚 Стек ошибки:', parseError.stack);
       }
@@ -241,12 +271,12 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
     }
 
     if (!ast) {
-      console.warn(`⚠️ AST не построен для файла: ${filePath}`);
+      console.warn(`⚠️ AST не построен для файла: ${resolvedPath}`);
       return null;
     }
 
     if (!ast.body || !Array.isArray(ast.body)) {
-      console.warn(`⚠️ AST не содержит body для файла: ${filePath}`);
+      console.warn(`⚠️ AST не содержит body для файла: ${resolvedPath}`);
       return {
         type: 'Program',
         body: [],
@@ -455,9 +485,15 @@ export function getAllProjectFiles(
   excludePatterns: string[] = DEFAULT_EXCLUDE_PATTERNS
 ): string[] {
   try {
-    const files = fs.readdirSync(dir);
+    const resolvedDir = path.isAbsolute(dir) ? dir : path.resolve(process.cwd(), dir);
+    if (!fs.existsSync(resolvedDir)) {
+      console.warn(`⚠️ Директория не найдена: ${resolvedDir}`);
+      return filesList;
+    }
+
+    const files = fs.readdirSync(resolvedDir);
     for (const file of files) {
-      const name = path.join(dir, file);
+      const name = path.join(resolvedDir, file);
       if (excludePatterns.some(p => name.includes(p))) continue;
       if (fs.statSync(name).isDirectory()) {
         getAllProjectFiles(name, filesList, excludePatterns);
