@@ -638,3 +638,212 @@ export interface Config {
   supportedExtensions?: string[];
   specialFiles?: string[];
 }
+
+// ==========================================
+// 🆕 НОВЫЕ ТИПЫ ДЛЯ ИНТЕЛЛЕКТУАЛЬНОЙ ПЛАТФОРМЫ
+// ==========================================
+
+/**
+ * Анализ Vue компонента
+ */
+export interface VueAnalysis {
+  props: {
+    names: string[];
+    types: Record<string, string>;
+    required: Record<string, boolean>;
+    defaults: Record<string, any>;
+  };
+  emits: {
+    names: string[];
+    types: Record<string, string>;
+  };
+  slots: string[];
+  composables: string[];
+  templateComplexity: number;
+  scriptType: 'setup' | 'options';
+  isTS: boolean;
+  stats: {
+    scriptLines: number;
+    templateLines: number;
+    styleCount: number;
+  };
+}
+
+/**
+ * Метрики архитектуры проекта
+ */
+export interface ArchitectureMetrics {
+  totalModules: number;
+  totalFunctions: number;
+  totalClasses: number;
+  totalConstants: number;
+  totalInterfaces: number;
+  totalTypes: number;
+  totalVariables: number;
+  totalCalls: number;
+  vueComponents: number;
+  totalComposables: number;
+  hasCycles: boolean;
+  maxDepth: number;
+  modulesByLevel: Record<number, string[]>;
+  isAcyclic: boolean;
+  // Дополнительные метрики
+  averageComplexity?: number;
+  maxComplexity?: number;
+  totalSecurityIssues?: number;
+  securityIssuesByType?: {
+    hasEval: number;
+    hasProcessEnv: number;
+    hasSensitiveData: number;
+    hasExec: number;
+  };
+}
+
+/**
+ * Краткое резюме проекта для ИИ-агентов
+ */
+export interface ProjectSummary {
+  projectType: 'monorepo' | 'single' | 'unknown';
+  entryPoint: string;
+  totalModules: number;
+  totalFunctions: number;
+  vueComponents: number;
+  hasCycles: boolean;
+  maxDepth: number;
+  architectureHealth: string;
+  // Краткое описание для быстрого понимания
+  quickSummary?: string;
+  // Ключевые технологии
+  technologies?: string[];
+}
+
+/**
+ * Обновленный EnhancedPackageInfo с поддержкой Vue
+ */
+export interface EnhancedPackageInfo {
+  version: string;
+  resolved: string;
+  displayPath?: string;
+  type: 'module' | 'commonjs';
+  language: 'typescript' | 'javascript' | 'vue' | 'jsx';
+  isEntry: boolean;
+  imports: Record<string, any>;
+  exports: Record<string, any>;
+  entities: {
+    functions: any[];
+    constants: any[];
+    variables: any[];
+    interfaces: any[];
+    types: any[];
+    classes: any[];
+  };
+  fileStats: {
+    size: number;
+    lines: number;
+    functions: number;
+    classes: number;
+    constants: number;
+    interfaces: number;
+    types: number;
+    variables: number;
+  };
+  // 🆕 Vue-анализ (опционально)
+  vueAnalysis?: VueAnalysis;
+  // 🆕 Метрики сложности для файла
+  complexity?: {
+    average: number;
+    max: number;
+    functions: Record<string, number>;
+  };
+  // 🆕 Безопасность файла
+  security?: {
+    hasEval: boolean;
+    hasProcessEnv: boolean;
+    hasSensitiveData: boolean;
+    hasExec: boolean;
+    issues: string[];
+  };
+}
+
+/**
+ * Обновленный EnhancedPackageLockReport
+ */
+export interface EnhancedPackageLockReport {
+  name: string;
+  version: string;
+  lockfileVersion: number;
+  packages: Record<string, EnhancedPackageInfo>;
+  dependencyGraph: {
+    direction: 'bidirectional';
+    inwardDependencies: Record<string, string[]>;
+    outwardDependencies: Record<string, string[]>;
+  };
+  executionGraph: {
+    entryPoint: string;
+    direction: 'top-down';
+    entryFunctions: string[];
+    executionFlow: {
+      type: 'sequential' | 'parallel' | 'conditional';
+      steps: {
+        func: string;
+        module: string;
+        direction: 'inward' | 'outward' | 'self';
+        isAsync: boolean;
+        branches?: Record<string, any>;
+      }[];
+    };
+  };
+  importExportFlow: {
+    imports: Record<
+      string,
+      {
+        importsFrom: {
+          module: string;
+          type: 'named' | 'default' | 'namespace';
+          imports: string[];
+        }[];
+      }
+    >;
+    exports: Record<
+      string,
+      {
+        exportsTo: {
+          module: string;
+          type: 'named' | 'default';
+          exports: string[];
+        }[];
+      }
+    >;
+  };
+  callGraph?: Record<string, string[]>;
+  entityStats?: {
+    totalFunctions: number;
+    totalConstants: number;
+    totalVariables: number;
+    totalInterfaces: number;
+    totalTypes: number;
+    totalClasses: number;
+    totalCalls: number;
+    totalExportedFunctions: number;
+    totalAsyncFunctions: number;
+  };
+  fileStats?: {
+    totalFiles: number;
+    totalSize: number;
+    totalLines: number;
+  };
+  timestamp?: string;
+  // 🆕 Метрики архитектуры
+  architectureMetrics?: ArchitectureMetrics;
+  // 🆕 Краткое резюме
+  summary?: ProjectSummary;
+}
+
+// ==========================================
+// ЭКСПОРТ ПО УМОЛЧАНИЮ
+// ==========================================
+
+export default {
+  // Существующие типы экспортируются автоматически
+  // Новые типы доступны через импорт
+};

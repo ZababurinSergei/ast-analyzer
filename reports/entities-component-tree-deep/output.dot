@@ -87,6 +87,7 @@ digraph "Dependency Graph" {
   "src/modes/hybrid-report/index.ts" -> "src/modes/hybrid-report/generators/html.ts";
   "src/modes/hybrid-report/index.ts" -> "src/modes/hybrid-report/generators/markdown.ts";
   "src/reporters/json-reporter.ts" -> "src/core/entity-extractor.ts";
+  "src/reporters/json-reporter.ts" -> "src/modes/vue-analyzer.ts";
   "src/reporters/html-reporter.ts" -> "src/utils/path-utils.ts";
   "src/reporters/interactive-reporter.ts" -> "src/types.ts";
   "src/types.ts" -> "src/core/entity-extractor.ts";

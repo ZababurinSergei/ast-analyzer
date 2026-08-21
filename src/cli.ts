@@ -308,6 +308,7 @@ interface ParsedArgs {
   includeEntities?: boolean;
   fromFunction?: string;
   toFunction?: string;
+  includeVueAnalysis?: boolean;
 }
 
 function parseArgs(): ParsedArgs | null {
@@ -326,6 +327,7 @@ function parseArgs(): ParsedArgs | null {
   let outputDir: string | undefined;
   let tsconfigPath: string | undefined;
   let includeEntities = false;
+  let includeVueAnalysis = false;
   let fromFunction: string | undefined;
   let toFunction: string | undefined;
   const cleanArgs: string[] = [];
@@ -345,6 +347,8 @@ function parseArgs(): ParsedArgs | null {
       }
     } else if (arg === '--entities') {
       includeEntities = true;
+    } else if (arg === '--vue-analysis' || arg === '--vue') {
+      includeVueAnalysis = true;
     } else if (arg === '--from') {
       if (normalizedArgs[i + 1]) {
         fromFunction = normalizedArgs[i + 1];
@@ -390,6 +394,7 @@ function parseArgs(): ParsedArgs | null {
       outputDir,
       tsconfigPath,
       includeEntities,
+      includeVueAnalysis,
       fromFunction,
       toFunction,
     };
@@ -452,6 +457,7 @@ function parseArgs(): ParsedArgs | null {
       outputDir,
       tsconfigPath,
       includeEntities,
+      includeVueAnalysis,
       fromFunction,
       toFunction,
     };
@@ -498,6 +504,7 @@ function parseArgs(): ParsedArgs | null {
       outputDir,
       tsconfigPath,
       includeEntities,
+      includeVueAnalysis,
       fromFunction,
       toFunction,
     };
@@ -576,6 +583,7 @@ function parseArgs(): ParsedArgs | null {
       outputDir,
       tsconfigPath,
       includeEntities,
+      includeVueAnalysis,
       fromFunction,
       toFunction,
     };
@@ -629,6 +637,7 @@ function parseArgs(): ParsedArgs | null {
       outputDir,
       tsconfigPath,
       includeEntities,
+      includeVueAnalysis,
       fromFunction,
       toFunction,
     };
@@ -678,6 +687,7 @@ function parseArgs(): ParsedArgs | null {
       outputDir,
       tsconfigPath,
       includeEntities,
+      includeVueAnalysis,
       fromFunction,
       toFunction,
     };
@@ -779,6 +789,7 @@ function parseArgs(): ParsedArgs | null {
       outputDir,
       tsconfigPath,
       includeEntities,
+      includeVueAnalysis,
       fromFunction,
       toFunction,
     };
@@ -853,6 +864,7 @@ function parseArgs(): ParsedArgs | null {
       outputDir,
       tsconfigPath,
       includeEntities,
+      includeVueAnalysis,
       fromFunction,
       toFunction,
     };
@@ -875,6 +887,7 @@ function parseArgs(): ParsedArgs | null {
       outputDir,
       tsconfigPath,
       includeEntities,
+      includeVueAnalysis,
       fromFunction,
       toFunction,
     };
@@ -898,6 +911,7 @@ function parseArgs(): ParsedArgs | null {
       outputDir,
       tsconfigPath,
       includeEntities,
+      includeVueAnalysis,
       fromFunction,
       toFunction,
     };
@@ -921,6 +935,7 @@ function parseArgs(): ParsedArgs | null {
       outputDir,
       tsconfigPath,
       includeEntities,
+      includeVueAnalysis,
       fromFunction,
       toFunction,
     };
@@ -943,6 +958,7 @@ function parseArgs(): ParsedArgs | null {
       outputDir,
       tsconfigPath,
       includeEntities,
+      includeVueAnalysis,
       fromFunction,
       toFunction,
     };
@@ -966,6 +982,7 @@ function parseArgs(): ParsedArgs | null {
       outputDir,
       tsconfigPath,
       includeEntities,
+      includeVueAnalysis,
       fromFunction,
       toFunction,
     };
@@ -988,6 +1005,7 @@ function parseArgs(): ParsedArgs | null {
       outputDir,
       tsconfigPath,
       includeEntities,
+      includeVueAnalysis,
       fromFunction,
       toFunction,
     };
@@ -1015,6 +1033,7 @@ export async function runCLI(): Promise<void> {
     outputDir,
     tsconfigPath,
     includeEntities,
+    includeVueAnalysis,
     fromFunction,
     toFunction,
   } = parsed;
@@ -1289,7 +1308,7 @@ export async function runCLI(): Promise<void> {
         for (let i = 0; i < result.modules.length; i++) {
           const module = result.modules[i];
           if (!module) continue;
-          console.log(`\n   ${i + 1}. Модуль "${module.name}":`);
+          console.log(`\n   ${i + 1}. Модуль \"${module.name}\":`);
           console.log(`      Экспорты: ${module.exports.join(', ')}`);
         }
       } else {
@@ -2089,6 +2108,57 @@ export async function runCLI(): Promise<void> {
         console.log(
           '📄 Откройте reports/entities-component-tree-deep/package-lock-report.json для детального анализа'
         );
+      }
+
+      // ==========================================
+      // ИСПОЛЬЗОВАНИЕ includeVueAnalysis
+      // ==========================================
+      if (includeVueAnalysis) {
+        console.log('\n🎯 Включен детальный Vue-анализ');
+
+        // Проверяем, есть ли Vue-файлы в проекте
+        const vueFiles = Object.keys(normalizedData.graph).filter(f => f.endsWith('.vue'));
+
+        if (vueFiles.length > 0) {
+          console.log(`📊 Найдено Vue-файлов: ${vueFiles.length}`);
+
+          // Анализируем каждый Vue-файл и добавляем данные в отчет
+          for (const vueFile of vueFiles) {
+            try {
+              const absPath = path.resolve(vueFile);
+              if (fs.existsSync(absPath) && fs.statSync(absPath).isFile()) {
+                const vueAnalysis = analyzeVueComponent(absPath, {
+                  includeTemplateAST: true,
+                  includeScriptAST: true,
+                  extractComposableCalls: true,
+                });
+
+                if (vueAnalysis) {
+                  console.log(`  ✅ ${path.basename(vueFile)}:`);
+                  console.log(`     📥 Props: ${vueAnalysis.props.names.length}`);
+                  console.log(`     📤 Events: ${vueAnalysis.emits.names.length}`);
+                  console.log(`     🎭 Slots: ${vueAnalysis.slots.length}`);
+                  console.log(`     🧩 Composables: ${vueAnalysis.composables.length}`);
+
+                  // Сохраняем Vue-анализ в отдельный файл
+                  const vueReportPath = path.join(
+                    process.cwd(),
+                    `vue-analysis-${path.basename(vueFile, '.vue')}.json`
+                  );
+                  fs.writeFileSync(
+                    vueReportPath,
+                    JSON.stringify(vueAnalysis, null, 2)
+                  );
+                  console.log(`     📄 Отчет сохранен: ${path.basename(vueReportPath)}`);
+                }
+              }
+            } catch (error) {
+              console.warn(`  ⚠️ Ошибка анализа ${vueFile}:`, error instanceof Error ? error.message : String(error));
+            }
+          }
+        } else {
+          console.log('ℹ️ Vue-файлы не найдены в проекте');
+        }
       }
 
       console.log('\n🎉 Готово! Откройте report.html в браузере');

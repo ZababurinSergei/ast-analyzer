@@ -22,6 +22,14 @@ export interface FunctionInfo {
   isEventHandler?: boolean;
   eventType?: string;
   depth: number;
+  complexity?: number;
+  security?: {
+    hasEval: boolean;
+    hasProcessEnv: boolean;
+    hasSensitiveData: boolean;
+    hasExec: boolean;
+    hasPassword: boolean;
+  };
 }
 
 export interface ClassInfo {
@@ -99,16 +107,10 @@ export interface EntitiesResult {
   filePath: string;
 }
 
-/**
- * Безопасная проверка, является ли объект массивом
- */
 function isArraySafe(value: any): boolean {
   return value && Array.isArray(value);
 }
 
-/**
- * Безопасно получает тип узла для отладки
- */
 function getNodeType(node: any): string {
   if (!node) return 'null';
   if (typeof node !== 'object') return typeof node;
@@ -117,10 +119,6 @@ function getNodeType(node: any): string {
   return 'unknown';
 }
 
-/**
- * Безопасно получает местоположение узла для отладки
- * Используется для логирования ошибок и отладки
- */
 function getNodeLocation(node: any): string {
   if (!node) return 'unknown';
   if (node.loc?.start) {
@@ -132,13 +130,9 @@ function getNodeLocation(node: any): string {
   return 'unknown location';
 }
 
-/**
- * Проверяет, является ли узел обработчиком событий
- */
 function isEventHandler(node: any): boolean {
   if (!node) return false;
 
-  // Проверка вызовов addEventListener, on, once
   if (node.type === 'CallExpression' && node.callee) {
     const callee = node.callee;
     if (callee.type === 'Identifier') {
@@ -161,7 +155,6 @@ function isEventHandler(node: any): boolean {
     }
   }
 
-  // Проверка JSX событий
   if (node.type === 'JSXAttribute' && node.name) {
     const attrName = node.name.name || node.name.value;
     if (typeof attrName === 'string' && attrName.startsWith('on')) {
@@ -172,14 +165,10 @@ function isEventHandler(node: any): boolean {
   return false;
 }
 
-/**
- * Извлекает тип события из узла
- */
 function extractEventType(node: any): string | undefined {
   if (!node) return undefined;
 
   if (node.type === 'CallExpression' && node.callee) {
-    // addEventListener('click', handler)
     if (node.arguments && node.arguments.length > 0) {
       const firstArg = node.arguments[0];
       if (firstArg && firstArg.type === 'Literal' && typeof firstArg.value === 'string') {
@@ -201,11 +190,93 @@ function extractEventType(node: any): string | undefined {
   return undefined;
 }
 
-/**
- * Извлекает все сущности из AST с рекурсивным обходом вложенных функций
- */
+function calculateComplexity(node: any): number {
+  let complexity = 1;
+
+  function traverse(n: any) {
+    if (!n) return;
+
+    if (
+      n.type === 'IfStatement' ||
+      n.type === 'ConditionalExpression' ||
+      n.type === 'SwitchStatement'
+    ) {
+      complexity++;
+    }
+
+    if (
+      n.type === 'ForStatement' ||
+      n.type === 'ForInStatement' ||
+      n.type === 'ForOfStatement' ||
+      n.type === 'WhileStatement' ||
+      n.type === 'DoWhileStatement'
+    ) {
+      complexity++;
+    }
+
+    if (n.type === 'LogicalExpression' && (n.operator === '&&' || n.operator === '||')) {
+      complexity++;
+    }
+
+    if (n.type === 'CatchClause') {
+      complexity++;
+    }
+
+    for (const key of Object.keys(n)) {
+      const child = n[key];
+      if (child && typeof child === 'object') {
+        if (Array.isArray(child)) {
+          for (const item of child) {
+            traverse(item);
+          }
+        } else {
+          traverse(child);
+        }
+      }
+    }
+  }
+
+  traverse(node);
+  return complexity;
+}
+
+function analyzeSecurity(body: string): FunctionInfo['security'] {
+  const security = {
+    hasEval: false,
+    hasProcessEnv: false,
+    hasSensitiveData: false,
+    hasExec: false,
+    hasPassword: false,
+  };
+
+  if (!body) return security;
+
+  const bodyLower = body.toLowerCase();
+
+  security.hasEval = body.includes('eval(') || body.includes('eval (');
+  security.hasProcessEnv = body.includes('process.env');
+  security.hasExec =
+    body.includes('exec(') || body.includes('exec (') || body.includes('execSync(');
+  security.hasPassword = /\b(password|passwd|pwd|secret|token|api[_-]?key)\b/i.test(bodyLower);
+
+  const sensitivePatterns = [
+    /['"][a-zA-Z0-9_\-]{32,}['"]/,
+    /['"]sk-[a-zA-Z0-9]{20,}['"]/,
+    /['"]gh[pous]_[a-zA-Z0-9]{36,}['"]/,
+    /['"]xox[baprs]-[a-zA-Z0-9-]+['"]/,
+  ];
+
+  for (const pattern of sensitivePatterns) {
+    if (pattern.test(body)) {
+      security.hasSensitiveData = true;
+      break;
+    }
+  }
+
+  return security;
+}
+
 export function extractEntities(ast: any, filePath?: string): EntitiesResult {
-  // Проверка на null/undefined
   if (!ast || !ast.body) {
     return {
       functions: [],
@@ -222,7 +293,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
     };
   }
 
-  // Убеждаемся, что body это массив
   if (!isArraySafe(ast.body)) {
     const nodeType = getNodeType(ast.body);
     const location = getNodeLocation(ast.body);
@@ -258,25 +328,16 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
   let currentClass: string | null = null;
   const functionStack: string[] = [];
 
-  // ============================================
-  // РЕКУРСИВНЫЙ ОБХОД AST С СОБРАНИЕМ ВСЕХ ФУНКЦИЙ
-  // ============================================
-
   function traverseNode(node: any, parent: any, depth: number, parentFunction?: string) {
     if (!node || typeof node !== 'object') return;
 
-    // Используем parentFunction для отслеживания иерархии вызовов
-    // Сохраняем parentFunction в контексте для использования в логировании
-    // и для построения полного имени функции
     const currentContext = parentFunction || 'global';
 
-    // Для отладки используем getNodeLocation с parentFunction
     if (process.env.DEBUG === 'true' && node.type === 'FunctionDeclaration') {
       const location = getNodeLocation(node);
       console.log(`🔍 Обнаружена функция в контексте: ${currentContext} в ${location}`);
     }
 
-    // === ИМПОРТЫ ===
     if (node.type === 'ImportDeclaration' && node.source) {
       const source = node.source.value;
       const isTypeOnly = node.importKind === 'type';
@@ -315,7 +376,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
       });
     }
 
-    // === ЭКСПОРТЫ ===
     if (node.type === 'ExportNamedDeclaration') {
       let exportName = '';
       let exportType: ExportInfo['type'] = 'default';
@@ -383,10 +443,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
       });
     }
 
-    // ============================================
-    // === ФУНКЦИИ (включая вложенные) ===
-    // ============================================
-
     if ((node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression') && node.id) {
       const name = node.id.name;
       const isExported = isNodeExported(node, parent);
@@ -395,7 +451,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
       const isEventHandlerNode = isEventHandler(node) || isEventHandler(parent);
       const eventType = isEventHandlerNode ? extractEventType(parent || node) : undefined;
 
-      // Строим полное имя с учетом вложенности
       let fullName = name;
       const parentFunctions: string[] = [];
       let current = parent;
@@ -409,11 +464,9 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
           parentFunctions.unshift(current.id.name);
           depthCount++;
         }
-        // Проверяем методы классов
         if (current.type === 'MethodDefinition' && current.key) {
           const methodName = current.key.name || current.key.value;
           if (methodName) {
-            // Ищем имя класса
             let classParent = current.parent;
             while (classParent && classParent.type !== 'Program') {
               if (classParent.type === 'ClassDeclaration' && classParent.id) {
@@ -432,7 +485,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
         fullName = parentFunctions.join('.') + '.' + name;
       }
 
-      // Если это метод класса, добавляем имя класса
       let className: string | undefined = undefined;
       if (isMethod) {
         let classParent = parent;
@@ -457,10 +509,10 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
           })
         : [];
 
-      // Используем parentFunction для определения вложенности
       const isNested = parentFunctions.length > 0 || depth > 0;
       const parentFunc = parentFunctions.length > 0 ? parentFunctions.join('.') : undefined;
 
+      const bodyText = node.body ? extractBodyText(node.body) : undefined;
       const funcInfo: FunctionInfo = {
         name: fullName,
         line: node.loc?.start?.line || 1,
@@ -472,7 +524,7 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
         calledBy: [],
         startLine: node.loc?.start?.line || 1,
         endLine: node.loc?.end?.line || 1,
-        body: node.body ? extractBodyText(node.body) : undefined,
+        body: bodyText,
         isMethod,
         className,
         isNested,
@@ -481,44 +533,35 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
         isEventHandler: isEventHandlerNode,
         eventType,
         depth: depth,
+        complexity: calculateComplexity(node),
+        security: analyzeSecurity(bodyText || ''),
       };
 
       functions.push(funcInfo);
 
-      // Добавляем в callGraph
       if (!callGraph[fullName]) {
         callGraph[fullName] = [];
       }
 
-      // Сохраняем текущую функцию для контекста
       const previousFunction = currentFunction;
       currentFunction = fullName;
       functionStack.push(fullName);
 
-      // Рекурсивно обходим тело функции, передавая parentFunction
       if (node.body) {
-        // Для BlockStatement обходим body
         if (node.body.type === 'BlockStatement' && isArraySafe(node.body.body)) {
           for (const child of node.body.body) {
             traverseNode(child, node, depth + 1, fullName);
           }
         } else {
-          // Для других типов тел (стрелочные с выражением)
           traverseNode(node.body, node, depth + 1, fullName);
         }
       }
 
-      // Восстанавливаем контекст
       functionStack.pop();
       currentFunction = previousFunction;
     }
 
-    // ============================================
-    // === СТРЕЛОЧНЫЕ ФУНКЦИИ ===
-    // ============================================
-
     if (node.type === 'ArrowFunctionExpression') {
-      // Проверяем, присвоена ли стрелочная функция переменной
       let name = 'anonymous_arrow';
       let isExported = false;
       let parentFunc: string | undefined = undefined;
@@ -554,12 +597,10 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
         current = current.parent;
       }
 
-      // Ищем имя переменной для стрелочной функции
       if (parent && parent.type === 'VariableDeclarator' && parent.id) {
         const varName = parent.id.name;
         if (varName) {
           name = varName;
-          // Проверяем экспорт
           let exportParent = parent.parent;
           while (exportParent && exportParent.type !== 'Program') {
             if (
@@ -577,7 +618,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
       if (parent && parent.type === 'Property' && parent.key) {
         const propName = parent.key.name || parent.key.value;
         if (propName) {
-          // Это метод объекта
           if (parentFuncs.length > 0) {
             name = parentFuncs.join('.') + '.' + propName;
           } else {
@@ -590,7 +630,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
         name = parentFuncs.join('.') + '.' + name;
       }
 
-      // Если это обработчик события в JSX
       if (isEventHandlerNode && parent?.type === 'JSXAttribute') {
         const attrName = parent.name?.name || parent.name?.value;
         if (attrName && typeof attrName === 'string') {
@@ -607,10 +646,10 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
           })
         : [];
 
-      // Используем parentFuncs для определения вложенности
       const isNested = parentFuncs.length > 0 || depth > 0;
       parentFunc = parentFuncs.length > 0 ? parentFuncs.join('.') : undefined;
 
+      const bodyText = node.body ? extractBodyText(node.body) : undefined;
       const funcInfo: FunctionInfo = {
         name,
         line: node.loc?.start?.line || 1,
@@ -622,7 +661,7 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
         calledBy: [],
         startLine: node.loc?.start?.line || 1,
         endLine: node.loc?.end?.line || 1,
-        body: node.body ? extractBodyText(node.body) : undefined,
+        body: bodyText,
         isMethod: false,
         className: undefined,
         isNested,
@@ -631,6 +670,8 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
         isEventHandler: isEventHandlerNode,
         eventType,
         depth: depth,
+        complexity: calculateComplexity(node),
+        security: analyzeSecurity(bodyText || ''),
       };
 
       functions.push(funcInfo);
@@ -639,7 +680,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
         callGraph[name] = [];
       }
 
-      // Рекурсивно обходим тело стрелочной функции
       if (node.body) {
         if (node.body.type === 'BlockStatement' && isArraySafe(node.body.body)) {
           for (const child of node.body.body) {
@@ -650,10 +690,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
         }
       }
     }
-
-    // ============================================
-    // === МЕТОДЫ КЛАССОВ ===
-    // ============================================
 
     if (node.type === 'MethodDefinition' && node.key) {
       const methodName = node.key.name || node.key.value;
@@ -671,8 +707,8 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
             })
           : [];
 
-        // Используем className как parentFunction для методов
         const parentFunc = className;
+        const bodyText = node.value?.body ? extractBodyText(node.value.body) : undefined;
 
         const funcInfo: FunctionInfo = {
           name: fullName,
@@ -692,6 +728,8 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
           isArrow: false,
           isEventHandler: false,
           depth: depth,
+          complexity: node.value?.body ? calculateComplexity(node.value.body) : 1,
+          security: analyzeSecurity(bodyText || ''),
         };
 
         functions.push(funcInfo);
@@ -700,7 +738,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
           callGraph[fullName] = [];
         }
 
-        // Рекурсивно обходим тело метода
         if (node.value && node.value.body) {
           if (node.value.body.type === 'BlockStatement' && isArraySafe(node.value.body.body)) {
             for (const child of node.value.body.body) {
@@ -711,7 +748,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
       }
     }
 
-    // === КЛАССЫ ===
     if (node.type === 'ClassDeclaration' && node.id) {
       const name = node.id.name;
       const isExported = isNodeExported(node, parent);
@@ -748,7 +784,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
       const previousClass = currentClass;
       currentClass = name;
 
-      // Рекурсивно обходим тело класса
       if (node.body && isArraySafe(node.body.body)) {
         for (const member of node.body.body) {
           traverseNode(member, node, depth + 1, name);
@@ -758,7 +793,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
       currentClass = previousClass;
     }
 
-    // === КОНСТАНТЫ ===
     if (node.type === 'VariableDeclaration') {
       const isExported = isNodeExported(node, parent);
       const kind = node.kind;
@@ -792,7 +826,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
       }
     }
 
-    // === ИНТЕРФЕЙСЫ ===
     if (node.type === 'TSInterfaceDeclaration' && node.id) {
       const name = node.id.name;
       const isExported = isNodeExported(node, parent);
@@ -818,7 +851,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
       });
     }
 
-    // === ТИПЫ ===
     if (node.type === 'TSTypeAliasDeclaration' && node.id) {
       const name = node.id.name;
       const isExported = isNodeExported(node, parent);
@@ -831,13 +863,8 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
       });
     }
 
-    // ============================================
-    // РЕКУРСИВНЫЙ ОБХОД ДЕТЕЙ
-    // ============================================
-
     const childrenToTraverse: any[] = [];
 
-    // body - проверяем, что это массив или объект
     if (node.body) {
       if (Array.isArray(node.body)) {
         childrenToTraverse.push(...node.body);
@@ -846,7 +873,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
       }
     }
 
-    // Дополнительные поля для обхода
     if (node.consequent) childrenToTraverse.push(node.consequent);
     if (node.alternate) childrenToTraverse.push(node.alternate);
     if (node.init) childrenToTraverse.push(node.init);
@@ -888,10 +914,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
     }
   }
 
-  // ============================================
-  // ЗАПУСК РЕКУРСИВНОГО ОБХОДА
-  // ============================================
-
   try {
     for (const node of ast.body) {
       traverseNode(node, null, 0, undefined);
@@ -900,22 +922,15 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
     console.warn(`⚠️ Ошибка при обходе AST для ${filePath || 'unknown'}:`, error);
   }
 
-  // ============================================
-  // ПОСТРОЕНИЕ ГРАФА ВЫЗОВОВ
-  // ============================================
-
-  // Собираем все имена функций для быстрого поиска
   const functionNames = new Set<string>();
   for (const func of functions) {
     functionNames.add(func.name);
   }
 
-  // Собираем вызовы для каждой функции через обход AST
   function collectCallsFromBody(body: string, funcName: string): string[] {
     const calls: string[] = [];
     if (!body) return calls;
 
-    // Ищем вызовы функций в теле
     const callRegex = /\b(\w+)\s*\(/g;
     let match;
     while ((match = callRegex.exec(body)) !== null) {
@@ -928,7 +943,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
     return calls;
   }
 
-  // Заполняем вызовы для каждой функции
   for (const func of functions) {
     if (func.body) {
       const calls = collectCallsFromBody(func.body, func.name);
@@ -936,7 +950,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
     }
   }
 
-  // Заполняем calledBy для каждой функции
   for (const func of functions) {
     for (const otherFunc of functions) {
       if (otherFunc.calls.includes(func.name) && !func.calledBy.includes(otherFunc.name)) {
@@ -945,12 +958,10 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
     }
   }
 
-  // Обновляем callGraph из функций
   for (const func of functions) {
     if (!callGraph[func.name]) {
       callGraph[func.name] = [];
     }
-    // Проверяем, что callGraph[func.name] существует перед добавлением
     const funcCalls = callGraph[func.name];
     if (funcCalls) {
       for (const call of func.calls) {
@@ -961,15 +972,11 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
     }
   }
 
-  // Используем parentFunction для построения иерархии вызовов
-  // Добавляем информацию о parentFunction в метаданные функций
   for (const func of functions) {
     if (func.parentFunction) {
-      // Проверяем, что callGraph[func.parentFunction] существует
       if (!callGraph[func.parentFunction]) {
         callGraph[func.parentFunction] = [];
       }
-      // Добавляем связь родитель -> дочерняя функция
       const parentCalls = callGraph[func.parentFunction];
       if (parentCalls && !parentCalls.includes(func.name)) {
         parentCalls.push(func.name);
@@ -977,18 +984,12 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
     }
   }
 
-  // Используем currentClass и currentFunction для контекста при логировании
-  // Это помогает отлаживать, в каком контексте происходит обход
   if (currentClass || currentFunction) {
-    // Логируем только если есть контекст (для отладки)
-    // Используем getNodeLocation для получения позиции
     const contextInfo = [];
     if (currentClass) contextInfo.push(`class: ${currentClass}`);
     if (currentFunction) contextInfo.push(`function: ${currentFunction}`);
     if (contextInfo.length > 0) {
-      // Используем getNodeLocation для получения позиции (используется для отладки)
       const location = getNodeLocation(ast);
-      // Логируем только в режиме отладки
       if (process.env.DEBUG === 'true') {
         console.log(`📊 Контекст обхода: ${contextInfo.join(', ')} в ${location}`);
       }
@@ -1010,18 +1011,13 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
   };
 }
 
-/**
- * Проверяет, экспортируется ли узел
- */
 function isNodeExported(node: any, parent: any): boolean {
   if (!node) return false;
 
-  // Прямой export
   if (node.type === 'ExportNamedDeclaration' || node.type === 'ExportDefaultDeclaration') {
     return true;
   }
 
-  // Проверка родителя
   if (parent) {
     if (parent.type === 'ExportNamedDeclaration' || parent.type === 'ExportDefaultDeclaration') {
       return true;
@@ -1031,7 +1027,6 @@ function isNodeExported(node: any, parent: any): boolean {
     }
   }
 
-  // Проверка наличия export в тексте
   if (node.leadingComments) {
     for (const comment of node.leadingComments) {
       if (comment.value && comment.value.includes('@export')) {
@@ -1040,7 +1035,6 @@ function isNodeExported(node: any, parent: any): boolean {
     }
   }
 
-  // Проверка декораторов
   if (node.decorators) {
     for (const decorator of node.decorators) {
       if (
@@ -1055,9 +1049,6 @@ function isNodeExported(node: any, parent: any): boolean {
   return false;
 }
 
-/**
- * Извлекает текст тела функции
- */
 function extractBodyText(body: any): string | undefined {
   if (!body) return undefined;
 
@@ -1094,9 +1085,6 @@ function extractBodyText(body: any): string | undefined {
   return body.type || undefined;
 }
 
-/**
- * Извлекает значение из узла
- */
 function extractValue(node: any): any {
   if (!node) return undefined;
 
@@ -1156,9 +1144,6 @@ function extractValue(node: any): any {
   return undefined;
 }
 
-/**
- * Получает все вызовы функций из AST
- */
 export function extractCallGraph(ast: any): Record<string, string[]> {
   const callGraph: Record<string, string[]> = {};
   let currentFunction: string | null = null;
@@ -1208,9 +1193,6 @@ export function extractCallGraph(ast: any): Record<string, string[]> {
   return callGraph;
 }
 
-/**
- * Экспорт утилит
- */
 export default {
   extractEntities,
   extractCallGraph,
