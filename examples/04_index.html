@@ -1,0 +1,1328 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Интерактивная диаграмма вызовов: runCLI → extractEntities → collectAllNodes</title>
+  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+  <style>
+      * {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
+      }
+
+      body {
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          background: #0d1117;
+          color: #e6edf3;
+          padding: 20px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+      }
+
+      .container {
+          max-width: 1400px;
+          width: 100%;
+          background: #161b22;
+          border-radius: 16px;
+          padding: 24px;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+      }
+
+      h1 {
+          font-size: 28px;
+          font-weight: 700;
+          margin-bottom: 8px;
+          background: linear-gradient(135deg, #58a6ff, #79c0ff);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+      }
+
+      .subtitle {
+          color: #8b949e;
+          font-size: 14px;
+          margin-bottom: 20px;
+          border-bottom: 1px solid #30363d;
+          padding-bottom: 16px;
+      }
+
+      .subtitle code {
+          background: #21262d;
+          padding: 2px 10px;
+          border-radius: 6px;
+          color: #f0883e;
+          font-size: 13px;
+      }
+
+      /* Интерактивная панель */
+      .controls {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+          margin-bottom: 20px;
+          align-items: center;
+      }
+
+      .controls button {
+          background: #21262d;
+          border: 1px solid #30363d;
+          color: #c9d1d9;
+          padding: 8px 18px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 13px;
+          transition: all 0.2s;
+          font-weight: 500;
+      }
+
+      .controls button:hover {
+          background: #30363d;
+          border-color: #58a6ff;
+          color: #fff;
+      }
+
+      .controls button.active {
+          background: #1f6feb;
+          border-color: #58a6ff;
+          color: #fff;
+      }
+
+      .controls .search-box {
+          background: #0d1117;
+          border: 1px solid #30363d;
+          color: #c9d1d9;
+          padding: 8px 16px;
+          border-radius: 8px;
+          font-size: 13px;
+          width: 220px;
+          outline: none;
+          transition: border 0.2s;
+      }
+
+      .controls .search-box:focus {
+          border-color: #58a6ff;
+      }
+
+      .legend {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 16px;
+          margin-bottom: 16px;
+          padding: 12px 16px;
+          background: #0d1117;
+          border-radius: 10px;
+          border: 1px solid #30363d;
+      }
+
+      .legend-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 13px;
+          color: #8b949e;
+      }
+
+      .legend-item .dot {
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .legend-item .dot.entry {
+          background: #f0883e;
+      }
+      .legend-item .dot.path {
+          background: #58a6ff;
+      }
+      .legend-item .dot.detail {
+          background: #3fb950;
+      }
+      .legend-item .dot.async {
+          background: #d2a8ff;
+      }
+      .legend-item .dot.exported {
+          background: #f778ba;
+      }
+
+      /* Граф */
+      .graph-wrapper {
+          background: #0d1117;
+          border-radius: 12px;
+          border: 1px solid #30363d;
+          padding: 8px;
+          overflow: auto;
+          position: relative;
+          min-height: 600px;
+      }
+
+      .graph-wrapper svg {
+          display: block;
+          width: 100%;
+          height: auto;
+          min-height: 550px;
+      }
+
+      /* Всплывающая подсказка */
+      .tooltip {
+          position: fixed;
+          background: #1c2333;
+          border: 1px solid #30363d;
+          border-radius: 12px;
+          padding: 16px 20px;
+          max-width: 420px;
+          box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8);
+          pointer-events: none;
+          opacity: 0;
+          transition: opacity 0.2s ease;
+          z-index: 1000;
+          font-size: 13px;
+          line-height: 1.6;
+      }
+
+      .tooltip.visible {
+          opacity: 1;
+          pointer-events: auto;
+      }
+
+      .tooltip .name {
+          font-weight: 700;
+          font-size: 16px;
+          color: #f0f6fc;
+      }
+
+      .tooltip .file {
+          color: #8b949e;
+          font-size: 12px;
+          margin: 2px 0 8px 0;
+      }
+
+      .tooltip .file code {
+          background: #0d1117;
+          padding: 1px 8px;
+          border-radius: 4px;
+          color: #f0883e;
+      }
+
+      .tooltip .meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px 12px;
+          margin-top: 6px;
+      }
+
+      .tooltip .meta span {
+          background: #21262d;
+          padding: 2px 10px;
+          border-radius: 12px;
+          font-size: 11px;
+          color: #8b949e;
+      }
+
+      .tooltip .meta .highlight {
+          color: #58a6ff;
+          background: #1c2d4a;
+      }
+
+      .tooltip .calls {
+          margin-top: 8px;
+          border-top: 1px solid #30363d;
+          padding-top: 8px;
+          font-size: 12px;
+          color: #8b949e;
+      }
+
+      .tooltip .calls code {
+          color: #f0883e;
+          background: #21262d;
+          padding: 1px 6px;
+          border-radius: 3px;
+      }
+
+      /* Панель шагов */
+      .steps-panel {
+          margin-top: 20px;
+          background: #0d1117;
+          border-radius: 12px;
+          border: 1px solid #30363d;
+          padding: 16px 20px;
+      }
+
+      .steps-panel h3 {
+          font-size: 16px;
+          font-weight: 600;
+          margin-bottom: 12px;
+          color: #f0f6fc;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+      }
+
+      .steps-panel h3 .badge {
+          background: #1f6feb;
+          color: #fff;
+          font-size: 11px;
+          padding: 2px 10px;
+          border-radius: 12px;
+      }
+
+      .steps {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+      }
+
+      .step {
+          background: #21262d;
+          padding: 6px 14px;
+          border-radius: 20px;
+          font-size: 12px;
+          color: #8b949e;
+          cursor: default;
+          transition: all 0.2s;
+          border: 1px solid transparent;
+      }
+
+      .step.active {
+          background: #1f6feb;
+          color: #fff;
+          border-color: #58a6ff;
+      }
+
+      .step.done {
+          background: #1c3b2a;
+          color: #3fb950;
+          border-color: #2d6a4f;
+      }
+
+      .step.arrow {
+          background: transparent;
+          color: #58a6ff;
+          padding: 6px 4px;
+          border: none;
+      }
+
+      /* Адаптив */
+      @media (max-width: 768px) {
+          .container {
+              padding: 12px;
+          }
+          h1 {
+              font-size: 20px;
+          }
+          .controls {
+              flex-direction: column;
+              align-items: stretch;
+          }
+          .controls .search-box {
+              width: 100%;
+          }
+          .legend {
+              gap: 8px;
+          }
+          .tooltip {
+              max-width: 300px;
+              padding: 12px 16px;
+          }
+          .steps {
+              gap: 4px;
+          }
+          .step {
+              font-size: 11px;
+              padding: 4px 10px;
+          }
+      }
+
+      /* Анимация подсветки */
+      @keyframes pulse-glow {
+          0%,
+          100% {
+              filter: drop-shadow(0 0 4px rgba(88, 166, 255, 0.3));
+          }
+          50% {
+              filter: drop-shadow(0 0 16px rgba(88, 166, 255, 0.6));
+          }
+      }
+
+      .glow-node {
+          animation: pulse-glow 2s ease-in-out infinite;
+      }
+
+      /* Счетчик */
+      .stats-bar {
+          display: flex;
+          gap: 24px;
+          flex-wrap: wrap;
+          margin: 12px 0 16px 0;
+          padding: 10px 16px;
+          background: #0d1117;
+          border-radius: 10px;
+          border: 1px solid #30363d;
+      }
+
+      .stats-bar .stat {
+          font-size: 13px;
+          color: #8b949e;
+      }
+
+      .stats-bar .stat strong {
+          color: #f0f6fc;
+      }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>
+    <span>🔍 Интерактивный граф вызовов</span>
+  </h1>
+  <div class="subtitle">
+    Путь: <code>runCLI</code> → <code>extractEntities</code> → <code>collectAllNodes</code>
+    &nbsp;•&nbsp; Всего узлов: <strong id="totalNodes">0</strong>
+    &nbsp;•&nbsp; Глубина: <strong id="maxDepth">0</strong>
+  </div>
+
+  <!-- Легенда -->
+  <div class="legend">
+    <span class="legend-item"><span class="dot entry"></span> Точка входа</span>
+    <span class="legend-item"><span class="dot path"></span> Основной путь</span>
+    <span class="legend-item"><span class="dot detail"></span> Детальный вызов</span>
+    <span class="legend-item"><span class="dot async"></span> Асинхронная</span>
+    <span class="legend-item"><span class="dot exported"></span> Экспортирована</span>
+  </div>
+
+  <!-- Панель управления -->
+  <div class="controls">
+    <button id="btnReset" class="active">🔄 Сбросить</button>
+    <button id="btnHighlightPath">🎯 Подсветить путь</button>
+    <button id="btnExpandAll">📂 Развернуть все</button>
+    <button id="btnCollapseAll">📁 Свернуть все</button>
+    <input class="search-box" id="searchInput" placeholder="🔎 Поиск по имени функции..." />
+    <span style="margin-left:auto;color:#8b949e;font-size:13px;" id="nodeCount">Узлов: 0</span>
+  </div>
+
+  <!-- Статистика -->
+  <div class="stats-bar">
+    <span class="stat">📦 Всего функций: <strong id="statTotal">0</strong></span>
+    <span class="stat">🔗 Вызовов: <strong id="statEdges">0</strong></span>
+    <span class="stat">⚡ Асинхронных: <strong id="statAsync">0</strong></span>
+    <span class="stat">📤 Экспортировано: <strong id="statExported">0</strong></span>
+  </div>
+
+  <!-- Граф -->
+  <div class="graph-wrapper" id="graphWrapper">
+    <div id="graphContainer"></div>
+  </div>
+
+  <!-- Панель шагов -->
+  <div class="steps-panel" id="stepsPanel">
+    <h3>
+      📍 Путь выполнения
+      <span class="badge">3 ключевых шага</span>
+    </h3>
+    <div class="steps" id="stepsContainer">
+      <span class="step active">1. runCLI</span>
+      <span class="step arrow">→</span>
+      <span class="step">2. parseArgs</span>
+      <span class="step arrow">→</span>
+      <span class="step">3. extractEntities</span>
+      <span class="step arrow">→</span>
+      <span class="step">4. extractEntities→collectAllNodes</span>
+      <span class="step arrow">→</span>
+      <span class="step">5. collectAllNodes</span>
+    </div>
+  </div>
+</div>
+
+<!-- Всплывающая подсказка -->
+<div class="tooltip" id="tooltip">
+  <div class="name" id="tipName">—</div>
+  <div class="file" id="tipFile">—</div>
+  <div class="meta" id="tipMeta"></div>
+  <div class="calls" id="tipCalls"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@hpcc-js/wasm-graphviz@0.3.12/dist/index.min.js">
+</script>
+<script>
+  // ============================================================
+  // 1. ДАННЫЕ: полный граф для пути runCLI → extractEntities → collectAllNodes
+  // ============================================================
+
+  const graphData = {
+    // Узлы: id, label, file, type, isAsync, isExported, depth, tooltip
+    nodes: [{
+      id: 'runCLI',
+      label: 'runCLI',
+      file: 'src/cli.ts',
+      type: 'entry',
+      isAsync: true,
+      isExported: true,
+      depth: 0,
+      calls: ['parseArgs', 'normalizePathForOS', 'setTsConfigPath', 'loadTsConfig', 'parseInt',
+        'runHybridReport', 'createIntParam', 'range', 'eq', 'analyzeVueComponent',
+        'generateVueComponentReport', 'buildSplitModulePrompt', 'minifyFolder', 'findDeadCode',
+        'runImpactAnalysis', 'buildAiPromptPack', 'minifyForAI', 'parseFloat', 'buildProjectGraph',
+        'normalizeGraphPaths', 'findCyclicEdges', 'convertToDOT', 'generateHTMLReport',
+        'normalizePathForDisplay', 'findProjectRoot', 'resolveAbsoluteFilePath',
+        'saveEnhancedPackageLockReport', 'extractEntitiesFromPackageLock', 'extractEntitiesFromFile',
+        'findModuleForEntity', 'generateInteractiveHTML', 'buildFileInternalGraph', 'parseFile',
+        'extractEntities', 'saveModuleGraph', 'saveEntityGraph', 'saveFullAnalysis'
+      ],
+      calledBy: []
+    }, {
+      id: 'parseArgs',
+      label: 'parseArgs',
+      file: 'src/cli.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 1,
+      calls: ['normalizePathForOS', 'showHelp', 'parseInt'],
+      calledBy: ['runCLI']
+    }, {
+      id: 'parseFile',
+      label: 'parseFile',
+      file: 'src/core/ast-parser.ts',
+      type: 'path',
+      isAsync: false,
+      isExported: true,
+      depth: 2,
+      calls: ['validateAndResolvePath', 'parseVueSFCFile', 'String'],
+      calledBy: ['runCLI', 'minifyForAI', 'buildProjectGraph', 'buildFileInternalGraph']
+    }, {
+      id: 'extractEntities',
+      label: 'extractEntities',
+      file: 'src/core/entity-extractor.ts',
+      type: 'path',
+      isAsync: false,
+      isExported: true,
+      depth: 2,
+      calls: ['isArraySafe', 'getNodeType', 'getNodeLocation', 'isNodeExported', 'isEventHandler',
+        'extractEventType', 'extractBodyText', 'traverseNode', 'extractValue',
+        'collectCallsFromBody'
+      ],
+      calledBy: ['runCLI']
+    }, {
+      id: 'collectAllNodes',
+      label: 'collectAllNodes',
+      file: 'src/core/minifier.ts',
+      type: 'entry',
+      isAsync: false,
+      isExported: false,
+      depth: 3,
+      calls: ['traverse'],
+      calledBy: ['minifyCodeString']
+    }, {
+      id: 'minifyCodeString',
+      label: 'minifyCodeString',
+      file: 'src/core/minifier.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: true,
+      depth: 2,
+      calls: ['collectAllNodes', 'shouldPreserveValue'],
+      calledBy: ['minifyForAI']
+    }, {
+      id: 'minifyForAI',
+      label: 'minifyForAI',
+      file: 'src/core/minifier.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: true,
+      depth: 1,
+      calls: ['parseFile', 'minifyCodeString'],
+      calledBy: ['runCLI']
+    }, {
+      id: 'buildProjectGraph',
+      label: 'buildProjectGraph',
+      file: 'src/modes/project-graph.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: true,
+      depth: 1,
+      calls: ['getTsConfigForFile', 'parseFile', 'extractEntitiesFromFile', 'convertEnhancedToEntities',
+        'collectImports', 'collectReExports', 'isExternalModule', 'resolveFilePath',
+        'expandFolderReExport', 'normalizePathForDisplay', 'findProjectRoot',
+        'resolveAbsoluteFilePath', 'buildPackageLockReportSync', 'buildCallGraphBetweenFunctions'
+      ],
+      calledBy: ['runCLI']
+    }, {
+      id: 'extractEntitiesFromFile',
+      label: 'extractEntitiesFromFile',
+      file: 'src/reporters/json-reporter.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: true,
+      depth: 2,
+      calls: ['extractValueFromNode'],
+      calledBy: ['runCLI', 'buildProjectGraph']
+    }, {
+      id: 'buildFileInternalGraph',
+      label: 'buildFileInternalGraph',
+      file: 'src/modes/file-graph.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: true,
+      depth: 1,
+      calls: ['parseFile', 'normalizePathForDisplay', 'collectDeclarationsRecursive', 'walk'],
+      calledBy: ['runCLI']
+    }, {
+      id: 'validateAndResolvePath',
+      label: 'validateAndResolvePath',
+      file: 'src/core/ast-parser.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 3,
+      calls: ['resolveAbsolutePath'],
+      calledBy: ['parseFile']
+    }, {
+      id: 'parseVueSFCFile',
+      label: 'parseVueSFCFile',
+      file: 'src/core/ast-parser.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: true,
+      depth: 3,
+      calls: ['resolveAbsolutePath', 'parseVueSFC'],
+      calledBy: ['parseFile']
+    }, {
+      id: 'resolveAbsolutePath',
+      label: 'resolveAbsolutePath',
+      file: 'src/core/ast-parser.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 4,
+      calls: [],
+      calledBy: ['validateAndResolvePath', 'parseVueSFCFile']
+    }, {
+      id: 'isArraySafe',
+      label: 'isArraySafe',
+      file: 'src/core/entity-extractor.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 3,
+      calls: [],
+      calledBy: ['extractEntities', 'extractValue']
+    }, {
+      id: 'getNodeType',
+      label: 'getNodeType',
+      file: 'src/core/entity-extractor.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 3,
+      calls: [],
+      calledBy: ['extractEntities']
+    }, {
+      id: 'getNodeLocation',
+      label: 'getNodeLocation',
+      file: 'src/core/entity-extractor.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 3,
+      calls: [],
+      calledBy: ['extractEntities']
+    }, {
+      id: 'isNodeExported',
+      label: 'isNodeExported',
+      file: 'src/core/entity-extractor.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 3,
+      calls: [],
+      calledBy: ['extractEntities']
+    }, {
+      id: 'isEventHandler',
+      label: 'isEventHandler',
+      file: 'src/core/entity-extractor.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 3,
+      calls: [],
+      calledBy: ['extractEntities']
+    }, {
+      id: 'extractEventType',
+      label: 'extractEventType',
+      file: 'src/core/entity-extractor.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 3,
+      calls: [],
+      calledBy: ['extractEntities']
+    }, {
+      id: 'extractBodyText',
+      label: 'extractBodyText',
+      file: 'src/core/entity-extractor.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 3,
+      calls: ['String'],
+      calledBy: ['extractEntities']
+    }, {
+      id: 'extractValue',
+      label: 'extractValue',
+      file: 'src/core/entity-extractor.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 3,
+      calls: ['isArraySafe'],
+      calledBy: ['extractEntities']
+    }, {
+      id: 'collectCallsFromBody',
+      label: 'collectCallsFromBody',
+      file: 'src/core/entity-extractor.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 3,
+      calls: [],
+      calledBy: ['extractEntities']
+    }, {
+      id: 'traverseNode',
+      label: 'traverseNode',
+      file: 'src/core/entity-extractor.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 3,
+      calls: [],
+      calledBy: ['extractEntities']
+    }, {
+      id: 'traverse',
+      label: 'traverse (AST)',
+      file: 'src/core/minifier.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 4,
+      calls: [],
+      calledBy: ['collectAllNodes']
+    }, {
+      id: 'shouldPreserveValue',
+      label: 'shouldPreserveValue',
+      file: 'src/core/minifier.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 3,
+      calls: [],
+      calledBy: ['minifyCodeString']
+    }, {
+      id: 'normalizePathForOS',
+      label: 'normalizePathForOS',
+      file: 'src/utils/path-utils.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: true,
+      depth: 2,
+      calls: [],
+      calledBy: ['runCLI', 'parseArgs', 'loadTsConfig', 'resolveAliasPath']
+    }, {
+      id: 'showHelp',
+      label: 'showHelp',
+      file: 'src/utils.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: true,
+      depth: 2,
+      calls: [],
+      calledBy: ['parseArgs']
+    }, {
+      id: 'parseInt',
+      label: 'parseInt',
+      file: 'global',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 2,
+      calls: [],
+      calledBy: ['runCLI', 'parseArgs']
+    }, {
+      id: 'setTsConfigPath',
+      label: 'setTsConfigPath',
+      file: 'src/core/tsconfig-resolver.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: true,
+      depth: 1,
+      calls: [],
+      calledBy: ['runCLI']
+    }, {
+      id: 'loadTsConfig',
+      label: 'loadTsConfig',
+      file: 'src/core/tsconfig-resolver.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: true,
+      depth: 1,
+      calls: ['normalizePathForOS'],
+      calledBy: ['runCLI']
+    }, {
+      id: 'runHybridReport',
+      label: 'runHybridReport',
+      file: 'src/modes/hybrid-report/cli.ts',
+      type: 'detail',
+      isAsync: true,
+      isExported: true,
+      depth: 1,
+      calls: ['buildHybridReport', 'generateHybridMarkdown', 'generateHybridDOT', 'generateHybridHTML',
+        'buildFileInternalGraph', 'String', 'findCyclicEdges', 'convertToDOT'
+      ],
+      calledBy: ['runCLI']
+    }, {
+      id: 'generateInteractiveHTML',
+      label: 'generateInteractiveHTML',
+      file: 'src/reporters/interactive-reporter.ts',
+      type: 'detail',
+      isAsync: true,
+      isExported: true,
+      depth: 1,
+      calls: ['buildReportFromAnalysis', 'generateFullDOT', 'findWasmPath', 'String', 'escapeHtml'],
+      calledBy: ['runCLI']
+    }, {
+      id: 'saveFullAnalysis',
+      label: 'saveFullAnalysis',
+      file: 'src/reporters/json-reporter.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: true,
+      depth: 1,
+      calls: ['buildFullAnalysis'],
+      calledBy: ['runCLI']
+    }, {
+      id: 'findModuleForEntity',
+      label: 'findModuleForEntity',
+      file: 'src/cli.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 2,
+      calls: [],
+      calledBy: ['runCLI']
+    }, {
+      id: 'normalizePathForDisplay',
+      label: 'normalizePathForDisplay',
+      file: 'src/utils/path-utils.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: true,
+      depth: 2,
+      calls: [],
+      calledBy: ['runCLI', 'buildProjectGraph', 'buildFileInternalGraph']
+    }, {
+      id: 'findProjectRoot',
+      label: 'findProjectRoot',
+      file: 'src/cli.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 2,
+      calls: [],
+      calledBy: ['runCLI', 'buildProjectGraph']
+    }, {
+      id: 'resolveAbsoluteFilePath',
+      label: 'resolveAbsoluteFilePath',
+      file: 'src/cli.ts',
+      type: 'detail',
+      isAsync: false,
+      isExported: false,
+      depth: 2,
+      calls: [],
+      calledBy: ['runCLI', 'buildProjectGraph']
+    }],
+    // Рёбра: from → to
+    edges: [
+      // Главный путь
+      { from: 'runCLI', to: 'parseArgs' },
+      { from: 'runCLI', to: 'normalizePathForOS' },
+      { from: 'runCLI', to: 'setTsConfigPath' },
+      { from: 'runCLI', to: 'loadTsConfig' },
+      { from: 'runCLI', to: 'parseInt' },
+      { from: 'runCLI', to: 'runHybridReport' },
+      { from: 'runCLI', to: 'minifyForAI' },
+      { from: 'runCLI', to: 'buildProjectGraph' },
+      { from: 'runCLI', to: 'extractEntitiesFromFile' },
+      { from: 'runCLI', to: 'buildFileInternalGraph' },
+      { from: 'runCLI', to: 'parseFile' },
+      { from: 'runCLI', to: 'extractEntities' },
+      { from: 'runCLI', to: 'generateInteractiveHTML' },
+      { from: 'runCLI', to: 'saveFullAnalysis' },
+      { from: 'runCLI', to: 'findModuleForEntity' },
+      { from: 'runCLI', to: 'normalizePathForDisplay' },
+      { from: 'runCLI', to: 'findProjectRoot' },
+      { from: 'runCLI', to: 'resolveAbsoluteFilePath' },
+
+      // Путь к collectAllNodes
+      { from: 'minifyForAI', to: 'parseFile' },
+      { from: 'minifyForAI', to: 'minifyCodeString' },
+      { from: 'minifyCodeString', to: 'collectAllNodes' },
+      { from: 'minifyCodeString', to: 'shouldPreserveValue' },
+      { from: 'collectAllNodes', to: 'traverse' },
+
+      // Путь через buildProjectGraph
+      { from: 'buildProjectGraph', to: 'parseFile' },
+      { from: 'buildProjectGraph', to: 'extractEntitiesFromFile' },
+      { from: 'buildProjectGraph', to: 'normalizePathForDisplay' },
+      { from: 'buildProjectGraph', to: 'findProjectRoot' },
+      { from: 'buildProjectGraph', to: 'resolveAbsoluteFilePath' },
+
+      // Детали parseFile
+      { from: 'parseFile', to: 'validateAndResolvePath' },
+      { from: 'parseFile', to: 'parseVueSFCFile' },
+      { from: 'validateAndResolvePath', to: 'resolveAbsolutePath' },
+      { from: 'parseVueSFCFile', to: 'resolveAbsolutePath' },
+
+      // Детали extractEntities
+      { from: 'extractEntities', to: 'isArraySafe' },
+      { from: 'extractEntities', to: 'getNodeType' },
+      { from: 'extractEntities', to: 'getNodeLocation' },
+      { from: 'extractEntities', to: 'isNodeExported' },
+      { from: 'extractEntities', to: 'isEventHandler' },
+      { from: 'extractEntities', to: 'extractEventType' },
+      { from: 'extractEntities', to: 'extractBodyText' },
+      { from: 'extractEntities', to: 'extractValue' },
+      { from: 'extractEntities', to: 'collectCallsFromBody' },
+      { from: 'extractEntities', to: 'traverseNode' },
+      { from: 'extractValue', to: 'isArraySafe' },
+
+      // Другие связи
+      { from: 'parseArgs', to: 'normalizePathForOS' },
+      { from: 'parseArgs', to: 'showHelp' },
+      { from: 'parseArgs', to: 'parseInt' },
+      { from: 'loadTsConfig', to: 'normalizePathForOS' },
+      { from: 'buildFileInternalGraph', to: 'parseFile' },
+      { from: 'buildFileInternalGraph', to: 'normalizePathForDisplay' },
+      { from: 'runHybridReport', to: 'buildFileInternalGraph' },
+      { from: 'extractEntitiesFromFile', to: 'extractValue' },
+    ]
+  };
+
+  // ============================================================
+  // 2. ПОСТРОЕНИЕ ГРАФА С Graphviz (DOT → SVG)
+  // ============================================================
+
+  let currentGraph = null;
+  let graphvizInstance = null;
+
+  // Цвета по типам
+  const colorMap = {
+    entry: { fill: '#f0883e', stroke: '#f0883e', text: '#0d1117' },
+    path: { fill: '#1f6feb', stroke: '#58a6ff', text: '#fff' },
+    detail: { fill: '#21262d', stroke: '#30363d', text: '#c9d1d9' },
+    async: { fill: '#7c3aed', stroke: '#a78bfa', text: '#fff' },
+    exported: { fill: '#be185d', stroke: '#f472b6', text: '#fff' },
+  };
+
+  // Определяем цвет узла
+  function getNodeColor(node) {
+    let type = node.type || 'detail';
+    if (node.isAsync) type = 'async';
+    if (node.isExported && type !== 'entry') type = 'exported';
+    // Для collectAllNodes и runCLI особый стиль
+    if (node.id === 'collectAllNodes') type = 'entry';
+    if (node.id === 'runCLI') type = 'entry';
+    return colorMap[type] || colorMap.detail;
+  }
+
+  // Строим DOT
+  function buildDOT(highlightNodeId, expandDepth) {
+    const nodes = graphData.nodes;
+    const edges = graphData.edges;
+
+    // Фильтруем узлы по глубине, если нужно
+    let filteredNodes = nodes;
+    if (expandDepth !== undefined) {
+      filteredNodes = nodes.filter(n => n.depth <= expandDepth);
+    }
+
+    // Собираем ID узлов, которые есть в фильтре
+    const nodeIds = new Set(filteredNodes.map(n => n.id));
+    const filteredEdges = edges.filter(e => nodeIds.has(e.from) && nodeIds.has(e.to));
+
+    let dot = 'digraph CallGraph {\n';
+    dot += '  rankdir=LR;\n';
+    dot += '  splines=true;\n';
+    dot += '  ranksep=1.2;\n';
+    dot += '  nodesep=0.8;\n';
+    dot += '  fontname="Segoe UI, sans-serif";\n';
+    dot += '  node [fontname="Segoe UI, sans-serif", shape=box, style="filled,rounded", fontsize=12];\n';
+    dot += '  edge [fontname="Segoe UI, sans-serif", fontsize=10, color="#30363d", arrowhead=normal];\n\n';
+
+    // Узлы
+    for (const node of filteredNodes) {
+      const color = getNodeColor(node);
+      const isHighlight = highlightNodeId && node.id === highlightNodeId;
+      const isPath = node.id === 'runCLI' || node.id === 'extractEntities' || node.id === 'collectAllNodes';
+      const penWidth = isHighlight ? 4 : (isPath ? 2.5 : 1);
+      const glow = isHighlight ? ', glow=1' : '';
+
+      // Экранируем label
+      let label = node.label;
+      if (node.isAsync) label += ' ⚡';
+      if (node.isExported) label += ' 📤';
+
+      // Добавляем файл в label
+      const fileName = node.file.split('/').pop() || node.file;
+      const fullLabel = `${label}\\n<font point-size="9" color="#8b949e">${fileName}</font>`;
+
+      dot += `  "${node.id}" [label=<${fullLabel}>, `;
+      dot += `fillcolor="${color.fill}", color="${color.stroke}", fontcolor="${color.text}", `;
+      dot += `penwidth=${penWidth}, margin="0.25,0.15"];\n`;
+    }
+
+    // Рёбра
+    for (const edge of filteredEdges) {
+      const isMainPath = (edge.from === 'runCLI' && edge.to === 'extractEntities') ||
+        (edge.from === 'extractEntities' && edge.to === 'isArraySafe') ||
+        (edge.from === 'minifyCodeString' && edge.to === 'collectAllNodes') ||
+        (edge.from === 'collectAllNodes' && edge.to === 'traverse');
+
+      const style = isMainPath ? 'style="bold", color="#58a6ff", penwidth=2.5' : '';
+      dot += `  "${edge.from}" -> "${edge.to}" [${style}];\n`;
+    }
+
+    dot += '}\n';
+    return dot;
+  }
+
+  // Отрисовка графа
+  async function renderGraph(highlightId, expandDepth) {
+    const dot = buildDOT(highlightId, expandDepth);
+    const container = document.getElementById('graphContainer');
+
+    try {
+      if (!graphvizInstance) {
+      console.log('dddddddddddddddddd', window)
+      debugger
+        graphvizInstance = await Graphviz.load();
+      }
+      const svg = await graphvizInstance.layout(dot, 'svg', 'dot');
+      container.innerHTML = svg;
+      // Добавляем обработчики на SVG
+      attachSVGHandlers(container);
+
+      // Обновляем статистику
+      updateStats();
+    } catch (err) {
+      console.error('Graphviz error:', err);
+      container.innerHTML =
+        `<div style="color:#f85149;padding:40px;text-align:center;">❌ Ошибка построения графа: ${err.message}</div>`;
+    }
+  }
+
+  // ============================================================
+  // 3. ИНТЕРАКТИВНОСТЬ: клик, тултип, подсветка, поиск
+  // ============================================================
+
+  let selectedNodeId = null;
+
+  function attachSVGHandlers(container) {
+    const svg = container.querySelector('svg');
+    if (!svg) return;
+
+    // Находим все группы узлов (обычно <g> с title или id)
+    const nodes = svg.querySelectorAll('g.node');
+    const tooltip = document.getElementById('tooltip');
+
+    nodes.forEach(g => {
+      // Ищем title внутри группы
+      const titleEl = g.querySelector('title');
+      if (!titleEl) return;
+
+      const nodeId = titleEl.textContent?.trim() || '';
+      const nodeData = graphData.nodes.find(n => n.id === nodeId);
+      if (!nodeData) return;
+
+      // Делаем кликабельным
+      g.style.cursor = 'pointer';
+      g.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectedNodeId = nodeId;
+        highlightNode(nodeId);
+        showTooltip(e, nodeData);
+      });
+
+      g.addEventListener('mouseenter', (e) => {
+        showTooltip(e, nodeData);
+      });
+
+      g.addEventListener('mouseleave', () => {
+        tooltip.classList.remove('visible');
+      });
+
+      g.addEventListener('mousemove', (e) => {
+        updateTooltipPosition(e, tooltip);
+      });
+    });
+
+    // Клик по фону — сброс
+    svg.addEventListener('click', () => {
+      selectedNodeId = null;
+      highlightNode(null);
+      tooltip.classList.remove('visible');
+    });
+  }
+
+  function highlightNode(nodeId) {
+    const container = document.getElementById('graphContainer');
+    const svg = container.querySelector('svg');
+    if (!svg) return;
+
+    const allNodes = svg.querySelectorAll('g.node');
+    allNodes.forEach(g => {
+      const titleEl = g.querySelector('title');
+      if (!titleEl) return;
+      const id = titleEl.textContent?.trim() || '';
+      if (nodeId && id === nodeId) {
+        g.setAttribute('filter', 'url(#glow)');
+        // Находим rect и меняем stroke
+        const rect = g.querySelector('rect');
+        if (rect) {
+          rect.setAttribute('stroke', '#58a6ff');
+          rect.setAttribute('stroke-width', '3');
+        }
+      } else {
+        g.removeAttribute('filter');
+        const rect = g.querySelector('rect');
+        if (rect) {
+          // Восстанавливаем цвет из данных
+          const nodeData = graphData.nodes.find(n => n.id === id);
+          if (nodeData) {
+            const color = getNodeColor(nodeData);
+            rect.setAttribute('stroke', color.stroke);
+            rect.setAttribute('stroke-width', '1');
+          }
+        }
+      }
+    });
+
+    // Обновляем панель шагов
+    updateSteps(nodeId);
+  }
+
+  // ============================================================
+  // 4. ТУЛТИП
+  // ============================================================
+
+  function showTooltip(e, node) {
+    const tip = document.getElementById('tooltip');
+    document.getElementById('tipName').textContent = node.label + (node.isAsync ? ' ⚡' : '');
+    document.getElementById('tipFile').innerHTML = `<code>${node.file}</code>`;
+
+    const meta = document.getElementById('tipMeta');
+    meta.innerHTML = `
+                <span class="${node.isExported ? 'highlight' : ''}">${node.isExported ? '📤 Экспортирована' : '🔒 Локальная'}</span>
+                <span>${node.isAsync ? '⚡ Асинхронная' : '⏱ Синхронная'}</span>
+                <span>📏 Глубина: ${node.depth}</span>
+                <span>📂 ${node.calls?.length || 0} вызовов</span>
+            `;
+
+    const calls = document.getElementById('tipCalls');
+    if (node.calls && node.calls.length > 0) {
+      calls.innerHTML = `📞 Вызывает: ${node.calls.slice(0, 8).map(c => `<code>${c}</code>`).join(', ')}${node.calls.length > 8 ? ` … +${node.calls.length - 8}` : ''}`;
+    } else {
+      calls.textContent = '📭 Не вызывает другие функции';
+    }
+
+    tip.classList.add('visible');
+    updateTooltipPosition(e, tip);
+  }
+
+  function updateTooltipPosition(e, tip) {
+    let x = e.clientX + 16;
+    let y = e.clientY + 16;
+    const rect = tip.getBoundingClientRect();
+    if (x + rect.width > window.innerWidth - 20) {
+      x = e.clientX - rect.width - 16;
+    }
+    if (y + rect.height > window.innerHeight - 20) {
+      y = window.innerHeight - rect.height - 20;
+    }
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+  }
+
+  // ============================================================
+  // 5. ПАНЕЛЬ ШАГОВ
+  // ============================================================
+
+  function updateSteps(activeId) {
+    const steps = document.querySelectorAll('.step');
+    const pathIds = ['runCLI', 'extractEntities', 'collectAllNodes'];
+    steps.forEach((step, index) => {
+      step.classList.remove('active', 'done');
+      const text = step.textContent.trim();
+      // Определяем, какой шаг соответствует активному узлу
+      if (activeId) {
+        if (text.includes('runCLI') && activeId === 'runCLI') {
+          step.classList.add('active');
+        } else if (text.includes('extractEntities') && activeId === 'extractEntities') {
+          step.classList.add('active');
+        } else if (text.includes('collectAllNodes') && activeId === 'collectAllNodes') {
+          step.classList.add('active');
+        } else if (pathIds.includes(activeId) && text.includes(activeId)) {
+          step.classList.add('active');
+        }
+      }
+      // Если шаг пройден
+      if (activeId) {
+        const idx = pathIds.indexOf(activeId);
+        if (idx !== -1 && index <= idx * 2) {
+          if (!step.classList.contains('active') && !step.classList.contains('arrow')) {
+            step.classList.add('done');
+          }
+        }
+      }
+    });
+  }
+
+  // ============================================================
+  // 6. ПОИСК
+  // ============================================================
+
+  document.getElementById('searchInput').addEventListener('input', function() {
+    const query = this.value.toLowerCase().trim();
+    const container = document.getElementById('graphContainer');
+    const svg = container.querySelector('svg');
+    if (!svg) return;
+
+    const allNodes = svg.querySelectorAll('g.node');
+    allNodes.forEach(g => {
+      const titleEl = g.querySelector('title');
+      if (!titleEl) return;
+      const text = titleEl.textContent?.toLowerCase() || '';
+      const match = !query || text.includes(query);
+      g.style.opacity = match ? '1' : '0.15';
+      if (match && query) {
+        // Подсвечиваем найденные
+        const rect = g.querySelector('rect');
+        if (rect) {
+          rect.setAttribute('stroke', '#f0883e');
+          rect.setAttribute('stroke-width', '2');
+        }
+      } else if (!query) {
+        const rect = g.querySelector('rect');
+        if (rect) {
+          const id = titleEl.textContent?.trim() || '';
+          const nodeData = graphData.nodes.find(n => n.id === id);
+          if (nodeData) {
+            const color = getNodeColor(nodeData);
+            rect.setAttribute('stroke', color.stroke);
+            rect.setAttribute('stroke-width', '1');
+          }
+        }
+      }
+    });
+  });
+
+  // ============================================================
+  // 7. УПРАВЛЕНИЕ
+  // ============================================================
+
+  // Сброс
+  document.getElementById('btnReset').addEventListener('click', () => {
+    document.getElementById('searchInput').value = '';
+    selectedNodeId = null;
+    renderGraph(null, undefined);
+    highlightNode(null);
+    const tip = document.getElementById('tooltip');
+    tip.classList.remove('visible');
+  });
+
+  // Подсветить путь
+  document.getElementById('btnHighlightPath').addEventListener('click', () => {
+    // Последовательно подсвечиваем узлы пути
+    const path = ['runCLI', 'extractEntities', 'collectAllNodes'];
+    let idx = 0;
+    const interval = setInterval(() => {
+      if (idx >= path.length) {
+        clearInterval(interval);
+        return;
+      }
+      highlightNode(path[idx]);
+      // Перерисовываем с подсветкой
+      renderGraph(path[idx], undefined);
+      // Обновляем тултип для последнего
+      if (idx === path.length - 1) {
+        const nodeData = graphData.nodes.find(n => n.id === path[idx]);
+        if (nodeData) {
+          const fakeEvent = { clientX: window.innerWidth / 2, clientY: 100 };
+          showTooltip(fakeEvent, nodeData);
+        }
+      }
+      idx++;
+    }, 800);
+  });
+
+  // Развернуть все
+  document.getElementById('btnExpandAll').addEventListener('click', () => {
+    renderGraph(selectedNodeId, undefined);
+  });
+
+  // Свернуть все (показать только глубину 0-2)
+  document.getElementById('btnCollapseAll').addEventListener('click', () => {
+    renderGraph(selectedNodeId, 2);
+  });
+
+  // ============================================================
+  // 8. СТАТИСТИКА
+  // ============================================================
+
+  function updateStats() {
+    const nodes = graphData.nodes;
+    const edges = graphData.edges;
+
+    document.getElementById('totalNodes').textContent = nodes.length;
+    document.getElementById('statTotal').textContent = nodes.length;
+    document.getElementById('statEdges').textContent = edges.length;
+    document.getElementById('statAsync').textContent = nodes.filter(n => n.isAsync).length;
+    document.getElementById('statExported').textContent = nodes.filter(n => n.isExported).length;
+    document.getElementById('nodeCount').textContent = `Узлов: ${nodes.length}`;
+
+    const maxDepth = Math.max(...nodes.map(n => n.depth));
+    document.getElementById('maxDepth').textContent = maxDepth;
+  }
+
+  // ============================================================
+  // 9. ИНИЦИАЛИЗАЦИЯ
+  // ============================================================
+
+  renderGraph(null, undefined);
+
+  // Обработка ресайза
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      renderGraph(selectedNodeId, undefined);
+    }, 300);
+  });
+
+  // Закрытие тултипа по Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      document.getElementById('tooltip').classList.remove('visible');
+    }
+  });
+
+  console.log('🔍 Интерактивный граф загружен!');
+  console.log(`📊 Всего узлов: ${graphData.nodes.length}, рёбер: ${graphData.edges.length}`);
+</script>
+
+</body>
+</html>

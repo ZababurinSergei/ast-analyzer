@@ -3,844 +3,779 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>🕸 Graph Navigator — package-lock-report.json</title>
+  <title>Graph Navigator — package-lock-report.json</title>
   <style>
-      :root{--bg:#0b1220;--panel:#101a2e;--panel2:#0d1526;--border:#1e2c47;--text:#dbe6f7;--muted:#7c8db0;--accent:#22d3ee;--green:#10b981;--amber:#f59e0b;--violet:#8b5cf6}
+      :root{
+          --bg:#0d1117; --bg2:#151b23; --bg3:#1c2430; --line:#2b3646;
+          --tx:#e6edf3; --tx2:#93a1b3; --acc:#58a6ff; --grn:#34d399;
+          --org:#f0a35e; --pnk:#e879a0; --yel:#ffd75e; --gry:#6b7280;
+      }
       *{box-sizing:border-box}
-      html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:13px/1.4 "Segoe UI",Roboto,Arial,sans-serif;overflow:hidden}
-      header{height:52px;display:flex;align-items:center;gap:8px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--border);overflow-x:auto;white-space:nowrap}
-      header .logo{font-weight:700}
-      header .filechip{font-size:11px;color:var(--muted);background:var(--panel2);border:1px solid var(--border);padding:2px 8px;border-radius:20px}
-      .btn{background:#182642;border:1px solid #2a3c63;color:var(--text);padding:4px 9px;border-radius:7px;cursor:pointer;font-size:12px}
-      .btn:hover{background:#22345c}
-      .btn.active{background:#0e7490;border-color:#22d3ee;color:#fff}
-      .group{display:flex;gap:3px;align-items:center;background:var(--panel2);padding:3px;border-radius:9px;border:1px solid var(--border)}
-      .group label{font-size:11px;color:var(--muted);padding:0 5px}
-      select{background:#0a1120;border:1px solid #2a3c63;color:var(--text);border-radius:7px;padding:4px 6px;font-size:12px;outline:none}
-      #focusChip{font-size:11px;background:#082f49;border:1px solid #0e7490;color:#a5f3fc;padding:3px 9px;border-radius:20px;max-width:230px;overflow:hidden;text-overflow:ellipsis}
-      #searchWrap{position:relative}
-      #search{background:#0a1120;border:1px solid #2a3c63;color:var(--text);border-radius:7px;padding:5px 9px;width:180px;outline:none;font-size:12px}
-      #search:focus{border-color:var(--accent)}
-      #searchDrop{position:absolute;top:34px;left:0;width:320px;max-height:300px;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:9px;z-index:50;display:none;box-shadow:0 12px 30px rgba(0,0,0,.5)}
-      #searchDrop .it{padding:6px 10px;cursor:pointer;display:flex;gap:7px;align-items:center;border-bottom:1px solid #16223a;font-size:12px}
-      #searchDrop .it:hover{background:#1a2a4d}
-      #searchDrop .it .sub{color:var(--muted);font-size:10px;margin-left:auto;max-width:140px;overflow:hidden;text-overflow:ellipsis}
-      main{display:flex;height:calc(100% - 52px - 26px)}
-      aside{width:320px;min-width:320px;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:11px;font-size:12.5px}
-      aside h2{font-size:14px;margin:2px 0 7px;word-break:break-all}
-      aside h3{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:13px 0 5px}
-      .badge{display:inline-block;font-size:10px;padding:1px 7px;border-radius:11px;margin:2px 3px 2px 0;border:1px solid var(--border);background:var(--panel2)}
-      .badge.b-async{color:#fcd34d;border-color:#92600e}
-      .badge.b-exp{color:#6ee7b7;border-color:#0f7a58}
-      .badge.b-entry{color:#c4b5fd;border-color:#5b21b6}
-      .badge.b-ext{color:#94a3b8}
-      .row{display:flex;align-items:center;gap:7px;padding:4px 7px;border-radius:7px;cursor:pointer;border:1px solid transparent}
-      .row:hover{background:#16233f;border-color:#26385f}
-      .row .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
-      .row .sub2{color:var(--muted);font-size:10px;max-width:110px;overflow:hidden;text-overflow:ellipsis}
-      .row .go{color:var(--accent);font-size:12px}
-      .dot{width:8px;height:8px;border-radius:50%;flex:none}
-      .dot.mod{background:#3b82f6}.dot.fn{background:var(--green)}.dot.ext{background:#64748b}.dot.call{background:#34d399}
-      .muted{color:var(--muted);font-size:11.5px}
-      pre.body{background:#0a1120;border:1px solid var(--border);border-radius:7px;padding:7px;font-size:10px;overflow-x:auto;max-height:160px;color:#a7c4e8;white-space:pre-wrap;word-break:break-all}
-      .stats{display:grid;grid-template-columns:1fr 1fr;gap:3px;font-size:11.5px;color:var(--muted)}
-      .stats b{color:var(--text)}
-      #canvasWrap{flex:1;position:relative;overflow:hidden}
-      canvas{display:block;width:100%;height:100%;cursor:grab}
-      canvas.grabbing{cursor:grabbing}
-      #tooltip{position:absolute;pointer-events:none;background:rgba(8,14,28,.95);border:1px solid #2a3c63;color:var(--text);padding:5px 9px;border-radius:7px;font-size:11px;display:none;z-index:30;max-width:320px}
-      #legend{position:absolute;left:10px;bottom:10px;background:rgba(13,21,38,.9);border:1px solid var(--border);border-radius:9px;padding:7px 10px;font-size:10.5px;display:flex;flex-direction:column;gap:4px;z-index:20}
-      #legend .li{display:flex;align-items:center;gap:6px;color:#b9c8e4}
-      .chip{width:10px;height:10px;border-radius:3px;flex:none}
-      #help{position:absolute;right:10px;bottom:10px;background:rgba(13,21,38,.92);border:1px solid var(--border);border-radius:9px;padding:9px 13px;font-size:11.5px;z-index:20;display:none;max-width:320px}
-      #help b{color:var(--accent)}
-      footer{height:26px;display:flex;align-items:center;gap:16px;padding:0 12px;background:var(--panel);border-top:1px solid var(--border);font-size:11px;color:var(--muted)}
-      #fallback{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;background:rgba(11,18,32,.96);z-index:60;text-align:center;padding:20px}
-      input[type=range]{accent-color:var(--accent);width:90px}
-      .chk{display:flex;align-items:center;gap:4px;font-size:11.5px;color:#b9c8e4;cursor:pointer}
+      html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);
+          font:14px/1.45 "Segoe UI",system-ui,sans-serif;overflow:hidden}
+      button,select,input{font:inherit;color:inherit;background:var(--bg3);
+          border:1px solid var(--line);border-radius:8px;padding:6px 10px;outline:none}
+      button{cursor:pointer;user-select:none}
+      button:hover{border-color:var(--acc)}
+      button:disabled{opacity:.4;cursor:default}
+      button.primary{background:#1f6feb33;border-color:#1f6feb}
+      button.toggled{background:#1f6feb55;border-color:var(--acc)}
+      header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+          padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--line)}
+      header h1{font-size:15px;margin:0 12px 0 0;font-weight:600}
+      header h1 span{color:var(--acc)}
+      #status{font-size:12px;color:var(--tx2);max-width:340px;white-space:nowrap;
+          overflow:hidden;text-overflow:ellipsis}
+      .tb-group{display:flex;align-items:center;gap:6px;padding:0 8px;
+          border-left:1px solid var(--line)}
+      main{display:flex;height:calc(100vh - 57px - 34px)}
+      #graph-wrap{position:relative;flex:1;min-width:0}
+      svg{width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+      svg:active{cursor:grabbing}
+      .overlay-card{position:absolute;background:#151b23ee;border:1px solid var(--line);
+          border-radius:10px;padding:8px;backdrop-filter:blur(4px)}
+      #zoombar{right:12px;top:12px;display:flex;flex-direction:column;gap:6px}
+      #walkbar{left:50%;transform:translateX(-50%);bottom:14px;display:none;
+          align-items:center;gap:8px;padding:8px 12px}
+      #walkbar.on{display:flex}
+      #walkPos{font-size:12px;color:var(--tx2);min-width:56px;text-align:center}
+      #legend{left:12px;bottom:12px;font-size:12px;color:var(--tx2)}
+      #legend .row{display:flex;align-items:center;gap:7px;margin:3px 0}
+      #legend i{width:11px;height:11px;border-radius:50%;display:inline-block}
+      #banner{display:none;position:absolute;left:50%;top:16px;transform:translateX(-50%);
+          z-index:5;text-align:center;gap:10px;align-items:center;padding:12px 16px}
+      #banner.on{display:flex}
+      aside{width:380px;min-width:380px;background:var(--bg2);border-left:1px solid var(--line);
+          overflow-y:auto;padding:14px}
+      aside h2{font-size:14px;margin:0 0 4px}
+      aside .path{font-size:11px;color:var(--tx2);word-break:break-all;margin-bottom:10px}
+      .badge{display:inline-block;font-size:11px;padding:1px 8px;border-radius:20px;
+          margin:0 4px 4px 0;border:1px solid var(--line);color:var(--tx2)}
+      .badge.entry{color:#052e1b;background:var(--grn);border-color:var(--grn);font-weight:600}
+      .badge.async{color:#2a1a00;background:var(--org);border-color:var(--org)}
+      .badge.exp{color:#001a33;background:var(--acc);border-color:var(--acc)}
+      section{margin:14px 0;border-top:1px solid var(--line);padding-top:10px}
+      section>h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;
+          color:var(--tx2);margin:0 0 8px}
+      .chip{display:inline-block;background:var(--bg3);border:1px solid var(--line);
+          border-radius:14px;padding:2px 10px;margin:2px;font-size:12px;cursor:pointer}
+      .chip:hover{border-color:var(--acc);color:var(--acc)}
+      .chip.mod{border-color:#2f6f57}
+      .chip.fn{border-color:#7c5a33}
+      .item{background:var(--bg3);border:1px solid var(--line);border-radius:8px;
+          padding:8px 10px;margin:6px 0}
+      .item .nm{font-weight:600}
+      .item .meta{font-size:11px;color:var(--tx2);margin:2px 0 4px}
+      .stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+      .stat{background:var(--bg3);border:1px solid var(--line);border-radius:8px;
+          padding:6px 8px;text-align:center}
+      .stat b{display:block;font-size:16px}
+      .stat span{font-size:10px;color:var(--tx2);text-transform:uppercase}
+      .btnrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+      footer{display:flex;align-items:center;gap:14px;height:34px;padding:0 14px;
+          background:var(--bg2);border-top:1px solid var(--line);font-size:12px;color:var(--tx2)}
+      #searchbox{position:relative}
+      #searchList{position:absolute;top:110%;left:0;z-index:20;background:var(--bg3);
+          border:1px solid var(--line);border-radius:8px;max-height:260px;overflow:auto;
+          min-width:280px;display:none}
+      #searchList.on{display:block}
+      #searchList div{padding:6px 10px;cursor:pointer;font-size:12px}
+      #searchList div:hover{background:#1f6feb33}
+      /* ---- SVG ---- */
+      .edge{fill:none;stroke-width:1.4;opacity:.45}
+      .edge.depends{stroke:#3fb68b}
+      .edge.calls{stroke:#e879a0}
+      .edge.contains{stroke:#5a6577;stroke-dasharray:3 3;opacity:.3}
+      .edge.hl{stroke:var(--yel)!important;stroke-width:2.4;opacity:1}
+      .edge.dim{opacity:.07}
+      .node{cursor:pointer}
+      .node circle{stroke:#0d1117;stroke-width:1.6}
+      .node text{fill:#cdd6e0;font-size:11px;text-anchor:middle;pointer-events:none;
+          paint-order:stroke;stroke:#0d1117;stroke-width:3px}
+      .node.dim{opacity:.18}
+      .node.selected circle{stroke:var(--yel);stroke-width:3.5}
+      .node.neighbor circle{stroke:#ffffff;stroke-width:2.2}
+      .node.current circle{stroke:var(--yel);stroke-width:4}
+      .node.walked circle{stroke:#b98a2e;stroke-width:2.4}
+      .node.pathnode circle{stroke:#ff9d5e;stroke-width:3}
+      .zoomed-out .node.function text{display:none}
+      #helpCard{display:none;right:12px;bottom:12px;font-size:12px;color:var(--tx2);max-width:280px}
+      #helpCard.on{display:block}
+      #helpCard b{color:var(--tx)}
   </style>
 </head>
 <body>
+
 <header>
-  <div class="logo">🕸 Граф</div>
-  <div class="filechip">./package-lock-report.json</div>
-  <div class="group">
-    <button class="btn" id="mModules">Модули</button>
-    <button class="btn" id="mFunctions">Функции</button>
-    <button class="btn" id="mHybrid">Гибрид</button>
+  <h1>⬢ Graph <span>Navigator</span></h1>
+  <div class="tb-group">
+    <button id="btnBack" title="Назад по истории (←)">◀ Назад</button>
+    <button id="btnFwd" title="Вперёд по истории (→)">Вперёд ▶</button>
   </div>
-  <div class="group">
-    <button class="btn" id="hBack" title="Назад по истории (←)">⬅</button>
-    <button class="btn" id="hFwd" title="Вперёд по истории (→)">➡</button>
-  </div>
-  <div class="group">
-    <button class="btn" id="dUp" title="Кто зависит / кто вызывает">◀ назад</button>
-    <button class="btn" id="dDown" title="Зависимости / вызовы">вперёд ▶</button>
-    <button class="btn" id="dBoth">⇄</button>
-  </div>
-  <div class="group">
-    <label>глубина <b id="depthVal" style="color:var(--text)">2</b></label>
-    <input type="range" id="depth" min="1" max="8" value="2"/>
-  </div>
-  <div class="group">
-    <label>подписи</label>
-    <select id="selLabels">
-      <option value="auto" selected>авто (зум/выбор)</option>
-      <option value="all">все</option>
-      <option value="sel">только выбранные</option>
-      <option value="none">скрыть</option>
+  <div class="tb-group">
+    <label style="font-size:12px;color:var(--tx2)">Режим</label>
+    <select id="modeSel">
+      <option value="hybrid" selected>🧬 Гибрид (модули + функции)</option>
+      <option value="modules">📦 Модули</option>
+      <option value="functions">⚙️ Функции</option>
+    </select>
+    <label style="font-size:12px;color:var(--tx2)">Направление</label>
+    <select id="dirSel" title="Направление обхода">
+      <option value="forward" selected>→ зависимости / вызовы</option>
+      <option value="backward">← зависимые / вызывающие</option>
     </select>
   </div>
-  <div id="searchWrap">
-    <input id="search" placeholder="🔎 поиск ( / )" autocomplete="off"/>
-    <div id="searchDrop"></div>
+  <div class="tb-group">
+    <button id="btnWalk" class="primary" title="Пошаговый обход от выбранного узла">▶ Обход</button>
+    <button id="btnExpandAll" title="Раскрыть функции всех модулей (гибрид)">⊞ Раскрыть всё</button>
+    <button id="btnCollapseAll" title="Свернуть функции">⊟ Свернуть всё</button>
+    <label style="font-size:12px;color:var(--tx2)">
+      <input type="checkbox" id="extChk" style="vertical-align:middle"/> внешние пакеты
+    </label>
   </div>
-  <div id="focusChip">—</div>
-  <label class="chk"><input type="checkbox" id="cbExt" checked/> внешние</label>
-  <button class="btn" id="btnFit">⛶</button>
-  <button class="btn" id="btnExpandAll">▾ всё</button>
-  <button class="btn" id="btnCollapseAll">▸ свернуть</button>
-  <button class="btn" id="btnReset">Сброс</button>
-  <button class="btn" id="btnHelp">?</button>
+  <div class="tb-group" id="searchbox">
+    <input id="searchInp" placeholder="🔍 поиск узла…" style="width:200px"/>
+    <div id="searchList"></div>
+  </div>
+  <div class="tb-group">
+    <button id="btnHelp" title="Подсказки">?</button>
+  </div>
+  <span id="status">загрузка…</span>
 </header>
+
 <main>
-  <aside><div id="sideContent"></div></aside>
-  <div id="canvasWrap">
-    <canvas id="cv"></canvas>
-    <div id="tooltip"></div>
-    <div id="legend">
-      <div class="li"><span class="chip" style="background:#5b21b6"></span> вход</div>
-      <div class="li"><span class="chip" style="background:#1e40af"></span> модуль</div>
-      <div class="li"><span class="chip" style="background:#2f3b52"></span> внешнее</div>
-      <div class="li"><span class="chip" style="background:#059669;border-radius:50%"></span> exported (★)</div>
-      <div class="li"><span class="chip" style="background:#46617f;border-radius:50%"></span> функция</div>
-      <div class="li"><span class="chip" style="background:none;border:2px solid #f59e0b"></span> async (⚡)</div>
+  <div id="graph-wrap">
+    <svg id="svg">
+      <defs>
+        <marker id="arr-dep" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#3fb68b"/></marker>
+        <marker id="arr-call" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e879a0"/></marker>
+        <marker id="arr-cont" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L10,5L0,10z" fill="#5a6577"/></marker>
+        <marker id="arr-hl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0L10,5L0,10z" fill="#ffd75e"/></marker>
+      </defs>
+      <g id="viewport"><g id="edges"></g><g id="nodes"></g></g>
+    </svg>
+
+    <div class="overlay-card" id="banner">
+      <span>fetch недоступен (file://). Выберите <b>package-lock-report.json</b> вручную или перетащите в окно.</span>
+      <button class="primary" onclick="document.getElementById('fileInp').click()">Выбрать файл</button>
     </div>
-    <div id="help">
+
+    <div class="overlay-card" id="zoombar">
+      <button id="zIn" title="Приблизить">＋</button>
+      <button id="zOut" title="Отдалить">－</button>
+      <button id="zFit" title="Вписать граф (F)">⛶</button>
+    </div>
+
+    <div class="overlay-card" id="walkbar">
+      <button id="wStart" title="В начало обхода">⏮</button>
+      <button id="wPrev" title="Шаг назад (↓)">◀</button>
+      <span id="walkPos">0 / 0</span>
+      <button id="wNext" title="Шаг вперёд (↑)">▶</button>
+      <button id="wAuto" title="Автопроигрывание">⏯</button>
+      <button id="wClose" title="Закрыть обход (Esc)">✕</button>
+    </div>
+
+    <div class="overlay-card" id="legend">
+      <div class="row"><i style="background:#34d399"></i> entry-модуль</div>
+      <div class="row"><i style="background:#58a6ff"></i> модуль</div>
+      <div class="row"><i style="background:#6b7280"></i> внешний пакет</div>
+      <div class="row"><i style="background:#f0a35e"></i> функция</div>
+      <div class="row"><i style="background:none;border:2px solid #ffd75e"></i> выбран / текущий шаг</div>
+    </div>
+
+    <div class="overlay-card" id="helpCard">
       <b>Управление</b><br>
-      • клик — выбрать, <b>dbl-click</b> — перейти вперёд (модуль в «Гибриде» — раскрыть/свернуть)<br>
-      • <b>←/→</b> — история переходов, <b>F</b> — вписать, <b>/</b> — поиск, <b>Esc</b> — снять выбор<br>
-      • списки слева: клик = переход (вперёд/назад)<br>
-      • приблизьте колесом — появятся подписи связей (режим «авто»)<br>
-      • наведите на узел — подсветятся его соседи и подписи
-    </div>
-    <div id="fallback">
-      <div style="font-size:16px">Не удалось загрузить <code>./package-lock-report.json</code> через fetch.</div>
-      <div class="muted">Откройте через http-сервер (<code>npx serve</code>) или выберите файл / перетащите его сюда:</div>
-      <button class="btn" id="btnOpenFile" style="font-size:14px;padding:8px 16px">📂 Открыть JSON</button>
-      <input type="file" id="fileInput" accept=".json,application/json" hidden/>
+      клик — выбрать узел • dbl-клик — раскрыть/свернуть функции модуля<br>
+      <b>Ctrl+клик</b> по двум узлам — найти путь<br>
+      колесо — зум • перетаскивание — панорама/узел<br>
+      <b>←/→</b> история • <b>↑/↓</b> шаги обхода • <b>F</b> вписать • <b>Esc</b> сброс
     </div>
   </div>
+
+  <aside id="panel"><div style="color:var(--tx2)">Загрузка данных…</div></aside>
 </main>
-<footer>
-  <span id="stMode">режим: —</span>
-  <span id="stNodes">узлов: —</span>
-  <span id="stEdges">связей: —</span>
-  <span id="stFocus">фокус: —</span>
-  <span style="margin-left:auto" id="stTotal"></span>
-</footer>
+
+<footer><span id="footStats"></span><span id="footHint" style="margin-left:auto">
+  Гибридный режим: двойной клик по модулю раскрывает его функции</span></footer>
+
+<input type="file" id="fileInp" accept=".json" hidden/>
 
 <script>
-  'use strict';
+  "use strict";
+  const $=s=>document.querySelector(s);
+  const svgNS="http://www.w3.org/2000/svg";
+  const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
   /* ============================== STATE ============================== */
-  const state = {
-    mode:'hybrid',
-    focusModule:null, focusFunction:null,
-    selected:null,
-    direction:'down',
-    depth:2,
-    labelMode:'auto',           // auto | all | sel | none
-    showExternal:true,
-    expanded:new Set(),
-    history:[], hIndex:-1
-  };
-  let DATA=null, G=null;
-  const nodeById=new Map();
-  let vis={nodes:[],edges:[],nodeSet:new Set()};
-  let alpha=0;
-  const view={x:0,y:0,k:0.8};
+  let DATA=null;
+  let NODES=[],EDGES=[],nodeMap=new Map(),edgeKeys=new Set();
+  let FUNC_INDEX=new Map(),EXPORT_INDEX=new Map();
+  let mode="hybrid",showExternal=false;
+  let expanded=new Set();
+  let selectedId=null,history=[],hIdx=-1;
+  let walk=null,autoTimer=null,pathSource=null,pathSet=null,pathEdgeSet=null;
+  let tx=0,ty=0,scale=1,alpha=1,needsRender=true,drag=null;
+  const REP=5200;
 
-  /* размеры/шрифты — компактные */
-  const MOD_W=112, MOD_H=32, MOD_R=52;
-  const FN_R=7, EXT_R=5.5;
-  const F_MOD='bold 10px "Segoe UI"', F_MODSUB='8px "Segoe UI"';
-  const F_FN='9px "Segoe UI"', F_EDGE='7.5px "Segoe UI"';
-  const HALO='rgba(9,14,26,.92)';
-
-  /* ============================== DOM ============================== */
-  const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
-  const tooltip=document.getElementById('tooltip');
-  const sideContent=document.getElementById('sideContent');
-  const searchInput=document.getElementById('search'), searchDrop=document.getElementById('searchDrop');
-  let dpr=window.devicePixelRatio||1;
-  function resize(){
-    const r=cv.parentElement.getBoundingClientRect();
-    dpr=window.devicePixelRatio||1;
-    cv.width=Math.max(50,r.width*dpr); cv.height=Math.max(50,r.height*dpr);
+  /* ============================== LOAD ============================== */
+  function setStatus(t,warn){const s=$("#status");s.textContent=t;s.style.color=warn?"#f87171":"var(--tx2)";}
+  async function loadData(){
+    try{
+      const r=await fetch("./package-lock-report.json",{cache:"no-store"});
+      if(!r.ok)throw new Error("HTTP "+r.status);
+      DATA=await r.json();
+      $("#banner").classList.remove("on");
+      setStatus("✓ ./package-lock-report.json ("+new Date(DATA.timestamp||Date.now()).toLocaleString()+")");
+      init();
+    }catch(e){
+      setStatus("fetch не удался — выберите файл",true);
+      $("#banner").classList.add("on");
+    }
   }
-  window.addEventListener('resize',resize);
+  function readPickedFile(f){
+    const rd=new FileReader();
+    rd.onload=()=>{try{DATA=JSON.parse(rd.result);$("#banner").classList.remove("on");
+      setStatus("✓ загружено: "+f.name);init();}catch(err){setStatus("Ошибка JSON: "+err.message,true);}};
+    rd.readAsText(f);
+  }
+  $("#fileInp").addEventListener("change",e=>{if(e.target.files[0])readPickedFile(e.target.files[0]);});
+  window.addEventListener("dragover",e=>e.preventDefault());
+  window.addEventListener("drop",e=>{e.preventDefault();if(e.dataTransfer.files[0])readPickedFile(e.dataTransfer.files[0]);});
 
-  function short(s,max){ s=String(s??''); return s.length>max? s.slice(0,max-1)+'…':s; }
-  function baseName(p){ return String(p??'').split('/').pop(); }
+  /* ============================== INDEXES ============================== */
+  function buildIndexes(){
+    FUNC_INDEX.clear();EXPORT_INDEX.clear();
+    for(const[file,pkg]of Object.entries(DATA.packages||{})){
+      for(const f of pkg.entities?.functions||[]){
+        if(!FUNC_INDEX.has(f.name))FUNC_INDEX.set(f.name,[]);
+        FUNC_INDEX.get(f.name).push(file);
+      }
+      for(const nm of Object.keys(pkg.exports||{})){
+        if(!EXPORT_INDEX.has(nm))EXPORT_INDEX.set(nm,[]);
+        EXPORT_INDEX.get(nm).push(file);
+      }
+    }
+  }
+  function resolveCall(file,name){
+    const pkg=DATA.packages[file];
+    if(pkg?.entities?.functions?.some(f=>f.name===name))return file;
+    for(const d of DATA.dependencyGraph?.inwardDependencies?.[file]||[]){
+      const dp=DATA.packages[d];if(!dp)continue;
+      if(dp.exports&&name in dp.exports)return d;
+      if(dp.entities?.functions?.some(f=>f.name===name))return d;
+    }
+    const g=EXPORT_INDEX.get(name);if(g&&g.length)return g[0];
+    const gf=FUNC_INDEX.get(name);if(gf&&gf.length===1)return gf[0];
+    return null;
+  }
 
   /* ============================== BUILD GRAPH ============================== */
-  function buildGraph(data){
-    nodeById.clear();
-    G={modules:new Map(),moduleEdges:[],functions:new Map(),fnEdges:[],fnByName:new Map(),extFns:new Map()};
-    const inward=data.dependencyGraph?.inwardDependencies||{};
-    const outward=data.dependencyGraph?.outwardDependencies||{};
-    for(const [name,pkg] of Object.entries(data.packages||{})){
-      const m={id:'mod::'+name,type:'module',name,modName:name,pkg,r:MOD_R,collide:58,
-        deps:[...new Set(inward[name]||[])],dependents:[...new Set(outward[name]||[])]};
-      G.modules.set(name,m); nodeById.set(m.id,m);
-    }
-    for(const deps of Object.values(inward)) for(const b of deps){
-      const id='mod::'+b;
-      if(!G.modules.has(b)&&!nodeById.has(id))
-        nodeById.set(id,{id,type:'module',external:true,name:b,modName:b,r:MOD_R-8,collide:50,deps:[],dependents:[]});
-    }
-    const meSet=new Set();
-    const addModEdge=(a,b)=>{const key='mod::'+a+'>mod::'+b;
-      if(!meSet.has(key)){meSet.add(key);G.moduleEdges.push({source:'mod::'+a,target:'mod::'+b,type:'dep'});}};
-    for(const [a,deps] of Object.entries(inward)) for(const b of deps) addModEdge(a,b);
-    for(const [b,cons] of Object.entries(outward)) for(const a of cons) addModEdge(a,b);
-
-    for(const [modName,pkg] of Object.entries(data.packages||{})){
-      for(const f of (pkg.entities?.functions||[])){
-        const id='fn::'+modName+'::'+f.name;
-        const n={...f,id,type:'function',module:modName,r:FN_R,collide:22,
-          calls:f.calls||[],calledBy:f.calledBy||[]};
-        G.functions.set(id,n); nodeById.set(id,n);
-        if(!G.fnByName.has(f.name)) G.fnByName.set(f.name,[]);
-        G.fnByName.get(f.name).push(id);
-      }
-    }
-    function resolveCallee(caller,name){
-      const cands=G.fnByName.get(name)||[];
-      if(!cands.length) return 'ext::'+name;
-      let c=cands.find(id=>G.functions.get(id).module===caller.module); if(c) return c;
-      const deps=G.modules.get(caller.module)?.deps||[];
-      c=cands.find(id=>deps.includes(G.functions.get(id).module)); if(c) return c;
-      return cands[0];
-    }
-    function resolveCaller(callee,name){
-      const cands=G.fnByName.get(name)||[];
-      if(!cands.length) return 'ext::'+name;
-      let c=cands.find(id=>G.functions.get(id).module===callee.module); if(c) return c;
-      c=cands.find(id=>(G.modules.get(G.functions.get(id).module)?.deps||[]).includes(callee.module)); if(c) return c;
-      return cands[0];
-    }
-    G.resolveCallee=resolveCallee; G.resolveCaller=resolveCaller;
-    const feSet=new Set();
-    function addFnEdge(s,t,label){
-      if(s===t) return;
-      const key=s+'>'+t; if(feSet.has(key)) return; feSet.add(key);
-      for(const id of [s,t]) if(id.startsWith('ext::')&&!G.extFns.has(id)){
-        const n={id,type:'external',name:id.slice(5),r:EXT_R,collide:18};
-        G.extFns.set(id,n); nodeById.set(id,n);
-      }
-      G.fnEdges.push({source:s,target:t,type:'call',label});
-    }
-    for(const f of G.functions.values()){
-      for(const c of f.calls)   addFnEdge(f.id,resolveCallee(f,c),f.name+' → '+c);
-      for(const cb of f.calledBy) addFnEdge(resolveCaller(f,cb),f.id,cb+' → '+f.name);
-    }
-    G.modAdj=buildAdj(G.moduleEdges);
-    G.fnAdj=buildAdj(G.fnEdges);
+  function addNode(n){
+    if(nodeMap.has(n.id))return nodeMap.get(n.id);
+    const old=nodeMap.get(n.id);
+    NODES.push(n);nodeMap.set(n.id,n);return n;
   }
-  function buildAdj(edges){
-    const adj=new Map();
-    for(const e of edges){
-      if(!adj.has(e.source)) adj.set(e.source,{out:[],inc:[]});
-      if(!adj.has(e.target)) adj.set(e.target,{out:[],inc:[]});
-      adj.get(e.source).out.push(e.target);
-      adj.get(e.target).inc.push(e.source);
-    }
-    return adj;
+  function addEdge(s,t,type){
+    if(s===t)return;
+    const k=s+"|"+t+"|"+type;
+    if(edgeKeys.has(k))return;
+    edgeKeys.add(k);EDGES.push({source:s,target:t,type});
   }
-
-  /* ============================== VISIBILITY ============================== */
-  function bfs(start,adj,direction,depth){
-    const visSet=new Set([start]),dm=new Map([[start,0]]);
-    let frontier=[start];
-    for(let d=0;d<depth;d++){
-      const next=[];
-      for(const id of frontier){
-        const a=adj.get(id)||{out:[],inc:[]};
-        const nbs=[...(direction!=='up'?a.out:[]),...(direction!=='down'?a.inc:[])];
-        for(const nb of nbs) if(!visSet.has(nb)){visSet.add(nb);dm.set(nb,d+1);next.push(nb);}
-      }
-      frontier=next;
-      if(!frontier.length) break;
-    }
-    return {vis:visSet,depthMap:dm};
+  function moduleColor(id){
+    const pkg=DATA.packages[id];
+    if(pkg?.isEntry)return"#34d399";
+    const seg=id.split("/")[1]||id.split("/")[0]||"root";
+    const pal=["#58a6ff","#7aa2f7","#4fb8c9","#8f7ee6","#5fa8d3","#6d9eeb","#4aa3a0","#7f9cf5"];
+    let h=0;for(const c of seg)h=(h*31+c.charCodeAt(0))>>>0;
+    return pal[h%pal.length];
   }
-  function computeVisible(){
-    const nodes=[],edges=[],set=new Set();
-    const addN=id=>{const n=nodeById.get(id); if(n&&!set.has(id)){set.add(id);nodes.push(n);}};
-    if(state.mode==='modules'&&state.focusModule){
-      bfs(state.focusModule,G.modAdj,state.direction,state.depth).vis.forEach(id=>{
-        if(!state.showExternal&&nodeById.get(id)?.external) return; addN(id);});
-      for(const e of G.moduleEdges) if(set.has(e.source)&&set.has(e.target)) edges.push(e);
-    } else if(state.mode==='functions'&&state.focusFunction){
-      bfs(state.focusFunction,G.fnAdj,state.direction,state.depth).vis.forEach(id=>{
-        if(!state.showExternal&&nodeById.get(id)?.type==='external') return; addN(id);});
-      for(const e of G.fnEdges) if(set.has(e.source)&&set.has(e.target)) edges.push(e);
-    } else if(state.mode==='hybrid'&&state.focusModule){
-      bfs(state.focusModule,G.modAdj,state.direction,state.depth).vis.forEach(id=>{
-        if(!state.showExternal&&nodeById.get(id)?.external) return; addN(id);});
-      for(const e of G.moduleEdges) if(set.has(e.source)&&set.has(e.target)) edges.push(e);
-      for(const mId of [...set]){
-        if(!mId.startsWith('mod::')) continue;
-        const modName=mId.slice(5), m=nodeById.get(mId);
-        if(m?.external||!state.expanded.has(modName)) continue;
-        for(const [fid,f] of G.functions) if(f.module===modName) addN(fid);
+  function rebuild(){
+    const oldPos=new Map();for(const n of NODES)oldPos.set(n.id,{x:n.x,y:n.y});
+    NODES=[];EDGES=[];nodeMap.clear();edgeKeys=new Set();
+    const pkgs=DATA.packages||{};
+    const inward=DATA.dependencyGraph?.inwardDependencies||{};
+    for(const id of Object.keys(pkgs))
+      addNode({id,label:id.split("/").pop(),type:"module",full:id,r:0});
+    const externals=new Set();
+    for(const deps of Object.values(inward))for(const d of deps)if(!pkgs[d])externals.add(d);
+    if(showExternal)for(const id of externals)addNode({id,label:id,type:"external",r:9});
+    for(const[src,deps]of Object.entries(inward))
+      for(const d of deps)
+        if(nodeMap.has(src)&&nodeMap.has(d))addEdge(src,d,"depends");
+    if(mode==="functions"||mode==="hybrid"){
+      for(const[file,pkg]of Object.entries(pkgs)){
+        if(mode==="hybrid"&&!expanded.has(file))continue;
+        for(const f of pkg.entities?.functions||[])
+          addNode({id:file+"::"+f.name,label:f.name,type:"function",file,fn:f,r:7});
       }
-      for(const e of G.fnEdges) if(set.has(e.source)&&set.has(e.target)) edges.push(e);
-    }
-    vis={nodes,edges,nodeSet:set};
-    assignInitialPositions();
-    const keys=new Set(edges.map(e=>e.source+'>'+e.target));
-    for(const e of edges){
-      e.curve=keys.has(e.target+'>'+e.source)?0.18:0;
-      const s=nodeById.get(e.source),t=nodeById.get(e.target);
-      if(e.type==='call'&&s?.type==='function'&&t?.type==='function'&&s.module===t.module) e.rest=80;
-      else e.rest=e.type==='call'?125:195;
-      // короткие читаемые подписи рёбер
-      if(e.label){
-        const p=e.label.split(' → ');
-        if(p.length===2) e.shortLabel=short(p[0],11)+'→'+short(p[1],11);
+      for(const[file,pkg]of Object.entries(pkgs)){
+        if(mode==="hybrid"&&!expanded.has(file))continue;
+        for(const f of pkg.entities?.functions||[]){
+          for(const c of f.calls||[]){
+            const tf=resolveCall(file,c);if(!tf)continue;
+            const tid=tf+"::"+c;
+            if(!nodeMap.has(tid))continue;
+            addEdge(file+"::"+f.name,tid,"calls");
+          }
+        }
       }
+      if(mode==="hybrid")
+        for(const n of NODES)if(n.type==="function")addEdge(n.file,n.id,"contains");
     }
-    updateStatus();
+    // степени + радиусы модулей
+    const deg=new Map();
+    for(const e of EDGES){if(e.type==="contains")continue;
+      deg.set(e.source,(deg.get(e.source)||0)+1);deg.set(e.target,(deg.get(e.target)||0)+1);}
+    for(const n of NODES){
+      if(n.type==="module")n.r=12+Math.min(12,(deg.get(n.id)||0)*1.1);
+      if(n.type==="function")n.color=moduleColor(n.file);
+    }
+    // позиции
+    const mods=NODES.filter(n=>n.type!=="function");
+    mods.forEach((n,i)=>{
+      const p=oldPos.get(n.id);
+      if(p){n.x=p.x;n.y=p.y;}
+      else{const a=i/mods.length*Math.PI*2,R=260+mods.length*3;
+        n.x=Math.cos(a)*R;n.y=Math.sin(a)*R;}
+      n.vx=0;n.vy=0;
+    });
+    for(const n of NODES)if(n.type==="function"){
+      const p=oldPos.get(n.id);
+      if(p){n.x=p.x;n.y=p.y;}
+      else{const m=nodeMap.get(n.file);
+        n.x=(m?m.x:0)+(Math.random()-.5)*90;n.y=(m?m.y:0)+(Math.random()-.5)*90;}
+      n.vx=0;n.vy=0;
+    }
+    rebuildDOM();
+    alpha=1;needsRender=true;
   }
-  function assignInitialPositions(){
-    const focusId=state.mode==='functions'?state.focusFunction:state.focusModule;
-    const adj=state.mode==='functions'?G.fnAdj:G.modAdj;
-    let dm=null;
-    if(focusId) dm=bfs(focusId,adj,'both',12).depthMap;
-    const perLayer=new Map();
-    for(const n of vis.nodes){
-      if(n.x!==undefined) continue;
-      if(n.type==='function'){
-        const m=nodeById.get('mod::'+n.module);
-        if(m&&m.x!==undefined){n.x=m.x+(Math.random()-.5)*130;n.y=m.y+(Math.random()-.5)*130;n.vx=0;n.vy=0;continue;}
-      }
-      let d=dm?.get(n.id); if(d===undefined) d=3;
-      if(!perLayer.has(d)) perLayer.set(d,[]);
-      perLayer.get(d).push(n);
+  function rebuildDOM(){
+    const gE=$("#edges"),gN=$("#nodes");
+    gE.innerHTML="";gN.innerHTML="";
+    for(const e of EDGES){
+      const p=document.createElementNS(svgNS,"path");
+      p.setAttribute("class","edge "+e.type);
+      p.setAttribute("marker-end",`url(#arr-${e.type==="depends"?"dep":e.type==="calls"?"call":"cont"})`);
+      const t=document.createElementNS(svgNS,"title");
+      t.textContent=e.source+" → "+e.target;
+      p.appendChild(t);gE.appendChild(p);e.el=p;
     }
-    const GA=2.399963; // золотой угол — равномерное распределение
-    for(const [d,layer] of perLayer){
-      layer.forEach((n,i)=>{
-        const ang=i*GA+d*0.9;
-        const rad=d===0?0:200*d+70;
-        n.x=Math.cos(ang)*rad+(Math.random()-.5)*30;
-        n.y=Math.sin(ang)*rad+(Math.random()-.5)*30;
-        n.vx=0;n.vy=0;
-      });
+    for(const n of NODES){
+      const g=document.createElementNS(svgNS,"g");
+      g.setAttribute("class","node "+n.type);g.dataset.id=n.id;
+      const c=document.createElementNS(svgNS,"circle");
+      c.setAttribute("r",n.r);
+      c.setAttribute("fill",n.type==="function"?(n.color||"#f0a35e")
+        :n.type==="external"?"#6b7280":moduleColor(n.id));
+      const t=document.createElementNS(svgNS,"text");
+      t.textContent=n.label;t.setAttribute("dy",n.r+13);
+      const ti=document.createElementNS(svgNS,"title");
+      ti.textContent=n.type==="function"?(n.file+" → "+n.label):n.id;
+      g.appendChild(c);g.appendChild(t);g.appendChild(ti);
+      g.addEventListener("dblclick",ev=>{ev.stopPropagation();toggleExpand(n.id);});
+      gN.appendChild(g);n.el=g;
     }
+    updatePositions();
   }
 
-  /* ============================== PHYSICS ============================== */
-  function isFocusId(id){
-    return (state.focusModule&&id==='mod::'+state.focusModule)||id===state.focusFunction;
-  }
-  function reheat(){alpha=1;}
-  function tick(){
-    if(alpha<0.004) return;
-    const ns=vis.nodes,es=vis.edges,N=ns.length;
-    // отталкивание
-    for(let i=0;i<N;i++){
-      const a=ns[i]; if(a.x===undefined) continue;
-      for(let j=i+1;j<N;j++){
-        const b=ns[j]; if(b.x===undefined) continue;
+  /* ============================== SIMULATION ============================== */
+  function stepSim(){
+    const N=NODES;
+    for(let i=0;i<N.length;i++){
+      const a=N[i];
+      for(let j=i+1;j<N.length;j++){
+        const b=N[j];
         let dx=a.x-b.x,dy=a.y-b.y,d2=dx*dx+dy*dy;
-        if(d2===0){dx=Math.random()-.5;dy=Math.random()-.5;d2=1;}
-        if(d2>340*340) continue;
-        const d=Math.sqrt(d2),f=Math.min(55,16000/d2),fx=dx/d*f,fy=dy/d*f;
+        if(d2<0.01){dx=Math.random()-.5;dy=Math.random()-.5;d2=dx*dx+dy*dy;}
+        if(d2>400000)continue;
+        const d=Math.sqrt(d2),f=REP/d2,fx=dx/d*f,fy=dy/d*f;
         a.vx+=fx;a.vy+=fy;b.vx-=fx;b.vy-=fy;
       }
     }
-    // пружины
-    for(const e of es){
-      const s=nodeById.get(e.source),t=nodeById.get(e.target);
-      if(!s||!t||s.x===undefined||t.x===undefined) continue;
-      const dx=t.x-s.x,dy=t.y-s.y,d=Math.sqrt(dx*dx+dy*dy)||1;
-      const f=(d-(e.rest||150))*0.015,ux=dx/d,uy=dy/d;
-      if(!s.dragging){s.vx+=ux*f;s.vy+=uy*f;}
-      if(!t.dragging){t.vx-=ux*f;t.vy-=uy*f;}
+    for(const e of EDGES){
+      const a=nodeMap.get(e.source),b=nodeMap.get(e.target);
+      if(!a||!b)continue;
+      const rest=e.type==="contains"?55:(e.type==="calls"?105:135);
+      const dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy)||1;
+      const f=(d-rest)*0.028,fx=dx/d*f,fy=dy/d*f;
+      a.vx+=fx;a.vy+=fy;b.vx-=fx;b.vy-=fy;
     }
-    // гравитация
-    for(const n of ns){
-      if(n.x===undefined) continue;
-      n.vx+=(0-n.x)*0.0022; n.vy+=(0-n.y)*0.0022;
-      if(isFocusId(n.id)){n.vx+=(0-n.x)*0.02;n.vy+=(0-n.y)*0.02;}
-      if(n.type==='function'&&state.mode==='hybrid'){
-        const m=nodeById.get('mod::'+n.module);
-        if(m&&m.x!==undefined){n.vx+=(m.x-n.x)*0.03;n.vy+=(m.y-n.y)*0.03;}
-      }
-      if(n.dragging){n.vx=0;n.vy=0;continue;}
-      n.vx*=0.86;n.vy*=0.86;
-      n.x+=n.vx;n.y+=n.vy;
+    for(const n of N){
+      n.vx-=n.x*0.0035;n.vy-=n.y*0.0035;
+      n.vx*=0.83;n.vy*=0.83;
+      if(n.fixed){n.vx=0;n.vy=0;continue;}
+      n.x+=n.vx*alpha*2.4;n.y+=n.vy*alpha*2.4;
     }
-    // жёсткое разведение (чтобы подписи не слипались)
-    for(let i=0;i<N;i++){
-      const a=ns[i]; if(a.x===undefined||a.dragging) continue;
-      for(let j=i+1;j<N;j++){
-        const b=ns[j]; if(b.x===undefined) continue;
-        const minD=(a.collide||24)+(b.collide||24);
-        let dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy);
-        if(d===0){dx=Math.random()-.5;dy=Math.random()-.5;d=1;}
-        if(d<minD){
-          const push=(minD-d)/2/d;
-          if(!a.dragging){a.x-=dx*push;a.y-=dy*push;}
-          if(!b.dragging){b.x+=dx*push;b.y+=dy*push;}
-        }
-      }
-    }
-    alpha*=0.992;
+  }
+  function edgePath(e){
+    const a=nodeMap.get(e.source),b=nodeMap.get(e.target);
+    if(!a||!b)return"";
+    const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1;
+    const x1=a.x+dx/d*(a.r+2),y1=a.y+dy/d*(a.r+2);
+    const x2=b.x-dx/d*(b.r+6),y2=b.y-dy/d*(b.r+6);
+    const mx=(x1+x2)/2-dy/d*10,my=(y1+y2)/2+dx/d*10;
+    return`M${x1},${y1} Q${mx},${my} ${x2},${y2}`;
+  }
+  function updatePositions(){
+    for(const n of NODES)n.el.setAttribute("transform",`translate(${n.x},${n.y})`);
+    for(const e of EDGES)e.el.setAttribute("d",edgePath(e));
+  }
+  function applyTransform(){
+    $("#viewport").setAttribute("transform",`translate(${tx},${ty}) scale(${scale})`);
+    svg.classList.toggle("zoomed-out",scale<0.55);
+    needsRender=true;
+  }
+  function tick(){
+    if(alpha>0.004){stepSim();alpha*=0.988;needsRender=true;}
+    if(needsRender){updatePositions();needsRender=false;}
+    requestAnimationFrame(tick);
   }
 
-  /* ============================== DRAW ============================== */
-  function roundRect(x,y,w,h,r){
-    ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);
-    ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
+  /* ============================== VIEW ============================== */
+  function fitView(){
+    if(!NODES.length)return;
+    let x1=1e9,y1=1e9,x2=-1e9,y2=-1e9;
+    for(const n of NODES){x1=Math.min(x1,n.x);y1=Math.min(y1,n.y);
+      x2=Math.max(x2,n.x);y2=Math.max(y2,n.y);}
+    const W=svg.clientWidth,H=svg.clientHeight,pad=60;
+    scale=Math.min(2,Math.max(0.08,Math.min(W/(x2-x1+pad*2),H/(y2-y1+pad*2))));
+    tx=W/2-(x1+x2)/2*scale;ty=H/2-(y1+y2)/2*scale;
+    applyTransform();
   }
-  function edgePts(e){
-    const s=nodeById.get(e.source),t=nodeById.get(e.target);
-    if(!s||!t||s.x===undefined||t.x===undefined) return null;
-    const dx=t.x-s.x,dy=t.y-s.y,d=Math.hypot(dx,dy)||1;
-    const sr=(s.r||8)+3,tr=(t.r||8)+7;
-    let cx=(s.x+t.x)/2,cy=(s.y+t.y)/2;
-    if(e.curve){cx+=(-dy/d)*e.curve*d; cy+=(dx/d)*e.curve*d;}
-    return {sx:s.x+dx/d*sr,sy:s.y+dy/d*sr,tx:t.x-dx/d*tr,ty:t.y-dy/d*tr,cx,cy};
+  function centerOn(id){
+    const n=nodeMap.get(id);if(!n)return;
+    tx=svg.clientWidth/2-n.x*scale;ty=svg.clientHeight/2-n.y*scale;
+    applyTransform();
   }
-  let hoverNode=null, hoverNbs=new Set();
-  function isHot(id){ return state.selected===id||hoverNode?.id===id||hoverNbs.has(id); }
-  function edgeHot(e){
-    return (state.selected&&(e.source===state.selected||e.target===state.selected))||
-      (hoverNode&&(e.source===hoverNode.id||e.target===hoverNode.id));
-  }
-  function showFnLabel(n){
-    if(state.labelMode==='none') return false;
-    if(state.labelMode==='all') return true;
-    if(state.labelMode==='sel') return state.selected===n.id||isFocusId(n.id)||hoverNode===n||hoverNbs.has(n.id);
-    return state.selected===n.id||isFocusId(n.id)||hoverNode===n||hoverNbs.has(n.id)||view.k>=0.55;
-  }
-  function showEdgeLabel(e){
-    if(!e.shortLabel||state.labelMode==='none') return false;
-    const hot=edgeHot(e);
-    if(state.labelMode==='all') return true;
-    if(state.labelMode==='sel') return hot;
-    return hot||view.k>=0.9;
-  }
-  function drawEdge(e){
-    const p=edgePts(e); if(!p) return;
-    const hot=edgeHot(e);
-    ctx.strokeStyle=hot?'#fbbf24':e.type==='call'?'rgba(52,211,153,.5)':'rgba(105,145,205,.45)';
-    ctx.lineWidth=hot?1.8:1;
-    ctx.beginPath();ctx.moveTo(p.sx,p.sy);ctx.quadraticCurveTo(p.cx,p.cy,p.tx,p.ty);ctx.stroke();
-    const ang=Math.atan2(p.ty-p.cy,p.tx-p.cx),al=6;
-    ctx.beginPath();
-    ctx.moveTo(p.tx,p.ty);
-    ctx.lineTo(p.tx-al*Math.cos(ang-0.42),p.ty-al*Math.sin(ang-0.42));
-    ctx.lineTo(p.tx-al*Math.cos(ang+0.42),p.ty-al*Math.sin(ang+0.42));
-    ctx.closePath();ctx.fillStyle=ctx.strokeStyle;ctx.fill();
-  }
-  function drawEdgeLabel(e){
-    const p=edgePts(e); if(!p) return;
-    const mx=.25*p.sx+.5*p.cx+.25*p.tx,my=.25*p.sy+.5*p.cy+.25*p.ty;
-    let ang=Math.atan2(p.ty-p.sy,p.tx-p.sx);
-    if(ang>Math.PI/2||ang<-Math.PI/2) ang+=Math.PI;
-    ctx.save();ctx.translate(mx,my);ctx.rotate(ang);
-    ctx.font=F_EDGE;
-    ctx.lineWidth=2.5;ctx.strokeStyle=HALO;ctx.strokeText(e.shortLabel,0,0);
-    ctx.fillStyle=e.type==='call'?'#86efac':'#93c5fd';
-    ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(e.shortLabel,0,0);
-    ctx.restore();
-  }
-  function drawModule(n){
-    const w=MOD_W,h=MOD_H,x=n.x-w/2,y=n.y-h/2;
-    const sel=state.selected===n.id,foc=isFocusId(n.id),hot=isHot(n.id);
-    if(foc){ctx.save();ctx.strokeStyle='#22d3ee';ctx.lineWidth=2;ctx.setLineDash([5,4]);
-      ctx.beginPath();roundRect(x-4,y-4,w+8,h+8,10);ctx.stroke();ctx.restore();}
-    ctx.beginPath();roundRect(x,y,w,h,8);
-    ctx.fillStyle=n.external?'#2f3b52':(n.pkg?.isEntry?'#5b21b6':'#1e40af');
-    ctx.fill();
-    ctx.strokeStyle=sel?'#fde047':hot?'rgba(255,255,255,.5)':'rgba(255,255,255,.16)';
-    ctx.lineWidth=sel?2:1;ctx.stroke();
-    ctx.font=F_MOD;ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillStyle='#f1f5f9';
-    ctx.fillText(short(baseName(n.name),18),n.x,n.y-(view.k>=0.9||sel||foc?5:0),w-10);
-    if(view.k>=0.9||sel||foc){
-      ctx.font=F_MODSUB;ctx.fillStyle='rgba(226,232,240,.6)';
-      ctx.fillText(n.external?'внешний':`${n.pkg?.fileStats?.functions??0}fn·${n.pkg?.fileStats?.lines??0}стр`,n.x,n.y+8,w-10);
-    }
-  }
-  function drawFunction(n){
-    const sel=state.selected===n.id,foc=isFocusId(n.id);
-    if(foc){ctx.beginPath();ctx.arc(n.x,n.y,n.r+4,0,7);ctx.strokeStyle='#22d3ee';
-      ctx.setLineDash([4,3]);ctx.lineWidth=1.5;ctx.stroke();ctx.setLineDash([]);}
-    if(sel){ctx.beginPath();ctx.arc(n.x,n.y,n.r+3,0,7);ctx.strokeStyle='#fde047';ctx.lineWidth=2;ctx.stroke();}
-    ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,7);
-    ctx.fillStyle=n.type==='external'?'#3a4358':n.isExported?'#059669':'#46617f';
-    ctx.fill();
-    ctx.strokeStyle=n.isAsync?'#f59e0b':'#0b1220';ctx.lineWidth=n.isAsync?1.6:1;ctx.stroke();
-    if(showFnLabel(n)){
-      const lbl=(n.isAsync?'⚡':'')+(n.isExported?'★':'')+short(n.name,16);
-      ctx.font=F_FN;ctx.textAlign='left';ctx.textBaseline='middle';
-      ctx.lineWidth=2.5;ctx.strokeStyle=HALO;
-      ctx.strokeText(lbl,n.x+n.r+4,n.y);
-      ctx.fillStyle=sel?'#fde68a':(n.type==='external'?'#94a3b8':'#cbd5e1');
-      ctx.fillText(lbl,n.x+n.r+4,n.y);
-    }
-  }
-  function draw(){
-    const w=cv.clientWidth||cv.width/dpr,h=cv.clientHeight||cv.height/dpr;
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-    ctx.clearRect(0,0,w,h);
-    ctx.setTransform(dpr*view.k,0,0,dpr*view.k,dpr*(w/2-view.x*view.k),dpr*(h/2-view.y*view.k));
-    for(const e of vis.edges) drawEdge(e);
-    for(const n of vis.nodes) if(n.type==='module') drawModule(n);
-    for(const n of vis.nodes) if(n.type!=='module') drawFunction(n);
-    for(const e of vis.edges) if(showEdgeLabel(e)) drawEdgeLabel(e);
-  }
-  function loop(){tick();draw();requestAnimationFrame(loop);}
 
-  /* ============================== INTERACTION ============================== */
-  function toWorld(e){
-    const r=cv.getBoundingClientRect();
-    const mx=e.clientX-r.left,my=e.clientY-r.top;
-    return {x:(mx-r.width/2)/view.k+view.x,y:(my-r.height/2)/view.k+view.y,mx,my,cw:r.width,ch:r.height};
-  }
-  function pickNode(p){
-    for(let i=vis.nodes.length-1;i>=0;i--){
-      const n=vis.nodes[i];
-      if(n.type==='module'){if(Math.abs(p.x-n.x)<=MOD_W/2+3&&Math.abs(p.y-n.y)<=MOD_H/2+3) return n;}
-      else{const dx=p.x-n.x,dy=p.y-n.y;if(dx*dx+dy*dy<=(n.r+5)*(n.r+5)) return n;}
+  /* ============================== HIGHLIGHT ============================== */
+  function neighborsOf(id){
+    const s=new Set([id]);
+    for(const e of EDGES){
+      if(e.source===id)s.add(e.target);
+      if(e.target===id)s.add(e.source);
     }
-    return null;
+    return s;
   }
-  function pickEdge(p){
-    const thr=6/view.k;let best=null,bd=thr;
-    for(const e of vis.edges){
-      const s=nodeById.get(e.source),t=nodeById.get(e.target);
-      if(!s||!t||s.x===undefined||t.x===undefined) continue;
-      const dx=t.x-s.x,dy=t.y-s.y,L2=dx*dx+dy*dy||1;
-      let u=((p.x-s.x)*dx+(p.y-s.y)*dy)/L2;u=Math.max(0,Math.min(1,u));
-      const qx=s.x+u*dx,qy=s.y+u*dy,d=Math.hypot(p.x-qx,p.y-qy);
-      if(d<bd){bd=d;best=e;}
+  function applyHighlight(){
+    const sel=selectedId?neighborsOf(selectedId):null;
+    const walkDone=new Set();
+    if(walk)for(let i=0;i<=walk.idx;i++)walkDone.add(walk.order[i]);
+    for(const n of NODES){
+      let cls="node "+n.type;
+      const inPath=pathSet&&pathSet.has(n.id);
+      if(n.id===selectedId)cls+=walk&&walk.order[walk.idx]===n.id?" current":" selected";
+      else if(inPath)cls+=" pathnode";
+      else if(walk&&walk.order[walk.idx]===n.id)cls+=" current";
+      else if(walkDone.has(n.id))cls+=" walked";
+      else if(sel&&sel.has(n.id))cls+=" neighbor";
+      else if((sel||walk||pathSet))cls+=" dim";
+      n.el.setAttribute("class",cls);
     }
-    return best;
-  }
-  function setHover(n){
-    if(hoverNode===n) return;
-    hoverNode=n; hoverNbs=new Set();
-    if(n) for(const e of vis.edges){
-      if(e.source===n.id) hoverNbs.add(e.target);
-      if(e.target===n.id) hoverNbs.add(e.source);
+    for(const e of EDGES){
+      const k=e.source+"|"+e.target;
+      const onPath=pathEdgeSet&&(pathEdgeSet.has(k)||pathEdgeSet.has(e.target+"|"+e.source));
+      const incSel=selectedId&&(e.source===selectedId||e.target===selectedId);
+      let cls="edge "+e.type;
+      if(onPath)cls+=" hl";
+      else if(incSel)cls+=" hl";
+      else if(selectedId||walk||pathSet)cls+=" dim";
+      e.el.setAttribute("class",cls);
+      e.el.setAttribute("marker-end",`url(#${(onPath||incSel)?"arr-hl":
+        e.type==="depends"?"arr-dep":e.type==="calls"?"arr-call":"arr-cont"})`);
     }
   }
-  let dragNode=null,panStart=null,mouseDown=null,moved=false;
-  cv.addEventListener('mousedown',e=>{
-    const p=toWorld(e);const n=pickNode(p);
-    mouseDown={x:e.clientX,y:e.clientY};moved=false;
-    if(n){dragNode=n;n.dragging=true;}
-    else{panStart={vx:view.x,vy:view.y,mx:e.clientX,my:e.clientY};cv.classList.add('grabbing');}
+
+  /* ============================== SELECTION / HISTORY ============================== */
+  function select(id,push=true){
+    selectedId=id;
+    if(push){history=history.slice(0,hIdx+1);history.push(id);hIdx=history.length-1;}
+    updateHistoryUI();renderPanel(id);applyHighlight();
+  }
+  function selectAndCenter(id,push=true){select(id,push);centerOn(id);}
+  function goBack(){if(hIdx>0){hIdx--;select(history[hIdx],false);centerOn(history[hIdx]);}}
+  function goForward(){if(hIdx<history.length-1){hIdx++;select(history[hIdx],false);centerOn(history[hIdx]);}}
+  function updateHistoryUI(){
+    $("#btnBack").disabled=hIdx<=0;
+    $("#btnFwd").disabled=hIdx>=history.length-1;
+  }
+  $("#btnBack").onclick=goBack;$("#btnFwd").onclick=goForward;
+
+  /* ============================== WALK (вперёд/назад по графу) ============================== */
+  function bfsOrder(start,dir){
+    const adj=new Map();const add=(a,b)=>{if(!adj.has(a))adj.set(a,[]);adj.get(a).push(b);};
+    for(const e of EDGES){if(e.type==="contains")continue;
+      if(dir==="forward")add(e.source,e.target);else add(e.target,e.source);}
+    const seen=new Set([start]),order=[start],q=[start];
+    while(q.length){const u=q.shift();
+      for(const v of adj.get(u)||[])
+        if(!seen.has(v)&&nodeMap.has(v)){seen.add(v);order.push(v);q.push(v);}}
+    return order;
+  }
+  function startWalk(){
+    if(!selectedId){setStatus("Сначала выберите узел",true);return;}
+    const dir=$("#dirSel").value;
+    walk={order:bfsOrder(selectedId,dir),idx:0,dir};
+    if(walk.order.length<2){setStatus("Из этого узла нет рёбер в выбранном направлении",true);walk=null;return;}
+    stopAuto();$("#walkbar").classList.add("on");
+    focusWalk();
+    setStatus(`Обход ${dir==="forward"?"вперёд":"назад"} от ${shortOf(selectedId)}: ${walk.order.length} узлов`);
+  }
+  function focusWalk(){
+    if(!walk)return;
+    const id=walk.order[walk.idx];
+    select(id,true);centerOn(id);
+    $("#walkPos").textContent=(walk.idx+1)+" / "+walk.order.length;
+    $("#wPrev").disabled=walk.idx<=0;
+    $("#wNext").disabled=walk.idx>=walk.order.length-1;
+  }
+  function walkNext(){if(walk&&walk.idx<walk.order.length-1){walk.idx++;focusWalk();}else stopAuto();}
+  function walkPrev(){if(walk&&walk.idx>0){walk.idx--;focusWalk();}}
+  function closeWalk(){walk=null;stopAuto();$("#walkbar").classList.remove("on");applyHighlight();}
+  function stopAuto(){if(autoTimer){clearInterval(autoTimer);autoTimer=null;$("#wAuto").textContent="⏯";}}
+  $("#btnWalk").onclick=startWalk;
+  $("#wNext").onclick=()=>{stopAuto();walkNext();};
+  $("#wPrev").onclick=()=>{stopAuto();walkPrev();};
+  $("#wStart").onclick=()=>{stopAuto();if(walk){walk.idx=0;focusWalk();}};
+  $("#wClose").onclick=closeWalk;
+  $("#wAuto").onclick=()=>{
+    if(autoTimer){stopAuto();return;}
+    $("#wAuto").textContent="⏸";
+    autoTimer=setInterval(walkNext,700);
+  };
+
+  /* ============================== PATH FIND ============================== */
+  function findPath(a,b){
+    const adj=new Map();const add=(x,y)=>{if(!adj.has(x))adj.set(x,[]);adj.get(x).push(y);};
+    for(const e of EDGES){if(e.type==="contains")continue;add(e.source,e.target);add(e.target,e.source);}
+    const prev=new Map([[a,null]]),q=[a];
+    while(q.length){
+      const u=q.shift();if(u===b)break;
+      for(const v of adj.get(u)||[])if(!prev.has(v)){prev.set(v,u);q.push(v);}
+    }
+    if(!prev.has(b))return null;
+    const nodes=[],edges=new Set();let cur=b;
+    while(cur){nodes.push(cur);const p=prev.get(cur);
+      if(p)edges.add(p+"|"+cur);cur=p;}
+    return{nodes:new Set(nodes),edges};
+  }
+  function handleCtrlClick(id){
+    if(!pathSource){pathSource=id;setStatus("Путь: источник = "+shortOf(id)+". Ctrl+клик по целевому узлу.");}
+    else{
+      const res=findPath(pathSource,id);
+      if(res){pathSet=res.nodes;pathEdgeSet=res.edges;
+        setStatus(`Путь ${shortOf(pathSource)} → ${shortOf(id)}: ${res.nodes.size} узлов`);}
+      else{pathSet=null;pathEdgeSet=null;setStatus("Путь не найден",true);}
+      pathSource=null;applyHighlight();
+    }
+  }
+
+  /* ============================== EXPAND (гибрид) ============================== */
+  function toggleExpand(id){
+    const modId=id.includes("::")?id.split("::")[0]:id;
+    if(!DATA.packages[modId])return;
+    if(mode==="modules"){mode="hybrid";$("#modeSel").value="hybrid";}
+    if(mode!=="hybrid")return;
+    if(expanded.has(modId))expanded.delete(modId);else expanded.add(modId);
+    rebuild();applyHighlight();renderPanel(selectedId);
+  }
+  $("#btnExpandAll").onclick=()=>{
+    mode="hybrid";$("#modeSel").value="hybrid";
+    expanded=new Set(Object.keys(DATA.packages));rebuild();applyHighlight();
+  };
+  $("#btnCollapseAll").onclick=()=>{expanded.clear();rebuild();applyHighlight();};
+  $("#modeSel").onchange=e=>{mode=e.target.value;if(mode!=="hybrid")expanded.clear();
+    rebuild();applyHighlight();fitView();};
+  $("#extChk").onchange=e=>{showExternal=e.target.checked;rebuild();applyHighlight();};
+
+  /* ============================== PANEL ============================== */
+  function shortOf(id){return id.includes("::")?id.split("::")[1]:id.split("/").pop();}
+  function chip(id,label,cls){return`<span class="chip ${cls||""}" data-nav="${esc(id)}">${esc(label||shortOf(id))}</span>`;}
+  function renderPanel(id){
+    const P=$("#panel");
+    if(!id){P.innerHTML='<div style="color:var(--tx2)">Выберите узел на графе.</div>';return;}
+    if(id.includes("::"))return renderFnPanel(id);
+    return renderModulePanel(id);
+  }
+  function renderModulePanel(id){
+    const P=$("#panel"),pkg=DATA.packages[id];
+    if(!pkg){P.innerHTML=`<h2>${esc(id)}</h2><div class="path">Внешний пакет (вне проекта)</div>`;return;}
+    const inward=DATA.dependencyGraph?.inwardDependencies?.[id]||[];
+    const outward=DATA.dependencyGraph?.outwardDependencies?.[id]||[];
+    const fns=pkg.entities?.functions||[];
+    const isExp=expanded.has(id);
+    let h=`<h2>📦 ${esc(id.split("/").pop())}
+    ${pkg.isEntry?'<span class="badge entry">ENTRY</span>':""}
+    <span class="badge">${esc(pkg.language||pkg.type||"")}</span></h2>
+    <div class="path">${esc(id)}</div>
+    <div class="stats-grid">
+      <div class="stat"><b>${pkg.fileStats?.lines??0}</b><span>строк</span></div>
+      <div class="stat"><b>${((pkg.fileStats?.size||0)/1024).toFixed(1)}</b><span>KB</span></div>
+      <div class="stat"><b>${fns.length}</b><span>функций</span></div>
+    </div>
+    <div class="btnrow">
+      <button data-act="${isExp?"collapse":"expand"}" data-id="${esc(id)}">${isExp?"⊟ Свернуть функции":"⊞ Раскрыть функции"}</button>
+      <button data-act="walk-f" data-id="${esc(id)}">▶ Обход отсюда</button>
+      <button data-act="path-src" data-id="${esc(id)}">⚲ Отсюда путь</button>
+    </div>`;
+    h+=`<section><h3>Зависимости (${inward.length}) →</h3>${
+      inward.length?inward.map(d=>chip(d,d,DATA.packages[d]?"mod":"")).join(""):"<i style='color:var(--tx2)'>нет</i>"}</section>`;
+    h+=`<section><h3>← Зависимые (${outward.length})</h3>${
+      outward.length?outward.map(d=>chip(d,d,"mod")).join(""):"<i style='color:var(--tx2)'>нет</i>"}</section>`;
+    const exps=Object.entries(pkg.exports||{});
+    if(exps.length)h+=`<section><h3>Экспорты (${exps.length})</h3>${exps.map(([nm,e])=>
+      `<div class="item"><span class="nm">${esc(nm)}</span>
+     ${e.isAsync?'<span class="badge async">async</span>':""}
+     <div class="meta">стр. ${e.line}${e.params?.length?" • ("+e.params.map(esc).join(", ")+")":""} → ${esc(e.returns||"")}</div>
+     ${e.consumers?.length?"потребители: "+e.consumers.map(c=>chip(c,c,"fn")).join(""):""}
+    </div>`).join("")}</section>`;
+    if(fns.length)h+=`<section><h3>Функции (${fns.length})</h3>${fns.map(f=>{
+      const fid=id+"::"+f.name;
+      return`<div class="item"><span class="nm" style="cursor:pointer" data-nav="${esc(fid)}">${esc(f.name)}</span>
+      ${f.isAsync?'<span class="badge async">async</span>':""}${f.isExported?'<span class="badge exp">export</span>':""}
+      <div class="meta">стр. ${f.startLine}–${f.endLine}${f.params?.length?" • ("+f.params.map(esc).join(", ")+")":""}</div>
+      ${f.calls?.length?"→ вызывает: "+f.calls.map(c=>{const t=resolveCall(id,c);
+        return t?chip(t+"::"+c,c,"fn"):`<span class="chip">${esc(c)}</span>`;}).join(""):""}
+      ${f.calledBy?.length?"<br>← вызывается: "+f.calledBy.map(c=>chip(id+"::"+c,c,"fn")).join(""):""}
+    </div>`;}).join("")}</section>`;
+    const misc=[
+      ["Константы",pkg.entities?.constants||[]],["Переменные",pkg.entities?.variables||[]],
+      ["Интерфейсы",pkg.entities?.interfaces||[]],["Типы",pkg.entities?.types||[]],
+      ["Классы",pkg.entities?.classes||[]]];
+    const m=misc.filter(([,a])=>a.length);
+    if(m.length)h+=`<section><h3>Прочие сущности</h3>${m.map(([t,a])=>
+      `<div style="margin:4px 0"><b style="font-size:12px;color:var(--tx2)">${t}:</b> ${
+        a.map(x=>`<span class="chip">${esc(x.name)}</span>`).join("")}</div>`).join("")}</section>`;
+    P.innerHTML=h;
+  }
+  function renderFnPanel(fid){
+    const P=$("#panel");
+    const[file,name]=fid.split("::");
+    const pkg=DATA.packages[file];
+    const f=pkg?.entities?.functions?.find(x=>x.name===name);
+    if(!f){P.innerHTML=`<h2>${esc(name)}</h2><div class="path">${esc(file)}</div>`;return;}
+    P.innerHTML=`<h2>⚙️ ${esc(name)}
+    ${f.isAsync?'<span class="badge async">async</span>':""}
+    ${f.isExported?'<span class="badge exp">export</span>':""}
+    ${f.isMethod?'<span class="badge">method</span>':""}${f.isArrow?'<span class="badge">arrow</span>':""}</h2>
+    <div class="path">${esc(file)} • строки ${f.startLine}–${f.endLine}</div>
+    <div class="btnrow">
+      <button data-nav="${esc(file)}">📦 К модулю</button>
+      <button data-act="walk-f" data-id="${esc(fid)}">▶ Обход по вызовам</button>
+    </div>
+    <section><h3>Сигнатура</h3><div class="item">
+      <div class="meta">(${(f.params||[]).map(esc).join(", ")}) → ${esc(f.returnType||"void")}</div></div></section>
+    <section><h3>→ Вызывает (${(f.calls||[]).length})</h3>${(f.calls||[]).map(c=>{
+      const t=resolveCall(file,c);
+      return t?chip(t+"::"+c,c,"fn"):`<span class="chip">${esc(c)}</span>`;}).join("")||"<i style='color:var(--tx2)'>нет</i>"}</section>
+    <section><h3>← Вызывается (${(f.calledBy||[]).length})</h3>${(f.calledBy||[]).map(c=>
+      chip(file+"::"+c,c,"fn")).join("")||"<i style='color:var(--tx2)'>нет</i>"}</section>
+    ${f.body?`<section><h3>Начало тела</h3><pre style="font-size:11px;background:var(--bg3);
+      border:1px solid var(--line);border-radius:8px;padding:8px;overflow:auto;
+      max-height:220px;white-space:pre-wrap">${esc(f.body)}</pre></section>`:""}`;
+  }
+  $("#panel").addEventListener("click",e=>{
+    const nav=e.target.closest("[data-nav]");
+    if(nav){selectAndCenter(nav.dataset.nav);return;}
+    const act=e.target.closest("[data-act]");
+    if(!act)return;
+    const a=act.dataset.act,id=act.dataset.id;
+    if(a==="expand"){if(mode!=="hybrid"){mode="hybrid";$("#modeSel").value="hybrid";}
+      expanded.add(id);rebuild();select(id,false);renderPanel(id);applyHighlight();}
+    if(a==="collapse"){expanded.delete(id);rebuild();select(id,false);renderPanel(id);applyHighlight();}
+    if(a==="walk-f"){if(!nodeMap.has(id))setStatus("Узел не в текущем представлении",true);
+    else{selectAndCenter(id);$("#dirSel").value="forward";startWalk();}}
+    if(a==="path-src"){pathSource=id;setStatus("Путь: источник = "+shortOf(id)+". Ctrl+клик по цели.");}
   });
-  window.addEventListener('mousemove',e=>{
-    if(mouseDown&&Math.hypot(e.clientX-mouseDown.x,e.clientY-mouseDown.y)>4) moved=true;
-    if(dragNode&&moved){const p=toWorld(e);dragNode.x=p.x;dragNode.y=p.y;dragNode.vx=0;dragNode.vy=0;alpha=Math.max(alpha,0.25);return;}
-    if(panStart&&moved){view.x=panStart.vx-(e.clientX-panStart.mx)/view.k;view.y=panStart.vy-(e.clientY-panStart.my)/view.k;return;}
-    const p=toWorld(e);const n=pickNode(p);
-    setHover(n);
-    if(n){showTip(e,n.type==='module'
-      ?`<b>${esc(n.name)}</b><br>${n.external?'внешний пакет':(n.pkg?.fileStats?.functions??0)+' функций · '+(n.pkg?.fileStats?.lines??0)+' стр'}<br><span style="color:#7c8db0">dbl-click — перейти${state.mode==='hybrid'&&!n.external?' / раскрыть':''}</span>`
-      :`<b>${esc(n.name)}</b> <span style="color:#7c8db0">${n.type==='external'?'(внешняя)':esc(n.module)}</span><br>${n.isAsync?'async ':''}${n.isExported?'экспортирована':'внутренняя'}${n.line?', стр '+n.line:''}`);return;}
-    const ed=pickEdge(p);
-    if(ed){showTip(e,(ed.type==='call'?'вызов: ':'зависимость: ')+'<b>'+esc(ed.label||shortOf(ed.source)+' → '+shortOf(ed.target))+'</b>');return;}
-    hideTip();
-  });
-  window.addEventListener('mouseup',e=>{
-    cv.classList.remove('grabbing');
-    if(mouseDown&&!moved){
-      const p=toWorld(e);const n=pickNode(p);
-      state.selected=n?n.id:null;renderSidebar();
-    }
-    if(dragNode){dragNode.dragging=false;dragNode=null;}
-    panStart=null;mouseDown=null;
-  });
-  cv.addEventListener('dblclick',e=>{const p=toWorld(e);const n=pickNode(p);if(n) focusOn(n);});
-  cv.addEventListener('wheel',e=>{
+
+  /* ============================== SVG INTERACTION ============================== */
+  const svg=$("#svg");
+  svg.addEventListener("wheel",e=>{
     e.preventDefault();
-    const p=toWorld(e);
-    view.k=Math.max(0.12,Math.min(3.5,view.k*Math.exp(-e.deltaY*0.0012)));
-    view.x=p.x-(p.mx-p.cw/2)/view.k;
-    view.y=p.y-(p.my-p.ch/2)/view.k;
+    const r=svg.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+    const f=e.deltaY<0?1.15:1/1.15;
+    const ns=Math.min(4,Math.max(0.08,scale*f));
+    tx=mx-(mx-tx)*(ns/scale);ty=my-(my-ty)*(ns/scale);scale=ns;applyTransform();
   },{passive:false});
-  function showTip(e,html){
-    const r=cv.parentElement.getBoundingClientRect();
-    tooltip.innerHTML=html;tooltip.style.display='block';
-    tooltip.style.left=Math.min(e.clientX-r.left+14,r.width-340)+'px';
-    tooltip.style.top=(e.clientY-r.top+14)+'px';
-  }
-  function hideTip(){tooltip.style.display='none';}
-
-  /* ============================== NAVIGATION ============================== */
-  function snapshot(){return{mode:state.mode,fm:state.focusModule,ff:state.focusFunction,dir:state.direction,depth:state.depth,expanded:[...state.expanded]};}
-  function applySnap(s){
-    state.mode=s.mode;state.focusModule=s.fm;state.focusFunction=s.ff;
-    state.direction=s.dir;state.depth=s.depth;state.expanded=new Set(s.expanded);
-    computeVisible();reheat();syncToolbar();renderSidebar();
-  }
-  function pushHistory(){
-    state.history=state.history.slice(0,state.hIndex+1);
-    state.history.push(snapshot());state.hIndex++;syncToolbar();
-  }
-  function historyBack(){if(state.hIndex>0){state.hIndex--;applySnap(state.history[state.hIndex]);}}
-  function historyForward(){if(state.hIndex<state.history.length-1){state.hIndex++;applySnap(state.history[state.hIndex]);}}
-  function gotoNode(n){
-    if(!n) return;
-    if(n.type==='module'){
-      if(state.mode==='functions') state.mode='hybrid';
-      state.focusModule=n.modName;
-      if(state.mode==='hybrid'&&!n.external) state.expanded.add(n.modName);
-    } else {
-      if(state.mode==='modules') state.mode='hybrid';
-      state.focusFunction=n.id;
-      if(n.type==='function'&&state.mode==='hybrid') state.expanded.add(n.module);
-    }
-    state.selected=n.id;
-    pushHistory();computeVisible();reheat();syncToolbar();renderSidebar();
-  }
-  function focusOn(n){
-    if(n.type==='module'&&state.mode==='hybrid'&&state.focusModule===n.modName&&!n.external){
-      toggleExpand(n.modName);return;
-    }
-    gotoNode(n);
-  }
-  function toggleExpand(modName){
-    state.expanded.has(modName)?state.expanded.delete(modName):state.expanded.add(modName);
-    pushHistory();computeVisible();reheat();
-  }
-  function fit(){
-    if(!vis.nodes.length) return;
-    let minx=1e9,miny=1e9,maxx=-1e9,maxy=-1e9;
-    for(const n of vis.nodes){
-      if(n.x===undefined) continue;
-      const r=n.type==='module'?70:26;
-      minx=Math.min(minx,n.x-r);maxx=Math.max(maxx,n.x+r);
-      miny=Math.min(miny,n.y-r);maxy=Math.max(maxy,n.y+r);
-    }
-    if(minx>maxx) return;
-    const w=cv.clientWidth,h=cv.clientHeight;
-    view.k=Math.max(0.12,Math.min(1,Math.min(w/(maxx-minx+120),h/(maxy-miny+120))));
-    view.x=(minx+maxx)/2;view.y=(miny+maxy)/2;
-  }
-
-  /* ============================== SIDEBAR ============================== */
-  function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-  function shortOf(id){return nodeById.get(id)?.name||id;}
-  function rowHtml(id,iconCls,name,sub){
-    return `<div class="row" data-goto="${esc(id)}" title="Перейти: ${esc(name)}">
-    <span class="dot ${iconCls}"></span><span class="nm">${esc(name)}</span>
-    ${sub?`<span class="sub2">${esc(sub)}</span>`:''}<span class="go">⌖</span></div>`;
-  }
-  function renderSidebar(){
-    const id=state.selected;
-    if(!id){sideContent.innerHTML=`<div class="muted" style="padding:8px">
-    Клик — выбрать узел, двойной клик — перейти.<br><br>
-    <b style="color:#22d3ee">⬅ ➡</b> — история · <b style="color:#22d3ee">dbl-click</b> — вперёд<br>
-    Списки: <b>вперёд →</b> и <b>← назад</b></div>`;return;}
-    const n=nodeById.get(id);
-    if(!n){sideContent.innerHTML='';return;}
-    let h='';
-    if(n.type==='module'){
-      const fs=n.pkg?.fileStats||{};
-      h+=`<h2>📦 ${esc(n.name)}</h2>`;
-      h+=`<div>${n.external?'<span class="badge b-ext">внешний</span>':''}
-      ${n.pkg?.isEntry?'<span class="badge b-entry">точка входа</span>':''}</div>`;
-      if(!n.external) h+=`<h3>Файл</h3><div class="stats">
-      <span>строк: <b>${fs.lines??0}</b></span><span>размер: <b>${fs.size??0}</b></span>
-      <span>функций: <b>${fs.functions??0}</b></span><span>классов: <b>${fs.classes??0}</b></span>
-      <span>интерфейсов: <b>${fs.interfaces??0}</b></span><span>констант: <b>${fs.constants??0}</b></span></div>`;
-      h+=`<h3>Вперёд → импортирует (${n.deps.length})</h3>`;
-      h+=n.deps.map(d=>rowHtml('mod::'+d,d.startsWith('@')||!d.includes('/')?'ext':'mod',baseName(d),d.includes('/')?'':'external')).join('')||'<div class="muted">нет</div>';
-      h+=`<h3>← назад — зависит от него (${n.dependents.length})</h3>`;
-      h+=n.dependents.map(d=>rowHtml('mod::'+d,'mod',baseName(d))).join('')||'<div class="muted">нет</div>';
-      const fns=(n.pkg?.entities?.functions||[]);
-      if(fns.length){
-        h+=`<h3>Функции (${fns.length})</h3>`;
-        h+=fns.map(f=>rowHtml('fn::'+n.modName+'::'+f.name,'fn',(f.isAsync?'⚡':'')+(f.isExported?'★':'')+f.name,'стр '+f.line)).join('');
-      }
-    } else {
-      h+=`<h2>ƒ ${esc(n.name)}</h2>`;
-      h+=`<div>${n.type==='external'?'<span class="badge b-ext">внешняя</span>':''}
-      ${n.isAsync?'<span class="badge b-async">⚡ async</span>':''}
-      ${n.isExported?'<span class="badge b-exp">★ export</span>':''}</div>`;
-      if(n.type==='function'){
-        h+=`<h3>Модуль</h3>${rowHtml('mod::'+n.module,'mod',n.module)}`;
-        h+=`<h3>Детали</h3><div class="stats">
-        <span>строка: <b>${n.line??'—'}</b></span><span>до: <b>${n.endLine??'—'}</b></span>
-        <span>параметров: <b>${(n.params||[]).length}</b></span><span>возврат: <b>${esc(short(n.returnType||'—',22))}</b></span></div>`;
-      }
-      h+=`<h3>Вперёд → вызывает (${(n.calls||[]).length})</h3>`;
-      h+=(n.calls||[]).map(c=>{
-        const tid=n.type==='function'?G.resolveCallee(n,c):'ext::'+c;
-        const tn=nodeById.get(tid);
-        return rowHtml(tid,tn?.type==='external'?'ext':'call',c,tn?.module?baseName(tn.module):'external');
-      }).join('')||'<div class="muted">нет</div>';
-      h+=`<h3>← назад — вызывают (${(n.calledBy||[]).length})</h3>`;
-      h+=(n.calledBy||[]).map(cb=>{
-        const sid=n.type==='function'?G.resolveCaller(n,cb):'ext::'+cb;
-        const sn=nodeById.get(sid);
-        return rowHtml(sid,sn?.type==='external'?'ext':'call',cb,sn?.module?baseName(sn.module):'external');
-      }).join('')||'<div class="muted">нет</div>';
-      if(n.body) h+=`<h3>Начало тела</h3><pre class="body">${esc(String(n.body).slice(0,380))}…</pre>`;
-    }
-    sideContent.innerHTML=h;
-  }
-  sideContent.addEventListener('click',e=>{
-    const g=e.target.closest('[data-goto]');
-    if(g) gotoNode(nodeById.get(g.dataset.goto));
+  svg.addEventListener("pointerdown",e=>{
+    const g=e.target.closest(".node");
+    if(g){const n=nodeMap.get(g.dataset.id);
+      drag={type:"node",node:n,sx:e.clientX,sy:e.clientY,moved:0};n.fixed=true;}
+    else drag={type:"pan",sx:e.clientX,sy:e.clientY,otx:tx,oty:ty,moved:0};
+    svg.setPointerCapture(e.pointerId);
   });
+  svg.addEventListener("pointermove",e=>{
+    if(!drag)return;
+    const dx=e.clientX-drag.sx,dy=e.clientY-drag.sy;
+    drag.moved=Math.max(drag.moved,Math.abs(dx)+Math.abs(dy));
+    if(drag.type==="node"){drag.node.x+=dx/scale;drag.node.y+=dy/scale;
+      drag.sx=e.clientX;drag.sy=e.clientY;alpha=Math.max(alpha,0.25);needsRender=true;}
+    else{tx=drag.otx+dx;ty=drag.oty+dy;applyTransform();}
+  });
+  svg.addEventListener("pointerup",e=>{
+    if(!drag)return;
+    if(drag.type==="node"){
+      drag.node.fixed=false;
+      if(drag.moved<5){
+        if(e.ctrlKey||e.metaKey)handleCtrlClick(drag.node.id);
+        else{pathSet=null;pathEdgeSet=null;selectAndCenter(drag.node.id);}
+      }
+    }else if(drag.moved<5){pathSet=null;pathEdgeSet=null;pathSource=null;applyHighlight();}
+    drag=null;
+  });
+  $("#zIn").onclick=()=>{scale=Math.min(4,scale*1.25);applyTransform();};
+  $("#zOut").onclick=()=>{scale=Math.max(0.08,scale/1.25);applyTransform();};
+  $("#zFit").onclick=fitView;
+  $("#btnHelp").onclick=()=>$("#helpCard").classList.toggle("on");
 
   /* ============================== SEARCH ============================== */
-  let searchMatches=[];
-  function renderSearch(){
-    const q=searchInput.value.trim().toLowerCase();
-    if(!q){searchDrop.style.display='none';return;}
-    const items=[];
-    for(const m of G.modules.values()) if(!m.external) items.push({id:m.id,label:m.name,sub:'модуль',kind:'module'});
-    for(const f of G.functions.values()) items.push({id:f.id,label:f.name,sub:f.module,kind:'function'});
-    searchMatches=items.filter(it=>it.label.toLowerCase().includes(q)||it.sub.toLowerCase().includes(q)).slice(0,14);
-    searchDrop.innerHTML=searchMatches.map((it,i)=>
-      `<div class="it" data-i="${i}"><span class="dot ${it.kind==='module'?'mod':'fn'}"></span>
-     <span>${esc(it.label)}</span><span class="sub">${esc(it.sub)}</span></div>`).join('')||'<div class="it">не найдено</div>';
-    searchDrop.style.display='block';
-  }
-  function pickSearch(i){
-    const it=searchMatches[i]; if(!it) return;
-    gotoNode(nodeById.get(it.id));
-    searchDrop.style.display='none';
-  }
-  searchInput.addEventListener('input',renderSearch);
-  searchInput.addEventListener('keydown',e=>{
-    if(e.key==='Enter') pickSearch(0);
-    if(e.key==='Escape'){searchDrop.style.display='none';searchInput.blur();}
+  const sInp=$("#searchInp"),sList=$("#searchList");
+  sInp.addEventListener("input",()=>{
+    const q=sInp.value.trim().toLowerCase();
+    if(!q){sList.classList.remove("on");return;}
+    const hits=NODES.filter(n=>n.label.toLowerCase().includes(q)||n.id.toLowerCase().includes(q)).slice(0,25);
+    sList.innerHTML=hits.length?hits.map(n=>
+        `<div data-id="${esc(n.id)}">${n.type==="function"?"⚙️":"📦"} ${esc(n.label)}
+     <span style="color:var(--tx2);font-size:10px">${esc(n.type==="function"?n.file:"")}</span></div>`).join("")
+      :"<div>ничего не найдено</div>";
+    sList.classList.add("on");
   });
-  searchDrop.addEventListener('mousedown',e=>{
-    const it=e.target.closest('[data-i]'); if(it) pickSearch(+it.dataset.i);
+  sList.addEventListener("click",e=>{
+    const d=e.target.closest("[data-id]");
+    if(d){selectAndCenter(d.dataset.id);sList.classList.remove("on");sInp.value="";}
   });
-  document.addEventListener('click',e=>{if(!e.target.closest('#searchWrap')) searchDrop.style.display='none';});
+  document.addEventListener("click",e=>{
+    if(!e.target.closest("#searchbox"))sList.classList.remove("on");});
 
-  /* ============================== TOOLBAR / STATUS ============================== */
-  function syncToolbar(){
-    document.getElementById('mModules').classList.toggle('active',state.mode==='modules');
-    document.getElementById('mFunctions').classList.toggle('active',state.mode==='functions');
-    document.getElementById('mHybrid').classList.toggle('active',state.mode==='hybrid');
-    document.getElementById('dUp').classList.toggle('active',state.direction==='up');
-    document.getElementById('dDown').classList.toggle('active',state.direction==='down');
-    document.getElementById('dBoth').classList.toggle('active',state.direction==='both');
-    document.getElementById('depth').value=state.depth;
-    document.getElementById('depthVal').textContent=state.depth;
-    document.getElementById('selLabels').value=state.labelMode;
-    document.getElementById('hBack').disabled=state.hIndex<=0;
-    document.getElementById('hFwd').disabled=state.hIndex>=state.history.length-1;
-    const f=state.mode==='functions'?state.focusFunction:state.focusModule;
-    document.getElementById('focusChip').textContent='🎯 '+(f?shortOf(f):'—');
-    const hyb=state.mode==='hybrid';
-    document.getElementById('btnExpandAll').style.display=hyb?'':'none';
-    document.getElementById('btnCollapseAll').style.display=hyb?'':'none';
-  }
-  function updateStatus(){
-    const names={modules:'Модули',functions:'Функции',hybrid:'Гибрид'};
-    document.getElementById('stMode').textContent='режим: '+names[state.mode];
-    document.getElementById('stNodes').textContent='узлов: '+vis.nodes.length;
-    document.getElementById('stEdges').textContent='связей: '+vis.edges.length;
-    const f=state.mode==='functions'?state.focusFunction:state.focusModule;
-    document.getElementById('stFocus').textContent='фокус: '+(f?shortOf(f):'—');
-    if(DATA){
-      const fs=DATA.fileStats||{},es=DATA.entityStats||{};
-      document.getElementById('stTotal').textContent=
-        `всего: ${fs.totalFiles??0} файлов · ${es.totalFunctions??0} функций · ${es.totalCalls??0} вызовов`;
-    }
-  }
-  function setMode(m){state.mode=m;computeVisible();reheat();syncToolbar();renderSidebar();}
-  function setDirection(d){state.direction=d;computeVisible();reheat();syncToolbar();}
-
-  document.getElementById('mModules').onclick=()=>setMode('modules');
-  document.getElementById('mFunctions').onclick=()=>setMode('functions');
-  document.getElementById('mHybrid').onclick=()=>setMode('hybrid');
-  document.getElementById('dUp').onclick=()=>setDirection('up');
-  document.getElementById('dDown').onclick=()=>setDirection('down');
-  document.getElementById('dBoth').onclick=()=>setDirection('both');
-  document.getElementById('hBack').onclick=historyBack;
-  document.getElementById('hFwd').onclick=historyForward;
-  document.getElementById('depth').addEventListener('input',e=>{
-    state.depth=+e.target.value;computeVisible();reheat();syncToolbar();});
-  document.getElementById('selLabels').addEventListener('change',e=>{state.labelMode=e.target.value;});
-  document.getElementById('cbExt').addEventListener('change',e=>{state.showExternal=e.target.checked;computeVisible();reheat();});
-  document.getElementById('btnFit').onclick=fit;
-  document.getElementById('btnExpandAll').onclick=()=>{
-    for(const m of G.modules.values()) if(!m.external) state.expanded.add(m.modName);
-    pushHistory();computeVisible();reheat();};
-  document.getElementById('btnCollapseAll').onclick=()=>{
-    state.expanded.clear();pushHistory();computeVisible();reheat();};
-  document.getElementById('btnReset').onclick=()=>{initFocus();pushHistory();computeVisible();reheat();syncToolbar();renderSidebar();setTimeout(fit,700);};
-  document.getElementById('btnHelp').onclick=()=>{
-    const h=document.getElementById('help');h.style.display=h.style.display==='block'?'none':'block';};
-  window.addEventListener('keydown',e=>{
-    if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT') return;
-    if(e.key==='ArrowLeft'){historyBack();e.preventDefault();}
-    else if(e.key==='ArrowRight'){historyForward();e.preventDefault();}
-    else if(e.key==='f'||e.key==='F') fit();
-    else if(e.key==='/'){e.preventDefault();searchInput.focus();}
-    else if(e.key==='Escape'){state.selected=null;renderSidebar();}
+  /* ============================== KEYBOARD ============================== */
+  document.addEventListener("keydown",e=>{
+    if(document.activeElement===sInp)return;
+    if(e.key==="ArrowLeft")goBack();
+    else if(e.key==="ArrowRight")goForward();
+    else if(e.key==="ArrowUp"){e.preventDefault();stopAuto();walkNext();}
+    else if(e.key==="ArrowDown"){e.preventDefault();stopAuto();walkPrev();}
+    else if(e.key==="f"||e.key==="F"||e.key==="а"||e.key==="А")fitView();
+    else if(e.key==="Escape"){closeWalk();pathSet=null;pathEdgeSet=null;pathSource=null;applyHighlight();}
   });
 
-  /* ============================== BOOT ============================== */
-  function initFocus(){
-    const entry=Object.entries(DATA.packages||{}).find(([,p])=>p.isEntry)?.[0]||Object.keys(DATA.packages||{})[0];
-    state.focusModule=entry||null;
-    const runCli=entry&&G.functions.has('fn::'+entry+'::runCLI')?'fn::'+entry+'::runCLI':G.functions.keys().next().value||null;
-    state.focusFunction=runCli;
-    state.expanded=new Set(entry?[entry]:[]);
-    state.selected=state.mode==='functions'?runCli:(entry?'mod::'+entry:null);
+  /* ============================== INIT ============================== */
+  function init(){
+    buildIndexes();
+    expanded.add(DATA.executionGraph?.entryPoint||
+      Object.keys(DATA.packages).find(k=>DATA.packages[k].isEntry)||"");
+    rebuild();
+    const entry=DATA.executionGraph?.entryPoint||
+      Object.keys(DATA.packages).find(k=>DATA.packages[k].isEntry);
+    fitView();
+    if(entry&&nodeMap.has(entry))selectAndCenter(entry);
+    const es=DATA.entityStats||{},fs=DATA.fileStats||{};
+    $("#footStats").innerHTML=
+      `Файлов: <b>${fs.totalFiles||0}</b> • Строк: <b>${(fs.totalLines||0).toLocaleString("ru")}</b> • `+
+      `Функций: <b>${es.totalFunctions||0}</b> • Классов: <b>${es.totalClasses||0}</b> • `+
+      `Интерфейсов: <b>${es.totalInterfaces||0}</b> • Вызовов: <b>${es.totalCalls||0}</b>`;
   }
-  function start(){
-    buildGraph(DATA);
-    initFocus();
-    state.history=[];state.hIndex=-1;
-    computeVisible();pushHistory();syncToolbar();renderSidebar();reheat();
-    setTimeout(fit,700);setTimeout(fit,1800);
-  }
-  async function init(){
-    resize();
-    requestAnimationFrame(loop);
-    try{
-      const res=await fetch('./package-lock-report.json',{cache:'no-store'});
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      DATA=await res.json();
-      start();
-    }catch(err){
-      document.getElementById('fallback').style.display='flex';
-    }
-  }
-  function readFile(f){
-    const r=new FileReader();
-    r.onload=()=>{try{DATA=JSON.parse(r.result);
-      document.getElementById('fallback').style.display='none';start();
-    }catch(err){alert('Не удалось разобрать JSON: '+err.message);}};
-    r.readAsText(f);
-  }
-  document.getElementById('btnOpenFile').onclick=()=>document.getElementById('fileInput').click();
-  document.getElementById('fileInput').addEventListener('change',e=>{if(e.target.files[0]) readFile(e.target.files[0]);});
-  window.addEventListener('dragover',e=>e.preventDefault());
-  window.addEventListener('drop',e=>{e.preventDefault();const f=e.dataTransfer?.files?.[0];if(f) readFile(f);});
-
-  init();
+  requestAnimationFrame(tick);
+  loadData();
 </script>
 </body>
 </html>
