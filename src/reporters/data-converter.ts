@@ -1,4 +1,4 @@
-// packages/ast-analyzer/src/reporters/data-converter.ts
+// src/reporters/data-converter.ts
 
 import type {
   FullAnalysis,
@@ -96,12 +96,34 @@ export interface PackageLockReport {
 }
 
 // ============================================================
+// ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ГАРАНТИИ МАССИВОВ
+// ============================================================
+
+/**
+ * Гарантирует, что значение является массивом
+ * Если это строка вида "[object Object]", преобразует в пустой массив
+ */
+function ensureArray<T>(value: any): T[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+// ============================================================
 // КОНВЕРТАЦИЯ ИЗ FULLANALYSIS В PACKAGELOCKREPORT
 // ============================================================
 
 export class DataConverter {
   /**
    * Преобразует ModuleNode в PackageLockPackage
+   * ✅ ИСПРАВЛЕНО: гарантирует, что все сущности - массивы объектов
    */
   static convertModuleNodeToPackage(
     node: ModuleGraphNode,
@@ -128,10 +150,14 @@ export class DataConverter {
       }
     }
 
-    const functions: PackageLockFunctionInfo[] = (entityNodes || [])
+    // ✅ ГАРАНТИРУЕМ, ЧТО entityNodes - МАССИВ
+    const safeEntityNodes = ensureArray<EntityGraphNode>(entityNodes);
+
+    // ✅ СОЗДАЕМ МАССИВ ОБЪЕКТОВ, А НЕ СТРОК
+    const functions: PackageLockFunctionInfo[] = safeEntityNodes
       .filter((e: EntityGraphNode) => e.type === 'function')
       .map((e: EntityGraphNode) => ({
-        name: e.name,
+        name: e.name || '',
         params: e.metadata?.params || [],
         paramTypes: [],
         line: e.line || 0,
@@ -140,7 +166,7 @@ export class DataConverter {
         isAsync: e.metadata?.isAsync || false,
         isExported: e.metadata?.isExported || false,
         isMethod: e.metadata?.isMethod || false,
-        className: e.metadata?.className,
+        className: e.metadata?.className || '',
         calls: callMap[e.name] || [],
         calledBy: calledByMap[e.name] || [],
         returnType: e.metadata?.returnType || 'any',
@@ -163,12 +189,12 @@ export class DataConverter {
       imports: {},
       exports: {},
       entities: {
-        functions,
-        constants: [],
-        variables: [],
-        interfaces: [],
-        types: [],
-        classes: [],
+        functions, // ✅ МАССИВ ОБЪЕКТОВ
+        constants: [], // ✅ МАССИВ
+        variables: [], // ✅ МАССИВ
+        interfaces: [], // ✅ МАССИВ
+        types: [], // ✅ МАССИВ
+        classes: [], // ✅ МАССИВ
       },
       fileStats: {
         size: node.metadata?.size || 0,
@@ -185,6 +211,7 @@ export class DataConverter {
 
   /**
    * Строит отчет из FullAnalysis
+   * ✅ ИСПРАВЛЕНО: проверяет входные данные и гарантирует структуру
    */
   static buildReportFromAnalysis(analysis: FullAnalysis): PackageLockReport {
     // Проверка входных данных
@@ -206,12 +233,18 @@ export class DataConverter {
       return this.createEmptyReport();
     }
 
-    for (const node of moduleNodes) {
+    // ✅ ГАРАНТИРУЕМ, ЧТО ВСЕ МАССИВЫ
+    const safeModuleNodes = ensureArray<ModuleGraphNode>(moduleNodes);
+    const safeEntityNodes = ensureArray<EntityGraphNode>(entityNodes);
+    const safeEntityEdges = ensureArray<EntityGraphEdge>(entityEdges);
+
+    for (const node of safeModuleNodes) {
       if (!node) continue;
       const modulePath = node.id;
       if (!modulePath) continue;
-      const entities = entityNodes.filter((e: EntityGraphNode) => e.module === modulePath);
-      packages[modulePath] = this.convertModuleNodeToPackage(node, entities, entityEdges);
+
+      const entities = safeEntityNodes.filter((e: EntityGraphNode) => e.module === modulePath);
+      packages[modulePath] = this.convertModuleNodeToPackage(node, entities, safeEntityEdges);
     }
 
     const inwardDependencies: Record<string, string[]> = {};
@@ -240,9 +273,11 @@ export class DataConverter {
 
     for (const pkg of Object.values(packages)) {
       if (!pkg) continue;
-      for (const func of pkg.entities.functions) {
+      // ✅ ГАРАНТИРУЕМ, ЧТО entities.functions - МАССИВ
+      const funcs = ensureArray<any>(pkg.entities?.functions);
+      for (const func of funcs) {
         totalFunctions++;
-        totalCalls += func.calls.length;
+        totalCalls += ensureArray<string>(func.calls).length;
         if (func.isExported) {
           totalExportedFunctions++;
         }
@@ -318,6 +353,7 @@ export class DataConverter {
 
   /**
    * Обогащает отчет данными из entitiesWithCalls
+   * ✅ ИСПРАВЛЕНО: гарантирует, что все данные - массивы
    */
   static enrichReport(report: PackageLockReport, entitiesWithCalls: any): PackageLockReport {
     // Проверка входных данных
@@ -331,9 +367,10 @@ export class DataConverter {
       return report;
     }
 
-    // Проверяем наличие функций
-    const functions = entitiesWithCalls.functions;
-    if (!functions || !Array.isArray(functions) || functions.length === 0) {
+    // ✅ ГАРАНТИРУЕМ, ЧТО functions - МАССИВ
+    const functions = ensureArray<any>(entitiesWithCalls.functions);
+
+    if (functions.length === 0) {
       console.log('ℹ️ DataConverter.enrichReport: no functions to enrich');
       return report;
     }
@@ -363,7 +400,8 @@ export class DataConverter {
         };
       }
 
-      if (!pkg.entities.functions) {
+      // ✅ ГАРАНТИРУЕМ, ЧТО pkg.entities.functions - МАССИВ
+      if (!Array.isArray(pkg.entities.functions)) {
         pkg.entities.functions = [];
       }
 
@@ -426,9 +464,10 @@ export class DataConverter {
 
     for (const pkg of Object.values(report.packages)) {
       if (!pkg) continue;
-      for (const func of pkg.entities?.functions || []) {
+      const funcs = ensureArray<any>(pkg.entities?.functions);
+      for (const func of funcs) {
         totalFunctions++;
-        totalCalls += (func.calls || []).length;
+        totalCalls += ensureArray<string>(func.calls).length;
         if (func.isExported) {
           totalExportedFunctions++;
         }

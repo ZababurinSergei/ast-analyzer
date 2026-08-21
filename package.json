@@ -219,7 +219,7 @@
     "format:check": "prettier --check \"src/**/*.ts\"",
     "preinstall": "",
     "project": "tsx ./src/cli.ts project ./src/cli.ts 15 -o ./reports/component-tree-deep",
-    "project:--entities": "tsx ./src/cli.ts project ./src/cli.ts 15 --entities -o ./reports/entities-component-tree-deep",
+    "project:--entities": "tsx ./src/cli.ts project ./src/cli.ts 150 --entities -o ./reports/entities-component-tree-deep",
     "file": "tsx ./src/cli.ts file ./src/cli.ts 15 -o ./reports/file-tree-deep"
   },
   "keywords": [

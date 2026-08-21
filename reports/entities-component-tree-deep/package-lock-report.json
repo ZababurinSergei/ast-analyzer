@@ -18,12 +18,12 @@
           "isAsync": true,
           "params": "",
           "returns": "Promise<void>",
-          "line": 1024,
+          "line": 1154,
           "consumers": ""
         }
       },
       "entities": {
-        "functions": "[object Object],[object Object],[object Object],[object Object],[object Object],[object Object]",
+        "functions": "[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object]",
         "constants": "[object Object],[object Object]",
         "variables": "",
         "interfaces": "[object Object]",
@@ -31,9 +31,9 @@
         "classes": ""
       },
       "fileStats": {
-        "size": 78215,
-        "lines": 2346,
-        "functions": 6,
+        "size": 77409,
+        "lines": 2382,
+        "functions": 13,
         "classes": 0,
         "constants": 2,
         "interfaces": 1,
@@ -1270,7 +1270,7 @@
           "isAsync": false,
           "params": "data,entities,outputPath",
           "returns": "void",
-          "line": 345,
+          "line": 382,
           "consumers": ""
         },
         "saveEntityGraph": {
@@ -1279,7 +1279,7 @@
           "isAsync": false,
           "params": "data,entities,outputPath",
           "returns": "void",
-          "line": 359,
+          "line": 396,
           "consumers": ""
         },
         "saveFullAnalysis": {
@@ -1288,7 +1288,7 @@
           "isAsync": false,
           "params": "data,entities,outputPath,root",
           "returns": "void",
-          "line": 373,
+          "line": 410,
           "consumers": ""
         },
         "savePackageLockReport": {
@@ -1297,7 +1297,7 @@
           "isAsync": false,
           "params": "rootKey,graph,entitiesMap,filePaths,outputPath",
           "returns": "void",
-          "line": 389,
+          "line": 429,
           "consumers": ""
         },
         "saveCallGraphResult": {
@@ -1306,7 +1306,7 @@
           "isAsync": false,
           "params": "callGraphResult,outputPath",
           "returns": "void",
-          "line": 427,
+          "line": 549,
           "consumers": ""
         },
         "buildModuleGraph": {
@@ -1315,7 +1315,7 @@
           "isAsync": false,
           "params": "data,entities",
           "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/json-reporter\").ModuleGraph",
-          "line": 440,
+          "line": 562,
           "consumers": ""
         },
         "buildEntityGraph": {
@@ -1324,7 +1324,7 @@
           "isAsync": false,
           "params": "data,entities",
           "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/json-reporter\").EntityGraph",
-          "line": 508,
+          "line": 634,
           "consumers": ""
         },
         "buildFullAnalysis": {
@@ -1333,7 +1333,7 @@
           "isAsync": false,
           "params": "data,entities,root",
           "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/json-reporter\").FullAnalysis",
-          "line": 687,
+          "line": 850,
           "consumers": ""
         },
         "findProjectRoot": {
@@ -1342,7 +1342,7 @@
           "isAsync": false,
           "params": "startDir",
           "returns": "string | null",
-          "line": 729,
+          "line": 892,
           "consumers": ""
         },
         "safeTraverseAST": {
@@ -1351,7 +1351,7 @@
           "isAsync": false,
           "params": "node,depth,visited",
           "returns": "any",
-          "line": 805,
+          "line": 964,
           "consumers": ""
         },
         "extractEntitiesFromFile": {
@@ -1360,7 +1360,7 @@
           "isAsync": false,
           "params": "filePath",
           "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/json-reporter\").EnhancedEntityInfo",
-          "line": 868,
+          "line": 1027,
           "consumers": ""
         },
         "buildEnhancedPackageLockReport": {
@@ -1369,12 +1369,12 @@
           "isAsync": false,
           "params": "rootKey,graph,entitiesMap,filePaths",
           "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/json-reporter\").EnhancedPackageLockReport",
-          "line": 1386,
+          "line": 1625,
           "consumers": ""
         }
       },
       "entities": {
-        "functions": "[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object]",
+        "functions": "[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object]",
         "constants": "",
         "variables": "",
         "interfaces": "[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object],[object Object]",
@@ -1382,9 +1382,9 @@
         "classes": ""
       },
       "fileStats": {
-        "size": 57697,
-        "lines": 1958,
-        "functions": 16,
+        "size": 65339,
+        "lines": 2148,
+        "functions": 21,
         "classes": 0,
         "constants": 0,
         "interfaces": 20,
@@ -2836,7 +2836,7 @@
       "imports": {},
       "exports": {},
       "entities": {
-        "functions": "",
+        "functions": "[object Object]",
         "constants": "",
         "variables": "",
         "interfaces": "[object Object],[object Object],[object Object],[object Object]",
@@ -2844,9 +2844,9 @@
         "classes": "[object Object]"
       },
       "fileStats": {
-        "size": 12645,
-        "lines": 455,
-        "functions": 0,
+        "size": 14153,
+        "lines": 494,
+        "functions": 1,
         "classes": 1,
         "constants": 0,
         "interfaces": 4,
@@ -3913,8 +3913,15 @@
     "findProjectRoot": "",
     "resolveAbsoluteFilePath": "",
     "extractEntitiesFromPackageLock": "",
+    "ensureArray": "",
+    "safeFunctionEntity": "ensureArray",
+    "safeClassEntity": "ensureArray",
+    "safeConstantEntity": "",
+    "safeInterfaceEntity": "ensureArray",
+    "safeTypeEntity": "",
+    "safeVariableEntity": "",
     "parseArgs": "normalizePathForOS,showHelp,parseInt",
-    "runCLI": "parseArgs,normalizePathForOS,setTsConfigPath,loadTsConfig,parseInt,runHybridReport,createIntParam,range,eq,analyzeVueComponent,generateVueComponentReport,buildSplitModulePrompt,minifyFolder,findDeadCode,runImpactAnalysis,buildAiPromptPack,minifyForAI,parseFloat,buildProjectGraph,normalizeGraphPaths,findCyclicEdges,convertToDOT,generateHTMLReport,normalizePathForDisplay,findProjectRoot,resolveAbsoluteFilePath,saveEnhancedPackageLockReport,extractEntitiesFromPackageLock,extractEntitiesFromFile,findModuleForEntity,generateInteractiveHTML,String,buildFileInternalGraph,parseFile,extractEntities,saveModuleGraph,saveEntityGraph,saveFullAnalysis",
+    "runCLI": "parseArgs,normalizePathForOS,setTsConfigPath,loadTsConfig,parseInt,runHybridReport,createIntParam,range,eq,analyzeVueComponent,generateVueComponentReport,buildSplitModulePrompt,minifyFolder,findDeadCode,runImpactAnalysis,buildAiPromptPack,minifyForAI,parseFloat,buildProjectGraph,normalizeGraphPaths,findCyclicEdges,convertToDOT,generateHTMLReport,normalizePathForDisplay,findProjectRoot,resolveAbsoluteFilePath,saveEnhancedPackageLockReport,ensureArray,safeFunctionEntity,safeClassEntity,safeConstantEntity,safeInterfaceEntity,safeTypeEntity,safeVariableEntity,extractEntitiesFromPackageLock,extractEntitiesFromFile,findModuleForEntity,generateInteractiveHTML,String,buildFileInternalGraph,parseFile,extractEntities,saveModuleGraph,saveEntityGraph,saveFullAnalysis",
     "findModuleForEntity": "",
     "isMainModule": "fileURLToPath",
     "collectAllNodes": "traverse",
@@ -4032,19 +4039,23 @@
     "getAllFunctions": "",
     "getFunctionsByExportSource": "",
     "getFunctionsStats": "getAllFunctions",
+    "safeString": "String",
+    "safeNumber": "parseInt,isNaN",
+    "safeBoolean": "",
     "saveModuleGraph": "buildModuleGraph,safeTraverseAST",
     "saveEntityGraph": "buildEntityGraph,safeTraverseAST",
     "saveFullAnalysis": "buildFullAnalysis,safeTraverseAST",
-    "savePackageLockReport": "buildEnhancedPackageLockReport,safeTraverseAST",
+    "savePackageLockReport": "ensureArray,buildEnhancedPackageLockReport,sanitizeEntities,safeTraverseAST",
+    "sanitizeEntities": "ensureArray",
     "saveCallGraphResult": "safeTraverseAST",
     "buildModuleGraph": "",
-    "buildEntityGraph": "findModuleForEntity",
+    "buildEntityGraph": "safeString,findModuleForEntity,ensureArray,safeNumber,safeBoolean",
     "buildFullAnalysis": "buildModuleGraph,buildEntityGraph,safeTraverseAST",
     "findFileInProject": "walkDir",
     "safeTraverseAST": "",
-    "extractEntitiesFromFile": "safeTraverseAST,extractValueFromNode",
-    "buildEnhancedPackageLockReport": "findProjectRoot,convertToEnhancedEntityInfo,findFileInProject,analyzeVueComponent,dfs,hasCycles,maxDepth",
-    "convertToEnhancedEntityInfo": "",
+    "extractEntitiesFromFile": "String,safeTraverseAST,extractValueFromNode",
+    "convertToEnhancedEntityInfo": "ensureArray,safeString,safeNumber,safeBoolean",
+    "buildEnhancedPackageLockReport": "findProjectRoot,convertToEnhancedEntityInfo,findFileInProject,analyzeVueComponent,String,dfs,hasCycles,maxDepth",
     "escapeHtml": "",
     "generateHTMLReport": "normalizePathForDisplay,getFileNameForDisplay,escapeHtml",
     "generateInteractiveHTML": "String",
@@ -4135,31 +4146,31 @@
     "mergeCallGraphs": ""
   },
   "entityStats": {
-    "totalFunctions": 231,
+    "totalFunctions": 244,
     "totalConstants": 19,
     "totalVariables": 6,
     "totalInterfaces": 180,
     "totalTypes": 4,
     "totalClasses": 28,
-    "totalCalls": 246,
+    "totalCalls": 272,
     "totalExportedFunctions": 175,
     "totalAsyncFunctions": 12
   },
   "fileStats": {
     "totalFiles": 63,
-    "totalSize": 1174631,
-    "totalLines": 38056
+    "totalSize": 1182975,
+    "totalLines": 38321
   },
-  "timestamp": "2026-08-21T21:36:20.565Z",
+  "timestamp": "2026-08-21T23:05:09.245Z",
   "architectureMetrics": {
     "totalModules": 63,
-    "totalFunctions": 231,
+    "totalFunctions": 244,
     "totalClasses": 28,
     "totalConstants": 19,
     "totalInterfaces": 180,
     "totalTypes": 4,
     "totalVariables": 6,
-    "totalCalls": 246,
+    "totalCalls": 272,
     "vueComponents": 0,
     "totalComposables": 0,
     "hasCycles": false,
@@ -4176,7 +4187,7 @@
     "projectType": "single",
     "entryPoint": "src/cli.ts",
     "totalModules": 63,
-    "totalFunctions": 231,
+    "totalFunctions": 244,
     "vueComponents": 0,
     "hasCycles": false,
     "maxDepth": 8,

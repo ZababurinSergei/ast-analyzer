@@ -182,23 +182,25 @@ function extractEntitiesFromPackageLock(packageLockReport: any): EntitiesResult 
     // Извлекаем функции с полной информацией
     if (Array.isArray(pkgAny.entities.functions)) {
       for (const func of pkgAny.entities.functions) {
-        const calls = Array.isArray(func.calls) ? func.calls : [];
+        // ✅ ЯВНОЕ ПРИВЕДЕНИЕ ТИПА
+        const f = func as any;
+        const calls = Array.isArray(f.calls) ? f.calls : [];
         totalCalls += calls.length;
 
         result.functions.push({
-          name: func.name || '',
-          line: func.line || 0,
-          isAsync: func.isAsync || false,
-          isExported: func.isExported || false,
-          params: Array.isArray(func.params) ? func.params : [],
-          returnType: func.returnType || 'any',
+          name: f.name || '',
+          line: f.line || 0,
+          isAsync: f.isAsync || false,
+          isExported: f.isExported || false,
+          params: Array.isArray(f.params) ? f.params : [],
+          returnType: f.returnType || 'any',
           calls: calls,
-          calledBy: Array.isArray(func.calledBy) ? func.calledBy : [],
-          body: func.body || '',
-          startLine: func.startLine || func.line || 0,
-          endLine: func.endLine || func.line || 0,
-          isMethod: func.isMethod || false,
-          className: func.className || '',
+          calledBy: Array.isArray(f.calledBy) ? f.calledBy : [],
+          body: f.body || '',
+          startLine: f.startLine || f.line || 0,
+          endLine: f.endLine || f.line || 0,
+          isMethod: f.isMethod || false,
+          className: f.className || '',
           _modulePath: modulePath,
         } as any);
         totalFunctions++;
@@ -208,16 +210,17 @@ function extractEntitiesFromPackageLock(packageLockReport: any): EntitiesResult 
     // Извлекаем классы
     if (Array.isArray(pkgAny.entities.classes)) {
       for (const cls of pkgAny.entities.classes) {
+        const c = cls as any;
         result.classes.push({
-          name: cls.name || '',
-          line: cls.line || 0,
-          isExported: cls.isExported || false,
-          methods: Array.isArray(cls.methods) ? cls.methods : [],
-          properties: Array.isArray(cls.properties) ? cls.properties : [],
-          extends: cls.extends || '',
-          implements: Array.isArray(cls.implements) ? cls.implements : [],
-          startLine: cls.startLine || cls.line || 0,
-          endLine: cls.endLine || cls.line || 0,
+          name: c.name || '',
+          line: c.line || 0,
+          isExported: c.isExported || false,
+          methods: Array.isArray(c.methods) ? c.methods : [],
+          properties: Array.isArray(c.properties) ? c.properties : [],
+          extends: c.extends || '',
+          implements: Array.isArray(c.implements) ? c.implements : [],
+          startLine: c.startLine || c.line || 0,
+          endLine: c.endLine || c.line || 0,
           _modulePath: modulePath,
         } as any);
       }
@@ -226,12 +229,13 @@ function extractEntitiesFromPackageLock(packageLockReport: any): EntitiesResult 
     // Извлекаем константы
     if (Array.isArray(pkgAny.entities.constants)) {
       for (const constItem of pkgAny.entities.constants) {
+        const c = constItem as any;
         result.constants.push({
-          name: constItem.name || '',
-          value: constItem.value,
-          line: constItem.line || 0,
-          isExported: constItem.isExported || false,
-          type: constItem.type || '',
+          name: c.name || '',
+          value: c.value,
+          line: c.line || 0,
+          isExported: c.isExported || false,
+          type: c.type || '',
           _modulePath: modulePath,
         } as any);
       }
@@ -240,14 +244,15 @@ function extractEntitiesFromPackageLock(packageLockReport: any): EntitiesResult 
     // Извлекаем интерфейсы
     if (Array.isArray(pkgAny.entities.interfaces)) {
       for (const intf of pkgAny.entities.interfaces) {
+        const i = intf as any;
         result.interfaces.push({
-          name: intf.name || '',
-          properties: Array.isArray(intf.properties) ? intf.properties : [],
-          line: intf.line || 0,
-          isExported: intf.isExported || false,
-          extends: Array.isArray(intf.extends) ? intf.extends : [],
-          startLine: intf.startLine || intf.line || 0,
-          endLine: intf.endLine || intf.line || 0,
+          name: i.name || '',
+          properties: Array.isArray(i.properties) ? i.properties : [],
+          line: i.line || 0,
+          isExported: i.isExported || false,
+          extends: Array.isArray(i.extends) ? i.extends : [],
+          startLine: i.startLine || i.line || 0,
+          endLine: i.endLine || i.line || 0,
           _modulePath: modulePath,
         } as any);
       }
@@ -256,11 +261,12 @@ function extractEntitiesFromPackageLock(packageLockReport: any): EntitiesResult 
     // Извлекаем типы
     if (Array.isArray(pkgAny.entities.types)) {
       for (const type of pkgAny.entities.types) {
+        const t = type as any;
         result.types.push({
-          name: type.name || '',
-          definition: type.definition || 'unknown',
-          line: type.line || 0,
-          isExported: type.isExported || false,
+          name: t.name || '',
+          definition: t.definition || 'unknown',
+          line: t.line || 0,
+          isExported: t.isExported || false,
           _modulePath: modulePath,
         } as any);
       }
@@ -269,12 +275,13 @@ function extractEntitiesFromPackageLock(packageLockReport: any): EntitiesResult 
     // Извлекаем переменные
     if (Array.isArray(pkgAny.entities.variables)) {
       for (const varItem of pkgAny.entities.variables) {
+        const v = varItem as any;
         result.variables.push({
-          name: varItem.name || '',
-          value: varItem.value,
-          line: varItem.line || 0,
-          isExported: varItem.isExported || false,
-          type: varItem.type || '',
+          name: v.name || '',
+          value: v.value,
+          line: v.line || 0,
+          isExported: v.isExported || false,
+          type: v.type || '',
           _modulePath: modulePath,
         } as any);
       }
@@ -291,6 +298,129 @@ function extractEntitiesFromPackageLock(packageLockReport: any): EntitiesResult 
   console.log(`   • Вызовов: ${totalCalls}`);
 
   return result;
+}
+
+// ==========================================
+// ✅ ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ГАРАНТИИ МАССИВОВ
+// ==========================================
+
+/**
+ * Гарантирует, что значение является массивом
+ */
+function ensureArray<T>(value: any): T[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+/**
+ * Безопасно преобразует сущность в функцию с правильной типизацией
+ */
+function safeFunctionEntity(item: any, modulePath: string): any {
+  const f = item as any;
+  return {
+    name: f.name || '',
+    line: f.line || 0,
+    isAsync: f.isAsync || false,
+    isExported: f.isExported || false,
+    params: ensureArray(f.params),
+    returnType: f.returnType || 'any',
+    calls: ensureArray(f.calls),
+    calledBy: ensureArray(f.calledBy),
+    body: f.body || '',
+    startLine: f.startLine || f.line || 0,
+    endLine: f.endLine || f.line || 0,
+    isMethod: f.isMethod || false,
+    className: f.className || '',
+    _modulePath: modulePath,
+  };
+}
+
+/**
+ * Безопасно преобразует сущность в класс
+ */
+function safeClassEntity(item: any, modulePath: string): any {
+  const c = item as any;
+  return {
+    name: c.name || '',
+    line: c.line || 0,
+    isExported: c.isExported || false,
+    methods: ensureArray(c.methods),
+    properties: ensureArray(c.properties),
+    extends: c.extends || '',
+    implements: ensureArray(c.implements),
+    startLine: c.startLine || c.line || 0,
+    endLine: c.endLine || c.line || 0,
+    _modulePath: modulePath,
+  };
+}
+
+/**
+ * Безопасно преобразует сущность в константу
+ */
+function safeConstantEntity(item: any, modulePath: string): any {
+  const c = item as any;
+  return {
+    name: c.name || '',
+    value: c.value,
+    line: c.line || 0,
+    isExported: c.isExported || false,
+    type: c.type || '',
+    _modulePath: modulePath,
+  };
+}
+
+/**
+ * Безопасно преобразует сущность в интерфейс
+ */
+function safeInterfaceEntity(item: any, modulePath: string): any {
+  const i = item as any;
+  return {
+    name: i.name || '',
+    properties: ensureArray(i.properties),
+    line: i.line || 0,
+    isExported: i.isExported || false,
+    extends: ensureArray(i.extends),
+    startLine: i.startLine || i.line || 0,
+    endLine: i.endLine || i.line || 0,
+    _modulePath: modulePath,
+  };
+}
+
+/**
+ * Безопасно преобразует сущность в тип
+ */
+function safeTypeEntity(item: any, modulePath: string): any {
+  const t = item as any;
+  return {
+    name: t.name || '',
+    definition: t.definition || 'unknown',
+    line: t.line || 0,
+    isExported: t.isExported || false,
+    _modulePath: modulePath,
+  };
+}
+
+/**
+ * Безопасно преобразует сущность в переменную
+ */
+function safeVariableEntity(item: any, modulePath: string): any {
+  const v = item as any;
+  return {
+    name: v.name || '',
+    value: v.value,
+    line: v.line || 0,
+    isExported: v.isExported || false,
+    type: v.type || '',
+    _modulePath: modulePath,
+  };
 }
 
 // ==========================================
@@ -1588,89 +1718,42 @@ export async function runCLI(): Promise<void> {
           for (const [modulePath, entities] of Object.entries(resultData.entities)) {
             if (!entities) continue;
 
-            // Добавляем функции с информацией о модуле
-            for (const func of entities.functions || []) {
-              entitiesWithCalls.functions.push({
-                name: func.name || '',
-                line: func.line || 0,
-                isAsync: func.isAsync || false,
-                isExported: func.isExported || false,
-                params: func.params || [],
-                returnType: func.returnType || 'any',
-                calls: func.calls || [],
-                calledBy: func.calledBy || [],
-                body: func.body || '',
-                startLine: func.startLine || func.line || 0,
-                endLine: func.endLine || func.line || 0,
-                isMethod: func.isMethod || false,
-                className: func.className || '',
-                _modulePath: modulePath,
-              } as any);
+            // ✅ ГАРАНТИРУЕМ, ЧТО ВСЕ ПОЛЯ - МАССИВЫ
+            const safeFunctions = ensureArray(entities.functions);
+            const safeClasses = ensureArray(entities.classes);
+            const safeConstants = ensureArray(entities.constants);
+            const safeInterfaces = ensureArray(entities.interfaces);
+            const safeTypes = ensureArray(entities.types);
+            const safeVariables = ensureArray(entities.variables);
+
+            // ✅ ИСПОЛЬЗУЕМ БЕЗОПАСНЫЕ ФУНКЦИИ ПРЕОБРАЗОВАНИЯ
+            for (const func of safeFunctions) {
+              entitiesWithCalls.functions.push(safeFunctionEntity(func, modulePath));
             }
 
-            // Добавляем классы с приведением типов
-            for (const cls of entities.classes || []) {
-              entitiesWithCalls.classes.push({
-                name: cls.name || '',
-                line: cls.line || 0,
-                isExported: cls.isExported || false,
-                methods: cls.methods || [],
-                properties: cls.properties || [],
-                extends: cls.extends || '',
-                implements: cls.implements || [],
-                startLine: cls.startLine || cls.line || 0,
-                endLine: cls.endLine || cls.line || 0,
-                _modulePath: modulePath,
-              } as any);
+            // Добавляем классы
+            for (const cls of safeClasses) {
+              entitiesWithCalls.classes.push(safeClassEntity(cls, modulePath));
             }
 
             // Добавляем константы
-            for (const constItem of entities.constants || []) {
-              entitiesWithCalls.constants.push({
-                name: constItem.name || '',
-                value: constItem.value,
-                line: constItem.line || 0,
-                isExported: constItem.isExported || false,
-                type: constItem.type || '',
-                _modulePath: modulePath,
-              } as any);
+            for (const constItem of safeConstants) {
+              entitiesWithCalls.constants.push(safeConstantEntity(constItem, modulePath));
             }
 
             // Добавляем интерфейсы
-            for (const intf of entities.interfaces || []) {
-              entitiesWithCalls.interfaces.push({
-                name: intf.name || '',
-                properties: intf.properties || [],
-                line: intf.line || 0,
-                isExported: intf.isExported || false,
-                extends: intf.extends || [],
-                startLine: intf.startLine || intf.line || 0,
-                endLine: intf.endLine || intf.line || 0,
-                _modulePath: modulePath,
-              } as any);
+            for (const intf of safeInterfaces) {
+              entitiesWithCalls.interfaces.push(safeInterfaceEntity(intf, modulePath));
             }
 
             // Добавляем типы
-            for (const type of entities.types || []) {
-              entitiesWithCalls.types.push({
-                name: type.name || '',
-                definition: type.definition || 'unknown',
-                line: type.line || 0,
-                isExported: type.isExported || false,
-                _modulePath: modulePath,
-              } as any);
+            for (const type of safeTypes) {
+              entitiesWithCalls.types.push(safeTypeEntity(type, modulePath));
             }
 
             // Добавляем переменные
-            for (const varItem of entities.variables || []) {
-              entitiesWithCalls.variables.push({
-                name: varItem.name || '',
-                value: varItem.value,
-                line: varItem.line || 0,
-                isExported: varItem.isExported || false,
-                type: varItem.type || '',
-                _modulePath: modulePath,
-              } as any);
+            for (const varItem of safeVariables) {
+              entitiesWithCalls.variables.push(safeVariableEntity(varItem, modulePath));
             }
 
             // Объединяем callGraph
@@ -1719,89 +1802,42 @@ export async function runCLI(): Promise<void> {
               if (fs.existsSync(absPath) && fs.statSync(absPath).isFile()) {
                 const fileEntities = extractEntitiesFromFile(absPath);
 
+                // ✅ ГАРАНТИРУЕМ МАССИВЫ
+                const safeFunctions = ensureArray(fileEntities.functions);
+                const safeClasses = ensureArray(fileEntities.classes);
+                const safeConstants = ensureArray(fileEntities.constants);
+                const safeInterfaces = ensureArray(fileEntities.interfaces);
+                const safeTypes = ensureArray(fileEntities.types);
+                const safeVariables = ensureArray(fileEntities.variables);
+
                 // Добавляем функции с информацией о модуле
-                for (const func of fileEntities.functions || []) {
-                  entitiesWithCalls.functions.push({
-                    name: func.name || '',
-                    line: func.line || 0,
-                    isAsync: func.isAsync || false,
-                    isExported: func.isExported || false,
-                    params: func.params || [],
-                    returnType: func.returnType || 'any',
-                    calls: func.calls || [],
-                    calledBy: func.calledBy || [],
-                    body: func.body || '',
-                    startLine: func.startLine || func.line || 0,
-                    endLine: func.endLine || func.line || 0,
-                    isMethod: func.isMethod || false,
-                    className: func.className || '',
-                    _modulePath: filePath,
-                  } as any);
+                for (const func of safeFunctions) {
+                  entitiesWithCalls.functions.push(safeFunctionEntity(func, filePath));
                 }
 
                 // Добавляем классы
-                for (const cls of fileEntities.classes || []) {
-                  entitiesWithCalls.classes.push({
-                    name: cls.name || '',
-                    line: cls.line || 0,
-                    isExported: cls.isExported || false,
-                    methods: cls.methods || [],
-                    properties: cls.properties || [],
-                    extends: cls.extends || '',
-                    implements: cls.implements || [],
-                    startLine: cls.startLine || cls.line || 0,
-                    endLine: cls.endLine || cls.line || 0,
-                    _modulePath: filePath,
-                  } as any);
+                for (const cls of safeClasses) {
+                  entitiesWithCalls.classes.push(safeClassEntity(cls, filePath));
                 }
 
                 // Добавляем константы
-                for (const constItem of fileEntities.constants || []) {
-                  entitiesWithCalls.constants.push({
-                    name: constItem.name || '',
-                    value: constItem.value,
-                    line: constItem.line || 0,
-                    isExported: constItem.isExported || false,
-                    type: constItem.type || '',
-                    _modulePath: filePath,
-                  } as any);
+                for (const constItem of safeConstants) {
+                  entitiesWithCalls.constants.push(safeConstantEntity(constItem, filePath));
                 }
 
                 // Добавляем интерфейсы
-                for (const intf of fileEntities.interfaces || []) {
-                  entitiesWithCalls.interfaces.push({
-                    name: intf.name || '',
-                    properties: intf.properties || [],
-                    line: intf.line || 0,
-                    isExported: intf.isExported || false,
-                    extends: intf.extends || [],
-                    startLine: intf.startLine || intf.line || 0,
-                    endLine: intf.endLine || intf.line || 0,
-                    _modulePath: filePath,
-                  } as any);
+                for (const intf of safeInterfaces) {
+                  entitiesWithCalls.interfaces.push(safeInterfaceEntity(intf, filePath));
                 }
 
                 // Добавляем типы
-                for (const type of fileEntities.types || []) {
-                  entitiesWithCalls.types.push({
-                    name: type.name || '',
-                    definition: type.definition || 'unknown',
-                    line: type.line || 0,
-                    isExported: type.isExported || false,
-                    _modulePath: filePath,
-                  } as any);
+                for (const type of safeTypes) {
+                  entitiesWithCalls.types.push(safeTypeEntity(type, filePath));
                 }
 
                 // Добавляем переменные
-                for (const varItem of fileEntities.variables || []) {
-                  entitiesWithCalls.variables.push({
-                    name: varItem.name || '',
-                    value: varItem.value,
-                    line: varItem.line || 0,
-                    isExported: varItem.isExported || false,
-                    type: varItem.type || '',
-                    _modulePath: filePath,
-                  } as any);
+                for (const varItem of safeVariables) {
+                  entitiesWithCalls.variables.push(safeVariableEntity(varItem, filePath));
                 }
               }
             } catch (error) {

@@ -1,7 +1,20 @@
 // src/reporters/data-converter.ts
+function ensureArray(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
 var DataConverter = class {
   /**
    * Преобразует ModuleNode в PackageLockPackage
+   * ✅ ИСПРАВЛЕНО: гарантирует, что все сущности - массивы объектов
    */
   static convertModuleNodeToPackage(node, entityNodes, entityEdges) {
     const callMap = {};
@@ -20,8 +33,9 @@ var DataConverter = class {
         calledByMap[toName].push(fromName);
       }
     }
-    const functions = (entityNodes || []).filter((e) => e.type === "function").map((e) => ({
-      name: e.name,
+    const safeEntityNodes = ensureArray(entityNodes);
+    const functions = safeEntityNodes.filter((e) => e.type === "function").map((e) => ({
+      name: e.name || "",
       params: e.metadata?.params || [],
       paramTypes: [],
       line: e.line || 0,
@@ -30,7 +44,7 @@ var DataConverter = class {
       isAsync: e.metadata?.isAsync || false,
       isExported: e.metadata?.isExported || false,
       isMethod: e.metadata?.isMethod || false,
-      className: e.metadata?.className,
+      className: e.metadata?.className || "",
       calls: callMap[e.name] || [],
       calledBy: calledByMap[e.name] || [],
       returnType: e.metadata?.returnType || "any",
@@ -53,11 +67,17 @@ var DataConverter = class {
       exports: {},
       entities: {
         functions,
+        // ✅ МАССИВ ОБЪЕКТОВ
         constants: [],
+        // ✅ МАССИВ
         variables: [],
+        // ✅ МАССИВ
         interfaces: [],
+        // ✅ МАССИВ
         types: [],
+        // ✅ МАССИВ
         classes: []
+        // ✅ МАССИВ
       },
       fileStats: {
         size: node.metadata?.size || 0,
@@ -73,6 +93,7 @@ var DataConverter = class {
   }
   /**
    * Строит отчет из FullAnalysis
+   * ✅ ИСПРАВЛЕНО: проверяет входные данные и гарантирует структуру
    */
   static buildReportFromAnalysis(analysis) {
     if (!analysis) {
@@ -88,12 +109,15 @@ var DataConverter = class {
       console.warn("\u26A0\uFE0F DataConverter.buildReportFromAnalysis: no module nodes found");
       return this.createEmptyReport();
     }
-    for (const node of moduleNodes) {
+    const safeModuleNodes = ensureArray(moduleNodes);
+    const safeEntityNodes = ensureArray(entityNodes);
+    const safeEntityEdges = ensureArray(entityEdges);
+    for (const node of safeModuleNodes) {
       if (!node) continue;
       const modulePath = node.id;
       if (!modulePath) continue;
-      const entities = entityNodes.filter((e) => e.module === modulePath);
-      packages[modulePath] = this.convertModuleNodeToPackage(node, entities, entityEdges);
+      const entities = safeEntityNodes.filter((e) => e.module === modulePath);
+      packages[modulePath] = this.convertModuleNodeToPackage(node, entities, safeEntityEdges);
     }
     const inwardDependencies = {};
     const outwardDependencies = {};
@@ -117,9 +141,10 @@ var DataConverter = class {
     let totalAsyncFunctions = 0;
     for (const pkg of Object.values(packages)) {
       if (!pkg) continue;
-      for (const func of pkg.entities.functions) {
+      const funcs = ensureArray(pkg.entities?.functions);
+      for (const func of funcs) {
         totalFunctions++;
-        totalCalls += func.calls.length;
+        totalCalls += ensureArray(func.calls).length;
         if (func.isExported) {
           totalExportedFunctions++;
         }
@@ -192,6 +217,7 @@ var DataConverter = class {
   }
   /**
    * Обогащает отчет данными из entitiesWithCalls
+   * ✅ ИСПРАВЛЕНО: гарантирует, что все данные - массивы
    */
   static enrichReport(report, entitiesWithCalls) {
     if (!report) {
@@ -202,8 +228,8 @@ var DataConverter = class {
       console.log("\u2139\uFE0F DataConverter.enrichReport: no entities to enrich");
       return report;
     }
-    const functions = entitiesWithCalls.functions;
-    if (!functions || !Array.isArray(functions) || functions.length === 0) {
+    const functions = ensureArray(entitiesWithCalls.functions);
+    if (functions.length === 0) {
       console.log("\u2139\uFE0F DataConverter.enrichReport: no functions to enrich");
       return report;
     }
@@ -225,7 +251,7 @@ var DataConverter = class {
           classes: []
         };
       }
-      if (!pkg.entities.functions) {
+      if (!Array.isArray(pkg.entities.functions)) {
         pkg.entities.functions = [];
       }
       for (const func of pkg.entities.functions) {
@@ -276,9 +302,10 @@ var DataConverter = class {
     let totalAsyncFunctions = 0;
     for (const pkg of Object.values(report.packages)) {
       if (!pkg) continue;
-      for (const func of pkg.entities?.functions || []) {
+      const funcs = ensureArray(pkg.entities?.functions);
+      for (const func of funcs) {
         totalFunctions++;
-        totalCalls += (func.calls || []).length;
+        totalCalls += ensureArray(func.calls).length;
         if (func.isExported) {
           totalExportedFunctions++;
         }
