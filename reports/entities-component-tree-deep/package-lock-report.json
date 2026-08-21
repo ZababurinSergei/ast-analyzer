@@ -6520,70 +6520,12 @@
             "packageLockPath"
           ],
           "returns": "Promise<void>",
-          "line": 477,
+          "line": 284,
           "consumers": []
         }
       },
       "entities": {
         "functions": [
-          {
-            "name": "getFileColor",
-            "params": [
-              "modulePath"
-            ],
-            "paramTypes": [
-              "any"
-            ],
-            "line": 105,
-            "startLine": 105,
-            "endLine": 128,
-            "isAsync": false,
-            "isExported": false,
-            "isMethod": false,
-            "calls": [],
-            "calledBy": [
-              "generateFullDOT"
-            ],
-            "returnType": "string",
-            "body": "{\n  const typeColors: Record<string, string> = {\n    '.ts': '#60a5fa',\n    '.tsx': '#a78bfa',\n    '.js': '#fbbf24',\n    '.jsx': '#f472b6',\n    '.vue': '#4ade80',\n    '.json': '#fcd34d',\n    '.md': '#9",
-            "isNested": false,
-            "isArrow": false,
-            "isEventHandler": false,
-            "depth": 0
-          },
-          {
-            "name": "generateFullDOT",
-            "params": [
-              "report",
-              "focusModule",
-              "focusFunction",
-              "mode"
-            ],
-            "paramTypes": [
-              "any",
-              "any",
-              "any",
-              "any"
-            ],
-            "line": 134,
-            "startLine": 134,
-            "endLine": 289,
-            "isAsync": false,
-            "isExported": false,
-            "isMethod": false,
-            "calls": [
-              "getFileColor"
-            ],
-            "calledBy": [
-              "generateInteractiveHTML"
-            ],
-            "returnType": "string",
-            "body": "{\n  const modulePaths = Object.keys(report.packages);\n\n  let dot = 'digraph ProjectGraph {\\n';\n  dot += '  rankdir=LR;\\n';\n  dot += '  splines=true;\\n';\n  dot += '  node [shape=box, style=\"filled,roun",
-            "isNested": false,
-            "isArrow": false,
-            "isEventHandler": false,
-            "depth": 0
-          },
           {
             "name": "convertModuleNodeToPackage",
             "params": [
@@ -6596,9 +6538,9 @@
               "any",
               "any"
             ],
-            "line": 295,
-            "startLine": 295,
-            "endLine": 373,
+            "line": 102,
+            "startLine": 102,
+            "endLine": 180,
             "isAsync": false,
             "isExported": false,
             "isMethod": false,
@@ -6621,9 +6563,9 @@
             "paramTypes": [
               "any"
             ],
-            "line": 375,
-            "startLine": 375,
-            "endLine": 457,
+            "line": 182,
+            "startLine": 182,
+            "endLine": 264,
             "isAsync": false,
             "isExported": false,
             "isMethod": false,
@@ -6648,18 +6590,20 @@
             "paramTypes": [
               "any"
             ],
-            "line": 463,
-            "startLine": 463,
-            "endLine": 471,
+            "line": 270,
+            "startLine": 270,
+            "endLine": 278,
             "isAsync": false,
             "isExported": false,
             "isMethod": false,
-            "calls": [],
+            "calls": [
+              "String"
+            ],
             "calledBy": [
               "generateInteractiveHTML"
             ],
             "returnType": "string",
-            "body": "{\n  if (!str) return '';\n  return str\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#039;');\n}",
+            "body": "{\n  if (!str) return '';\n  return String(str)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#039;');\n}",
             "isNested": false,
             "isArrow": false,
             "isEventHandler": false,
@@ -6679,17 +6623,14 @@
               "any",
               "any"
             ],
-            "line": 477,
-            "startLine": 477,
-            "endLine": 1454,
+            "line": 284,
+            "startLine": 284,
+            "endLine": 1460,
             "isAsync": true,
             "isExported": true,
             "isMethod": false,
             "calls": [
               "buildReportFromAnalysis",
-              "generateFullDOT",
-              "findWasmPath",
-              "String",
               "escapeHtml"
             ],
             "calledBy": [],
@@ -6728,11 +6669,11 @@
               "eventType",
               "depth"
             ],
-            "line": 18,
+            "line": 15,
             "isExported": false,
             "extends": [],
-            "startLine": 18,
-            "endLine": 39
+            "startLine": 15,
+            "endLine": 36
           },
           {
             "name": "PackageLockEntityInfo",
@@ -6744,11 +6685,11 @@
               "types",
               "classes"
             ],
-            "line": 41,
+            "line": 38,
             "isExported": false,
             "extends": [],
-            "startLine": 41,
-            "endLine": 48
+            "startLine": 38,
+            "endLine": 45
           },
           {
             "name": "PackageLockPackage",
@@ -6764,11 +6705,11 @@
               "entities",
               "fileStats"
             ],
-            "line": 50,
+            "line": 47,
             "isExported": false,
             "extends": [],
-            "startLine": 50,
-            "endLine": 70
+            "startLine": 47,
+            "endLine": 67
           },
           {
             "name": "PackageLockReport",
@@ -6782,20 +6723,20 @@
               "fileStats",
               "timestamp"
             ],
-            "line": 72,
+            "line": 69,
             "isExported": false,
             "extends": [],
-            "startLine": 72,
-            "endLine": 99
+            "startLine": 69,
+            "endLine": 96
           }
         ],
         "types": [],
         "classes": []
       },
       "fileStats": {
-        "size": 53517,
-        "lines": 1459,
-        "functions": 6,
+        "size": 76430,
+        "lines": 1465,
+        "functions": 4,
         "classes": 0,
         "constants": 0,
         "interfaces": 4,
@@ -14171,9 +14112,7 @@
         "src/utils/path-utils.ts"
       ],
       "src/reporters/interactive-reporter.ts": [
-        "src/types.ts",
-        "@hpcc-js/wasm-graphviz",
-        "src/utils/wasm-utils.ts"
+        "src/types.ts"
       ],
       "src/types.ts": [
         "src/core/entity-extractor.ts"
@@ -14532,7 +14471,6 @@
       ],
       "src/utils/wasm-utils.ts": [
         "src/ci-cd/SemanticPipeline.ts",
-        "src/reporters/interactive-reporter.ts",
         "src/semantic/CallGraphAnalyzer.ts"
       ],
       "src/formal/ExpressionParser.ts": [
@@ -15404,19 +15342,12 @@
       "getFileNameForDisplay",
       "escapeHtml"
     ],
-    "getFileColor": [],
-    "generateFullDOT": [
-      "getFileColor"
-    ],
     "convertModuleNodeToPackage": [],
     "buildReportFromAnalysis": [
       "convertModuleNodeToPackage"
     ],
     "generateInteractiveHTML": [
       "buildReportFromAnalysis",
-      "generateFullDOT",
-      "findWasmPath",
-      "String",
       "escapeHtml"
     ],
     "showHelp": [],
@@ -15567,20 +15498,20 @@
     "mergeCallGraphs": []
   },
   "entityStats": {
-    "totalFunctions": 233,
+    "totalFunctions": 231,
     "totalConstants": 17,
     "totalVariables": 6,
     "totalInterfaces": 172,
     "totalTypes": 4,
     "totalClasses": 27,
-    "totalCalls": 237,
+    "totalCalls": 234,
     "totalExportedFunctions": 174,
     "totalAsyncFunctions": 12
   },
   "fileStats": {
     "totalFiles": 62,
-    "totalSize": 1186005,
-    "totalLines": 38094
+    "totalSize": 1208918,
+    "totalLines": 38100
   },
-  "timestamp": "2026-08-21T00:28:45.586Z"
+  "timestamp": "2026-08-21T11:43:49.096Z"
 }

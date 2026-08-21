@@ -417,7 +417,6 @@ export async function generateInteractiveHTML(
   const entryModules = moduleStats.filter(m => m.isEntry);
   const entryNames = entryModules.map(m => escapeHtml(m.name)).join(', ');
 
-  // Используем строковую конкатенацию вместо шаблонных литералов для HTML
   let htmlContent = '<!DOCTYPE html>\n';
   htmlContent += '<html lang="ru">\n';
   htmlContent += '<head>\n';
@@ -727,11 +726,9 @@ export async function generateInteractiveHTML(
     '</strong> KB</span>\n';
   htmlContent += '            </div>\n';
 
-  // ✅ Используем moduleStats и escapeHtml для отображения статистики по модулям
   htmlContent += '            <div class="sub" style="margin-top: 8px;">';
   htmlContent += '📊 По типам: ';
 
-  // Исправленный цикл с проверкой на undefined
   const typeEntries = Object.entries(totalModulesByType);
   for (let i = 0; i < typeEntries.length; i++) {
     const entry = typeEntries[i];
@@ -826,469 +823,633 @@ export async function generateInteractiveHTML(
   htmlContent += '        </div>\n';
   htmlContent += '    </div>\n';
 
-  // JavaScript часть
+  // JavaScript часть - используем functionsJson для загрузки данных функций
   htmlContent += '    <script>\n';
-  htmlContent += '        const reportData = ' + reportJson + ';\n';
+  htmlContent += '        // Данные функций (встроенные)\n';
   htmlContent += '        const allFunctionsData = ' + functionsJson + ';\n';
-
-  htmlContent += `
-        let currentMode = 'all';
-        let currentFocusModule = null;
-        let currentFocusFunction = null;
-        let simulation = null;
-        let svg = null;
-        let g = null;
-        let zoom = null;
-        let graphNodes = [];
-        let graphLinks = [];
-        let nodeMap = new Map();
-
-        function init() {
-            renderModules();
-            initGraph();
-            updateView();
-            setupKeyboard();
-        }
-
-        function renderModules() {
-            const grid = document.getElementById('modulesGrid');
-            grid.innerHTML = '';
-            const moduleEntries = Object.entries(reportData.packages || {});
-            moduleEntries.sort((a, b) => {
-                const aEntry = a[1]?.isEntry ? 0 : 1;
-                const bEntry = b[1]?.isEntry ? 0 : 1;
-                return aEntry - bEntry;
-            });
-            for (const [modulePath, pkg] of moduleEntries) {
-                if (!pkg) continue;
-                const moduleCard = document.createElement('div');
-                moduleCard.className = 'module-card';
-                moduleCard.dataset.module = modulePath;
-                moduleCard.onclick = () => focusModule(modulePath);
-                const funcs = pkg.entities?.functions || [];
-                const isEntry = pkg.isEntry || false;
-                const displayName = pkg.displayPath || modulePath.split('/').pop() || modulePath;
-                const language = pkg.language || 'javascript';
-                const lines = pkg.fileStats?.lines || 0;
-                let funcsHtml = '';
-                for (const func of funcs) {
-                    const paramsStr = (func.params || []).map(p => escapeHtml(p)).join(', ');
-                    const callsStr = (func.calls || []).slice(0, 3).map(c => escapeHtml(c)).join(', ');
-                    const isExported = func.isExported || false;
-                    const isAsync = func.isAsync || false;
-                    funcsHtml += '<div class="func-item" onclick="event.stopPropagation(); focusFunction(\'' + escapeHtml(func.name) + '\', \'' + escapeHtml(modulePath) + '\')" data-func="' + escapeHtml(func.name) + '" data-module="' + escapeHtml(modulePath) + '">' +
-                        '<span class="func-name">' + escapeHtml(func.name) + '</span>' +
-                        (isExported ? '<span class="func-export">📤</span>' : '') +
-                        (isAsync ? '<span class="func-async">⚡</span>' : '') +
-                        (func.params && func.params.length > 0 ? '<span class="func-params">(' + paramsStr + ')</span>' : '') +
-                        (func.calls && func.calls.length > 0 ? '<span class="func-calls">→ ' + callsStr + (func.calls.length > 3 ? '...' : '') + '</span>' : '') +
-                        (func.calledBy && func.calledBy.length > 0 ? '<span class="func-called">← ' + func.calledBy.length + '</span>' : '') +
-                        '<span class="func-line">стр.' + (func.line || 0) + '</span>' +
-                        '</div>';
-                }
-                moduleCard.innerHTML = '<div class="header-row">' +
-                    '<div><div class="name">' + (isEntry ? '⭐ ' : '') + escapeHtml(displayName) + '</div>' +
-                    '<div class="path">' + escapeHtml(modulePath) + '</div></div>' +
-                    '<div style="display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end;">' +
-                    '<span class="badge lang">' + escapeHtml(language) + '</span>' +
-                    (isEntry ? '<span class="badge export">⭐ entry</span>' : '') +
-                    '<span class="badge lines">' + lines + ' строк</span>' +
-                    '</div></div>' +
-                    '<div class="badges">' +
-                    '<span class="badge fn">' + funcs.length + ' функций</span>' +
-                    (pkg.entities?.classes?.length > 0 ? '<span class="badge class">' + pkg.entities.classes.length + ' классов</span>' : '') +
-                    (pkg.entities?.constants?.length > 0 ? '<span class="badge const">' + pkg.entities.constants.length + ' констант</span>' : '') +
-                    (pkg.entities?.interfaces?.length > 0 ? '<span class="badge interface">' + pkg.entities.interfaces.length + ' интерфейсов</span>' : '') +
-                    (pkg.entities?.types?.length > 0 ? '<span class="badge type">' + pkg.entities.types.length + ' типов</span>' : '') +
-                    (pkg.entities?.variables?.length > 0 ? '<span class="badge var">' + pkg.entities.variables.length + ' переменных</span>' : '') +
-                    '</div>' +
-                    '<div class="functions-list">' + funcsHtml + '</div>';
-                grid.appendChild(moduleCard);
-            }
-        }
-
-        function initGraph() {
-            const container = document.getElementById('d3GraphWrapper');
-            const width = container.clientWidth || 900;
-            const height = 700;
-            container.innerHTML = '<div class="graph-tooltip" id="graphTooltip"><div class="tt-title" id="ttTitle"></div><div class="tt-info" id="ttInfo"></div><div class="tt-detail" id="ttDetail"></div></div>';
-            svg = d3.select(container).append('svg').attr('width', width).attr('height', height).style('background', '#0f172a').style('border-radius', '8px').style('display', 'block');
-            g = svg.append('g');
-            zoom = d3.zoom().extent([[0, 0], [width, height]]).scaleExtent([0.1, 4]).on('zoom', function(event) { g.attr('transform', event.transform); });
-            svg.call(zoom);
-            buildGraphData();
-            renderGraph(width, height);
-            window.addEventListener('resize', function() { const newWidth = container.clientWidth || 900; svg.attr('width', newWidth); });
-        }
-
-        function buildGraphData() {
-            graphNodes = [];
-            graphLinks = [];
-            nodeMap = new Map();
-            const levelColors = ['#4ade80', '#60a5fa', '#a78bfa', '#f472b6', '#fbbf24', '#f87171', '#22d3ee'];
-            for (const [modulePath, pkg] of Object.entries(reportData.packages || {})) {
-                if (!pkg) continue;
-                const isRoot = pkg.isEntry || false;
-                const name = pkg.displayPath || modulePath.split('/').pop() || modulePath;
-                const funcs = pkg.entities?.functions || [];
-                const level = 0;
-                const nodeId = modulePath;
-                nodeMap.set(nodeId, {
-                    id: nodeId,
-                    name: name,
-                    fullName: modulePath,
-                    type: 'module',
-                    isRoot: isRoot,
-                    level: level,
-                    color: isRoot ? '#fbbf24' : (levelColors[level % levelColors.length] || '#94a3b8'),
-                    size: isRoot ? 35 : 25,
-                    functions: funcs,
-                    pkg: pkg
-                });
-                graphNodes.push(nodeMap.get(nodeId));
-                for (const func of funcs) {
-                    const funcId = modulePath + '#func:' + func.name;
-                    if (!nodeMap.has(funcId)) {
-                        nodeMap.set(funcId, {
-                            id: funcId,
-                            name: func.name,
-                            fullName: func.name,
-                            type: 'function',
-                            isRoot: false,
-                            isExported: func.isExported || false,
-                            isAsync: func.isAsync || false,
-                            module: modulePath,
-                            line: func.line || 0,
-                            color: func.isExported ? '#f87171' : '#fbbf24',
-                            size: 8,
-                            calls: func.calls || [],
-                            calledBy: func.calledBy || [],
-                            params: func.params || [],
-                            returnType: func.returnType || 'any',
-                            body: func.body || ''
-                        });
-                        graphNodes.push(nodeMap.get(funcId));
-                    }
-                }
-            }
-            const inwardDeps = reportData.dependencyGraph?.inwardDependencies || {};
-            const outwardDeps = reportData.dependencyGraph?.outwardDependencies || {};
-            const addedEdges = new Set();
-            for (const [from, deps] of Object.entries(outwardDeps)) {
-                if (!deps) continue;
-                for (const to of deps) {
-                    const edgeKey = from + '->' + to;
-                    if (addedEdges.has(edgeKey)) continue;
-                    addedEdges.add(edgeKey);
-                    if (nodeMap.has(from) && nodeMap.has(to)) {
-                        graphLinks.push({ source: from, target: to, type: 'import', isCycle: false, isCall: false });
-                    }
-                }
-            }
-            for (const node of graphNodes) {
-                if (node.type !== 'function') continue;
-                const calls = node.calls || [];
-                for (const call of calls) {
-                    const targetKey = node.module + '#func:' + call;
-                    if (nodeMap.has(targetKey)) {
-                        const edgeKey = node.id + '->' + targetKey;
-                        if (!addedEdges.has(edgeKey)) {
-                            addedEdges.add(edgeKey);
-                            graphLinks.push({ source: node.id, target: targetKey, type: 'call', isCall: true, isCycle: false });
-                        }
-                    } else {
-                        for (const otherNode of graphNodes) {
-                            if (otherNode.type === 'function' && otherNode.name === call) {
-                                const edgeKey = node.id + '->' + otherNode.id;
-                                if (!addedEdges.has(edgeKey)) {
-                                    addedEdges.add(edgeKey);
-                                    graphLinks.push({ source: node.id, target: otherNode.id, type: 'call', isCall: true, isCycle: false });
-                                }
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            graphLinks = graphLinks.filter(link => nodeMap.has(link.source) && nodeMap.has(link.target));
-        }
-
-        function renderGraph(width, height) {
-            if (!g) return;
-            g.selectAll('*').remove();
-            let filteredNodes = graphNodes;
-            let filteredLinks = graphLinks;
-            if (currentFocusModule) {
-                const related = new Set([currentFocusModule]);
-                for (const link of graphLinks) {
-                    if (link.source === currentFocusModule) related.add(link.target);
-                    if (link.target === currentFocusModule) related.add(link.source);
-                }
-                filteredNodes = graphNodes.filter(n => related.has(n.id) || n.type === 'function');
-                filteredLinks = graphLinks.filter(l => related.has(l.source) && related.has(l.target));
-            }
-            if (currentFocusFunction) {
-                const related = new Set([currentFocusFunction]);
-                let focusModule = '';
-                for (const node of graphNodes) {
-                    if (node.id === currentFocusFunction) { focusModule = node.module || ''; break; }
-                }
-                if (focusModule) related.add(focusModule);
-                for (const link of graphLinks) {
-                    if (link.source === currentFocusFunction) related.add(link.target);
-                    if (link.target === currentFocusFunction) related.add(link.source);
-                }
-                filteredNodes = graphNodes.filter(n => related.has(n.id));
-                filteredLinks = graphLinks.filter(l => related.has(l.source) && related.has(l.target));
-            }
-            const searchQuery = document.getElementById('searchInput').value.toLowerCase().trim();
-            if (searchQuery) {
-                const matched = new Set();
-                for (const node of filteredNodes) {
-                    if (node.name.toLowerCase().includes(searchQuery) || node.fullName?.toLowerCase().includes(searchQuery)) {
-                        matched.add(node.id);
-                    }
-                }
-                const expanded = new Set(matched);
-                for (const link of filteredLinks) {
-                    if (matched.has(link.source)) expanded.add(link.target);
-                    if (matched.has(link.target)) expanded.add(link.source);
-                }
-                filteredNodes = filteredNodes.filter(n => expanded.has(n.id));
-                filteredLinks = filteredLinks.filter(l => expanded.has(l.source) && expanded.has(l.target));
-            }
-            const nodeMapFiltered = new Map();
-            for (const node of filteredNodes) nodeMapFiltered.set(node.id, node);
-            const link = g.append('g').selectAll('line').data(filteredLinks).enter().append('line')
-                .attr('stroke', d => d.isCall ? '#ef4444' : (d.isCycle ? '#f59e0b' : '#3b82f6'))
-                .attr('stroke-width', d => d.isCall ? 1.5 : (d.isCycle ? 2 : 1))
-                .attr('stroke-opacity', d => d.isCall ? 0.8 : 0.5)
-                .attr('stroke-dasharray', d => d.isCall ? 'none' : (d.isCycle ? '8,4' : 'none'));
-            const nodeGroup = g.append('g').selectAll('g').data(filteredNodes).enter().append('g')
-                .attr('cursor', 'pointer')
-                .on('click', function(event, d) { if (d.type === 'function') { showDetail(d); } else if (d.type === 'module') { focusModule(d.id); } })
-                .on('mouseover', function(event, d) { showTooltip(event, d); })
-                .on('mouseout', function() { hideTooltip(); })
-                .call(d3.drag().on('start', dragstarted).on('drag', dragged).on('end', dragended));
-            nodeGroup.append('circle')
-                .attr('r', d => d.size || 10)
-                .attr('fill', d => {
-                    if (currentFocusFunction && d.id === currentFocusFunction) return '#22d3ee';
-                    if (currentFocusModule && d.id === currentFocusModule) return '#22d3ee';
-                    return d.color || '#94a3b8';
-                })
-                .attr('stroke', d => {
-                    if (d.isRoot) return '#fbbf24';
-                    if (currentFocusFunction && d.id === currentFocusFunction) return '#22d3ee';
-                    if (currentFocusModule && d.id === currentFocusModule) return '#22d3ee';
-                    return '#1e293b';
-                })
-                .attr('stroke-width', d => (d.isRoot || d.id === currentFocusFunction || d.id === currentFocusModule) ? 3 : 1.5)
-                .attr('opacity', d => 1);
-            nodeGroup.append('text')
-                .attr('dx', d => (d.size || 10) + 8)
-                .attr('dy', 4)
-                .attr('font-size', d => d.type === 'function' ? '9px' : '12px')
-                .attr('fill', '#e2e8f0')
-                .attr('font-family', 'monospace')
-                .text(d => {
-                    if (d.isRoot) return '⭐ ' + d.name;
-                    if (d.type === 'function' && d.isExported) return '📤 ' + d.name;
-                    return d.name;
-                })
-                .style('pointer-events', 'none')
-                .attr('opacity', d => 1);
-            if (!currentFocusFunction) {
-                nodeGroup.filter(d => d.type === 'module' && d.functions && d.functions.length > 0)
-                    .append('text')
-                    .attr('dx', d => (d.size || 10) + 8)
-                    .attr('dy', 16)
-                    .attr('font-size', '8px')
-                    .attr('fill', '#94a3b8')
-                    .attr('font-family', 'monospace')
-                    .text(d => d.functions.length + ' функций')
-                    .style('pointer-events', 'none');
-            }
-            const sim = d3.forceSimulation(filteredNodes)
-                .force('link', d3.forceLink(filteredLinks).id(d => d.id).distance(d => d.isCall ? 100 : 150))
-                .force('charge', d3.forceManyBody().strength(d => d.type === 'module' ? -500 : -200))
-                .force('center', d3.forceCenter(width / 2, height / 2))
-                .force('collision', d3.forceCollide().radius(d => (d.size || 10) + 15));
-            sim.on('tick', function() {
-                link.attr('x1', d => d.source.x).attr('y1', d => d.source.y).attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-                nodeGroup.attr('transform', d => 'translate(' + (d.x || 0) + ',' + (d.y || 0) + ')');
-            });
-            simulation = sim;
-            function dragstarted(event, d) { if (!event.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }
-            function dragged(event, d) { d.fx = event.x; d.fy = event.y; }
-            function dragended(event, d) { if (!event.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }
-        }
-
-        function showTooltip(event, d) {
-            const tooltip = document.getElementById('graphTooltip');
-            document.getElementById('ttTitle').textContent = d.name;
-            document.getElementById('ttInfo').textContent = d.type === 'module' ? 'Модуль: ' + d.fullName : 'Тип: функция' + (d.isExported ? ' 📤' : '');
-            let detail = '';
-            if (d.type === 'function') {
-                detail += 'Параметры: ' + (d.params || []).join(', ') || 'нет\n';
-                detail += 'Возврат: ' + (d.returnType || 'any') + '\n';
-                detail += 'Строка: ' + (d.line || 0) + '\n';
-                detail += 'Вызовов: ' + (d.calls || []).length + '\n';
-                detail += 'Кем вызвана: ' + (d.calledBy || []).length;
-            } else {
-                detail += 'Функций: ' + (d.functions || []).length + '\n';
-                if (d.pkg) detail += 'Экспортов: ' + (d.pkg.exports ? Object.keys(d.pkg.exports).length : 0);
-            }
-            document.getElementById('ttDetail').textContent = detail;
-            const container = document.getElementById('d3GraphWrapper');
-            const rect = container.getBoundingClientRect();
-            const x = event.clientX - rect.left + 15;
-            const y = event.clientY - rect.top - 10;
-            tooltip.style.display = 'block';
-            tooltip.style.left = Math.min(x, rect.width - 320) + 'px';
-            tooltip.style.top = Math.min(y, rect.height - 150) + 'px';
-        }
-
-        function hideTooltip() { document.getElementById('graphTooltip').style.display = 'none'; }
-
-        function setMode(mode) {
-            currentMode = mode;
-            document.querySelectorAll('[data-mode]').forEach(function(b) { b.classList.toggle('active', b.dataset.mode === mode); });
-            updateView();
-        }
-
-        function focusModule(modulePath) {
-            if (currentFocusModule === modulePath) { clearFocus(); return; }
-            currentFocusModule = modulePath;
-            currentFocusFunction = null;
-            updateView();
-            document.querySelectorAll('.module-card').forEach(function(c) { c.classList.toggle('active', c.dataset.module === modulePath); });
-            const info = document.getElementById('focusInfo');
-            info.classList.add('active');
-            const pkg = reportData.packages[modulePath];
-            const displayName = pkg?.displayPath || modulePath.split('/').pop() || modulePath;
-            document.getElementById('focusTitle').textContent = '🎯 Фокус: ' + displayName;
-            if (pkg) {
-                const funcs = pkg.entities?.functions || [];
-                document.getElementById('focusDetails').textContent = 'Функций: ' + funcs.length + ' | Экспортов: ' + (pkg.exports ? Object.keys(pkg.exports).length : 0);
-            }
-            const card = document.querySelector('.module-card[data-module="' + modulePath + '"]');
-            if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-
-        function focusFunction(funcName, modulePath) {
-            if (currentFocusFunction === funcName && currentFocusModule === modulePath) { clearFocus(); return; }
-            currentFocusFunction = funcName;
-            currentFocusModule = modulePath;
-            updateView();
-            document.querySelectorAll('.module-card').forEach(function(c) { c.classList.toggle('active', c.dataset.module === modulePath); });
-            document.querySelectorAll('.func-item').forEach(function(el) {
-                el.classList.toggle('active', el.dataset.func === funcName && el.dataset.module === modulePath);
-            });
-            const info = document.getElementById('focusInfo');
-            info.classList.add('active');
-            document.getElementById('focusTitle').textContent = '🎯 Функция: ' + funcName;
-            let funcData = null;
-            for (const node of graphNodes) {
-                if (node.type === 'function' && node.name === funcName && node.module === modulePath) { funcData = node; break; }
-            }
-            if (funcData) {
-                const displayName = modulePath.split('/').pop() || modulePath;
-                document.getElementById('focusDetails').textContent = 'Модуль: ' + displayName + ' | Параметры: ' + (funcData.params || []).join(', ') || 'нет' +
-                    ' | Вызовов: ' + (funcData.calls || []).length + ' | Кем вызвана: ' + (funcData.calledBy || []).length;
-            }
-            showDetail(funcData || { name: funcName, module: modulePath });
-            const el = document.querySelector('.func-item[data-func="' + funcName + '"][data-module="' + modulePath + '"]');
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-
-        function clearFocus() {
-            currentFocusModule = null;
-            currentFocusFunction = null;
-            document.getElementById('focusInfo').classList.remove('active');
-            document.querySelectorAll('.module-card').forEach(function(c) { c.classList.remove('active'); });
-            document.querySelectorAll('.func-item').forEach(function(el) { el.classList.remove('active'); });
-            closeDetail();
-            updateView();
-        }
-
-        function updateView() {
-            const container = document.getElementById('d3GraphWrapper');
-            const width = container.clientWidth || 900;
-            const height = 700;
-            buildGraphData();
-            renderGraph(width, height);
-        }
-
-        function showDetail(data) {
-            const panel = document.getElementById('detailPanel');
-            document.getElementById('dpTitle').textContent = data.name || 'Функция';
-            let html = '';
-            html += '<div class="dp-section"><h4>Информация</h4>';
-            html += '<div class="item"><span class="label">Модуль:</span> ' + (data.module || 'неизвестен') + '</div>';
-            html += '<div class="item"><span class="label">Строка:</span> ' + (data.line || 0) + '</div>';
-            html += '<div class="item"><span class="label">Экспортирована:</span> ' + (data.isExported ? '✅' : '❌') + '</div>';
-            html += '<div class="item"><span class="label">Асинхронная:</span> ' + (data.isAsync ? '✅' : '❌') + '</div>';
-            html += '<div class="item"><span class="label">Возврат:</span> ' + (data.returnType || 'any') + '</div>';
-            html += '</div>';
-            const params = data.params || [];
-            if (params.length > 0) {
-                html += '<div class="dp-section"><h4>Параметры</h4>';
-                for (const p of params) html += '<div class="item">' + escapeHtml(p) + '</div>';
-                html += '</div>';
-            }
-            const calls = data.calls || [];
-            if (calls.length > 0) {
-                html += '<div class="dp-section"><h4>📞 Вызовы (кто вызывается)</h4>';
-                for (const call of calls) {
-                    html += '<div class="item" style="cursor:pointer;color:#f59e0b;" onclick="focusFunction(\'' + escapeHtml(call) + '\', \'' + escapeHtml(data.module || '') + '\')">→ ' + escapeHtml(call) + '</div>';
-                }
-                html += '</div>';
-            }
-            const calledBy = data.calledBy || [];
-            if (calledBy.length > 0) {
-                html += '<div class="dp-section"><h4>📥 Кто вызывает</h4>';
-                for (const caller of calledBy) {
-                    html += '<div class="item" style="cursor:pointer;color:#3b82f6;" onclick="focusFunction(\'' + escapeHtml(caller) + '\', \'' + escapeHtml(data.module || '') + '\')">← ' + escapeHtml(caller) + '</div>';
-                }
-                html += '</div>';
-            }
-            if (data.body) {
-                const bodyPreview = data.body.length > 200 ? data.body.substring(0, 200) + '...' : data.body;
-                html += '<div class="dp-section"><h4>Тело (сокращённо)</h4>';
-                html += '<div class="item" style="font-size:10px;color:#94a3b8;white-space:pre-wrap;background:#0f172a;padding:8px;border-radius:4px;">' + escapeHtml(bodyPreview) + '</div>';
-                html += '</div>';
-            }
-            document.getElementById('dpContent').innerHTML = html;
-            panel.classList.add('active');
-        }
-
-        function closeDetail() { document.getElementById('detailPanel').classList.remove('active'); }
-
-        let searchTimeout = null;
-        function handleSearch(query) {
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(function() { updateView(); }, 300);
-        }
-
-        function setupKeyboard() {
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape') { clearFocus(); closeDetail(); }
-                if (e.key === 'f' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); document.getElementById('searchInput').focus(); }
-            });
-            document.addEventListener('click', function(e) {
-                const panel = document.getElementById('detailPanel');
-                if (panel.classList.contains('active') && !panel.contains(e.target) && !e.target.closest('.func-item')) { closeDetail(); }
-            });
-        }
-
-        function escapeHtml(str) {
-            if (!str) return '';
-            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-        }
-
-        document.addEventListener('DOMContentLoaded', init);
-    `;
+  htmlContent += '\n';
+  htmlContent += '        let reportData = null;\n';
+  htmlContent += '\n';
+  htmlContent += '        async function loadData() {\n';
+  htmlContent += '            try {\n';
+  htmlContent += '                const response = await fetch("./package-lock-report.json");\n';
+  htmlContent += '                if (response.ok) {\n';
+  htmlContent += '                    reportData = await response.json();\n';
+  htmlContent += '                    console.log("✅ Package-lock report loaded via fetch");\n';
+  htmlContent += '                } else {\n';
+  htmlContent +=
+    '                    console.warn("⚠️ Failed to load package-lock-report.json, using embedded data");\n';
+  htmlContent += '                    reportData = ' + reportJson + ';\n';
+  htmlContent += '                }\n';
+  htmlContent += '            } catch (error) {\n';
+  htmlContent +=
+    '                console.warn("⚠️ Error loading package-lock-report.json:", error);\n';
+  htmlContent += '                reportData = ' + reportJson + ';\n';
+  htmlContent += '            }\n';
+  htmlContent += '\n';
+  htmlContent +=
+    '            // Дополняем данными из allFunctionsData если reportData не содержит функции\n';
+  htmlContent += '            if (reportData && allFunctionsData.length > 0) {\n';
+  htmlContent +=
+    '                console.log("📊 Enriching with " + allFunctionsData.length + " functions from embedded data");\n';
+  htmlContent +=
+    '                // Если в reportData нет пакетов или функций, используем встроенные данные\n';
+  htmlContent +=
+    '                if (!reportData.packages || Object.keys(reportData.packages).length === 0) {\n';
+  htmlContent +=
+    '                    console.warn("⚠️ No packages in reportData, building from allFunctionsData");\n';
+  htmlContent += '                    // Строим packages из allFunctionsData\n';
+  htmlContent += '                    reportData.packages = {};\n';
+  htmlContent += '                    for (const item of allFunctionsData) {\n';
+  htmlContent += '                        if (!reportData.packages[item.modulePath]) {\n';
+  htmlContent += '                            reportData.packages[item.modulePath] = {\n';
+  htmlContent += '                                isEntry: false,\n';
+  htmlContent += '                                entities: { functions: [] },\n';
+  htmlContent += '                                fileStats: {}\n';
+  htmlContent += '                            };\n';
+  htmlContent += '                        }\n';
+  htmlContent +=
+    '                        reportData.packages[item.modulePath].entities.functions.push(item.func);\n';
+  htmlContent += '                    }\n';
+  htmlContent +=
+    '                    console.log("✅ Built packages from allFunctionsData: " + Object.keys(reportData.packages).length + " modules");\n';
+  htmlContent += '                }\n';
+  htmlContent += '            }\n';
+  htmlContent += '\n';
+  htmlContent += '            // Инициализация после загрузки данных\n';
+  htmlContent += '            init();\n';
+  htmlContent += '        }\n';
+  htmlContent += '\n';
+  htmlContent += '        let currentMode = "all";\n';
+  htmlContent += '        let currentFocusModule = null;\n';
+  htmlContent += '        let currentFocusFunction = null;\n';
+  htmlContent += '        let simulation = null;\n';
+  htmlContent += '        let svg = null;\n';
+  htmlContent += '        let g = null;\n';
+  htmlContent += '        let zoom = null;\n';
+  htmlContent += '        let graphNodes = [];\n';
+  htmlContent += '        let graphLinks = [];\n';
+  htmlContent += '        let nodeMap = new Map();\n';
+  htmlContent += '\n';
+  htmlContent += '        function init() {\n';
+  htmlContent += '            renderModules();\n';
+  htmlContent += '            initGraph();\n';
+  htmlContent += '            updateView();\n';
+  htmlContent += '            setupKeyboard();\n';
+  htmlContent += '        }\n';
+  htmlContent += '\n';
+  htmlContent += '        function renderModules() {\n';
+  htmlContent += '            const grid = document.getElementById("modulesGrid");\n';
+  htmlContent += '            grid.innerHTML = "";\n';
+  htmlContent += '            const moduleEntries = Object.entries(reportData.packages || {});\n';
+  htmlContent += '            moduleEntries.sort((a, b) => {\n';
+  htmlContent += '                const aEntry = a[1]?.isEntry ? 0 : 1;\n';
+  htmlContent += '                const bEntry = b[1]?.isEntry ? 0 : 1;\n';
+  htmlContent += '                return aEntry - bEntry;\n';
+  htmlContent += '            });\n';
+  htmlContent += '            for (const [modulePath, pkg] of moduleEntries) {\n';
+  htmlContent += '                if (!pkg) continue;\n';
+  htmlContent += '                const moduleCard = document.createElement("div");\n';
+  htmlContent += '                moduleCard.className = "module-card";\n';
+  htmlContent += '                moduleCard.dataset.module = modulePath;\n';
+  htmlContent += '                moduleCard.onclick = () => focusModule(modulePath);\n';
+  htmlContent += '                const funcs = pkg.entities?.functions || [];\n';
+  htmlContent += '                const isEntry = pkg.isEntry || false;\n';
+  htmlContent +=
+    '                const displayName = pkg.displayPath || modulePath.split("/").pop() || modulePath;\n';
+  htmlContent += '                const language = pkg.language || "javascript";\n';
+  htmlContent += '                const lines = pkg.fileStats?.lines || 0;\n';
+  htmlContent += '                let funcsHtml = "";\n';
+  htmlContent += '                for (const func of funcs) {\n';
+  htmlContent +=
+    '                    const paramsStr = (func.params || []).map(p => escapeHtml(p)).join(", ");\n';
+  htmlContent +=
+    '                    const callsStr = (func.calls || []).slice(0, 3).map(c => escapeHtml(c)).join(", ");\n';
+  htmlContent += '                    const isExported = func.isExported || false;\n';
+  htmlContent += '                    const isAsync = func.isAsync || false;\n';
+  htmlContent +=
+    '                    funcsHtml += "<div class=\\"func-item\\" onclick=\\"event.stopPropagation(); focusFunction(\\"" + escapeHtml(func.name) + "\\", \\"" + escapeHtml(modulePath) + "\\")\\" data-func=\\"" + escapeHtml(func.name) + "\\" data-module=\\"" + escapeHtml(modulePath) + "\\">" +\n';
+  htmlContent +=
+    '                        "<span class=\\"func-name\\">" + escapeHtml(func.name) + "</span>" +\n';
+  htmlContent +=
+    '                        (isExported ? "<span class=\\"func-export\\">📤</span>" : "") +\n';
+  htmlContent +=
+    '                        (isAsync ? "<span class=\\"func-async\\">⚡</span>" : "") +\n';
+  htmlContent +=
+    '                        (func.params && func.params.length > 0 ? "<span class=\\"func-params\\">(" + paramsStr + ")</span>" : "") +\n';
+  htmlContent +=
+    '                        (func.calls && func.calls.length > 0 ? "<span class=\\"func-calls\\">→ " + callsStr + (func.calls.length > 3 ? "..." : "") + "</span>" : "") +\n';
+  htmlContent +=
+    '                        (func.calledBy && func.calledBy.length > 0 ? "<span class=\\"func-called\\">← " + func.calledBy.length + "</span>" : "") +\n';
+  htmlContent +=
+    '                        "<span class=\\"func-line\\">стр." + (func.line || 0) + "</span>" +\n';
+  htmlContent += '                        "</div>";\n';
+  htmlContent += '                }\n';
+  htmlContent += '                moduleCard.innerHTML = "<div class=\\"header-row\\">" +\n';
+  htmlContent +=
+    '                    "<div><div class=\\"name\\">" + (isEntry ? "⭐ " : "") + escapeHtml(displayName) + "</div>" +\n';
+  htmlContent +=
+    '                    "<div class=\\"path\\">" + escapeHtml(modulePath) + "</div></div>" +\n';
+  htmlContent +=
+    '                    "<div style=\\"display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end;\\">" +\n';
+  htmlContent +=
+    '                    "<span class=\\"badge lang\\">" + escapeHtml(language) + "</span>" +\n';
+  htmlContent +=
+    '                    (isEntry ? "<span class=\\"badge export\\">⭐ entry</span>" : "") +\n';
+  htmlContent +=
+    '                    "<span class=\\"badge lines\\">" + lines + " строк</span>" +\n';
+  htmlContent += '                    "</div></div>" +\n';
+  htmlContent += '                    "<div class=\\"badges\\">" +\n';
+  htmlContent +=
+    '                    "<span class=\\"badge fn\\">" + funcs.length + " функций</span>" +\n';
+  htmlContent +=
+    '                    (pkg.entities?.classes?.length > 0 ? "<span class=\\"badge class\\">" + pkg.entities.classes.length + " классов</span>" : "") +\n';
+  htmlContent +=
+    '                    (pkg.entities?.constants?.length > 0 ? "<span class=\\"badge const\\">" + pkg.entities.constants.length + " констант</span>" : "") +\n';
+  htmlContent +=
+    '                    (pkg.entities?.interfaces?.length > 0 ? "<span class=\\"badge interface\\">" + pkg.entities.interfaces.length + " интерфейсов</span>" : "") +\n';
+  htmlContent +=
+    '                    (pkg.entities?.types?.length > 0 ? "<span class=\\"badge type\\">" + pkg.entities.types.length + " типов</span>" : "") +\n';
+  htmlContent +=
+    '                    (pkg.entities?.variables?.length > 0 ? "<span class=\\"badge var\\">" + pkg.entities.variables.length + " переменных</span>" : "") +\n';
+  htmlContent += '                    "</div>" +\n';
+  htmlContent += '                    "<div class=\\"functions-list\\">" + funcsHtml + "</div>";\n';
+  htmlContent += '                grid.appendChild(moduleCard);\n';
+  htmlContent += '            }\n';
+  htmlContent += '        }\n';
+  htmlContent += '\n';
+  htmlContent += '        function initGraph() {\n';
+  htmlContent += '            const container = document.getElementById("d3GraphWrapper");\n';
+  htmlContent += '            const width = container.clientWidth || 900;\n';
+  htmlContent += '            const height = 700;\n';
+  htmlContent +=
+    '            container.innerHTML = "<div class=\\"graph-tooltip\\" id=\\"graphTooltip\\"><div class=\\"tt-title\\" id=\\"ttTitle\\"></div><div class=\\"tt-info\\" id=\\"ttInfo\\"></div><div class=\\"tt-detail\\" id=\\"ttDetail\\"></div></div>";\n';
+  htmlContent +=
+    '            svg = d3.select(container).append("svg").attr("width", width).attr("height", height).style("background", "#0f172a").style("border-radius", "8px").style("display", "block");\n';
+  htmlContent += '            g = svg.append("g");\n';
+  htmlContent +=
+    '            zoom = d3.zoom().extent([[0, 0], [width, height]]).scaleExtent([0.1, 4]).on("zoom", function(event) { g.attr("transform", event.transform); });\n';
+  htmlContent += '            svg.call(zoom);\n';
+  htmlContent += '            buildGraphData();\n';
+  htmlContent += '            renderGraph(width, height);\n';
+  htmlContent +=
+    '            window.addEventListener("resize", function() { const newWidth = container.clientWidth || 900; svg.attr("width", newWidth); });\n';
+  htmlContent += '        }\n';
+  htmlContent += '\n';
+  htmlContent += '        function buildGraphData() {\n';
+  htmlContent += '            graphNodes = [];\n';
+  htmlContent += '            graphLinks = [];\n';
+  htmlContent += '            nodeMap = new Map();\n';
+  htmlContent +=
+    '            const levelColors = ["#4ade80", "#60a5fa", "#a78bfa", "#f472b6", "#fbbf24", "#f87171", "#22d3ee"];\n';
+  htmlContent +=
+    '            for (const [modulePath, pkg] of Object.entries(reportData.packages || {})) {\n';
+  htmlContent += '                if (!pkg) continue;\n';
+  htmlContent += '                const isRoot = pkg.isEntry || false;\n';
+  htmlContent +=
+    '                const name = pkg.displayPath || modulePath.split("/").pop() || modulePath;\n';
+  htmlContent += '                const funcs = pkg.entities?.functions || [];\n';
+  htmlContent += '                const level = 0;\n';
+  htmlContent += '                const nodeId = modulePath;\n';
+  htmlContent += '                nodeMap.set(nodeId, {\n';
+  htmlContent += '                    id: nodeId,\n';
+  htmlContent += '                    name: name,\n';
+  htmlContent += '                    fullName: modulePath,\n';
+  htmlContent += '                    type: "module",\n';
+  htmlContent += '                    isRoot: isRoot,\n';
+  htmlContent += '                    level: level,\n';
+  htmlContent +=
+    '                    color: isRoot ? "#fbbf24" : (levelColors[level % levelColors.length] || "#94a3b8"),\n';
+  htmlContent += '                    size: isRoot ? 35 : 25,\n';
+  htmlContent += '                    functions: funcs,\n';
+  htmlContent += '                    pkg: pkg\n';
+  htmlContent += '                });\n';
+  htmlContent += '                graphNodes.push(nodeMap.get(nodeId));\n';
+  htmlContent += '                for (const func of funcs) {\n';
+  htmlContent += '                    const funcId = modulePath + "#func:" + func.name;\n';
+  htmlContent += '                    if (!nodeMap.has(funcId)) {\n';
+  htmlContent += '                        nodeMap.set(funcId, {\n';
+  htmlContent += '                            id: funcId,\n';
+  htmlContent += '                            name: func.name,\n';
+  htmlContent += '                            fullName: func.name,\n';
+  htmlContent += '                            type: "function",\n';
+  htmlContent += '                            isRoot: false,\n';
+  htmlContent += '                            isExported: func.isExported || false,\n';
+  htmlContent += '                            isAsync: func.isAsync || false,\n';
+  htmlContent += '                            module: modulePath,\n';
+  htmlContent += '                            line: func.line || 0,\n';
+  htmlContent += '                            color: func.isExported ? "#f87171" : "#fbbf24",\n';
+  htmlContent += '                            size: 8,\n';
+  htmlContent += '                            calls: func.calls || [],\n';
+  htmlContent += '                            calledBy: func.calledBy || [],\n';
+  htmlContent += '                            params: func.params || [],\n';
+  htmlContent += '                            returnType: func.returnType || "any",\n';
+  htmlContent += '                            body: func.body || ""\n';
+  htmlContent += '                        });\n';
+  htmlContent += '                        graphNodes.push(nodeMap.get(funcId));\n';
+  htmlContent += '                    }\n';
+  htmlContent += '                }\n';
+  htmlContent += '            }\n';
+  htmlContent +=
+    '            const inwardDeps = reportData.dependencyGraph?.inwardDependencies || {};\n';
+  htmlContent +=
+    '            const outwardDeps = reportData.dependencyGraph?.outwardDependencies || {};\n';
+  htmlContent += '            const addedEdges = new Set();\n';
+  htmlContent += '            for (const [from, deps] of Object.entries(outwardDeps)) {\n';
+  htmlContent += '                if (!deps) continue;\n';
+  htmlContent += '                for (const to of deps) {\n';
+  htmlContent += '                    const edgeKey = from + "->" + to;\n';
+  htmlContent += '                    if (addedEdges.has(edgeKey)) continue;\n';
+  htmlContent += '                    addedEdges.add(edgeKey);\n';
+  htmlContent += '                    if (nodeMap.has(from) && nodeMap.has(to)) {\n';
+  htmlContent +=
+    '                        graphLinks.push({ source: from, target: to, type: "import", isCycle: false, isCall: false });\n';
+  htmlContent += '                    }\n';
+  htmlContent += '                }\n';
+  htmlContent += '            }\n';
+  htmlContent += '            for (const node of graphNodes) {\n';
+  htmlContent += '                if (node.type !== "function") continue;\n';
+  htmlContent += '                const calls = node.calls || [];\n';
+  htmlContent += '                for (const call of calls) {\n';
+  htmlContent += '                    const targetKey = node.module + "#func:" + call;\n';
+  htmlContent += '                    if (nodeMap.has(targetKey)) {\n';
+  htmlContent += '                        const edgeKey = node.id + "->" + targetKey;\n';
+  htmlContent += '                        if (!addedEdges.has(edgeKey)) {\n';
+  htmlContent += '                            addedEdges.add(edgeKey);\n';
+  htmlContent +=
+    '                            graphLinks.push({ source: node.id, target: targetKey, type: "call", isCall: true, isCycle: false });\n';
+  htmlContent += '                        }\n';
+  htmlContent += '                    } else {\n';
+  htmlContent += '                        for (const otherNode of graphNodes) {\n';
+  htmlContent +=
+    '                            if (otherNode.type === "function" && otherNode.name === call) {\n';
+  htmlContent += '                                const edgeKey = node.id + "->" + otherNode.id;\n';
+  htmlContent += '                                if (!addedEdges.has(edgeKey)) {\n';
+  htmlContent += '                                    addedEdges.add(edgeKey);\n';
+  htmlContent +=
+    '                                    graphLinks.push({ source: node.id, target: otherNode.id, type: "call", isCall: true, isCycle: false });\n';
+  htmlContent += '                                }\n';
+  htmlContent += '                                break;\n';
+  htmlContent += '                            }\n';
+  htmlContent += '                        }\n';
+  htmlContent += '                    }\n';
+  htmlContent += '                }\n';
+  htmlContent += '            }\n';
+  htmlContent +=
+    '            graphLinks = graphLinks.filter(link => nodeMap.has(link.source) && nodeMap.has(link.target));\n';
+  htmlContent += '        }\n';
+  htmlContent += '\n';
+  htmlContent += '        function renderGraph(width, height) {\n';
+  htmlContent += '            if (!g) return;\n';
+  htmlContent += '            g.selectAll("*").remove();\n';
+  htmlContent += '            let filteredNodes = graphNodes;\n';
+  htmlContent += '            let filteredLinks = graphLinks;\n';
+  htmlContent += '            if (currentFocusModule) {\n';
+  htmlContent += '                const related = new Set([currentFocusModule]);\n';
+  htmlContent += '                for (const link of graphLinks) {\n';
+  htmlContent +=
+    '                    if (link.source === currentFocusModule) related.add(link.target);\n';
+  htmlContent +=
+    '                    if (link.target === currentFocusModule) related.add(link.source);\n';
+  htmlContent += '                }\n';
+  htmlContent +=
+    '                filteredNodes = graphNodes.filter(n => related.has(n.id) || n.type === "function");\n';
+  htmlContent +=
+    '                filteredLinks = graphLinks.filter(l => related.has(l.source) && related.has(l.target));\n';
+  htmlContent += '            }\n';
+  htmlContent += '            if (currentFocusFunction) {\n';
+  htmlContent += '                const related = new Set([currentFocusFunction]);\n';
+  htmlContent += '                let focusModule = "";\n';
+  htmlContent += '                for (const node of graphNodes) {\n';
+  htmlContent +=
+    '                    if (node.id === currentFocusFunction) { focusModule = node.module || ""; break; }\n';
+  htmlContent += '                }\n';
+  htmlContent += '                if (focusModule) related.add(focusModule);\n';
+  htmlContent += '                for (const link of graphLinks) {\n';
+  htmlContent +=
+    '                    if (link.source === currentFocusFunction) related.add(link.target);\n';
+  htmlContent +=
+    '                    if (link.target === currentFocusFunction) related.add(link.source);\n';
+  htmlContent += '                }\n';
+  htmlContent += '                filteredNodes = graphNodes.filter(n => related.has(n.id));\n';
+  htmlContent +=
+    '                filteredLinks = graphLinks.filter(l => related.has(l.source) && related.has(l.target));\n';
+  htmlContent += '            }\n';
+  htmlContent +=
+    '            const searchQuery = document.getElementById("searchInput").value.toLowerCase().trim();\n';
+  htmlContent += '            if (searchQuery) {\n';
+  htmlContent += '                const matched = new Set();\n';
+  htmlContent += '                for (const node of filteredNodes) {\n';
+  htmlContent +=
+    '                    if (node.name.toLowerCase().includes(searchQuery) || node.fullName?.toLowerCase().includes(searchQuery)) {\n';
+  htmlContent += '                        matched.add(node.id);\n';
+  htmlContent += '                    }\n';
+  htmlContent += '                }\n';
+  htmlContent += '                const expanded = new Set(matched);\n';
+  htmlContent += '                for (const link of filteredLinks) {\n';
+  htmlContent += '                    if (matched.has(link.source)) expanded.add(link.target);\n';
+  htmlContent += '                    if (matched.has(link.target)) expanded.add(link.source);\n';
+  htmlContent += '                }\n';
+  htmlContent += '                filteredNodes = filteredNodes.filter(n => expanded.has(n.id));\n';
+  htmlContent +=
+    '                filteredLinks = filteredLinks.filter(l => expanded.has(l.source) && expanded.has(l.target));\n';
+  htmlContent += '            }\n';
+  htmlContent += '            const nodeMapFiltered = new Map();\n';
+  htmlContent +=
+    '            for (const node of filteredNodes) nodeMapFiltered.set(node.id, node);\n';
+  htmlContent +=
+    '            const link = g.append("g").selectAll("line").data(filteredLinks).enter().append("line")\n';
+  htmlContent +=
+    '                .attr("stroke", d => d.isCall ? "#ef4444" : (d.isCycle ? "#f59e0b" : "#3b82f6"))\n';
+  htmlContent +=
+    '                .attr("stroke-width", d => d.isCall ? 1.5 : (d.isCycle ? 2 : 1))\n';
+  htmlContent += '                .attr("stroke-opacity", d => d.isCall ? 0.8 : 0.5)\n';
+  htmlContent +=
+    '                .attr("stroke-dasharray", d => d.isCall ? "none" : (d.isCycle ? "8,4" : "none"));\n';
+  htmlContent +=
+    '            const nodeGroup = g.append("g").selectAll("g").data(filteredNodes).enter().append("g")\n';
+  htmlContent += '                .attr("cursor", "pointer")\n';
+  htmlContent +=
+    '                .on("click", function(event, d) { if (d.type === "function") { showDetail(d); } else if (d.type === "module") { focusModule(d.id); } })\n';
+  htmlContent +=
+    '                .on("mouseover", function(event, d) { showTooltip(event, d); })\n';
+  htmlContent += '                .on("mouseout", function() { hideTooltip(); })\n';
+  htmlContent +=
+    '                .call(d3.drag().on("start", dragstarted).on("drag", dragged).on("end", dragended));\n';
+  htmlContent += '            nodeGroup.append("circle")\n';
+  htmlContent += '                .attr("r", d => d.size || 10)\n';
+  htmlContent += '                .attr("fill", d => {\n';
+  htmlContent +=
+    '                    if (currentFocusFunction && d.id === currentFocusFunction) return "#22d3ee";\n';
+  htmlContent +=
+    '                    if (currentFocusModule && d.id === currentFocusModule) return "#22d3ee";\n';
+  htmlContent += '                    return d.color || "#94a3b8";\n';
+  htmlContent += '                })\n';
+  htmlContent += '                .attr("stroke", d => {\n';
+  htmlContent += '                    if (d.isRoot) return "#fbbf24";\n';
+  htmlContent +=
+    '                    if (currentFocusFunction && d.id === currentFocusFunction) return "#22d3ee";\n';
+  htmlContent +=
+    '                    if (currentFocusModule && d.id === currentFocusModule) return "#22d3ee";\n';
+  htmlContent += '                    return "#1e293b";\n';
+  htmlContent += '                })\n';
+  htmlContent +=
+    '                .attr("stroke-width", d => (d.isRoot || d.id === currentFocusFunction || d.id === currentFocusModule) ? 3 : 1.5)\n';
+  htmlContent += '                .attr("opacity", d => 1);\n';
+  htmlContent += '            nodeGroup.append("text")\n';
+  htmlContent += '                .attr("dx", d => (d.size || 10) + 8)\n';
+  htmlContent += '                .attr("dy", 4)\n';
+  htmlContent +=
+    '                .attr("font-size", d => d.type === "function" ? "9px" : "12px")\n';
+  htmlContent += '                .attr("fill", "#e2e8f0")\n';
+  htmlContent += '                .attr("font-family", "monospace")\n';
+  htmlContent += '                .text(d => {\n';
+  htmlContent += '                    if (d.isRoot) return "⭐ " + d.name;\n';
+  htmlContent +=
+    '                    if (d.type === "function" && d.isExported) return "📤 " + d.name;\n';
+  htmlContent += '                    return d.name;\n';
+  htmlContent += '                })\n';
+  htmlContent += '                .style("pointer-events", "none")\n';
+  htmlContent += '                .attr("opacity", d => 1);\n';
+  htmlContent += '            if (!currentFocusFunction) {\n';
+  htmlContent +=
+    '                nodeGroup.filter(d => d.type === "module" && d.functions && d.functions.length > 0)\n';
+  htmlContent += '                    .append("text")\n';
+  htmlContent += '                    .attr("dx", d => (d.size || 10) + 8)\n';
+  htmlContent += '                    .attr("dy", 16)\n';
+  htmlContent += '                    .attr("font-size", "8px")\n';
+  htmlContent += '                    .attr("fill", "#94a3b8")\n';
+  htmlContent += '                    .attr("font-family", "monospace")\n';
+  htmlContent += '                    .text(d => d.functions.length + " функций")\n';
+  htmlContent += '                    .style("pointer-events", "none");\n';
+  htmlContent += '            }\n';
+  htmlContent += '            const sim = d3.forceSimulation(filteredNodes)\n';
+  htmlContent +=
+    '                .force("link", d3.forceLink(filteredLinks).id(d => d.id).distance(d => d.isCall ? 100 : 150))\n';
+  htmlContent +=
+    '                .force("charge", d3.forceManyBody().strength(d => d.type === "module" ? -500 : -200))\n';
+  htmlContent += '                .force("center", d3.forceCenter(width / 2, height / 2))\n';
+  htmlContent +=
+    '                .force("collision", d3.forceCollide().radius(d => (d.size || 10) + 15));\n';
+  htmlContent += '            sim.on("tick", function() {\n';
+  htmlContent +=
+    '                link.attr("x1", d => d.source.x).attr("y1", d => d.source.y).attr("x2", d => d.target.x).attr("y2", d => d.target.y);\n';
+  htmlContent +=
+    '                nodeGroup.attr("transform", d => "translate(" + (d.x || 0) + "," + (d.y || 0) + ")");\n';
+  htmlContent += '            });\n';
+  htmlContent += '            simulation = sim;\n';
+  htmlContent +=
+    '            function dragstarted(event, d) { if (!event.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; }\n';
+  htmlContent += '            function dragged(event, d) { d.fx = event.x; d.fy = event.y; }\n';
+  htmlContent +=
+    '            function dragended(event, d) { if (!event.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }\n';
+  htmlContent += '        }\n';
+  htmlContent += '\n';
+  htmlContent += '        function showTooltip(event, d) {\n';
+  htmlContent += '            const tooltip = document.getElementById("graphTooltip");\n';
+  htmlContent += '            document.getElementById("ttTitle").textContent = d.name;\n';
+  htmlContent +=
+    '            document.getElementById("ttInfo").textContent = d.type === "module" ? "Модуль: " + d.fullName : "Тип: функция" + (d.isExported ? " 📤" : "");\n';
+  htmlContent += '            let detail = "";\n';
+  htmlContent += '            if (d.type === "function") {\n';
+  htmlContent +=
+    '                detail += "Параметры: " + (d.params || []).join(", ") || "нет\\n";\n';
+  htmlContent += '                detail += "Возврат: " + (d.returnType || "any") + "\\n";\n';
+  htmlContent += '                detail += "Строка: " + (d.line || 0) + "\\n";\n';
+  htmlContent += '                detail += "Вызовов: " + (d.calls || []).length + "\\n";\n';
+  htmlContent += '                detail += "Кем вызвана: " + (d.calledBy || []).length;\n';
+  htmlContent += '            } else {\n';
+  htmlContent += '                detail += "Функций: " + (d.functions || []).length + "\\n";\n';
+  htmlContent +=
+    '                if (d.pkg) detail += "Экспортов: " + (d.pkg.exports ? Object.keys(d.pkg.exports).length : 0);\n';
+  htmlContent += '            }\n';
+  htmlContent += '            document.getElementById("ttDetail").textContent = detail;\n';
+  htmlContent += '            const container = document.getElementById("d3GraphWrapper");\n';
+  htmlContent += '            const rect = container.getBoundingClientRect();\n';
+  htmlContent += '            const x = event.clientX - rect.left + 15;\n';
+  htmlContent += '            const y = event.clientY - rect.top - 10;\n';
+  htmlContent += '            tooltip.style.display = "block";\n';
+  htmlContent += '            tooltip.style.left = Math.min(x, rect.width - 320) + "px";\n';
+  htmlContent += '            tooltip.style.top = Math.min(y, rect.height - 150) + "px";\n';
+  htmlContent += '        }\n';
+  htmlContent += '\n';
+  htmlContent +=
+    '        function hideTooltip() { document.getElementById("graphTooltip").style.display = "none"; }\n';
+  htmlContent += '\n';
+  htmlContent += '        function setMode(mode) {\n';
+  htmlContent += '            currentMode = mode;\n';
+  htmlContent +=
+    '            document.querySelectorAll("[data-mode]").forEach(function(b) { b.classList.toggle("active", b.dataset.mode === mode); });\n';
+  htmlContent += '            updateView();\n';
+  htmlContent += '        }\n';
+  htmlContent += '\n';
+  htmlContent += '        function focusModule(modulePath) {\n';
+  htmlContent += '            if (currentFocusModule === modulePath) { clearFocus(); return; }\n';
+  htmlContent += '            currentFocusModule = modulePath;\n';
+  htmlContent += '            currentFocusFunction = null;\n';
+  htmlContent += '            updateView();\n';
+  htmlContent +=
+    '            document.querySelectorAll(".module-card").forEach(function(c) { c.classList.toggle("active", c.dataset.module === modulePath); });\n';
+  htmlContent += '            const info = document.getElementById("focusInfo");\n';
+  htmlContent += '            info.classList.add("active");\n';
+  htmlContent += '            const pkg = reportData.packages[modulePath];\n';
+  htmlContent +=
+    '            const displayName = pkg?.displayPath || modulePath.split("/").pop() || modulePath;\n';
+  htmlContent +=
+    '            document.getElementById("focusTitle").textContent = "🎯 Фокус: " + displayName;\n';
+  htmlContent += '            if (pkg) {\n';
+  htmlContent += '                const funcs = pkg.entities?.functions || [];\n';
+  htmlContent +=
+    '                document.getElementById("focusDetails").textContent = "Функций: " + funcs.length + " | Экспортов: " + (pkg.exports ? Object.keys(pkg.exports).length : 0);\n';
+  htmlContent += '            }\n';
+  htmlContent +=
+    '            const card = document.querySelector(".module-card[data-module=\\"" + modulePath + "\\"]");\n';
+  htmlContent +=
+    '            if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });\n';
+  htmlContent += '        }\n';
+  htmlContent += '\n';
+  htmlContent += '        function focusFunction(funcName, modulePath) {\n';
+  htmlContent +=
+    '            if (currentFocusFunction === funcName && currentFocusModule === modulePath) { clearFocus(); return; }\n';
+  htmlContent += '            currentFocusFunction = funcName;\n';
+  htmlContent += '            currentFocusModule = modulePath;\n';
+  htmlContent += '            updateView();\n';
+  htmlContent +=
+    '            document.querySelectorAll(".module-card").forEach(function(c) { c.classList.toggle("active", c.dataset.module === modulePath); });\n';
+  htmlContent += '            document.querySelectorAll(".func-item").forEach(function(el) {\n';
+  htmlContent +=
+    '                el.classList.toggle("active", el.dataset.func === funcName && el.dataset.module === modulePath);\n';
+  htmlContent += '            });\n';
+  htmlContent += '            const info = document.getElementById("focusInfo");\n';
+  htmlContent += '            info.classList.add("active");\n';
+  htmlContent +=
+    '            document.getElementById("focusTitle").textContent = "🎯 Функция: " + funcName;\n';
+  htmlContent += '            let funcData = null;\n';
+  htmlContent += '            for (const node of graphNodes) {\n';
+  htmlContent +=
+    '                if (node.type === "function" && node.name === funcName && node.module === modulePath) { funcData = node; break; }\n';
+  htmlContent += '            }\n';
+  htmlContent += '            if (funcData) {\n';
+  htmlContent += '                const displayName = modulePath.split("/").pop() || modulePath;\n';
+  htmlContent +=
+    '                document.getElementById("focusDetails").textContent = "Модуль: " + displayName + " | Параметры: " + (funcData.params || []).join(", ") || "нет" +\n';
+  htmlContent +=
+    '                    " | Вызовов: " + (funcData.calls || []).length + " | Кем вызвана: " + (funcData.calledBy || []).length;\n';
+  htmlContent += '            }\n';
+  htmlContent += '            showDetail(funcData || { name: funcName, module: modulePath });\n';
+  htmlContent +=
+    '            const el = document.querySelector(".func-item[data-func=\\"" + funcName + "\\"][data-module=\\"" + modulePath + "\\"]");\n';
+  htmlContent +=
+    '            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });\n';
+  htmlContent += '        }\n';
+  htmlContent += '\n';
+  htmlContent += '        function clearFocus() {\n';
+  htmlContent += '            currentFocusModule = null;\n';
+  htmlContent += '            currentFocusFunction = null;\n';
+  htmlContent += '            document.getElementById("focusInfo").classList.remove("active");\n';
+  htmlContent +=
+    '            document.querySelectorAll(".module-card").forEach(function(c) { c.classList.remove("active"); });\n';
+  htmlContent +=
+    '            document.querySelectorAll(".func-item").forEach(function(el) { el.classList.remove("active"); });\n';
+  htmlContent += '            closeDetail();\n';
+  htmlContent += '            updateView();\n';
+  htmlContent += '        }\n';
+  htmlContent += '\n';
+  htmlContent += '        function updateView() {\n';
+  htmlContent += '            const container = document.getElementById("d3GraphWrapper");\n';
+  htmlContent += '            const width = container.clientWidth || 900;\n';
+  htmlContent += '            const height = 700;\n';
+  htmlContent += '            buildGraphData();\n';
+  htmlContent += '            renderGraph(width, height);\n';
+  htmlContent += '        }\n';
+  htmlContent += '\n';
+  htmlContent += '        function showDetail(data) {\n';
+  htmlContent += '            const panel = document.getElementById("detailPanel");\n';
+  htmlContent +=
+    '            document.getElementById("dpTitle").textContent = data.name || "Функция";\n';
+  htmlContent += '            let html = "";\n';
+  htmlContent += '            html += "<div class=\\"dp-section\\"><h4>Информация</h4>";\n';
+  htmlContent +=
+    '            html += "<div class=\\"item\\"><span class=\\"label\\">Модуль:</span> " + (data.module || "неизвестен") + "</div>";\n';
+  htmlContent +=
+    '            html += "<div class=\\"item\\"><span class=\\"label\\">Строка:</span> " + (data.line || 0) + "</div>";\n';
+  htmlContent +=
+    '            html += "<div class=\\"item\\"><span class=\\"label\\">Экспортирована:</span> " + (data.isExported ? "✅" : "❌") + "</div>";\n';
+  htmlContent +=
+    '            html += "<div class=\\"item\\"><span class=\\"label\\">Асинхронная:</span> " + (data.isAsync ? "✅" : "❌") + "</div>";\n';
+  htmlContent +=
+    '            html += "<div class=\\"item\\"><span class=\\"label\\">Возврат:</span> " + (data.returnType || "any") + "</div>";\n';
+  htmlContent += '            html += "</div>";\n';
+  htmlContent += '            const params = data.params || [];\n';
+  htmlContent += '            if (params.length > 0) {\n';
+  htmlContent += '                html += "<div class=\\"dp-section\\"><h4>Параметры</h4>";\n';
+  htmlContent +=
+    '                for (const p of params) html += "<div class=\\"item\\">" + escapeHtml(p) + "</div>";\n';
+  htmlContent += '                html += "</div>";\n';
+  htmlContent += '            }\n';
+  htmlContent += '            const calls = data.calls || [];\n';
+  htmlContent += '            if (calls.length > 0) {\n';
+  htmlContent +=
+    '                html += "<div class=\\"dp-section\\"><h4>📞 Вызовы (кто вызывается)</h4>";\n';
+  htmlContent += '                for (const call of calls) {\n';
+  htmlContent +=
+    '                    html += "<div class=\\"item\\" style=\\"cursor:pointer;color:#f59e0b;\\" onclick=\\"focusFunction(\\"" + escapeHtml(call) + "\\", \\"" + escapeHtml(data.module || "") + "\\")\\">→ " + escapeHtml(call) + "</div>";\n';
+  htmlContent += '                }\n';
+  htmlContent += '                html += "</div>";\n';
+  htmlContent += '            }\n';
+  htmlContent += '            const calledBy = data.calledBy || [];\n';
+  htmlContent += '            if (calledBy.length > 0) {\n';
+  htmlContent +=
+    '                html += "<div class=\\"dp-section\\"><h4>📥 Кто вызывает</h4>";\n';
+  htmlContent += '                for (const caller of calledBy) {\n';
+  htmlContent +=
+    '                    html += "<div class=\\"item\\" style=\\"cursor:pointer;color:#3b82f6;\\" onclick=\\"focusFunction(\\"" + escapeHtml(caller) + "\\", \\"" + escapeHtml(data.module || "") + "\\")\\">← " + escapeHtml(caller) + "</div>";\n';
+  htmlContent += '                }\n';
+  htmlContent += '                html += "</div>";\n';
+  htmlContent += '            }\n';
+  htmlContent += '            if (data.body) {\n';
+  htmlContent +=
+    '                const bodyPreview = data.body.length > 200 ? data.body.substring(0, 200) + "..." : data.body;\n';
+  htmlContent +=
+    '                html += "<div class=\\"dp-section\\"><h4>Тело (сокращённо)</h4>";\n';
+  htmlContent +=
+    '                html += "<div class=\\"item\\" style=\\"font-size:10px;color:#94a3b8;white-space:pre-wrap;background:#0f172a;padding:8px;border-radius:4px;\\">" + escapeHtml(bodyPreview) + "</div>";\n';
+  htmlContent += '                html += "</div>";\n';
+  htmlContent += '            }\n';
+  htmlContent += '            document.getElementById("dpContent").innerHTML = html;\n';
+  htmlContent += '            panel.classList.add("active");\n';
+  htmlContent += '        }\n';
+  htmlContent += '\n';
+  htmlContent +=
+    '        function closeDetail() { document.getElementById("detailPanel").classList.remove("active"); }\n';
+  htmlContent += '\n';
+  htmlContent += '        let searchTimeout = null;\n';
+  htmlContent += '        function handleSearch(query) {\n';
+  htmlContent += '            clearTimeout(searchTimeout);\n';
+  htmlContent += '            searchTimeout = setTimeout(function() { updateView(); }, 300);\n';
+  htmlContent += '        }\n';
+  htmlContent += '\n';
+  htmlContent += '        function setupKeyboard() {\n';
+  htmlContent += '            document.addEventListener("keydown", function(e) {\n';
+  htmlContent += '                if (e.key === "Escape") { clearFocus(); closeDetail(); }\n';
+  htmlContent +=
+    '                if (e.key === "f" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); document.getElementById("searchInput").focus(); }\n';
+  htmlContent += '            });\n';
+  htmlContent += '            document.addEventListener("click", function(e) {\n';
+  htmlContent += '                const panel = document.getElementById("detailPanel");\n';
+  htmlContent +=
+    '                if (panel.classList.contains("active") && !panel.contains(e.target) && !e.target.closest(".func-item")) { closeDetail(); }\n';
+  htmlContent += '            });\n';
+  htmlContent += '        }\n';
+  htmlContent += '\n';
+  htmlContent += '        function escapeHtml(str) {\n';
+  htmlContent += '            if (!str) return "";\n';
+  htmlContent +=
+    '            return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/\'/g, "&#039;");\n';
+  htmlContent += '        }\n';
+  htmlContent += '\n';
+  htmlContent += '        // Загружаем данные и запускаем\n';
+  htmlContent += '        loadData();\n';
   htmlContent += '    <\/script>\n';
   htmlContent += '<\/body>\n';
   htmlContent += '<\/html>';
