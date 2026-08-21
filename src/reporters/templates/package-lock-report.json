@@ -31,7 +31,7 @@
         "classes": ""
       },
       "fileStats": {
-        "size": 78215,
+        "size": 78303,
         "lines": 2346,
         "functions": 6,
         "classes": 0,
@@ -1454,12 +1454,12 @@
           "isAsync": true,
           "params": "analysis,outputPath,entitiesWithCalls",
           "returns": "Promise<void>",
-          "line": 20,
+          "line": 60,
           "consumers": ""
         }
       },
       "entities": {
-        "functions": "[object Object]",
+        "functions": "[object Object],[object Object]",
         "constants": "[object Object],[object Object]",
         "variables": "",
         "interfaces": "",
@@ -1467,9 +1467,9 @@
         "classes": ""
       },
       "fileStats": {
-        "size": 5024,
-        "lines": 138,
-        "functions": 1,
+        "size": 6750,
+        "lines": 194,
+        "functions": 2,
         "classes": 0,
         "constants": 2,
         "interfaces": 0,
@@ -2844,8 +2844,8 @@
         "classes": "[object Object]"
       },
       "fileStats": {
-        "size": 12645,
-        "lines": 455,
+        "size": 10177,
+        "lines": 364,
         "functions": 0,
         "classes": 1,
         "constants": 0,
@@ -4047,7 +4047,8 @@
     "convertToEnhancedEntityInfo": "",
     "escapeHtml": "",
     "generateHTMLReport": "normalizePathForDisplay,getFileNameForDisplay,escapeHtml",
-    "generateInteractiveHTML": "String",
+    "compileDataConverter": "execSync",
+    "generateInteractiveHTML": "compileDataConverter,String",
     "showHelp": "",
     "formatFileSize": "",
     "generateTempId": "",
@@ -4135,31 +4136,31 @@
     "mergeCallGraphs": ""
   },
   "entityStats": {
-    "totalFunctions": 231,
+    "totalFunctions": 232,
     "totalConstants": 19,
     "totalVariables": 6,
     "totalInterfaces": 180,
     "totalTypes": 4,
     "totalClasses": 28,
-    "totalCalls": 246,
+    "totalCalls": 248,
     "totalExportedFunctions": 175,
     "totalAsyncFunctions": 12
   },
   "fileStats": {
     "totalFiles": 63,
-    "totalSize": 1174631,
-    "totalLines": 38056
+    "totalSize": 1173977,
+    "totalLines": 38021
   },
-  "timestamp": "2026-08-21T21:36:20.565Z",
+  "timestamp": "2026-08-21T20:55:16.948Z",
   "architectureMetrics": {
     "totalModules": 63,
-    "totalFunctions": 231,
+    "totalFunctions": 232,
     "totalClasses": 28,
     "totalConstants": 19,
     "totalInterfaces": 180,
     "totalTypes": 4,
     "totalVariables": 6,
-    "totalCalls": 246,
+    "totalCalls": 248,
     "vueComponents": 0,
     "totalComposables": 0,
     "hasCycles": false,
@@ -4176,7 +4177,7 @@
     "projectType": "single",
     "entryPoint": "src/cli.ts",
     "totalModules": 63,
-    "totalFunctions": 231,
+    "totalFunctions": 232,
     "vueComponents": 0,
     "hasCycles": false,
     "maxDepth": 8,

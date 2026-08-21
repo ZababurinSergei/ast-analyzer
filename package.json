@@ -39,6 +39,7 @@
     "start:win:abs": "node ./dist/cli.js project %CD%/src/cli.ts 15 -o ./reports/component-tree-deep",
     "start:ts": "NODE_OPTIONS=\"--trace-warnings --unhandled-rejections=strict\" tsx src/cli.ts project src/cli.ts 15 -o ./reports/component-tree-deep --entities 2>&1 | tee debug.log\n",
     "clean": "rimraf dist",
+    "build:data-converter": "esbuild src/reporters/data-converter.ts --watch --bundle --platform=node --target=es2022 --format=esm --outfile=src/reporters/templates/data-converter.js",
     "build": "npm run clean && npm run build:types && npm run build:bundle && npm run build:cli",
     "build:types": "tsc --emitDeclarationOnly --declaration --declarationMap --outDir dist",
     "build:bundle": "cross-env NODE_ENV=production  node esbuild.bundle.config.js",

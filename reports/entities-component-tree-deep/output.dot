@@ -90,6 +90,7 @@ digraph "Dependency Graph" {
   "src/reporters/json-reporter.ts" -> "src/modes/vue-analyzer.ts";
   "src/reporters/html-reporter.ts" -> "src/utils/path-utils.ts";
   "src/reporters/interactive-reporter.ts" -> "src/types.ts";
+  "src/reporters/interactive-reporter.ts" -> "src/reporters/data-converter.ts";
   "src/types.ts" -> "src/core/entity-extractor.ts";
   "src/refactor/types.ts" -> "src/semantic/CFGAnalyzer.ts";
   "src/refactor/types.ts" -> "src/semantic/CallGraphAnalyzer.ts";
@@ -160,6 +161,7 @@ digraph "Dependency Graph" {
   "src/modes/hybrid-report/generators/html.ts" -> "src/modes/hybrid-report/types.ts";
   "src/modes/hybrid-report/generators/html.ts" -> "src/modes/hybrid-report/generators/dot.ts";
   "src/modes/hybrid-report/generators/markdown.ts" -> "src/modes/hybrid-report/types.ts";
+  "src/reporters/data-converter.ts" -> "src/types.ts";
   "src/formal/index.ts" -> "src/formal/Z3Verifier.ts";
   "src/formal/index.ts" -> "src/formal/FunctionBodyModeler.ts";
   "src/formal/index.ts" -> "src/formal/checkers/FileEquivalenceChecker.ts";

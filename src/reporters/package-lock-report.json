@@ -31,8 +31,8 @@
         "classes": ""
       },
       "fileStats": {
-        "size": 78215,
-        "lines": 2346,
+        "size": 78516,
+        "lines": 2356,
         "functions": 6,
         "classes": 0,
         "constants": 2,
@@ -1452,27 +1452,27 @@
           "direction": "outward",
           "type": "export",
           "isAsync": true,
-          "params": "analysis,outputPath,entitiesWithCalls",
+          "params": "analysis,outputPath,entitiesWithCalls,packageLockPath",
           "returns": "Promise<void>",
-          "line": 20,
+          "line": 275,
           "consumers": ""
         }
       },
       "entities": {
-        "functions": "[object Object]",
+        "functions": "[object Object],[object Object],[object Object]",
         "constants": "[object Object],[object Object]",
         "variables": "",
-        "interfaces": "",
+        "interfaces": "[object Object],[object Object],[object Object],[object Object]",
         "types": "",
         "classes": ""
       },
       "fileStats": {
-        "size": 5024,
-        "lines": 138,
-        "functions": 1,
+        "size": 16697,
+        "lines": 526,
+        "functions": 3,
         "classes": 0,
         "constants": 2,
-        "interfaces": 0,
+        "interfaces": 4,
         "types": 0,
         "variables": 0
       }
@@ -2826,34 +2826,6 @@
         "variables": 0
       }
     },
-    "src/reporters/data-converter.ts": {
-      "version": "1.0.0",
-      "resolved": "file:src/reporters/data-converter.ts",
-      "displayPath": "reports/entities-component-tree-deep/src/reporters/data-converter.ts",
-      "type": "module",
-      "language": "typescript",
-      "isEntry": false,
-      "imports": {},
-      "exports": {},
-      "entities": {
-        "functions": "",
-        "constants": "",
-        "variables": "",
-        "interfaces": "[object Object],[object Object],[object Object],[object Object]",
-        "types": "",
-        "classes": "[object Object]"
-      },
-      "fileStats": {
-        "size": 12645,
-        "lines": 455,
-        "functions": 0,
-        "classes": 1,
-        "constants": 0,
-        "interfaces": 4,
-        "types": 0,
-        "variables": 0
-      }
-    },
     "src/formal/index.ts": {
       "version": "1.0.0",
       "resolved": "file:src/formal/index.ts",
@@ -3407,7 +3379,7 @@
       "src/modes/hybrid-report/index.ts": "src/modes/hybrid-report/types.ts,src/modes/hybrid-report/cli.ts,src/modes/hybrid-report/builder.ts,src/modes/hybrid-report/analyzer.ts,src/modes/hybrid-report/generators/dot.ts,src/modes/hybrid-report/generators/html.ts,src/modes/hybrid-report/generators/markdown.ts",
       "src/reporters/json-reporter.ts": "src/core/entity-extractor.ts,src/modes/vue-analyzer.ts",
       "src/reporters/html-reporter.ts": "src/utils/path-utils.ts",
-      "src/reporters/interactive-reporter.ts": "src/types.ts,src/reporters/data-converter.ts",
+      "src/reporters/interactive-reporter.ts": "src/types.ts",
       "src/types.ts": "src/core/entity-extractor.ts",
       "src/utils.ts": "",
       "src/utils/path-utils.ts": "",
@@ -3440,7 +3412,6 @@
       "src/modes/hybrid-report/generators/dot.ts": "src/modes/hybrid-report/types.ts",
       "src/modes/hybrid-report/generators/html.ts": "@hpcc-js/wasm-graphviz,src/modes/hybrid-report/types.ts,src/modes/hybrid-report/generators/dot.ts",
       "src/modes/hybrid-report/generators/markdown.ts": "src/modes/hybrid-report/types.ts",
-      "src/reporters/data-converter.ts": "src/types.ts",
       "src/formal/index.ts": "src/formal/Z3Verifier.ts,src/formal/FunctionBodyModeler.ts,src/formal/checkers/FileEquivalenceChecker.ts,src/formal/checkers/RefactoringEquivalenceChecker.ts,src/formal/ExpressionParser.ts",
       "src/utils/Logger.ts": "",
       "src/formal/checkers/FileEquivalenceChecker.ts": "src/formal/checkers/EquivalenceChecker.ts,src/formal/Z3Verifier.ts,src/core/ASTComparator.ts,src/core/SignatureComparator.ts,src/core/CallGraphComparator.ts",
@@ -3473,7 +3444,7 @@
       "src/reporters/json-reporter.ts": "src/cli.ts,src/modes/project-graph.ts",
       "src/reporters/html-reporter.ts": "src/cli.ts",
       "src/reporters/interactive-reporter.ts": "src/cli.ts",
-      "src/types.ts": "src/cli.ts,src/reporters/interactive-reporter.ts,src/reporters/data-converter.ts",
+      "src/types.ts": "src/cli.ts,src/reporters/interactive-reporter.ts",
       "src/utils.ts": "src/cli.ts",
       "src/utils/path-utils.ts": "src/cli.ts,src/core/tsconfig-resolver.ts,src/modes/project-graph.ts,src/modes/file-graph.ts,src/reporters/html-reporter.ts",
       "src/config.ts": "src/modes/project-graph.ts,src/modes/split-module.ts,src/modes/impact.ts,src/modes/dead-code.ts,src/modes/minify-folder.ts",
@@ -3505,7 +3476,6 @@
       "src/modes/hybrid-report/generators/dot.ts": "src/modes/hybrid-report/index.ts,src/modes/hybrid-report/cli.ts,src/modes/hybrid-report/generators/html.ts",
       "src/modes/hybrid-report/generators/html.ts": "src/modes/hybrid-report/index.ts,src/modes/hybrid-report/cli.ts",
       "src/modes/hybrid-report/generators/markdown.ts": "src/modes/hybrid-report/index.ts,src/modes/hybrid-report/cli.ts",
-      "src/reporters/data-converter.ts": "src/reporters/interactive-reporter.ts",
       "src/formal/index.ts": "src/refactor/types.ts,src/refactor/AutoRefactor.ts",
       "src/utils/Logger.ts": "src/refactor/AutoRefactor.ts,src/refactor/ModuleExtractor.ts,src/refactor/ImportManager.ts,src/refactor/TemplateUpdater.ts,src/refactor/SyntaxValidator.ts,src/refactor/ModuleTypeDetector.ts,src/refactor/BackupManager.ts,src/refactor/interfaces/IRefactorContext.ts",
       "src/formal/checkers/FileEquivalenceChecker.ts": "src/formal/index.ts",
@@ -3687,9 +3657,6 @@
         "importsFrom": ""
       },
       "src/modes/hybrid-report/generators/markdown.ts": {
-        "importsFrom": ""
-      },
-      "src/reporters/data-converter.ts": {
         "importsFrom": ""
       },
       "src/formal/index.ts": {
@@ -3880,9 +3847,6 @@
       "src/modes/hybrid-report/generators/markdown.ts": {
         "exportsTo": ""
       },
-      "src/reporters/data-converter.ts": {
-        "exportsTo": ""
-      },
       "src/formal/index.ts": {
         "exportsTo": ""
       },
@@ -4047,7 +4011,9 @@
     "convertToEnhancedEntityInfo": "",
     "escapeHtml": "",
     "generateHTMLReport": "normalizePathForDisplay,getFileNameForDisplay,escapeHtml",
-    "generateInteractiveHTML": "String",
+    "convertModuleNodeToPackage": "",
+    "buildReportFromAnalysis": "convertModuleNodeToPackage",
+    "generateInteractiveHTML": "buildReportFromAnalysis,String",
     "showHelp": "",
     "formatFileSize": "",
     "generateTempId": "",
@@ -4135,31 +4101,31 @@
     "mergeCallGraphs": ""
   },
   "entityStats": {
-    "totalFunctions": 231,
+    "totalFunctions": 233,
     "totalConstants": 19,
     "totalVariables": 6,
     "totalInterfaces": 180,
     "totalTypes": 4,
-    "totalClasses": 28,
-    "totalCalls": 246,
+    "totalClasses": 27,
+    "totalCalls": 248,
     "totalExportedFunctions": 175,
     "totalAsyncFunctions": 12
   },
   "fileStats": {
-    "totalFiles": 63,
-    "totalSize": 1174631,
-    "totalLines": 38056
+    "totalFiles": 62,
+    "totalSize": 1173960,
+    "totalLines": 37999
   },
-  "timestamp": "2026-08-21T21:36:20.565Z",
+  "timestamp": "2026-08-21T19:56:03.854Z",
   "architectureMetrics": {
-    "totalModules": 63,
-    "totalFunctions": 231,
-    "totalClasses": 28,
+    "totalModules": 62,
+    "totalFunctions": 233,
+    "totalClasses": 27,
     "totalConstants": 19,
     "totalInterfaces": 180,
     "totalTypes": 4,
     "totalVariables": 6,
-    "totalCalls": 246,
+    "totalCalls": 248,
     "vueComponents": 0,
     "totalComposables": 0,
     "hasCycles": false,
@@ -4167,7 +4133,7 @@
     "modulesByLevel": {
       "0": "src/utils/is-main.ts,src/core/graph-utils.ts,src/core/entity-extractor.ts,src/modes/vue-analyzer.ts,src/utils.ts,src/utils/path-utils.ts,src/config.ts,src/refactor/TypeScriptValidator.ts,src/refactor/ESLintASTFixer.ts,src/refactor/CodeValidator.ts,src/semantic/CFGAnalyzer.ts,src/semantic/TypeAnalyzer.ts,src/semantic/DataFlowAnalyzer.ts,src/utils/wasm-utils.ts,src/formal/ExpressionParser.ts,src/formal/FunctionBodyModeler.ts,src/modes/hybrid-report/types.ts,src/utils/Logger.ts,src/core/ASTComparator.ts,src/core/SignatureComparator.ts,src/core/CallGraphComparator.ts",
       "1": "src/cli.ts,src/modes/split-module.ts,src/modes/hybrid-report/cli.ts,src/modes/hybrid-report/builder.ts,src/modes/project-graph.ts,src/reporters/json-reporter.ts,src/types.ts,src/core/tsconfig-resolver.ts,src/modes/file-graph.ts,src/reporters/html-reporter.ts,src/modes/impact.ts,src/modes/dead-code.ts,src/modes/minify-folder.ts,src/refactor/index.ts,src/refactor/AutoRefactor.ts,src/refactor/types.ts,src/refactor/CodeFixer.ts,src/ci-cd/SemanticPipeline.ts,src/semantic/JSXAnalyzer.ts,src/semantic/CallGraphAnalyzer.ts,src/formal/Z3Verifier.ts,src/formal/index.ts,src/modes/hybrid-report/index.ts,src/modes/hybrid-report/analyzer.ts,src/modes/hybrid-report/generators/dot.ts,src/modes/hybrid-report/generators/html.ts,src/modes/hybrid-report/generators/markdown.ts,src/refactor/ModuleExtractor.ts,src/refactor/ImportManager.ts,src/refactor/TemplateUpdater.ts,src/refactor/SyntaxValidator.ts,src/refactor/ModuleTypeDetector.ts,src/refactor/BackupManager.ts,src/refactor/interfaces/IRefactorContext.ts,src/formal/checkers/FileEquivalenceChecker.ts,src/formal/checkers/RefactoringEquivalenceChecker.ts,src/formal/checkers/EquivalenceChecker.ts",
-      "2": "src/modes/prompt-pack.ts,src/reporters/interactive-reporter.ts,src/reporters/data-converter.ts,src/core/ast-parser.ts",
+      "2": "src/modes/prompt-pack.ts,src/reporters/interactive-reporter.ts,src/core/ast-parser.ts",
       "3": "src/core/minifier.ts"
     },
     "isAcyclic": true
@@ -4175,8 +4141,8 @@
   "summary": {
     "projectType": "single",
     "entryPoint": "src/cli.ts",
-    "totalModules": 63,
-    "totalFunctions": 231,
+    "totalModules": 62,
+    "totalFunctions": 233,
     "vueComponents": 0,
     "hasCycles": false,
     "maxDepth": 8,

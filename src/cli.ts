@@ -2074,23 +2074,13 @@ export async function runCLI(): Promise<void> {
           });
         }
 
-        // Находим путь к package-lock-report.json
-        const packageLockPath = path.join(
-          process.cwd(),
-          'reports/entities-component-tree-deep/package-lock-report.json'
-        );
-
-        // ✅ Генерируем интерактивный HTML с передачей пути к package-lock
+        // ✅ Генерируем интерактивный HTML отчет
         console.log('\n🌐 Генерация интерактивного HTML отчета...');
         const htmlPath = path.join(process.cwd(), 'interactive-report.html');
 
-        // ✅ Вызываем функцию с 4 аргументами (включая packageLockPath)
-        await generateInteractiveHTML(
-          fullAnalysis,
-          htmlPath,
-          entitiesWithCalls,
-          packageLockPath
-        );
+        // Вызываем generateInteractiveHTML с анализом и сущностями
+        await generateInteractiveHTML(fullAnalysis, htmlPath, entitiesWithCalls);
+
         console.log(`   ✅ interactive-report.html (интерактивный отчет)`);
 
         console.log('\n📊 СТАТИСТИКА СУЩНОСТЕЙ (ВСЕ ФАЙЛЫ):');

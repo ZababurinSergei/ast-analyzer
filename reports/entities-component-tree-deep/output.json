@@ -126,7 +126,8 @@
       "src/utils/path-utils.ts"
     ],
     "src/reporters/interactive-reporter.ts": [
-      "src/types.ts"
+      "src/types.ts",
+      "src/reporters/data-converter.ts"
     ],
     "src/types.ts": [
       "src/core/entity-extractor.ts"
@@ -249,6 +250,9 @@
     ],
     "src/modes/hybrid-report/generators/markdown.ts": [
       "src/modes/hybrid-report/types.ts"
+    ],
+    "src/reporters/data-converter.ts": [
+      "src/types.ts"
     ],
     "src/formal/index.ts": [
       "src/formal/Z3Verifier.ts",
@@ -423,7 +427,7 @@
           "calledBy": [],
           "body": "{\n  const parsed = parseArgs();\n  if (!parsed) return;\n\n  const {\n    mode,\n    targetPath,\n    extraArg,\n    options,\n    outputDir,\n    tsconfigPath,\n    includeEntities,\n    includeVueAnalysis,\n   ",
           "startLine": 1024,
-          "endLine": 2331,
+          "endLine": 2321,
           "isMethod": false,
           "isNested": false,
           "isArrow": false,
@@ -432,7 +436,7 @@
         },
         {
           "name": "findModuleForEntity",
-          "line": 2337,
+          "line": 2327,
           "isAsync": false,
           "isExported": false,
           "params": [
@@ -445,8 +449,8 @@
             "runCLI"
           ],
           "body": "{\n  for (const [modulePath, deps] of Object.entries(data.graph)) {\n    if (modulePath.includes(entityName)) {\n      return modulePath;\n    }\n    if (Array.isArray(deps)) {\n      for (const dep of deps",
-          "startLine": 2337,
-          "endLine": 2351,
+          "startLine": 2327,
+          "endLine": 2341,
           "isMethod": false,
           "isNested": false,
           "isArrow": false,
@@ -5018,120 +5022,23 @@
     "src/reporters/interactive-reporter.ts": {
       "functions": [
         {
-          "name": "convertModuleNodeToPackage",
-          "line": 111,
-          "isAsync": false,
-          "isExported": false,
-          "params": [
-            "node",
-            "entityNodes",
-            "entityEdges"
-          ],
-          "returnType": "PackageLockPackage",
-          "calls": [],
-          "calledBy": [
-            "buildReportFromAnalysis"
-          ],
-          "body": "{\n  const callMap: Record<string, string[]> = {};\n  const calledByMap: Record<string, string[]> = {};\n\n  for (const edge of entityEdges) {\n    if (edge.type === 'function_call' || edge.type === 'metho",
-          "startLine": 111,
-          "endLine": 197,
-          "isMethod": false,
-          "isNested": false,
-          "isArrow": false,
-          "isEventHandler": false,
-          "depth": 0
-        },
-        {
-          "name": "buildReportFromAnalysis",
-          "line": 199,
-          "isAsync": false,
-          "isExported": false,
-          "params": [
-            "analysis"
-          ],
-          "returnType": "PackageLockReport",
-          "calls": [
-            "convertModuleNodeToPackage"
-          ],
-          "calledBy": [
-            "generateInteractiveHTML"
-          ],
-          "body": "{\n  const packages: Record<string, PackageLockPackage> = {};\n\n  const moduleNodes: ModuleGraphNode[] = analysis.moduleGraph?.nodes || [];\n  const moduleEdges: ModuleGraphEdge[] = analysis.moduleGraph?",
-          "startLine": 199,
-          "endLine": 281,
-          "isMethod": false,
-          "isNested": false,
-          "isArrow": false,
-          "isEventHandler": false,
-          "depth": 0
-        },
-        {
-          "name": "escapeHtml",
-          "line": 287,
-          "isAsync": false,
-          "isExported": false,
-          "params": [
-            "str"
-          ],
-          "returnType": "string",
-          "calls": [
-            "String"
-          ],
-          "calledBy": [
-            "generateInteractiveHTML"
-          ],
-          "body": "{\n  if (!str) return '';\n  return String(str)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#039;');\n}",
-          "startLine": 287,
-          "endLine": 295,
-          "isMethod": false,
-          "isNested": false,
-          "isArrow": false,
-          "isEventHandler": false,
-          "depth": 0
-        },
-        {
-          "name": "safeStringifyForJS",
-          "line": 300,
-          "isAsync": false,
-          "isExported": false,
-          "params": [
-            "obj"
-          ],
-          "returnType": "string",
-          "calls": [],
-          "calledBy": [
-            "generateInteractiveHTML"
-          ],
-          "body": "{\n  try {\n    const json = JSON.stringify(obj, (_key, value) => {\n      if (value instanceof Map) {\n        return Object.fromEntries(value);\n      }\n      if (value instanceof Set) {\n        return A",
-          "startLine": 300,
-          "endLine": 333,
-          "isMethod": false,
-          "isNested": false,
-          "isArrow": false,
-          "isEventHandler": false,
-          "depth": 0
-        },
-        {
           "name": "generateInteractiveHTML",
-          "line": 339,
+          "line": 20,
           "isAsync": true,
           "isExported": true,
           "params": [
             "analysis",
             "outputPath",
-            "entitiesWithCalls",
-            "packageLockPath"
+            "entitiesWithCalls"
           ],
           "returnType": "Promise<void>",
           "calls": [
-            "buildReportFromAnalysis",
-            "escapeHtml",
-            "safeStringifyForJS"
+            "String"
           ],
           "calledBy": [],
-          "body": "{\n  // Загружаем package-lock-report.json если указан\n  let report: PackageLockReport | null = null;\n\n  if (packageLockPath && fs.existsSync(packageLockPath)) {\n    try {\n      const content = fs.read",
-          "startLine": 339,
-          "endLine": 1390,
+          "body": "{\n  const outputDir = path.dirname(outputPath);\n  const templateDir = path.join(__dirname, 'templates');\n\n  // Проверяем наличие шаблона\n  const templatePath = path.join(templateDir, 'interactive-repo",
+          "startLine": 20,
+          "endLine": 133,
           "isMethod": false,
           "isNested": false,
           "isArrow": false,
@@ -5140,95 +5047,21 @@
         }
       ],
       "classes": [],
-      "constants": [],
-      "interfaces": [
+      "constants": [
         {
-          "name": "PackageLockFunctionInfo",
-          "line": 16,
+          "name": "__filename",
+          "line": 8,
           "isExported": false,
-          "properties": [
-            "name",
-            "params",
-            "paramTypes",
-            "line",
-            "startLine",
-            "endLine",
-            "isAsync",
-            "isExported",
-            "isMethod",
-            "className",
-            "calls",
-            "calledBy",
-            "returnType",
-            "body",
-            "isNested",
-            "parentFunction",
-            "isArrow",
-            "isEventHandler",
-            "eventType",
-            "depth",
-            "complexity",
-            "security"
-          ],
-          "extends": [],
-          "startLine": 16,
-          "endLine": 45
+          "type": "any"
         },
         {
-          "name": "PackageLockEntityInfo",
-          "line": 47,
+          "name": "__dirname",
+          "line": 9,
           "isExported": false,
-          "properties": [
-            "functions",
-            "constants",
-            "variables",
-            "interfaces",
-            "types",
-            "classes"
-          ],
-          "extends": [],
-          "startLine": 47,
-          "endLine": 54
-        },
-        {
-          "name": "PackageLockPackage",
-          "line": 56,
-          "isExported": false,
-          "properties": [
-            "version",
-            "resolved",
-            "displayPath",
-            "type",
-            "language",
-            "isEntry",
-            "imports",
-            "exports",
-            "entities",
-            "fileStats"
-          ],
-          "extends": [],
-          "startLine": 56,
-          "endLine": 76
-        },
-        {
-          "name": "PackageLockReport",
-          "line": 78,
-          "isExported": false,
-          "properties": [
-            "name",
-            "version",
-            "lockfileVersion",
-            "packages",
-            "dependencyGraph",
-            "entityStats",
-            "fileStats",
-            "timestamp"
-          ],
-          "extends": [],
-          "startLine": 78,
-          "endLine": 105
+          "type": "any"
         }
       ],
+      "interfaces": [],
       "types": [],
       "variables": [],
       "imports": [],
@@ -9298,6 +9131,120 @@
       "moduleName": "",
       "filePath": ""
     },
+    "src/reporters/data-converter.ts": {
+      "functions": [],
+      "classes": [
+        {
+          "name": "DataConverter",
+          "line": 102,
+          "isExported": true,
+          "methods": [
+            "convertModuleNodeToPackage",
+            "buildReportFromAnalysis",
+            "createEmptyReport",
+            "enrichReport"
+          ],
+          "properties": [],
+          "implements": [],
+          "startLine": 102,
+          "endLine": 452
+        }
+      ],
+      "constants": [],
+      "interfaces": [
+        {
+          "name": "PackageLockFunctionInfo",
+          "line": 15,
+          "isExported": true,
+          "properties": [
+            "name",
+            "params",
+            "paramTypes",
+            "line",
+            "startLine",
+            "endLine",
+            "isAsync",
+            "isExported",
+            "isMethod",
+            "className",
+            "calls",
+            "calledBy",
+            "returnType",
+            "body",
+            "isNested",
+            "parentFunction",
+            "isArrow",
+            "isEventHandler",
+            "eventType",
+            "depth"
+          ],
+          "extends": [],
+          "startLine": 15,
+          "endLine": 36
+        },
+        {
+          "name": "PackageLockEntityInfo",
+          "line": 38,
+          "isExported": true,
+          "properties": [
+            "functions",
+            "constants",
+            "variables",
+            "interfaces",
+            "types",
+            "classes"
+          ],
+          "extends": [],
+          "startLine": 38,
+          "endLine": 45
+        },
+        {
+          "name": "PackageLockPackage",
+          "line": 47,
+          "isExported": true,
+          "properties": [
+            "version",
+            "resolved",
+            "displayPath",
+            "type",
+            "language",
+            "isEntry",
+            "imports",
+            "exports",
+            "entities",
+            "fileStats"
+          ],
+          "extends": [],
+          "startLine": 47,
+          "endLine": 67
+        },
+        {
+          "name": "PackageLockReport",
+          "line": 69,
+          "isExported": true,
+          "properties": [
+            "name",
+            "version",
+            "lockfileVersion",
+            "packages",
+            "dependencyGraph",
+            "entityStats",
+            "fileStats",
+            "timestamp"
+          ],
+          "extends": [],
+          "startLine": 69,
+          "endLine": 96
+        }
+      ],
+      "types": [],
+      "variables": [],
+      "imports": [],
+      "exports": [],
+      "callGraph": {},
+      "moduleName": "",
+      "filePath": ""
+    },
     "src/formal/index.ts": {
       "functions": [
         {
@@ -10866,7 +10813,7 @@
               "paramTypes": [],
               "line": 1024,
               "startLine": 1024,
-              "endLine": 2331,
+              "endLine": 2321,
               "isAsync": true,
               "isExported": true,
               "isMethod": false,
@@ -10936,9 +10883,9 @@
                 "any",
                 "any"
               ],
-              "line": 2337,
-              "startLine": 2337,
-              "endLine": 2351,
+              "line": 2327,
+              "startLine": 2327,
+              "endLine": 2341,
               "isAsync": false,
               "isExported": false,
               "isMethod": false,
@@ -11004,8 +10951,8 @@
           "classes": []
         },
         "fileStats": {
-          "size": 78516,
-          "lines": 2356,
+          "size": 78215,
+          "lines": 2346,
           "functions": 6,
           "classes": 0,
           "constants": 2,
@@ -18551,184 +18498,39 @@
             "params": [
               "analysis",
               "outputPath",
-              "entitiesWithCalls",
-              "packageLockPath"
+              "entitiesWithCalls"
             ],
             "returns": "Promise<void>",
-            "line": 339,
+            "line": 20,
             "consumers": []
           }
         },
         "entities": {
           "functions": [
             {
-              "name": "convertModuleNodeToPackage",
-              "params": [
-                "node",
-                "entityNodes",
-                "entityEdges"
-              ],
-              "paramTypes": [
-                "any",
-                "any",
-                "any"
-              ],
-              "line": 111,
-              "startLine": 111,
-              "endLine": 197,
-              "isAsync": false,
-              "isExported": false,
-              "isMethod": false,
-              "calls": [],
-              "calledBy": [
-                "buildReportFromAnalysis"
-              ],
-              "returnType": "PackageLockPackage",
-              "body": "{\n  const callMap: Record<string, string[]> = {};\n  const calledByMap: Record<string, string[]> = {};\n\n  for (const edge of entityEdges) {\n    if (edge.type === 'function_call' || edge.type === 'metho",
-              "isNested": false,
-              "isArrow": false,
-              "isEventHandler": false,
-              "depth": 0,
-              "complexity": 1,
-              "security": {
-                "hasEval": false,
-                "hasProcessEnv": false,
-                "hasSensitiveData": false,
-                "hasExec": false,
-                "hasPassword": false
-              }
-            },
-            {
-              "name": "buildReportFromAnalysis",
-              "params": [
-                "analysis"
-              ],
-              "paramTypes": [
-                "any"
-              ],
-              "line": 199,
-              "startLine": 199,
-              "endLine": 281,
-              "isAsync": false,
-              "isExported": false,
-              "isMethod": false,
-              "calls": [
-                "convertModuleNodeToPackage"
-              ],
-              "calledBy": [
-                "generateInteractiveHTML"
-              ],
-              "returnType": "PackageLockReport",
-              "body": "{\n  const packages: Record<string, PackageLockPackage> = {};\n\n  const moduleNodes: ModuleGraphNode[] = analysis.moduleGraph?.nodes || [];\n  const moduleEdges: ModuleGraphEdge[] = analysis.moduleGraph?",
-              "isNested": false,
-              "isArrow": false,
-              "isEventHandler": false,
-              "depth": 0,
-              "complexity": 1,
-              "security": {
-                "hasEval": false,
-                "hasProcessEnv": false,
-                "hasSensitiveData": false,
-                "hasExec": false,
-                "hasPassword": false
-              }
-            },
-            {
-              "name": "escapeHtml",
-              "params": [
-                "str"
-              ],
-              "paramTypes": [
-                "any"
-              ],
-              "line": 287,
-              "startLine": 287,
-              "endLine": 295,
-              "isAsync": false,
-              "isExported": false,
-              "isMethod": false,
-              "calls": [
-                "String"
-              ],
-              "calledBy": [
-                "generateInteractiveHTML"
-              ],
-              "returnType": "string",
-              "body": "{\n  if (!str) return '';\n  return String(str)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#039;');\n}",
-              "isNested": false,
-              "isArrow": false,
-              "isEventHandler": false,
-              "depth": 0,
-              "complexity": 1,
-              "security": {
-                "hasEval": false,
-                "hasProcessEnv": false,
-                "hasSensitiveData": false,
-                "hasExec": false,
-                "hasPassword": false
-              }
-            },
-            {
-              "name": "safeStringifyForJS",
-              "params": [
-                "obj"
-              ],
-              "paramTypes": [
-                "any"
-              ],
-              "line": 300,
-              "startLine": 300,
-              "endLine": 333,
-              "isAsync": false,
-              "isExported": false,
-              "isMethod": false,
-              "calls": [],
-              "calledBy": [
-                "generateInteractiveHTML"
-              ],
-              "returnType": "string",
-              "body": "{\n  try {\n    const json = JSON.stringify(obj, (_key, value) => {\n      if (value instanceof Map) {\n        return Object.fromEntries(value);\n      }\n      if (value instanceof Set) {\n        return A",
-              "isNested": false,
-              "isArrow": false,
-              "isEventHandler": false,
-              "depth": 0,
-              "complexity": 1,
-              "security": {
-                "hasEval": false,
-                "hasProcessEnv": false,
-                "hasSensitiveData": false,
-                "hasExec": false,
-                "hasPassword": false
-              }
-            },
-            {
               "name": "generateInteractiveHTML",
               "params": [
                 "analysis",
                 "outputPath",
-                "entitiesWithCalls",
-                "packageLockPath"
+                "entitiesWithCalls"
               ],
               "paramTypes": [
                 "any",
                 "any",
-                "any",
                 "any"
               ],
-              "line": 339,
-              "startLine": 339,
-              "endLine": 1390,
+              "line": 20,
+              "startLine": 20,
+              "endLine": 133,
               "isAsync": true,
               "isExported": true,
               "isMethod": false,
               "calls": [
-                "buildReportFromAnalysis",
-                "escapeHtml",
-                "safeStringifyForJS"
+                "String"
               ],
               "calledBy": [],
               "returnType": "Promise<void>",
-              "body": "{\n  // Загружаем package-lock-report.json если указан\n  let report: PackageLockReport | null = null;\n\n  if (packageLockPath && fs.existsSync(packageLockPath)) {\n    try {\n      const content = fs.read",
+              "body": "{\n  const outputDir = path.dirname(outputPath);\n  const templateDir = path.join(__dirname, 'templates');\n\n  // Проверяем наличие шаблона\n  const templatePath = path.join(templateDir, 'interactive-repo",
               "isNested": false,
               "isArrow": false,
               "isEventHandler": false,
@@ -18743,106 +18545,32 @@
               }
             }
           ],
-          "constants": [],
-          "variables": [],
-          "interfaces": [
+          "constants": [
             {
-              "name": "PackageLockFunctionInfo",
-              "properties": [
-                "name",
-                "params",
-                "paramTypes",
-                "line",
-                "startLine",
-                "endLine",
-                "isAsync",
-                "isExported",
-                "isMethod",
-                "className",
-                "calls",
-                "calledBy",
-                "returnType",
-                "body",
-                "isNested",
-                "parentFunction",
-                "isArrow",
-                "isEventHandler",
-                "eventType",
-                "depth",
-                "complexity",
-                "security"
-              ],
-              "line": 16,
+              "name": "__filename",
+              "line": 8,
               "isExported": false,
-              "extends": [],
-              "startLine": 16,
-              "endLine": 45
+              "type": "any"
             },
             {
-              "name": "PackageLockEntityInfo",
-              "properties": [
-                "functions",
-                "constants",
-                "variables",
-                "interfaces",
-                "types",
-                "classes"
-              ],
-              "line": 47,
+              "name": "__dirname",
+              "line": 9,
               "isExported": false,
-              "extends": [],
-              "startLine": 47,
-              "endLine": 54
-            },
-            {
-              "name": "PackageLockPackage",
-              "properties": [
-                "version",
-                "resolved",
-                "displayPath",
-                "type",
-                "language",
-                "isEntry",
-                "imports",
-                "exports",
-                "entities",
-                "fileStats"
-              ],
-              "line": 56,
-              "isExported": false,
-              "extends": [],
-              "startLine": 56,
-              "endLine": 76
-            },
-            {
-              "name": "PackageLockReport",
-              "properties": [
-                "name",
-                "version",
-                "lockfileVersion",
-                "packages",
-                "dependencyGraph",
-                "entityStats",
-                "fileStats",
-                "timestamp"
-              ],
-              "line": 78,
-              "isExported": false,
-              "extends": [],
-              "startLine": 78,
-              "endLine": 105
+              "type": "any"
             }
           ],
+          "variables": [],
+          "interfaces": [],
           "types": [],
           "classes": []
         },
         "fileStats": {
-          "size": 77324,
-          "lines": 1395,
-          "functions": 5,
+          "size": 5024,
+          "lines": 138,
+          "functions": 1,
           "classes": 0,
-          "constants": 0,
-          "interfaces": 4,
+          "constants": 2,
+          "interfaces": 0,
           "types": 0,
           "variables": 0
         }
@@ -24595,6 +24323,135 @@
           "variables": 0
         }
       },
+      "src/reporters/data-converter.ts": {
+        "version": "1.0.0",
+        "resolved": "file:src/reporters/data-converter.ts",
+        "displayPath": "reports/entities-component-tree-deep/src/reporters/data-converter.ts",
+        "type": "module",
+        "language": "typescript",
+        "isEntry": false,
+        "imports": {},
+        "exports": {},
+        "entities": {
+          "functions": [],
+          "constants": [],
+          "variables": [],
+          "interfaces": [
+            {
+              "name": "PackageLockFunctionInfo",
+              "properties": [
+                "name",
+                "params",
+                "paramTypes",
+                "line",
+                "startLine",
+                "endLine",
+                "isAsync",
+                "isExported",
+                "isMethod",
+                "className",
+                "calls",
+                "calledBy",
+                "returnType",
+                "body",
+                "isNested",
+                "parentFunction",
+                "isArrow",
+                "isEventHandler",
+                "eventType",
+                "depth"
+              ],
+              "line": 15,
+              "isExported": true,
+              "extends": [],
+              "startLine": 15,
+              "endLine": 36
+            },
+            {
+              "name": "PackageLockEntityInfo",
+              "properties": [
+                "functions",
+                "constants",
+                "variables",
+                "interfaces",
+                "types",
+                "classes"
+              ],
+              "line": 38,
+              "isExported": true,
+              "extends": [],
+              "startLine": 38,
+              "endLine": 45
+            },
+            {
+              "name": "PackageLockPackage",
+              "properties": [
+                "version",
+                "resolved",
+                "displayPath",
+                "type",
+                "language",
+                "isEntry",
+                "imports",
+                "exports",
+                "entities",
+                "fileStats"
+              ],
+              "line": 47,
+              "isExported": true,
+              "extends": [],
+              "startLine": 47,
+              "endLine": 67
+            },
+            {
+              "name": "PackageLockReport",
+              "properties": [
+                "name",
+                "version",
+                "lockfileVersion",
+                "packages",
+                "dependencyGraph",
+                "entityStats",
+                "fileStats",
+                "timestamp"
+              ],
+              "line": 69,
+              "isExported": true,
+              "extends": [],
+              "startLine": 69,
+              "endLine": 96
+            }
+          ],
+          "types": [],
+          "classes": [
+            {
+              "name": "DataConverter",
+              "methods": [
+                "convertModuleNodeToPackage",
+                "buildReportFromAnalysis",
+                "createEmptyReport",
+                "enrichReport"
+              ],
+              "properties": [],
+              "line": 102,
+              "isExported": true,
+              "implements": [],
+              "startLine": 102,
+              "endLine": 452
+            }
+          ]
+        },
+        "fileStats": {
+          "size": 12645,
+          "lines": 455,
+          "functions": 0,
+          "classes": 1,
+          "constants": 0,
+          "interfaces": 4,
+          "types": 0,
+          "variables": 0
+        }
+      },
       "src/formal/index.ts": {
         "version": "1.0.0",
         "resolved": "file:src/formal/index.ts",
@@ -27024,7 +26881,8 @@
           "src/utils/path-utils.ts"
         ],
         "src/reporters/interactive-reporter.ts": [
-          "src/types.ts"
+          "src/types.ts",
+          "src/reporters/data-converter.ts"
         ],
         "src/types.ts": [
           "src/core/entity-extractor.ts"
@@ -27147,6 +27005,9 @@
         ],
         "src/modes/hybrid-report/generators/markdown.ts": [
           "src/modes/hybrid-report/types.ts"
+        ],
+        "src/reporters/data-converter.ts": [
+          "src/types.ts"
         ],
         "src/formal/index.ts": [
           "src/formal/Z3Verifier.ts",
@@ -27272,7 +27133,8 @@
         ],
         "src/types.ts": [
           "src/cli.ts",
-          "src/reporters/interactive-reporter.ts"
+          "src/reporters/interactive-reporter.ts",
+          "src/reporters/data-converter.ts"
         ],
         "src/utils.ts": [
           "src/cli.ts"
@@ -27426,6 +27288,9 @@
         "src/modes/hybrid-report/generators/markdown.ts": [
           "src/modes/hybrid-report/index.ts",
           "src/modes/hybrid-report/cli.ts"
+        ],
+        "src/reporters/data-converter.ts": [
+          "src/reporters/interactive-reporter.ts"
         ],
         "src/formal/index.ts": [
           "src/refactor/types.ts",
@@ -27647,6 +27512,9 @@
         "src/modes/hybrid-report/generators/markdown.ts": {
           "importsFrom": []
         },
+        "src/reporters/data-converter.ts": {
+          "importsFrom": []
+        },
         "src/formal/index.ts": {
           "importsFrom": []
         },
@@ -27833,6 +27701,9 @@
           "exportsTo": []
         },
         "src/modes/hybrid-report/generators/markdown.ts": {
+          "exportsTo": []
+        },
+        "src/reporters/data-converter.ts": {
           "exportsTo": []
         },
         "src/formal/index.ts": {
@@ -28275,15 +28146,8 @@
         "getFileNameForDisplay",
         "escapeHtml"
       ],
-      "convertModuleNodeToPackage": [],
-      "buildReportFromAnalysis": [
-        "convertModuleNodeToPackage"
-      ],
-      "safeStringifyForJS": [],
       "generateInteractiveHTML": [
-        "buildReportFromAnalysis",
-        "escapeHtml",
-        "safeStringifyForJS"
+        "String"
       ],
       "showHelp": [],
       "formatFileSize": [],
