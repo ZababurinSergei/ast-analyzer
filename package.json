@@ -39,7 +39,6 @@
     "start:win:abs": "node ./dist/cli.js project %CD%/src/cli.ts 15 -o ./reports/component-tree-deep",
     "start:ts": "NODE_OPTIONS=\"--trace-warnings --unhandled-rejections=strict\" tsx src/cli.ts project src/cli.ts 15 -o ./reports/component-tree-deep --entities 2>&1 | tee debug.log\n",
     "clean": "rimraf dist",
-    "build:data-converter": "esbuild src/reporters/data-converter.ts --watch --bundle --platform=node --target=es2022 --format=esm --outfile=src/reporters/templates/data-converter.js",
     "build": "npm run clean && npm run build:types && npm run build:bundle && npm run build:cli",
     "build:types": "tsc --emitDeclarationOnly --declaration --declarationMap --outDir dist",
     "build:bundle": "cross-env NODE_ENV=production  node esbuild.bundle.config.js",
@@ -219,7 +218,8 @@
     "format:check": "prettier --check \"src/**/*.ts\"",
     "preinstall": "",
     "project": "tsx ./src/cli.ts project ./src/cli.ts 15 -o ./reports/component-tree-deep",
-    "project:--entities": "tsx ./src/cli.ts project ./src/cli.ts 150 --entities -o ./reports/entities-component-tree-deep",
+    "build:data-converter": "esbuild src/reporters/data-converter.ts --bundle --platform=node --target=es2022 --format=esm --outfile=src/reporters/templates/data-converter.js",
+    "project:--entities": "npm run build:data-converter && tsx ./src/cli.ts project ./src/cli.ts 150 --entities -o ./reports/entities-component-tree-deep",
     "file": "tsx ./src/cli.ts file ./src/cli.ts 15 -o ./reports/file-tree-deep"
   },
   "keywords": [
