@@ -5,6 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Интерактивный граф модулей и функций</title>
   <link rel="stylesheet" href="./interactive-report.css">
+  <style>
+      .module-card.active {
+          border-color: #22d3ee;
+          box-shadow: 0 0 20px rgba(34, 211, 238, 0.15);
+          background: #1a2a4a;
+      }
+      .func-item.active {
+          background: #1a2a4a;
+          border-left-color: #22d3ee;
+      }
+      .focus-info.active {
+          display: block;
+      }
+      .controls-bar button.active {
+          background: #60a5fa;
+          color: #0f172a;
+          font-weight: 600;
+      }
+  </style>
 </head>
 <body>
 <div class="update-notification" id="updateNotification" role="status" aria-live="polite">
@@ -30,39 +49,34 @@
   </header>
 
   <nav class="controls-bar" id="toolbar" aria-label="Панель управления">
-    <!-- Режимы графа -->
     <div class="group" role="group" aria-label="Режимы отображения графа">
       <span class="group-label" id="graphModeLabel">Режим графа:</span>
-      <button class="active" data-mode="all" onclick="getApp()?.setMode('all')" aria-label="Показать все связи" aria-pressed="true">🌐 Все</button>
-      <button data-mode="inward" onclick="getApp()?.setMode('inward')" aria-label="Показать входящие связи" aria-pressed="false">📥 Входящие</button>
-      <button data-mode="outward" onclick="getApp()?.setMode('outward')" aria-label="Показать исходящие связи" aria-pressed="false">📤 Исходящие</button>
-      <button data-mode="both" onclick="getApp()?.setMode('both')" aria-label="Показать оба направления" aria-pressed="false">🔁 Оба</button>
+      <button class="active" data-mode="all" id="btnGraphAll">🌐 Все</button>
+      <button data-mode="inward" id="btnGraphInward">📥 Входящие</button>
+      <button data-mode="outward" id="btnGraphOutward">📤 Исходящие</button>
+      <button data-mode="both" id="btnGraphBoth">🔁 Оба</button>
     </div>
 
-    <!-- Режимы карточек -->
     <div class="group" role="group" aria-label="Режимы отображения карточек">
       <span class="group-label" id="cardModeLabel">Режим карточек:</span>
-      <button data-card-mode="detailed" onclick="getApp()?.cardModeManager?.setMode('detailed')" aria-label="Детальный режим карточек" aria-pressed="false">📋 Детально</button>
-      <button data-card-mode="compact" onclick="getApp()?.cardModeManager?.setMode('compact')" aria-label="Компактный режим карточек" aria-pressed="false">📦 Компактно</button>
-      <button class="active" data-card-mode="list" onclick="getApp()?.cardModeManager?.setMode('list')" aria-label="Режим списка" aria-pressed="true">📄 Список</button>
+      <button data-card-mode="detailed" id="btnCardDetailed">📋 Детально</button>
+      <button data-card-mode="compact" id="btnCardCompact">📦 Компактно</button>
+      <button class="active" data-card-mode="list" id="btnCardList">📄 Список</button>
     </div>
 
-    <!-- Фокус -->
     <div class="group" role="group" aria-label="Управление фокусом">
       <span class="group-label" id="focusLabel">Фокус:</span>
-      <button onclick="getApp()?.clearFocus()" aria-label="Очистить фокус">✕ Очистить</button>
+      <button id="btnClearFocus">✕ Очистить</button>
     </div>
 
-    <!-- Поиск -->
     <div class="group" role="search" aria-label="Поиск">
       <label for="searchInput" class="sr-only">Поиск функции или модуля</label>
-      <input class="search-input" id="searchInput" placeholder="&#128269; Поиск функции или модуля..." oninput="getApp()?.handleSearch(this.value)" aria-label="Поиск функции или модуля">
+      <input class="search-input" id="searchInput" placeholder="🔍 Поиск функции или модуля...">
     </div>
 
     <span class="hint">💡 Клик на функцию → детали | Клик на модуль → фокус</span>
   </nav>
 
-  <!-- Breadcrumbs -->
   <nav class="breadcrumbs-container" id="breadcrumbsContainer" aria-label="Навигационная цепочка">
     <div class="breadcrumbs-scroll">
       <div class="breadcrumbs" id="breadcrumbs" role="list"></div>
@@ -70,7 +84,7 @@
   </nav>
 
   <div class="focus-info" id="focusInfo" role="status" aria-live="polite">
-    <button class="close-btn" onclick="getApp()?.clearFocus()" aria-label="Закрыть фокус">✕</button>
+    <button class="close-btn" id="btnCloseFocus">✕</button>
     <div class="title" id="focusTitle">🎯 Фокус</div>
     <div class="details" id="focusDetails"></div>
   </div>
@@ -127,7 +141,7 @@
   <div class="detail-panel" id="detailPanel" role="dialog" aria-label="Детали функции" aria-modal="true">
     <div class="dp-header">
       <div class="dp-title" id="dpTitle">Функция</div>
-      <button class="dp-close" onclick="getApp()?.closeDetail()" aria-label="Закрыть детали">✕</button>
+      <button class="dp-close" id="btnCloseDetail">✕</button>
     </div>
     <div id="dpContent"></div>
   </div>
@@ -137,14 +151,136 @@
   </footer>
 </div>
 
+<!-- ============================================================ -->
+<!-- ✅ IMPORTS - ТОЛЬКО ЭТОТ КОД ОСТАЕТСЯ                         -->
+<!-- ============================================================ -->
+
 <script type="importmap">
   {
-      "imports": {
-          "d3": "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"
-      }
+    "imports": {
+      "d3": "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js",
+      "./modules/AppInit.js": "./modules/AppInit.js"
+    }
   }
 </script>
 
-<script type="module" src="./interactive-report.js"></script>
+<!-- ✅ ОСНОВНОЙ МОДУЛЬ - ИСПОЛЬЗУЕТ AppInit.js -->
+<script type="module">
+  // ✅ ИМПОРТИРУЕМ ПРАВИЛЬНО - App ЭТО ОБЪЕКТ С МЕТОДАМИ
+  import { App, waitForApp, getAppAPI, isAppReady } from './modules/AppInit.js';
+  import './interactive-report.js';
+
+  console.log('🚀 Template загружен, использует AppInit.js');
+  console.log('📌 Используйте: App.ready() для ожидания загрузки');
+  console.log('📌 Или: App.getAPI() для синхронного доступа');
+
+  // ✅ ИСПОЛЬЗУЕМ App.ready() ДЛЯ ОЖИДАНИЯ
+  App.ready(5000, 100)
+    .then((result) => {
+      if (result.ready) {
+        console.log('✅ Приложение готово через AppInit');
+        setupTemplateEventListeners(result.api);
+      } else {
+        console.warn('⚠️ Приложение не готово, использую fallback');
+        setupTemplateEventListeners(result.api);
+      }
+    })
+    .catch((error) => {
+      console.error('❌ Ошибка инициализации:', error);
+    });
+
+  // ✅ ТОЛЬКО НАСТРОЙКА СОБЫТИЙ ДЛЯ ШАБЛОНА
+  function setupTemplateEventListeners(api) {
+    console.log('🎯 Настройка обработчиков событий шаблона...');
+
+    // ✅ БЕЗОПАСНАЯ ОБЕРТКА
+    function safeClick(action, ...args) {
+      return function(e) {
+        e?.stopPropagation?.();
+        if (api && typeof api[action] === 'function') {
+          return api[action](...args);
+        }
+        console.warn(`⚠️ Метод ${action} не доступен`);
+      };
+    }
+
+    // Кнопки режимов графа
+    document.getElementById('btnGraphAll')?.addEventListener('click', () => {
+      if (api?.setGraphMode) api.setGraphMode('all');
+      updateActiveButtons('graph', 'all');
+    });
+    document.getElementById('btnGraphInward')?.addEventListener('click', () => {
+      if (api?.setGraphMode) api.setGraphMode('inward');
+      updateActiveButtons('graph', 'inward');
+    });
+    document.getElementById('btnGraphOutward')?.addEventListener('click', () => {
+      if (api?.setGraphMode) api.setGraphMode('outward');
+      updateActiveButtons('graph', 'outward');
+    });
+    document.getElementById('btnGraphBoth')?.addEventListener('click', () => {
+      if (api?.setGraphMode) api.setGraphMode('both');
+      updateActiveButtons('graph', 'both');
+    });
+
+    // Кнопки режимов карточек
+    document.getElementById('btnCardDetailed')?.addEventListener('click', () => {
+      if (api?.setCardMode) api.setCardMode('detailed');
+      updateActiveButtons('card', 'detailed');
+    });
+    document.getElementById('btnCardCompact')?.addEventListener('click', () => {
+      if (api?.setCardMode) api.setCardMode('compact');
+      updateActiveButtons('card', 'compact');
+    });
+    document.getElementById('btnCardList')?.addEventListener('click', () => {
+      if (api?.setCardMode) api.setCardMode('list');
+      updateActiveButtons('card', 'list');
+    });
+
+    // Управление фокусом
+    document.getElementById('btnClearFocus')?.addEventListener('click', safeClick('clearFocus'));
+    document.getElementById('btnCloseFocus')?.addEventListener('click', safeClick('clearFocus'));
+    document.getElementById('btnCloseDetail')?.addEventListener('click', safeClick('closeDetail'));
+
+    // Поиск с debounce
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+      let debounceTimeout = null;
+      searchInput.addEventListener('input', function() {
+        clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(() => {
+          if (api?.handleSearch) {
+            api.handleSearch(this.value);
+          }
+        }, 300);
+      });
+    }
+
+    function updateActiveButtons(type, mode) {
+      if (type === 'graph') {
+        ['btnGraphAll', 'btnGraphInward', 'btnGraphOutward', 'btnGraphBoth'].forEach(id => {
+          const btn = document.getElementById(id);
+          if (btn) {
+            btn.classList.toggle('active', btn.dataset.mode === mode);
+          }
+        });
+      } else if (type === 'card') {
+        ['btnCardDetailed', 'btnCardCompact', 'btnCardList'].forEach(id => {
+          const btn = document.getElementById(id);
+          if (btn) {
+            btn.classList.toggle('active', btn.dataset.cardMode === mode);
+          }
+        });
+      }
+    }
+
+    // Подписка на изменения режимов
+    const SYM_MODE_CHANGE = Symbol.for('__AST_MODE_CHANGE__');
+    window[SYM_MODE_CHANGE] = function(type, mode) {
+      updateActiveButtons(type, mode);
+    };
+
+    console.log('✅ Обработчики событий шаблона настроены!');
+  }
+</script>
 </body>
 </html>

@@ -7,6 +7,7 @@ export class CardModeManager {
     this.app = app;
     // ✅ ИЗМЕНЕНО: режим по умолчанию теперь 'list'
     this.currentMode = 'list';
+    this._listeners = [];
     this.modes = {
       compact: {
         label: 'Компактный',
@@ -138,7 +139,7 @@ export class CardModeManager {
     html += '</div>';
 
     // Кнопка сброса
-    html += `<button class="card-mode-reset" onclick="getApp()?.cardModeManager?.resetFilters()">🔄 Сброс</button>`;
+    html += `<button class="card-mode-reset" onclick="window[Symbol.for('__AST_APP_API__')]?.cardModeManager?.resetFilters()">🔄 Сброс</button>`;
 
     controlPanel.innerHTML = html;
     container.parentNode.insertBefore(controlPanel, container);
@@ -318,6 +319,31 @@ export class CardModeManager {
     });
   }
 
+  /**
+   * Подписка на изменения режима
+   * @param {Function} listener - Функция, вызываемая при изменении режима
+   * @returns {Function} Функция для отписки
+   */
+  onModeChange(listener) {
+    this._listeners.push(listener);
+    return () => {
+      this._listeners = this._listeners.filter(l => l !== listener);
+    };
+  }
+
+  /**
+   * Уведомление подписчиков об изменении режима
+   */
+  _notifyListeners(mode) {
+    for (const listener of this._listeners) {
+      try {
+        listener(mode);
+      } catch (error) {
+        console.warn('Ошибка в обработчике изменения режима карточек:', error);
+      }
+    }
+  }
+
   setMode(mode) {
     if (!this.modes[mode]) {
       console.warn(`Неизвестный режим карточек: ${mode}`);
@@ -328,6 +354,7 @@ export class CardModeManager {
       b.classList.toggle('active', b.dataset.cardMode === mode);
     });
     this.applyMode(mode);
+    this._notifyListeners(mode);
   }
 
   applyMode(mode) {

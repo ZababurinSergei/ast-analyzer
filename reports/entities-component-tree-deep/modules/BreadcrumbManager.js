@@ -35,88 +35,62 @@ export class BreadcrumbManager {
     container.innerHTML = '';
 
     // ✅ ВСЕГДА ПОКАЗЫВАЕМ КОРНЕВОЙ ЭЛЕМЕНТ "UNIVERSE"
-    const universePath = this.createUniverseBreadcrumb();
     const pathDiv = document.createElement('div');
     pathDiv.className = 'breadcrumb-path';
-    pathDiv.appendChild(universePath);
+
+    // Добавляем Universe как первый элемент
+    const universeSpan = this.createUniverseBreadcrumb();
+    pathDiv.appendChild(universeSpan);
 
     // Если есть выбранный модуль или функция, строим путь к ним
     if (modulePath) {
-      // Добавляем стрелку после Universe
-      pathDiv.appendChild(this.createArrowSpan());
-
       const target = funcName ? `${modulePath}#func:${funcName}` : modulePath;
       const entryModule = this.findEntryModule();
 
-      // Если точка входа не найдена или совпадает с текущим модулем, показываем упрощенный путь
-      if (!entryModule || entryModule === modulePath) {
-        // Показываем текущий модуль/функцию
-        if (funcName) {
-          const span = this.createBreadcrumbSpan(funcName, true, 'function');
-          pathDiv.appendChild(span);
-        } else {
-          const span = this.createBreadcrumbSpan(modulePath, true, 'module');
+      // Добавляем стрелку после Universe
+      pathDiv.appendChild(this.createArrowSpan());
+
+      // Если есть функция, ищем пути к функции
+      let paths = [];
+      if (funcName) {
+        paths = this.findAllPathsTo(modulePath, funcName);
+      } else {
+        // Ищем пути к модулю
+        paths = this.findAllPathsTo(modulePath, null);
+      }
+
+      // Если пути найдены, добавляем первый (или лучший) путь
+      if (paths.length > 0) {
+        const bestPath = paths[0]; // Берем первый найденный путь
+        // Пропускаем первый элемент (это entryModule, который мы уже показали как Universe)
+        for (let i = 1; i < bestPath.length; i++) {
+          const item = bestPath[i];
+          const isLast = i === bestPath.length - 1;
+
+          if (i > 1) {
+            pathDiv.appendChild(this.createArrowSpan());
+          }
+
+          const span = this.createBreadcrumbSpan(item.id, isLast, item.type);
           pathDiv.appendChild(span);
         }
       } else {
-        // Строим полный путь через граф
-        const graph = this.buildGraphForBFS();
-        let paths = this.findPathsToNode(entryModule, target, graph);
-
-        if (paths.length > 0) {
-          // Берем первый (кратчайший) путь
-          const bestPath = paths[0];
-
-          // Пропускаем первый элемент (это entryModule, который мы уже показали как Universe)
-          // Но если путь начинается не с entryModule, добавляем его
-          let startIndex = 0;
-          if (bestPath.length > 0 && bestPath[0]?.id === entryModule) {
-            startIndex = 1;
-          }
-
-          // Добавляем оставшиеся элементы пути
-          for (let i = startIndex; i < bestPath.length; i++) {
-            const item = bestPath[i];
-            if (!item) continue;
-
-            const isLast = i === bestPath.length - 1;
-            const span = this.createBreadcrumbSpan(item.id, isLast, item.type || 'module');
-            pathDiv.appendChild(span);
-
-            if (!isLast) {
-              pathDiv.appendChild(this.createArrowSpan());
-            }
-          }
-        } else {
-          // Если путь не найден, показываем текущий модуль/функцию
-          if (funcName) {
-            const span = this.createBreadcrumbSpan(funcName, true, 'function');
-            pathDiv.appendChild(span);
-          } else if (modulePath) {
-            const span = this.createBreadcrumbSpan(modulePath, true, 'module');
-            pathDiv.appendChild(span);
-          }
+        // Если путь не найден, показываем просто текущий модуль/функцию
+        if (funcName) {
+          const span = this.createBreadcrumbSpan(funcName, true, 'function');
+          pathDiv.appendChild(span);
+        } else if (modulePath) {
+          const span = this.createBreadcrumbSpan(modulePath, true, 'module');
+          pathDiv.appendChild(span);
         }
       }
     }
 
     container.appendChild(pathDiv);
-
-    // Сохраняем текущий путь для истории
-    this.breadcrumbPaths = [
-      [
-        { id: 'universe', name: '🌌 Universe', type: 'root' },
-        ...(modulePath
-          ? [{ id: modulePath, name: modulePath.split('/').pop() || modulePath, type: 'module' }]
-          : []),
-        ...(funcName ? [{ id: funcName, name: funcName, type: 'function' }] : []),
-      ],
-    ];
   }
 
   /**
    * Создает элемент Breadcrumb для корневого состояния "Universe"
-   * @returns {HTMLElement}
    */
   createUniverseBreadcrumb() {
     const span = document.createElement('span');
@@ -124,22 +98,83 @@ export class BreadcrumbManager {
     span.textContent = '🌌 Universe';
     span.title = 'Вернуться к полному обзору всех модулей';
     span.style.cursor = 'pointer';
+    span.style.fontWeight = 'bold';
+    span.style.color = '#60a5fa';
 
     // По клику очищаем фокус и возвращаемся к полному обзору
     span.onclick = e => {
       e.stopPropagation();
       // Очищаем фокус через App
-      if (this.app.clearFocus) {
-        this.app.clearFocus();
-      } else {
-        // Fallback: очищаем через карточки
-        this.app.cardManager?.clearFocus();
-      }
+      this.app.clearFocus();
       // Обновляем breadcrumbs
       this.updateBreadcrumbs(null, null);
     };
 
     return span;
+  }
+
+  /**
+   * Создает span для Breadcrumb
+   * @param {string} id - ID узла
+   * @param {boolean} isActive - Активный ли узел
+   * @param {string} type - Тип узла ('module', 'function', 'root')
+   * @returns {HTMLElement}
+   */
+  createBreadcrumbSpan(id, isActive = false, type = 'module') {
+    const span = document.createElement('span');
+    span.className = 'breadcrumb-item';
+    if (isActive) {
+      span.classList.add('active');
+    }
+
+    // Если это корневой элемент Universe, он уже создан отдельно
+    if (id === 'universe') {
+      return this.createUniverseBreadcrumb();
+    }
+
+    const isFunction = type === 'function' || id.includes('#func:');
+    const isModule = type === 'module' || !isFunction;
+
+    if (isModule) {
+      const pkg = this.app.reportData?.packages?.[id];
+      const name = pkg?.displayPath || id.split('/').pop() || id;
+      span.textContent = name;
+      span.title = id;
+      if (!isActive) {
+        span.style.cursor = 'pointer';
+        span.onclick = e => {
+          e.stopPropagation();
+          this.app.focusModule(id);
+        };
+      }
+    } else {
+      const name = id.split('#func:').pop() || id;
+      span.textContent = `ƒ ${name}`;
+      span.title = id;
+      if (!isActive) {
+        span.style.cursor = 'pointer';
+        const modulePath = this.findModuleForFunction(name);
+        if (modulePath) {
+          span.onclick = e => {
+            e.stopPropagation();
+            this.app.focusFunction(name, modulePath);
+          };
+        }
+      }
+    }
+
+    return span;
+  }
+
+  /**
+   * Создает span со стрелкой
+   * @returns {HTMLElement}
+   */
+  createArrowSpan() {
+    const arrow = document.createElement('span');
+    arrow.className = 'breadcrumb-arrow';
+    arrow.textContent = ' → ';
+    return arrow;
   }
 
   /**
@@ -370,110 +405,6 @@ export class BreadcrumbManager {
   }
 
   /**
-   * Рендерит простые Breadcrumbs на основе стека навигации
-   * @param {HTMLElement} container - Контейнер для Breadcrumbs
-   * @param {string} modulePath - Путь к модулю
-   * @param {string|null} funcName - Имя функции
-   */
-  renderSimpleBreadcrumbs(container, modulePath, funcName) {
-    const pathDiv = document.createElement('div');
-    pathDiv.className = 'breadcrumb-path';
-
-    // Всегда показываем Universe
-    const universeSpan = this.createUniverseBreadcrumb();
-    pathDiv.appendChild(universeSpan);
-
-    if (modulePath) {
-      pathDiv.appendChild(this.createArrowSpan());
-
-      const entryModule = this.findEntryModule();
-      const navStack = this.app.cardManager?.getNavigationStack?.() || [];
-
-      // Если есть стек навигации, используем его
-      if (navStack.length > 0) {
-        for (let i = 0; i < navStack.length; i++) {
-          const item = navStack[i];
-          if (!item) {
-            continue;
-          }
-
-          const isLast = i === navStack.length - 1;
-          const spanItem = this.createBreadcrumbSpan(item, isLast);
-          pathDiv.appendChild(spanItem);
-
-          if (!isLast) {
-            pathDiv.appendChild(this.createArrowSpan());
-          }
-        }
-      } else {
-        // Иначе показываем текущую позицию
-        if (funcName) {
-          const span = this.createBreadcrumbSpan(funcName, true, 'function');
-          pathDiv.appendChild(span);
-        } else if (modulePath) {
-          const span = this.createBreadcrumbSpan(modulePath, true, 'module');
-          pathDiv.appendChild(span);
-        }
-      }
-    }
-
-    container.appendChild(pathDiv);
-  }
-
-  /**
-   * Создает span для Breadcrumb
-   * @param {string} id - ID узла
-   * @param {boolean} isActive - Активный ли узел
-   * @param {string} type - Тип узла ('module', 'function', 'root')
-   * @returns {HTMLElement}
-   */
-  createBreadcrumbSpan(id, isActive = false, type = 'module') {
-    const span = document.createElement('span');
-    span.className = 'breadcrumb-item';
-    if (isActive) {
-      span.classList.add('active');
-    }
-
-    // Если это корневой элемент Universe
-    if (id === 'universe' || type === 'root') {
-      return this.createUniverseBreadcrumb();
-    }
-
-    const isFunction = type === 'function' || id.includes('#func:');
-    const isModule = type === 'module' || !isFunction;
-
-    if (isModule) {
-      const pkg = this.app.reportData?.packages?.[id];
-      const name = pkg?.displayPath || id.split('/').pop() || id;
-      span.textContent = name;
-      span.title = id;
-      if (!isActive) {
-        span.style.cursor = 'pointer';
-        span.onclick = e => {
-          e.stopPropagation();
-          this.app.focusModule(id);
-        };
-      }
-    } else {
-      const name = id.split('#func:').pop() || id;
-      span.textContent = `ƒ ${name}`;
-      span.title = id;
-      if (!isActive) {
-        span.style.cursor = 'pointer';
-        const modulePath = this.findModuleForFunction(name);
-        if (modulePath) {
-          span.onclick = e => {
-            e.stopPropagation();
-            this.app.focusFunction(name, modulePath);
-          };
-        }
-      }
-    }
-
-    return span;
-  }
-
-  /**
    * Находит модуль для функции по имени
    * @param {string} funcName - Имя функции
    * @returns {string|null}
@@ -492,17 +423,6 @@ export class BreadcrumbManager {
       }
     }
     return null;
-  }
-
-  /**
-   * Создает span со стрелкой
-   * @returns {HTMLElement}
-   */
-  createArrowSpan() {
-    const arrow = document.createElement('span');
-    arrow.className = 'breadcrumb-arrow';
-    arrow.textContent = ' → ';
-    return arrow;
   }
 
   /**
@@ -563,6 +483,8 @@ export class BreadcrumbManager {
       const focusFunction = this.app.cardManager?.getFocusFunction();
       if (focusModule || focusFunction) {
         this.updateBreadcrumbs(focusModule, focusFunction);
+      } else {
+        this.updateBreadcrumbs(null, null);
       }
     }
   }

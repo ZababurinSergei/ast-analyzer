@@ -1,3 +1,5 @@
+// packages/ast-analyzer/src/reporters/templates/modules/GraphManager.js
+
 import 'd3';
 const d3 = window.d3;
 
@@ -23,20 +25,124 @@ export class GraphManager {
     this._functionMap = new Map();
     this._inwardDeps = {};
     this._outwardDeps = {};
+
+    // ✅ ХРАНИМ ССЫЛКУ НА ГЛОБАЛЬНЫЙ API
+    this._api = null;
+    this._methodsBound = false;
+
+    console.log('📊 GraphManager created');
   }
 
   /**
    * Инициализация менеджера графа
    */
   init() {
-    this.buildGraphData();
-    this.initGraph();
+    console.log('🔄 GraphManager.init() called');
+
+    // ✅ ПОЛУЧАЕМ ГОТОВЫЙ ГЛОБАЛЬНЫЙ API
+    this._api = window[Symbol.for('__AST_APP_API__')];
+    console.log('📡 GraphManager API получен:', this._api ? '✅' : '❌');
+
+    // Если API уже готов - сразу привязываем методы
+    if (this._api && typeof this._api.focusFunction === 'function') {
+      console.log('✅ API готов в GraphManager');
+      this._bindMethods();
+      this.buildGraphData();
+      this.initGraph();
+      return;
+    }
+
+    // Если API еще не готов, ждем его
+    console.log('⏳ Ожидание API в GraphManager...');
+    let attempts = 0;
+    const maxAttempts = 30;
+
+    const checkApi = setInterval(() => {
+      attempts++;
+      this._api = window[Symbol.for('__AST_APP_API__')];
+
+      if (this._api && typeof this._api.focusFunction === 'function') {
+        clearInterval(checkApi);
+        console.log(`✅ API получен в GraphManager после ${attempts} попыток`);
+        this._bindMethods();
+        this.buildGraphData();
+        this.initGraph();
+        return;
+      }
+
+      if (attempts >= maxAttempts) {
+        clearInterval(checkApi);
+        console.warn('⚠️ API не получен в GraphManager, использую fallback');
+        this._api = {
+          focusModule: () => console.warn('⚠️ focusModule fallback'),
+          focusFunction: () => console.warn('⚠️ focusFunction fallback'),
+          clearFocus: () => console.warn('⚠️ clearFocus fallback'),
+          closeDetail: () => console.warn('⚠️ closeDetail fallback'),
+          renderModules: () => console.warn('⚠️ renderModules fallback'),
+        };
+        this._bindMethods();
+        this.buildGraphData();
+        this.initGraph();
+      }
+    }, 100);
+  }
+
+  /**
+   * ✅ СВЯЗЫВАНИЕ МЕТОДОВ С ГОТОВЫМ API
+   */
+  _bindMethods() {
+    console.log('🔄 GraphManager._bindMethods() called');
+
+    // Используем готовый глобальный API
+    const api = this._api || window[Symbol.for('__AST_APP_API__')];
+
+    this._focusFunction = (name, module) => {
+      if (api && typeof api.focusFunction === 'function') {
+        console.log('🎯 GraphManager: focusFunction called', name, module);
+        return api.focusFunction(name, module);
+      }
+      console.warn('⚠️ focusFunction not available in GraphManager');
+    };
+
+    this._focusModule = path => {
+      if (api && typeof api.focusModule === 'function') {
+        console.log('🎯 GraphManager: focusModule called', path);
+        return api.focusModule(path);
+      }
+      console.warn('⚠️ focusModule not available in GraphManager');
+    };
+
+    this._clearFocus = () => {
+      if (api && typeof api.clearFocus === 'function') {
+        console.log('🧹 GraphManager: clearFocus called');
+        return api.clearFocus();
+      }
+      console.warn('⚠️ clearFocus not available in GraphManager');
+    };
+
+    this._closeDetail = () => {
+      if (api && typeof api.closeDetail === 'function') {
+        return api.closeDetail();
+      }
+      console.warn('⚠️ closeDetail not available in GraphManager');
+    };
+
+    this._renderModules = () => {
+      if (api && typeof api.renderModules === 'function') {
+        return api.renderModules();
+      }
+      console.warn('⚠️ renderModules not available in GraphManager');
+    };
+
+    this._methodsBound = true;
   }
 
   /**
    * Инициализация D3 графа
    */
   initGraph() {
+    console.log('🔄 GraphManager.initGraph() called');
+
     const container = document.getElementById('d3GraphWrapper');
     const width = container.clientWidth || 900;
     const height = 700;
@@ -78,6 +184,8 @@ export class GraphManager {
    * Строит данные для графа из отчета
    */
   buildGraphData() {
+    console.log('🔄 GraphManager.buildGraphData() called');
+
     const modules = new Map();
     for (const [modulePath, pkg] of Object.entries(this.app.reportData.packages || {})) {
       if (!pkg) {
@@ -353,10 +461,11 @@ export class GraphManager {
       .append('g')
       .attr('cursor', 'pointer')
       .on('click', (event, d) => {
+        // ✅ ИСПОЛЬЗУЕМ БЕЗОПАСНЫЕ МЕТОДЫ
         if (d.type === 'function') {
-          this.app.focusFunction(d.name, d.module);
+          this._focusFunction(d.name, d.module);
         } else if (d.type === 'module') {
-          this.app.focusModule(d.id);
+          this._focusModule(d.id);
         }
       })
       .on('mouseover', (event, d) => {
@@ -385,7 +494,8 @@ export class GraphManager {
             }
             d.fx = null;
             d.fy = null;
-          }));
+          })
+      );
 
     nodeGroup
       .append('circle')
@@ -458,14 +568,17 @@ export class GraphManager {
         d3
           .forceLink(filteredLinks)
           .id(d => d.id)
-          .distance(d => (d.isCall ? 80 : 120)))
+          .distance(d => (d.isCall ? 80 : 120))
+      )
       .force(
         'charge',
-        d3.forceManyBody().strength(d => (d.type === 'module' ? -300 : -100)))
+        d3.forceManyBody().strength(d => (d.type === 'module' ? -300 : -100))
+      )
       .force('center', d3.forceCenter(width / 2, height / 2))
       .force(
         'collision',
-        d3.forceCollide().radius(d => (d.size || 10) + 10));
+        d3.forceCollide().radius(d => (d.size || 10) + 10)
+      );
 
     sim.on('tick', () => {
       link

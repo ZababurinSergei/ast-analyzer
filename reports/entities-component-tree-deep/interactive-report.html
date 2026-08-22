@@ -5,6 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Интерактивный граф модулей и функций</title>
   <link rel="stylesheet" href="./interactive-report.css">
+  <style>
+    .module-card.active {
+      border-color: #22d3ee;
+      box-shadow: 0 0 20px rgba(34, 211, 238, 0.15);
+      background: #1a2a4a;
+    }
+    .func-item.active {
+      background: #1a2a4a;
+      border-left-color: #22d3ee;
+    }
+    .focus-info.active {
+      display: block;
+    }
+    .controls-bar button.active {
+      background: #60a5fa;
+      color: #0f172a;
+      font-weight: 600;
+    }
+  </style>
 </head>
 <body>
 <div class="update-notification" id="updateNotification" role="status" aria-live="polite">
@@ -15,54 +34,49 @@
   <header class="header" role="banner">
     <h1>🔀 Интерактивный граф модулей и функций</h1>
     <div class="stats-line" id="statsLine" role="list" aria-label="Статистика">
-      <span class="stat" role="listitem">📁 <strong id="statModules">68</strong> модулей</span>
-      <span class="stat" role="listitem">ƒ <strong id="statFunctions">1</strong> функций</span>
-      <span class="stat" role="listitem">📞 <strong id="statCalls">0</strong> вызовов</span>
-      <span class="stat" role="listitem">📤 <strong id="statExported">1</strong> экспортировано</span>
-      <span class="stat" role="listitem">⚡ <strong id="statAsync">0</strong> async</span>
-      <span class="stat" role="listitem">📝 <strong id="statLines">0</strong> строк</span>
-      <span class="stat" role="listitem">💾 <strong id="statSize">0.00</strong> KB</span>
+      <span class="stat" role="listitem">📁 <strong id="statModules">__STAT_MODULES__</strong> модулей</span>
+      <span class="stat" role="listitem">ƒ <strong id="statFunctions">__STAT_FUNCTIONS__</strong> функций</span>
+      <span class="stat" role="listitem">📞 <strong id="statCalls">__STAT_CALLS__</strong> вызовов</span>
+      <span class="stat" role="listitem">📤 <strong id="statExported">__STAT_EXPORTED__</strong> экспортировано</span>
+      <span class="stat" role="listitem">⚡ <strong id="statAsync">__STAT_ASYNC__</strong> async</span>
+      <span class="stat" role="listitem">📝 <strong id="statLines">__STAT_LINES__</strong> строк</span>
+      <span class="stat" role="listitem">💾 <strong id="statSize">__STAT_SIZE__</strong> KB</span>
     </div>
     <div class="sub" style="margin-top: 8px;">
-      📊 По типам: typescript, javascript | ⭐ Точка входа: /home/sergei/Desktop/system/packages/ast-analyzer/src/cli.ts
+      📊 По типам: __TYPES_BY_LANG__ | ⭐ Точка входа: __ENTRY_NAMES__
     </div>
-    <div class="sub">Сгенерировано: 22.08.2026, 15:53:59</div>
+    <div class="sub">Сгенерировано: __TIMESTAMP__</div>
   </header>
 
   <nav class="controls-bar" id="toolbar" aria-label="Панель управления">
-    <!-- Режимы графа -->
     <div class="group" role="group" aria-label="Режимы отображения графа">
       <span class="group-label" id="graphModeLabel">Режим графа:</span>
-      <button class="active" data-mode="all" onclick="getApp()?.setMode('all')" aria-label="Показать все связи" aria-pressed="true">🌐 Все</button>
-      <button data-mode="inward" onclick="getApp()?.setMode('inward')" aria-label="Показать входящие связи" aria-pressed="false">📥 Входящие</button>
-      <button data-mode="outward" onclick="getApp()?.setMode('outward')" aria-label="Показать исходящие связи" aria-pressed="false">📤 Исходящие</button>
-      <button data-mode="both" onclick="getApp()?.setMode('both')" aria-label="Показать оба направления" aria-pressed="false">🔁 Оба</button>
+      <button class="active" data-mode="all" id="btnGraphAll">🌐 Все</button>
+      <button data-mode="inward" id="btnGraphInward">📥 Входящие</button>
+      <button data-mode="outward" id="btnGraphOutward">📤 Исходящие</button>
+      <button data-mode="both" id="btnGraphBoth">🔁 Оба</button>
     </div>
 
-    <!-- Режимы карточек -->
     <div class="group" role="group" aria-label="Режимы отображения карточек">
       <span class="group-label" id="cardModeLabel">Режим карточек:</span>
-      <button class="active" data-card-mode="detailed" onclick="getApp()?.cardModeManager?.setMode('detailed')" aria-label="Детальный режим карточек" aria-pressed="true">📋 Детально</button>
-      <button data-card-mode="compact" onclick="getApp()?.cardModeManager?.setMode('compact')" aria-label="Компактный режим карточек" aria-pressed="false">📦 Компактно</button>
-      <button data-card-mode="list" onclick="getApp()?.cardModeManager?.setMode('list')" aria-label="Режим списка" aria-pressed="false">📄 Список</button>
+      <button data-card-mode="detailed" id="btnCardDetailed">📋 Детально</button>
+      <button data-card-mode="compact" id="btnCardCompact">📦 Компактно</button>
+      <button class="active" data-card-mode="list" id="btnCardList">📄 Список</button>
     </div>
 
-    <!-- Фокус -->
     <div class="group" role="group" aria-label="Управление фокусом">
       <span class="group-label" id="focusLabel">Фокус:</span>
-      <button onclick="getApp()?.clearFocus()" aria-label="Очистить фокус">✕ Очистить</button>
+      <button id="btnClearFocus">✕ Очистить</button>
     </div>
 
-    <!-- Поиск -->
     <div class="group" role="search" aria-label="Поиск">
       <label for="searchInput" class="sr-only">Поиск функции или модуля</label>
-      <input class="search-input" id="searchInput" placeholder="&#128269; Поиск функции или модуля..." oninput="getApp()?.handleSearch(this.value)" aria-label="Поиск функции или модуля">
+      <input class="search-input" id="searchInput" placeholder="🔍 Поиск функции или модуля...">
     </div>
 
     <span class="hint">💡 Клик на функцию → детали | Клик на модуль → фокус</span>
   </nav>
 
-  <!-- Breadcrumbs -->
   <nav class="breadcrumbs-container" id="breadcrumbsContainer" aria-label="Навигационная цепочка">
     <div class="breadcrumbs-scroll">
       <div class="breadcrumbs" id="breadcrumbs" role="list"></div>
@@ -70,7 +84,7 @@
   </nav>
 
   <div class="focus-info" id="focusInfo" role="status" aria-live="polite">
-    <button class="close-btn" onclick="getApp()?.clearFocus()" aria-label="Закрыть фокус">✕</button>
+    <button class="close-btn" id="btnCloseFocus">✕</button>
     <div class="title" id="focusTitle">🎯 Фокус</div>
     <div class="details" id="focusDetails"></div>
   </div>
@@ -127,7 +141,7 @@
   <div class="detail-panel" id="detailPanel" role="dialog" aria-label="Детали функции" aria-modal="true">
     <div class="dp-header">
       <div class="dp-title" id="dpTitle">Функция</div>
-      <button class="dp-close" onclick="getApp()?.closeDetail()" aria-label="Закрыть детали">✕</button>
+      <button class="dp-close" id="btnCloseDetail">✕</button>
     </div>
     <div id="dpContent"></div>
   </div>
@@ -137,31 +151,196 @@
   </footer>
 </div>
 
-
-    <script>
-      (function() {
-        const SYM_REPORT_DATA = Symbol.for('__AST_INTERACTIVE_REPORT_DATA__');
-        const SYM_FUNCTIONS_DATA = Symbol.for('__AST_INTERACTIVE_FUNCTIONS_DATA__');
-        const SYM_DATA_VERSION = Symbol.for('__AST_INTERACTIVE_DATA_VERSION__');
-
-        globalThis[SYM_REPORT_DATA] = {"name":"ast-analyzer","version":"3.0.0","lockfileVersion":3,"packages":{"src/cli.ts":{"version":"1.0.0","resolved":"file:src/cli.ts","displayPath":"src/cli.ts","type":"module","language":"typescript","isEntry":true,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/utils/is-main.ts":{"version":"1.0.0","resolved":"file:src/utils/is-main.ts","displayPath":"src/utils/is-main.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"@hpcc-js/wasm-graphviz":{"version":"1.0.0","resolved":"file:@hpcc-js/wasm-graphviz","displayPath":"@hpcc-js/wasm-graphviz","type":"module","language":"javascript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/core/minifier.ts":{"version":"1.0.0","resolved":"file:src/core/minifier.ts","displayPath":"src/core/minifier.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[{"name":"or","params":["args"],"paramTypes":[],"line":1052,"startLine":1052,"endLine":1057,"isAsync":false,"isExported":true,"isMethod":false,"className":"","calls":[],"calledBy":[],"returnType":"import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint","body":"","isNested":false,"isArrow":false,"isEventHandler":false,"depth":0}],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":1,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/core/graph-utils.ts":{"version":"1.0.0","resolved":"file:src/core/graph-utils.ts","displayPath":"src/core/graph-utils.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/core/tsconfig-resolver.ts":{"version":"1.0.0","resolved":"file:src/core/tsconfig-resolver.ts","displayPath":"src/core/tsconfig-resolver.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/core/ast-parser.ts":{"version":"1.0.0","resolved":"file:src/core/ast-parser.ts","displayPath":"src/core/ast-parser.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/core/entity-extractor.ts":{"version":"1.0.0","resolved":"file:src/core/entity-extractor.ts","displayPath":"src/core/entity-extractor.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/modes/project-graph.ts":{"version":"1.0.0","resolved":"file:src/modes/project-graph.ts","displayPath":"src/modes/project-graph.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/modes/file-graph.ts":{"version":"1.0.0","resolved":"file:src/modes/file-graph.ts","displayPath":"src/modes/file-graph.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/modes/prompt-pack.ts":{"version":"1.0.0","resolved":"file:src/modes/prompt-pack.ts","displayPath":"src/modes/prompt-pack.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/modes/split-module.ts":{"version":"1.0.0","resolved":"file:src/modes/split-module.ts","displayPath":"src/modes/split-module.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/modes/impact.ts":{"version":"1.0.0","resolved":"file:src/modes/impact.ts","displayPath":"src/modes/impact.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/modes/dead-code.ts":{"version":"1.0.0","resolved":"file:src/modes/dead-code.ts","displayPath":"src/modes/dead-code.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/modes/minify-folder.ts":{"version":"1.0.0","resolved":"file:src/modes/minify-folder.ts","displayPath":"src/modes/minify-folder.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/modes/vue-analyzer.ts":{"version":"1.0.0","resolved":"file:src/modes/vue-analyzer.ts","displayPath":"src/modes/vue-analyzer.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/refactor/index.ts":{"version":"1.0.0","resolved":"file:src/refactor/index.ts","displayPath":"src/refactor/index.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/ci-cd/SemanticPipeline.ts":{"version":"1.0.0","resolved":"file:src/ci-cd/SemanticPipeline.ts","displayPath":"src/ci-cd/SemanticPipeline.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/formal/Z3Verifier.ts":{"version":"1.0.0","resolved":"file:src/formal/Z3Verifier.ts","displayPath":"src/formal/Z3Verifier.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/modes/hybrid-report/index.ts":{"version":"1.0.0","resolved":"file:src/modes/hybrid-report/index.ts","displayPath":"src/modes/hybrid-report/index.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/reporters/json-reporter.ts":{"version":"1.0.0","resolved":"file:src/reporters/json-reporter.ts","displayPath":"src/reporters/json-reporter.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/reporters/html-reporter.ts":{"version":"1.0.0","resolved":"file:src/reporters/html-reporter.ts","displayPath":"src/reporters/html-reporter.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/reporters/interactive-reporter.ts":{"version":"1.0.0","resolved":"file:src/reporters/interactive-reporter.ts","displayPath":"src/reporters/interactive-reporter.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/types.ts":{"version":"1.0.0","resolved":"file:src/types.ts","displayPath":"src/types.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/utils.ts":{"version":"1.0.0","resolved":"file:src/utils.ts","displayPath":"src/utils.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/utils/path-utils.ts":{"version":"1.0.0","resolved":"file:src/utils/path-utils.ts","displayPath":"src/utils/path-utils.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"@typescript-eslint/parser":{"version":"1.0.0","resolved":"file:@typescript-eslint/parser","displayPath":"@typescript-eslint/parser","type":"module","language":"javascript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"@vue/compiler-sfc":{"version":"1.0.0","resolved":"file:@vue/compiler-sfc","displayPath":"@vue/compiler-sfc","type":"module","language":"javascript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/config.ts":{"version":"1.0.0","resolved":"file:src/config.ts","displayPath":"src/config.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/refactor/types.ts":{"version":"1.0.0","resolved":"file:src/refactor/types.ts","displayPath":"src/refactor/types.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/refactor/AutoRefactor.ts":{"version":"1.0.0","resolved":"file:src/refactor/AutoRefactor.ts","displayPath":"src/refactor/AutoRefactor.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/refactor/ModuleExtractor.ts":{"version":"1.0.0","resolved":"file:src/refactor/ModuleExtractor.ts","displayPath":"src/refactor/ModuleExtractor.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/refactor/ImportManager.ts":{"version":"1.0.0","resolved":"file:src/refactor/ImportManager.ts","displayPath":"src/refactor/ImportManager.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/refactor/TypeScriptValidator.ts":{"version":"1.0.0","resolved":"file:src/refactor/TypeScriptValidator.ts","displayPath":"src/refactor/TypeScriptValidator.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/refactor/ESLintASTFixer.ts":{"version":"1.0.0","resolved":"file:src/refactor/ESLintASTFixer.ts","displayPath":"src/refactor/ESLintASTFixer.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/refactor/CodeValidator.ts":{"version":"1.0.0","resolved":"file:src/refactor/CodeValidator.ts","displayPath":"src/refactor/CodeValidator.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/refactor/CodeFixer.ts":{"version":"1.0.0","resolved":"file:src/refactor/CodeFixer.ts","displayPath":"src/refactor/CodeFixer.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/refactor/TemplateUpdater.ts":{"version":"1.0.0","resolved":"file:src/refactor/TemplateUpdater.ts","displayPath":"src/refactor/TemplateUpdater.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/refactor/SyntaxValidator.ts":{"version":"1.0.0","resolved":"file:src/refactor/SyntaxValidator.ts","displayPath":"src/refactor/SyntaxValidator.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/refactor/ModuleTypeDetector.ts":{"version":"1.0.0","resolved":"file:src/refactor/ModuleTypeDetector.ts","displayPath":"src/refactor/ModuleTypeDetector.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/refactor/BackupManager.ts":{"version":"1.0.0","resolved":"file:src/refactor/BackupManager.ts","displayPath":"src/refactor/BackupManager.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/refactor/interfaces/IRefactorContext.ts":{"version":"1.0.0","resolved":"file:src/refactor/interfaces/IRefactorContext.ts","displayPath":"src/refactor/interfaces/IRefactorContext.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/semantic/CFGAnalyzer.ts":{"version":"1.0.0","resolved":"file:src/semantic/CFGAnalyzer.ts","displayPath":"src/semantic/CFGAnalyzer.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/semantic/CallGraphAnalyzer.ts":{"version":"1.0.0","resolved":"file:src/semantic/CallGraphAnalyzer.ts","displayPath":"src/semantic/CallGraphAnalyzer.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/semantic/TypeAnalyzer.ts":{"version":"1.0.0","resolved":"file:src/semantic/TypeAnalyzer.ts","displayPath":"src/semantic/TypeAnalyzer.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/semantic/DataFlowAnalyzer.ts":{"version":"1.0.0","resolved":"file:src/semantic/DataFlowAnalyzer.ts","displayPath":"src/semantic/DataFlowAnalyzer.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/semantic/JSXAnalyzer.ts":{"version":"1.0.0","resolved":"file:src/semantic/JSXAnalyzer.ts","displayPath":"src/semantic/JSXAnalyzer.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/utils/wasm-utils.ts":{"version":"1.0.0","resolved":"file:src/utils/wasm-utils.ts","displayPath":"src/utils/wasm-utils.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/formal/ExpressionParser.ts":{"version":"1.0.0","resolved":"file:src/formal/ExpressionParser.ts","displayPath":"src/formal/ExpressionParser.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/formal/FunctionBodyModeler.ts":{"version":"1.0.0","resolved":"file:src/formal/FunctionBodyModeler.ts","displayPath":"src/formal/FunctionBodyModeler.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/modes/hybrid-report/types.ts":{"version":"1.0.0","resolved":"file:src/modes/hybrid-report/types.ts","displayPath":"src/modes/hybrid-report/types.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/modes/hybrid-report/cli.ts":{"version":"1.0.0","resolved":"file:src/modes/hybrid-report/cli.ts","displayPath":"src/modes/hybrid-report/cli.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/modes/hybrid-report/builder.ts":{"version":"1.0.0","resolved":"file:src/modes/hybrid-report/builder.ts","displayPath":"src/modes/hybrid-report/builder.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/modes/hybrid-report/analyzer.ts":{"version":"1.0.0","resolved":"file:src/modes/hybrid-report/analyzer.ts","displayPath":"src/modes/hybrid-report/analyzer.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/modes/hybrid-report/generators/dot.ts":{"version":"1.0.0","resolved":"file:src/modes/hybrid-report/generators/dot.ts","displayPath":"src/modes/hybrid-report/generators/dot.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/modes/hybrid-report/generators/html.ts":{"version":"1.0.0","resolved":"file:src/modes/hybrid-report/generators/html.ts","displayPath":"src/modes/hybrid-report/generators/html.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/modes/hybrid-report/generators/markdown.ts":{"version":"1.0.0","resolved":"file:src/modes/hybrid-report/generators/markdown.ts","displayPath":"src/modes/hybrid-report/generators/markdown.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/reporters/data-converter.ts":{"version":"1.0.0","resolved":"file:src/reporters/data-converter.ts","displayPath":"src/reporters/data-converter.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/formal/index.ts":{"version":"1.0.0","resolved":"file:src/formal/index.ts","displayPath":"src/formal/index.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/utils/Logger.ts":{"version":"1.0.0","resolved":"file:src/utils/Logger.ts","displayPath":"src/utils/Logger.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"@codeflow-map/core":{"version":"1.0.0","resolved":"file:@codeflow-map/core","displayPath":"@codeflow-map/core","type":"module","language":"javascript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"@jitl/ts-simple-type":{"version":"1.0.0","resolved":"file:@jitl/ts-simple-type","displayPath":"@jitl/ts-simple-type","type":"module","language":"javascript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/formal/checkers/FileEquivalenceChecker.ts":{"version":"1.0.0","resolved":"file:src/formal/checkers/FileEquivalenceChecker.ts","displayPath":"src/formal/checkers/FileEquivalenceChecker.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/formal/checkers/RefactoringEquivalenceChecker.ts":{"version":"1.0.0","resolved":"file:src/formal/checkers/RefactoringEquivalenceChecker.ts","displayPath":"src/formal/checkers/RefactoringEquivalenceChecker.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/formal/checkers/EquivalenceChecker.ts":{"version":"1.0.0","resolved":"file:src/formal/checkers/EquivalenceChecker.ts","displayPath":"src/formal/checkers/EquivalenceChecker.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/core/ASTComparator.ts":{"version":"1.0.0","resolved":"file:src/core/ASTComparator.ts","displayPath":"src/core/ASTComparator.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/core/SignatureComparator.ts":{"version":"1.0.0","resolved":"file:src/core/SignatureComparator.ts","displayPath":"src/core/SignatureComparator.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}},"src/core/CallGraphComparator.ts":{"version":"1.0.0","resolved":"file:src/core/CallGraphComparator.ts","displayPath":"src/core/CallGraphComparator.ts","type":"module","language":"typescript","isEntry":false,"imports":{},"exports":{},"entities":{"functions":[],"constants":[],"variables":[],"interfaces":[],"types":[],"classes":[]},"fileStats":{"size":0,"lines":0,"functions":0,"classes":0,"constants":0,"interfaces":0,"types":0,"variables":0}}},"dependencyGraph":{"direction":"bidirectional","inwardDependencies":{"src/utils/is-main.ts":["src/cli.ts"],"@hpcc-js/wasm-graphviz":["src/cli.ts","src/modes/hybrid-report/generators/html.ts"],"src/core/minifier.ts":["src/cli.ts","src/modes/prompt-pack.ts","src/modes/split-module.ts","src/modes/minify-folder.ts"],"src/core/graph-utils.ts":["src/cli.ts","src/modes/split-module.ts","src/modes/hybrid-report/cli.ts","src/modes/hybrid-report/builder.ts"],"src/core/tsconfig-resolver.ts":["src/cli.ts","src/core/ast-parser.ts"],"src/core/ast-parser.ts":["src/cli.ts","src/core/minifier.ts","src/modes/project-graph.ts","src/modes/file-graph.ts","src/modes/split-module.ts","src/modes/impact.ts","src/modes/dead-code.ts"],"src/core/entity-extractor.ts":["src/cli.ts","src/modes/project-graph.ts","src/reporters/json-reporter.ts","src/types.ts"],"src/modes/project-graph.ts":["src/cli.ts","src/modes/prompt-pack.ts","src/modes/hybrid-report/builder.ts"],"src/modes/file-graph.ts":["src/cli.ts","src/modes/split-module.ts","src/modes/hybrid-report/cli.ts"],"src/modes/prompt-pack.ts":["src/cli.ts"],"src/modes/split-module.ts":["src/cli.ts"],"src/modes/impact.ts":["src/cli.ts"],"src/modes/dead-code.ts":["src/cli.ts"],"src/modes/minify-folder.ts":["src/cli.ts"],"src/modes/vue-analyzer.ts":["src/cli.ts","src/modes/split-module.ts","src/reporters/json-reporter.ts"],"src/refactor/index.ts":["src/cli.ts"],"src/ci-cd/SemanticPipeline.ts":["src/cli.ts"],"src/formal/Z3Verifier.ts":["src/cli.ts","src/ci-cd/SemanticPipeline.ts","src/formal/index.ts","src/formal/checkers/FileEquivalenceChecker.ts","src/formal/checkers/RefactoringEquivalenceChecker.ts","src/formal/checkers/EquivalenceChecker.ts"],"src/modes/hybrid-report/index.ts":["src/cli.ts"],"src/reporters/json-reporter.ts":["src/cli.ts","src/modes/project-graph.ts"],"src/reporters/html-reporter.ts":["src/cli.ts"],"src/reporters/interactive-reporter.ts":["src/cli.ts"],"src/types.ts":["src/cli.ts","src/reporters/interactive-reporter.ts","src/reporters/data-converter.ts"],"src/utils.ts":["src/cli.ts"],"src/utils/path-utils.ts":["src/cli.ts","src/core/tsconfig-resolver.ts","src/modes/project-graph.ts","src/modes/file-graph.ts","src/reporters/html-reporter.ts"],"@typescript-eslint/parser":["src/core/ast-parser.ts","src/modes/vue-analyzer.ts"],"@vue/compiler-sfc":["src/core/ast-parser.ts","src/modes/vue-analyzer.ts","src/refactor/TemplateUpdater.ts"],"src/config.ts":["src/modes/project-graph.ts","src/modes/split-module.ts","src/modes/impact.ts","src/modes/dead-code.ts","src/modes/minify-folder.ts"],"src/refactor/types.ts":["src/refactor/index.ts","src/refactor/AutoRefactor.ts","src/refactor/ModuleExtractor.ts","src/refactor/ImportManager.ts","src/refactor/TemplateUpdater.ts","src/refactor/interfaces/IRefactorContext.ts"],"src/refactor/AutoRefactor.ts":["src/refactor/index.ts"],"src/refactor/ModuleExtractor.ts":["src/refactor/index.ts","src/refactor/AutoRefactor.ts"],"src/refactor/ImportManager.ts":["src/refactor/index.ts","src/refactor/AutoRefactor.ts"],"src/refactor/TypeScriptValidator.ts":["src/refactor/index.ts","src/refactor/AutoRefactor.ts"],"src/refactor/ESLintASTFixer.ts":["src/refactor/index.ts","src/refactor/types.ts","src/refactor/AutoRefactor.ts","src/refactor/CodeFixer.ts"],"src/refactor/CodeValidator.ts":["src/refactor/index.ts","src/refactor/types.ts","src/refactor/AutoRefactor.ts","src/refactor/CodeFixer.ts"],"src/refactor/CodeFixer.ts":["src/refactor/index.ts","src/refactor/types.ts","src/refactor/AutoRefactor.ts"],"src/refactor/TemplateUpdater.ts":["src/refactor/index.ts","src/refactor/AutoRefactor.ts"],"src/refactor/SyntaxValidator.ts":["src/refactor/index.ts","src/refactor/types.ts","src/refactor/AutoRefactor.ts"],"src/refactor/ModuleTypeDetector.ts":["src/refactor/index.ts","src/refactor/types.ts","src/refactor/AutoRefactor.ts","src/refactor/ModuleExtractor.ts","src/refactor/ImportManager.ts","src/refactor/SyntaxValidator.ts"],"src/refactor/BackupManager.ts":["src/refactor/index.ts","src/refactor/AutoRefactor.ts"],"src/refactor/interfaces/IRefactorContext.ts":["src/refactor/index.ts","src/refactor/AutoRefactor.ts","src/refactor/ModuleExtractor.ts","src/refactor/ImportManager.ts","src/refactor/TemplateUpdater.ts"],"src/semantic/CFGAnalyzer.ts":["src/ci-cd/SemanticPipeline.ts","src/refactor/types.ts","src/refactor/AutoRefactor.ts"],"src/semantic/CallGraphAnalyzer.ts":["src/ci-cd/SemanticPipeline.ts","src/refactor/types.ts","src/refactor/AutoRefactor.ts"],"src/semantic/TypeAnalyzer.ts":["src/ci-cd/SemanticPipeline.ts","src/refactor/types.ts","src/semantic/JSXAnalyzer.ts"],"src/semantic/DataFlowAnalyzer.ts":["src/ci-cd/SemanticPipeline.ts","src/refactor/types.ts","src/refactor/AutoRefactor.ts"],"src/semantic/JSXAnalyzer.ts":["src/ci-cd/SemanticPipeline.ts"],"src/utils/wasm-utils.ts":["src/ci-cd/SemanticPipeline.ts","src/semantic/CallGraphAnalyzer.ts"],"src/formal/ExpressionParser.ts":["src/formal/Z3Verifier.ts","src/formal/index.ts"],"src/formal/FunctionBodyModeler.ts":["src/formal/Z3Verifier.ts","src/formal/index.ts"],"src/modes/hybrid-report/types.ts":["src/modes/hybrid-report/index.ts","src/modes/hybrid-report/cli.ts","src/modes/hybrid-report/builder.ts","src/modes/hybrid-report/analyzer.ts","src/modes/hybrid-report/generators/dot.ts","src/modes/hybrid-report/generators/html.ts","src/modes/hybrid-report/generators/markdown.ts"],"src/modes/hybrid-report/cli.ts":["src/modes/hybrid-report/index.ts"],"src/modes/hybrid-report/builder.ts":["src/modes/hybrid-report/index.ts","src/modes/hybrid-report/cli.ts"],"src/modes/hybrid-report/analyzer.ts":["src/modes/hybrid-report/index.ts","src/modes/hybrid-report/builder.ts"],"src/modes/hybrid-report/generators/dot.ts":["src/modes/hybrid-report/index.ts","src/modes/hybrid-report/cli.ts","src/modes/hybrid-report/generators/html.ts"],"src/modes/hybrid-report/generators/html.ts":["src/modes/hybrid-report/index.ts","src/modes/hybrid-report/cli.ts"],"src/modes/hybrid-report/generators/markdown.ts":["src/modes/hybrid-report/index.ts","src/modes/hybrid-report/cli.ts"],"src/reporters/data-converter.ts":["src/reporters/interactive-reporter.ts"],"src/formal/index.ts":["src/refactor/types.ts","src/refactor/AutoRefactor.ts"],"src/utils/Logger.ts":["src/refactor/AutoRefactor.ts","src/refactor/ModuleExtractor.ts","src/refactor/ImportManager.ts","src/refactor/TemplateUpdater.ts","src/refactor/SyntaxValidator.ts","src/refactor/ModuleTypeDetector.ts","src/refactor/BackupManager.ts","src/refactor/interfaces/IRefactorContext.ts"],"@codeflow-map/core":["src/refactor/AutoRefactor.ts","src/semantic/CallGraphAnalyzer.ts"],"@jitl/ts-simple-type":["src/semantic/TypeAnalyzer.ts"],"src/formal/checkers/FileEquivalenceChecker.ts":["src/formal/index.ts"],"src/formal/checkers/RefactoringEquivalenceChecker.ts":["src/formal/index.ts"],"src/formal/checkers/EquivalenceChecker.ts":["src/formal/checkers/FileEquivalenceChecker.ts"],"src/core/ASTComparator.ts":["src/formal/checkers/FileEquivalenceChecker.ts","src/formal/checkers/RefactoringEquivalenceChecker.ts","src/formal/checkers/EquivalenceChecker.ts"],"src/core/SignatureComparator.ts":["src/formal/checkers/FileEquivalenceChecker.ts","src/formal/checkers/RefactoringEquivalenceChecker.ts"],"src/core/CallGraphComparator.ts":["src/formal/checkers/FileEquivalenceChecker.ts","src/formal/checkers/RefactoringEquivalenceChecker.ts"]},"outwardDependencies":{"src/cli.ts":["src/utils/is-main.ts","@hpcc-js/wasm-graphviz","src/core/minifier.ts","src/core/graph-utils.ts","src/core/tsconfig-resolver.ts","src/core/ast-parser.ts","src/core/entity-extractor.ts","src/modes/project-graph.ts","src/modes/file-graph.ts","src/modes/prompt-pack.ts","src/modes/split-module.ts","src/modes/impact.ts","src/modes/dead-code.ts","src/modes/minify-folder.ts","src/modes/vue-analyzer.ts","src/refactor/index.ts","src/ci-cd/SemanticPipeline.ts","src/formal/Z3Verifier.ts","src/modes/hybrid-report/index.ts","src/reporters/json-reporter.ts","src/reporters/html-reporter.ts","src/reporters/interactive-reporter.ts","src/types.ts","src/utils.ts","src/utils/path-utils.ts"],"src/core/minifier.ts":["src/core/ast-parser.ts"],"src/core/tsconfig-resolver.ts":["src/utils/path-utils.ts"],"src/core/ast-parser.ts":["@typescript-eslint/parser","@vue/compiler-sfc","src/core/tsconfig-resolver.ts"],"src/modes/project-graph.ts":["src/core/ast-parser.ts","src/core/entity-extractor.ts","src/config.ts","src/utils/path-utils.ts","src/reporters/json-reporter.ts"],"src/modes/file-graph.ts":["src/core/ast-parser.ts","src/utils/path-utils.ts"],"src/modes/prompt-pack.ts":["src/modes/project-graph.ts","src/core/minifier.ts"],"src/modes/split-module.ts":["src/core/ast-parser.ts","src/core/minifier.ts","src/modes/file-graph.ts","src/core/graph-utils.ts","src/config.ts","src/modes/vue-analyzer.ts"],"src/modes/impact.ts":["src/core/ast-parser.ts","src/config.ts"],"src/modes/dead-code.ts":["src/core/ast-parser.ts","src/config.ts"],"src/modes/minify-folder.ts":["src/core/minifier.ts","src/config.ts"],"src/modes/vue-analyzer.ts":["@vue/compiler-sfc","@typescript-eslint/parser"],"src/refactor/index.ts":["src/refactor/types.ts","src/refactor/AutoRefactor.ts","src/refactor/ModuleExtractor.ts","src/refactor/ImportManager.ts","src/refactor/TypeScriptValidator.ts","src/refactor/ESLintASTFixer.ts","src/refactor/CodeValidator.ts","src/refactor/CodeFixer.ts","src/refactor/TemplateUpdater.ts","src/refactor/SyntaxValidator.ts","src/refactor/ModuleTypeDetector.ts","src/refactor/BackupManager.ts","src/refactor/interfaces/IRefactorContext.ts"],"src/ci-cd/SemanticPipeline.ts":["src/semantic/CFGAnalyzer.ts","src/semantic/CallGraphAnalyzer.ts","src/semantic/TypeAnalyzer.ts","src/semantic/DataFlowAnalyzer.ts","src/formal/Z3Verifier.ts","src/semantic/JSXAnalyzer.ts","src/utils/wasm-utils.ts"],"src/formal/Z3Verifier.ts":["src/formal/ExpressionParser.ts","src/formal/FunctionBodyModeler.ts"],"src/modes/hybrid-report/index.ts":["src/modes/hybrid-report/types.ts","src/modes/hybrid-report/cli.ts","src/modes/hybrid-report/builder.ts","src/modes/hybrid-report/analyzer.ts","src/modes/hybrid-report/generators/dot.ts","src/modes/hybrid-report/generators/html.ts","src/modes/hybrid-report/generators/markdown.ts"],"src/reporters/json-reporter.ts":["src/core/entity-extractor.ts","src/modes/vue-analyzer.ts"],"src/reporters/html-reporter.ts":["src/utils/path-utils.ts"],"src/reporters/interactive-reporter.ts":["src/types.ts","src/reporters/data-converter.ts"],"src/types.ts":["src/core/entity-extractor.ts"],"src/refactor/types.ts":["src/semantic/CFGAnalyzer.ts","src/semantic/CallGraphAnalyzer.ts","src/semantic/DataFlowAnalyzer.ts","src/semantic/TypeAnalyzer.ts","src/formal/index.ts","src/refactor/ESLintASTFixer.ts","src/refactor/CodeValidator.ts","src/refactor/CodeFixer.ts","src/refactor/ModuleTypeDetector.ts","src/refactor/SyntaxValidator.ts"],"src/refactor/AutoRefactor.ts":["src/utils/Logger.ts","src/refactor/ModuleExtractor.ts","src/refactor/ImportManager.ts","src/refactor/TypeScriptValidator.ts","src/refactor/ESLintASTFixer.ts","src/refactor/CodeValidator.ts","src/refactor/CodeFixer.ts","src/refactor/TemplateUpdater.ts","@codeflow-map/core","src/semantic/CFGAnalyzer.ts","src/semantic/CallGraphAnalyzer.ts","src/semantic/DataFlowAnalyzer.ts","src/refactor/SyntaxValidator.ts","src/refactor/ModuleTypeDetector.ts","src/refactor/BackupManager.ts","src/formal/index.ts","src/refactor/interfaces/IRefactorContext.ts","src/refactor/types.ts"],"src/refactor/ModuleExtractor.ts":["src/utils/Logger.ts","src/refactor/ModuleTypeDetector.ts","src/refactor/interfaces/IRefactorContext.ts","src/refactor/types.ts"],"src/refactor/ImportManager.ts":["src/refactor/types.ts","src/utils/Logger.ts","src/refactor/ModuleTypeDetector.ts","src/refactor/interfaces/IRefactorContext.ts"],"src/refactor/CodeFixer.ts":["src/refactor/CodeValidator.ts","src/refactor/ESLintASTFixer.ts"],"src/refactor/TemplateUpdater.ts":["src/refactor/interfaces/IRefactorContext.ts","@vue/compiler-sfc","src/refactor/types.ts","src/utils/Logger.ts"],"src/refactor/SyntaxValidator.ts":["src/utils/Logger.ts","src/refactor/ModuleTypeDetector.ts"],"src/refactor/ModuleTypeDetector.ts":["src/utils/Logger.ts"],"src/refactor/BackupManager.ts":["src/utils/Logger.ts"],"src/refactor/interfaces/IRefactorContext.ts":["src/refactor/types.ts","src/utils/Logger.ts"],"src/semantic/CallGraphAnalyzer.ts":["@codeflow-map/core","src/utils/wasm-utils.ts"],"src/semantic/TypeAnalyzer.ts":["@jitl/ts-simple-type"],"src/semantic/JSXAnalyzer.ts":["src/semantic/TypeAnalyzer.ts"],"src/modes/hybrid-report/cli.ts":["src/modes/file-graph.ts","src/core/graph-utils.ts","src/modes/hybrid-report/types.ts","src/modes/hybrid-report/builder.ts","src/modes/hybrid-report/generators/dot.ts","src/modes/hybrid-report/generators/html.ts","src/modes/hybrid-report/generators/markdown.ts"],"src/modes/hybrid-report/builder.ts":["src/modes/project-graph.ts","src/core/graph-utils.ts","src/modes/hybrid-report/types.ts","src/modes/hybrid-report/analyzer.ts"],"src/modes/hybrid-report/analyzer.ts":["src/modes/hybrid-report/types.ts"],"src/modes/hybrid-report/generators/dot.ts":["src/modes/hybrid-report/types.ts"],"src/modes/hybrid-report/generators/html.ts":["@hpcc-js/wasm-graphviz","src/modes/hybrid-report/types.ts","src/modes/hybrid-report/generators/dot.ts"],"src/modes/hybrid-report/generators/markdown.ts":["src/modes/hybrid-report/types.ts"],"src/reporters/data-converter.ts":["src/types.ts"],"src/formal/index.ts":["src/formal/Z3Verifier.ts","src/formal/FunctionBodyModeler.ts","src/formal/checkers/FileEquivalenceChecker.ts","src/formal/checkers/RefactoringEquivalenceChecker.ts","src/formal/ExpressionParser.ts"],"src/formal/checkers/FileEquivalenceChecker.ts":["src/formal/checkers/EquivalenceChecker.ts","src/formal/Z3Verifier.ts","src/core/ASTComparator.ts","src/core/SignatureComparator.ts","src/core/CallGraphComparator.ts"],"src/formal/checkers/RefactoringEquivalenceChecker.ts":["src/formal/Z3Verifier.ts","src/core/ASTComparator.ts","src/core/SignatureComparator.ts","src/core/CallGraphComparator.ts"],"src/formal/checkers/EquivalenceChecker.ts":["src/formal/Z3Verifier.ts","src/core/ASTComparator.ts"]}},"entityStats":{"totalFunctions":1,"totalConstants":0,"totalVariables":0,"totalInterfaces":0,"totalTypes":0,"totalClasses":0,"totalCalls":0,"totalExportedFunctions":1,"totalAsyncFunctions":0},"fileStats":{"totalFiles":68,"totalSize":0,"totalLines":0},"timestamp":"2026-08-22T12:53:59.308Z"};
-        globalThis[SYM_FUNCTIONS_DATA] = [{"modulePath":"src/core/minifier.ts","func":{"name":"or","params":["args"],"paramTypes":[],"line":1052,"startLine":1052,"endLine":1057,"isAsync":false,"isExported":true,"isMethod":false,"className":"","calls":[],"calledBy":[],"returnType":"import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint","body":"","isNested":false,"isArrow":false,"isEventHandler":false,"depth":0}}];
-        globalThis[SYM_DATA_VERSION] = 1;
-
-        console.log('✅ Данные загружены');
-        console.log('📊 Модулей:', Object.keys(globalThis[SYM_REPORT_DATA].packages || {}).length);
-        console.log('ƒ Функций:', globalThis[SYM_FUNCTIONS_DATA].length);
-      })();
-    </script>
-  
-    <script type="importmap">
+<script type="importmap">
   {
-      "imports": {
-          "d3": "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"
-      }
+    "imports": {
+      "d3": "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js",
+      "./modules/AppInit.js": "./modules/AppInit.js"
+    }
   }
 </script>
 
+<!-- Основной модуль приложения -->
 <script type="module" src="./interactive-report.js"></script>
+
+<!-- ✅ ОБНОВЛЕННЫЙ МОСТ С ИСПОЛЬЗОВАНИЕМ AppInit -->
+<script type="module">
+  import { App } from './modules/AppInit.js';
+
+  console.log('🚀 Запуск инициализации приложения...');
+
+  // ✅ ОЖИДАЕМ ГОТОВНОСТИ ПРИЛОЖЕНИЯ
+  App.ready(5000, 100)
+          .then((result) => {
+            if (result.ready) {
+              console.log('✅ Приложение готово!');
+              setupEventListeners(result.api);
+            } else {
+              console.warn('⚠️ Приложение не готово, использую fallback API');
+              setupEventListeners(result.api);
+            }
+          })
+          .catch((error) => {
+            console.error('❌ Ошибка инициализации:', error);
+            showErrorMessage('Не удалось загрузить приложение. Обновите страницу.');
+          });
+
+  function setupEventListeners(api) {
+    console.log('🎯 Настройка обработчиков событий...');
+
+    // ✅ БЕЗОПАСНАЯ ОБЕРТКА ДЛЯ КЛИКОВ
+    function safeClick(action, ...args) {
+      return function(e) {
+        e?.stopPropagation?.();
+        if (api && typeof api[action] === 'function') {
+          return api[action](...args);
+        } else {
+          console.warn(`⚠️ Метод ${action} не доступен`);
+        }
+      };
+    }
+
+    // Кнопки режимов графа
+    document.getElementById('btnGraphAll')?.addEventListener('click', () => {
+      if (api?.setGraphMode) api.setGraphMode('all');
+      updateActiveButtons('graph', 'all');
+    });
+    document.getElementById('btnGraphInward')?.addEventListener('click', () => {
+      if (api?.setGraphMode) api.setGraphMode('inward');
+      updateActiveButtons('graph', 'inward');
+    });
+    document.getElementById('btnGraphOutward')?.addEventListener('click', () => {
+      if (api?.setGraphMode) api.setGraphMode('outward');
+      updateActiveButtons('graph', 'outward');
+    });
+    document.getElementById('btnGraphBoth')?.addEventListener('click', () => {
+      if (api?.setGraphMode) api.setGraphMode('both');
+      updateActiveButtons('graph', 'both');
+    });
+
+    // Кнопки режимов карточек
+    document.getElementById('btnCardDetailed')?.addEventListener('click', () => {
+      if (api?.setCardMode) api.setCardMode('detailed');
+      updateActiveButtons('card', 'detailed');
+    });
+    document.getElementById('btnCardCompact')?.addEventListener('click', () => {
+      if (api?.setCardMode) api.setCardMode('compact');
+      updateActiveButtons('card', 'compact');
+    });
+    document.getElementById('btnCardList')?.addEventListener('click', () => {
+      if (api?.setCardMode) api.setCardMode('list');
+      updateActiveButtons('card', 'list');
+    });
+
+    // Управление фокусом
+    document.getElementById('btnClearFocus')?.addEventListener('click', safeClick('clearFocus'));
+    document.getElementById('btnCloseFocus')?.addEventListener('click', safeClick('clearFocus'));
+    document.getElementById('btnCloseDetail')?.addEventListener('click', safeClick('closeDetail'));
+
+    // Поиск с debounce
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+      let debounceTimeout = null;
+      searchInput.addEventListener('input', function() {
+        clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(() => {
+          if (api?.handleSearch) {
+            api.handleSearch(this.value);
+          }
+        }, 300);
+      });
+    }
+
+    // ✅ ДЕЛЕГИРОВАНИЕ СОБЫТИЙ ДЛЯ КАРТОЧЕК
+    const grid = document.getElementById('modulesGrid');
+    if (grid) {
+      grid.addEventListener('click', function(e) {
+        // Клик по функции
+        const funcItem = e.target.closest('.func-item');
+        if (funcItem) {
+          e.stopPropagation();
+          const funcName = funcItem.dataset.func;
+          const modulePath = funcItem.dataset.module;
+          if (funcName && modulePath && api?.focusFunction) {
+            api.focusFunction(funcName, modulePath);
+          }
+          return;
+        }
+
+        // Клик по карточке модуля
+        const moduleCard = e.target.closest('.module-card');
+        if (moduleCard && !e.target.closest('.func-item')) {
+          const modulePath = moduleCard.dataset.module;
+          if (modulePath && api?.focusModule) {
+            api.focusModule(modulePath);
+          }
+        }
+      });
+    }
+
+    function updateActiveButtons(type, mode) {
+      if (type === 'graph') {
+        ['btnGraphAll', 'btnGraphInward', 'btnGraphOutward', 'btnGraphBoth'].forEach(id => {
+          const btn = document.getElementById(id);
+          if (btn) {
+            btn.classList.toggle('active', btn.dataset.mode === mode);
+          }
+        });
+      } else if (type === 'card') {
+        ['btnCardDetailed', 'btnCardCompact', 'btnCardList'].forEach(id => {
+          const btn = document.getElementById(id);
+          if (btn) {
+            btn.classList.toggle('active', btn.dataset.cardMode === mode);
+          }
+        });
+      }
+    }
+
+    // Подписка на изменения режимов
+    const SYM_MODE_CHANGE = Symbol.for('__AST_MODE_CHANGE__');
+    window[SYM_MODE_CHANGE] = function(type, mode) {
+      updateActiveButtons(type, mode);
+    };
+
+    console.log('✅ Все обработчики настроены!');
+  }
+
+  function showErrorMessage(message) {
+    const container = document.querySelector('.container');
+    if (container) {
+      const errorDiv = document.createElement('div');
+      errorDiv.style.cssText = `
+      background: #fef2f2;
+      color: #991b1b;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      border: 1px solid #fecaca;
+      text-align: center;
+    `;
+      errorDiv.innerHTML = `
+      <h3>⚠️ ${message}</h3>
+      <p style="margin-top: 10px; font-size: 14px;">
+        Попробуйте обновить страницу или проверьте консоль для деталей.
+      </p>
+      <button onclick="location.reload()" style="
+        margin-top: 10px;
+        padding: 8px 20px;
+        background: #dc2626;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+      ">Обновить</button>
+    `;
+      container.prepend(errorDiv);
+    }
+  }
+
+  console.log('🔒 Мост инициализации запущен');
+  console.log('📌 Используйте: App.ready() для ожидания загрузки');
+  console.log('📌 Или: App.getAPI() для синхронного доступа');
+</script>
+
 </body>
 </html>
