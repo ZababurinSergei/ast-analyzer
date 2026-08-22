@@ -5377,7 +5377,7 @@
           "calledBy": [],
           "body": "{\n  const outputDir = path.dirname(outputPath);\n  const templateDir = path.join(__dirname, 'templates');\n\n  // Проверяем наличие шаблона\n  const templatePath = path.join(templateDir, 'interactive-repo",
           "startLine": 20,
-          "endLine": 133,
+          "endLine": 159,
           "isMethod": false,
           "isNested": false,
           "isArrow": false,
@@ -19839,7 +19839,7 @@
               ],
               "line": 20,
               "startLine": 20,
-              "endLine": 133,
+              "endLine": 159,
               "isAsync": true,
               "isExported": true,
               "isMethod": false,
@@ -19886,8 +19886,8 @@
           "classes": []
         },
         "fileStats": {
-          "size": 5024,
-          "lines": 138,
+          "size": 6140,
+          "lines": 164,
           "functions": 1,
           "classes": 0,
           "constants": 2,

@@ -10,8 +10,8 @@ const __dirname = path.dirname(__filename);
 
 /**
  * Генерирует интерактивный HTML отчет
- * Копирует data-converter.js из templates в целевую директорию
- * и встраивает данные в HTML
+ * Копирует data-converter.js, interactive-report.css и interactive-report.js
+ * из templates в целевую директорию и встраивает данные в HTML
  *
  * @param analysis - полный анализ (FullAnalysis)
  * @param outputPath - путь для сохранения HTML
@@ -53,7 +53,33 @@ export async function generateInteractiveHTML(
   }
 
   // ============================================================
-  // 2. ПРЕОБРАЗУЕМ ДАННЫЕ
+  // 2. КОПИРУЕМ interactive-report.css ИЗ TEMPLATES
+  // ============================================================
+  const cssSrc = path.join(templateDir, 'interactive-report.css');
+  const cssDest = path.join(outputDir, 'interactive-report.css');
+
+  if (fs.existsSync(cssSrc)) {
+    fs.copyFileSync(cssSrc, cssDest);
+    console.log(`  ✅ Скопирован: interactive-report.css`);
+  } else {
+    console.warn(`  ⚠️ interactive-report.css не найден в ${templateDir}`);
+  }
+
+  // ============================================================
+  // 3. КОПИРУЕМ interactive-report.js ИЗ TEMPLATES
+  // ============================================================
+  const jsSrc = path.join(templateDir, 'interactive-report.js');
+  const jsDest = path.join(outputDir, 'interactive-report.js');
+
+  if (fs.existsSync(jsSrc)) {
+    fs.copyFileSync(jsSrc, jsDest);
+    console.log(`  ✅ Скопирован: interactive-report.js`);
+  } else {
+    console.warn(`  ⚠️ interactive-report.js не найден в ${templateDir}`);
+  }
+
+  // ============================================================
+  // 4. ПРЕОБРАЗУЕМ ДАННЫЕ
   // ============================================================
   let report = DataConverter.buildReportFromAnalysis(analysis);
 
@@ -71,7 +97,7 @@ export async function generateInteractiveHTML(
   }
 
   // ============================================================
-  // 3. ВСТРАИВАЕМ ДАННЫЕ В HTML
+  // 5. ВСТРАИВАЕМ ДАННЫЕ В HTML
   // ============================================================
   let htmlContent = fs.readFileSync(templatePath, 'utf8');
 
@@ -122,7 +148,7 @@ export async function generateInteractiveHTML(
   );
 
   // ============================================================
-  // 4. СОХРАНЯЕМ HTML
+  // 6. СОХРАНЯЕМ HTML
   // ============================================================
   fs.writeFileSync(outputPath, htmlContent, 'utf-8');
 

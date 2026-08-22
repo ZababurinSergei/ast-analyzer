@@ -8830,7 +8830,7 @@
             ],
             "line": 20,
             "startLine": 20,
-            "endLine": 133,
+            "endLine": 159,
             "isAsync": true,
             "isExported": true,
             "isMethod": false,
@@ -8877,8 +8877,8 @@
         "classes": []
       },
       "fileStats": {
-        "size": 5024,
-        "lines": 138,
+        "size": 6140,
+        "lines": 164,
         "functions": 1,
         "classes": 0,
         "constants": 2,
@@ -18992,10 +18992,10 @@
   },
   "fileStats": {
     "totalFiles": 63,
-    "totalSize": 1184683,
-    "totalLines": 38359
+    "totalSize": 1185799,
+    "totalLines": 38385
   },
-  "timestamp": "2026-08-22T10:06:33.766Z",
+  "timestamp": "2026-08-22T10:37:57.965Z",
   "architectureMetrics": {
     "totalModules": 63,
     "totalFunctions": 245,
