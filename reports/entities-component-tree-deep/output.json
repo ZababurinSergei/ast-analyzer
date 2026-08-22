@@ -5361,8 +5361,31 @@
     "src/reporters/interactive-reporter.ts": {
       "functions": [
         {
+          "name": "copyDirectory",
+          "line": 14,
+          "isAsync": false,
+          "isExported": false,
+          "params": [
+            "src",
+            "dest"
+          ],
+          "returnType": "void",
+          "calls": [],
+          "calledBy": [
+            "generateInteractiveHTML"
+          ],
+          "body": "{\n  if (!fs.existsSync(dest)) {\n    fs.mkdirSync(dest, { recursive: true });\n  }\n\n  const entries = fs.readdirSync(src, { withFileTypes: true });\n\n  for (const entry of entries) {\n    const srcPath = ",
+          "startLine": 14,
+          "endLine": 31,
+          "isMethod": false,
+          "isNested": false,
+          "isArrow": false,
+          "isEventHandler": false,
+          "depth": 0
+        },
+        {
           "name": "generateInteractiveHTML",
-          "line": 20,
+          "line": 41,
           "isAsync": true,
           "isExported": true,
           "params": [
@@ -5372,12 +5395,13 @@
           ],
           "returnType": "Promise<void>",
           "calls": [
+            "copyDirectory",
             "String"
           ],
           "calledBy": [],
           "body": "{\n  const outputDir = path.dirname(outputPath);\n  const templateDir = path.join(__dirname, 'templates');\n\n  // Проверяем наличие шаблона\n  const templatePath = path.join(templateDir, 'interactive-repo",
-          "startLine": 20,
-          "endLine": 159,
+          "startLine": 41,
+          "endLine": 201,
           "isMethod": false,
           "isNested": false,
           "isArrow": false,
@@ -19819,12 +19843,50 @@
               "entitiesWithCalls"
             ],
             "returns": "Promise<void>",
-            "line": 20,
+            "line": 41,
             "consumers": []
           }
         },
         "entities": {
           "functions": [
+            {
+              "name": "copyDirectory",
+              "params": [
+                "src",
+                "dest"
+              ],
+              "paramTypes": [
+                "any",
+                "any"
+              ],
+              "line": 14,
+              "startLine": 14,
+              "endLine": 31,
+              "isAsync": false,
+              "isExported": false,
+              "isMethod": false,
+              "className": "",
+              "calls": [],
+              "calledBy": [
+                "generateInteractiveHTML"
+              ],
+              "returnType": "void",
+              "body": "{\n  if (!fs.existsSync(dest)) {\n    fs.mkdirSync(dest, { recursive: true });\n  }\n\n  const entries = fs.readdirSync(src, { withFileTypes: true });\n\n  for (const entry of entries) {\n    const srcPath = ",
+              "isNested": false,
+              "parentFunction": "",
+              "isArrow": false,
+              "isEventHandler": false,
+              "eventType": "",
+              "depth": 0,
+              "complexity": 0,
+              "security": {
+                "hasEval": false,
+                "hasProcessEnv": false,
+                "hasSensitiveData": false,
+                "hasExec": false,
+                "hasPassword": false
+              }
+            },
             {
               "name": "generateInteractiveHTML",
               "params": [
@@ -19837,14 +19899,15 @@
                 "any",
                 "any"
               ],
-              "line": 20,
-              "startLine": 20,
-              "endLine": 159,
+              "line": 41,
+              "startLine": 41,
+              "endLine": 201,
               "isAsync": true,
               "isExported": true,
               "isMethod": false,
               "className": "",
               "calls": [
+                "copyDirectory",
                 "String"
               ],
               "calledBy": [],
@@ -19886,9 +19949,9 @@
           "classes": []
         },
         "fileStats": {
-          "size": 6140,
-          "lines": 164,
-          "functions": 1,
+          "size": 7451,
+          "lines": 206,
+          "functions": 2,
           "classes": 0,
           "constants": 2,
           "interfaces": 0,
@@ -29838,7 +29901,9 @@
         "getFileNameForDisplay",
         "escapeHtml"
       ],
+      "copyDirectory": [],
       "generateInteractiveHTML": [
+        "copyDirectory",
         "String"
       ],
       "showHelp": [],

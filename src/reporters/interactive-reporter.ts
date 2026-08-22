@@ -9,9 +9,30 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
+ * Рекурсивно копирует директорию
+ */
+function copyDirectory(src: string, dest: string): void {
+  if (!fs.existsSync(dest)) {
+    fs.mkdirSync(dest, { recursive: true });
+  }
+
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+
+    if (entry.isDirectory()) {
+      copyDirectory(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+/**
  * Генерирует интерактивный HTML отчет
- * Копирует data-converter.js, interactive-report.css и interactive-report.js
- * из templates в целевую директорию и встраивает данные в HTML
+ * Копирует все необходимые файлы из templates в целевую директорию
  *
  * @param analysis - полный анализ (FullAnalysis)
  * @param outputPath - путь для сохранения HTML
@@ -79,7 +100,28 @@ export async function generateInteractiveHTML(
   }
 
   // ============================================================
-  // 4. ПРЕОБРАЗУЕМ ДАННЫЕ
+  // 4. КОПИРУЕМ ДИРЕКТОРИЮ modules (НОВОЕ!)
+  // ============================================================
+  const modulesSrc = path.join(templateDir, 'modules');
+  const modulesDest = path.join(outputDir, 'modules');
+
+  if (fs.existsSync(modulesSrc)) {
+    copyDirectory(modulesSrc, modulesDest);
+    console.log(
+      `  ✅ Скопирована директория: modules/ (${fs.readdirSync(modulesSrc).length} файлов)`
+    );
+  } else {
+    console.warn(`  ⚠️ Директория modules не найдена в ${templateDir}`);
+    console.warn('  💡 Создайте директорию modules/ с файлами:');
+    console.warn('     - CardManager.js');
+    console.warn('     - GraphManager.js');
+    console.warn('     - BreadcrumbManager.js');
+    console.warn('     - GraphModeManager.js');
+    console.warn('     - CardModeManager.js');
+  }
+
+  // ============================================================
+  // 5. ПРЕОБРАЗУЕМ ДАННЫЕ
   // ============================================================
   let report = DataConverter.buildReportFromAnalysis(analysis);
 
@@ -97,7 +139,7 @@ export async function generateInteractiveHTML(
   }
 
   // ============================================================
-  // 5. ВСТРАИВАЕМ ДАННЫЕ В HTML
+  // 6. ВСТРАИВАЕМ ДАННЫЕ В HTML
   // ============================================================
   let htmlContent = fs.readFileSync(templatePath, 'utf8');
 
@@ -148,7 +190,7 @@ export async function generateInteractiveHTML(
   );
 
   // ============================================================
-  // 6. СОХРАНЯЕМ HTML
+  // 7. СОХРАНЯЕМ HTML
   // ============================================================
   fs.writeFileSync(outputPath, htmlContent, 'utf-8');
 

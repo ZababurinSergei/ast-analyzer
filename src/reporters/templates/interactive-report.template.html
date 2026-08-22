@@ -7,89 +7,113 @@
   <link rel="stylesheet" href="./interactive-report.css">
 </head>
 <body>
-<div class="update-notification" id="updateNotification">
+<div class="update-notification" id="updateNotification" role="status" aria-live="polite">
   🔄 Данные обновлены <span class="count" id="updateCount">0</span>
 </div>
 
 <div class="container">
-  <div class="header">
+  <header class="header" role="banner">
     <h1>🔀 Интерактивный граф модулей и функций</h1>
-    <div class="stats-line" id="statsLine">
-      <span class="stat">📁 <strong id="statModules">__STAT_MODULES__</strong> модулей</span>
-      <span class="stat">ƒ <strong id="statFunctions">__STAT_FUNCTIONS__</strong> функций</span>
-      <span class="stat">📞 <strong id="statCalls">__STAT_CALLS__</strong> вызовов</span>
-      <span class="stat">📤 <strong id="statExported">__STAT_EXPORTED__</strong> экспортировано</span>
-      <span class="stat">⚡ <strong id="statAsync">__STAT_ASYNC__</strong> async</span>
-      <span class="stat">📝 <strong id="statLines">__STAT_LINES__</strong> строк</span>
-      <span class="stat">💾 <strong id="statSize">__STAT_SIZE__</strong> KB</span>
+    <div class="stats-line" id="statsLine" role="list" aria-label="Статистика">
+      <span class="stat" role="listitem">📁 <strong id="statModules">__STAT_MODULES__</strong> модулей</span>
+      <span class="stat" role="listitem">ƒ <strong id="statFunctions">__STAT_FUNCTIONS__</strong> функций</span>
+      <span class="stat" role="listitem">📞 <strong id="statCalls">__STAT_CALLS__</strong> вызовов</span>
+      <span class="stat" role="listitem">📤 <strong id="statExported">__STAT_EXPORTED__</strong> экспортировано</span>
+      <span class="stat" role="listitem">⚡ <strong id="statAsync">__STAT_ASYNC__</strong> async</span>
+      <span class="stat" role="listitem">📝 <strong id="statLines">__STAT_LINES__</strong> строк</span>
+      <span class="stat" role="listitem">💾 <strong id="statSize">__STAT_SIZE__</strong> KB</span>
     </div>
     <div class="sub" style="margin-top: 8px;">
       📊 По типам: __TYPES_BY_LANG__ | ⭐ Точка входа: __ENTRY_NAMES__
     </div>
     <div class="sub">Сгенерировано: __TIMESTAMP__</div>
-  </div>
+  </header>
 
-  <div class="controls-bar">
-    <div class="group">
-      <span class="group-label">Режим:</span>
-      <button class="active" data-mode="all" onclick="getApp()?.setMode('all')">🌐 Все</button>
-      <button data-mode="inward" onclick="getApp()?.setMode('inward')">📥 Входящие</button>
-      <button data-mode="outward" onclick="getApp()?.setMode('outward')">📤 Исходящие</button>
-      <button data-mode="both" onclick="getApp()?.setMode('both')">🔁 Оба</button>
+  <nav class="controls-bar" id="toolbar" aria-label="Панель управления">
+    <!-- Режимы графа -->
+    <div class="group" role="group" aria-label="Режимы отображения графа">
+      <span class="group-label" id="graphModeLabel">Режим графа:</span>
+      <button class="active" data-mode="all" onclick="getApp()?.setMode('all')" aria-label="Показать все связи" aria-pressed="true">🌐 Все</button>
+      <button data-mode="inward" onclick="getApp()?.setMode('inward')" aria-label="Показать входящие связи" aria-pressed="false">📥 Входящие</button>
+      <button data-mode="outward" onclick="getApp()?.setMode('outward')" aria-label="Показать исходящие связи" aria-pressed="false">📤 Исходящие</button>
+      <button data-mode="both" onclick="getApp()?.setMode('both')" aria-label="Показать оба направления" aria-pressed="false">🔁 Оба</button>
     </div>
-    <div class="group">
-      <span class="group-label">Фокус:</span>
-      <button onclick="getApp()?.clearFocus()">✕ Очистить</button>
+
+    <!-- Режимы карточек -->
+    <div class="group" role="group" aria-label="Режимы отображения карточек">
+      <span class="group-label" id="cardModeLabel">Режим карточек:</span>
+      <button class="active" data-card-mode="detailed" onclick="getApp()?.cardModeManager?.setMode('detailed')" aria-label="Детальный режим карточек" aria-pressed="true">📋 Детально</button>
+      <button data-card-mode="compact" onclick="getApp()?.cardModeManager?.setMode('compact')" aria-label="Компактный режим карточек" aria-pressed="false">📦 Компактно</button>
+      <button data-card-mode="list" onclick="getApp()?.cardModeManager?.setMode('list')" aria-label="Режим списка" aria-pressed="false">📄 Список</button>
     </div>
-    <input class="search-input" id="searchInput" placeholder="🔍 Поиск функции или модуля..." oninput="getApp()?.handleSearch(this.value)">
+
+    <!-- Фокус -->
+    <div class="group" role="group" aria-label="Управление фокусом">
+      <span class="group-label" id="focusLabel">Фокус:</span>
+      <button onclick="getApp()?.clearFocus()" aria-label="Очистить фокус">✕ Очистить</button>
+    </div>
+
+    <!-- Поиск -->
+    <div class="group" role="search" aria-label="Поиск">
+      <label for="searchInput" class="sr-only">Поиск функции или модуля</label>
+      <input class="search-input" id="searchInput" placeholder="&#128269; Поиск функции или модуля..." oninput="getApp()?.handleSearch(this.value)" aria-label="Поиск функции или модуля">
+    </div>
+
     <span class="hint">💡 Клик на функцию → детали | Клик на модуль → фокус</span>
-  </div>
+  </nav>
 
-  <div class="focus-info" id="focusInfo">
-    <button class="close-btn" onclick="getApp()?.clearFocus()">✕</button>
+  <!-- Breadcrumbs -->
+  <nav class="breadcrumbs-container" id="breadcrumbsContainer" aria-label="Навигационная цепочка">
+    <div class="breadcrumbs-scroll">
+      <div class="breadcrumbs" id="breadcrumbs" role="list"></div>
+    </div>
+  </nav>
+
+  <div class="focus-info" id="focusInfo" role="status" aria-live="polite">
+    <button class="close-btn" onclick="getApp()?.clearFocus()" aria-label="Закрыть фокус">✕</button>
     <div class="title" id="focusTitle">🎯 Фокус</div>
     <div class="details" id="focusDetails"></div>
   </div>
 
   <div class="graph-container">
-    <div class="d3-graph-wrapper" id="d3GraphWrapper">
-      <div class="graph-tooltip" id="graphTooltip">
+    <div class="d3-graph-wrapper" id="d3GraphWrapper" role="img" aria-label="Интерактивный граф зависимостей">
+      <div class="graph-tooltip" id="graphTooltip" role="tooltip" aria-hidden="true">
         <div class="tt-title" id="ttTitle"></div>
         <div class="tt-info" id="ttInfo"></div>
         <div class="tt-detail" id="ttDetail"></div>
       </div>
     </div>
-    <div class="legend">
-      <div class="legend-item">
-        <div class="legend-color" style="background:#fbbf24;"></div>
+    <div class="legend" role="list" aria-label="Легенда графа">
+      <div class="legend-item" role="listitem">
+        <span class="legend-color" style="background:#fbbf24;"></span>
         <span>⭐ Точка входа</span>
       </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background:#f87171;"></div>
+      <div class="legend-item" role="listitem">
+        <span class="legend-color" style="background:#f87171;"></span>
         <span>📤 Экспортированная функция</span>
       </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background:#fbbf24;"></div>
+      <div class="legend-item" role="listitem">
+        <span class="legend-color" style="background:#fbbf24;"></span>
         <span>Внутренняя функция</span>
       </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background:#22d3ee;"></div>
+      <div class="legend-item" role="listitem">
+        <span class="legend-color" style="background:#22d3ee;"></span>
         <span>🎯 Активная (фокус)</span>
       </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background:#f59e0b; width:30px; height:3px;"></div>
+      <div class="legend-item" role="listitem">
+        <span class="legend-color" style="background:#f59e0b; width:30px; height:3px; display:inline-block;"></span>
         <span>Вызов функции</span>
       </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background:#3b82f6; width:30px; height:3px; border-style:dashed;"></div>
+      <div class="legend-item" role="listitem">
+        <span class="legend-color" style="background:#3b82f6; width:30px; height:3px; border-style:dashed; display:inline-block;"></span>
         <span>Кем вызвана</span>
       </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background:#3b82f6; width:30px; height:3px;"></div>
+      <div class="legend-item" role="listitem">
+        <span class="legend-color" style="background:#3b82f6; width:30px; height:3px; display:inline-block;"></span>
         <span>Импорт модуля</span>
       </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background:#f59e0b; width:30px; height:3px;"></div>
+      <div class="legend-item" role="listitem">
+        <span class="legend-color" style="background:#f59e0b; width:30px; height:3px; display:inline-block;"></span>
         <span>Обратная связь</span>
       </div>
     </div>
@@ -97,20 +121,20 @@
 
   <div id="modulesContainer">
     <h2 style="margin: 20px 0 12px; color:#60a5fa; font-size:18px;">📁 Модули и функции</h2>
-    <div class="modules-grid" id="modulesGrid"></div>
+    <div class="modules-grid" id="modulesGrid" role="list" aria-label="Список модулей"></div>
   </div>
 
-  <div class="detail-panel" id="detailPanel">
+  <div class="detail-panel" id="detailPanel" role="dialog" aria-label="Детали функции" aria-modal="true">
     <div class="dp-header">
       <div class="dp-title" id="dpTitle">Функция</div>
-      <button class="dp-close" onclick="getApp()?.closeDetail()">✕</button>
+      <button class="dp-close" onclick="getApp()?.closeDetail()" aria-label="Закрыть детали">✕</button>
     </div>
     <div id="dpContent"></div>
   </div>
 
-  <div class="footer">
+  <footer class="footer" role="contentinfo">
     <p>Сгенерировано AST Analyzer v3.0.0 | Интерактивный граф на D3.js</p>
-  </div>
+  </footer>
 </div>
 
 <script type="importmap">

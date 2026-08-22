@@ -8810,12 +8810,50 @@
             "entitiesWithCalls"
           ],
           "returns": "Promise<void>",
-          "line": 20,
+          "line": 41,
           "consumers": []
         }
       },
       "entities": {
         "functions": [
+          {
+            "name": "copyDirectory",
+            "params": [
+              "src",
+              "dest"
+            ],
+            "paramTypes": [
+              "any",
+              "any"
+            ],
+            "line": 14,
+            "startLine": 14,
+            "endLine": 31,
+            "isAsync": false,
+            "isExported": false,
+            "isMethod": false,
+            "className": "",
+            "calls": [],
+            "calledBy": [
+              "generateInteractiveHTML"
+            ],
+            "returnType": "void",
+            "body": "{\n  if (!fs.existsSync(dest)) {\n    fs.mkdirSync(dest, { recursive: true });\n  }\n\n  const entries = fs.readdirSync(src, { withFileTypes: true });\n\n  for (const entry of entries) {\n    const srcPath = ",
+            "isNested": false,
+            "parentFunction": "",
+            "isArrow": false,
+            "isEventHandler": false,
+            "eventType": "",
+            "depth": 0,
+            "complexity": 0,
+            "security": {
+              "hasEval": false,
+              "hasProcessEnv": false,
+              "hasSensitiveData": false,
+              "hasExec": false,
+              "hasPassword": false
+            }
+          },
           {
             "name": "generateInteractiveHTML",
             "params": [
@@ -8828,14 +8866,15 @@
               "any",
               "any"
             ],
-            "line": 20,
-            "startLine": 20,
-            "endLine": 159,
+            "line": 41,
+            "startLine": 41,
+            "endLine": 201,
             "isAsync": true,
             "isExported": true,
             "isMethod": false,
             "className": "",
             "calls": [
+              "copyDirectory",
               "String"
             ],
             "calledBy": [],
@@ -8877,9 +8916,9 @@
         "classes": []
       },
       "fileStats": {
-        "size": 6140,
-        "lines": 164,
-        "functions": 1,
+        "size": 7451,
+        "lines": 206,
+        "functions": 2,
         "classes": 0,
         "constants": 2,
         "interfaces": 0,
@@ -18829,7 +18868,9 @@
       "getFileNameForDisplay",
       "escapeHtml"
     ],
+    "copyDirectory": [],
     "generateInteractiveHTML": [
+      "copyDirectory",
       "String"
     ],
     "showHelp": [],
@@ -18980,31 +19021,31 @@
     "mergeCallGraphs": []
   },
   "entityStats": {
-    "totalFunctions": 245,
+    "totalFunctions": 246,
     "totalConstants": 19,
     "totalVariables": 6,
     "totalInterfaces": 180,
     "totalTypes": 4,
     "totalClasses": 28,
-    "totalCalls": 276,
+    "totalCalls": 277,
     "totalExportedFunctions": 175,
     "totalAsyncFunctions": 12
   },
   "fileStats": {
     "totalFiles": 63,
-    "totalSize": 1185799,
-    "totalLines": 38385
+    "totalSize": 1187110,
+    "totalLines": 38427
   },
-  "timestamp": "2026-08-22T10:37:57.965Z",
+  "timestamp": "2026-08-22T11:38:40.084Z",
   "architectureMetrics": {
     "totalModules": 63,
-    "totalFunctions": 245,
+    "totalFunctions": 246,
     "totalClasses": 28,
     "totalConstants": 19,
     "totalInterfaces": 180,
     "totalTypes": 4,
     "totalVariables": 6,
-    "totalCalls": 276,
+    "totalCalls": 277,
     "vueComponents": 0,
     "totalComposables": 0,
     "hasCycles": false,
@@ -19088,7 +19129,7 @@
     "projectType": "single",
     "entryPoint": "src/cli.ts",
     "totalModules": 63,
-    "totalFunctions": 245,
+    "totalFunctions": 246,
     "vueComponents": 0,
     "hasCycles": false,
     "maxDepth": 8,

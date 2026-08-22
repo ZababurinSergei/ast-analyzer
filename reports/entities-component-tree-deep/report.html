@@ -7037,8 +7037,31 @@
     &quot;src/reporters/interactive-reporter.ts&quot;: {
       &quot;functions&quot;: [
         {
+          &quot;name&quot;: &quot;copyDirectory&quot;,
+          &quot;line&quot;: 14,
+          &quot;isAsync&quot;: false,
+          &quot;isExported&quot;: false,
+          &quot;params&quot;: [
+            &quot;src&quot;,
+            &quot;dest&quot;
+          ],
+          &quot;returnType&quot;: &quot;void&quot;,
+          &quot;calls&quot;: [],
+          &quot;calledBy&quot;: [
+            &quot;generateInteractiveHTML&quot;
+          ],
+          &quot;body&quot;: &quot;{&#92;n  if (!fs.existsSync(dest)) {&#92;n    fs.mkdirSync(dest, { recursive: true });&#92;n  }&#92;n&#92;n  const entries = fs.readdirSync(src, { withFileTypes: true });&#92;n&#92;n  for (const entry of entries) {&#92;n    const srcPath = &quot;,
+          &quot;startLine&quot;: 14,
+          &quot;endLine&quot;: 31,
+          &quot;isMethod&quot;: false,
+          &quot;isNested&quot;: false,
+          &quot;isArrow&quot;: false,
+          &quot;isEventHandler&quot;: false,
+          &quot;depth&quot;: 0
+        },
+        {
           &quot;name&quot;: &quot;generateInteractiveHTML&quot;,
-          &quot;line&quot;: 20,
+          &quot;line&quot;: 41,
           &quot;isAsync&quot;: true,
           &quot;isExported&quot;: true,
           &quot;params&quot;: [
@@ -7048,12 +7071,13 @@
           ],
           &quot;returnType&quot;: &quot;Promise&lt;void&gt;&quot;,
           &quot;calls&quot;: [
+            &quot;copyDirectory&quot;,
             &quot;String&quot;
           ],
           &quot;calledBy&quot;: [],
           &quot;body&quot;: &quot;{&#92;n  const outputDir = path.dirname(outputPath);&#92;n  const templateDir = path.join(__dirname, 'templates');&#92;n&#92;n  // Проверяем наличие шаблона&#92;n  const templatePath = path.join(templateDir, 'interactive-repo&quot;,
-          &quot;startLine&quot;: 20,
-          &quot;endLine&quot;: 159,
+          &quot;startLine&quot;: 41,
+          &quot;endLine&quot;: 201,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -21495,12 +21519,50 @@
               &quot;entitiesWithCalls&quot;
             ],
             &quot;returns&quot;: &quot;Promise&lt;void&gt;&quot;,
-            &quot;line&quot;: 20,
+            &quot;line&quot;: 41,
             &quot;consumers&quot;: []
           }
         },
         &quot;entities&quot;: {
           &quot;functions&quot;: [
+            {
+              &quot;name&quot;: &quot;copyDirectory&quot;,
+              &quot;params&quot;: [
+                &quot;src&quot;,
+                &quot;dest&quot;
+              ],
+              &quot;paramTypes&quot;: [
+                &quot;any&quot;,
+                &quot;any&quot;
+              ],
+              &quot;line&quot;: 14,
+              &quot;startLine&quot;: 14,
+              &quot;endLine&quot;: 31,
+              &quot;isAsync&quot;: false,
+              &quot;isExported&quot;: false,
+              &quot;isMethod&quot;: false,
+              &quot;className&quot;: &quot;&quot;,
+              &quot;calls&quot;: [],
+              &quot;calledBy&quot;: [
+                &quot;generateInteractiveHTML&quot;
+              ],
+              &quot;returnType&quot;: &quot;void&quot;,
+              &quot;body&quot;: &quot;{&#92;n  if (!fs.existsSync(dest)) {&#92;n    fs.mkdirSync(dest, { recursive: true });&#92;n  }&#92;n&#92;n  const entries = fs.readdirSync(src, { withFileTypes: true });&#92;n&#92;n  for (const entry of entries) {&#92;n    const srcPath = &quot;,
+              &quot;isNested&quot;: false,
+              &quot;parentFunction&quot;: &quot;&quot;,
+              &quot;isArrow&quot;: false,
+              &quot;isEventHandler&quot;: false,
+              &quot;eventType&quot;: &quot;&quot;,
+              &quot;depth&quot;: 0,
+              &quot;complexity&quot;: 0,
+              &quot;security&quot;: {
+                &quot;hasEval&quot;: false,
+                &quot;hasProcessEnv&quot;: false,
+                &quot;hasSensitiveData&quot;: false,
+                &quot;hasExec&quot;: false,
+                &quot;hasPassword&quot;: false
+              }
+            },
             {
               &quot;name&quot;: &quot;generateInteractiveHTML&quot;,
               &quot;params&quot;: [
@@ -21513,14 +21575,15 @@
                 &quot;any&quot;,
                 &quot;any&quot;
               ],
-              &quot;line&quot;: 20,
-              &quot;startLine&quot;: 20,
-              &quot;endLine&quot;: 159,
+              &quot;line&quot;: 41,
+              &quot;startLine&quot;: 41,
+              &quot;endLine&quot;: 201,
               &quot;isAsync&quot;: true,
               &quot;isExported&quot;: true,
               &quot;isMethod&quot;: false,
               &quot;className&quot;: &quot;&quot;,
               &quot;calls&quot;: [
+                &quot;copyDirectory&quot;,
                 &quot;String&quot;
               ],
               &quot;calledBy&quot;: [],
@@ -21562,9 +21625,9 @@
           &quot;classes&quot;: []
         },
         &quot;fileStats&quot;: {
-          &quot;size&quot;: 6140,
-          &quot;lines&quot;: 164,
-          &quot;functions&quot;: 1,
+          &quot;size&quot;: 7451,
+          &quot;lines&quot;: 206,
+          &quot;functions&quot;: 2,
           &quot;classes&quot;: 0,
           &quot;constants&quot;: 2,
           &quot;interfaces&quot;: 0,
@@ -31514,7 +31577,9 @@
         &quot;getFileNameForDisplay&quot;,
         &quot;escapeHtml&quot;
       ],
+      &quot;copyDirectory&quot;: [],
       &quot;generateInteractiveHTML&quot;: [
+        &quot;copyDirectory&quot;,
         &quot;String&quot;
       ],
       &quot;showHelp&quot;: [],
