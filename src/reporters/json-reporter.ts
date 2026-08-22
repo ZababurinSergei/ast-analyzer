@@ -46,6 +46,14 @@ function safeBoolean(value: any): boolean {
 }
 
 // ============================================================
+// ✅ ФИЛЬТР ДЛЯ РЕАЛЬНЫХ ОБЪЕКТОВ
+// ============================================================
+
+function isRealObject(item: any): boolean {
+  return item && typeof item === 'object' && !Array.isArray(item) && item.name !== undefined;
+}
+
+// ============================================================
 // СУЩЕСТВУЮЩИЕ ТИПЫ
 // ============================================================
 
@@ -527,15 +535,21 @@ function sanitizeEntities(report: any): any {
     // ✅ БЕЗОПАСНО ПОЛУЧАЕМ entities
     const entities = (pkg as any).entities || {};
 
+    // ✅ ФИЛЬТРУЕМ ТОЛЬКО РЕАЛЬНЫЕ ОБЪЕКТЫ
+    const filterRealObjects = (arr: any[]): any[] => {
+      if (!Array.isArray(arr)) return [];
+      return arr.filter((item: any) => isRealObject(item));
+    };
+
     sanitized.packages[modulePath] = {
       ...pkg,
       entities: {
-        functions: ensureArray(entities.functions),
-        constants: ensureArray(entities.constants),
-        variables: ensureArray(entities.variables),
-        interfaces: ensureArray(entities.interfaces),
-        types: ensureArray(entities.types),
-        classes: ensureArray(entities.classes),
+        functions: filterRealObjects(ensureArray(entities.functions)),
+        constants: filterRealObjects(ensureArray(entities.constants)),
+        variables: filterRealObjects(ensureArray(entities.variables)),
+        interfaces: filterRealObjects(ensureArray(entities.interfaces)),
+        types: filterRealObjects(ensureArray(entities.types)),
+        classes: filterRealObjects(ensureArray(entities.classes)),
       },
     };
   }
@@ -960,6 +974,7 @@ function findFileInProject(filePath: string, projectRoot: string): string | null
 
 /**
  * Безопасно обходит AST, защищая от циклических ссылок и переполнения стека
+ * ✅ ИСПРАВЛЕНО: не превращает объекты в строки [object Object]
  */
 export function safeTraverseAST(node: any, depth: number = 0, visited: WeakSet<any> = new WeakSet()): any {
   if (!node || typeof node !== 'object') return node;
@@ -976,12 +991,14 @@ export function safeTraverseAST(node: any, depth: number = 0, visited: WeakSet<a
     return '[Max Depth]';
   }
 
+  // ✅ Если это массив, обрабатываем каждый элемент
   if (Array.isArray(node)) {
     return node.map((item: any) => safeTraverseAST(item, depth + 1, visited));
   }
 
-  const result: Record<string, any> = {};
-  try {
+  // ✅ Если это объект с конструктором Object, обрабатываем его свойства
+  if (node.constructor && node.constructor.name === 'Object') {
+    const result: Record<string, any> = {};
     for (const key of Object.keys(node)) {
       // Пропускаем внутренние/несериализуемые свойства
       if (key === 'parent' || key === 'context' || key === 'scope' || key === 'ancestor' ||
@@ -995,26 +1012,40 @@ export function safeTraverseAST(node: any, depth: number = 0, visited: WeakSet<a
       if (typeof value === 'function') {
         result[key] = '[Function]';
       } else if (value && typeof value === 'object') {
-        // Проверяем, не является ли это Node.js объектом
-        if (value.constructor && value.constructor.name === 'Object') {
-          result[key] = safeTraverseAST(value, depth + 1, visited);
-        } else {
-          // Для других объектов (Date, RegExp, Map, Set и т.д.)
-          try {
-            result[key] = value.toString ? value.toString() : '[Object]';
-          } catch (error: any) {
-            result[key] = '[Object]';
-          }
-        }
+        // ✅ Не превращаем объекты в строки, а обрабатываем рекурсивно
+        result[key] = safeTraverseAST(value, depth + 1, visited);
       } else {
         result[key] = value;
       }
     }
-  } catch (error: any) {
-    return '[Error extracting properties]';
+    return result;
   }
 
-  return result;
+  // ✅ Для других объектов (Date, RegExp, Map, Set и т.д.) возвращаем их представление
+  try {
+    if (node.toString && node.toString() !== '[object Object]') {
+      return node.toString();
+    }
+    // Для объектов без понятного toString, пытаемся извлечь свойства
+    const result: Record<string, any> = {};
+    for (const key of Object.keys(node)) {
+      try {
+        const value = node[key];
+        if (typeof value === 'function') {
+          result[key] = '[Function]';
+        } else if (value && typeof value === 'object') {
+          result[key] = safeTraverseAST(value, depth + 1, visited);
+        } else {
+          result[key] = value;
+        }
+      } catch {
+        result[key] = '[Error]';
+      }
+    }
+    return Object.keys(result).length > 0 ? result : '[Object]';
+  } catch {
+    return '[Object]';
+  }
 }
 
 // ============================================================
@@ -1539,10 +1570,17 @@ function extractValueFromNode(node: any): any {
 
 /**
  * Преобразует EntitiesResult в EnhancedEntityInfo
+ * ✅ ИСПРАВЛЕНО: фильтруем только реальные объекты, игнорируем строки [object Object]
  */
 function convertToEnhancedEntityInfo(entities: EntitiesResult): EnhancedEntityInfo {
+  // ✅ ФИЛЬТРУЕМ ТОЛЬКО РЕАЛЬНЫЕ ОБЪЕКТЫ
+  const filterRealObjects = (arr: any[]): any[] => {
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((item: any) => isRealObject(item));
+  };
+
   return {
-    functions: ensureArray(entities.functions).map((f: any) => ({
+    functions: filterRealObjects(ensureArray(entities.functions)).map((f: any) => ({
       name: safeString(f.name),
       params: ensureArray(f.params).map((p: any) => safeString(p)),
       paramTypes: ensureArray(f.params).map(() => 'any'),
@@ -1572,21 +1610,21 @@ function convertToEnhancedEntityInfo(entities: EntitiesResult): EnhancedEntityIn
         hasPassword: false,
       },
     })),
-    constants: ensureArray(entities.constants).map((c: any) => ({
+    constants: filterRealObjects(ensureArray(entities.constants)).map((c: any) => ({
       name: safeString(c.name),
       value: c.value,
       line: safeNumber(c.line),
       isExported: safeBoolean(c.isExported),
       type: safeString(c.type),
     })),
-    variables: ensureArray(entities.variables).map((v: any) => ({
+    variables: filterRealObjects(ensureArray(entities.variables)).map((v: any) => ({
       name: safeString(v.name),
       value: v.value,
       line: safeNumber(v.line),
       isExported: safeBoolean(v.isExported),
       type: safeString(v.type),
     })),
-    interfaces: ensureArray(entities.interfaces).map((i: any) => ({
+    interfaces: filterRealObjects(ensureArray(entities.interfaces)).map((i: any) => ({
       name: safeString(i.name),
       properties: ensureArray(i.properties).map((p: any) => safeString(p)),
       line: safeNumber(i.line),
@@ -1595,13 +1633,13 @@ function convertToEnhancedEntityInfo(entities: EntitiesResult): EnhancedEntityIn
       startLine: safeNumber(i.startLine || i.line),
       endLine: safeNumber(i.endLine || i.line),
     })),
-    types: ensureArray(entities.types).map((t: any) => ({
+    types: filterRealObjects(ensureArray(entities.types)).map((t: any) => ({
       name: safeString(t.name),
       definition: safeString(t.definition),
       line: safeNumber(t.line),
       isExported: safeBoolean(t.isExported),
     })),
-    classes: ensureArray(entities.classes).map((c: any) => ({
+    classes: filterRealObjects(ensureArray(entities.classes)).map((c: any) => ({
       name: safeString(c.name),
       methods: ensureArray(c.methods).map((m: any) => safeString(m)),
       properties: ensureArray(c.properties).map((p: any) => safeString(p)),
