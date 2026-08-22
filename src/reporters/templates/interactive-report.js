@@ -856,7 +856,6 @@ class App {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }
-
   clearFocus() {
     this.currentFocusModule = null;
     this.currentFocusFunction = null;
