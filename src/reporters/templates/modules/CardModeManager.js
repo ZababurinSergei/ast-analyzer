@@ -5,7 +5,8 @@
 export class CardModeManager {
   constructor(app) {
     this.app = app;
-    this.currentMode = 'detailed';
+    // ✅ ИЗМЕНЕНО: режим по умолчанию теперь 'list'
+    this.currentMode = 'list';
     this.modes = {
       compact: {
         label: 'Компактный',
@@ -64,7 +65,9 @@ export class CardModeManager {
 
   createControlPanel() {
     const container = document.getElementById('modulesContainer');
-    if (!container) {return;}
+    if (!container) {
+      return;
+    }
 
     // Проверяем, существует ли уже панель
     let controlPanel = document.getElementById('cardModeControlPanel');
@@ -146,7 +149,9 @@ export class CardModeManager {
 
   injectStyles() {
     const styleId = 'card-mode-manager-styles';
-    if (document.getElementById(styleId)) {return;}
+    if (document.getElementById(styleId)) {
+      return;
+    }
 
     const styles = `
       <style id="${styleId}">
@@ -327,7 +332,9 @@ export class CardModeManager {
 
   applyMode(mode) {
     const config = this.modes[mode];
-    if (!config) {return;}
+    if (!config) {
+      return;
+    }
 
     const cards = document.querySelectorAll('.module-card');
     const grid = document.getElementById('modulesGrid');
@@ -376,10 +383,14 @@ export class CardModeManager {
       // В минимальном режиме скрываем пути
       if (mode === 'minimal') {
         const path = card.querySelector('.path');
-        if (path) {path.style.display = 'none';}
+        if (path) {
+          path.style.display = 'none';
+        }
       } else {
         const path = card.querySelector('.path');
-        if (path) {path.style.display = 'block';}
+        if (path) {
+          path.style.display = 'block';
+        }
       }
     });
   }
@@ -390,7 +401,9 @@ export class CardModeManager {
     cards.forEach(card => {
       const modulePath = card.dataset.module;
       const pkg = this.app.reportData.packages[modulePath];
-      if (!pkg) {return;}
+      if (!pkg) {
+        return;
+      }
 
       let visible = true;
 
@@ -411,7 +424,9 @@ export class CardModeManager {
           (this.filters.types.types && hasType) ||
           (this.filters.types.variables && hasVariable);
 
-        if (!hasAnyType) {visible = false;}
+        if (!hasAnyType) {
+          visible = false;
+        }
       }
 
       // Фильтр "Только экспорты"
@@ -419,13 +434,17 @@ export class CardModeManager {
         const hasExports =
           (pkg.entities?.functions || []).some(f => f.isExported) ||
           (pkg.entities?.classes || []).some(c => c.isExported);
-        if (!hasExports) {visible = false;}
+        if (!hasExports) {
+          visible = false;
+        }
       }
 
       // Фильтр "С вызовами"
       if (visible && this.filters.withCalls) {
         const hasCalls = (pkg.entities?.functions || []).some(f => (f.calls?.length || 0) > 0);
-        if (!hasCalls) {visible = false;}
+        if (!hasCalls) {
+          visible = false;
+        }
       }
 
       card.style.display = visible ? '' : 'none';
@@ -442,7 +461,9 @@ export class CardModeManager {
       counter.id = 'cardCounter';
       counter.className = 'card-counter';
       const grid = document.getElementById('modulesGrid');
-      if (grid) {grid.parentNode.insertBefore(counter, grid);}
+      if (grid) {
+        grid.parentNode.insertBefore(counter, grid);
+      }
     }
     counter.textContent = `📊 Показано: ${visible} из ${totalCount} модулей`;
   }
@@ -470,7 +491,7 @@ export class CardModeManager {
     }
 
     // Сброс режима на детальный
-    this.setMode('detailed');
+    this.setMode('list');
 
     // Применяем фильтры
     this.applyFilters();
@@ -499,7 +520,9 @@ export class CardModeManager {
     if (filters.search !== undefined) {
       this.filters.search = filters.search;
       const searchInput = document.getElementById('searchInput');
-      if (searchInput) {searchInput.value = filters.search;}
+      if (searchInput) {
+        searchInput.value = filters.search;
+      }
     }
 
     if (filters.types) {
@@ -507,7 +530,9 @@ export class CardModeManager {
         if (key in this.filters.types) {
           this.filters.types[key] = value;
           const cb = document.querySelector(`.filter-checkbox[data-filter="${key}"]`);
-          if (cb) {cb.checked = value;}
+          if (cb) {
+            cb.checked = value;
+          }
         }
       }
     }
@@ -515,13 +540,17 @@ export class CardModeManager {
     if (filters.exportedOnly !== undefined) {
       this.filters.exportedOnly = filters.exportedOnly;
       const cb = document.querySelector('.filter-checkbox[data-filter="exportedOnly"]');
-      if (cb) {cb.checked = filters.exportedOnly;}
+      if (cb) {
+        cb.checked = filters.exportedOnly;
+      }
     }
 
     if (filters.withCalls !== undefined) {
       this.filters.withCalls = filters.withCalls;
       const cb = document.querySelector('.filter-checkbox[data-filter="withCalls"]');
-      if (cb) {cb.checked = filters.withCalls;}
+      if (cb) {
+        cb.checked = filters.withCalls;
+      }
     }
 
     this.applyFilters();

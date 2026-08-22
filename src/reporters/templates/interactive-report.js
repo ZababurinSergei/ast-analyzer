@@ -39,7 +39,9 @@ const rawReportData = context;
 const rawFunctionsData = [];
 
 for (const [modulePath, pkg] of Object.entries(context.packages || {})) {
-  if (!pkg) {continue;}
+  if (!pkg) {
+    continue;
+  }
   for (const func of pkg.entities?.functions || []) {
     rawFunctionsData.push({ modulePath, func });
   }
@@ -68,7 +70,9 @@ if (DataConverter && rawReportData) {
   if (REPORT_DATA && REPORT_DATA.packages) {
     ALL_FUNCTIONS_DATA = [];
     for (const [modulePath, pkg] of Object.entries(REPORT_DATA.packages)) {
-      if (!pkg) {continue;}
+      if (!pkg) {
+        continue;
+      }
       for (const func of pkg.entities?.functions || []) {
         ALL_FUNCTIONS_DATA.push({ modulePath, func });
       }
@@ -162,7 +166,9 @@ class App {
   }
 
   updateStats() {
-    if (!this.reportData) {return;}
+    if (!this.reportData) {
+      return;
+    }
     const stats = this.reportData.fileStats || {};
     const entityStats = this.reportData.entityStats || {};
 
@@ -176,7 +182,9 @@ class App {
   }
 
   escapeHtml(str) {
-    if (!str) {return '';}
+    if (!str) {
+      return '';
+    }
     return String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
@@ -186,7 +194,9 @@ class App {
   }
 
   escapeJs(str) {
-    if (!str) {return '';}
+    if (!str) {
+      return '';
+    }
     return String(str).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/'/g, "\\'");
   }
 
@@ -207,9 +217,11 @@ class App {
     this.cardManager.focusFunction(funcName, modulePath);
   }
 
+  // ✅ ОБНОВЛЕНО: clearFocus теперь обновляет breadcrumbs
   clearFocus() {
     this.cardManager.clearFocus();
     this.breadcrumbManager.clear();
+    this.breadcrumbManager.updateBreadcrumbs(null, null);
     this.graphManager.updateView();
   }
 
