@@ -732,3 +732,32 @@ body {
     clip: rect(0, 0, 0, 0);
     border: 0;
 }
+
+/* ============================================
+   УРОВНИ ВЛОЖЕННОСТИ
+   ============================================ */
+.badge.level {
+    background: #1a1a3a;
+    color: #60a5fa;
+    border: 1px solid #2a2a4a;
+    font-weight: 600;
+}
+
+.level-badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    background: #0f172a;
+    color: #60a5fa;
+    border: 1px solid #1a2a4a;
+}
+
+/* Разные цвета для разных уровней */
+.level-0 .badge.level { color: #fbbf24; border-color: #fbbf24; }
+.level-1 .badge.level { color: #60a5fa; border-color: #60a5fa; }
+.level-2 .badge.level { color: #4ade80; border-color: #4ade80; }
+.level-3 .badge.level { color: #a78bfa; border-color: #a78bfa; }
+.level-4 .badge.level { color: #f472b6; border-color: #f472b6; }
+.level-5 .badge.level { color: #f59e0b; border-color: #f59e0b; }

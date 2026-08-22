@@ -18,22 +18,45 @@ export class CardManager {
   }
 
   /**
+   * Получает уровень вложенности модуля
+   */
+  getModuleLevel(modulePath) {
+    const reportData = this.app.reportData;
+    if (!reportData) return 0;
+
+    // Проверяем, есть ли уровень в architectureMetrics
+    if (reportData.architectureMetrics?.modulesByLevel) {
+      const levels = reportData.architectureMetrics.modulesByLevel;
+      for (const [level, modules] of Object.entries(levels)) {
+        if (modules.includes(modulePath)) {
+          return parseInt(level, 10);
+        }
+      }
+    }
+
+    // Если уровень не найден, вычисляем по графу зависимостей
+    const levels = reportData.levels || {};
+    return levels[modulePath] !== undefined ? levels[modulePath] : 0;
+  }
+
+  /**
    * Рендерит все карточки модулей
    */
   renderModules() {
     const grid = document.getElementById('modulesGrid');
     grid.innerHTML = '';
     const moduleEntries = Object.entries(this.app.reportData.packages || {});
+
+    // Сортировка по уровню вложенности (сначала корневые)
     moduleEntries.sort((a, b) => {
-      const aEntry = a[1]?.isEntry ? 0 : 1;
-      const bEntry = b[1]?.isEntry ? 0 : 1;
-      return aEntry - bEntry;
+      const levelA = this.getModuleLevel(a[0]);
+      const levelB = this.getModuleLevel(b[0]);
+      return levelA - levelB;
     });
 
     for (const [modulePath, pkg] of moduleEntries) {
-      if (!pkg) {
-        continue;
-      }
+      if (!pkg) continue;
+
       const moduleCard = document.createElement('div');
       moduleCard.className = 'module-card';
       moduleCard.dataset.module = modulePath;
@@ -45,14 +68,17 @@ export class CardManager {
       const language = pkg.language || 'javascript';
       const lines = pkg.fileStats?.lines || 0;
 
+      // Получаем уровень вложенности
+      const level = this.getModuleLevel(modulePath);
+      const levelDisplay = level === 0 ? '🌌' : `📁 L${level}`;
+      const levelClass = `level-${Math.min(level, 5)}`;
+
       // Собираем все вызовы и вызывающих
       const allCalls = new Map();
       const allCallers = new Map();
 
       for (const func of funcs) {
-        if (!func || !func.name) {
-          continue;
-        }
+        if (!func || !func.name) continue;
         for (const call of func.calls || []) {
           if (!allCalls.has(call)) {
             allCalls.set(call, []);
@@ -69,9 +95,7 @@ export class CardManager {
 
       let funcsHtml = '';
       for (const func of funcs) {
-        if (!func || !func.name) {
-          continue;
-        }
+        if (!func || !func.name) continue;
         const funcName = this.app.escapeHtml(func.name);
         const modulePathEscaped = this.app.escapeHtml(modulePath);
         const paramsStr = (func.params || []).map(p => this.app.escapeHtml(p)).join(', ');
@@ -133,16 +157,23 @@ export class CardManager {
         navHtml += `</div>`;
       }
 
+      // Добавляем отображение уровня в карточке
       moduleCard.innerHTML = `
         <div class=\"header-row\">
           <div>
-            <div class=\"name\">${isEntry ? '⭐ ' : ''}${this.app.escapeHtml(displayName)}</div>
+            <div class=\"name ${levelClass}\">
+              ${isEntry ? '⭐ ' : ''}${this.app.escapeHtml(displayName)}
+              <span class=\"level-badge\">
+                ${levelDisplay}
+              </span>
+            </div>
             <div class=\"path\">${this.app.escapeHtml(modulePath)}</div>
           </div>
           <div style=\"display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end;\">
             <span class=\"badge lang\">${this.app.escapeHtml(language)}</span>
             ${isEntry ? '<span class=\"badge export\">⭐ entry</span>' : ''}
             <span class=\"badge lines\">${lines} строк</span>
+            <span class=\"badge level ${levelClass}\">${levelDisplay}</span>
           </div>
         </div>
         <div class=\"badges\">
@@ -183,14 +214,17 @@ export class CardManager {
     info.classList.add('active');
     const pkg = this.app.reportData.packages[modulePath];
     const displayName = pkg?.displayPath || modulePath.split('/').pop() || modulePath;
-    document.getElementById('focusTitle').textContent = '🎯 Фокус: ' + displayName;
+    const level = this.getModuleLevel(modulePath);
+    const levelDisplay = level === 0 ? '🌌' : `L${level}`;
+    document.getElementById('focusTitle').textContent = `🎯 Фокус: ${displayName} (${levelDisplay})`;
     if (pkg) {
       const funcs = pkg.entities?.functions || [];
       document.getElementById('focusDetails').textContent =
         'Функций: ' +
         funcs.length +
         ' | Экспортов: ' +
-        (pkg.exports ? Object.keys(pkg.exports).length : 0);
+        (pkg.exports ? Object.keys(pkg.exports).length : 0) +
+        ' | Уровень: ' + levelDisplay;
     }
 
     const card = document.querySelector(`.module-card[data-module=\"${modulePath}\"]`);
@@ -225,7 +259,9 @@ export class CardManager {
 
     const info = document.getElementById('focusInfo');
     info.classList.add('active');
-    document.getElementById('focusTitle').textContent = '🎯 Функция: ' + funcName;
+    const level = this.getModuleLevel(modulePath);
+    const levelDisplay = level === 0 ? '🌌' : `L${level}`;
+    document.getElementById('focusTitle').textContent = `🎯 Функция: ${funcName} (${levelDisplay})`;
 
     let funcData = null;
     const graphNodes = this.app.graphManager?.getGraphNodes() || [];
@@ -243,7 +279,8 @@ export class CardManager {
         ' | Вызовов: ' +
         (funcData.calls || []).length +
         ' | Кем вызвана: ' +
-        (funcData.calledBy || []).length;
+        (funcData.calledBy || []).length +
+        ' | Уровень: ' + levelDisplay;
     }
     this.showDetail(funcData || { name: funcName, module: modulePath });
 
@@ -291,7 +328,7 @@ export class CardManager {
     this.closeDetail();
     this.app.graphManager?.updateView();
 
-    // ✅ Обновляем breadcrumbs до состояния Universe
+    // Обновляем breadcrumbs до состояния Universe
     this.app.breadcrumbManager?.updateBreadcrumbs(null, null);
   }
 
@@ -321,6 +358,14 @@ export class CardManager {
       '<div class=\"item\"><span class=\"label\">Возврат:</span> ' +
       (data.returnType || 'any') +
       '</div>';
+
+    // Добавляем уровень вложенности в детали
+    if (data.module) {
+      const level = this.getModuleLevel(data.module);
+      const levelDisplay = level === 0 ? '🌌' : `L${level}`;
+      html += `<div class=\"item\"><span class=\"label\">Уровень:</span> ${levelDisplay}</div>`;
+    }
+
     html += '</div>';
 
     const params = data.params || [];
