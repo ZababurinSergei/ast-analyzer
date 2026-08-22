@@ -512,7 +512,7 @@ export class CardModeManager {
   }
 
   getCurrentConfig() {
-    return this.modes[this.currentMode] || this.modes.list;
+    return this.modes[this.currentMode] || this.modes.detailed;
   }
 
   // Метод для программного обновления фильтров

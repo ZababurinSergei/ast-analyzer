@@ -42,9 +42,9 @@
     <!-- Режимы карточек -->
     <div class="group" role="group" aria-label="Режимы отображения карточек">
       <span class="group-label" id="cardModeLabel">Режим карточек:</span>
-      <button class="active" data-card-mode="detailed" onclick="getApp()?.cardModeManager?.setMode('detailed')" aria-label="Детальный режим карточек" aria-pressed="true">📋 Детально</button>
+      <button data-card-mode="detailed" onclick="getApp()?.cardModeManager?.setMode('detailed')" aria-label="Детальный режим карточек" aria-pressed="false">📋 Детально</button>
       <button data-card-mode="compact" onclick="getApp()?.cardModeManager?.setMode('compact')" aria-label="Компактный режим карточек" aria-pressed="false">📦 Компактно</button>
-      <button data-card-mode="list" onclick="getApp()?.cardModeManager?.setMode('list')" aria-label="Режим списка" aria-pressed="false">📄 Список</button>
+      <button class="active" data-card-mode="list" onclick="getApp()?.cardModeManager?.setMode('list')" aria-label="Режим списка" aria-pressed="true">📄 Список</button>
     </div>
 
     <!-- Фокус -->

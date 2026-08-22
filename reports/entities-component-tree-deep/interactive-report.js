@@ -134,9 +134,6 @@ class App {
     this.graphManager.init();
     this.breadcrumbManager.init();
 
-    // ✅ Обновляем breadcrumbs до состояния Universe
-    this.breadcrumbManager.updateBreadcrumbs(null, null);
-
     // Настройка режимов
     this.graphModeManager.init();
     this.cardModeManager.init();
@@ -146,23 +143,23 @@ class App {
 
     console.log('✅ AST Interactive Report initialized');
     console.log(
-      '🔑 App instance available via: globalThis[Symbol.for("__AST_INTERACTIVE_APP_INSTANCE__")]'
+      '🔑 App instance available via: globalThis[Symbol.for("__AST_INTERACTIVE_APP_INSTANCE__")]',
     );
   }
 
   showPlaceholder() {
     const grid = document.getElementById('modulesGrid');
     grid.innerHTML = `
-      <div style=\"grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #94a3b8;\">
-        <div style=\"font-size: 48px; margin-bottom: 20px;\">📊</div>
-        <h3 style=\"color: #60a5fa; margin-bottom: 10px;\">Нет данных для отображения</h3>
-        <p style=\"font-size: 14px; max-width: 500px; margin: 0 auto;\">
+      <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #94a3b8;">
+        <div style="font-size: 48px; margin-bottom: 20px;">📊</div>
+        <h3 style="color: #60a5fa; margin-bottom: 10px;">Нет данных для отображения</h3>
+        <p style="font-size: 14px; max-width: 500px; margin: 0 auto;">
           Данные не загружены. Убедитесь, что файл package-lock-report.json существует.
         </p>
       </div>
     `;
     document.getElementById('d3GraphWrapper').innerHTML = `
-      <div style=\"display:flex; align-items:center; justify-content:center; height:100%; color:#64748b; font-size:16px;\">
+      <div style="display:flex; align-items:center; justify-content:center; height:100%; color:#64748b; font-size:16px;">
         📊 Нет данных для отображения графа
       </div>
     `;
@@ -220,9 +217,11 @@ class App {
     this.cardManager.focusFunction(funcName, modulePath);
   }
 
+  // ✅ ОБНОВЛЕНО: clearFocus теперь обновляет breadcrumbs
   clearFocus() {
     this.cardManager.clearFocus();
     this.breadcrumbManager.clear();
+    this.breadcrumbManager.updateBreadcrumbs(null, null);
     this.graphManager.updateView();
   }
 

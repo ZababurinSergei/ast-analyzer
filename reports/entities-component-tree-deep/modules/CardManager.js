@@ -44,10 +44,8 @@ export class CardManager {
    */
   renderModules() {
     const grid = document.getElementById('modulesGrid');
-    if (!grid) return;
-
     grid.innerHTML = '';
-    const moduleEntries = Object.entries(this.app.reportData?.packages || {});
+    const moduleEntries = Object.entries(this.app.reportData.packages || {});
 
     // Сортировка по уровню вложенности (сначала корневые)
     moduleEntries.sort((a, b) => {
@@ -109,27 +107,25 @@ export class CardManager {
         const isAsync = func.isAsync || false;
         const lineNum = func.line || 0;
 
-        // Исправленное формирование onclick атрибута
         const onclickAttr = `onclick="event.stopPropagation(); getApp()?.focusFunction('${this.app.escapeJs(func.name)}', '${this.app.escapeJs(modulePath)}')"`;
-
-        funcsHtml += `<div class="func-item" ${onclickAttr} data-func="${funcName}" data-module="${modulePathEscaped}">`;
-        funcsHtml += `<span class="func-name">${funcName}</span>`;
+        funcsHtml += `<div class=\"func-item\" ${onclickAttr} data-func=\"${funcName}\" data-module=\"${modulePathEscaped}\">`;
+        funcsHtml += `<span class=\"func-name\">${funcName}</span>`;
         if (isExported) {
-          funcsHtml += `<span class="func-export">📤</span>`;
+          funcsHtml += `<span class=\"func-export\">📤</span>`;
         }
         if (isAsync) {
-          funcsHtml += `<span class="func-async">⚡</span>`;
+          funcsHtml += `<span class=\"func-async\">⚡</span>`;
         }
         if (func.params && func.params.length > 0) {
-          funcsHtml += `<span class="func-params">(${paramsStr})</span>`;
+          funcsHtml += `<span class=\"func-params\">(${paramsStr})</span>`;
         }
         if (func.calls && func.calls.length > 0) {
-          funcsHtml += `<span class="func-calls">→ ${callsStr}${func.calls.length > 3 ? '...' : ''}</span>`;
+          funcsHtml += `<span class=\"func-calls\">→ ${callsStr}${func.calls.length > 3 ? '...' : ''}</span>`;
         }
         if (func.calledBy && func.calledBy.length > 0) {
-          funcsHtml += `<span class="func-called">← ${func.calledBy.length}</span>`;
+          funcsHtml += `<span class=\"func-called\">← ${func.calledBy.length}</span>`;
         }
-        funcsHtml += `<span class="func-line">стр.${lineNum}</span>`;
+        funcsHtml += `<span class=\"func-line\">стр.${lineNum}</span>`;
         funcsHtml += `</div>`;
       }
 
@@ -137,59 +133,58 @@ export class CardManager {
       let navHtml = '';
       const moduleCalls = Array.from(allCalls.keys()).filter(c => funcs.some(f => f.name === c));
       const moduleCallers = Array.from(allCallers.keys()).filter(c =>
-        funcs.some(f => f.name === c)
-      );
+        funcs.some(f => f.name === c));
 
       if (moduleCalls.length > 0) {
-        navHtml += `<div class="nav-section"><span class="nav-label">📤 Выходы (вызовы):</span>`;
+        navHtml += `<div class=\"nav-section\"><span class=\"nav-label\">📤 Выходы (вызовы):</span>`;
         for (const call of moduleCalls.slice(0, 5)) {
-          navHtml += `<button class="nav-btn" onclick="getApp()?.focusFunction('${this.app.escapeJs(call)}', '${this.app.escapeJs(modulePath)}')">${this.app.escapeHtml(call)}</button>`;
+          navHtml += `<button class=\"nav-btn\" onclick=\"getApp()?.focusFunction('${this.app.escapeJs(call)}', '${this.app.escapeJs(modulePath)}')\">${this.app.escapeHtml(call)}</button>`;
         }
         if (moduleCalls.length > 5) {
-          navHtml += `<span class="nav-more">+${moduleCalls.length - 5}</span>`;
+          navHtml += `<span class=\"nav-more\">+${moduleCalls.length - 5}</span>`;
         }
         navHtml += `</div>`;
       }
 
       if (moduleCallers.length > 0) {
-        navHtml += `<div class="nav-section"><span class="nav-label">📥 Входы (кто вызывает):</span>`;
+        navHtml += `<div class=\"nav-section\"><span class=\"nav-label\">📥 Входы (кто вызывает):</span>`;
         for (const caller of moduleCallers.slice(0, 5)) {
-          navHtml += `<button class="nav-btn" onclick="getApp()?.focusFunction('${this.app.escapeJs(caller)}', '${this.app.escapeJs(modulePath)}')">${this.app.escapeHtml(caller)}</button>`;
+          navHtml += `<button class=\"nav-btn\" onclick=\"getApp()?.focusFunction('${this.app.escapeJs(caller)}', '${this.app.escapeJs(modulePath)}')\">${this.app.escapeHtml(caller)}</button>`;
         }
         if (moduleCallers.length > 5) {
-          navHtml += `<span class="nav-more">+${moduleCallers.length - 5}</span>`;
+          navHtml += `<span class=\"nav-more\">+${moduleCallers.length - 5}</span>`;
         }
         navHtml += `</div>`;
       }
 
       // Добавляем отображение уровня в карточке
       moduleCard.innerHTML = `
-        <div class="header-row">
+        <div class=\"header-row\">
           <div>
-            <div class="name ${levelClass}">
+            <div class=\"name ${levelClass}\">
               ${isEntry ? '⭐ ' : ''}${this.app.escapeHtml(displayName)}
-              <span class="level-badge">
+              <span class=\"level-badge\">
                 ${levelDisplay}
               </span>
             </div>
-            <div class="path">${this.app.escapeHtml(modulePath)}</div>
+            <div class=\"path\">${this.app.escapeHtml(modulePath)}</div>
           </div>
-          <div style="display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end;">
-            <span class="badge lang">${this.app.escapeHtml(language)}</span>
-            ${isEntry ? '<span class="badge export">⭐ entry</span>' : ''}
-            <span class="badge lines">${lines} строк</span>
-            <span class="badge level ${levelClass}">${levelDisplay}</span>
+          <div style=\"display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end;\">
+            <span class=\"badge lang\">${this.app.escapeHtml(language)}</span>
+            ${isEntry ? '<span class=\"badge export\">⭐ entry</span>' : ''}
+            <span class=\"badge lines\">${lines} строк</span>
+            <span class=\"badge level ${levelClass}\">${levelDisplay}</span>
           </div>
         </div>
-        <div class="badges">
-          <span class="badge fn">${funcs.length} функций</span>
-          ${pkg.entities?.classes?.length > 0 ? `<span class="badge class">${pkg.entities.classes.length} классов</span>` : ''}
-          ${pkg.entities?.constants?.length > 0 ? `<span class="badge const">${pkg.entities.constants.length} констант</span>` : ''}
-          ${pkg.entities?.interfaces?.length > 0 ? `<span class="badge interface">${pkg.entities.interfaces.length} интерфейсов</span>` : ''}
-          ${pkg.entities?.types?.length > 0 ? `<span class="badge type">${pkg.entities.types.length} типов</span>` : ''}
-          ${pkg.entities?.variables?.length > 0 ? `<span class="badge var">${pkg.entities.variables.length} переменных</span>` : ''}
+        <div class=\"badges\">
+          <span class=\"badge fn\">${funcs.length} функций</span>
+          ${pkg.entities?.classes?.length > 0 ? `<span class=\"badge class\">${pkg.entities.classes.length} классов</span>` : ''}
+          ${pkg.entities?.constants?.length > 0 ? `<span class=\"badge const\">${pkg.entities.constants.length} констант</span>` : ''}
+          ${pkg.entities?.interfaces?.length > 0 ? `<span class=\"badge interface\">${pkg.entities.interfaces.length} интерфейсов</span>` : ''}
+          ${pkg.entities?.types?.length > 0 ? `<span class=\"badge type\">${pkg.entities.types.length} типов</span>` : ''}
+          ${pkg.entities?.variables?.length > 0 ? `<span class=\"badge var\">${pkg.entities.variables.length} переменных</span>` : ''}
         </div>
-        <div class="functions-list">${funcsHtml}</div>
+        <div class=\"functions-list\">${funcsHtml}</div>
         ${navHtml}
       `;
       grid.appendChild(moduleCard);
@@ -216,27 +211,23 @@ export class CardManager {
     });
 
     const info = document.getElementById('focusInfo');
-    if (info) {
-      info.classList.add('active');
-      const pkg = this.app.reportData?.packages?.[modulePath];
-      const displayName = pkg?.displayPath || modulePath.split('/').pop() || modulePath;
-      const level = this.getModuleLevel(modulePath);
-      const levelDisplay = level === 0 ? '🌌' : `L${level}`;
-      document.getElementById('focusTitle').textContent =
-        `🎯 Фокус: ${displayName} (${levelDisplay})`;
-      if (pkg) {
-        const funcs = pkg.entities?.functions || [];
-        document.getElementById('focusDetails').textContent =
-          'Функций: ' +
-          funcs.length +
-          ' | Экспортов: ' +
-          (pkg.exports ? Object.keys(pkg.exports).length : 0) +
-          ' | Уровень: ' +
-          levelDisplay;
-      }
+    info.classList.add('active');
+    const pkg = this.app.reportData.packages[modulePath];
+    const displayName = pkg?.displayPath || modulePath.split('/').pop() || modulePath;
+    const level = this.getModuleLevel(modulePath);
+    const levelDisplay = level === 0 ? '🌌' : `L${level}`;
+    document.getElementById('focusTitle').textContent = `🎯 Фокус: ${displayName} (${levelDisplay})`;
+    if (pkg) {
+      const funcs = pkg.entities?.functions || [];
+      document.getElementById('focusDetails').textContent =
+        'Функций: ' +
+        funcs.length +
+        ' | Экспортов: ' +
+        (pkg.exports ? Object.keys(pkg.exports).length : 0) +
+        ' | Уровень: ' + levelDisplay;
     }
 
-    const card = document.querySelector(`.module-card[data-module="${modulePath}"]`);
+    const card = document.querySelector(`.module-card[data-module=\"${modulePath}\"]`);
     if (card) {
       card.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
@@ -267,39 +258,34 @@ export class CardManager {
     });
 
     const info = document.getElementById('focusInfo');
-    if (info) {
-      info.classList.add('active');
-      const level = this.getModuleLevel(modulePath);
-      const levelDisplay = level === 0 ? '🌌' : `L${level}`;
-      document.getElementById('focusTitle').textContent =
-        `🎯 Функция: ${funcName} (${levelDisplay})`;
+    info.classList.add('active');
+    const level = this.getModuleLevel(modulePath);
+    const levelDisplay = level === 0 ? '🌌' : `L${level}`;
+    document.getElementById('focusTitle').textContent = `🎯 Функция: ${funcName} (${levelDisplay})`;
 
-      let funcData = null;
-      const graphNodes = this.app.graphManager?.getGraphNodes() || [];
-      for (const node of graphNodes) {
-        if (node.type === 'function' && node.name === funcName && node.module === modulePath) {
-          funcData = node;
-          break;
-        }
+    let funcData = null;
+    const graphNodes = this.app.graphManager?.getGraphNodes() || [];
+    for (const node of graphNodes) {
+      if (node.type === 'function' && node.name === funcName && node.module === modulePath) {
+        funcData = node;
+        break;
       }
-      if (funcData) {
-        const displayName = modulePath.split('/').pop() || modulePath;
-        document.getElementById('focusDetails').textContent =
-          'Модуль: ' + displayName + ' | Параметры: ' + (funcData.params || []).join(', ') ||
-          'нет' +
-            ' | Вызовов: ' +
-            (funcData.calls || []).length +
-            ' | Кем вызвана: ' +
-            (funcData.calledBy || []).length +
-            ' | Уровень: ' +
-            levelDisplay;
-      }
+    }
+    if (funcData) {
+      const displayName = modulePath.split('/').pop() || modulePath;
+      document.getElementById('focusDetails').textContent =
+        'Модуль: ' + displayName + ' | Параметры: ' + (funcData.params || []).join(', ') ||
+        'нет' +
+        ' | Вызовов: ' +
+        (funcData.calls || []).length +
+        ' | Кем вызвана: ' +
+        (funcData.calledBy || []).length +
+        ' | Уровень: ' + levelDisplay;
     }
     this.showDetail(funcData || { name: funcName, module: modulePath });
 
     const el = document.querySelector(
-      `.func-item[data-func="${funcName}"][data-module="${modulePath}"]`
-    );
+      `.func-item[data-func=\"${funcName}\"][data-module=\"${modulePath}\"]`);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
@@ -331,10 +317,7 @@ export class CardManager {
     this.currentFocusFunction = null;
     this.navigationStack = [];
 
-    const info = document.getElementById('focusInfo');
-    if (info) {
-      info.classList.remove('active');
-    }
+    document.getElementById('focusInfo').classList.remove('active');
     document.querySelectorAll('.module-card').forEach(c => {
       c.classList.remove('active');
     });
@@ -355,26 +338,24 @@ export class CardManager {
    */
   showDetail(data) {
     const panel = document.getElementById('detailPanel');
-    if (!panel) return;
-
     document.getElementById('dpTitle').textContent = data.name || 'Функция';
     let html = '';
-    html += '<div class="dp-section"><h4>Информация</h4>';
+    html += '<div class=\"dp-section\"><h4>Информация</h4>';
     html +=
-      '<div class="item"><span class="label">Модуль:</span> ' +
+      '<div class=\"item\"><span class=\"label\">Модуль:</span> ' +
       (data.module || 'неизвестен') +
       '</div>';
-    html += '<div class="item"><span class="label">Строка:</span> ' + (data.line || 0) + '</div>';
+    html += '<div class=\"item\"><span class=\"label\">Строка:</span> ' + (data.line || 0) + '</div>';
     html +=
-      '<div class="item"><span class="label">Экспортирована:</span> ' +
+      '<div class=\"item\"><span class=\"label\">Экспортирована:</span> ' +
       (data.isExported ? '✅' : '❌') +
       '</div>';
     html +=
-      '<div class="item"><span class="label">Асинхронная:</span> ' +
+      '<div class=\"item\"><span class=\"label\">Асинхронная:</span> ' +
       (data.isAsync ? '✅' : '❌') +
       '</div>';
     html +=
-      '<div class="item"><span class="label">Возврат:</span> ' +
+      '<div class=\"item\"><span class=\"label\">Возврат:</span> ' +
       (data.returnType || 'any') +
       '</div>';
 
@@ -382,42 +363,42 @@ export class CardManager {
     if (data.module) {
       const level = this.getModuleLevel(data.module);
       const levelDisplay = level === 0 ? '🌌' : `L${level}`;
-      html += `<div class="item"><span class="label">Уровень:</span> ${levelDisplay}</div>`;
+      html += `<div class=\"item\"><span class=\"label\">Уровень:</span> ${levelDisplay}</div>`;
     }
 
     html += '</div>';
 
     const params = data.params || [];
     if (params.length > 0) {
-      html += '<div class="dp-section"><h4>Параметры</h4>';
+      html += '<div class=\"dp-section\"><h4>Параметры</h4>';
       for (const p of params) {
-        html += '<div class="item">' + this.app.escapeHtml(p) + '</div>';
+        html += '<div class=\"item\">' + this.app.escapeHtml(p) + '</div>';
       }
       html += '</div>';
     }
 
     const calls = data.calls || [];
     if (calls.length > 0) {
-      html += '<div class="dp-section"><h4>📞 Вызовы (кто вызывается)</h4>';
+      html += '<div class=\"dp-section\"><h4>📞 Вызовы (кто вызывается)</h4>';
       for (const call of calls) {
-        html += `<div class="item" style="cursor:pointer;color:#f59e0b;" onclick="getApp()?.focusFunction('${this.app.escapeJs(call)}', '${this.app.escapeJs(data.module || '')}')">→ ${this.app.escapeHtml(call)}</div>`;
+        html += `<div class=\"item\" style=\"cursor:pointer;color:#f59e0b;\" onclick=\"getApp()?.focusFunction('${this.app.escapeJs(call)}', '${this.app.escapeJs(data.module || '')}')\">→ ${this.app.escapeHtml(call)}</div>`;
       }
       html += '</div>';
     }
 
     const calledBy = data.calledBy || [];
     if (calledBy.length > 0) {
-      html += '<div class="dp-section"><h4>📥 Кто вызывает</h4>';
+      html += '<div class=\"dp-section\"><h4>📥 Кто вызывает</h4>';
       for (const caller of calledBy) {
-        html += `<div class="item" style="cursor:pointer;color:#3b82f6;" onclick="getApp()?.focusFunction('${this.app.escapeJs(caller)}', '${this.app.escapeJs(data.module || '')}')">← ${this.app.escapeHtml(caller)}</div>`;
+        html += `<div class=\"item\" style=\"cursor:pointer;color:#3b82f6;\" onclick=\"getApp()?.focusFunction('${this.app.escapeJs(caller)}', '${this.app.escapeJs(data.module || '')}')\">← ${this.app.escapeHtml(caller)}</div>`;
       }
       html += '</div>';
     }
 
     if (data.body) {
       const bodyPreview = data.body.length > 200 ? data.body.substring(0, 200) + '...' : data.body;
-      html += '<div class="dp-section"><h4>Тело (сокращённо)</h4>';
-      html += `<div class="item" style="font-size:10px;color:#94a3b8;white-space:pre-wrap;background:#0f172a;padding:8px;border-radius:4px;">${this.app.escapeHtml(bodyPreview)}</div>`;
+      html += '<div class=\"dp-section\"><h4>Тело (сокращённо)</h4>';
+      html += `<div class=\"item\" style=\"font-size:10px;color:#94a3b8;white-space:pre-wrap;background:#0f172a;padding:8px;border-radius:4px;\">${this.app.escapeHtml(bodyPreview)}</div>`;
       html += '</div>';
     }
 
@@ -429,10 +410,7 @@ export class CardManager {
    * Закрывает панель деталей
    */
   closeDetail() {
-    const panel = document.getElementById('detailPanel');
-    if (panel) {
-      panel.classList.remove('active');
-    }
+    document.getElementById('detailPanel').classList.remove('active');
   }
 
   /**
