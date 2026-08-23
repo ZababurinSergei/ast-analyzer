@@ -36,8 +36,8 @@ import { DetailPanelRenderer } from './CardManager/DetailPanelRenderer.js';
  * - Источник вызова (top-level или из функции)
  * - Компактные кнопки
  * - Ссылка на VS Code в заголовке
+ * - Отображение модулей-импортеров
  */
-
 export class CardManager {
   constructor(app) {
     this.app = app;
@@ -473,6 +473,7 @@ export class CardManager {
       levelClass,
       levelDisplay,
       modulePath,
+      pkg,
       language,
       lines,
       allExports,
@@ -492,6 +493,8 @@ export class CardManager {
       totalInternal,
       moduleImporters,
       moduleImports,
+      modulePath,
+      pkg,
     });
 
     const functionsListHtml = this.functionsListRenderer.render({
@@ -502,13 +505,19 @@ export class CardManager {
       sourceInfo,
       callSources,
       totalFuncs,
+      pkg,
     });
 
-    const navExportsHtml = this.navExportsRenderer.render({ allExports, modulePath });
+    const navExportsHtml = this.navExportsRenderer.render({
+      allExports,
+      modulePath,
+      pkg,
+    });
 
     const navModuleImportersHtml = this.navModuleImportersRenderer.render({
       moduleImporters,
       modulePath,
+      pkg,
       reportData: this.app.reportData,
     });
 
@@ -518,6 +527,7 @@ export class CardManager {
       modulePath,
       funcs,
       callSources,
+      pkg,
     });
 
     const navInternalHtml = this.navInternalRenderer.render({
@@ -525,6 +535,8 @@ export class CardManager {
       internalIncoming,
       isActive,
       callSources,
+      modulePath,
+      pkg,
     });
 
     const callTreeHtml = this.callTreeRenderer.render({
@@ -532,6 +544,7 @@ export class CardManager {
       focusFunction,
       funcs,
       modulePath,
+      pkg,
     });
 
     // Сборка карточки
