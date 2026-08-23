@@ -220,6 +220,12 @@
     "project": "tsx ./src/cli.ts project ./src/cli.ts 15 -o ./reports/component-tree-deep",
     "build:data-converter": "esbuild src/reporters/data-converter.ts --bundle --platform=node --target=es2022 --format=esm --outfile=src/reporters/templates/data-converter.js",
     "project:--entities": "npm run build:data-converter && tsx ./src/cli.ts project ./src/cli.ts 150 --entities -o ./reports/entities-component-tree-deep && npm run copy:report",
+    "project:universe": "npm run build:data-converter && tsx ./src/cli.ts project ./src/cli.ts 150 --entities -o ./reports/entities-component-tree-deep && npm run copy:report",
+    "========== ТЕСТЫ ================": "",
+    "test:compress": "vitest --ui src/reporters/__tests__/compressReport.test.ts --run",
+    "test:compress:watch": "vitest --ui src/reporters/__tests__/compressReport.test.ts",
+    "test:compress:coverage": "vitest --ui src/reporters/__tests__/compressReport.test.ts --run --coverage",
+    "========== КОНЕЦ ================": "",
     "copy:report": "cp reports/entities-component-tree-deep/package-lock-report.json src/reporters/templates/package-lock-report.json || echo '⚠️ Report not found, skipping copy'",
     "file": "tsx ./src/cli.ts file ./src/cli.ts 15 -o ./reports/file-tree-deep",
     "project:--entities:log:timestamp": "mkdir -p logs && npm run project:--entities 2>&1 | tee ./logs/project-entities-$(date +%Y%m%d-%H%M%S).log && echo '📄 Log saved to ./logs/project-entities-$(date +%Y%m%d-%H%M%S).log'"

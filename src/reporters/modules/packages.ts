@@ -620,9 +620,9 @@ function buildExports(
       };
 
       // ✅ ЛОГИРУЕМ ЭКСПОРТ
-      if (uniqueConsumers.length > 0) {
-        console.log(`   📤 Экспорт ${funcName}: ${uniqueConsumers.length} потребителей`);
-      }
+      // if (uniqueConsumers.length > 0) {
+        // console.log(`   📤 Экспорт ${funcName}: ${uniqueConsumers.length} потребителей`);
+      // }
     }
   }
 
@@ -994,7 +994,7 @@ function enrichWithTsMorph(
         if (graphData) {
           const funcExists = findModuleForEntity(func.name, graphData) !== null;
           if (!funcExists) {
-            console.debug(`  ⚠️ Function not found in graph: ${func.name}`);
+            // console.debug(`  ⚠️ Function not found in graph: ${func.name}`);
           }
         }
         // ✅ КОПИРУЕМ ТОЛЬКО СУЩЕСТВУЮЩИЕ ПОЛЯ, ИСПОЛЬЗУЯ safeString/safeNumber
@@ -1048,7 +1048,7 @@ function enrichWithTsMorph(
               hasPassword: false,
             },
           // ✅ КОПИРУЕМ body С ПРОВЕРКОЙ
-          body: tsFunc.body || func.body || '',
+          // body: tsFunc.body || func.body || '',
           // ✅ КОПИРУЕМ signature С ПРОВЕРКОЙ
           signature: tsFunc.signature || func.signature || '',
           // ✅ КОПИРУЕМ vscode С ПРОВЕРКОЙ
@@ -1064,9 +1064,10 @@ function enrichWithTsMorph(
         if (graphData) {
           const classExists = findModuleForEntity(cls.name, graphData) !== null;
           if (!classExists) {
-            console.debug(`  ⚠️ Class not found in graph: ${cls.name}`);
+            // console.debug(`  ⚠️ Class not found in graph: ${cls.name}`);
           }
         }
+
         return {
           ...cls,
           methods: tsClass.methods.length > 0 ? tsClass.methods : cls.methods || [],
@@ -1076,7 +1077,7 @@ function enrichWithTsMorph(
             tsClass.implements && tsClass.implements.length > 0
               ? tsClass.implements
               : cls.implements || [],
-          body: tsClass.body || cls.body || '',
+          // body: tsClass.body || cls.body || '',
           vscode: tsClass.vscode || cls.vscode || '',
         };
       }
@@ -1195,7 +1196,8 @@ function extractFunctionBody(code: string, startLine: number, endLine: number): 
 function enrichFunctionsWithSourceCode(
   functions: EnhancedFunctionInfo[],
   sourceCode: string,
-  filePath: string
+  filePath: string,
+  includeBody: boolean = false
 ): EnhancedFunctionInfo[] {
   if (!functions || functions.length === 0) return functions;
 
@@ -1209,9 +1211,15 @@ function enrichFunctionsWithSourceCode(
       enrichedFunc.vscode = getVSCodeLink(filePath, func.line);
     }
 
-    // 2. Добавляем тело функции
-    if (!enrichedFunc.body && func.startLine && func.endLine && sourceCode) {
-      enrichedFunc.body = extractFunctionBody(sourceCode, func.startLine, func.endLine);
+    // 2. Добавляем тело функции (только если включено)
+    if (includeBody) {
+      console.log('%%%%%%%%%%%%%%%%%%%%% 1 %%%%%%%%%%%%%%%%%%%%%', includeBody);
+      if (!enrichedFunc.body && func.startLine && func.endLine && sourceCode) {
+        enrichedFunc.body = extractFunctionBody(sourceCode, func.startLine, func.endLine);
+      }
+    } else {
+      // Если body отключено, удаляем его
+      delete enrichedFunc.body;
     }
 
     // 3. Добавляем сигнатуру
@@ -1236,7 +1244,8 @@ function enrichFunctionsWithSourceCode(
 function enrichClassesWithSourceCode(
   classes: EnhancedClassInfo[],
   sourceCode: string,
-  filePath: string
+  filePath: string,
+  includeBody: boolean = false
 ): EnhancedClassInfo[] {
   if (!classes || classes.length === 0) return classes;
 
@@ -1250,9 +1259,13 @@ function enrichClassesWithSourceCode(
       enrichedCls.vscode = getVSCodeLink(filePath, cls.line);
     }
 
-    // 2. Добавляем тело класса
-    if (!enrichedCls.body && cls.startLine && cls.endLine && sourceCode) {
-      enrichedCls.body = extractFunctionBody(sourceCode, cls.startLine, cls.endLine);
+    // 2. Добавляем тело класса (только если включено)
+    if (includeBody) {
+      if (!enrichedCls.body && cls.startLine && cls.endLine && sourceCode) {
+        enrichedCls.body = extractFunctionBody(sourceCode, cls.startLine, cls.endLine);
+      }
+    } else {
+      delete enrichedCls.body;
     }
 
     enriched.push(enrichedCls);
@@ -1273,8 +1286,10 @@ export function buildPackages(
   rootKey: string,
   graph: Record<string, string[]>,
   entitiesMap: Record<string, EntitiesResult>,
-  projectRoot: string
+  projectRoot: string,
+  options?: { includeBody?: boolean }
 ): Record<string, EnhancedPackageInfo> {
+  const includeBody = options?.includeBody ?? false;
   const packages: Record<string, EnhancedPackageInfo> = {};
 
   const graphData: GraphData = {
@@ -1410,12 +1425,14 @@ export function buildPackages(
       fileEntities.functions = enrichFunctionsWithSourceCode(
         fileEntities.functions,
         sourceCode,
-        modulePath
+        modulePath,
+        includeBody
       );
       fileEntities.classes = enrichClassesWithSourceCode(
         fileEntities.classes,
         sourceCode,
-        modulePath
+        modulePath,
+        includeBody
       );
     }
 
@@ -1504,8 +1521,7 @@ export function buildPackages(
       exports,
       entities: fileEntities,
       fileStats,
-      vscode: vscodeLink || undefined,
-      sourceCode: sourceCode || undefined,
+      vscode: vscodeLink || undefined
     };
 
     // Добавляем Vue-анализ

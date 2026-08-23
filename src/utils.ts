@@ -6,8 +6,7 @@ export function escapeHtml(str: string): string {
 }
 
 export function showHelp(): void {
-  console.log(`
-╔══════════════════════════════════════════════════════════════════╗
+  console.log(`\n╔══════════════════════════════════════════════════════════════════╗
 ║              🔍 AST ANALYZER - AI TOOLKIT v2.2                  ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║                                                                  ║
@@ -26,6 +25,14 @@ export function showHelp(): void {
 ║    npx @newkind/ast-analyzer <режим> [аргументы]                 ║
 ║    или                                                           ║
 ║    npm run dev -- <режим> [аргументы]    # для разработки        ║
+║                                                                  ║
+╠══════════════════════════════════════════════════════════════════╣
+║  project опции:                                                  ║
+║    --entities                  Включить детальный анализ сущностей║
+║    --include-body              Включить тела функций в отчет      ║
+║    --vue-analysis, --vue       Включить анализ Vue компонентов    ║
+║    --from <function>           Начальная функция для графа вызовов║
+║    --to <function>             Конечная функция для графа вызовов  ║
 ║                                                                  ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║  split-module опции:                                             ║
@@ -69,6 +76,9 @@ export function showHelp(): void {
 ║    # Анализ Vue компонента                                       ║
 ║    npx @newkind/ast-analyzer vue-analyze ./src/App.vue           ║
 ║    npx @newkind/ast-analyzer vue ./src/components/Button.vue     ║
+║                                                                  ║
+║    # Построение графа с сущностями и телами функций              ║
+║    npx @newkind/ast-analyzer project ./src/index.ts --entities --include-body
 ║                                                                  ║
 ║    # Другие режимы                                               ║
 ║    npx @newkind/ast-analyzer project ./src/index.js 3            ║

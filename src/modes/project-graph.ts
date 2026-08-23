@@ -535,6 +535,7 @@ export function buildProjectGraph(
     }
 
     if (includeEntities) {
+      // console.log('__ZB__ отключил внутри body')
       const enhancedEntities = extractEntitiesFromFile(currentPath);
       const entities = convertEnhancedToEntities(enhancedEntities);
       entitiesMap[relativeKey] = entities;
@@ -607,7 +608,7 @@ export function buildProjectGraph(
               calls: Array.from(calls),
             });
 
-            console.log(`   📌 Добавлена локальная функция: ${funcName} (вызовов: ${calls.size})`);
+            // console.log(`   📌 Добавлена локальная функция: ${funcName} (вызовов: ${calls.size})`);
           }
         }
       } catch (error) {

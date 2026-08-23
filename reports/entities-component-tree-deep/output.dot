@@ -27,6 +27,7 @@ digraph "Dependency Graph" {
   "src/cli.ts" -> "src/reporters/html-reporter.ts";
   "src/cli.ts" -> "src/reporters/interactive-reporter.ts";
   "src/cli.ts" -> "src/core/data-sources.ts";
+  "src/cli.ts" -> "src/reporters/compressReport.ts";
   "src/cli.ts" -> "src/types.ts";
   "src/cli.ts" -> "src/utils.ts";
   "src/cli.ts" -> "src/utils/path-utils.ts";
@@ -104,6 +105,7 @@ digraph "Dependency Graph" {
   "src/reporters/interactive-reporter.ts" -> "src/types.ts";
   "src/reporters/interactive-reporter.ts" -> "src/reporters/data-converter.ts";
   "src/core/data-sources.ts" -> "src/core/entity-extractor.ts";
+  "src/reporters/compressReport.ts" -> "src/reporters/modules/types.ts";
   "src/types.ts" -> "src/core/entity-extractor.ts";
   "src/refactor/types.ts" -> "src/semantic/CFGAnalyzer.ts";
   "src/refactor/types.ts" -> "src/semantic/CallGraphAnalyzer.ts";

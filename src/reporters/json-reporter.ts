@@ -154,7 +154,8 @@ export function buildEnhancedPackageLockReport(
   rootKey: string,
   graph: Record<string, string[]>,
   entitiesMap: Record<string, EntitiesResult>,
-  _filePaths?: string[]
+  _filePaths?: string[],
+  options?: { includeBody?: boolean }
 ): EnhancedPackageLockReport {
   // Находим корень проекта
   const projectRoot = findProjectRoot(process.cwd()) || process.cwd();
@@ -163,7 +164,7 @@ export function buildEnhancedPackageLockReport(
   const metadata = createMetadata();
 
   // 2. Строим пакеты (ВКЛЮЧАЕТ Vue-анализ через modules/packages.ts)
-  const packages = buildPackages(rootKey, graph, entitiesMap, projectRoot);
+  const packages = buildPackages(rootKey, graph, entitiesMap, projectRoot, options);
 
   // 3. Строим граф зависимостей
   const dependencyGraph = buildDependencyGraph(graph);
@@ -280,7 +281,8 @@ export function savePackageLockReport(
   graph: Record<string, string[]>,
   entitiesMap: Record<string, EntitiesResult>,
   filePaths: string[],
-  outputPath: string
+  outputPath: string,
+  options?: { includeBody?: boolean }
 ): void {
   // Нормализуем entities map - СОХРАНЯЕМ ВСЕ ДАННЫЕ
   const normalizedEntitiesMap: Record<string, EntitiesResult> = {};
@@ -332,8 +334,15 @@ export function savePackageLockReport(
     };
   }
 
-  // Строим отчет
-  const report = buildEnhancedPackageLockReport(rootKey, graph, normalizedEntitiesMap, filePaths);
+  // Строим отчет, передавая опцию дальше
+  const report = buildEnhancedPackageLockReport(
+    rootKey,
+    graph,
+    normalizedEntitiesMap,
+    filePaths,
+    options
+  );
+
 
   // ✅ НЕ ИСПОЛЬЗУЕМ safeTraverseAST, КОТОРЫЙ ТЕРЯЕТ ДАННЫЕ
   // Используем прямую сериализацию с обработкой Map и Set
@@ -925,7 +934,8 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         calls: [...new Set(calls)],
         calledBy: [], // Будет заполнено позже
         returnType,
-        body: bodyText,
+        // body: bodyText,
+        body: '',
         isNested: false,
         parentFunction: undefined,
         isArrow: false,

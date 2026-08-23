@@ -40,9 +40,9 @@ export function convertToEnhancedEntityInfo(entities: EntitiesResult): EnhancedE
   // ✅ ЛОГИРУЕМ ВХОДНЫЕ ДАННЫЕ
   const rawFunctions = ensureArray(entities.functions);
   if (rawFunctions.length > 0) {
-    console.log(`   📥 convertToEnhancedEntityInfo: входных функций: ${rawFunctions.length}`);
-    const firstFunc = rawFunctions[0] as any;
-    console.log(`   📥 Первая функция: ${firstFunc?.name || 'unknown'}`);
+    // console.log(`   📥 convertToEnhancedEntityInfo: входных функций: ${rawFunctions.length}`);
+    // const firstFunc = rawFunctions[0] as any;
+    // console.log(`   📥 Первая функция: ${firstFunc?.name || 'unknown'}`);
   }
 
   // ✅ Преобразуем функции с СОХРАНЕНИЕМ ВСЕХ ПОЛЕЙ
@@ -99,7 +99,9 @@ export function convertToEnhancedEntityInfo(entities: EntitiesResult): EnhancedE
       }
 
       // ✅ СОХРАНЯЕМ body
-      const body = func.body || '';
+
+      const body =  '';
+      // const body = func.body || '';
 
       // ✅ СОХРАНЯЕМ signature (будет заполнена позже в packages.ts)
       const signature = func.signature || '';
@@ -146,10 +148,10 @@ export function convertToEnhancedEntityInfo(entities: EntitiesResult): EnhancedE
 
   // ✅ ЛОГИРУЕМ РЕЗУЛЬТАТ
   if (functions.length > 0) {
-    console.log(`   📤 convertToEnhancedEntityInfo: выходных функций: ${functions.length}`);
+    // console.log(`   📤 convertToEnhancedEntityInfo: выходных функций: ${functions.length}`);
     const firstFunc = functions[0];
     if (firstFunc) {
-      console.log(`   📤 Первая функция: ${firstFunc.name}, calls: ${firstFunc.calls.length}`);
+      // console.log(`   📤 Первая функция: ${firstFunc.name}, calls: ${firstFunc.calls.length}`);
     }
   }
 
@@ -179,7 +181,7 @@ export function convertToEnhancedEntityInfo(entities: EntitiesResult): EnhancedE
       startLine: safeNumber(c.startLine || c.line),
       endLine: safeNumber(c.endLine || c.line),
       // ✅ НОВОЕ: сохраняем body и vscode для классов
-      body: c.body || '',
+      // body: c.body || '',
       vscode: c.vscode || '',
       _safeInfo: null,
     };
@@ -241,15 +243,15 @@ export function convertToEnhancedEntityInfo(entities: EntitiesResult): EnhancedE
   });
 
   // ✅ ЛОГИРУЕМ ИТОГОВУЮ СТАТИСТИКУ
-  console.log(
-    `   📊 convertToEnhancedEntityInfo: функции с calls: ${functions.filter(f => f.calls.length > 0).length}`
-  );
-  console.log(
-    `   📊 convertToEnhancedEntityInfo: функции с calledBy: ${functions.filter(f => f.calledBy.length > 0).length}`
-  );
-  console.log(
-    `   📊 convertToEnhancedEntityInfo: функции с body: ${functions.filter(f => f.body && f.body.length > 0).length}`
-  );
+  // console.log(
+  //   `   📊 convertToEnhancedEntityInfo: функции с calls: ${functions.filter(f => f.calls.length > 0).length}`
+  // );
+  // console.log(
+  //   `   📊 convertToEnhancedEntityInfo: функции с calledBy: ${functions.filter(f => f.calledBy.length > 0).length}`
+  // );
+  // console.log(
+  //   `   📊 convertToEnhancedEntityInfo: функции с body: ${functions.filter(f => f.body && f.body.length > 0).length}`
+  // );
 
   return {
     functions: functions as EnhancedFunctionInfo[],

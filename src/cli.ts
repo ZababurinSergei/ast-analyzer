@@ -56,6 +56,9 @@ import { generateInteractiveHTML } from './reporters/interactive-reporter.js';
 // ============================================
 import { DataSourceBuilder, DataSourceAccessor } from './core/data-sources.js';
 
+// 🆕 КОМПАКТНЫЙ ОТЧЕТ
+import { compressReport, type CompressionLevel } from './reporters/compressReport.js';
+
 // Types
 import type { SplitModuleOptions, MinifyFolderOptions, GraphData, FullAnalysis, EntitiesResult } from './types.js';
 
@@ -127,7 +130,7 @@ function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string 
   ];
 
   // Добавляем варианты с нормализованными путями (Windows -> Unix)
-  const normalizedFilePath = filePath.replace(/\\/g, '/');
+  const normalizedFilePath = filePath.replace(/\\\\/g, '/');
   const additionalCandidates = [
     path.resolve(projectRoot, normalizedFilePath),
     path.resolve(projectRoot, 'src', normalizedFilePath),
@@ -441,9 +444,10 @@ interface ParsedArgs {
   tsconfigPath?: string;
   options?: SplitModuleOptions | MinifyFolderOptions | any;
   includeEntities?: boolean;
+  includeVueAnalysis?: boolean;
+  includeBody?: boolean;
   fromFunction?: string;
   toFunction?: string;
-  includeVueAnalysis?: boolean;
 }
 
 // ✅ ЭКСПОРТИРУЕМ parseArgs для видимости в графе
@@ -464,6 +468,7 @@ export function parseArgs(): ParsedArgs | null {
   let tsconfigPath: string | undefined;
   let includeEntities = false;
   let includeVueAnalysis = false;
+  let includeBody = false;
   let fromFunction: string | undefined;
   let toFunction: string | undefined;
   const cleanArgs: string[] = [];
@@ -485,6 +490,8 @@ export function parseArgs(): ParsedArgs | null {
       includeEntities = true;
     } else if (arg === '--vue-analysis' || arg === '--vue') {
       includeVueAnalysis = true;
+    } else if (arg === '--include-body') {
+      includeBody = true;
     } else if (arg === '--from') {
       if (normalizedArgs[i + 1]) {
         fromFunction = normalizedArgs[i + 1];
@@ -531,6 +538,7 @@ export function parseArgs(): ParsedArgs | null {
       tsconfigPath,
       includeEntities,
       includeVueAnalysis,
+      includeBody,
       fromFunction,
       toFunction,
     };
@@ -594,6 +602,7 @@ export function parseArgs(): ParsedArgs | null {
       tsconfigPath,
       includeEntities,
       includeVueAnalysis,
+      includeBody,
       fromFunction,
       toFunction,
     };
@@ -641,6 +650,7 @@ export function parseArgs(): ParsedArgs | null {
       tsconfigPath,
       includeEntities,
       includeVueAnalysis,
+      includeBody,
       fromFunction,
       toFunction,
     };
@@ -720,6 +730,7 @@ export function parseArgs(): ParsedArgs | null {
       tsconfigPath,
       includeEntities,
       includeVueAnalysis,
+      includeBody,
       fromFunction,
       toFunction,
     };
@@ -774,6 +785,7 @@ export function parseArgs(): ParsedArgs | null {
       tsconfigPath,
       includeEntities,
       includeVueAnalysis,
+      includeBody,
       fromFunction,
       toFunction,
     };
@@ -824,6 +836,7 @@ export function parseArgs(): ParsedArgs | null {
       tsconfigPath,
       includeEntities,
       includeVueAnalysis,
+      includeBody,
       fromFunction,
       toFunction,
     };
@@ -926,6 +939,7 @@ export function parseArgs(): ParsedArgs | null {
       tsconfigPath,
       includeEntities,
       includeVueAnalysis,
+      includeBody,
       fromFunction,
       toFunction,
     };
@@ -1001,6 +1015,7 @@ export function parseArgs(): ParsedArgs | null {
       tsconfigPath,
       includeEntities,
       includeVueAnalysis,
+      includeBody,
       fromFunction,
       toFunction,
     };
@@ -1024,6 +1039,7 @@ export function parseArgs(): ParsedArgs | null {
       tsconfigPath,
       includeEntities,
       includeVueAnalysis,
+      includeBody,
       fromFunction,
       toFunction,
     };
@@ -1048,6 +1064,7 @@ export function parseArgs(): ParsedArgs | null {
       tsconfigPath,
       includeEntities,
       includeVueAnalysis,
+      includeBody,
       fromFunction,
       toFunction,
     };
@@ -1072,6 +1089,7 @@ export function parseArgs(): ParsedArgs | null {
       tsconfigPath,
       includeEntities,
       includeVueAnalysis,
+      includeBody,
       fromFunction,
       toFunction,
     };
@@ -1095,6 +1113,7 @@ export function parseArgs(): ParsedArgs | null {
       tsconfigPath,
       includeEntities,
       includeVueAnalysis,
+      includeBody,
       fromFunction,
       toFunction,
     };
@@ -1119,6 +1138,7 @@ export function parseArgs(): ParsedArgs | null {
       tsconfigPath,
       includeEntities,
       includeVueAnalysis,
+      includeBody,
       fromFunction,
       toFunction,
     };
@@ -1142,6 +1162,7 @@ export function parseArgs(): ParsedArgs | null {
       tsconfigPath,
       includeEntities,
       includeVueAnalysis,
+      includeBody,
       fromFunction,
       toFunction,
     };
@@ -1171,6 +1192,7 @@ export async function runCLI(): Promise<void> {
     tsconfigPath,
     includeEntities,
     includeVueAnalysis,
+    includeBody,
     fromFunction,
     toFunction,
   } = parsed;
@@ -1667,13 +1689,14 @@ export async function runCLI(): Promise<void> {
             return resolved || path.resolve(projectRoot, p);
           });
 
-          // ✅ ИСПРАВЛЕНО: передаем resultData.entities в saveEnhancedPackageLockReport
+          // ✅ ИСПРАВЛЕНО: передаем resultData.entities в saveEnhancedPackageLockReport с опцией includeBody
           saveEnhancedPackageLockReport(
             resultData.rootKey,
             normalizedData.graph,
             resultData.entities, // ← уже извлеченные сущности
             absoluteFilePaths,
-            enhancedReportPath
+            enhancedReportPath,
+            { includeBody }
           );
           console.log(`\n✅ РАСШИРЕННЫЙ ОТЧЕТ СОХРАНЕН: ${enhancedReportPath}`);
           console.log(`📊 Включает: функции, константы, переменные, интерфейсы, типы, классы, вызовы`);
@@ -1688,6 +1711,52 @@ export async function runCLI(): Promise<void> {
           console.log(`   • Типов: ${stats.totalTypes || 0}`);
           console.log(`   • Переменных: ${stats.totalVariables || 0}`);
           console.log(`   • Вызовов: ${stats.totalCalls || 0}`);
+
+          // ============================================
+          // 🆕 СОХРАНЯЕМ КОМПАКТНУЮ "ВСЕЛЕННУЮ" (ast-universe.json)
+          // ============================================
+          try {
+            // Получаем уровень сжатия из переменной окружения или используем 1 (минимальный)
+            const compressionLevel = parseInt(process.env.AST_COMPRESS_LEVEL || '1') as CompressionLevel;
+            console.log(`\n📦 Генерация компактной "Вселенной" (уровень ${compressionLevel})...`);
+
+            const compressed = compressReport(resultData.packageLockReport, {
+              level: compressionLevel,
+              includeBody: includeBody,
+              includeSourceCode: includeBody,
+              includeSecurity: true,
+              includeVSCodeLinks: true,
+            });
+
+            const compressedPath = path.join(process.cwd(), `ast-universe-l${compressionLevel}.json`);
+            fs.writeFileSync(compressedPath, JSON.stringify(compressed, null, 2));
+            const compressedSize = (fs.statSync(compressedPath).size / 1024).toFixed(2);
+            console.log(`✅ ast-universe-l${compressionLevel}.json сохранен (${compressedSize} KB)`);
+            console.log(`   📊 Функций: ${compressed.stats.funcs}`);
+            console.log(`   📁 Модулей: ${compressed.stats.mods}`);
+            console.log(`   📞 Вызовов: ${compressed.stats.calls}`);
+
+            // ✅ Безопасная проверка на undefined
+            let withCalls = 0;
+            if (compressed.callContext) {
+              const callContext = compressed.callContext;
+              withCalls = Object.keys(callContext).filter((idx) => {
+                const context = callContext[Number(idx)];
+                return context && context.calls && context.calls.length > 0;
+              }).length;
+              console.log(`   🔗 Функций с вызовами: ${withCalls}`);
+            }
+
+            // Сохраняем также без уровня в имени для обратной совместимости
+            if (compressionLevel === 1) {
+              const defaultPath = path.join(process.cwd(), 'ast-universe.json');
+              fs.copyFileSync(compressedPath, defaultPath);
+              console.log(`   📄 Также сохранен как ast-universe.json (копия)`);
+            }
+          } catch (compressError) {
+            console.error('❌ Ошибка при сохранении сжатого отчета:', compressError);
+          }
+
         } catch (error) {
           console.error(`❌ Ошибка при сохранении расширенного отчета:`, error);
         }
