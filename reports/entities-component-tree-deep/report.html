@@ -7606,9 +7606,9 @@
             &quot;buildEnhancedPackageLockReport&quot;
           ],
           &quot;calledBy&quot;: [],
-          &quot;body&quot;: &quot;{&#92;n  // Нормализуем entities map - СОХРАНЯЕМ ВСЕ ДАННЫЕ&#92;n  const normalizedEntitiesMap: Record&lt;string, EntitiesResult&gt; = {};&#92;n  for (const [key, entities] of Object.entries(entitiesMap)) {&#92;n    if (!entities || typeof entities !== 'object') {&#92;n      normalizedEntitiesMap[key] = {&#92;n        functions: [],&#92;n        classes: [],&#92;n        constants: [],&#92;n        interfaces: [],&#92;n        types: [],&#92;n        variables: [],&#92;n        imports: [],&#92;n        exports: [],&#92;n        callGraph: {},&#92;n        moduleName: '',&#92;n        filePath: '',&#92;n      };&#92;n      continue;&#92;n    }&#92;n&#92;n    // ✅ СОХРАНЯЕМ ВСЕ ДАННЫЕ БЕЗ ПОТЕРЬ&#92;n    normalizedEntitiesMap[key] = {&#92;n      functions: ensureArray(entities.functions).map((f: any) =&gt; ({&#92;n        ...f,&#92;n        // ✅ ГАРАНТИРУЕМ, ЧТО calls И calledBy - МАССИВЫ&#92;n        calls: ensureArray(f.calls),&#92;n        calledBy: ensureArray(f.calledBy),&#92;n        body: f.body || '',&#92;n        complexity: f.complexity || 1,&#92;n        security: f.security || {&#92;n          hasEval: false,&#92;n          hasProcessEnv: false,&#92;n          hasSensitiveData: false,&#92;n          hasExec: false,&#92;n          hasPassword: false,&#92;n        },&#92;n      })),&#92;n      classes: ensureArray(entities.classes),&#92;n      constants: ensureArray(entities.constants),&#92;n      interfaces: ensureArray(entities.interfaces),&#92;n      types: ensureArray(entities.types),&#92;n      variables: ensureArray(entities.variables),&#92;n      imports: ensureArray(entities.imports),&#92;n      exports: ensureArray(entities.exports),&#92;n      callGraph: entities.callGraph || {},&#92;n      moduleName: entities.moduleName || '',&#92;n      filePath: entities.filePath || '',&#92;n    };&#92;n  }&#92;n&#92;n  // Строим отчет&#92;n  const report = buildEnhancedPackageLockReport(rootKey, graph, normalizedEntitiesMap, filePaths);&#92;n&#92;n  // ✅ НЕ ИСПОЛЬЗУЕМ safeTraverseAST, КОТОРЫЙ ТЕРЯЕТ ДАННЫЕ&#92;n  // Используем прямую сериализацию с обработкой Map и Set&#92;n  const json = JSON.stringify(&#92;n    report,&#92;n    (key, value) =&gt; {&#92;n      // Обрабатываем Map и Set&#92;n      if (value instanceof Map) {&#92;n        return Object.fromEntries(value);&#92;n      }&#92;n      if (value instanceof Set) {&#92;n        return Array.from(value);&#92;n      }&#92;n      // Пропускаем внутренние поля&#92;n      if (key === '_safeInfo' || key === '__proto__' || key === 'constructor') {&#92;n        return undefined;&#92;n      }&#92;n      return value;&#92;n    },&#92;n    2&#92;n  );&#92;n&#92;n  const outputDir = path.dirname(outputPath);&#92;n  if (!fs.existsSync(outputDir)) {&#92;n    fs.mkdirSync(outputDir, { recursive: true });&#92;n  }&#92;n  fs.writeFileSync(outputPath, json, 'utf-8');&#92;n&#92;n  console.log(`✅ Enhanced package-lock report saved: ${outputPath}`);&#92;n  console.log(`📊 Functions: ${report.entityStats?.totalFunctions || 0}`);&#92;n  console.log(`📊 Constants: ${report.entityStats?.totalConstants || 0}`);&#92;n  console.log(`📊 Variables: ${report.entityStats?.totalVariables || 0}`);&#92;n  console.log(`📊 Interfaces: ${report.entityStats?.totalInterfaces || 0}`);&#92;n  console.log(`📊 Types: ${report.entityStats?.totalTypes || 0}`);&#92;n  console.log(`📊 Classes: ${report.entityStats?.totalClasses || 0}`);&#92;n  console.log(`📞 Calls: ${report.entityStats?.totalCalls || 0}`);&#92;n  console.log(`📁 Files: ${report.fileStats?.totalFiles || 0}`);&#92;n  console.log(`📝 Lines: ${report.fileStats?.totalLines || 0}`);&#92;n  console.log(`💾 Size: ${((report.fileStats?.totalSize || 0) / 1024).toFixed(2)} KB`);&#92;n&#92;n  if (report.architectureMetrics) {&#92;n    console.log(`🏗️  Architecture: ${report.summary?.architectureHealth || 'unknown'}`);&#92;n    console.log(`   📦 Vue components: ${report.architectureMetrics.vueComponents}`);&#92;n    console.log(`   🔄 Cycles: ${report.architectureMetrics.hasCycles ? '⚠️ YES' : '✅ NO'}`);&#92;n    console.log(`   📏 Max depth: ${report.architectureMetrics.maxDepth}`);&#92;n  }&#92;n}&quot;,
+          &quot;body&quot;: &quot;{&#92;n  // Нормализуем entities map - СОХРАНЯЕМ ВСЕ ДАННЫЕ&#92;n  const normalizedEntitiesMap: Record&lt;string, EntitiesResult&gt; = {};&#92;n  for (const [key, entities] of Object.entries(entitiesMap)) {&#92;n    if (!entities || typeof entities !== 'object') {&#92;n      normalizedEntitiesMap[key] = {&#92;n        functions: [],&#92;n        classes: [],&#92;n        constants: [],&#92;n        interfaces: [],&#92;n        types: [],&#92;n        variables: [],&#92;n        imports: [],&#92;n        exports: [],&#92;n        callGraph: {},&#92;n        moduleName: '',&#92;n        filePath: '',&#92;n      };&#92;n      continue;&#92;n    }&#92;n&#92;n    // ✅ СОХРАНЯЕМ ВСЕ ДАННЫЕ БЕЗ ПОТЕРЬ&#92;n    normalizedEntitiesMap[key] = {&#92;n      functions: ensureArray(entities.functions).map((f: any) =&gt; ({&#92;n        ...f,&#92;n        // ✅ ГАРАНТИРУЕМ, ЧТО calls И calledBy - МАССИВЫ&#92;n        calls: ensureArray(f.calls),&#92;n        calledBy: ensureArray(f.calledBy),&#92;n        body: f.body || '',&#92;n        complexity: f.complexity || 1,&#92;n        security: f.security || {&#92;n          hasEval: false,&#92;n          hasProcessEnv: false,&#92;n          hasSensitiveData: false,&#92;n          hasExec: false,&#92;n          hasPassword: false,&#92;n        },&#92;n      })),&#92;n      classes: ensureArray(entities.classes),&#92;n      constants: ensureArray(entities.constants),&#92;n      interfaces: ensureArray(entities.interfaces),&#92;n      types: ensureArray(entities.types),&#92;n      variables: ensureArray(entities.variables),&#92;n      imports: ensureArray(entities.imports),&#92;n      exports: ensureArray(entities.exports),&#92;n      callGraph: entities.callGraph || {},&#92;n      moduleName: entities.moduleName || '',&#92;n      filePath: entities.filePath || '',&#92;n    };&#92;n  }&#92;n&#92;n  // Строим отчет&#92;n  const report = buildEnhancedPackageLockReport(rootKey, graph, normalizedEntitiesMap, filePaths);&#92;n&#92;n  // ✅ НЕ ИСПОЛЬЗУЕМ safeTraverseAST, КОТОРЫЙ ТЕРЯЕТ ДАННЫЕ&#92;n  // Используем прямую сериализацию с обработкой Map и Set&#92;n  const json = JSON.stringify(&#92;n    report,&#92;n    (key, value) =&gt; {&#92;n      // Обрабатываем Map и Set&#92;n      if (value instanceof Map) {&#92;n        return Object.fromEntries(value);&#92;n      }&#92;n      if (value instanceof Set) {&#92;n        return Array.from(value);&#92;n      }&#92;n      // Пропускаем внутренние поля&#92;n      if (key === '_safeInfo' || key === '__proto__' || key === 'constructor') {&#92;n        return undefined;&#92;n      }&#92;n      return value;&#92;n    },&#92;n    2&#92;n  );&#92;n&#92;n  const outputDir = path.dirname(outputPath);&#92;n  if (!fs.existsSync(outputDir)) {&#92;n    fs.mkdirSync(outputDir, { recursive: true });&#92;n  }&#92;n  fs.writeFileSync(outputPath, json, 'utf-8');&#92;n&#92;n  // Подсчет статистики&#92;n  let totalWithBodies = 0;&#92;n  let totalWithVSCode = 0;&#92;n  for (const pkg of Object.values(report.packages || {})) {&#92;n    for (const func of pkg.entities?.functions || []) {&#92;n      if (func.body) totalWithBodies++;&#92;n      if (func.vscode) totalWithVSCode++;&#92;n    }&#92;n  }&#92;n&#92;n  console.log(`✅ Enhanced package-lock report saved: ${outputPath}`);&#92;n  console.log(`📊 Functions: ${report.entityStats?.totalFunctions || 0}`);&#92;n  console.log(`📊 Constants: ${report.entityStats?.totalConstants || 0}`);&#92;n  console.log(`📊 Variables: ${report.entityStats?.totalVariables || 0}`);&#92;n  console.log(`📊 Interfaces: ${report.entityStats?.totalInterfaces || 0}`);&#92;n  console.log(`📊 Types: ${report.entityStats?.totalTypes || 0}`);&#92;n  console.log(`📊 Classes: ${report.entityStats?.totalClasses || 0}`);&#92;n  console.log(`📞 Calls: ${report.entityStats?.totalCalls || 0}`);&#92;n  console.log(`📁 Files: ${report.fileStats?.totalFiles || 0}`);&#92;n  console.log(`📝 Lines: ${report.fileStats?.totalLines || 0}`);&#92;n  console.log(`💾 Size: ${((report.fileStats?.totalSize || 0) / 1024).toFixed(2)} KB`);&#92;n  console.log(`📖 Functions with body: ${totalWithBodies}`);&#92;n  console.log(`🔗 Functions with VSCode link: ${totalWithVSCode}`);&#92;n&#92;n  if (report.architectureMetrics) {&#92;n    console.log(`🏗️  Architecture: ${report.summary?.architectureHealth || 'unknown'}`);&#92;n    console.log(`   📦 Vue components: ${report.architectureMetrics.vueComponents}`);&#92;n    console.log(`   🔄 Cycles: ${report.architectureMetrics.hasCycles ? '⚠️ YES' : '✅ NO'}`);&#92;n    console.log(`   📏 Max depth: ${report.architectureMetrics.maxDepth}`);&#92;n  }&#92;n}&quot;,
           &quot;startLine&quot;: 278,
-          &quot;endLine&quot;: 383,
+          &quot;endLine&quot;: 395,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -7625,7 +7625,7 @@
         },
         {
           &quot;name&quot;: &quot;saveCallGraphResult&quot;,
-          &quot;line&quot;: 388,
+          &quot;line&quot;: 400,
           &quot;isAsync&quot;: false,
           &quot;isExported&quot;: true,
           &quot;params&quot;: [
@@ -7638,8 +7638,8 @@
           ],
           &quot;calledBy&quot;: [],
           &quot;body&quot;: &quot;{&#92;n  const safeData = safeTraverseAST(callGraphResult);&#92;n  const json = JSON.stringify(safeData, null, 2);&#92;n  fs.writeFileSync(outputPath, json, 'utf-8');&#92;n}&quot;,
-          &quot;startLine&quot;: 388,
-          &quot;endLine&quot;: 392,
+          &quot;startLine&quot;: 400,
+          &quot;endLine&quot;: 404,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -7656,7 +7656,7 @@
         },
         {
           &quot;name&quot;: &quot;buildModuleGraph&quot;,
-          &quot;line&quot;: 397,
+          &quot;line&quot;: 409,
           &quot;isAsync&quot;: false,
           &quot;isExported&quot;: true,
           &quot;params&quot;: [
@@ -7670,8 +7670,8 @@
             &quot;buildFullAnalysis&quot;
           ],
           &quot;body&quot;: &quot;{&#92;n  const nodes: ModuleNode[] = [];&#92;n  const edges: ModuleEdge[] = [];&#92;n&#92;n  const allModules = new Set&lt;string&gt;();&#92;n  allModules.add(data.rootKey);&#92;n&#92;n  for (const [key, deps] of Object.entries(data.graph)) {&#92;n    allModules.add(key);&#92;n    for (const dep of deps) {&#92;n      allModules.add(dep);&#92;n    }&#92;n  }&#92;n&#92;n  for (const modulePath of allModules) {&#92;n    const isEntry = modulePath === data.rootKey;&#92;n&#92;n    let language = 'javascript';&#92;n    if (modulePath.endsWith('.ts') || modulePath.endsWith('.tsx')) language = 'typescript';&#92;n    else if (modulePath.endsWith('.vue')) language = 'vue';&#92;n    else if (modulePath.endsWith('.jsx')) language = 'jsx';&#92;n&#92;n    let size = 0;&#92;n    let lines = 0;&#92;n    try {&#92;n      const absPath = path.resolve(modulePath);&#92;n      if (fs.existsSync(absPath) &amp;&amp; fs.statSync(absPath).isFile()) {&#92;n        const content = fs.readFileSync(absPath, 'utf-8');&#92;n        size = content.length;&#92;n        lines = content.split('&#92;&#92;n').length;&#92;n      }&#92;n    } catch (error: any) {&#92;n      // Игнорируем ошибки&#92;n    }&#92;n&#92;n    nodes.push({&#92;n      id: modulePath,&#92;n      name: path.basename(modulePath),&#92;n      type: modulePath.endsWith('.vue') ? 'vue' : 'module',&#92;n      level: modulePath === data.rootKey ? 0 : 1,&#92;n      metadata: { size, lines, language, isEntry },&#92;n    });&#92;n  }&#92;n&#92;n  for (const [from, deps] of Object.entries(data.graph)) {&#92;n    for (const to of deps) {&#92;n      const isExternal = to.startsWith('@') || to.includes('/');&#92;n      const specifiers: string[] = [];&#92;n      for (const entity of entities.functions) {&#92;n        if (entity.isExported &amp;&amp; (to.includes(entity.name) || entity.name.includes(to))) {&#92;n          specifiers.push(entity.name);&#92;n        }&#92;n      }&#92;n      edges.push({&#92;n        from,&#92;n        to,&#92;n        type: isExternal ? 'external' : 'import',&#92;n        specifiers:&#92;n          specifiers.length &gt; 0 ? specifiers : [path.basename(to).replace(/&#92;&#92;.[^.]+$/, '')],&#92;n      });&#92;n    }&#92;n  }&#92;n&#92;n  return { nodes, edges };&#92;n}&quot;,
-          &quot;startLine&quot;: 397,
-          &quot;endLine&quot;: 461,
+          &quot;startLine&quot;: 409,
+          &quot;endLine&quot;: 473,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -7688,7 +7688,7 @@
         },
         {
           &quot;name&quot;: &quot;buildEntityGraph&quot;,
-          &quot;line&quot;: 467,
+          &quot;line&quot;: 479,
           &quot;isAsync&quot;: false,
           &quot;isExported&quot;: true,
           &quot;params&quot;: [
@@ -7707,9 +7707,9 @@
             &quot;saveEntityGraph&quot;,
             &quot;buildFullAnalysis&quot;
           ],
-          &quot;body&quot;: &quot;{&#92;n  const nodes: EntityNode[] = [];&#92;n  const edges: EntityEdge[] = [];&#92;n&#92;n  // ✅ ИСПОЛЬЗУЕМ FunctionEntity из общих типов&#92;n  const functions = ensureArray(entities.functions) as FunctionEntity[];&#92;n&#92;n  for (const func of functions) {&#92;n    const funcName = safeString(func.name);&#92;n    const modulePath = findModuleForEntity(funcName, data);&#92;n    const nodeId = modulePath ? `${modulePath}#${funcName}` : `#${funcName}`;&#92;n    const calls: string[] = ensureArray(func.calls).map((call: any) =&gt; safeString(call));&#92;n    // ✅ СОХРАНЯЕМ calledBy&#92;n    const calledBy: string[] = ensureArray(func.calledBy).map((cb: any) =&gt; safeString(cb));&#92;n&#92;n    nodes.push({&#92;n      id: nodeId,&#92;n      name: funcName,&#92;n      type: 'function',&#92;n      module: modulePath || 'unknown',&#92;n      line: safeNumber(func.line),&#92;n      metadata: {&#92;n        isAsync: safeBoolean(func.isAsync),&#92;n        isExported: safeBoolean(func.isExported),&#92;n        params: ensureArray(func.params).map((p: any) =&gt; safeString(p)),&#92;n        returnType: safeString(func.returnType),&#92;n        isMethod: safeBoolean(func.isMethod),&#92;n        className: safeString(func.className),&#92;n        // ✅ СОХРАНЯЕМ calls&#92;n        calls: calls,&#92;n        // ✅ СОХРАНЯЕМ calledBy&#92;n        calledBy: calledBy,&#92;n        startLine: safeNumber(func.startLine || func.line),&#92;n        endLine: safeNumber(func.endLine || func.line),&#92;n        importedFrom: modulePath !== data.rootKey ? modulePath : undefined,&#92;n        complexity: safeNumber(func.complexity),&#92;n        security: func.security || {&#92;n          hasEval: false,&#92;n          hasProcessEnv: false,&#92;n          hasSensitiveData: false,&#92;n          hasExec: false,&#92;n          hasPassword: false,&#92;n        },&#92;n        // ✅ СОХРАНЯЕМ body&#92;n        body: func.body || '',&#92;n      },&#92;n    });&#92;n&#92;n    for (const call of calls) {&#92;n      let targetModule = findModuleForEntity(call, data);&#92;n      if (!targetModule) {&#92;n        for (const [modPath, deps] of Object.entries(data.graph)) {&#92;n          if (modPath.includes(call) || deps.some((d: string) =&gt; d.includes(call))) {&#92;n            targetModule = modPath;&#92;n            break;&#92;n          }&#92;n        }&#92;n      }&#92;n      const targetId = targetModule ? `${targetModule}#${call}` : `#${call}`;&#92;n      edges.push({&#92;n        from: nodeId,&#92;n        to: targetId,&#92;n        type: 'function_call',&#92;n        line: safeNumber(func.line),&#92;n      });&#92;n    }&#92;n  }&#92;n&#92;n  // Классы&#92;n  for (const cls of entities.classes) {&#92;n    const className = safeString(cls.name);&#92;n    const modulePath = findModuleForEntity(className, data);&#92;n    const nodeId = modulePath ? `${modulePath}#${className}` : `#${className}`;&#92;n&#92;n    nodes.push({&#92;n      id: nodeId,&#92;n      name: className,&#92;n      type: 'class',&#92;n      module: modulePath || 'unknown',&#92;n      line: safeNumber(cls.line),&#92;n      metadata: {&#92;n        isExported: safeBoolean(cls.isExported),&#92;n        methods: ensureArray(cls.methods).map((m: any) =&gt; safeString(m)),&#92;n        properties: ensureArray(cls.properties).map((p: any) =&gt; safeString(p)),&#92;n        extends: safeString(cls.extends),&#92;n        implements: ensureArray(cls.implements).map((i: any) =&gt; safeString(i)),&#92;n        startLine: safeNumber(cls.startLine || cls.line),&#92;n        endLine: safeNumber(cls.endLine || cls.line),&#92;n      },&#92;n    });&#92;n&#92;n    if (cls.extends) {&#92;n      const targetModule = findModuleForEntity(safeString(cls.extends), data);&#92;n      const targetId = targetModule&#92;n        ? `${targetModule}#${safeString(cls.extends)}`&#92;n        : `#${safeString(cls.extends)}`;&#92;n      edges.push({&#92;n        from: nodeId,&#92;n        to: targetId,&#92;n        type: 'class_extends',&#92;n      });&#92;n    }&#92;n&#92;n    for (const impl of ensureArray(cls.implements)) {&#92;n      const implName = safeString(impl);&#92;n      const targetModule = findModuleForEntity(implName, data);&#92;n      const targetId = targetModule ? `${targetModule}#${implName}` : `#${implName}`;&#92;n      edges.push({&#92;n        from: nodeId,&#92;n        to: targetId,&#92;n        type: 'class_implements',&#92;n      });&#92;n    }&#92;n  }&#92;n&#92;n  // Константы&#92;n  for (const constant of entities.constants) {&#92;n    const constName = safeString(constant.name);&#92;n    const modulePath = findModuleForEntity(constName, data);&#92;n    const nodeId = modulePath ? `${modulePath}#${constName}` : `#${constName}`;&#92;n&#92;n    nodes.push({&#92;n      id: nodeId,&#92;n      name: constName,&#92;n      type: 'constant',&#92;n      module: modulePath || 'unknown',&#92;n      line: safeNumber(constant.line),&#92;n      metadata: {&#92;n        value: constant.value,&#92;n        isExported: safeBoolean(constant.isExported),&#92;n        type: safeString(constant.type),&#92;n      },&#92;n    });&#92;n  }&#92;n&#92;n  // Интерфейсы&#92;n  for (const intf of entities.interfaces) {&#92;n    const intfName = safeString(intf.name);&#92;n    const modulePath = findModuleForEntity(intfName, data);&#92;n    const nodeId = modulePath ? `${modulePath}#${intfName}` : `#${intfName}`;&#92;n&#92;n    nodes.push({&#92;n      id: nodeId,&#92;n      name: intfName,&#92;n      type: 'interface',&#92;n      module: modulePath || 'unknown',&#92;n      line: safeNumber(intf.line),&#92;n      metadata: {&#92;n        isExported: safeBoolean(intf.isExported),&#92;n        properties: ensureArray(intf.properties).map((p: any) =&gt; safeString(p)),&#92;n        extends: ensureArray(intf.extends).map((e: any) =&gt; safeString(e)),&#92;n        startLine: safeNumber(intf.startLine || intf.line),&#92;n        endLine: safeNumber(intf.endLine || intf.line),&#92;n      },&#92;n    });&#92;n&#92;n    for (const ext of ensureArray(intf.extends)) {&#92;n      const extName = safeString(ext);&#92;n      const targetModule = findModuleForEntity(extName, data);&#92;n      const targetId = targetModule ? `${targetModule}#${extName}` : `#${extName}`;&#92;n      edges.push({&#92;n        from: nodeId,&#92;n        to: targetId,&#92;n        type: 'interface_extends',&#92;n      });&#92;n    }&#92;n  }&#92;n&#92;n  // Типы&#92;n  for (const type of entities.types) {&#92;n    const typeName = safeString(type.name);&#92;n    const modulePath = findModuleForEntity(typeName, data);&#92;n    const nodeId = modulePath ? `${modulePath}#${typeName}` : `#${typeName}`;&#92;n&#92;n    nodes.push({&#92;n      id: nodeId,&#92;n      name: typeName,&#92;n      type: 'type',&#92;n      module: modulePath || 'unknown',&#92;n      line: safeNumber(type.line),&#92;n      metadata: {&#92;n        isExported: safeBoolean(type.isExported),&#92;n        definition: safeString(type.definition),&#92;n      },&#92;n    });&#92;n  }&#92;n&#92;n  // Переменные&#92;n  for (const variable of entities.variables) {&#92;n    const varName = safeString(variable.name);&#92;n    const modulePath = findModuleForEntity(varName, data);&#92;n    const nodeId = modulePath ? `${modulePath}#${varName}` : `#${varName}`;&#92;n&#92;n    nodes.push({&#92;n      id: nodeId,&#92;n      name: varName,&#92;n      type: 'variable',&#92;n      module: modulePath || 'unknown',&#92;n      line: safeNumber(variable.line),&#92;n      metadata: {&#92;n        isExported: safeBoolean(variable.isExported),&#92;n        type: safeString(variable.type),&#92;n        value: variable.value,&#92;n      },&#92;n    });&#92;n  }&#92;n&#92;n  return { nodes, edges };&#92;n}&quot;,
-          &quot;startLine&quot;: 467,
-          &quot;endLine&quot;: 675,
+          &quot;body&quot;: &quot;{&#92;n  const nodes: EntityNode[] = [];&#92;n  const edges: EntityEdge[] = [];&#92;n&#92;n  // ✅ ИСПОЛЬЗУЕМ FunctionEntity из общих типов&#92;n  const functions = ensureArray(entities.functions) as FunctionEntity[];&#92;n&#92;n  for (const func of functions) {&#92;n    const funcName = safeString(func.name);&#92;n    const modulePath = findModuleForEntity(funcName, data);&#92;n    const nodeId = modulePath ? `${modulePath}#${funcName}` : `#${funcName}`;&#92;n    const calls: string[] = ensureArray(func.calls).map((call: any) =&gt; safeString(call));&#92;n    // ✅ СОХРАНЯЕМ calledBy&#92;n    const calledBy: string[] = ensureArray(func.calledBy).map((cb: any) =&gt; safeString(cb));&#92;n&#92;n    nodes.push({&#92;n      id: nodeId,&#92;n      name: funcName,&#92;n      type: 'function',&#92;n      module: modulePath || 'unknown',&#92;n      line: safeNumber(func.line),&#92;n      metadata: {&#92;n        isAsync: safeBoolean(func.isAsync),&#92;n        isExported: safeBoolean(func.isExported),&#92;n        params: ensureArray(func.params).map((p: any) =&gt; safeString(p)),&#92;n        returnType: safeString(func.returnType),&#92;n        isMethod: safeBoolean(func.isMethod),&#92;n        className: safeString(func.className),&#92;n        // ✅ СОХРАНЯЕМ calls&#92;n        calls: calls,&#92;n        // ✅ СОХРАНЯЕМ calledBy&#92;n        calledBy: calledBy,&#92;n        startLine: safeNumber(func.startLine || func.line),&#92;n        endLine: safeNumber(func.endLine || func.line),&#92;n        importedFrom: modulePath !== data.rootKey ? modulePath : undefined,&#92;n        complexity: safeNumber(func.complexity),&#92;n        security: func.security || {&#92;n          hasEval: false,&#92;n          hasProcessEnv: false,&#92;n          hasSensitiveData: false,&#92;n          hasExec: false,&#92;n          hasPassword: false,&#92;n        },&#92;n        // ✅ СОХРАНЯЕМ body&#92;n        body: func.body || '',&#92;n        // ✅ СОХРАНЯЕМ signature&#92;n        signature: func.signature || '',&#92;n        // ✅ СОХРАНЯЕМ vscode&#92;n        vscode: func.vscode || '',&#92;n      },&#92;n    });&#92;n&#92;n    for (const call of calls) {&#92;n      let targetModule = findModuleForEntity(call, data);&#92;n      if (!targetModule) {&#92;n        for (const [modPath, deps] of Object.entries(data.graph)) {&#92;n          if (modPath.includes(call) || deps.some((d: string) =&gt; d.includes(call))) {&#92;n            targetModule = modPath;&#92;n            break;&#92;n          }&#92;n        }&#92;n      }&#92;n      const targetId = targetModule ? `${targetModule}#${call}` : `#${call}`;&#92;n      edges.push({&#92;n        from: nodeId,&#92;n        to: targetId,&#92;n        type: 'function_call',&#92;n        line: safeNumber(func.line),&#92;n      });&#92;n    }&#92;n  }&#92;n&#92;n  // Классы&#92;n  for (const cls of entities.classes) {&#92;n    const className = safeString(cls.name);&#92;n    const modulePath = findModuleForEntity(className, data);&#92;n    const nodeId = modulePath ? `${modulePath}#${className}` : `#${className}`;&#92;n&#92;n    nodes.push({&#92;n      id: nodeId,&#92;n      name: className,&#92;n      type: 'class',&#92;n      module: modulePath || 'unknown',&#92;n      line: safeNumber(cls.line),&#92;n      metadata: {&#92;n        isExported: safeBoolean(cls.isExported),&#92;n        methods: ensureArray(cls.methods).map((m: any) =&gt; safeString(m)),&#92;n        properties: ensureArray(cls.properties).map((p: any) =&gt; safeString(p)),&#92;n        extends: safeString(cls.extends),&#92;n        implements: ensureArray(cls.implements).map((i: any) =&gt; safeString(i)),&#92;n        startLine: safeNumber(cls.startLine || cls.line),&#92;n        endLine: safeNumber(cls.endLine || cls.line),&#92;n        // ✅ СОХРАНЯЕМ body&#92;n        body: cls.body || '',&#92;n        // ✅ СОХРАНЯЕМ vscode&#92;n        vscode: cls.vscode || '',&#92;n      },&#92;n    });&#92;n&#92;n    if (cls.extends) {&#92;n      const targetModule = findModuleForEntity(safeString(cls.extends), data);&#92;n      const targetId = targetModule&#92;n        ? `${targetModule}#${safeString(cls.extends)}`&#92;n        : `#${safeString(cls.extends)}`;&#92;n      edges.push({&#92;n        from: nodeId,&#92;n        to: targetId,&#92;n        type: 'class_extends',&#92;n      });&#92;n    }&#92;n&#92;n    for (const impl of ensureArray(cls.implements)) {&#92;n      const implName = safeString(impl);&#92;n      const targetModule = findModuleForEntity(implName, data);&#92;n      const targetId = targetModule ? `${targetModule}#${implName}` : `#${implName}`;&#92;n      edges.push({&#92;n        from: nodeId,&#92;n        to: targetId,&#92;n        type: 'class_implements',&#92;n      });&#92;n    }&#92;n  }&#92;n&#92;n  // Константы&#92;n  for (const constant of entities.constants) {&#92;n    const constName = safeString(constant.name);&#92;n    const modulePath = findModuleForEntity(constName, data);&#92;n    const nodeId = modulePath ? `${modulePath}#${constName}` : `#${constName}`;&#92;n&#92;n    nodes.push({&#92;n      id: nodeId,&#92;n      name: constName,&#92;n      type: 'constant',&#92;n      module: modulePath || 'unknown',&#92;n      line: safeNumber(constant.line),&#92;n      metadata: {&#92;n        value: constant.value,&#92;n        isExported: safeBoolean(constant.isExported),&#92;n        type: safeString(constant.type),&#92;n      },&#92;n    });&#92;n  }&#92;n&#92;n  // Интерфейсы&#92;n  for (const intf of entities.interfaces) {&#92;n    const intfName = safeString(intf.name);&#92;n    const modulePath = findModuleForEntity(intfName, data);&#92;n    const nodeId = modulePath ? `${modulePath}#${intfName}` : `#${intfName}`;&#92;n&#92;n    nodes.push({&#92;n      id: nodeId,&#92;n      name: intfName,&#92;n      type: 'interface',&#92;n      module: modulePath || 'unknown',&#92;n      line: safeNumber(intf.line),&#92;n      metadata: {&#92;n        isExported: safeBoolean(intf.isExported),&#92;n        properties: ensureArray(intf.properties).map((p: any) =&gt; safeString(p)),&#92;n        extends: ensureArray(intf.extends).map((e: any) =&gt; safeString(e)),&#92;n        startLine: safeNumber(intf.startLine || intf.line),&#92;n        endLine: safeNumber(intf.endLine || intf.line),&#92;n      },&#92;n    });&#92;n&#92;n    for (const ext of ensureArray(intf.extends)) {&#92;n      const extName = safeString(ext);&#92;n      const targetModule = findModuleForEntity(extName, data);&#92;n      const targetId = targetModule ? `${targetModule}#${extName}` : `#${extName}`;&#92;n      edges.push({&#92;n        from: nodeId,&#92;n        to: targetId,&#92;n        type: 'interface_extends',&#92;n      });&#92;n    }&#92;n  }&#92;n&#92;n  // Типы&#92;n  for (const type of entities.types) {&#92;n    const typeName = safeString(type.name);&#92;n    const modulePath = findModuleForEntity(typeName, data);&#92;n    const nodeId = modulePath ? `${modulePath}#${typeName}` : `#${typeName}`;&#92;n&#92;n    nodes.push({&#92;n      id: nodeId,&#92;n      name: typeName,&#92;n      type: 'type',&#92;n      module: modulePath || 'unknown',&#92;n      line: safeNumber(type.line),&#92;n      metadata: {&#92;n        isExported: safeBoolean(type.isExported),&#92;n        definition: safeString(type.definition),&#92;n      },&#92;n    });&#92;n  }&#92;n&#92;n  // Переменные&#92;n  for (const variable of entities.variables) {&#92;n    const varName = safeString(variable.name);&#92;n    const modulePath = findModuleForEntity(varName, data);&#92;n    const nodeId = modulePath ? `${modulePath}#${varName}` : `#${varName}`;&#92;n&#92;n    nodes.push({&#92;n      id: nodeId,&#92;n      name: varName,&#92;n      type: 'variable',&#92;n      module: modulePath || 'unknown',&#92;n      line: safeNumber(variable.line),&#92;n      metadata: {&#92;n        isExported: safeBoolean(variable.isExported),&#92;n        type: safeString(variable.type),&#92;n        value: variable.value,&#92;n      },&#92;n    });&#92;n  }&#92;n&#92;n  return { nodes, edges };&#92;n}&quot;,
+          &quot;startLine&quot;: 479,
+          &quot;endLine&quot;: 695,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -7726,7 +7726,7 @@
         },
         {
           &quot;name&quot;: &quot;buildFullAnalysis&quot;,
-          &quot;line&quot;: 680,
+          &quot;line&quot;: 700,
           &quot;isAsync&quot;: false,
           &quot;isExported&quot;: true,
           &quot;params&quot;: [
@@ -7744,8 +7744,8 @@
             &quot;saveFullAnalysis&quot;
           ],
           &quot;body&quot;: &quot;{&#92;n  const allEntities =&#92;n    entities.functions.length +&#92;n    entities.classes.length +&#92;n    entities.constants.length +&#92;n    entities.interfaces.length +&#92;n    entities.types.length +&#92;n    entities.variables.length;&#92;n&#92;n  const cycles = data.cyclicEdges?.map((edge: string) =&gt; edge.split('-&gt;')) || [];&#92;n&#92;n  const analysis: FullAnalysis = {&#92;n    version: '3.0.0',&#92;n    root,&#92;n    timestamp: new Date().toISOString(),&#92;n    stats: {&#92;n      totalModules: Object.keys(data.graph).length,&#92;n      totalEntities: allEntities,&#92;n      hasCycles: data.hasCycles || false,&#92;n      cycles,&#92;n    },&#92;n    moduleGraph: buildModuleGraph(data, entities),&#92;n    entityGraph: buildEntityGraph(data, entities),&#92;n  };&#92;n&#92;n  const safeAnalysis = safeTraverseAST(analysis);&#92;n  (analysis as any)._safeCopy = safeAnalysis;&#92;n&#92;n  return analysis;&#92;n}&quot;,
-          &quot;startLine&quot;: 680,
-          &quot;endLine&quot;: 713,
+          &quot;startLine&quot;: 700,
+          &quot;endLine&quot;: 733,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -7762,7 +7762,7 @@
         },
         {
           &quot;name&quot;: &quot;extractEntitiesFromFile&quot;,
-          &quot;line&quot;: 718,
+          &quot;line&quot;: 738,
           &quot;isAsync&quot;: false,
           &quot;isExported&quot;: true,
           &quot;params&quot;: [
@@ -7775,8 +7775,8 @@
           ],
           &quot;calledBy&quot;: [],
           &quot;body&quot;: &quot;{&#92;n  const entities: EnhancedEntityInfo = {&#92;n    functions: [],&#92;n    constants: [],&#92;n    variables: [],&#92;n    interfaces: [],&#92;n    types: [],&#92;n    classes: [],&#92;n  };&#92;n&#92;n  const absolutePath = filePath;&#92;n&#92;n  if (!fs.existsSync(absolutePath)) {&#92;n    console.warn(`⚠️ Файл не найден: ${absolutePath}`);&#92;n    return entities;&#92;n  }&#92;n&#92;n  try {&#92;n    const stats = fs.statSync(absolutePath);&#92;n    if (stats.size &gt; 500 * 1024) {&#92;n      console.log(&#92;n        `  📦 Большой файл (${(stats.size / 1024).toFixed(0)}KB), используем упрощенный анализ`&#92;n      );&#92;n&#92;n      const content = fs.readFileSync(absolutePath, 'utf-8');&#92;n&#92;n      const funcMatches = content.match(/function&#92;&#92;s+(&#92;&#92;w+)&#92;&#92;s*&#92;&#92;(/g) || [];&#92;n      for (const match of funcMatches) {&#92;n        const nameMatch = match.match(/function&#92;&#92;s+(&#92;&#92;w+)/);&#92;n        if (nameMatch &amp;&amp; nameMatch[1]) {&#92;n          const existing = entities.functions.find(&#92;n            (f: EnhancedFunctionInfo) =&gt; f.name === nameMatch[1]&#92;n          );&#92;n          if (!existing) {&#92;n            entities.functions.push({&#92;n              name: nameMatch[1],&#92;n              params: [],&#92;n              paramTypes: [],&#92;n              line: 0,&#92;n              startLine: 0,&#92;n              endLine: 0,&#92;n              isAsync: content.includes(`async function ${nameMatch[1]}`),&#92;n              isExported: content.includes(`export function ${nameMatch[1]}`),&#92;n              isMethod: false,&#92;n              className: undefined,&#92;n              calls: [],&#92;n              calledBy: [],&#92;n              returnType: 'any',&#92;n              body: '',&#92;n              isNested: false,&#92;n              parentFunction: undefined,&#92;n              isArrow: false,&#92;n              isEventHandler: false,&#92;n              eventType: undefined,&#92;n              depth: 0,&#92;n              complexity: 1,&#92;n              security: {&#92;n                hasEval: false,&#92;n                hasProcessEnv: false,&#92;n                hasSensitiveData: false,&#92;n                hasExec: false,&#92;n                hasPassword: false,&#92;n              },&#92;n              _safeInfo: null,&#92;n            });&#92;n          }&#92;n        }&#92;n      }&#92;n&#92;n      const classMatches = content.match(/class&#92;&#92;s+(&#92;&#92;w+)/g) || [];&#92;n      for (const match of classMatches) {&#92;n        const nameMatch = match.match(/class&#92;&#92;s+(&#92;&#92;w+)/);&#92;n        if (nameMatch &amp;&amp; nameMatch[1]) {&#92;n          const existing = entities.classes.find((c: EnhancedClassInfo) =&gt; c.name === nameMatch[1]);&#92;n          if (!existing) {&#92;n            entities.classes.push({&#92;n              name: nameMatch[1],&#92;n              methods: [],&#92;n              properties: [],&#92;n              line: 0,&#92;n              startLine: 0,&#92;n              endLine: 0,&#92;n              isExported: content.includes(`export class ${nameMatch[1]}`),&#92;n              extends: undefined,&#92;n              implements: [],&#92;n              _safeInfo: null,&#92;n            });&#92;n          }&#92;n        }&#92;n      }&#92;n&#92;n      return entities;&#92;n    }&#92;n  } catch (error: any) {&#92;n    console.warn(`  ⚠️ Упрощенный анализ не удался:`, error?.message || String(error));&#92;n  }&#92;n&#92;n  try {&#92;n    const project = new Project({&#92;n      compilerOptions: {&#92;n        target: 99,&#92;n        module: 99,&#92;n        allowJs: true,&#92;n        checkJs: false,&#92;n        skipLibCheck: true,&#92;n        esModuleInterop: true,&#92;n        allowSyntheticDefaultImports: true,&#92;n        resolveJsonModule: true,&#92;n        jsx: 2,&#92;n      },&#92;n      useInMemoryFileSystem: false,&#92;n    });&#92;n&#92;n    const sourceFile = project.addSourceFileAtPath(absolutePath);&#92;n    if (!sourceFile) {&#92;n      console.warn(`⚠️ Не удалось загрузить файл: ${absolutePath}`);&#92;n      return entities;&#92;n    }&#92;n&#92;n    // Извлекаем функции&#92;n    const functions = sourceFile.getFunctions();&#92;n    for (const functionDecl of functions) {&#92;n      const name = functionDecl.getName();&#92;n      if (!name) continue;&#92;n&#92;n      const params = functionDecl.getParameters().map((p: any) =&gt; p.getName());&#92;n      const returnType = functionDecl.getReturnType().getText();&#92;n      const isAsync = functionDecl.isAsync();&#92;n      const isExported = functionDecl.isExported();&#92;n&#92;n      const calls: string[] = [];&#92;n      functionDecl.forEachDescendant((node: any) =&gt; {&#92;n        if (Node.isCallExpression(node)) {&#92;n          const expr = node.getExpression();&#92;n          if (Node.isIdentifier(expr)) {&#92;n            const calledName = expr.getText();&#92;n            if (calledName &amp;&amp; calledName !== name) {&#92;n              calls.push(calledName);&#92;n            }&#92;n          }&#92;n        }&#92;n      });&#92;n&#92;n      let complexity = 1;&#92;n      try {&#92;n        functionDecl.forEachDescendant((node: any) =&gt; {&#92;n          const kind = node.getKind();&#92;n          if (&#92;n            kind === 95 ||&#92;n            kind === 96 ||&#92;n            kind === 97 ||&#92;n            kind === 98 ||&#92;n            kind === 129 ||&#92;n            kind === 130 ||&#92;n            kind === 131 ||&#92;n            kind === 132&#92;n          ) {&#92;n            complexity++;&#92;n          }&#92;n        });&#92;n      } catch (error: any) {&#92;n        complexity = 1;&#92;n      }&#92;n&#92;n      const bodyText = functionDecl.getBody()?.getText() || '';&#92;n      const security = {&#92;n        hasEval: bodyText.includes('eval(') || bodyText.includes('eval ('),&#92;n        hasProcessEnv: bodyText.includes('process.env'),&#92;n        hasSensitiveData:&#92;n          /['&#92;&#92;&#92;&quot;][a-zA-Z0-9_&#92;&#92;-]{32,}['&#92;&#92;&#92;&quot;]/.test(bodyText) ||&#92;n          /'&#92;&quot;]sk-[a-zA-Z0-9]{20,}['&#92;&quot;]/.test(bodyText),&#92;n        hasExec: bodyText.includes('exec(') || bodyText.includes('exec ('),&#92;n        hasPassword: /&#92;&#92;b(password|passwd|pwd|secret|token|api[_-]?key)&#92;&#92;b/i.test(bodyText),&#92;n      };&#92;n&#92;n      // ✅ ИСПОЛЬЗУЕМ EnhancedFunctionInfo из общих типов&#92;n      const funcInfo: EnhancedFunctionInfo = {&#92;n        name,&#92;n        params,&#92;n        paramTypes: params.map(() =&gt; 'any'),&#92;n        line: functionDecl.getStartLineNumber(),&#92;n        startLine: functionDecl.getStartLineNumber(),&#92;n        endLine: functionDecl.getEndLineNumber(),&#92;n        isAsync,&#92;n        isExported,&#92;n        isMethod: false,&#92;n        className: undefined,&#92;n        calls: [...new Set(calls)],&#92;n        calledBy: [], // Будет заполнено позже&#92;n        returnType,&#92;n        body: bodyText,&#92;n        isNested: false,&#92;n        parentFunction: undefined,&#92;n        isArrow: false,&#92;n        isEventHandler: false,&#92;n        eventType: undefined,&#92;n        depth: 0,&#92;n        complexity,&#92;n        security,&#92;n        _safeInfo: null,&#92;n      };&#92;n      entities.functions.push(funcInfo);&#92;n    }&#92;n&#92;n    // Извлекаем классы&#92;n    const classes = sourceFile.getClasses();&#92;n    for (const cls of classes) {&#92;n      const name = cls.getName();&#92;n      if (!name) continue;&#92;n&#92;n      const methods: string[] = [];&#92;n      const methodDetails: EnhancedClassInfo['methodDetails'] = [];&#92;n      const properties: string[] = [];&#92;n      const propertyDetails: EnhancedClassInfo['propertyDetails'] = [];&#92;n&#92;n      for (const method of cls.getMethods()) {&#92;n        const methodName = method.getName();&#92;n        if (methodName) {&#92;n          methods.push(methodName);&#92;n          methodDetails?.push({&#92;n            name: methodName,&#92;n            params: method.getParameters().map((p: any) =&gt; p.getName()),&#92;n            returnType: method.getReturnType().getText(),&#92;n            isAsync: method.isAsync(),&#92;n            line: method.getStartLineNumber(),&#92;n          });&#92;n        }&#92;n      }&#92;n&#92;n      for (const prop of cls.getProperties()) {&#92;n        const propName = prop.getName();&#92;n        if (propName) {&#92;n          properties.push(propName);&#92;n          propertyDetails?.push({&#92;n            name: propName,&#92;n            type: prop.getType().getText(),&#92;n            line: prop.getStartLineNumber(),&#92;n          });&#92;n        }&#92;n      }&#92;n&#92;n      // ✅ ИСПОЛЬЗУЕМ EnhancedClassInfo из общих типов&#92;n      const classInfo: EnhancedClassInfo = {&#92;n        name,&#92;n        methods,&#92;n        methodDetails,&#92;n        properties,&#92;n        propertyDetails,&#92;n        line: cls.getStartLineNumber(),&#92;n        startLine: cls.getStartLineNumber(),&#92;n        endLine: cls.getEndLineNumber(),&#92;n        isExported: cls.isExported(),&#92;n        extends: cls.getExtends()?.getText(),&#92;n        implements: cls.getImplements().map((i: any) =&gt; i.getText()),&#92;n        _safeInfo: null,&#92;n      };&#92;n      entities.classes.push(classInfo);&#92;n    }&#92;n&#92;n    // Извлекаем константы и переменные&#92;n    const variableDeclarations = sourceFile.getVariableDeclarations();&#92;n    for (const decl of variableDeclarations) {&#92;n      const name = decl.getName();&#92;n      const initializer = decl.getInitializer();&#92;n      const isConst = decl.getVariableStatement()?.getDeclarationKind() === 'const';&#92;n&#92;n      const info = {&#92;n        name,&#92;n        line: decl.getStartLineNumber(),&#92;n        isExported: decl.isExported(),&#92;n        type: initializer ? initializer.getType().getText() : 'any',&#92;n        value: initializer ? extractValueFromNode(initializer) : undefined,&#92;n        _safeInfo: null,&#92;n      };&#92;n&#92;n      if (isConst) {&#92;n        entities.constants.push(info);&#92;n      } else {&#92;n        entities.variables.push(info);&#92;n      }&#92;n    }&#92;n&#92;n    // Извлекаем интерфейсы&#92;n    const interfaces = sourceFile.getInterfaces();&#92;n    for (const intf of interfaces) {&#92;n      const name = intf.getName();&#92;n      if (!name) continue;&#92;n&#92;n      const properties: string[] = [];&#92;n      for (const prop of intf.getProperties()) {&#92;n        properties.push(prop.getName());&#92;n      }&#92;n&#92;n      entities.interfaces.push({&#92;n        name,&#92;n        properties,&#92;n        line: intf.getStartLineNumber(),&#92;n        startLine: intf.getStartLineNumber(),&#92;n        endLine: intf.getEndLineNumber(),&#92;n        isExported: intf.isExported(),&#92;n        extends: intf.getExtends().map((e: any) =&gt; e.getText()),&#92;n        _safeInfo: null,&#92;n      });&#92;n    }&#92;n&#92;n    // Извлекаем типы&#92;n    const typeAliases = sourceFile.getTypeAliases();&#92;n    for (const typeAlias of typeAliases) {&#92;n      const name = typeAlias.getName();&#92;n      if (!name) continue;&#92;n&#92;n      entities.types.push({&#92;n        name,&#92;n        definition: typeAlias.getType().getText(),&#92;n        line: typeAlias.getStartLineNumber(),&#92;n        isExported: typeAlias.isExported(),&#92;n        _safeInfo: null,&#92;n      });&#92;n    }&#92;n&#92;n    // ✅ ИСПРАВЛЕНО: нормализация calledBy с использованием общих типов&#92;n    // Строим карту функций&#92;n    const functionMap = new Map&lt;string, { module: string; line: number; name: string }&gt;();&#92;n    for (const func of entities.functions) {&#92;n      functionMap.set(func.name, {&#92;n        module: filePath,&#92;n        line: func.line,&#92;n        name: func.name,&#92;n      });&#92;n    }&#92;n&#92;n    // Заполняем calledBy для каждой функции&#92;n    for (const func of entities.functions) {&#92;n      for (const call of func.calls) {&#92;n        const calledFunc = functionMap.get(call);&#92;n        if (calledFunc &amp;&amp; calledFunc.name !== func.name) {&#92;n          const targetFunc = entities.functions.find(f =&gt; f.name === call);&#92;n          if (targetFunc) {&#92;n            // ✅ Нормализуем calledBy с использованием общих типов&#92;n            let normalizedCalledBy: { function: string; module: string; line: number }[] = [];&#92;n&#92;n            if (Array.isArray(targetFunc.calledBy)) {&#92;n              normalizedCalledBy = targetFunc.calledBy.map((cb: any) =&gt; {&#92;n                if (typeof cb === 'string') {&#92;n                  return {&#92;n                    function: cb,&#92;n                    module: filePath,&#92;n                    line: func.line,&#92;n                  };&#92;n                }&#92;n                return {&#92;n                  function: cb.function || cb,&#92;n                  module: cb.module || filePath,&#92;n                  line: cb.line || func.line,&#92;n                };&#92;n              });&#92;n            }&#92;n&#92;n            // ✅ Проверяем, не добавлен ли уже этот caller&#92;n            const exists = normalizedCalledBy.some(&#92;n              (cb: any) =&gt; cb.function === func.name &amp;&amp; cb.module === filePath&#92;n            );&#92;n&#92;n            if (!exists) {&#92;n              normalizedCalledBy.push({&#92;n                function: func.name,&#92;n                module: filePath,&#92;n                line: func.line,&#92;n              });&#92;n            }&#92;n&#92;n            targetFunc.calledBy = normalizedCalledBy;&#92;n          }&#92;n        }&#92;n      }&#92;n    }&#92;n&#92;n    const relativePath = path.relative(process.cwd(), absolutePath);&#92;n    console.log(`✅ Извлечено сущностей из ${relativePath}:`);&#92;n    console.log(`   Функций: ${entities.functions.length}`);&#92;n    console.log(`   Классов: ${entities.classes.length}`);&#92;n    console.log(`   Констант: ${entities.constants.length}`);&#92;n    console.log(`   Интерфейсов: ${entities.interfaces.length}`);&#92;n    console.log(`   Типов: ${entities.types.length}`);&#92;n    console.log(`   Переменных: ${entities.variables.length}`);&#92;n&#92;n    return entities;&#92;n  } catch (error: any) {&#92;n    console.error(&#92;n      `❌ Ошибка при извлечении сущностей из ${absolutePath}:`,&#92;n      error?.message || String(error)&#92;n    );&#92;n    return entities;&#92;n  }&#92;n}&quot;,
-          &quot;startLine&quot;: 718,
-          &quot;endLine&quot;: 1112,
+          &quot;startLine&quot;: 738,
+          &quot;endLine&quot;: 1132,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -7793,7 +7793,7 @@
         },
         {
           &quot;name&quot;: &quot;extractValueFromNode&quot;,
-          &quot;line&quot;: 1117,
+          &quot;line&quot;: 1137,
           &quot;isAsync&quot;: false,
           &quot;isExported&quot;: false,
           &quot;params&quot;: [
@@ -7808,8 +7808,8 @@
             &quot;extractEntitiesFromFile&quot;
           ],
           &quot;body&quot;: &quot;{&#92;n  try {&#92;n    const text = node.getText();&#92;n&#92;n    if (&#92;n      (text.startsWith('&#92;&quot;') &amp;&amp; text.endsWith('&#92;&quot;')) ||&#92;n      (text.startsWith(&#92;&quot;'&#92;&quot;) &amp;&amp; text.endsWith(&#92;&quot;'&#92;&quot;))&#92;n    ) {&#92;n      return text.slice(1, -1);&#92;n    }&#92;n&#92;n    if (!isNaN(Number(text)) &amp;&amp; text !== '') {&#92;n      return Number(text);&#92;n    }&#92;n&#92;n    if (text === 'true') return true;&#92;n    if (text === 'false') return false;&#92;n    if (text === 'null') return null;&#92;n    if (text === 'undefined') return undefined;&#92;n&#92;n    if (Node.isArrayLiteralExpression(node)) {&#92;n      return node.getElements().map((e: any) =&gt; extractValueFromNode(e));&#92;n    }&#92;n&#92;n    if (Node.isObjectLiteralExpression(node)) {&#92;n      const result: Record&lt;string, any&gt; = {};&#92;n      for (const prop of node.getProperties()) {&#92;n        if (Node.isPropertyAssignment(prop)) {&#92;n          const name = prop.getName();&#92;n          const initializer = prop.getInitializer();&#92;n          if (initializer) {&#92;n            result[name] = extractValueFromNode(initializer);&#92;n          }&#92;n        }&#92;n      }&#92;n      return result;&#92;n    }&#92;n&#92;n    if (Node.isIdentifier(node)) {&#92;n      return node.getText();&#92;n    }&#92;n&#92;n    return undefined;&#92;n  } catch (error: any) {&#92;n    return undefined;&#92;n  }&#92;n}&quot;,
-          &quot;startLine&quot;: 1117,
-          &quot;endLine&quot;: 1163,
+          &quot;startLine&quot;: 1137,
+          &quot;endLine&quot;: 1183,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -13087,6 +13087,8 @@
             &quot;calledBy&quot;,
             &quot;returnType&quot;,
             &quot;body&quot;,
+            &quot;signature&quot;,
+            &quot;vscode&quot;,
             &quot;isNested&quot;,
             &quot;parentFunction&quot;,
             &quot;isArrow&quot;,
@@ -13099,22 +13101,22 @@
           ],
           &quot;extends&quot;: [],
           &quot;startLine&quot;: 29,
-          &quot;endLine&quot;: 59
+          &quot;endLine&quot;: 61
         },
         {
           &quot;name&quot;: &quot;EnhancedFunctionInfo&quot;,
-          &quot;line&quot;: 65,
+          &quot;line&quot;: 67,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [],
           &quot;extends&quot;: [
             &quot;FunctionEntity&quot;
           ],
-          &quot;startLine&quot;: 65,
-          &quot;endLine&quot;: 68
+          &quot;startLine&quot;: 67,
+          &quot;endLine&quot;: 70
         },
         {
           &quot;name&quot;: &quot;EnhancedConstantInfo&quot;,
-          &quot;line&quot;: 70,
+          &quot;line&quot;: 72,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;name&quot;,
@@ -13125,12 +13127,12 @@
             &quot;_safeInfo&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 70,
-          &quot;endLine&quot;: 77
+          &quot;startLine&quot;: 72,
+          &quot;endLine&quot;: 79
         },
         {
           &quot;name&quot;: &quot;EnhancedVariableInfo&quot;,
-          &quot;line&quot;: 79,
+          &quot;line&quot;: 81,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;name&quot;,
@@ -13141,12 +13143,12 @@
             &quot;_safeInfo&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 79,
-          &quot;endLine&quot;: 86
+          &quot;startLine&quot;: 81,
+          &quot;endLine&quot;: 88
         },
         {
           &quot;name&quot;: &quot;EnhancedInterfaceInfo&quot;,
-          &quot;line&quot;: 88,
+          &quot;line&quot;: 90,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;name&quot;,
@@ -13159,12 +13161,12 @@
             &quot;_safeInfo&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 88,
-          &quot;endLine&quot;: 97
+          &quot;startLine&quot;: 90,
+          &quot;endLine&quot;: 99
         },
         {
           &quot;name&quot;: &quot;EnhancedTypeInfo&quot;,
-          &quot;line&quot;: 99,
+          &quot;line&quot;: 101,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;name&quot;,
@@ -13174,12 +13176,12 @@
             &quot;_safeInfo&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 99,
-          &quot;endLine&quot;: 105
+          &quot;startLine&quot;: 101,
+          &quot;endLine&quot;: 107
         },
         {
           &quot;name&quot;: &quot;EnhancedClassInfo&quot;,
-          &quot;line&quot;: 107,
+          &quot;line&quot;: 109,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;name&quot;,
@@ -13193,15 +13195,17 @@
             &quot;implements&quot;,
             &quot;startLine&quot;,
             &quot;endLine&quot;,
+            &quot;body&quot;,
+            &quot;vscode&quot;,
             &quot;_safeInfo&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 107,
-          &quot;endLine&quot;: 130
+          &quot;startLine&quot;: 109,
+          &quot;endLine&quot;: 134
         },
         {
           &quot;name&quot;: &quot;EnhancedEntityInfo&quot;,
-          &quot;line&quot;: 132,
+          &quot;line&quot;: 136,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;functions&quot;,
@@ -13212,12 +13216,12 @@
             &quot;classes&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 132,
-          &quot;endLine&quot;: 139
+          &quot;startLine&quot;: 136,
+          &quot;endLine&quot;: 143
         },
         {
           &quot;name&quot;: &quot;ModuleNode&quot;,
-          &quot;line&quot;: 141,
+          &quot;line&quot;: 145,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;id&quot;,
@@ -13227,12 +13231,12 @@
             &quot;metadata&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 141,
-          &quot;endLine&quot;: 152
+          &quot;startLine&quot;: 145,
+          &quot;endLine&quot;: 156
         },
         {
           &quot;name&quot;: &quot;ModuleEdge&quot;,
-          &quot;line&quot;: 154,
+          &quot;line&quot;: 158,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;from&quot;,
@@ -13241,24 +13245,24 @@
             &quot;specifiers&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 154,
-          &quot;endLine&quot;: 159
+          &quot;startLine&quot;: 158,
+          &quot;endLine&quot;: 163
         },
         {
           &quot;name&quot;: &quot;ModuleGraph&quot;,
-          &quot;line&quot;: 161,
+          &quot;line&quot;: 165,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;nodes&quot;,
             &quot;edges&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 161,
-          &quot;endLine&quot;: 164
+          &quot;startLine&quot;: 165,
+          &quot;endLine&quot;: 168
         },
         {
           &quot;name&quot;: &quot;EntityNode&quot;,
-          &quot;line&quot;: 166,
+          &quot;line&quot;: 170,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;id&quot;,
@@ -13269,12 +13273,12 @@
             &quot;metadata&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 166,
-          &quot;endLine&quot;: 173
+          &quot;startLine&quot;: 170,
+          &quot;endLine&quot;: 177
         },
         {
           &quot;name&quot;: &quot;EntityEdge&quot;,
-          &quot;line&quot;: 175,
+          &quot;line&quot;: 179,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;from&quot;,
@@ -13283,24 +13287,24 @@
             &quot;line&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 175,
-          &quot;endLine&quot;: 192
+          &quot;startLine&quot;: 179,
+          &quot;endLine&quot;: 196
         },
         {
           &quot;name&quot;: &quot;EntityGraph&quot;,
-          &quot;line&quot;: 194,
+          &quot;line&quot;: 198,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;nodes&quot;,
             &quot;edges&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 194,
-          &quot;endLine&quot;: 197
+          &quot;startLine&quot;: 198,
+          &quot;endLine&quot;: 201
         },
         {
           &quot;name&quot;: &quot;FullAnalysis&quot;,
-          &quot;line&quot;: 199,
+          &quot;line&quot;: 203,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;version&quot;,
@@ -13311,12 +13315,12 @@
             &quot;entityGraph&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 199,
-          &quot;endLine&quot;: 211
+          &quot;startLine&quot;: 203,
+          &quot;endLine&quot;: 215
         },
         {
           &quot;name&quot;: &quot;PackageLockImportInfo&quot;,
-          &quot;line&quot;: 214,
+          &quot;line&quot;: 218,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;direction&quot;,
@@ -13327,12 +13331,12 @@
             &quot;line&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 214,
-          &quot;endLine&quot;: 221
+          &quot;startLine&quot;: 218,
+          &quot;endLine&quot;: 225
         },
         {
           &quot;name&quot;: &quot;EnhancedPackageInfo&quot;,
-          &quot;line&quot;: 223,
+          &quot;line&quot;: 227,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;version&quot;,
@@ -13345,15 +13349,17 @@
             &quot;exports&quot;,
             &quot;entities&quot;,
             &quot;fileStats&quot;,
-            &quot;vueAnalysis&quot;
+            &quot;vueAnalysis&quot;,
+            &quot;vscode&quot;,
+            &quot;sourceCode&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 223,
-          &quot;endLine&quot;: 259
+          &quot;startLine&quot;: 227,
+          &quot;endLine&quot;: 265
         },
         {
           &quot;name&quot;: &quot;VueAnalysis&quot;,
-          &quot;line&quot;: 261,
+          &quot;line&quot;: 267,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;props&quot;,
@@ -13366,12 +13372,12 @@
             &quot;stats&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 261,
-          &quot;endLine&quot;: 282
+          &quot;startLine&quot;: 267,
+          &quot;endLine&quot;: 288
         },
         {
           &quot;name&quot;: &quot;ArchitectureMetrics&quot;,
-          &quot;line&quot;: 284,
+          &quot;line&quot;: 290,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;totalModules&quot;,
@@ -13390,12 +13396,12 @@
             &quot;isAcyclic&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 284,
-          &quot;endLine&quot;: 299
+          &quot;startLine&quot;: 290,
+          &quot;endLine&quot;: 305
         },
         {
           &quot;name&quot;: &quot;ProjectSummary&quot;,
-          &quot;line&quot;: 301,
+          &quot;line&quot;: 307,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;projectType&quot;,
@@ -13408,12 +13414,12 @@
             &quot;architectureHealth&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 301,
-          &quot;endLine&quot;: 310
+          &quot;startLine&quot;: 307,
+          &quot;endLine&quot;: 316
         },
         {
           &quot;name&quot;: &quot;EnhancedPackageLockReport&quot;,
-          &quot;line&quot;: 312,
+          &quot;line&quot;: 318,
           &quot;isExported&quot;: true,
           &quot;properties&quot;: [
             &quot;name&quot;,
@@ -13431,8 +13437,8 @@
             &quot;summary&quot;
           ],
           &quot;extends&quot;: [],
-          &quot;startLine&quot;: 312,
-          &quot;endLine&quot;: 379
+          &quot;startLine&quot;: 318,
+          &quot;endLine&quot;: 385
         }
       ],
       &quot;types&quot;: [],
@@ -15968,7 +15974,7 @@
           &quot;calledBy&quot;: [
             &quot;buildPackages&quot;
           ],
-          &quot;body&quot;: &quot;{&#92;n  const exports: EnhancedPackageInfo['exports'] = {};&#92;n&#92;n  if (!entities.functions) return exports;&#92;n&#92;n  const enhancedEntities = convertToEnhancedEntityInfo(entities);&#92;n  const allEnhancedFunctions: EnhancedFunctionInfo[] = [];&#92;n&#92;n  for (const [_modulePath, moduleEntities] of Object.entries(entitiesMap)) {&#92;n    if (!moduleEntities) continue;&#92;n    const moduleEnhanced = convertToEnhancedEntityInfo(moduleEntities);&#92;n    allEnhancedFunctions.push(...moduleEnhanced.functions);&#92;n  }&#92;n&#92;n  const graphDataForCallGraph = graphData&#92;n    ? {&#92;n      rootKey: graphData.rootKey,&#92;n      graph: graphData.graph,&#92;n    }&#92;n    : undefined;&#92;n&#92;n  // Строим граф вызовов&#92;n  const callGraph = buildCallGraph(entitiesMap, graphDataForCallGraph);&#92;n&#92;n  // Используем buildConsumersMap для построения карты consumers&#92;n  const consumersMap = buildConsumersMap(enhancedEntities.functions, allEnhancedFunctions);&#92;n&#92;n  const functionList = ensureArray&lt;any&gt;(entities.functions) as FunctionEntity[];&#92;n  for (const func of functionList) {&#92;n    if (func.isExported) {&#92;n      const funcName = safeString(func.name);&#92;n      if (!funcName) continue;&#92;n&#92;n      // Получаем consumers из карты&#92;n      const consumers = consumersMap.get(funcName) || [];&#92;n&#92;n      // Дополнительно обогащаем consumers через граф вызовов&#92;n      const graphConsumers = findConsumersForExport(funcName, callGraph, graphDataForCallGraph);&#92;n&#92;n      // Объединяем consumers из обоих источников&#92;n      const allConsumers = [...consumers, ...graphConsumers];&#92;n      const uniqueConsumers = allConsumers.filter(&#92;n        (c, index, self) =&gt;&#92;n          index === self.findIndex(t =&gt; t.function === c.function &amp;&amp; t.module === c.module)&#92;n      );&#92;n&#92;n      // ✅ СОХРАНЯЕМ ВСЕ ДАННЫЕ ОБ ЭКСПОРТЕ&#92;n      exports[funcName] = {&#92;n        direction: 'outward',&#92;n        type: 'export',&#92;n        isAsync: func.isAsync || false,&#92;n        params: ensureArray&lt;any&gt;(func.params).map((p: any) =&gt; safeString(p)),&#92;n        returns: safeString(func.returnType || 'any'),&#92;n        line: safeNumber(func.line),&#92;n        consumers: uniqueConsumers,&#92;n      };&#92;n&#92;n      // ✅ ЛОГИРУЕМ ЭКСПОРТ&#92;n      if (uniqueConsumers.length &gt; 0) {&#92;n        console.log(`   📤 Экспорт ${funcName}: ${uniqueConsumers.length} потребителей`);&#92;n      }&#92;n    }&#92;n  }&#92;n&#92;n  return exports;&#92;n}&quot;,
+          &quot;body&quot;: &quot;{&#92;n  const exports: EnhancedPackageInfo['exports'] = {};&#92;n&#92;n  if (!entities.functions) return exports;&#92;n&#92;n  const enhancedEntities = convertToEnhancedEntityInfo(entities);&#92;n  const allEnhancedFunctions: EnhancedFunctionInfo[] = [];&#92;n&#92;n  for (const [_modulePath, moduleEntities] of Object.entries(entitiesMap)) {&#92;n    if (!moduleEntities) continue;&#92;n    const moduleEnhanced = convertToEnhancedEntityInfo(moduleEntities);&#92;n    allEnhancedFunctions.push(...moduleEnhanced.functions);&#92;n  }&#92;n&#92;n  const graphDataForCallGraph = graphData&#92;n    ? {&#92;n        rootKey: graphData.rootKey,&#92;n        graph: graphData.graph,&#92;n      }&#92;n    : undefined;&#92;n&#92;n  // Строим граф вызовов&#92;n  const callGraph = buildCallGraph(entitiesMap, graphDataForCallGraph);&#92;n&#92;n  // Используем buildConsumersMap для построения карты consumers&#92;n  const consumersMap = buildConsumersMap(enhancedEntities.functions, allEnhancedFunctions);&#92;n&#92;n  const functionList = ensureArray&lt;any&gt;(entities.functions) as FunctionEntity[];&#92;n  for (const func of functionList) {&#92;n    if (func.isExported) {&#92;n      const funcName = safeString(func.name);&#92;n      if (!funcName) continue;&#92;n&#92;n      // Получаем consumers из карты&#92;n      const consumers = consumersMap.get(funcName) || [];&#92;n&#92;n      // Дополнительно обогащаем consumers через граф вызовов&#92;n      const graphConsumers = findConsumersForExport(funcName, callGraph, graphDataForCallGraph);&#92;n&#92;n      // Объединяем consumers из обоих источников&#92;n      const allConsumers = [...consumers, ...graphConsumers];&#92;n      const uniqueConsumers = allConsumers.filter(&#92;n        (c, index, self) =&gt;&#92;n          index === self.findIndex(t =&gt; t.function === c.function &amp;&amp; t.module === c.module)&#92;n      );&#92;n&#92;n      // ✅ СОХРАНЯЕМ ВСЕ ДАННЫЕ ОБ ЭКСПОРТЕ&#92;n      exports[funcName] = {&#92;n        direction: 'outward',&#92;n        type: 'export',&#92;n        isAsync: func.isAsync || false,&#92;n        params: ensureArray&lt;any&gt;(func.params).map((p: any) =&gt; safeString(p)),&#92;n        returns: safeString(func.returnType || 'any'),&#92;n        line: safeNumber(func.line),&#92;n        consumers: uniqueConsumers,&#92;n      };&#92;n&#92;n      // ✅ ЛОГИРУЕМ ЭКСПОРТ&#92;n      if (uniqueConsumers.length &gt; 0) {&#92;n        console.log(`   📤 Экспорт ${funcName}: ${uniqueConsumers.length} потребителей`);&#92;n      }&#92;n    }&#92;n  }&#92;n&#92;n  return exports;&#92;n}&quot;,
           &quot;startLine&quot;: 561,
           &quot;endLine&quot;: 630,
           &quot;isMethod&quot;: false,
@@ -16089,7 +16095,7 @@
           &quot;calledBy&quot;: [
             &quot;analyzeFileWithTsMorph&quot;
           ],
-          &quot;body&quot;: &quot;{&#92;n  const methods: string[] = [];&#92;n  const methodDetails: EnhancedEntityInfo['classes'][0]['methodDetails'] = [];&#92;n&#92;n  for (const method of cls.getMethods()) {&#92;n    const methodName = method.getName();&#92;n    if (methodName) {&#92;n      methods.push(methodName);&#92;n      methodDetails?.push({&#92;n        name: methodName,&#92;n        params: method.getParameters().map(p =&gt; p.getName()),&#92;n        returnType: method.getReturnType().getText(),&#92;n        isAsync: method.isAsync(),&#92;n        line: method.getStartLineNumber(),&#92;n      });&#92;n    }&#92;n  }&#92;n&#92;n  return { methods, methodDetails };&#92;n}&quot;,
+          &quot;body&quot;: &quot;{&#92;n  const methods: string[] = [];&#92;n  const methodDetails: EnhancedClassInfo['methodDetails'] = [];&#92;n&#92;n  for (const method of cls.getMethods()) {&#92;n    const methodName = method.getName();&#92;n    if (methodName) {&#92;n      methods.push(methodName);&#92;n      methodDetails?.push({&#92;n        name: methodName,&#92;n        params: method.getParameters().map(p =&gt; p.getName()),&#92;n        returnType: method.getReturnType().getText(),&#92;n        isAsync: method.isAsync(),&#92;n        line: method.getStartLineNumber(),&#92;n      });&#92;n    }&#92;n  }&#92;n&#92;n  return { methods, methodDetails };&#92;n}&quot;,
           &quot;startLine&quot;: 697,
           &quot;endLine&quot;: 719,
           &quot;isMethod&quot;: false,
@@ -16119,7 +16125,7 @@
           &quot;calledBy&quot;: [
             &quot;analyzeFileWithTsMorph&quot;
           ],
-          &quot;body&quot;: &quot;{&#92;n  const properties: string[] = [];&#92;n  const propertyDetails: EnhancedEntityInfo['classes'][0]['propertyDetails'] = [];&#92;n&#92;n  for (const prop of cls.getProperties()) {&#92;n    const propName = prop.getName();&#92;n    if (propName) {&#92;n      properties.push(propName);&#92;n      propertyDetails?.push({&#92;n        name: propName,&#92;n        type: prop.getType().getText(),&#92;n        line: prop.getStartLineNumber(),&#92;n      });&#92;n    }&#92;n  }&#92;n&#92;n  return { properties, propertyDetails };&#92;n}&quot;,
+          &quot;body&quot;: &quot;{&#92;n  const properties: string[] = [];&#92;n  const propertyDetails: EnhancedClassInfo['propertyDetails'] = [];&#92;n&#92;n  for (const prop of cls.getProperties()) {&#92;n    const propName = prop.getName();&#92;n    if (propName) {&#92;n      properties.push(propName);&#92;n      propertyDetails?.push({&#92;n        name: propName,&#92;n        type: prop.getType().getText(),&#92;n        line: prop.getStartLineNumber(),&#92;n      });&#92;n    }&#92;n  }&#92;n&#92;n  return { properties, propertyDetails };&#92;n}&quot;,
           &quot;startLine&quot;: 724,
           &quot;endLine&quot;: 744,
           &quot;isMethod&quot;: false,
@@ -16191,9 +16197,9 @@
           &quot;calledBy&quot;: [
             &quot;enrichWithTsMorph&quot;
           ],
-          &quot;body&quot;: &quot;{&#92;n  const result: TsMorphAnalysisResult = {&#92;n    functions: [],&#92;n    classes: [],&#92;n    imports: {},&#92;n    sourceFile: null,&#92;n    diagnostics: [],&#92;n  };&#92;n&#92;n  try {&#92;n    const absPath = findFileInProject(filePath, projectRoot);&#92;n    if (!absPath || !fs.existsSync(absPath)) {&#92;n      result.diagnostics.push(`File not found: ${filePath}`);&#92;n      return result;&#92;n    }&#92;n&#92;n    if (graphData) {&#92;n      const moduleExists = findModuleForEntity(filePath, graphData) !== null;&#92;n      if (!moduleExists) {&#92;n        result.diagnostics.push(`Module not found in graph: ${filePath}`);&#92;n      }&#92;n    }&#92;n&#92;n    const project = new Project({&#92;n      compilerOptions: {&#92;n        target: 99,&#92;n        module: 99,&#92;n        allowJs: true,&#92;n        checkJs: false,&#92;n        skipLibCheck: true,&#92;n        esModuleInterop: true,&#92;n        allowSyntheticDefaultImports: true,&#92;n        resolveJsonModule: true,&#92;n        jsx: 2,&#92;n      },&#92;n      useInMemoryFileSystem: false,&#92;n    });&#92;n&#92;n    const sourceFile = project.addSourceFileAtPath(absPath);&#92;n    if (!sourceFile) {&#92;n      result.diagnostics.push(`Failed to load source file: ${filePath}`);&#92;n      return result;&#92;n    }&#92;n&#92;n    result.sourceFile = sourceFile;&#92;n&#92;n    const functions = sourceFile.getFunctions();&#92;n    for (const func of functions) {&#92;n      const name = func.getName();&#92;n      if (!name) continue;&#92;n&#92;n      if (graphData) {&#92;n        const funcExists = findModuleForEntity(name, graphData) !== null;&#92;n        if (!funcExists) {&#92;n          result.diagnostics.push(`Function not found in graph: ${name}`);&#92;n        }&#92;n      }&#92;n&#92;n      const params = func.getParameters().map(p =&gt; p.getName());&#92;n      const returnType = func.getReturnType().getText();&#92;n      const isAsync = func.isAsync();&#92;n      const isExported = func.isExported();&#92;n&#92;n      const calls = extractCallsFromFunction(func, name);&#92;n      const complexity = calculateComplexity(func);&#92;n      const security = extractSecurityInfo(func);&#92;n&#92;n      const body = func.getBody()?.getText() || '';&#92;n&#92;n      result.functions.push({&#92;n        name,&#92;n        params,&#92;n        paramTypes: params.map(() =&gt; 'any'),&#92;n        line: func.getStartLineNumber(),&#92;n        startLine: func.getStartLineNumber(),&#92;n        endLine: func.getEndLineNumber(),&#92;n        isAsync,&#92;n        isExported,&#92;n        isMethod: false,&#92;n        className: undefined,&#92;n        calls,&#92;n        calledBy: [],&#92;n        returnType,&#92;n        body,&#92;n        isNested: false,&#92;n        parentFunction: undefined,&#92;n        isArrow: false,&#92;n        isEventHandler: false,&#92;n        eventType: undefined,&#92;n        depth: 0,&#92;n        complexity,&#92;n        security,&#92;n        _safeInfo: null,&#92;n      });&#92;n    }&#92;n&#92;n    const classes = sourceFile.getClasses();&#92;n    for (const cls of classes) {&#92;n      const name = cls.getName();&#92;n      if (!name) continue;&#92;n&#92;n      if (graphData) {&#92;n        const classExists = findModuleForEntity(name, graphData) !== null;&#92;n        if (!classExists) {&#92;n          result.diagnostics.push(`Class not found in graph: ${name}`);&#92;n        }&#92;n      }&#92;n&#92;n      const { methods, methodDetails } = extractClassMethods(cls);&#92;n      const { properties, propertyDetails } = extractClassProperties(cls);&#92;n&#92;n      result.classes.push({&#92;n        name,&#92;n        methods,&#92;n        methodDetails,&#92;n        properties,&#92;n        propertyDetails,&#92;n        line: cls.getStartLineNumber(),&#92;n        startLine: cls.getStartLineNumber(),&#92;n        endLine: cls.getEndLineNumber(),&#92;n        isExported: cls.isExported(),&#92;n        extends: cls.getExtends()?.getText(),&#92;n        implements: (cls.getImplements() || []).map(i =&gt; i.getText()),&#92;n        _safeInfo: null,&#92;n      });&#92;n    }&#92;n&#92;n    result.imports = extractImportsFromSourceFile(sourceFile);&#92;n&#92;n    const diagnostics = sourceFile.getPreEmitDiagnostics();&#92;n    for (const diag of diagnostics) {&#92;n      let message: string;&#92;n      const messageText = diag.getMessageText();&#92;n      if (typeof messageText === 'string') {&#92;n        message = messageText;&#92;n      } else {&#92;n        message = messageText.getMessageText();&#92;n      }&#92;n      result.diagnostics.push(message);&#92;n    }&#92;n  } catch (error: unknown) {&#92;n    const errorMessage = error instanceof Error ? error.message : String(error);&#92;n    result.diagnostics.push(`Analysis error: ${errorMessage}`);&#92;n    if (process.env.DEBUG === 'true') {&#92;n      console.debug(`  ⚠️ ts-morph analysis failed for ${filePath}:`, errorMessage);&#92;n    }&#92;n  }&#92;n&#92;n  return result;&#92;n}&quot;,
+          &quot;body&quot;: &quot;{&#92;n  const result: TsMorphAnalysisResult = {&#92;n    functions: [],&#92;n    classes: [],&#92;n    imports: {},&#92;n    sourceFile: null,&#92;n    diagnostics: [],&#92;n  };&#92;n&#92;n  try {&#92;n    const absPath = findFileInProject(filePath, projectRoot);&#92;n    if (!absPath || !fs.existsSync(absPath)) {&#92;n      result.diagnostics.push(`File not found: ${filePath}`);&#92;n      return result;&#92;n    }&#92;n&#92;n    if (graphData) {&#92;n      const moduleExists = findModuleForEntity(filePath, graphData) !== null;&#92;n      if (!moduleExists) {&#92;n        result.diagnostics.push(`Module not found in graph: ${filePath}`);&#92;n      }&#92;n    }&#92;n&#92;n    const project = new Project({&#92;n      compilerOptions: {&#92;n        target: 99,&#92;n        module: 99,&#92;n        allowJs: true,&#92;n        checkJs: false,&#92;n        skipLibCheck: true,&#92;n        esModuleInterop: true,&#92;n        allowSyntheticDefaultImports: true,&#92;n        resolveJsonModule: true,&#92;n        jsx: 2,&#92;n      },&#92;n      useInMemoryFileSystem: false,&#92;n    });&#92;n&#92;n    const sourceFile = project.addSourceFileAtPath(absPath);&#92;n    if (!sourceFile) {&#92;n      result.diagnostics.push(`Failed to load source file: ${filePath}`);&#92;n      return result;&#92;n    }&#92;n&#92;n    result.sourceFile = sourceFile;&#92;n&#92;n    const functions = sourceFile.getFunctions();&#92;n    for (const func of functions) {&#92;n      const name = func.getName();&#92;n      if (!name) continue;&#92;n&#92;n      if (graphData) {&#92;n        const funcExists = findModuleForEntity(name, graphData) !== null;&#92;n        if (!funcExists) {&#92;n          result.diagnostics.push(`Function not found in graph: ${name}`);&#92;n        }&#92;n      }&#92;n&#92;n      const params = func.getParameters().map(p =&gt; p.getName());&#92;n      const returnType = func.getReturnType().getText();&#92;n      const isAsync = func.isAsync();&#92;n      const isExported = func.isExported();&#92;n&#92;n      const calls = extractCallsFromFunction(func, name);&#92;n      const complexity = calculateComplexity(func);&#92;n      const security = extractSecurityInfo(func);&#92;n&#92;n      const body = func.getBody()?.getText() || '';&#92;n&#92;n      // Сигнатура для быстрого просмотра&#92;n      const paramsStr = params.join(', ');&#92;n      const signature = `${isAsync ? 'async ' : ''}function ${name}(${paramsStr}): ${returnType}`;&#92;n&#92;n      // Ссылка VS Code&#92;n      const vscode = `vscode://file/${absPath}:${func.getStartLineNumber()}`;&#92;n&#92;n      result.functions.push({&#92;n        name,&#92;n        params,&#92;n        paramTypes: params.map(() =&gt; 'any'),&#92;n        line: func.getStartLineNumber(),&#92;n        startLine: func.getStartLineNumber(),&#92;n        endLine: func.getEndLineNumber(),&#92;n        isAsync,&#92;n        isExported,&#92;n        isMethod: false,&#92;n        className: undefined,&#92;n        calls,&#92;n        calledBy: [],&#92;n        returnType,&#92;n        body,&#92;n        signature,&#92;n        vscode,&#92;n        isNested: false,&#92;n        parentFunction: undefined,&#92;n        isArrow: false,&#92;n        isEventHandler: false,&#92;n        eventType: undefined,&#92;n        depth: 0,&#92;n        complexity,&#92;n        security,&#92;n        _safeInfo: null,&#92;n      });&#92;n    }&#92;n&#92;n    const classes = sourceFile.getClasses();&#92;n    for (const cls of classes) {&#92;n      const name = cls.getName();&#92;n      if (!name) continue;&#92;n&#92;n      if (graphData) {&#92;n        const classExists = findModuleForEntity(name, graphData) !== null;&#92;n        if (!classExists) {&#92;n          result.diagnostics.push(`Class not found in graph: ${name}`);&#92;n        }&#92;n      }&#92;n&#92;n      const { methods, methodDetails } = extractClassMethods(cls);&#92;n      const { properties, propertyDetails } = extractClassProperties(cls);&#92;n&#92;n      // Ссылка VS Code для класса&#92;n      const vscode = `vscode://file/${absPath}:${cls.getStartLineNumber()}`;&#92;n&#92;n      const body = cls.getText();&#92;n&#92;n      result.classes.push({&#92;n        name,&#92;n        methods,&#92;n        methodDetails,&#92;n        properties,&#92;n        propertyDetails,&#92;n        line: cls.getStartLineNumber(),&#92;n        startLine: cls.getStartLineNumber(),&#92;n        endLine: cls.getEndLineNumber(),&#92;n        isExported: cls.isExported(),&#92;n        extends: cls.getExtends()?.getText(),&#92;n        implements: (cls.getImplements() || []).map(i =&gt; i.getText()),&#92;n        body,&#92;n        vscode,&#92;n        _safeInfo: null,&#92;n      });&#92;n    }&#92;n&#92;n    result.imports = extractImportsFromSourceFile(sourceFile);&#92;n&#92;n    const diagnostics = sourceFile.getPreEmitDiagnostics();&#92;n    for (const diag of diagnostics) {&#92;n      let message: string;&#92;n      const messageText = diag.getMessageText();&#92;n      if (typeof messageText === 'string') {&#92;n        message = messageText;&#92;n      } else {&#92;n        message = messageText.getMessageText();&#92;n      }&#92;n      result.diagnostics.push(message);&#92;n    }&#92;n  } catch (error: unknown) {&#92;n    const errorMessage = error instanceof Error ? error.message : String(error);&#92;n    result.diagnostics.push(`Analysis error: ${errorMessage}`);&#92;n    if (process.env.DEBUG === 'true') {&#92;n      console.debug(`  ⚠️ ts-morph analysis failed for ${filePath}:`, errorMessage);&#92;n    }&#92;n  }&#92;n&#92;n  return result;&#92;n}&quot;,
           &quot;startLine&quot;: 789,
-          &quot;endLine&quot;: 942,
+          &quot;endLine&quot;: 958,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -16210,7 +16216,7 @@
         },
         {
           &quot;name&quot;: &quot;enrichWithTsMorph&quot;,
-          &quot;line&quot;: 947,
+          &quot;line&quot;: 963,
           &quot;isAsync&quot;: false,
           &quot;isExported&quot;: false,
           &quot;params&quot;: [
@@ -16229,9 +16235,9 @@
           &quot;calledBy&quot;: [
             &quot;buildPackages&quot;
           ],
-          &quot;body&quot;: &quot;{&#92;n  const enrichedMap: Record&lt;string, EntitiesResult&gt; = {};&#92;n&#92;n  for (const [modulePath, entities] of Object.entries(entitiesMap)) {&#92;n    if (!entities) {&#92;n      enrichedMap[modulePath] = entities;&#92;n      continue;&#92;n    }&#92;n&#92;n    if (graphData) {&#92;n      const moduleExists = findModuleForEntity(modulePath, graphData) !== null;&#92;n      if (!moduleExists) {&#92;n        console.debug(`  ⚠️ Module not found in graph: ${modulePath}`);&#92;n      }&#92;n    }&#92;n&#92;n    const tsMorphResult = analyzeFileWithTsMorph(modulePath, projectRoot, graphData);&#92;n&#92;n    if (tsMorphResult.diagnostics.length &gt; 0 &amp;&amp; process.env.DEBUG === 'true') {&#92;n      console.debug(`  📋 Diagnostics for ${modulePath}:`, tsMorphResult.diagnostics);&#92;n    }&#92;n&#92;n    const enrichedFunctions = ensureArray&lt;any&gt;(entities.functions).map((func: any) =&gt; {&#92;n      const tsFunc = tsMorphResult.functions.find((f: EnhancedFunctionInfo) =&gt; f.name === func.name);&#92;n      if (tsFunc) {&#92;n        if (graphData) {&#92;n          const funcExists = findModuleForEntity(func.name, graphData) !== null;&#92;n          if (!funcExists) {&#92;n            console.debug(`  ⚠️ Function not found in graph: ${func.name}`);&#92;n          }&#92;n        }&#92;n        // ✅ КОПИРУЕМ ТОЛЬКО СУЩЕСТВУЮЩИЕ ПОЛЯ, ИСПОЛЬЗУЯ safeString/safeNumber&#92;n        return {&#92;n          ...func,&#92;n          params: tsFunc.params.length &gt; 0 ? tsFunc.params : (func.params || []),&#92;n          returnType: tsFunc.returnType || func.returnType || 'any',&#92;n          isAsync: tsFunc.isAsync || func.isAsync || false,&#92;n          isExported: tsFunc.isExported || func.isExported || false,&#92;n          // ✅ КОПИРУЕМ calls С ПРОВЕРКОЙ НА СУЩЕСТВОВАНИЕ&#92;n          calls: (tsFunc.calls &amp;&amp; tsFunc.calls.length &gt; 0)&#92;n            ? tsFunc.calls.map((c: any) =&gt; safeString(c))&#92;n            : (func.calls ? func.calls.map((c: any) =&gt; safeString(c)) : []),&#92;n          // ✅ КОПИРУЕМ calledBy С ПРОВЕРКОЙ&#92;n          calledBy: (tsFunc.calledBy &amp;&amp; tsFunc.calledBy.length &gt; 0)&#92;n            ? tsFunc.calledBy.map((cb: any) =&gt; {&#92;n              if (typeof cb === 'string') {&#92;n                return { function: cb, module: modulePath, line: func.line || 0 };&#92;n              }&#92;n              return {&#92;n                function: safeString(cb.function || cb),&#92;n                module: safeString(cb.module || modulePath),&#92;n                line: safeNumber(cb.line || func.line || 0),&#92;n              };&#92;n            })&#92;n            : (func.calledBy ? func.calledBy.map((cb: any) =&gt; {&#92;n              if (typeof cb === 'string') {&#92;n                return { function: cb, module: modulePath, line: func.line || 0 };&#92;n              }&#92;n              return {&#92;n                function: safeString(cb.function || cb),&#92;n                module: safeString(cb.module || modulePath),&#92;n                line: safeNumber(cb.line || func.line || 0),&#92;n              };&#92;n            }) : []),&#92;n          // ✅ КОПИРУЕМ complexity С ПРОВЕРКОЙ&#92;n          complexity: tsFunc.complexity || func.complexity || 1,&#92;n          // ✅ КОПИРУЕМ security С ПРОВЕРКОЙ&#92;n          security: tsFunc.security || func.security || {&#92;n            hasEval: false,&#92;n            hasProcessEnv: false,&#92;n            hasSensitiveData: false,&#92;n            hasExec: false,&#92;n            hasPassword: false&#92;n          },&#92;n          // ✅ КОПИРУЕМ body С ПРОВЕРКОЙ&#92;n          body: tsFunc.body || func.body || '',&#92;n        };&#92;n      }&#92;n      return func;&#92;n    });&#92;n&#92;n    const enrichedClasses = ensureArray&lt;any&gt;(entities.classes).map((cls: any) =&gt; {&#92;n      const tsClass = tsMorphResult.classes.find((c: any) =&gt; c.name === cls.name);&#92;n      if (tsClass) {&#92;n        if (graphData) {&#92;n          const classExists = findModuleForEntity(cls.name, graphData) !== null;&#92;n          if (!classExists) {&#92;n            console.debug(`  ⚠️ Class not found in graph: ${cls.name}`);&#92;n          }&#92;n        }&#92;n        return {&#92;n          ...cls,&#92;n          methods: tsClass.methods.length &gt; 0 ? tsClass.methods : (cls.methods || []),&#92;n          properties: tsClass.properties.length &gt; 0 ? tsClass.properties : (cls.properties || []),&#92;n          extends: tsClass.extends || cls.extends,&#92;n          implements:&#92;n            tsClass.implements &amp;&amp; tsClass.implements.length &gt; 0&#92;n              ? tsClass.implements&#92;n              : (cls.implements || []),&#92;n        };&#92;n      }&#92;n      return cls;&#92;n    });&#92;n&#92;n    const enrichedImports = {&#92;n      ...entities.imports,&#92;n      ...Object.entries(tsMorphResult.imports).map(([source, imp]) =&gt; ({&#92;n        source,&#92;n        specifiers: imp.specifiers,&#92;n        isTypeOnly: imp.isTypeOnly,&#92;n        loc: { start: { line: imp.line, column: 1 } },&#92;n      })),&#92;n    };&#92;n&#92;n    enrichedMap[modulePath] = {&#92;n      ...entities,&#92;n      functions: enrichedFunctions,&#92;n      classes: enrichedClasses,&#92;n      imports: enrichedImports,&#92;n    };&#92;n  }&#92;n&#92;n  return enrichedMap;&#92;n}&quot;,
-          &quot;startLine&quot;: 947,
-          &quot;endLine&quot;: 1074,
+          &quot;body&quot;: &quot;{&#92;n  const enrichedMap: Record&lt;string, EntitiesResult&gt; = {};&#92;n&#92;n  for (const [modulePath, entities] of Object.entries(entitiesMap)) {&#92;n    if (!entities) {&#92;n      enrichedMap[modulePath] = entities;&#92;n      continue;&#92;n    }&#92;n&#92;n    if (graphData) {&#92;n      const moduleExists = findModuleForEntity(modulePath, graphData) !== null;&#92;n      if (!moduleExists) {&#92;n        console.debug(`  ⚠️ Module not found in graph: ${modulePath}`);&#92;n      }&#92;n    }&#92;n&#92;n    const tsMorphResult = analyzeFileWithTsMorph(modulePath, projectRoot, graphData);&#92;n&#92;n    if (tsMorphResult.diagnostics.length &gt; 0 &amp;&amp; process.env.DEBUG === 'true') {&#92;n      console.debug(`  📋 Diagnostics for ${modulePath}:`, tsMorphResult.diagnostics);&#92;n    }&#92;n&#92;n    const enrichedFunctions = ensureArray&lt;any&gt;(entities.functions).map((func: any) =&gt; {&#92;n      const tsFunc = tsMorphResult.functions.find(&#92;n        (f: EnhancedFunctionInfo) =&gt; f.name === func.name&#92;n      );&#92;n      if (tsFunc) {&#92;n        if (graphData) {&#92;n          const funcExists = findModuleForEntity(func.name, graphData) !== null;&#92;n          if (!funcExists) {&#92;n            console.debug(`  ⚠️ Function not found in graph: ${func.name}`);&#92;n          }&#92;n        }&#92;n        // ✅ КОПИРУЕМ ТОЛЬКО СУЩЕСТВУЮЩИЕ ПОЛЯ, ИСПОЛЬЗУЯ safeString/safeNumber&#92;n        return {&#92;n          ...func,&#92;n          params: tsFunc.params.length &gt; 0 ? tsFunc.params : func.params || [],&#92;n          returnType: tsFunc.returnType || func.returnType || 'any',&#92;n          isAsync: tsFunc.isAsync || func.isAsync || false,&#92;n          isExported: tsFunc.isExported || func.isExported || false,&#92;n          // ✅ КОПИРУЕМ calls С ПРОВЕРКОЙ НА СУЩЕСТВОВАНИЕ&#92;n          calls:&#92;n            tsFunc.calls &amp;&amp; tsFunc.calls.length &gt; 0&#92;n              ? tsFunc.calls.map((c: any) =&gt; safeString(c))&#92;n              : func.calls&#92;n                ? func.calls.map((c: any) =&gt; safeString(c))&#92;n                : [],&#92;n          // ✅ КОПИРУЕМ calledBy С ПРОВЕРКОЙ&#92;n          calledBy:&#92;n            tsFunc.calledBy &amp;&amp; tsFunc.calledBy.length &gt; 0&#92;n              ? tsFunc.calledBy.map((cb: any) =&gt; {&#92;n                  if (typeof cb === 'string') {&#92;n                    return { function: cb, module: modulePath, line: func.line || 0 };&#92;n                  }&#92;n                  return {&#92;n                    function: safeString(cb.function || cb),&#92;n                    module: safeString(cb.module || modulePath),&#92;n                    line: safeNumber(cb.line || func.line || 0),&#92;n                  };&#92;n                })&#92;n              : func.calledBy&#92;n                ? func.calledBy.map((cb: any) =&gt; {&#92;n                    if (typeof cb === 'string') {&#92;n                      return { function: cb, module: modulePath, line: func.line || 0 };&#92;n                    }&#92;n                    return {&#92;n                      function: safeString(cb.function || cb),&#92;n                      module: safeString(cb.module || modulePath),&#92;n                      line: safeNumber(cb.line || func.line || 0),&#92;n                    };&#92;n                  })&#92;n                : [],&#92;n          // ✅ КОПИРУЕМ complexity С ПРОВЕРКОЙ&#92;n          complexity: tsFunc.complexity || func.complexity || 1,&#92;n          // ✅ КОПИРУЕМ security С ПРОВЕРКОЙ&#92;n          security: tsFunc.security ||&#92;n            func.security || {&#92;n              hasEval: false,&#92;n              hasProcessEnv: false,&#92;n              hasSensitiveData: false,&#92;n              hasExec: false,&#92;n              hasPassword: false,&#92;n            },&#92;n          // ✅ КОПИРУЕМ body С ПРОВЕРКОЙ&#92;n          body: tsFunc.body || func.body || '',&#92;n          // ✅ КОПИРУЕМ signature С ПРОВЕРКОЙ&#92;n          signature: tsFunc.signature || func.signature || '',&#92;n          // ✅ КОПИРУЕМ vscode С ПРОВЕРКОЙ&#92;n          vscode: tsFunc.vscode || func.vscode || '',&#92;n        };&#92;n      }&#92;n      return func;&#92;n    });&#92;n&#92;n    const enrichedClasses = ensureArray&lt;any&gt;(entities.classes).map((cls: any) =&gt; {&#92;n      const tsClass = tsMorphResult.classes.find((c: EnhancedClassInfo) =&gt; c.name === cls.name);&#92;n      if (tsClass) {&#92;n        if (graphData) {&#92;n          const classExists = findModuleForEntity(cls.name, graphData) !== null;&#92;n          if (!classExists) {&#92;n            console.debug(`  ⚠️ Class not found in graph: ${cls.name}`);&#92;n          }&#92;n        }&#92;n        return {&#92;n          ...cls,&#92;n          methods: tsClass.methods.length &gt; 0 ? tsClass.methods : cls.methods || [],&#92;n          properties: tsClass.properties.length &gt; 0 ? tsClass.properties : cls.properties || [],&#92;n          extends: tsClass.extends || cls.extends,&#92;n          implements:&#92;n            tsClass.implements &amp;&amp; tsClass.implements.length &gt; 0&#92;n              ? tsClass.implements&#92;n              : cls.implements || [],&#92;n          body: tsClass.body || cls.body || '',&#92;n          vscode: tsClass.vscode || cls.vscode || '',&#92;n        };&#92;n      }&#92;n      return cls;&#92;n    });&#92;n&#92;n    const enrichedImports = {&#92;n      ...entities.imports,&#92;n      ...Object.entries(tsMorphResult.imports).map(([source, imp]) =&gt; ({&#92;n        source,&#92;n        specifiers: imp.specifiers,&#92;n        isTypeOnly: imp.isTypeOnly,&#92;n        loc: { start: { line: imp.line, column: 1 } },&#92;n      })),&#92;n    };&#92;n&#92;n    enrichedMap[modulePath] = {&#92;n      ...entities,&#92;n      functions: enrichedFunctions,&#92;n      classes: enrichedClasses,&#92;n      imports: enrichedImports,&#92;n    };&#92;n  }&#92;n&#92;n  return enrichedMap;&#92;n}&quot;,
+          &quot;startLine&quot;: 963,
+          &quot;endLine&quot;: 1105,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -16248,7 +16254,7 @@
         },
         {
           &quot;name&quot;: &quot;addVueAnalysis&quot;,
-          &quot;line&quot;: 1079,
+          &quot;line&quot;: 1110,
           &quot;isAsync&quot;: false,
           &quot;isExported&quot;: false,
           &quot;params&quot;: [
@@ -16264,8 +16270,8 @@
             &quot;buildPackages&quot;
           ],
           &quot;body&quot;: &quot;{&#92;n  if (!modulePath.endsWith('.vue')) return;&#92;n&#92;n  try {&#92;n    const vueAnalysis = analyzeVueComponent(modulePath, {&#92;n      includeTemplateAST: true,&#92;n      includeScriptAST: true,&#92;n      extractComposableCalls: true,&#92;n    });&#92;n&#92;n    if (vueAnalysis) {&#92;n      pkg.vueAnalysis = {&#92;n        props: vueAnalysis.props,&#92;n        emits: vueAnalysis.emits,&#92;n        slots: vueAnalysis.slots,&#92;n        composables: vueAnalysis.composables.map((c: any) =&gt; c.name),&#92;n        templateComplexity: vueAnalysis.template.complexity,&#92;n        scriptType: vueAnalysis.script.isSetup ? 'setup' : 'options',&#92;n        isTS: vueAnalysis.script.isTS,&#92;n        stats: {&#92;n          scriptLines: vueAnalysis.stats.scriptLines,&#92;n          templateLines: vueAnalysis.stats.templateLines,&#92;n          styleCount: vueAnalysis.stats.styleCount,&#92;n        },&#92;n      };&#92;n&#92;n      pkg.fileStats.functions =&#92;n        vueAnalysis.composables.length +&#92;n        vueAnalysis.script.content.split('&#92;&#92;n').filter((l: string) =&gt; l.includes('function')).length;&#92;n    }&#92;n  } catch (error: unknown) {&#92;n    const errorMessage = error instanceof Error ? error.message : String(error);&#92;n    console.warn(`⚠️ Failed to analyze Vue component ${modulePath}:`, errorMessage);&#92;n  }&#92;n}&quot;,
-          &quot;startLine&quot;: 1079,
-          &quot;endLine&quot;: 1113,
+          &quot;startLine&quot;: 1110,
+          &quot;endLine&quot;: 1144,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -16282,7 +16288,7 @@
         },
         {
           &quot;name&quot;: &quot;getFileStats&quot;,
-          &quot;line&quot;: 1118,
+          &quot;line&quot;: 1149,
           &quot;isAsync&quot;: false,
           &quot;isExported&quot;: false,
           &quot;params&quot;: [
@@ -16298,8 +16304,8 @@
             &quot;buildPackages&quot;
           ],
           &quot;body&quot;: &quot;{&#92;n  let size = 0;&#92;n  let lines = 0;&#92;n&#92;n  try {&#92;n    const absPath = findFileInProject(modulePath, projectRoot);&#92;n    if (absPath &amp;&amp; fs.existsSync(absPath)) {&#92;n      const content = fs.readFileSync(absPath, 'utf-8');&#92;n      size = content.length;&#92;n      lines = content.split('&#92;&#92;n').length;&#92;n    }&#92;n  } catch (error: unknown) {&#92;n    const errorMessage = error instanceof Error ? error.message : String(error);&#92;n    if (process.env.DEBUG === 'true') {&#92;n      console.debug(`  ⚠️ Could not read file ${modulePath}:`, errorMessage);&#92;n    }&#92;n  }&#92;n&#92;n  return { size, lines };&#92;n}&quot;,
-          &quot;startLine&quot;: 1118,
-          &quot;endLine&quot;: 1137,
+          &quot;startLine&quot;: 1149,
+          &quot;endLine&quot;: 1168,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -16315,8 +16321,144 @@
           }
         },
         {
+          &quot;name&quot;: &quot;getVSCodeLink&quot;,
+          &quot;line&quot;: 1177,
+          &quot;isAsync&quot;: false,
+          &quot;isExported&quot;: false,
+          &quot;params&quot;: [
+            &quot;filePath&quot;,
+            &quot;line&quot;
+          ],
+          &quot;returnType&quot;: &quot;string&quot;,
+          &quot;calls&quot;: [],
+          &quot;calledBy&quot;: [
+            &quot;enrichFunctionsWithSourceCode&quot;,
+            &quot;enrichClassesWithSourceCode&quot;,
+            &quot;buildPackages&quot;
+          ],
+          &quot;body&quot;: &quot;{&#92;n  const absolutePath = path.resolve(filePath);&#92;n  const base = `vscode://file/${absolutePath}`;&#92;n  return line ? `${base}:${line}` : base;&#92;n}&quot;,
+          &quot;startLine&quot;: 1177,
+          &quot;endLine&quot;: 1181,
+          &quot;isMethod&quot;: false,
+          &quot;isNested&quot;: false,
+          &quot;isArrow&quot;: false,
+          &quot;isEventHandler&quot;: false,
+          &quot;depth&quot;: 0,
+          &quot;complexity&quot;: 1,
+          &quot;security&quot;: {
+            &quot;hasEval&quot;: false,
+            &quot;hasProcessEnv&quot;: false,
+            &quot;hasSensitiveData&quot;: false,
+            &quot;hasExec&quot;: false,
+            &quot;hasPassword&quot;: false
+          }
+        },
+        {
+          &quot;name&quot;: &quot;extractFunctionBody&quot;,
+          &quot;line&quot;: 1186,
+          &quot;isAsync&quot;: false,
+          &quot;isExported&quot;: false,
+          &quot;params&quot;: [
+            &quot;code&quot;,
+            &quot;startLine&quot;,
+            &quot;endLine&quot;
+          ],
+          &quot;returnType&quot;: &quot;string&quot;,
+          &quot;calls&quot;: [],
+          &quot;calledBy&quot;: [
+            &quot;enrichFunctionsWithSourceCode&quot;,
+            &quot;enrichClassesWithSourceCode&quot;
+          ],
+          &quot;body&quot;: &quot;{&#92;n  if (!code || !startLine || !endLine) return '';&#92;n  const lines = code.split('&#92;&#92;n');&#92;n  return lines.slice(Math.max(0, startLine - 1), Math.min(lines.length, endLine)).join('&#92;&#92;n');&#92;n}&quot;,
+          &quot;startLine&quot;: 1186,
+          &quot;endLine&quot;: 1190,
+          &quot;isMethod&quot;: false,
+          &quot;isNested&quot;: false,
+          &quot;isArrow&quot;: false,
+          &quot;isEventHandler&quot;: false,
+          &quot;depth&quot;: 0,
+          &quot;complexity&quot;: 1,
+          &quot;security&quot;: {
+            &quot;hasEval&quot;: false,
+            &quot;hasProcessEnv&quot;: false,
+            &quot;hasSensitiveData&quot;: false,
+            &quot;hasExec&quot;: false,
+            &quot;hasPassword&quot;: false
+          }
+        },
+        {
+          &quot;name&quot;: &quot;enrichFunctionsWithSourceCode&quot;,
+          &quot;line&quot;: 1195,
+          &quot;isAsync&quot;: false,
+          &quot;isExported&quot;: false,
+          &quot;params&quot;: [
+            &quot;functions&quot;,
+            &quot;sourceCode&quot;,
+            &quot;filePath&quot;
+          ],
+          &quot;returnType&quot;: &quot;import(&#92;&quot;/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types&#92;&quot;).EnhancedFunctionInfo[]&quot;,
+          &quot;calls&quot;: [
+            &quot;getVSCodeLink&quot;,
+            &quot;extractFunctionBody&quot;
+          ],
+          &quot;calledBy&quot;: [
+            &quot;buildPackages&quot;
+          ],
+          &quot;body&quot;: &quot;{&#92;n  if (!functions || functions.length === 0) return functions;&#92;n&#92;n  const enriched: EnhancedFunctionInfo[] = [];&#92;n&#92;n  for (const func of functions) {&#92;n    const enrichedFunc = { ...func };&#92;n&#92;n    // 1. Добавляем ссылку VS Code&#92;n    if (!enrichedFunc.vscode) {&#92;n      enrichedFunc.vscode = getVSCodeLink(filePath, func.line);&#92;n    }&#92;n&#92;n    // 2. Добавляем тело функции&#92;n    if (!enrichedFunc.body &amp;&amp; func.startLine &amp;&amp; func.endLine &amp;&amp; sourceCode) {&#92;n      enrichedFunc.body = extractFunctionBody(sourceCode, func.startLine, func.endLine);&#92;n    }&#92;n&#92;n    // 3. Добавляем сигнатуру&#92;n    if (!enrichedFunc.signature) {&#92;n      const params = (func.params || []).join(', ');&#92;n      const returnType = func.returnType || 'any';&#92;n      const asyncStr = func.isAsync ? 'async ' : '';&#92;n      const exportStr = func.isExported ? 'export ' : '';&#92;n      const methodStr = func.isMethod &amp;&amp; func.className ? `${func.className}.` : '';&#92;n      enrichedFunc.signature = `${exportStr}${asyncStr}function ${methodStr}${func.name}(${params}): ${returnType}`;&#92;n    }&#92;n&#92;n    enriched.push(enrichedFunc);&#92;n  }&#92;n&#92;n  return enriched;&#92;n}&quot;,
+          &quot;startLine&quot;: 1195,
+          &quot;endLine&quot;: 1231,
+          &quot;isMethod&quot;: false,
+          &quot;isNested&quot;: false,
+          &quot;isArrow&quot;: false,
+          &quot;isEventHandler&quot;: false,
+          &quot;depth&quot;: 0,
+          &quot;complexity&quot;: 1,
+          &quot;security&quot;: {
+            &quot;hasEval&quot;: false,
+            &quot;hasProcessEnv&quot;: false,
+            &quot;hasSensitiveData&quot;: false,
+            &quot;hasExec&quot;: false,
+            &quot;hasPassword&quot;: false
+          }
+        },
+        {
+          &quot;name&quot;: &quot;enrichClassesWithSourceCode&quot;,
+          &quot;line&quot;: 1236,
+          &quot;isAsync&quot;: false,
+          &quot;isExported&quot;: false,
+          &quot;params&quot;: [
+            &quot;classes&quot;,
+            &quot;sourceCode&quot;,
+            &quot;filePath&quot;
+          ],
+          &quot;returnType&quot;: &quot;import(&#92;&quot;/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types&#92;&quot;).EnhancedClassInfo[]&quot;,
+          &quot;calls&quot;: [
+            &quot;getVSCodeLink&quot;,
+            &quot;extractFunctionBody&quot;
+          ],
+          &quot;calledBy&quot;: [
+            &quot;buildPackages&quot;
+          ],
+          &quot;body&quot;: &quot;{&#92;n  if (!classes || classes.length === 0) return classes;&#92;n&#92;n  const enriched: EnhancedClassInfo[] = [];&#92;n&#92;n  for (const cls of classes) {&#92;n    const enrichedCls = { ...cls };&#92;n&#92;n    // 1. Добавляем ссылку VS Code&#92;n    if (!enrichedCls.vscode) {&#92;n      enrichedCls.vscode = getVSCodeLink(filePath, cls.line);&#92;n    }&#92;n&#92;n    // 2. Добавляем тело класса&#92;n    if (!enrichedCls.body &amp;&amp; cls.startLine &amp;&amp; cls.endLine &amp;&amp; sourceCode) {&#92;n      enrichedCls.body = extractFunctionBody(sourceCode, cls.startLine, cls.endLine);&#92;n    }&#92;n&#92;n    enriched.push(enrichedCls);&#92;n  }&#92;n&#92;n  return enriched;&#92;n}&quot;,
+          &quot;startLine&quot;: 1236,
+          &quot;endLine&quot;: 1262,
+          &quot;isMethod&quot;: false,
+          &quot;isNested&quot;: false,
+          &quot;isArrow&quot;: false,
+          &quot;isEventHandler&quot;: false,
+          &quot;depth&quot;: 0,
+          &quot;complexity&quot;: 1,
+          &quot;security&quot;: {
+            &quot;hasEval&quot;: false,
+            &quot;hasProcessEnv&quot;: false,
+            &quot;hasSensitiveData&quot;: false,
+            &quot;hasExec&quot;: false,
+            &quot;hasPassword&quot;: false
+          }
+        },
+        {
           &quot;name&quot;: &quot;buildPackages&quot;,
-          &quot;line&quot;: 1147,
+          &quot;line&quot;: 1272,
           &quot;isAsync&quot;: false,
           &quot;isExported&quot;: true,
           &quot;params&quot;: [
@@ -16336,6 +16478,9 @@
             &quot;functionExistsInMap&quot;,
             &quot;createEmptyPackage&quot;,
             &quot;convertToEnhancedEntityInfo&quot;,
+            &quot;getVSCodeLink&quot;,
+            &quot;enrichFunctionsWithSourceCode&quot;,
+            &quot;enrichClassesWithSourceCode&quot;,
             &quot;safeString&quot;,
             &quot;safeNumber&quot;,
             &quot;getFileStats&quot;,
@@ -16346,9 +16491,9 @@
             &quot;findExportsUsedInModule&quot;
           ],
           &quot;calledBy&quot;: [],
-          &quot;body&quot;: &quot;{&#92;n  const packages: Record&lt;string, EnhancedPackageInfo&gt; = {};&#92;n&#92;n  const graphData: GraphData = {&#92;n    rootKey,&#92;n    graph,&#92;n  };&#92;n&#92;n  const graphInfo = getGraphStructureInfo(graphData);&#92;n&#92;n  console.log(`   📊 Graph structure:`);&#92;n  console.log(`      • Total modules: ${graphInfo.totalModules}`);&#92;n  console.log(`      • Valid modules: ${graphInfo.validModules.length}`);&#92;n  console.log(`      • Invalid modules: ${graphInfo.invalidModules.length}`);&#92;n  console.log(`      • Has cycles: ${graphInfo.hasCycles ? '⚠️ YES' : '✅ NO'}`);&#92;n  console.log(`      • Max depth: ${graphInfo.maxDepth}`);&#92;n  console.log(`      • Acyclic: ${graphInfo.isAcyclic ? '✅' : '❌'}`);&#92;n&#92;n  if (graphInfo.cyclicEdges.length &gt; 0) {&#92;n    console.log(`      • Cyclic edges: ${graphInfo.cyclicEdges.length}`);&#92;n    for (const cycle of graphInfo.cyclicEdges.slice(0, 3)) {&#92;n      console.log(`        - ${cycle}`);&#92;n    }&#92;n    if (graphInfo.cyclicEdges.length &gt; 3) {&#92;n      console.log(`        - ... and ${graphInfo.cyclicEdges.length - 3} more`);&#92;n    }&#92;n  }&#92;n&#92;n  if (graphInfo.invalidModules.length &gt; 0) {&#92;n    console.log(`      ⚠️ Invalid modules (not found in graph):`);&#92;n    for (const invalidModule of graphInfo.invalidModules.slice(0, 3)) {&#92;n      console.log(`        - ${invalidModule}`);&#92;n    }&#92;n    if (graphInfo.invalidModules.length &gt; 3) {&#92;n      console.log(`        - ... and ${graphInfo.invalidModules.length - 3} more`);&#92;n    }&#92;n  }&#92;n&#92;n  // 1. Обогащаем данные с помощью ts-morph&#92;n  const enrichedEntitiesMap = enrichWithTsMorph(entitiesMap, projectRoot, graphData);&#92;n&#92;n  // 2. Строим карту функций для быстрого поиска calledBy&#92;n  const functionMap = buildFunctionMap(enrichedEntitiesMap, graphData);&#92;n&#92;n  // 3. Строим граф вызовов&#92;n  const callGraph = buildCallGraph(enrichedEntitiesMap, graphData);&#92;n&#92;n  // 4. Используем functionMap для валидации и обогащения данных&#92;n  for (const [funcName, info] of callGraph) {&#92;n    const funcInfo = findFunctionInfo(functionMap, funcName);&#92;n    if (!funcInfo) {&#92;n      console.debug(&#92;n        `  ⚠️ Function '${funcName}' not found in function map, but exists in call graph`&#92;n      );&#92;n    } else {&#92;n      info.isExported = funcInfo.isExported;&#92;n      info.module = funcInfo.module;&#92;n      info.line = funcInfo.line;&#92;n    }&#92;n  }&#92;n&#92;n  // 5. Заполняем calledBy для всех функций через граф вызовов&#92;n  for (const [funcName, info] of callGraph) {&#92;n    const entities = enrichedEntitiesMap[info.module];&#92;n    if (entities) {&#92;n      const func = ensureArray&lt;any&gt;(entities.functions).find(&#92;n        (f: FunctionEntity) =&gt; f.name === funcName&#92;n      );&#92;n      if (func) {&#92;n        if (!func.calledBy) {&#92;n          func.calledBy = [];&#92;n        }&#92;n        for (const callerName of info.calledBy) {&#92;n          const callerExists = functionExistsInMap(functionMap, callerName);&#92;n          if (callerExists) {&#92;n            if (!func.calledBy.some((cb: any) =&gt; cb.function === callerName)) {&#92;n              const callerInfo = callGraph.get(callerName);&#92;n              if (callerInfo) {&#92;n                func.calledBy.push({&#92;n                  function: callerName,&#92;n                  module: callerInfo.module,&#92;n                  line: callerInfo.line,&#92;n                });&#92;n              }&#92;n            }&#92;n          }&#92;n        }&#92;n      }&#92;n    }&#92;n  }&#92;n&#92;n  // 6. Строим пакеты для каждого модуля&#92;n  let processedCount = 0;&#92;n  const totalModules = Object.keys(enrichedEntitiesMap).length;&#92;n&#92;n  for (const [modulePath, entities] of Object.entries(enrichedEntitiesMap)) {&#92;n    processedCount++;&#92;n    const relativePath = path.relative(projectRoot, modulePath);&#92;n&#92;n    if (totalModules &gt; 5 &amp;&amp; processedCount % 10 === 0) {&#92;n      console.log(`   📊 Обработано ${processedCount}/${totalModules} модулей`);&#92;n    }&#92;n&#92;n    if (!entities || typeof entities !== 'object') {&#92;n      packages[modulePath] = createEmptyPackage(modulePath, relativePath);&#92;n      continue;&#92;n    }&#92;n&#92;n    const isEntry = modulePath === rootKey;&#92;n    const ext = path.extname(modulePath);&#92;n    let language: EnhancedPackageInfo['language'] = 'typescript';&#92;n    if (ext === '.js' || ext === '.jsx') language = 'javascript';&#92;n    else if (ext === '.vue') language = 'vue';&#92;n    else if (ext === '.tsx') language = 'jsx';&#92;n&#92;n    // ✅ СОХРАНЯЕМ ВСЕ ПОЛЯ ПРИ КОНВЕРТАЦИИ&#92;n    const fileEntities = convertToEnhancedEntityInfo(entities);&#92;n&#92;n    // ✅ ДОПОЛНИТЕЛЬНО КОПИРУЕМ calls И calledBy ИЗ ОРИГИНАЛА&#92;n    for (const func of fileEntities.functions) {&#92;n      // Явно приводим к типу any для доступа к свойствам&#92;n      const origFunc = ensureArray(entities.functions).find(&#92;n        (f: any) =&gt; f.name === func.name&#92;n      ) as any;&#92;n&#92;n      if (origFunc) {&#92;n        // ✅ КОПИРУЕМ calls С ПРОВЕРКОЙ&#92;n        if (origFunc.calls &amp;&amp; Array.isArray(origFunc.calls) &amp;&amp; origFunc.calls.length &gt; 0) {&#92;n          func.calls = origFunc.calls.map((c: any) =&gt; safeString(c));&#92;n        }&#92;n        // ✅ КОПИРУЕМ calledBy С ПРОВЕРКОЙ&#92;n        if (origFunc.calledBy &amp;&amp; Array.isArray(origFunc.calledBy) &amp;&amp; origFunc.calledBy.length &gt; 0) {&#92;n          func.calledBy = origFunc.calledBy.map((cb: any) =&gt; {&#92;n            if (typeof cb === 'string') {&#92;n              return { function: cb, module: modulePath, line: func.line };&#92;n            }&#92;n            return {&#92;n              function: safeString(cb.function || cb),&#92;n              module: safeString(cb.module || modulePath),&#92;n              line: safeNumber(cb.line || func.line),&#92;n            };&#92;n          });&#92;n        }&#92;n        // ✅ КОПИРУЕМ body С ПРОВЕРКОЙ&#92;n        if (origFunc.body &amp;&amp; typeof origFunc.body === 'string') {&#92;n          func.body = origFunc.body;&#92;n        }&#92;n        // ✅ КОПИРУЕМ complexity С ПРОВЕРКОЙ&#92;n        if (origFunc.complexity !== undefined) {&#92;n          func.complexity = origFunc.complexity;&#92;n        }&#92;n        // ✅ КОПИРУЕМ security С ПРОВЕРКОЙ&#92;n        if (origFunc.security) {&#92;n          func.security = origFunc.security;&#92;n        }&#92;n      }&#92;n    }&#92;n&#92;n    // ✅ ЛОГИРУЕМ СТАТИСТИКУ ДЛЯ МОДУЛЯ&#92;n    const callsCount = fileEntities.functions.reduce((sum, f) =&gt; sum + (f.calls?.length || 0), 0);&#92;n    if (fileEntities.functions.length &gt; 0) {&#92;n      console.log(`   📦 ${modulePath}: ${fileEntities.functions.length} функций, ${callsCount} вызовов`);&#92;n    }&#92;n&#92;n    const { size, lines } = getFileStats(modulePath, projectRoot);&#92;n&#92;n    // ✅ ИСПОЛЬЗУЕМ ОБНОВЛЕННЫЕ buildImports И buildExports&#92;n    const imports = buildImports(entities, enrichedEntitiesMap, graphData);&#92;n    const exports = buildExports(entities, enrichedEntitiesMap, graphData);&#92;n&#92;n    const fileStats = {&#92;n      size,&#92;n      lines,&#92;n      functions: entities.functions?.length || 0,&#92;n      classes: entities.classes?.length || 0,&#92;n      constants: entities.constants?.length || 0,&#92;n      interfaces: entities.interfaces?.length || 0,&#92;n      types: entities.types?.length || 0,&#92;n      variables: entities.variables?.length || 0,&#92;n    };&#92;n&#92;n    const pkg: EnhancedPackageInfo = {&#92;n      version: '1.0.0',&#92;n      resolved: `file:${modulePath}`,&#92;n      displayPath: relativePath,&#92;n      type: 'module',&#92;n      language,&#92;n      isEntry,&#92;n      imports,&#92;n      exports,&#92;n      entities: fileEntities,&#92;n      fileStats,&#92;n    };&#92;n&#92;n    // Добавляем Vue-анализ&#92;n    addVueAnalysis(modulePath, pkg);&#92;n&#92;n    packages[modulePath] = pkg;&#92;n  }&#92;n&#92;n  // 7. Дополнительный проход для обогащения exports.consumers через граф вызовов&#92;n  for (const pkg of Object.values(packages)) {&#92;n    for (const [exportName, exportInfo] of Object.entries(pkg.exports)) {&#92;n      const funcExists = functionExistsInMap(functionMap, exportName);&#92;n      if (funcExists) {&#92;n        const consumers = findConsumersForExport(exportName, callGraph, graphData);&#92;n        exportInfo.consumers = consumers;&#92;n      }&#92;n    }&#92;n  }&#92;n&#92;n  // 8. Используем findExportsUsedInModule для каждого модуля&#92;n  for (const [modulePath, _pkg] of Object.entries(packages)) {&#92;n    const entities = enrichedEntitiesMap[modulePath];&#92;n    if (!entities) continue;&#92;n&#92;n    const usedExports = findExportsUsedInModule(modulePath, entities, callGraph, graphData);&#92;n    if (usedExports.length &gt; 0) {&#92;n      console.debug(`  📦 Module ${modulePath} uses exports: ${usedExports.join(', ')}`);&#92;n    }&#92;n  }&#92;n&#92;n  // 9. Логируем итоговую статистику&#92;n  let totalCalls = 0;&#92;n  let totalWithCalls = 0;&#92;n  let totalFuncs = 0;&#92;n  for (const pkg of Object.values(packages)) {&#92;n    for (const func of pkg.entities?.functions || []) {&#92;n      totalFuncs++;&#92;n      if (func.calls &amp;&amp; func.calls.length &gt; 0) {&#92;n        totalCalls += func.calls.length;&#92;n        totalWithCalls++;&#92;n      }&#92;n    }&#92;n  }&#92;n&#92;n  console.log(`   📊 Package build complete:`);&#92;n  console.log(`      • Packages created: ${Object.keys(packages).length}`);&#92;n  console.log(`      • Graph is ${graphInfo.isAcyclic ? 'acyclic ✅' : 'cyclic ⚠️'}`);&#92;n  console.log(`      • Total functions in call graph: ${callGraph.size}`);&#92;n  console.log(`      • Total functions in function map: ${functionMap.size}`);&#92;n  console.log(`      • Функций с вызовами: ${totalWithCalls}`);&#92;n  console.log(`      • Всего вызовов: ${totalCalls}`);&#92;n&#92;n  return packages;&#92;n}&quot;,
-          &quot;startLine&quot;: 1147,
-          &quot;endLine&quot;: 1397,
+          &quot;body&quot;: &quot;{&#92;n  const packages: Record&lt;string, EnhancedPackageInfo&gt; = {};&#92;n&#92;n  const graphData: GraphData = {&#92;n    rootKey,&#92;n    graph,&#92;n  };&#92;n&#92;n  const graphInfo = getGraphStructureInfo(graphData);&#92;n&#92;n  console.log(`   📊 Graph structure:`);&#92;n  console.log(`      • Total modules: ${graphInfo.totalModules}`);&#92;n  console.log(`      • Valid modules: ${graphInfo.validModules.length}`);&#92;n  console.log(`      • Invalid modules: ${graphInfo.invalidModules.length}`);&#92;n  console.log(`      • Has cycles: ${graphInfo.hasCycles ? '⚠️ YES' : '✅ NO'}`);&#92;n  console.log(`      • Max depth: ${graphInfo.maxDepth}`);&#92;n  console.log(`      • Acyclic: ${graphInfo.isAcyclic ? '✅' : '❌'}`);&#92;n&#92;n  if (graphInfo.cyclicEdges.length &gt; 0) {&#92;n    console.log(`      • Cyclic edges: ${graphInfo.cyclicEdges.length}`);&#92;n    for (const cycle of graphInfo.cyclicEdges.slice(0, 3)) {&#92;n      console.log(`        - ${cycle}`);&#92;n    }&#92;n    if (graphInfo.cyclicEdges.length &gt; 3) {&#92;n      console.log(`        - ... and ${graphInfo.cyclicEdges.length - 3} more`);&#92;n    }&#92;n  }&#92;n&#92;n  if (graphInfo.invalidModules.length &gt; 0) {&#92;n    console.log(`      ⚠️ Invalid modules (not found in graph):`);&#92;n    for (const invalidModule of graphInfo.invalidModules.slice(0, 3)) {&#92;n      console.log(`        - ${invalidModule}`);&#92;n    }&#92;n    if (graphInfo.invalidModules.length &gt; 3) {&#92;n      console.log(`        - ... and ${graphInfo.invalidModules.length - 3} more`);&#92;n    }&#92;n  }&#92;n&#92;n  // 1. Обогащаем данные с помощью ts-morph&#92;n  const enrichedEntitiesMap = enrichWithTsMorph(entitiesMap, projectRoot, graphData);&#92;n&#92;n  // 2. Строим карту функций для быстрого поиска calledBy&#92;n  const functionMap = buildFunctionMap(enrichedEntitiesMap, graphData);&#92;n&#92;n  // 3. Строим граф вызовов&#92;n  const callGraph = buildCallGraph(enrichedEntitiesMap, graphData);&#92;n&#92;n  // 4. Используем functionMap для валидации и обогащения данных&#92;n  for (const [funcName, info] of callGraph) {&#92;n    const funcInfo = findFunctionInfo(functionMap, funcName);&#92;n    if (!funcInfo) {&#92;n      console.debug(&#92;n        `  ⚠️ Function '${funcName}' not found in function map, but exists in call graph`&#92;n      );&#92;n    } else {&#92;n      info.isExported = funcInfo.isExported;&#92;n      info.module = funcInfo.module;&#92;n      info.line = funcInfo.line;&#92;n    }&#92;n  }&#92;n&#92;n  // 5. Заполняем calledBy для всех функций через граф вызовов&#92;n  for (const [funcName, info] of callGraph) {&#92;n    const entities = enrichedEntitiesMap[info.module];&#92;n    if (entities) {&#92;n      const func = ensureArray&lt;any&gt;(entities.functions).find(&#92;n        (f: FunctionEntity) =&gt; f.name === funcName&#92;n      );&#92;n      if (func) {&#92;n        if (!func.calledBy) {&#92;n          func.calledBy = [];&#92;n        }&#92;n        for (const callerName of info.calledBy) {&#92;n          const callerExists = functionExistsInMap(functionMap, callerName);&#92;n          if (callerExists) {&#92;n            if (!func.calledBy.some((cb: any) =&gt; cb.function === callerName)) {&#92;n              const callerInfo = callGraph.get(callerName);&#92;n              if (callerInfo) {&#92;n                func.calledBy.push({&#92;n                  function: callerName,&#92;n                  module: callerInfo.module,&#92;n                  line: callerInfo.line,&#92;n                });&#92;n              }&#92;n            }&#92;n          }&#92;n        }&#92;n      }&#92;n    }&#92;n  }&#92;n&#92;n  // 6. Строим пакеты для каждого модуля&#92;n  let processedCount = 0;&#92;n  const totalModules = Object.keys(enrichedEntitiesMap).length;&#92;n&#92;n  for (const [modulePath, entities] of Object.entries(enrichedEntitiesMap)) {&#92;n    processedCount++;&#92;n    const relativePath = path.relative(projectRoot, modulePath);&#92;n&#92;n    if (totalModules &gt; 5 &amp;&amp; processedCount % 10 === 0) {&#92;n      console.log(`   📊 Обработано ${processedCount}/${totalModules} модулей`);&#92;n    }&#92;n&#92;n    if (!entities || typeof entities !== 'object') {&#92;n      packages[modulePath] = createEmptyPackage(modulePath, relativePath);&#92;n      continue;&#92;n    }&#92;n&#92;n    const isEntry = modulePath === rootKey;&#92;n    const ext = path.extname(modulePath);&#92;n    let language: EnhancedPackageInfo['language'] = 'typescript';&#92;n    if (ext === '.js' || ext === '.jsx') language = 'javascript';&#92;n    else if (ext === '.vue') language = 'vue';&#92;n    else if (ext === '.tsx') language = 'jsx';&#92;n&#92;n    // ✅ СОХРАНЯЕМ ВСЕ ПОЛЯ ПРИ КОНВЕРТАЦИИ&#92;n    let fileEntities = convertToEnhancedEntityInfo(entities);&#92;n&#92;n    // ✅ ЧИТАЕМ ИСХОДНЫЙ КОД ФАЙЛА ДЛЯ ОБОГАЩЕНИЯ&#92;n    let sourceCode = '';&#92;n    let vscodeLink = '';&#92;n    try {&#92;n      const absPath = path.resolve(projectRoot, modulePath);&#92;n      if (fs.existsSync(absPath)) {&#92;n        sourceCode = fs.readFileSync(absPath, 'utf-8');&#92;n        vscodeLink = getVSCodeLink(absPath);&#92;n      }&#92;n    } catch (error) {&#92;n      // Игнорируем ошибки чтения&#92;n    }&#92;n&#92;n    // ✅ ОБОГАЩАЕМ ФУНКЦИИ ДАННЫМИ ИЗ ИСХОДНОГО КОДА&#92;n    if (sourceCode) {&#92;n      fileEntities.functions = enrichFunctionsWithSourceCode(&#92;n        fileEntities.functions,&#92;n        sourceCode,&#92;n        modulePath&#92;n      );&#92;n      fileEntities.classes = enrichClassesWithSourceCode(&#92;n        fileEntities.classes,&#92;n        sourceCode,&#92;n        modulePath&#92;n      );&#92;n    }&#92;n&#92;n    // ✅ ДОПОЛНИТЕЛЬНО КОПИРУЕМ calls И calledBy ИЗ ОРИГИНАЛА&#92;n    for (const func of fileEntities.functions) {&#92;n      const origFunc = ensureArray(entities.functions).find(&#92;n        (f: any) =&gt; f.name === func.name&#92;n      ) as any;&#92;n&#92;n      if (origFunc) {&#92;n        // ✅ КОПИРУЕМ calls С ПРОВЕРКОЙ&#92;n        if (origFunc.calls &amp;&amp; Array.isArray(origFunc.calls) &amp;&amp; origFunc.calls.length &gt; 0) {&#92;n          func.calls = origFunc.calls.map((c: any) =&gt; safeString(c));&#92;n        }&#92;n        // ✅ КОПИРУЕМ calledBy С ПРОВЕРКОЙ&#92;n        if (origFunc.calledBy &amp;&amp; Array.isArray(origFunc.calledBy) &amp;&amp; origFunc.calledBy.length &gt; 0) {&#92;n          func.calledBy = origFunc.calledBy.map((cb: any) =&gt; {&#92;n            if (typeof cb === 'string') {&#92;n              return { function: cb, module: modulePath, line: func.line };&#92;n            }&#92;n            return {&#92;n              function: safeString(cb.function || cb),&#92;n              module: safeString(cb.module || modulePath),&#92;n              line: safeNumber(cb.line || func.line),&#92;n            };&#92;n          });&#92;n        }&#92;n        // ✅ КОПИРУЕМ body С ПРОВЕРКОЙ&#92;n        if (origFunc.body &amp;&amp; typeof origFunc.body === 'string' &amp;&amp; !func.body) {&#92;n          func.body = origFunc.body;&#92;n        }&#92;n        // ✅ КОПИРУЕМ complexity С ПРОВЕРКОЙ&#92;n        if (origFunc.complexity !== undefined) {&#92;n          func.complexity = origFunc.complexity;&#92;n        }&#92;n        // ✅ КОПИРУЕМ security С ПРОВЕРКОЙ&#92;n        if (origFunc.security) {&#92;n          func.security = origFunc.security;&#92;n        }&#92;n        // ✅ КОПИРУЕМ signature С ПРОВЕРКОЙ&#92;n        if (origFunc.signature &amp;&amp; !func.signature) {&#92;n          func.signature = origFunc.signature;&#92;n        }&#92;n        // ✅ КОПИРУЕМ vscode С ПРОВЕРКОЙ&#92;n        if (origFunc.vscode &amp;&amp; !func.vscode) {&#92;n          func.vscode = origFunc.vscode;&#92;n        }&#92;n      }&#92;n    }&#92;n&#92;n    // ✅ ЛОГИРУЕМ СТАТИСТИКУ ДЛЯ МОДУЛЯ&#92;n    const callsCount = fileEntities.functions.reduce((sum, f) =&gt; sum + (f.calls?.length || 0), 0);&#92;n    const bodiesCount = fileEntities.functions.filter(f =&gt; f.body).length;&#92;n    const vscodeCount = fileEntities.functions.filter(f =&gt; f.vscode).length;&#92;n    if (fileEntities.functions.length &gt; 0) {&#92;n      console.log(&#92;n        `   📦 ${modulePath}: ${fileEntities.functions.length} функций, ${callsCount} вызовов, ${bodiesCount} с телами, ${vscodeCount} со ссылками VS Code`&#92;n      );&#92;n    }&#92;n&#92;n    const { size, lines } = getFileStats(modulePath, projectRoot);&#92;n&#92;n    // ✅ ИСПОЛЬЗУЕМ ОБНОВЛЕННЫЕ buildImports И buildExports&#92;n    const imports = buildImports(entities, enrichedEntitiesMap, graphData);&#92;n    const exports = buildExports(entities, enrichedEntitiesMap, graphData);&#92;n&#92;n    const fileStats = {&#92;n      size,&#92;n      lines,&#92;n      functions: entities.functions?.length || 0,&#92;n      classes: entities.classes?.length || 0,&#92;n      constants: entities.constants?.length || 0,&#92;n      interfaces: entities.interfaces?.length || 0,&#92;n      types: entities.types?.length || 0,&#92;n      variables: entities.variables?.length || 0,&#92;n    };&#92;n&#92;n    const pkg: EnhancedPackageInfo = {&#92;n      version: '1.0.0',&#92;n      resolved: `file:${modulePath}`,&#92;n      displayPath: relativePath,&#92;n      type: 'module',&#92;n      language,&#92;n      isEntry,&#92;n      imports,&#92;n      exports,&#92;n      entities: fileEntities,&#92;n      fileStats,&#92;n      vscode: vscodeLink || undefined,&#92;n      sourceCode: sourceCode || undefined,&#92;n    };&#92;n&#92;n    // Добавляем Vue-анализ&#92;n    addVueAnalysis(modulePath, pkg);&#92;n&#92;n    packages[modulePath] = pkg;&#92;n  }&#92;n&#92;n  // 7. Дополнительный проход для обогащения exports.consumers через граф вызовов&#92;n  for (const pkg of Object.values(packages)) {&#92;n    for (const [exportName, exportInfo] of Object.entries(pkg.exports)) {&#92;n      const funcExists = functionExistsInMap(functionMap, exportName);&#92;n      if (funcExists) {&#92;n        const consumers = findConsumersForExport(exportName, callGraph, graphData);&#92;n        exportInfo.consumers = consumers;&#92;n      }&#92;n    }&#92;n  }&#92;n&#92;n  // 8. Используем findExportsUsedInModule для каждого модуля&#92;n  for (const [modulePath, _pkg] of Object.entries(packages)) {&#92;n    const entities = enrichedEntitiesMap[modulePath];&#92;n    if (!entities) continue;&#92;n&#92;n    const usedExports = findExportsUsedInModule(modulePath, entities, callGraph, graphData);&#92;n    if (usedExports.length &gt; 0) {&#92;n      console.debug(`  📦 Module ${modulePath} uses exports: ${usedExports.join(', ')}`);&#92;n    }&#92;n  }&#92;n&#92;n  // 9. Логируем итоговую статистику&#92;n  let totalCalls = 0;&#92;n  let totalWithCalls = 0;&#92;n  let totalFuncs = 0;&#92;n  let totalWithBodies = 0;&#92;n  let totalWithVSCode = 0;&#92;n  for (const pkg of Object.values(packages)) {&#92;n    for (const func of pkg.entities?.functions || []) {&#92;n      totalFuncs++;&#92;n      if (func.calls &amp;&amp; func.calls.length &gt; 0) {&#92;n        totalCalls += func.calls.length;&#92;n        totalWithCalls++;&#92;n      }&#92;n      if (func.body) {&#92;n        totalWithBodies++;&#92;n      }&#92;n      if (func.vscode) {&#92;n        totalWithVSCode++;&#92;n      }&#92;n    }&#92;n  }&#92;n&#92;n  console.log(`   📊 Package build complete:`);&#92;n  console.log(`      • Packages created: ${Object.keys(packages).length}`);&#92;n  console.log(`      • Graph is ${graphInfo.isAcyclic ? 'acyclic ✅' : 'cyclic ⚠️'}`);&#92;n  console.log(`      • Total functions in call graph: ${callGraph.size}`);&#92;n  console.log(`      • Total functions in function map: ${functionMap.size}`);&#92;n  console.log(`      • Функций с вызовами: ${totalWithCalls}`);&#92;n  console.log(`      • Всего вызовов: ${totalCalls}`);&#92;n  console.log(`      • Функций с телами: ${totalWithBodies}`);&#92;n  console.log(`      • Функций со ссылками VS Code: ${totalWithVSCode}`);&#92;n&#92;n  return packages;&#92;n}&quot;,
+          &quot;startLine&quot;: 1272,
+          &quot;endLine&quot;: 1572,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -16425,9 +16570,9 @@
             &quot;safeBoolean&quot;
           ],
           &quot;calledBy&quot;: [],
-          &quot;body&quot;: &quot;{&#92;n  // Проверяем входные данные&#92;n  if (!entities || typeof entities !== 'object') {&#92;n    console.warn('⚠️ convertToEnhancedEntityInfo: entities is null or undefined');&#92;n    return {&#92;n      functions: [],&#92;n      constants: [],&#92;n      variables: [],&#92;n      interfaces: [],&#92;n      types: [],&#92;n      classes: [],&#92;n    };&#92;n  }&#92;n&#92;n  // ✅ ЛОГИРУЕМ ВХОДНЫЕ ДАННЫЕ&#92;n  const rawFunctions = ensureArray(entities.functions);&#92;n  if (rawFunctions.length &gt; 0) {&#92;n    console.log(`   📥 convertToEnhancedEntityInfo: входных функций: ${rawFunctions.length}`);&#92;n    const firstFunc = rawFunctions[0] as any;&#92;n    console.log(`   📥 Первая функция: ${firstFunc?.name || 'unknown'}`);&#92;n  }&#92;n&#92;n  // ✅ Преобразуем функции с СОХРАНЕНИЕМ ВСЕХ ПОЛЕЙ&#92;n  const functions: EnhancedFunctionInfo[] = rawFunctions.map(&#92;n    (rawFunc: any): EnhancedFunctionInfo =&gt; {&#92;n      // Если это уже FunctionEntity, возвращаем как есть&#92;n      if (rawFunc &amp;&amp; typeof rawFunc === 'object' &amp;&amp; rawFunc._safeInfo !== undefined) {&#92;n        return rawFunc as EnhancedFunctionInfo;&#92;n      }&#92;n&#92;n      const func = rawFunc as any;&#92;n      const funcName = safeString(func.name);&#92;n&#92;n      // ✅ СОХРАНЯЕМ calls как массив строк&#92;n      const calls = ensureArray(func.calls).map((c: any) =&gt; safeString(c));&#92;n&#92;n      // ✅ СОХРАНЯЕМ calledBy как массив объектов&#92;n      let calledBy: { function: string; module: string; line: number }[] = [];&#92;n      const rawCalledBy = ensureArray(func.calledBy);&#92;n&#92;n      if (rawCalledBy.length &gt; 0) {&#92;n        if (typeof rawCalledBy[0] === 'string') {&#92;n          calledBy = rawCalledBy.map((cb: any) =&gt; ({&#92;n            function: safeString(cb),&#92;n            module: safeString(func._modulePath || entities.moduleName || 'unknown'),&#92;n            line: safeNumber(func.line || 0),&#92;n          }));&#92;n        } else {&#92;n          calledBy = rawCalledBy.map((cb: any) =&gt; ({&#92;n            function: safeString(cb.function || cb),&#92;n            module: safeString(cb.module || func._modulePath || entities.moduleName || 'unknown'),&#92;n            line: safeNumber(cb.line || func.line || 0),&#92;n          }));&#92;n        }&#92;n      }&#92;n&#92;n      // ✅ СОХРАНЯЕМ security&#92;n      let security = {&#92;n        hasEval: false,&#92;n        hasProcessEnv: false,&#92;n        hasSensitiveData: false,&#92;n        hasExec: false,&#92;n        hasPassword: false,&#92;n      };&#92;n      if (func.security &amp;&amp; typeof func.security === 'object') {&#92;n        const sec = func.security as any;&#92;n        security = {&#92;n          hasEval: safeBoolean(sec.hasEval),&#92;n          hasProcessEnv: safeBoolean(sec.hasProcessEnv),&#92;n          hasSensitiveData: safeBoolean(sec.hasSensitiveData),&#92;n          hasExec: safeBoolean(sec.hasExec),&#92;n          hasPassword: safeBoolean(sec.hasPassword),&#92;n        };&#92;n      }&#92;n&#92;n      // ✅ СОХРАНЯЕМ body&#92;n      const body = func.body || '';&#92;n&#92;n      return {&#92;n        name: funcName,&#92;n        params: ensureArray(func.params).map((p: any) =&gt; safeString(p)),&#92;n        paramTypes: ensureArray(func.paramTypes || func.params).map(() =&gt; 'any'),&#92;n        line: safeNumber(func.line),&#92;n        startLine: safeNumber(func.startLine || func.line),&#92;n        endLine: safeNumber(func.endLine || func.line),&#92;n        isAsync: safeBoolean(func.isAsync),&#92;n        isExported: safeBoolean(func.isExported),&#92;n        isMethod: safeBoolean(func.isMethod),&#92;n        className: safeString(func.className),&#92;n        // ✅ КРИТИЧЕСКИ ВАЖНО: сохраняем calls&#92;n        calls: calls,&#92;n        // ✅ КРИТИЧЕСКИ ВАЖНО: сохраняем calledBy&#92;n        calledBy: calledBy,&#92;n        returnType: safeString(func.returnType),&#92;n        // ✅ КРИТИЧЕСКИ ВАЖНО: сохраняем body&#92;n        body: body,&#92;n        isNested: safeBoolean(func.isNested),&#92;n        parentFunction: safeString(func.parentFunction),&#92;n        isArrow: safeBoolean(func.isArrow),&#92;n        isEventHandler: safeBoolean(func.isEventHandler),&#92;n        eventType: safeString(func.eventType),&#92;n        depth: safeNumber(func.depth),&#92;n        // ✅ КРИТИЧЕСКИ ВАЖНО: сохраняем complexity&#92;n        complexity: safeNumber(func.complexity || 1),&#92;n        // ✅ КРИТИЧЕСКИ ВАЖНО: сохраняем security&#92;n        security: security,&#92;n        _safeInfo: null,&#92;n      };&#92;n    }&#92;n  );&#92;n&#92;n  // ✅ ЛОГИРУЕМ РЕЗУЛЬТАТ&#92;n  if (functions.length &gt; 0) {&#92;n    console.log(`   📤 convertToEnhancedEntityInfo: выходных функций: ${functions.length}`);&#92;n    const firstFunc = functions[0];&#92;n    if (firstFunc) {&#92;n      console.log(`   📤 Первая функция: ${firstFunc.name}, calls: ${firstFunc.calls.length}`);&#92;n    }&#92;n  }&#92;n&#92;n  // ✅ Преобразуем классы&#92;n  const classes: EnhancedClassInfo[] = ensureArray(entities.classes).map((rawClass: any) =&gt; {&#92;n    const c = rawClass as any;&#92;n    return {&#92;n      name: safeString(c.name),&#92;n      methods: ensureArray(c.methods).map((m: any) =&gt; safeString(m)),&#92;n      methodDetails: ensureArray(c.methodDetails || c.methods).map((m: any) =&gt; ({&#92;n        name: safeString(m.name || m),&#92;n        params: ensureArray(m.params || []).map((p: any) =&gt; safeString(p)),&#92;n        returnType: safeString(m.returnType || 'any'),&#92;n        isAsync: safeBoolean(m.isAsync || false),&#92;n        line: safeNumber(m.line || c.line || 0),&#92;n      })),&#92;n      properties: ensureArray(c.properties).map((p: any) =&gt; safeString(p)),&#92;n      propertyDetails: ensureArray(c.propertyDetails || c.properties).map((p: any) =&gt; ({&#92;n        name: safeString(p.name || p),&#92;n        type: safeString(p.type || 'any'),&#92;n        line: safeNumber(p.line || c.line || 0),&#92;n      })),&#92;n      line: safeNumber(c.line),&#92;n      isExported: safeBoolean(c.isExported),&#92;n      extends: safeString(c.extends),&#92;n      implements: ensureArray(c.implements).map((i: any) =&gt; safeString(i)),&#92;n      startLine: safeNumber(c.startLine || c.line),&#92;n      endLine: safeNumber(c.endLine || c.line),&#92;n      _safeInfo: null,&#92;n    };&#92;n  });&#92;n&#92;n  // ✅ Преобразуем константы&#92;n  const constants: EnhancedConstantInfo[] = ensureArray(entities.constants).map((rawConst: any) =&gt; {&#92;n    const c = rawConst as any;&#92;n    return {&#92;n      name: safeString(c.name),&#92;n      value: c.value,&#92;n      line: safeNumber(c.line),&#92;n      isExported: safeBoolean(c.isExported),&#92;n      type: safeString(c.type),&#92;n      _safeInfo: null,&#92;n    };&#92;n  });&#92;n&#92;n  // ✅ Преобразуем переменные&#92;n  const variables: EnhancedVariableInfo[] = ensureArray(entities.variables).map((rawVar: any) =&gt; {&#92;n    const v = rawVar as any;&#92;n    return {&#92;n      name: safeString(v.name),&#92;n      value: v.value,&#92;n      line: safeNumber(v.line),&#92;n      isExported: safeBoolean(v.isExported),&#92;n      type: safeString(v.type),&#92;n      _safeInfo: null,&#92;n    };&#92;n  });&#92;n&#92;n  // ✅ Преобразуем интерфейсы&#92;n  const interfaces: EnhancedInterfaceInfo[] = ensureArray(entities.interfaces).map(&#92;n    (rawIntf: any) =&gt; {&#92;n      const i = rawIntf as any;&#92;n      return {&#92;n        name: safeString(i.name),&#92;n        properties: ensureArray(i.properties).map((p: any) =&gt; safeString(p)),&#92;n        line: safeNumber(i.line),&#92;n        isExported: safeBoolean(i.isExported),&#92;n        extends: ensureArray(i.extends).map((e: any) =&gt; safeString(e)),&#92;n        startLine: safeNumber(i.startLine || i.line),&#92;n        endLine: safeNumber(i.endLine || i.line),&#92;n        _safeInfo: null,&#92;n      };&#92;n    }&#92;n  );&#92;n&#92;n  // ✅ Преобразуем типы&#92;n  const types: EnhancedTypeInfo[] = ensureArray(entities.types).map((rawType: any) =&gt; {&#92;n    const t = rawType as any;&#92;n    return {&#92;n      name: safeString(t.name),&#92;n      definition: safeString(t.definition),&#92;n      line: safeNumber(t.line),&#92;n      isExported: safeBoolean(t.isExported),&#92;n      _safeInfo: null,&#92;n    };&#92;n  });&#92;n&#92;n  // ✅ ЛОГИРУЕМ ИТОГОВУЮ СТАТИСТИКУ&#92;n  console.log(&#92;n    `   📊 convertToEnhancedEntityInfo: функции с calls: ${functions.filter(f =&gt; f.calls.length &gt; 0).length}`&#92;n  );&#92;n  console.log(&#92;n    `   📊 convertToEnhancedEntityInfo: функции с calledBy: ${functions.filter(f =&gt; f.calledBy.length &gt; 0).length}`&#92;n  );&#92;n&#92;n  return {&#92;n    functions: functions as EnhancedFunctionInfo[],&#92;n    constants,&#92;n    variables,&#92;n    interfaces,&#92;n    types,&#92;n    classes,&#92;n  };&#92;n}&quot;,
+          &quot;body&quot;: &quot;{&#92;n  // Проверяем входные данные&#92;n  if (!entities || typeof entities !== 'object') {&#92;n    console.warn('⚠️ convertToEnhancedEntityInfo: entities is null or undefined');&#92;n    return {&#92;n      functions: [],&#92;n      constants: [],&#92;n      variables: [],&#92;n      interfaces: [],&#92;n      types: [],&#92;n      classes: [],&#92;n    };&#92;n  }&#92;n&#92;n  // ✅ ЛОГИРУЕМ ВХОДНЫЕ ДАННЫЕ&#92;n  const rawFunctions = ensureArray(entities.functions);&#92;n  if (rawFunctions.length &gt; 0) {&#92;n    console.log(`   📥 convertToEnhancedEntityInfo: входных функций: ${rawFunctions.length}`);&#92;n    const firstFunc = rawFunctions[0] as any;&#92;n    console.log(`   📥 Первая функция: ${firstFunc?.name || 'unknown'}`);&#92;n  }&#92;n&#92;n  // ✅ Преобразуем функции с СОХРАНЕНИЕМ ВСЕХ ПОЛЕЙ&#92;n  const functions: EnhancedFunctionInfo[] = rawFunctions.map(&#92;n    (rawFunc: any): EnhancedFunctionInfo =&gt; {&#92;n      // Если это уже FunctionEntity, возвращаем как есть&#92;n      if (rawFunc &amp;&amp; typeof rawFunc === 'object' &amp;&amp; rawFunc._safeInfo !== undefined) {&#92;n        return rawFunc as EnhancedFunctionInfo;&#92;n      }&#92;n&#92;n      const func = rawFunc as any;&#92;n      const funcName = safeString(func.name);&#92;n&#92;n      // ✅ СОХРАНЯЕМ calls как массив строк&#92;n      const calls = ensureArray(func.calls).map((c: any) =&gt; safeString(c));&#92;n&#92;n      // ✅ СОХРАНЯЕМ calledBy как массив объектов&#92;n      let calledBy: { function: string; module: string; line: number }[] = [];&#92;n      const rawCalledBy = ensureArray(func.calledBy);&#92;n&#92;n      if (rawCalledBy.length &gt; 0) {&#92;n        if (typeof rawCalledBy[0] === 'string') {&#92;n          calledBy = rawCalledBy.map((cb: any) =&gt; ({&#92;n            function: safeString(cb),&#92;n            module: safeString(func._modulePath || entities.moduleName || 'unknown'),&#92;n            line: safeNumber(func.line || 0),&#92;n          }));&#92;n        } else {&#92;n          calledBy = rawCalledBy.map((cb: any) =&gt; ({&#92;n            function: safeString(cb.function || cb),&#92;n            module: safeString(cb.module || func._modulePath || entities.moduleName || 'unknown'),&#92;n            line: safeNumber(cb.line || func.line || 0),&#92;n          }));&#92;n        }&#92;n      }&#92;n&#92;n      // ✅ СОХРАНЯЕМ security&#92;n      let security = {&#92;n        hasEval: false,&#92;n        hasProcessEnv: false,&#92;n        hasSensitiveData: false,&#92;n        hasExec: false,&#92;n        hasPassword: false,&#92;n      };&#92;n      if (func.security &amp;&amp; typeof func.security === 'object') {&#92;n        const sec = func.security as any;&#92;n        security = {&#92;n          hasEval: safeBoolean(sec.hasEval),&#92;n          hasProcessEnv: safeBoolean(sec.hasProcessEnv),&#92;n          hasSensitiveData: safeBoolean(sec.hasSensitiveData),&#92;n          hasExec: safeBoolean(sec.hasExec),&#92;n          hasPassword: safeBoolean(sec.hasPassword),&#92;n        };&#92;n      }&#92;n&#92;n      // ✅ СОХРАНЯЕМ body&#92;n      const body = func.body || '';&#92;n&#92;n      // ✅ СОХРАНЯЕМ signature (будет заполнена позже в packages.ts)&#92;n      const signature = func.signature || '';&#92;n&#92;n      // ✅ СОХРАНЯЕМ vscode (будет заполнена позже в packages.ts)&#92;n      const vscode = func.vscode || '';&#92;n&#92;n      return {&#92;n        name: funcName,&#92;n        params: ensureArray(func.params).map((p: any) =&gt; safeString(p)),&#92;n        paramTypes: ensureArray(func.paramTypes || func.params).map(() =&gt; 'any'),&#92;n        line: safeNumber(func.line),&#92;n        startLine: safeNumber(func.startLine || func.line),&#92;n        endLine: safeNumber(func.endLine || func.line),&#92;n        isAsync: safeBoolean(func.isAsync),&#92;n        isExported: safeBoolean(func.isExported),&#92;n        isMethod: safeBoolean(func.isMethod),&#92;n        className: safeString(func.className),&#92;n        // ✅ КРИТИЧЕСКИ ВАЖНО: сохраняем calls&#92;n        calls: calls,&#92;n        // ✅ КРИТИЧЕСКИ ВАЖНО: сохраняем calledBy&#92;n        calledBy: calledBy,&#92;n        returnType: safeString(func.returnType),&#92;n        // ✅ КРИТИЧЕСКИ ВАЖНО: сохраняем body&#92;n        body: body,&#92;n        // ✅ НОВОЕ: сохраняем signature&#92;n        signature: signature,&#92;n        // ✅ НОВОЕ: сохраняем vscode&#92;n        vscode: vscode,&#92;n        isNested: safeBoolean(func.isNested),&#92;n        parentFunction: safeString(func.parentFunction),&#92;n        isArrow: safeBoolean(func.isArrow),&#92;n        isEventHandler: safeBoolean(func.isEventHandler),&#92;n        eventType: safeString(func.eventType),&#92;n        depth: safeNumber(func.depth),&#92;n        // ✅ КРИТИЧЕСКИ ВАЖНО: сохраняем complexity&#92;n        complexity: safeNumber(func.complexity || 1),&#92;n        // ✅ КРИТИЧЕСКИ ВАЖНО: сохраняем security&#92;n        security: security,&#92;n        _safeInfo: null,&#92;n      };&#92;n    }&#92;n  );&#92;n&#92;n  // ✅ ЛОГИРУЕМ РЕЗУЛЬТАТ&#92;n  if (functions.length &gt; 0) {&#92;n    console.log(`   📤 convertToEnhancedEntityInfo: выходных функций: ${functions.length}`);&#92;n    const firstFunc = functions[0];&#92;n    if (firstFunc) {&#92;n      console.log(`   📤 Первая функция: ${firstFunc.name}, calls: ${firstFunc.calls.length}`);&#92;n    }&#92;n  }&#92;n&#92;n  // ✅ Преобразуем классы&#92;n  const classes: EnhancedClassInfo[] = ensureArray(entities.classes).map((rawClass: any) =&gt; {&#92;n    const c = rawClass as any;&#92;n    return {&#92;n      name: safeString(c.name),&#92;n      methods: ensureArray(c.methods).map((m: any) =&gt; safeString(m)),&#92;n      methodDetails: ensureArray(c.methodDetails || c.methods).map((m: any) =&gt; ({&#92;n        name: safeString(m.name || m),&#92;n        params: ensureArray(m.params || []).map((p: any) =&gt; safeString(p)),&#92;n        returnType: safeString(m.returnType || 'any'),&#92;n        isAsync: safeBoolean(m.isAsync || false),&#92;n        line: safeNumber(m.line || c.line || 0),&#92;n      })),&#92;n      properties: ensureArray(c.properties).map((p: any) =&gt; safeString(p)),&#92;n      propertyDetails: ensureArray(c.propertyDetails || c.properties).map((p: any) =&gt; ({&#92;n        name: safeString(p.name || p),&#92;n        type: safeString(p.type || 'any'),&#92;n        line: safeNumber(p.line || c.line || 0),&#92;n      })),&#92;n      line: safeNumber(c.line),&#92;n      isExported: safeBoolean(c.isExported),&#92;n      extends: safeString(c.extends),&#92;n      implements: ensureArray(c.implements).map((i: any) =&gt; safeString(i)),&#92;n      startLine: safeNumber(c.startLine || c.line),&#92;n      endLine: safeNumber(c.endLine || c.line),&#92;n      // ✅ НОВОЕ: сохраняем body и vscode для классов&#92;n      body: c.body || '',&#92;n      vscode: c.vscode || '',&#92;n      _safeInfo: null,&#92;n    };&#92;n  });&#92;n&#92;n  // ✅ Преобразуем константы&#92;n  const constants: EnhancedConstantInfo[] = ensureArray(entities.constants).map((rawConst: any) =&gt; {&#92;n    const c = rawConst as any;&#92;n    return {&#92;n      name: safeString(c.name),&#92;n      value: c.value,&#92;n      line: safeNumber(c.line),&#92;n      isExported: safeBoolean(c.isExported),&#92;n      type: safeString(c.type),&#92;n      _safeInfo: null,&#92;n    };&#92;n  });&#92;n&#92;n  // ✅ Преобразуем переменные&#92;n  const variables: EnhancedVariableInfo[] = ensureArray(entities.variables).map((rawVar: any) =&gt; {&#92;n    const v = rawVar as any;&#92;n    return {&#92;n      name: safeString(v.name),&#92;n      value: v.value,&#92;n      line: safeNumber(v.line),&#92;n      isExported: safeBoolean(v.isExported),&#92;n      type: safeString(v.type),&#92;n      _safeInfo: null,&#92;n    };&#92;n  });&#92;n&#92;n  // ✅ Преобразуем интерфейсы&#92;n  const interfaces: EnhancedInterfaceInfo[] = ensureArray(entities.interfaces).map(&#92;n    (rawIntf: any) =&gt; {&#92;n      const i = rawIntf as any;&#92;n      return {&#92;n        name: safeString(i.name),&#92;n        properties: ensureArray(i.properties).map((p: any) =&gt; safeString(p)),&#92;n        line: safeNumber(i.line),&#92;n        isExported: safeBoolean(i.isExported),&#92;n        extends: ensureArray(i.extends).map((e: any) =&gt; safeString(e)),&#92;n        startLine: safeNumber(i.startLine || i.line),&#92;n        endLine: safeNumber(i.endLine || i.line),&#92;n        _safeInfo: null,&#92;n      };&#92;n    }&#92;n  );&#92;n&#92;n  // ✅ Преобразуем типы&#92;n  const types: EnhancedTypeInfo[] = ensureArray(entities.types).map((rawType: any) =&gt; {&#92;n    const t = rawType as any;&#92;n    return {&#92;n      name: safeString(t.name),&#92;n      definition: safeString(t.definition),&#92;n      line: safeNumber(t.line),&#92;n      isExported: safeBoolean(t.isExported),&#92;n      _safeInfo: null,&#92;n    };&#92;n  });&#92;n&#92;n  // ✅ ЛОГИРУЕМ ИТОГОВУЮ СТАТИСТИКУ&#92;n  console.log(&#92;n    `   📊 convertToEnhancedEntityInfo: функции с calls: ${functions.filter(f =&gt; f.calls.length &gt; 0).length}`&#92;n  );&#92;n  console.log(&#92;n    `   📊 convertToEnhancedEntityInfo: функции с calledBy: ${functions.filter(f =&gt; f.calledBy.length &gt; 0).length}`&#92;n  );&#92;n  console.log(&#92;n    `   📊 convertToEnhancedEntityInfo: функции с body: ${functions.filter(f =&gt; f.body &amp;&amp; f.body.length &gt; 0).length}`&#92;n  );&#92;n&#92;n  return {&#92;n    functions: functions as EnhancedFunctionInfo[],&#92;n    constants,&#92;n    variables,&#92;n    interfaces,&#92;n    types,&#92;n    classes,&#92;n  };&#92;n}&quot;,
           &quot;startLine&quot;: 26,
-          &quot;endLine&quot;: 246,
+          &quot;endLine&quot;: 262,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -16444,7 +16589,7 @@
         },
         {
           &quot;name&quot;: &quot;convertFromEnhancedEntityInfo&quot;,
-          &quot;line&quot;: 255,
+          &quot;line&quot;: 271,
           &quot;isAsync&quot;: false,
           &quot;isExported&quot;: true,
           &quot;params&quot;: [
@@ -16454,8 +16599,8 @@
           &quot;calls&quot;: [],
           &quot;calledBy&quot;: [],
           &quot;body&quot;: &quot;{&#92;n  return {&#92;n    functions: enhanced.functions.map((f: FunctionEntity) =&gt; ({&#92;n      name: f.name,&#92;n      params: f.params,&#92;n      line: f.line,&#92;n      isAsync: f.isAsync,&#92;n      isExported: f.isExported,&#92;n      isMethod: f.isMethod || false,&#92;n      className: f.className || '',&#92;n      calls: f.calls || [],&#92;n      calledBy: f.calledBy || [],&#92;n      returnType: f.returnType || 'any',&#92;n      body: f.body || '',&#92;n      isNested: f.isNested || false,&#92;n      parentFunction: f.parentFunction || '',&#92;n      isArrow: f.isArrow || false,&#92;n      isEventHandler: f.isEventHandler || false,&#92;n      eventType: f.eventType || '',&#92;n      depth: f.depth || 0,&#92;n      startLine: f.startLine || f.line,&#92;n      endLine: f.endLine || f.line,&#92;n      complexity: f.complexity || 1,&#92;n      security: f.security || {&#92;n        hasEval: false,&#92;n        hasProcessEnv: false,&#92;n        hasSensitiveData: false,&#92;n        hasExec: false,&#92;n        hasPassword: false,&#92;n      },&#92;n    })),&#92;n    classes: enhanced.classes.map(c =&gt; ({&#92;n      name: c.name,&#92;n      methods: c.methods,&#92;n      properties: c.properties,&#92;n      line: c.line,&#92;n      isExported: c.isExported,&#92;n      extends: c.extends || '',&#92;n      implements: c.implements || [],&#92;n      startLine: c.startLine || c.line,&#92;n      endLine: c.endLine || c.line,&#92;n    })),&#92;n    constants: enhanced.constants.map(c =&gt; ({&#92;n      name: c.name,&#92;n      value: c.value,&#92;n      line: c.line,&#92;n      isExported: c.isExported,&#92;n      type: c.type || '',&#92;n    })),&#92;n    interfaces: enhanced.interfaces.map(i =&gt; ({&#92;n      name: i.name,&#92;n      properties: i.properties,&#92;n      line: i.line,&#92;n      isExported: i.isExported,&#92;n      extends: i.extends || [],&#92;n      startLine: i.startLine || i.line,&#92;n      endLine: i.endLine || i.line,&#92;n    })),&#92;n    types: enhanced.types.map(t =&gt; ({&#92;n      name: t.name,&#92;n      definition: t.definition,&#92;n      line: t.line,&#92;n      isExported: t.isExported,&#92;n    })),&#92;n    variables: enhanced.variables.map(v =&gt; ({&#92;n      name: v.name,&#92;n      value: v.value,&#92;n      line: v.line,&#92;n      isExported: v.isExported,&#92;n      type: v.type || '',&#92;n    })),&#92;n    imports: [],&#92;n    exports: [],&#92;n    callGraph: {},&#92;n    moduleName: '',&#92;n    filePath: '',&#92;n  };&#92;n}&quot;,
-          &quot;startLine&quot;: 255,
-          &quot;endLine&quot;: 332,
+          &quot;startLine&quot;: 271,
+          &quot;endLine&quot;: 348,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -16472,7 +16617,7 @@
         },
         {
           &quot;name&quot;: &quot;enrichFunctionsWithCalledBy&quot;,
-          &quot;line&quot;: 337,
+          &quot;line&quot;: 353,
           &quot;isAsync&quot;: false,
           &quot;isExported&quot;: true,
           &quot;params&quot;: [
@@ -16483,8 +16628,8 @@
           &quot;calls&quot;: [],
           &quot;calledBy&quot;: [],
           &quot;body&quot;: &quot;{&#92;n  // Создаем карту всех функций по имени&#92;n  const functionMap = new Map&lt;string, FunctionEntity&gt;();&#92;n  for (const func of allFunctions) {&#92;n    functionMap.set(func.name, func);&#92;n  }&#92;n&#92;n  // Для каждой функции находим, кто ее вызывает&#92;n  return functions.map(func =&gt; {&#92;n    const calledBy: { function: string; module: string; line: number }[] = [];&#92;n&#92;n    for (const caller of allFunctions) {&#92;n      if (caller.name === func.name) continue;&#92;n      if (caller.calls.includes(func.name)) {&#92;n        calledBy.push({&#92;n          function: caller.name,&#92;n          module: caller.className ? `${caller.className}` : 'unknown',&#92;n          line: caller.line,&#92;n        });&#92;n      }&#92;n    }&#92;n&#92;n    return {&#92;n      ...func,&#92;n      calledBy: calledBy,&#92;n    };&#92;n  });&#92;n}&quot;,
-          &quot;startLine&quot;: 337,
-          &quot;endLine&quot;: 367,
+          &quot;startLine&quot;: 353,
+          &quot;endLine&quot;: 383,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -16501,7 +16646,7 @@
         },
         {
           &quot;name&quot;: &quot;buildConsumersMap&quot;,
-          &quot;line&quot;: 372,
+          &quot;line&quot;: 388,
           &quot;isAsync&quot;: false,
           &quot;isExported&quot;: true,
           &quot;params&quot;: [
@@ -16512,8 +16657,8 @@
           &quot;calls&quot;: [],
           &quot;calledBy&quot;: [],
           &quot;body&quot;: &quot;{&#92;n  const consumersMap = new Map&lt;string, { function: string; module: string; line: number }[]&gt;();&#92;n&#92;n  // Инициализируем карту для всех функций&#92;n  for (const func of functions) {&#92;n    if (func.isExported) {&#92;n      consumersMap.set(func.name, []);&#92;n    }&#92;n  }&#92;n&#92;n  // Для каждой функции ищем, кто ее вызывает&#92;n  for (const caller of allFunctions) {&#92;n    for (const call of caller.calls) {&#92;n      if (consumersMap.has(call)) {&#92;n        const consumers = consumersMap.get(call)!;&#92;n        // Проверяем, нет ли уже такого потребителя&#92;n        if (!consumers.some(c =&gt; c.function === caller.name &amp;&amp; c.module === caller.className)) {&#92;n          consumers.push({&#92;n            function: caller.name,&#92;n            module: caller.className || 'unknown',&#92;n            line: caller.line,&#92;n          });&#92;n        }&#92;n      }&#92;n    }&#92;n  }&#92;n&#92;n  return consumersMap;&#92;n}&quot;,
-          &quot;startLine&quot;: 372,
-          &quot;endLine&quot;: 403,
+          &quot;startLine&quot;: 388,
+          &quot;endLine&quot;: 419,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -16530,7 +16675,7 @@
         },
         {
           &quot;name&quot;: &quot;isRealObject&quot;,
-          &quot;line&quot;: 408,
+          &quot;line&quot;: 424,
           &quot;isAsync&quot;: false,
           &quot;isExported&quot;: true,
           &quot;params&quot;: [
@@ -16542,8 +16687,8 @@
             &quot;filterRealObjects&quot;
           ],
           &quot;body&quot;: &quot;{&#92;n  if (!item) return false;&#92;n  if (typeof item !== 'object') return false;&#92;n  if (Array.isArray(item)) return false;&#92;n  if (item.name === undefined) return false;&#92;n  if (item.toString &amp;&amp; item.toString() === '[object Object]') return false;&#92;n  return true;&#92;n}&quot;,
-          &quot;startLine&quot;: 408,
-          &quot;endLine&quot;: 415,
+          &quot;startLine&quot;: 424,
+          &quot;endLine&quot;: 431,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -16560,7 +16705,7 @@
         },
         {
           &quot;name&quot;: &quot;filterRealObjects&quot;,
-          &quot;line&quot;: 420,
+          &quot;line&quot;: 436,
           &quot;isAsync&quot;: false,
           &quot;isExported&quot;: true,
           &quot;params&quot;: [
@@ -16572,8 +16717,8 @@
           ],
           &quot;calledBy&quot;: [],
           &quot;body&quot;: &quot;{&#92;n  if (!Array.isArray(arr)) return [];&#92;n  return arr.filter((item: any) =&gt; isRealObject(item));&#92;n}&quot;,
-          &quot;startLine&quot;: 420,
-          &quot;endLine&quot;: 423,
+          &quot;startLine&quot;: 436,
+          &quot;endLine&quot;: 439,
           &quot;isMethod&quot;: false,
           &quot;isNested&quot;: false,
           &quot;isArrow&quot;: false,
@@ -19611,7 +19756,7 @@
               &quot;outputPath&quot;
             ],
             &quot;returns&quot;: &quot;void&quot;,
-            &quot;line&quot;: 388,
+            &quot;line&quot;: 400,
             &quot;consumers&quot;: []
           },
           &quot;buildModuleGraph&quot;: {
@@ -19623,7 +19768,7 @@
               &quot;entities&quot;
             ],
             &quot;returns&quot;: &quot;import(&#92;&quot;/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types&#92;&quot;).ModuleGraph&quot;,
-            &quot;line&quot;: 397,
+            &quot;line&quot;: 409,
             &quot;consumers&quot;: []
           },
           &quot;buildEntityGraph&quot;: {
@@ -19635,7 +19780,7 @@
               &quot;entities&quot;
             ],
             &quot;returns&quot;: &quot;import(&#92;&quot;/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types&#92;&quot;).EntityGraph&quot;,
-            &quot;line&quot;: 467,
+            &quot;line&quot;: 479,
             &quot;consumers&quot;: []
           },
           &quot;buildFullAnalysis&quot;: {
@@ -19648,7 +19793,7 @@
               &quot;root&quot;
             ],
             &quot;returns&quot;: &quot;import(&#92;&quot;/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types&#92;&quot;).FullAnalysis&quot;,
-            &quot;line&quot;: 680,
+            &quot;line&quot;: 700,
             &quot;consumers&quot;: []
           },
           &quot;extractEntitiesFromFile&quot;: {
@@ -19659,7 +19804,7 @@
               &quot;filePath&quot;
             ],
             &quot;returns&quot;: &quot;import(&#92;&quot;/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types&#92;&quot;).EnhancedEntityInfo&quot;,
-            &quot;line&quot;: 718,
+            &quot;line&quot;: 738,
             &quot;consumers&quot;: []
           }
         }
@@ -21525,7 +21670,7 @@
               &quot;projectRoot&quot;
             ],
             &quot;returns&quot;: &quot;Record&lt;string, import(&#92;&quot;/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types&#92;&quot;).EnhancedPackageInfo&gt;&quot;,
-            &quot;line&quot;: 1147,
+            &quot;line&quot;: 1272,
             &quot;consumers&quot;: []
           }
         }
@@ -21557,7 +21702,7 @@
               &quot;enhanced&quot;
             ],
             &quot;returns&quot;: &quot;import(&#92;&quot;/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types&#92;&quot;).EntitiesResult&quot;,
-            &quot;line&quot;: 255,
+            &quot;line&quot;: 271,
             &quot;consumers&quot;: []
           },
           &quot;enrichFunctionsWithCalledBy&quot;: {
@@ -21569,7 +21714,7 @@
               &quot;allFunctions&quot;
             ],
             &quot;returns&quot;: &quot;import(&#92;&quot;/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types&#92;&quot;).FunctionEntity[]&quot;,
-            &quot;line&quot;: 337,
+            &quot;line&quot;: 353,
             &quot;consumers&quot;: []
           },
           &quot;buildConsumersMap&quot;: {
@@ -21581,7 +21726,7 @@
               &quot;allFunctions&quot;
             ],
             &quot;returns&quot;: &quot;Map&lt;string, { function: string; module: string; line: number; }[]&gt;&quot;,
-            &quot;line&quot;: 372,
+            &quot;line&quot;: 388,
             &quot;consumers&quot;: []
           },
           &quot;isRealObject&quot;: {
@@ -21592,7 +21737,7 @@
               &quot;item&quot;
             ],
             &quot;returns&quot;: &quot;boolean&quot;,
-            &quot;line&quot;: 408,
+            &quot;line&quot;: 424,
             &quot;consumers&quot;: []
           },
           &quot;filterRealObjects&quot;: {
@@ -21603,7 +21748,7 @@
               &quot;arr&quot;
             ],
             &quot;returns&quot;: &quot;any[]&quot;,
-            &quot;line&quot;: 420,
+            &quot;line&quot;: 436,
             &quot;consumers&quot;: []
           }
         }
@@ -24100,6 +24245,16 @@
         &quot;findFileInProject&quot;,
         &quot;String&quot;
       ],
+      &quot;getVSCodeLink&quot;: [],
+      &quot;extractFunctionBody&quot;: [],
+      &quot;enrichFunctionsWithSourceCode&quot;: [
+        &quot;getVSCodeLink&quot;,
+        &quot;extractFunctionBody&quot;
+      ],
+      &quot;enrichClassesWithSourceCode&quot;: [
+        &quot;getVSCodeLink&quot;,
+        &quot;extractFunctionBody&quot;
+      ],
       &quot;buildPackages&quot;: [
         &quot;getGraphStructureInfo&quot;,
         &quot;enrichWithTsMorph&quot;,
@@ -24110,6 +24265,9 @@
         &quot;functionExistsInMap&quot;,
         &quot;createEmptyPackage&quot;,
         &quot;convertToEnhancedEntityInfo&quot;,
+        &quot;getVSCodeLink&quot;,
+        &quot;enrichFunctionsWithSourceCode&quot;,
+        &quot;enrichClassesWithSourceCode&quot;,
         &quot;safeString&quot;,
         &quot;safeNumber&quot;,
         &quot;getFileStats&quot;,

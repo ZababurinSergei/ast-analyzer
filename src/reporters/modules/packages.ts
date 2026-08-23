@@ -13,11 +13,11 @@ import {
 import { analyzeVueComponent } from '../../modes/vue-analyzer.js';
 import {
   EnhancedPackageInfo,
-  EnhancedEntityInfo,
   EntitiesResult,
   GraphData,
   EnhancedFunctionInfo,
   FunctionEntity,
+  EnhancedClassInfo,
 } from './types.js';
 import {
   safeString,
@@ -38,7 +38,7 @@ import { convertToEnhancedEntityInfo, buildConsumersMap } from './converters.js'
  */
 interface TsMorphAnalysisResult {
   functions: EnhancedFunctionInfo[];
-  classes: EnhancedEntityInfo['classes'];
+  classes: EnhancedClassInfo[];
   imports: EnhancedPackageInfo['imports'];
   sourceFile: SourceFile | null;
   diagnostics: string[];
@@ -578,9 +578,9 @@ function buildExports(
 
   const graphDataForCallGraph = graphData
     ? {
-      rootKey: graphData.rootKey,
-      graph: graphData.graph,
-    }
+        rootKey: graphData.rootKey,
+        graph: graphData.graph,
+      }
     : undefined;
 
   // Строим граф вызовов
@@ -696,10 +696,10 @@ function extractSecurityInfo(func: FunctionDeclaration): EnhancedFunctionInfo['s
  */
 function extractClassMethods(cls: ClassDeclaration): {
   methods: string[];
-  methodDetails: EnhancedEntityInfo['classes'][0]['methodDetails'];
+  methodDetails: EnhancedClassInfo['methodDetails'];
 } {
   const methods: string[] = [];
-  const methodDetails: EnhancedEntityInfo['classes'][0]['methodDetails'] = [];
+  const methodDetails: EnhancedClassInfo['methodDetails'] = [];
 
   for (const method of cls.getMethods()) {
     const methodName = method.getName();
@@ -723,10 +723,10 @@ function extractClassMethods(cls: ClassDeclaration): {
  */
 function extractClassProperties(cls: ClassDeclaration): {
   properties: string[];
-  propertyDetails: EnhancedEntityInfo['classes'][0]['propertyDetails'];
+  propertyDetails: EnhancedClassInfo['propertyDetails'];
 } {
   const properties: string[] = [];
-  const propertyDetails: EnhancedEntityInfo['classes'][0]['propertyDetails'] = [];
+  const propertyDetails: EnhancedClassInfo['propertyDetails'] = [];
 
   for (const prop of cls.getProperties()) {
     const propName = prop.getName();
@@ -859,6 +859,13 @@ function analyzeFileWithTsMorph(
 
       const body = func.getBody()?.getText() || '';
 
+      // Сигнатура для быстрого просмотра
+      const paramsStr = params.join(', ');
+      const signature = `${isAsync ? 'async ' : ''}function ${name}(${paramsStr}): ${returnType}`;
+
+      // Ссылка VS Code
+      const vscode = `vscode://file/${absPath}:${func.getStartLineNumber()}`;
+
       result.functions.push({
         name,
         params,
@@ -874,6 +881,8 @@ function analyzeFileWithTsMorph(
         calledBy: [],
         returnType,
         body,
+        signature,
+        vscode,
         isNested: false,
         parentFunction: undefined,
         isArrow: false,
@@ -901,6 +910,11 @@ function analyzeFileWithTsMorph(
       const { methods, methodDetails } = extractClassMethods(cls);
       const { properties, propertyDetails } = extractClassProperties(cls);
 
+      // Ссылка VS Code для класса
+      const vscode = `vscode://file/${absPath}:${cls.getStartLineNumber()}`;
+
+      const body = cls.getText();
+
       result.classes.push({
         name,
         methods,
@@ -913,6 +927,8 @@ function analyzeFileWithTsMorph(
         isExported: cls.isExported(),
         extends: cls.getExtends()?.getText(),
         implements: (cls.getImplements() || []).map(i => i.getText()),
+        body,
+        vscode,
         _safeInfo: null,
       });
     }
@@ -971,7 +987,9 @@ function enrichWithTsMorph(
     }
 
     const enrichedFunctions = ensureArray<any>(entities.functions).map((func: any) => {
-      const tsFunc = tsMorphResult.functions.find((f: EnhancedFunctionInfo) => f.name === func.name);
+      const tsFunc = tsMorphResult.functions.find(
+        (f: EnhancedFunctionInfo) => f.name === func.name
+      );
       if (tsFunc) {
         if (graphData) {
           const funcExists = findModuleForEntity(func.name, graphData) !== null;
@@ -982,55 +1000,66 @@ function enrichWithTsMorph(
         // ✅ КОПИРУЕМ ТОЛЬКО СУЩЕСТВУЮЩИЕ ПОЛЯ, ИСПОЛЬЗУЯ safeString/safeNumber
         return {
           ...func,
-          params: tsFunc.params.length > 0 ? tsFunc.params : (func.params || []),
+          params: tsFunc.params.length > 0 ? tsFunc.params : func.params || [],
           returnType: tsFunc.returnType || func.returnType || 'any',
           isAsync: tsFunc.isAsync || func.isAsync || false,
           isExported: tsFunc.isExported || func.isExported || false,
           // ✅ КОПИРУЕМ calls С ПРОВЕРКОЙ НА СУЩЕСТВОВАНИЕ
-          calls: (tsFunc.calls && tsFunc.calls.length > 0)
-            ? tsFunc.calls.map((c: any) => safeString(c))
-            : (func.calls ? func.calls.map((c: any) => safeString(c)) : []),
+          calls:
+            tsFunc.calls && tsFunc.calls.length > 0
+              ? tsFunc.calls.map((c: any) => safeString(c))
+              : func.calls
+                ? func.calls.map((c: any) => safeString(c))
+                : [],
           // ✅ КОПИРУЕМ calledBy С ПРОВЕРКОЙ
-          calledBy: (tsFunc.calledBy && tsFunc.calledBy.length > 0)
-            ? tsFunc.calledBy.map((cb: any) => {
-              if (typeof cb === 'string') {
-                return { function: cb, module: modulePath, line: func.line || 0 };
-              }
-              return {
-                function: safeString(cb.function || cb),
-                module: safeString(cb.module || modulePath),
-                line: safeNumber(cb.line || func.line || 0),
-              };
-            })
-            : (func.calledBy ? func.calledBy.map((cb: any) => {
-              if (typeof cb === 'string') {
-                return { function: cb, module: modulePath, line: func.line || 0 };
-              }
-              return {
-                function: safeString(cb.function || cb),
-                module: safeString(cb.module || modulePath),
-                line: safeNumber(cb.line || func.line || 0),
-              };
-            }) : []),
+          calledBy:
+            tsFunc.calledBy && tsFunc.calledBy.length > 0
+              ? tsFunc.calledBy.map((cb: any) => {
+                  if (typeof cb === 'string') {
+                    return { function: cb, module: modulePath, line: func.line || 0 };
+                  }
+                  return {
+                    function: safeString(cb.function || cb),
+                    module: safeString(cb.module || modulePath),
+                    line: safeNumber(cb.line || func.line || 0),
+                  };
+                })
+              : func.calledBy
+                ? func.calledBy.map((cb: any) => {
+                    if (typeof cb === 'string') {
+                      return { function: cb, module: modulePath, line: func.line || 0 };
+                    }
+                    return {
+                      function: safeString(cb.function || cb),
+                      module: safeString(cb.module || modulePath),
+                      line: safeNumber(cb.line || func.line || 0),
+                    };
+                  })
+                : [],
           // ✅ КОПИРУЕМ complexity С ПРОВЕРКОЙ
           complexity: tsFunc.complexity || func.complexity || 1,
           // ✅ КОПИРУЕМ security С ПРОВЕРКОЙ
-          security: tsFunc.security || func.security || {
-            hasEval: false,
-            hasProcessEnv: false,
-            hasSensitiveData: false,
-            hasExec: false,
-            hasPassword: false
-          },
+          security: tsFunc.security ||
+            func.security || {
+              hasEval: false,
+              hasProcessEnv: false,
+              hasSensitiveData: false,
+              hasExec: false,
+              hasPassword: false,
+            },
           // ✅ КОПИРУЕМ body С ПРОВЕРКОЙ
           body: tsFunc.body || func.body || '',
+          // ✅ КОПИРУЕМ signature С ПРОВЕРКОЙ
+          signature: tsFunc.signature || func.signature || '',
+          // ✅ КОПИРУЕМ vscode С ПРОВЕРКОЙ
+          vscode: tsFunc.vscode || func.vscode || '',
         };
       }
       return func;
     });
 
     const enrichedClasses = ensureArray<any>(entities.classes).map((cls: any) => {
-      const tsClass = tsMorphResult.classes.find((c: any) => c.name === cls.name);
+      const tsClass = tsMorphResult.classes.find((c: EnhancedClassInfo) => c.name === cls.name);
       if (tsClass) {
         if (graphData) {
           const classExists = findModuleForEntity(cls.name, graphData) !== null;
@@ -1040,13 +1069,15 @@ function enrichWithTsMorph(
         }
         return {
           ...cls,
-          methods: tsClass.methods.length > 0 ? tsClass.methods : (cls.methods || []),
-          properties: tsClass.properties.length > 0 ? tsClass.properties : (cls.properties || []),
+          methods: tsClass.methods.length > 0 ? tsClass.methods : cls.methods || [],
+          properties: tsClass.properties.length > 0 ? tsClass.properties : cls.properties || [],
           extends: tsClass.extends || cls.extends,
           implements:
             tsClass.implements && tsClass.implements.length > 0
               ? tsClass.implements
-              : (cls.implements || []),
+              : cls.implements || [],
+          body: tsClass.body || cls.body || '',
+          vscode: tsClass.vscode || cls.vscode || '',
         };
       }
       return cls;
@@ -1137,12 +1168,106 @@ function getFileStats(modulePath: string, projectRoot: string): { size: number; 
 }
 
 // ============================================================
+// НОВЫЕ ФУНКЦИИ ДЛЯ ОБОГАЩЕНИЯ ИСХОДНЫМ КОДОМ
+// ============================================================
+
+/**
+ * Создает ссылку на VS Code для файла и строки
+ */
+function getVSCodeLink(filePath: string, line?: number): string {
+  const absolutePath = path.resolve(filePath);
+  const base = `vscode://file/${absolutePath}`;
+  return line ? `${base}:${line}` : base;
+}
+
+/**
+ * Извлекает тело функции из исходного кода
+ */
+function extractFunctionBody(code: string, startLine: number, endLine: number): string {
+  if (!code || !startLine || !endLine) return '';
+  const lines = code.split('\n');
+  return lines.slice(Math.max(0, startLine - 1), Math.min(lines.length, endLine)).join('\n');
+}
+
+/**
+ * Обогащает функции данными из исходного кода (body, signature, vscode)
+ */
+function enrichFunctionsWithSourceCode(
+  functions: EnhancedFunctionInfo[],
+  sourceCode: string,
+  filePath: string
+): EnhancedFunctionInfo[] {
+  if (!functions || functions.length === 0) return functions;
+
+  const enriched: EnhancedFunctionInfo[] = [];
+
+  for (const func of functions) {
+    const enrichedFunc = { ...func };
+
+    // 1. Добавляем ссылку VS Code
+    if (!enrichedFunc.vscode) {
+      enrichedFunc.vscode = getVSCodeLink(filePath, func.line);
+    }
+
+    // 2. Добавляем тело функции
+    if (!enrichedFunc.body && func.startLine && func.endLine && sourceCode) {
+      enrichedFunc.body = extractFunctionBody(sourceCode, func.startLine, func.endLine);
+    }
+
+    // 3. Добавляем сигнатуру
+    if (!enrichedFunc.signature) {
+      const params = (func.params || []).join(', ');
+      const returnType = func.returnType || 'any';
+      const asyncStr = func.isAsync ? 'async ' : '';
+      const exportStr = func.isExported ? 'export ' : '';
+      const methodStr = func.isMethod && func.className ? `${func.className}.` : '';
+      enrichedFunc.signature = `${exportStr}${asyncStr}function ${methodStr}${func.name}(${params}): ${returnType}`;
+    }
+
+    enriched.push(enrichedFunc);
+  }
+
+  return enriched;
+}
+
+/**
+ * Обогащает классы данными из исходного кода
+ */
+function enrichClassesWithSourceCode(
+  classes: EnhancedClassInfo[],
+  sourceCode: string,
+  filePath: string
+): EnhancedClassInfo[] {
+  if (!classes || classes.length === 0) return classes;
+
+  const enriched: EnhancedClassInfo[] = [];
+
+  for (const cls of classes) {
+    const enrichedCls = { ...cls };
+
+    // 1. Добавляем ссылку VS Code
+    if (!enrichedCls.vscode) {
+      enrichedCls.vscode = getVSCodeLink(filePath, cls.line);
+    }
+
+    // 2. Добавляем тело класса
+    if (!enrichedCls.body && cls.startLine && cls.endLine && sourceCode) {
+      enrichedCls.body = extractFunctionBody(sourceCode, cls.startLine, cls.endLine);
+    }
+
+    enriched.push(enrichedCls);
+  }
+
+  return enriched;
+}
+
+// ============================================================
 // ОСНОВНАЯ ФУНКЦИЯ buildPackages - С СОХРАНЕНИЕМ ВСЕХ ДАННЫХ
 // ============================================================
 
 /**
  * Строит пакеты для всех модулей
- * ✅ СОХРАНЯЕТ calls, calledBy, body, complexity, security
+ * ✅ СОХРАНЯЕТ calls, calledBy, body, complexity, security, vscode, signature
  */
 export function buildPackages(
   rootKey: string,
@@ -1265,11 +1390,37 @@ export function buildPackages(
     else if (ext === '.tsx') language = 'jsx';
 
     // ✅ СОХРАНЯЕМ ВСЕ ПОЛЯ ПРИ КОНВЕРТАЦИИ
-    const fileEntities = convertToEnhancedEntityInfo(entities);
+    let fileEntities = convertToEnhancedEntityInfo(entities);
+
+    // ✅ ЧИТАЕМ ИСХОДНЫЙ КОД ФАЙЛА ДЛЯ ОБОГАЩЕНИЯ
+    let sourceCode = '';
+    let vscodeLink = '';
+    try {
+      const absPath = path.resolve(projectRoot, modulePath);
+      if (fs.existsSync(absPath)) {
+        sourceCode = fs.readFileSync(absPath, 'utf-8');
+        vscodeLink = getVSCodeLink(absPath);
+      }
+    } catch (error) {
+      // Игнорируем ошибки чтения
+    }
+
+    // ✅ ОБОГАЩАЕМ ФУНКЦИИ ДАННЫМИ ИЗ ИСХОДНОГО КОДА
+    if (sourceCode) {
+      fileEntities.functions = enrichFunctionsWithSourceCode(
+        fileEntities.functions,
+        sourceCode,
+        modulePath
+      );
+      fileEntities.classes = enrichClassesWithSourceCode(
+        fileEntities.classes,
+        sourceCode,
+        modulePath
+      );
+    }
 
     // ✅ ДОПОЛНИТЕЛЬНО КОПИРУЕМ calls И calledBy ИЗ ОРИГИНАЛА
     for (const func of fileEntities.functions) {
-      // Явно приводим к типу any для доступа к свойствам
       const origFunc = ensureArray(entities.functions).find(
         (f: any) => f.name === func.name
       ) as any;
@@ -1293,7 +1444,7 @@ export function buildPackages(
           });
         }
         // ✅ КОПИРУЕМ body С ПРОВЕРКОЙ
-        if (origFunc.body && typeof origFunc.body === 'string') {
+        if (origFunc.body && typeof origFunc.body === 'string' && !func.body) {
           func.body = origFunc.body;
         }
         // ✅ КОПИРУЕМ complexity С ПРОВЕРКОЙ
@@ -1304,13 +1455,25 @@ export function buildPackages(
         if (origFunc.security) {
           func.security = origFunc.security;
         }
+        // ✅ КОПИРУЕМ signature С ПРОВЕРКОЙ
+        if (origFunc.signature && !func.signature) {
+          func.signature = origFunc.signature;
+        }
+        // ✅ КОПИРУЕМ vscode С ПРОВЕРКОЙ
+        if (origFunc.vscode && !func.vscode) {
+          func.vscode = origFunc.vscode;
+        }
       }
     }
 
     // ✅ ЛОГИРУЕМ СТАТИСТИКУ ДЛЯ МОДУЛЯ
     const callsCount = fileEntities.functions.reduce((sum, f) => sum + (f.calls?.length || 0), 0);
+    const bodiesCount = fileEntities.functions.filter(f => f.body).length;
+    const vscodeCount = fileEntities.functions.filter(f => f.vscode).length;
     if (fileEntities.functions.length > 0) {
-      console.log(`   📦 ${modulePath}: ${fileEntities.functions.length} функций, ${callsCount} вызовов`);
+      console.log(
+        `   📦 ${modulePath}: ${fileEntities.functions.length} функций, ${callsCount} вызовов, ${bodiesCount} с телами, ${vscodeCount} со ссылками VS Code`
+      );
     }
 
     const { size, lines } = getFileStats(modulePath, projectRoot);
@@ -1341,6 +1504,8 @@ export function buildPackages(
       exports,
       entities: fileEntities,
       fileStats,
+      vscode: vscodeLink || undefined,
+      sourceCode: sourceCode || undefined,
     };
 
     // Добавляем Vue-анализ
@@ -1375,12 +1540,20 @@ export function buildPackages(
   let totalCalls = 0;
   let totalWithCalls = 0;
   let totalFuncs = 0;
+  let totalWithBodies = 0;
+  let totalWithVSCode = 0;
   for (const pkg of Object.values(packages)) {
     for (const func of pkg.entities?.functions || []) {
       totalFuncs++;
       if (func.calls && func.calls.length > 0) {
         totalCalls += func.calls.length;
         totalWithCalls++;
+      }
+      if (func.body) {
+        totalWithBodies++;
+      }
+      if (func.vscode) {
+        totalWithVSCode++;
       }
     }
   }
@@ -1392,6 +1565,8 @@ export function buildPackages(
   console.log(`      • Total functions in function map: ${functionMap.size}`);
   console.log(`      • Функций с вызовами: ${totalWithCalls}`);
   console.log(`      • Всего вызовов: ${totalCalls}`);
+  console.log(`      • Функций с телами: ${totalWithBodies}`);
+  console.log(`      • Функций со ссылками VS Code: ${totalWithVSCode}`);
 
   return packages;
 }

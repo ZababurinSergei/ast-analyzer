@@ -21,7 +21,7 @@ import { safeString, safeNumber, safeBoolean, ensureArray } from './utils.js';
 
 /**
  * Преобразует EntitiesResult в EnhancedEntityInfo
- * ✅ СОХРАНЯЕТ: calls, calledBy, body, complexity, security
+ * ✅ СОХРАНЯЕТ: calls, calledBy, body, complexity, security, signature, vscode
  */
 export function convertToEnhancedEntityInfo(entities: EntitiesResult): EnhancedEntityInfo {
   // Проверяем входные данные
@@ -101,6 +101,12 @@ export function convertToEnhancedEntityInfo(entities: EntitiesResult): EnhancedE
       // ✅ СОХРАНЯЕМ body
       const body = func.body || '';
 
+      // ✅ СОХРАНЯЕМ signature (будет заполнена позже в packages.ts)
+      const signature = func.signature || '';
+
+      // ✅ СОХРАНЯЕМ vscode (будет заполнена позже в packages.ts)
+      const vscode = func.vscode || '';
+
       return {
         name: funcName,
         params: ensureArray(func.params).map((p: any) => safeString(p)),
@@ -119,6 +125,10 @@ export function convertToEnhancedEntityInfo(entities: EntitiesResult): EnhancedE
         returnType: safeString(func.returnType),
         // ✅ КРИТИЧЕСКИ ВАЖНО: сохраняем body
         body: body,
+        // ✅ НОВОЕ: сохраняем signature
+        signature: signature,
+        // ✅ НОВОЕ: сохраняем vscode
+        vscode: vscode,
         isNested: safeBoolean(func.isNested),
         parentFunction: safeString(func.parentFunction),
         isArrow: safeBoolean(func.isArrow),
@@ -168,6 +178,9 @@ export function convertToEnhancedEntityInfo(entities: EntitiesResult): EnhancedE
       implements: ensureArray(c.implements).map((i: any) => safeString(i)),
       startLine: safeNumber(c.startLine || c.line),
       endLine: safeNumber(c.endLine || c.line),
+      // ✅ НОВОЕ: сохраняем body и vscode для классов
+      body: c.body || '',
+      vscode: c.vscode || '',
       _safeInfo: null,
     };
   });
@@ -233,6 +246,9 @@ export function convertToEnhancedEntityInfo(entities: EntitiesResult): EnhancedE
   );
   console.log(
     `   📊 convertToEnhancedEntityInfo: функции с calledBy: ${functions.filter(f => f.calledBy.length > 0).length}`
+  );
+  console.log(
+    `   📊 convertToEnhancedEntityInfo: функции с body: ${functions.filter(f => f.body && f.body.length > 0).length}`
   );
 
   return {

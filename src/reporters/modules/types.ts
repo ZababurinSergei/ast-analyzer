@@ -40,7 +40,9 @@ export interface FunctionEntity {
   calls: string[];
   calledBy: { function: string; module: string; line: number }[] | string[];
   returnType?: string;
-  body?: string;
+  body?: string; // ✅ ПОЛНОЕ ТЕЛО ФУНКЦИИ
+  signature?: string; // ✅ СИГНАТУРА ДЛЯ БЫСТРОГО ПРОСМОТРА
+  vscode?: string; // ✅ ССЫЛКА НА VS CODE
   isNested?: boolean;
   parentFunction?: string;
   isArrow?: boolean;
@@ -126,6 +128,8 @@ export interface EnhancedClassInfo {
   implements?: string[];
   startLine?: number;
   endLine?: number;
+  body?: string; // ✅ ТЕЛО КЛАССА
+  vscode?: string; // ✅ ССЫЛКА НА VS CODE
   _safeInfo?: any;
 }
 
@@ -256,6 +260,8 @@ export interface EnhancedPackageInfo {
     variables: number;
   };
   vueAnalysis?: VueAnalysis;
+  vscode?: string; // ✅ ССЫЛКА НА VS CODE ДЛЯ МОДУЛЯ
+  sourceCode?: string; // ✅ ПОЛНЫЙ КОД ФАЙЛА (опционально)
 }
 
 export interface VueAnalysis {

@@ -273,7 +273,7 @@ export function saveFullAnalysis(
 
 /**
  * Сохраняет отчет в стиле package-lock.json
- * ✅ ИСПРАВЛЕНО: сохраняет все данные без потерь (calls, calledBy, body, complexity, security)
+ * ✅ СОХРАНЯЕТ ВСЕ ДАННЫЕ: body, vscode, signature, calls, calledBy
  */
 export function savePackageLockReport(
   rootKey: string,
@@ -362,6 +362,16 @@ export function savePackageLockReport(
   }
   fs.writeFileSync(outputPath, json, 'utf-8');
 
+  // Подсчет статистики
+  let totalWithBodies = 0;
+  let totalWithVSCode = 0;
+  for (const pkg of Object.values(report.packages || {})) {
+    for (const func of pkg.entities?.functions || []) {
+      if (func.body) totalWithBodies++;
+      if (func.vscode) totalWithVSCode++;
+    }
+  }
+
   console.log(`✅ Enhanced package-lock report saved: ${outputPath}`);
   console.log(`📊 Functions: ${report.entityStats?.totalFunctions || 0}`);
   console.log(`📊 Constants: ${report.entityStats?.totalConstants || 0}`);
@@ -373,6 +383,8 @@ export function savePackageLockReport(
   console.log(`📁 Files: ${report.fileStats?.totalFiles || 0}`);
   console.log(`📝 Lines: ${report.fileStats?.totalLines || 0}`);
   console.log(`💾 Size: ${((report.fileStats?.totalSize || 0) / 1024).toFixed(2)} KB`);
+  console.log(`📖 Functions with body: ${totalWithBodies}`);
+  console.log(`🔗 Functions with VSCode link: ${totalWithVSCode}`);
 
   if (report.architectureMetrics) {
     console.log(`🏗️  Architecture: ${report.summary?.architectureHealth || 'unknown'}`);
@@ -462,7 +474,7 @@ export function buildModuleGraph(data: GraphData, entities: EntitiesResult): Mod
 
 /**
  * Строит граф сущностей
- * ✅ ИСПРАВЛЕНО: сохраняет calls и calledBy
+ * ✅ СОХРАНЯЕТ ВСЕ ДАННЫЕ: calls, calledBy, body, vscode, signature
  */
 export function buildEntityGraph(data: GraphData, entities: EntitiesResult): EntityGraph {
   const nodes: EntityNode[] = [];
@@ -509,6 +521,10 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
         },
         // ✅ СОХРАНЯЕМ body
         body: func.body || '',
+        // ✅ СОХРАНЯЕМ signature
+        signature: func.signature || '',
+        // ✅ СОХРАНЯЕМ vscode
+        vscode: func.vscode || '',
       },
     });
 
@@ -552,6 +568,10 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
         implements: ensureArray(cls.implements).map((i: any) => safeString(i)),
         startLine: safeNumber(cls.startLine || cls.line),
         endLine: safeNumber(cls.endLine || cls.line),
+        // ✅ СОХРАНЯЕМ body
+        body: cls.body || '',
+        // ✅ СОХРАНЯЕМ vscode
+        vscode: cls.vscode || '',
       },
     });
 
