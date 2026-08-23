@@ -1,62 +1,115 @@
 // packages/ast-analyzer/src/reporters/templates/modules/CardManager.js
 
+import { HeaderRenderer } from './CardManager/HeaderRenderer.js';
+import { BadgesRenderer } from './CardManager/BadgesRenderer.js';
+import { FunctionsListRenderer } from './CardManager/FunctionsListRenderer.js';
+import { NavExportsRenderer } from './CardManager/NavExportsRenderer.js';
+import { NavModuleImportersRenderer } from './CardManager/NavModuleImportersRenderer.js';
+import { NavExternalRenderer } from './CardManager/NavExternalRenderer.js';
+import { NavInternalRenderer } from './CardManager/NavInternalRenderer.js';
+import { CallTreeRenderer } from './CardManager/CallTreeRenderer.js';
+import { DetailPanelRenderer } from './CardManager/DetailPanelRenderer.js';
+
 /**
  * CardManager - управление карточками модулей и функций
  * Отвечает за рендеринг, навигацию и отображение деталей
+ *
+ * Навигация:
+ * - Клик на функцию → переход к функции (если она в другом модуле или активна)
+ * - Клик на модуль → переход к модулю
+ * - Экспорты → ТОЛЬКО ИНФОРМАЦИЯ, НЕ ССЫЛКИ (отображаются как статические теги)
+ * - Исходящие вызовы → переход к вызываемой функции с указанием источника
+ * - Входящие вызовы → переход к вызывающей функции с указанием источника
+ * - Модули-импортеры → переход к модулю, который импортирует текущий
+ * - Модули-зависимости → переход к модулю, который импортирует текущий
+ *
+ * Улучшения:
+ * - Статистика сложности (Cyclomatic Complexity)
+ * - Размер функций (количество строк)
+ * - Индикатор асинхронности
+ * - Визуализация связей (входящие/исходящие)
+ * - Превью документации (JSDoc)
+ * - Группировка по тегам
+ * - Индикатор покрытия тестами
+ * - Индикатор безопасности
+ * - Копирование сигнатуры
+ * - Источник вызова (top-level или из функции)
+ * - Компактные кнопки
+ * - Ссылка на VS Code в заголовке с полным путем
  */
+
 export class CardManager {
   constructor(app) {
     this.app = app;
     this.currentFocusModule = null;
     this.currentFocusFunction = null;
     this.navigationStack = [];
+    this._expandedCallTrees = new Set();
+    this._lastSource = null;
+    this._api = null;
+    this._methodsBound = false;
 
-    // ✅ СРАЗУ ПОЛУЧАЕМ ГОТОВЫЙ ГЛОБАЛЬНЫЙ API
+    // Инициализация рендереров
+    this.headerRenderer = new HeaderRenderer(this);
+    this.badgesRenderer = new BadgesRenderer(this);
+    this.functionsListRenderer = new FunctionsListRenderer(this);
+    this.navExportsRenderer = new NavExportsRenderer(this);
+    this.navModuleImportersRenderer = new NavModuleImportersRenderer(this);
+    this.navExternalRenderer = new NavExternalRenderer(this);
+    this.navInternalRenderer = new NavInternalRenderer(this);
+    this.callTreeRenderer = new CallTreeRenderer(this);
+    this.detailPanelRenderer = new DetailPanelRenderer(this);
+
+    console.log('📊 CardManager created');
+  }
+
+  init() {
+    console.log('🔄 CardManager.init() called');
     this._api = window[Symbol.for('__AST_APP_API__')];
     console.log('📡 CardManager API получен:', this._api ? '✅' : '❌');
 
-    // Если API еще не готов, ждем его
-    if (!this._api) {
-      console.log('⏳ Ожидание API в CardManager...');
-      const checkApi = setInterval(() => {
-        this._api = window[Symbol.for('__AST_APP_API__')];
-        if (this._api) {
-          clearInterval(checkApi);
-          console.log('✅ API получен в CardManager');
-          this._bindMethods();
-          this.renderModules();
-        }
-      }, 100);
-
-      setTimeout(() => {
-        if (!this._api) {
-          clearInterval(checkApi);
-          console.warn('⚠️ API не получен в CardManager, использую fallback');
-          this._api = {
-            focusModule: () => console.warn('⚠️ focusModule fallback'),
-            focusFunction: () => console.warn('⚠️ focusFunction fallback'),
-            clearFocus: () => console.warn('⚠️ clearFocus fallback'),
-            closeDetail: () => console.warn('⚠️ closeDetail fallback'),
-            renderModules: () => console.warn('⚠️ renderModules fallback'),
-          };
-          this._bindMethods();
-          this.renderModules();
-        }
-      }, 3000);
-    } else {
+    if (this._api && typeof this._api.focusFunction === 'function') {
+      console.log('✅ API готов в CardManager');
       this._bindMethods();
-      // Если API уже готов, инициализируем сразу
-      if (this._api && typeof this._api.renderModules === 'function') {
+      this.renderModules();
+      return;
+    }
+
+    console.log('⏳ Ожидание API в CardManager...');
+    let attempts = 0;
+    const maxAttempts = 30;
+
+    const checkApi = setInterval(() => {
+      attempts++;
+      this._api = window[Symbol.for('__AST_APP_API__')];
+
+      if (this._api && typeof this._api.focusFunction === 'function') {
+        clearInterval(checkApi);
+        console.log(`✅ API получен в CardManager после ${attempts} попыток`);
+        this._bindMethods();
+        this.renderModules();
+        return;
+      }
+
+      if (attempts >= maxAttempts) {
+        clearInterval(checkApi);
+        console.warn('⚠️ API не получен в CardManager, использую fallback');
+        this._api = {
+          focusModule: () => console.warn('⚠️ focusModule fallback'),
+          focusFunction: () => console.warn('⚠️ focusFunction fallback'),
+          clearFocus: () => console.warn('⚠️ clearFocus fallback'),
+          closeDetail: () => console.warn('⚠️ closeDetail fallback'),
+          renderModules: () => console.warn('⚠️ renderModules fallback'),
+        };
+        this._bindMethods();
         this.renderModules();
       }
-    }
+    }, 100);
   }
 
-  /**
-   * ✅ СВЯЗЫВАНИЕ МЕТОДОВ С ГОТОВЫМ API
-   */
   _bindMethods() {
-    const api = this._api;
+    console.log('🔄 CardManager._bindMethods() called');
+    const api = this._api || window[Symbol.for('__AST_APP_API__')];
 
     this._focusModule = path => {
       if (api && typeof api.focusModule === 'function') {
@@ -64,6 +117,9 @@ export class CardManager {
         return api.focusModule(path);
       }
       console.warn('⚠️ focusModule not available in CardManager');
+      this.currentFocusModule = path;
+      this.currentFocusFunction = null;
+      this.renderModules();
     };
 
     this._focusFunction = (name, module) => {
@@ -72,6 +128,13 @@ export class CardManager {
         return api.focusFunction(name, module);
       }
       console.warn('⚠️ focusFunction not available in CardManager');
+      if (this.currentFocusFunction === name && this.currentFocusModule === module) {
+        this.showDetail({ name, module });
+        return;
+      }
+      this.currentFocusFunction = name;
+      this.currentFocusModule = module;
+      this.renderModules();
     };
 
     this._clearFocus = () => {
@@ -80,6 +143,9 @@ export class CardManager {
         return api.clearFocus();
       }
       console.warn('⚠️ clearFocus not available in CardManager');
+      this.currentFocusModule = null;
+      this.currentFocusFunction = null;
+      this.renderModules();
     };
 
     this._closeDetail = () => {
@@ -94,28 +160,16 @@ export class CardManager {
         return api.renderModules();
       }
       console.warn('⚠️ renderModules not available in CardManager');
+      this.renderModules();
     };
+
+    this._methodsBound = true;
   }
 
-  /**
-   * Инициализация менеджера карточек
-   */
-  init() {
-    // Методы уже привязаны в конструкторе
-    // Перепривязываем на случай если API обновился
-    this._api = window[Symbol.for('__AST_APP_API__')];
-    this._bindMethods();
-    this.renderModules();
-  }
-
-  /**
-   * Получает уровень вложенности модуля
-   */
   getModuleLevel(modulePath) {
     const reportData = this.app.reportData;
     if (!reportData) return 0;
 
-    // Проверяем, есть ли уровень в architectureMetrics
     if (reportData.architectureMetrics?.modulesByLevel) {
       const levels = reportData.architectureMetrics.modulesByLevel;
       for (const [level, modules] of Object.entries(levels)) {
@@ -125,213 +179,401 @@ export class CardManager {
       }
     }
 
-    // Если уровень не найден, вычисляем по графу зависимостей
     const levels = reportData.levels || {};
     return levels[modulePath] !== undefined ? levels[modulePath] : 0;
   }
 
-  /**
-   * Рендерит все карточки модулей
-   */
+  findModuleForFunction(funcName) {
+    const reportData = this.app.reportData;
+    if (!reportData || !reportData.packages) return null;
+
+    for (const [modulePath, pkg] of Object.entries(reportData.packages)) {
+      if (!pkg) continue;
+      const funcs = pkg.entities?.functions || [];
+      for (const func of funcs) {
+        if (func.name === funcName) {
+          return modulePath;
+        }
+      }
+    }
+    return null;
+  }
+
+  findFunctionByName(funcName) {
+    const reportData = this.app.reportData;
+    if (!reportData || !reportData.packages) return null;
+
+    for (const [modulePath, pkg] of Object.entries(reportData.packages)) {
+      if (!pkg) continue;
+      const funcs = pkg.entities?.functions || [];
+      for (const func of funcs) {
+        if (func.name === funcName) {
+          return { ...func, module: modulePath };
+        }
+      }
+    }
+    return null;
+  }
+
+  getCallSource(funcName, modulePath, funcs) {
+    for (const func of funcs) {
+      if (func.calls && func.calls.includes(funcName)) {
+        return func.name;
+      }
+    }
+    return 'top-level';
+  }
+
+  buildCallTree(funcName, modulePath, funcs, depth = 0, maxDepth = 3, visited = new Set()) {
+    if (depth > maxDepth) return null;
+    if (visited.has(funcName)) return null;
+    visited.add(funcName);
+
+    const func = funcs.find(f => f.name === funcName);
+    if (!func) return null;
+
+    const tree = {
+      name: funcName,
+      isExported: func.isExported || false,
+      isAsync: func.isAsync || false,
+      line: func.line || 0,
+      calls: [],
+      calledBy: [],
+      depth: depth,
+      isExpanded: this._expandedCallTrees.has(`${modulePath}#${funcName}`),
+      complexity: func.complexity || 0,
+      size: func.endLine && func.startLine ? func.endLine - func.startLine + 1 : 0,
+      isDeprecated: func.isDeprecated || false,
+      isTested: func.isTested || false,
+      securityLevel: func.securityLevel || 'low',
+      description: func.description || '',
+      tags: func.tags || [],
+      coverage: func.coverage,
+      paramsWithTypes: func.paramsWithTypes || [],
+      usedTypes: func.usedTypes || [],
+      lastModified: func.lastModified || null,
+      callSource: this.getCallSource(funcName, modulePath, funcs),
+    };
+
+    for (const call of func.calls || []) {
+      const child = this.buildCallTree(
+        call,
+        modulePath,
+        funcs,
+        depth + 1,
+        maxDepth,
+        new Set(visited)
+      );
+      if (child) {
+        tree.calls.push(child);
+      }
+    }
+
+    for (const caller of func.calledBy || []) {
+      const child = this.buildCallTree(
+        caller,
+        modulePath,
+        funcs,
+        depth + 1,
+        maxDepth,
+        new Set(visited)
+      );
+      if (child && !tree.calledBy.find(c => c.name === child.name)) {
+        tree.calledBy.push(child);
+      }
+    }
+
+    return tree;
+  }
+
   renderModules() {
     const grid = document.getElementById('modulesGrid');
-    if (!grid) return;
+    if (!grid) {
+      console.warn('⚠️ modulesGrid not found');
+      return;
+    }
 
     grid.innerHTML = '';
 
     const reportData = this.app.reportData;
-    if (!reportData || !reportData.packages) return;
-
-    const moduleEntries = Object.entries(reportData.packages);
-    const focusModule = this.app.focusModule;
-    const focusFunction = this.app.focusFunction;
-    const searchQuery = this.app.searchQuery || '';
-
-    // ✅ Фильтруем модули
-    let filteredEntries = moduleEntries;
-
-    // 1. Фильтр по фокусу
-    if (focusModule) {
-      const deps = reportData.dependencyGraph?.outwardDependencies?.[focusModule] || [];
-      const dependents = reportData.dependencyGraph?.inwardDependencies?.[focusModule] || [];
-      const relatedModules = new Set([focusModule, ...deps, ...dependents]);
-      filteredEntries = filteredEntries.filter(([path]) => relatedModules.has(path));
+    if (!reportData || !reportData.packages) {
+      grid.innerHTML = `
+                <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #94a3b8;">
+                    <div style="font-size: 32px; margin-bottom: 10px;">📭</div>
+                    <p>Нет данных для отображения</p>
+                </div>
+            `;
+      return;
     }
 
-    // 2. Фильтр по поиску
-    if (searchQuery) {
+    const focusModule = this.app._focusModule || this.currentFocusModule;
+    const focusFunction = this.app._focusFunction || this.currentFocusFunction;
+    const searchQuery = this.app.searchQuery || '';
+
+    let moduleEntries = Object.entries(reportData.packages);
+
+    if (focusModule) {
+      moduleEntries = moduleEntries.filter(([path]) => path === focusModule);
+      if (moduleEntries.length === 0) {
+        moduleEntries = Object.entries(reportData.packages);
+      }
+    }
+
+    if (!focusModule && searchQuery) {
       const query = searchQuery.toLowerCase();
-      filteredEntries = filteredEntries.filter(([modulePath, pkg]) => {
-        // Проверяем имя модуля
+      moduleEntries = moduleEntries.filter(([modulePath, pkg]) => {
         if (modulePath.toLowerCase().includes(query)) return true;
-        // Проверяем функции в модуле
         const funcs = pkg.entities?.functions || [];
         return funcs.some(f => f.name.toLowerCase().includes(query));
       });
     }
 
-    // Сортировка по уровню вложенности (сначала корневые)
-    filteredEntries.sort((a, b) => {
+    moduleEntries.sort((a, b) => {
       const levelA = this.getModuleLevel(a[0]);
       const levelB = this.getModuleLevel(b[0]);
       return levelA - levelB;
     });
 
-    for (const [modulePath, pkg] of filteredEntries) {
+    if (moduleEntries.length === 0) {
+      grid.innerHTML = `
+                <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #94a3b8;">
+                    <div style="font-size: 32px; margin-bottom: 10px;">🔍</div>
+                    <p>Ничего не найдено${searchQuery ? ` по запросу "${searchQuery}"` : ''}</p>
+                </div>
+            `;
+      return;
+    }
+
+    for (const [modulePath, pkg] of moduleEntries) {
       if (!pkg) continue;
-
-      const moduleCard = document.createElement('div');
-      moduleCard.className = 'module-card';
-      moduleCard.dataset.module = modulePath;
-
-      // Подсветка активного модуля
-      if (focusModule === modulePath) {
-        moduleCard.classList.add('active');
-      }
-
-      moduleCard.onclick = () => this._focusModule(modulePath);
-
-      const funcs = pkg.entities?.functions || [];
-      const isEntry = pkg.isEntry || false;
-      const displayName = pkg.displayPath || modulePath.split('/').pop() || modulePath;
-      const language = pkg.language || 'javascript';
-      const lines = pkg.fileStats?.lines || 0;
-
-      // Получаем уровень вложенности
-      const level = this.getModuleLevel(modulePath);
-      const levelDisplay = level === 0 ? '🌌' : `📁 L${level}`;
-      const levelClass = `level-${Math.min(level, 5)}`;
-
-      // Собираем все вызовы и вызывающих
-      const allCalls = new Map();
-      const allCallers = new Map();
-
-      for (const func of funcs) {
-        if (!func || !func.name) continue;
-        for (const call of func.calls || []) {
-          if (!allCalls.has(call)) {
-            allCalls.set(call, []);
-          }
-          allCalls.get(call).push(func.name);
-        }
-        for (const caller of func.calledBy || []) {
-          if (!allCallers.has(func.name)) {
-            allCallers.set(func.name, []);
-          }
-          allCallers.get(func.name).push(caller);
-        }
-      }
-
-      let funcsHtml = '';
-      for (const func of funcs) {
-        if (!func || !func.name) continue;
-        const funcName = this.app.escapeHtml(func.name);
-        const modulePathEscaped = this.app.escapeHtml(modulePath);
-        const paramsStr = (func.params || []).map(p => this.app.escapeHtml(p)).join(', ');
-        const callsStr = (func.calls || [])
-          .slice(0, 3)
-          .map(c => this.app.escapeHtml(c))
-          .join(', ');
-        const isExported = func.isExported || false;
-        const isAsync = func.isAsync || false;
-        const lineNum = func.line || 0;
-
-        // ✅ ИСПОЛЬЗУЕМ БЕЗОПАСНЫЙ МЕТОД
-        const onclickAttr = `onclick="event.stopPropagation(); window[Symbol.for('__AST_APP_API__')]?.focusFunction('${this.app.escapeJs(func.name)}', '${this.app.escapeJs(modulePath)}')"`;
-
-        funcsHtml += `<div class="func-item" ${onclickAttr} data-func="${funcName}" data-module="${modulePathEscaped}">`;
-        funcsHtml += `<span class="func-name">${funcName}</span>`;
-        if (isExported) {
-          funcsHtml += `<span class="func-export">📤</span>`;
-        }
-        if (isAsync) {
-          funcsHtml += `<span class="func-async">⚡</span>`;
-        }
-        if (func.params && func.params.length > 0) {
-          funcsHtml += `<span class="func-params">(${paramsStr})</span>`;
-        }
-        if (func.calls && func.calls.length > 0) {
-          funcsHtml += `<span class="func-calls">→ ${callsStr}${func.calls.length > 3 ? '...' : ''}</span>`;
-        }
-        if (func.calledBy && func.calledBy.length > 0) {
-          funcsHtml += `<span class="func-called">← ${func.calledBy.length}</span>`;
-        }
-        funcsHtml += `<span class="func-line">стр.${lineNum}</span>`;
-        funcsHtml += `</div>`;
-      }
-
-      // Навигационные кнопки
-      let navHtml = '';
-      const moduleCalls = Array.from(allCalls.keys()).filter(c => funcs.some(f => f.name === c));
-      const moduleCallers = Array.from(allCallers.keys()).filter(c =>
-        funcs.some(f => f.name === c)
-      );
-
-      if (moduleCalls.length > 0) {
-        navHtml += `<div class="nav-section"><span class="nav-label">📤 Выходы (вызовы):</span>`;
-        for (const call of moduleCalls.slice(0, 5)) {
-          navHtml += `<button class="nav-btn" onclick="window[Symbol.for('__AST_APP_API__')]?.focusFunction('${this.app.escapeJs(call)}', '${this.app.escapeJs(modulePath)}')">${this.app.escapeHtml(call)}</button>`;
-        }
-        if (moduleCalls.length > 5) {
-          navHtml += `<span class="nav-more">+${moduleCalls.length - 5}</span>`;
-        }
-        navHtml += `</div>`;
-      }
-
-      if (moduleCallers.length > 0) {
-        navHtml += `<div class="nav-section"><span class="nav-label">📥 Входы (кто вызывает):</span>`;
-        for (const caller of moduleCallers.slice(0, 5)) {
-          navHtml += `<button class="nav-btn" onclick="window[Symbol.for('__AST_APP_API__')]?.focusFunction('${this.app.escapeJs(caller)}', '${this.app.escapeJs(modulePath)}')">${this.app.escapeHtml(caller)}</button>`;
-        }
-        if (moduleCallers.length > 5) {
-          navHtml += `<span class="nav-more">+${moduleCallers.length - 5}</span>`;
-        }
-        navHtml += `</div>`;
-      }
-
-      // Добавляем отображение уровня в карточке
-      moduleCard.innerHTML = `
-        <div class="header-row">
-          <div>
-            <div class="name ${levelClass}">
-              ${isEntry ? '⭐ ' : ''}${this.app.escapeHtml(displayName)}
-              <span class="level-badge">
-                ${levelDisplay}
-              </span>
-            </div>
-            <div class="path">${this.app.escapeHtml(modulePath)}</div>
-          </div>
-          <div style="display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end;">
-            <span class="badge lang">${this.app.escapeHtml(language)}</span>
-            ${isEntry ? '<span class="badge export">⭐ entry</span>' : ''}
-            <span class="badge lines">${lines} строк</span>
-            <span class="badge level ${levelClass}">${levelDisplay}</span>
-          </div>
-        </div>
-        <div class="badges">
-          <span class="badge fn">${funcs.length} функций</span>
-          ${pkg.entities?.classes?.length > 0 ? `<span class="badge class">${pkg.entities.classes.length} классов</span>` : ''}
-          ${pkg.entities?.constants?.length > 0 ? `<span class="badge const">${pkg.entities.constants.length} констант</span>` : ''}
-          ${pkg.entities?.interfaces?.length > 0 ? `<span class="badge interface">${pkg.entities.interfaces.length} интерфейсов</span>` : ''}
-          ${pkg.entities?.types?.length > 0 ? `<span class="badge type">${pkg.entities.types.length} типов</span>` : ''}
-          ${pkg.entities?.variables?.length > 0 ? `<span class="badge var">${pkg.entities.variables.length} переменных</span>` : ''}
-        </div>
-        <div class="functions-list">${funcsHtml}</div>
-        ${navHtml}
-      `;
+      const isActive = focusModule === modulePath;
+      const moduleCard = this.createModuleCard(modulePath, pkg, isActive, focusFunction);
       grid.appendChild(moduleCard);
     }
   }
 
-  /**
-   * Устанавливает фокус на модуль
-   * @param {string} modulePath - Путь к модулю
-   */
+  createModuleCard(modulePath, pkg, isActive, focusFunction) {
+    const moduleCard = document.createElement('div');
+    moduleCard.className = `module-card ${isActive ? 'active' : ''}`;
+    moduleCard.dataset.module = modulePath;
+
+    if (!isActive) {
+      moduleCard.onclick = () => this._focusModule(modulePath);
+    }
+
+    const funcs = pkg.entities?.functions || [];
+    const isEntry = pkg.isEntry || false;
+    const displayName = pkg.displayPath || modulePath.split('/').pop() || modulePath;
+    const language = pkg.language || 'javascript';
+    const lines = pkg.fileStats?.lines || 0;
+
+    const level = this.getModuleLevel(modulePath);
+    const levelDisplay = level === 0 ? '🌌' : `📁 L${level}`;
+    const levelClass = `level-${Math.min(level, 5)}`;
+
+    const totalFuncs = funcs.length;
+    const totalClasses = pkg.entities?.classes?.length || 0;
+    const totalConstants = pkg.entities?.constants?.length || 0;
+    const totalInterfaces = pkg.entities?.interfaces?.length || 0;
+    const totalTypes = pkg.entities?.types?.length || 0;
+    const totalVariables = pkg.entities?.variables?.length || 0;
+
+    // Экспорты
+    const exportsList = pkg.exports ? Object.keys(pkg.exports) : [];
+    const exportedFunctions = funcs.filter(f => f.isExported);
+    const allExports = [...new Set([...exportsList, ...exportedFunctions.map(f => f.name)])];
+
+    // Источник навигации
+    let sourceInfo = null;
+    if (this.navigationStack.length > 1) {
+      const lastSource = this.navigationStack[this.navigationStack.length - 2];
+      if (lastSource) {
+        const [srcModule, srcFunc] = lastSource.split('#');
+        sourceInfo = { module: srcModule, function: srcFunc || null };
+      }
+    }
+
+    // Сбор вызовов
+    const externalOutgoing = new Set();
+    const externalIncoming = new Set();
+    const internalOutgoing = new Set();
+    const internalIncoming = new Set();
+    const funcNames = new Set(funcs.map(f => f.name));
+
+    const moduleImports = new Set();
+    const moduleImporters = new Set();
+
+    const dependencyGraph = this.app.reportData?.dependencyGraph || {};
+    const outwardDeps = dependencyGraph.outwardDependencies || {};
+    const inwardDeps = dependencyGraph.inwardDependencies || {};
+
+    if (outwardDeps[modulePath]) {
+      for (const dep of outwardDeps[modulePath]) {
+        if (this.app.reportData?.packages?.[dep]) {
+          moduleImports.add(dep);
+        }
+      }
+    }
+
+    if (inwardDeps[modulePath]) {
+      for (const dep of inwardDeps[modulePath]) {
+        if (this.app.reportData?.packages?.[dep]) {
+          moduleImporters.add(dep);
+        }
+      }
+    }
+
+    const callSources = new Map();
+    for (const func of funcs) {
+      if (!func || !func.name) continue;
+      const source = this.getCallSource(func.name, modulePath, funcs);
+      callSources.set(func.name, source);
+    }
+
+    for (const func of funcs) {
+      if (!func || !func.name) continue;
+      for (const call of func.calls || []) {
+        const source = callSources.get(call) || 'top-level';
+        if (funcNames.has(call)) {
+          internalOutgoing.add(call);
+        } else {
+          const targetModule = this.findModuleForFunction(call);
+          if (targetModule && targetModule !== modulePath) {
+            externalOutgoing.add(call);
+          } else {
+            externalOutgoing.add(call);
+          }
+        }
+      }
+    }
+
+    for (const func of funcs) {
+      if (!func || !func.name) continue;
+      for (const caller of func.calledBy || []) {
+        if (funcNames.has(caller)) {
+          internalIncoming.add(caller);
+        } else {
+          const callerModule = this.findModuleForFunction(caller);
+          if (callerModule && callerModule !== modulePath) {
+            externalIncoming.add(caller);
+          } else {
+            externalIncoming.add(caller);
+          }
+        }
+      }
+    }
+
+    const totalInternal = internalOutgoing.size + internalIncoming.size;
+
+    // Рендеринг компонентов
+    const headerHtml = this.headerRenderer.render({
+      isActive,
+      isEntry,
+      displayName,
+      levelClass,
+      levelDisplay,
+      modulePath,
+      pkg,
+      language,
+      lines,
+      allExports,
+      totalFuncs,
+    });
+
+    const badgesHtml = this.badgesRenderer.render({
+      totalFuncs,
+      totalClasses,
+      totalConstants,
+      totalInterfaces,
+      totalTypes,
+      totalVariables,
+      allExports,
+      externalOutgoing,
+      externalIncoming,
+      totalInternal,
+      moduleImporters,
+      moduleImports,
+      modulePath,
+      pkg,
+    });
+
+    const functionsListHtml = this.functionsListRenderer.render({
+      funcs,
+      isActive,
+      modulePath,
+      focusFunction,
+      sourceInfo,
+      callSources,
+      totalFuncs,
+      pkg,
+    });
+
+    const navExportsHtml = this.navExportsRenderer.render({
+      allExports,
+      modulePath,
+      pkg,
+    });
+
+    const navModuleImportersHtml = this.navModuleImportersRenderer.render({
+      moduleImporters,
+      modulePath,
+      reportData: this.app.reportData,
+      pkg,
+    });
+
+    const navExternalHtml = this.navExternalRenderer.render({
+      externalOutgoing,
+      externalIncoming,
+      modulePath,
+      funcs,
+      callSources,
+      pkg,
+    });
+
+    const navInternalHtml = this.navInternalRenderer.render({
+      internalOutgoing,
+      internalIncoming,
+      isActive,
+      callSources,
+      modulePath,
+      pkg,
+    });
+
+    const callTreeHtml = this.callTreeRenderer.render({
+      isActive,
+      focusFunction,
+      funcs,
+      modulePath,
+      pkg,
+    });
+
+    // Сборка карточки
+    moduleCard.innerHTML = `
+            ${headerHtml}
+            ${badgesHtml}
+            ${functionsListHtml}
+            ${callTreeHtml}
+            ${navExportsHtml}
+            ${navModuleImportersHtml}
+            ${navExternalHtml}
+            ${navInternalHtml}
+        `;
+
+    return moduleCard;
+  }
+
   focusModule(modulePath) {
+    if (this.currentFocusModule || this.currentFocusFunction) {
+      this._lastSource = this.currentFocusFunction
+        ? `${this.currentFocusModule}#${this.currentFocusFunction}`
+        : this.currentFocusModule;
+    }
+
     if (this.currentFocusModule === modulePath) {
       this.clearFocus();
       return;
     }
+
     this.currentFocusModule = modulePath;
     this.currentFocusFunction = null;
     this.updateNavigationStack(modulePath, null);
@@ -342,26 +584,8 @@ export class CardManager {
       c.classList.toggle('active', c.dataset.module === modulePath);
     });
 
-    const info = document.getElementById('focusInfo');
-    if (info) {
-      info.classList.add('active');
-      const pkg = this.app.reportData?.packages?.[modulePath];
-      const displayName = pkg?.displayPath || modulePath.split('/').pop() || modulePath;
-      const level = this.getModuleLevel(modulePath);
-      const levelDisplay = level === 0 ? '🌌' : `L${level}`;
-      document.getElementById('focusTitle').textContent =
-        `🎯 Фокус: ${displayName} (${levelDisplay})`;
-      if (pkg) {
-        const funcs = pkg.entities?.functions || [];
-        document.getElementById('focusDetails').textContent =
-          'Функций: ' +
-          funcs.length +
-          ' | Экспортов: ' +
-          (pkg.exports ? Object.keys(pkg.exports).length : 0) +
-          ' | Уровень: ' +
-          levelDisplay;
-      }
-    }
+    this.updateFocusInfo(modulePath);
+    this.renderModules();
 
     const card = document.querySelector(`.module-card[data-module="${modulePath}"]`);
     if (card) {
@@ -369,18 +593,30 @@ export class CardManager {
     }
   }
 
-  /**
-   * Устанавливает фокус на функцию
-   * @param {string} funcName - Имя функции
-   * @param {string} modulePath - Путь к модулю
-   */
   focusFunction(funcName, modulePath) {
+    if (this.currentFocusModule || this.currentFocusFunction) {
+      this._lastSource = this.currentFocusFunction
+        ? `${this.currentFocusModule}#${this.currentFocusFunction}`
+        : this.currentFocusModule;
+    }
+
     if (this.currentFocusFunction === funcName && this.currentFocusModule === modulePath) {
-      this.clearFocus();
+      const funcData = this.findFunctionByName(funcName);
+      if (funcData) {
+        this.showDetail(funcData);
+      }
+      document.querySelectorAll('.func-item').forEach(el => {
+        el.classList.toggle(
+          'active',
+          el.dataset.func === funcName && el.dataset.module === modulePath
+        );
+      });
       return;
     }
+
     this.currentFocusFunction = funcName;
     this.currentFocusModule = modulePath;
+    this._expandedCallTrees.add(`${modulePath}#${funcName}`);
     this.updateNavigationStack(modulePath, funcName);
     this.app.updateBreadcrumbs(modulePath, funcName);
     this.app.updateView();
@@ -390,47 +626,16 @@ export class CardManager {
     });
     document.querySelectorAll('.func-item').forEach(el => {
       const isActive = el.dataset.func === funcName && el.dataset.module === modulePath;
+      const isSource =
+        el.dataset.func === this._lastSource?.split('#').pop() &&
+        el.dataset.module === this._lastSource?.split('#')[0];
       el.classList.toggle('active', isActive);
+      el.classList.toggle('source', isSource);
     });
 
-    // ✅ ПОЛУЧАЕМ ДАННЫЕ ФУНКЦИИ ДО БЛОКА if
-    let funcData = null;
-    const graphNodes = this.app.graphManager?.getGraphNodes() || [];
-    for (const node of graphNodes) {
-      if (node.type === 'function' && node.name === funcName && node.module === modulePath) {
-        funcData = node;
-        break;
-      }
-    }
-
-    const info = document.getElementById('focusInfo');
-    if (info) {
-      info.classList.add('active');
-      const level = this.getModuleLevel(modulePath);
-      const levelDisplay = level === 0 ? '🌌' : `L${level}`;
-      document.getElementById('focusTitle').textContent =
-        `🎯 Функция: ${funcName} (${levelDisplay})`;
-
-      if (funcData) {
-        const displayName = modulePath.split('/').pop() || modulePath;
-        document.getElementById('focusDetails').textContent =
-          'Модуль: ' +
-          displayName +
-          ' | Параметры: ' +
-          ((funcData.params || []).join(', ') || 'нет') +
-          ' | Вызовов: ' +
-          (funcData.calls || []).length +
-          ' | Кем вызвана: ' +
-          (funcData.calledBy || []).length +
-          ' | Уровень: ' +
-          levelDisplay;
-      } else {
-        document.getElementById('focusDetails').textContent =
-          'Модуль: ' + (modulePath.split('/').pop() || modulePath) + ' | Уровень: ' + levelDisplay;
-      }
-    }
-
-    this.showDetail(funcData || { name: funcName, module: modulePath });
+    this.updateFocusInfo(modulePath, funcName);
+    this.showDetail({ name: funcName, module: modulePath });
+    this.renderModules();
 
     const el = document.querySelector(
       `.func-item[data-func="${funcName}"][data-module="${modulePath}"]`
@@ -440,11 +645,63 @@ export class CardManager {
     }
   }
 
-  /**
-   * Обновляет стек навигации
-   * @param {string} modulePath - Путь к модулю
-   * @param {string|null} funcName - Имя функции
-   */
+  updateFocusInfo(modulePath, funcName = null) {
+    const info = document.getElementById('focusInfo');
+    if (!info) return;
+
+    info.classList.add('active');
+    const pkg = this.app.reportData?.packages?.[modulePath];
+    const displayName = pkg?.displayPath || modulePath.split('/').pop() || modulePath;
+    const level = this.getModuleLevel(modulePath);
+    const levelDisplay = level === 0 ? '🌌' : `L${level}`;
+
+    const sourceInfo = this._lastSource
+      ? ` | откуда: ${this._lastSource.split('#').pop() || this._lastSource}`
+      : '';
+
+    if (funcName) {
+      document.getElementById('focusTitle').textContent =
+        `🎯 Функция: ${funcName} (${levelDisplay})${sourceInfo}`;
+      const funcData = this.findFunctionByName(funcName);
+      if (funcData) {
+        const displayNameShort = modulePath.split('/').pop() || modulePath;
+        document.getElementById('focusDetails').textContent =
+          `Модуль: ${displayNameShort} | Параметры: ${(funcData.params || []).join(', ') || 'нет'} | Вызовов: ${(funcData.calls || []).length} | Кем вызвана: ${(funcData.calledBy || []).length}`;
+      }
+    } else {
+      document.getElementById('focusTitle').textContent =
+        `🎯 Фокус: ${displayName} (${levelDisplay})${sourceInfo}`;
+      const funcs = pkg?.entities?.functions || [];
+      document.getElementById('focusDetails').textContent =
+        `Функций: ${funcs.length} | Экспортов: ${pkg?.exports ? Object.keys(pkg.exports).length : 0} | Уровень: ${levelDisplay}`;
+    }
+  }
+
+  clearFocus() {
+    this.currentFocusModule = null;
+    this.currentFocusFunction = null;
+    this.navigationStack = [];
+    this._expandedCallTrees.clear();
+    this._lastSource = null;
+
+    const info = document.getElementById('focusInfo');
+    if (info) {
+      info.classList.remove('active');
+    }
+    document.querySelectorAll('.module-card').forEach(c => {
+      c.classList.remove('active');
+    });
+    document.querySelectorAll('.func-item').forEach(el => {
+      el.classList.remove('active');
+      el.classList.remove('source');
+    });
+
+    this.closeDetail();
+    this.app.graphManager?.updateView();
+    this.app.breadcrumbManager?.updateBreadcrumbs(null, null);
+    this.renderModules();
+  }
+
   updateNavigationStack(modulePath, funcName) {
     const key = funcName ? `${modulePath}#${funcName}` : modulePath;
     if (
@@ -458,111 +715,10 @@ export class CardManager {
     }
   }
 
-  /**
-   * Сбрасывает фокус (возврат к полному обзору)
-   */
-  clearFocus() {
-    this.currentFocusModule = null;
-    this.currentFocusFunction = null;
-    this.navigationStack = [];
-
-    const info = document.getElementById('focusInfo');
-    if (info) {
-      info.classList.remove('active');
-    }
-    document.querySelectorAll('.module-card').forEach(c => {
-      c.classList.remove('active');
-    });
-    document.querySelectorAll('.func-item').forEach(el => {
-      el.classList.remove('active');
-    });
-
-    this.closeDetail();
-    this.app.graphManager?.updateView();
-
-    // Обновляем breadcrumbs до состояния Universe
-    this.app.breadcrumbManager?.updateBreadcrumbs(null, null);
-  }
-
-  /**
-   * Показывает детали функции в панели
-   * @param {Object} data - Данные функции
-   */
   showDetail(data) {
-    const panel = document.getElementById('detailPanel');
-    if (!panel) return;
-
-    document.getElementById('dpTitle').textContent = data.name || 'Функция';
-    let html = '';
-    html += '<div class="dp-section"><h4>Информация</h4>';
-    html +=
-      '<div class="item"><span class="label">Модуль:</span> ' +
-      (data.module || 'неизвестен') +
-      '</div>';
-    html += '<div class="item"><span class="label">Строка:</span> ' + (data.line || 0) + '</div>';
-    html +=
-      '<div class="item"><span class="label">Экспортирована:</span> ' +
-      (data.isExported ? '✅' : '❌') +
-      '</div>';
-    html +=
-      '<div class="item"><span class="label">Асинхронная:</span> ' +
-      (data.isAsync ? '✅' : '❌') +
-      '</div>';
-    html +=
-      '<div class="item"><span class="label">Возврат:</span> ' +
-      (data.returnType || 'any') +
-      '</div>';
-
-    // Добавляем уровень вложенности в детали
-    if (data.module) {
-      const level = this.getModuleLevel(data.module);
-      const levelDisplay = level === 0 ? '🌌' : `L${level}`;
-      html += `<div class="item"><span class="label">Уровень:</span> ${levelDisplay}</div>`;
-    }
-
-    html += '</div>';
-
-    const params = data.params || [];
-    if (params.length > 0) {
-      html += '<div class="dp-section"><h4>Параметры</h4>';
-      for (const p of params) {
-        html += '<div class="item">' + this.app.escapeHtml(p) + '</div>';
-      }
-      html += '</div>';
-    }
-
-    const calls = data.calls || [];
-    if (calls.length > 0) {
-      html += '<div class="dp-section"><h4>📞 Вызовы (кто вызывается)</h4>';
-      for (const call of calls) {
-        html += `<div class="item" style="cursor:pointer;color:#f59e0b;" onclick="window[Symbol.for('__AST_APP_API__')]?.focusFunction('${this.app.escapeJs(call)}', '${this.app.escapeJs(data.module || '')}')">→ ${this.app.escapeHtml(call)}</div>`;
-      }
-      html += '</div>';
-    }
-
-    const calledBy = data.calledBy || [];
-    if (calledBy.length > 0) {
-      html += '<div class="dp-section"><h4>📥 Кто вызывает</h4>';
-      for (const caller of calledBy) {
-        html += `<div class="item" style="cursor:pointer;color:#3b82f6;" onclick="window[Symbol.for('__AST_APP_API__')]?.focusFunction('${this.app.escapeJs(caller)}', '${this.app.escapeJs(data.module || '')}')">← ${this.app.escapeHtml(caller)}</div>`;
-      }
-      html += '</div>';
-    }
-
-    if (data.body) {
-      const bodyPreview = data.body.length > 200 ? data.body.substring(0, 200) + '...' : data.body;
-      html += '<div class="dp-section"><h4>Тело (сокращённо)</h4>';
-      html += `<div class="item" style="font-size:10px;color:#94a3b8;white-space:pre-wrap;background:#0f172a;padding:8px;border-radius:4px;">${this.app.escapeHtml(bodyPreview)}</div>`;
-      html += '</div>';
-    }
-
-    document.getElementById('dpContent').innerHTML = html;
-    panel.classList.add('active');
+    this.detailPanelRenderer.render(data, this);
   }
 
-  /**
-   * Закрывает панель деталей
-   */
   closeDetail() {
     const panel = document.getElementById('detailPanel');
     if (panel) {
@@ -570,27 +726,30 @@ export class CardManager {
     }
   }
 
-  /**
-   * Возвращает текущий модуль в фокусе
-   * @returns {string|null}
-   */
   getFocusModule() {
     return this.currentFocusModule;
   }
 
-  /**
-   * Возвращает текущую функцию в фокусе
-   * @returns {string|null}
-   */
   getFocusFunction() {
     return this.currentFocusFunction;
   }
 
-  /**
-   * Возвращает стек навигации
-   * @returns {Array}
-   */
   getNavigationStack() {
     return this.navigationStack;
+  }
+
+  escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  escapeJs(str) {
+    if (!str) return '';
+    return String(str).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/'/g, "\\'");
   }
 }

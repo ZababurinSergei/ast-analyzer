@@ -339,7 +339,7 @@ body {
     border-left-color: #60a5fa;
 }
 .func-item.active {
-    background: #1a1a3a;
+    background: #1a2a4a;
     border-left-color: #22d3ee;
     box-shadow: 0 0 12px rgba(34, 211, 238, 0.1);
 }
@@ -761,3 +761,807 @@ body {
 .level-3 .badge.level { color: #a78bfa; border-color: #a78bfa; }
 .level-4 .badge.level { color: #f472b6; border-color: #f472b6; }
 .level-5 .badge.level { color: #f59e0b; border-color: #f59e0b; }
+
+/* ============================================
+   🆕 НОВЫЕ СТИЛИ ДЛЯ ПОДСВЕТКИ ГРАФА И АНИМАЦИЙ
+   ============================================ */
+
+/* Анимация для подсвеченных элементов */
+@keyframes glow-pulse {
+    0% { filter: drop-shadow(0 0 4px rgba(34, 211, 238, 0.3)); }
+    50% { filter: drop-shadow(0 0 12px rgba(34, 211, 238, 0.7)); }
+    100% { filter: drop-shadow(0 0 4px rgba(34, 211, 238, 0.3)); }
+}
+
+@keyframes fade-in {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slide-in {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Подсвеченные узлы в графе */
+.d3-graph-wrapper .node-highlight {
+    animation: glow-pulse 2s ease-in-out infinite;
+}
+
+.d3-graph-wrapper .node-active {
+    animation: glow-pulse 1s ease-in-out infinite;
+}
+
+.d3-graph-wrapper .link-highlight {
+    stroke: #f59e0b !important;
+    stroke-width: 2.5px !important;
+    stroke-opacity: 1 !important;
+}
+
+.d3-graph-wrapper .link-active {
+    stroke: #22d3ee !important;
+    stroke-width: 3px !important;
+    stroke-opacity: 1 !important;
+}
+
+.d3-graph-wrapper .link-background {
+    stroke: #3b82f6 !important;
+    stroke-width: 1px !important;
+    stroke-opacity: 0.15 !important;
+}
+
+.d3-graph-wrapper .node-background {
+    opacity: 0.2 !important;
+}
+
+.d3-graph-wrapper .node-highlighted {
+    opacity: 1 !important;
+}
+
+/* Маркеры для стрелок */
+.d3-graph-wrapper .arrow-default {
+    fill: #3b82f6;
+}
+
+.d3-graph-wrapper .arrow-highlight {
+    fill: #f59e0b;
+}
+
+.d3-graph-wrapper .arrow-active {
+    fill: #22d3ee;
+}
+
+/* Карточка модуля в фокусе */
+.module-card.in-focus {
+    border-color: #22d3ee;
+    box-shadow: 0 0 30px rgba(34, 211, 238, 0.2);
+    background: #1a2a4a;
+    transition: all 0.3s ease;
+}
+
+.module-card.in-focus .name {
+    color: #22d3ee;
+}
+
+/* Функция в фокусе */
+.func-item.in-focus {
+    background: #1a2a4a;
+    border-left-color: #22d3ee;
+    padding-left: 12px;
+    box-shadow: 0 0 15px rgba(34, 211, 238, 0.15);
+}
+
+.func-item.in-focus .func-name {
+    color: #22d3ee;
+}
+
+/* Карточка модуля с активной функцией */
+.module-card.has-active-function {
+    border-color: #f59e0b;
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.15);
+}
+
+.module-card.has-active-function .name {
+    color: #f59e0b;
+}
+
+/* Статистика связей в карточке */
+.connection-stats {
+    display: flex;
+    gap: 12px;
+    margin-top: 6px;
+    padding: 4px 0;
+    font-size: 10px;
+    color: #94a3b8;
+    border-top: 1px solid #1a1a3a;
+}
+
+.connection-stats .stat-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.connection-stats .stat-item .icon {
+    font-size: 12px;
+}
+
+.connection-stats .stat-item .count {
+    color: #e2e8f0;
+    font-weight: 600;
+}
+
+.connection-stats .stat-item .count.incoming {
+    color: #3b82f6;
+}
+
+.connection-stats .stat-item .count.outgoing {
+    color: #f59e0b;
+}
+
+/* Режим "только связи" для графа */
+.graph-mode-inward .link-background {
+    display: none !important;
+}
+
+.graph-mode-outward .link-background {
+    display: none !important;
+}
+
+.graph-mode-both .link-background {
+    display: block !important;
+}
+
+/* Индикатор режима графа */
+.graph-mode-indicator {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 11px;
+    color: #94a3b8;
+    z-index: 10;
+    pointer-events: none;
+    opacity: 0.8;
+}
+
+.graph-mode-indicator .mode-name {
+    color: #60a5fa;
+    font-weight: 600;
+}
+
+/* Анимация появления карточек */
+.module-card {
+    animation: fade-in 0.3s ease;
+}
+
+.module-card .functions-list .func-item {
+    animation: slide-in 0.2s ease;
+}
+
+/* Стили для пустого состояния */
+.empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 60px 20px;
+    color: #94a3b8;
+}
+
+.empty-state .icon {
+    font-size: 48px;
+    margin-bottom: 20px;
+}
+
+.empty-state h3 {
+    color: #60a5fa;
+    margin-bottom: 10px;
+}
+
+.empty-state p {
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+/* Стили для прогресс-бара загрузки графа */
+.graph-loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #94a3b8;
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.graph-loading .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #334155;
+    border-top-color: #60a5fa;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Индикатор количества связей */
+.edge-count-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background: #f59e0b;
+    color: #0f172a;
+    font-size: 8px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+    border: 1px solid #0f172a;
+}
+
+/* Подсказка при наведении на связь */
+.edge-tooltip {
+    position: absolute;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 10px;
+    color: #e2e8f0;
+    pointer-events: none;
+    z-index: 60;
+    display: none;
+    font-family: monospace;
+}
+
+/* Стили для свернутых карточек */
+.module-card.collapsed .functions-list {
+    max-height: 0 !important;
+    overflow: hidden;
+    padding: 0;
+    margin: 0;
+}
+
+.module-card .collapse-toggle {
+    background: none;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 6px;
+    transition: transform 0.2s;
+}
+
+.module-card .collapse-toggle:hover {
+    color: #e2e8f0;
+}
+
+.module-card .collapse-toggle.open {
+    transform: rotate(180deg);
+}
+
+/* ============================================
+   РАЗДЕЛЕНИЕ ВНЕШНИХ И ВНУТРЕННИХ ВЫЗОВОВ
+   ============================================ */
+
+.nav-section {
+    margin-top: 6px;
+    padding: 4px 0;
+    border-top: 1px solid #1a1a3a;
+}
+
+.nav-section.nav-external {
+    border-top-color: #2a2a4a;
+}
+
+.nav-section.nav-internal {
+    border-top-color: #1a1a3a;
+    opacity: 0.7;
+}
+
+.nav-section.nav-internal:hover {
+    opacity: 1;
+}
+
+.nav-section.nav-exit {
+    border-top-color: #2a1a1a;
+    padding-top: 8px;
+}
+
+.nav-label {
+    font-size: 10px;
+    color: #64748b;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-right: 4px;
+    display: inline-block;
+}
+
+.nav-label .toggle-icon {
+    font-size: 8px;
+    color: #64748b;
+    margin-left: 4px;
+}
+
+.nav-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.nav-btn {
+    background: #0f172a;
+    border: 1px solid #334155;
+    color: #94a3b8;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-family: monospace;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.nav-btn:hover {
+    background: #1a2a4a;
+    border-color: #60a5fa;
+    color: #e2e8f0;
+}
+
+.nav-btn.external {
+    border-color: #2a4a3a;
+    color: #f59e0b;
+}
+
+.nav-btn.external:hover {
+    background: #1a2a1a;
+    border-color: #f59e0b;
+    color: #fbbf24;
+}
+
+.nav-btn.exit-btn {
+    background: #1a1a2a;
+    border-color: #4a1a1a;
+    color: #f87171;
+    width: 100%;
+    text-align: center;
+    padding: 6px 12px;
+    font-size: 11px;
+}
+
+.nav-btn.exit-btn:hover {
+    background: #2a1a1a;
+    border-color: #f87171;
+    color: #fca5a5;
+}
+
+.nav-module {
+    font-size: 8px;
+    color: #64748b;
+    margin-left: 4px;
+}
+
+.nav-more {
+    font-size: 10px;
+    color: #64748b;
+    padding: 0 4px;
+}
+
+/* Внутренние вызовы */
+.nav-internal-content {
+    margin-top: 4px;
+    padding: 4px 8px;
+    background: #0a0a1a;
+    border-radius: 6px;
+}
+
+.internal-group {
+    margin: 2px 0;
+    padding: 2px 4px;
+}
+
+.internal-label {
+    font-size: 9px;
+    color: #64748b;
+    margin-right: 6px;
+}
+
+.internal-item {
+    display: inline-block;
+    font-size: 9px;
+    font-family: monospace;
+    color: #94a3b8;
+    background: #0f172a;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin: 1px 2px;
+    border: 1px solid #1a1a3a;
+}
+
+/* Бейджи для внешних связей */
+.func-item.has-external {
+    border-left-color: #f59e0b;
+}
+
+.func-external-badge {
+    font-size: 9px;
+    margin-left: 4px;
+}
+
+/* Анимация сворачивания внутренних вызовов */
+.nav-section.nav-internal .nav-internal-content {
+    transition: all 0.3s ease;
+    overflow: hidden;
+}
+
+.nav-section.nav-internal.collapsed .nav-internal-content {
+    max-height: 0;
+    padding: 0;
+    opacity: 0;
+}
+
+.nav-section.nav-internal.expanded .nav-internal-content {
+    max-height: 500px;
+    padding: 4px 8px;
+    opacity: 1;
+}
+
+/* ============================================
+   ДЕРЕВО ВЫЗОВОВ
+   ============================================ */
+
+.call-tree-section {
+    margin: 8px 0 4px 0;
+    border: 1px solid #1a2a4a;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #0a0a1a;
+}
+
+.call-tree-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: #0f172a;
+    cursor: pointer;
+    transition: background 0.2s;
+    user-select: none;
+}
+
+.call-tree-header:hover {
+    background: #1a2a4a;
+}
+
+.call-tree-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #60a5fa;
+    flex: 1;
+}
+
+.call-tree-stats {
+    font-size: 10px;
+    color: #94a3b8;
+    font-family: monospace;
+}
+
+.call-tree-stats .outgoing-count {
+    color: #f59e0b;
+}
+
+.call-tree-stats .incoming-count {
+    color: #3b82f6;
+}
+
+.call-tree-body {
+    padding: 8px 12px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.call-tree-body.collapsed {
+    display: none;
+}
+
+.call-tree-body.expanded {
+    display: block;
+}
+
+.call-tree-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 6px 0 10px 0;
+    font-size: 10px;
+    color: #94a3b8;
+    border-bottom: 1px solid #1a1a3a;
+    margin-bottom: 8px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.legend-color {
+    width: 12px;
+    height: 3px;
+    border-radius: 2px;
+    display: inline-block;
+}
+
+.legend-color.outgoing {
+    background: #f59e0b;
+}
+
+.legend-color.incoming {
+    background: #3b82f6;
+}
+
+.legend-color.exported {
+    background: #f87171;
+}
+
+.legend-color.async {
+    background: #fbbf24;
+}
+
+.call-tree-container {
+    font-family: monospace;
+    font-size: 11px;
+}
+
+.call-tree-item {
+    margin: 2px 0;
+}
+
+.call-tree-node {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border-left: 2px solid #334155;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: #0f172a;
+}
+
+.call-tree-node:hover {
+    background: #1a2a4a;
+    transform: translateX(4px);
+}
+
+.call-tree-node.outgoing {
+    border-left-color: #f59e0b;
+}
+
+.call-tree-node.incoming {
+    border-left-color: #3b82f6;
+}
+
+.call-tree-node .call-tree-arrow {
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.call-tree-node .call-tree-name {
+    color: #e2e8f0;
+    font-weight: 500;
+}
+
+.call-tree-node .call-tree-icon {
+    font-size: 9px;
+}
+
+.call-tree-node .call-tree-async {
+    font-size: 9px;
+    color: #fbbf24;
+}
+
+.call-tree-node .call-tree-line {
+    font-size: 9px;
+    color: #64748b;
+    margin-left: auto;
+}
+
+.call-tree-node .call-tree-toggle {
+    font-size: 9px;
+    color: #64748b;
+    cursor: pointer;
+    padding: 0 4px;
+    transition: transform 0.2s;
+}
+
+.call-tree-node .call-tree-toggle:hover {
+    color: #e2e8f0;
+}
+
+.call-tree-node .call-tree-count {
+    font-size: 8px;
+    color: #64748b;
+    background: #1a1a3a;
+    padding: 0 6px;
+    border-radius: 8px;
+    margin-left: 4px;
+}
+
+.call-tree-children {
+    padding-left: 0;
+    margin-top: 2px;
+}
+
+.call-tree-children.expanded {
+    display: block;
+}
+
+.call-tree-children.collapsed {
+    display: none;
+}
+
+/* Анимация для дерева */
+.call-tree-children {
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.call-tree-children.expanded {
+    max-height: 2000px;
+}
+
+.call-tree-children.collapsed {
+    max-height: 0;
+}
+
+/* Скролл для дерева */
+.call-tree-body::-webkit-scrollbar {
+    width: 3px;
+}
+
+.call-tree-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.call-tree-body::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 4px;
+}
+
+/* ============================================
+   ЭКСПОРТЫ И ИСТОЧНИК НАВИГАЦИИ
+   ============================================ */
+
+.nav-section.nav-source {
+    border-top-color: #22d3ee;
+    background: rgba(34, 211, 238, 0.05);
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+}
+
+.nav-source-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-family: monospace;
+}
+
+.source-badge {
+    color: #22d3ee;
+    background: rgba(34, 211, 238, 0.1);
+    padding: 2px 8px;
+    border-radius: 12px;
+    border: 1px solid rgba(34, 211, 238, 0.2);
+}
+
+.nav-btn.source-back {
+    background: rgba(34, 211, 238, 0.1);
+    border-color: #22d3ee;
+    color: #22d3ee;
+    font-size: 10px;
+    padding: 2px 12px;
+    margin-left: 8px;
+}
+
+.nav-btn.source-back:hover {
+    background: rgba(34, 211, 238, 0.2);
+    border-color: #22d3ee;
+    color: #67e8f9;
+}
+
+/* Экспорты */
+.nav-section.nav-exports {
+    border-top-color: #f87171;
+    background: rgba(248, 113, 113, 0.03);
+    padding: 6px 8px;
+    border-radius: 6px;
+}
+
+.nav-btn.export-btn {
+    border-color: #4a2a2a;
+    color: #f87171;
+}
+
+.nav-btn.export-btn:hover {
+    background: #2a1a1a;
+    border-color: #f87171;
+    color: #fca5a5;
+}
+
+.nav-btn.export-btn.current-export {
+    border-color: #22d3ee;
+    color: #22d3ee;
+    background: rgba(34, 211, 238, 0.1);
+}
+
+.nav-btn.export-btn.external-export {
+    border-color: #60a5fa;
+    color: #60a5fa;
+}
+
+.current-badge {
+    font-size: 8px;
+    background: rgba(34, 211, 238, 0.2);
+    color: #22d3ee;
+    padding: 0 6px;
+    border-radius: 8px;
+    margin-left: 4px;
+}
+
+/* Функции - источник */
+.func-item.source {
+    border-left-color: #22d3ee !important;
+    background: rgba(34, 211, 238, 0.05) !important;
+}
+
+.func-source-badge {
+    font-size: 8px;
+    color: #22d3ee;
+    background: rgba(34, 211, 238, 0.1);
+    padding: 0 6px;
+    border-radius: 8px;
+    margin-left: 4px;
+}
+
+.func-current-badge {
+    font-size: 9px;
+    color: #22d3ee;
+    margin-left: 2px;
+}
+
+/* Дерево вызовов - текущая функция */
+.call-tree-item.current {
+    background: rgba(34, 211, 238, 0.05);
+    border-radius: 4px;
+}
+
+.call-tree-node.current {
+    background: rgba(34, 211, 238, 0.1) !important;
+    border-left-color: #22d3ee !important;
+}
+
+.call-tree-current-badge {
+    font-size: 10px;
+    color: #22d3ee;
+    margin-left: 4px;
+}
+
+/* Легенда - текущая функция */
+.legend-color.current {
+    background: #22d3ee;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}

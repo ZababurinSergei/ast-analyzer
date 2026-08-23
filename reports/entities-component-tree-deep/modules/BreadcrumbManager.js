@@ -1,3 +1,5 @@
+// packages/ast-analyzer/src/reporters/templates/modules/BreadcrumbManager.js
+
 /**
  * BreadcrumbManager - управление Breadcrumbs
  * Отвечает за построение и отображение путей навигации
@@ -9,14 +11,39 @@ export class BreadcrumbManager {
     this.breadcrumbPaths = [];
     this.maxPaths = 5; // Максимальное количество отображаемых путей
     this.maxBreadcrumbs = 50; // Максимальная глубина одного пути
+    this.currentModule = null;
+    this.currentFunction = null;
   }
 
   /**
    * Инициализация менеджера
    */
   init() {
-    // Инициализация не требуется, но метод оставлен для единообразия
     console.log('🧭 BreadcrumbManager initialized');
+    this.setupKeyboardShortcuts();
+  }
+
+  /**
+   * Настройка клавиатурных сокращений
+   */
+  setupKeyboardShortcuts() {
+    document.addEventListener('keydown', e => {
+      // Alt+Left - вернуться назад по breadcrumbs
+      if (e.altKey && e.key === 'ArrowLeft') {
+        e.preventDefault();
+        this.navigateBack();
+      }
+      // Alt+Right - перейти вперед по breadcrumbs
+      if (e.altKey && e.key === 'ArrowRight') {
+        e.preventDefault();
+        this.navigateForward();
+      }
+      // Alt+Home - вернуться к Universe
+      if (e.altKey && e.key === 'Home') {
+        e.preventDefault();
+        this.navigateToUniverse();
+      }
+    });
   }
 
   /**
@@ -30,6 +57,10 @@ export class BreadcrumbManager {
       console.warn('⚠️ Breadcrumbs container not found');
       return;
     }
+
+    // Сохраняем текущее состояние
+    this.currentModule = modulePath;
+    this.currentFunction = funcName;
 
     // Очищаем контейнер
     container.innerHTML = '';
@@ -84,9 +115,21 @@ export class BreadcrumbManager {
           pathDiv.appendChild(span);
         }
       }
+
+      // ✅ Добавляем кнопку "Снять фокус" для активного модуля/функции
+      const clearBtn = this.createClearFocusButton();
+      pathDiv.appendChild(clearBtn);
     }
 
     container.appendChild(pathDiv);
+
+    // ✅ Добавляем информацию о количестве путей (если их несколько)
+    if (this.breadcrumbPaths.length > 1) {
+      this.showPathCount(container);
+    }
+
+    // Обновляем граф при изменении breadcrumbs
+    this.syncWithGraph();
   }
 
   /**
@@ -100,17 +143,240 @@ export class BreadcrumbManager {
     span.style.cursor = 'pointer';
     span.style.fontWeight = 'bold';
     span.style.color = '#60a5fa';
+    span.style.transition = 'all 0.2s ease';
 
     // По клику очищаем фокус и возвращаемся к полному обзору
     span.onclick = e => {
       e.stopPropagation();
-      // Очищаем фокус через App
-      this.app.clearFocus();
-      // Обновляем breadcrumbs
-      this.updateBreadcrumbs(null, null);
+      this.navigateToUniverse();
+    };
+
+    // Добавляем hover эффект
+    span.onmouseenter = () => {
+      span.style.color = '#93c5fd';
+      span.style.transform = 'scale(1.05)';
+    };
+    span.onmouseleave = () => {
+      span.style.color = '#60a5fa';
+      span.style.transform = 'scale(1)';
     };
 
     return span;
+  }
+
+  /**
+   * Создает кнопку для снятия фокуса
+   */
+  createClearFocusButton() {
+    const btn = document.createElement('button');
+    btn.className = 'breadcrumb-clear-btn';
+    btn.textContent = '✕';
+    btn.title = 'Снять фокус';
+    btn.style.cssText = `
+      background: none;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      transition: all 0.2s ease;
+      margin-left: 8px;
+    `;
+
+    btn.onmouseenter = () => {
+      btn.style.color = '#f87171';
+      btn.style.background = 'rgba(248, 113, 113, 0.1)';
+    };
+    btn.onmouseleave = () => {
+      btn.style.color = '#94a3b8';
+      btn.style.background = 'none';
+    };
+
+    btn.onclick = e => {
+      e.stopPropagation();
+      this.navigateToUniverse();
+    };
+
+    return btn;
+  }
+
+  /**
+   * Навигация к Universe (сброс фокуса)
+   */
+  navigateToUniverse() {
+    // Очищаем фокус через App
+    this.app.clearFocus();
+    // Обновляем breadcrumbs
+    this.updateBreadcrumbs(null, null);
+    // Синхронизируем с графом
+    this.syncWithGraph();
+  }
+
+  /**
+   * Навигация назад по истории breadcrumbs
+   */
+  navigateBack() {
+    if (this.breadcrumbPaths.length === 0) return;
+
+    // Берем последний путь
+    const lastPath = this.breadcrumbPaths[this.breadcrumbPaths.length - 1];
+    if (!lastPath || lastPath.length === 0) return;
+
+    // Берем предпоследний элемент в пути
+    const prevItem = lastPath[lastPath.length - 2];
+    if (prevItem) {
+      if (prevItem.type === 'function') {
+        const modulePath = this.findModuleForFunction(prevItem.name);
+        if (modulePath) {
+          this.app.focusFunction(prevItem.name, modulePath);
+        }
+      } else if (prevItem.type === 'module') {
+        this.app.focusModule(prevItem.id);
+      }
+    }
+  }
+
+  /**
+   * Навигация вперед по истории breadcrumbs
+   */
+  navigateForward() {
+    // TODO: Реализовать навигацию вперед (сложнее, нужен стек истории)
+    console.log('⏩ Forward navigation not implemented yet');
+  }
+
+  /**
+   * Показывает количество найденных путей
+   */
+  showPathCount(container) {
+    const countDiv = document.createElement('div');
+    countDiv.className = 'breadcrumb-count';
+    countDiv.style.cssText = `
+      font-size: 10px;
+      color: #64748b;
+      margin-top: 4px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: #0f172a;
+    `;
+    countDiv.textContent = `📊 ${this.breadcrumbPaths.length} путей найдено`;
+
+    // Добавляем toggle для показа всех путей
+    countDiv.style.cursor = 'pointer';
+    countDiv.onclick = () => this.toggleAllPaths(container);
+
+    container.appendChild(countDiv);
+  }
+
+  /**
+   * Переключает отображение всех путей
+   */
+  toggleAllPaths(container) {
+    const isExpanded = container.dataset.expanded === 'true';
+
+    if (isExpanded) {
+      // Сворачиваем - показываем только первый путь
+      this.updateBreadcrumbs(this.currentModule, this.currentFunction);
+      container.dataset.expanded = 'false';
+    } else {
+      // Разворачиваем - показываем все пути
+      this.showAllPaths(container);
+      container.dataset.expanded = 'true';
+    }
+  }
+
+  /**
+   * Показывает все найденные пути
+   */
+  showAllPaths(container) {
+    // Очищаем контейнер
+    container.innerHTML = '';
+
+    // Добавляем заголовок
+    const header = document.createElement('div');
+    header.className = 'breadcrumb-header';
+    header.style.cssText = `
+      font-size: 11px;
+      color: #94a3b8;
+      padding: 4px 0;
+      font-weight: 500;
+    `;
+    header.textContent = `🌐 Все пути (${this.breadcrumbPaths.length})`;
+    container.appendChild(header);
+
+    // Показываем все пути
+    for (let i = 0; i < this.breadcrumbPaths.length; i++) {
+      const path = this.breadcrumbPaths[i];
+      if (!path) continue;
+
+      const pathDiv = document.createElement('div');
+      pathDiv.className = 'breadcrumb-path';
+      pathDiv.style.cssText = `
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        font-size: 11px;
+        font-family: monospace;
+        padding: 4px 8px;
+        border-radius: 4px;
+        background: ${i === 0 ? '#0f172a' : 'transparent'};
+        border-left: 2px solid ${i === 0 ? '#60a5fa' : '#334155'};
+        margin: 2px 0;
+      `;
+
+      // Добавляем номер пути
+      const numSpan = document.createElement('span');
+      numSpan.textContent = `${i + 1}. `;
+      numSpan.style.cssText = `
+        color: #64748b;
+        font-size: 9px;
+        margin-right: 4px;
+      `;
+      pathDiv.appendChild(numSpan);
+
+      // Добавляем элементы пути
+      for (let j = 0; j < path.length; j++) {
+        const item = path[j];
+        const isLast = j === path.length - 1;
+
+        if (j > 0) {
+          pathDiv.appendChild(this.createArrowSpan());
+        }
+
+        const span = this.createBreadcrumbSpan(item.id, isLast, item.type);
+        pathDiv.appendChild(span);
+      }
+
+      container.appendChild(pathDiv);
+    }
+
+    // Добавляем кнопку "Свернуть"
+    const collapseBtn = document.createElement('button');
+    collapseBtn.textContent = '▲ Свернуть';
+    collapseBtn.style.cssText = `
+      background: none;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 10px;
+      padding: 4px 8px;
+      margin-top: 4px;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+    `;
+    collapseBtn.onmouseenter = () => {
+      collapseBtn.style.color = '#60a5fa';
+      collapseBtn.style.background = 'rgba(96, 165, 250, 0.1)';
+    };
+    collapseBtn.onmouseleave = () => {
+      collapseBtn.style.color = '#94a3b8';
+      collapseBtn.style.background = 'none';
+    };
+    collapseBtn.onclick = () => {
+      this.updateBreadcrumbs(this.currentModule, this.currentFunction);
+      container.dataset.expanded = 'false';
+    };
+    container.appendChild(collapseBtn);
   }
 
   /**
@@ -140,30 +406,80 @@ export class BreadcrumbManager {
       const name = pkg?.displayPath || id.split('/').pop() || id;
       span.textContent = name;
       span.title = id;
+
+      // Добавляем иконку типа модуля
+      const icon = this.getModuleIcon(id);
+      if (icon) {
+        span.textContent = icon + ' ' + name;
+      }
+
       if (!isActive) {
         span.style.cursor = 'pointer';
+        span.style.transition = 'all 0.2s ease';
         span.onclick = e => {
           e.stopPropagation();
           this.app.focusModule(id);
         };
+        span.onmouseenter = () => {
+          span.style.color = '#60a5fa';
+          span.style.background = 'rgba(96, 165, 250, 0.1)';
+          span.style.borderRadius = '4px';
+          span.style.padding = '2px 6px';
+        };
+        span.onmouseleave = () => {
+          span.style.color = '#94a3b8';
+          span.style.background = 'transparent';
+          span.style.padding = '2px 6px';
+        };
+      } else {
+        span.style.color = '#22d3ee';
+        span.style.fontWeight = '600';
       }
     } else {
       const name = id.split('#func:').pop() || id;
       span.textContent = `ƒ ${name}`;
       span.title = id;
+
       if (!isActive) {
         span.style.cursor = 'pointer';
+        span.style.transition = 'all 0.2s ease';
         const modulePath = this.findModuleForFunction(name);
         if (modulePath) {
           span.onclick = e => {
             e.stopPropagation();
             this.app.focusFunction(name, modulePath);
           };
+          span.onmouseenter = () => {
+            span.style.color = '#fbbf24';
+            span.style.background = 'rgba(251, 191, 36, 0.1)';
+            span.style.borderRadius = '4px';
+            span.style.padding = '2px 6px';
+          };
+          span.onmouseleave = () => {
+            span.style.color = '#94a3b8';
+            span.style.background = 'transparent';
+            span.style.padding = '2px 6px';
+          };
         }
+      } else {
+        span.style.color = '#fbbf24';
+        span.style.fontWeight = '600';
       }
     }
 
     return span;
+  }
+
+  /**
+   * Возвращает иконку для типа модуля
+   */
+  getModuleIcon(modulePath) {
+    if (!modulePath) return '';
+    if (modulePath.endsWith('.vue')) return '🎯';
+    if (modulePath.endsWith('.tsx') || modulePath.endsWith('.jsx')) return '⚛️';
+    if (modulePath.endsWith('.ts')) return '📘';
+    if (modulePath.endsWith('.js')) return '📄';
+    return '📁';
   }
 
   /**
@@ -174,6 +490,11 @@ export class BreadcrumbManager {
     const arrow = document.createElement('span');
     arrow.className = 'breadcrumb-arrow';
     arrow.textContent = ' → ';
+    arrow.style.cssText = `
+      color: #475569;
+      margin: 0 4px;
+      font-size: 11px;
+    `;
     return arrow;
   }
 
@@ -205,7 +526,14 @@ export class BreadcrumbManager {
       return [];
     }
 
-    return this.findPathsToNode(entryModule, target, graph);
+    const paths = this.findPathsToNode(entryModule, target, graph);
+
+    // Сохраняем пути для истории
+    if (paths.length > 0) {
+      this.breadcrumbPaths = paths;
+    }
+
+    return paths;
   }
 
   /**
@@ -426,6 +754,19 @@ export class BreadcrumbManager {
   }
 
   /**
+   * Синхронизирует Breadcrumbs с графом
+   */
+  syncWithGraph() {
+    const focusModule = this.app.cardManager?.getFocusModule();
+    const focusFunction = this.app.cardManager?.getFocusFunction();
+    const mode = this.app.graphModeManager?.getMode() || 'all';
+
+    if (this.app.graphManager) {
+      this.app.graphManager.updateGraphWithFocus(focusModule, focusFunction, mode);
+    }
+  }
+
+  /**
    * Очищает Breadcrumbs
    */
   clear() {
@@ -434,6 +775,8 @@ export class BreadcrumbManager {
       container.innerHTML = '';
     }
     this.breadcrumbPaths = [];
+    this.currentModule = null;
+    this.currentFunction = null;
   }
 
   /**
@@ -479,13 +822,31 @@ export class BreadcrumbManager {
     if (count > 0) {
       this.maxPaths = count;
       // Перерисовываем Breadcrumbs
-      const focusModule = this.app.cardManager?.getFocusModule();
-      const focusFunction = this.app.cardManager?.getFocusFunction();
-      if (focusModule || focusFunction) {
-        this.updateBreadcrumbs(focusModule, focusFunction);
-      } else {
-        this.updateBreadcrumbs(null, null);
-      }
+      this.updateBreadcrumbs(this.currentModule, this.currentFunction);
     }
+  }
+
+  /**
+   * Возвращает текущий модуль в фокусе
+   * @returns {string|null}
+   */
+  getCurrentModule() {
+    return this.currentModule;
+  }
+
+  /**
+   * Возвращает текущую функцию в фокусе
+   * @returns {string|null}
+   */
+  getCurrentFunction() {
+    return this.currentFunction;
+  }
+
+  /**
+   * Проверяет, есть ли активный фокус
+   * @returns {boolean}
+   */
+  hasFocus() {
+    return !!(this.currentModule || this.currentFunction);
   }
 }

@@ -73,12 +73,31 @@ export class GraphModeManager {
     // Уведомляем подписчиков
     this._notifyListeners(mode);
 
-    // Обновляем граф
-    if (this.app.graphManager) {
-      this.app.graphManager.updateView();
-    }
+    // Обновляем граф с учетом текущего фокуса и режима
+    this.updateGraph();
 
     console.log(`🎯 Режим графа изменен: ${mode}`);
+  }
+
+  /**
+   * Обновляет граф с учетом текущего режима и фокуса
+   */
+  updateGraph() {
+    if (!this.app || !this.app.graphManager) {
+      console.warn('⚠️ GraphManager не инициализирован');
+      return;
+    }
+
+    const focusModule = this.app.cardManager?.getFocusModule();
+    const focusFunction = this.app.cardManager?.getFocusFunction();
+
+    // Используем обновленный метод updateGraphWithFocus
+    if (typeof this.app.graphManager.updateGraphWithFocus === 'function') {
+      this.app.graphManager.updateGraphWithFocus(focusModule, focusFunction, this.currentMode);
+    } else {
+      // Fallback для обратной совместимости
+      this.app.graphManager.updateView();
+    }
   }
 
   /**
@@ -112,8 +131,8 @@ export class GraphModeManager {
   getModeDescription(mode) {
     const descriptions = {
       all: 'Показывает все связи между модулями',
-      inward: 'Показывает только модули, которые импортируют текущий',
-      outward: 'Показывает только модули, которые импортирует текущий',
+      inward: 'Показывает только модули/функции, которые используют текущий',
+      outward: 'Показывает только модули/функции, которые использует текущий',
       both: 'Показывает и входящие, и исходящие связи',
     };
     return descriptions[mode] || '';
@@ -188,28 +207,56 @@ export class GraphModeManager {
    * Определяет, должно ли ребро быть показано в текущем режиме
    * @param {Object} edge - Ребро графа
    * @param {string} focusModule - Фокусируемый модуль (опционально)
+   * @param {string} focusFunction - Фокусируемая функция (опционально)
    * @returns {boolean} true если ребро должно быть показано
    */
-  shouldShowEdge(edge, focusModule = null) {
+  shouldShowEdge(edge, focusModule = null, focusFunction = null) {
     const mode = this.currentMode;
 
     // Если нет фокуса, показываем все ребра
-    if (!focusModule) {
+    if (!focusModule && !focusFunction) {
       return mode === 'all';
     }
 
-    switch (mode) {
-      case 'all':
-        return true;
-      case 'outward':
-        return edge.source === focusModule;
-      case 'inward':
-        return edge.target === focusModule;
-      case 'both':
-        return edge.source === focusModule || edge.target === focusModule;
-      default:
-        return true;
+    // Если фокус на функции
+    if (focusFunction) {
+      const fromId = typeof edge.source === 'object' ? edge.source.id : edge.source;
+      const toId = typeof edge.target === 'object' ? edge.target.id : edge.target;
+
+      switch (mode) {
+        case 'all':
+          return true;
+        case 'outward':
+          return fromId === focusFunction;
+        case 'inward':
+          return toId === focusFunction;
+        case 'both':
+          return fromId === focusFunction || toId === focusFunction;
+        default:
+          return true;
+      }
     }
+
+    // Если фокус на модуле
+    if (focusModule) {
+      const fromModule = typeof edge.source === 'object' ? edge.source.module : edge.source;
+      const toModule = typeof edge.target === 'object' ? edge.target.module : edge.target;
+
+      switch (mode) {
+        case 'all':
+          return true;
+        case 'outward':
+          return fromModule === focusModule;
+        case 'inward':
+          return toModule === focusModule;
+        case 'both':
+          return fromModule === focusModule || toModule === focusModule;
+        default:
+          return true;
+      }
+    }
+
+    return true;
   }
 
   /**
@@ -308,6 +355,13 @@ export class GraphModeManager {
         console.warn('Ошибка в обработчике изменения режима:', error);
       }
     }
+
+    // Дополнительно уведомляем через глобальный символ для кросс-модульного взаимодействия
+    const SYM_MODE_CHANGE = Symbol.for('__AST_MODE_CHANGE__');
+    const callback = window[SYM_MODE_CHANGE];
+    if (typeof callback === 'function') {
+      callback('graph', mode);
+    }
   }
 
   /**
@@ -354,4 +408,277 @@ export class GraphModeManager {
 
     return stats;
   }
+
+  /**
+   * Получает видимые узлы и ребра для текущего режима
+   * @param {Array} allNodes - Все узлы графа
+   * @param {Array} allEdges - Все ребра графа
+   * @param {string} focusModule - Фокусный модуль (опционально)
+   * @param {string} focusFunction - Фокусная функция (опционально)
+   * @returns {Object} { nodes, edges, highlightNodes, highlightEdges }
+   */
+  getVisibleElements(allNodes, allEdges, focusModule = null, focusFunction = null) {
+    const mode = this.currentMode;
+
+    let visibleNodes = [];
+    let visibleEdges = [];
+    let highlightNodes = new Set();
+    let highlightEdges = new Set();
+
+    // Если нет фокуса и режим 'all' - показываем всё
+    if (!focusModule && !focusFunction && mode === 'all') {
+      return {
+        nodes: allNodes,
+        edges: allEdges,
+        highlightNodes: new Set(allNodes.map(n => n.id)),
+        highlightEdges: new Set(
+          allEdges.map(e => `${e.source.id || e.source}->${e.target.id || e.target}`)
+        ),
+      };
+    }
+
+    // Если есть фокус на функции
+    if (focusFunction) {
+      return this._filterByFunction(allNodes, allEdges, focusFunction, focusModule, mode);
+    }
+
+    // Если есть фокус на модуле
+    if (focusModule) {
+      return this._filterByModule(allNodes, allEdges, focusModule, mode);
+    }
+
+    // Без фокуса, но с режимом не 'all'
+    return this._filterNoFocus(allNodes, allEdges, mode);
+  }
+
+  /**
+   * Фильтрация по функции
+   */
+  _filterByFunction(allNodes, allEdges, functionId, moduleId, mode) {
+    const result = {
+      nodes: [],
+      edges: [],
+      highlightNodes: new Set(),
+      highlightEdges: new Set(),
+    };
+
+    // Находим целевую функцию
+    const targetNode = allNodes.find(n => n.id === functionId || n.name === functionId);
+    if (!targetNode) {
+      console.warn(`⚠️ Функция не найдена: ${functionId}`);
+      return this._filterNoFocus(allNodes, allEdges, mode);
+    }
+
+    // Добавляем целевую функцию
+    result.nodes.push(targetNode);
+    result.highlightNodes.add(targetNode.id);
+
+    // Находим связи
+    const incoming = allEdges.filter(e => {
+      const target = typeof e.target === 'object' ? e.target.id : e.target;
+      return target === targetNode.id || target === targetNode.name;
+    });
+
+    const outgoing = allEdges.filter(e => {
+      const source = typeof e.source === 'object' ? e.source.id : e.source;
+      return source === targetNode.id || source === targetNode.name;
+    });
+
+    let relatedEdges = [];
+    let relatedNodeIds = new Set();
+
+    switch (mode) {
+      case 'inward':
+        relatedEdges = incoming;
+        for (const edge of incoming) {
+          const sourceId = typeof edge.source === 'object' ? edge.source.id : edge.source;
+          relatedNodeIds.add(sourceId);
+          result.highlightNodes.add(sourceId);
+          result.highlightEdges.add(`${sourceId}->${targetNode.id}`);
+        }
+        break;
+      case 'outward':
+        relatedEdges = outgoing;
+        for (const edge of outgoing) {
+          const targetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
+          relatedNodeIds.add(targetId);
+          result.highlightNodes.add(targetId);
+          result.highlightEdges.add(`${targetNode.id}->${targetId}`);
+        }
+        break;
+      case 'both':
+        relatedEdges = [...incoming, ...outgoing];
+        for (const edge of relatedEdges) {
+          const sourceId = typeof edge.source === 'object' ? edge.source.id : edge.source;
+          const targetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
+          relatedNodeIds.add(sourceId);
+          relatedNodeIds.add(targetId);
+          result.highlightNodes.add(sourceId);
+          result.highlightNodes.add(targetId);
+          result.highlightEdges.add(`${sourceId}->${targetId}`);
+        }
+        break;
+      default:
+        // 'all' - все связи
+        relatedEdges = [...incoming, ...outgoing];
+        for (const edge of relatedEdges) {
+          const sourceId = typeof edge.source === 'object' ? edge.source.id : edge.source;
+          const targetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
+          relatedNodeIds.add(sourceId);
+          relatedNodeIds.add(targetId);
+          result.highlightNodes.add(sourceId);
+          result.highlightNodes.add(targetId);
+          result.highlightEdges.add(`${sourceId}->${targetId}`);
+        }
+    }
+
+    // Добавляем связанные узлы
+    for (const nodeId of relatedNodeIds) {
+      const node = allNodes.find(n => n.id === nodeId || n.name === nodeId);
+      if (node && !result.nodes.find(n => n.id === node.id)) {
+        result.nodes.push(node);
+      }
+    }
+
+    // Добавляем ребра
+    result.edges = relatedEdges;
+
+    // Если модуль указан, добавляем все функции модуля
+    if (moduleId) {
+      const moduleNodes = allNodes.filter(n => n.module === moduleId);
+      for (const node of moduleNodes) {
+        if (!result.nodes.find(n => n.id === node.id)) {
+          result.nodes.push(node);
+          result.highlightNodes.add(node.id);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Фильтрация по модулю
+   */
+  _filterByModule(allNodes, allEdges, moduleId, mode) {
+    const result = {
+      nodes: [],
+      edges: [],
+      highlightNodes: new Set(),
+      highlightEdges: new Set(),
+    };
+
+    // Находим все узлы модуля
+    const moduleNodes = allNodes.filter(n => n.module === moduleId || n.id === moduleId);
+    const moduleNodeIds = new Set(moduleNodes.map(n => n.id));
+
+    // Добавляем все узлы модуля
+    result.nodes = [...moduleNodes];
+    for (const node of moduleNodes) {
+      result.highlightNodes.add(node.id);
+    }
+
+    let relatedEdges = [];
+
+    switch (mode) {
+      case 'inward':
+        // Только входящие
+        relatedEdges = allEdges.filter(e => {
+          const targetId = typeof e.target === 'object' ? e.target.id : e.target;
+          const sourceId = typeof e.source === 'object' ? e.source.id : e.source;
+          return moduleNodeIds.has(targetId) && !moduleNodeIds.has(sourceId);
+        });
+        break;
+      case 'outward':
+        // Только исходящие
+        relatedEdges = allEdges.filter(e => {
+          const sourceId = typeof e.source === 'object' ? e.source.id : e.source;
+          const targetId = typeof e.target === 'object' ? e.target.id : e.target;
+          return moduleNodeIds.has(sourceId) && !moduleNodeIds.has(targetId);
+        });
+        break;
+      case 'both':
+        // И входящие, и исходящие
+        relatedEdges = allEdges.filter(e => {
+          const sourceId = typeof e.source === 'object' ? e.source.id : e.source;
+          const targetId = typeof e.target === 'object' ? e.target.id : e.target;
+          return moduleNodeIds.has(sourceId) || moduleNodeIds.has(targetId);
+        });
+        break;
+      default:
+        // 'all' - все связи
+        relatedEdges = allEdges.filter(e => {
+          const sourceId = typeof e.source === 'object' ? e.source.id : e.source;
+          const targetId = typeof e.target === 'object' ? e.target.id : e.target;
+          return moduleNodeIds.has(sourceId) || moduleNodeIds.has(targetId);
+        });
+    }
+
+    // Добавляем связанные узлы
+    const relatedNodeIds = new Set();
+    for (const edge of relatedEdges) {
+      const sourceId = typeof edge.source === 'object' ? edge.source.id : edge.source;
+      const targetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
+      relatedNodeIds.add(sourceId);
+      relatedNodeIds.add(targetId);
+    }
+
+    for (const nodeId of relatedNodeIds) {
+      if (!moduleNodeIds.has(nodeId)) {
+        const node = allNodes.find(n => n.id === nodeId);
+        if (node && !result.nodes.find(n => n.id === node.id)) {
+          result.nodes.push(node);
+          result.highlightNodes.add(node.id);
+        }
+      }
+    }
+
+    // Добавляем ребра с подсветкой
+    result.edges = relatedEdges;
+    for (const edge of relatedEdges) {
+      const sourceId = typeof edge.source === 'object' ? edge.source.id : edge.source;
+      const targetId = typeof edge.target === 'object' ? edge.target.id : edge.target;
+      result.highlightEdges.add(`${sourceId}->${targetId}`);
+    }
+
+    // Убираем дубликаты узлов
+    const uniqueNodes = new Map();
+    for (const node of result.nodes) {
+      uniqueNodes.set(node.id, node);
+    }
+    result.nodes = Array.from(uniqueNodes.values());
+
+    return result;
+  }
+
+  /**
+   * Фильтрация без фокуса
+   */
+  _filterNoFocus(allNodes, allEdges, mode) {
+    const result = {
+      nodes: allNodes,
+      edges: [],
+      highlightNodes: new Set(allNodes.map(n => n.id)),
+      highlightEdges: new Set(),
+    };
+
+    // В режиме 'all' показываем все ребра
+    if (mode === 'all') {
+      result.edges = allEdges;
+      result.highlightEdges = new Set(
+        allEdges.map(
+          e =>
+            `${typeof e.source === 'object' ? e.source.id : e.source}->${typeof e.target === 'object' ? e.target.id : e.target}`
+        )
+      );
+      return result;
+    }
+
+    // Для других режимов без фокуса показываем все ребра, но без подсветки
+    result.edges = allEdges;
+    return result;
+  }
 }
+
+// Экспорт по умолчанию
+export default GraphModeManager;

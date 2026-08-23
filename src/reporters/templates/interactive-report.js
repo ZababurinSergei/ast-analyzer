@@ -122,7 +122,7 @@ class App {
       }
       this.renderModules();
       if (this.graphManager) {
-        this.graphManager.updateView();
+        this.graphManager.updateGraphWithFocus(modulePath, null, this.currentGraphMode);
       }
       this.updateFocusInfo(modulePath);
       this.scrollToModule(modulePath);
@@ -141,7 +141,7 @@ class App {
       }
       this.renderModules();
       if (this.graphManager) {
-        this.graphManager.updateView();
+        this.graphManager.updateGraphWithFocus(modulePath, funcName, this.currentGraphMode);
       }
       this.updateFocusInfo(modulePath, funcName);
       this.showFunctionDetail(funcName, modulePath);
@@ -157,7 +157,7 @@ class App {
       }
       this.renderModules();
       if (this.graphManager) {
-        this.graphManager.updateView();
+        this.graphManager.updateGraphWithFocus(null, null, 'all');
       }
       this.hideFocusInfo();
       this.closeDetail();
@@ -174,17 +174,25 @@ class App {
 
     this.setGraphMode = mode => {
       console.log('📊 setGraphMode called:', mode);
+      this.currentGraphMode = mode;
       if (this.graphModeManager && typeof this.graphModeManager.setMode === 'function') {
         this.graphModeManager.setMode(mode);
       }
+      // Обновляем граф с текущим фокусом и новым режимом
+      if (this.graphManager) {
+        this.graphManager.updateGraphWithFocus(this._focusModule, this._focusFunction, mode);
+      }
+      this.notifyModeChange('graph', mode);
     };
 
     this.setCardMode = mode => {
       console.log('📋 setCardMode called:', mode);
+      this.currentCardMode = mode;
       if (this.cardModeManager && typeof this.cardModeManager.setMode === 'function') {
         this.cardModeManager.setMode(mode);
         this.renderModules();
       }
+      this.notifyModeChange('card', mode);
     };
 
     this.closeDetail = () => {
@@ -354,6 +362,10 @@ class App {
         this.graphModeManager.onModeChange(mode => {
           this.currentGraphMode = mode;
           this.notifyModeChange('graph', mode);
+          // Обновляем граф при смене режима
+          if (this.graphManager) {
+            this.graphManager.updateGraphWithFocus(this._focusModule, this._focusFunction, mode);
+          }
         });
       }
 
@@ -594,6 +606,28 @@ class App {
         }
         console.warn('⚠️ showDetail not yet initialized');
       },
+
+      // Дополнительные методы для управления графом
+      updateGraph: (module, func, mode) => {
+        if (app.graphManager && typeof app.graphManager.updateGraphWithFocus === 'function') {
+          return app.graphManager.updateGraphWithFocus(module, func, mode || app.currentGraphMode);
+        }
+        console.warn('⚠️ updateGraph not yet initialized');
+      },
+
+      fitGraph: () => {
+        if (app.graphManager && typeof app.graphManager.fitGraphToScreen === 'function') {
+          return app.graphManager.fitGraphToScreen();
+        }
+        console.warn('⚠️ fitGraph not yet initialized');
+      },
+
+      getCurrentFocus: () => ({
+        module: app._focusModule,
+        function: app._focusFunction,
+        graphMode: app.currentGraphMode,
+        cardMode: app.currentCardMode,
+      }),
     };
 
     // ✅ ДОБАВЛЯЕМ МЕНЕДЖЕРЫ
@@ -622,6 +656,8 @@ class App {
     console.log('  - api.focusModule:', typeof api.focusModule);
     console.log('  - api.focusFunction:', typeof api.focusFunction);
     console.log('  - api.clearFocus:', typeof api.clearFocus);
+    console.log('  - api.updateGraph:', typeof api.updateGraph);
+    console.log('  - api.fitGraph:', typeof api.fitGraph);
   }
 }
 
@@ -656,6 +692,9 @@ if (!window[SYM_APP]) {
       'renderModules',
       'updateBreadcrumbs',
       'showDetail',
+      'updateGraph',
+      'fitGraph',
+      'getCurrentFocus',
     ].forEach(method => {
       fallbackApi[method] = function (...args) {
         console.warn(`⚠️ App not ready, ${method} called with:`, args);
