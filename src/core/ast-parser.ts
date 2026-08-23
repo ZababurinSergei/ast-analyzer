@@ -200,7 +200,9 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       }
 
       code = scriptContent;
-      console.log(`📄 Vue файл: ${path.basename(resolvedPath)} (${scriptType}, TS: ${isTypeScript})`);
+      console.log(
+        `📄 Vue файл: ${path.basename(resolvedPath)} (${scriptType}, TS: ${isTypeScript})`
+      );
 
       if (sfc.styles.length > 0) {
         console.log(`   🎨 Styles: ${sfc.styles.length} блоков`);

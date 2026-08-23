@@ -35,9 +35,9 @@ import { DetailPanelRenderer } from './CardManager/DetailPanelRenderer.js';
  * - Копирование сигнатуры
  * - Источник вызова (top-level или из функции)
  * - Компактные кнопки
- * - Ссылка на VS Code в заголовке с полным путем
+ * - Ссылка на VS Code в заголовке
+ * - Отображение модулей-импортеров
  */
-
 export class CardManager {
   constructor(app) {
     this.app = app;
@@ -517,8 +517,8 @@ export class CardManager {
     const navModuleImportersHtml = this.navModuleImportersRenderer.render({
       moduleImporters,
       modulePath,
-      reportData: this.app.reportData,
       pkg,
+      reportData: this.app.reportData,
     });
 
     const navExternalHtml = this.navExternalRenderer.render({

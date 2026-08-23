@@ -14,8 +14,10 @@ import { normalizePathForDisplay } from '../utils/path-utils.js';
 import {
   buildEnhancedPackageLockReport,
   type EnhancedEntityInfo,
+  type EnhancedPackageLockReport,
 } from '../reporters/json-reporter.js';
 import { extractEntitiesFromFile } from '../reporters/json-reporter.js';
+import { collectDeclaredFunctions, buildCallGraphFromAST } from '../core/call-collector.js';
 
 // ==========================================
 // ТИП: Информация о функции в формате package-lock
@@ -40,6 +42,33 @@ export interface PackageLockFunctionInfo {
 }
 
 // ==========================================
+// ТИП: Информация об импорте в package-lock
+// ==========================================
+export interface PackageLockImportInfo {
+  direction: 'inward';
+  type: 'import' | 'external-import' | 'internal-import';
+  specifiers: string[];
+  functions: Record<string, PackageLockFunctionInfo>;
+}
+
+// ==========================================
+// ТИП: Информация об экспорте в package-lock
+// ==========================================
+export interface PackageLockExportInfo {
+  direction: 'outward';
+  type: 'export';
+  isAsync: boolean;
+  params: string[];
+  returns: string;
+  line: number;
+  consumers: {
+    module: string;
+    direction: 'outward';
+    type: 'import' | 'call';
+  }[];
+}
+
+// ==========================================
 // ТИП: Информация о пакете (модуле)
 // ==========================================
 export interface PackageLockPackage {
@@ -48,35 +77,12 @@ export interface PackageLockPackage {
   type: 'module' | 'commonjs';
   language: 'typescript' | 'javascript' | 'vue' | 'jsx';
   isEntry: boolean;
-  imports: Record<
-    string,
-    {
-      direction: 'inward';
-      type: 'import' | 'external-import' | 'internal-import';
-      specifiers: string[];
-      functions: Record<string, PackageLockFunctionInfo>;
-    }
-  >;
-  exports: Record<
-    string,
-    {
-      direction: 'outward';
-      type: 'export';
-      isAsync: boolean;
-      params: string[];
-      returns: string;
-      line: number;
-      consumers: {
-        module: string;
-        direction: 'outward';
-        type: 'import' | 'call';
-      }[];
-    }
-  >;
+  imports: Record<string, PackageLockImportInfo>;
+  exports: Record<string, PackageLockExportInfo>;
 }
 
 // ==========================================
-// ТИП: Граф вызовов (отдельный тип для устранения ошибок)
+// ТИП: Граф вызовов
 // ==========================================
 export interface CallGraphResult {
   from: string;
@@ -156,31 +162,56 @@ export interface PackageLockReport {
 
 /**
  * Преобразует EnhancedEntityInfo в EntitiesResult для совместимости
+ * ✅ ИСПРАВЛЕНО: правильная обработка calledBy (string[] или объекты)
  */
 function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult {
   return {
-    functions: enhanced.functions.map(f => ({
-      name: f.name,
-      line: f.line,
-      isAsync: f.isAsync,
-      isExported: f.isExported,
-      params: f.params,
-      returnType: f.returnType,
-      calls: f.calls || [],
-      calledBy: f.calledBy || [],
-      body: f.body || '',
-      startLine: f.startLine || f.line,
-      endLine: f.endLine || f.line,
-      isMethod: f.isMethod || false,
-      className: f.className,
-      // ✅ Добавляем недостающие поля для совместимости с FunctionInfo
-      isNested: f.isNested || false,
-      parentFunction: f.parentFunction,
-      isArrow: f.isArrow || false,
-      isEventHandler: f.isEventHandler || false,
-      eventType: f.eventType,
-      depth: f.depth || 0,
-    })),
+    functions: enhanced.functions.map(f => {
+      // ✅ Обрабатываем calledBy - может быть string[] или объектами
+      let calledBy: string[] = [];
+      if (Array.isArray(f.calledBy)) {
+        calledBy = f.calledBy.map((cb: any) => {
+          if (typeof cb === 'string') {
+            return cb;
+          } else if (cb && typeof cb === 'object') {
+            // Если это объект с полем function
+            if ('function' in cb) {
+              return cb.function || String(cb);
+            }
+            // Если это объект с полем name
+            if ('name' in cb) {
+              return cb.name || String(cb);
+            }
+            return String(cb);
+          }
+          return String(cb);
+        });
+      }
+
+      return {
+        name: f.name,
+        line: f.line,
+        isAsync: f.isAsync,
+        isExported: f.isExported,
+        params: f.params,
+        returnType: f.returnType,
+        calls: f.calls || [],
+        calledBy: calledBy, // ✅ теперь всегда string[]
+        body: f.body || '',
+        startLine: f.startLine || f.line,
+        endLine: f.endLine || f.line,
+        isMethod: f.isMethod || false,
+        className: f.className,
+        isNested: f.isNested || false,
+        parentFunction: f.parentFunction,
+        isArrow: f.isArrow || false,
+        isEventHandler: f.isEventHandler || false,
+        eventType: f.eventType,
+        depth: f.depth || 0,
+        complexity: f.complexity,
+        security: f.security,
+      };
+    }),
     classes: enhanced.classes.map(c => ({
       name: c.name,
       line: c.line,
@@ -237,7 +268,6 @@ export function buildCallGraphBetweenFunctions(
   fromFunction: string,
   toFunction: string
 ): CallGraphResult {
-  // Проверяем существование функций
   if (!allFunctions.has(fromFunction)) {
     return {
       from: fromFunction,
@@ -262,7 +292,6 @@ export function buildCallGraphBetweenFunctions(
     };
   }
 
-  // BFS для поиска пути
   const visited = new Set<string>();
   const queue: { func: string; path: string[] }[] = [{ func: fromFunction, path: [fromFunction] }];
   const nodes: CallGraphResult['nodes'] = [];
@@ -274,7 +303,6 @@ export function buildCallGraphBetweenFunctions(
     if (visited.has(func)) continue;
     visited.add(func);
 
-    // Добавляем узел
     const funcInfo = allFunctions.get(func);
     if (funcInfo) {
       nodes.push({
@@ -285,7 +313,6 @@ export function buildCallGraphBetweenFunctions(
       });
     }
 
-    // Если нашли целевую функцию
     if (func === toFunction) {
       return {
         from: fromFunction,
@@ -297,7 +324,6 @@ export function buildCallGraphBetweenFunctions(
       };
     }
 
-    // Добавляем вызовы
     const info = allFunctions.get(func);
     if (info) {
       for (const call of info.calls) {
@@ -313,13 +339,12 @@ export function buildCallGraphBetweenFunctions(
     }
   }
 
-  // Путь не найден
   return {
     from: fromFunction,
     to: toFunction,
     path: [],
     found: false,
-    reason: `Путь от '${fromFunction}' к '${toFunction}' не найден. Проверьте, что функции связаны цепочкой вызовов.`,
+    reason: `Путь от '${fromFunction}' к '${toFunction}' не найден.`,
     nodes,
     edges,
   };
@@ -344,15 +369,12 @@ function findProjectRoot(startDir: string): string | null {
 
 /**
  * Разрешает путь к файлу в абсолютный с поиском в нескольких местах
- * ИСПОЛЬЗУЕТСЯ в buildPackageLockReportSync для преобразования путей
  */
 function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string | null {
-  // Если путь уже абсолютный и существует
   if (path.isAbsolute(filePath) && fs.existsSync(filePath)) {
     return filePath;
   }
 
-  // Пробуем разные варианты
   const candidates = [
     path.resolve(projectRoot, filePath),
     path.resolve(projectRoot, 'src', filePath),
@@ -361,7 +383,6 @@ function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string 
     path.resolve(process.cwd(), 'src', filePath),
   ];
 
-  // Добавляем варианты с нормализованными путями (Windows -> Unix)
   const normalizedFilePath = filePath.replace(/\\/g, '/');
   const additionalCandidates = [
     path.resolve(projectRoot, normalizedFilePath),
@@ -380,33 +401,81 @@ function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string 
 }
 
 /**
- * Строит отчет в стиле package-lock (синхронная версия)
- * ✅ ИСПРАВЛЕНО: передаем entitiesMap для избежания повторного извлечения
+ * Преобразует EnhancedPackageLockReport в PackageLockReport
  */
-function buildPackageLockReportSync(
-  rootKey: string,
-  graph: Record<string, string[]>,
-  entitiesMap: Record<string, EntitiesResult>,
-  absoluteFilePaths: string[]
+function convertToPackageLockReport(
+  enhanced: EnhancedPackageLockReport,
+  rootKey: string
 ): PackageLockReport {
-  // ✅ ИСПРАВЛЕНО: передаем entitiesMap в buildEnhancedPackageLockReport
-  const enhancedReport = buildEnhancedPackageLockReport(
-    rootKey,
-    graph,
-    entitiesMap,
-    absoluteFilePaths
-  );
+  const packages: Record<string, PackageLockPackage> = {};
 
-  // Преобразуем EnhancedPackageLockReport в PackageLockReport
+  for (const [key, pkg] of Object.entries(enhanced.packages || {})) {
+    // Преобразуем imports
+    const imports: Record<string, PackageLockImportInfo> = {};
+    for (const [impKey, impVal] of Object.entries(pkg.imports || {})) {
+      imports[impKey] = {
+        direction: 'inward',
+        type: (impVal.type as 'import' | 'external-import' | 'internal-import') || 'import',
+        specifiers: impVal.specifiers || [],
+        functions: {},
+      };
+    }
+
+    // Преобразуем exports
+    const exports: Record<string, PackageLockExportInfo> = {};
+    for (const [expKey, expVal] of Object.entries(pkg.exports || {})) {
+      const consumers = (expVal.consumers || []).map((c: any) => ({
+        module: c.module || '',
+        direction: 'outward' as const,
+        type: (c.type || 'call') as 'import' | 'call',
+      }));
+
+      exports[expKey] = {
+        direction: 'outward',
+        type: 'export',
+        isAsync: expVal.isAsync || false,
+        params: expVal.params || [],
+        returns: expVal.returns || 'any',
+        line: expVal.line || 0,
+        consumers: consumers,
+      };
+    }
+
+    packages[key] = {
+      version: pkg.version || '1.0.0',
+      resolved: pkg.resolved || `file:${key}`,
+      type: (pkg.type as 'module' | 'commonjs') || 'module',
+      language: (pkg.language as 'typescript' | 'javascript' | 'vue' | 'jsx') || 'typescript',
+      isEntry: pkg.isEntry || false,
+      imports: imports,
+      exports: exports,
+    };
+  }
+
   return {
-    name: enhancedReport.name,
-    version: enhancedReport.version,
-    lockfileVersion: enhancedReport.lockfileVersion,
-    packages: enhancedReport.packages as Record<string, PackageLockPackage>,
-    dependencyGraph: enhancedReport.dependencyGraph,
-    executionGraph: enhancedReport.executionGraph,
-    importExportFlow: enhancedReport.importExportFlow,
-    callGraph: enhancedReport.callGraph as CallGraphResult | undefined,
+    name: enhanced.name || 'ast-analyzer',
+    version: enhanced.version || '3.0.0',
+    lockfileVersion: enhanced.lockfileVersion || 3,
+    packages,
+    dependencyGraph: enhanced.dependencyGraph || {
+      direction: 'bidirectional',
+      inwardDependencies: {},
+      outwardDependencies: {},
+    },
+    executionGraph: enhanced.executionGraph || {
+      entryPoint: rootKey,
+      direction: 'top-down',
+      entryFunctions: [],
+      executionFlow: {
+        type: 'sequential',
+        steps: [],
+      },
+    },
+    importExportFlow: enhanced.importExportFlow || {
+      imports: {},
+      exports: {},
+    },
+    callGraph: enhanced.callGraph as CallGraphResult | undefined,
   };
 }
 
@@ -432,7 +501,6 @@ export function buildProjectGraph(
   const rootAbsPath = path.resolve(entryPoint);
   const queue: { path: string; depth: number; isRoot: boolean }[] = [];
 
-  // Сбор всех функций для построения графа вызовов
   const allFunctions = new Map<
     string,
     { module: string; line: number; isAsync: boolean; calls: string[] }
@@ -466,14 +534,11 @@ export function buildProjectGraph(
       continue;
     }
 
-    // Извлекаем сущности если включено
     if (includeEntities) {
-      // ✅ ИСПОЛЬЗУЕМ extractEntitiesFromFile (с правильными calls)
       const enhancedEntities = extractEntitiesFromFile(currentPath);
       const entities = convertEnhancedToEntities(enhancedEntities);
       entitiesMap[relativeKey] = entities;
 
-      // Собираем функции для графа вызовов
       for (const func of entities.functions) {
         allFunctions.set(func.name, {
           module: relativeKey,
@@ -481,6 +546,72 @@ export function buildProjectGraph(
           isAsync: func.isAsync,
           calls: func.calls || [],
         });
+      }
+
+      // ✅ Добавляем локальные функции
+      try {
+        const declaredFunctions = collectDeclaredFunctions(ast);
+        const callGraphFromAST = buildCallGraphFromAST(ast);
+
+        for (const funcName of declaredFunctions) {
+          if (!allFunctions.has(funcName)) {
+            let funcNode: any = null;
+            let found = false;
+
+            function findFunction(node: any) {
+              if (found) return;
+              if (!node || typeof node !== 'object') return;
+
+              if (node.type === 'FunctionDeclaration' && node.id?.name === funcName) {
+                funcNode = node;
+                found = true;
+                return;
+              }
+
+              if (node.type === 'VariableDeclarator' && node.id?.name === funcName) {
+                if (
+                  node.init &&
+                  (node.init.type === 'ArrowFunctionExpression' ||
+                    node.init.type === 'FunctionExpression')
+                ) {
+                  funcNode = node.init;
+                  found = true;
+                  return;
+                }
+              }
+
+              for (const key of Object.keys(node)) {
+                const child = node[key];
+                if (child && typeof child === 'object') {
+                  if (Array.isArray(child)) {
+                    for (const item of child) {
+                      if (item && typeof item === 'object') {
+                        findFunction(item);
+                      }
+                    }
+                  } else {
+                    findFunction(child);
+                  }
+                }
+              }
+            }
+
+            findFunction(ast);
+
+            const calls = callGraphFromAST.get(funcName) || new Set();
+
+            allFunctions.set(funcName, {
+              module: relativeKey,
+              line: funcNode?.loc?.start?.line || 0,
+              isAsync: false,
+              calls: Array.from(calls),
+            });
+
+            console.log(`   📌 Добавлена локальная функция: ${funcName} (вызовов: ${calls.size})`);
+          }
+        }
+      } catch (error) {
+        console.warn(`   ⚠️ Ошибка при сборе локальных функций: ${error}`);
       }
 
       console.log(`   📊 ${path.basename(currentPath)}:`);
@@ -558,7 +689,6 @@ export function buildProjectGraph(
     }
   }
 
-  // Нормализуем граф
   const normalizedGraph: Record<string, string[]> = {};
   for (const [key, deps] of Object.entries(graph)) {
     const normalizedKey = normalizePathForDisplay(key);
@@ -576,14 +706,15 @@ export function buildProjectGraph(
     graph: normalizedGraph,
   };
 
-  // ✅ ИСПРАВЛЕНО: если includeEntities=true, обязательно заполняем entities
   if (includeEntities) {
-    // ✅ Проверяем, что entitiesMap не пустой
+    // ✅ Создаем КОНЕЧНУЮ карту сущностей для всего проекта
+    const finalEntitiesMap: Record<string, EntitiesResult> = {};
+
+    // Проверяем, есть ли сущности в entitiesMap
     if (Object.keys(entitiesMap).length === 0) {
       console.warn('⚠️ entitiesMap пуст, возможно сущности не были извлечены');
       console.warn('   💡 Попытка принудительного извлечения сущностей из всех файлов...');
 
-      // ✅ ПРИНУДИТЕЛЬНОЕ ИЗВЛЕЧЕНИЕ сущностей из всех файлов в графе
       for (const modulePath of Object.keys(normalizedGraph)) {
         try {
           const absPath = path.resolve(modulePath);
@@ -593,7 +724,6 @@ export function buildProjectGraph(
             const normalizedKey = normalizePathForDisplay(modulePath);
             entitiesMap[normalizedKey] = entities;
 
-            // Собираем функции для графа вызовов
             for (const func of entities.functions) {
               allFunctions.set(func.name, {
                 module: normalizedKey,
@@ -613,71 +743,93 @@ export function buildProjectGraph(
       );
     }
 
-    const normalizedEntities: Record<string, EntitiesResult> = {};
-    let totalFunctions = 0;
-    let totalClasses = 0;
-    let totalConstants = 0;
-    let totalInterfaces = 0;
-    let totalTypes = 0;
-    let totalVariables = 0;
-    let totalCalls = 0;
-
-    for (const [key, entities] of Object.entries(entitiesMap)) {
-      const normalizedKey = normalizePathForDisplay(key);
-      normalizedEntities[normalizedKey] = entities;
-
-      totalFunctions += entities.functions.length;
-      totalClasses += entities.classes.length;
-      totalConstants += entities.constants.length;
-      totalInterfaces += entities.interfaces.length;
-      totalTypes += entities.types.length;
-      totalVariables += entities.variables.length;
-
-      for (const func of entities.functions) {
-        totalCalls += (func.calls || []).length;
+    // ✅ Копируем сущности из entitiesMap с нормализацией и проверкой
+    for (const [modulePath, entities] of Object.entries(entitiesMap)) {
+      if (!entities) {
+        console.warn(`⚠️ Нет сущностей для ${modulePath}`);
+        continue;
       }
+
+      const normalizedKey = normalizePathForDisplay(modulePath);
+
+      // ✅ Убеждаемся, что все поля - массивы
+      finalEntitiesMap[normalizedKey] = {
+        functions: Array.isArray(entities.functions) ? entities.functions : [],
+        classes: Array.isArray(entities.classes) ? entities.classes : [],
+        constants: Array.isArray(entities.constants) ? entities.constants : [],
+        interfaces: Array.isArray(entities.interfaces) ? entities.interfaces : [],
+        types: Array.isArray(entities.types) ? entities.types : [],
+        variables: Array.isArray(entities.variables) ? entities.variables : [],
+        imports: Array.isArray(entities.imports) ? entities.imports : [],
+        exports: Array.isArray(entities.exports) ? entities.exports : [],
+        callGraph: entities.callGraph || {},
+        moduleName: entities.moduleName || modulePath,
+        filePath: entities.filePath || modulePath,
+      };
     }
 
-    result.entities = normalizedEntities;
+    // ✅ ЛОГИРУЕМ ПЕРЕД СОЗДАНИЕМ ОТЧЕТА
+    console.log(`✅ Подготовлено ${Object.keys(finalEntitiesMap).length} модулей с сущностями:`);
 
-    console.log(`✅ entitiesMap содержит ${Object.keys(entitiesMap).length} модулей с сущностями`);
-    console.log(`📊 Всего сущностей в проекте:`);
-    console.log(`   • Функций: ${totalFunctions}`);
-    console.log(`   • Классов: ${totalClasses}`);
-    console.log(`   • Констант: ${totalConstants}`);
-    console.log(`   • Интерфейсов: ${totalInterfaces}`);
-    console.log(`   • Типов: ${totalTypes}`);
-    console.log(`   • Переменных: ${totalVariables}`);
-    console.log(`   • Вызовов: ${totalCalls}`);
+    let totalFuncs = 0;
+    let totalCalls = 0;
+    for (const [key, ents] of Object.entries(finalEntitiesMap)) {
+      const funcCount = ents.functions?.length || 0;
+      if (funcCount > 0) {
+        totalFuncs += funcCount;
+        // ✅ Используем ents.functions для подсчета вызовов
+        let moduleCalls = 0;
+        for (const f of ents.functions) {
+          moduleCalls += (f.calls || []).length;
+        }
+        totalCalls += moduleCalls;
+        console.log(`   • ${key}: ${funcCount} функций, ${moduleCalls} вызовов`);
+      }
+    }
+    console.log(`   📊 Всего функций: ${totalFuncs}`);
+    console.log(`   📊 Всего вызовов: ${totalCalls}`);
 
-    // ✅ ИСПРАВЛЕНО: Строим отчет в стиле package-lock с АБСОЛЮТНЫМИ ПУТЯМИ
+    // ✅ Сохраняем finalEntitiesMap в результат
+    result.entities = finalEntitiesMap;
+
+    // ✅ Используем ПОЛНЫЙ ОТЧЕТ с finalEntitiesMap
     const allFiles = Object.keys(normalizedGraph);
     const projectRoot = findProjectRoot(process.cwd()) || process.cwd();
 
-    // ✅ Используем resolveAbsoluteFilePath для преобразования путей
     const absoluteFilePaths = allFiles.map(p => {
       const resolved = resolveAbsoluteFilePath(p, projectRoot);
       return resolved || path.resolve(projectRoot, p);
     });
 
-    // ✅ ИСПРАВЛЕНО: передаем normalizedEntities в buildPackageLockReportSync
-    const packageLockReport = buildPackageLockReportSync(
+    // ✅ ВЫЗЫВАЕМ buildEnhancedPackageLockReport с правильными параметрами
+    const enhancedReport = buildEnhancedPackageLockReport(
       result.rootKey,
       normalizedGraph,
-      normalizedEntities,
+      finalEntitiesMap,
       absoluteFilePaths
     );
 
+    // ✅ ПРЕОБРАЗУЕМ В PackageLockReport
+    const packageLockReport = convertToPackageLockReport(enhancedReport, result.rootKey);
     result.packageLockReport = packageLockReport;
 
-    // Если указаны начальная и конечная функции, строим граф вызовов
+    // Выводим статистику из отчета
+    console.log(`✅ Отчет создан. Статистика:`);
+    console.log(`   • Пакетов: ${Object.keys(packageLockReport.packages || {}).length}`);
+
+    if (enhancedReport.entityStats) {
+      console.log(`   • Функций: ${enhancedReport.entityStats.totalFunctions || 0}`);
+      console.log(`   • Классов: ${enhancedReport.entityStats.totalClasses || 0}`);
+      console.log(`   • Вызовов: ${enhancedReport.entityStats.totalCalls || 0}`);
+    }
+
+    // ✅ Строим граф вызовов между функциями если указаны fromFunction и toFunction
     if (fromFunction && toFunction) {
-      // Собираем все функции из entities
       const allFuncs = new Map<
         string,
         { module: string; line: number; isAsync: boolean; calls: string[] }
       >();
-      for (const [modulePath, entities] of Object.entries(normalizedEntities)) {
+      for (const [modulePath, entities] of Object.entries(finalEntitiesMap)) {
         for (const func of entities.functions) {
           allFuncs.set(func.name, {
             module: modulePath,

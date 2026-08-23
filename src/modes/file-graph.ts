@@ -2,23 +2,29 @@
 import path from 'path';
 import { parseFile, walk } from '../core/ast-parser.js';
 import { normalizePathForDisplay } from '../utils/path-utils.js';
+import { collectDeclaredFunctions, buildCallGraphFromAST } from '../core/call-collector.js';
 
 /**
  * Рекурсивно собирает объявления функций, классов и переменных из AST
  * @param node Текущий узел AST
  * @param declarations Объект для хранения объявлений
+ * @param depth Текущая глубина рекурсии
+ * @param maxDepth Максимальная глубина рекурсии
  */
 function collectDeclarationsRecursive(
   node: any,
-  declarations: Record<string, { type: string; node: any }>
+  declarations: Record<string, { type: string; node: any }>,
+  depth: number = 0,
+  maxDepth: number = 100
 ): void {
   if (!node || typeof node !== 'object') return;
+  if (depth > maxDepth) return;
 
   // ✅ Обработка экспортов
   if (node.type === 'ExportNamedDeclaration') {
     if (node.declaration) {
       // Рекурсивно обрабатываем declaration
-      collectDeclarationsRecursive(node.declaration, declarations);
+      collectDeclarationsRecursive(node.declaration, declarations, depth + 1, maxDepth);
     }
     return; // Не продолжаем дальше, чтобы не дублировать
   }
@@ -58,6 +64,38 @@ function collectDeclarationsRecursive(
           declarations[decl.id.name] = { type: 'variable', node: decl };
         }
       });
+    }
+  }
+
+  // ✅ НОВОЕ: собираем вложенные функции внутри блоков
+  if (node.type === 'BlockStatement' && node.body) {
+    for (const child of node.body) {
+      if (child.type === 'FunctionDeclaration' && child.id) {
+        // Добавляем вложенную функцию в declarations
+        declarations[child.id.name] = { type: 'function', node: child };
+      }
+    }
+  }
+
+  // ✅ НОВОЕ: собираем функции внутри IIFE и других выражений
+  if (node.type === 'CallExpression' && node.callee?.type === 'FunctionExpression') {
+    const funcNode = node.callee;
+    if (funcNode.id?.name) {
+      declarations[funcNode.id.name] = { type: 'function', node: funcNode };
+    }
+    // Также проверяем тело функции
+    if (funcNode.body) {
+      collectDeclarationsRecursive(funcNode.body, declarations, depth + 1, maxDepth);
+    }
+  }
+
+  // ✅ НОВОЕ: собираем стрелочные функции в переменных
+  if (node.type === 'VariableDeclarator' && node.id?.name) {
+    if (
+      node.init &&
+      (node.init.type === 'ArrowFunctionExpression' || node.init.type === 'FunctionExpression')
+    ) {
+      declarations[node.id.name] = { type: 'function', node: node.init };
     }
   }
 
@@ -126,7 +164,7 @@ function collectDeclarationsRecursive(
   const validChildren = childrenToTraverse.filter(child => child && typeof child === 'object');
 
   for (const child of validChildren) {
-    collectDeclarationsRecursive(child, declarations);
+    collectDeclarationsRecursive(child, declarations, depth + 1, maxDepth);
   }
 }
 
@@ -164,6 +202,57 @@ export function buildFileInternalGraph(
   // Используем рекурсивный сбор объявлений вместо обхода только верхнего уровня
   try {
     collectDeclarationsRecursive(ast, declarations);
+
+    // ✅ НОВОЕ: используем collectDeclaredFunctions для поиска пропущенных функций
+    const declaredFunctions = collectDeclaredFunctions(ast);
+    for (const funcName of declaredFunctions) {
+      if (!declarations[funcName]) {
+        // Находим узел функции в AST
+        let found = false;
+        function findFunction(node: any) {
+          if (found) return;
+          if (!node || typeof node !== 'object') return;
+
+          if (node.type === 'FunctionDeclaration' && node.id?.name === funcName) {
+            declarations[funcName] = { type: 'function', node: node };
+            found = true;
+            return;
+          }
+
+          if (node.type === 'VariableDeclarator' && node.id?.name === funcName) {
+            if (
+              node.init &&
+              (node.init.type === 'ArrowFunctionExpression' ||
+                node.init.type === 'FunctionExpression')
+            ) {
+              declarations[funcName] = { type: 'function', node: node.init };
+              found = true;
+              return;
+            }
+          }
+
+          for (const key of Object.keys(node)) {
+            const child = node[key];
+            if (child && typeof child === 'object') {
+              if (Array.isArray(child)) {
+                for (const item of child) {
+                  if (item && typeof item === 'object') {
+                    findFunction(item);
+                  }
+                }
+              } else {
+                findFunction(child);
+              }
+            }
+          }
+        }
+        findFunction(ast);
+
+        if (found) {
+          console.log(`   🔍 Найдена пропущенная функция: ${funcName}`);
+        }
+      }
+    }
   } catch (error) {
     console.warn(`⚠️ Ошибка при сборе объявлений: ${error}`);
     // Возвращаем пустой граф вместо null
@@ -173,6 +262,14 @@ export function buildFileInternalGraph(
     };
   }
 
+  // ✅ НОВОЕ: используем buildCallGraphFromAST для полного графа вызовов
+  let callGraphFromAST: Map<string, Set<string>> | null = null;
+  try {
+    callGraphFromAST = buildCallGraphFromAST(ast);
+  } catch (error) {
+    console.warn(`⚠️ Ошибка при построении графа вызовов из AST: ${error}`);
+  }
+
   // Поиск связей между объявлениями
   Object.keys(declarations).forEach((currentEntity: string) => {
     const declaration = declarations[currentEntity];
@@ -180,12 +277,42 @@ export function buildFileInternalGraph(
 
     const entityNode = declaration.node;
 
+    // ✅ Используем callGraphFromAST если доступен
+    if (callGraphFromAST) {
+      const calls = callGraphFromAST.get(currentEntity);
+      if (calls) {
+        for (const call of calls) {
+          if (call !== currentEntity && declarations[call]) {
+            relations.push({ from: currentEntity, to: call });
+          }
+        }
+      }
+    }
+
+    // ✅ ДОПОЛНИТЕЛЬНО: обход AST для поиска вызовов (как резерв)
     walk(entityNode, {
       enter(node: any) {
         // Если встретили идентификатор (вызов переменной/функции)
         if (node.type === 'Identifier') {
           const name = node.name;
           // Проверяем, ссылается ли он на другое объявление в этом же файле
+          if (name !== currentEntity && declarations[name]) {
+            // Проверяем, что это не часть объявления
+            const parent = node.parent;
+            if (
+              parent &&
+              parent.type !== 'FunctionDeclaration' &&
+              parent.type !== 'VariableDeclarator' &&
+              parent.type !== 'ClassDeclaration'
+            ) {
+              relations.push({ from: currentEntity, to: name });
+            }
+          }
+        }
+
+        // ✅ НОВОЕ: прямой поиск CallExpression
+        if (node.type === 'CallExpression' && node.callee?.type === 'Identifier') {
+          const name = node.callee.name;
           if (name !== currentEntity && declarations[name]) {
             relations.push({ from: currentEntity, to: name });
           }
@@ -200,15 +327,38 @@ export function buildFileInternalGraph(
     fileGraph[key] = [];
   });
 
-  relations.forEach((rel: { from: string; to: string }) => {
-    const fromGraph = fileGraph[rel.from];
-    if (fromGraph && !fromGraph.includes(rel.to)) {
-      fromGraph.push(rel.to);
+  // ✅ Удаляем дубликаты связей
+  const uniqueRelations = new Map<string, Set<string>>();
+  for (const rel of relations) {
+    if (!uniqueRelations.has(rel.from)) {
+      uniqueRelations.set(rel.from, new Set());
     }
-  });
+    uniqueRelations.get(rel.from)!.add(rel.to);
+  }
 
-  // ✅ Нормализуем корневой ключ
+  for (const [from, toSet] of uniqueRelations) {
+    if (fileGraph[from]) {
+      fileGraph[from] = Array.from(toSet);
+    }
+  }
+
+  // ✅ НОРМАЛИЗУЕМ КОРНЕВОЙ КЛЮЧ
   const normalizedRootKey = normalizePathForDisplay(path.basename(filePath));
+
+  // ✅ ЛОГИРУЕМ СТАТИСТИКУ
+  const totalFunctions = Object.keys(declarations).filter(
+    key => declarations[key]?.type === 'function' || declarations[key]?.type === 'function'
+  ).length;
+  const totalEdges = relations.length;
+
+  console.log(`   📊 Внутренний граф ${path.basename(filePath)}:`);
+  console.log(`      • Функций: ${totalFunctions}`);
+  console.log(`      • Связей: ${totalEdges}`);
+  console.log(`      • Узлов: ${Object.keys(fileGraph).length}`);
+
+  if (totalEdges === 0 && totalFunctions > 0) {
+    console.log(`      ℹ️ Нет связей между функциями (возможно, все функции изолированы)`);
+  }
 
   return {
     rootKey: normalizedRootKey,

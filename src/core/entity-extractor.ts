@@ -1,6 +1,14 @@
-// packages/ast-analyzer/src/core/entity-extractor.ts
+// src/core/entity-extractor.ts
 import { walk } from 'estree-walker';
 import path from 'path';
+import {
+  collectAllCalls,
+  collectAllCallsUnfiltered,
+  collectDeclaredFunctions,
+  buildCallGraphFromAST,
+  findUnusedFunctions,
+  findUnresolvedCalls,
+} from './call-collector.js';
 
 export interface FunctionInfo {
   name: string;
@@ -261,9 +269,9 @@ function analyzeSecurity(body: string): FunctionInfo['security'] {
 
   const sensitivePatterns = [
     /['"][a-zA-Z0-9_\-]{32,}['"]/,
-    /['"]sk-[a-zA-Z0-9]{20,}['"]/,
-    /['"]gh[pous]_[a-zA-Z0-9]{36,}['"]/,
-    /['"]xox[baprs]-[a-zA-Z0-9-]+['"]/,
+    /'"]sk-[a-zA-Z0-9]{20,}['"]/,
+    /'"]gh[pous]_[a-zA-Z0-9]{36,}['"]/,
+    /'"]xox[baprs]-[a-zA-Z0-9-]+['"]/,
   ];
 
   for (const pattern of sensitivePatterns) {
@@ -922,34 +930,117 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
     console.warn(`⚠️ Ошибка при обходе AST для ${filePath || 'unknown'}:`, error);
   }
 
+  // ✅ СОБИРАЕМ ВСЕ ИМЕНА ФУНКЦИЙ
   const functionNames = new Set<string>();
   for (const func of functions) {
     functionNames.add(func.name);
   }
 
-  function collectCallsFromBody(body: string, funcName: string): string[] {
-    const calls: string[] = [];
-    if (!body) return calls;
+  // ✅ ИСПОЛЬЗУЕМ collectAllCalls ДЛЯ СБОРА ВСЕХ ВЫЗОВОВ
+  for (const func of functions) {
+    let funcNode: any = null;
+    let found = false;
 
-    const callRegex = /\b(\w+)\s*\(/g;
-    let match;
-    while ((match = callRegex.exec(body)) !== null) {
-      const calledName = match[1];
-      if (calledName && calledName !== funcName && functionNames.has(calledName)) {
-        calls.push(calledName);
+    function findFunctionNode(node: any) {
+      if (found) return;
+      if (!node || typeof node !== 'object') return;
+
+      if (node.type === 'FunctionDeclaration' && node.id?.name === func.name) {
+        funcNode = node;
+        found = true;
+        return;
+      }
+
+      if (node.type === 'FunctionExpression' && node.id?.name === func.name) {
+        funcNode = node;
+        found = true;
+        return;
+      }
+
+      if (node.type === 'VariableDeclarator' && node.id?.name === func.name) {
+        if (
+          node.init &&
+          (node.init.type === 'ArrowFunctionExpression' || node.init.type === 'FunctionExpression')
+        ) {
+          funcNode = node.init;
+          found = true;
+          return;
+        }
+      }
+
+      if (node.type === 'MethodDefinition' && node.key?.name === func.name) {
+        funcNode = node.value;
+        found = true;
+        return;
+      }
+
+      for (const key of Object.keys(node)) {
+        const child = node[key];
+        if (child && typeof child === 'object') {
+          if (Array.isArray(child)) {
+            for (const item of child) {
+              if (item && typeof item === 'object') {
+                findFunctionNode(item);
+              }
+            }
+          } else {
+            findFunctionNode(child);
+          }
+        }
       }
     }
 
-    return calls;
-  }
+    findFunctionNode(ast);
 
-  for (const func of functions) {
-    if (func.body) {
-      const calls = collectCallsFromBody(func.body, func.name);
-      func.calls = [...new Set(calls)];
+    if (funcNode) {
+      // ✅ ИСПОЛЬЗУЕМ collectAllCalls С ОПЦИЕЙ includeAllIdentifiers
+      const calls = collectAllCalls(funcNode, functionNames, func.name, {
+        includeAllIdentifiers: true,
+        includeLocalCalls: true,
+      });
+      func.calls = calls;
+
+      if (calls.length > 0 && process.env.DEBUG === 'true') {
+        console.log(`  📞 ${func.name} вызывает: ${calls.join(', ')}`);
+      }
     }
   }
 
+  // ✅ ИСПОЛЬЗУЕМ collectAllCallsUnfiltered ДЛЯ ПОИСКА ВСЕХ ВЫЗОВОВ (включая необъявленные)
+  const allCallsUnfiltered = collectAllCallsUnfiltered(ast);
+  if (allCallsUnfiltered.length > 0 && process.env.DEBUG === 'true') {
+    console.log(
+      `  📞 Все вызовы в файле (включая необъявленные): ${allCallsUnfiltered.join(', ')}`
+    );
+  }
+
+  // ✅ ИСПОЛЬЗУЕМ collectDeclaredFunctions ДЛЯ ПОЛУЧЕНИЯ ВСЕХ ОБЪЯВЛЕННЫХ ФУНКЦИЙ
+  const allDeclared = collectDeclaredFunctions(ast);
+  if (allDeclared.size > 0 && process.env.DEBUG === 'true') {
+    console.log(`  📦 Все объявленные функции: ${Array.from(allDeclared).join(', ')}`);
+  }
+
+  // ✅ ИСПОЛЬЗУЕМ buildCallGraphFromAST ДЛЯ ПОСТРОЕНИЯ ПОЛНОГО ГРАФА ВЫЗОВОВ
+  const fullCallGraph = buildCallGraphFromAST(ast);
+  if (fullCallGraph.size > 0 && process.env.DEBUG === 'true') {
+    for (const [caller, callees] of fullCallGraph) {
+      console.log(`  🔗 ${caller} → ${Array.from(callees).join(', ')}`);
+    }
+  }
+
+  // ✅ ИСПОЛЬЗУЕМ findUnusedFunctions ДЛЯ ПОИСКА МЕРТВОГО КОДА
+  const unused = findUnusedFunctions(ast, fullCallGraph);
+  if (unused.length > 0 && process.env.DEBUG === 'true') {
+    console.log(`  🗑️ Неиспользуемые функции: ${unused.join(', ')}`);
+  }
+
+  // ✅ ИСПОЛЬЗУЕМ findUnresolvedCalls ДЛЯ ПОИСКА НЕРАЗРЕШЕННЫХ ВЫЗОВОВ
+  const unresolved = findUnresolvedCalls(ast);
+  if (unresolved.length > 0 && process.env.DEBUG === 'true') {
+    console.log(`  ❓ Неразрешенные вызовы: ${unresolved.join(', ')}`);
+  }
+
+  // Строим calledBy (кто вызывает функцию)
   for (const func of functions) {
     for (const otherFunc of functions) {
       if (otherFunc.calls.includes(func.name) && !func.calledBy.includes(otherFunc.name)) {
@@ -958,6 +1049,7 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
     }
   }
 
+  // Строим callGraph
   for (const func of functions) {
     if (!callGraph[func.name]) {
       callGraph[func.name] = [];

@@ -1,387 +1,227 @@
 // src/reporters/json-reporter.ts
+// Основной файл - только экспорты и сборка отчета
+
 import fs from 'fs';
 import path from 'path';
 import { Project, Node } from 'ts-morph';
-import type { EntitiesResult } from '../core/entity-extractor.js';
-import { analyzeVueComponent } from '../modes/vue-analyzer.js';
+
+// Импорт всех модулей
+import type {
+  // Типы
+  GraphData,
+  EntitiesResult,
+  EnhancedEntityInfo,
+  EnhancedPackageInfo,
+  EnhancedPackageLockReport,
+  ModuleNode,
+  ModuleEdge,
+  ModuleGraph,
+  EntityNode,
+  EntityEdge,
+  EntityGraph,
+  FullAnalysis,
+  ArchitectureMetrics,
+  ProjectSummary,
+  VueAnalysis,
+  PackageLockImportInfo,
+  FunctionEntity, // ✅ ИСПОЛЬЗУЕМ ОБЩИЙ ТИП
+  EnhancedFunctionInfo,
+  EnhancedClassInfo,
+} from './modules/types.js';
+
+import {
+  ensureArray,
+  safeString,
+  safeNumber,
+  safeBoolean,
+  isRealObject,
+  filterRealObjects,
+  sanitizeEntities,
+  safeTraverseAST,
+  findProjectRoot,
+  findFileInProject,
+  findModuleForEntity,
+} from './modules/utils.js';
+
+import {
+  createMetadata,
+  getReportName,
+  getReportVersion,
+  getLockfileVersion,
+} from './modules/metadata.js';
+
+import { calculateEntityStats, calculateFileStats } from './modules/statistics.js';
+
+import {
+  buildDependencyGraph,
+  findCycles,
+  getMaxDepth,
+  getModulesByLevel,
+} from './modules/graphs.js';
+
+import { buildExecutionGraph, buildImportExportFlow } from './modules/flows.js';
+
+import { buildArchitectureMetrics } from './modules/architecture.js';
+
+import { buildSummary } from './modules/summary.js';
+
+import { buildPackages } from './modules/packages.js';
+
+import { convertToEnhancedEntityInfo } from './modules/converters.js';
 
 // ============================================================
-// ✅ ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ БЕЗОПАСНОЙ РАБОТЫ С ТИПАМИ
+// ЭКСПОРТ ВСЕХ ТИПОВ
 // ============================================================
 
-function ensureArray<T>(value: any): T[] {
-  if (Array.isArray(value)) return value;
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
+export type {
+  GraphData,
+  EntitiesResult,
+  EnhancedEntityInfo,
+  EnhancedPackageInfo,
+  EnhancedPackageLockReport,
+  PackageLockImportInfo,
+  ModuleNode,
+  ModuleEdge,
+  ModuleGraph,
+  EntityNode,
+  EntityEdge,
+  EntityGraph,
+  FullAnalysis,
+  ArchitectureMetrics,
+  ProjectSummary,
+  VueAnalysis,
+  FunctionEntity, // ✅ ЭКСПОРТИРУЕМ ОБЩИЙ ТИП
+};
+
+// ============================================================
+// ЭКСПОРТ ВСЕХ ФУНКЦИЙ
+// ============================================================
+
+// Экспорт утилит
+export {
+  ensureArray,
+  safeString,
+  safeNumber,
+  safeBoolean,
+  isRealObject,
+  filterRealObjects,
+  sanitizeEntities,
+  safeTraverseAST,
+  findProjectRoot,
+  findFileInProject,
+  findModuleForEntity,
+} from './modules/utils.js';
+
+// Экспорт метаданных
+export {
+  createMetadata,
+  getReportName,
+  getReportVersion,
+  getLockfileVersion,
+} from './modules/metadata.js';
+
+// Экспорт статистики
+export { calculateEntityStats, calculateFileStats } from './modules/statistics.js';
+
+// Экспорт графов
+export {
+  buildDependencyGraph,
+  findCycles,
+  getMaxDepth,
+  getModulesByLevel,
+} from './modules/graphs.js';
+
+// Экспорт потоков
+export { buildExecutionGraph, buildImportExportFlow } from './modules/flows.js';
+
+// Экспорт архитектуры
+export { buildArchitectureMetrics } from './modules/architecture.js';
+
+// Экспорт резюме
+export { buildSummary } from './modules/summary.js';
+
+// Экспорт пакетов
+export { buildPackages } from './modules/packages.js';
+
+// Экспорт конвертеров
+export { convertToEnhancedEntityInfo } from './modules/converters.js';
+
+// ============================================================
+// ОСНОВНАЯ ФУНКЦИЯ ПОСТРОЕНИЯ ОТЧЕТА
+// ============================================================
+
+export function buildEnhancedPackageLockReport(
+  rootKey: string,
+  graph: Record<string, string[]>,
+  entitiesMap: Record<string, EntitiesResult>,
+  _filePaths?: string[]
+): EnhancedPackageLockReport {
+  // Находим корень проекта
+  const projectRoot = findProjectRoot(process.cwd()) || process.cwd();
+
+  // 1. Строим метаданные
+  const metadata = createMetadata();
+
+  // 2. Строим пакеты (ВКЛЮЧАЕТ Vue-анализ через modules/packages.ts)
+  const packages = buildPackages(rootKey, graph, entitiesMap, projectRoot);
+
+  // 3. Строим граф зависимостей
+  const dependencyGraph = buildDependencyGraph(graph);
+
+  // 4. Строим граф выполнения
+  const executionGraph = buildExecutionGraph(rootKey, entitiesMap, { rootKey, graph }, packages);
+
+  // 5. Строим потоки импортов/экспортов
+  const importExportFlow = buildImportExportFlow(graph, entitiesMap, { rootKey, graph }, packages);
+
+  // 6. Строим граф вызовов с правильной типизацией
+  const callGraph: Record<string, string[]> = {};
+  for (const entities of Object.values(entitiesMap)) {
+    if (!entities) continue;
+
+    // ✅ ИСПОЛЬЗУЕМ FunctionEntity из общих типов
+    const functions = ensureArray(entities.functions) as FunctionEntity[];
+    for (const func of functions) {
+      const key = func.isMethod && func.className ? `${func.className}.${func.name}` : func.name;
+      if (!callGraph[key]) {
+        callGraph[key] = [];
+      }
+      const calls = func.calls || [];
+      callGraph[key] = calls;
     }
   }
-  return [];
-}
 
-function safeString(value: any): string {
-  if (typeof value === 'string') return value;
-  if (value === null || value === undefined) return '';
-  return String(value);
-}
+  // 7. Собираем статистику
+  const entityStats = calculateEntityStats(packages, callGraph);
+  const fileStats = calculateFileStats(packages);
 
-function safeNumber(value: any): number {
-  if (typeof value === 'number') return value;
-  if (typeof value === 'string') {
-    const parsed = parseInt(value, 10);
-    return isNaN(parsed) ? 0 : parsed;
-  }
-  return 0;
-}
+  // 8. Строим архитектурные метрики
+  const architectureMetrics = buildArchitectureMetrics(
+    packages,
+    callGraph,
+    dependencyGraph.outwardDependencies
+  );
 
-function safeBoolean(value: any): boolean {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'string') {
-    return value === 'true' || value === '1';
-  }
-  return !!value;
+  // 9. Строим резюме
+  const summary = buildSummary(rootKey, architectureMetrics, packages);
+
+  // 10. Формируем итоговый отчет
+  return {
+    ...metadata,
+    packages,
+    dependencyGraph,
+    executionGraph,
+    importExportFlow,
+    callGraph,
+    entityStats,
+    fileStats,
+    architectureMetrics,
+    summary,
+  };
 }
 
 // ============================================================
-// ✅ ФИЛЬТР ДЛЯ РЕАЛЬНЫХ ОБЪЕКТОВ
-// ============================================================
-
-function isRealObject(item: any): boolean {
-  return item && typeof item === 'object' && !Array.isArray(item) && item.name !== undefined;
-}
-
-// ============================================================
-// СУЩЕСТВУЮЩИЕ ТИПЫ
-// ============================================================
-
-export interface ModuleNode {
-  id: string;
-  name: string;
-  type: 'module' | 'component' | 'vue';
-  level: number;
-  metadata: {
-    size: number;
-    lines: number;
-    language: string;
-    isEntry: boolean;
-  };
-}
-
-export interface ModuleEdge {
-  from: string;
-  to: string;
-  type: 'import' | 'external' | 're-export';
-  specifiers: string[];
-}
-
-export interface ModuleGraph {
-  nodes: ModuleNode[];
-  edges: ModuleEdge[];
-}
-
-export interface EntityNode {
-  id: string;
-  name: string;
-  type: 'function' | 'class' | 'constant' | 'interface' | 'type' | 'variable';
-  module: string;
-  line: number;
-  metadata: Record<string, any>;
-}
-
-export interface EntityEdge {
-  from: string;
-  to: string;
-  type:
-    | 'function_call'
-    | 'constant_reference'
-    | 'class_extends'
-    | 'class_implements'
-    | 'interface_extends'
-    | 'type_reference'
-    | 'method_call'
-    | 'property_access'
-    | 'import_binding'
-    | 'export_binding'
-    | 'parameter_type'
-    | 'return_type';
-  line?: number;
-}
-
-export interface EntityGraph {
-  nodes: EntityNode[];
-  edges: EntityEdge[];
-}
-
-export interface FullAnalysis {
-  version: string;
-  root: string;
-  timestamp: string;
-  stats: {
-    totalModules: number;
-    totalEntities: number;
-    hasCycles: boolean;
-    cycles: string[][];
-  };
-  moduleGraph: ModuleGraph;
-  entityGraph: EntityGraph;
-}
-
-export interface GraphData {
-  rootKey: string;
-  graph: Record<string, string[]>;
-  hasCycles?: boolean;
-  cyclicEdges?: string[];
-}
-
-// ============================================================
-// НОВЫЕ ТИПЫ ДЛЯ РАСШИРЕННОГО ОТЧЕТА
-// ============================================================
-
-export interface EnhancedFunctionInfo {
-  name: string;
-  params: string[];
-  paramTypes?: string[];
-  line: number;
-  startLine?: number;
-  endLine?: number;
-  isAsync: boolean;
-  isExported: boolean;
-  isMethod?: boolean;
-  className?: string;
-  calls: string[];
-  calledBy: string[];
-  returnType?: string;
-  body?: string;
-  isNested?: boolean;
-  parentFunction?: string;
-  isArrow?: boolean;
-  isEventHandler?: boolean;
-  eventType?: string;
-  depth?: number;
-  complexity?: number;
-  security?: {
-    hasEval: boolean;
-    hasProcessEnv: boolean;
-    hasSensitiveData: boolean;
-    hasExec: boolean;
-    hasPassword: boolean;
-  };
-  _safeInfo?: any;
-}
-
-export interface EnhancedConstantInfo {
-  name: string;
-  value?: any;
-  line: number;
-  isExported: boolean;
-  type?: string;
-  _safeInfo?: any;
-}
-
-export interface EnhancedVariableInfo {
-  name: string;
-  value?: any;
-  line: number;
-  isExported: boolean;
-  type?: string;
-  _safeInfo?: any;
-}
-
-export interface EnhancedInterfaceInfo {
-  name: string;
-  properties: string[];
-  line: number;
-  isExported: boolean;
-  extends?: string[];
-  startLine?: number;
-  endLine?: number;
-  _safeInfo?: any;
-}
-
-export interface EnhancedTypeInfo {
-  name: string;
-  definition: string;
-  line: number;
-  isExported: boolean;
-  _safeInfo?: any;
-}
-
-export interface EnhancedClassInfo {
-  name: string;
-  methods: string[];
-  methodDetails?: {
-    name: string;
-    params: string[];
-    returnType?: string;
-    isAsync: boolean;
-    line: number;
-  }[];
-  properties: string[];
-  propertyDetails?: {
-    name: string;
-    type?: string;
-    line: number;
-  }[];
-  line: number;
-  isExported: boolean;
-  extends?: string;
-  implements?: string[];
-  startLine?: number;
-  endLine?: number;
-  _safeInfo?: any;
-}
-
-export interface EnhancedEntityInfo {
-  functions: EnhancedFunctionInfo[];
-  constants: EnhancedConstantInfo[];
-  variables: EnhancedVariableInfo[];
-  interfaces: EnhancedInterfaceInfo[];
-  types: EnhancedTypeInfo[];
-  classes: EnhancedClassInfo[];
-}
-
-export interface VueAnalysis {
-  props: {
-    names: string[];
-    types: Record<string, string>;
-    required: Record<string, boolean>;
-    defaults: Record<string, any>;
-  };
-  emits: {
-    names: string[];
-    types: Record<string, string>;
-  };
-  slots: string[];
-  composables: string[];
-  templateComplexity: number;
-  scriptType: 'setup' | 'options';
-  isTS: boolean;
-  stats: {
-    scriptLines: number;
-    templateLines: number;
-    styleCount: number;
-  };
-}
-
-export interface ArchitectureMetrics {
-  totalModules: number;
-  totalFunctions: number;
-  totalClasses: number;
-  totalConstants: number;
-  totalInterfaces: number;
-  totalTypes: number;
-  totalVariables: number;
-  totalCalls: number;
-  vueComponents: number;
-  totalComposables: number;
-  hasCycles: boolean;
-  maxDepth: number;
-  modulesByLevel: Record<number, string[]>;
-  isAcyclic: boolean;
-}
-
-export interface ProjectSummary {
-  projectType: 'monorepo' | 'single' | 'unknown';
-  entryPoint: string;
-  totalModules: number;
-  totalFunctions: number;
-  vueComponents: number;
-  hasCycles: boolean;
-  maxDepth: number;
-  architectureHealth: string;
-}
-
-export interface EnhancedPackageInfo {
-  version: string;
-  resolved: string;
-  displayPath?: string;
-  type: 'module' | 'commonjs';
-  language: 'typescript' | 'javascript' | 'vue' | 'jsx';
-  isEntry: boolean;
-  imports: Record<string, any>;
-  exports: Record<string, any>;
-  entities: EnhancedEntityInfo;
-  fileStats: {
-    size: number;
-    lines: number;
-    functions: number;
-    classes: number;
-    constants: number;
-    interfaces: number;
-    types: number;
-    variables: number;
-  };
-  vueAnalysis?: VueAnalysis;
-}
-
-export interface EnhancedPackageLockReport {
-  name: string;
-  version: string;
-  lockfileVersion: number;
-  packages: Record<string, EnhancedPackageInfo>;
-  dependencyGraph: {
-    direction: 'bidirectional';
-    inwardDependencies: Record<string, string[]>;
-    outwardDependencies: Record<string, string[]>;
-  };
-  executionGraph: {
-    entryPoint: string;
-    direction: 'top-down';
-    entryFunctions: string[];
-    executionFlow: {
-      type: 'sequential' | 'parallel' | 'conditional';
-      steps: {
-        func: string;
-        module: string;
-        direction: 'inward' | 'outward' | 'self';
-        isAsync: boolean;
-        branches?: Record<string, any>;
-      }[];
-    };
-  };
-  importExportFlow: {
-    imports: Record<string, {
-      importsFrom: {
-        module: string;
-        type: 'named' | 'default' | 'namespace';
-        imports: string[];
-      }[];
-    }>;
-    exports: Record<string, {
-      exportsTo: {
-        module: string;
-        type: 'named' | 'default';
-        exports: string[];
-      }[];
-    }>;
-  };
-  callGraph?: Record<string, string[]>;
-  entityStats?: {
-    totalFunctions: number;
-    totalConstants: number;
-    totalVariables: number;
-    totalInterfaces: number;
-    totalTypes: number;
-    totalClasses: number;
-    totalCalls: number;
-    totalExportedFunctions: number;
-    totalAsyncFunctions: number;
-  };
-  fileStats?: {
-    totalFiles: number;
-    totalSize: number;
-    totalLines: number;
-  };
-  timestamp?: string;
-  architectureMetrics?: ArchitectureMetrics;
-  summary?: ProjectSummary;
-}
-
-// ============================================================
-// СУЩЕСТВУЮЩИЕ ФУНКЦИИ
+// СУЩЕСТВУЮЩИЕ ФУНКЦИИ ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ
 // ============================================================
 
 /**
@@ -428,11 +268,12 @@ export function saveFullAnalysis(
 }
 
 // ============================================================
-// ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ savePackageLockReport
+// 🔧 ИСПРАВЛЕННАЯ ФУНКЦИЯ savePackageLockReport
 // ============================================================
 
 /**
  * Сохраняет отчет в стиле package-lock.json
+ * ✅ ИСПРАВЛЕНО: сохраняет все данные без потерь (calls, calledBy, body, complexity, security)
  */
 export function savePackageLockReport(
   rootKey: string,
@@ -441,10 +282,9 @@ export function savePackageLockReport(
   filePaths: string[],
   outputPath: string
 ): void {
-  // ✅ НОРМАЛИЗУЕМ ENTITIES MAP ПЕРЕД ИСПОЛЬЗОВАНИЕМ
+  // Нормализуем entities map - СОХРАНЯЕМ ВСЕ ДАННЫЕ
   const normalizedEntitiesMap: Record<string, EntitiesResult> = {};
   for (const [key, entities] of Object.entries(entitiesMap)) {
-    // ✅ ПРОВЕРЯЕМ, ЧТО entities СУЩЕСТВУЕТ
     if (!entities || typeof entities !== 'object') {
       normalizedEntitiesMap[key] = {
         functions: [],
@@ -462,33 +302,60 @@ export function savePackageLockReport(
       continue;
     }
 
+    // ✅ СОХРАНЯЕМ ВСЕ ДАННЫЕ БЕЗ ПОТЕРЬ
     normalizedEntitiesMap[key] = {
-      functions: ensureArray((entities as any).functions),
-      classes: ensureArray((entities as any).classes),
-      constants: ensureArray((entities as any).constants),
-      interfaces: ensureArray((entities as any).interfaces),
-      types: ensureArray((entities as any).types),
-      variables: ensureArray((entities as any).variables),
-      imports: ensureArray((entities as any).imports),
-      exports: ensureArray((entities as any).exports),
-      callGraph: (entities as any).callGraph || {},
-      moduleName: (entities as any).moduleName || '',
-      filePath: (entities as any).filePath || '',
+      functions: ensureArray(entities.functions).map((f: any) => ({
+        ...f,
+        // ✅ ГАРАНТИРУЕМ, ЧТО calls И calledBy - МАССИВЫ
+        calls: ensureArray(f.calls),
+        calledBy: ensureArray(f.calledBy),
+        body: f.body || '',
+        complexity: f.complexity || 1,
+        security: f.security || {
+          hasEval: false,
+          hasProcessEnv: false,
+          hasSensitiveData: false,
+          hasExec: false,
+          hasPassword: false,
+        },
+      })),
+      classes: ensureArray(entities.classes),
+      constants: ensureArray(entities.constants),
+      interfaces: ensureArray(entities.interfaces),
+      types: ensureArray(entities.types),
+      variables: ensureArray(entities.variables),
+      imports: ensureArray(entities.imports),
+      exports: ensureArray(entities.exports),
+      callGraph: entities.callGraph || {},
+      moduleName: entities.moduleName || '',
+      filePath: entities.filePath || '',
     };
   }
 
-  const report = buildEnhancedPackageLockReport(
-    rootKey,
-    graph,
-    normalizedEntitiesMap,
-    filePaths
+  // Строим отчет
+  const report = buildEnhancedPackageLockReport(rootKey, graph, normalizedEntitiesMap, filePaths);
+
+  // ✅ НЕ ИСПОЛЬЗУЕМ safeTraverseAST, КОТОРЫЙ ТЕРЯЕТ ДАННЫЕ
+  // Используем прямую сериализацию с обработкой Map и Set
+  const json = JSON.stringify(
+    report,
+    (key, value) => {
+      // Обрабатываем Map и Set
+      if (value instanceof Map) {
+        return Object.fromEntries(value);
+      }
+      if (value instanceof Set) {
+        return Array.from(value);
+      }
+      // Пропускаем внутренние поля
+      if (key === '_safeInfo' || key === '__proto__' || key === 'constructor') {
+        return undefined;
+      }
+      return value;
+    },
+    2
   );
 
-  // ✅ УБЕЖДАЕМСЯ, ЧТО ВСЕ СУЩНОСТИ - МАССИВЫ
-  const sanitizedReport = sanitizeEntities(report);
-
-  const safeReport = safeTraverseAST(sanitizedReport);
-  const json = JSON.stringify(safeReport, null, 2);
   const outputDir = path.dirname(outputPath);
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
@@ -515,48 +382,6 @@ export function savePackageLockReport(
   }
 }
 
-// ============================================================
-// ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ sanitizeEntities
-// ============================================================
-
-function sanitizeEntities(report: any): any {
-  if (!report || !report.packages) return report;
-
-  const sanitized = { ...report };
-  sanitized.packages = {};
-
-  for (const [modulePath, pkg] of Object.entries(report.packages)) {
-    // ✅ ПРОВЕРЯЕМ, ЧТО pkg СУЩЕСТВУЕТ И ЭТО ОБЪЕКТ
-    if (!pkg || typeof pkg !== 'object') {
-      sanitized.packages[modulePath] = pkg;
-      continue;
-    }
-
-    // ✅ БЕЗОПАСНО ПОЛУЧАЕМ entities
-    const entities = (pkg as any).entities || {};
-
-    // ✅ ФИЛЬТРУЕМ ТОЛЬКО РЕАЛЬНЫЕ ОБЪЕКТЫ
-    const filterRealObjects = (arr: any[]): any[] => {
-      if (!Array.isArray(arr)) return [];
-      return arr.filter((item: any) => isRealObject(item));
-    };
-
-    sanitized.packages[modulePath] = {
-      ...pkg,
-      entities: {
-        functions: filterRealObjects(ensureArray(entities.functions)),
-        constants: filterRealObjects(ensureArray(entities.constants)),
-        variables: filterRealObjects(ensureArray(entities.variables)),
-        interfaces: filterRealObjects(ensureArray(entities.interfaces)),
-        types: filterRealObjects(ensureArray(entities.types)),
-        classes: filterRealObjects(ensureArray(entities.classes)),
-      },
-    };
-  }
-
-  return sanitized;
-}
-
 /**
  * Сохраняет результат графа вызовов между функциями
  */
@@ -565,10 +390,6 @@ export function saveCallGraphResult(callGraphResult: any, outputPath: string): v
   const json = JSON.stringify(safeData, null, 2);
   fs.writeFileSync(outputPath, json, 'utf-8');
 }
-
-// ============================================================
-// СУЩЕСТВУЮЩИЕ ФУНКЦИИ ПОСТРОЕНИЯ ГРАФОВ
-// ============================================================
 
 /**
  * Строит граф модулей
@@ -630,7 +451,8 @@ export function buildModuleGraph(data: GraphData, entities: EntitiesResult): Mod
         from,
         to,
         type: isExternal ? 'external' : 'import',
-        specifiers: specifiers.length > 0 ? specifiers : [path.basename(to).replace(/\.[^.]+$/, '')],
+        specifiers:
+          specifiers.length > 0 ? specifiers : [path.basename(to).replace(/\.[^.]+$/, '')],
       });
     }
   }
@@ -638,25 +460,24 @@ export function buildModuleGraph(data: GraphData, entities: EntitiesResult): Mod
   return { nodes, edges };
 }
 
-// ============================================================
-// ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ buildEntityGraph
-// ============================================================
-
 /**
  * Строит граф сущностей
+ * ✅ ИСПРАВЛЕНО: сохраняет calls и calledBy
  */
 export function buildEntityGraph(data: GraphData, entities: EntitiesResult): EntityGraph {
   const nodes: EntityNode[] = [];
   const edges: EntityEdge[] = [];
 
-  // ============================================================
-  // 1. ФУНКЦИИ
-  // ============================================================
-  for (const func of entities.functions) {
+  // ✅ ИСПОЛЬЗУЕМ FunctionEntity из общих типов
+  const functions = ensureArray(entities.functions) as FunctionEntity[];
+
+  for (const func of functions) {
     const funcName = safeString(func.name);
     const modulePath = findModuleForEntity(funcName, data);
     const nodeId = modulePath ? `${modulePath}#${funcName}` : `#${funcName}`;
     const calls: string[] = ensureArray(func.calls).map((call: any) => safeString(call));
+    // ✅ СОХРАНЯЕМ calledBy
+    const calledBy: string[] = ensureArray(func.calledBy).map((cb: any) => safeString(cb));
 
     nodes.push({
       id: nodeId,
@@ -671,8 +492,10 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
         returnType: safeString(func.returnType),
         isMethod: safeBoolean(func.isMethod),
         className: safeString(func.className),
+        // ✅ СОХРАНЯЕМ calls
         calls: calls,
-        calledBy: ensureArray(func.calledBy).map((cb: any) => safeString(cb)),
+        // ✅ СОХРАНЯЕМ calledBy
+        calledBy: calledBy,
         startLine: safeNumber(func.startLine || func.line),
         endLine: safeNumber(func.endLine || func.line),
         importedFrom: modulePath !== data.rootKey ? modulePath : undefined,
@@ -684,10 +507,11 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
           hasExec: false,
           hasPassword: false,
         },
+        // ✅ СОХРАНЯЕМ body
+        body: func.body || '',
       },
     });
 
-    // Обрабатываем вызовы
     for (const call of calls) {
       let targetModule = findModuleForEntity(call, data);
       if (!targetModule) {
@@ -708,9 +532,7 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
     }
   }
 
-  // ============================================================
-  // 2. КЛАССЫ
-  // ============================================================
+  // Классы
   for (const cls of entities.classes) {
     const className = safeString(cls.name);
     const modulePath = findModuleForEntity(className, data);
@@ -735,7 +557,9 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
 
     if (cls.extends) {
       const targetModule = findModuleForEntity(safeString(cls.extends), data);
-      const targetId = targetModule ? `${targetModule}#${safeString(cls.extends)}` : `#${safeString(cls.extends)}`;
+      const targetId = targetModule
+        ? `${targetModule}#${safeString(cls.extends)}`
+        : `#${safeString(cls.extends)}`;
       edges.push({
         from: nodeId,
         to: targetId,
@@ -755,9 +579,7 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
     }
   }
 
-  // ============================================================
-  // 3. КОНСТАНТЫ
-  // ============================================================
+  // Константы
   for (const constant of entities.constants) {
     const constName = safeString(constant.name);
     const modulePath = findModuleForEntity(constName, data);
@@ -777,9 +599,7 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
     });
   }
 
-  // ============================================================
-  // 4. ИНТЕРФЕЙСЫ
-  // ============================================================
+  // Интерфейсы
   for (const intf of entities.interfaces) {
     const intfName = safeString(intf.name);
     const modulePath = findModuleForEntity(intfName, data);
@@ -812,9 +632,7 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
     }
   }
 
-  // ============================================================
-  // 5. ТИПЫ
-  // ============================================================
+  // Типы
   for (const type of entities.types) {
     const typeName = safeString(type.name);
     const modulePath = findModuleForEntity(typeName, data);
@@ -833,9 +651,7 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
     });
   }
 
-  // ============================================================
-  // 6. ПЕРЕМЕННЫЕ
-  // ============================================================
+  // Переменные
   for (const variable of entities.variables) {
     const varName = safeString(variable.name);
     const modulePath = findModuleForEntity(varName, data);
@@ -896,164 +712,8 @@ export function buildFullAnalysis(
   return analysis;
 }
 
-// ============================================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ПОИСКА ФАЙЛОВ
-// ============================================================
-
 /**
- * Находит корень проекта (где находится package.json)
- */
-export function findProjectRoot(startDir: string): string | null {
-  let currentDir = path.resolve(startDir);
-  const root = path.parse(currentDir).root;
-
-  while (currentDir !== root) {
-    const packagePath = path.join(currentDir, 'package.json');
-    if (fs.existsSync(packagePath)) {
-      return currentDir;
-    }
-    currentDir = path.dirname(currentDir);
-  }
-  return null;
-}
-
-/**
- * Находит файл в проекте по имени
- */
-function findFileInProject(filePath: string, projectRoot: string): string | null {
-  const fileName = path.basename(filePath);
-
-  // Проверяем основные пути
-  const candidates = [
-    path.resolve(projectRoot, filePath),
-    path.resolve(projectRoot, 'src', filePath),
-    path.resolve(projectRoot, 'packages/ast-analyzer/src', filePath),
-    path.resolve(process.cwd(), filePath),
-    path.resolve(process.cwd(), 'src', filePath),
-  ];
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
-      return candidate;
-    }
-  }
-
-  // Рекурсивный поиск по имени файла в src
-  const srcDir = path.resolve(projectRoot, 'src');
-  if (fs.existsSync(srcDir)) {
-    const walkDir = (dir: string): string | null => {
-      try {
-        const files = fs.readdirSync(dir);
-        for (const file of files) {
-          const fullPath = path.join(dir, file);
-          if (fs.statSync(fullPath).isDirectory()) {
-            const result = walkDir(fullPath);
-            if (result) return result;
-          } else if (file === fileName) {
-            return fullPath;
-          }
-        }
-      } catch (error: any) {
-        // Игнорируем ошибки
-      }
-      return null;
-    };
-
-    const foundPath = walkDir(srcDir);
-    if (foundPath) {
-      return foundPath;
-    }
-  }
-
-  return null;
-}
-
-// ============================================================
-// БЕЗОПАСНЫЙ ОБХОД AST С ЗАЩИТОЙ ОТ ЦИКЛИЧЕСКИХ ССЫЛОК
-// ============================================================
-
-/**
- * Безопасно обходит AST, защищая от циклических ссылок и переполнения стека
- * ✅ ИСПРАВЛЕНО: не превращает объекты в строки [object Object]
- */
-export function safeTraverseAST(node: any, depth: number = 0, visited: WeakSet<any> = new WeakSet()): any {
-  if (!node || typeof node !== 'object') return node;
-
-  // Защита от циклических ссылок
-  if (visited.has(node)) {
-    return '[Circular]';
-  }
-  visited.add(node);
-
-  // Ограничение глубины
-  const MAX_DEPTH = 50;
-  if (depth > MAX_DEPTH) {
-    return '[Max Depth]';
-  }
-
-  // ✅ Если это массив, обрабатываем каждый элемент
-  if (Array.isArray(node)) {
-    return node.map((item: any) => safeTraverseAST(item, depth + 1, visited));
-  }
-
-  // ✅ Если это объект с конструктором Object, обрабатываем его свойства
-  if (node.constructor && node.constructor.name === 'Object') {
-    const result: Record<string, any> = {};
-    for (const key of Object.keys(node)) {
-      // Пропускаем внутренние/несериализуемые свойства
-      if (key === 'parent' || key === 'context' || key === 'scope' || key === 'ancestor' ||
-        key === 'parentNode' || key === 'parentElement' || key === 'parentPath' ||
-        key === '_safeCopy' || key === 'parentObject' || key === 'parentScope' ||
-        key === 'constructor' || key === 'prototype' || key === '__proto__') {
-        continue;
-      }
-
-      const value = node[key];
-      if (typeof value === 'function') {
-        result[key] = '[Function]';
-      } else if (value && typeof value === 'object') {
-        // ✅ Не превращаем объекты в строки, а обрабатываем рекурсивно
-        result[key] = safeTraverseAST(value, depth + 1, visited);
-      } else {
-        result[key] = value;
-      }
-    }
-    return result;
-  }
-
-  // ✅ Для других объектов (Date, RegExp, Map, Set и т.д.) возвращаем их представление
-  try {
-    if (node.toString && node.toString() !== '[object Object]') {
-      return node.toString();
-    }
-    // Для объектов без понятного toString, пытаемся извлечь свойства
-    const result: Record<string, any> = {};
-    for (const key of Object.keys(node)) {
-      try {
-        const value = node[key];
-        if (typeof value === 'function') {
-          result[key] = '[Function]';
-        } else if (value && typeof value === 'object') {
-          result[key] = safeTraverseAST(value, depth + 1, visited);
-        } else {
-          result[key] = value;
-        }
-      } catch {
-        result[key] = '[Error]';
-      }
-    }
-    return Object.keys(result).length > 0 ? result : '[Object]';
-  } catch {
-    return '[Object]';
-  }
-}
-
-// ============================================================
-// НОВАЯ ФУНКЦИЯ: extractEntitiesFromFile (С ИСПОЛЬЗОВАНИЕМ safeAST)
-// ============================================================
-
-/**
- * Извлекает все сущности из файла через ts-morph с защитой от stack overflow
+ * Извлекает все сущности из файла
  */
 export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
   const entities: EnhancedEntityInfo = {
@@ -1072,20 +732,22 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
     return entities;
   }
 
-  // Для больших файлов используем упрощенный анализ
   try {
     const stats = fs.statSync(absolutePath);
-    if (stats.size > 500 * 1024) { // > 500KB
-      console.log(`  📦 Большой файл (${(stats.size / 1024).toFixed(0)}KB), используем упрощенный анализ`);
+    if (stats.size > 500 * 1024) {
+      console.log(
+        `  📦 Большой файл (${(stats.size / 1024).toFixed(0)}KB), используем упрощенный анализ`
+      );
 
       const content = fs.readFileSync(absolutePath, 'utf-8');
 
-      // Извлекаем функции через регулярки
       const funcMatches = content.match(/function\s+(\w+)\s*\(/g) || [];
       for (const match of funcMatches) {
         const nameMatch = match.match(/function\s+(\w+)/);
         if (nameMatch && nameMatch[1]) {
-          const existing = entities.functions.find((f: EnhancedFunctionInfo) => f.name === nameMatch[1]);
+          const existing = entities.functions.find(
+            (f: EnhancedFunctionInfo) => f.name === nameMatch[1]
+          );
           if (!existing) {
             entities.functions.push({
               name: nameMatch[1],
@@ -1116,12 +778,12 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
                 hasExec: false,
                 hasPassword: false,
               },
+              _safeInfo: null,
             });
           }
         }
       }
 
-      // Извлекаем классы через регулярки
       const classMatches = content.match(/class\s+(\w+)/g) || [];
       for (const match of classMatches) {
         const nameMatch = match.match(/class\s+(\w+)/);
@@ -1138,6 +800,7 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
               isExported: content.includes(`export class ${nameMatch[1]}`),
               extends: undefined,
               implements: [],
+              _safeInfo: null,
             });
           }
         }
@@ -1171,56 +834,11 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       return entities;
     }
 
-    // ============================================
-    // ИСПОЛЬЗОВАНИЕ safeAST: получаем безопасную копию AST
-    // ============================================
-    let safeAST = null;
-    try {
-      // Получаем структуру AST и создаем безопасную копию
-      const ast = sourceFile.getStructure();
-      safeAST = safeTraverseAST(ast);
-
-      // Используем safeAST для анализа
-      if (safeAST && typeof safeAST === 'object') {
-        // Извлекаем информацию из безопасной копии AST
-        console.log(`  📊 Безопасная копия AST создана, глубина: ${Object.keys(safeAST).length} полей`);
-
-        // Используем safeAST для извлечения информации о файле
-        if (safeAST.statements) {
-          // Анализируем statements из безопасной копии
-          for (const stmt of safeAST.statements) {
-            if (stmt && typeof stmt === 'object') {
-              // Извлекаем информацию о функциях из безопасной копии
-              if (stmt.kind === 'function' || stmt.kind === 'FunctionDeclaration') {
-                // Используем данные из safeAST
-              }
-            }
-          }
-        }
-      }
-    } catch (error: any) {
-      console.warn(`  ⚠️ Не удалось создать безопасную копию AST:`, error?.message || String(error));
-      safeAST = { error: 'AST too large or contains circular references' };
-    }
-
-    // ============================================
-    // 1. ИЗВЛЕЧЕНИЕ ФУНКЦИЙ С ИСПОЛЬЗОВАНИЕМ safeAST
-    // ============================================
+    // Извлекаем функции
     const functions = sourceFile.getFunctions();
     for (const functionDecl of functions) {
       const name = functionDecl.getName();
       if (!name) continue;
-
-      // Используем safeAST для получения дополнительной информации
-      let safeFunctionInfo = null;
-      if (safeAST && typeof safeAST === 'object' && safeAST.statements) {
-        for (const stmt of safeAST.statements) {
-          if (stmt && typeof stmt === 'object' && stmt.name === name) {
-            safeFunctionInfo = stmt;
-            break;
-          }
-        }
-      }
 
       const params = functionDecl.getParameters().map((p: any) => p.getName());
       const returnType = functionDecl.getReturnType().getText();
@@ -1240,14 +858,20 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         }
       });
 
-      // Вычисляем сложность
       let complexity = 1;
       try {
         functionDecl.forEachDescendant((node: any) => {
           const kind = node.getKind();
-          if (kind === 95 || kind === 96 || kind === 97 || kind === 98 || // if, for, while
-            kind === 129 || kind === 130 || kind === 131 || // for-in, for-of
-            kind === 132) { // do-while
+          if (
+            kind === 95 ||
+            kind === 96 ||
+            kind === 97 ||
+            kind === 98 ||
+            kind === 129 ||
+            kind === 130 ||
+            kind === 131 ||
+            kind === 132
+          ) {
             complexity++;
           }
         });
@@ -1255,26 +879,19 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         complexity = 1;
       }
 
-      // Проверяем безопасность
       const bodyText = functionDecl.getBody()?.getText() || '';
       const security = {
         hasEval: bodyText.includes('eval(') || bodyText.includes('eval ('),
         hasProcessEnv: bodyText.includes('process.env'),
-        hasSensitiveData: /['"][a-zA-Z0-9_\-]{32,}['"]/.test(bodyText) ||
+        hasSensitiveData:
+          /['\"][a-zA-Z0-9_\-]{32,}['\"]/.test(bodyText) ||
           /'"]sk-[a-zA-Z0-9]{20,}['"]/.test(bodyText),
         hasExec: bodyText.includes('exec(') || bodyText.includes('exec ('),
         hasPassword: /\b(password|passwd|pwd|secret|token|api[_-]?key)\b/i.test(bodyText),
       };
 
-      // Добавляем информацию из safeAST если доступна
-      const safeInfo = safeFunctionInfo ? {
-        safeParams: (safeFunctionInfo as any).params || [],
-        safeReturnType: (safeFunctionInfo as any).returnType || 'any',
-        safeIsAsync: (safeFunctionInfo as any).async || false,
-        safeBody: (safeFunctionInfo as any).body || '',
-      } : null;
-
-      entities.functions.push({
+      // ✅ ИСПОЛЬЗУЕМ EnhancedFunctionInfo из общих типов
+      const funcInfo: EnhancedFunctionInfo = {
         name,
         params,
         paramTypes: params.map(() => 'any'),
@@ -1286,9 +903,9 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         isMethod: false,
         className: undefined,
         calls: [...new Set(calls)],
-        calledBy: [],
+        calledBy: [], // Будет заполнено позже
         returnType,
-        body: functionDecl.getBody()?.getText()?.substring(0, 200) || '',
+        body: bodyText,
         isNested: false,
         parentFunction: undefined,
         isArrow: false,
@@ -1297,29 +914,16 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         depth: 0,
         complexity,
         security,
-        // Добавляем информацию из safeAST в метаданные
-        _safeInfo: safeInfo,
-      });
+        _safeInfo: null,
+      };
+      entities.functions.push(funcInfo);
     }
 
-    // ============================================
-    // 2. ИЗВЛЕЧЕНИЕ КЛАССОВ С ИСПОЛЬЗОВАНИЕМ safeAST
-    // ============================================
+    // Извлекаем классы
     const classes = sourceFile.getClasses();
     for (const cls of classes) {
       const name = cls.getName();
       if (!name) continue;
-
-      // Используем safeAST для получения дополнительной информации
-      let safeClassInfo = null;
-      if (safeAST && typeof safeAST === 'object' && safeAST.statements) {
-        for (const stmt of safeAST.statements) {
-          if (stmt && typeof stmt === 'object' && stmt.name === name) {
-            safeClassInfo = stmt;
-            break;
-          }
-        }
-      }
 
       const methods: string[] = [];
       const methodDetails: EnhancedClassInfo['methodDetails'] = [];
@@ -1352,15 +956,8 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         }
       }
 
-      // Добавляем информацию из safeAST если доступна
-      const safeInfo = safeClassInfo ? {
-        safeMethods: (safeClassInfo as any).methods || [],
-        safeProperties: (safeClassInfo as any).properties || [],
-        safeExtends: (safeClassInfo as any).extends || undefined,
-        safeImplements: (safeClassInfo as any).implements || [],
-      } : null;
-
-      entities.classes.push({
+      // ✅ ИСПОЛЬЗУЕМ EnhancedClassInfo из общих типов
+      const classInfo: EnhancedClassInfo = {
         name,
         methods,
         methodDetails,
@@ -1372,30 +969,17 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         isExported: cls.isExported(),
         extends: cls.getExtends()?.getText(),
         implements: cls.getImplements().map((i: any) => i.getText()),
-        // Добавляем информацию из safeAST в метаданные
-        _safeInfo: safeInfo,
-      });
+        _safeInfo: null,
+      };
+      entities.classes.push(classInfo);
     }
 
-    // ============================================
-    // 3. ИЗВЛЕЧЕНИЕ КОНСТАНТ И ПЕРЕМЕННЫХ
-    // ============================================
+    // Извлекаем константы и переменные
     const variableDeclarations = sourceFile.getVariableDeclarations();
     for (const decl of variableDeclarations) {
       const name = decl.getName();
       const initializer = decl.getInitializer();
       const isConst = decl.getVariableStatement()?.getDeclarationKind() === 'const';
-
-      // Используем safeAST для получения дополнительной информации
-      let safeVarInfo = null;
-      if (safeAST && typeof safeAST === 'object' && safeAST.statements) {
-        for (const stmt of safeAST.statements) {
-          if (stmt && typeof stmt === 'object' && stmt.name === name) {
-            safeVarInfo = stmt;
-            break;
-          }
-        }
-      }
 
       const info = {
         name,
@@ -1403,8 +987,7 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         isExported: decl.isExported(),
         type: initializer ? initializer.getType().getText() : 'any',
         value: initializer ? extractValueFromNode(initializer) : undefined,
-        // Добавляем информацию из safeAST
-        _safeInfo: safeVarInfo,
+        _safeInfo: null,
       };
 
       if (isConst) {
@@ -1414,9 +997,7 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       }
     }
 
-    // ============================================
-    // 4. ИЗВЛЕЧЕНИЕ ИНТЕРФЕЙСОВ
-    // ============================================
+    // Извлекаем интерфейсы
     const interfaces = sourceFile.getInterfaces();
     for (const intf of interfaces) {
       const name = intf.getName();
@@ -1427,17 +1008,6 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         properties.push(prop.getName());
       }
 
-      // Используем safeAST для получения дополнительной информации
-      let safeInterfaceInfo = null;
-      if (safeAST && typeof safeAST === 'object' && safeAST.statements) {
-        for (const stmt of safeAST.statements) {
-          if (stmt && typeof stmt === 'object' && stmt.name === name) {
-            safeInterfaceInfo = stmt;
-            break;
-          }
-        }
-      }
-
       entities.interfaces.push({
         name,
         properties,
@@ -1446,52 +1016,78 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         endLine: intf.getEndLineNumber(),
         isExported: intf.isExported(),
         extends: intf.getExtends().map((e: any) => e.getText()),
-        // Добавляем информацию из safeAST
-        _safeInfo: safeInterfaceInfo,
+        _safeInfo: null,
       });
     }
 
-    // ============================================
-    // 5. ИЗВЛЕЧЕНИЕ ТИПОВ (TYPE ALIASES)
-    // ============================================
+    // Извлекаем типы
     const typeAliases = sourceFile.getTypeAliases();
     for (const typeAlias of typeAliases) {
       const name = typeAlias.getName();
       if (!name) continue;
-
-      // Используем safeAST для получения дополнительной информации
-      let safeTypeInfo = null;
-      if (safeAST && typeof safeAST === 'object' && safeAST.statements) {
-        for (const stmt of safeAST.statements) {
-          if (stmt && typeof stmt === 'object' && stmt.name === name) {
-            safeTypeInfo = stmt;
-            break;
-          }
-        }
-      }
 
       entities.types.push({
         name,
         definition: typeAlias.getType().getText(),
         line: typeAlias.getStartLineNumber(),
         isExported: typeAlias.isExported(),
-        // Добавляем информацию из safeAST
-        _safeInfo: safeTypeInfo,
+        _safeInfo: null,
       });
     }
 
-    // ============================================
-    // 6. ПОСТРОЕНИЕ ГРАФА ВЫЗОВОВ
-    // ============================================
-    const callGraph: Record<string, string[]> = {};
+    // ✅ ИСПРАВЛЕНО: нормализация calledBy с использованием общих типов
+    // Строим карту функций
+    const functionMap = new Map<string, { module: string; line: number; name: string }>();
     for (const func of entities.functions) {
-      callGraph[func.name] = func.calls;
+      functionMap.set(func.name, {
+        module: filePath,
+        line: func.line,
+        name: func.name,
+      });
     }
 
+    // Заполняем calledBy для каждой функции
     for (const func of entities.functions) {
-      for (const otherFunc of entities.functions) {
-        if (otherFunc.calls.includes(func.name) && !func.calledBy.includes(otherFunc.name)) {
-          func.calledBy.push(otherFunc.name);
+      for (const call of func.calls) {
+        const calledFunc = functionMap.get(call);
+        if (calledFunc && calledFunc.name !== func.name) {
+          const targetFunc = entities.functions.find(f => f.name === call);
+          if (targetFunc) {
+            // ✅ Нормализуем calledBy с использованием общих типов
+            let normalizedCalledBy: { function: string; module: string; line: number }[] = [];
+
+            if (Array.isArray(targetFunc.calledBy)) {
+              normalizedCalledBy = targetFunc.calledBy.map((cb: any) => {
+                if (typeof cb === 'string') {
+                  return {
+                    function: cb,
+                    module: filePath,
+                    line: func.line,
+                  };
+                }
+                return {
+                  function: cb.function || cb,
+                  module: cb.module || filePath,
+                  line: cb.line || func.line,
+                };
+              });
+            }
+
+            // ✅ Проверяем, не добавлен ли уже этот caller
+            const exists = normalizedCalledBy.some(
+              (cb: any) => cb.function === func.name && cb.module === filePath
+            );
+
+            if (!exists) {
+              normalizedCalledBy.push({
+                function: func.name,
+                module: filePath,
+                line: func.line,
+              });
+            }
+
+            targetFunc.calledBy = normalizedCalledBy;
+          }
         }
       }
     }
@@ -1505,13 +1101,12 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
     console.log(`   Типов: ${entities.types.length}`);
     console.log(`   Переменных: ${entities.variables.length}`);
 
-    if (safeAST && typeof safeAST === 'object') {
-      console.log(`   📊 safeAST: ${Object.keys(safeAST).length} полей`);
-    }
-
     return entities;
   } catch (error: any) {
-    console.error(`❌ Ошибка при извлечении сущностей из ${absolutePath}:`, error?.message || String(error));
+    console.error(
+      `❌ Ошибка при извлечении сущностей из ${absolutePath}:`,
+      error?.message || String(error)
+    );
     return entities;
   }
 }
@@ -1523,7 +1118,10 @@ function extractValueFromNode(node: any): any {
   try {
     const text = node.getText();
 
-    if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+    if (
+      (text.startsWith('"') && text.endsWith('"')) ||
+      (text.startsWith("'") && text.endsWith("'"))
+    ) {
       return text.slice(1, -1);
     }
 
@@ -1565,612 +1163,14 @@ function extractValueFromNode(node: any): any {
 }
 
 // ============================================================
-// ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ convertToEnhancedEntityInfo
-// ============================================================
-
-/**
- * Преобразует EntitiesResult в EnhancedEntityInfo
- * ✅ ИСПРАВЛЕНО: фильтруем только реальные объекты, игнорируем строки [object Object]
- */
-function convertToEnhancedEntityInfo(entities: EntitiesResult): EnhancedEntityInfo {
-  // ✅ ФИЛЬТРУЕМ ТОЛЬКО РЕАЛЬНЫЕ ОБЪЕКТЫ
-  const filterRealObjects = (arr: any[]): any[] => {
-    if (!Array.isArray(arr)) return [];
-    return arr.filter((item: any) => isRealObject(item));
-  };
-
-  return {
-    functions: filterRealObjects(ensureArray(entities.functions)).map((f: any) => ({
-      name: safeString(f.name),
-      params: ensureArray(f.params).map((p: any) => safeString(p)),
-      paramTypes: ensureArray(f.params).map(() => 'any'),
-      line: safeNumber(f.line),
-      startLine: safeNumber(f.startLine || f.line),
-      endLine: safeNumber(f.endLine || f.line),
-      isAsync: safeBoolean(f.isAsync),
-      isExported: safeBoolean(f.isExported),
-      isMethod: safeBoolean(f.isMethod),
-      className: safeString(f.className),
-      calls: ensureArray(f.calls).map((c: any) => safeString(c)),
-      calledBy: ensureArray(f.calledBy).map((cb: any) => safeString(cb)),
-      returnType: safeString(f.returnType),
-      body: safeString(f.body),
-      isNested: safeBoolean(f.isNested),
-      parentFunction: safeString(f.parentFunction),
-      isArrow: safeBoolean(f.isArrow),
-      isEventHandler: safeBoolean(f.isEventHandler),
-      eventType: safeString(f.eventType),
-      depth: safeNumber(f.depth),
-      complexity: safeNumber(f.complexity),
-      security: f.security || {
-        hasEval: false,
-        hasProcessEnv: false,
-        hasSensitiveData: false,
-        hasExec: false,
-        hasPassword: false,
-      },
-    })),
-    constants: filterRealObjects(ensureArray(entities.constants)).map((c: any) => ({
-      name: safeString(c.name),
-      value: c.value,
-      line: safeNumber(c.line),
-      isExported: safeBoolean(c.isExported),
-      type: safeString(c.type),
-    })),
-    variables: filterRealObjects(ensureArray(entities.variables)).map((v: any) => ({
-      name: safeString(v.name),
-      value: v.value,
-      line: safeNumber(v.line),
-      isExported: safeBoolean(v.isExported),
-      type: safeString(v.type),
-    })),
-    interfaces: filterRealObjects(ensureArray(entities.interfaces)).map((i: any) => ({
-      name: safeString(i.name),
-      properties: ensureArray(i.properties).map((p: any) => safeString(p)),
-      line: safeNumber(i.line),
-      isExported: safeBoolean(i.isExported),
-      extends: ensureArray(i.extends).map((e: any) => safeString(e)),
-      startLine: safeNumber(i.startLine || i.line),
-      endLine: safeNumber(i.endLine || i.line),
-    })),
-    types: filterRealObjects(ensureArray(entities.types)).map((t: any) => ({
-      name: safeString(t.name),
-      definition: safeString(t.definition),
-      line: safeNumber(t.line),
-      isExported: safeBoolean(t.isExported),
-    })),
-    classes: filterRealObjects(ensureArray(entities.classes)).map((c: any) => ({
-      name: safeString(c.name),
-      methods: ensureArray(c.methods).map((m: any) => safeString(m)),
-      properties: ensureArray(c.properties).map((p: any) => safeString(p)),
-      line: safeNumber(c.line),
-      isExported: safeBoolean(c.isExported),
-      extends: safeString(c.extends),
-      implements: ensureArray(c.implements).map((i: any) => safeString(i)),
-      startLine: safeNumber(c.startLine || c.line),
-      endLine: safeNumber(c.endLine || c.line),
-    })),
-  };
-}
-
-// ============================================================
-// ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ buildEnhancedPackageLockReport
-// ============================================================
-
-/**
- * Строит расширенный отчет в стиле package-lock
- */
-export function buildEnhancedPackageLockReport(
-  rootKey: string,
-  graph: Record<string, string[]>,
-  entitiesMap: Record<string, EntitiesResult>,
-  filePaths: string[]
-): EnhancedPackageLockReport {
-  const packages: Record<string, EnhancedPackageInfo> = {};
-  const inwardDeps: Record<string, string[]> = {};
-  const outwardDeps: Record<string, string[]> = {};
-  const importsFlow: EnhancedPackageLockReport['importExportFlow']['imports'] = {};
-  const exportsFlow: EnhancedPackageLockReport['importExportFlow']['exports'] = {};
-  const callGraph: Record<string, string[]> = {};
-
-  let totalFunctions = 0;
-  let totalConstants = 0;
-  let totalVariables = 0;
-  let totalInterfaces = 0;
-  let totalTypes = 0;
-  let totalClasses = 0;
-  let totalCalls = 0;
-  let totalExportedFunctions = 0;
-  let totalAsyncFunctions = 0;
-
-  // Инициализация структур
-  for (const modulePath of Object.keys(graph)) {
-    inwardDeps[modulePath] = [];
-    outwardDeps[modulePath] = [];
-    importsFlow[modulePath] = { importsFrom: [] };
-    exportsFlow[modulePath] = { exportsTo: [] };
-  }
-
-  // Находим корень проекта
-  const projectRoot = findProjectRoot(process.cwd()) || process.cwd();
-
-  // Преобразуем EntitiesResult в EnhancedEntityInfo
-  const allFileEntities = new Map<string, EnhancedEntityInfo>();
-
-  for (const [modulePath, entities] of Object.entries(entitiesMap)) {
-    // ✅ ПРОВЕРЯЕМ, ЧТО entities СУЩЕСТВУЕТ
-    if (!entities || typeof entities !== 'object') {
-      allFileEntities.set(modulePath, {
-        functions: [],
-        constants: [],
-        variables: [],
-        interfaces: [],
-        types: [],
-        classes: [],
-      });
-      continue;
-    }
-
-    const enhancedEntities = convertToEnhancedEntityInfo(entities);
-    allFileEntities.set(modulePath, enhancedEntities);
-  }
-
-  // Сбор статистики и построение пакетов
-  let processedCount = 0;
-  const totalModules = Object.keys(entitiesMap).length;
-
-  for (const [modulePath, entities] of Object.entries(entitiesMap)) {
-    processedCount++;
-    const relativePath = path.relative(projectRoot, modulePath);
-
-    if (totalModules > 5 && processedCount % 10 === 0) {
-      console.log(`   📊 Обработано ${processedCount}/${totalModules} модулей`);
-    }
-
-    // ✅ ПРОВЕРЯЕМ, ЧТО entities СУЩЕСТВУЕТ
-    if (!entities || typeof entities !== 'object') {
-      packages[modulePath] = {
-        version: '1.0.0',
-        resolved: `file:${modulePath}`,
-        displayPath: relativePath,
-        type: 'module',
-        language: 'typescript',
-        isEntry: false,
-        imports: {},
-        exports: {},
-        entities: {
-          functions: [],
-          constants: [],
-          variables: [],
-          interfaces: [],
-          types: [],
-          classes: [],
-        },
-        fileStats: {
-          size: 0,
-          lines: 0,
-          functions: 0,
-          classes: 0,
-          constants: 0,
-          interfaces: 0,
-          types: 0,
-          variables: 0,
-        },
-      };
-      continue;
-    }
-
-    // Собираем общую статистику
-    totalFunctions += entities.functions.length;
-    totalConstants += entities.constants.length;
-    totalVariables += entities.variables.length;
-    totalInterfaces += entities.interfaces.length;
-    totalTypes += entities.types.length;
-    totalClasses += entities.classes.length;
-
-    // Собираем вызовы для callGraph и totalCalls
-    for (const func of entities.functions) {
-      const key = func.isMethod && func.className ? `${func.className}.${func.name}` : func.name;
-      if (!callGraph[key]) {
-        callGraph[key] = [];
-      }
-      const calls = func.calls || [];
-      callGraph[key] = calls;
-      totalCalls += calls.length;
-      if (func.isExported) totalExportedFunctions++;
-      if (func.isAsync) totalAsyncFunctions++;
-    }
-
-    const isEntry = modulePath === rootKey;
-    const ext = path.extname(modulePath);
-    let language: EnhancedPackageInfo['language'] = 'typescript';
-    if (ext === '.js' || ext === '.jsx') language = 'javascript';
-    else if (ext === '.vue') language = 'vue';
-    else if (ext === '.tsx') language = 'jsx';
-
-    // Берем сущности из allFileEntities
-    const fileEntities = allFileEntities.get(modulePath) || {
-      functions: [],
-      constants: [],
-      variables: [],
-      interfaces: [],
-      types: [],
-      classes: [],
-    };
-
-    let size = 0;
-    let lines = 0;
-    try {
-      const absPath = findFileInProject(modulePath, projectRoot);
-      if (absPath && fs.existsSync(absPath)) {
-        const content = fs.readFileSync(absPath, 'utf-8');
-        size = content.length;
-        lines = content.split('\n').length;
-      }
-    } catch (error: any) {
-      // Игнорируем ошибки
-    }
-
-    // Строим импорты
-    const imports: EnhancedPackageInfo['imports'] = {};
-    for (const imp of entities.imports) {
-      const importKey = imp.source;
-      imports[importKey] = {
-        direction: 'inward',
-        type: imp.source.startsWith('.') ? 'internal-import' : 'external-import',
-        specifiers: imp.specifiers,
-        functions: {},
-      };
-    }
-
-    // Строим экспорты
-    const exports: EnhancedPackageInfo['exports'] = {};
-    for (const func of entities.functions) {
-      if (func.isExported) {
-        exports[func.name] = {
-          direction: 'outward',
-          type: 'export',
-          isAsync: func.isAsync,
-          params: func.params,
-          returns: func.returnType || 'any',
-          line: func.line,
-          consumers: [],
-        };
-      }
-    }
-
-    const fileStats = {
-      size,
-      lines,
-      functions: entities.functions.length,
-      classes: entities.classes.length,
-      constants: entities.constants.length,
-      interfaces: entities.interfaces.length,
-      types: entities.types.length,
-      variables: entities.variables.length,
-    };
-
-    packages[modulePath] = {
-      version: '1.0.0',
-      resolved: `file:${modulePath}`,
-      displayPath: relativePath,
-      type: 'module',
-      language,
-      isEntry,
-      imports,
-      exports,
-      entities: fileEntities,
-      fileStats,
-    };
-
-    // Добавляем Vue-анализ
-    if (modulePath.endsWith('.vue')) {
-      try {
-        const vueAnalysis = analyzeVueComponent(modulePath, {
-          includeTemplateAST: true,
-          includeScriptAST: true,
-          extractComposableCalls: true,
-        });
-
-        if (vueAnalysis) {
-          packages[modulePath].vueAnalysis = {
-            props: vueAnalysis.props,
-            emits: vueAnalysis.emits,
-            slots: vueAnalysis.slots,
-            composables: vueAnalysis.composables.map((c: any) => c.name),
-            templateComplexity: vueAnalysis.template.complexity,
-            scriptType: vueAnalysis.script.isSetup ? 'setup' : 'options',
-            isTS: vueAnalysis.script.isTS,
-            stats: {
-              scriptLines: vueAnalysis.stats.scriptLines,
-              templateLines: vueAnalysis.stats.templateLines,
-              styleCount: vueAnalysis.stats.styleCount,
-            },
-          };
-
-          packages[modulePath].fileStats.functions =
-            vueAnalysis.composables.length +
-            vueAnalysis.script.content.split('\n').filter((l: string) => l.includes('function')).length;
-        }
-      } catch (error: any) {
-        console.warn(`⚠️ Failed to analyze Vue component ${modulePath}:`, error?.message || String(error));
-      }
-    }
-  }
-
-  // Строим граф зависимостей
-  for (const [from, deps] of Object.entries(graph)) {
-    for (const dep of deps) {
-      if (inwardDeps[from]) inwardDeps[from].push(dep);
-      if (outwardDeps[dep]) outwardDeps[dep].push(from);
-    }
-  }
-
-  // Находим entry функции
-  const entryFunctions: string[] = [];
-  const rootEntities = entitiesMap[rootKey];
-  if (rootEntities) {
-    for (const func of rootEntities.functions) {
-      if (func.isExported) entryFunctions.push(func.name);
-    }
-  }
-
-  // Строим executionFlow
-  const executionSteps: EnhancedPackageLockReport['executionGraph']['executionFlow']['steps'] = [];
-  if (rootEntities) {
-    for (const func of rootEntities.functions) {
-      if (func.isExported) {
-        executionSteps.push({
-          func: func.name,
-          module: rootKey,
-          direction: 'self',
-          isAsync: func.isAsync,
-        });
-      }
-    }
-  }
-
-  // Собираем статистику по файлам
-  let totalFiles = 0;
-  let totalSize = 0;
-  let totalLines = 0;
-
-  for (const filePath of filePaths) {
-    const absPath = findFileInProject(filePath, projectRoot);
-    if (absPath && fs.existsSync(absPath)) {
-      totalFiles++;
-      try {
-        const content = fs.readFileSync(absPath, 'utf-8');
-        totalSize += content.length;
-        totalLines += content.split('\n').length;
-      } catch (error: any) {
-        // Игнорируем ошибки чтения файлов
-      }
-    }
-  }
-
-  // Вычисление глобальных метрик
-  const hasCycles = (graphData: Record<string, string[]>): boolean => {
-    const visited = new Set<string>();
-    const recursionStack = new Set<string>();
-
-    const dfs = (node: string): boolean => {
-      if (recursionStack.has(node)) return true;
-      if (visited.has(node)) return false;
-
-      visited.add(node);
-      recursionStack.add(node);
-
-      const neighbors = graphData[node] || [];
-      for (const neighbor of neighbors) {
-        if (dfs(neighbor)) return true;
-      }
-
-      recursionStack.delete(node);
-      return false;
-    };
-
-    for (const node of Object.keys(graphData)) {
-      if (dfs(node)) return true;
-    }
-    return false;
-  };
-
-  const maxDepth = (graphData: Record<string, string[]>): number => {
-    let max = 0;
-    const visited = new Set<string>();
-
-    const dfs = (node: string, depth: number) => {
-      if (visited.has(node)) return;
-      visited.add(node);
-      max = Math.max(max, depth);
-
-      const neighbors = graphData[node] || [];
-      for (const neighbor of neighbors) {
-        dfs(neighbor, depth + 1);
-      }
-    };
-
-    const called = new Set<string>();
-    for (const deps of Object.values(graphData)) {
-      for (const dep of deps) {
-        called.add(dep);
-      }
-    }
-
-    const roots = Object.keys(graphData).filter((node: string) => !called.has(node));
-    for (const root of roots) {
-      dfs(root, 0);
-    }
-
-    return max;
-  };
-
-  // Группировка модулей по уровням
-  const modulesByLevel: Record<number, string[]> = {};
-  const queue: { node: string; level: number }[] = [];
-  const visited = new Set<string>();
-
-  const called = new Set<string>();
-  for (const deps of Object.values(outwardDeps)) {
-    for (const dep of deps) {
-      called.add(dep);
-    }
-  }
-
-  const roots = Object.keys(outwardDeps).filter((node: string) => !called.has(node));
-
-  for (const root of roots) {
-    queue.push({ node: root, level: 0 });
-  }
-
-  while (queue.length > 0) {
-    const { node, level } = queue.shift()!;
-    if (visited.has(node)) continue;
-    visited.add(node);
-
-    if (!modulesByLevel[level]) {
-      modulesByLevel[level] = [];
-    }
-    modulesByLevel[level].push(node);
-
-    const deps = outwardDeps[node] || [];
-    for (const dep of deps) {
-      if (!visited.has(dep)) {
-        queue.push({ node: dep, level: level + 1 });
-      }
-    }
-  }
-
-  // Подсчет Vue-компонентов
-  let vueComponents = 0;
-  let totalComposables = 0;
-  for (const pkg of Object.values(packages)) {
-    if (pkg.vueAnalysis) {
-      vueComponents++;
-      totalComposables += pkg.vueAnalysis.composables?.length || 0;
-    }
-  }
-
-  const architectureMetrics: ArchitectureMetrics = {
-    totalModules: Object.keys(packages).length,
-    totalFunctions: Object.values(packages).reduce(
-      (acc: number, pkg: EnhancedPackageInfo) => acc + (pkg.entities?.functions?.length || 0), 0
-    ),
-    totalClasses: Object.values(packages).reduce(
-      (acc: number, pkg: EnhancedPackageInfo) => acc + (pkg.entities?.classes?.length || 0), 0
-    ),
-    totalConstants: Object.values(packages).reduce(
-      (acc: number, pkg: EnhancedPackageInfo) => acc + (pkg.entities?.constants?.length || 0), 0
-    ),
-    totalInterfaces: Object.values(packages).reduce(
-      (acc: number, pkg: EnhancedPackageInfo) => acc + (pkg.entities?.interfaces?.length || 0), 0
-    ),
-    totalTypes: Object.values(packages).reduce(
-      (acc: number, pkg: EnhancedPackageInfo) => acc + (pkg.entities?.types?.length || 0), 0
-    ),
-    totalVariables: Object.values(packages).reduce(
-      (acc: number, pkg: EnhancedPackageInfo) => acc + (pkg.entities?.variables?.length || 0), 0
-    ),
-    totalCalls: Object.values(callGraph).reduce(
-      (acc: number, calls: string[]) => acc + calls.length, 0
-    ),
-    vueComponents,
-    totalComposables,
-    hasCycles: hasCycles(callGraph),
-    maxDepth: maxDepth(callGraph),
-    modulesByLevel,
-    isAcyclic: !hasCycles(callGraph),
-  };
-
-  const summary: ProjectSummary = {
-    projectType: Object.keys(packages).some((p: string) => p.includes('packages/')) ? 'monorepo' : 'single',
-    entryPoint: rootKey,
-    totalModules: architectureMetrics.totalModules,
-    totalFunctions: architectureMetrics.totalFunctions,
-    vueComponents: architectureMetrics.vueComponents,
-    hasCycles: architectureMetrics.hasCycles,
-    maxDepth: architectureMetrics.maxDepth,
-    architectureHealth: architectureMetrics.isAcyclic ? '✅ Healthy' : '⚠️ Has cycles',
-  };
-
-  const report: EnhancedPackageLockReport = {
-    name: 'ast-analyzer',
-    version: '3.0.0',
-    lockfileVersion: 3,
-    packages,
-    dependencyGraph: {
-      direction: 'bidirectional',
-      inwardDependencies: inwardDeps,
-      outwardDependencies: outwardDeps,
-    },
-    executionGraph: {
-      entryPoint: rootKey,
-      direction: 'top-down',
-      entryFunctions,
-      executionFlow: {
-        type: 'sequential',
-        steps: executionSteps,
-      },
-    },
-    importExportFlow: {
-      imports: importsFlow,
-      exports: exportsFlow,
-    },
-    callGraph,
-    entityStats: {
-      totalFunctions,
-      totalConstants,
-      totalVariables,
-      totalInterfaces,
-      totalTypes,
-      totalClasses,
-      totalCalls,
-      totalExportedFunctions,
-      totalAsyncFunctions,
-    },
-    fileStats: {
-      totalFiles,
-      totalSize,
-      totalLines,
-    },
-    timestamp: new Date().toISOString(),
-    architectureMetrics,
-    summary,
-  };
-
-  return report;
-}
-
-// ============================================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-// ============================================================
-
-/**
- * Находит модуль для сущности
- */
-function findModuleForEntity(entityName: string, data: GraphData): string | null {
-  for (const [modulePath, deps] of Object.entries(data.graph)) {
-    if (modulePath.includes(entityName)) return modulePath;
-    for (const dep of deps) {
-      if (dep.includes(entityName)) return dep;
-    }
-  }
-  const baseName = entityName.replace(/\.[^.]+$/, '');
-  for (const [modulePath, deps] of Object.entries(data.graph)) {
-    if (modulePath.includes(baseName)) return modulePath;
-    for (const dep of deps) {
-      if (dep.includes(baseName)) return dep;
-    }
-  }
-  return null;
-}
-
-// ============================================================
 // ЭКСПОРТ ПО УМОЛЧАНИЮ
 // ============================================================
 
 export default {
+  // Основная функция
+  buildEnhancedPackageLockReport,
+
+  // Существующие функции
   saveModuleGraph,
   saveEntityGraph,
   saveFullAnalysis,
@@ -2180,6 +1180,51 @@ export default {
   buildEntityGraph,
   buildFullAnalysis,
   extractEntitiesFromFile,
-  buildEnhancedPackageLockReport,
-  safeTraverseAST,
+
+  // Экспорт модулей
+  metadata: {
+    createMetadata,
+    getReportName,
+    getReportVersion,
+    getLockfileVersion,
+  },
+  statistics: {
+    calculateEntityStats,
+    calculateFileStats,
+  },
+  graphs: {
+    buildDependencyGraph,
+    findCycles,
+    getMaxDepth,
+    getModulesByLevel,
+  },
+  flows: {
+    buildExecutionGraph,
+    buildImportExportFlow,
+  },
+  architecture: {
+    buildArchitectureMetrics,
+  },
+  summary: {
+    buildSummary,
+  },
+  packages: {
+    buildPackages,
+  },
+  converters: {
+    convertToEnhancedEntityInfo,
+  },
+  utils: {
+    ensureArray,
+    safeString,
+    safeNumber,
+    safeBoolean,
+    isRealObject,
+    filterRealObjects,
+    sanitizeEntities,
+    safeTraverseAST,
+    findProjectRoot,
+    findFileInProject,
+    findModuleForEntity,
+  },
 };

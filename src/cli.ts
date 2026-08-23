@@ -51,6 +51,11 @@ import {
 } from './reporters/json-reporter.js';
 import { generateInteractiveHTML } from './reporters/interactive-reporter.js';
 
+// ============================================
+// 🆕 ЕДИНЫЙ ИСТОЧНИК ДАННЫХ
+// ============================================
+import { DataSourceBuilder, DataSourceAccessor } from './core/data-sources.js';
+
 // Types
 import type { SplitModuleOptions, MinifyFolderOptions, GraphData, FullAnalysis, EntitiesResult } from './types.js';
 
@@ -441,7 +446,8 @@ interface ParsedArgs {
   includeVueAnalysis?: boolean;
 }
 
-function parseArgs(): ParsedArgs | null {
+// ✅ ЭКСПОРТИРУЕМ parseArgs для видимости в графе
+export function parseArgs(): ParsedArgs | null {
   const args = process.argv.slice(2);
 
   // ✅ Нормализация путей для Windows
@@ -1151,6 +1157,7 @@ function parseArgs(): ParsedArgs | null {
 // MAIN CLI ENTRY POINT
 // ==========================================
 
+// ✅ ЭКСПОРТИРУЕМ runCLI для видимости в графе
 export async function runCLI(): Promise<void> {
   const parsed = parseArgs();
   if (!parsed) return;
@@ -1329,9 +1336,7 @@ export async function runCLI(): Promise<void> {
 
       console.log('\n📋 Контракт для верификации:');
       console.log(`   Функция: ${contract.name}`);
-      console.log(
-        `   Параметры: ${contract.params.map((p: any) => `${p.name}:${p.type}`).join(', ')}`
-      );
+      console.log(`   Параметры: ${contract.params.map((p: any) => `${p.name}:${p.type}`).join(', ')}`);
       console.log(`   Возврат: ${contract.returnType}`);
       console.log(`   Предусловий: ${contract.preconditions.length}`);
       console.log(`   Постусловий: ${contract.postconditions.length}`);
@@ -1572,9 +1577,7 @@ export async function runCLI(): Promise<void> {
     // Mode: project (graph)
     if (mode === 'project') {
       const maxDepth = extraArg ? parseInt(extraArg, 10) : Infinity;
-      console.log(
-        `📁 Построение графа проекта от ${currentTargetPath} (глубина ${maxDepth === Infinity ? '∞' : maxDepth})`
-      );
+      console.log(`📁 Построение графа проекта от ${currentTargetPath} (глубина ${maxDepth === Infinity ? '∞' : maxDepth})`);
 
       // Передаем fromFunction и toFunction в buildProjectGraph
       const resultData = buildProjectGraph(
@@ -1673,9 +1676,7 @@ export async function runCLI(): Promise<void> {
             enhancedReportPath
           );
           console.log(`\n✅ РАСШИРЕННЫЙ ОТЧЕТ СОХРАНЕН: ${enhancedReportPath}`);
-          console.log(
-            `📊 Включает: функции, константы, переменные, интерфейсы, типы, классы, вызовы`
-          );
+          console.log(`📊 Включает: функции, константы, переменные, интерфейсы, типы, классы, вызовы`);
 
           // Выводим статистику
           const stats = resultData.packageLockReport?.entityStats || {};
@@ -1689,6 +1690,66 @@ export async function runCLI(): Promise<void> {
           console.log(`   • Вызовов: ${stats.totalCalls || 0}`);
         } catch (error) {
           console.error(`❌ Ошибка при сохранении расширенного отчета:`, error);
+        }
+
+        // ============================================
+        // 🆕 ИСПОЛЬЗУЕМ ЕДИНЫЙ ИСТОЧНИК ДАННЫХ
+        // ============================================
+        console.log('\n📊 Сбор данных через единый источник...');
+
+        try {
+          // Строим единый источник данных
+          const builder = new DataSourceBuilder(projectRoot);
+
+          // Добавляем все сущности из resultData.entities
+          for (const [modulePath, entities] of Object.entries(resultData.entities || {})) {
+            if (entities && typeof entities === 'object') {
+              // Преобразуем в правильный формат
+              const entitiesResult: EntitiesResult = {
+                functions: ensureArray((entities as any).functions || []),
+                classes: ensureArray((entities as any).classes || []),
+                constants: ensureArray((entities as any).constants || []),
+                interfaces: ensureArray((entities as any).interfaces || []),
+                types: ensureArray((entities as any).types || []),
+                variables: ensureArray((entities as any).variables || []),
+                imports: ensureArray((entities as any).imports || []),
+                exports: ensureArray((entities as any).exports || []),
+                callGraph: (entities as any).callGraph || {},
+                moduleName: modulePath,
+                filePath: modulePath,
+              };
+              builder.addEntities(modulePath, entitiesResult);
+            }
+          }
+
+          // Добавляем граф
+          builder.addGraph(resultData.rootKey, normalizedData.graph);
+
+          // Находим циклы
+          builder.findCycles();
+
+          // Строим пакеты
+          builder.buildPackages();
+
+          // Получаем доступ к данным
+          const dataSource = builder.build();
+          const accessor = new DataSourceAccessor(dataSource);
+
+          // Выводим статистику из единого источника
+          const stats = accessor.getStats();
+          console.log(`\n📊 СТАТИСТИКА ИЗ ЕДИНОГО ИСТОЧНИКА:`);
+          console.log(`   • Модулей: ${stats.graph.modules}`);
+          console.log(`   • Функций: ${stats.entities.totalFunctions}`);
+          console.log(`   • Классов: ${stats.entities.totalClasses}`);
+          console.log(`   • Констант: ${stats.entities.totalConstants}`);
+          console.log(`   • Интерфейсов: ${stats.entities.totalInterfaces}`);
+          console.log(`   • Типов: ${stats.entities.totalTypes}`);
+          console.log(`   • Переменных: ${stats.entities.totalVariables}`);
+          console.log(`   • Вызовов: ${stats.entities.totalCalls}`);
+          console.log(`   • Циклов: ${stats.graph.cycles}`);
+
+        } catch (error) {
+          console.error('❌ Ошибка при использовании единого источника данных:', error);
         }
 
         // ============================================
@@ -2128,12 +2189,8 @@ export async function runCLI(): Promise<void> {
         console.log(`   • Переменных: ${entitiesWithCalls.variables.length}`);
         console.log(`   • Вызовов между функциями: ${fullAnalysis.entityGraph.edges.length}`);
 
-        console.log(
-          '\n🌐 Откройте interactive-report.html в браузере для интерактивного просмотра'
-        );
-        console.log(
-          '📄 Откройте reports/entities-component-tree-deep/package-lock-report.json для детального анализа'
-        );
+        console.log('\n🌐 Откройте interactive-report.html в браузере для интерактивного просмотра');
+        console.log('📄 Откройте reports/entities-component-tree-deep/package-lock-report.json для детального анализа');
       }
 
       // ==========================================
@@ -2215,9 +2272,7 @@ export async function runCLI(): Promise<void> {
           }
         }
 
-        console.log(
-          '\n💡 Подробная визуализация (с подсветкой циклов красным) доступна в report.html'
-        );
+        console.log('\n💡 Подробная визуализация (с подсветкой циклов красным) доступна в report.html');
       }
 
       return;
@@ -2285,14 +2340,10 @@ export async function runCLI(): Promise<void> {
           const fullAnalysisPath = path.join(process.cwd(), 'full-analysis.json');
 
           saveModuleGraph(normalizedData, entities, moduleGraphPath);
-          console.log(
-            `   ✅ module-graph.json (${entities.functions.length} функций, ${entities.classes.length} классов)`
-          );
+          console.log(`   ✅ module-graph.json (${entities.functions.length} функций, ${entities.classes.length} классов)`);
 
           saveEntityGraph(normalizedData, entities, entityGraphPath);
-          console.log(
-            `   ✅ entity-graph.json (${entities.interfaces.length} интерфейсов, ${entities.types.length} типов)`
-          );
+          console.log(`   ✅ entity-graph.json (${entities.interfaces.length} интерфейсов, ${entities.types.length} типов)`);
 
           saveFullAnalysis(normalizedData, entities, fullAnalysisPath, currentTargetPath);
           console.log(`   ✅ full-analysis.json (полный отчет)`);
@@ -2312,9 +2363,7 @@ export async function runCLI(): Promise<void> {
       console.log('\n🎉 Готово! Откройте report.html в браузере');
 
       if (hasCycles) {
-        console.log(
-          `\n⚠️ Обнаружено ${cyclicEdges.size} циклических зависимостей во внутреннем графе файла:`
-        );
+        console.log(`\n⚠️ Обнаружено ${cyclicEdges.size} циклических зависимостей во внутреннем графе файла:`);
         console.log('='.repeat(60));
 
         // Группируем по исходной функции/сущности
@@ -2337,9 +2386,7 @@ export async function runCLI(): Promise<void> {
           }
         }
 
-        console.log(
-          '\n💡 Подробная визуализация (с подсветкой циклов красным) доступна в report.html'
-        );
+        console.log('\n💡 Подробная визуализация (с подсветкой циклов красным) доступна в report.html');
       }
 
       return;
