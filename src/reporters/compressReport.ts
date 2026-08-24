@@ -66,6 +66,67 @@ export interface CompressedReport {
   >;
 }
 
+// ============================================================
+// ТИПЫ ДЛЯ КОМПАКТНОГО ФОРМАТА
+// ============================================================
+
+/**
+ * Компактная информация о пакете
+ */
+export interface CompactPackage {
+  language: string;
+  size: number;
+  lines: number;
+  entry: boolean;
+  functions: number[];
+  [key: string]: any;
+}
+
+/**
+ * Компактная информация о функции
+ */
+export interface CompactFunction {
+  n: string; // name
+  m: number; // module index
+  l: number; // line
+  e?: boolean; // isExported
+  a?: boolean; // isAsync
+  p?: string[]; // params
+  r?: string; // returnType
+  c?: number[]; // calls
+  sl?: number; // startLine
+  el?: number; // endLine
+  b?: string; // body
+  vs?: string; // vscode link
+  sec?: any; // security info
+  [key: string]: any;
+}
+
+/**
+ * Компактная статистика
+ */
+export interface CompactStats {
+  funcs: number; // total functions
+  mods: number; // total modules
+  calls: number; // total calls
+  size: number; // total size
+  depth: number; // max depth
+  cycles: boolean; // has cycles
+}
+
+/**
+ * Компактная вселенная (полный сжатый отчет)
+ */
+export interface CompactUniverse extends CompressedReport {
+  summary?: {
+    totalFunctions: number;
+    totalModules: number;
+    totalCalls: number;
+    hasCycles: boolean;
+    maxDepth: number;
+  };
+}
+
 /**
  * Сжимает отчет с выбором уровня сжатия
  *
@@ -610,10 +671,165 @@ export function compressReportMax(report: EnhancedPackageLockReport): Compressed
   return compressReport(report, { level: 5, includeVSCodeLinks: true });
 }
 
+// ============================================================
+// КЛАСС UniverseNavigator ДЛЯ НАВИГАЦИИ ПО СЖАТОМУ ОТЧЕТУ
+// ============================================================
+
+/**
+ * Класс для навигации по сжатому отчету
+ */
+export class UniverseNavigator {
+  private data: CompressedReport;
+
+  constructor(data: CompressedReport) {
+    this.data = data;
+  }
+
+  /**
+   * Получить пакет по индексу
+   */
+  getPackage(index: number): CompactPackage | undefined {
+    return this.data.pkg[index];
+  }
+
+  /**
+   * Получить функцию по индексу
+   */
+  getFunction(index: number): CompactFunction | undefined {
+    return this.data.funcs[index];
+  }
+
+  /**
+   * Получить все модули
+   */
+  getModules(): string[] {
+    return this.data.modules;
+  }
+
+  /**
+   * Получить статистику
+   */
+  getStats(): CompactStats {
+    return this.data.stats;
+  }
+
+  /**
+   * Получить корневой модуль
+   */
+  getRoot(): number {
+    return this.data.root;
+  }
+
+  /**
+   * Получить граф модулей
+   */
+  getModuleGraph(): Record<number, number[]> {
+    return this.data.mgraph;
+  }
+
+  /**
+   * Получить граф функций
+   */
+  getFunctionGraph(): Record<number, number[]> {
+    return this.data.fgraph;
+  }
+
+  /**
+   * Получить уровни
+   */
+  getLevels(): Record<number, number[]> {
+    return this.data.levels;
+  }
+
+  /**
+   * Получить детали вызовов (уровень 4+)
+   */
+  getCallDetails(): CompressedReport['callDetails'] {
+    return this.data.callDetails;
+  }
+
+  /**
+   * Получить контекст вызовов (уровень 5)
+   */
+  getCallContext(): CompressedReport['callContext'] {
+    return this.data.callContext;
+  }
+
+  /**
+   * Найти функцию по имени
+   */
+  findFunctionByName(name: string): number | undefined {
+    for (let i = 0; i < this.data.funcs.length; i++) {
+      const func = this.data.funcs[i];
+      if (func && func.n === name) {
+        return i;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Найти функции по модулю
+   */
+  findFunctionsByModule(moduleIndex: number): number[] {
+    const result: number[] = [];
+    for (let i = 0; i < this.data.funcs.length; i++) {
+      const func = this.data.funcs[i];
+      if (func && func.m === moduleIndex) {
+        result.push(i);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Получить вызовы функции
+   */
+  getFunctionCalls(index: number): number[] {
+    const func = this.data.funcs[index];
+    if (!func) return [];
+    return func.c || [];
+  }
+
+  /**
+   * Получить информацию об уровне сжатия
+   */
+  getCompressionInfo(): { level: CompressionLevel; version: string } {
+    return {
+      level: this.data.level,
+      version: this.data.v,
+    };
+  }
+
+  /**
+   * Экспортировать данные в JSON
+   */
+  toJSON(): CompressedReport {
+    return this.data;
+  }
+}
+
+/**
+ * Загрузить сжатый отчет в навигатор
+ */
+export function loadUniverse(data: CompressedReport): UniverseNavigator {
+  return new UniverseNavigator(data);
+}
+
+/**
+ * Создать навигатор (алиас для loadUniverse)
+ */
+export function createNavigator(data: CompressedReport): UniverseNavigator {
+  return loadUniverse(data);
+}
+
 // Экспорт по умолчанию
 export default {
   compressReport,
   compressReportMinimal,
   compressReportBalanced,
   compressReportMax,
+  UniverseNavigator,
+  loadUniverse,
+  createNavigator,
 };

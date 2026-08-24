@@ -2,7 +2,7 @@
   "v": "3.0.1",
   "level": 1,
   "root": 0,
-  "time": "2026-08-24T14:18:07.869Z",
+  "time": "2026-08-24T18:50:55.561Z",
   "modules": [
     "src/cli.ts",
     "src/utils/is-main.ts",
@@ -33,6 +33,9 @@
     "src/utils/path-utils.ts",
     "src/core/call-collector.ts",
     "src/config.ts",
+    "src/modes/vue-analyzer/types.ts",
+    "src/modes/vue-analyzer/index.ts",
+    "src/modes/vue-analyzer/extractors/index.ts",
     "src/refactor/types.ts",
     "src/refactor/AutoRefactor.ts",
     "src/refactor/ModuleExtractor.ts",
@@ -72,6 +75,21 @@
     "src/reporters/modules/packages.ts",
     "src/reporters/modules/converters.ts",
     "src/reporters/data-converter.ts",
+    "src/modes/vue-analyzer/parser.ts",
+    "src/modes/vue-analyzer/template.ts",
+    "src/modes/vue-analyzer/callgraph.ts",
+    "src/modes/vue-analyzer/report.ts",
+    "src/modes/vue-analyzer/utils.ts",
+    "src/modes/vue-analyzer/extractors/props.ts",
+    "src/modes/vue-analyzer/extractors/emits.ts",
+    "src/modes/vue-analyzer/extractors/expose.ts",
+    "src/modes/vue-analyzer/extractors/imports.ts",
+    "src/modes/vue-analyzer/extractors/composables.ts",
+    "src/modes/vue-analyzer/extractors/functions.ts",
+    "src/modes/vue-analyzer/extractors/constants.ts",
+    "src/modes/vue-analyzer/extractors/variables.ts",
+    "src/modes/vue-analyzer/extractors/types.ts",
+    "src/modes/vue-analyzer/extractors/interfaces.ts",
     "src/formal/index.ts",
     "src/utils/Logger.ts",
     "src/formal/checkers/FileEquivalenceChecker.ts",
@@ -232,7 +250,7 @@
           "params": [
             "startDir"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
           "line": 33,
           "consumers": []
         },
@@ -250,7 +268,7 @@
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
           "line": 89,
           "consumers": []
         },
@@ -294,7 +312,7 @@
           "params": [
             "tsConfig"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").AliasMapping",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/tsconfig-resolver\").AliasMapping",
           "line": 181,
           "consumers": []
         },
@@ -343,7 +361,7 @@
             "alias",
             "target"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
           "line": 263,
           "consumers": []
         },
@@ -355,7 +373,7 @@
             "tsConfig",
             "alias"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
           "line": 287,
           "consumers": []
         }
@@ -375,8 +393,8 @@
           "params": [
             "filePath"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
-          "line": 73,
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
+          "line": 101,
           "consumers": []
         },
         "parseVueSFCFile": {
@@ -386,8 +404,8 @@
           "params": [
             "filePath"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/ast-parser\").VueSFCData | null",
-          "line": 104,
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/ast-parser\").VueSFCData | null",
+          "line": 132,
           "consumers": []
         },
         "parseFile": {
@@ -399,7 +417,7 @@
             "_options"
           ],
           "returns": "any",
-          "line": 170,
+          "line": 205,
           "consumers": []
         },
         "isExternalModule": {
@@ -410,7 +428,7 @@
             "importTarget"
           ],
           "returns": "boolean",
-          "line": 327,
+          "line": 389,
           "consumers": []
         },
         "resolveFilePath": {
@@ -422,7 +440,7 @@
             "targetPath"
           ],
           "returns": "string | null",
-          "line": 360,
+          "line": 422,
           "consumers": []
         },
         "getAllProjectFiles": {
@@ -435,7 +453,7 @@
             "excludePatterns"
           ],
           "returns": "string[]",
-          "line": 484,
+          "line": 546,
           "consumers": []
         },
         "extractFunctionsFromAST": {
@@ -446,7 +464,7 @@
             "ast"
           ],
           "returns": "any[]",
-          "line": 522,
+          "line": 584,
           "consumers": []
         },
         "extractClassesFromAST": {
@@ -457,7 +475,7 @@
             "ast"
           ],
           "returns": "any[]",
-          "line": 582,
+          "line": 644,
           "consumers": []
         },
         "extractConstantsFromAST": {
@@ -468,7 +486,7 @@
             "ast"
           ],
           "returns": "any[]",
-          "line": 628,
+          "line": 690,
           "consumers": []
         },
         "extractInterfacesFromAST": {
@@ -479,7 +497,7 @@
             "ast"
           ],
           "returns": "any[]",
-          "line": 662,
+          "line": 724,
           "consumers": []
         },
         "extractTypesFromAST": {
@@ -490,7 +508,7 @@
             "ast"
           ],
           "returns": "any[]",
-          "line": 701,
+          "line": 763,
           "consumers": []
         },
         "extractVariablesFromAST": {
@@ -501,7 +519,7 @@
             "ast"
           ],
           "returns": "any[]",
-          "line": 728,
+          "line": 790,
           "consumers": []
         }
       }
@@ -521,8 +539,8 @@
             "ast",
             "filePath"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/entity-extractor\").EntitiesResult",
-          "line": 287,
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/entity-extractor\").EntitiesResult",
+          "line": 657,
           "consumers": []
         },
         "extractCallGraph": {
@@ -533,7 +551,7 @@
             "ast"
           ],
           "returns": "Record<string, string[]>",
-          "line": 1239,
+          "line": 1496,
           "consumers": []
         }
       }
@@ -554,7 +572,7 @@
             "fromFunction",
             "toFunction"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/project-graph\").CallGraphResult",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/project-graph\").CallGraphResult",
           "line": 266,
           "consumers": []
         },
@@ -569,8 +587,8 @@
             "fromFunction",
             "toFunction"
           ],
-          "returns": "{ rootKey: string; graph: Record<string, string[]>; entities?: Record<string, import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/entity-extractor\").EntitiesResult> | undefined; packageLockReport?: import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/project-graph\").PackageLockReport | undefined; callGraphResult?: import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/project-graph\").CallGraphResult | undefined; }",
-          "line": 485,
+          "returns": "{ rootKey: string; graph: Record<string, string[]>; entities?: Record<string, import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/entity-extractor\").EntitiesResult> | undefined; packageLockReport?: import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/project-graph\").PackageLockReport | undefined; callGraphResult?: import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/project-graph\").CallGraphResult | undefined; }",
+          "line": 522,
           "consumers": []
         }
       }
@@ -658,7 +676,7 @@
             "targetFile",
             "options"
           ],
-          "returns": "{ markdown: string; analysis: { filePath: string; fileName: any; stats: { totalLines: any; totalExports: number; totalFunctions: number; totalClasses: number; totalConstants: number; totalInterfaces: number; totalTypes: number; totalImports: number; }; imports: any[]; exports: any[]; functions: any[]; classes: any[]; constants: any[]; interfaces: any[]; types: any[]; callGraph: Record<string, string[]>; fullCode: any; lines: any; }; outputFiles: { prompt: any; context: string; graph: string; analysis: string; vue: string; }; vueAnalysis: import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/vue-analyzer\").VueComponentAnalysis | null; } | null",
+          "returns": "{ markdown: string; analysis: { filePath: string; fileName: any; stats: { totalLines: any; totalExports: number; totalFunctions: number; totalClasses: number; totalConstants: number; totalInterfaces: number; totalTypes: number; totalImports: number; }; imports: any[]; exports: any[]; functions: any[]; classes: any[]; constants: any[]; interfaces: any[]; types: any[]; callGraph: Record<string, string[]>; fullCode: any; lines: any; }; outputFiles: { prompt: any; context: string; graph: string; analysis: string; vue: string; }; vueAnalysis: import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/vue-analyzer/types\").VueComponentAnalysis | null; } | null",
           "line": 374,
           "consumers": []
         }
@@ -759,67 +777,7 @@
       "s": 0,
       "ln": 0,
       "entry": false,
-      "f": [],
-      "exp": {
-        "parseVueFile": {
-          "direction": "outward",
-          "type": "export",
-          "isAsync": false,
-          "params": [
-            "filePath"
-          ],
-          "returns": "{ descriptor: import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/node_modules/@vue/compiler-sfc/dist/compiler-sfc\").SFCDescriptor; errors: Error[]; } | null",
-          "line": 77,
-          "consumers": []
-        },
-        "analyzeVueComponent": {
-          "direction": "outward",
-          "type": "export",
-          "isAsync": false,
-          "params": [
-            "filePath",
-            "options"
-          ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/vue-analyzer\").VueComponentAnalysis | null",
-          "line": 1668,
-          "consumers": []
-        },
-        "generateVueComponentReport": {
-          "direction": "outward",
-          "type": "export",
-          "isAsync": false,
-          "params": [
-            "analysis"
-          ],
-          "returns": "string",
-          "line": 1834,
-          "consumers": []
-        },
-        "enhanceWithVueAnalysis": {
-          "direction": "outward",
-          "type": "export",
-          "isAsync": false,
-          "params": [
-            "targetFile",
-            "existingAnalysis"
-          ],
-          "returns": "any",
-          "line": 1956,
-          "consumers": []
-        },
-        "analyzeVueComponentCli": {
-          "direction": "outward",
-          "type": "export",
-          "isAsync": true,
-          "params": [
-            "filePath",
-            "options"
-          ],
-          "returns": "Promise<void>",
-          "line": 1984,
-          "consumers": []
-        }
-      }
+      "f": []
     },
     "15": {
       "l": "typescript",
@@ -843,7 +801,7 @@
             "paths",
             "options"
           ],
-          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/ci-cd/SemanticPipeline\").PipelineResult>",
+          "returns": "Promise<import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/ci-cd/SemanticPipeline\").PipelineResult>",
           "line": 1111,
           "consumers": []
         }
@@ -897,7 +855,7 @@
             "left",
             "right"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1022,
           "consumers": []
         },
@@ -909,7 +867,7 @@
             "left",
             "right"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1026,
           "consumers": []
         },
@@ -922,7 +880,7 @@
             "min",
             "max"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1030,
           "consumers": []
         },
@@ -934,7 +892,7 @@
             "condition",
             "consequence"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1034,
           "consumers": []
         },
@@ -945,7 +903,7 @@
           "params": [
             "args"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1043,
           "consumers": []
         },
@@ -956,7 +914,7 @@
           "params": [
             "args"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1052,
           "consumers": []
         },
@@ -967,7 +925,7 @@
           "params": [
             "operand"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1059,
           "consumers": []
         },
@@ -980,7 +938,7 @@
             "thenBranch",
             "elseBranch"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1066,
           "consumers": []
         },
@@ -993,7 +951,7 @@
             "operator",
             "right"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1085,
           "consumers": []
         },
@@ -1005,7 +963,7 @@
             "varName",
             "value"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1149,
           "consumers": []
         },
@@ -1017,7 +975,7 @@
             "left",
             "right"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1153,
           "consumers": []
         },
@@ -1029,7 +987,7 @@
             "left",
             "right"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1157,
           "consumers": []
         },
@@ -1041,7 +999,7 @@
             "left",
             "right"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1161,
           "consumers": []
         },
@@ -1053,7 +1011,7 @@
             "left",
             "right"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1165,
           "consumers": []
         },
@@ -1133,7 +1091,7 @@
             "report",
             "level"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridModule[]",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridModule[]",
           "line": 252,
           "consumers": []
         },
@@ -1144,7 +1102,7 @@
           "params": [
             "report"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridFunction[]",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridFunction[]",
           "line": 259,
           "consumers": []
         },
@@ -1156,7 +1114,7 @@
             "report",
             "source"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridFunction[]",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridFunction[]",
           "line": 270,
           "consumers": []
         },
@@ -1191,7 +1149,7 @@
             "_filePaths",
             "options"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").EnhancedPackageLockReport",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").EnhancedPackageLockReport",
           "line": 153,
           "consumers": []
         },
@@ -1271,7 +1229,7 @@
             "data",
             "entities"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").ModuleGraph",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").ModuleGraph",
           "line": 418,
           "consumers": []
         },
@@ -1283,7 +1241,7 @@
             "data",
             "entities"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").EntityGraph",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").EntityGraph",
           "line": 488,
           "consumers": []
         },
@@ -1296,7 +1254,7 @@
             "entities",
             "root"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").FullAnalysis",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").FullAnalysis",
           "line": 709,
           "consumers": []
         },
@@ -1307,7 +1265,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").EnhancedEntityInfo",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").EnhancedEntityInfo",
           "line": 747,
           "consumers": []
         }
@@ -1392,7 +1350,7 @@
             "report",
             "options"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/compressReport\").CompressedReport",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/compressReport\").CompressedReport",
           "line": 79,
           "consumers": []
         },
@@ -1403,7 +1361,7 @@
           "params": [
             "report"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/compressReport\").CompressedReport",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/compressReport\").CompressedReport",
           "line": 589,
           "consumers": []
         },
@@ -1414,7 +1372,7 @@
           "params": [
             "report"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/compressReport\").CompressedReport",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/compressReport\").CompressedReport",
           "line": 602,
           "consumers": []
         },
@@ -1425,7 +1383,7 @@
           "params": [
             "report"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/compressReport\").CompressedReport",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/compressReport\").CompressedReport",
           "line": 609,
           "consumers": []
         }
@@ -1830,7 +1788,45 @@
       "s": 0,
       "ln": 0,
       "entry": false,
-      "f": []
+      "f": [],
+      "exp": {
+        "analyzeVueComponent": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "filePath",
+            "options"
+          ],
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/vue-analyzer/types\").VueComponentAnalysis | null",
+          "line": 75,
+          "consumers": []
+        },
+        "enhanceWithVueAnalysis": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "targetFile",
+            "existingAnalysis"
+          ],
+          "returns": "any",
+          "line": 340,
+          "consumers": []
+        },
+        "analyzeVueComponentCli": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": true,
+          "params": [
+            "filePath",
+            "options"
+          ],
+          "returns": "Promise<void>",
+          "line": 372,
+          "consumers": []
+        }
+      }
     },
     "31": {
       "l": "typescript",
@@ -1928,6 +1924,27 @@
       "s": 0,
       "ln": 0,
       "entry": false,
+      "f": []
+    },
+    "45": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
+      "f": []
+    },
+    "46": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
+      "f": []
+    },
+    "47": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
       "f": [],
       "exp": {
         "isTypeCompatible": {
@@ -1957,14 +1974,14 @@
         }
       }
     },
-    "45": {
+    "48": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
       "entry": false,
       "f": []
     },
-    "46": {
+    "49": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -1995,7 +2012,7 @@
         }
       }
     },
-    "47": {
+    "50": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -2053,7 +2070,7 @@
         }
       }
     },
-    "48": {
+    "51": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -2068,7 +2085,7 @@
             "context",
             "debug"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/ExpressionParser\").ExpressionParser",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/ExpressionParser\").ExpressionParser",
           "line": 968,
           "consumers": []
         },
@@ -2241,21 +2258,21 @@
         }
       }
     },
-    "49": {
+    "52": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
       "entry": false,
       "f": []
     },
-    "50": {
+    "53": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
       "entry": false,
       "f": []
     },
-    "51": {
+    "54": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -2271,13 +2288,13 @@
             "maxDepth",
             "outputDir"
           ],
-          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridReport>",
+          "returns": "Promise<import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridReport>",
           "line": 20,
           "consumers": []
         }
       }
     },
-    "52": {
+    "55": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -2292,13 +2309,13 @@
             "entryPoint",
             "maxDepth"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridReport",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridReport",
           "line": 16,
           "consumers": []
         }
       }
     },
-    "53": {
+    "56": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -2313,13 +2330,13 @@
             "filePath",
             "level"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridModule | null",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridModule | null",
           "line": 19,
           "consumers": []
         }
       }
     },
-    "54": {
+    "57": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -2339,7 +2356,7 @@
         }
       }
     },
-    "55": {
+    "58": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -2360,7 +2377,7 @@
         }
       }
     },
-    "56": {
+    "59": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -2380,14 +2397,14 @@
         }
       }
     },
-    "57": {
+    "60": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
       "entry": false,
       "f": []
     },
-    "58": {
+    "61": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -2622,7 +2639,7 @@
         }
       }
     },
-    "59": {
+    "62": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -2634,7 +2651,7 @@
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/metadata\").ReportMetadata",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/metadata\").ReportMetadata",
           "line": 11,
           "consumers": []
         },
@@ -2694,13 +2711,13 @@
             "customVersion",
             "customLockfileVersion"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/metadata\").ReportMetadata",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/metadata\").ReportMetadata",
           "line": 40,
           "consumers": []
         }
       }
     },
-    "60": {
+    "63": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -2715,7 +2732,7 @@
             "packages",
             "callGraph"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/statistics\").EntityStats",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/statistics\").EntityStats",
           "line": 24,
           "consumers": []
         },
@@ -2726,13 +2743,13 @@
           "params": [
             "packages"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/statistics\").FileStats",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/statistics\").FileStats",
           "line": 69,
           "consumers": []
         }
       }
     },
-    "61": {
+    "64": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -2746,7 +2763,7 @@
           "params": [
             "graph"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/graphs\").DependencyGraph",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/graphs\").DependencyGraph",
           "line": 10,
           "consumers": []
         },
@@ -2892,7 +2909,7 @@
         }
       }
     },
-    "62": {
+    "65": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -2909,7 +2926,7 @@
             "graphData",
             "packages"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/flows\").ExecutionGraph",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/flows\").ExecutionGraph",
           "line": 55,
           "consumers": []
         },
@@ -2923,7 +2940,7 @@
             "graphData",
             "packages"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/flows\").ImportExportFlow",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/flows\").ImportExportFlow",
           "line": 273,
           "consumers": []
         },
@@ -2952,7 +2969,7 @@
             "graphData",
             "packages"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/flows\").ExecutionGraph",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/flows\").ExecutionGraph",
           "line": 664,
           "consumers": []
         },
@@ -2985,7 +3002,7 @@
         }
       }
     },
-    "63": {
+    "66": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -3001,7 +3018,7 @@
             "callGraph",
             "outwardDeps"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").ArchitectureMetrics",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").ArchitectureMetrics",
           "line": 16,
           "consumers": []
         },
@@ -3077,7 +3094,7 @@
         }
       }
     },
-    "64": {
+    "67": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -3093,7 +3110,7 @@
             "metrics",
             "packages"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").ProjectSummary",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").ProjectSummary",
           "line": 6,
           "consumers": []
         },
@@ -3143,7 +3160,7 @@
         }
       }
     },
-    "65": {
+    "68": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -3161,13 +3178,13 @@
             "projectRoot",
             "options"
           ],
-          "returns": "Record<string, import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").EnhancedPackageInfo>",
+          "returns": "Record<string, import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").EnhancedPackageInfo>",
           "line": 1285,
           "consumers": []
         }
       }
     },
-    "66": {
+    "69": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -3181,7 +3198,7 @@
           "params": [
             "entities"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").EnhancedEntityInfo",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").EnhancedEntityInfo",
           "line": 26,
           "consumers": []
         },
@@ -3192,7 +3209,7 @@
           "params": [
             "enhanced"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").EntitiesResult",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").EntitiesResult",
           "line": 273,
           "consumers": []
         },
@@ -3204,7 +3221,7 @@
             "functions",
             "allFunctions"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").FunctionEntity[]",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").FunctionEntity[]",
           "line": 355,
           "consumers": []
         },
@@ -3244,14 +3261,646 @@
         }
       }
     },
-    "67": {
+    "70": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
       "entry": false,
       "f": []
     },
-    "68": {
+    "71": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
+      "f": [],
+      "exp": {
+        "parseVueFile": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "filePath"
+          ],
+          "returns": "{ descriptor: import(\"/home/sergei/Desktop/system/packages/ast-analyzer/node_modules/@vue/compiler-sfc/dist/compiler-sfc\").SFCDescriptor; errors: Error[]; } | null",
+          "line": 10,
+          "consumers": []
+        },
+        "compileScriptBlock": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "descriptor",
+            "filePath"
+          ],
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/node_modules/@vue/compiler-sfc/dist/compiler-sfc\").SFCScriptBlock | null",
+          "line": 35,
+          "consumers": []
+        }
+      }
+    },
+    "72": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
+      "f": [],
+      "exp": {
+        "analyzeTemplate": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "descriptor",
+            "options"
+          ],
+          "returns": "{ content: string | null; ast: any; complexity: number; rootElements: string[]; slots: string[]; directives: string[]; events: string[]; }",
+          "line": 9,
+          "consumers": []
+        }
+      }
+    },
+    "73": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
+      "f": [],
+      "exp": {
+        "buildCallGraphFromScript": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "content",
+            "functions",
+            "composables"
+          ],
+          "returns": "Record<string, string[]>",
+          "line": 8,
+          "consumers": []
+        }
+      }
+    },
+    "74": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
+      "f": [],
+      "exp": {
+        "generateVueComponentReport": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "analysis"
+          ],
+          "returns": "string",
+          "line": 8,
+          "consumers": []
+        }
+      }
+    },
+    "75": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
+      "f": [],
+      "exp": {
+        "getNodeValue": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "node"
+          ],
+          "returns": "any",
+          "line": 6,
+          "consumers": []
+        },
+        "safeGet": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "obj",
+            "path",
+            "defaultValue"
+          ],
+          "returns": "T | undefined",
+          "line": 81,
+          "consumers": []
+        },
+        "isString": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "value"
+          ],
+          "returns": "boolean",
+          "line": 100,
+          "consumers": []
+        },
+        "isArray": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "value"
+          ],
+          "returns": "boolean",
+          "line": 107,
+          "consumers": []
+        },
+        "isObject": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "value"
+          ],
+          "returns": "boolean",
+          "line": 114,
+          "consumers": []
+        },
+        "safeString": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "value"
+          ],
+          "returns": "string",
+          "line": 121,
+          "consumers": []
+        },
+        "safeNumber": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "value",
+            "defaultValue"
+          ],
+          "returns": "number",
+          "line": 139,
+          "consumers": []
+        },
+        "safeBoolean": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "value",
+            "defaultValue"
+          ],
+          "returns": "boolean",
+          "line": 152,
+          "consumers": []
+        },
+        "getNodeName": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "node"
+          ],
+          "returns": "string | undefined",
+          "line": 167,
+          "consumers": []
+        },
+        "getNodeStringValue": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "node"
+          ],
+          "returns": "string | undefined",
+          "line": 192,
+          "consumers": []
+        },
+        "isExportedNode": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "node"
+          ],
+          "returns": "boolean",
+          "line": 213,
+          "consumers": []
+        },
+        "getNodeLocation": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "node"
+          ],
+          "returns": "{ line: number; column: number; } | undefined",
+          "line": 245,
+          "consumers": []
+        },
+        "getNodeRange": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "node"
+          ],
+          "returns": "[number, number] | undefined",
+          "line": 257,
+          "consumers": []
+        },
+        "isAsyncNode": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "node"
+          ],
+          "returns": "boolean",
+          "line": 266,
+          "consumers": []
+        },
+        "isGeneratorNode": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "node"
+          ],
+          "returns": "boolean",
+          "line": 285,
+          "consumers": []
+        },
+        "getFunctionParams": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "node"
+          ],
+          "returns": "string[]",
+          "line": 300,
+          "consumers": []
+        },
+        "getFunctionBody": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "node"
+          ],
+          "returns": "string | undefined",
+          "line": 339,
+          "consumers": []
+        },
+        "isVueMacro": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "node"
+          ],
+          "returns": "boolean",
+          "line": 355,
+          "consumers": []
+        }
+      }
+    },
+    "76": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
+      "f": [],
+      "exp": {
+        "extractPropsFromSource": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "content"
+          ],
+          "returns": "{ names: string[]; types: Record<string, string>; required: Record<string, boolean>; defaults: Record<string, any>; }",
+          "line": 11,
+          "consumers": []
+        },
+        "extractPropsFromCompiledScript": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "compiledScript"
+          ],
+          "returns": "{ names: string[]; types: Record<string, string>; required: Record<string, boolean>; defaults: Record<string, any>; }",
+          "line": 244,
+          "consumers": []
+        },
+        "extractPropsFromAST": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "ast"
+          ],
+          "returns": "{ names: string[]; types: Record<string, string>; required: Record<string, boolean>; defaults: Record<string, any>; }",
+          "line": 312,
+          "consumers": []
+        }
+      }
+    },
+    "77": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
+      "f": [],
+      "exp": {
+        "extractEmitsFromSource": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "content"
+          ],
+          "returns": "{ names: string[]; types: Record<string, string>; }",
+          "line": 11,
+          "consumers": []
+        },
+        "extractEmitsFromCompiledScript": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "compiledScript"
+          ],
+          "returns": "{ names: string[]; types: Record<string, string>; }",
+          "line": 57,
+          "consumers": []
+        },
+        "extractEmitsFromAST": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "ast"
+          ],
+          "returns": "{ names: string[]; types: Record<string, string>; }",
+          "line": 104,
+          "consumers": []
+        }
+      }
+    },
+    "78": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
+      "f": [],
+      "exp": {
+        "extractExposeFromCompiledScript": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "compiledScript"
+          ],
+          "returns": "string[]",
+          "line": 9,
+          "consumers": []
+        },
+        "extractExposeFromAST": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "ast"
+          ],
+          "returns": "string[]",
+          "line": 22,
+          "consumers": []
+        }
+      }
+    },
+    "79": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
+      "f": [],
+      "exp": {
+        "extractImportsFromAST": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "ast"
+          ],
+          "returns": "{ source: string; specifiers: string[]; isTypeOnly: boolean; }[]",
+          "line": 9,
+          "consumers": []
+        },
+        "extractImportsFromSource": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "content"
+          ],
+          "returns": "{ source: string; specifiers: string[]; isTypeOnly: boolean; }[]",
+          "line": 62,
+          "consumers": []
+        }
+      }
+    },
+    "80": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
+      "f": [],
+      "exp": {
+        "extractComposablesFromAST": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "ast"
+          ],
+          "returns": "{ name: string; source: string; args: string[]; }[]",
+          "line": 9,
+          "consumers": []
+        },
+        "extractComposablesFromSource": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "content"
+          ],
+          "returns": "{ name: string; source: string; args: string[]; }[]",
+          "line": 77,
+          "consumers": []
+        }
+      }
+    },
+    "81": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
+      "f": [],
+      "exp": {
+        "extractFunctionsFromScript": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "content",
+            "_filePath"
+          ],
+          "returns": "{ name: string; line: number; isAsync: boolean; isExported: boolean; params: string[]; returnType?: string | undefined; body?: string | undefined; }[]",
+          "line": 10,
+          "consumers": []
+        }
+      }
+    },
+    "82": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
+      "f": [],
+      "exp": {
+        "extractConstantsFromAST": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "ast"
+          ],
+          "returns": "{ name: string; value: any; line: number; isExported: boolean; type?: string | undefined; }[]",
+          "line": 10,
+          "consumers": []
+        },
+        "extractConstantsFromScript": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "content",
+            "ast"
+          ],
+          "returns": "{ name: string; value: any; line: number; isExported: boolean; type?: string | undefined; }[]",
+          "line": 186,
+          "consumers": []
+        }
+      }
+    },
+    "83": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
+      "f": [],
+      "exp": {
+        "extractVariablesFromAST": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "ast"
+          ],
+          "returns": "{ name: string; value: any; line: number; isExported: boolean; type?: string | undefined; }[]",
+          "line": 18,
+          "consumers": []
+        },
+        "extractVariablesFromScript": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "content",
+            "ast"
+          ],
+          "returns": "{ name: string; value: any; line: number; isExported: boolean; type?: string | undefined; }[]",
+          "line": 321,
+          "consumers": []
+        }
+      }
+    },
+    "84": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
+      "f": [],
+      "exp": {
+        "extractTypesFromAST": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "ast"
+          ],
+          "returns": "{ name: string; definition: string; line: number; isExported: boolean; }[]",
+          "line": 9,
+          "consumers": []
+        },
+        "extractTypesFromScript": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "content",
+            "ast"
+          ],
+          "returns": "{ name: string; definition: string; line: number; isExported: boolean; }[]",
+          "line": 276,
+          "consumers": []
+        }
+      }
+    },
+    "85": {
+      "l": "typescript",
+      "s": 0,
+      "ln": 0,
+      "entry": false,
+      "f": [],
+      "exp": {
+        "extractInterfacesFromAST": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "ast"
+          ],
+          "returns": "{ name: string; properties: string[]; line: number; isExported: boolean; extends?: string[] | undefined; }[]",
+          "line": 137,
+          "consumers": []
+        },
+        "extractInterfacesFromScript": {
+          "direction": "outward",
+          "type": "export",
+          "isAsync": false,
+          "params": [
+            "content",
+            "ast"
+          ],
+          "returns": "{ name: string; properties: string[]; line: number; isExported: boolean; extends?: string[] | undefined; }[]",
+          "line": 317,
+          "consumers": []
+        }
+      }
+    },
+    "86": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -3267,7 +3916,7 @@
             "params",
             "returnType"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 125,
           "consumers": []
         },
@@ -3279,7 +3928,7 @@
             "contract",
             "precondition"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 143,
           "consumers": []
         },
@@ -3291,7 +3940,7 @@
             "contract",
             "postcondition"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 156,
           "consumers": []
         },
@@ -3303,7 +3952,7 @@
             "contract",
             "invariant"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 169,
           "consumers": []
         },
@@ -3315,7 +3964,7 @@
             "contract",
             "body"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 182,
           "consumers": []
         },
@@ -3326,7 +3975,7 @@
           "params": [
             "template"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").FunctionContract",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").FunctionContract",
           "line": 192,
           "consumers": []
         },
@@ -3339,7 +3988,7 @@
             "params",
             "returnType"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 207,
           "consumers": []
         },
@@ -3388,7 +4037,7 @@
             "modifiedPath",
             "options"
           ],
-          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/checkers/FileEquivalenceChecker\").FileEquivalenceResult>",
+          "returns": "Promise<import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/checkers/FileEquivalenceChecker\").FileEquivalenceResult>",
           "line": 293,
           "consumers": []
         },
@@ -3402,7 +4051,7 @@
             "modulesDir",
             "options"
           ],
-          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/checkers/RefactoringEquivalenceChecker\").RefactoringEquivalenceResult>",
+          "returns": "Promise<import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/checkers/RefactoringEquivalenceChecker\").RefactoringEquivalenceResult>",
           "line": 309,
           "consumers": []
         },
@@ -3416,7 +4065,7 @@
             "contract",
             "options"
           ],
-          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/checkers/FileEquivalenceChecker\").FileEquivalenceResult>",
+          "returns": "Promise<import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/checkers/FileEquivalenceChecker\").FileEquivalenceResult>",
           "line": 331,
           "consumers": []
         },
@@ -3429,7 +4078,7 @@
             "modified",
             "variables"
           ],
-          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationResult>",
+          "returns": "Promise<import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationResult>",
           "line": 349,
           "consumers": []
         },
@@ -3442,13 +4091,13 @@
             "functionName",
             "options"
           ],
-          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationResult>",
+          "returns": "Promise<import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationResult>",
           "line": 365,
           "consumers": []
         }
       }
     },
-    "69": {
+    "87": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -3462,7 +4111,7 @@
           "params": [
             "level"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/utils/Logger\").LogLevel",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/utils/Logger\").LogLevel",
           "line": 261,
           "consumers": []
         },
@@ -3471,7 +4120,7 @@
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/utils/Logger\").Logger",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/utils/Logger\").Logger",
           "line": 277,
           "consumers": []
         },
@@ -3488,7 +4137,7 @@
         }
       }
     },
-    "70": {
+    "88": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -3530,7 +4179,7 @@
         }
       }
     },
-    "71": {
+    "89": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -3572,7 +4221,7 @@
         }
       }
     },
-    "72": {
+    "90": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -3614,14 +4263,14 @@
         }
       }
     },
-    "73": {
+    "91": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
       "entry": false,
       "f": []
     },
-    "74": {
+    "92": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -3648,7 +4297,7 @@
             "sig1",
             "sig2"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/SignatureComparator\").SignatureChange | null",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/SignatureComparator\").SignatureChange | null",
           "line": 786,
           "consumers": []
         },
@@ -3660,7 +4309,7 @@
             "signatures",
             "name"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/SignatureComparator\").FunctionSignature | null",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/SignatureComparator\").FunctionSignature | null",
           "line": 794,
           "consumers": []
         },
@@ -3678,7 +4327,7 @@
         }
       }
     },
-    "75": {
+    "93": {
       "l": "typescript",
       "s": 0,
       "ln": 0,
@@ -3690,7 +4339,7 @@
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/CallGraphComparator\").CallGraph",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/CallGraphComparator\").CallGraph",
           "line": 655,
           "consumers": []
         },
@@ -3701,7 +4350,7 @@
           "params": [
             "graphs"
           ],
-          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/CallGraphComparator\").CallGraph",
+          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/CallGraphComparator\").CallGraph",
           "line": 663,
           "consumers": []
         }
@@ -3723,8 +4372,8 @@
     "3": [
       0,
       10,
-      51,
-      52
+      54,
+      55
     ],
     "4": [
       0,
@@ -3748,12 +4397,12 @@
     "7": [
       0,
       9,
-      52
+      55
     ],
     "8": [
       0,
       10,
-      51
+      54
     ],
     "9": [
       0
@@ -3772,8 +4421,9 @@
     ],
     "14": [
       0,
+      6,
       10,
-      65
+      68
     ],
     "15": [
       0
@@ -3784,10 +4434,10 @@
     "17": [
       0,
       16,
-      68,
-      70,
-      71,
-      72
+      86,
+      88,
+      89,
+      90
     ],
     "18": [
       0
@@ -3811,7 +4461,7 @@
     "24": [
       0,
       21,
-      67
+      70
     ],
     "25": [
       0
@@ -3836,168 +4486,181 @@
       13
     ],
     "29": [
-      15,
+      14,
       30,
-      31,
-      32,
-      37,
-      41
+      72,
+      73,
+      74,
+      76,
+      77,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84,
+      85
     ],
     "30": [
-      15
+      14
     ],
     "31": [
-      15,
+      14,
       30
     ],
     "32": [
       15,
-      30
+      33,
+      34,
+      35,
+      40,
+      44
     ],
     "33": [
-      15,
-      30
+      15
     ],
     "34": [
       15,
-      29,
-      30,
-      36
+      33
     ],
     "35": [
       15,
-      29,
-      30,
-      36
+      33
     ],
     "36": [
       15,
-      29,
-      30
+      33
     ],
     "37": [
       15,
-      30
+      32,
+      33,
+      39
     ],
     "38": [
       15,
-      29,
-      30
+      32,
+      33,
+      39
     ],
     "39": [
       15,
-      29,
-      30,
-      31,
       32,
-      38
+      33
     ],
     "40": [
       15,
-      30
+      33
     ],
     "41": [
       15,
-      30,
-      31,
       32,
-      37
+      33
     ],
     "42": [
-      16,
-      29,
-      30
+      15,
+      32,
+      33,
+      34,
+      35,
+      41
     ],
     "43": [
-      16,
-      29,
-      30
+      15,
+      33
     ],
     "44": [
-      16,
-      29,
-      46
+      15,
+      33,
+      34,
+      35,
+      40
     ],
     "45": [
       16,
-      29,
-      30
+      32,
+      33
     ],
     "46": [
-      16
+      16,
+      32,
+      33
     ],
     "47": [
       16,
-      43
+      32,
+      49
     ],
     "48": [
-      17,
-      68
+      16,
+      32,
+      33
     ],
     "49": [
-      17,
-      68
+      16
     ],
     "50": [
-      18,
-      51,
-      52,
-      53,
-      54,
-      55,
-      56
+      16,
+      46
     ],
     "51": [
-      18
+      17,
+      86
     ],
     "52": [
-      18,
-      51
+      17,
+      86
     ],
     "53": [
       18,
-      52
+      54,
+      55,
+      56,
+      57,
+      58,
+      59
     ],
     "54": [
-      18,
-      51,
-      55
+      18
     ],
     "55": [
       18,
-      51
+      54
     ],
     "56": [
       18,
-      51
+      55
     ],
     "57": [
-      19,
-      23,
-      58,
-      60,
-      62,
-      63,
-      64,
-      65,
-      66
+      18,
+      54,
+      58
     ],
     "58": [
-      19,
-      62,
-      63,
-      65,
-      66
+      18,
+      54
     ],
     "59": [
-      19
+      18,
+      54
     ],
     "60": [
-      19
+      19,
+      23,
+      61,
+      63,
+      65,
+      66,
+      67,
+      68,
+      69
     ],
     "61": [
       19,
-      63
+      65,
+      66,
+      68,
+      69
     ],
     "62": [
       19
@@ -4006,60 +4669,119 @@
       19
     ],
     "64": [
-      19
+      19,
+      66
     ],
     "65": [
       19
     ],
     "66": [
-      19,
-      65
+      19
     ],
     "67": [
-      21
+      19
     ],
     "68": [
-      29,
-      30
+      19
     ],
     "69": [
-      30,
-      31,
-      32,
-      37,
-      38,
-      39,
-      40,
-      41
+      19,
+      68
     ],
     "70": [
-      68
+      21
     ],
     "71": [
-      68
+      30
     ],
     "72": [
-      70
+      30
     ],
     "73": [
-      70,
-      71,
-      72
+      30
     ],
     "74": [
-      70,
-      71
+      30
     ],
     "75": [
-      70,
-      71
+      30,
+      76,
+      77,
+      82,
+      83
+    ],
+    "76": [
+      31
+    ],
+    "77": [
+      31
+    ],
+    "78": [
+      31
+    ],
+    "79": [
+      31
+    ],
+    "80": [
+      31
+    ],
+    "81": [
+      31
+    ],
+    "82": [
+      31
+    ],
+    "83": [
+      31
+    ],
+    "84": [
+      31
+    ],
+    "85": [
+      31
+    ],
+    "86": [
+      32,
+      33
+    ],
+    "87": [
+      33,
+      34,
+      35,
+      40,
+      41,
+      42,
+      43,
+      44
+    ],
+    "88": [
+      86
+    ],
+    "89": [
+      86
+    ],
+    "90": [
+      88
+    ],
+    "91": [
+      88,
+      89,
+      90
+    ],
+    "92": [
+      88,
+      89
+    ],
+    "93": [
+      88,
+      89
     ]
   },
   "fgraph": {},
   "levels": {},
   "stats": {
     "funcs": 0,
-    "mods": 76,
+    "mods": 94,
     "calls": 0,
     "size": 0,
     "depth": 0,
