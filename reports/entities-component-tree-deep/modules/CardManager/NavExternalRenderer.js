@@ -10,7 +10,7 @@
  * - Клик по вызову → переход к функции в другом модуле
  * - Отображение источника вызова (top-level или из функции)
  * - Компактный стиль с маленькими кнопками
- * - Ограничение на 10 элементов с индикатором "еще"
+ * - ПОКАЗЫВАЕТ ВСЕ ВЫЗОВЫ БЕЗ ОГРАНИЧЕНИЙ
  */
 export class NavExternalRenderer {
   constructor(manager) {
@@ -35,31 +35,30 @@ export class NavExternalRenderer {
 
     // Исходящие вызовы (из текущего модуля в другие)
     if (externalOutgoing && externalOutgoing.size > 0) {
-      html += this.renderOutgoing(externalOutgoing, modulePath, funcs, callSources);
+      html += this.renderOutgoing(externalOutgoing, modulePath, funcs, callSources, reportData);
     }
 
     // Входящие вызовы (из других модулей в текущий)
     if (externalIncoming && externalIncoming.size > 0) {
-      html += this.renderIncoming(externalIncoming, modulePath, funcs, callSources);
+      html += this.renderIncoming(externalIncoming, modulePath, funcs, callSources, reportData);
     }
 
     return html;
   }
 
   /**
-   * Рендеринг исходящих вызовов
+   * Рендеринг исходящих вызовов - ВСЕ ВЫЗОВЫ БЕЗ ОГРАНИЧЕНИЙ
    * @param {Set<string>} outgoing - Множество имен функций
    * @param {string} modulePath - Путь к текущему модулю
    * @param {Array} funcs - Список функций текущего модуля
    * @param {Map} callSources - Карта источников вызовов
+   * @param {Object} reportData - Данные отчета
    * @returns {string} HTML строка
    */
-  renderOutgoing(outgoing, modulePath, funcs, callSources) {
+  renderOutgoing(outgoing, modulePath, funcs, callSources, reportData) {
+    // ✅ СОРТИРУЕМ ВСЕ ВЫЗОВЫ
     const sortedCalls = Array.from(outgoing).sort();
     const totalCount = outgoing.size;
-    const maxDisplay = 10;
-    const hasMore = totalCount > maxDisplay;
-    const displayItems = sortedCalls.slice(0, maxDisplay);
 
     let html = `
             <div class="nav-section nav-external nav-outgoing" style="padding: 4px 8px; margin: 2px 0;">
@@ -69,17 +68,19 @@ export class NavExternalRenderer {
                 <div class="nav-buttons" style="display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px;">
         `;
 
-    for (const call of displayItems) {
+    // ✅ ПРОХОДИМ ПО ВСЕМ ВЫЗОВАМ
+    for (const call of sortedCalls) {
+      // Ищем модуль для функции
       const targetModule = this.manager.findModuleForFunction(call);
+
+      // Если модуль найден и это не текущий модуль - показываем
       if (targetModule && targetModule !== modulePath) {
         const targetDisplay = targetModule.split('/').pop() || '?';
 
-        // Определяем источник вызова
         const source = this.manager.getCallSource(call, targetModule, funcs);
         const sourceIcon = source === 'top-level' ? '📋' : '🔽';
         const sourceLabel = source === 'top-level' ? 'top-level' : `из ${source}`;
 
-        // Уровень целевого модуля
         const level = this.manager.getModuleLevel(targetModule);
         const levelColor = level === 0 ? '#fbbf24' : level === 1 ? '#60a5fa' : '#94a3b8';
 
@@ -108,33 +109,33 @@ export class NavExternalRenderer {
                         </span>
                     </button>
                 `;
+      } else if (!targetModule) {
+        // ✅ ЕСЛИ МОДУЛЬ НЕ НАЙДЕН - ВСЕ РАВНО ПОКАЗЫВАЕМ ВЫЗОВ
+        const source = this.manager.getCallSource(call, modulePath, funcs);
+        const sourceIcon = source === 'top-level' ? '📋' : '🔽';
+        const sourceLabel = source === 'top-level' ? 'top-level' : `из ${source}`;
+
+        html += `
+                    <span class="nav-btn external outgoing" 
+                          style="font-size: 9px; 
+                                 padding: 1px 8px; 
+                                 border-radius: 8px; 
+                                 background: #0f172a; 
+                                 border: 1px solid #2a2a3a; 
+                                 color: #64748b; 
+                                 cursor: default;
+                                 white-space: nowrap;"
+                          title="Функция ${this.manager.escapeHtml(call)} (модуль не найден)">
+                        ➜ ${this.manager.escapeHtml(call)}
+                        <span style="font-size: 7px; color: #64748b; margin-left: 2px;">
+                            ${sourceIcon} ${sourceLabel}
+                        </span>
+                        <span style="font-size: 7px; color: #64748b; margin-left: 2px;">
+                            ⚠️ не найден
+                        </span>
+                    </span>
+                `;
       }
-    }
-
-    if (hasMore) {
-      const remaining = totalCount - maxDisplay;
-      html += `
-                <span class="nav-more" style="font-size: 9px; color: #64748b; padding: 1px 6px;">
-                    +${remaining}
-                </span>
-            `;
-    }
-
-    // Кнопка "Показать все"
-    if (hasMore) {
-      html += `
-                <button class="nav-btn show-all" 
-                        onclick="event.stopPropagation(); this.closest('.nav-outgoing').querySelector('.nav-buttons').classList.toggle('expanded'); this.textContent = this.textContent === 'Показать все' ? 'Свернуть' : 'Показать все';"
-                        style="font-size: 8px; 
-                               padding: 1px 6px; 
-                               border-radius: 8px; 
-                               background: transparent; 
-                               border: 1px solid #334155; 
-                               color: #64748b; 
-                               cursor: pointer;">
-                    Показать все
-                </button>
-            `;
     }
 
     html += `
@@ -146,19 +147,18 @@ export class NavExternalRenderer {
   }
 
   /**
-   * Рендеринг входящих вызовов
+   * Рендеринг входящих вызовов - ВСЕ ВЫЗОВЫ БЕЗ ОГРАНИЧЕНИЙ
    * @param {Set<string>} incoming - Множество имен функций
    * @param {string} modulePath - Путь к текущему модулю
    * @param {Array} funcs - Список функций текущего модуля
    * @param {Map} callSources - Карта источников вызовов
+   * @param {Object} reportData - Данные отчета
    * @returns {string} HTML строка
    */
-  renderIncoming(incoming, modulePath, funcs, callSources) {
+  renderIncoming(incoming, modulePath, funcs, callSources, reportData) {
+    // ✅ СОРТИРУЕМ ВСЕ ВЫЗОВЫ
     const sortedCallers = Array.from(incoming).sort();
     const totalCount = incoming.size;
-    const maxDisplay = 10;
-    const hasMore = totalCount > maxDisplay;
-    const displayItems = sortedCallers.slice(0, maxDisplay);
 
     let html = `
             <div class="nav-section nav-external nav-incoming" style="padding: 4px 8px; margin: 2px 0;">
@@ -168,17 +168,17 @@ export class NavExternalRenderer {
                 <div class="nav-buttons" style="display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px;">
         `;
 
-    for (const caller of displayItems) {
+    // ✅ ПРОХОДИМ ПО ВСЕМ ВЫЗОВАМ
+    for (const caller of sortedCallers) {
       const callerModule = this.manager.findModuleForFunction(caller);
+
       if (callerModule && callerModule !== modulePath) {
         const callerDisplay = callerModule.split('/').pop() || '?';
 
-        // Определяем источник вызова
         const source = this.manager.getCallSource(caller, callerModule, funcs);
         const sourceIcon = source === 'top-level' ? '📋' : '🔽';
         const sourceLabel = source === 'top-level' ? 'top-level' : `из ${source}`;
 
-        // Уровень модуля вызывающей функции
         const level = this.manager.getModuleLevel(callerModule);
         const levelColor = level === 0 ? '#fbbf24' : level === 1 ? '#60a5fa' : '#94a3b8';
 
@@ -207,33 +207,33 @@ export class NavExternalRenderer {
                         </span>
                     </button>
                 `;
+      } else if (!callerModule) {
+        // ✅ ЕСЛИ МОДУЛЬ НЕ НАЙДЕН - ВСЕ РАВНО ПОКАЗЫВАЕМ ВЫЗОВ
+        const source = this.manager.getCallSource(caller, modulePath, funcs);
+        const sourceIcon = source === 'top-level' ? '📋' : '🔽';
+        const sourceLabel = source === 'top-level' ? 'top-level' : `из ${source}`;
+
+        html += `
+                    <span class="nav-btn external incoming" 
+                          style="font-size: 9px; 
+                                 padding: 1px 8px; 
+                                 border-radius: 8px; 
+                                 background: #0f172a; 
+                                 border: 1px solid #1a2a3a; 
+                                 color: #64748b; 
+                                 cursor: default;
+                                 white-space: nowrap;"
+                          title="Функция ${this.manager.escapeHtml(caller)} (модуль не найден)">
+                        ← ${this.manager.escapeHtml(caller)}
+                        <span style="font-size: 7px; color: #64748b; margin-left: 2px;">
+                            ${sourceIcon} ${sourceLabel}
+                        </span>
+                        <span style="font-size: 7px; color: #64748b; margin-left: 2px;">
+                            ⚠️ не найден
+                        </span>
+                    </span>
+                `;
       }
-    }
-
-    if (hasMore) {
-      const remaining = totalCount - maxDisplay;
-      html += `
-                <span class="nav-more" style="font-size: 9px; color: #64748b; padding: 1px 6px;">
-                    +${remaining}
-                </span>
-            `;
-    }
-
-    // Кнопка "Показать все"
-    if (hasMore) {
-      html += `
-                <button class="nav-btn show-all" 
-                        onclick="event.stopPropagation(); this.closest('.nav-incoming').querySelector('.nav-buttons').classList.toggle('expanded'); this.textContent = this.textContent === 'Показать все' ? 'Свернуть' : 'Показать все';"
-                        style="font-size: 8px; 
-                               padding: 1px 6px; 
-                               border-radius: 8px; 
-                               background: transparent; 
-                               border: 1px solid #334155; 
-                               color: #64748b; 
-                               cursor: pointer;">
-                    Показать все
-                </button>
-            `;
     }
 
     html += `
@@ -365,6 +365,13 @@ export class NavExternalRenderer {
             direction: 'outgoing',
             source: source,
           });
+        } else {
+          result.push({
+            name: call,
+            module: null,
+            direction: 'outgoing',
+            source: 'unknown',
+          });
         }
       }
     }
@@ -379,6 +386,13 @@ export class NavExternalRenderer {
             module: callerModule,
             direction: 'incoming',
             source: source,
+          });
+        } else {
+          result.push({
+            name: caller,
+            module: null,
+            direction: 'incoming',
+            source: 'unknown',
           });
         }
       }

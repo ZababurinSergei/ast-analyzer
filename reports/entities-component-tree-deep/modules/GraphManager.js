@@ -5,13 +5,6 @@ const d3 = window.d3;
 
 /**
  * GraphManager - управление графом зависимостей на D3
- * Отвечает за построение, обновление и интерактивность графа
- *
- * Режимы отображения:
- * - all: показать все связи
- * - inward: показать только входящие связи
- * - outward: показать только исходящие связи
- * - both: показать и входящие, и исходящие связи
  */
 export class GraphManager {
   constructor(app) {
@@ -32,36 +25,33 @@ export class GraphManager {
     this._inwardDeps = {};
     this._outwardDeps = {};
 
-    // Храним ссылку на глобальный API
     this._api = null;
     this._methodsBound = false;
     this._isInitialized = false;
     this._pendingUpdate = null;
+    this._currentFocusModule = null;
+    this._currentFocusFunction = null;
+    this._forceUpdateTimeout = null;
+    this._updateCounter = 0;
 
     console.log('📊 GraphManager created');
   }
 
-  /**
-   * Инициализация менеджера графа
-   */
   init() {
     console.log('🔄 GraphManager.init() called');
 
-    // Получаем готовый глобальный API
     this._api = window[Symbol.for('__AST_APP_API__')];
     console.log('📡 GraphManager API получен:', this._api ? '✅' : '❌');
 
-    // Если API уже готов - сразу привязываем методы
-    if (this._api && typeof this._api.focusFunction === 'function') {
+    if (this._api && typeof this._api.focusModule === 'function') {
       console.log('✅ API готов в GraphManager');
       this._bindMethods();
-      this.buildGraphData();
+      this._refreshData();
       this.initGraph();
       this._isInitialized = true;
       return;
     }
 
-    // Если API еще не готов, ждем его
     console.log('⏳ Ожидание API в GraphManager...');
     let attempts = 0;
     const maxAttempts = 30;
@@ -70,15 +60,14 @@ export class GraphManager {
       attempts++;
       this._api = window[Symbol.for('__AST_APP_API__')];
 
-      if (this._api && typeof this._api.focusFunction === 'function') {
+      if (this._api && typeof this._api.focusModule === 'function') {
         clearInterval(checkApi);
         console.log(`✅ API получен в GraphManager после ${attempts} попыток`);
         this._bindMethods();
-        this.buildGraphData();
+        this._refreshData();
         this.initGraph();
         this._isInitialized = true;
 
-        // Выполняем отложенное обновление если было
         if (this._pendingUpdate) {
           this.updateGraphWithFocus(
             this._pendingUpdate.focusModule,
@@ -101,20 +90,16 @@ export class GraphManager {
           renderModules: () => console.warn('⚠️ renderModules fallback'),
         };
         this._bindMethods();
-        this.buildGraphData();
+        this._refreshData();
         this.initGraph();
         this._isInitialized = true;
       }
     }, 100);
   }
 
-  /**
-   * Связывание методов с готовым API
-   */
   _bindMethods() {
     console.log('🔄 GraphManager._bindMethods() called');
 
-    // Используем готовый глобальный API
     const api = this._api || window[Symbol.for('__AST_APP_API__')];
 
     this._focusFunction = (name, module) => {
@@ -123,7 +108,6 @@ export class GraphManager {
         return api.focusFunction(name, module);
       }
       console.warn('⚠️ focusFunction not available in GraphManager');
-      // Fallback: пытаемся найти функцию в данных
       this._fallbackFocusFunction(name, module);
     };
 
@@ -133,7 +117,6 @@ export class GraphManager {
         return api.focusModule(path);
       }
       console.warn('⚠️ focusModule not available in GraphManager');
-      // Fallback: подсветка в графе
       this._fallbackFocusModule(path);
     };
 
@@ -163,41 +146,27 @@ export class GraphManager {
     this._methodsBound = true;
   }
 
-  /**
-   * Fallback для фокуса на функции (без API)
-   */
   _fallbackFocusFunction(name, module) {
     console.log('🔍 Fallback: focus on function', name, module);
-    // Обновляем граф с подсветкой этой функции
     this.updateGraphWithFocus(module, this._findFunctionId(name, module), 'both');
   }
 
-  /**
-   * Fallback для фокуса на модуле (без API)
-   */
   _fallbackFocusModule(path) {
     console.log('🔍 Fallback: focus on module', path);
     this.updateGraphWithFocus(path, null, 'both');
   }
 
-  /**
-   * Fallback для снятия фокуса (без API)
-   */
   _fallbackClearFocus() {
     console.log('🔍 Fallback: clear focus');
     this.updateGraphWithFocus(null, null, 'all');
   }
 
-  /**
-   * Находит ID функции по имени и модулю
-   */
   _findFunctionId(name, module) {
     for (const [id, node] of this._functionMap) {
       if (node.name === name && node.module === module) {
         return id;
       }
     }
-    // Если не найдено, ищем по имени без модуля
     for (const [id, node] of this._functionMap) {
       if (node.name === name) {
         return id;
@@ -206,9 +175,6 @@ export class GraphManager {
     return null;
   }
 
-  /**
-   * Инициализация D3 графа
-   */
   initGraph() {
     console.log('🔄 GraphManager.initGraph() called');
 
@@ -221,7 +187,6 @@ export class GraphManager {
     const width = container.clientWidth || 900;
     const height = 700;
 
-    // Очищаем контейнер и добавляем tooltip
     container.innerHTML = `
       <div class="graph-tooltip" id="graphTooltip">
         <div class="tt-title" id="ttTitle"></div>
@@ -256,7 +221,7 @@ export class GraphManager {
 
     this.svg.call(this.zoom);
 
-    this.renderGraph(width, height);
+    this._renderGraph(width, height);
 
     window.addEventListener('resize', () => {
       if (container) {
@@ -268,14 +233,14 @@ export class GraphManager {
     });
   }
 
-  /**
-   * Строит данные для графа из отчета
-   */
-  buildGraphData() {
-    console.log('🔄 GraphManager.buildGraphData() called');
+  _refreshData() {
+    console.log('🔄 GraphManager._refreshData() called');
+    this._updateCounter++;
 
     const modules = new Map();
     const packages = this.app.reportData?.packages || {};
+
+    console.log(`📦 Загружено пакетов: ${Object.keys(packages).length}`);
 
     for (const [modulePath, pkg] of Object.entries(packages)) {
       if (!pkg) {
@@ -372,13 +337,14 @@ export class GraphManager {
     this._inwardDeps = inwardDeps;
     this._outwardDeps = outwardDeps;
 
-    console.log(`📊 Built graph: ${modules.size} modules, ${functionNodes.length} functions`);
+    console.log(
+      `📊 Refreshed #${this._updateCounter}: ${modules.size} modules, ${functionNodes.length} functions`
+    );
   }
 
-  /**
-   * Рендерит граф с текущими данными
-   */
-  renderGraph(width, height) {
+  _renderGraph(width, height) {
+    console.log(`🔄 _renderGraph #${this._updateCounter} called`);
+
     if (!this.g) {
       console.warn('⚠️ Graph group not initialized');
       return;
@@ -391,15 +357,13 @@ export class GraphManager {
       return;
     }
 
-    // Если нет узлов, показываем сообщение
     if (this._modules.size === 0 && this._functionNodes.length === 0) {
-      this.showEmptyState();
+      this._showEmptyState();
       return;
     }
 
     const defs = this.g.append('defs');
 
-    // Стрелка для обычных связей
     defs
       .append('marker')
       .attr('id', 'arrow')
@@ -413,7 +377,6 @@ export class GraphManager {
       .attr('d', 'M 0 0 L 10 5 L 0 10 z')
       .attr('fill', '#3b82f6');
 
-    // Стрелка для вызовов функций
     defs
       .append('marker')
       .attr('id', 'arrow-call')
@@ -427,7 +390,6 @@ export class GraphManager {
       .attr('d', 'M 0 0 L 10 5 L 0 10 z')
       .attr('fill', '#ef4444');
 
-    // Стрелка для подсвеченных связей
     defs
       .append('marker')
       .attr('id', 'arrow-highlight')
@@ -441,7 +403,6 @@ export class GraphManager {
       .attr('d', 'M 0 0 L 10 5 L 0 10 z')
       .attr('fill', '#f59e0b');
 
-    // Стрелка для активной функции
     defs
       .append('marker')
       .attr('id', 'arrow-active')
@@ -455,15 +416,26 @@ export class GraphManager {
       .attr('d', 'M 0 0 L 10 5 L 0 10 z')
       .attr('fill', '#22d3ee');
 
-    // Подготавливаем данные для рендеринга
     const mode = this.app?.graphModeManager?.getMode?.() || 'all';
     const focusModule = this.app?.cardManager?.getFocusModule?.();
     const focusFunction = this.app?.cardManager?.getFocusFunction?.();
 
+    // Сохраняем текущий фокус и выводим в консоль
+    this._currentFocusModule = focusModule;
+    this._currentFocusFunction = focusFunction;
+
+    console.log('🎯 Рендеринг графа:', {
+      focusModule,
+      focusFunction,
+      mode,
+      totalModules: this._modules.size,
+      totalFunctions: this._functionNodes.length,
+    });
+
     let filteredNodes = [];
     let filteredLinks = [];
 
-    // Добавляем модули
+    // Добавляем ВСЕ модули
     for (const [, mod] of this._modules) {
       filteredNodes.push({
         id: mod.id,
@@ -479,12 +451,12 @@ export class GraphManager {
       });
     }
 
-    // Добавляем функции
+    // Добавляем ВСЕ функции
     for (const node of this._functionNodes) {
       filteredNodes.push({ ...node });
     }
 
-    // Строим связи модулей
+    // Строим ВСЕ связи модулей
     const moduleEdges = [];
     if (mode === 'all' || mode === 'outward' || mode === 'both') {
       for (const [from, deps] of Object.entries(this._outwardDeps)) {
@@ -513,6 +485,68 @@ export class GraphManager {
     const callEdges = this._functionEdges.map(e => ({ ...e, isCall: true }));
     filteredLinks = [...moduleEdges, ...callEdges];
 
+    // 🔥 ФИЛЬТРАЦИЯ ПО МОДУЛЮ
+    if (focusModule) {
+      console.log('🎯 Фильтрация графа по модулю:', focusModule);
+
+      // Находим все связанные модули (рекурсивно)
+      const relatedModules = new Set([focusModule]);
+      let changed = true;
+      let iterations = 0;
+      const maxIterations = 20;
+
+      while (changed && iterations < maxIterations) {
+        changed = false;
+        iterations++;
+
+        for (const link of moduleEdges) {
+          const source = link.source;
+          const target = link.target;
+
+          if (relatedModules.has(source) && !relatedModules.has(target)) {
+            relatedModules.add(target);
+            changed = true;
+          }
+          if (relatedModules.has(target) && !relatedModules.has(source)) {
+            relatedModules.add(source);
+            changed = true;
+          }
+        }
+      }
+
+      console.log(`  📦 Найдено связанных модулей: ${relatedModules.size}`);
+
+      // ✅ СОХРАНЯЕМ ВСЕ УЗЛЫ, КОТОРЫЕ ПРИНАДЛЕЖАТ СВЯЗАННЫМ МОДУЛЯМ
+      const allowedNodeIds = new Set();
+
+      // Добавляем все модули из relatedModules
+      for (const modId of relatedModules) {
+        allowedNodeIds.add(modId);
+      }
+
+      // Добавляем ВСЕ функции, принадлежащие этим модулям
+      for (const node of filteredNodes) {
+        if (node.type === 'function' && node.module && relatedModules.has(node.module)) {
+          allowedNodeIds.add(node.id);
+        }
+      }
+
+      // Добавляем сам активный модуль
+      allowedNodeIds.add(focusModule);
+
+      const beforeNodes = filteredNodes.length;
+      const beforeLinks = filteredLinks.length;
+
+      filteredNodes = filteredNodes.filter(n => allowedNodeIds.has(n.id));
+      filteredLinks = filteredLinks.filter(
+        l => allowedNodeIds.has(l.source) && allowedNodeIds.has(l.target)
+      );
+
+      console.log(
+        `  📊 Узлов: ${beforeNodes} -> ${filteredNodes.length}, связей: ${beforeLinks} -> ${filteredLinks.length}`
+      );
+    }
+
     // Поиск
     const searchInput = document.getElementById('searchInput');
     const searchQuery = searchInput?.value?.toLowerCase()?.trim() || '';
@@ -540,22 +574,6 @@ export class GraphManager {
       filteredLinks = filteredLinks.filter(l => expanded.has(l.source) && expanded.has(l.target));
     }
 
-    // Фильтрация по фокусу на модуле
-    if (focusModule) {
-      const related = new Set([focusModule]);
-      for (const link of filteredLinks) {
-        if (link.source === focusModule) {
-          related.add(link.target);
-        }
-        if (link.target === focusModule) {
-          related.add(link.source);
-        }
-      }
-      filteredNodes = filteredNodes.filter(n => related.has(n.id));
-      filteredLinks = filteredLinks.filter(l => related.has(l.source) && related.has(l.target));
-    }
-
-    // Фильтрация по фокусу на функции
     if (focusFunction) {
       const related = new Set([focusFunction]);
       let focusMod = '';
@@ -580,18 +598,15 @@ export class GraphManager {
       filteredLinks = filteredLinks.filter(l => related.has(l.source) && related.has(l.target));
     }
 
-    // Если нет узлов после фильтрации, показываем сообщение
     if (filteredNodes.length === 0) {
-      this.showEmptyState('Ничего не найдено');
+      this._showEmptyState('Ничего не найдено');
       return;
     }
 
-    // Определяем, какие узлы и связи подсвечивать
     const highlightNodes = new Set();
     const highlightLinks = new Set();
 
     if (focusFunction) {
-      // Подсвечиваем активную функцию и её связи
       highlightNodes.add(focusFunction);
       for (const link of filteredLinks) {
         if (link.source === focusFunction || link.target === focusFunction) {
@@ -601,7 +616,6 @@ export class GraphManager {
         }
       }
     } else if (focusModule) {
-      // Подсвечиваем активный модуль и его связи
       highlightNodes.add(focusModule);
       for (const link of filteredLinks) {
         if (link.source === focusModule || link.target === focusModule) {
@@ -610,7 +624,6 @@ export class GraphManager {
           highlightLinks.add(`${link.source}->${link.target}`);
         }
       }
-      // Добавляем все функции модуля
       for (const node of filteredNodes) {
         if (node.module === focusModule && node.type === 'function') {
           highlightNodes.add(node.id);
@@ -619,7 +632,6 @@ export class GraphManager {
     }
 
     try {
-      // Рендерим связи
       const link = this.g
         .append('g')
         .selectAll('line')
@@ -629,12 +641,12 @@ export class GraphManager {
         .attr('stroke', d => {
           const key = `${d.source}->${d.target}`;
           if (highlightLinks.has(key)) {
-            return '#f59e0b'; // Подсвеченная связь
+            return '#f59e0b';
           }
           if (d.isCall) {
-            return '#ef4444'; // Вызов функции
+            return '#ef4444';
           }
-          return '#3b82f6'; // Обычная связь
+          return '#3b82f6';
         })
         .attr('stroke-width', d => {
           const key = `${d.source}->${d.target}`;
@@ -652,7 +664,7 @@ export class GraphManager {
             return 1;
           }
           if (highlightNodes.size > 0) {
-            return 0.15; // Затемняем фоновые связи
+            return 0.15;
           }
           return 0.5;
         })
@@ -677,7 +689,6 @@ export class GraphManager {
           return 'url(#arrow)';
         });
 
-      // Рендерим узлы
       const nodeGroup = this.g
         .append('g')
         .selectAll('g')
@@ -699,10 +710,10 @@ export class GraphManager {
           }
         })
         .on('mouseover', (event, d) => {
-          this.showTooltip(event, d);
+          this._showTooltip(event, d);
         })
         .on('mouseout', () => {
-          this.hideTooltip();
+          this._hideTooltip();
         })
         .call(
           d3
@@ -727,7 +738,6 @@ export class GraphManager {
             })
         );
 
-      // Рисуем круги
       nodeGroup
         .append('circle')
         .attr('r', d => {
@@ -741,13 +751,13 @@ export class GraphManager {
         })
         .attr('fill', d => {
           if (d.id === focusFunction || d.id === focusModule) {
-            return '#22d3ee'; // Активный элемент
+            return '#22d3ee';
           }
           if (highlightNodes.has(d.id)) {
-            return d.color || '#60a5fa'; // Подсвеченный элемент
+            return d.color || '#60a5fa';
           }
           if (highlightNodes.size > 0) {
-            return '#1e293b'; // Затемненный фоновый элемент
+            return '#1e293b';
           }
           return d.color || '#94a3b8';
         })
@@ -779,10 +789,9 @@ export class GraphManager {
           if (highlightNodes.has(d.id) || highlightNodes.size === 0) {
             return 1;
           }
-          return 0.25; // Затемняем фоновые узлы
+          return 0.25;
         });
 
-      // Подписи
       nodeGroup
         .append('text')
         .attr('dx', d => {
@@ -822,7 +831,6 @@ export class GraphManager {
           else if (d.id === focusModule) prefix = '📌 ';
           else if (d.type === 'function' && d.isExported) prefix = '📤 ';
 
-          // Сокращаем длинные имена
           let name = d.name;
           if (name.length > 25 && d.type === 'module') {
             name = name.substring(0, 22) + '…';
@@ -837,7 +845,6 @@ export class GraphManager {
           return 0.3;
         });
 
-      // Информация о функциях для модулей
       if (!focusFunction && highlightNodes.size === 0) {
         nodeGroup
           .filter(d => d.type === 'module' && d.functions && d.functions.length > 0)
@@ -851,7 +858,6 @@ export class GraphManager {
           .style('pointer-events', 'none');
       }
 
-      // Метки для активной функции - показываем количество входящих/исходящих
       if (focusFunction) {
         nodeGroup
           .filter(d => d.id === focusFunction)
@@ -869,12 +875,10 @@ export class GraphManager {
           .style('pointer-events', 'none');
       }
 
-      // Симуляция
       if (this.simulation) {
         this.simulation.stop();
       }
 
-      // Настраиваем расстояния в зависимости от подсветки
       const linkDistance = d => {
         const key = `${d.source}->${d.target}`;
         if (highlightLinks.has(key)) {
@@ -924,18 +928,14 @@ export class GraphManager {
       this.graphNodes = filteredNodes;
       this.graphLinks = filteredLinks;
 
-      // Автоматическое масштабирование
-      setTimeout(() => this.fitGraphToScreen(), 100);
+      setTimeout(() => this._fitGraphToScreen(), 100);
     } catch (error) {
       console.warn('⚠️ Error rendering graph:', error);
-      this.showEmptyState('Ошибка рендеринга графа');
+      this._showEmptyState('Ошибка рендеринга графа');
     }
   }
 
-  /**
-   * Показывает пустое состояние
-   */
-  showEmptyState(message = 'Нет данных для отображения') {
+  _showEmptyState(message = 'Нет данных для отображения') {
     if (!this.g) return;
     try {
       this.g.selectAll('*').remove();
@@ -953,10 +953,7 @@ export class GraphManager {
     }
   }
 
-  /**
-   * Автоматическое масштабирование графа для помещения на экран
-   */
-  fitGraphToScreen() {
+  _fitGraphToScreen() {
     if (!this.svg || !this.zoom || !this.g) return;
 
     const container = document.getElementById('d3GraphWrapper');
@@ -965,11 +962,9 @@ export class GraphManager {
     const width = container.clientWidth || 900;
     const height = container.clientHeight || 700;
 
-    // Получаем все узлы
     const nodes = this.graphNodes;
     if (!nodes || nodes.length === 0) return;
 
-    // Находим bounding box
     let minX = Infinity,
       minY = Infinity;
     let maxX = -Infinity,
@@ -988,7 +983,6 @@ export class GraphManager {
 
     if (!hasPosition) return;
 
-    // Добавляем отступы
     const padding = 80;
     const bboxWidth = maxX - minX + padding * 2;
     const bboxHeight = maxY - minY + padding * 2;
@@ -1014,49 +1008,67 @@ export class GraphManager {
   }
 
   /**
-   * Обновляет представление графа
+   * ✅ ОБНОВЛЕНИЕ ГРАФА - ПРИНУДИТЕЛЬНОЕ
    */
   updateView() {
+    console.log('🔄 updateView called');
+
     const container = document.getElementById('d3GraphWrapper');
     if (!container) return;
 
     const width = container.clientWidth || 900;
     const height = 700;
 
+    // ✅ ВСЕГДА ПЕРЕСТРАИВАЕМ ДАННЫЕ
+    this._refreshData();
+
+    // ✅ ЕСЛИ НЕТ G - ПЕРЕСОЗДАЕМ
     if (!this.g) {
       this.initGraph();
       return;
     }
 
-    this.buildGraphData();
-    this.renderGraph(width, height);
+    // ✅ ОСТАНАВЛИВАЕМ СТАРУЮ СИМУЛЯЦИЮ
+    if (this.simulation) {
+      this.simulation.stop();
+      this.simulation = null;
+    }
+
+    // ✅ ПЕРЕРИСОВЫВАЕМ
+    this._renderGraph(width, height);
+
+    console.log(`✅ Graph view updated #${this._updateCounter}`);
   }
 
   /**
-   * Обновляет граф с учетом активного модуля/функции
+   * ✅ ОБНОВЛЕНИЕ ГРАФА С ФОКУСОМ
    */
   updateGraphWithFocus(focusModule, focusFunction, mode = 'all') {
-    // Если граф еще не инициализирован, сохраняем запрос на обновление
+    console.log('🎯 updateGraphWithFocus:', { focusModule, focusFunction, mode });
+
+    this._currentFocusModule = focusModule;
+    this._currentFocusFunction = focusFunction;
+
     if (!this._isInitialized || !this.g) {
       console.log('⏳ Graph not initialized, saving update request');
       this._pendingUpdate = { focusModule, focusFunction, mode };
       return;
     }
 
-    console.log('🎯 updateGraphWithFocus:', { focusModule, focusFunction, mode });
-
-    // Обновляем режим если передан
     if (mode && this.app?.graphModeManager) {
       this.app.graphModeManager.currentMode = mode;
     }
 
-    this.updateView();
+    // ✅ ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ С ЗАДЕРЖКОЙ
+    clearTimeout(this._forceUpdateTimeout);
+    this._forceUpdateTimeout = setTimeout(() => {
+      console.log('🔄 FORCE UPDATE GRAPH');
+      this.updateView();
+      this._forceUpdateTimeout = null;
+    }, 50);
   }
 
-  /**
-   * Показывает подсказку при наведении на узел
-   */
-  showTooltip(event, d) {
+  _showTooltip(event, d) {
     const tooltip = document.getElementById('graphTooltip');
     if (!tooltip) return;
 
@@ -1091,19 +1103,13 @@ export class GraphManager {
     tooltip.style.top = Math.min(y, rect.height - 150) + 'px';
   }
 
-  /**
-   * Скрывает подсказку
-   */
-  hideTooltip() {
+  _hideTooltip() {
     const tooltip = document.getElementById('graphTooltip');
     if (tooltip) {
       tooltip.style.display = 'none';
     }
   }
 
-  /**
-   * Обрабатывает поиск по графу
-   */
   handleSearch(query) {
     clearTimeout(this.searchTimeout);
     this.searchTimeout = setTimeout(() => {
@@ -1111,33 +1117,22 @@ export class GraphManager {
     }, 300);
   }
 
-  /**
-   * Возвращает узлы графа
-   */
   getGraphNodes() {
     return this.graphNodes;
   }
 
-  /**
-   * Возвращает ребра графа
-   */
   getGraphLinks() {
     return this.graphLinks;
   }
 
-  /**
-   * Возвращает симуляцию D3
-   */
   getSimulation() {
     return this.simulation;
   }
 
-  /**
-   * Очищает граф
-   */
   clear() {
     if (this.simulation) {
       this.simulation.stop();
+      this.simulation = null;
     }
     if (this.g) {
       try {
@@ -1151,12 +1146,9 @@ export class GraphManager {
     this._isInitialized = false;
   }
 
-  /**
-   * Перезагружает граф с новыми данными
-   */
   reload() {
     this.clear();
-    this.buildGraphData();
+    this._refreshData();
     this.initGraph();
     this._isInitialized = true;
   }

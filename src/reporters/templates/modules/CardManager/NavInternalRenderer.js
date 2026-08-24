@@ -38,7 +38,7 @@ export class NavInternalRenderer {
             <div class="nav-section nav-internal ${isExpanded ? 'expanded' : 'collapsed'}" 
                  style="padding: 4px 8px; margin: 2px 0; border-top: 1px solid #1a1a3a;">
                 <span class="nav-label" 
-                      onclick="this.closest('.nav-section').classList.toggle('expanded'); this.querySelector('.toggle-icon').textContent = this.closest('.nav-section').classList.contains('expanded') ? '▼' : '▶';" 
+                      onclick="event.stopPropagation(); const section = this.closest('.nav-section'); section.classList.toggle('expanded'); section.classList.toggle('collapsed'); this.querySelector('.toggle-icon').textContent = section.classList.contains('expanded') ? '▼' : '▶';" 
                       style="font-size: 10px; cursor:pointer; color: #94a3b8; display: inline-flex; align-items: center; gap: 4px; transition: color 0.2s;"
                       onmouseenter="this.style.color='#e2e8f0';"
                       onmouseleave="this.style.color='#94a3b8';">
@@ -64,17 +64,13 @@ export class NavInternalRenderer {
                             const sourceLabel =
                               source === 'top-level' ? 'top-level' : `из ${source}`;
 
-                            // Определяем, есть ли функция в другом модуле (внешняя)
                             const targetModule = this.manager.findModuleForFunction(name);
                             const isExternal = targetModule && targetModule !== modulePath;
-
-                            // Для внутренних вызовов делаем кликабельными только если функция в этом же модуле
                             const isInSameModule = targetModule === modulePath;
                             const clickAttr = isInSameModule
                               ? `onclick="event.stopPropagation(); window[Symbol.for('__AST_APP_API__')]?.focusFunction('${this.manager.escapeJs(name)}', '${this.manager.escapeJs(modulePath)}')"`
                               : '';
                             const cursorStyle = isInSameModule ? 'cursor:pointer;' : '';
-                            const hoverStyle = isInSameModule ? 'transition: all 0.2s;' : '';
 
                             return `
                                 <span class="internal-item" 
@@ -87,7 +83,6 @@ export class NavInternalRenderer {
                                              border: 1px solid #1a1a3a; 
                                              display: inline-block;
                                              ${cursorStyle}
-                                             ${hoverStyle}
                                              color: ${isInSameModule ? '#e2e8f0' : '#64748b'};"
                                       title="${this.manager.escapeHtml(name)} (${sourceLabel})${isExternal ? ' ⚠️ внешний' : ''}">
                                     ${this.manager.escapeHtml(name)}
@@ -120,7 +115,6 @@ export class NavInternalRenderer {
                             const sourceLabel =
                               source === 'top-level' ? 'top-level' : `из ${source}`;
 
-                            // Определяем, находится ли функция в этом же модуле
                             const callerModule = this.manager.findModuleForFunction(name);
                             const isInSameModule = callerModule === modulePath;
                             const clickAttr = isInSameModule
@@ -268,7 +262,6 @@ export class NavInternalRenderer {
       ? `onclick="event.stopPropagation(); window[Symbol.for('__AST_APP_API__')]?.focusFunction('${this.manager.escapeJs(funcName)}', '${this.manager.escapeJs(modulePath)}')"`
       : '';
     const cursorStyle = isClickable ? 'cursor:pointer;' : '';
-    const hoverStyle = isClickable ? 'transition: all 0.2s;' : '';
 
     return `
             <span class="internal-item" 
@@ -281,7 +274,6 @@ export class NavInternalRenderer {
                          border: 1px solid #1a1a3a; 
                          display: inline-block;
                          ${cursorStyle}
-                         ${hoverStyle}
                          color: ${isClickable ? '#e2e8f0' : '#64748b'};"
                   title="${this.manager.escapeHtml(funcName)} (${sourceLabel})">
                 <span style="color: ${color};">${arrowIcon}</span>

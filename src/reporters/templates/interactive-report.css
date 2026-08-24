@@ -1565,3 +1565,24 @@ body {
     height: 12px;
     border-radius: 50%;
 }
+
+/* Функция-источник (откуда пришли) */
+.func-item.source {
+    border-left-color: #22d3ee !important;
+    background: rgba(34, 211, 238, 0.05) !important;
+}
+
+.func-source-badge {
+    font-size: 8px;
+    color: #22d3ee;
+    background: rgba(34, 211, 238, 0.1);
+    padding: 0 6px;
+    border-radius: 8px;
+    margin-left: 4px;
+}
+
+/* Модуль-источник */
+.module-card.has-source {
+    border-color: #22d3ee;
+    box-shadow: 0 0 20px rgba(34, 211, 238, 0.1);
+}

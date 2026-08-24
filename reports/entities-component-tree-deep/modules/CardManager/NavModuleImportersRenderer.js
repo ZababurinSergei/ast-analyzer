@@ -35,15 +35,9 @@ export class NavModuleImportersRenderer {
   render(data) {
     const { moduleImporters, modulePath, pkg, reportData } = data;
 
-    // Если нет импортеров - показываем сообщение
+    // ✅ ЕСЛИ НЕТ ИМПОРТЕРОВ - ВОЗВРАЩАЕМ ПУСТУЮ СТРОКУ (НИЧЕГО НЕ ПОКАЗЫВАЕМ)
     if (!moduleImporters || moduleImporters.size === 0) {
-      return `
-                <div class="nav-section nav-module-importers" style="padding: 4px 8px; margin: 2px 0; opacity: 0.5; border-top: 1px solid #1a1a3a;">
-                    <span class="nav-label" style="font-size: 9px; color: #64748b;">
-                        📥 Нет модулей, которые импортируют этот файл
-                    </span>
-                </div>
-            `;
+      return '';
     }
 
     const sortedImporters = Array.from(moduleImporters).sort();
@@ -64,14 +58,10 @@ export class NavModuleImportersRenderer {
         `;
 
     for (const importer of displayItems) {
-      // Получаем имя файла для отображения
       const importerDisplay = importer.split('/').pop() || '?';
-
-      // Строим полный путь для VS Code
       const fullPath = this.buildFullPath(importer, reportData);
       const vscodeUrl = this.buildVscodeUrl(fullPath);
 
-      // Определяем уровень модуля для подсветки
       const level = this.manager.getModuleLevel(importer);
       const levelColor =
         level === 0 ? '#fbbf24' : level === 1 ? '#60a5fa' : level === 2 ? '#4ade80' : '#94a3b8';
@@ -82,10 +72,7 @@ export class NavModuleImportersRenderer {
             ? 'rgba(96, 165, 250, 0.1)'
             : 'rgba(148, 163, 184, 0.05)';
 
-      // Иконка в зависимости от типа файла
       const icon = this.getModuleIcon(importer);
-
-      // Проверяем, является ли импортер точкой входа
       const isEntry = this.isEntryModule(importer, reportData);
       const entryBadge = isEntry ? '⭐' : '';
 
@@ -195,7 +182,6 @@ export class NavModuleImportersRenderer {
    */
   buildFullPath(modulePath, reportData) {
     try {
-      // Пытаемся найти пакет в отчете
       let pkg = null;
       if (reportData?.packages) {
         pkg = reportData.packages[modulePath];
@@ -203,25 +189,20 @@ export class NavModuleImportersRenderer {
 
       let relativePath = modulePath;
 
-      // Если есть displayPath, используем его
       if (pkg?.displayPath) {
         const parts = pkg.displayPath.split('/');
         const srcIndex = parts.indexOf('src');
         const packagesIndex = parts.indexOf('packages');
 
         if (srcIndex !== -1) {
-          // Берем путь от "src" включительно
           relativePath = parts.slice(srcIndex).join('/');
         } else if (packagesIndex !== -1) {
-          // Берем путь от "packages" включительно
           relativePath = parts.slice(packagesIndex).join('/');
         } else {
-          // Используем displayPath как есть
           relativePath = pkg.displayPath;
         }
       }
 
-      // Если есть resolved с file: префиксом
       if (pkg?.resolved && pkg.resolved.startsWith('file:')) {
         const resolvedPath = pkg.resolved.replace(/^file:/, '');
         if (resolvedPath.includes('src/')) {
@@ -234,7 +215,6 @@ export class NavModuleImportersRenderer {
         }
       }
 
-      // Проверяем, не является ли путь уже абсолютным
       if (relativePath.startsWith('/')) {
         return relativePath;
       }
@@ -242,7 +222,6 @@ export class NavModuleImportersRenderer {
         return relativePath;
       }
 
-      // Строим полный путь
       const cleanPath = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
       const fullPath = this.basePath + cleanPath;
 
@@ -264,7 +243,6 @@ export class NavModuleImportersRenderer {
     try {
       let encodedPath = fullPath.replace(/\\/g, '/');
 
-      // Для Windows добавляем префикс / перед диском
       if (encodedPath.match(/^[A-Za-z]:/)) {
         encodedPath = '/' + encodedPath;
       }

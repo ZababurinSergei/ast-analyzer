@@ -2,7 +2,7 @@
   "name": "ast-analyzer",
   "version": "3.0.0",
   "lockfileVersion": 3,
-  "timestamp": "2026-08-23T22:11:25.212Z",
+  "timestamp": "2026-08-24T07:38:04.977Z",
   "packages": {
     "src/cli.ts": {
       "version": "1.0.0",
