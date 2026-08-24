@@ -2,7 +2,7 @@
   "v": "3.0.1",
   "level": 1,
   "root": 0,
-  "time": "2026-08-24T07:38:41.340Z",
+  "time": "2026-08-24T14:18:07.869Z",
   "modules": [
     "src/cli.ts",
     "src/utils/is-main.ts",
@@ -232,7 +232,7 @@
           "params": [
             "startDir"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
           "line": 33,
           "consumers": []
         },
@@ -250,7 +250,7 @@
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
           "line": 89,
           "consumers": []
         },
@@ -294,7 +294,7 @@
           "params": [
             "tsConfig"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/tsconfig-resolver\").AliasMapping",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").AliasMapping",
           "line": 181,
           "consumers": []
         },
@@ -343,7 +343,7 @@
             "alias",
             "target"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
           "line": 263,
           "consumers": []
         },
@@ -355,7 +355,7 @@
             "tsConfig",
             "alias"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
           "line": 287,
           "consumers": []
         }
@@ -375,7 +375,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/tsconfig-resolver\").TsConfig | null",
           "line": 73,
           "consumers": []
         },
@@ -386,7 +386,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/ast-parser\").VueSFCData | null",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/ast-parser\").VueSFCData | null",
           "line": 104,
           "consumers": []
         },
@@ -521,7 +521,7 @@
             "ast",
             "filePath"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/entity-extractor\").EntitiesResult",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/entity-extractor\").EntitiesResult",
           "line": 287,
           "consumers": []
         },
@@ -554,7 +554,7 @@
             "fromFunction",
             "toFunction"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/project-graph\").CallGraphResult",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/project-graph\").CallGraphResult",
           "line": 266,
           "consumers": []
         },
@@ -569,7 +569,7 @@
             "fromFunction",
             "toFunction"
           ],
-          "returns": "{ rootKey: string; graph: Record<string, string[]>; entities?: Record<string, import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/entity-extractor\").EntitiesResult> | undefined; packageLockReport?: import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/project-graph\").PackageLockReport | undefined; callGraphResult?: import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/project-graph\").CallGraphResult | undefined; }",
+          "returns": "{ rootKey: string; graph: Record<string, string[]>; entities?: Record<string, import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/entity-extractor\").EntitiesResult> | undefined; packageLockReport?: import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/project-graph\").PackageLockReport | undefined; callGraphResult?: import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/project-graph\").CallGraphResult | undefined; }",
           "line": 485,
           "consumers": []
         }
@@ -658,7 +658,7 @@
             "targetFile",
             "options"
           ],
-          "returns": "{ markdown: string; analysis: { filePath: string; fileName: any; stats: { totalLines: any; totalExports: number; totalFunctions: number; totalClasses: number; totalConstants: number; totalInterfaces: number; totalTypes: number; totalImports: number; }; imports: any[]; exports: any[]; functions: any[]; classes: any[]; constants: any[]; interfaces: any[]; types: any[]; callGraph: Record<string, string[]>; fullCode: any; lines: any; }; outputFiles: { prompt: any; context: string; graph: string; analysis: string; vue: string; }; vueAnalysis: import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/vue-analyzer\").VueComponentAnalysis | null; } | null",
+          "returns": "{ markdown: string; analysis: { filePath: string; fileName: any; stats: { totalLines: any; totalExports: number; totalFunctions: number; totalClasses: number; totalConstants: number; totalInterfaces: number; totalTypes: number; totalImports: number; }; imports: any[]; exports: any[]; functions: any[]; classes: any[]; constants: any[]; interfaces: any[]; types: any[]; callGraph: Record<string, string[]>; fullCode: any; lines: any; }; outputFiles: { prompt: any; context: string; graph: string; analysis: string; vue: string; }; vueAnalysis: import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/vue-analyzer\").VueComponentAnalysis | null; } | null",
           "line": 374,
           "consumers": []
         }
@@ -768,7 +768,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "{ descriptor: import(\"/home/sergei/Desktop/system/packages/ast-analyzer/node_modules/@vue/compiler-sfc/dist/compiler-sfc\").SFCDescriptor; errors: Error[]; } | null",
+          "returns": "{ descriptor: import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/node_modules/@vue/compiler-sfc/dist/compiler-sfc\").SFCDescriptor; errors: Error[]; } | null",
           "line": 77,
           "consumers": []
         },
@@ -780,7 +780,7 @@
             "filePath",
             "options"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/vue-analyzer\").VueComponentAnalysis | null",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/vue-analyzer\").VueComponentAnalysis | null",
           "line": 1668,
           "consumers": []
         },
@@ -843,7 +843,7 @@
             "paths",
             "options"
           ],
-          "returns": "Promise<import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/ci-cd/SemanticPipeline\").PipelineResult>",
+          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/ci-cd/SemanticPipeline\").PipelineResult>",
           "line": 1111,
           "consumers": []
         }
@@ -897,7 +897,7 @@
             "left",
             "right"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1022,
           "consumers": []
         },
@@ -909,7 +909,7 @@
             "left",
             "right"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1026,
           "consumers": []
         },
@@ -922,7 +922,7 @@
             "min",
             "max"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1030,
           "consumers": []
         },
@@ -934,7 +934,7 @@
             "condition",
             "consequence"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1034,
           "consumers": []
         },
@@ -945,7 +945,7 @@
           "params": [
             "args"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1043,
           "consumers": []
         },
@@ -956,7 +956,7 @@
           "params": [
             "args"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1052,
           "consumers": []
         },
@@ -967,7 +967,7 @@
           "params": [
             "operand"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1059,
           "consumers": []
         },
@@ -980,7 +980,7 @@
             "thenBranch",
             "elseBranch"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1066,
           "consumers": []
         },
@@ -993,7 +993,7 @@
             "operator",
             "right"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1085,
           "consumers": []
         },
@@ -1005,7 +1005,7 @@
             "varName",
             "value"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1149,
           "consumers": []
         },
@@ -1017,7 +1017,7 @@
             "left",
             "right"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1153,
           "consumers": []
         },
@@ -1029,7 +1029,7 @@
             "left",
             "right"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1157,
           "consumers": []
         },
@@ -1041,7 +1041,7 @@
             "left",
             "right"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1161,
           "consumers": []
         },
@@ -1053,7 +1053,7 @@
             "left",
             "right"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationConstraint",
           "line": 1165,
           "consumers": []
         },
@@ -1133,7 +1133,7 @@
             "report",
             "level"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridModule[]",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridModule[]",
           "line": 252,
           "consumers": []
         },
@@ -1144,7 +1144,7 @@
           "params": [
             "report"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridFunction[]",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridFunction[]",
           "line": 259,
           "consumers": []
         },
@@ -1156,7 +1156,7 @@
             "report",
             "source"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridFunction[]",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridFunction[]",
           "line": 270,
           "consumers": []
         },
@@ -1191,7 +1191,7 @@
             "_filePaths",
             "options"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").EnhancedPackageLockReport",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").EnhancedPackageLockReport",
           "line": 153,
           "consumers": []
         },
@@ -1271,7 +1271,7 @@
             "data",
             "entities"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").ModuleGraph",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").ModuleGraph",
           "line": 418,
           "consumers": []
         },
@@ -1283,7 +1283,7 @@
             "data",
             "entities"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").EntityGraph",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").EntityGraph",
           "line": 488,
           "consumers": []
         },
@@ -1296,7 +1296,7 @@
             "entities",
             "root"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").FullAnalysis",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").FullAnalysis",
           "line": 709,
           "consumers": []
         },
@@ -1307,7 +1307,7 @@
           "params": [
             "filePath"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").EnhancedEntityInfo",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").EnhancedEntityInfo",
           "line": 747,
           "consumers": []
         }
@@ -1392,7 +1392,7 @@
             "report",
             "options"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/compressReport\").CompressedReport",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/compressReport\").CompressedReport",
           "line": 79,
           "consumers": []
         },
@@ -1403,7 +1403,7 @@
           "params": [
             "report"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/compressReport\").CompressedReport",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/compressReport\").CompressedReport",
           "line": 589,
           "consumers": []
         },
@@ -1414,7 +1414,7 @@
           "params": [
             "report"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/compressReport\").CompressedReport",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/compressReport\").CompressedReport",
           "line": 602,
           "consumers": []
         },
@@ -1425,7 +1425,7 @@
           "params": [
             "report"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/compressReport\").CompressedReport",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/compressReport\").CompressedReport",
           "line": 609,
           "consumers": []
         }
@@ -2068,7 +2068,7 @@
             "context",
             "debug"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/ExpressionParser\").ExpressionParser",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/ExpressionParser\").ExpressionParser",
           "line": 968,
           "consumers": []
         },
@@ -2271,7 +2271,7 @@
             "maxDepth",
             "outputDir"
           ],
-          "returns": "Promise<import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridReport>",
+          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridReport>",
           "line": 20,
           "consumers": []
         }
@@ -2292,7 +2292,7 @@
             "entryPoint",
             "maxDepth"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridReport",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridReport",
           "line": 16,
           "consumers": []
         }
@@ -2313,7 +2313,7 @@
             "filePath",
             "level"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridModule | null",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/modes/hybrid-report/types\").HybridModule | null",
           "line": 19,
           "consumers": []
         }
@@ -2634,7 +2634,7 @@
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/metadata\").ReportMetadata",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/metadata\").ReportMetadata",
           "line": 11,
           "consumers": []
         },
@@ -2694,7 +2694,7 @@
             "customVersion",
             "customLockfileVersion"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/metadata\").ReportMetadata",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/metadata\").ReportMetadata",
           "line": 40,
           "consumers": []
         }
@@ -2715,7 +2715,7 @@
             "packages",
             "callGraph"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/statistics\").EntityStats",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/statistics\").EntityStats",
           "line": 24,
           "consumers": []
         },
@@ -2726,7 +2726,7 @@
           "params": [
             "packages"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/statistics\").FileStats",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/statistics\").FileStats",
           "line": 69,
           "consumers": []
         }
@@ -2746,7 +2746,7 @@
           "params": [
             "graph"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/graphs\").DependencyGraph",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/graphs\").DependencyGraph",
           "line": 10,
           "consumers": []
         },
@@ -2909,7 +2909,7 @@
             "graphData",
             "packages"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/flows\").ExecutionGraph",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/flows\").ExecutionGraph",
           "line": 55,
           "consumers": []
         },
@@ -2923,7 +2923,7 @@
             "graphData",
             "packages"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/flows\").ImportExportFlow",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/flows\").ImportExportFlow",
           "line": 273,
           "consumers": []
         },
@@ -2952,7 +2952,7 @@
             "graphData",
             "packages"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/flows\").ExecutionGraph",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/flows\").ExecutionGraph",
           "line": 664,
           "consumers": []
         },
@@ -3001,7 +3001,7 @@
             "callGraph",
             "outwardDeps"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").ArchitectureMetrics",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").ArchitectureMetrics",
           "line": 16,
           "consumers": []
         },
@@ -3093,7 +3093,7 @@
             "metrics",
             "packages"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").ProjectSummary",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").ProjectSummary",
           "line": 6,
           "consumers": []
         },
@@ -3161,7 +3161,7 @@
             "projectRoot",
             "options"
           ],
-          "returns": "Record<string, import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").EnhancedPackageInfo>",
+          "returns": "Record<string, import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").EnhancedPackageInfo>",
           "line": 1285,
           "consumers": []
         }
@@ -3181,7 +3181,7 @@
           "params": [
             "entities"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").EnhancedEntityInfo",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").EnhancedEntityInfo",
           "line": 26,
           "consumers": []
         },
@@ -3192,7 +3192,7 @@
           "params": [
             "enhanced"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").EntitiesResult",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").EntitiesResult",
           "line": 273,
           "consumers": []
         },
@@ -3204,7 +3204,7 @@
             "functions",
             "allFunctions"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/reporters/modules/types\").FunctionEntity[]",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/reporters/modules/types\").FunctionEntity[]",
           "line": 355,
           "consumers": []
         },
@@ -3267,7 +3267,7 @@
             "params",
             "returnType"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/index\").ContractTemplate",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 125,
           "consumers": []
         },
@@ -3279,7 +3279,7 @@
             "contract",
             "precondition"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/index\").ContractTemplate",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 143,
           "consumers": []
         },
@@ -3291,7 +3291,7 @@
             "contract",
             "postcondition"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/index\").ContractTemplate",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 156,
           "consumers": []
         },
@@ -3303,7 +3303,7 @@
             "contract",
             "invariant"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/index\").ContractTemplate",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 169,
           "consumers": []
         },
@@ -3315,7 +3315,7 @@
             "contract",
             "body"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/index\").ContractTemplate",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 182,
           "consumers": []
         },
@@ -3326,7 +3326,7 @@
           "params": [
             "template"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").FunctionContract",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").FunctionContract",
           "line": 192,
           "consumers": []
         },
@@ -3339,7 +3339,7 @@
             "params",
             "returnType"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/index\").ContractTemplate",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/index\").ContractTemplate",
           "line": 207,
           "consumers": []
         },
@@ -3388,7 +3388,7 @@
             "modifiedPath",
             "options"
           ],
-          "returns": "Promise<import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/checkers/FileEquivalenceChecker\").FileEquivalenceResult>",
+          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/checkers/FileEquivalenceChecker\").FileEquivalenceResult>",
           "line": 293,
           "consumers": []
         },
@@ -3402,7 +3402,7 @@
             "modulesDir",
             "options"
           ],
-          "returns": "Promise<import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/checkers/RefactoringEquivalenceChecker\").RefactoringEquivalenceResult>",
+          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/checkers/RefactoringEquivalenceChecker\").RefactoringEquivalenceResult>",
           "line": 309,
           "consumers": []
         },
@@ -3416,7 +3416,7 @@
             "contract",
             "options"
           ],
-          "returns": "Promise<import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/checkers/FileEquivalenceChecker\").FileEquivalenceResult>",
+          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/checkers/FileEquivalenceChecker\").FileEquivalenceResult>",
           "line": 331,
           "consumers": []
         },
@@ -3429,7 +3429,7 @@
             "modified",
             "variables"
           ],
-          "returns": "Promise<import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationResult>",
+          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationResult>",
           "line": 349,
           "consumers": []
         },
@@ -3442,7 +3442,7 @@
             "functionName",
             "options"
           ],
-          "returns": "Promise<import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationResult>",
+          "returns": "Promise<import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/formal/Z3Verifier\").VerificationResult>",
           "line": 365,
           "consumers": []
         }
@@ -3462,7 +3462,7 @@
           "params": [
             "level"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/utils/Logger\").LogLevel",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/utils/Logger\").LogLevel",
           "line": 261,
           "consumers": []
         },
@@ -3471,7 +3471,7 @@
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/utils/Logger\").Logger",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/utils/Logger\").Logger",
           "line": 277,
           "consumers": []
         },
@@ -3648,7 +3648,7 @@
             "sig1",
             "sig2"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/SignatureComparator\").SignatureChange | null",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/SignatureComparator\").SignatureChange | null",
           "line": 786,
           "consumers": []
         },
@@ -3660,7 +3660,7 @@
             "signatures",
             "name"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/SignatureComparator\").FunctionSignature | null",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/SignatureComparator\").FunctionSignature | null",
           "line": 794,
           "consumers": []
         },
@@ -3690,7 +3690,7 @@
           "type": "export",
           "isAsync": false,
           "params": [],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/CallGraphComparator\").CallGraph",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/CallGraphComparator\").CallGraph",
           "line": 655,
           "consumers": []
         },
@@ -3701,7 +3701,7 @@
           "params": [
             "graphs"
           ],
-          "returns": "import(\"/home/sergei/Desktop/system/packages/ast-analyzer/src/core/CallGraphComparator\").CallGraph",
+          "returns": "import(\"C:/Users/szababurin/WebstormProjects/Chat-Stream-Monitor/packages/ast-analyzer/src/core/CallGraphComparator\").CallGraph",
           "line": 663,
           "consumers": []
         }

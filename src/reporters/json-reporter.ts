@@ -865,6 +865,7 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
 
     // Извлекаем функции
     const functions = sourceFile.getFunctions();
+    console.log('################### functions ####################', functions)
     for (const functionDecl of functions) {
       const name = functionDecl.getName();
       if (!name) continue;

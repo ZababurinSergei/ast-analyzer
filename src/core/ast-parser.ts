@@ -8,6 +8,34 @@ import { loadTsConfig, resolveAliasPath, getTsConfigDir } from './tsconfig-resol
 import type { TsConfig } from './tsconfig-resolver.js';
 
 // ==========================================
+// ✅ РАСШИРЕНИЕ ТИПА ДЛЯ AST (ВАРИАНТ 1)
+// ==========================================
+
+// Расширяем интерфейс ESLintProgram из @typescript-eslint/types
+declare module '@typescript-eslint/types' {
+  interface ESLintProgram {
+    /** Исходный код для Vue компонентов */
+    _originalCode?: string;
+    /** Флаг, указывающий что AST получен из Vue файла */
+    _isVue?: boolean;
+    /** Тип Vue скрипта: setup, tsSetup, basic, ts */
+    _vueType?: 'setup' | 'tsSetup' | 'basic' | 'ts' | null;
+  }
+}
+
+// Дополнительное глобальное расширение для безопасности
+declare global {
+  interface Object {
+    /** Исходный код для Vue компонентов */
+    _originalCode?: string;
+    /** Флаг, указывающий что AST получен из Vue файла */
+    _isVue?: boolean;
+    /** Тип Vue скрипта: setup, tsSetup, basic, ts */
+    _vueType?: 'setup' | 'tsSetup' | 'basic' | 'ts' | null;
+  }
+}
+
+// ==========================================
 // КОНФИГУРАЦИЯ
 // ==========================================
 
@@ -141,6 +169,13 @@ export function parseVueSFCFile(filePath: string): VueSFCData | null {
       result.scriptType = descriptor.scriptSetup.lang === 'ts' ? 'tsSetup' : 'setup';
     }
 
+    // ✅ ДОБАВЛЯЕМ ПРОВЕРКУ НА ПУСТОЙ СКРИПТ
+    const scriptContent = result.scriptSetup || result.script;
+    if (scriptContent && scriptContent.trim() === '') {
+      console.log(`ℹ️ Пустой script блок в ${path.basename(filePath)}, пропускаем`);
+      return null;
+    }
+
     if (descriptor.template) {
       result.template = descriptor.template.content;
     }
@@ -173,6 +208,20 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
     const resolvedPath = validateAndResolvePath(filePath);
     if (!resolvedPath) return null;
 
+    // ✅ ПРОПУСК CSS-ФАЙЛОВ
+    if (filePath.endsWith('.css')) {
+      console.log(`⏭️ Пропуск CSS файла: ${path.basename(filePath)}`);
+      return null;
+    }
+
+    // ✅ ПРОПУСК ДРУГИХ НЕПОДДЕРЖИВАЕМЫХ РАСШИРЕНИЙ
+    const unsupportedExtensions = ['.css', '.scss', '.less', '.html', '.json', '.xml', '.svg', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.woff', '.woff2', '.ttf', '.eot'];
+    const ext = path.extname(filePath);
+    if (unsupportedExtensions.includes(ext)) {
+      console.log(`⏭️ Пропуск неподдерживаемого файла: ${path.basename(filePath)}`);
+      return null;
+    }
+
     console.log(`📖 Чтение файла: ${resolvedPath}`);
     let code = fs.readFileSync(resolvedPath, 'utf-8');
     console.log(`📏 Размер файла: ${code.length} символов`);
@@ -184,8 +233,9 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       isVue = true;
       const sfc = parseVueSFCFile(resolvedPath);
 
+      // ✅ ЕСЛИ SFC ВЕРНУЛ NULL — ПРОПУСКАЕМ ФАЙЛ
       if (!sfc) {
-        console.warn(`⚠️ Не удалось разобрать Vue файл ${resolvedPath}`);
+        console.log(`⏭️ Пропуск Vue файла (нет скрипта или пустой скрипт): ${path.basename(filePath)}`);
         return null;
       }
 
@@ -199,10 +249,14 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
         return null;
       }
 
+      // ✅ ПРОВЕРКА НА ПУСТОЙ СКРИПТ
+      if (scriptContent.trim() === '') {
+        console.log(`ℹ️ Пустой script блок в ${path.basename(filePath)}, пропускаем`);
+        return null;
+      }
+
       code = scriptContent;
-      console.log(
-        `📄 Vue файл: ${path.basename(resolvedPath)} (${scriptType}, TS: ${isTypeScript})`
-      );
+      console.log(`📄 Vue файл: ${path.basename(resolvedPath)} (${scriptType}, TS: ${isTypeScript})`);
 
       if (sfc.styles.length > 0) {
         console.log(`   🎨 Styles: ${sfc.styles.length} блоков`);
@@ -305,6 +359,14 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       let importCount = 0;
       importCount = ast.body.filter((node: any) => node?.type === 'ImportDeclaration').length;
       console.log(`   📥 Найдено импортов: ${importCount}`);
+    }
+
+    // ✅ СОХРАНЯЕМ ИСХОДНЫЙ КОД ДЛЯ ПОСЛЕДУЮЩЕГО АНАЛИЗА
+    // Используем расширенный тип ESLintProgram
+    if (isVue && ast) {
+      ast._originalCode = code;
+      ast._isVue = true;
+      ast._vueType = isTypeScript ? 'tsSetup' : 'setup';
     }
 
     return ast;

@@ -367,14 +367,25 @@ function findProjectRoot(startDir: string): string | null {
   return null;
 }
 
+// ==========================================
+// ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ resolveAbsoluteFilePath
+// ==========================================
+
 /**
  * Разрешает путь к файлу в абсолютный с поиском в нескольких местах
+ * ✅ ДОБАВЛЕНА ПОДДЕРЖКА VUE-ФАЙЛОВ
+ * ✅ ИСПРАВЛЕНА ПРОБЛЕМА С НЕ НАЙДЕННЫМИ ФАЙЛАМИ
  */
 function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string | null {
+  // Нормализуем путь
+  const normalizedPath = filePath.replace(/\\/g, '/');
+
+  // Если путь уже абсолютный и существует
   if (path.isAbsolute(filePath) && fs.existsSync(filePath)) {
     return filePath;
   }
 
+  // Базовые кандидаты
   const candidates = [
     path.resolve(projectRoot, filePath),
     path.resolve(projectRoot, 'src', filePath),
@@ -383,17 +394,43 @@ function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string 
     path.resolve(process.cwd(), 'src', filePath),
   ];
 
-  const normalizedFilePath = filePath.replace(/\\/g, '/');
+  // Добавляем варианты с нормализованными путями (Windows -> Unix)
   const additionalCandidates = [
-    path.resolve(projectRoot, normalizedFilePath),
-    path.resolve(projectRoot, 'src', normalizedFilePath),
-    path.resolve(projectRoot, 'packages/ast-analyzer/src', normalizedFilePath),
+    path.resolve(projectRoot, normalizedPath),
+    path.resolve(projectRoot, 'src', normalizedPath),
+    path.resolve(projectRoot, 'packages/ast-analyzer/src', normalizedPath),
   ];
   candidates.push(...additionalCandidates);
 
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
-      return candidate;
+  // ==========================================
+  // ✅ ДОБАВЛЯЕМ ЯВНУЮ ПРОВЕРКУ ДЛЯ VUE-ФАЙЛОВ
+  // ==========================================
+  const vueCandidates = [
+    path.resolve(projectRoot, filePath),
+    path.resolve(projectRoot, 'src', filePath),
+    path.resolve(projectRoot, 'packages/infoenergo-ui/src', filePath),
+  ];
+
+  // Добавляем варианты с явным .vue
+  if (!filePath.endsWith('.vue')) {
+    const vuePath = filePath + '.vue';
+    vueCandidates.push(
+      path.resolve(projectRoot, vuePath),
+      path.resolve(projectRoot, 'src', vuePath),
+      path.resolve(projectRoot, 'packages/infoenergo-ui/src', vuePath)
+    );
+  }
+
+  // Проверяем все кандидаты (сначала базовые, потом Vue)
+  const allCandidates = [...candidates, ...vueCandidates];
+
+  for (const candidate of allCandidates) {
+    try {
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+        return candidate;
+      }
+    } catch {
+      // Игнорируем ошибки доступа
     }
   }
 
@@ -528,6 +565,14 @@ export function buildProjectGraph(
       graph[relativeKey] = [];
     }
 
+    // ==========================================
+    // ✅ ПРОВЕРКА: парсим файл, но если это CSS — пропускаем
+    // ==========================================
+    if (currentPath.endsWith('.css') || currentPath.endsWith('.scss') || currentPath.endsWith('.less')) {
+      console.log(`⏭️ Пропуск стилевого файла: ${path.basename(currentPath)}`);
+      continue;
+    }
+
     const ast = parseFile(currentPath);
     if (!ast) {
       console.log(`   ⚠️ Не удалось получить AST для: ${path.basename(currentPath)}`);
@@ -535,7 +580,6 @@ export function buildProjectGraph(
     }
 
     if (includeEntities) {
-      // console.log('__ZB__ отключил внутри body')
       const enhancedEntities = extractEntitiesFromFile(currentPath);
       const entities = convertEnhancedToEntities(enhancedEntities);
       entitiesMap[relativeKey] = entities;
@@ -607,8 +651,6 @@ export function buildProjectGraph(
               isAsync: false,
               calls: Array.from(calls),
             });
-
-            // console.log(`   📌 Добавлена локальная функция: ${funcName} (вызовов: ${calls.size})`);
           }
         }
       } catch (error) {
