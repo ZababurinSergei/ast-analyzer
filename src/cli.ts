@@ -1260,6 +1260,7 @@ export async function runCLI(): Promise<void> {
 
     // Проверяем существование файла
     if (!fs.existsSync(currentTargetPath)) {
+      console.log('@@@@@@@@@@@ 1 @@@@@@@@@@@@')
       console.error(`❌ Файл не найден: ${currentTargetPath}`);
       process.exit(1);
     }

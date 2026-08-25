@@ -1,0 +1,24 @@
+{
+    "extends": "./tsconfig.json",
+    "include": ["src/**/*"],
+    "exclude": [
+        "**/*.test.ts",
+        "**/*.stories.ts",
+        "**/stories/**",
+        "**/examples/**",
+        "node_modules",
+        "src/components/ui/AiButton/AiButton.vue",
+        "src/components/ui/index.ts",
+        "src/index.ts"
+    ],
+    "compilerOptions": {
+        "noEmit": false,
+        "declaration": true,
+        "emitDeclarationOnly": true,
+        "declarationMap": true,
+        "noEmitOnError": false,
+        "sourceMap": true,
+        "outDir": "./dist",
+        "declarationDir": "./dist/types"
+    }
+}

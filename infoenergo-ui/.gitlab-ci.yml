@@ -1,0 +1,4 @@
+include:
+  - project: 'infoenergo.npm/infoenergo-npm-pipelines'
+    ref: main
+    file: '.gitlab-ci.infoenergo-ui.yml'

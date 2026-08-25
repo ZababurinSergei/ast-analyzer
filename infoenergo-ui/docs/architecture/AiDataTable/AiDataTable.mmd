@@ -1,0 +1,55 @@
+flowchart
+    subgraph Root[Компонент таблицы]
+        AiDataTable[AiDataTable.vue]
+    end
+
+    subgraph Toolbar[Тулбар]
+        AiToolbar[AiToolbar.vue]
+        useToolbarConfig[useToolbarConfig.ts]
+    end
+
+    subgraph TableState[Состояние таблицы]
+        useTableState[useTableState.ts]
+    end
+
+    subgraph DataState[Данные]
+        useDataState[useDataState.ts]
+        
+        subgraph DataStore[Хранение данных]
+            useDataStore[useDataStore.ts]
+            useFetch[useFetch.ts]
+        end 
+
+        subgraph ChangesTracker[Хранение изменений данных]
+            useChangesTracker[useChangesTracker.ts]
+        end 
+    end
+
+    subgraph Columns[Настройка колонок]
+        useColumnsConfig[useColumnsConfig.ts]
+    end
+
+    subgraph Cell[Компонент ячейки]
+        AiCell[AiCell.vue]
+    end
+
+    subgraph Field[Компонент поля]
+        AiField[AiField.vue]
+        useFieldComponent[useFieldComponent.ts]
+    end
+    AiDataTable --> AiToolbar
+    AiToolbar --> useToolbarConfig
+
+    AiDataTable --> useTableState
+    useDataState --> useDataStore
+    useDataStore --> useFetch
+    useDataState --> useChangesTracker
+
+    AiDataTable --> useDataState
+    AiDataTable --> useColumnsConfig
+
+    useColumnsConfig --> AiCell
+    
+    AiCell --> AiField
+
+    AiField --> useFieldComponent

@@ -1,0 +1,57 @@
+import { Meta, Title } from '@storybook/addon-docs/blocks';
+import { getDesignColorRows } from './designSystemColors.data.js';
+
+<Meta title="Дизайн-система/Палитра" parameters={{ layout: 'fullscreen' }} />
+
+<Title>Палитра цветов</Title>
+
+<style>{`
+  .ds-palette__table th { text-align: left; padding: 10px 12px; background: var(--light-blue-100); border-bottom: 1px solid #e5e7eb; font-weight: 600; white-space: nowrap; }
+  .ds-palette__table th:nth-child(4),
+  .ds-palette__table td:nth-child(4) { min-width: 300px; max-width: 480px; }
+  .ds-palette__swatch { display: inline-block; width: 48px; height: 28px; border-radius: 4px; vertical-align: middle; border: 1px solid rgba(0,0,0,0.12); box-sizing: border-box; }
+`}</style>
+
+export const PaletteTable = () => {
+    const rows = getDesignColorRows();
+    return (
+        <table className="ds-palette__table">
+            <thead>
+            <tr>
+                <th>Образец</th>
+                <th>Название</th>
+                <th>Значение</th>
+                <th>Компоненты</th>
+                <th>Описание</th>
+            </tr>
+            </thead>
+            <tbody>
+            {rows.map((row, i) => (
+                <tr key={i}>
+                    <td>
+                        <span
+                            className="ds-palette__swatch"
+                            style={{ background: `var(${row.cssVar})` }}
+                            title={`var(${row.cssVar})`}
+                        />
+                    </td>
+                    <td>{row.name}</td>
+                    <td>
+                        <code>{`var(${row.cssVar})`}</code>
+                    </td>
+                    <td>
+                        <ul>
+                            {row.components.map((c, j) => (
+                                <li key={j}>{c}</li>
+                            ))}
+                        </ul>
+                    </td>
+                    <td>{row.description}</td>
+                </tr>
+            ))}
+            </tbody>
+        </table>
+    );
+};
+
+<PaletteTable />

@@ -1,54 +1,25 @@
 // src/reporters/modules/types.ts
-// Общие типы для всех модулей
-
-export interface GraphData {
-  rootKey: string;
-  graph: Record<string, string[]>;
-  hasCycles?: boolean;
-  cyclicEdges?: string[];
-}
-
-export interface EntitiesResult {
-  functions: any[];
-  classes: any[];
-  constants: any[];
-  interfaces: any[];
-  types: any[];
-  variables: any[];
-  imports: any[];
-  exports: any[];
-  callGraph: Record<string, string[]>;
-  moduleName: string;
-  filePath: string;
-}
-
-// ============================================================
-// БАЗОВЫЙ ТИП ДЛЯ ФУНКЦИИ - ИСПОЛЬЗУЕТСЯ ВЕЗДЕ
-// ============================================================
 
 export interface FunctionEntity {
   name: string;
-  params: string[];
-  paramTypes?: string[];
   line: number;
-  startLine?: number;
-  endLine?: number;
   isAsync: boolean;
   isExported: boolean;
+  params: string[];
+  returnType?: string;
+  calls: string[];
+  calledBy: string[];
+  body?: string;
+  startLine: number;
+  endLine: number;
   isMethod?: boolean;
   className?: string;
-  calls: string[];
-  calledBy: { function: string; module: string; line: number }[] | string[];
-  returnType?: string;
-  body?: string; // ✅ ПОЛНОЕ ТЕЛО ФУНКЦИИ
-  signature?: string; // ✅ СИГНАТУРА ДЛЯ БЫСТРОГО ПРОСМОТРА
-  vscode?: string; // ✅ ССЫЛКА НА VS CODE
   isNested?: boolean;
   parentFunction?: string;
   isArrow?: boolean;
   isEventHandler?: boolean;
   eventType?: string;
-  depth?: number;
+  depth: number;
   complexity?: number;
   security?: {
     hasEval: boolean;
@@ -57,171 +28,80 @@ export interface FunctionEntity {
     hasExec: boolean;
     hasPassword: boolean;
   };
-  _safeInfo?: any;
 }
-
-// ============================================================
-// ENHANCED TYPES - РАСШИРЯЮТ БАЗОВЫЕ
-// ============================================================
 
 export interface EnhancedFunctionInfo extends FunctionEntity {
-  // Расширяет FunctionEntity, добавляя только то, чего нет
-  // Все поля уже есть в FunctionEntity
-}
-
-export interface EnhancedConstantInfo {
-  name: string;
-  value?: any;
-  line: number;
-  isExported: boolean;
-  type?: string;
-  _safeInfo?: any;
-}
-
-export interface EnhancedVariableInfo {
-  name: string;
-  value?: any;
-  line: number;
-  isExported: boolean;
-  type?: string;
-  _safeInfo?: any;
-}
-
-export interface EnhancedInterfaceInfo {
-  name: string;
-  properties: string[];
-  line: number;
-  isExported: boolean;
-  extends?: string[];
-  startLine?: number;
-  endLine?: number;
-  _safeInfo?: any;
-}
-
-export interface EnhancedTypeInfo {
-  name: string;
-  definition: string;
-  line: number;
-  isExported: boolean;
-  _safeInfo?: any;
+  paramTypes: string[];
+  vscode: string;
+  signature: string;
+  _safeInfo: any;
 }
 
 export interface EnhancedClassInfo {
   name: string;
   methods: string[];
-  methodDetails?: {
-    name: string;
-    params: string[];
-    returnType?: string;
-    isAsync: boolean;
-    line: number;
-  }[];
   properties: string[];
-  propertyDetails?: {
-    name: string;
-    type?: string;
-    line: number;
-  }[];
   line: number;
+  startLine: number;
+  endLine: number;
   isExported: boolean;
   extends?: string;
-  implements?: string[];
-  startLine?: number;
-  endLine?: number;
-  body?: string; // ✅ ТЕЛО КЛАССА
-  vscode?: string; // ✅ ССЫЛКА НА VS CODE
-  _safeInfo?: any;
+  implements: string[];
+  _safeInfo: any;
 }
 
 export interface EnhancedEntityInfo {
   functions: EnhancedFunctionInfo[];
-  constants: EnhancedConstantInfo[];
-  variables: EnhancedVariableInfo[];
-  interfaces: EnhancedInterfaceInfo[];
-  types: EnhancedTypeInfo[];
-  classes: EnhancedClassInfo[];
-}
-
-export interface ModuleNode {
-  id: string;
-  name: string;
-  type: 'module' | 'component' | 'vue';
-  level: number;
-  metadata: {
-    size: number;
-    lines: number;
-    language: string;
-    isEntry: boolean;
-  };
-}
-
-export interface ModuleEdge {
-  from: string;
-  to: string;
-  type: 'import' | 'external' | 're-export';
-  specifiers: string[];
-}
-
-export interface ModuleGraph {
-  nodes: ModuleNode[];
-  edges: ModuleEdge[];
-}
-
-export interface EntityNode {
-  id: string;
-  name: string;
-  type: 'function' | 'class' | 'constant' | 'interface' | 'type' | 'variable';
-  module: string;
-  line: number;
-  metadata: Record<string, any>;
-}
-
-export interface EntityEdge {
-  from: string;
-  to: string;
-  type:
-    | 'function_call'
-    | 'constant_reference'
-    | 'class_extends'
-    | 'class_implements'
-    | 'interface_extends'
-    | 'type_reference'
-    | 'method_call'
-    | 'property_access'
-    | 'import_binding'
-    | 'export_binding'
-    | 'parameter_type'
-    | 'return_type';
-  line?: number;
-}
-
-export interface EntityGraph {
-  nodes: EntityNode[];
-  edges: EntityEdge[];
-}
-
-export interface FullAnalysis {
-  version: string;
-  root: string;
-  timestamp: string;
-  stats: {
-    totalModules: number;
-    totalEntities: number;
-    hasCycles: boolean;
-    cycles: string[][];
-  };
-  moduleGraph: ModuleGraph;
-  entityGraph: EntityGraph;
-}
-
-// ✅ ИСПРАВЛЕНО: PackageLockImportInfo с правильными полями
-export interface PackageLockImportInfo {
-  direction: 'inward';
-  type: 'import' | 'external-import' | 'internal-import';
-  specifiers: string[];
-  functions: Record<string, any>;
-  isTypeOnly?: boolean;
-  line?: number;
+  constants: {
+    name: string;
+    line: number;
+    isExported: boolean;
+    type: string;
+    value?: any;
+    _safeInfo: any;
+  }[];
+  variables: {
+    name: string;
+    line: number;
+    isExported: boolean;
+    type: string;
+    value?: any;
+    _safeInfo: any;
+  }[];
+  interfaces: {
+    name: string;
+    properties: string[];
+    line: number;
+    startLine: number;
+    endLine: number;
+    isExported: boolean;
+    extends: string[];
+    _safeInfo: any;
+  }[];
+  types: {
+    name: string;
+    definition: string;
+    line: number;
+    isExported: boolean;
+    _safeInfo: any;
+  }[];
+  classes: {
+    name: string;
+    methods: string[];
+    properties: string[];
+    line: number;
+    startLine: number;
+    endLine: number;
+    isExported: boolean;
+    extends?: string;
+    implements: string[];
+    _safeInfo: any;
+  }[];
+  imports: {
+    source: string;
+    specifiers: string[];
+    isTypeOnly: boolean;
+  }[];
 }
 
 export interface EnhancedPackageInfo {
@@ -231,23 +111,8 @@ export interface EnhancedPackageInfo {
   type: 'module' | 'commonjs';
   language: 'typescript' | 'javascript' | 'vue' | 'jsx';
   isEntry: boolean;
-  imports: Record<string, PackageLockImportInfo>;
-  exports: Record<
-    string,
-    {
-      direction: 'outward';
-      type: 'export';
-      isAsync: boolean;
-      params: string[];
-      returns: string;
-      line: number;
-      consumers: {
-        function: string;
-        module: string;
-        line: number;
-      }[];
-    }
-  >;
+  imports: Record<string, any>;
+  exports: Record<string, any>;
   entities: EnhancedEntityInfo;
   fileStats: {
     size: number;
@@ -259,60 +124,9 @@ export interface EnhancedPackageInfo {
     types: number;
     variables: number;
   };
+  vscode?: string;
+  sourceCode?: string;
   vueAnalysis?: VueAnalysis;
-  vscode?: string; // ✅ ССЫЛКА НА VS CODE ДЛЯ МОДУЛЯ
-  sourceCode?: string; // ✅ ПОЛНЫЙ КОД ФАЙЛА (опционально)
-}
-
-export interface VueAnalysis {
-  props: {
-    names: string[];
-    types: Record<string, string>;
-    required: Record<string, boolean>;
-    defaults: Record<string, any>;
-  };
-  emits: {
-    names: string[];
-    types: Record<string, string>;
-  };
-  slots: string[];
-  composables: string[];
-  templateComplexity: number;
-  scriptType: 'setup' | 'options';
-  isTS: boolean;
-  stats: {
-    scriptLines: number;
-    templateLines: number;
-    styleCount: number;
-  };
-}
-
-export interface ArchitectureMetrics {
-  totalModules: number;
-  totalFunctions: number;
-  totalClasses: number;
-  totalConstants: number;
-  totalInterfaces: number;
-  totalTypes: number;
-  totalVariables: number;
-  totalCalls: number;
-  vueComponents: number;
-  totalComposables: number;
-  hasCycles: boolean;
-  maxDepth: number;
-  modulesByLevel: Record<number, string[]>;
-  isAcyclic: boolean;
-}
-
-export interface ProjectSummary {
-  projectType: 'monorepo' | 'single' | 'unknown';
-  entryPoint: string;
-  totalModules: number;
-  totalFunctions: number;
-  vueComponents: number;
-  hasCycles: boolean;
-  maxDepth: number;
-  architectureHealth: string;
 }
 
 export interface EnhancedPackageLockReport {
@@ -382,4 +196,270 @@ export interface EnhancedPackageLockReport {
   timestamp?: string;
   architectureMetrics?: ArchitectureMetrics;
   summary?: ProjectSummary;
+}
+
+export interface ModuleNode {
+  id: string;
+  name: string;
+  type: 'module' | 'component' | 'vue' | 'external';
+  level: number;
+  metadata: {
+    size: number;
+    lines: number;
+    language: string;
+    isEntry: boolean;
+  };
+}
+
+export interface ModuleEdge {
+  from: string;
+  to: string;
+  type: 'import' | 'external' | 're-export' | 'dynamic_import';
+  specifiers: string[];
+}
+
+export interface ModuleGraph {
+  nodes: ModuleNode[];
+  edges: ModuleEdge[];
+}
+
+export interface EntityNode {
+  id: string;
+  name: string;
+  type: 'function' | 'class' | 'constant' | 'interface' | 'type' | 'variable' | 'enum' | 'module';
+  module: string;
+  line: number;
+  metadata: {
+    isExported: boolean;
+    dataType?: string;
+    value?: any;
+    params?: string[];
+    returnType?: string;
+    isAsync?: boolean;
+    isMethod?: boolean;
+    className?: string;
+    properties?: string[];
+    methods?: string[];
+    extends?: string;
+    implements?: string[];
+    extendsInterfaces?: string[];
+    definition?: string;
+    calledBy?: string[];
+    calls?: string[];
+    startLine?: number;
+    endLine?: number;
+    visibility?: 'public' | 'private' | 'protected' | 'internal';
+    tags?: string[];
+    complexity?: number;
+    security?: any;
+    body?: string;
+    signature?: string;
+    vscode?: string;
+    importedFrom?: string;
+  };
+}
+
+export interface EntityEdge {
+  from: string;
+  to: string;
+  type:
+    | 'function_call'
+    | 'constant_reference'
+    | 'class_extends'
+    | 'class_implements'
+    | 'interface_extends'
+    | 'type_reference'
+    | 'method_call'
+    | 'property_access'
+    | 'import_binding'
+    | 'export_binding'
+    | 'parameter_type'
+    | 'return_type'
+    | 'variable_reference'
+    | 'enum_member';
+  line?: number;
+  count?: number;
+}
+
+export interface EntityGraph {
+  nodes: EntityNode[];
+  edges: EntityEdge[];
+}
+
+export interface FullAnalysis {
+  version: string;
+  root: string;
+  timestamp: string;
+  stats: {
+    totalModules: number;
+    totalEntities: number;
+    hasCycles: boolean;
+    cycles: string[][];
+    totalFunctions: number;
+    totalClasses: number;
+    totalConstants: number;
+    totalInterfaces: number;
+    totalTypes: number;
+    totalVariables: number;
+    maxDepth: number;
+  };
+  moduleGraph: ModuleGraph;
+  entityGraph: EntityGraph;
+}
+
+export interface ArchitectureMetrics {
+  totalModules: number;
+  totalFunctions: number;
+  totalClasses: number;
+  totalConstants: number;
+  totalInterfaces: number;
+  totalTypes: number;
+  totalVariables: number;
+  totalCalls: number;
+  vueComponents: number;
+  totalComposables: number;
+  hasCycles: boolean;
+  maxDepth: number;
+  modulesByLevel: Record<number, string[]>;
+  isAcyclic: boolean;
+  averageComplexity?: number;
+  maxComplexity?: number;
+  totalSecurityIssues?: number;
+  securityIssuesByType?: {
+    hasEval: number;
+    hasProcessEnv: number;
+    hasSensitiveData: number;
+    hasExec: number;
+  };
+}
+
+export interface ProjectSummary {
+  projectType: 'monorepo' | 'single' | 'unknown';
+  entryPoint: string;
+  totalModules: number;
+  totalFunctions: number;
+  vueComponents: number;
+  hasCycles: boolean;
+  maxDepth: number;
+  architectureHealth: string;
+  quickSummary?: string;
+  technologies?: string[];
+}
+
+export interface VueAnalysis {
+  props: {
+    names: string[];
+    types: Record<string, string>;
+    required: Record<string, boolean>;
+    defaults: Record<string, any>;
+  };
+  emits: {
+    names: string[];
+    types: Record<string, string>;
+  };
+  slots: string[];
+  composables: string[];
+  templateComplexity: number;
+  scriptType: 'setup' | 'options';
+  isTS: boolean;
+  stats: {
+    scriptLines: number;
+    templateLines: number;
+    styleCount: number;
+  };
+}
+
+export interface PackageLockImportInfo {
+  direction: 'inward';
+  type: 'import' | 'external-import' | 'internal-import' | 'type-import';
+  specifiers: string[];
+  functions: Record<string, any>;
+}
+
+// ============================================================
+// ДОПОЛНИТЕЛЬНЫЕ ЭКСПОРТЫ ДЛЯ СОВМЕСТИМОСТИ
+// ============================================================
+
+export interface GraphData {
+  rootKey: string;
+  graph: Record<string, string[]>;
+  hasCycles?: boolean;
+  cyclicEdges?: string[];
+}
+
+export interface EntitiesResult {
+  functions: FunctionEntity[];
+  classes: {
+    name: string;
+    line: number;
+    isExported: boolean;
+    methods: string[];
+    properties: string[];
+    extends?: string;
+    implements?: string[];
+    startLine: number;
+    endLine: number;
+  }[];
+  constants: {
+    name: string;
+    line: number;
+    value?: any;
+    isExported: boolean;
+    type?: string;
+  }[];
+  interfaces: {
+    name: string;
+    line: number;
+    isExported: boolean;
+    properties: string[];
+    extends?: string[];
+    startLine: number;
+    endLine: number;
+  }[];
+  types: {
+    name: string;
+    line: number;
+    isExported: boolean;
+    definition: string;
+  }[];
+  variables: {
+    name: string;
+    line: number;
+    isExported: boolean;
+    type?: string;
+    value?: any;
+  }[];
+  imports: {
+    source: string;
+    specifiers: {
+      local: string;
+      imported: string;
+      type: string;
+    }[];
+    loc: any;
+    isTypeOnly?: boolean;
+  }[];
+  exports: {
+    name: string;
+    type: 'function' | 'class' | 'constant' | 'value' | 'default';
+    isDefault: boolean;
+    loc: any;
+    params?: string[];
+    async?: boolean;
+    startLine?: number;
+    endLine?: number;
+  }[];
+  callGraph: Record<string, string[]>;
+  moduleName: string;
+  filePath: string;
+}
+
+export function createDefaultSecurity() {
+  return {
+    hasEval: false,
+    hasProcessEnv: false,
+    hasSensitiveData: false,
+    hasExec: false,
+    hasPassword: false,
+  };
 }

@@ -141,6 +141,7 @@ program
 
     const absolutePath = path.resolve(file);
     if (!fs.existsSync(absolutePath)) {
+      console.log('@@@@@@@@@@@ 6 @@@@@@@@@@@@');
       console.error(`\n❌ Файл не найден: ${absolutePath}`);
       process.exit(1);
     }
@@ -483,6 +484,7 @@ program
 
     const absolutePath = path.resolve(file);
     if (!fs.existsSync(absolutePath)) {
+      console.log('@@@@@@@@@@@ 5 @@@@@@@@@@@@');
       console.error(`\n❌ Файл не найден: ${absolutePath}`);
       process.exit(1);
     }
@@ -706,6 +708,7 @@ program
 
     const absolutePath = path.resolve(file);
     if (!fs.existsSync(absolutePath)) {
+      console.log('@@@@@@@@@@@ 3 @@@@@@@@@@@@');
       console.error(`\n❌ Файл не найден: ${absolutePath}`);
       process.exit(1);
     }

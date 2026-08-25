@@ -1,0 +1,101 @@
+import { Meta, Title, Markdown } from '@storybook/addon-docs/blocks';
+import ArchitectureImage from '~/docs/architecture/AiDialog/AiDialog.png';
+
+<Meta title="Компоненты/AiDialog/Документация" />
+
+<Title>AiDialog</Title>
+
+`AiDialog` — модальное окно выбора действия, которое управляется через `useDialog`.
+
+## API
+
+Метод `show` принимает объект типа `DialogShowConfig` и возвращает `Promise<'positive' | 'negative' | 'neutral' | null>`.
+
+export const apiTable = {
+    headers: ["Поле", "Тип", "Обязательное", "Дефолтное значение", "Описание"],
+    data: [
+        { prop: "title", type: "string", required: "Нет", default: "Подтвердите действие", description: "Заголовок диалога" },
+        { prop: "content", type: "string", required: "Да", default: "-", description: "Основной текст диалога" },
+        { prop: "positiveText", type: "string", required: "Нет", default: "-", description: "Текст positive кнопки" },
+        { prop: "negativeText", type: "string", required: "Нет", default: "-", description: "Текст negative кнопки" },
+        { prop: "neutralText", type: "string", required: "Нет", default: "-", description: "Текст neutral кнопки" },
+    ],
+};
+
+export const ApiTable = () => (
+  <table style={{margin: '20px auto'}}>
+    <thead>
+    <tr>
+        {apiTable.headers.map((caption, idx) => (
+        <th key={idx}>{caption}</th>
+        ))}
+    </tr>
+    </thead>
+    <tbody>
+      {apiTable.data.map((row, idx) => (
+        <tr key={idx}>
+          <td><code>{row.prop}</code></td>
+          <td><code>{row.type}</code></td>
+          <td>{row.required}</td>
+          <td><code>{row.default}</code></td>
+          <td>{row.description}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+);
+
+<ApiTable />
+
+### Поведение кнопок
+
+- Если передан текст для positive кнопки (поле `positiveText`), positive кнопка отрендерится.
+- Если текст для какой-либо кнопки не передан, то эта кнопка не отрендерится.
+- Если не передан ни один текст кнопки, используется дефолтная кнопка: `positive` с текстом `Ок`.
+
+### Важные ограничения
+
+- Одновременно поддерживается **только один активный диалог**.
+- Если вызвать `dialog.show(...)` во время уже открытого диалога, в консоль пишется ошибка `Диалоговое окно уже открыто`, а метод вернёт `Promise.resolve(null)`.
+
+## Пример использования
+
+```ts
+import { useDialog } from '@/composables/AiDialog/useDialog';
+
+const dialog = useDialog()
+
+const handle = async () => {
+    const choice = await dialog.show({
+        title: 'Сохранение изменений',
+        content: 'Сохранить изменения?',
+        positiveText: 'Да',
+        negativeText: 'Нет',
+        neutralText: 'Отмена',
+    });
+
+    if (choice === 'positive') {
+        // логика на 'positive'
+    }
+    else if (choice === 'negative') {
+        // логика на 'negative'
+    }
+    else if (choice === 'neutral') {
+        // логика на 'neutral'
+    }
+}
+```
+
+## Архитектура
+
+<img
+    src={ArchitectureImage}
+    alt="Архитектура AiDialog"
+    style={{
+        display: 'block',
+        margin: '0 auto',
+        maxWidth: '100%',
+        maxHeight: '400px',
+        objectFit: 'contain',
+    }}
+/>

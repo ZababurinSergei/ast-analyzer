@@ -133,6 +133,7 @@ export function extractFunctionsFromScript(
           const isArrow = decl.init.type === 'ArrowFunctionExpression';
           const isFunction = decl.init.type === 'FunctionExpression' || isArrow;
 
+          // ✅ ОБРАБОТКА СТРЕЛОЧНЫХ ФУНКЦИЙ В КОНСТАНТАХ
           if (isFunction && name) {
             const params = decl.init.params?.map((p: any) => getParamName(p)).filter(Boolean) || [];
             const body = decl.init.body ? extractBodyText(decl.init.body) : '';
@@ -192,6 +193,34 @@ export function extractFunctionsFromScript(
                 returnType: 'any',
                 body: `Composable: ${callName}(${args.join(', ')})`,
               });
+            }
+          }
+        }
+
+        // ✅ ДОПОЛНИТЕЛЬНАЯ ОБРАБОТКА: деструктуризация с функциями
+        if (decl?.id?.type === 'ObjectPattern' && decl.init) {
+          const source = decl.init.type === 'CallExpression'
+            ? decl.init.callee?.name || 'unknown'
+            : 'unknown';
+
+          for (const prop of decl.id.properties || []) {
+            if (prop.type === 'Property' && prop.key?.type === 'Identifier') {
+              const name = prop.key.name;
+              const isFunction = prop.value?.type === 'ArrowFunctionExpression' ||
+                prop.value?.type === 'FunctionExpression';
+
+              if (isFunction && name && !functions.find(f => f.name === name)) {
+                const line = prop.loc?.start?.line || decl.loc?.start?.line || 1;
+                functions.push({
+                  name,
+                  line,
+                  isAsync: false,
+                  isExported: isExported || kind === 'const',
+                  params: [],
+                  returnType: 'any',
+                  body: `from ${source}`,
+                });
+              }
             }
           }
         }
@@ -334,7 +363,32 @@ function extractFunctionsFromScriptFallback(content: string): VueComponentAnalys
     }
   }
 
-  // 3. Vue макросы
+  // 3. Стрелочные функции с возвратом без фигурных скобок: const fn = () => value
+  const arrowSimpleRegex = /(?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*(?:async\s*)?\(([^)]*)\)\s*=>\s*([^;]+);/g;
+  while ((match = arrowSimpleRegex.exec(content)) !== null) {
+    const name = match[1];
+    const paramsStr = match[2] || '';
+    const body = match[3]?.trim() || '';
+
+    if (name && !functions.find(f => f.name === name)) {
+      const isExported = content.includes(`export const ${name}`);
+      const isAsync = content.includes(`async (${paramsStr}) =>`);
+
+      const params = paramsStr.split(',').map(p => p.trim()).filter(p => p);
+
+      functions.push({
+        name,
+        line: content.substring(0, match.index).split('\n').length,
+        isAsync,
+        isExported,
+        params,
+        returnType: 'any',
+        body: body.length > 200 ? body.substring(0, 200) + '...' : body,
+      });
+    }
+  }
+
+  // 4. Vue макросы
   const vueMacros = ['defineProps', 'defineEmits', 'defineExpose', 'withDefaults'];
   for (const macro of vueMacros) {
     const macroRegex = new RegExp(`(?:const\\s+)?${macro}\\s*(?:<[^>]*>)?\\s*\\(`, 'g');
@@ -357,7 +411,7 @@ function extractFunctionsFromScriptFallback(content: string): VueComponentAnalys
     }
   }
 
-  // 4. Composables
+  // 5. Composables
   const composableRegex = /(?:const|let)\s+(\w+)\s*=\s*(use\w+)\s*\(([^)]*)\)/g;
   while ((match = composableRegex.exec(content)) !== null) {
     const name = match[1];
@@ -380,7 +434,7 @@ function extractFunctionsFromScriptFallback(content: string): VueComponentAnalys
     }
   }
 
-  // 5. Методы в ObjectExpression (Vue Options API)
+  // 6. Методы в ObjectExpression (Vue Options API)
   const objectMethodRegex = /(\w+)\s*:\s*(?:async\s+)?function\s*\(([^)]*)\)\s*\{([\s\S]*?)(?=\n\s*\})/g;
   let methodMatch;
   while ((methodMatch = objectMethodRegex.exec(content)) !== null) {
@@ -409,7 +463,7 @@ function extractFunctionsFromScriptFallback(content: string): VueComponentAnalys
     }
   }
 
-  // 6. Методы классов
+  // 7. Методы классов
   const classMethodRegex = /(?:async\s+)?(\w+)\s*\(([^)]*)\)\s*\{([\s\S]*?)(?=\n\s*\})/g;
   const classBlockRegex = /class\s+\w+\s*\{([\s\S]*?)\}/g;
   let classMatch;
@@ -437,6 +491,56 @@ function extractFunctionsFromScriptFallback(content: string): VueComponentAnalys
           body: body.length > 200 ? body.substring(0, 200) + '...' : body,
         });
       }
+    }
+  }
+
+  // 8. ✅ Стрелочные функции с деструктуризацией параметров
+  const destructureArrowRegex = /(?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*(?:async\s*)?\(\s*\{([^}]*)\}\s*\)\s*=>\s*\{([\s\S]*?)(?=\n\s*\})/g;
+  while ((match = destructureArrowRegex.exec(content)) !== null) {
+    const name = match[1];
+    const paramsStr = match[2] || '';
+    const body = match[3]?.trim() || '';
+
+    if (name && !functions.find(f => f.name === name)) {
+      const isExported = content.includes(`export const ${name}`);
+      const isAsync = content.includes(`async`);
+
+      const params = paramsStr.split(',').map(p => p.trim()).filter(p => p);
+
+      functions.push({
+        name,
+        line: content.substring(0, match.index).split('\n').length,
+        isAsync,
+        isExported,
+        params,
+        returnType: 'any',
+        body: body.length > 200 ? body.substring(0, 200) + '...' : body,
+      });
+    }
+  }
+
+  // 9. ✅ Стрелочные функции с типизированными параметрами
+  const typedArrowRegex = /(?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*(?:async\s*)?\(([^)]*)\)\s*:\s*[^{]+\s*=>\s*\{([\s\S]*?)(?=\n\s*\})/g;
+  while ((match = typedArrowRegex.exec(content)) !== null) {
+    const name = match[1];
+    const paramsStr = match[2] || '';
+    const body = match[3]?.trim() || '';
+
+    if (name && !functions.find(f => f.name === name)) {
+      const isExported = content.includes(`export const ${name}`);
+      const isAsync = content.includes(`async`);
+
+      const params = paramsStr.split(',').map(p => p.trim()).filter(p => p);
+
+      functions.push({
+        name,
+        line: content.substring(0, match.index).split('\n').length,
+        isAsync,
+        isExported,
+        params,
+        returnType: 'any',
+        body: body.length > 200 ? body.substring(0, 200) + '...' : body,
+      });
     }
   }
 

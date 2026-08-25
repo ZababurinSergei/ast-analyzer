@@ -1,0 +1,256 @@
+{
+  "rootKey": "../../src/components/ui/AiDataTable/AiDataTable.vue",
+  "graph": {
+    "../../src/components/ui/AiDataTable/AiDataTable.vue": [
+      "../../src/components/ui/AiDataTable/defaults.ts",
+      "../../src/components/ui/AiDataTable/types.ts",
+      "../../src/components/ui/AiToolbar/AiToolbar.vue",
+      "../../src/components/ui/AiFooter/AiFooter.vue",
+      "../../src/composables/AiDataTable/useTableState.ts",
+      "../../src/composables/AiDataTable/useDataState.ts",
+      "../../src/composables/AiDataTable/useColumnsConfig.ts"
+    ],
+    "../../src/components/ui/AiDataTable/defaults.ts": [
+      "../../src/components/ui/AiDataTable/types.ts",
+      "../../src/defaults/common.ts",
+      "../../src/interfaces/common.ts"
+    ],
+    "../../src/components/ui/AiDataTable/types.ts": [
+      "../../src/interfaces/common.ts"
+    ],
+    "../../src/components/ui/AiToolbar/AiToolbar.vue": [
+      "../../src/components/ui/AiButton/AiButton.vue",
+      "../../src/components/ui/AiToolbar/types.ts",
+      "../../src/composables/AiToolbar/useToolbarConfig.ts"
+    ],
+    "../../src/components/ui/AiFooter/AiFooter.vue": [
+      "../../src/components/icons/AiCreateFilter.vue",
+      "../../src/components/ui/AiFooter/default.ts",
+      "../../src/components/ui/AiFooter/types.ts"
+    ],
+    "../../src/composables/AiDataTable/useTableState.ts": [
+      "../../src/components/ui/AiDataTable/defaults.ts",
+      "../../src/interfaces/common.ts"
+    ],
+    "../../src/composables/AiDataTable/useDataState.ts": [
+      "../../src/components/ui/AiDataTable/types.ts",
+      "../../src/composables/AiDataTable/useDataStore.ts",
+      "../../src/composables/AiDataTable/useChangesTracker.ts",
+      "../../src/composables/AiDialog/useDialog.ts",
+      "../../src/interfaces/common.ts"
+    ],
+    "../../src/composables/AiDataTable/useColumnsConfig.ts": [
+      "../../src/components/ui/AiCell/AiCell.vue",
+      "../../src/components/ui/AiDataTable/defaults.ts",
+      "../../src/components/ui/AiDataTable/types.ts",
+      "../../src/components/ui/AiToolbar/types.ts",
+      "../../src/interfaces/common.ts",
+      "../../src/composables/AiDataTable/useFilterState.ts",
+      "../../src/components/ui/AiDataTable/components/FilterCell/HeaderCell.vue",
+      "../../src/components/ui/AiDataTable/components/FilterCell/SortButton/SortButton.vue",
+      "../../src/defaults/common.ts",
+      "../../src/composables/AiDataTable/common.ts"
+    ],
+    "../../src/defaults/common.ts": [],
+    "../../src/interfaces/common.ts": [
+      "../../src/components/ui/AiModal/types.ts"
+    ],
+    "../../src/components/ui/AiButton/AiButton.vue": [
+      "../../src/components/ui/AiButton/types.ts",
+      "../../src/components/ui/AiButton/defaults.ts",
+      "../../src/composables/AiButton/useButtonsConfig.ts"
+    ],
+    "../../src/components/ui/AiToolbar/types.ts": [
+      "../../src/components/ui/AiButton/types.ts"
+    ],
+    "../../src/composables/AiToolbar/useToolbarConfig.ts": [
+      "../../src/components/ui/AiToolbar/defaults.ts",
+      "../../src/components/ui/AiToolbar/types.ts"
+    ],
+    "../../src/components/icons/AiCreateFilter.vue": [],
+    "../../src/components/ui/AiFooter/default.ts": [],
+    "../../src/components/ui/AiFooter/types.ts": [],
+    "../../src/composables/AiDataTable/useDataStore.ts": [
+      "../../src/interfaces/common.ts",
+      "../../src/components/ui/AiDataTable/types.ts"
+    ],
+    "../../src/composables/AiDataTable/useChangesTracker.ts": [
+      "../../src/composables/AiDataTable/types.ts",
+      "../../src/interfaces/common.ts"
+    ],
+    "../../src/composables/AiDialog/useDialog.ts": [
+      "../../src/composables/AiDialog/store.ts"
+    ],
+    "../../src/components/ui/AiCell/AiCell.vue": [
+      "../../src/components/ui/AiCell/types.ts",
+      "../../src/components/ui/AiField/AiField.vue"
+    ],
+    "../../src/composables/AiDataTable/useFilterState.ts": [
+      "../../src/components/ui/AiDataTable/components/FilterCell/types.ts",
+      "../../src/components/ui/AiDataTable/types.ts",
+      "../../src/interfaces/common.ts",
+      "../../src/components/ui/AiDataTable/components/FilterCell/defaults.ts"
+    ],
+    "../../src/components/ui/AiDataTable/components/FilterCell/HeaderCell.vue": [
+      "../../src/styles/AiHeaderCell/AiHeaderCellStyles.ts",
+      "../../src/components/ui/AiDataTable/components/FilterCell/FilterSelect/FilterSelect.vue",
+      "../../src/components/ui/AiDataTable/components/FilterCell/types.ts",
+      "../../src/components/icons/AiCrossIcon.vue"
+    ],
+    "../../src/components/ui/AiDataTable/components/FilterCell/SortButton/SortButton.vue": [
+      "../../src/components/icons/sort/SortIcon.vue",
+      "../../src/components/ui/AiDataTable/components/FilterCell/types.ts"
+    ],
+    "../../src/composables/AiDataTable/common.ts": [
+      "../../src/interfaces/common.ts"
+    ],
+    "../../src/components/ui/AiModal/types.ts": [],
+    "../../src/components/ui/AiButton/types.ts": [],
+    "../../src/components/ui/AiButton/defaults.ts": [
+      "../../src/components/ui/AiButton/types.ts"
+    ],
+    "../../src/composables/AiButton/useButtonsConfig.ts": [
+      "../../src/components/ui/AiButton/defaults.ts",
+      "../../src/components/ui/AiButton/types.ts"
+    ],
+    "../../src/components/ui/AiToolbar/defaults.ts": [
+      "../../src/components/ui/AiToolbar/types.ts",
+      "../../src/components/icons/toolbar/AiRefreshIcon.vue",
+      "../../src/components/icons/toolbar/AiCopyIcon.vue",
+      "../../src/components/icons/toolbar/AiAddIcon.vue",
+      "../../src/components/icons/toolbar/AiDeleteIcon.vue",
+      "../../src/components/icons/toolbar/AiSaveIcon.vue",
+      "../../src/components/icons/toolbar/AiColumnChooserIcon.vue"
+    ],
+    "../../src/composables/AiDataTable/types.ts": [
+      "../../src/interfaces/common.ts"
+    ],
+    "../../src/composables/AiDialog/store.ts": [
+      "../../src/composables/AiDialog/types.ts",
+      "../../src/composables/AiDialog/defaults.ts",
+      "../../src/interfaces/choice.ts"
+    ],
+    "../../src/components/ui/AiCell/types.ts": [
+      "../../src/interfaces/common.ts"
+    ],
+    "../../src/components/ui/AiField/AiField.vue": [
+      "../../src/components/ui/AiField/types.ts",
+      "../../src/composables/AiField/useFieldComponent.ts",
+      "../../src/defaults/common.ts",
+      "../../src/interfaces/common.ts"
+    ],
+    "../../src/components/ui/AiDataTable/components/FilterCell/types.ts": [
+      "../../src/interfaces/common.ts"
+    ],
+    "../../src/components/ui/AiDataTable/components/FilterCell/defaults.ts": [
+      "../../src/components/ui/AiDataTable/components/FilterCell/types.ts",
+      "../../src/components/ui/AiDataTable/components/FilterCell/SelectOption/SelectOption.vue",
+      "../../src/components/icons/filter/SearchIcon.vue",
+      "../../src/components/icons/filter/ContainsIcon.vue",
+      "../../src/components/icons/filter/EqualsIcon.vue",
+      "../../src/components/icons/filter/NotContainsIcon.vue",
+      "../../src/components/icons/filter/StartsWithIcon.vue",
+      "../../src/components/icons/filter/EndsWithIcon.vue",
+      "../../src/components/icons/filter/NotEqualsIcon.vue",
+      "../../src/components/icons/filter/GreaterThanIcon.vue",
+      "../../src/components/icons/filter/GreaterOrEqualIcon.vue",
+      "../../src/components/icons/filter/LessThanIcon.vue",
+      "../../src/components/icons/filter/LessOrEqualIcon.vue",
+      "../../src/components/icons/filter/ResetIcon.vue",
+      "../../src/components/icons/filter/TrueIcon.vue",
+      "../../src/components/icons/filter/FalseIcon.vue",
+      "../../src/components/icons/filter/RangeIcon.vue",
+      "../../src/interfaces/common.ts"
+    ],
+    "../../src/styles/AiHeaderCell/AiHeaderCellStyles.ts": [],
+    "../../src/components/ui/AiDataTable/components/FilterCell/FilterSelect/FilterSelect.vue": [
+      "../../src/components/ui/AiDataTable/components/FilterCell/types.ts",
+      "../../src/components/ui/AiDataTable/components/FilterCell/defaults.ts",
+      "../../src/components/ui/AiDataTable/components/FilterCell/SelectedOption/SelectedOption.vue",
+      "../../src/styles/AiFilterSelect/AiFilterSelectStyles.ts"
+    ],
+    "../../src/components/icons/AiCrossIcon.vue": [],
+    "../../src/components/icons/sort/SortIcon.vue": [],
+    "../../src/components/icons/toolbar/AiRefreshIcon.vue": [],
+    "../../src/components/icons/toolbar/AiCopyIcon.vue": [],
+    "../../src/components/icons/toolbar/AiAddIcon.vue": [],
+    "../../src/components/icons/toolbar/AiDeleteIcon.vue": [],
+    "../../src/components/icons/toolbar/AiSaveIcon.vue": [],
+    "../../src/components/icons/toolbar/AiColumnChooserIcon.vue": [],
+    "../../src/composables/AiDialog/types.ts": [
+      "../../src/interfaces/choice.ts"
+    ],
+    "../../src/composables/AiDialog/defaults.ts": [
+      "../../src/composables/AiDialog/types.ts",
+      "../../src/interfaces/choice.ts"
+    ],
+    "../../src/interfaces/choice.ts": [],
+    "../../src/components/ui/AiField/types.ts": [
+      "../../src/interfaces/common.ts"
+    ],
+    "../../src/composables/AiField/useFieldComponent.ts": [
+      "../../src/components/ui/AiField/defaults.ts",
+      "../../src/interfaces/common.ts"
+    ],
+    "../../src/components/ui/AiDataTable/components/FilterCell/SelectOption/SelectOption.vue": [
+      "../../src/components/ui/AiDataTable/components/FilterCell/types.ts"
+    ],
+    "../../src/components/icons/filter/SearchIcon.vue": [],
+    "../../src/components/icons/filter/ContainsIcon.vue": [],
+    "../../src/components/icons/filter/EqualsIcon.vue": [],
+    "../../src/components/icons/filter/NotContainsIcon.vue": [],
+    "../../src/components/icons/filter/StartsWithIcon.vue": [],
+    "../../src/components/icons/filter/EndsWithIcon.vue": [],
+    "../../src/components/icons/filter/NotEqualsIcon.vue": [],
+    "../../src/components/icons/filter/GreaterThanIcon.vue": [],
+    "../../src/components/icons/filter/GreaterOrEqualIcon.vue": [],
+    "../../src/components/icons/filter/LessThanIcon.vue": [],
+    "../../src/components/icons/filter/LessOrEqualIcon.vue": [],
+    "../../src/components/icons/filter/ResetIcon.vue": [],
+    "../../src/components/icons/filter/TrueIcon.vue": [],
+    "../../src/components/icons/filter/FalseIcon.vue": [],
+    "../../src/components/icons/filter/RangeIcon.vue": [],
+    "../../src/components/ui/AiDataTable/components/FilterCell/SelectedOption/SelectedOption.vue": [
+      "../../src/components/ui/AiDataTable/components/FilterCell/types.ts"
+    ],
+    "../../src/styles/AiFilterSelect/AiFilterSelectStyles.ts": [],
+    "../../src/components/ui/AiField/defaults.ts": [
+      "../../src/components/ui/AiPopoverEditor/AiPopoverEditor.vue",
+      "../../src/components/ui/AiModalEditor/AiModalEditor.vue",
+      "../../src/components/ui/AiPopoverEditor/types.ts",
+      "../../src/components/ui/AiModalEditor/types.ts",
+      "../../src/composables/common/useFetch.ts",
+      "../../src/interfaces/common.ts"
+    ],
+    "../../src/components/ui/AiPopoverEditor/AiPopoverEditor.vue": [
+      "../../src/components/ui/AiPopoverEditor/defaults.ts",
+      "../../src/components/ui/AiPopoverEditor/types.ts"
+    ],
+    "../../src/components/ui/AiModalEditor/AiModalEditor.vue": [
+      "../../src/components/ui/AiModal/AiModal.vue",
+      "../../src/components/ui/AiModalEditor/defaults.ts",
+      "../../src/components/ui/AiModalEditor/types.ts"
+    ],
+    "../../src/components/ui/AiPopoverEditor/types.ts": [
+      "../../src/interfaces/common.ts"
+    ],
+    "../../src/components/ui/AiModalEditor/types.ts": [
+      "../../src/interfaces/common.ts",
+      "../../src/components/ui/AiModal/types.ts"
+    ],
+    "../../src/composables/common/useFetch.ts": [],
+    "../../src/components/ui/AiPopoverEditor/defaults.ts": [
+      "../../src/interfaces/common.ts"
+    ],
+    "../../src/components/ui/AiModal/AiModal.vue": [
+      "../../src/components/ui/AiModal/defaults.ts",
+      "../../src/components/ui/AiModal/types.ts"
+    ],
+    "../../src/components/ui/AiModalEditor/defaults.ts": [
+      "../../src/interfaces/common.ts"
+    ],
+    "../../src/components/ui/AiModal/defaults.ts": []
+  },
+  "hasCycles": false,
+  "cyclicEdges": []
+}

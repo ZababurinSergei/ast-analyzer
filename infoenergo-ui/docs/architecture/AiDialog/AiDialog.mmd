@@ -1,0 +1,6 @@
+flowchart TD
+    A["Компонент-инициатор"] --> B["useDialog.ts"]
+    B --> C["AiDialog/store.ts"]
+    E["AiDialog.vue"] --> C
+    E["AiDialog.vue"] --> F["AiButton.vue"]
+    G["App.vue"] --> E

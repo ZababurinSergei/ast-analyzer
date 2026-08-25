@@ -1,0 +1,147 @@
+import { Meta, Title } from '@storybook/addon-docs/blocks';
+
+<Meta title="Компоненты/AiButton/Документация" />
+
+<Title>AiButton</Title>
+
+`AiButton` — обертка над `NButton` из `naive-ui` с единым API для двух режимов:
+- `default` — обычная кнопка;
+- `choice` — кнопка выбора варианта.
+
+export const commonPropsTable = {
+    headers: ["Поле", "Тип", "По умолчанию", "Описание"],
+    data: [
+        { prop: "mode", type: "'default' | 'choice'", default: "'default'", description: "Режим работы кнопки" },
+        { prop: "text", type: "string", default: "-", description: "Текст кнопки" },
+        { prop: "icon", type: "Component", default: "-", description: "Иконка кнопки" },
+        { prop: "hint", type: "string", default: "-", description: "Атрибут title у кнопки" },
+        { prop: "disabled", type: "boolean", default: "false", description: "Флаг неактивного состояния" },
+        { prop: "width", type: "string", default: "-", description: "Ширина кнопки" },
+        { prop: "height", type: "string", default: "-", description: "Высота кнопки" },
+        {
+            prop: "config",
+            type: "Partial<ButtonProps>",
+            default: "{}",
+            description: "Дополнительные пропсы, пробрасываемые в NButton"
+        },
+    ],
+};
+
+export const defaultModePropsTable = {
+    headers: ["Поле", "Тип", "По умолчанию", "Описание"],
+    data: [
+        {
+            prop: "buttonType",
+            type: "'icon' | 'primary' | 'secondary' | 'tertiary'",
+            default: "'primary'",
+            description: "Семантический тип кнопки (только для mode='default')",
+        },
+    ],
+};
+
+export const choiceModePropsTable = {
+    headers: ["Поле", "Тип", "По умолчанию", "Описание"],
+    data: [
+        {
+            prop: "option",
+            type: "'positive' | 'negative' | 'neutral'",
+            default: "-",
+            description: "Вариант choice-кнопки (только для mode='choice')",
+        },
+    ],
+};
+
+export const infoCalloutStyle = {
+    margin: '16px 0',
+    padding: '2px 12px',
+    borderLeft: '4px solid #64B5F6',
+    background: '#E3F2FD',
+    borderRadius: '6px',
+    color: '#0D47A1',
+    fontWeight: 600,
+};
+
+export const PropsTable = ({ table }) => (
+    <table style={{ margin: '20px auto', width: '100%', maxWidth: '900px', tableLayout: 'fixed' }}>
+        <thead>
+        <tr>
+            {table.headers.map((caption, idx) => (
+                <th key={idx}>{caption}</th>
+            ))}
+        </tr>
+        </thead>
+        <tbody>
+        {table.data.map((row, idx) => (
+            <tr key={idx}>
+                <td><code>{row.prop}</code></td>
+                <td><code>{row.type}</code></td>
+                <td><code>{row.default}</code></td>
+                <td>{row.description}</td>
+            </tr>
+        ))}
+        </tbody>
+    </table>
+);
+
+## Общие API
+<PropsTable table={commonPropsTable} />
+<div style={infoCalloutStyle}>
+    Иконка в пропсе <code>icon</code> ожидается как Vue-компонент. Если используете SVG, оберните его во Vue-файл и
+    передавайте этот компонент.
+</div>
+<div style={infoCalloutStyle}>
+    Действует ограничение по длине в `250px`. Длинный <code>text</code> при нехватке ширины показывается обрезанным с `...`.
+    Полный текст при необходимости можно продублировать в <code>hint</code>.
+</div>
+
+## Default-режим
+
+### Пропсы режима `default`
+<PropsTable table={defaultModePropsTable} />
+
+- Используется по умолчанию (`mode: 'default'`).
+- Тип кнопки задается пропсом `buttonType`.
+- Если `buttonType` не передан, используется `primary`.
+
+### Примеры использования
+
+```html
+<AiButton
+    button-type="primary"
+    text="Сохранить"
+    @click="onClick"
+/>
+```
+### События
+
+- `click` -> `emit('click')`
+
+## Choice-режим
+### Пропсы режима `choice`
+<PropsTable table={choiceModePropsTable} />
+- В этом режиме нужно передать `option`.
+- `buttonType` в режиме `choice` не используется.
+- В событие `click` пробрасывается выбранный вариант.
+
+### Примеры использования
+
+```html
+<AiButton
+    mode="choice"
+    option="positive"
+    text="Да"
+    @click="onChoice"
+/>
+```
+
+```ts
+const onChoice = (option: 'positive' | 'negative' | 'neutral') => {
+    if (option === 'positive') {
+        // ...
+    }
+};
+```
+
+### События
+
+- `click` -> `emit('click', option)`

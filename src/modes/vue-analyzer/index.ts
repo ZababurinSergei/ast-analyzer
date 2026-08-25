@@ -71,6 +71,7 @@ import { generateVueComponentReport } from './report.js';
 
 /**
  * Основная функция анализа Vue компонента
+ * ✅ Улучшена: использует AST fallback при ошибке компиляции
  */
 export function analyzeVueComponent(
   filePath: string,
@@ -101,6 +102,7 @@ export function analyzeVueComponent(
 
   const { descriptor } = parsed;
 
+  // ✅ Пытаемся скомпилировать script, но не блокируемся при ошибке
   const compiledScript = compileScriptBlock(descriptor, filePath);
   const templateAnalysis = analyzeTemplate(descriptor, options);
 
@@ -111,6 +113,7 @@ export function analyzeVueComponent(
   // 1. ИЗВЛЕЧЕНИЕ PROPS
   let props = extractPropsFromCompiledScript(compiledScript);
 
+  // ✅ Если компиляция не удалась, используем AST
   if (props.names.length === 0) {
     let scriptAst: Program | null = null;
     if (originalScriptContent) {
@@ -123,7 +126,7 @@ export function analyzeVueComponent(
           ecmaFeatures: { jsx: true },
         }) as Program;
       } catch {
-        // Игнорируем ошибки
+        // Игнорируем ошибки парсинга
       }
     }
 
@@ -135,6 +138,7 @@ export function analyzeVueComponent(
     }
   }
 
+  // Если AST не дал результатов, используем regex fallback
   if (props.names.length === 0) {
     props = extractPropsFromSource(originalScriptContent);
   }
@@ -142,6 +146,7 @@ export function analyzeVueComponent(
   // 2. ИЗВЛЕЧЕНИЕ EMITS
   let emits = extractEmitsFromCompiledScript(compiledScript);
 
+  // ✅ Если компиляция не удалась, используем AST
   if (emits.names.length === 0) {
     let scriptAst: Program | null = null;
     if (originalScriptContent) {
@@ -154,7 +159,7 @@ export function analyzeVueComponent(
           ecmaFeatures: { jsx: true },
         }) as Program;
       } catch {
-        // Игнорируем ошибки
+        // Игнорируем ошибки парсинга
       }
     }
 
@@ -166,6 +171,7 @@ export function analyzeVueComponent(
     }
   }
 
+  // Если AST не дал результатов, используем regex fallback
   if (emits.names.length === 0) {
     emits = extractEmitsFromSource(originalScriptContent);
   }
@@ -173,6 +179,7 @@ export function analyzeVueComponent(
   // 3. ИЗВЛЕЧЕНИЕ EXPOSE
   let expose = extractExposeFromCompiledScript(compiledScript);
 
+  // ✅ Если компиляция не удалась, используем AST
   if (expose.length === 0) {
     let scriptAst: Program | null = null;
     if (originalScriptContent) {
@@ -185,7 +192,7 @@ export function analyzeVueComponent(
           ecmaFeatures: { jsx: true },
         }) as Program;
       } catch {
-        // Игнорируем ошибки
+        // Игнорируем ошибки парсинга
       }
     }
 
@@ -214,10 +221,11 @@ export function analyzeVueComponent(
         imports = extractImportsFromAST(scriptAst);
       }
     } catch {
-      // Игнорируем ошибки
+      // Игнорируем ошибки парсинга
     }
   }
 
+  // Если AST не дал результатов, используем regex fallback
   if (imports.length === 0 && originalScriptContent) {
     imports = extractImportsFromSource(originalScriptContent);
   }
@@ -239,10 +247,11 @@ export function analyzeVueComponent(
         composables = extractComposablesFromAST(scriptAst);
       }
     } catch {
-      // Игнорируем ошибки
+      // Игнорируем ошибки парсинга
     }
   }
 
+  // Если AST не дал результатов, используем regex fallback
   if (composables.length === 0 && originalScriptContent) {
     composables = extractComposablesFromSource(originalScriptContent);
   }
@@ -327,7 +336,7 @@ export function analyzeVueComponent(
       }) as Program;
       analysis.script.ast = scriptAst;
     } catch {
-      // Игнорируем ошибки
+      // Игнорируем ошибки парсинга
     }
   }
 

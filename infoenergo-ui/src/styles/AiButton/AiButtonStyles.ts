@@ -1,0 +1,57 @@
+import type { GlobalThemeOverrides } from 'naive-ui';
+import { ColorTokens } from '@/styles/colors/colorTokens.ts';
+
+export const themeOverrides: GlobalThemeOverrides = {
+    Button: {
+        opacityDisabled: 1,
+        borderRadiusMedium: '8px',
+
+        borderPrimary: 'none',
+        borderHoverPrimary: 'none',
+        borderPressedPrimary: 'none',
+        borderFocusPrimary: 'none',
+        borderDisabledPrimary: 'none',
+        textColorPrimary: ColorTokens.WHITE,
+        textColorHoverPrimary: ColorTokens.WHITE,
+        textColorPressedPrimary: ColorTokens.WHITE,
+        colorDisabledPrimary: ColorTokens.BLUE_600,
+        textColorDisabledPrimary: ColorTokens.LIGHT_BLUE_700,
+        colorFocusPrimary: ColorTokens.BLUE_700,
+        rippleColorPrimary: 'none',
+
+        borderWarning: 'none',
+        borderHoverWarning: 'none',
+        borderPressedWarning: 'none',
+        borderFocusWarning: 'none',
+        borderDisabledWarning: 'none',
+        textColorWarning: ColorTokens.DARK_900,
+        textColorHoverWarning: ColorTokens.DARK_900,
+        textColorPressedWarning: ColorTokens.DARK_900,
+        colorDisabledWarning: ColorTokens.LIGHT_GRAY_900,
+        textColorDisabledWarning: ColorTokens.GRAY_900,
+        colorFocusWarning: ColorTokens.LIGHT_BLUE_700,
+        textColorFocusWarning: ColorTokens.DARK_900,
+        rippleColorWarning: 'none',
+
+        borderError: `1px solid ${ColorTokens.GRAY_700}`,
+        borderHoverError: `1px solid ${ColorTokens.GRAY_900}`,
+        borderPressedError: `1px solid ${ColorTokens.GRAY_700}`,
+        borderFocusError: `1px solid ${ColorTokens.GRAY_700}`,
+        borderDisabledError: `1px solid ${ColorTokens.GRAY_800}`,
+        colorError: ColorTokens.WHITE,
+        colorHoverError: ColorTokens.WHITE,
+        colorPressedError: ColorTokens.WHITE,
+        colorDisabledError: ColorTokens.WHITE,
+        textColorDisabledError: ColorTokens.GRAY_800,
+        textColorError: ColorTokens.DARK_900,
+        textColorHoverError: ColorTokens.DARK_900,
+        textColorPressedError: ColorTokens.DARK_900,
+        colorFocusError: ColorTokens.WHITE,
+        textColorFocusError: ColorTokens.DARK_900,
+        rippleColorError: 'none',
+
+        borderRadius: '0',
+        heightMedium: '34px',
+        fontSizeSmall: '13px',
+    },
+};
