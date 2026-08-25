@@ -1,8 +1,0 @@
-.storybook/
-stories/
-*.stories.*
-*.test.*
-*.spec.*
-*.md
-*.mdx
-test-setup.js

@@ -6,6 +6,7 @@ logs
 /_sandbox
 _sandbox
 /_sandbox_1
+infoenergo-ui
 npm-debug.log*
 coverage
 ./reports
