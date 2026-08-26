@@ -72,6 +72,7 @@ import { generateVueComponentReport } from './report.js';
 /**
  * Основная функция анализа Vue компонента
  * ✅ Улучшена: использует AST fallback при ошибке компиляции
+ * ✅ НОВОЕ: полное извлечение вызовов функций и связей между ними
  */
 export function analyzeVueComponent(
   filePath: string,
@@ -274,7 +275,59 @@ export function analyzeVueComponent(
   // 11. ПОСТРОЕНИЕ ГРАФА ВЫЗОВОВ
   const callGraph = buildCallGraphFromScript(originalScriptContent, functions, composables);
 
+  // ============================================
+  // 🆕 11.1. АНАЛИЗ ВЫЗОВОВ ВНУТРИ ФУНКЦИЙ
+  // ============================================
+  for (const func of functions) {
+    const funcName = func.name;
+    if (!funcName) continue;
+
+    // Находим вызовы внутри тела функции
+    const calls: string[] = [];
+    const funcBody = func.body || '';
+
+    // Паттерны вызовов: func(), object.method(), emit(), composable()
+    const callPatterns = [
+      /\b(\w+)\(/g,                    // func()
+      /\b(\w+)\.(\w+)\(/g,             // object.method()
+      /emit\(['"]([^'"]+)['"]\)/g,     // emit('event')
+      /\b(use\w+)\(/g,                 // useComposable()
+    ];
+
+    for (const pattern of callPatterns) {
+      let match;
+      while ((match = pattern.exec(funcBody)) !== null) {
+        const callName = match[1] || match[2];
+        if (callName && callName !== funcName && !calls.includes(callName)) {
+          calls.push(callName);
+        }
+      }
+    }
+
+    // Сохраняем вызовы в функции
+    func.calls = calls;
+  }
+
+  // ============================================
+  // 🆕 11.2. ПОСТРОЕНИЕ calledBy (кто вызывает функцию)
+  // ============================================
+  for (const func of functions) {
+    const funcName = func.name;
+    if (!funcName) continue;
+
+    for (const otherFunc of functions) {
+      if (otherFunc.calls && otherFunc.calls.includes(funcName)) {
+        if (!func.calledBy) func.calledBy = [];
+        if (!func.calledBy.includes(otherFunc.name)) {
+          func.calledBy.push(otherFunc.name);
+        }
+      }
+    }
+  }
+
+  // ============================================
   // 12. СТАТИСТИКА
+  // ============================================
   const allSlots = [
     ...new Set([...templateAnalysis.slots, ...((compiledScript as any)?.slots || [])]),
   ];

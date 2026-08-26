@@ -1287,13 +1287,21 @@ export class CardManager {
       reportData: this.app.reportData,
     });
 
-    const navExternalHtml = this.navExternalRenderer.render({
+// Исходящие вызовы (из текущего модуля в другие)
+    const navOutgoingHtml = this.navExternalRenderer.renderOutgoing({
       externalOutgoing,
+      modulePath,
+      funcs,
+      callSources,
+      reportData: this.app.reportData,
+    });
+
+    // Входящие вызовы (из других модулей в текущий)
+    const navIncomingHtml = this.navExternalRenderer.renderIncoming({
       externalIncoming,
       modulePath,
       funcs,
       callSources,
-      pkg,
       reportData: this.app.reportData,
     });
 
@@ -1313,18 +1321,25 @@ export class CardManager {
       modulePath,
       pkg,
     });
+    //
+    //
+    // ${callTreeHtml}
+    // ${navModuleImportersHtml}
+    // ${navExternalHtml}
+    // ${navModuleImportersHtml}
+    //
 
     moduleCard.innerHTML = `
         ${headerHtml}
         ${badgesHtml}
-        ${functionsListHtml}
+        ${navOutgoingHtml}
+        ${functionsListHtml} 
         ${callTreeHtml}
+        ${navIncomingHtml}
         ${navModuleImportersHtml}
-        ${navExternalHtml}
         ${navInternalHtml}
-        ${navExportsHtml}
     `;
-
+    // ${navExportsHtml}
     return moduleCard;
   }
 

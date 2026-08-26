@@ -501,9 +501,7 @@ function convertVueAnalysisToEntities(
   // 2. EMITS → ТИПЫ
   // ==========================================
   if (vueAnalysis.emits.names.length > 0) {
-    const emitDefs = vueAnalysis.emits.names
-      .map(n => `${n}: (...args: any[]) => void`)
-      .join('; ');
+    const emitDefs = vueAnalysis.emits.names.map(n => `${n}: (...args: any[]) => void`).join('; ');
     result.types.push({
       name: `${componentName}Emits`,
       line: 0,
@@ -566,22 +564,7 @@ function convertVueAnalysisToEntities(
   }
 
   // ==========================================
-  // 5. IMPORTS
-  // ==========================================
-  for (const imp of vueAnalysis.imports) {
-    result.imports.push({
-      source: imp.source,
-      specifiers: imp.specifiers.map(s => ({
-        local: s,
-        imported: s,
-        type: 'ImportSpecifier',
-      })),
-      loc: null,
-    });
-  }
-
-  // ==========================================
-  // 6. CONSTANTS ИЗ СКРИПТА
+  // 5. CONSTANTS ИЗ СКРИПТА
   // ==========================================
   const scriptContent = vueAnalysis.script.content || '';
   if (scriptContent) {
@@ -601,7 +584,8 @@ function convertVueAnalysisToEntities(
       }
     }
 
-    const macroRegex = /(?:const\s+)?(defineProps|defineEmits|defineExpose|withDefaults)\s*<[^>]*>\s*\(/g;
+    const macroRegex =
+      /(?:const\s+)?(defineProps|defineEmits|defineExpose|withDefaults)\s*<[^>]*>\s*\(/g;
     while ((match = macroRegex.exec(scriptContent)) !== null) {
       const name = match[1];
       if (name && !result.constants.find(c => c.name === name)) {
@@ -617,7 +601,7 @@ function convertVueAnalysisToEntities(
   }
 
   // ==========================================
-  // 7. АНАЛИЗ ВЫЗОВОВ МЕЖДУ COMPOSABLES
+  // 6. АНАЛИЗ ВЫЗОВОВ МЕЖДУ COMPOSABLES
   // ==========================================
   const allComposableNames = vueAnalysis.composables.map(c => c.name);
   if (allComposableNames.length > 1 && scriptContent) {
@@ -629,7 +613,9 @@ function convertVueAnalysisToEntities(
         const calls: string[] = [];
         const innerPattern = new RegExp(`\\b(${allComposableNames.join('|')})\\s*\\(`, 'g');
         let innerMatch;
-        while ((innerMatch = innerPattern.exec(scriptContent.substring(callMatch.index))) !== null) {
+        while (
+          (innerMatch = innerPattern.exec(scriptContent.substring(callMatch.index))) !== null
+          ) {
           const called = innerMatch[1];
           if (called && called !== caller && !calls.includes(called)) {
             calls.push(called);
@@ -646,7 +632,109 @@ function convertVueAnalysisToEntities(
     }
   }
 
-  console.log(`   🎯 Vue-анализ: ${result.functions.length} функций, ${result.constants.length} констант`);
+  // ==========================================
+  // 7. АНАЛИЗ ВЫЗОВОВ ВНУТРИ ФУНКЦИЙ
+  // ==========================================
+  for (const func of result.functions) {
+    const funcName = func.name;
+    if (!funcName) continue;
+
+    const calls: string[] = [];
+    const funcBody = func.body || '';
+
+    const callPatterns = [
+      /\b(\w+)\(/g,
+      /\b(\w+)\.(\w+)\(/g,
+      /emit\(['"]([^'"]+)['"]\)/g,
+      /\b(use\w+)\(/g,
+    ];
+
+    for (const pattern of callPatterns) {
+      let match;
+      while ((match = pattern.exec(funcBody)) !== null) {
+        const callName = match[1] || match[2];
+        if (callName && callName !== funcName && !calls.includes(callName)) {
+          calls.push(callName);
+        }
+      }
+    }
+
+    func.calls = calls;
+    result.callGraph[funcName] = calls;
+  }
+
+  // ==========================================
+  // 8. ПОСТРОЕНИЕ calledBy
+  // ==========================================
+  for (const func of result.functions) {
+    const funcName = func.name;
+    if (!funcName) continue;
+
+    for (const otherFunc of result.functions) {
+      if (otherFunc.calls && otherFunc.calls.includes(funcName)) {
+        if (!func.calledBy) func.calledBy = [];
+        if (!func.calledBy.includes(otherFunc.name)) {
+          func.calledBy.push(otherFunc.name);
+        }
+      }
+    }
+  }
+
+  // ==========================================
+  // ⭐ 9. ✅ ГЛАВНОЕ ИСПРАВЛЕНИЕ: СОХРАНЯЕМ ИМПОРТЫ ИЗ VUE
+  // ==========================================
+
+  // 9.1. Сохраняем импорты из vueAnalysis
+  if (vueAnalysis.imports && vueAnalysis.imports.length > 0) {
+    // Очищаем существующие импорты, чтобы избежать дублирования
+    result.imports = [];
+
+    console.log('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@', vueAnalysis);
+    for (const imp of vueAnalysis.imports) {
+      result.imports.push({
+        source: imp.source,
+        specifiers: imp.specifiers.map((s: string) => ({
+          local: s,
+          imported: s,
+          type: 'ImportSpecifier',
+        })),
+        loc: null,
+      });
+    }
+    console.log(`   📥 Vue-импортов (из vueAnalysis): ${result.imports.length}`);
+  }
+
+  // 9.2. Fallback: если импортов нет, извлекаем из скрипта (синхронно, без await)
+  if (result.imports.length === 0 && scriptContent) {
+    try {
+      // Используем синхронную функцию extractImportsFromSource
+      const { extractImportsFromSource } = require('../modes/vue-analyzer/extractors/imports.js');
+      const extractedImports = extractImportsFromSource(scriptContent);
+
+      if (extractedImports.length > 0) {
+        for (const imp of extractedImports) {
+          result.imports.push({
+            source: imp.source,
+            specifiers: imp.specifiers.map((s: string) => ({
+              local: s,
+              imported: s,
+              type: 'ImportSpecifier',
+            })),
+            loc: null,
+          });
+        }
+        console.log(`   📥 Vue-импортов (из скрипта): ${result.imports.length}`);
+      }
+    } catch (error) {
+      console.warn(`⚠️ Не удалось извлечь импорты из Vue-скрипта: ${error}`);
+    }
+  }
+
+  // ==========================================
+  // 10. ЛОГИРОВАНИЕ ИТОГОВОЙ СТАТИСТИКИ
+  // ==========================================
+  console.log(`   🎯 Vue-анализ: ${result.functions.length} функций, ${result.constants.length} констант, ${result.imports.length} импортов`);
+
   return result;
 }
 
@@ -714,7 +802,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
   const functionStack: string[] = [];
 
   // ==========================================
-  // ОБХОД AST
+  // ОБХОД AST (полный код обхода остается без изменений)
   // ==========================================
 
   function traverseNode(node: any, parent: any, depth: number, parentFunction?: string) {

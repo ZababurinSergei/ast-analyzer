@@ -218,7 +218,7 @@
     "format:check": "prettier --check \"src/**/*.ts\"",
     "preinstall": "",
     "========== ГРАФИКИ ================": "",
-    "project:infoenergo-ui": "tsx ./src/cli.ts project ./infoenergo-ui/src/index.ts 150 --entities -o ./reports/infoenergo-ui",
+    "project:infoenergo-ui": "npm run build:data-converter && tsx ./src/cli.ts project ./infoenergo-ui/src/index.ts 150 --entities -o ./reports/infoenergo-ui",
     "project:ast-analizer": "npm run build:data-converter && tsx ./src/cli.ts project ./src/cli.ts 150 --entities -o ./reports/ast-analizer && npm run copy:report",
     "========== ТЕСТЫ ================": "",
     "test:compress": "vitest --ui src/reporters/__tests__/compressReport.test.ts --run",

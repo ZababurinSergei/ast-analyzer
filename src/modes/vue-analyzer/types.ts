@@ -57,6 +57,8 @@ export interface VueComponentAnalysis {
     params: string[];
     returnType?: string;
     body?: string;
+    calls?: string[];
+    calledBy?: string[];
   }[];
 
   constants: {

@@ -300,6 +300,81 @@ export function extractFunctionsFromScript(
     return true;
   });
 
+  // ============================================
+  // 9. ИЗВЛЕЧЕНИЕ ВЫЗОВОВ ИЗ ТЕЛА ФУНКЦИИ (ДОБАВЛЕНО)
+  // ============================================
+  for (const func of uniqueFunctions) {
+    if (!func.body) continue;
+
+    const calls: string[] = [];
+    const body = func.body;
+
+    // 1. Прямые вызовы: func()
+    const directCalls = body.match(/\b(\w+)\(/g) || [];
+    for (const call of directCalls) {
+      const name = call.replace(/\($/, '');
+      if (name && name !== func.name && !calls.includes(name)) {
+        calls.push(name);
+      }
+    }
+
+    // 2. Вызовы через emit: emit('event')
+    const emitCalls = body.match(/emit\(['"]([^'"]+)['"]\)/g) || [];
+    for (const call of emitCalls) {
+      const match = call.match(/emit\(['"]([^'"]+)['"]\)/);
+      if (match && match[1] && !calls.includes(match[1])) {
+        calls.push(match[1]);
+      }
+    }
+
+    // 3. Вызовы composables: useSomething()
+    const compCalls = body.match(/\b(use\w+)\(/g) || [];
+    for (const call of compCalls) {
+      const name = call.replace(/\($/, '');
+      if (name && !calls.includes(name)) {
+        calls.push(name);
+      }
+    }
+
+    // 4. Вызовы через объекты: object.method()
+    const methodCalls = body.match(/\b(\w+)\.(\w+)\(/g) || [];
+    for (const call of methodCalls) {
+      const match = call.match(/\b(\w+)\.(\w+)\(/);
+      if (match && match[2] && !calls.includes(match[2])) {
+        calls.push(match[2]);
+      }
+    }
+
+    // 5. Вызовы через деструктуризацию: { func } = obj; func()
+    const destructureCalls = body.match(/\{\s*(\w+)\s*\}\s*=\s*\w+;/g) || [];
+    for (const match of destructureCalls) {
+      const nameMatch = match.match(/\{\s*(\w+)\s*\}/);
+      if (nameMatch && nameMatch[1] && !calls.includes(nameMatch[1])) {
+        calls.push(nameMatch[1]);
+      }
+    }
+
+    // Сохраняем уникальные вызовы
+    func.calls = [...new Set(calls)];
+  }
+
+  // ============================================
+  // 10. ПОСТРОЕНИЕ calledBy (ДОБАВЛЕНО)
+  // ============================================
+  for (const func of uniqueFunctions) {
+    const funcName = func.name;
+    if (!funcName) continue;
+
+    func.calledBy = [];
+    for (const otherFunc of uniqueFunctions) {
+      if (otherFunc.calls && otherFunc.calls.includes(funcName)) {
+        if (!func.calledBy.includes(otherFunc.name)) {
+          func.calledBy.push(otherFunc.name);
+        }
+      }
+    }
+  }
+
   return uniqueFunctions;
 }
 
@@ -541,6 +616,71 @@ function extractFunctionsFromScriptFallback(content: string): VueComponentAnalys
         returnType: 'any',
         body: body.length > 200 ? body.substring(0, 200) + '...' : body,
       });
+    }
+  }
+
+  // ============================================
+  // 10. ИЗВЛЕЧЕНИЕ ВЫЗОВОВ ИЗ ТЕЛА ФУНКЦИИ (ДОБАВЛЕНО ДЛЯ FALLBACK)
+  // ============================================
+  for (const func of functions) {
+    if (!func.body) continue;
+
+    const calls: string[] = [];
+    const body = func.body;
+
+    // Прямые вызовы: func()
+    const directCalls = body.match(/\b(\w+)\(/g) || [];
+    for (const call of directCalls) {
+      const name = call.replace(/\($/, '');
+      if (name && name !== func.name && !calls.includes(name)) {
+        calls.push(name);
+      }
+    }
+
+    // Вызовы через emit: emit('event')
+    const emitCalls = body.match(/emit\(['"]([^'"]+)['"]\)/g) || [];
+    for (const call of emitCalls) {
+      const match = call.match(/emit\(['"]([^'"]+)['"]\)/);
+      if (match && match[1] && !calls.includes(match[1])) {
+        calls.push(match[1]);
+      }
+    }
+
+    // Вызовы composables: useSomething()
+    const compCalls = body.match(/\b(use\w+)\(/g) || [];
+    for (const call of compCalls) {
+      const name = call.replace(/\($/, '');
+      if (name && !calls.includes(name)) {
+        calls.push(name);
+      }
+    }
+
+    // Вызовы через объекты: object.method()
+    const methodCalls = body.match(/\b(\w+)\.(\w+)\(/g) || [];
+    for (const call of methodCalls) {
+      const match = call.match(/\b(\w+)\.(\w+)\(/);
+      if (match && match[2] && !calls.includes(match[2])) {
+        calls.push(match[2]);
+      }
+    }
+
+    func.calls = [...new Set(calls)];
+  }
+
+  // ============================================
+  // 11. ПОСТРОЕНИЕ calledBy (ДОБАВЛЕНО ДЛЯ FALLBACK)
+  // ============================================
+  for (const func of functions) {
+    const funcName = func.name;
+    if (!funcName) continue;
+
+    func.calledBy = [];
+    for (const otherFunc of functions) {
+      if (otherFunc.calls && otherFunc.calls.includes(funcName)) {
+        if (!func.calledBy.includes(otherFunc.name)) {
+          func.calledBy.push(otherFunc.name);
+        }
+      }
     }
   }
 

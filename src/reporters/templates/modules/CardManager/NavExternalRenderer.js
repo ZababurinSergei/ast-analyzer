@@ -18,7 +18,7 @@ export class NavExternalRenderer {
   }
 
   /**
-   * Рендеринг секции внешних вызовов
+   * Рендеринг секции внешних вызовов (основной метод - для обратной совместимости)
    * @param {Object} data - Данные для рендеринга
    * @param {Set<string>} data.externalOutgoing - Множество имен внешних функций, которые вызывает текущий модуль
    * @param {Set<string>} data.externalIncoming - Множество имен внешних функций, которые вызывают текущий модуль
@@ -29,41 +29,37 @@ export class NavExternalRenderer {
    * @returns {string} HTML строка
    */
   render(data) {
-    const { externalOutgoing, externalIncoming, modulePath, funcs, callSources, reportData } = data;
-
-    let html = '';
-
-    // Исходящие вызовы (из текущего модуля в другие)
-    if (externalOutgoing && externalOutgoing.size > 0) {
-      html += this.renderOutgoing(externalOutgoing, modulePath, funcs, callSources, reportData);
-    }
-
-    // Входящие вызовы (из других модулей в текущий)
-    if (externalIncoming && externalIncoming.size > 0) {
-      html += this.renderIncoming(externalIncoming, modulePath, funcs, callSources, reportData);
-    }
-
-    return html;
+    // Для обратной совместимости - используем оба метода
+    const outgoingHtml = this.renderOutgoing(data);
+    const incomingHtml = this.renderIncoming(data);
+    return outgoingHtml + incomingHtml;
   }
 
   /**
    * Рендеринг исходящих вызовов - ВСЕ ВЫЗОВЫ БЕЗ ОГРАНИЧЕНИЙ
-   * @param {Set<string>} outgoing - Множество имен функций
-   * @param {string} modulePath - Путь к текущему модулю
-   * @param {Array} funcs - Список функций текущего модуля
-   * @param {Map} callSources - Карта источников вызовов
-   * @param {Object} reportData - Данные отчета
+   * @param {Object} data - Данные для рендеринга
+   * @param {Set<string>} data.externalOutgoing - Множество имен внешних функций, которые вызывает текущий модуль
+   * @param {string} data.modulePath - Путь к текущему модулю
+   * @param {Array} data.funcs - Список функций текущего модуля
+   * @param {Map} data.callSources - Карта источников вызовов
+   * @param {Object} data.reportData - Данные отчета (опционально)
    * @returns {string} HTML строка
    */
-  renderOutgoing(outgoing, modulePath, funcs, callSources, reportData) {
+  renderOutgoing(data) {
+    const { externalOutgoing, modulePath, funcs, callSources, reportData } = data;
+
+    if (!externalOutgoing || externalOutgoing.size === 0) {
+      return '';
+    }
+
     // ✅ СОРТИРУЕМ ВСЕ ВЫЗОВЫ
-    const sortedCalls = Array.from(outgoing).sort();
-    const totalCount = outgoing.size;
+    const sortedCalls = Array.from(externalOutgoing).sort();
+    const totalCount = externalOutgoing.size;
 
     let html = `
-            <div class="nav-section nav-external nav-outgoing" style="padding: 4px 8px; margin: 2px 0;">
+            <div class="nav-section nav-external nav-outgoing" style="padding: 4px 8px; margin: 2px 0; border-top: 1px solid #1a2a3a;">
                 <span class="nav-label" style="font-size: 10px; color: #f59e0b;">
-                    📤 Исходящие вызовы (${totalCount}):
+                    📤 export (${totalCount}):
                 </span>
                 <div class="nav-buttons" style="display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px;">
         `;
@@ -148,20 +144,27 @@ export class NavExternalRenderer {
 
   /**
    * Рендеринг входящих вызовов - ВСЕ ВЫЗОВЫ БЕЗ ОГРАНИЧЕНИЙ
-   * @param {Set<string>} incoming - Множество имен функций
-   * @param {string} modulePath - Путь к текущему модулю
-   * @param {Array} funcs - Список функций текущего модуля
-   * @param {Map} callSources - Карта источников вызовов
-   * @param {Object} reportData - Данные отчета
+   * @param {Object} data - Данные для рендеринга
+   * @param {Set<string>} data.externalIncoming - Множество имен внешних функций, которые вызывают текущий модуль
+   * @param {string} data.modulePath - Путь к текущему модулю
+   * @param {Array} data.funcs - Список функций текущего модуля
+   * @param {Map} data.callSources - Карта источников вызовов
+   * @param {Object} data.reportData - Данные отчета (опционально)
    * @returns {string} HTML строка
    */
-  renderIncoming(incoming, modulePath, funcs, callSources, reportData) {
+  renderIncoming(data) {
+    const { externalIncoming, modulePath, funcs, callSources, reportData } = data;
+
+    if (!externalIncoming || externalIncoming.size === 0) {
+      return '';
+    }
+
     // ✅ СОРТИРУЕМ ВСЕ ВЫЗОВЫ
-    const sortedCallers = Array.from(incoming).sort();
-    const totalCount = incoming.size;
+    const sortedCallers = Array.from(externalIncoming).sort();
+    const totalCount = externalIncoming.size;
 
     let html = `
-            <div class="nav-section nav-external nav-incoming" style="padding: 4px 8px; margin: 2px 0;">
+            <div class="nav-section nav-external nav-incoming" style="padding: 4px 8px; margin: 2px 0; border-top: 1px solid #1a2a3a;">
                 <span class="nav-label" style="font-size: 10px; color: #3b82f6;">
                     📥 Входящие вызовы (${totalCount}):
                 </span>

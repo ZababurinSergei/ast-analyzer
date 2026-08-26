@@ -374,6 +374,28 @@ export function buildEnhancedPackageLockReport(
 
   const metadata = createMetadata();
   const packages = buildPackages(rootKey, graph, entitiesMap, projectRoot, _options);
+
+  // ✅ ДОБАВЛЯЕМ ИМПОРТЫ В ПАКЕТЫ
+  for (const [modulePath, pkg] of Object.entries(packages)) {
+    const entities = entitiesMap[modulePath];
+    if (!entities) continue;
+
+    // Сохраняем импорты в пакет
+    if (entities.imports && entities.imports.length > 0) {
+      pkg.imports = {};
+      for (const imp of entities.imports) {
+        pkg.imports[imp.source] = {
+          direction: 'inward',
+          type: 'import',
+          specifiers: imp.specifiers.map(s =>
+            typeof s === 'string' ? s : s.imported || s.local
+          ),
+          functions: {}
+        };
+      }
+    }
+  }
+
   const dependencyGraph = buildDependencyGraph(graph);
   const executionGraph = buildExecutionGraph(rootKey, entitiesMap, { rootKey, graph }, packages);
   const importExportFlow = buildImportExportFlow(graph, entitiesMap, { rootKey, graph }, packages);
@@ -1144,8 +1166,8 @@ function createEnhancedFunctionFromVue(func: any): EnhancedFunctionInfo {
     isExported: func.isExported || false,
     isMethod: false,
     className: func.className || '',
-    calls: [],
-    calledBy: [],
+    calls: func.calls || [],
+    calledBy: func.calledBy || [],
     returnType: func.returnType || 'any',
     body: func.body || '',
     isNested: false,
