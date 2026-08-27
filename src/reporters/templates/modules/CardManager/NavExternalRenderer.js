@@ -166,7 +166,7 @@ export class NavExternalRenderer {
     let html = `
             <div class="nav-section nav-external nav-incoming" style="padding: 4px 8px; margin: 2px 0; border-top: 1px solid #1a2a3a;">
                 <span class="nav-label" style="font-size: 10px; color: #3b82f6;">
-                    📥 Входящие вызовы (${totalCount}):
+                    ⬅️ import macros (${totalCount}):
                 </span>
                 <div class="nav-buttons" style="display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px;">
         `;

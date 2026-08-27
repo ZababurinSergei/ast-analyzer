@@ -11,6 +11,8 @@ import { GraphManager } from './modules/GraphManager.js';
 import { BreadcrumbManager } from './modules/BreadcrumbManager.js';
 import { GraphModeManager } from './modules/GraphModeManager.js';
 import { CardModeManager } from './modules/CardModeManager.js';
+import { Router } from './modules/Router.js';
+import { LocationBar } from './modules/LocationBar.js';
 
 // ============================================================
 // СИМВОЛЫ ДЛЯ ГЛОБАЛЬНОГО ДОСТУПА
@@ -21,6 +23,9 @@ const SYM_MODE_CHANGE = Symbol.for('__AST_MODE_CHANGE__');
 const SYM_REPORT_DATA = Symbol.for('__AST_INTERACTIVE_REPORT_DATA__');
 const SYM_FUNCTIONS_DATA = Symbol.for('__AST_INTERACTIVE_FUNCTIONS_DATA__');
 const SYM_DATA_VERSION = Symbol.for('__AST_INTERACTIVE_DATA_VERSION__');
+const SYM_ROUTER = Symbol.for('__AST_ROUTER__');
+const SYM_LOCATION_BAR = Symbol.for('__AST_LOCATION_BAR__');
+const SYM_ROUTE_CHANGE = Symbol.for('__AST_ROUTE_CHANGE__');
 
 // ============================================================
 // ЗАГРУЗКА ДАННЫХ
@@ -117,6 +122,12 @@ class App {
       }
       this._focusModule = modulePath;
       this._focusFunction = null;
+
+      // Обновляем роутер
+      if (this.router) {
+        this.router.navigateToModule(modulePath);
+      }
+
       if (this.breadcrumbManager) {
         this.breadcrumbManager.updateBreadcrumbs(modulePath, null);
       }
@@ -136,6 +147,12 @@ class App {
       }
       this._focusFunction = funcName;
       this._focusModule = modulePath;
+
+      // Обновляем роутер
+      if (this.router) {
+        this.router.navigateToFunction(modulePath, funcName);
+      }
+
       if (this.breadcrumbManager) {
         this.breadcrumbManager.updateBreadcrumbs(modulePath, funcName);
       }
@@ -152,6 +169,12 @@ class App {
       console.log('🧹 clearFocus called');
       this._focusModule = null;
       this._focusFunction = null;
+
+      // Обновляем роутер
+      if (this.router) {
+        this.router.navigateToUniverse();
+      }
+
       if (this.breadcrumbManager) {
         this.breadcrumbManager.updateBreadcrumbs(null, null);
       }
@@ -166,6 +189,16 @@ class App {
     this.handleSearch = query => {
       console.log('🔍 handleSearch called:', query);
       this.searchQuery = query;
+
+      // Обновляем роутер
+      if (this.router) {
+        if (query && query.trim()) {
+          this.router.navigateToSearch(query);
+        } else {
+          this.router.navigateToUniverse();
+        }
+      }
+
       this.renderModules();
       if (this.graphManager) {
         this.graphManager.handleSearch(query);
@@ -343,6 +376,35 @@ class App {
             input.focus();
           }
         }
+        // Alt+Left - назад
+        if (e.altKey && e.key === 'ArrowLeft') {
+          e.preventDefault();
+          if (this.router && this.router.canGoBack()) {
+            this.router.goBack();
+          }
+        }
+        // Alt+Right - вперед
+        if (e.altKey && e.key === 'ArrowRight') {
+          e.preventDefault();
+          if (this.router && this.router.canGoForward()) {
+            this.router.goForward();
+          }
+        }
+        // Alt+Home - домой
+        if (e.altKey && e.key === 'Home') {
+          e.preventDefault();
+          if (this.router) {
+            this.router.navigateToUniverse();
+          }
+          this.clearFocus();
+        }
+        // Ctrl+L - фокус на адресную строку
+        if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
+          e.preventDefault();
+          if (this.locationBar && typeof this.locationBar._startEditing === 'function') {
+            this.locationBar._startEditing();
+          }
+        }
       });
 
       document.addEventListener('click', e => {
@@ -465,6 +527,8 @@ class App {
     this.breadcrumbManager = null;
     this.graphModeManager = null;
     this.cardModeManager = null;
+    this.router = null;
+    this.locationBar = null;
 
     window[SYM_APP] = this;
     window[SYM_READY] = false;
@@ -486,12 +550,22 @@ class App {
       return;
     }
 
+    // 🆕 Инициализация роутера
+    this.router = new Router();
+    this.router.init(this);
+    window[SYM_ROUTER] = this.router;
+
     // Инициализация менеджеров
     this.cardManager = new CardManager(this);
     this.graphManager = new GraphManager(this);
     this.breadcrumbManager = new BreadcrumbManager(this);
     this.graphModeManager = new GraphModeManager(this);
     this.cardModeManager = new CardModeManager(this);
+
+    // 🆕 Инициализация адресной строки (после роутера)
+    this.locationBar = new LocationBar(this);
+    this.locationBar.init();
+    window[SYM_LOCATION_BAR] = this.locationBar;
 
     this.updateStats();
     this.cardManager.init();
@@ -511,8 +585,19 @@ class App {
     // ✅ РЕГИСТРИРУЕМ API
     this.registerAPI();
 
+    // 🆕 Обновляем начальное состояние адресной строки
+    if (this.router && this.locationBar) {
+      const currentRoute = this.router.getCurrentRoute();
+      if (currentRoute) {
+        this.locationBar._updateDisplay(currentRoute);
+        this.locationBar._updateInput(currentRoute);
+        this.locationBar._updateNavButtons();
+      }
+    }
+
     console.log('✅ App initialized');
     console.log('📊 Данные готовы, модулей:', Object.keys(this.reportData?.packages || {}).length);
+    console.log('🧭 Router и LocationBar инициализированы');
   }
 
   // ============================================================
@@ -628,6 +713,16 @@ class App {
         graphMode: app.currentGraphMode,
         cardMode: app.currentCardMode,
       }),
+
+      // 🆕 Методы для работы с роутером
+      getRouter: () => app.router,
+      getLocationBar: () => app.locationBar,
+      navigateTo: path => {
+        if (app.router && typeof app.router.navigateToPath === 'function') {
+          return app.router.navigateToPath(path);
+        }
+        console.warn('⚠️ navigateTo not yet initialized');
+      },
     };
 
     // ✅ ДОБАВЛЯЕМ МЕНЕДЖЕРЫ
@@ -658,6 +753,8 @@ class App {
     console.log('  - api.clearFocus:', typeof api.clearFocus);
     console.log('  - api.updateGraph:', typeof api.updateGraph);
     console.log('  - api.fitGraph:', typeof api.fitGraph);
+    console.log('  - api.getRouter:', typeof api.getRouter);
+    console.log('  - api.getLocationBar:', typeof api.getLocationBar);
   }
 }
 
@@ -677,6 +774,8 @@ if (!window[SYM_APP]) {
     }
 
     console.log('🔑 Доступ через: window[Symbol.for("__AST_APP_API__")]');
+    console.log('🧭 Доступ к роутеру: window[Symbol.for("__AST_ROUTER__")]');
+    console.log('📍 Доступ к адресной строке: window[Symbol.for("__AST_LOCATION_BAR__")]');
   } catch (error) {
     console.error('❌ Failed to initialize App:', error);
     window[SYM_READY] = false;
@@ -695,6 +794,9 @@ if (!window[SYM_APP]) {
       'updateGraph',
       'fitGraph',
       'getCurrentFocus',
+      'getRouter',
+      'getLocationBar',
+      'navigateTo',
     ].forEach(method => {
       fallbackApi[method] = function (...args) {
         console.warn(`⚠️ App not ready, ${method} called with:`, args);
@@ -719,6 +821,9 @@ export {
   SYM_REPORT_DATA,
   SYM_FUNCTIONS_DATA,
   SYM_DATA_VERSION,
+  SYM_ROUTER,
+  SYM_LOCATION_BAR,
+  SYM_ROUTE_CHANGE,
 };
 export { REPORT_DATA, ALL_FUNCTIONS_DATA };
 

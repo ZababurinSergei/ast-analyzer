@@ -4,6 +4,11 @@
  * BreadcrumbManager - управление Breadcrumbs
  * Отвечает за построение и отображение путей навигации
  * Поддерживает несколько ветвей путей от точки входа до текущей позиции
+ *
+ * Интеграция с Router:
+ * - Синхронизация с роутером при изменении навигации
+ * - Обновление breadcrumbs через роутер
+ * - Поддержка истории переходов
  */
 export class BreadcrumbManager {
   constructor(app) {
@@ -13,6 +18,8 @@ export class BreadcrumbManager {
     this.maxBreadcrumbs = 50; // Максимальная глубина одного пути
     this.currentModule = null;
     this.currentFunction = null;
+    this.router = null;
+    this._unsubscribeRouter = null;
   }
 
   /**
@@ -20,6 +27,17 @@ export class BreadcrumbManager {
    */
   init() {
     console.log('🧭 BreadcrumbManager initialized');
+
+    // Получаем роутер
+    this.router = window[Symbol.for('__AST_ROUTER__')];
+
+    // Подписываемся на изменения роутера
+    if (this.router) {
+      this._unsubscribeRouter = this.router.onRouteChange((route) => {
+        this._handleRouteChange(route);
+      });
+    }
+
     this.setupKeyboardShortcuts();
   }
 
@@ -47,11 +65,40 @@ export class BreadcrumbManager {
   }
 
   /**
+   * Обработка изменения маршрута
+   */
+  _handleRouteChange(route) {
+    if (!route) {
+      this.updateBreadcrumbs(null, null);
+      return;
+    }
+
+    switch (route.name) {
+      case 'universe':
+        this.updateBreadcrumbs(null, null);
+        break;
+      case 'module':
+        this.updateBreadcrumbs(route.params.modulePath, null);
+        break;
+      case 'function':
+        this.updateBreadcrumbs(route.params.modulePath, route.params.funcName);
+        break;
+      case 'search':
+        // Для поиска показываем специальный breadcrumb
+        this.updateBreadcrumbs(null, null, `🔍 ${route.params.query}`);
+        break;
+      default:
+        this.updateBreadcrumbs(null, null);
+    }
+  }
+
+  /**
    * Обновляет Breadcrumbs на основе текущего фокуса
    * @param {string} modulePath - Путь к модулю
    * @param {string|null} funcName - Имя функции (опционально)
+   * @param {string|null} customLabel - Пользовательская метка (для поиска)
    */
-  updateBreadcrumbs(modulePath, funcName) {
+  updateBreadcrumbs(modulePath, funcName, customLabel = null) {
     const container = document.getElementById('breadcrumbs');
     if (!container) {
       console.warn('⚠️ Breadcrumbs container not found');
@@ -73,32 +120,30 @@ export class BreadcrumbManager {
     const universeSpan = this.createUniverseBreadcrumb();
     pathDiv.appendChild(universeSpan);
 
+    // Если есть пользовательская метка (поиск)
+    if (customLabel) {
+      pathDiv.appendChild(this.createArrowSpan());
+      const customSpan = this.createCustomBreadcrumb(customLabel);
+      pathDiv.appendChild(customSpan);
+      container.appendChild(pathDiv);
+      return;
+    }
+
     // Если есть выбранный модуль или функция, строим путь к ним
     if (modulePath) {
-      const target = funcName ? `${modulePath}#func:${funcName}` : modulePath;
-      const entryModule = this.findEntryModule();
-
       // Добавляем стрелку после Universe
       pathDiv.appendChild(this.createArrowSpan());
 
-      // Если есть функция, ищем пути к функции
-      let paths = [];
-      if (funcName) {
-        paths = this.findAllPathsTo(modulePath, funcName);
-      } else {
-        // Ищем пути к модулю
-        paths = this.findAllPathsTo(modulePath, null);
-      }
+      // 🔥 Строим полный путь через граф
+      const path = this.buildFullPath(modulePath, funcName);
 
-      // Если пути найдены, добавляем первый (или лучший) путь
-      if (paths.length > 0) {
-        const bestPath = paths[0]; // Берем первый найденный путь
-        // Пропускаем первый элемент (это entryModule, который мы уже показали как Universe)
-        for (let i = 1; i < bestPath.length; i++) {
-          const item = bestPath[i];
-          const isLast = i === bestPath.length - 1;
+      if (path && path.length > 0) {
+        // Добавляем все элементы пути
+        for (let i = 0; i < path.length; i++) {
+          const item = path[i];
+          const isLast = i === path.length - 1;
 
-          if (i > 1) {
+          if (i > 0) {
             pathDiv.appendChild(this.createArrowSpan());
           }
 
@@ -106,7 +151,7 @@ export class BreadcrumbManager {
           pathDiv.appendChild(span);
         }
       } else {
-        // Если путь не найден, показываем просто текущий модуль/функцию
+        // Fallback: если путь не найден, показываем просто текущий модуль/функцию
         if (funcName) {
           const span = this.createBreadcrumbSpan(funcName, true, 'function');
           pathDiv.appendChild(span);
@@ -133,6 +178,301 @@ export class BreadcrumbManager {
   }
 
   /**
+   * 🔥 СТРОИТ ПОЛНЫЙ ПУТЬ от Universe до цели через граф
+   * @param {string} modulePath - Путь к модулю
+   * @param {string|null} funcName - Имя функции
+   * @returns {Array<{id: string, name: string, type: string, module?: string}>}
+   */
+  buildFullPath(modulePath, funcName) {
+    // Находим точку входа (корневой модуль)
+    const entryModule = this.findEntryModule();
+    if (!entryModule) {
+      console.warn('⚠️ Entry module not found');
+      return this.buildSimplePath(modulePath, funcName);
+    }
+
+    // Определяем цель
+    const target = funcName ? `${modulePath}#func:${funcName}` : modulePath;
+
+    // Строим полный граф
+    const graph = this.buildFullGraph();
+
+    // Проверяем, существует ли целевой узел в графе
+    if (!graph[target] && !this.isNodeExists(target)) {
+      // Если цель не найдена, пытаемся найти похожий узел
+      const similarNode = this.findSimilarNode(target);
+      if (similarNode) {
+        console.log(`🔄 Found similar node: ${similarNode} instead of ${target}`);
+        return this.findPath(entryModule, similarNode, graph);
+      }
+      console.warn(`⚠️ Target node not found in graph: ${target}`);
+      return this.buildSimplePath(modulePath, funcName);
+    }
+
+    // Находим путь
+    const path = this.findPath(entryModule, target, graph);
+
+    if (path && path.length > 0) {
+      // Сохраняем путь для истории
+      this.breadcrumbPaths = [path];
+      return path;
+    }
+
+    // Если путь не найден, возвращаем простой путь
+    return this.buildSimplePath(modulePath, funcName);
+  }
+
+  /**
+   * Строит простой путь (без графа)
+   * @param {string} modulePath - Путь к модулю
+   * @param {string|null} funcName - Имя функции
+   * @returns {Array<{id: string, name: string, type: string, module?: string}>}
+   */
+  buildSimplePath(modulePath, funcName) {
+    const path = [];
+
+    // Добавляем модуль
+    if (modulePath) {
+      const pkg = this.app.reportData?.packages?.[modulePath];
+      path.push({
+        id: modulePath,
+        name: pkg?.displayPath || modulePath.split('/').pop() || modulePath,
+        type: 'module'
+      });
+    }
+
+    // Добавляем функцию
+    if (funcName) {
+      path.push({
+        id: funcName,
+        name: funcName,
+        type: 'function',
+        module: modulePath
+      });
+    }
+
+    return path;
+  }
+
+  /**
+   * 🔥 СТРОИТ ПОЛНЫЙ ГРАФ с модулями и функциями
+   * @returns {Object} - Граф в виде { nodeId: [neighborId, ...] }
+   */
+  buildFullGraph() {
+    const graph = {};
+    const packages = this.app.reportData?.packages || {};
+
+    // Добавляем все модули
+    for (const [modulePath] of Object.entries(packages)) {
+      if (!graph[modulePath]) {
+        graph[modulePath] = [];
+      }
+    }
+
+    // Добавляем функции и связи
+    for (const [modulePath, pkg] of Object.entries(packages)) {
+      if (!pkg) continue;
+
+      const funcs = pkg.entities?.functions || [];
+      for (const func of funcs) {
+        if (!func || !func.name) continue;
+
+        const funcId = `${modulePath}#func:${func.name}`;
+
+        if (!graph[funcId]) {
+          graph[funcId] = [];
+        }
+
+        // Связь: модуль -> функция
+        if (!graph[modulePath].includes(funcId)) {
+          graph[modulePath].push(funcId);
+        }
+
+        // Связь: функция -> модуль (обратная)
+        if (!graph[funcId].includes(modulePath)) {
+          graph[funcId].push(modulePath);
+        }
+
+        // Связи по вызовам функций (исходящие)
+        for (const call of func.calls || []) {
+          const callId = this.findFunctionId(call);
+          if (callId && callId !== funcId) {
+            if (!graph[funcId].includes(callId)) {
+              graph[funcId].push(callId);
+            }
+          }
+        }
+
+        // Связи по вызовам (входящие)
+        for (const caller of func.calledBy || []) {
+          const callerId = this.findFunctionId(caller);
+          if (callerId && callerId !== funcId) {
+            if (!graph[callerId]) {
+              graph[callerId] = [];
+            }
+            if (!graph[callerId].includes(funcId)) {
+              graph[callerId].push(funcId);
+            }
+          }
+        }
+      }
+    }
+
+    return graph;
+  }
+
+  /**
+   * Находит ID функции по имени
+   * @param {string} funcName - Имя функции
+   * @returns {string|null}
+   */
+  findFunctionId(funcName) {
+    const packages = this.app.reportData?.packages || {};
+    for (const [modulePath, pkg] of Object.entries(packages)) {
+      if (!pkg) continue;
+      const funcs = pkg.entities?.functions || [];
+      for (const func of funcs) {
+        if (func.name === funcName) {
+          return `${modulePath}#func:${funcName}`;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Находит путь от старта до цели с использованием BFS
+   * @param {string} start - Стартовый узел
+   * @param {string} target - Целевой узел
+   * @param {Object} graph - Граф для BFS
+   * @returns {Array<Object>|null}
+   */
+  findPath(start, target, graph) {
+    if (start === target) {
+      return [this.createBreadcrumbItem(start)];
+    }
+
+    const queue = [{ node: start, path: [start] }];
+    const visited = new Set([start]);
+
+    while (queue.length > 0) {
+      const { node, path } = queue.shift();
+      const neighbors = graph[node] || [];
+
+      for (const neighbor of neighbors) {
+        if (visited.has(neighbor)) continue;
+        if (path.length >= this.maxBreadcrumbs) continue;
+
+        const newPath = [...path, neighbor];
+
+        if (neighbor === target) {
+          // Преобразуем ID в объекты breadcrumb
+          return newPath.map(id => this.createBreadcrumbItem(id));
+        }
+
+        visited.add(neighbor);
+        queue.push({ node: neighbor, path: newPath });
+      }
+    }
+
+    // Если путь не найден, возвращаем null
+    return null;
+  }
+
+  /**
+   * Проверяет, существует ли узел в графе
+   * @param {string} nodeId - ID узла
+   * @returns {boolean}
+   */
+  isNodeExists(nodeId) {
+    const graph = this.buildFullGraph();
+    return !!graph[nodeId];
+  }
+
+  /**
+   * Находит похожий узел по имени
+   * @param {string} target - Целевой узел
+   * @returns {string|null}
+   */
+  findSimilarNode(target) {
+    const graph = this.buildFullGraph();
+    const targetName = target.split('#func:').pop() || target.split('/').pop() || target;
+
+    for (const nodeId of Object.keys(graph)) {
+      const nodeName = nodeId.split('#func:').pop() || nodeId.split('/').pop() || nodeId;
+      if (nodeName === targetName && nodeId !== target) {
+        return nodeId;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Создает элемент Breadcrumb для узла
+   * @param {string} nodeId - ID узла
+   * @returns {Object}
+   */
+  createBreadcrumbItem(nodeId) {
+    const isFunction = nodeId.includes('#func:');
+    const isModule = !isFunction;
+
+    if (isModule) {
+      const pkg = this.app.reportData?.packages?.[nodeId];
+      return {
+        id: nodeId,
+        name: pkg?.displayPath || nodeId.split('/').pop() || nodeId,
+        fullName: nodeId,
+        type: 'module',
+      };
+    } else {
+      const funcName = nodeId.split('#func:').pop() || nodeId;
+      const modulePath = this.findModuleForFunction(funcName);
+      return {
+        id: funcName,
+        name: funcName,
+        fullName: nodeId,
+        type: 'function',
+        module: modulePath || nodeId,
+      };
+    }
+  }
+
+  /**
+   * Находит точку входа в проект
+   * @returns {string|null}
+   */
+  findEntryModule() {
+    const packages = this.app.reportData?.packages || {};
+    for (const [modulePath, pkg] of Object.entries(packages)) {
+      if (pkg?.isEntry) {
+        return modulePath;
+      }
+    }
+    // Если точка входа не найдена, берем первый модуль
+    const keys = Object.keys(packages);
+    return keys.length > 0 ? keys[0] : null;
+  }
+
+  /**
+   * Находит модуль для функции по имени
+   * @param {string} funcName - Имя функции
+   * @returns {string|null}
+   */
+  findModuleForFunction(funcName) {
+    const packages = this.app.reportData?.packages || {};
+    for (const [modulePath, pkg] of Object.entries(packages)) {
+      if (!pkg) continue;
+      const funcs = pkg.entities?.functions || [];
+      for (const func of funcs) {
+        if (func.name === funcName) {
+          return modulePath;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
    * Создает элемент Breadcrumb для корневого состояния "Universe"
    */
   createUniverseBreadcrumb() {
@@ -140,27 +480,49 @@ export class BreadcrumbManager {
     span.className = 'breadcrumb-item root';
     span.textContent = '🌌 Universe';
     span.title = 'Вернуться к полному обзору всех модулей';
-    span.style.cursor = 'pointer';
-    span.style.fontWeight = 'bold';
-    span.style.color = '#60a5fa';
-    span.style.transition = 'all 0.2s ease';
+    span.style.cssText = `
+      cursor: pointer;
+      font-weight: bold;
+      color: #60a5fa;
+      transition: all 0.2s ease;
+      padding: 2px 4px;
+      border-radius: 4px;
+    `;
 
-    // По клику очищаем фокус и возвращаемся к полному обзору
     span.onclick = e => {
       e.stopPropagation();
       this.navigateToUniverse();
     };
 
-    // Добавляем hover эффект
     span.onmouseenter = () => {
       span.style.color = '#93c5fd';
-      span.style.transform = 'scale(1.05)';
+      span.style.background = 'rgba(96, 165, 250, 0.1)';
+      span.style.transform = 'scale(1.02)';
     };
     span.onmouseleave = () => {
       span.style.color = '#60a5fa';
+      span.style.background = 'transparent';
       span.style.transform = 'scale(1)';
     };
 
+    return span;
+  }
+
+  /**
+   * Создает пользовательский breadcrumb (для поиска и т.д.)
+   */
+  createCustomBreadcrumb(label) {
+    const span = document.createElement('span');
+    span.className = 'breadcrumb-item active';
+    span.textContent = label;
+    span.style.cssText = `
+      color: #22d3ee;
+      font-weight: 600;
+      padding: 2px 8px;
+      background: rgba(34, 211, 238, 0.1);
+      border-radius: 12px;
+      border: 1px solid rgba(34, 211, 238, 0.2);
+    `;
     return span;
   }
 
@@ -205,11 +567,15 @@ export class BreadcrumbManager {
    * Навигация к Universe (сброс фокуса)
    */
   navigateToUniverse() {
-    // Очищаем фокус через App
+    // Используем роутер если доступен
+    if (this.router) {
+      this.router.navigateToUniverse();
+      return;
+    }
+
+    // Fallback: очищаем фокус через App
     this.app.clearFocus();
-    // Обновляем breadcrumbs
     this.updateBreadcrumbs(null, null);
-    // Синхронизируем с графом
     this.syncWithGraph();
   }
 
@@ -217,6 +583,13 @@ export class BreadcrumbManager {
    * Навигация назад по истории breadcrumbs
    */
   navigateBack() {
+    // Используем роутер если доступен
+    if (this.router && this.router.canGoBack()) {
+      this.router.goBack();
+      return;
+    }
+
+    // Fallback: своя логика
     if (this.breadcrumbPaths.length === 0) return;
 
     // Берем последний путь
@@ -241,6 +614,12 @@ export class BreadcrumbManager {
    * Навигация вперед по истории breadcrumbs
    */
   navigateForward() {
+    // Используем роутер если доступен
+    if (this.router && this.router.canGoForward()) {
+      this.router.goForward();
+      return;
+    }
+
     // TODO: Реализовать навигацию вперед (сложнее, нужен стек истории)
     console.log('⏩ Forward navigation not implemented yet');
   }
@@ -404,66 +783,80 @@ export class BreadcrumbManager {
     if (isModule) {
       const pkg = this.app.reportData?.packages?.[id];
       const name = pkg?.displayPath || id.split('/').pop() || id;
-      span.textContent = name;
-      span.title = id;
-
-      // Добавляем иконку типа модуля
       const icon = this.getModuleIcon(id);
-      if (icon) {
-        span.textContent = icon + ' ' + name;
-      }
+
+      span.textContent = icon ? `${icon} ${name}` : name;
+      span.title = id;
 
       if (!isActive) {
         span.style.cursor = 'pointer';
         span.style.transition = 'all 0.2s ease';
+        span.style.padding = '2px 6px';
+        span.style.borderRadius = '4px';
+
         span.onclick = e => {
           e.stopPropagation();
-          this.app.focusModule(id);
+          // Используем роутер если доступен
+          if (this.router) {
+            this.router.navigateToModule(id);
+          } else {
+            this.app.focusModule(id);
+          }
         };
         span.onmouseenter = () => {
           span.style.color = '#60a5fa';
           span.style.background = 'rgba(96, 165, 250, 0.1)';
-          span.style.borderRadius = '4px';
-          span.style.padding = '2px 6px';
         };
         span.onmouseleave = () => {
           span.style.color = '#94a3b8';
           span.style.background = 'transparent';
-          span.style.padding = '2px 6px';
         };
       } else {
         span.style.color = '#22d3ee';
         span.style.fontWeight = '600';
+        span.style.background = 'rgba(34, 211, 238, 0.05)';
+        span.style.padding = '2px 8px';
+        span.style.borderRadius = '4px';
+        span.style.border = '1px solid rgba(34, 211, 238, 0.2)';
       }
     } else {
-      const name = id.split('#func:').pop() || id;
+      const name = id.includes('#func:') ? id.split('#func:').pop() : id;
+      const modulePath = this.findModuleForFunction(name);
+
       span.textContent = `ƒ ${name}`;
-      span.title = id;
+      span.title = `${name} (${modulePath || 'модуль не найден'})`;
 
       if (!isActive) {
         span.style.cursor = 'pointer';
         span.style.transition = 'all 0.2s ease';
-        const modulePath = this.findModuleForFunction(name);
+        span.style.padding = '2px 6px';
+        span.style.borderRadius = '4px';
+
         if (modulePath) {
           span.onclick = e => {
             e.stopPropagation();
-            this.app.focusFunction(name, modulePath);
+            if (this.router) {
+              this.router.navigateToFunction(modulePath, name);
+            } else {
+              this.app.focusFunction(name, modulePath);
+            }
           };
           span.onmouseenter = () => {
             span.style.color = '#fbbf24';
             span.style.background = 'rgba(251, 191, 36, 0.1)';
-            span.style.borderRadius = '4px';
-            span.style.padding = '2px 6px';
           };
           span.onmouseleave = () => {
             span.style.color = '#94a3b8';
             span.style.background = 'transparent';
-            span.style.padding = '2px 6px';
           };
         }
       } else {
         span.style.color = '#fbbf24';
         span.style.fontWeight = '600';
+        span.style.background = 'rgba(251, 191, 36, 0.1)';
+        span.style.padding = '2px 8px';
+        span.style.borderRadius = '4px';
+        span.style.border = '1px solid rgba(251, 191, 36, 0.2)';
       }
     }
 
@@ -474,11 +867,13 @@ export class BreadcrumbManager {
    * Возвращает иконку для типа модуля
    */
   getModuleIcon(modulePath) {
-    if (!modulePath) return '';
+    if (!modulePath) return '📄';
     if (modulePath.endsWith('.vue')) return '🎯';
     if (modulePath.endsWith('.tsx') || modulePath.endsWith('.jsx')) return '⚛️';
     if (modulePath.endsWith('.ts')) return '📘';
     if (modulePath.endsWith('.js')) return '📄';
+    if (modulePath.endsWith('.json')) return '📋';
+    if (modulePath.endsWith('.css') || modulePath.endsWith('.scss')) return '🎨';
     return '📁';
   }
 
@@ -499,267 +894,12 @@ export class BreadcrumbManager {
   }
 
   /**
-   * Находит все возможные пути от точки входа до цели
-   * @param {string} modulePath - Путь к модулю
-   * @param {string|null} funcName - Имя функции (опционально)
-   * @returns {Array<Array<{id: string, name: string, type: string, module?: string}>>}
-   */
-  findAllPathsTo(modulePath, funcName) {
-    const entryModule = this.findEntryModule();
-    if (!entryModule) {
-      console.warn('⚠️ Entry module not found');
-      return [];
-    }
-
-    const target = funcName ? `${modulePath}#func:${funcName}` : modulePath;
-    const graph = this.buildGraphForBFS();
-
-    // Проверяем, существует ли целевой узел в графе
-    if (!graph[target] && !this.isNodeExists(target)) {
-      // Если цель не найдена, пытаемся найти похожий узел
-      const similarNode = this.findSimilarNode(target);
-      if (similarNode) {
-        console.log(`🔄 Found similar node: ${similarNode} instead of ${target}`);
-        return this.findPathsToNode(entryModule, similarNode, graph);
-      }
-      console.warn(`⚠️ Target node not found in graph: ${target}`);
-      return [];
-    }
-
-    const paths = this.findPathsToNode(entryModule, target, graph);
-
-    // Сохраняем пути для истории
-    if (paths.length > 0) {
-      this.breadcrumbPaths = paths;
-    }
-
-    return paths;
-  }
-
-  /**
-   * Проверяет, существует ли узел в графе
-   * @param {string} nodeId - ID узла
-   * @returns {boolean}
-   */
-  isNodeExists(nodeId) {
-    const graph = this.buildGraphForBFS();
-    return !!graph[nodeId];
-  }
-
-  /**
-   * Находит похожий узел по имени
-   * @param {string} target - Целевой узел
-   * @returns {string|null}
-   */
-  findSimilarNode(target) {
-    const graph = this.buildGraphForBFS();
-    const targetName = target.split('#func:').pop() || target.split('/').pop() || target;
-
-    for (const nodeId of Object.keys(graph)) {
-      const nodeName = nodeId.split('#func:').pop() || nodeId.split('/').pop() || nodeId;
-      if (nodeName === targetName && nodeId !== target) {
-        return nodeId;
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Находит все пути от старта до цели с использованием BFS
-   * @param {string} start - Стартовый узел
-   * @param {string} target - Целевой узел
-   * @param {Object} graph - Граф для BFS
-   * @returns {Array<Array<Object>>}
-   */
-  findPathsToNode(start, target, graph) {
-    const allPaths = [];
-    const queue = [
-      {
-        node: start,
-        path: [this.createBreadcrumbItem(start)],
-      },
-    ];
-    const visited = new Set();
-    let pathsFound = 0;
-    const maxPathsToFind = 10;
-
-    while (queue.length > 0 && pathsFound < maxPathsToFind) {
-      const { node, path } = queue.shift();
-      const key = node;
-
-      if (visited.has(key)) {
-        continue;
-      }
-      visited.add(key);
-
-      if (key === target) {
-        allPaths.push(path);
-        pathsFound++;
-        continue;
-      }
-
-      const neighbors = graph[node] || [];
-      for (const neighbor of neighbors) {
-        if (!visited.has(neighbor) && path.length < this.maxBreadcrumbs) {
-          const newPath = [...path];
-          newPath.push(this.createBreadcrumbItem(neighbor));
-          queue.push({ node: neighbor, path: newPath });
-        }
-      }
-    }
-
-    return allPaths;
-  }
-
-  /**
-   * Создает элемент Breadcrumb для узла
-   * @param {string} nodeId - ID узла
-   * @returns {Object}
-   */
-  createBreadcrumbItem(nodeId) {
-    const isFunction = nodeId.includes('#func:');
-    const isModule = !isFunction;
-
-    if (isModule) {
-      const pkg = this.app.reportData?.packages?.[nodeId];
-      return {
-        id: nodeId,
-        name: pkg?.displayPath || nodeId.split('/').pop() || nodeId,
-        fullName: nodeId,
-        type: 'module',
-      };
-    } else {
-      const [modulePath, funcName] = nodeId.replace('#func:', '').split('#');
-      return {
-        id: funcName || nodeId,
-        name: funcName || nodeId,
-        fullName: nodeId,
-        type: 'function',
-        module: modulePath || nodeId,
-      };
-    }
-  }
-
-  /**
-   * Строит граф для BFS из данных отчета
-   * @returns {Object} - Граф в виде { nodeId: [neighborId, ...] }
-   */
-  buildGraphForBFS() {
-    const graph = {};
-    const packages = this.app.reportData?.packages || {};
-
-    // Добавляем модули
-    for (const [modulePath] of Object.entries(packages)) {
-      if (!graph[modulePath]) {
-        graph[modulePath] = [];
-      }
-    }
-
-    // Добавляем функции и их связи
-    for (const [modulePath, pkg] of Object.entries(packages)) {
-      if (!pkg) {
-        continue;
-      }
-
-      const funcs = pkg.entities?.functions || [];
-      for (const func of funcs) {
-        if (!func || !func.name) {
-          continue;
-        }
-        const funcId = `${modulePath}#func:${func.name}`;
-
-        if (!graph[funcId]) {
-          graph[funcId] = [];
-        }
-
-        // Связь: модуль -> функция
-        if (!graph[modulePath].includes(funcId)) {
-          graph[modulePath].push(funcId);
-        }
-
-        // Связь: функция -> модуль (обратная)
-        if (!graph[funcId].includes(modulePath)) {
-          graph[funcId].push(modulePath);
-        }
-
-        // Связи по вызовам функций
-        for (const call of func.calls || []) {
-          const callId = `${modulePath}#func:${call}`;
-
-          // Проверяем, существует ли вызываемая функция в этом же модуле
-          if (graph[callId]) {
-            if (!graph[funcId].includes(callId)) {
-              graph[funcId].push(callId);
-            }
-          } else {
-            // Ищем в других модулях
-            for (const [otherMod, otherPkg] of Object.entries(packages)) {
-              if (!otherPkg) {
-                continue;
-              }
-              const otherFuncs = otherPkg.entities?.functions || [];
-              for (const otherFunc of otherFuncs) {
-                if (otherFunc.name === call) {
-                  const otherId = `${otherMod}#func:${call}`;
-                  if (!graph[funcId].includes(otherId)) {
-                    graph[funcId].push(otherId);
-                  }
-                  break;
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    return graph;
-  }
-
-  /**
-   * Находит точку входа в проект
-   * @returns {string|null}
-   */
-  findEntryModule() {
-    const packages = this.app.reportData?.packages || {};
-    for (const [modulePath, pkg] of Object.entries(packages)) {
-      if (pkg?.isEntry) {
-        return modulePath;
-      }
-    }
-    // Если точка входа не найдена, берем первый модуль
-    const keys = Object.keys(packages);
-    return keys.length > 0 ? keys[0] : null;
-  }
-
-  /**
-   * Находит модуль для функции по имени
-   * @param {string} funcName - Имя функции
-   * @returns {string|null}
-   */
-  findModuleForFunction(funcName) {
-    const packages = this.app.reportData?.packages || {};
-    for (const [modulePath, pkg] of Object.entries(packages)) {
-      if (!pkg) {
-        continue;
-      }
-      const funcs = pkg.entities?.functions || [];
-      for (const func of funcs) {
-        if (func.name === funcName) {
-          return modulePath;
-        }
-      }
-    }
-    return null;
-  }
-
-  /**
    * Синхронизирует Breadcrumbs с графом
    */
   syncWithGraph() {
-    const focusModule = this.app.cardManager?.getFocusModule();
-    const focusFunction = this.app.cardManager?.getFocusFunction();
-    const mode = this.app.graphModeManager?.getMode() || 'all';
+    const focusModule = this.app.cardManager?.getFocusModule?.() || this.currentModule;
+    const focusFunction = this.app.cardManager?.getFocusFunction?.() || this.currentFunction;
+    const mode = this.app.graphModeManager?.getMode?.() || 'all';
 
     if (this.app.graphManager) {
       this.app.graphManager.updateGraphWithFocus(focusModule, focusFunction, mode);
@@ -848,5 +988,16 @@ export class BreadcrumbManager {
    */
   hasFocus() {
     return !!(this.currentModule || this.currentFunction);
+  }
+
+  /**
+   * Очистка подписок
+   */
+  dispose() {
+    if (this._unsubscribeRouter) {
+      this._unsubscribeRouter();
+      this._unsubscribeRouter = null;
+    }
+    this.clear();
   }
 }

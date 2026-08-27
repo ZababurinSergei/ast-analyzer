@@ -1586,3 +1586,140 @@ body {
     border-color: #22d3ee;
     box-shadow: 0 0 20px rgba(34, 211, 238, 0.1);
 }
+
+/* ============================================
+   АДРЕСНАЯ СТРОКА (Location Bar)
+   ============================================ */
+.location-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    background: #0f172a;
+    border-radius: 6px;
+    border: 1px solid #1a2a4a;
+    margin-bottom: 8px;
+    min-height: 34px;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.location-bar:hover {
+    border-color: #2a3a5a;
+}
+
+.location-bar.editing {
+    border-color: #22d3ee;
+    box-shadow: 0 0 20px rgba(34, 211, 238, 0.1);
+}
+
+.location-display {
+    flex: 1;
+    font-family: 'Fira Code', Consolas, monospace;
+    font-size: 13px;
+    color: #60a5fa;
+    padding: 4px 8px;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.location-display:hover {
+    background: rgba(96, 165, 250, 0.05);
+}
+
+.location-input {
+    flex: 1;
+    font-family: 'Fira Code', Consolas, monospace;
+    font-size: 13px;
+    color: #e2e8f0;
+    background: #0a0a1a;
+    border: 1px solid #22d3ee;
+    border-radius: 4px;
+    padding: 4px 8px;
+    outline: none;
+    min-width: 0;
+}
+
+.location-input:focus {
+    box-shadow: 0 0 20px rgba(34, 211, 238, 0.1);
+}
+
+.location-nav-btn {
+    background: none;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    line-height: 1;
+}
+
+.location-nav-btn:hover:not(:disabled) {
+    color: #60a5fa;
+    background: rgba(96, 165, 250, 0.1);
+}
+
+.location-nav-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.location-copy-btn,
+.location-reset-btn {
+    background: none;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.location-copy-btn:hover {
+    color: #60a5fa;
+    background: rgba(96, 165, 250, 0.1);
+}
+
+.location-reset-btn:hover {
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.1);
+}
+
+.location-suggestions {
+    position: fixed;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+    margin-top: 4px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    min-width: 200px;
+}
+
+.location-suggestions::-webkit-scrollbar {
+    width: 4px;
+}
+
+.location-suggestions::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.location-suggestions::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 4px;
+}

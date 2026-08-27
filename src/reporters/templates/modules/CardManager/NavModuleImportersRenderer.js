@@ -49,7 +49,7 @@ export class NavModuleImportersRenderer {
     let html = `
             <div class="nav-section nav-module-importers" style="padding: 4px 8px; margin: 2px 0; border-top: 1px solid #1a2a4a; background: rgba(59, 130, 246, 0.02); border-radius: 4px;">
                 <span class="nav-label" style="font-size: 10px; color: #3b82f6; display: flex; align-items: center; gap: 6px;">
-                    <span>📥 Импортируют этот модуль (${totalCount}):</span>
+                    <span>➡️ import (${totalCount}):</span>
                     <span style="font-size: 8px; color: #64748b; font-weight: normal;">
                         (клик → переход к модулю)
                     </span>

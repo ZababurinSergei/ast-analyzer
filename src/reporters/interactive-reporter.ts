@@ -1,33 +1,19 @@
-// packages/ast-analyzer/src/reporters/interactive-reporter.ts
+// src/reporters/interactive-reporter.ts
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import type { FullAnalysis } from '../types.js';
 import { DataConverter } from './data-converter.js';
+import { getRootPath, getPathSymbol } from './env.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-/**
- * Рекурсивно копирует директорию
- */
-function copyDirectory(src: string, dest: string): void {
-  if (!fs.existsSync(dest)) {
-    fs.mkdirSync(dest, { recursive: true });
-  }
-
-  const entries = fs.readdirSync(src, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-
-    if (entry.isDirectory()) {
-      copyDirectory(srcPath, destPath);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-    }
-  }
+export interface InteractiveReporterOptions {
+  /** Пресет окружения */
+  preset?: 'development' | 'production' | 'test' | 'monorepo' | 'custom';
+  /** Пользовательский путь (для пресета 'custom') */
+  customPath?: string;
 }
 
 /**
@@ -37,12 +23,20 @@ function copyDirectory(src: string, dest: string): void {
  * @param analysis - полный анализ (FullAnalysis)
  * @param outputPath - путь для сохранения HTML
  * @param entitiesWithCalls - данные сущностей для обогащения
+ * @param options - опции генерации
  */
 export async function generateInteractiveHTML(
   analysis: FullAnalysis,
   outputPath: string,
-  entitiesWithCalls?: any
+  entitiesWithCalls?: any,
+  options: InteractiveReporterOptions = {}
 ): Promise<void> {
+  const { preset = 'infoenergo-ui', customPath } = options;
+
+  // Получаем корневой путь
+  const rootPath = getRootPath(preset, customPath);
+  const symbol = getPathSymbol();
+
   const outputDir = path.dirname(outputPath);
   const templateDir = path.join(__dirname, 'templates');
 
@@ -59,6 +53,7 @@ export async function generateInteractiveHTML(
   }
 
   console.log('\n📋 Подготовка файлов...');
+  console.log(`   📁 Root path: ${rootPath}`);
 
   // ============================================================
   // 1. КОПИРУЕМ data-converter.js ИЗ TEMPLATES
@@ -100,7 +95,7 @@ export async function generateInteractiveHTML(
   }
 
   // ============================================================
-  // 4. КОПИРУЕМ ДИРЕКТОРИЮ modules (НОВОЕ!)
+  // 4. КОПИРУЕМ ДИРЕКТОРИЮ modules
   // ============================================================
   const modulesSrc = path.join(templateDir, 'modules');
   const modulesDest = path.join(outputDir, 'modules');
@@ -112,12 +107,6 @@ export async function generateInteractiveHTML(
     );
   } else {
     console.warn(`  ⚠️ Директория modules не найдена в ${templateDir}`);
-    console.warn('  💡 Создайте директорию modules/ с файлами:');
-    console.warn('     - CardManager.js');
-    console.warn('     - GraphManager.js');
-    console.warn('     - BreadcrumbManager.js');
-    console.warn('     - GraphModeManager.js');
-    console.warn('     - CardModeManager.js');
   }
 
   // ============================================================
@@ -138,6 +127,9 @@ export async function generateInteractiveHTML(
     }
   }
 
+  const reportJson = JSON.stringify(report);
+  const functionsJson = JSON.stringify(allFunctions);
+
   // ============================================================
   // 6. ВСТРАИВАЕМ ДАННЫЕ В HTML
   // ============================================================
@@ -155,28 +147,30 @@ export async function generateInteractiveHTML(
     __TYPES_BY_LANG__: 'typescript, javascript',
     __ENTRY_NAMES__: analysis.root || 'не указана',
     __TIMESTAMP__: new Date().toLocaleString(),
+    __ROOT_PATH__: rootPath,
+    __ROOT_SYMBOL__: symbol,
   };
 
   for (const [key, value] of Object.entries(staticReplacements)) {
     htmlContent = htmlContent.replaceAll(key, value);
   }
 
-  // Встраиваем данные в JavaScript (перед importmap)
-  const reportJson = JSON.stringify(report);
-  const functionsJson = JSON.stringify(allFunctions);
-
+  // Встраиваем данные в JavaScript
   const dataScript = `
     <script>
       (function() {
         const SYM_REPORT_DATA = Symbol.for('__AST_INTERACTIVE_REPORT_DATA__');
         const SYM_FUNCTIONS_DATA = Symbol.for('__AST_INTERACTIVE_FUNCTIONS_DATA__');
         const SYM_DATA_VERSION = Symbol.for('__AST_INTERACTIVE_DATA_VERSION__');
+        const SYM_ROOT_PATH = Symbol.for('__AST_ROOT_PATH__');
 
         globalThis[SYM_REPORT_DATA] = ${reportJson};
         globalThis[SYM_FUNCTIONS_DATA] = ${functionsJson};
         globalThis[SYM_DATA_VERSION] = 1;
+        globalThis[SYM_ROOT_PATH] = '${rootPath}';
 
         console.log('✅ Данные загружены');
+        console.log('📁 Root path:', globalThis[SYM_ROOT_PATH]);
         console.log('📊 Модулей:', Object.keys(globalThis[SYM_REPORT_DATA].packages || {}).length);
         console.log('ƒ Функций:', globalThis[SYM_FUNCTIONS_DATA].length);
       })();
@@ -195,9 +189,32 @@ export async function generateInteractiveHTML(
   fs.writeFileSync(outputPath, htmlContent, 'utf-8');
 
   console.log(`\n✅ Отчет сохранен: ${outputPath}`);
+  console.log(`📁 Root path: ${rootPath}`);
   console.log(`📊 Модулей: ${report.fileStats.totalFiles}`);
   console.log(`ƒ Функций: ${report.entityStats.totalFunctions}`);
   console.log(`📞 Вызовов: ${report.entityStats.totalCalls}`);
+}
+
+/**
+ * Рекурсивно копирует директорию
+ */
+function copyDirectory(src: string, dest: string): void {
+  if (!fs.existsSync(dest)) {
+    fs.mkdirSync(dest, { recursive: true });
+  }
+
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+
+    if (entry.isDirectory()) {
+      copyDirectory(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
 }
 
 export default {

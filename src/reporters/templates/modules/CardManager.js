@@ -1321,23 +1321,21 @@ export class CardManager {
       modulePath,
       pkg,
     });
-    //
-    //
+    
     // ${callTreeHtml}
     // ${navModuleImportersHtml}
     // ${navExternalHtml}
     // ${navModuleImportersHtml}
-    //
 
     moduleCard.innerHTML = `
         ${headerHtml}
         ${badgesHtml}
-        ${navOutgoingHtml}
-        ${functionsListHtml} 
-        ${callTreeHtml}
         ${navIncomingHtml}
         ${navModuleImportersHtml}
         ${navInternalHtml}
+        ${navOutgoingHtml}
+        ${functionsListHtml} 
+        ${callTreeHtml}
     `;
     // ${navExportsHtml}
     return moduleCard;

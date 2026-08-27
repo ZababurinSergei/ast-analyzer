@@ -23,6 +23,116 @@
           color: #0f172a;
           font-weight: 600;
       }
+
+      /* Стили для адресной строки */
+      .location-bar {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 10px;
+          background: #0f172a;
+          border-radius: 6px;
+          border: 1px solid #1a2a4a;
+          margin-bottom: 8px;
+          min-height: 34px;
+          transition: all 0.2s ease;
+          position: relative;
+      }
+      .location-bar:hover {
+          border-color: #2a3a5a;
+      }
+      .location-bar.editing {
+          border-color: #22d3ee;
+          box-shadow: 0 0 20px rgba(34, 211, 238, 0.1);
+      }
+      .location-display {
+          flex: 1;
+          font-family: 'Fira Code', Consolas, monospace;
+          font-size: 13px;
+          color: #60a5fa;
+          padding: 4px 8px;
+          cursor: pointer;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          min-width: 0;
+          border-radius: 4px;
+          transition: all 0.2s ease;
+          user-select: none;
+          background: transparent;
+      }
+      .location-display:hover {
+          background: rgba(96, 165, 250, 0.05);
+      }
+      .location-input {
+          flex: 1;
+          font-family: 'Fira Code', Consolas, monospace;
+          font-size: 13px;
+          color: #e2e8f0;
+          background: #0a0a1a;
+          border: 1px solid #22d3ee;
+          border-radius: 4px;
+          padding: 4px 8px;
+          outline: none;
+          display: none;
+          min-width: 0;
+      }
+      .location-input:focus {
+          box-shadow: 0 0 20px rgba(34, 211, 238, 0.1);
+      }
+      .location-nav-btn {
+          background: none;
+          border: none;
+          color: #64748b;
+          cursor: pointer;
+          font-size: 13px;
+          padding: 4px 6px;
+          border-radius: 4px;
+          transition: all 0.2s ease;
+          line-height: 1;
+      }
+      .location-nav-btn:hover:not(:disabled) {
+          color: #60a5fa;
+          background: rgba(96, 165, 250, 0.1);
+      }
+      .location-nav-btn:disabled {
+          opacity: 0.3;
+          cursor: default;
+      }
+      .location-copy-btn,
+      .location-reset-btn {
+          background: none;
+          border: none;
+          color: #64748b;
+          cursor: pointer;
+          font-size: 14px;
+          padding: 4px 6px;
+          border-radius: 4px;
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          line-height: 1;
+      }
+      .location-copy-btn:hover {
+          color: #60a5fa;
+          background: rgba(96, 165, 250, 0.1);
+      }
+      .location-reset-btn:hover {
+          color: #f87171;
+          background: rgba(248, 113, 113, 0.1);
+      }
+      .location-separator {
+          color: #1a2a4a;
+          font-size: 12px;
+          flex-shrink: 0;
+      }
+      .location-icon {
+          font-size: 14px;
+          color: #60a5fa;
+          flex-shrink: 0;
+          opacity: 0.7;
+      }
   </style>
 </head>
 <body>
@@ -69,6 +179,14 @@
       <button id="btnClearFocus">✕ Очистить</button>
     </div>
 
+    <!-- 🆕 ГРУППА НАВИГАЦИИ -->
+    <div class="group" role="group" aria-label="Навигация">
+      <span class="group-label" id="navLabel">🧭 Навигация:</span>
+      <button id="btnNavBack" title="Назад (Alt+←)" style="font-size: 14px; opacity: 0.3; cursor: default;">◀</button>
+      <button id="btnNavForward" title="Вперед (Alt+→)" style="font-size: 14px; opacity: 0.3; cursor: default;">▶</button>
+      <button id="btnNavHome" title="Домой (Alt+Home)" style="font-size:14px;">🏠</button>
+    </div>
+
     <div class="group" role="search" aria-label="Поиск">
       <label for="searchInput" class="sr-only">Поиск функции или модуля</label>
       <input class="search-input" id="searchInput" placeholder="🔍 Поиск функции или модуля...">
@@ -76,6 +194,9 @@
 
     <span class="hint">💡 Клик на функцию → детали | Клик на модуль → фокус</span>
   </nav>
+
+  <!-- 🆕 АДРЕСНАЯ СТРОКА (динамически вставляется через LocationBar) -->
+  <div id="locationBarContainer"></div>
 
   <nav class="breadcrumbs-container" id="breadcrumbsContainer" aria-label="Навигационная цепочка">
     <div class="breadcrumbs-scroll">
@@ -152,22 +273,23 @@
 </div>
 
 <!-- ============================================================ -->
-<!-- ✅ IMPORTS - ТОЛЬКО ЭТОТ КОД ОСТАЕТСЯ                         -->
+<!-- ✅ IMPORTS                                                    -->
 <!-- ============================================================ -->
 
 <script type="importmap">
   {
     "imports": {
       "d3": "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js",
-      "./modules/AppInit.js": "./modules/AppInit.js"
+      "./modules/AppInit.js": "./modules/AppInit.js",
+      "./modules/Router.js": "./modules/Router.js",
+      "./modules/LocationBar.js": "./modules/LocationBar.js"
     }
   }
 </script>
 
-<!-- ✅ ОСНОВНОЙ МОДУЛЬ - ИСПОЛЬЗУЕТ AppInit.js -->
+<!-- ✅ ОСНОВНОЙ МОДУЛЬ -->
 <script type="module">
-  // ✅ ИМПОРТИРУЕМ ПРАВИЛЬНО - App ЭТО ОБЪЕКТ С МЕТОДАМИ
-  import { App, waitForApp, getAppAPI, isAppReady } from './modules/AppInit.js';
+  import { App } from './modules/AppInit.js';
   import './interactive-report.js';
 
   console.log('🚀 Template загружен, использует AppInit.js');
@@ -189,7 +311,7 @@
       console.error('❌ Ошибка инициализации:', error);
     });
 
-  // ✅ ТОЛЬКО НАСТРОЙКА СОБЫТИЙ ДЛЯ ШАБЛОНА
+  // ✅ НАСТРОЙКА СОБЫТИЙ ДЛЯ ШАБЛОНА
   function setupTemplateEventListeners(api) {
     console.log('🎯 Настройка обработчиков событий шаблона...');
 
@@ -236,6 +358,29 @@
       updateActiveButtons('card', 'list');
     });
 
+    // 🆕 КНОПКИ НАВИГАЦИИ
+    document.getElementById('btnNavBack')?.addEventListener('click', () => {
+      const router = window[Symbol.for('__AST_ROUTER__')];
+      if (router && router.canGoBack()) {
+        router.goBack();
+      }
+    });
+
+    document.getElementById('btnNavForward')?.addEventListener('click', () => {
+      const router = window[Symbol.for('__AST_ROUTER__')];
+      if (router && router.canGoForward()) {
+        router.goForward();
+      }
+    });
+
+    document.getElementById('btnNavHome')?.addEventListener('click', () => {
+      const router = window[Symbol.for('__AST_ROUTER__')];
+      if (router) {
+        router.navigateToUniverse();
+      }
+      if (api?.clearFocus) api.clearFocus();
+    });
+
     // Управление фокусом
     document.getElementById('btnClearFocus')?.addEventListener('click', safeClick('clearFocus'));
     document.getElementById('btnCloseFocus')?.addEventListener('click', safeClick('clearFocus'));
@@ -252,6 +397,17 @@
             api.handleSearch(this.value);
           }
         }, 300);
+      });
+
+      // 🆕 Ctrl+L - фокус на адресную строку
+      document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
+          e.preventDefault();
+          const locationBar = window[Symbol.for('__AST_LOCATION_BAR__')];
+          if (locationBar && typeof locationBar._startEditing === 'function') {
+            locationBar._startEditing();
+          }
+        }
       });
     }
 
@@ -279,8 +435,131 @@
       updateActiveButtons(type, mode);
     };
 
+    // 🆕 Обновление состояния кнопок навигации при изменении маршрута
+    const SYM_ROUTE_CHANGE = Symbol.for('__AST_ROUTE_CHANGE__');
+    window[SYM_ROUTE_CHANGE] = function(route) {
+      const router = window[Symbol.for('__AST_ROUTER__')];
+      if (!router) return;
+
+      const backBtn = document.getElementById('btnNavBack');
+      const forwardBtn = document.getElementById('btnNavForward');
+
+      if (backBtn) {
+        backBtn.style.opacity = router.canGoBack() ? '1' : '0.3';
+        backBtn.style.cursor = router.canGoBack() ? 'pointer' : 'default';
+      }
+      if (forwardBtn) {
+        forwardBtn.style.opacity = router.canGoForward() ? '1' : '0.3';
+        forwardBtn.style.cursor = router.canGoForward() ? 'pointer' : 'default';
+      }
+    };
+
     console.log('✅ Обработчики событий шаблона настроены!');
   }
+
+  // 🆕 ДОПОЛНИТЕЛЬНАЯ СИНХРОНИЗАЦИЯ ДЛЯ АДРЕСНОЙ СТРОКИ
+  (function syncLocationBar() {
+    const checkInterval = setInterval(() => {
+      const app = window[Symbol.for('__AST_APP__')];
+      const router = window[Symbol.for('__AST_ROUTER__')];
+      const locationBar = window[Symbol.for('__AST_LOCATION_BAR__')];
+
+      if (app && router && locationBar) {
+        clearInterval(checkInterval);
+        console.log('📍 LocationBar sync enabled');
+
+        // Принудительное обновление при клике на модуль
+        const originalFocusModule = app.focusModule;
+        app.focusModule = function(modulePath) {
+          originalFocusModule.call(this, modulePath);
+          router.navigateToModule(modulePath);
+          const route = router.getCurrentRoute();
+          locationBar._updateDisplay(route);
+          locationBar._updateInput(route);
+          locationBar._updateNavButtons();
+        };
+
+        // Принудительное обновление при клике на функцию
+        const originalFocusFunction = app.focusFunction;
+        app.focusFunction = function(funcName, modulePath) {
+          originalFocusFunction.call(this, funcName, modulePath);
+          router.navigateToFunction(modulePath, funcName);
+          const route = router.getCurrentRoute();
+          locationBar._updateDisplay(route);
+          locationBar._updateInput(route);
+          locationBar._updateNavButtons();
+        };
+
+        // Принудительное обновление при очистке фокуса
+        const originalClearFocus = app.clearFocus;
+        app.clearFocus = function() {
+          originalClearFocus.call(this);
+          router.navigateToUniverse();
+          const route = router.getCurrentRoute();
+          locationBar._updateDisplay(route);
+          locationBar._updateInput(route);
+          locationBar._updateNavButtons();
+        };
+
+        // Принудительное обновление при поиске
+        const originalHandleSearch = app.handleSearch;
+        app.handleSearch = function(query) {
+          originalHandleSearch.call(this, query);
+          if (query && query.trim()) {
+            router.navigateToSearch(query);
+          } else {
+            router.navigateToUniverse();
+          }
+          const route = router.getCurrentRoute();
+          locationBar._updateDisplay(route);
+          locationBar._updateInput(route);
+          locationBar._updateNavButtons();
+        };
+
+        console.log('✅ LocationBar sync complete');
+      }
+    }, 100);
+
+    setTimeout(() => clearInterval(checkInterval), 10000);
+  })();
+</script>
+
+<!-- Поддержка перезагрузки при разработке -->
+<script>
+  (function() {
+    var ws = new WebSocket('ws://' + window.location.host +
+      '/jb-server-page?reloadMode=RELOAD_ON_SAVE&'+
+      'referrer=' + encodeURIComponent(window.location.pathname));
+    ws.onmessage = function (msg) {
+      if (msg.data === 'reload') {
+        window.location.reload();
+      }
+      if (msg.data.startsWith('update-css ')) {
+        var messageId = msg.data.substring(11);
+        var links = document.getElementsByTagName('link');
+        for (var i = 0; i < links.length; i++) {
+          var link = links[i];
+          if (link.rel !== 'stylesheet') continue;
+          var clonedLink = link.cloneNode(true);
+          var newHref = link.href.replace(/(&|\?)jbUpdateLinksId=\d+/, "$1jbUpdateLinksId=" + messageId);
+          if (newHref !== link.href) {
+            clonedLink.href = newHref;
+          }
+          else {
+            var indexOfQuest = newHref.indexOf('?');
+            if (indexOfQuest >= 0) {
+              clonedLink.href = newHref.substring(0, indexOfQuest + 1) + 'jbUpdateLinksId=' + messageId + '&' +
+                newHref.substring(indexOfQuest + 1);
+            }
+            else {
+              clonedLink.href += '?' + 'jbUpdateLinksId=' + messageId;
+            }
+          }
+          link.replaceWith(clonedLink);
+        }
+      }
+    };
+  })();
 </script>
 </body>
 </html>

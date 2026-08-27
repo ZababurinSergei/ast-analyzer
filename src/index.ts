@@ -242,6 +242,12 @@ export {
 } from './reporters/markdown-reporter.js';
 
 // ==========================================
+// ЭКСПОРТ ENV (ПУТИ И ПРЕСЕТЫ)
+// ==========================================
+
+export { getRootPath, getPathSymbol, type EnvPreset, type EnvConfig } from './reporters/env.js';
+
+// ==========================================
 // ЭКСПОРТ ТИПОВ
 // ==========================================
 

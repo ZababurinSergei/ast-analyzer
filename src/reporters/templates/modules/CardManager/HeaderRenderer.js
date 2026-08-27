@@ -16,6 +16,10 @@ export class HeaderRenderer {
   constructor(manager) {
     this.manager = manager;
 
+    const SYM_ROOT_PATH = Symbol.for('__AST_ROOT_PATH__');
+
+
+    console.log('globalThis[SYM_ROOT_PATH]', globalThis, SYM_ROOT_PATH);
     // Базовый путь к проекту (для браузера)
     this.basePath = '/home/sergei/Desktop/system/packages/ast-analyzer/infoenergo-ui/';
 
