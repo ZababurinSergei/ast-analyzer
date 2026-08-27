@@ -1,1174 +1,1326 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Интерактивный граф модулей и функций</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Интерактивный граф ast-analyzer 3.0.0</title>
+  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
   <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          background: #0f172a;
-          color: #e2e8f0;
-          padding: 20px;
-          min-height: 100vh;
+      :root {
+          --bg: #0b1020;
+          --panel: #121a2f;
+          --panel-2: #18233d;
+          --border: #2a3658;
+          --text: #e8eefc;
+          --muted: #93a0c2;
+          --accent: #7aa2ff;
+          --fn-color: #fbbf24;
+          --const-color: #f472b6;
+          --interface-color: #a78bfa;
+          --type-color: #22d3ee;
+          --class-color: #4ade80;
+          --var-color: #f87171;
       }
-      .container { max-width: 1600px; margin: 0 auto; }
-      .header {
-          background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-          padding: 20px 30px;
-          border-radius: 12px;
-          margin-bottom: 20px;
-          border: 1px solid #334155;
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.45 Inter, Segoe UI, system-ui, sans-serif; }
+      body { display: grid; grid-template-rows: auto auto 1fr; }
+      header {
+          padding: 16px 20px 12px;
+          border-bottom: 1px solid var(--border);
+          background: linear-gradient(180deg, #151d34, #0f1629);
       }
-      .header h1 { font-size: 24px; color: #60a5fa; }
-      .header .sub { color: #94a3b8; margin-top: 4px; font-size: 13px; }
-      .header .stats-line {
-          display: flex;
-          gap: 20px;
-          flex-wrap: wrap;
-          margin-top: 10px;
-          font-size: 13px;
-      }
-      .header .stats-line .stat { color: #94a3b8; }
-      .header .stats-line .stat strong { color: #e2e8f0; }
-      .controls-bar {
-          display: flex;
-          gap: 12px;
-          flex-wrap: wrap;
-          align-items: center;
-          padding: 12px 16px;
-          background: #1e293b;
-          border-radius: 10px;
-          margin-bottom: 16px;
-          border: 1px solid #334155;
-      }
-      .controls-bar .group { display: flex; gap: 6px; align-items: center; }
-      .controls-bar .group-label { font-size: 11px; color: #94a3b8; margin-right: 4px; }
-      .controls-bar button {
-          background: #334155;
-          border: none;
-          color: #e2e8f0;
-          padding: 5px 14px;
-          border-radius: 6px;
-          cursor: pointer;
-          font-size: 12px;
-          transition: background 0.2s, transform 0.1s;
-      }
-      .controls-bar button:hover { background: #475569; }
-      .controls-bar button.active { background: #60a5fa; color: #0f172a; font-weight: 600; }
-      .controls-bar button:active { transform: scale(0.95); }
-      .controls-bar .search-input {
-          background: #0f172a;
-          border: 1px solid #334155;
-          border-radius: 6px;
-          padding: 5px 12px;
-          color: #e2e8f0;
-          font-size: 12px;
-          width: 200px;
-          outline: none;
-      }
-      .controls-bar .search-input:focus { border-color: #60a5fa; }
-      .controls-bar .search-input::placeholder { color: #64748b; }
-      .controls-bar .hint { font-size: 11px; color: #64748b; margin-left: auto; }
-      .graph-container {
-          background: #1e293b;
-          border-radius: 12px;
-          padding: 16px;
-          margin-bottom: 16px;
-          border: 1px solid #334155;
-          position: relative;
-          min-height: 500px;
-      }
-      .d3-graph-wrapper {
-          width: 100%;
-          height: 700px;
-          background: #0f172a;
-          border-radius: 8px;
-          position: relative;
-      }
-      .d3-graph-wrapper svg { width: 100%; height: 100%; display: block; }
-      .graph-tooltip {
-          position: absolute;
-          background: #1e293b;
-          border: 1px solid #334155;
-          border-radius: 8px;
-          padding: 12px 16px;
-          pointer-events: none;
-          max-width: 300px;
-          display: none;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-          z-index: 50;
-      }
-      .graph-tooltip .tt-title { font-weight: 600; color: #60a5fa; font-size: 14px; }
-      .graph-tooltip .tt-info { font-size: 12px; color: #94a3b8; margin-top: 4px; }
-      .graph-tooltip .tt-detail { font-size: 11px; color: #e2e8f0; margin-top: 6px; font-family: monospace; white-space: pre-wrap; }
-      .legend {
-          display: flex;
-          gap: 16px;
-          flex-wrap: wrap;
-          padding: 8px 0;
-          font-size: 12px;
-      }
-      .legend-item { display: flex; align-items: center; gap: 6px; }
-      .legend-color { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #475569; }
-      .focus-info {
-          background: #1e293b;
-          border-radius: 8px;
-          padding: 12px 16px;
-          margin-bottom: 16px;
-          border: 1px solid #22d3ee;
-          display: none;
-      }
-      .focus-info.active { display: block; }
-      .focus-info .title { color: #22d3ee; font-weight: 600; font-size: 14px; }
-      .focus-info .details { color: #94a3b8; font-size: 12px; margin-top: 4px; }
-      .focus-info .close-btn { background: none; border: none; color: #f87171; cursor: pointer; font-size: 14px; float: right; }
-      .focus-info .close-btn:hover { color: #fca5a5; }
-      .modules-grid {
+      header h1 { margin: 0 0 4px; font-size: 20px; font-weight: 650; }
+      header p { margin: 0; color: var(--muted); }
+      .stats {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-          gap: 16px;
-          margin-top: 20px;
+          grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+          gap: 8px;
+          padding: 10px 20px;
+          border-bottom: 1px solid var(--border);
+          background: #10182c;
       }
-      .module-card {
-          background: #1e293b;
-          border-radius: 10px;
-          padding: 14px 16px;
-          border: 1px solid #334155;
-          transition: all 0.3s;
-          cursor: pointer;
+      .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; }
+      .stat b { display: block; font-size: 18px; }
+      .stat span { color: var(--muted); font-size: 12px; }
+      .ok { color: #4ade80; }
+      .layout { display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
+      #graph { min-height: 0; background: #0b1020; border-radius: 8px; }
+      aside {
+          border-left: 1px solid var(--border);
+          background: var(--panel);
+          padding: 12px;
+          overflow: auto;
+          max-height: calc(100vh - 200px);
       }
-      .module-card:hover { border-color: #60a5fa; transform: translateY(-2px); }
-      .module-card.active { border-color: #22d3ee; box-shadow: 0 0 20px rgba(34, 211, 238, 0.15); }
-      .module-card .header-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-      .module-card .name { font-size: 14px; font-weight: 600; color: #60a5fa; word-break: break-all; }
-      .module-card .name .entry { color: #fbbf24; font-size: 12px; }
-      .module-card .path { font-size: 10px; color: #64748b; font-family: monospace; word-break: break-all; margin-top: 2px; }
-      .module-card .badges {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 4px;
-          margin: 6px 0;
-      }
-      .badge {
-          padding: 2px 8px;
-          border-radius: 12px;
-          font-size: 9px;
-          font-weight: 500;
-          text-transform: uppercase;
-      }
-      .badge.fn { background: #fbbf24; color: #0f172a; }
-      .badge.class { background: #4ade80; color: #0f172a; }
-      .badge.const { background: #f472b6; color: #0f172a; }
-      .badge.interface { background: #a78bfa; color: #fff; }
-      .badge.type { background: #22d3ee; color: #0f172a; }
-      .badge.var { background: #f87171; color: #fff; }
-      .badge.export { background: #f87171; color: #fff; }
-      .badge.async { background: #fbbf24; color: #0f172a; }
-      .badge.lang { background: #334155; color: #94a3b8; }
-      .badge.lines { background: #1e293b; color: #64748b; border: 1px solid #334155; }
-      .module-card .functions-list {
-          margin-top: 8px;
-          max-height: 300px;
-          overflow-y: auto;
-      }
-      .functions-list::-webkit-scrollbar { width: 4px; }
-      .functions-list::-webkit-scrollbar-track { background: transparent; }
-      .functions-list::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
-      .func-item {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          padding: 4px 8px;
-          margin: 2px 0;
-          background: #0f172a;
-          border-radius: 4px;
-          font-size: 11px;
-          font-family: monospace;
-          cursor: pointer;
-          transition: background 0.2s, border-color 0.2s;
-          border-left: 2px solid transparent;
-      }
-      .func-item:hover { background: #1a1a3a; border-left-color: #60a5fa; }
-      .func-item.active { background: #1a1a3a; border-left-color: #22d3ee; box-shadow: 0 0 12px rgba(34, 211, 238, 0.1); }
-      .func-item .func-name { color: #e2e8f0; }
-      .func-item .func-export { color: #f87171; font-size: 9px; }
-      .func-item .func-async { color: #fbbf24; font-size: 9px; }
-      .func-item .func-params { color: #94a3b8; font-size: 10px; }
-      .func-item .func-calls { color: #f59e0b; font-size: 10px; }
-      .func-item .func-called { color: #3b82f6; font-size: 10px; }
-      .func-item .func-line { color: #64748b; font-size: 9px; margin-left: auto; }
-      .detail-panel {
-          position: fixed;
-          right: 20px;
-          top: 50%;
-          transform: translateY(-50%);
-          background: #1e293b;
-          border: 1px solid #334155;
-          border-radius: 12px;
-          padding: 20px;
-          max-width: 420px;
-          max-height: 80vh;
-          overflow-y: auto;
-          display: none;
-          box-shadow: 0 20px 60px rgba(0,0,0,0.7);
-          z-index: 100;
-          min-width: 300px;
-      }
-      .detail-panel.active { display: block; }
-      .detail-panel::-webkit-scrollbar { width: 4px; }
-      .detail-panel::-webkit-scrollbar-track { background: transparent; }
-      .detail-panel::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
-      .detail-panel .dp-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
-      .detail-panel .dp-title { font-size: 18px; font-weight: 600; color: #60a5fa; }
-      .detail-panel .dp-close { background: none; border: none; color: #94a3b8; font-size: 20px; cursor: pointer; }
-      .detail-panel .dp-close:hover { color: #f87171; }
-      .detail-panel .dp-section { margin-top: 10px; padding: 8px 0; border-top: 1px solid #334155; }
-      .detail-panel .dp-section:first-child { border-top: none; }
-      .detail-panel .dp-section h4 { font-size: 11px; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; margin-bottom: 4px; }
-      .detail-panel .dp-section .item { font-size: 12px; color: #e2e8f0; padding: 2px 0; font-family: monospace; }
-      .detail-panel .dp-section .item .label { color: #94a3b8; }
-      .footer {
-          padding: 12px 20px;
-          background: #1e293b;
-          text-align: center;
-          color: #64748b;
-          font-size: 11px;
-          border-top: 1px solid #334155;
-          margin-top: 20px;
-          border-radius: 0 0 12px 12px;
-      }
-      @media (max-width: 768px) {
-          .modules-grid { grid-template-columns: 1fr; }
-          .controls-bar { flex-direction: column; align-items: stretch; }
-          .controls-bar .hint { display: none; }
-          .controls-bar .search-input { width: 100%; }
-          .detail-panel { right: 10px; left: 10px; max-width: none; min-width: auto; top: auto; bottom: 10px; transform: none; max-height: 60vh; }
-          .header .stats-line { flex-direction: column; gap: 4px; }
-          .d3-graph-wrapper { height: 450px; }
-      }
-      .update-notification {
-          position: fixed;
-          bottom: 20px;
-          right: 20px;
-          background: #22d3ee;
-          color: #0f172a;
-          padding: 12px 20px;
+      .controls { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+      input, select, button {
+          background: var(--panel-2);
+          color: var(--text);
+          border: 1px solid var(--border);
           border-radius: 8px;
-          font-size: 13px;
-          font-weight: 600;
-          box-shadow: 0 4px 20px rgba(34, 211, 238, 0.3);
-          opacity: 0;
-          transform: translateY(20px);
-          transition: opacity 0.3s, transform 0.3s;
-          z-index: 1000;
-          pointer-events: none;
+          padding: 6px 10px;
+          font-size: 12px;
       }
-      .update-notification.show {
-          opacity: 1;
-          transform: translateY(0);
-      }
-      .update-notification .count {
-          background: #0f172a;
-          color: #22d3ee;
-          padding: 0 8px;
+      input { flex: 1; min-width: 120px; }
+      button { cursor: pointer; }
+      button:hover { border-color: var(--accent); }
+      .legend { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+      .chip { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 11px; }
+      .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+      .details h2 { margin: 0 0 6px; font-size: 14px; word-break: break-all; }
+      .meta { color: var(--muted); margin-bottom: 8px; font-size: 12px; }
+      .list { margin: 0; padding: 0 0 0 14px; font-size: 12px; }
+      .list li { margin: 2px 0; word-break: break-all; }
+      .list a { color: var(--accent); cursor: pointer; text-decoration: none; }
+      .list a:hover { text-decoration: underline; }
+      .hint { color: var(--muted); font-size: 12px; }
+      .empty { color: var(--muted); font-style: italic; }
+      .entity-badge {
+          display: inline-block;
+          font-size: 9px;
+          padding: 0 6px;
           border-radius: 4px;
-          margin-left: 6px;
+          margin-right: 4px;
+          font-weight: 600;
       }
+      .badge-fn { background: #fbbf24; color: #0f172a; }
+      .badge-const { background: #f472b6; color: #0f172a; }
+      .badge-interface { background: #a78bfa; color: #fff; }
+      .badge-type { background: #22d3ee; color: #0f172a; }
+      .badge-class { background: #4ade80; color: #0f172a; }
+      .badge-var { background: #f87171; color: #fff; }
+      .badge-module { background: #3b82f6; color: #fff; }
+      .entity-list { max-height: 200px; overflow-y: auto; }
+      .entity-list::-webkit-scrollbar { width: 4px; }
+      .entity-list::-webkit-scrollbar-thumb { background: #2a3658; border-radius: 4px; }
+      @media (max-width: 900px) {
+          .layout { grid-template-columns: 1fr; grid-template-rows: 55vh auto; }
+          aside { border-left: 0; border-top: 1px solid var(--border); max-height: none; }
+      }
+      .loading { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); font-size: 18px; }
+      .loading::after { content: '...'; animation: dots 1.5s steps(4, end) infinite; }
+      @keyframes dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
+      .stats-filter { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+      .stats-filter .chip { font-size: 10px; cursor: pointer; padding: 2px 6px; border-radius: 4px; border: 1px solid transparent; }
+      .stats-filter .chip.active { border-color: var(--accent); background: rgba(122, 162, 255, 0.1); }
+      .stats-filter .chip .count { color: var(--muted); font-size: 9px; }
   </style>
 </head>
 <body>
-<div class="update-notification" id="updateNotification">
-  🔄 Данные обновлены <span class="count" id="updateCount">0</span>
+<header>
+  <h1>🔀 Интерактивный граф ast-analyzer 3.0.0</h1>
+  <p id="headerInfo">Загрузка данных...</p>
+</header>
+<section class="stats" id="stats"></section>
+<div class="layout">
+  <div id="graph"><div class="loading">Загрузка графа</div></div>
+  <aside>
+    <div class="controls">
+      <input id="search" placeholder="🔍 Поиск..." />
+      <select id="entityTypeFilter">
+        <option value="">Все сущности</option>
+        <option value="module">Модули</option>
+        <option value="function">Функции</option>
+        <option value="constant">Константы</option>
+        <option value="interface">Интерфейсы</option>
+        <option value="type">Типы</option>
+        <option value="class">Классы</option>
+        <option value="variable">Переменные</option>
+      </select>
+      <select id="groupFilter">
+        <option value="">Все группы</option>
+      </select>
+      <select id="layout">
+        <option value="physics">Динамический</option>
+        <option value="hierarchical">Иерархический</option>
+      </select>
+      <label class="chip"><input type="checkbox" id="showExternals" checked /> Внешние</label>
+      <button id="fit">📐 Центрировать</button>
+      <button id="reset">🔄 Сброс</button>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="details" id="details">
+      <p class="hint">💡 Клик по узлу — подробности. Двойной клик — фокус на связанные узлы.</p>
+    </div>
+  </aside>
 </div>
-
-<div class="container">
-  <div class="header">
-    <h1>🔀 Интерактивный граф модулей и функций</h1>
-    <div class="stats-line" id="statsLine">
-      <span class="stat">📁 <strong id="statModules">__STAT_MODULES__</strong> модулей</span>
-      <span class="stat">ƒ <strong id="statFunctions">__STAT_FUNCTIONS__</strong> функций</span>
-      <span class="stat">📞 <strong id="statCalls">__STAT_CALLS__</strong> вызовов</span>
-      <span class="stat">📤 <strong id="statExported">__STAT_EXPORTED__</strong> экспортировано</span>
-      <span class="stat">⚡ <strong id="statAsync">__STAT_ASYNC__</strong> async</span>
-      <span class="stat">📝 <strong id="statLines">__STAT_LINES__</strong> строк</span>
-      <span class="stat">💾 <strong id="statSize">__STAT_SIZE__</strong> KB</span>
-    </div>
-    <div class="sub" style="margin-top: 8px;">
-      📊 По типам: __TYPES_BY_LANG__ | ⭐ Точка входа: __ENTRY_NAMES__
-    </div>
-    <div class="sub">Сгенерировано: __TIMESTAMP__</div>
-  </div>
-
-  <div class="controls-bar">
-    <div class="group">
-      <span class="group-label">Режим:</span>
-      <button class="active" data-mode="all" onclick="getApp()?.setMode('all')">🌐 Все</button>
-      <button data-mode="inward" onclick="getApp()?.setMode('inward')">📥 Входящие</button>
-      <button data-mode="outward" onclick="getApp()?.setMode('outward')">📤 Исходящие</button>
-      <button data-mode="both" onclick="getApp()?.setMode('both')">🔁 Оба</button>
-    </div>
-    <div class="group">
-      <span class="group-label">Фокус:</span>
-      <button onclick="getApp()?.clearFocus()">✕ Очистить</button>
-    </div>
-    <input class="search-input" id="searchInput" placeholder="🔍 Поиск функции или модуля..." oninput="getApp()?.handleSearch(this.value)">
-    <span class="hint">💡 Клик на функцию → детали | Клик на модуль → фокус</span>
-  </div>
-
-  <div class="focus-info" id="focusInfo">
-    <button class="close-btn" onclick="getApp()?.clearFocus()">✕</button>
-    <div class="title" id="focusTitle">🎯 Фокус</div>
-    <div class="details" id="focusDetails"></div>
-  </div>
-
-  <div class="graph-container">
-    <div class="d3-graph-wrapper" id="d3GraphWrapper">
-      <div class="graph-tooltip" id="graphTooltip">
-        <div class="tt-title" id="ttTitle"></div>
-        <div class="tt-info" id="ttInfo"></div>
-        <div class="tt-detail" id="ttDetail"></div>
-      </div>
-    </div>
-    <div class="legend">
-      <div class="legend-item">
-        <div class="legend-color" style="background:#fbbf24;"></div>
-        <span>⭐ Точка входа</span>
-      </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background:#f87171;"></div>
-        <span>📤 Экспортированная функция</span>
-      </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background:#fbbf24;"></div>
-        <span>Внутренняя функция</span>
-      </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background:#22d3ee;"></div>
-        <span>🎯 Активная (фокус)</span>
-      </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background:#f59e0b; width:30px; height:3px;"></div>
-        <span>Вызов функции</span>
-      </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background:#3b82f6; width:30px; height:3px; border-style:dashed;"></div>
-        <span>Кем вызвана</span>
-      </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background:#3b82f6; width:30px; height:3px;"></div>
-        <span>Импорт модуля</span>
-      </div>
-      <div class="legend-item">
-        <div class="legend-color" style="background:#f59e0b; width:30px; height:3px;"></div>
-        <span>Обратная связь</span>
-      </div>
-    </div>
-  </div>
-
-  <div id="modulesContainer">
-    <h2 style="margin: 20px 0 12px; color:#60a5fa; font-size:18px;">📁 Модули и функции</h2>
-    <div class="modules-grid" id="modulesGrid"></div>
-  </div>
-
-  <div class="detail-panel" id="detailPanel">
-    <div class="dp-header">
-      <div class="dp-title" id="dpTitle">Функция</div>
-      <button class="dp-close" onclick="getApp()?.closeDetail()">✕</button>
-    </div>
-    <div id="dpContent"></div>
-  </div>
-
-  <div class="footer">
-    <p>Сгенерировано AST Analyzer v3.0.0 | Интерактивный граф на D3.js</p>
-  </div>
-</div>
-
-<script type="importmap">
-  {
-      "imports": {
-          "d3": "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"
-      }
-  }
-</script>
-
-<script type="module">
+<script>
   // ============================================================
-  // ИМПОРТ JSON И DataConverter
+  // ЗАГРУЗКА ДАННЫХ
   // ============================================================
-  import context from './package-lock-report.json' with { type: 'json' };
-  import { DataConverter } from './data-converter.js';
-  import 'd3';
-  const d3 = window.d3;
+  const DATA_URL = 'package-lock-report.json';
 
-  // ============================================================
-  // СИМВОЛЫ ДЛЯ ДАННЫХ И ПРИЛОЖЕНИЯ
-  // ============================================================
-  const SYM_REPORT_DATA = Symbol.for('__AST_INTERACTIVE_REPORT_DATA__');
-  const SYM_FUNCTIONS_DATA = Symbol.for('__AST_INTERACTIVE_FUNCTIONS_DATA__');
-  const SYM_DATA_VERSION = Symbol.for('__AST_INTERACTIVE_DATA_VERSION__');
-  const SYM_APP_INSTANCE = Symbol.for('__AST_INTERACTIVE_APP_INSTANCE__');
-
-  // ============================================================
-  // ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ ПРИЛОЖЕНИЯ
-  // ============================================================
-  function getApp() {
-    const app = globalThis[SYM_APP_INSTANCE];
-    if (app && app._isApp === true) {
-      return app;
-    }
-    return null;
-  }
-
-  globalThis.getApp = getApp;
-
-  // ============================================================
-  // ЗАГРУЗКА И ПРЕОБРАЗОВАНИЕ ДАННЫХ ЧЕРЕЗ DataConverter
-  // ============================================================
-
-  // Используем импортированный JSON
-  let rawReportData = context;
-  let rawFunctionsData = [];
-
-  // Собираем функции из JSON
-  for (const [modulePath, pkg] of Object.entries(context.packages || {})) {
-    if (!pkg) continue;
-    for (const func of pkg.entities?.functions || []) {
-      rawFunctionsData.push({ modulePath, func });
-    }
-  }
-
-  // Используем DataConverter для преобразования данных
   let REPORT_DATA = null;
-  let ALL_FUNCTIONS_DATA = [];
+  let ALL_ENTITIES = [];
+  let NODES_CACHE = [];
+  let EDGES_CACHE = [];
 
-  if (DataConverter && rawReportData) {
-    console.log('🔄 Используем DataConverter для обработки данных...');
+  // Цвета для типов сущностей
+  const ENTITY_COLORS = {
+    module: '#3b82f6',
+    function: '#fbbf24',
+    constant: '#f472b6',
+    interface: '#a78bfa',
+    type: '#22d3ee',
+    class: '#4ade80',
+    variable: '#f87171',
+    external: '#ef4444'
+  };
 
-    if (rawReportData.packages) {
-      // Данные уже в формате PackageLockReport
-      REPORT_DATA = rawReportData;
+  const ENTITY_LABELS = {
+    module: 'Модуль',
+    function: 'Функция',
+    constant: 'Константа',
+    interface: 'Интерфейс',
+    type: 'Тип',
+    class: 'Класс',
+    variable: 'Переменная',
+    external: 'Внешний'
+  };
 
-      // Обогащаем данными из функций (если есть)
-      if (rawFunctionsData && rawFunctionsData.length > 0) {
-        const entitiesWithCalls = {
-          functions: rawFunctionsData.map(item => item.func || item)
-        };
-        REPORT_DATA = DataConverter.enrichReport(REPORT_DATA, entitiesWithCalls);
-      }
-    } else if (rawReportData.moduleGraph) {
-      // Данные в формате FullAnalysis - преобразуем
-      REPORT_DATA = DataConverter.buildReportFromAnalysis(rawReportData);
-    } else {
-      // Неизвестный формат - используем как есть
-      REPORT_DATA = rawReportData;
+  const ENTITY_ICONS = {
+    module: '📁',
+    function: 'ƒ',
+    constant: '📌',
+    interface: '📋',
+    type: '📝',
+    class: '📦',
+    variable: '📄',
+    external: '📦'
+  };
+
+  // ============================================================
+  // ЗАГРУЗКА ДАННЫХ С СЕРВЕРА
+  // ============================================================
+  async function loadData() {
+    try {
+      const response = await fetch(DATA_URL);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      REPORT_DATA = data;
+      return data;
+    } catch (error) {
+      console.error('❌ Ошибка загрузки данных:', error);
+      // Показываем сообщение об ошибке
+      document.getElementById('graph').innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#f87171;flex-direction:column;gap:12px;padding:20px;text-align:center;">
+            <div style="font-size:48px;">⚠️</div>
+            <div>Не удалось загрузить данные</div>
+            <div style="font-size:12px;color:var(--muted);">${error.message}</div>
+            <button onclick="location.reload()" style="margin-top:8px;padding:8px 20px;background:var(--accent);color:#0f172a;border:none;border-radius:8px;cursor:pointer;">🔄 Попробовать снова</button>
+          </div>
+        `;
+      return null;
     }
-
-    // Формируем ALL_FUNCTIONS_DATA из преобразованных данных
-    if (REPORT_DATA && REPORT_DATA.packages) {
-      ALL_FUNCTIONS_DATA = [];
-      for (const [modulePath, pkg] of Object.entries(REPORT_DATA.packages)) {
-        if (!pkg) continue;
-        for (const func of pkg.entities?.functions || []) {
-          ALL_FUNCTIONS_DATA.push({ modulePath, func });
-        }
-      }
-    }
-  } else {
-    // Fallback: используем сырые данные
-    REPORT_DATA = rawReportData;
-    ALL_FUNCTIONS_DATA = rawFunctionsData || [];
   }
 
-  console.log('✅ Данные загружены и преобразованы');
-  console.log('📊 Модулей:', Object.keys(REPORT_DATA?.packages || {}).length);
-  console.log('ƒ Функций:', ALL_FUNCTIONS_DATA?.length || 0);
-  console.log('🔧 DataConverter использован:', !!DataConverter);
-
-  // Устанавливаем данные в globalThis через Symbol
-  globalThis[SYM_REPORT_DATA] = REPORT_DATA;
-  globalThis[SYM_FUNCTIONS_DATA] = ALL_FUNCTIONS_DATA;
-  globalThis[SYM_DATA_VERSION] = 1;
-
-  console.log('✅ Данные загружены из JSON через import');
-  console.log('📊 Модулей:', Object.keys(REPORT_DATA?.packages || {}).length);
-  console.log('ƒ Функций:', ALL_FUNCTIONS_DATA?.length || 0);
-
   // ============================================================
-  // ПРИЛОЖЕНИЕ
+  // ИЗВЛЕЧЕНИЕ ВСЕХ СУЩНОСТЕЙ ИЗ ДАННЫХ
   // ============================================================
+  function extractAllEntities(data) {
+    const entities = [];
+    const packages = data.packages || {};
 
-  class App {
-    constructor() {
-      this._isApp = true;
-      this.reportData = REPORT_DATA;
-      this.allFunctionsData = ALL_FUNCTIONS_DATA;
-      this.currentMode = "all";
-      this.currentFocusModule = null;
-      this.currentFocusFunction = null;
-      this.simulation = null;
-      this.svg = null;
-      this.g = null;
-      this.zoom = null;
-      this.graphNodes = [];
-      this.graphLinks = [];
-      this.nodeMap = new Map();
-      this.searchTimeout = null;
-      this.isInitialized = false;
-      this.updateCount = 0;
+    for (const [modulePath, pkg] of Object.entries(packages)) {
+      if (!pkg) continue;
 
-      globalThis[SYM_APP_INSTANCE] = this;
-
-      if (!globalThis.getApp) {
-        globalThis.getApp = getApp;
-      }
-
-      this.init();
-    }
-
-    init() {
-      this.reportData = globalThis[SYM_REPORT_DATA];
-      const allFunctionsData = globalThis[SYM_FUNCTIONS_DATA] || [];
-
-      if (!this.reportData) {
-        this.showPlaceholder();
-        return;
-      }
-
-      this.updateStats();
-      this.renderModules();
-      this.initGraph();
-      this.updateView();
-      this.setupKeyboard();
-      this.isInitialized = true;
-
-      console.log('✅ AST Interactive Report initialized');
-      console.log('📊 Modules:', Object.keys(this.reportData.packages || {}).length);
-      console.log('ƒ Functions:', this.reportData.entityStats?.totalFunctions || 0);
-      console.log('🔑 App instance available via: globalThis[Symbol.for("__AST_INTERACTIVE_APP_INSTANCE__")]');
-      console.log('🔑 getApp() available:', typeof globalThis.getApp === 'function');
-    }
-
-    showPlaceholder() {
-      const grid = document.getElementById("modulesGrid");
-      grid.innerHTML = `
-                    <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #94a3b8;">
-                        <div style="font-size: 48px; margin-bottom: 20px;">📊</div>
-                        <h3 style="color: #60a5fa; margin-bottom: 10px;">Нет данных для отображения</h3>
-                        <p style="font-size: 14px; max-width: 500px; margin: 0 auto;">
-                            Данные не загружены. Убедитесь, что файл package-lock-report.json существует.
-                        </p>
-                        <p style="font-size: 12px; margin-top: 10px; color: #64748b;">
-                            Файл должен находиться в той же директории, что и этот HTML.
-                        </p>
-                    </div>
-                `;
-      document.getElementById("d3GraphWrapper").innerHTML = `
-                    <div style="display:flex; align-items:center; justify-content:center; height:100%; color:#64748b; font-size:16px;">
-                        📊 Нет данных для отображения графа
-                    </div>
-                `;
-    }
-
-    updateStats() {
-      if (!this.reportData) return;
-      const stats = this.reportData.fileStats || {};
-      const entityStats = this.reportData.entityStats || {};
-
-      document.getElementById("statModules").textContent = stats.totalFiles || 0;
-      document.getElementById("statFunctions").textContent = entityStats.totalFunctions || 0;
-      document.getElementById("statCalls").textContent = entityStats.totalCalls || 0;
-      document.getElementById("statExported").textContent = entityStats.totalExportedFunctions || 0;
-      document.getElementById("statAsync").textContent = entityStats.totalAsyncFunctions || 0;
-      document.getElementById("statLines").textContent = stats.totalLines || 0;
-      document.getElementById("statSize").textContent = ((stats.totalSize || 0) / 1024).toFixed(2);
-    }
-
-    escapeHtml(str) {
-      if (!str) return "";
-      return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-    }
-
-    escapeJs(str) {
-      if (!str) return "";
-      return String(str).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/'/g, "\\'");
-    }
-
-    renderModules() {
-      const grid = document.getElementById("modulesGrid");
-      grid.innerHTML = "";
-      const moduleEntries = Object.entries(this.reportData.packages || {});
-      moduleEntries.sort((a, b) => {
-        const aEntry = a[1]?.isEntry ? 0 : 1;
-        const bEntry = b[1]?.isEntry ? 0 : 1;
-        return aEntry - bEntry;
+      // Добавляем сам модуль как узел
+      entities.push({
+        id: modulePath,
+        name: modulePath.split('/').pop() || modulePath,
+        fullName: modulePath,
+        type: 'module',
+        module: modulePath,
+        isEntry: pkg.isEntry || false,
+        language: pkg.language || 'unknown',
+        fileStats: pkg.fileStats || {},
+        displayPath: pkg.displayPath || modulePath,
+        exports: pkg.exports || {},
+        imports: pkg.imports || {},
+        entities: pkg.entities || {},
       });
 
-      for (const [modulePath, pkg] of moduleEntries) {
-        if (!pkg) continue;
-        const moduleCard = document.createElement("div");
-        moduleCard.className = "module-card";
-        moduleCard.dataset.module = modulePath;
-        moduleCard.onclick = () => this.focusModule(modulePath);
-
-        const funcs = pkg.entities?.functions || [];
-        const isEntry = pkg.isEntry || false;
-        const displayName = pkg.displayPath || modulePath.split("/").pop() || modulePath;
-        const language = pkg.language || "javascript";
-        const lines = pkg.fileStats?.lines || 0;
-
-        let funcsHtml = "";
-        for (const func of funcs) {
-          if (!func || !func.name) continue;
-          const funcName = this.escapeHtml(func.name);
-          const modulePathEscaped = this.escapeHtml(modulePath);
-          const paramsStr = (func.params || []).map(p => this.escapeHtml(p)).join(", ");
-          const callsStr = (func.calls || []).slice(0, 3).map(c => this.escapeHtml(c)).join(", ");
-          const isExported = func.isExported || false;
-          const isAsync = func.isAsync || false;
-          const lineNum = func.line || 0;
-
-          const onclickAttr = `onclick="event.stopPropagation(); getApp()?.focusFunction(\`${this.escapeJs(func.name)}\`, \`${this.escapeJs(modulePath)}\`)"`;
-          funcsHtml += `<div class="func-item" ${onclickAttr} data-func="${funcName}" data-module="${modulePathEscaped}">`;
-          funcsHtml += `<span class="func-name">${funcName}</span>`;
-          if (isExported) funcsHtml += `<span class="func-export">📤</span>`;
-          if (isAsync) funcsHtml += `<span class="func-async">⚡</span>`;
-          if (func.params && func.params.length > 0) {
-            funcsHtml += `<span class="func-params">(${paramsStr})</span>`;
-          }
-          if (func.calls && func.calls.length > 0) {
-            funcsHtml += `<span class="func-calls">→ ${callsStr}${func.calls.length > 3 ? "..." : ""}</span>`;
-          }
-          if (func.calledBy && func.calledBy.length > 0) {
-            funcsHtml += `<span class="func-called">← ${func.calledBy.length}</span>`;
-          }
-          funcsHtml += `<span class="func-line">стр.${lineNum}</span>`;
-          funcsHtml += `</div>`;
-        }
-
-        moduleCard.innerHTML = `
-                        <div class="header-row">
-                            <div>
-                                <div class="name">${isEntry ? "⭐ " : ""}${this.escapeHtml(displayName)}</div>
-                                <div class="path">${this.escapeHtml(modulePath)}</div>
-                            </div>
-                            <div style="display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end;">
-                                <span class="badge lang">${this.escapeHtml(language)}</span>
-                                ${isEntry ? '<span class="badge export">⭐ entry</span>' : ''}
-                                <span class="badge lines">${lines} строк</span>
-                            </div>
-                        </div>
-                        <div class="badges">
-                            <span class="badge fn">${funcs.length} функций</span>
-                            ${pkg.entities?.classes?.length > 0 ? `<span class="badge class">${pkg.entities.classes.length} классов</span>` : ''}
-                            ${pkg.entities?.constants?.length > 0 ? `<span class="badge const">${pkg.entities.constants.length} констант</span>` : ''}
-                            ${pkg.entities?.interfaces?.length > 0 ? `<span class="badge interface">${pkg.entities.interfaces.length} интерфейсов</span>` : ''}
-                            ${pkg.entities?.types?.length > 0 ? `<span class="badge type">${pkg.entities.types.length} типов</span>` : ''}
-                            ${pkg.entities?.variables?.length > 0 ? `<span class="badge var">${pkg.entities.variables.length} переменных</span>` : ''}
-                        </div>
-                        <div class="functions-list">${funcsHtml}</div>
-                    `;
-        grid.appendChild(moduleCard);
-      }
-    }
-
-    initGraph() {
-      const container = document.getElementById("d3GraphWrapper");
-      const width = container.clientWidth || 900;
-      const height = 700;
-      container.innerHTML = `<div class="graph-tooltip" id="graphTooltip"><div class="tt-title" id="ttTitle"></div><div class="tt-info" id="ttInfo"></div><div class="tt-detail" id="ttDetail"></div></div>`;
-
-      this.svg = d3.select(container).append("svg")
-        .attr("width", width)
-        .attr("height", height)
-        .style("background", "#0f172a")
-        .style("border-radius", "8px")
-        .style("display", "block");
-
-      this.g = this.svg.append("g");
-      this.zoom = d3.zoom()
-        .extent([[0, 0], [width, height]])
-        .scaleExtent([0.1, 4])
-        .on("zoom", (event) => { this.g.attr("transform", event.transform); });
-
-      this.svg.call(this.zoom);
-      this.buildGraphData();
-      this.renderGraph(width, height);
-
-      window.addEventListener("resize", () => {
-        const newWidth = container.clientWidth || 900;
-        this.svg.attr("width", newWidth);
-      });
-    }
-
-    buildGraphData() {
-      this.graphNodes = [];
-      this.graphLinks = [];
-      this.nodeMap = new Map();
-      const levelColors = ["#4ade80", "#60a5fa", "#a78bfa", "#f472b6", "#fbbf24", "#f87171", "#22d3ee"];
-
-      for (const [modulePath, pkg] of Object.entries(this.reportData.packages || {})) {
-        if (!pkg) continue;
-        const isRoot = pkg.isEntry || false;
-        const name = pkg.displayPath || modulePath.split("/").pop() || modulePath;
-        const funcs = pkg.entities?.functions || [];
-        const level = 0;
-        const nodeId = modulePath;
-
-        this.nodeMap.set(nodeId, {
-          id: nodeId,
-          name: name,
-          fullName: modulePath,
-          type: "module",
-          isRoot: isRoot,
-          level: level,
-          color: isRoot ? "#fbbf24" : (levelColors[level % levelColors.length] || "#94a3b8"),
-          size: isRoot ? 35 : 25,
-          functions: funcs,
-          pkg: pkg
+      // Функции
+      const functions = pkg.entities?.functions || [];
+      for (const func of functions) {
+        if (!func || !func.name) continue;
+        entities.push({
+          id: `${modulePath}#func:${func.name}`,
+          name: func.name,
+          fullName: func.name,
+          type: 'function',
+          module: modulePath,
+          isExported: func.isExported || false,
+          isAsync: func.isAsync || false,
+          params: func.params || [],
+          returnType: func.returnType || 'any',
+          line: func.line || 0,
+          calls: func.calls || [],
+          calledBy: func.calledBy || [],
+          complexity: func.complexity || 0,
+          body: func.body || '',
+          isMethod: func.isMethod || false,
+          className: func.className || '',
         });
-        this.graphNodes.push(this.nodeMap.get(nodeId));
+      }
 
-        for (const func of funcs) {
-          if (!func || !func.name) continue;
-          const funcId = modulePath + "#func:" + func.name;
-          if (!this.nodeMap.has(funcId)) {
-            this.nodeMap.set(funcId, {
-              id: funcId,
-              name: func.name,
-              fullName: func.name,
-              type: "function",
-              isRoot: false,
-              isExported: func.isExported || false,
-              isAsync: func.isAsync || false,
-              module: modulePath,
-              line: func.line || 0,
-              color: func.isExported ? "#f87171" : "#fbbf24",
-              size: 8,
-              calls: func.calls || [],
-              calledBy: func.calledBy || [],
-              params: func.params || [],
-              returnType: func.returnType || "any",
-              body: func.body || ""
+      // Константы
+      const constants = pkg.entities?.constants || [];
+      for (const const_ of constants) {
+        if (!const_ || !const_.name) continue;
+        entities.push({
+          id: `${modulePath}#const:${const_.name}`,
+          name: const_.name,
+          fullName: const_.name,
+          type: 'constant',
+          module: modulePath,
+          isExported: const_.isExported || false,
+          value: const_.value || '',
+          line: const_.line || 0,
+        });
+      }
+
+      // Интерфейсы
+      const interfaces = pkg.entities?.interfaces || [];
+      for (const interface_ of interfaces) {
+        if (!interface_ || !interface_.name) continue;
+        entities.push({
+          id: `${modulePath}#interface:${interface_.name}`,
+          name: interface_.name,
+          fullName: interface_.name,
+          type: 'interface',
+          module: modulePath,
+          isExported: interface_.isExported || false,
+          properties: interface_.properties || [],
+          extends: interface_.extends || [],
+          line: interface_.line || 0,
+        });
+      }
+
+      // Типы
+      const types = pkg.entities?.types || [];
+      for (const type of types) {
+        if (!type || !type.name) continue;
+        entities.push({
+          id: `${modulePath}#type:${type.name}`,
+          name: type.name,
+          fullName: type.name,
+          type: 'type',
+          module: modulePath,
+          isExported: type.isExported || false,
+          definition: type.definition || '',
+          line: type.line || 0,
+        });
+      }
+
+      // Классы
+      const classes = pkg.entities?.classes || [];
+      for (const class_ of classes) {
+        if (!class_ || !class_.name) continue;
+        entities.push({
+          id: `${modulePath}#class:${class_.name}`,
+          name: class_.name,
+          fullName: class_.name,
+          type: 'class',
+          module: modulePath,
+          isExported: class_.isExported || false,
+          extends: class_.extends || '',
+          implements: class_.implements || [],
+          methods: class_.methods || [],
+          properties: class_.properties || [],
+          line: class_.line || 0,
+        });
+      }
+
+      // Переменные
+      const variables = pkg.entities?.variables || [];
+      for (const variable of variables) {
+        if (!variable || !variable.name) continue;
+        entities.push({
+          id: `${modulePath}#var:${variable.name}`,
+          name: variable.name,
+          fullName: variable.name,
+          type: 'variable',
+          module: modulePath,
+          isExported: variable.isExported || false,
+          value: variable.value || '',
+          line: variable.line || 0,
+        });
+      }
+    }
+
+    return entities;
+  }
+
+  // ============================================================
+  // ПОСТРОЕНИЕ СВЯЗЕЙ МЕЖДУ СУЩНОСТЯМИ
+  // ============================================================
+  function buildEntityEdges(entities, data) {
+    const edges = [];
+    const entityMap = new Map();
+    for (const e of entities) {
+      entityMap.set(e.id, e);
+    }
+
+    // Связи: модуль -> сущности внутри него
+    for (const e of entities) {
+      if (e.type !== 'module') {
+        edges.push({
+          from: e.module,
+          to: e.id,
+          type: 'contains',
+          label: 'содержит'
+        });
+      }
+    }
+
+    // Связи: вызовы функций
+    for (const e of entities) {
+      if (e.type === 'function' && e.calls) {
+        for (const call of e.calls) {
+          // Ищем вызываемую функцию
+          const targetId = `${e.module}#func:${call}`;
+          if (entityMap.has(targetId)) {
+            edges.push({
+              from: e.id,
+              to: targetId,
+              type: 'calls',
+              label: '→'
             });
-            this.graphNodes.push(this.nodeMap.get(funcId));
-          }
-        }
-      }
-
-      const inwardDeps = this.reportData.dependencyGraph?.inwardDependencies || {};
-      const outwardDeps = this.reportData.dependencyGraph?.outwardDependencies || {};
-      const addedEdges = new Set();
-
-      for (const [from, deps] of Object.entries(outwardDeps)) {
-        if (!deps) continue;
-        for (const to of deps) {
-          const edgeKey = from + "->" + to;
-          if (addedEdges.has(edgeKey)) continue;
-          addedEdges.add(edgeKey);
-          if (this.nodeMap.has(from) && this.nodeMap.has(to)) {
-            this.graphLinks.push({ source: from, target: to, type: "import", isCycle: false, isCall: false });
-          }
-        }
-      }
-
-      for (const node of this.graphNodes) {
-        if (node.type !== "function") continue;
-        const calls = node.calls || [];
-        for (const call of calls) {
-          if (!call) continue;
-          const targetKey = node.module + "#func:" + call;
-          if (this.nodeMap.has(targetKey)) {
-            const edgeKey = node.id + "->" + targetKey;
-            if (!addedEdges.has(edgeKey)) {
-              addedEdges.add(edgeKey);
-              this.graphLinks.push({ source: node.id, target: targetKey, type: "call", isCall: true, isCycle: false });
-            }
           } else {
-            for (const otherNode of this.graphNodes) {
-              if (otherNode.type === "function" && otherNode.name === call) {
-                const edgeKey = node.id + "->" + otherNode.id;
-                if (!addedEdges.has(edgeKey)) {
-                  addedEdges.add(edgeKey);
-                  this.graphLinks.push({ source: node.id, target: otherNode.id, type: "call", isCall: true, isCycle: false });
-                }
+            // Ищем в других модулях
+            for (const [id, entity] of entityMap) {
+              if (entity.type === 'function' && entity.name === call && entity.module !== e.module) {
+                edges.push({
+                  from: e.id,
+                  to: id,
+                  type: 'calls',
+                  label: '→'
+                });
                 break;
               }
             }
           }
         }
       }
-
-      this.graphLinks = this.graphLinks.filter(link => this.nodeMap.has(link.source) && this.nodeMap.has(link.target));
     }
 
-    renderGraph(width, height) {
-      if (!this.g) return;
-      this.g.selectAll("*").remove();
-
-      const defs = this.g.append("defs");
-      defs.append("marker")
-        .attr("id", "arrow")
-        .attr("viewBox", "0 0 10 10")
-        .attr("refX", 10)
-        .attr("refY", 5)
-        .attr("markerWidth", 8)
-        .attr("markerHeight", 8)
-        .attr("orient", "auto")
-        .append("path")
-        .attr("d", "M 0 0 L 10 5 L 0 10 z")
-        .attr("fill", "#3b82f6");
-
-      defs.append("marker")
-        .attr("id", "arrow-call")
-        .attr("viewBox", "0 0 10 10")
-        .attr("refX", 10)
-        .attr("refY", 5)
-        .attr("markerWidth", 8)
-        .attr("markerHeight", 8)
-        .attr("orient", "auto")
-        .append("path")
-        .attr("d", "M 0 0 L 10 5 L 0 10 z")
-        .attr("fill", "#ef4444");
-
-      let filteredNodes = this.graphNodes;
-      let filteredLinks = this.graphLinks;
-
-      if (this.currentFocusModule) {
-        const related = new Set([this.currentFocusModule]);
-        for (const link of this.graphLinks) {
-          if (link.source === this.currentFocusModule) related.add(link.target);
-          if (link.target === this.currentFocusModule) related.add(link.source);
-        }
-        filteredNodes = this.graphNodes.filter(n => related.has(n.id) || n.type === "function");
-        filteredLinks = this.graphLinks.filter(l => related.has(l.source) && related.has(l.target));
-      }
-
-      if (this.currentFocusFunction) {
-        const related = new Set([this.currentFocusFunction]);
-        let focusModule = "";
-        for (const node of this.graphNodes) {
-          if (node.id === this.currentFocusFunction) { focusModule = node.module || ""; break; }
-        }
-        if (focusModule) related.add(focusModule);
-        for (const link of this.graphLinks) {
-          if (link.source === this.currentFocusFunction) related.add(link.target);
-          if (link.target === this.currentFocusFunction) related.add(link.source);
-        }
-        filteredNodes = this.graphNodes.filter(n => related.has(n.id));
-        filteredLinks = this.graphLinks.filter(l => related.has(l.source) && related.has(l.target));
-      }
-
-      const searchQuery = document.getElementById("searchInput").value.toLowerCase().trim();
-      if (searchQuery) {
-        const matched = new Set();
-        for (const node of filteredNodes) {
-          if (node.name.toLowerCase().includes(searchQuery) || node.fullName?.toLowerCase().includes(searchQuery)) {
-            matched.add(node.id);
+    // Связи: импорты между модулями
+    const packages = data.packages || {};
+    for (const [modulePath, pkg] of Object.entries(packages)) {
+      if (!pkg) continue;
+      const imports = pkg.imports || {};
+      for (const [importSource] of Object.entries(imports)) {
+        if (entityMap.has(modulePath) && entityMap.has(importSource)) {
+          // Проверяем, не добавлено ли уже
+          const exists = edges.some(e =>
+            e.from === modulePath && e.to === importSource && e.type === 'import'
+          );
+          if (!exists) {
+            edges.push({
+              from: modulePath,
+              to: importSource,
+              type: 'import',
+              label: '←'
+            });
           }
         }
-        const expanded = new Set(matched);
-        for (const link of filteredLinks) {
-          if (matched.has(link.source)) expanded.add(link.target);
-          if (matched.has(link.target)) expanded.add(link.source);
-        }
-        filteredNodes = filteredNodes.filter(n => expanded.has(n.id));
-        filteredLinks = filteredLinks.filter(l => expanded.has(l.source) && expanded.has(l.target));
       }
-
-      const link = this.g.append("g").selectAll("line")
-        .data(filteredLinks)
-        .enter().append("line")
-        .attr("stroke", d => d.isCall ? "#ef4444" : (d.isCycle ? "#f59e0b" : "#3b82f6"))
-        .attr("stroke-width", d => d.isCall ? 1.5 : (d.isCycle ? 2 : 1))
-        .attr("stroke-opacity", d => d.isCall ? 0.8 : 0.5)
-        .attr("stroke-dasharray", d => d.isCall ? "none" : (d.isCycle ? "8,4" : "none"))
-        .attr("marker-end", d => d.isCall ? "url(#arrow-call)" : "url(#arrow)");
-
-      const nodeGroup = this.g.append("g").selectAll("g")
-        .data(filteredNodes)
-        .enter().append("g")
-        .attr("cursor", "pointer")
-        .on("click", (event, d) => {
-          if (d.type === "function") {
-            this.showDetail(d);
-          } else if (d.type === "module") {
-            this.focusModule(d.id);
-          }
-        })
-        .on("mouseover", (event, d) => { this.showTooltip(event, d); })
-        .on("mouseout", () => { this.hideTooltip(); })
-        .call(d3.drag()
-          .on("start", (event, d) => {
-            if (!event.active) this.simulation.alphaTarget(0.3).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-          })
-          .on("drag", (event, d) => {
-            d.fx = event.x;
-            d.fy = event.y;
-          })
-          .on("end", (event, d) => {
-            if (!event.active) this.simulation.alphaTarget(0);
-            d.fx = null;
-            d.fy = null;
-          }));
-
-      nodeGroup.append("circle")
-        .attr("r", d => d.size || 10)
-        .attr("fill", d => {
-          if (this.currentFocusFunction && d.id === this.currentFocusFunction) return "#22d3ee";
-          if (this.currentFocusModule && d.id === this.currentFocusModule) return "#22d3ee";
-          return d.color || "#94a3b8";
-        })
-        .attr("stroke", d => {
-          if (d.isRoot) return "#fbbf24";
-          if (this.currentFocusFunction && d.id === this.currentFocusFunction) return "#22d3ee";
-          if (this.currentFocusModule && d.id === this.currentFocusModule) return "#22d3ee";
-          return "#1e293b";
-        })
-        .attr("stroke-width", d => (d.isRoot || d.id === this.currentFocusFunction || d.id === this.currentFocusModule) ? 3 : 1.5)
-        .attr("opacity", d => 1);
-
-      nodeGroup.append("text")
-        .attr("dx", d => (d.size || 10) + 8)
-        .attr("dy", 4)
-        .attr("font-size", d => d.type === "function" ? "9px" : "12px")
-        .attr("fill", "#e2e8f0")
-        .attr("font-family", "monospace")
-        .text(d => {
-          if (d.isRoot) return "⭐ " + d.name;
-          if (d.type === "function" && d.isExported) return "📤 " + d.name;
-          return d.name;
-        })
-        .style("pointer-events", "none")
-        .attr("opacity", d => 1);
-
-      if (!this.currentFocusFunction) {
-        nodeGroup.filter(d => d.type === "module" && d.functions && d.functions.length > 0)
-          .append("text")
-          .attr("dx", d => (d.size || 10) + 8)
-          .attr("dy", 16)
-          .attr("font-size", "8px")
-          .attr("fill", "#94a3b8")
-          .attr("font-family", "monospace")
-          .text(d => d.functions.length + " функций")
-          .style("pointer-events", "none");
-      }
-
-      const sim = d3.forceSimulation(filteredNodes)
-        .force("link", d3.forceLink(filteredLinks).id(d => d.id).distance(d => d.isCall ? 100 : 150))
-        .force("charge", d3.forceManyBody().strength(d => d.type === "module" ? -500 : -200))
-        .force("center", d3.forceCenter(width / 2, height / 2))
-        .force("collision", d3.forceCollide().radius(d => (d.size || 10) + 15));
-
-      sim.on("tick", () => {
-        link.attr("x1", d => d.source.x).attr("y1", d => d.source.y).attr("x2", d => d.target.x).attr("y2", d => d.target.y);
-        nodeGroup.attr("transform", d => "translate(" + (d.x || 0) + "," + (d.y || 0) + ")");
-      });
-
-      this.simulation = sim;
     }
 
-    showTooltip(event, d) {
-      const tooltip = document.getElementById("graphTooltip");
-      document.getElementById("ttTitle").textContent = d.name;
-      document.getElementById("ttInfo").textContent = d.type === "module" ? "Модуль: " + d.fullName : "Тип: функция" + (d.isExported ? " 📤" : "");
-      let detail = "";
-      if (d.type === "function") {
-        detail += "Параметры: " + (d.params || []).join(", ") || "нет\n";
-        detail += "Возврат: " + (d.returnType || "any") + "\n";
-        detail += "Строка: " + (d.line || 0) + "\n";
-        detail += "Вызовов: " + (d.calls || []).length + "\n";
-        detail += "Кем вызвана: " + (d.calledBy || []).length;
+    // Связи: наследование классов
+    for (const e of entities) {
+      if (e.type === 'class' && e.extends) {
+        for (const ext of Array.isArray(e.extends) ? e.extends : [e.extends]) {
+          const targetId = `${e.module}#class:${ext}`;
+          if (entityMap.has(targetId)) {
+            edges.push({
+              from: e.id,
+              to: targetId,
+              type: 'extends',
+              label: 'extends'
+            });
+          }
+        }
+      }
+    }
+
+    // Связи: реализация интерфейсов
+    for (const e of entities) {
+      if (e.type === 'class' && e.implements) {
+        for (const impl of e.implements) {
+          const targetId = `${e.module}#interface:${impl}`;
+          if (entityMap.has(targetId)) {
+            edges.push({
+              from: e.id,
+              to: targetId,
+              type: 'implements',
+              label: 'implements'
+            });
+          }
+        }
+      }
+    }
+
+    // Связи: расширение интерфейсов
+    for (const e of entities) {
+      if (e.type === 'interface' && e.extends) {
+        for (const ext of e.extends) {
+          const targetId = `${e.module}#interface:${ext}`;
+          if (entityMap.has(targetId)) {
+            edges.push({
+              from: e.id,
+              to: targetId,
+              type: 'extends',
+              label: 'extends'
+            });
+          }
+        }
+      }
+    }
+
+    // Удаляем дубликаты
+    const uniqueEdges = [];
+    const edgeSet = new Set();
+    for (const e of edges) {
+      const key = `${e.from}->${e.to}:${e.type}`;
+      if (!edgeSet.has(key)) {
+        edgeSet.add(key);
+        uniqueEdges.push(e);
+      }
+    }
+
+    return uniqueEdges;
+  }
+
+  // ============================================================
+  // ФОРМИРОВАНИЕ ГРУПП
+  // ============================================================
+  function detectGroup(entity) {
+    if (entity.type === 'module') {
+      // Определяем группу по пути
+      const path = entity.fullName || entity.id;
+      if (path.includes('/core/')) return 'core';
+      if (path.includes('/modes/')) return 'modes';
+      if (path.includes('/refactor/')) return 'refactor';
+      if (path.includes('/semantic/')) return 'semantic';
+      if (path.includes('/formal/')) return 'formal';
+      if (path.includes('/reporters/')) return 'reporters';
+      if (path.includes('/ci-cd/')) return 'ci-cd';
+      if (path.includes('/utils/')) return 'utils';
+      if (path.includes('/types')) return 'types';
+      if (entity.isEntry) return 'entry';
+      return 'module';
+    }
+    return entity.type;
+  }
+
+  const GROUP_COLORS = {
+    entry: '#f59e0b',
+    core: '#3b82f6',
+    modes: '#8b5cf6',
+    refactor: '#ec4899',
+    semantic: '#14b8a6',
+    formal: '#f97316',
+    reporters: '#22c55e',
+    'ci-cd': '#06b6d4',
+    utils: '#64748b',
+    types: '#94a3b8',
+    module: '#3b82f6',
+    function: '#fbbf24',
+    constant: '#f472b6',
+    interface: '#a78bfa',
+    type: '#22d3ee',
+    class: '#4ade80',
+    variable: '#f87171',
+    external: '#ef4444'
+  };
+
+  const GROUP_LABELS = {
+    entry: '⭐ Точка входа',
+    core: '📦 Core',
+    modes: '🔧 Modes',
+    refactor: '♻️ Refactor',
+    semantic: '🧠 Semantic',
+    formal: '📐 Formal',
+    reporters: '📊 Reporters',
+    'ci-cd': '🚀 CI/CD',
+    utils: '🛠 Utils',
+    types: '📝 Types',
+    module: '📁 Модуль',
+    function: 'ƒ Функция',
+    constant: '📌 Константа',
+    interface: '📋 Интерфейс',
+    type: '📝 Тип',
+    class: '📦 Класс',
+    variable: '📄 Переменная',
+    external: '📦 Внешний'
+  };
+
+  // ============================================================
+  // ПОСТРОЕНИЕ ГРАФА
+  // ============================================================
+  function buildGraph(entities, edges, filters) {
+    const { search, group, entityType, showExternals } = filters;
+
+    let filteredEntities = entities;
+
+    // Фильтр по типу сущности
+    if (entityType) {
+      filteredEntities = filteredEntities.filter(e => e.type === entityType);
+    }
+
+    // Фильтр по группе
+    if (group) {
+      filteredEntities = filteredEntities.filter(e => detectGroup(e) === group);
+    }
+
+    // Фильтр по поиску
+    if (search) {
+      const q = search.toLowerCase();
+      filteredEntities = filteredEntities.filter(e =>
+        e.name.toLowerCase().includes(q) ||
+        e.fullName.toLowerCase().includes(q) ||
+        e.id.toLowerCase().includes(q)
+      );
+    }
+
+    // Фильтр внешних модулей
+    if (!showExternals) {
+      filteredEntities = filteredEntities.filter(e =>
+        e.type !== 'module' || !e.id.includes('node_modules')
+      );
+    }
+
+    const nodeIds = new Set(filteredEntities.map(e => e.id));
+
+    // Фильтруем ребра
+    let filteredEdges = edges.filter(e =>
+      nodeIds.has(e.from) && nodeIds.has(e.to)
+    );
+
+    // Для поиска расширяем граф
+    if (search) {
+      const searchIds = new Set(filteredEntities.map(e => e.id));
+      // Добавляем связанные узлы
+      for (const edge of edges) {
+        if (searchIds.has(edge.from) && !searchIds.has(edge.to)) {
+          const target = entities.find(e => e.id === edge.to);
+          if (target) {
+            filteredEntities.push(target);
+            searchIds.add(edge.to);
+          }
+        }
+        if (searchIds.has(edge.to) && !searchIds.has(edge.from)) {
+          const source = entities.find(e => e.id === edge.from);
+          if (source) {
+            filteredEntities.push(source);
+            searchIds.add(edge.from);
+          }
+        }
+      }
+      filteredEdges = edges.filter(e =>
+        searchIds.has(e.from) && searchIds.has(e.to)
+      );
+    }
+
+    // Строим узлы для vis-network
+    const nodes = filteredEntities.map(e => {
+      const group = detectGroup(e);
+      const color = GROUP_COLORS[group] || '#94a3b8';
+      const label = e.type === 'module'
+        ? e.name
+        : (e.isExported ? '📤 ' : '') + e.name;
+
+      let size = 12;
+      if (e.type === 'module') size = 18 + (e.isEntry ? 8 : 0);
+      else if (e.type === 'function') size = 10 + (e.isExported ? 4 : 0) + (e.calls?.length || 0) * 0.5;
+      else if (e.type === 'class') size = 12;
+      else if (e.type === 'interface') size = 10;
+      else size = 8;
+
+      // Формируем title для тултипа
+      let title = `<b>${e.name}</b>\n`;
+      title += `Тип: ${ENTITY_LABELS[e.type] || e.type}\n`;
+      if (e.type === 'module') {
+        title += `Путь: ${e.fullName}\n`;
+        title += `Язык: ${e.language || 'unknown'}\n`;
+        if (e.isEntry) title += '⭐ Точка входа\n';
+        if (e.fileStats) {
+          title += `Строк: ${e.fileStats.lines || 0}\n`;
+          title += `Размер: ${formatFileSize(e.fileStats.size || 0)}\n`;
+        }
       } else {
-        detail += "Функций: " + (d.functions || []).length + "\n";
-        if (d.pkg) detail += "Экспортов: " + (d.pkg.exports ? Object.keys(d.pkg.exports).length : 0);
-      }
-      document.getElementById("ttDetail").textContent = detail;
-
-      const container = document.getElementById("d3GraphWrapper");
-      const rect = container.getBoundingClientRect();
-      const x = event.clientX - rect.left + 15;
-      const y = event.clientY - rect.top - 10;
-      tooltip.style.display = "block";
-      tooltip.style.left = Math.min(x, rect.width - 320) + "px";
-      tooltip.style.top = Math.min(y, rect.height - 150) + "px";
-    }
-
-    hideTooltip() {
-      document.getElementById("graphTooltip").style.display = "none";
-    }
-
-    setMode(mode) {
-      this.currentMode = mode;
-      document.querySelectorAll("[data-mode]").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
-      this.updateView();
-    }
-
-    focusModule(modulePath) {
-      if (this.currentFocusModule === modulePath) { this.clearFocus(); return; }
-      this.currentFocusModule = modulePath;
-      this.currentFocusFunction = null;
-      this.updateView();
-
-      document.querySelectorAll(".module-card").forEach(c => c.classList.toggle("active", c.dataset.module === modulePath));
-
-      const info = document.getElementById("focusInfo");
-      info.classList.add("active");
-      const pkg = this.reportData.packages[modulePath];
-      const displayName = pkg?.displayPath || modulePath.split("/").pop() || modulePath;
-      document.getElementById("focusTitle").textContent = "🎯 Фокус: " + displayName;
-      if (pkg) {
-        const funcs = pkg.entities?.functions || [];
-        document.getElementById("focusDetails").textContent = "Функций: " + funcs.length + " | Экспортов: " + (pkg.exports ? Object.keys(pkg.exports).length : 0);
-      }
-
-      const card = document.querySelector(`.module-card[data-module="${modulePath}"]`);
-      if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-
-    focusFunction(funcName, modulePath) {
-      if (this.currentFocusFunction === funcName && this.currentFocusModule === modulePath) { this.clearFocus(); return; }
-      this.currentFocusFunction = funcName;
-      this.currentFocusModule = modulePath;
-      this.updateView();
-
-      document.querySelectorAll(".module-card").forEach(c => c.classList.toggle("active", c.dataset.module === modulePath));
-      document.querySelectorAll(".func-item").forEach(el => {
-        el.classList.toggle("active", el.dataset.func === funcName && el.dataset.module === modulePath);
-      });
-
-      const info = document.getElementById("focusInfo");
-      info.classList.add("active");
-      document.getElementById("focusTitle").textContent = "🎯 Функция: " + funcName;
-
-      let funcData = null;
-      for (const node of this.graphNodes) {
-        if (node.type === "function" && node.name === funcName && node.module === modulePath) {
-          funcData = node;
-          break;
+        title += `Модуль: ${e.module}\n`;
+        if (e.line) title += `Строка: ${e.line}\n`;
+        if (e.isExported) title += '📤 Экспортирована\n';
+        if (e.type === 'function') {
+          if (e.isAsync) title += '⚡ Асинхронная\n';
+          if (e.params?.length) title += `Параметры: ${e.params.join(', ')}\n`;
+          if (e.returnType) title += `Возврат: ${e.returnType}\n`;
+          if (e.calls?.length) title += `Вызовов: ${e.calls.length}\n`;
+          if (e.calledBy?.length) title += `Кем вызвана: ${e.calledBy.length}\n`;
+          if (e.complexity) title += `Сложность: ${e.complexity}\n`;
+        }
+        if (e.type === 'class') {
+          if (e.extends) title += `Наследует: ${e.extends}\n`;
+          if (e.implements?.length) title += `Реализует: ${e.implements.join(', ')}\n`;
+          if (e.methods?.length) title += `Методов: ${e.methods.length}\n`;
+        }
+        if (e.type === 'interface' || e.type === 'type') {
+          if (e.properties?.length) title += `Свойств: ${e.properties.length}\n`;
+          if (e.extends?.length) title += `Расширяет: ${e.extends.join(', ')}\n`;
         }
       }
-      if (funcData) {
-        const displayName = modulePath.split("/").pop() || modulePath;
-        document.getElementById("focusDetails").textContent = "Модуль: " + displayName + " | Параметры: " + (funcData.params || []).join(", ") || "нет" +
-          " | Вызовов: " + (funcData.calls || []).length + " | Кем вызвана: " + (funcData.calledBy || []).length;
-      }
-      this.showDetail(funcData || { name: funcName, module: modulePath });
+      title += `\n🖱 Клик для деталей`;
 
-      const el = document.querySelector(`.func-item[data-func="${funcName}"][data-module="${modulePath}"]`);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-
-    clearFocus() {
-      this.currentFocusModule = null;
-      this.currentFocusFunction = null;
-      document.getElementById("focusInfo").classList.remove("active");
-      document.querySelectorAll(".module-card").forEach(c => c.classList.remove("active"));
-      document.querySelectorAll(".func-item").forEach(el => el.classList.remove("active"));
-      this.closeDetail();
-      this.updateView();
-    }
-
-    updateView() {
-      const container = document.getElementById("d3GraphWrapper");
-      const width = container.clientWidth || 900;
-      const height = 700;
-      this.buildGraphData();
-      this.renderGraph(width, height);
-    }
-
-    showDetail(data) {
-      const panel = document.getElementById("detailPanel");
-      document.getElementById("dpTitle").textContent = data.name || "Функция";
-      let html = "";
-      html += '<div class="dp-section"><h4>Информация</h4>';
-      html += '<div class="item"><span class="label">Модуль:</span> ' + (data.module || "неизвестен") + '</div>';
-      html += '<div class="item"><span class="label">Строка:</span> ' + (data.line || 0) + '</div>';
-      html += '<div class="item"><span class="label">Экспортирована:</span> ' + (data.isExported ? "✅" : "❌") + '</div>';
-      html += '<div class="item"><span class="label">Асинхронная:</span> ' + (data.isAsync ? "✅" : "❌") + '</div>';
-      html += '<div class="item"><span class="label">Возврат:</span> ' + (data.returnType || "any") + '</div>';
-      html += '</div>';
-
-      const params = data.params || [];
-      if (params.length > 0) {
-        html += '<div class="dp-section"><h4>Параметры</h4>';
-        for (const p of params) html += '<div class="item">' + this.escapeHtml(p) + '</div>';
-        html += '</div>';
-      }
-
-      const calls = data.calls || [];
-      if (calls.length > 0) {
-        html += '<div class="dp-section"><h4>📞 Вызовы (кто вызывается)</h4>';
-        for (const call of calls) {
-          html += `<div class="item" style="cursor:pointer;color:#f59e0b;" onclick="getApp()?.focusFunction('${this.escapeJs(call)}', '${this.escapeJs(data.module || "")}')">→ ${this.escapeHtml(call)}</div>`;
+      return {
+        id: e.id,
+        label: label,
+        title: title,
+        group: group,
+        value: Math.max(6, size),
+        shape: e.type === 'module' ? (e.isEntry ? 'star' : 'dot') :
+          e.type === 'function' ? 'dot' :
+            e.type === 'class' ? 'box' :
+              e.type === 'interface' ? 'diamond' :
+                e.type === 'type' ? 'triangle' :
+                  e.type === 'constant' ? 'square' : 'dot',
+        color: {
+          background: color,
+          border: e.isEntry ? '#fbbf24' : '#0b1020',
+          highlight: { background: '#fff', border: color }
+        },
+        font: { color: '#e8eefc', size: e.type === 'module' ? 12 : 10 },
+        shapeProperties: {
+          borderDashes: e.type === 'external' ? [3, 3] : false
         }
-        html += '</div>';
-      }
+      };
+    });
 
-      const calledBy = data.calledBy || [];
-      if (calledBy.length > 0) {
-        html += '<div class="dp-section"><h4>📥 Кто вызывает</h4>';
-        for (const caller of calledBy) {
-          html += `<div class="item" style="cursor:pointer;color:#3b82f6;" onclick="getApp()?.focusFunction('${this.escapeJs(caller)}', '${this.escapeJs(data.module || "")}')">← ${this.escapeHtml(caller)}</div>`;
-        }
-        html += '</div>';
-      }
+    // Строим ребра
+    const visEdges = filteredEdges.map((e, i) => {
+      const edgeColors = {
+        contains: '#3b82f6',
+        calls: '#f59e0b',
+        import: '#3b82f6',
+        extends: '#4ade80',
+        implements: '#a78bfa'
+      };
+      const color = edgeColors[e.type] || '#3a4a73';
+      return {
+        id: 'e' + i,
+        from: e.from,
+        to: e.to,
+        label: e.label || '',
+        arrows: 'to',
+        color: { color: color, highlight: '#7aa2ff' },
+        smooth: { type: 'dynamic' },
+        font: { size: 8, color: '#64748b' },
+        width: e.type === 'calls' ? 1.5 : 1,
+        dashes: e.type === 'import' ? [4, 4] : false
+      };
+    });
 
-      if (data.body) {
-        const bodyPreview = data.body.length > 200 ? data.body.substring(0, 200) + "..." : data.body;
-        html += '<div class="dp-section"><h4>Тело (сокращённо)</h4>';
-        html += `<div class="item" style="font-size:10px;color:#94a3b8;white-space:pre-wrap;background:#0f172a;padding:8px;border-radius:4px;">${this.escapeHtml(bodyPreview)}</div>`;
-        html += '</div>';
-      }
-
-      document.getElementById("dpContent").innerHTML = html;
-      panel.classList.add("active");
-    }
-
-    closeDetail() {
-      document.getElementById("detailPanel").classList.remove("active");
-    }
-
-    handleSearch(query) {
-      clearTimeout(this.searchTimeout);
-      this.searchTimeout = setTimeout(() => { this.updateView(); }, 300);
-    }
-
-    setupKeyboard() {
-      document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape") { this.clearFocus(); this.closeDetail(); }
-        if (e.key === "f" && (e.ctrlKey || e.metaKey)) {
-          e.preventDefault();
-          document.getElementById("searchInput").focus();
-        }
-      });
-      document.addEventListener("click", (e) => {
-        const panel = document.getElementById("detailPanel");
-        if (panel.classList.contains("active") && !panel.contains(e.target) && !e.target.closest(".func-item")) {
-          this.closeDetail();
-        }
-      });
-    }
+    return { nodes, edges: visEdges, entityData: filteredEntities };
   }
 
   // ============================================================
-  // ЗАПУСК
+  // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
   // ============================================================
-
-  if (!globalThis.getApp) {
-    globalThis.getApp = getApp;
+  function formatFileSize(bytes) {
+    if (!bytes) return '0 B';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(2) + ' MB';
   }
 
-  const app = new App();
+  function basename(path) {
+    if (!path) return '';
+    const parts = path.split('/');
+    return parts[parts.length - 1] || path;
+  }
 
-  console.log('🚀 AST Interactive Report loaded');
-  console.log(`📊 Data available: ${!!globalThis[SYM_REPORT_DATA]}`);
-  console.log(`ƒ Functions data available: ${globalThis[SYM_FUNCTIONS_DATA]?.length || 0}`);
-  console.log(`🔑 App instance: ${globalThis[SYM_APP_INSTANCE] ? '✅' : '❌'}`);
-  console.log(`🔑 getApp() available: ${typeof globalThis.getApp === 'function' ? '✅' : '❌'}`);
+  function getEntityIcon(entity) {
+    if (entity.type === 'module') return '📁';
+    if (entity.isExported) return '📤';
+    const icons = {
+      function: 'ƒ',
+      constant: '📌',
+      interface: '📋',
+      type: '📝',
+      class: '📦',
+      variable: '📄'
+    };
+    return icons[entity.type] || '•';
+  }
+
+  // ============================================================
+  // ИНИЦИАЛИЗАЦИЯ VIS-NETWORK
+  // ============================================================
+  let network;
+  let nodesDS;
+  let edgesDS;
+  let selectedId = null;
+  let allEntities = [];
+  let allEdges = [];
+
+  function initNetwork(container, nodes, edges, options) {
+    if (network) {
+      network.destroy();
+      network = null;
+    }
+
+    nodesDS = new vis.DataSet(nodes);
+    edgesDS = new vis.DataSet(edges);
+
+    network = new vis.Network(container, { nodes: nodesDS, edges: edgesDS }, options);
+
+    network.on('click', (params) => {
+      if (params.nodes.length > 0) {
+        showDetails(params.nodes[0]);
+      }
+    });
+
+    network.on('doubleClick', (params) => {
+      if (params.nodes.length > 0) {
+        focusNeighborhood(params.nodes[0]);
+      }
+    });
+
+    network.on('hoverNode', (params) => {
+      // Можно добавить подсветку
+    });
+
+    network.on('blurNode', (params) => {
+      // Можно убрать подсветку
+    });
+
+    return network;
+  }
+
+  function renderGraph(filters) {
+    const container = document.getElementById('graph');
+
+    if (!allEntities.length || !allEdges.length) {
+      container.innerHTML = '<div class="loading">Нет данных</div>';
+      return;
+    }
+
+    const { nodes, edges, entityData } = buildGraph(allEntities, allEdges, filters);
+
+    if (nodes.length === 0) {
+      container.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);flex-direction:column;gap:8px;">
+            <div style="font-size:32px;">🔍</div>
+            <div>Ничего не найдено</div>
+          </div>
+        `;
+      return;
+    }
+
+    const isHierarchical = document.getElementById('layout').value === 'hierarchical';
+
+    const options = {
+      nodes: {
+        borderWidth: 2,
+        scaling: {
+          min: 8,
+          max: 40,
+          label: { min: 8, max: 14 }
+        },
+        font: {
+          size: 11,
+          color: '#e8eefc',
+          face: 'Inter, system-ui, sans-serif'
+        },
+        shadow: {
+          enabled: true,
+          color: 'rgba(0,0,0,0.3)',
+          size: 4
+        }
+      },
+      edges: {
+        width: 1.2,
+        selectionWidth: 2.5,
+        smooth: {
+          type: 'dynamic',
+          roundness: 0.3
+        },
+        font: {
+          size: 8,
+          color: '#64748b',
+          align: 'middle'
+        }
+      },
+      physics: isHierarchical ? false : {
+        enabled: true,
+        solver: 'forceAtlas2Based',
+        forceAtlas2Based: {
+          gravitationalConstant: -50,
+          springLength: 120,
+          springConstant: 0.05,
+          damping: 0.9
+        },
+        stabilization: {
+          iterations: 150,
+          updateInterval: 25
+        },
+        maxVelocity: 50,
+        minVelocity: 0.1
+      },
+      layout: isHierarchical ? {
+        hierarchical: {
+          enabled: true,
+          direction: 'UD',
+          sortMethod: 'directed',
+          nodeSpacing: 150,
+          levelSeparation: 120,
+          treeSpacing: 200,
+          blockShifting: true,
+          edgeMinimization: true,
+          parentCentralization: true
+        }
+      } : { hierarchical: false },
+      interaction: {
+        hover: true,
+        tooltipDelay: 100,
+        multiselect: false,
+        navigationButtons: true,
+        keyboard: true,
+        dragNodes: true,
+        dragView: true,
+        zoomView: true
+      }
+    };
+
+    // Сохраняем текущий зум
+    let currentScale = 1;
+    let currentPosition = { x: 0, y: 0 };
+    if (network) {
+      const scale = network.getScale();
+      const pos = network.getViewPosition();
+      if (scale) currentScale = scale;
+      if (pos) currentPosition = pos;
+    }
+
+    // Создаем новый network
+    container.innerHTML = '';
+    network = initNetwork(container, nodes, edges, options);
+
+    // Восстанавливаем позицию
+    if (currentScale > 0 && currentPosition) {
+      try {
+        network.moveTo({
+          position: currentPosition,
+          scale: Math.min(currentScale, 1.5),
+          animation: false
+        });
+      } catch (e) {
+        // Игнорируем ошибки
+      }
+    }
+
+    // Обновляем счетчики в статистике
+    updateStats(entityData);
+  }
+
+  // ============================================================
+  // ОТОБРАЖЕНИЕ ДЕТАЛЕЙ
+  // ============================================================
+  function showDetails(id) {
+    selectedId = id;
+    const entity = allEntities.find(e => e.id === id);
+    if (!entity) {
+      document.getElementById('details').innerHTML = '<p class="empty">Сущность не найдена</p>';
+      return;
+    }
+
+    const detailsDiv = document.getElementById('details');
+
+    let html = `<h2>${getEntityIcon(entity)} ${entity.name}</h2>`;
+    html += `<div class="meta">`;
+    html += `<span class="entity-badge badge-${entity.type}">${ENTITY_LABELS[entity.type] || entity.type}</span>`;
+    if (entity.isExported) html += ' 📤 Экспортирована';
+    if (entity.isAsync) html += ' ⚡ Асинхронная';
+    if (entity.isEntry) html += ' ⭐ Точка входа';
+    html += `</div>`;
+
+    // Общая информация
+    html += `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">`;
+    if (entity.module) {
+      const moduleLink = `<a data-id="${entity.module}">${basename(entity.module)}</a>`;
+      html += `Модуль: ${moduleLink}`;
+    }
+    if (entity.line) html += ` | Строка: ${entity.line}`;
+    if (entity.language) html += ` | Язык: ${entity.language}`;
+    if (entity.fileStats) {
+      if (entity.fileStats.lines) html += ` | Строк: ${entity.fileStats.lines}`;
+      if (entity.fileStats.size) html += ` | Размер: ${formatFileSize(entity.fileStats.size)}`;
+    }
+    html += `</div>`;
+
+    // Информация по типу
+    if (entity.type === 'function') {
+      html += `<div style="font-size:12px;margin-bottom:6px;">`;
+      html += `<b>Сигнатура:</b> ${entity.name}(${(entity.params || []).join(', ')})`;
+      if (entity.returnType) html += `: ${entity.returnType}`;
+      html += `</div>`;
+      if (entity.complexity) {
+        const color = entity.complexity > 10 ? '#f87171' : entity.complexity > 5 ? '#fbbf24' : '#4ade80';
+        html += `<div style="font-size:12px;color:${color};">🔄 Сложность: ${entity.complexity}</div>`;
+      }
+      if (entity.body) {
+        html += `<details style="margin:4px 0;"><summary style="cursor:pointer;color:var(--accent);font-size:12px;">📄 Тело функции</summary>`;
+        html += `<pre style="background:#0a0a1a;padding:8px;border-radius:4px;font-size:11px;overflow:auto;max-height:150px;color:#e2e8f0;border:1px solid var(--border);">${escapeHtml(entity.body)}</pre>`;
+        html += `</details>`;
+      }
+    }
+
+    if (entity.type === 'class') {
+      if (entity.extends) html += `<div style="font-size:12px;">📤 Наследует: ${entity.extends}</div>`;
+      if (entity.implements?.length) {
+        html += `<div style="font-size:12px;">📋 Реализует: ${entity.implements.join(', ')}</div>`;
+      }
+      if (entity.properties?.length) {
+        html += `<div style="font-size:12px;">📌 Свойства: ${entity.properties.length}</div>`;
+      }
+      if (entity.methods?.length) {
+        html += `<div style="font-size:12px;">ƒ Методы: ${entity.methods.length}</div>`;
+      }
+    }
+
+    if (entity.type === 'interface' || entity.type === 'type') {
+      if (entity.extends?.length) {
+        html += `<div style="font-size:12px;">📤 Расширяет: ${entity.extends.join(', ')}</div>`;
+      }
+      if (entity.properties?.length) {
+        html += `<div style="font-size:12px;">📌 Свойства: ${entity.properties.length}</div>`;
+      }
+      if (entity.definition) {
+        html += `<details style="margin:4px 0;"><summary style="cursor:pointer;color:var(--accent);font-size:12px;">📄 Определение</summary>`;
+        html += `<pre style="background:#0a0a1a;padding:8px;border-radius:4px;font-size:11px;overflow:auto;max-height:150px;color:#e2e8f0;border:1px solid var(--border);">${escapeHtml(entity.definition)}</pre>`;
+        html += `</details>`;
+      }
+    }
+
+    if (entity.type === 'constant' || entity.type === 'variable') {
+      if (entity.value) {
+        html += `<div style="font-size:12px;">📌 Значение: <code style="background:#0a0a1a;padding:2px 6px;border-radius:4px;font-size:11px;">${escapeHtml(String(entity.value))}</code></div>`;
+      }
+    }
+
+    // Связи
+    const incoming = allEdges.filter(e => e.to === entity.id);
+    const outgoing = allEdges.filter(e => e.from === entity.id);
+
+    if (incoming.length || outgoing.length) {
+      html += `<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">`;
+
+      if (outgoing.length) {
+        html += `<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">📤 Исходящие связи (${outgoing.length}):</div>`;
+        html += `<ul class="list">`;
+        for (const edge of outgoing) {
+          const target = allEntities.find(e => e.id === edge.to);
+          if (target) {
+            html += `<li><a data-id="${edge.to}">${getEntityIcon(target)} ${target.name}</a> <span style="color:#64748b;font-size:10px;">(${edge.type})</span></li>`;
+          }
+        }
+        html += `</ul>`;
+      }
+
+      if (incoming.length) {
+        html += `<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">📥 Входящие связи (${incoming.length}):</div>`;
+        html += `<ul class="list">`;
+        for (const edge of incoming) {
+          const source = allEntities.find(e => e.id === edge.from);
+          if (source) {
+            html += `<li><a data-id="${edge.from}">${getEntityIcon(source)} ${source.name}</a> <span style="color:#64748b;font-size:10px;">(${edge.type})</span></li>`;
+          }
+        }
+        html += `</ul>`;
+      }
+
+      html += `</div>`;
+    }
+
+    // Экспорты для модуля
+    if (entity.type === 'module' && entity.exports) {
+      const exportNames = Object.keys(entity.exports);
+      if (exportNames.length) {
+        html += `<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">`;
+        html += `<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">📤 Экспорты (${exportNames.length}):</div>`;
+        html += `<div style="display:flex;flex-wrap:wrap;gap:4px;">`;
+        for (const name of exportNames) {
+          html += `<span style="font-size:10px;background:#0f172a;padding:1px 8px;border-radius:4px;border:1px solid var(--border);">${escapeHtml(name)}</span>`;
+        }
+        html += `</div></div>`;
+      }
+    }
+
+    // Вызовы для функции
+    if (entity.type === 'function') {
+      if (entity.calls?.length) {
+        html += `<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">`;
+        html += `<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">📞 Вызывает (${entity.calls.length}):</div>`;
+        html += `<div style="display:flex;flex-wrap:wrap;gap:4px;">`;
+        for (const call of entity.calls) {
+          const target = allEntities.find(e => e.type === 'function' && e.name === call);
+          if (target) {
+            html += `<a data-id="${target.id}" style="font-size:10px;background:#0f172a;padding:1px 8px;border-radius:4px;border:1px solid var(--border);color:var(--accent);cursor:pointer;text-decoration:none;">${escapeHtml(call)}</a>`;
+          } else {
+            html += `<span style="font-size:10px;background:#0f172a;padding:1px 8px;border-radius:4px;border:1px solid var(--border);color:#64748b;">${escapeHtml(call)}</span>`;
+          }
+        }
+        html += `</div></div>`;
+      }
+
+      if (entity.calledBy?.length) {
+        html += `<div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">`;
+        html += `<div style="font-size:12px;color:var(--muted);margin-bottom:4px;">📥 Кем вызвана (${entity.calledBy.length}):</div>`;
+        html += `<div style="display:flex;flex-wrap:wrap;gap:4px;">`;
+        for (const caller of entity.calledBy) {
+          const source = allEntities.find(e => e.type === 'function' && e.name === caller);
+          if (source) {
+            html += `<a data-id="${source.id}" style="font-size:10px;background:#0f172a;padding:1px 8px;border-radius:4px;border:1px solid var(--border);color:var(--accent);cursor:pointer;text-decoration:none;">${escapeHtml(caller)}</a>`;
+          } else {
+            html += `<span style="font-size:10px;background:#0f172a;padding:1px 8px;border-radius:4px;border:1px solid var(--border);color:#64748b;">${escapeHtml(caller)}</span>`;
+          }
+        }
+        html += `</div></div>`;
+      }
+    }
+
+    detailsDiv.innerHTML = html;
+
+    // Обработчики для ссылок
+    detailsDiv.querySelectorAll('a[data-id]').forEach(a => {
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        const targetId = a.getAttribute('data-id');
+        const target = allEntities.find(e => e.id === targetId);
+        if (target) {
+          network.selectNodes([targetId]);
+          network.focus(targetId, { scale: 1.15, animation: { duration: 300 } });
+          showDetails(targetId);
+        }
+      });
+    });
+  }
+
+  function focusNeighborhood(id) {
+    const entity = allEntities.find(e => e.id === id);
+    if (!entity) return;
+
+    const keep = new Set([id]);
+    // Добавляем связанные узлы
+    for (const edge of allEdges) {
+      if (edge.from === id) keep.add(edge.to);
+      if (edge.to === id) keep.add(edge.from);
+    }
+
+    // Скрываем все узлы, кроме выбранных
+    const allNodeIds = new Set(allEntities.map(e => e.id));
+    for (const nodeId of allNodeIds) {
+      const hidden = !keep.has(nodeId);
+      nodesDS.update({ id: nodeId, hidden: hidden });
+    }
+
+    network.focus(id, { scale: 1.2, animation: { duration: 400 } });
+    showDetails(id);
+  }
+
+  // ============================================================
+  // СТАТИСТИКА
+  // ============================================================
+  function updateStats(entityData) {
+    const stats = document.getElementById('stats');
+    if (!stats) return;
+
+    const total = entityData.length;
+    const modules = entityData.filter(e => e.type === 'module').length;
+    const functions = entityData.filter(e => e.type === 'function').length;
+    const classes = entityData.filter(e => e.type === 'class').length;
+    const interfaces = entityData.filter(e => e.type === 'interface').length;
+    const types = entityData.filter(e => e.type === 'type').length;
+    const constants = entityData.filter(e => e.type === 'constant').length;
+    const variables = entityData.filter(e => e.type === 'variable').length;
+    const exported = entityData.filter(e => e.isExported).length;
+
+    stats.innerHTML = [
+      ['📊 Всего', total],
+      ['📁 Модулей', modules],
+      ['ƒ Функций', functions],
+      ['📦 Классов', classes],
+      ['📋 Интерфейсов', interfaces],
+      ['📝 Типов', types],
+      ['📌 Констант', constants],
+      ['📄 Переменных', variables],
+      ['📤 Экспортов', exported],
+    ].map(([label, value]) =>
+      `<div class="stat"><b>${value}</b><span>${label}</span></div>`
+    ).join('');
+  }
+
+  // ============================================================
+  // УТИЛИТЫ
+  // ============================================================
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  // ============================================================
+  // ОСНОВНАЯ ФУНКЦИЯ ЗАПУСКА
+  // ============================================================
+  async function main() {
+    const data = await loadData();
+    if (!data) return;
+
+    // Извлекаем все сущности
+    allEntities = extractAllEntities(data);
+    allEdges = buildEntityEdges(allEntities, data);
+
+    console.log(`📊 Загружено сущностей: ${allEntities.length}`);
+    console.log(`🔗 Загружено связей: ${allEdges.length}`);
+
+    // Обновляем заголовок
+    document.getElementById('headerInfo').textContent =
+      `📊 ${allEntities.length} сущностей, ${allEdges.length} связей | ` +
+      `Сгенерировано: ${data.timestamp || 'неизвестно'}`;
+
+    // Настраиваем фильтры
+    const groups = new Set();
+    for (const e of allEntities) {
+      groups.add(detectGroup(e));
+    }
+    const groupFilter = document.getElementById('groupFilter');
+    for (const g of groups) {
+      const opt = document.createElement('option');
+      opt.value = g;
+      opt.textContent = GROUP_LABELS[g] || g;
+      groupFilter.appendChild(opt);
+    }
+
+    // Легенда
+    const legend = document.getElementById('legend');
+    legend.innerHTML = '';
+    const typeGroups = ['module', 'function', 'constant', 'interface', 'type', 'class', 'variable'];
+    for (const type of typeGroups) {
+      const chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.innerHTML =
+        `<span class="dot" style="background:${ENTITY_COLORS[type]}"></span>` +
+        `${ENTITY_LABELS[type]}`;
+      legend.appendChild(chip);
+    }
+
+    // Рендерим граф
+    renderGraph({
+      search: '',
+      group: '',
+      entityType: '',
+      showExternals: true
+    });
+
+    // Настройка обработчиков
+    let searchTimeout;
+    document.getElementById('search').addEventListener('input', () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        renderGraph({
+          search: document.getElementById('search').value,
+          group: document.getElementById('groupFilter').value,
+          entityType: document.getElementById('entityTypeFilter').value,
+          showExternals: document.getElementById('showExternals').checked
+        });
+      }, 300);
+    });
+
+    document.getElementById('groupFilter').addEventListener('change', () => {
+      renderGraph({
+        search: document.getElementById('search').value,
+        group: document.getElementById('groupFilter').value,
+        entityType: document.getElementById('entityTypeFilter').value,
+        showExternals: document.getElementById('showExternals').checked
+      });
+    });
+
+    document.getElementById('entityTypeFilter').addEventListener('change', () => {
+      renderGraph({
+        search: document.getElementById('search').value,
+        group: document.getElementById('groupFilter').value,
+        entityType: document.getElementById('entityTypeFilter').value,
+        showExternals: document.getElementById('showExternals').checked
+      });
+    });
+
+    document.getElementById('showExternals').addEventListener('change', () => {
+      renderGraph({
+        search: document.getElementById('search').value,
+        group: document.getElementById('groupFilter').value,
+        entityType: document.getElementById('entityTypeFilter').value,
+        showExternals: document.getElementById('showExternals').checked
+      });
+    });
+
+    document.getElementById('layout').addEventListener('change', () => {
+      renderGraph({
+        search: document.getElementById('search').value,
+        group: document.getElementById('groupFilter').value,
+        entityType: document.getElementById('entityTypeFilter').value,
+        showExternals: document.getElementById('showExternals').checked
+      });
+    });
+
+    document.getElementById('fit').addEventListener('click', () => {
+      if (network) network.fit({ animation: { duration: 500 } });
+    });
+
+    document.getElementById('reset').addEventListener('click', () => {
+      document.getElementById('search').value = '';
+      document.getElementById('groupFilter').value = '';
+      document.getElementById('entityTypeFilter').value = '';
+      document.getElementById('showExternals').checked = true;
+      document.getElementById('layout').value = 'physics';
+      renderGraph({
+        search: '',
+        group: '',
+        entityType: '',
+        showExternals: true
+      });
+      if (network) network.fit({ animation: { duration: 500 } });
+    });
+
+    // Клавиатурные сокращения
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        document.getElementById('search').value = '';
+        renderGraph({
+          search: '',
+          group: document.getElementById('groupFilter').value,
+          entityType: document.getElementById('entityTypeFilter').value,
+          showExternals: document.getElementById('showExternals').checked
+        });
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        document.getElementById('search').focus();
+      }
+    });
+
+    console.log('✅ Приложение готово!');
+    console.log('📌 Используйте поиск (Ctrl+F) для навигации');
+    console.log('📌 Двойной клик по узлу — фокус на связанные');
+  }
+
+  // Запуск
+  main().catch(console.error);
 </script>
 </body>
 </html>

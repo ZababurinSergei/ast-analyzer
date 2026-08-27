@@ -7,7 +7,7 @@ const d3 = window.d3;
 
 // Импорт модулей
 import { CardManager } from './modules/CardManager.js';
-import { GraphManager } from './modules/GraphManager.js';
+import { VisGraphManager } from './modules/VisGraphManager.js';
 import { BreadcrumbManager } from './modules/BreadcrumbManager.js';
 import { GraphModeManager } from './modules/GraphModeManager.js';
 import { CardModeManager } from './modules/CardModeManager.js';
@@ -132,7 +132,7 @@ class App {
         this.breadcrumbManager.updateBreadcrumbs(modulePath, null);
       }
       this.renderModules();
-      if (this.graphManager) {
+      if (this.graphManager && typeof this.graphManager.updateGraphWithFocus === 'function') {
         this.graphManager.updateGraphWithFocus(modulePath, null, this.currentGraphMode);
       }
       this.updateFocusInfo(modulePath);
@@ -157,7 +157,7 @@ class App {
         this.breadcrumbManager.updateBreadcrumbs(modulePath, funcName);
       }
       this.renderModules();
-      if (this.graphManager) {
+      if (this.graphManager && typeof this.graphManager.updateGraphWithFocus === 'function') {
         this.graphManager.updateGraphWithFocus(modulePath, funcName, this.currentGraphMode);
       }
       this.updateFocusInfo(modulePath, funcName);
@@ -179,7 +179,7 @@ class App {
         this.breadcrumbManager.updateBreadcrumbs(null, null);
       }
       this.renderModules();
-      if (this.graphManager) {
+      if (this.graphManager && typeof this.graphManager.updateGraphWithFocus === 'function') {
         this.graphManager.updateGraphWithFocus(null, null, 'all');
       }
       this.hideFocusInfo();
@@ -200,7 +200,7 @@ class App {
       }
 
       this.renderModules();
-      if (this.graphManager) {
+      if (this.graphManager && typeof this.graphManager.handleSearch === 'function') {
         this.graphManager.handleSearch(query);
       }
     };
@@ -212,7 +212,7 @@ class App {
         this.graphModeManager.setMode(mode);
       }
       // Обновляем граф с текущим фокусом и новым режимом
-      if (this.graphManager) {
+      if (this.graphManager && typeof this.graphManager.updateGraphWithFocus === 'function') {
         this.graphManager.updateGraphWithFocus(this._focusModule, this._focusFunction, mode);
       }
       this.notifyModeChange('graph', mode);
@@ -425,7 +425,7 @@ class App {
           this.currentGraphMode = mode;
           this.notifyModeChange('graph', mode);
           // Обновляем граф при смене режима
-          if (this.graphManager) {
+          if (this.graphManager && typeof this.graphManager.updateGraphWithFocus === 'function') {
             this.graphManager.updateGraphWithFocus(this._focusModule, this._focusFunction, mode);
           }
         });
@@ -557,7 +557,8 @@ class App {
 
     // Инициализация менеджеров
     this.cardManager = new CardManager(this);
-    this.graphManager = new GraphManager(this);
+    // Используем VisGraphManager вместо GraphManager
+    this.graphManager = new VisGraphManager(this);
     this.breadcrumbManager = new BreadcrumbManager(this);
     this.graphModeManager = new GraphModeManager(this);
     this.cardModeManager = new CardModeManager(this);
@@ -569,7 +570,10 @@ class App {
 
     this.updateStats();
     this.cardManager.init();
-    this.graphManager.init();
+    // Инициализируем граф
+    if (this.graphManager && typeof this.graphManager.init === 'function') {
+      this.graphManager.init();
+    }
     this.breadcrumbManager.init();
     this.breadcrumbManager.updateBreadcrumbs(null, null);
     this.graphModeManager.init();
@@ -598,6 +602,7 @@ class App {
     console.log('✅ App initialized');
     console.log('📊 Данные готовы, модулей:', Object.keys(this.reportData?.packages || {}).length);
     console.log('🧭 Router и LocationBar инициализированы');
+    console.log('📊 VisGraphManager используется вместо D3');
   }
 
   // ============================================================
@@ -776,6 +781,7 @@ if (!window[SYM_APP]) {
     console.log('🔑 Доступ через: window[Symbol.for("__AST_APP_API__")]');
     console.log('🧭 Доступ к роутеру: window[Symbol.for("__AST_ROUTER__")]');
     console.log('📍 Доступ к адресной строке: window[Symbol.for("__AST_LOCATION_BAR__")]');
+    console.log('📊 VisGraphManager активен вместо D3');
   } catch (error) {
     console.error('❌ Failed to initialize App:', error);
     window[SYM_READY] = false;
@@ -829,3 +835,4 @@ export { REPORT_DATA, ALL_FUNCTIONS_DATA };
 
 console.log('📦 Модуль interactive-report.js загружен');
 console.log('📌 Статус приложения:', window[SYM_READY] ? '✅ ГОТОВ' : '⏳ ЗАГРУЗКА...');
+console.log('📊 Используется VisGraphManager для отображения графа');
