@@ -35,7 +35,7 @@
     }
   },
   "scripts": {
-    "check":"npx tsc --noEmit --skipLibCheck",
+    "check": "npx tsc --noEmit --skipLibCheck",
     "start:win": "node ./dist/cli.js project ./src/cli.ts 15 -o ./reports/component-tree-deep",
     "start:win:abs": "node ./dist/cli.js project %CD%/src/cli.ts 15 -o ./reports/component-tree-deep",
     "start:ts": "NODE_OPTIONS=\"--trace-warnings --unhandled-rejections=strict\" tsx src/cli.ts project src/cli.ts 15 -o ./reports/component-tree-deep --entities 2>&1 | tee debug.log\n",
@@ -221,6 +221,9 @@
     "========== ГРАФИКИ ================": "",
     "project:infoenergo-ui": "npm run build:data-converter && tsx ./src/cli.ts project ./infoenergo-ui/src/index.ts 150 --entities -o ./reports/infoenergo-ui",
     "project:ast-analizer": "npm run build:data-converter && tsx ./src/cli.ts project ./src/cli.ts 150 --entities -o ./reports/ast-analizer && npm run copy:report",
+    "========== КОМПАКТНЫЕ ОТЧЕТЫ (БЕЗ BODY) ================": "",
+    "compact:infoenergo-ui": "npm run build:data-converter && tsx ./src/cli.ts compact-report ./infoenergo-ui/src/index.ts --preset standard -o ./reports/entities-infoenergo-ui.json",
+    "compact:ast-analizer": "npm run build:data-converter && tsx ./src/cli.ts compact-report ./src/cli.ts --preset standard -o ./reports/entities-ast-analizer.json",
     "========== ТЕСТЫ ================": "",
     "test:compress": "vitest --ui src/reporters/__tests__/compressReport.test.ts --run",
     "test:compress:watch": "vitest --ui src/reporters/__tests__/compressReport.test.ts",

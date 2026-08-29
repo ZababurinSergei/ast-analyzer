@@ -186,7 +186,7 @@ function analyzeSecurity(body: string): FunctionInfo['security'] {
   security.hasPassword = /\b(password|passwd|pwd|secret|token|api[_-]?key)\b/i.test(bodyLower);
 
   const sensitivePatterns = [
-    /['"][a-zA-Z0-9_\-]{32,}['"]/,
+    /['\"][a-zA-Z0-9_\-]{32,}['\"]/,
     /'"]sk-[a-zA-Z0-9]{20,}['"]/,
     /'"]gh[pous]_[a-zA-Z0-9]{36,}['"]/,
     /'"]xox[baprs]-[a-zA-Z0-9-]+['"]/,
@@ -356,6 +356,32 @@ function createEmptyEntitiesResult(filePath?: string): EntitiesResult {
 }
 
 // ==========================================
+// ✅ ФУНКЦИЯ КОНВЕРТАЦИИ VueAnalysis → ImportInfo[]
+// ==========================================
+
+/**
+ * Конвертирует импорты из Vue анализа в формат ImportInfo[]
+ */
+function convertVueImportsToImportInfo(
+  vueImports: { source: string; specifiers: string[]; isTypeOnly: boolean }[]
+): ImportInfo[] {
+  if (!vueImports || vueImports.length === 0) {
+    return [];
+  }
+
+  return vueImports.map((imp) => ({
+    source: imp.source,
+    specifiers: imp.specifiers.map((s) => ({
+      local: s,
+      imported: s,
+      type: 'ImportSpecifier',
+    })),
+    loc: null,
+    isTypeOnly: imp.isTypeOnly || false,
+  }));
+}
+
+// ==========================================
 // КОНВЕРТЕР: VueAnalysis → EntitiesResult
 // ==========================================
 
@@ -509,7 +535,7 @@ function convertVueAnalysisToEntities(
         let innerMatch;
         while (
           (innerMatch = innerPattern.exec(scriptContent.substring(callMatch.index))) !== null
-        ) {
+          ) {
           const called = innerMatch[1];
           if (called && called !== caller && !calls.includes(called)) {
             calls.push(called);
@@ -575,22 +601,10 @@ function convertVueAnalysisToEntities(
   }
 
   // ==========================================
-  // 9. ИМПОРТЫ ИЗ VUE
+  // 9. ✅ ИМПОРТЫ ИЗ VUE (с правильной конвертацией)
   // ==========================================
   if (vueAnalysis.imports && vueAnalysis.imports.length > 0) {
-    result.imports = [];
-    for (const imp of vueAnalysis.imports) {
-      result.imports.push({
-        source: imp.source,
-        specifiers: imp.specifiers.map((s: string) => ({
-          local: s,
-          imported: s,
-          type: 'ImportSpecifier',
-        })),
-        loc: null,
-        isTypeOnly: imp.isTypeOnly || false,
-      });
-    }
+    result.imports = convertVueImportsToImportInfo(vueAnalysis.imports);
   }
 
   // ==========================================
@@ -632,7 +646,10 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
       const vueAnalysis = analyzeVueComponent(filePath);
       if (vueAnalysis) {
         console.log(`🎯 Используем Vue-анализатор для ${path.basename(filePath)}`);
-        return convertVueAnalysisToEntities(vueAnalysis, filePath);
+        const entities = convertVueAnalysisToEntities(vueAnalysis, filePath);
+        // ✅ ДОБАВЛЯЕМ: копируем импорты (уже сконвертированы внутри convertVueAnalysisToEntities)
+        // entities.imports уже содержит правильный формат ImportInfo[]
+        return entities;
       }
     } catch (error) {
       console.warn(`⚠️ Vue-анализ не удался для ${filePath}, используем стандартный AST`);
@@ -861,11 +878,11 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
       const params = isArraySafe(node.params)
         ? node.params.map((p: any) => {
-            if (p.type === 'Identifier') return p.name || 'unknown';
-            if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
-            if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
-            return 'unknown';
-          })
+          if (p.type === 'Identifier') return p.name || 'unknown';
+          if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
+          if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
+          return 'unknown';
+        })
         : [];
 
       const isNested = parentFunctions.length > 0 || depth > 0;
@@ -1006,11 +1023,11 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
       const params = isArraySafe(node.params)
         ? node.params.map((p: any) => {
-            if (p.type === 'Identifier') return p.name || 'unknown';
-            if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
-            if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
-            return 'unknown';
-          })
+          if (p.type === 'Identifier') return p.name || 'unknown';
+          if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
+          if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
+          return 'unknown';
+        })
         : [];
 
       const isNested = parentFuncs.length > 0 || depth > 0;
@@ -1076,10 +1093,10 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
         const params = isArraySafe(node.value?.params)
           ? node.value.params.map((p: any) => {
-              if (p.type === 'Identifier') return p.name || 'unknown';
-              if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
-              return 'unknown';
-            })
+            if (p.type === 'Identifier') return p.name || 'unknown';
+            if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
+            return 'unknown';
+          })
           : [];
 
         const parentFunc = className;

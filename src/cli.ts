@@ -51,6 +51,8 @@ import {
   saveOptimizedPackageLockReport,
 } from './reporters/json-reporter.js';
 import { generateInteractiveHTML } from './reporters/interactive-reporter.js';
+import { COMPACT_REPORT_CONFIG } from './config.js';
+import { generateCompactEntityReport } from './reporters/compact-entity-reporter.js';
 
 // ============================================
 // 🆕 ЕДИНЫЙ ИСТОЧНИК ДАННЫХ
@@ -432,6 +434,7 @@ interface ParsedArgs {
   fromFunction?: string;
   toFunction?: string;
   optimized?: boolean;
+  maxDepth?: number;
 }
 
 export function parseArgs(): ParsedArgs | null {
@@ -452,6 +455,8 @@ export function parseArgs(): ParsedArgs | null {
   let fromFunction: string | undefined;
   let toFunction: string | undefined;
   let optimized = false;
+  let preset: string | undefined;
+  let maxDepth = 5;
   const cleanArgs: string[] = [];
 
   for (let i = 0; i < normalizedArgs.length; i++) {
@@ -484,6 +489,25 @@ export function parseArgs(): ParsedArgs | null {
       }
     } else if (arg === '--optimized' || arg === '--opt') {
       optimized = true;
+    } else if (arg === '--preset' || arg === '-p') {
+      if (normalizedArgs[i + 1]) {
+        preset = normalizedArgs[i + 1];
+        i++;
+      }
+    } else if (arg === '--max-depth' || arg === '-d') {
+      // ✅ ИСПРАВЛЕНО: проверка на undefined перед parseInt
+      const nextIndex = i + 1;
+      if (nextIndex < normalizedArgs.length && normalizedArgs[nextIndex] !== undefined) {
+        const nextArg = normalizedArgs[nextIndex];
+        // Проверяем, что это не флаг (не начинается с '-')
+        if (!nextArg.startsWith('-')) {
+          const parsed = parseInt(nextArg, 10);
+          if (!isNaN(parsed) && parsed > 0) {
+            maxDepth = parsed;
+          }
+          i++;
+        }
+      }
     } else if (arg) {
       cleanArgs.push(arg);
     }
@@ -522,6 +546,34 @@ export function parseArgs(): ParsedArgs | null {
       fromFunction,
       toFunction,
       optimized,
+      maxDepth,
+    };
+  }
+
+  if (mode === 'compact-report' || mode === 'compact') {
+    const targetPath = cleanArgs[1];
+
+    if (!targetPath) {
+      console.error('❌ Укажите путь к файлу для генерации компактного отчета');
+      console.error('   Использование: compact-report <file> [--preset <name>] [--max-depth <n>] [--output <file>]');
+      process.argv = originalArgv;
+      return null;
+    }
+
+    process.argv = originalArgv;
+    return {
+      mode: 'compact-report',
+      targetPath,
+      extraArg: preset || '',
+      outputDir,
+      tsconfigPath,
+      includeEntities,
+      includeVueAnalysis,
+      includeBody,
+      fromFunction,
+      toFunction,
+      optimized,
+      maxDepth,
     };
   }
 
@@ -586,6 +638,7 @@ export function parseArgs(): ParsedArgs | null {
       fromFunction,
       toFunction,
       optimized,
+      maxDepth,
     };
   }
 
@@ -634,6 +687,7 @@ export function parseArgs(): ParsedArgs | null {
       fromFunction,
       toFunction,
       optimized,
+      maxDepth,
     };
   }
 
@@ -714,6 +768,7 @@ export function parseArgs(): ParsedArgs | null {
       fromFunction,
       toFunction,
       optimized,
+      maxDepth,
     };
   }
 
@@ -769,6 +824,7 @@ export function parseArgs(): ParsedArgs | null {
       fromFunction,
       toFunction,
       optimized,
+      maxDepth,
     };
   }
 
@@ -820,6 +876,7 @@ export function parseArgs(): ParsedArgs | null {
       fromFunction,
       toFunction,
       optimized,
+      maxDepth,
     };
   }
 
@@ -923,6 +980,7 @@ export function parseArgs(): ParsedArgs | null {
       fromFunction,
       toFunction,
       optimized,
+      maxDepth,
     };
   }
 
@@ -999,6 +1057,7 @@ export function parseArgs(): ParsedArgs | null {
       fromFunction,
       toFunction,
       optimized,
+      maxDepth,
     };
   }
 
@@ -1023,6 +1082,7 @@ export function parseArgs(): ParsedArgs | null {
       fromFunction,
       toFunction,
       optimized,
+      maxDepth,
     };
   }
 
@@ -1048,6 +1108,7 @@ export function parseArgs(): ParsedArgs | null {
       fromFunction,
       toFunction,
       optimized,
+      maxDepth,
     };
   }
 
@@ -1073,6 +1134,7 @@ export function parseArgs(): ParsedArgs | null {
       fromFunction,
       toFunction,
       optimized,
+      maxDepth,
     };
   }
 
@@ -1097,12 +1159,13 @@ export function parseArgs(): ParsedArgs | null {
       fromFunction,
       toFunction,
       optimized,
+      maxDepth,
     };
   }
 
   if (mode === 'project') {
     const targetPath = cleanArgs[1];
-    const maxDepth = cleanArgs[2];
+    const maxDepthArg = cleanArgs[2];
     if (!targetPath) {
       console.error('❌ Укажите путь к файлу');
       process.argv = originalArgv;
@@ -1112,7 +1175,7 @@ export function parseArgs(): ParsedArgs | null {
     return {
       mode: 'project',
       targetPath,
-      extraArg: maxDepth,
+      extraArg: maxDepthArg,
       depthArg: '',
       outputDir,
       tsconfigPath,
@@ -1122,6 +1185,7 @@ export function parseArgs(): ParsedArgs | null {
       fromFunction,
       toFunction,
       optimized,
+      maxDepth: maxDepthArg ? parseInt(maxDepthArg, 10) : 5,
     };
   }
 
@@ -1146,6 +1210,7 @@ export function parseArgs(): ParsedArgs | null {
       fromFunction,
       toFunction,
       optimized,
+      maxDepth,
     };
   }
 
@@ -1176,6 +1241,7 @@ export async function runCLI(): Promise<void> {
     fromFunction,
     toFunction,
     optimized,
+    maxDepth = 5,
   } = parsed;
 
   const originalCwd = process.cwd();
@@ -1240,6 +1306,60 @@ export async function runCLI(): Promise<void> {
   }
 
   try {
+    if (mode === 'compact-report' || mode === 'compact') {
+      console.log(`\n${'='.repeat(60)}`);
+      console.log('📋 КОМПАКТНЫЙ ОТЧЕТ СУЩНОСТЕЙ');
+      console.log(`${'='.repeat(60)}\n`);
+      console.log(`📄 Точка входа: ${currentTargetPath}`);
+      console.log(`📏 Глубина анализа: ${maxDepth}`);
+
+      // Устанавливаем пресет
+      if (extraArg) {
+        const presets = ['minimal', 'standard', 'full', 'relationshipsOnly'];
+        if (presets.includes(extraArg)) {
+          COMPACT_REPORT_CONFIG.activePreset = extraArg as any;
+          console.log(`📋 Использую пресет: ${extraArg}`);
+        } else {
+          console.error(`❌ Неизвестный пресет: ${extraArg}`);
+          console.error(`   Доступные: ${presets.join(', ')}`);
+          process.exit(1);
+        }
+      }
+
+      console.log(`📁 Выходная директория: ${process.cwd()}\n`);
+
+      // Строим граф с сущностями и рекурсивным обходом
+      console.log('🔍 Построение графа зависимостей с рекурсивным анализом...');
+      const result = buildProjectGraph(currentTargetPath, maxDepth, true);
+
+      if (!result.entities || Object.keys(result.entities).length === 0) {
+        console.error('❌ Не найдено сущностей для анализа');
+        process.exit(1);
+      }
+
+      const totalEntities = Object.values(result.entities).reduce(
+        (sum, ents) => sum + (ents.functions?.length || 0),
+        0
+      );
+      console.log(`📊 Найдено сущностей: ${totalEntities}`);
+
+      // Генерируем компактный отчет с рекурсивным обходом
+      const outputFile = outputDir ? 'entities.json' : 'entities.json';
+      const outputPath = path.join(process.cwd(), outputFile);
+      console.log(`\n📁 Сохранение в: ${outputPath}`);
+
+      generateCompactEntityReport(
+        result.entities,
+        outputPath,
+        {
+          usePreset: true,
+          maxDepth: maxDepth,
+        }
+      );
+
+      return;
+    }
+
     if (mode === 'hybrid-report' || mode === 'hybrid') {
       console.log(`\n${'='.repeat(60)}`);
       console.log('🔀 ГИБРИДНЫЙ ОТЧЕТ: МОДУЛИ + ФУНКЦИИ');
@@ -1545,12 +1665,12 @@ export async function runCLI(): Promise<void> {
     }
 
     if (mode === 'project') {
-      const maxDepth = extraArg ? parseInt(extraArg, 10) : Infinity;
-      console.log(`📁 Построение графа проекта от ${currentTargetPath} (глубина ${maxDepth === Infinity ? '∞' : maxDepth})`);
+      const maxDepthArg = extraArg ? parseInt(extraArg, 10) : Infinity;
+      console.log(`📁 Построение графа проекта от ${currentTargetPath} (глубина ${maxDepthArg === Infinity ? '∞' : maxDepthArg})`);
 
       const resultData = buildProjectGraph(
         currentTargetPath,
-        maxDepth,
+        maxDepthArg,
         includeEntities,
         fromFunction,
         toFunction
@@ -1901,7 +2021,7 @@ export async function runCLI(): Promise<void> {
             totalInterfaces: entitiesWithCalls.interfaces.length,
             totalTypes: entitiesWithCalls.types.length,
             totalVariables: entitiesWithCalls.variables.length,
-            maxDepth: maxDepth,
+            maxDepth: maxDepthArg,
           },
           moduleGraph: {
             nodes: [],

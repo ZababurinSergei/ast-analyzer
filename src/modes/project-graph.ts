@@ -7,7 +7,7 @@ import {
   isExternalModule,
   getTsConfigForFile,
 } from '../core/ast-parser.js';
-import type { EntitiesResult } from '../types.js';
+import type { EntitiesResult, ImportInfo } from '../types.js';
 import { IGNORE_NODE_MODULES } from '../config.js';
 import { walk } from 'estree-walker';
 import { normalizePathForDisplay } from '../utils/path-utils.js';
@@ -222,27 +222,49 @@ function simpleHash(str: string): string {
 }
 
 function generateFunctionId(filePath: string, funcName: string): string {
-  const fileHash = simpleHash(filePath);
+  const relativePath = path.relative(process.cwd(), filePath);
+  const fileHash = simpleHash(relativePath);
   return `func_${fileHash}_${funcName}`;
 }
 
 function generateFileId(filePath: string): string {
-  return `file_${simpleHash(filePath)}`;
+  const relativePath = path.relative(process.cwd(), filePath);
+  return `file_${simpleHash(relativePath)}`;
 }
 
 // ==========================================
 // ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ПРЕОБРАЗОВАНИЯ ТИПОВ
 // ==========================================
 
-/**
- * Преобразует EnhancedEntityInfo в EntitiesResult для совместимости
- * ✅ ИСПРАВЛЕНО: правильная обработка calledBy (string[] или объекты)
- * ✅ ИСПРАВЛЕНО: добавлены поля id, filePath, vscode
- */
+function convertToImportInfo(packageLockImports: any[]): ImportInfo[] {
+  if (!Array.isArray(packageLockImports)) {
+    return [];
+  }
+
+  return packageLockImports.map(imp => ({
+    source: imp.source || '',
+    specifiers: (imp.specifiers || []).map((s: any) => {
+      if (typeof s === 'string') {
+        return {
+          local: s,
+          imported: s,
+          type: 'ImportSpecifier',
+        };
+      }
+      return {
+        local: s.local || s,
+        imported: s.imported || s,
+        type: s.type || 'ImportSpecifier',
+      };
+    }),
+    loc: imp.loc || null,
+    isTypeOnly: imp.isTypeOnly || false,
+  }));
+}
+
 function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult {
   return {
     functions: enhanced.functions.map(f => {
-      // ✅ Обрабатываем calledBy - может быть string[] или объектами
       let calledBy: string[] = [];
       if (Array.isArray(f.calledBy)) {
         calledBy = f.calledBy.map((cb: any) => {
@@ -285,8 +307,7 @@ function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult
         depth: f.depth || 0,
         complexity: f.complexity,
         security: f.security,
-        // ✅ НОВЫЕ ПОЛЯ ДЛЯ СВЯЗЕЙ
-        id: (f as any).id || `func_${simpleHash(filePath)}_${f.name}`,
+        id: (f as any).id || generateFunctionId(filePath, f.name),
         vscode: (f as any).vscode || `vscode://file/${filePath}:${f.line}`,
         callsInfo: [],
         calledByInfo: [],
@@ -333,7 +354,7 @@ function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult
       type: v.type,
       value: v.value,
     })),
-    imports: [],
+    imports: enhanced.imports ? convertToImportInfo(enhanced.imports) : [],
     exports: [],
     callGraph: {},
     moduleName: '',
@@ -342,18 +363,14 @@ function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult
 }
 
 // ==========================================
-// 🆕 ФУНКЦИЯ ДЛЯ ПОСТРОЕНИЯ СВЯЗЕЙ МЕЖДУ СУЩНОСТЯМИ
+// ФУНКЦИЯ ДЛЯ ПОСТРОЕНИЯ СВЯЗЕЙ МЕЖДУ СУЩНОСТЯМИ
 // ==========================================
 
-/**
- * Построение всех связей между сущностями
- */
 export function buildRelationships(
   entitiesMap: Record<string, EntitiesResult>
 ): Record<string, ExtendedFunctionInfo> {
   const result: Record<string, ExtendedFunctionInfo> = {};
 
-  // 1. Построить индекс: имя функции -> { id, file, line, vscode }
   const funcIndex: Record<
     string,
     { id: string; file: string; line: number; vscode: string; isExported: boolean }
@@ -361,7 +378,6 @@ export function buildRelationships(
   const fileIndex: Record<string, { id: string; vscode: string }> = {};
 
   for (const [filePath, entities] of Object.entries(entitiesMap)) {
-    // Сохраняем файл в индекс
     fileIndex[filePath] = {
       id: generateFileId(filePath),
       vscode: `vscode://file/${filePath}`,
@@ -383,7 +399,6 @@ export function buildRelationships(
         isExported: func.isExported || false,
       };
 
-      // Инициализируем расширенные поля
       result[funcId] = {
         id: funcId,
         name: func.name,
@@ -404,17 +419,14 @@ export function buildRelationships(
     }
   }
 
-  // 2. Для каждой функции заполняем calls
   for (const [filePath, entities] of Object.entries(entitiesMap)) {
     for (const func of entities.functions) {
       const funcId = func.id || generateFunctionId(filePath, func.name);
       const extended = result[funcId];
       if (!extended) continue;
 
-      // Преобразуем существующие calls (массив строк) в полные объекты
       const callNames = func.calls || [];
       extended.calls = callNames.map(callName => {
-        // Ищем в том же файле
         const target = funcIndex[callName];
         if (target) {
           return {
@@ -428,7 +440,6 @@ export function buildRelationships(
           };
         }
 
-        // Если не найдена, ищем в других модулях
         for (const [otherFile, otherEntities] of Object.entries(entitiesMap)) {
           if (otherFile === filePath) continue;
           const found = otherEntities.functions.find(f => f.name === callName);
@@ -448,7 +459,6 @@ export function buildRelationships(
           }
         }
 
-        // Если не нашли, возвращаем заглушку
         return {
           targetId: 'unknown',
           targetName: callName,
@@ -462,8 +472,6 @@ export function buildRelationships(
     }
   }
 
-  // 3. Заполняем calledBy (обратные ссылки)
-  // Инициализируем calledBy для всех функций
   for (const funcId of Object.keys(result)) {
     const funcInfo = result[funcId];
     if (funcInfo) {
@@ -478,7 +486,6 @@ export function buildRelationships(
       if (!callerInfo) continue;
 
       for (const call of callerInfo.calls) {
-        // Находим целевую функцию и добавляем обратную ссылку
         if (call.targetId !== 'unknown') {
           const targetInfo = result[call.targetId];
           if (targetInfo) {
@@ -497,22 +504,18 @@ export function buildRelationships(
     }
   }
 
-  // 4. Заполняем importedBy (из импортов)
   for (const [filePath, entities] of Object.entries(entitiesMap)) {
-    // Получаем ID файла из индекса
     const fileInfo = fileIndex[filePath];
     const importerId = fileInfo?.id || generateFileId(filePath);
     const importerVscode = fileInfo?.vscode || `vscode://file/${filePath}`;
 
     for (const imp of entities.imports || []) {
-      // Определяем, какие функции импортируются
       for (const spec of imp.specifiers) {
         const specObj = typeof spec === 'string' ? { imported: spec, local: spec } : spec;
         const importedName = specObj.imported || specObj.local || '';
 
         if (!importedName) continue;
 
-        // Ищем функцию с таким именем в других файлах
         for (const [otherFile, otherEntities] of Object.entries(entitiesMap)) {
           if (otherFile === filePath) continue;
           const found = otherEntities.functions.find(f => f.name === importedName);
@@ -520,7 +523,6 @@ export function buildRelationships(
             const targetId = found.id || generateFunctionId(otherFile, found.name);
             const targetInfo = result[targetId];
             if (targetInfo) {
-              // Проверяем, не добавлен ли уже такой импортер
               const exists = targetInfo.importedBy.some(
                 i => i.importerFile === filePath && i.specifier === (specObj.local || importedName)
               );
@@ -634,9 +636,6 @@ export function buildCallGraphBetweenFunctions(
   };
 }
 
-/**
- * Находит корень проекта (где находится package.json)
- */
 function findProjectRoot(startDir: string): string | null {
   let currentDir = path.resolve(startDir);
   const root = path.parse(currentDir).root;
@@ -652,24 +651,16 @@ function findProjectRoot(startDir: string): string | null {
 }
 
 // ==========================================
-// ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ resolveAbsoluteFilePath
+// ФУНКЦИЯ resolveAbsoluteFilePath
 // ==========================================
 
-/**
- * Разрешает путь к файлу в абсолютный с поиском в нескольких местах
- * ✅ ДОБАВЛЕНА ПОДДЕРЖКА VUE-ФАЙЛОВ
- * ✅ ИСПРАВЛЕНА ПРОБЛЕМА С НЕ НАЙДЕННЫМИ ФАЙЛАМИ
- */
 function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string | null {
-  // Нормализуем путь
   const normalizedPath = filePath.replace(/\\\\/g, '/');
 
-  // Если путь уже абсолютный и существует
   if (path.isAbsolute(filePath) && fs.existsSync(filePath)) {
     return filePath;
   }
 
-  // Базовые кандидаты
   const candidates = [
     path.resolve(projectRoot, filePath),
     path.resolve(projectRoot, 'src', filePath),
@@ -678,7 +669,6 @@ function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string 
     path.resolve(process.cwd(), 'src', filePath),
   ];
 
-  // Добавляем варианты с нормализованными путями (Windows -> Unix)
   const additionalCandidates = [
     path.resolve(projectRoot, normalizedPath),
     path.resolve(projectRoot, 'src', normalizedPath),
@@ -686,16 +676,12 @@ function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string 
   ];
   candidates.push(...additionalCandidates);
 
-  // ==========================================
-  // ✅ ДОБАВЛЯЕМ ЯВНУЮ ПРОВЕРКУ ДЛЯ VUE-ФАЙЛОВ
-  // ==========================================
   const vueCandidates = [
     path.resolve(projectRoot, filePath),
     path.resolve(projectRoot, 'src', filePath),
     path.resolve(projectRoot, 'packages/infoenergo-ui/src', filePath),
   ];
 
-  // Добавляем варианты с явным .vue
   if (!filePath.endsWith('.vue')) {
     const vuePath = filePath + '.vue';
     vueCandidates.push(
@@ -705,7 +691,6 @@ function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string 
     );
   }
 
-  // Проверяем все кандидаты (сначала базовые, потом Vue)
   const allCandidates = [...candidates, ...vueCandidates];
 
   for (const candidate of allCandidates) {
@@ -721,9 +706,6 @@ function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string 
   return null;
 }
 
-/**
- * Преобразует EnhancedPackageLockReport в PackageLockReport
- */
 function convertToPackageLockReport(
   enhanced: EnhancedPackageLockReport,
   rootKey: string
@@ -731,7 +713,6 @@ function convertToPackageLockReport(
   const packages: Record<string, PackageLockPackage> = {};
 
   for (const [key, pkg] of Object.entries(enhanced.packages || {})) {
-    // Преобразуем imports
     const imports: Record<string, PackageLockImportInfo> = {};
     for (const [impKey, impVal] of Object.entries(pkg.imports || {})) {
       imports[impKey] = {
@@ -742,7 +723,6 @@ function convertToPackageLockReport(
       };
     }
 
-    // Преобразуем exports
     const exports: Record<string, PackageLockExportInfo> = {};
     for (const [expKey, expVal] of Object.entries(pkg.exports || {})) {
       const consumers = (expVal.consumers || []).map((c: any) => ({
@@ -801,8 +781,409 @@ function convertToPackageLockReport(
 }
 
 // ==========================================
+// КОНВЕРТАЦИЯ CALL GRAPH
+// ==========================================
+
+function convertCallGraphToRecord(callGraph: Map<string, Set<string>>): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+  for (const [key, value] of callGraph) {
+    result[key] = Array.from(value);
+  }
+  return result;
+}
+
+// ==========================================
+// РЕКУРСИВНЫЙ СБОР ФУНКЦИЙ
+// ==========================================
+
+/**
+ * Собирает все имена функций из AST
+ */
+function collectAllFunctionNames(ast: any): Set<string> {
+  const names = new Set<string>();
+
+  function collect(node: any) {
+    if (!node || typeof node !== 'object') return;
+
+    if (node.type === 'FunctionDeclaration' && node.id) {
+      names.add(node.id.name);
+    }
+    if (node.type === 'VariableDeclarator' && node.id?.name) {
+      if (node.init && (node.init.type === 'ArrowFunctionExpression' || node.init.type === 'FunctionExpression')) {
+        names.add(node.id.name);
+      }
+    }
+    if (node.type === 'MethodDefinition' && node.key?.name) {
+      names.add(node.key.name);
+    }
+
+    for (const key of Object.keys(node)) {
+      const child = node[key];
+      if (child && typeof child === 'object') {
+        if (Array.isArray(child)) {
+          for (const item of child) {
+            if (item && typeof item === 'object') {
+              collect(item);
+            }
+          }
+        } else {
+          collect(child);
+        }
+      }
+    }
+  }
+
+  collect(ast);
+  return names;
+}
+
+function collectAllFunctionsRecursive(
+  ast: any,
+  filePath: string,
+  maxDepth: number = 10,
+  currentDepth: number = 0
+): any[] {
+  const functions: any[] = [];
+
+  if (!ast || currentDepth > maxDepth) return functions;
+
+  const topLevelFunctions = extractFunctionsFromAST(ast);
+
+  for (const func of topLevelFunctions) {
+    functions.push({
+      ...func,
+      filePath,
+      depth: currentDepth,
+      isNested: currentDepth > 0,
+    });
+
+    if (func.body && typeof func.body === 'object') {
+      const nestedAst = { type: 'Program', body: [func.body] };
+      const nested = collectAllFunctionsRecursive(
+        nestedAst,
+        filePath,
+        maxDepth,
+        currentDepth + 1
+      );
+      functions.push(...nested);
+    }
+  }
+
+  const blockFunctions = extractNestedFunctionsFromAST(ast);
+  for (const func of blockFunctions) {
+    functions.push({
+      ...func,
+      filePath,
+      depth: currentDepth + 1,
+      isNested: true,
+    });
+  }
+
+  return functions;
+}
+
+function extractNestedFunctionsFromAST(ast: any): any[] {
+  const functions: any[] = [];
+
+  if (!ast || !ast.body) return functions;
+
+  const allFunctionNames = collectAllFunctionNames(ast);
+
+  function traverse(node: any) {
+    if (!node || typeof node !== 'object') return;
+
+    if (node.type === 'FunctionDeclaration' && node.id) {
+      functions.push({
+        name: node.id.name,
+        line: node.loc?.start?.line || 1,
+        isAsync: node.async || false,
+        isExported: false,
+        params: node.params?.map((p: any) => p.name || 'unknown') || [],
+        returnType: node.returnType?.typeName?.name || undefined,
+        startLine: node.loc?.start?.line || 1,
+        endLine: node.loc?.end?.line || 1,
+        isNested: true,
+        parentFunction: findParentFunctionName(node),
+        isArrow: false,
+        depth: 0,
+        calls: collectCallsFromNode(node.body, allFunctionNames, node.id.name),
+        calledBy: [],
+        body: node.body ? JSON.stringify(node.body) : '',
+        id: generateFunctionId('', node.id.name),
+        vscode: `vscode://file/${''}:${node.loc?.start?.line || 1}`,
+      });
+    }
+
+    if (node.type === 'VariableDeclarator' && node.init) {
+      if (
+        node.init.type === 'ArrowFunctionExpression' ||
+        node.init.type === 'FunctionExpression'
+      ) {
+        const name = node.id?.name;
+        if (name) {
+          functions.push({
+            name,
+            line: node.loc?.start?.line || 1,
+            isAsync: node.init.async || false,
+            isExported: false,
+            params: node.init.params?.map((p: any) => p.name || 'unknown') || [],
+            returnType: node.init.returnType?.typeName?.name || undefined,
+            startLine: node.loc?.start?.line || 1,
+            endLine: node.loc?.end?.line || 1,
+            isNested: true,
+            parentFunction: findParentFunctionName(node),
+            isArrow: node.init.type === 'ArrowFunctionExpression',
+            depth: 0,
+            calls: collectCallsFromNode(node.init.body, allFunctionNames, name),
+            calledBy: [],
+            body: node.init.body ? JSON.stringify(node.init.body) : '',
+            id: generateFunctionId('', name),
+            vscode: `vscode://file/${''}:${node.loc?.start?.line || 1}`,
+          });
+        }
+      }
+    }
+
+    for (const key of Object.keys(node)) {
+      const child = node[key];
+      if (child && typeof child === 'object') {
+        if (Array.isArray(child)) {
+          for (const item of child) {
+            if (item && typeof item === 'object') {
+              traverse(item);
+            }
+          }
+        } else {
+          traverse(child);
+        }
+      }
+    }
+  }
+
+  traverse(ast);
+  return functions;
+}
+
+function findParentFunctionName(node: any): string | undefined {
+  let current = node.parent;
+  while (current) {
+    if (current.type === 'FunctionDeclaration' && current.id) {
+      return current.id.name;
+    }
+    if (current.type === 'VariableDeclarator' && current.id?.name) {
+      const init = current.init;
+      if (init && (init.type === 'ArrowFunctionExpression' || init.type === 'FunctionExpression')) {
+        return current.id.name;
+      }
+    }
+    current = current.parent;
+  }
+  return undefined;
+}
+
+/**
+ * Собирает вызовы из AST узла
+ * Использует functionNames для фильтрации локальных вызовов
+ */
+function collectCallsFromNode(node: any, _functionNames: Set<string>, currentFunction: string): string[] {
+  const calls: string[] = [];
+  if (!node || typeof node !== 'object') return calls;
+
+  const visited = new WeakSet<any>();
+
+  function traverse(n: any) {
+    if (!n || typeof n !== 'object') return;
+    if (visited.has(n)) return;
+    visited.add(n);
+
+    if (n.type === 'CallExpression' && n.callee?.type === 'Identifier') {
+      const name = n.callee.name;
+      if (name && name !== currentFunction) {
+        if (!calls.includes(name)) {
+          calls.push(name);
+        }
+      }
+    }
+
+    if (n.type === 'CallExpression' && n.callee?.type === 'MemberExpression') {
+      const property = n.callee.property;
+      if (property?.type === 'Identifier') {
+        const methodName = property.name;
+        if (methodName) {
+          if (!calls.includes(methodName)) {
+            calls.push(methodName);
+          }
+        }
+      }
+    }
+
+    if (n.type === 'NewExpression') {
+      if (n.callee?.type === 'Identifier') {
+        const name = n.callee.name;
+        if (name) {
+          if (!calls.includes(name)) {
+            calls.push(name);
+          }
+        }
+      }
+    }
+
+    for (const key of Object.keys(n)) {
+      const child = n[key];
+      if (child && typeof child === 'object') {
+        if (Array.isArray(child)) {
+          for (const item of child) {
+            if (item && typeof item === 'object') {
+              traverse(item);
+            }
+          }
+        } else {
+          traverse(child);
+        }
+      }
+    }
+  }
+
+  traverse(node);
+  return [...new Set(calls)];
+}
+
+/**
+ * Извлекает функции из AST верхнего уровня
+ */
+function extractFunctionsFromAST(ast: any): any[] {
+  const functions: any[] = [];
+
+  if (!ast || !ast.body) return functions;
+
+  const allFunctionNames = collectAllFunctionNames(ast);
+
+  function extract(node: any, parent?: any) {
+    if (!node || typeof node !== 'object') return;
+
+    if (node.type === 'FunctionDeclaration' && node.id) {
+      const funcName = node.id.name;
+      const isExported = isNodeExported(node, parent);
+      const calls = collectCallsFromNode(node.body, allFunctionNames, funcName);
+
+      functions.push({
+        name: funcName,
+        line: node.loc?.start?.line || 1,
+        isAsync: node.async || false,
+        isExported: isExported,
+        params: node.params?.map((p: any) => p.name || 'unknown') || [],
+        returnType: node.returnType?.typeName?.name || undefined,
+        calls: calls,
+        calledBy: [],
+        startLine: node.loc?.start?.line || 1,
+        endLine: node.loc?.end?.line || 1,
+        isMethod: false,
+        className: '',
+        isNested: false,
+        parentFunction: '',
+        isArrow: false,
+        isEventHandler: false,
+        depth: 0,
+        complexity: 1,
+        body: node.body ? JSON.stringify(node.body) : '',
+      });
+    }
+
+    if (node.type === 'VariableDeclarator' && node.id?.name) {
+      if (node.init && (node.init.type === 'ArrowFunctionExpression' || node.init.type === 'FunctionExpression')) {
+        const funcName = node.id.name;
+        const isExported = isNodeExported(node, parent);
+        const calls = collectCallsFromNode(node.init.body, allFunctionNames, funcName);
+
+        functions.push({
+          name: funcName,
+          line: node.loc?.start?.line || 1,
+          isAsync: node.init.async || false,
+          isExported: isExported,
+          params: node.init.params?.map((p: any) => p.name || 'unknown') || [],
+          returnType: node.init.returnType?.typeName?.name || undefined,
+          calls: calls,
+          calledBy: [],
+          startLine: node.loc?.start?.line || 1,
+          endLine: node.loc?.end?.line || 1,
+          isMethod: false,
+          className: '',
+          isNested: false,
+          parentFunction: '',
+          isArrow: node.init.type === 'ArrowFunctionExpression',
+          isEventHandler: false,
+          depth: 0,
+          complexity: 1,
+          body: node.init.body ? JSON.stringify(node.init.body) : '',
+        });
+      }
+    }
+
+    if (node.type === 'MethodDefinition' && node.key?.name) {
+      const methodName = node.key.name;
+      const className = node.parent?.id?.name || 'Anonymous';
+      const isExported = isNodeExported(node, parent);
+      const calls = collectCallsFromNode(node.value?.body, allFunctionNames, methodName);
+
+      functions.push({
+        name: `${className}.${methodName}`,
+        line: node.loc?.start?.line || 1,
+        isAsync: node.value?.async || false,
+        isExported: isExported,
+        params: node.value?.params?.map((p: any) => p.name || 'unknown') || [],
+        returnType: node.value?.returnType?.typeName?.name || undefined,
+        calls: calls,
+        calledBy: [],
+        startLine: node.loc?.start?.line || 1,
+        endLine: node.loc?.end?.line || 1,
+        isMethod: true,
+        className: className,
+        isNested: false,
+        parentFunction: '',
+        isArrow: false,
+        isEventHandler: false,
+        depth: 0,
+        complexity: 1,
+        body: node.value?.body ? JSON.stringify(node.value.body) : '',
+      });
+    }
+
+    for (const key of Object.keys(node)) {
+      const child = node[key];
+      if (child && typeof child === 'object') {
+        if (Array.isArray(child)) {
+          for (const item of child) {
+            if (item && typeof item === 'object') {
+              extract(item, node);
+            }
+          }
+        } else {
+          extract(child, node);
+        }
+      }
+    }
+  }
+
+  for (const node of ast.body) {
+    extract(node);
+  }
+
+  return functions;
+}
+
+function isNodeExported(node: any, parent: any): boolean {
+  if (!node) return false;
+  if (parent?.type === 'ExportNamedDeclaration') return true;
+  if (parent?.type === 'ExportDefaultDeclaration') return true;
+  if (node.type === 'ExportNamedDeclaration') return true;
+  if (node.type === 'ExportDefaultDeclaration') return true;
+  return false;
+}
+
+// ==========================================
 // ОБНОВЛЕННАЯ ФУНКЦИЯ buildProjectGraph
 // ==========================================
+
 export function buildProjectGraph(
   entryPoint: string,
   maxDepth = Infinity,
@@ -850,9 +1231,6 @@ export function buildProjectGraph(
       graph[relativeKey] = [];
     }
 
-    // ==========================================
-    // ✅ ПРОВЕРКА: парсим файл, но если это CSS — пропускаем
-    // ==========================================
     if (
       currentPath.endsWith('.css') ||
       currentPath.endsWith('.scss') ||
@@ -869,10 +1247,22 @@ export function buildProjectGraph(
     }
 
     if (includeEntities) {
-      const enhancedEntities = extractEntitiesFromFile(currentPath);
-      const entities = convertEnhancedToEntities(enhancedEntities);
+      const allFunctionsFromFile = collectAllFunctionsRecursive(ast, currentPath, 10);
 
-      // ✅ Добавляем ID и VSCode ссылки
+      const entities: EntitiesResult = {
+        functions: allFunctionsFromFile,
+        classes: extractClassesFromAST(ast),
+        constants: extractConstantsFromAST(ast),
+        interfaces: extractInterfacesFromAST(ast),
+        types: extractTypesFromAST(ast),
+        variables: extractVariablesFromAST(ast),
+        imports: extractImportsFromAST(ast),
+        exports: extractExportsFromAST(ast),
+        callGraph: convertCallGraphToRecord(buildCallGraphFromAST(ast)),
+        moduleName: relativeKey,
+        filePath: currentPath,
+      };
+
       for (const func of entities.functions) {
         func.id = func.id || generateFunctionId(currentPath, func.name);
         func.vscode = func.vscode || `vscode://file/${currentPath}:${func.line}`;
@@ -892,7 +1282,6 @@ export function buildProjectGraph(
         });
       }
 
-      // ✅ Добавляем локальные функции
       try {
         const declaredFunctions = collectDeclaredFunctions(ast);
         const callGraphFromAST = buildCallGraphFromAST(ast);
@@ -963,6 +1352,7 @@ export function buildProjectGraph(
       console.log(`      Интерфейсов: ${entities.interfaces.length}`);
       console.log(`      Типов: ${entities.types.length}`);
       console.log(`      Переменных: ${entities.variables.length}`);
+      console.log(`      Импортов: ${entities.imports?.length || 0}`);
     }
 
     const currentDir = path.dirname(currentPath);
@@ -1050,10 +1440,8 @@ export function buildProjectGraph(
   };
 
   if (includeEntities) {
-    // ✅ Создаем КОНЕЧНУЮ карту сущностей для всего проекта
     const finalEntitiesMap: Record<string, EntitiesResult> = {};
 
-    // Проверяем, есть ли сущности в entitiesMap
     if (Object.keys(entitiesMap).length === 0) {
       console.warn('⚠️ entitiesMap пуст, возможно сущности не были извлечены');
       console.warn('   💡 Попытка принудительного извлечения сущностей из всех файлов...');
@@ -1065,7 +1453,6 @@ export function buildProjectGraph(
             const enhancedEntities = extractEntitiesFromFile(absPath);
             const entities = convertEnhancedToEntities(enhancedEntities);
 
-            // ✅ Добавляем ID и VSCode ссылки
             for (const func of entities.functions) {
               func.id = func.id || generateFunctionId(absPath, func.name);
               func.vscode = func.vscode || `vscode://file/${absPath}:${func.line}`;
@@ -1096,7 +1483,6 @@ export function buildProjectGraph(
       );
     }
 
-    // ✅ Копируем сущности из entitiesMap с нормализацией и проверкой
     for (const [modulePath, entities] of Object.entries(entitiesMap)) {
       if (!entities) {
         console.warn(`⚠️ Нет сущностей для ${modulePath}`);
@@ -1105,7 +1491,6 @@ export function buildProjectGraph(
 
       const normalizedKey = normalizePathForDisplay(modulePath);
 
-      // ✅ Убеждаемся, что все поля - массивы
       finalEntitiesMap[normalizedKey] = {
         functions: Array.isArray(entities.functions) ? entities.functions : [],
         classes: Array.isArray(entities.classes) ? entities.classes : [],
@@ -1121,16 +1506,15 @@ export function buildProjectGraph(
       };
     }
 
-    // ✅ ЛОГИРУЕМ ПЕРЕД СОЗДАНИЕМ ОТЧЕТА
     console.log(`✅ Подготовлено ${Object.keys(finalEntitiesMap).length} модулей с сущностями:`);
 
     let totalFuncs = 0;
     let totalCalls = 0;
+    let totalImports = 0;
     for (const [key, ents] of Object.entries(finalEntitiesMap)) {
       const funcCount = ents.functions?.length || 0;
       if (funcCount > 0) {
         totalFuncs += funcCount;
-        // ✅ Используем ents.functions для подсчета вызовов
         let moduleCalls = 0;
         for (const f of ents.functions) {
           moduleCalls += (f.calls || []).length;
@@ -1138,14 +1522,18 @@ export function buildProjectGraph(
         totalCalls += moduleCalls;
         console.log(`   • ${key}: ${funcCount} функций, ${moduleCalls} вызовов`);
       }
+      const importCount = ents.imports?.length || 0;
+      totalImports += importCount;
+      if (importCount > 0) {
+        console.log(`   • ${key}: ${importCount} импортов`);
+      }
     }
     console.log(`   📊 Всего функций: ${totalFuncs}`);
     console.log(`   📊 Всего вызовов: ${totalCalls}`);
+    console.log(`   📥 Всего импортов: ${totalImports}`);
 
-    // ✅ Сохраняем finalEntitiesMap в результат
     result.entities = finalEntitiesMap;
 
-    // ✅ Используем ПОЛНЫЙ ОТЧЕТ с finalEntitiesMap
     const allFiles = Object.keys(normalizedGraph);
     const projectRoot = findProjectRoot(process.cwd()) || process.cwd();
 
@@ -1154,7 +1542,6 @@ export function buildProjectGraph(
       return resolved || path.resolve(projectRoot, p);
     });
 
-    // ✅ ВЫЗЫВАЕМ buildEnhancedPackageLockReport с правильными параметрами
     const enhancedReport = buildEnhancedPackageLockReport(
       result.rootKey,
       normalizedGraph,
@@ -1162,11 +1549,9 @@ export function buildProjectGraph(
       absoluteFilePaths
     );
 
-    // ✅ ПРЕОБРАЗУЕМ В PackageLockReport
     const packageLockReport = convertToPackageLockReport(enhancedReport, result.rootKey);
     result.packageLockReport = packageLockReport;
 
-    // Выводим статистику из отчета
     console.log(`✅ Отчет создан. Статистика:`);
     console.log(`   • Пакетов: ${Object.keys(packageLockReport.packages || {}).length}`);
 
@@ -1176,7 +1561,6 @@ export function buildProjectGraph(
       console.log(`   • Вызовов: ${enhancedReport.entityStats.totalCalls || 0}`);
     }
 
-    // ✅ Строим граф вызовов между функциями если указаны fromFunction и toFunction
     if (fromFunction && toFunction) {
       const allFuncs = new Map<
         string,
@@ -1195,12 +1579,10 @@ export function buildProjectGraph(
       result.callGraphResult = buildCallGraphBetweenFunctions(allFuncs, fromFunction, toFunction);
     }
 
-    // ✅ Строим граф отношений (relationship graph) - НОВОЕ!
     console.log('🔗 Построение графа отношений между сущностями...');
     const relationshipGraph = buildRelationships(finalEntitiesMap);
     result.relationshipGraph = relationshipGraph;
 
-    // Статистика по отношениям
     let totalCallsInfo = 0;
     let totalCalledBy = 0;
     let totalImportedBy = 0;
@@ -1303,6 +1685,278 @@ function expandFolderReExport(folderPath: string, _baseDir: string): string[] {
   }
 
   return resolvedFiles;
+}
+
+// ==========================================
+// ЭКСПОРТ КЛАССОВ И ИНТЕРФЕЙСОВ ИЗ AST
+// ==========================================
+
+function extractClassesFromAST(ast: any): any[] {
+  const classes: any[] = [];
+  if (!ast || !ast.body) return classes;
+
+  walk(ast, {
+    enter(node: any, parent: any) {
+      if (node.type === 'ClassDeclaration' && node.id) {
+        const name = node.id.name;
+        const isExported = isNodeExported(node, parent);
+        classes.push({
+          name,
+          line: node.loc?.start?.line || 1,
+          isExported,
+          methods: [],
+          properties: [],
+          extends: node.superClass?.name || undefined,
+          implements: node.implements?.map((i: any) => i.name) || [],
+          startLine: node.loc?.start?.line || 1,
+          endLine: node.loc?.end?.line || 1,
+        });
+      }
+    },
+  });
+
+  return classes;
+}
+
+function extractConstantsFromAST(ast: any): any[] {
+  const constants: any[] = [];
+  if (!ast || !ast.body) return constants;
+
+  walk(ast, {
+    enter(node: any, parent: any) {
+      if (node.type === 'VariableDeclaration' && node.kind === 'const') {
+        const isExported = isNodeExported(node, parent);
+        for (const decl of node.declarations) {
+          if (decl.id?.type === 'Identifier') {
+            constants.push({
+              name: decl.id.name,
+              line: decl.loc?.start?.line || 1,
+              value: extractValueFromNode(decl.init),
+              isExported,
+              type: decl.init?.type || undefined,
+            });
+          }
+        }
+      }
+    },
+  });
+
+  return constants;
+}
+
+function extractInterfacesFromAST(ast: any): any[] {
+  const interfaces: any[] = [];
+  if (!ast || !ast.body) return interfaces;
+
+  walk(ast, {
+    enter(node: any, parent: any) {
+      if (node.type === 'TSInterfaceDeclaration' && node.id) {
+        const name = node.id.name;
+        const isExported = isNodeExported(node, parent);
+        interfaces.push({
+          name,
+          line: node.loc?.start?.line || 1,
+          isExported,
+          properties: [],
+          extends: node.extends?.map((e: any) => e.expression?.name) || [],
+          startLine: node.loc?.start?.line || 1,
+          endLine: node.loc?.end?.line || 1,
+        });
+      }
+    },
+  });
+
+  return interfaces;
+}
+
+function extractTypesFromAST(ast: any): any[] {
+  const types: any[] = [];
+  if (!ast || !ast.body) return types;
+
+  walk(ast, {
+    enter(node: any, parent: any) {
+      if (node.type === 'TSTypeAliasDeclaration' && node.id) {
+        const name = node.id.name;
+        const isExported = isNodeExported(node, parent);
+        types.push({
+          name,
+          line: node.loc?.start?.line || 1,
+          isExported,
+          definition: node.typeAnnotation?.type || 'unknown',
+        });
+      }
+    },
+  });
+
+  return types;
+}
+
+function extractVariablesFromAST(ast: any): any[] {
+  const variables: any[] = [];
+  if (!ast || !ast.body) return variables;
+
+  walk(ast, {
+    enter(node: any, parent: any) {
+      if (node.type === 'VariableDeclaration' && node.kind !== 'const') {
+        const isExported = isNodeExported(node, parent);
+        for (const decl of node.declarations) {
+          if (decl.id?.type === 'Identifier') {
+            variables.push({
+              name: decl.id.name,
+              line: decl.loc?.start?.line || 1,
+              isExported,
+              type: decl.init?.type || undefined,
+              value: extractValueFromNode(decl.init),
+            });
+          }
+        }
+      }
+    },
+  });
+
+  return variables;
+}
+
+function extractImportsFromAST(ast: any): ImportInfo[] {
+  const imports: ImportInfo[] = [];
+  if (!ast || !ast.body) return imports;
+
+  walk(ast, {
+    enter(node: any) {
+      if (node.type === 'ImportDeclaration' && node.source) {
+        const source = node.source.value;
+        const specifiers: { local: string; imported: string; type: string }[] = [];
+        for (const spec of node.specifiers) {
+          if (spec.type === 'ImportSpecifier') {
+            specifiers.push({
+              local: spec.local.name,
+              imported: spec.imported.name,
+              type: 'ImportSpecifier',
+            });
+          } else if (spec.type === 'ImportDefaultSpecifier') {
+            specifiers.push({
+              local: spec.local.name,
+              imported: 'default',
+              type: 'ImportDefaultSpecifier',
+            });
+          } else if (spec.type === 'ImportNamespaceSpecifier') {
+            specifiers.push({
+              local: spec.local.name,
+              imported: '*',
+              type: 'ImportNamespaceSpecifier',
+            });
+          }
+        }
+        imports.push({
+          source,
+          specifiers,
+          loc: node.loc,
+          isTypeOnly: node.importKind === 'type',
+        });
+      }
+    },
+  });
+
+  return imports;
+}
+
+function extractExportsFromAST(ast: any): any[] {
+  const exports: any[] = [];
+  if (!ast || !ast.body) return exports;
+
+  walk(ast, {
+    enter(node: any) {
+      if (node.type === 'ExportNamedDeclaration') {
+        if (node.declaration) {
+          const decl = node.declaration;
+          if (decl.type === 'FunctionDeclaration' && decl.id) {
+            exports.push({
+              name: decl.id.name,
+              type: 'function',
+              isDefault: false,
+              loc: node.loc,
+            });
+          } else if (decl.type === 'ClassDeclaration' && decl.id) {
+            exports.push({
+              name: decl.id.name,
+              type: 'class',
+              isDefault: false,
+              loc: node.loc,
+            });
+          } else if (decl.type === 'VariableDeclaration') {
+            for (const d of decl.declarations) {
+              if (d.id?.name) {
+                exports.push({
+                  name: d.id.name,
+                  type: 'constant',
+                  isDefault: false,
+                  loc: node.loc,
+                });
+              }
+            }
+          }
+        }
+        if (node.specifiers) {
+          for (const spec of node.specifiers) {
+            if (spec.exported) {
+              exports.push({
+                name: spec.exported.name,
+                type: 'value',
+                isDefault: false,
+                loc: node.loc,
+              });
+            }
+          }
+        }
+      }
+      if (node.type === 'ExportDefaultDeclaration') {
+        const decl = node.declaration;
+        let name = 'default';
+        let type = 'default';
+        if (decl.type === 'FunctionDeclaration' && decl.id) {
+          name = decl.id.name || 'default';
+          type = 'function';
+        } else if (decl.type === 'ClassDeclaration' && decl.id) {
+          name = decl.id.name || 'default';
+          type = 'class';
+        } else if (decl.type === 'Identifier') {
+          name = decl.name || 'default';
+          type = 'value';
+        }
+        exports.push({
+          name,
+          type,
+          isDefault: true,
+          loc: node.loc,
+        });
+      }
+    },
+  });
+
+  return exports;
+}
+
+function extractValueFromNode(node: any): any {
+  if (!node) return undefined;
+  if (node.type === 'Literal') return node.value;
+  if (node.type === 'Identifier') return node.name;
+  if (node.type === 'UnaryExpression') return `${node.operator}${extractValueFromNode(node.argument)}`;
+  if (node.type === 'BinaryExpression') return `${extractValueFromNode(node.left)} ${node.operator} ${extractValueFromNode(node.right)}`;
+  if (node.type === 'ArrayExpression') return node.elements.map((e: any) => extractValueFromNode(e)).filter((v: any) => v !== undefined);
+  if (node.type === 'ObjectExpression') {
+    const obj: Record<string, any> = {};
+    for (const prop of node.properties) {
+      if (prop.type === 'Property' && prop.key) {
+        const key = prop.key.name || prop.key.value;
+        obj[key] = extractValueFromNode(prop.value);
+      }
+    }
+    return obj;
+  }
+  if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') return '[Function]';
+  if (node.type === 'TemplateLiteral') return node.quasis.map((q: any) => q.value?.raw || '').join('');
+  if (node.type === 'NewExpression') return `new ${node.callee?.name || '...'}()`;
+  return undefined;
 }
 
 export default buildProjectGraph;
