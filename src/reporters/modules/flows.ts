@@ -1,675 +1,22 @@
 // src/reporters/modules/flows.ts
-// Потоки выполнения и импортов/экспортов
+import type { EnhancedPackageLockReport, EnhancedPackageInfo } from '../json-reporter.js';
+import type { EntitiesResult } from '../../types.js';
 
-import { EnhancedPackageInfo, EntitiesResult, GraphData } from './types.js';
-import { safeString, ensureArray } from './utils.js';
-
-export interface ExecutionGraph {
-  entryPoint: string;
-  direction: 'top-down';
-  entryFunctions: string[];
-  executionFlow: {
-    type: 'sequential' | 'parallel' | 'conditional';
-    steps: {
-      func: string;
-      module: string;
-      direction: 'inward' | 'outward' | 'self';
-      isAsync: boolean;
-      branches?: Record<string, any>;
-    }[];
-  };
-}
-
-export interface ImportExportFlow {
-  imports: Record<
-    string,
-    {
-      importsFrom: {
-        module: string;
-        type: 'named' | 'default' | 'namespace';
-        imports: string[];
-      }[];
-    }
-  >;
-  exports: Record<
-    string,
-    {
-      exportsTo: {
-        module: string;
-        type: 'named' | 'default';
-        exports: string[];
-      }[];
-    }
-  >;
-}
+// ============================================================
+// ФУНКЦИИ ДЛЯ ПОСТРОЕНИЯ ГРАФА ВЫПОЛНЕНИЯ (EXECUTION GRAPH)
+// ============================================================
 
 /**
- * Строит граф выполнения на основе точек входа
- *
- * @param rootKey - Корневой модуль (точка входа)
- * @param entitiesMap - Карта сущностей по модулям
- * @param graphData - Данные графа зависимостей (используется для анализа структуры)
- * @param packages - Данные по пакетам (используется для обогащения информации)
- * @returns ExecutionGraph - Граф выполнения
+ * Строит граф выполнения (execution graph) на основе графа зависимостей
+ * и информации о сущностях
  */
 export function buildExecutionGraph(
   rootKey: string,
   entitiesMap: Record<string, EntitiesResult>,
-  graphData?: GraphData,
-  packages?: Record<string, EnhancedPackageInfo>
-): ExecutionGraph {
+  _graphData: { rootKey: string; graph: Record<string, string[]> },
+  _packages: Record<string, EnhancedPackageInfo>
+): EnhancedPackageLockReport['executionGraph'] {
   const entryFunctions: string[] = [];
-  const rootEntities = entitiesMap[rootKey];
-
-  // ============================================
-  // 1. АНАЛИЗ ГРАФА ДЛЯ ОПРЕДЕЛЕНИЯ СТРУКТУРЫ
-  // ============================================
-  let hasCyclicDependencies = false;
-  const cyclicEdgesList: string[] = [];
-  const graphStructure: Record<string, string[]> = {};
-
-  if (graphData) {
-    Object.assign(graphStructure, graphData.graph || {});
-    hasCyclicDependencies = graphData.hasCycles || false;
-    cyclicEdgesList.push(...(graphData.cyclicEdges || []));
-
-    // Логируем информацию о структуре графа для отладки
-    if (hasCyclicDependencies) {
-      console.log(
-        `🔴 Обнаружены циклические зависимости в графе (${cyclicEdgesList.length} ребер)`
-      );
-    }
-  }
-
-  // ============================================
-  // 2. ОБОГАЩЕНИЕ ДАННЫМИ ИЗ PACKAGES
-  // ============================================
-  let rootPackageInfo: EnhancedPackageInfo | null = null;
-  let rootLanguage = 'typescript';
-  let rootType = 'module';
-  const rootFileStats = {
-    size: 0,
-    lines: 0,
-    functions: 0,
-    classes: 0,
-    constants: 0,
-    interfaces: 0,
-    types: 0,
-    variables: 0,
-  };
-
-  if (packages && packages[rootKey]) {
-    rootPackageInfo = packages[rootKey];
-    rootLanguage = rootPackageInfo.language || 'typescript';
-    rootType = rootPackageInfo.type || 'module';
-    Object.assign(rootFileStats, rootPackageInfo.fileStats || {});
-
-    // Используем информацию о пакете для обогащения данных
-    console.log(`📦 Корневой модуль: ${rootKey} (${rootLanguage}, ${rootType})`);
-    console.log(`   📊 Функций: ${rootFileStats.functions}, Классов: ${rootFileStats.classes}`);
-  }
-
-  // ============================================
-  // 3. ОПРЕДЕЛЕНИЕ ТОЧЕК ВХОДА
-  // ============================================
-  if (rootEntities && typeof rootEntities === 'object') {
-    const functions = ensureArray(rootEntities.functions);
-    for (const func of functions) {
-      if (func && typeof func === 'object') {
-        // Безопасное получение свойств
-        const funcObj = func as Record<string, any>;
-        const isExported = funcObj.isExported === true;
-        const funcName = safeString(funcObj.name);
-
-        if (isExported && funcName) {
-          entryFunctions.push(funcName);
-        }
-      }
-    }
-  }
-
-  // ============================================
-  // 4. ПОСТРОЕНИЕ ШАГОВ ВЫПОЛНЕНИЯ
-  // ============================================
-  const executionSteps: {
-    func: string;
-    module: string;
-    direction: 'inward' | 'outward' | 'self';
-    isAsync: boolean;
-    branches?: Record<string, any>;
-  }[] = [];
-
-  if (rootEntities && typeof rootEntities === 'object') {
-    const functions = ensureArray(rootEntities.functions);
-    for (const func of functions) {
-      if (func && typeof func === 'object') {
-        const funcObj = func as Record<string, any>;
-        const isExported = funcObj.isExported === true;
-        const funcName = safeString(funcObj.name);
-
-        if (!isExported || !funcName) {
-          continue;
-        }
-
-        // Проверяем, участвует ли функция в циклической зависимости
-        let isInCycle = false;
-        if (hasCyclicDependencies && cyclicEdgesList.length > 0) {
-          for (const edge of cyclicEdgesList) {
-            if (edge.includes(funcName)) {
-              isInCycle = true;
-              break;
-            }
-          }
-        }
-
-        // Проверяем, есть ли у функции асинхронные вызовы
-        const calls = ensureArray(funcObj.calls || []);
-        let hasAsyncCalls = false;
-        const asyncCallTargets: string[] = [];
-
-        for (const call of calls) {
-          const callStr = safeString(call);
-          if (!callStr) continue;
-
-          // Ищем вызываемую функцию в entitiesMap
-          for (const [_modulePath, moduleEntities] of Object.entries(entitiesMap)) {
-            if (!moduleEntities || typeof moduleEntities !== 'object') {
-              continue;
-            }
-
-            const moduleFunctions = ensureArray((moduleEntities as any).functions || []);
-            for (const calledFunc of moduleFunctions) {
-              if (!calledFunc || typeof calledFunc !== 'object') {
-                continue;
-              }
-
-              const calledObj = calledFunc as Record<string, any>;
-              const calledName = safeString(calledObj.name);
-              const calledIsAsync = calledObj.isAsync === true;
-
-              if (calledName === callStr && calledIsAsync) {
-                hasAsyncCalls = true;
-                asyncCallTargets.push(callStr);
-                break;
-              }
-            }
-            if (hasAsyncCalls) break;
-          }
-        }
-
-        // Определяем направление на основе структуры графа
-        let direction: 'inward' | 'outward' | 'self' = 'self';
-        if (graphStructure[rootKey]) {
-          const deps = graphStructure[rootKey] || [];
-          if (deps.some(d => d.includes(funcName))) {
-            direction = 'outward';
-          }
-        }
-
-        // Строим branches с обогащенной информацией
-        const branches: Record<string, any> = {};
-
-        if (isInCycle) {
-          branches.isCyclic = true;
-        }
-
-        if (hasAsyncCalls) {
-          branches.hasAsyncCalls = true;
-          branches.asyncCallTargets = asyncCallTargets;
-        }
-
-        if (rootPackageInfo) {
-          branches.moduleLanguage = rootLanguage;
-          branches.moduleType = rootType;
-          branches.moduleStats = rootFileStats;
-        }
-
-        executionSteps.push({
-          func: funcName,
-          module: rootKey,
-          direction: direction,
-          isAsync: funcObj.isAsync === true || hasAsyncCalls,
-          branches: Object.keys(branches).length > 0 ? branches : undefined,
-        });
-      }
-    }
-  }
-
-  // ============================================
-  // 5. ОПРЕДЕЛЕНИЕ ТИПА ПОТОКА ВЫПОЛНЕНИЯ
-  // ============================================
-  let flowType: 'sequential' | 'parallel' | 'conditional' = 'sequential';
-
-  // Если есть асинхронные вызовы, поток может быть параллельным
-  if (executionSteps.some(s => s.isAsync)) {
-    flowType = 'parallel';
-  }
-
-  // Если есть циклические зависимости, поток может быть условным
-  if (executionSteps.some(s => s.branches?.isCyclic)) {
-    flowType = 'conditional';
-  }
-
-  return {
-    entryPoint: rootKey,
-    direction: 'top-down',
-    entryFunctions,
-    executionFlow: {
-      type: flowType,
-      steps: executionSteps,
-    },
-  };
-}
-
-/**
- * Строит потоки импортов и экспортов между модулями
- *
- * @param graph - Граф зависимостей
- * @param entitiesMap - Карта сущностей по модулям
- * @param graphData - Данные графа (используется для анализа связей)
- * @param packages - Данные по пакетам (используется для обогащения информации об импортах/экспортах)
- * @returns ImportExportFlow - Потоки импортов и экспортов
- */
-export function buildImportExportFlow(
-  graph: Record<string, string[]>,
-  entitiesMap: Record<string, EntitiesResult>,
-  graphData?: GraphData,
-  packages?: Record<string, EnhancedPackageInfo>
-): ImportExportFlow {
-  const importsFlow: ImportExportFlow['imports'] = {};
-  const exportsFlow: ImportExportFlow['exports'] = {};
-
-  // ============================================
-  // 1. АНАЛИЗ СТРУКТУРЫ ГРАФА
-  // ============================================
-  let hasCyclicDependencies = false;
-  const cyclicEdgesList: string[] = [];
-
-  if (graphData) {
-    hasCyclicDependencies = graphData.hasCycles || false;
-    cyclicEdgesList.push(...(graphData.cyclicEdges || []));
-
-    if (hasCyclicDependencies) {
-      console.log(`🔄 Обнаружены циклические зависимости в потоках импортов/экспортов`);
-    }
-  }
-
-  // ============================================
-  // 2. ИНИЦИАЛИЗАЦИЯ СТРУКТУР
-  // ============================================
-  const modulePaths = Object.keys(graph);
-  for (const modulePath of modulePaths) {
-    importsFlow[modulePath] = { importsFrom: [] };
-    exportsFlow[modulePath] = { exportsTo: [] };
-  }
-
-  // ============================================
-  // 3. ОБОГАЩЕНИЕ ДАННЫМИ ИЗ PACKAGES
-  // ============================================
-  const packageInfoMap = new Map<string, EnhancedPackageInfo>();
-  if (packages) {
-    for (const [modulePath, pkg] of Object.entries(packages)) {
-      packageInfoMap.set(modulePath, pkg);
-    }
-  }
-
-  // ============================================
-  // 4. ОБРАБОТКА ИМПОРТОВ И ЭКСПОРТОВ
-  // ============================================
-  for (const modulePath of modulePaths) {
-    const entities = entitiesMap[modulePath];
-    if (!entities || typeof entities !== 'object') {
-      continue;
-    }
-
-    // ============================================
-    // 4a. ОБРАБОТКА ИМПОРТОВ
-    // ============================================
-    const imports = ensureArray((entities as any).imports || []);
-    for (const imp of imports) {
-      if (!imp || typeof imp !== 'object') {
-        continue;
-      }
-
-      const impObj = imp as Record<string, any>;
-      const source = safeString(impObj.source);
-      if (!source) {
-        continue;
-      }
-
-      // Проверяем, является ли импорт внутренним (из проекта)
-      let isInternal = false;
-      let targetModulePath = '';
-      for (const modPath of modulePaths) {
-        if (modPath.includes(source) || source.includes(modPath)) {
-          isInternal = true;
-          targetModulePath = modPath;
-          break;
-        }
-      }
-
-      if (!isInternal) {
-        continue; // Пропускаем внешние импорты
-      }
-
-      // Проверяем, не является ли этот импорт циклическим
-      if (hasCyclicDependencies && cyclicEdgesList.length > 0) {
-        for (const edge of cyclicEdgesList) {
-          if (edge.includes(modulePath) && edge.includes(targetModulePath)) {
-            // Циклический импорт найден
-            break;
-          }
-        }
-      }
-
-      // Получаем specifiers
-      let specifiers: string[] = [];
-      const impSpecifiers = ensureArray(impObj.specifiers || []);
-      for (const spec of impSpecifiers) {
-        if (typeof spec === 'string') {
-          specifiers.push(spec);
-        } else if (spec && typeof spec === 'object') {
-          const specObj = spec as Record<string, any>;
-          const local = safeString(specObj.local);
-          const imported = safeString(specObj.imported);
-          if (local) {
-            specifiers.push(local);
-          } else if (imported) {
-            specifiers.push(imported);
-          }
-        }
-      }
-
-      // Фильтруем пустые specifiers
-      const validSpecifiers = specifiers.filter(s => s && s.length > 0);
-      if (validSpecifiers.length === 0) {
-        continue;
-      }
-
-      // Проверяем, что importsFlow[modulePath] существует
-      if (!importsFlow[modulePath]) {
-        importsFlow[modulePath] = { importsFrom: [] };
-      }
-
-      // Проверяем, нет ли уже такого импорта
-      let existingImport = false;
-      for (const existing of importsFlow[modulePath].importsFrom) {
-        if (existing.module === source) {
-          existingImport = true;
-          // Добавляем новые specifiers, которых еще нет
-          for (const spec of validSpecifiers) {
-            if (!existing.imports.includes(spec)) {
-              existing.imports.push(spec);
-            }
-          }
-          break;
-        }
-      }
-
-      if (!existingImport) {
-        importsFlow[modulePath].importsFrom.push({
-          module: source,
-          type: 'named',
-          imports: validSpecifiers,
-        });
-      }
-    }
-
-    // ============================================
-    // 4b. ОБРАБОТКА ЭКСПОРТОВ
-    // ============================================
-    const functions = ensureArray((entities as any).functions || []);
-    for (const func of functions) {
-      if (!func || typeof func !== 'object') {
-        continue;
-      }
-
-      const funcObj = func as Record<string, any>;
-      const isExported = funcObj.isExported === true;
-      if (!isExported) {
-        continue;
-      }
-
-      const funcName = safeString(funcObj.name);
-      if (!funcName) {
-        continue;
-      }
-
-      // Ищем, кто импортирует эту функцию
-      for (const [importerModule, importerEntities] of Object.entries(entitiesMap)) {
-        if (importerModule === modulePath) {
-          continue; // Пропускаем себя
-        }
-
-        if (!importerEntities || typeof importerEntities !== 'object') {
-          continue;
-        }
-
-        // Проверяем, не является ли этот экспорт циклическим
-        if (hasCyclicDependencies && cyclicEdgesList.length > 0) {
-          for (const edge of cyclicEdgesList) {
-            if (edge.includes(modulePath) && edge.includes(importerModule)) {
-              // Циклический экспорт найден
-              break;
-            }
-          }
-        }
-
-        const importerImports = ensureArray((importerEntities as any).imports || []);
-        for (const imp of importerImports) {
-          if (!imp || typeof imp !== 'object') {
-            continue;
-          }
-
-          const impObj = imp as Record<string, any>;
-          const source = safeString(impObj.source);
-          if (!source) {
-            continue;
-          }
-
-          // Проверяем, импортирует ли этот модуль наш модуль
-          const isImporting = source.includes(modulePath) || modulePath.includes(source);
-          if (!isImporting) {
-            continue;
-          }
-
-          // Получаем specifiers из импорта
-          const impSpecifiers = ensureArray(impObj.specifiers || []);
-          let foundFunc = false;
-
-          for (const spec of impSpecifiers) {
-            let specName = '';
-            if (typeof spec === 'string') {
-              specName = spec;
-            } else if (spec && typeof spec === 'object') {
-              const specObj = spec as Record<string, any>;
-              specName = safeString(specObj.local || specObj.imported || '');
-            }
-
-            if (specName === funcName) {
-              foundFunc = true;
-              break;
-            }
-          }
-
-          if (foundFunc) {
-            // Проверяем, что exportsFlow[modulePath] существует
-            if (!exportsFlow[modulePath]) {
-              exportsFlow[modulePath] = { exportsTo: [] };
-            }
-
-            // Проверяем, нет ли уже такого экспорта
-            let existingExport = false;
-            for (const existing of exportsFlow[modulePath].exportsTo) {
-              if (existing.module === importerModule) {
-                existingExport = true;
-                if (!existing.exports.includes(funcName)) {
-                  existing.exports.push(funcName);
-                }
-                break;
-              }
-            }
-
-            if (!existingExport) {
-              exportsFlow[modulePath].exportsTo.push({
-                module: importerModule,
-                type: 'named',
-                exports: [funcName],
-              });
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // ============================================
-  // 5. УДАЛЕНИЕ ДУБЛИКАТОВ
-  // ============================================
-  for (const modulePath of modulePaths) {
-    // Очищаем imports
-    if (importsFlow[modulePath]) {
-      const uniqueImports: {
-        module: string;
-        type: 'named' | 'default' | 'namespace';
-        imports: string[];
-      }[] = [];
-      for (const imp of importsFlow[modulePath].importsFrom) {
-        let exists = false;
-        for (const existing of uniqueImports) {
-          if (existing.module === imp.module) {
-            exists = true;
-            // Объединяем imports
-            for (const spec of imp.imports) {
-              if (!existing.imports.includes(spec)) {
-                existing.imports.push(spec);
-              }
-            }
-            break;
-          }
-        }
-        if (!exists) {
-          uniqueImports.push({ ...imp, imports: [...imp.imports] });
-        }
-      }
-      importsFlow[modulePath].importsFrom = uniqueImports;
-    }
-
-    // Очищаем exports
-    if (exportsFlow[modulePath]) {
-      const uniqueExports: { module: string; type: 'named' | 'default'; exports: string[] }[] = [];
-      for (const exp of exportsFlow[modulePath].exportsTo) {
-        let exists = false;
-        for (const existing of uniqueExports) {
-          if (existing.module === exp.module) {
-            exists = true;
-            for (const spec of exp.exports) {
-              if (!existing.exports.includes(spec)) {
-                existing.exports.push(spec);
-              }
-            }
-            break;
-          }
-        }
-        if (!exists) {
-          uniqueExports.push({ ...exp, exports: [...exp.exports] });
-        }
-      }
-      exportsFlow[modulePath].exportsTo = uniqueExports;
-    }
-  }
-
-  return {
-    imports: importsFlow,
-    exports: exportsFlow,
-  };
-}
-
-/**
- * Находит все функции, которые являются точками входа
- *
- * @param entitiesMap - Карта сущностей
- * @param rootKey - Корневой модуль
- * @param graphData - Данные графа (используется для анализа связей)
- * @param packages - Данные по пакетам (используется для обогащения)
- * @returns Список функций-точек входа с обогащенной информацией
- */
-export function findEntryFunctions(
-  entitiesMap: Record<string, EntitiesResult>,
-  rootKey: string,
-  graphData?: GraphData,
-  packages?: Record<string, EnhancedPackageInfo>
-): string[] {
-  const entryFunctions: string[] = [];
-  const rootEntities = entitiesMap[rootKey];
-
-  // Используем graphData для анализа структуры
-  if (graphData) {
-    const hasCycles = graphData.hasCycles || false;
-    if (hasCycles) {
-      console.log(`⚠️ Граф содержит циклические зависимости, точки входа определяются по rootKey`);
-    }
-  }
-
-  // Используем packages для получения информации о корневом модуле
-  if (packages && packages[rootKey]) {
-    const pkg = packages[rootKey];
-    console.log(`📦 Корневой пакет: ${rootKey} (${pkg.language}, ${pkg.type})`);
-  }
-
-  if (rootEntities && typeof rootEntities === 'object') {
-    const functions = ensureArray((rootEntities as any).functions || []);
-    for (const func of functions) {
-      if (func && typeof func === 'object') {
-        const funcObj = func as Record<string, any>;
-        const isExported = funcObj.isExported === true;
-        const funcName = safeString(funcObj.name);
-
-        if (isExported && funcName) {
-          entryFunctions.push(funcName);
-        }
-      }
-    }
-  }
-
-  // Если точек входа не найдено, используем все экспортированные функции из корневого модуля
-  if (entryFunctions.length === 0 && rootEntities && typeof rootEntities === 'object') {
-    const functions = ensureArray((rootEntities as any).functions || []);
-    for (const func of functions) {
-      if (func && typeof func === 'object') {
-        const funcObj = func as Record<string, any>;
-        const funcName = safeString(funcObj.name);
-        const isExported = funcObj.isExported === true;
-
-        if (funcName && isExported) {
-          entryFunctions.push(funcName);
-        }
-      }
-    }
-  }
-
-  return entryFunctions;
-}
-
-/**
- * Строит граф выполнения с учетом асинхронности
- *
- * @param rootKey - Корневой модуль
- * @param entitiesMap - Карта сущностей
- * @param _callGraph - Граф вызовов (зарезервирован для будущего использования)
- * @param graphData - Данные графа (используется для анализа структуры)
- * @param packages - Данные по пакетам (используется для обогащения)
- * @returns ExecutionGraph - Граф выполнения
- */
-export function buildAsyncExecutionGraph(
-  rootKey: string,
-  entitiesMap: Record<string, EntitiesResult>,
-  _callGraph: Record<string, string[]>,
-  graphData?: GraphData,
-  packages?: Record<string, EnhancedPackageInfo>
-): ExecutionGraph {
-  const entryFunctions = findEntryFunctions(entitiesMap, rootKey, graphData, packages);
-
   const steps: {
     func: string;
     module: string;
@@ -678,149 +25,150 @@ export function buildAsyncExecutionGraph(
     branches?: Record<string, any>;
   }[] = [];
 
-  // ============================================
-  // 1. АНАЛИЗ СТРУКТУРЫ ГРАФА
-  // ============================================
-  let hasCyclicDependencies = false;
-  const cyclicEdgesList: string[] = [];
-
-  if (graphData) {
-    hasCyclicDependencies = graphData.hasCycles || false;
-    cyclicEdgesList.push(...(graphData.cyclicEdges || []));
-  }
-
-  // ============================================
-  // 2. ОБОГАЩЕНИЕ ДАННЫМИ ИЗ PACKAGES
-  // ============================================
-  let rootPackageInfo: EnhancedPackageInfo | null = null;
-  if (packages && packages[rootKey]) {
-    rootPackageInfo = packages[rootKey];
-  }
-
-  // ============================================
-  // 3. ПОСТРОЕНИЕ ШАГОВ ВЫПОЛНЕНИЯ
-  // ============================================
+  // Находим точки входа: экспортируемые функции из корневого модуля
   const rootEntities = entitiesMap[rootKey];
-  if (rootEntities && typeof rootEntities === 'object') {
-    const functions = ensureArray((rootEntities as any).functions || []);
-    for (const func of functions) {
-      if (!func || typeof func !== 'object') {
-        continue;
+  if (rootEntities) {
+    for (const func of rootEntities.functions || []) {
+      if (func.isExported && func.name) {
+        entryFunctions.push(func.name);
       }
-
-      const funcObj = func as Record<string, any>;
-      const isExported = funcObj.isExported === true;
-      const funcName = safeString(funcObj.name);
-
-      if (!isExported || !funcName) {
-        continue;
-      }
-
-      const isAsync = funcObj.isAsync === true;
-      const calls = ensureArray(funcObj.calls || []);
-
-      // Проверяем, есть ли асинхронные вызовы
-      let hasAsyncCalls = false;
-      const asyncCallTargets: string[] = [];
-
-      for (const call of calls) {
-        const callStr = safeString(call);
-        if (!callStr) continue;
-
-        // Ищем вызываемую функцию в entitiesMap
-        for (const [_modulePath, moduleEntities] of Object.entries(entitiesMap)) {
-          if (!moduleEntities || typeof moduleEntities !== 'object') {
-            continue;
-          }
-
-          const moduleFunctions = ensureArray((moduleEntities as any).functions || []);
-          for (const calledFunc of moduleFunctions) {
-            if (!calledFunc || typeof calledFunc !== 'object') {
-              continue;
-            }
-
-            const calledObj = calledFunc as Record<string, any>;
-            const calledName = safeString(calledObj.name);
-            const calledIsAsync = calledObj.isAsync === true;
-
-            if (calledName === callStr && calledIsAsync) {
-              hasAsyncCalls = true;
-              asyncCallTargets.push(callStr);
-              break;
-            }
-          }
-          if (hasAsyncCalls) break;
-        }
-      }
-
-      // Проверяем, участвует ли функция в циклической зависимости
-      let isCyclic = false;
-      if (hasCyclicDependencies && cyclicEdgesList.length > 0) {
-        for (const edge of cyclicEdgesList) {
-          if (edge.includes(funcName)) {
-            isCyclic = true;
-            break;
-          }
-        }
-      }
-
-      // Получаем информацию о модуле из packages
-      let moduleInfo = '';
-      const moduleStats = {
-        size: 0,
-        lines: 0,
-        functions: 0,
-        classes: 0,
-        constants: 0,
-        interfaces: 0,
-        types: 0,
-        variables: 0,
-      };
-
-      if (rootPackageInfo) {
-        moduleInfo = `${rootPackageInfo.language || ''} ${rootPackageInfo.type || ''}`.trim();
-        Object.assign(moduleStats, rootPackageInfo.fileStats || {});
-      }
-
-      // Строим branches с обогащенной информацией
-      const branches: Record<string, any> = {};
-
-      if (isCyclic) {
-        branches.isCyclic = true;
-      }
-
-      if (hasAsyncCalls) {
-        branches.hasAsyncCalls = true;
-        branches.asyncCallTargets = asyncCallTargets;
-        branches.asyncCallsCount = asyncCallTargets.length;
-      }
-
-      if (moduleInfo) {
-        branches.moduleInfo = moduleInfo;
-        branches.moduleStats = moduleStats;
-      }
-
-      steps.push({
-        func: funcName,
-        module: rootKey,
-        direction: 'self',
-        isAsync: isAsync || hasAsyncCalls,
-        branches: Object.keys(branches).length > 0 ? branches : undefined,
-      });
     }
   }
 
-  // ============================================
-  // 4. ОПРЕДЕЛЕНИЕ ТИПА ПОТОКА
-  // ============================================
-  let flowType: 'sequential' | 'parallel' | 'conditional' = 'sequential';
-
-  if (steps.some(s => s.branches?.hasAsyncCalls)) {
-    flowType = 'parallel';
+  // Если нет экспортов, используем все функции корневого модуля
+  if (entryFunctions.length === 0 && rootEntities) {
+    for (const func of rootEntities.functions || []) {
+      if (func.name) {
+        entryFunctions.push(func.name);
+      }
+    }
   }
 
-  if (steps.some(s => s.branches?.isCyclic)) {
-    flowType = 'conditional';
+  // Строим шаги выполнения (BFS от точек входа)
+  const visited = new Set<string>();
+  const queue: { func: string; module: string; direction: 'inward' | 'outward' | 'self' }[] = [];
+
+  for (const funcName of entryFunctions) {
+    queue.push({
+      func: funcName,
+      module: rootKey,
+      direction: 'outward',
+    });
+  }
+
+  while (queue.length > 0) {
+    const item = queue.shift()!;
+    const key = `${item.module}#${item.func}`;
+
+    if (visited.has(key)) continue;
+    visited.add(key);
+
+    // Определяем isAsync
+    let isAsync = false;
+    const entities = entitiesMap[item.module];
+    if (entities) {
+      const func = entities.functions?.find((f: any) => f.name === item.func);
+      if (func) {
+        isAsync = func.isAsync || false;
+      }
+    }
+
+    steps.push({
+      func: item.func,
+      module: item.module,
+      direction: item.direction,
+      isAsync,
+    });
+
+    // Находим вызовы из текущей функции
+    const callGraph = entitiesMap[item.module]?.callGraph || {};
+    const calls = callGraph[item.func] || [];
+
+    for (const call of calls) {
+      // Ищем вызываемую функцию в том же модуле
+      const sameModuleFunc = entitiesMap[item.module]?.functions?.find((f: any) => f.name === call);
+      if (sameModuleFunc) {
+        queue.push({
+          func: call,
+          module: item.module,
+          direction: 'self',
+        });
+        continue;
+      }
+
+      // Ищем в других модулях
+      let found = false;
+      for (const [modulePath, modEntities] of Object.entries(entitiesMap)) {
+        if (modulePath === item.module) continue;
+        const func = modEntities.functions?.find((f: any) => f.name === call);
+        if (func && func.isExported) {
+          queue.push({
+            func: call,
+            module: modulePath,
+            direction: 'inward',
+          });
+          found = true;
+          break;
+        }
+      }
+
+      // Если не нашли, добавляем как outward (внешний вызов)
+      if (!found) {
+        // Проверяем, не является ли вызов внешним импортом
+        const imports = entitiesMap[item.module]?.imports || [];
+        let isExternal = false;
+        for (const imp of imports) {
+          if (
+            imp.source &&
+            (imp.source.includes(call) ||
+              imp.specifiers.some((s: any) => {
+                const spec = typeof s === 'string' ? s : s.imported || s.local;
+                return spec === call;
+              }))
+          ) {
+            isExternal = true;
+            break;
+          }
+        }
+
+        if (isExternal) {
+          steps.push({
+            func: call,
+            module: item.module,
+            direction: 'outward',
+            isAsync: false,
+          });
+        }
+      }
+    }
+  }
+
+  // Определяем тип выполнения
+  let executionType: 'sequential' | 'parallel' | 'conditional' = 'sequential';
+
+  // Проверяем наличие ветвлений (условий)
+  const hasConditional = steps.some(s => {
+    const entities = entitiesMap[s.module];
+    if (!entities) return false;
+    const func = entities.functions?.find((f: any) => f.name === s.func);
+    if (!func || !func.body) return false;
+    return func.body.includes('if') || func.body.includes('?') || func.body.includes('switch');
+  });
+
+  if (hasConditional) {
+    executionType = 'conditional';
+  } else if (steps.length > 1) {
+    // Проверяем наличие параллельных вызовов (Promise.all, await Promise.all)
+    const hasParallel = steps.some(s => {
+      const entities = entitiesMap[s.module];
+      if (!entities) return false;
+      const func = entities.functions?.find((f: any) => f.name === s.func);
+      if (!func || !func.body) return false;
+      return func.body.includes('Promise.all') || func.body.includes('await Promise');
+    });
+    if (hasParallel) {
+      executionType = 'parallel';
+    }
   }
 
   return {
@@ -828,120 +176,293 @@ export function buildAsyncExecutionGraph(
     direction: 'top-down',
     entryFunctions,
     executionFlow: {
-      type: flowType,
+      type: executionType,
       steps,
     },
   };
 }
 
+// ============================================================
+// ФУНКЦИИ ДЛЯ ПОСТРОЕНИЯ IMPORT/EXPORT FLOW
+// ============================================================
+
 /**
- * Проверяет, есть ли циклические зависимости в потоке импортов
- *
- * @param importsFlow - Потоки импортов
- * @param graphData - Данные графа (используется для проверки циклов)
- * @param packages - Данные по пакетам (используется для обогащения)
- * @returns Список циклических зависимостей с обогащенной информацией
+ * Строит поток импортов и экспортов между модулями
  */
-export function hasCyclicImports(
-  importsFlow: ImportExportFlow['imports'],
-  graphData?: GraphData,
-  packages?: Record<string, EnhancedPackageInfo>
-): { from: string; to: string; cyclePath?: string[]; moduleInfo?: string }[] {
-  const cycles: { from: string; to: string; cyclePath?: string[]; moduleInfo?: string }[] = [];
-  const visited = new Set<string>();
-  const recursionStack = new Set<string>();
-
-  // Используем graphData для быстрой проверки циклов
-  if (graphData && graphData.hasCycles) {
-    const cyclicEdges = graphData.cyclicEdges || [];
-    for (const edge of cyclicEdges) {
-      const parts = edge.split('->');
-      const from = parts[0] || '';
-      const to = parts[1] || '';
-      if (from && to) {
-        // Обогащаем информацию о цикле данными из packages
-        let moduleInfo = '';
-        if (packages && packages[from]) {
-          const pkg = packages[from];
-          moduleInfo = `${pkg.language || ''} ${pkg.type || ''}`.trim();
-        }
-
-        cycles.push({
-          from,
-          to,
-          cyclePath: [from, to],
-          moduleInfo: moduleInfo || undefined,
-        });
-      }
+export function buildImportExportFlow(
+  graph: Record<string, string[]>,
+  entitiesMap: Record<string, EntitiesResult>,
+  _graphData: { rootKey: string; graph: Record<string, string[]> },
+  _packages: Record<string, EnhancedPackageInfo>
+): EnhancedPackageLockReport['importExportFlow'] {
+  const imports: Record<
+    string,
+    {
+      importsFrom: {
+        module: string;
+        type: 'named' | 'default' | 'namespace';
+        imports: string[];
+      }[];
     }
-    return cycles;
+  > = {};
+
+  const exports: Record<
+    string,
+    {
+      exportsTo: {
+        module: string;
+        type: 'named' | 'default';
+        exports: string[];
+      }[];
+    }
+  > = {};
+
+  // Инициализируем структуры для всех модулей
+  for (const modulePath of Object.keys(graph)) {
+    imports[modulePath] = { importsFrom: [] };
+    exports[modulePath] = { exportsTo: [] };
   }
 
-  // Если в graphData нет информации о циклах, ищем самостоятельно
-  const dfs = (modulePath: string, path: string[]) => {
-    if (recursionStack.has(modulePath)) {
-      const cycleStart = path.indexOf(modulePath);
-      if (cycleStart !== -1) {
-        const cyclePath = path.slice(cycleStart);
-        for (let i = cycleStart; i < path.length - 1; i++) {
-          const from = path[i] || '';
-          const to = path[i + 1] || '';
+  // Анализируем импорты из entitiesMap
+  for (const [modulePath, entities] of Object.entries(entitiesMap)) {
+    if (!entities) continue;
 
-          if (from && to) {
-            // Обогащаем информацию о цикле
-            let moduleInfo = '';
-            if (packages && packages[from]) {
-              const pkg = packages[from];
-              moduleInfo = `${pkg.language || ''} ${pkg.type || ''}`.trim();
+    for (const imp of entities.imports || []) {
+      const source = imp.source;
+      if (!source) continue;
+
+      // Определяем тип импорта
+      let importType: 'named' | 'default' | 'namespace' = 'named';
+
+      const specifiers = imp.specifiers || [];
+      const hasDefault = specifiers.some((s: any) => {
+        const spec = typeof s === 'string' ? s : s.imported || s.local;
+        return spec === 'default' || spec === 'default as';
+      });
+      const hasNamespace = specifiers.some((s: any) => {
+        const spec = typeof s === 'string' ? s : s.imported || s.local;
+        return spec.includes('* as');
+      });
+
+      if (hasNamespace) importType = 'namespace';
+      else if (hasDefault) importType = 'default';
+
+      const importNames: string[] = [];
+      for (const spec of specifiers) {
+        const specObj = typeof spec === 'string' ? { imported: spec, local: spec } : spec;
+        const name = specObj.imported || specObj.local || '';
+        if (name && name !== 'default' && !name.includes('* as')) {
+          importNames.push(name);
+        }
+      }
+
+      // Находим модуль-источник
+      let targetModule = source;
+      // Проверяем, есть ли такой модуль в графе
+      if (!graph[source]) {
+        // Пробуем найти по имени файла
+        const baseName = source.split('/').pop() || '';
+        for (const modPath of Object.keys(graph)) {
+          if (modPath.endsWith(baseName) || modPath.includes(source)) {
+            targetModule = modPath;
+            break;
+          }
+        }
+      }
+
+      if (targetModule && imports[modulePath]) {
+        // Проверяем, не добавлен ли уже такой импорт
+        const existing = imports[modulePath].importsFrom.find(
+          (item: any) => item.module === targetModule
+        );
+        if (existing) {
+          // Добавляем новые имена
+          for (const name of importNames) {
+            if (!existing.imports.includes(name)) {
+              existing.imports.push(name);
             }
+          }
+        } else {
+          imports[modulePath].importsFrom.push({
+            module: targetModule,
+            type: importType,
+            imports: importNames,
+          });
+        }
 
-            cycles.push({
-              from,
-              to,
-              cyclePath,
-              moduleInfo: moduleInfo || undefined,
+        // Добавляем экспорт в целевой модуль
+        const targetExports = exports[targetModule];
+        if (targetExports) {
+          const exportNames = importNames.filter(name => {
+            // Проверяем, что сущность действительно экспортируется
+            const targetEntities = entitiesMap[targetModule];
+            if (!targetEntities) return false;
+            const func = targetEntities.functions?.find((f: any) => f.name === name);
+            const constItem = targetEntities.constants?.find((c: any) => c.name === name);
+            const varItem = targetEntities.variables?.find((v: any) => v.name === name);
+            const cls = targetEntities.classes?.find((c: any) => c.name === name);
+            const intf = targetEntities.interfaces?.find((i: any) => i.name === name);
+            const type = targetEntities.types?.find((t: any) => t.name === name);
+            return (
+              func?.isExported ||
+              constItem?.isExported ||
+              varItem?.isExported ||
+              cls?.isExported ||
+              intf?.isExported ||
+              type?.isExported
+            );
+          });
+
+          if (exportNames.length > 0) {
+            const existingExport = targetExports.exportsTo.find(
+              (item: any) => item.module === modulePath
+            );
+            if (existingExport) {
+              for (const name of exportNames) {
+                if (!existingExport.exports.includes(name)) {
+                  existingExport.exports.push(name);
+                }
+              }
+            } else {
+              targetExports.exportsTo.push({
+                module: modulePath,
+                type: importType === 'namespace' ? 'named' : importType,
+                exports: exportNames,
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Добавляем реэкспорты
+  // Реэкспорты определяются через ExportNamedDeclaration с source в AST
+  // В модели EntitiesResult они представлены как exports с дополнительным полем source
+  for (const [modulePath, entities] of Object.entries(entitiesMap)) {
+    if (!entities) continue;
+
+    for (const exp of entities.exports || []) {
+      // Проверяем наличие source через приведение к any
+      // Реэкспорты имеют поле source, обычные экспорты - нет
+      const expAny = exp as any;
+      const source = expAny.source;
+
+      // Если есть source и это не default экспорт - это реэкспорт
+      if (source && typeof source === 'string' && !exp.isDefault) {
+        const targetExports = exports[modulePath];
+        if (targetExports) {
+          const existing = targetExports.exportsTo.find((item: any) => item.module === source);
+          if (existing) {
+            if (!existing.exports.includes(exp.name)) {
+              existing.exports.push(exp.name);
+            }
+          } else {
+            targetExports.exportsTo.push({
+              module: source,
+              type: 'named',
+              exports: [exp.name],
             });
           }
         }
-        // Замыкаем цикл
-        const last = path[path.length - 1] || '';
-        const first = path[cycleStart] || '';
-        if (last && first) {
-          let moduleInfo = '';
-          if (packages && packages[last]) {
-            const pkg = packages[last];
-            moduleInfo = `${pkg.language || ''} ${pkg.type || ''}`.trim();
-          }
-          cycles.push({
-            from: last,
-            to: first,
-            cyclePath,
-            moduleInfo: moduleInfo || undefined,
-          });
-        }
+      }
+    }
+  }
+
+  return {
+    imports,
+    exports,
+  };
+}
+
+// ============================================================
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ============================================================
+
+/**
+ * Находит все модули, которые зависят от указанного
+ */
+export function findDependents(modulePath: string, graph: Record<string, string[]>): string[] {
+  const dependents: string[] = [];
+
+  for (const [from, deps] of Object.entries(graph)) {
+    if (deps.includes(modulePath)) {
+      dependents.push(from);
+    }
+  }
+
+  return dependents;
+}
+
+/**
+ * Находит все модули, от которых зависит указанный
+ */
+export function findDependencies(modulePath: string, graph: Record<string, string[]>): string[] {
+  return graph[modulePath] || [];
+}
+
+/**
+ * Проверяет, есть ли циклические зависимости между модулями
+ */
+export function hasCyclicDependencies(
+  modulePath: string,
+  graph: Record<string, string[]>,
+  visited: Set<string> = new Set(),
+  stack: Set<string> = new Set()
+): boolean {
+  if (stack.has(modulePath)) return true;
+  if (visited.has(modulePath)) return false;
+
+  visited.add(modulePath);
+  stack.add(modulePath);
+
+  const deps = graph[modulePath] || [];
+  for (const dep of deps) {
+    if (hasCyclicDependencies(dep, graph, visited, stack)) {
+      return true;
+    }
+  }
+
+  stack.delete(modulePath);
+  return false;
+}
+
+/**
+ * Находит все циклические зависимости в графе
+ */
+export function findAllCycles(graph: Record<string, string[]>): string[][] {
+  const cycles: string[][] = [];
+  const visited = new Set<string>();
+  const recursionStack = new Set<string>();
+  const path: string[] = [];
+
+  const dfs = (node: string) => {
+    if (recursionStack.has(node)) {
+      const cycleStart = path.indexOf(node);
+      if (cycleStart !== -1) {
+        cycles.push(path.slice(cycleStart));
       }
       return;
     }
 
-    if (visited.has(modulePath)) {
-      return;
+    if (visited.has(node)) return;
+
+    visited.add(node);
+    recursionStack.add(node);
+    path.push(node);
+
+    const deps = graph[node] || [];
+    for (const dep of deps) {
+      dfs(dep);
     }
 
-    visited.add(modulePath);
-    recursionStack.add(modulePath);
-    path.push(modulePath);
-
-    const imports = importsFlow[modulePath]?.importsFrom || [];
-    for (const imp of imports) {
-      dfs(imp.module, [...path]);
-    }
-
-    recursionStack.delete(modulePath);
+    recursionStack.delete(node);
+    path.pop();
   };
 
-  for (const modulePath of Object.keys(importsFlow)) {
-    if (!visited.has(modulePath)) {
-      dfs(modulePath, []);
+  for (const node of Object.keys(graph)) {
+    if (!visited.has(node)) {
+      dfs(node);
     }
   }
 
@@ -949,98 +470,201 @@ export function hasCyclicImports(
 }
 
 /**
- * Получает статистику по импортам/экспортам
- *
- * @param importsFlow - Потоки импортов
- * @param exportsFlow - Потоки экспортов
- * @param graphData - Данные графа (используется для анализа структуры)
- * @param packages - Данные по пакетам (используется для обогащения)
- * @returns Статистика импортов/экспортов
+ * Получает уровень модуля (глубину) в графе
  */
-export function getImportExportStats(
-  importsFlow: ImportExportFlow['imports'],
-  exportsFlow: ImportExportFlow['exports'],
-  graphData?: GraphData,
-  packages?: Record<string, EnhancedPackageInfo>
-): {
-  totalImports: number;
-  totalExports: number;
-  modulesWithImports: number;
-  modulesWithExports: number;
-  avgImportsPerModule: number;
-  avgExportsPerModule: number;
-  cyclicImports: number;
-  importsByLanguage: Record<string, number>;
-  exportsByLanguage: Record<string, number>;
-} {
-  let totalImports = 0;
-  let totalExports = 0;
-  let modulesWithImports = 0;
-  let modulesWithExports = 0;
-  let cyclicImports = 0;
-  const importsByLanguage: Record<string, number> = {};
-  const exportsByLanguage: Record<string, number> = {};
+export function getModuleLevel(
+  modulePath: string,
+  graph: Record<string, string[]>,
+  levels: Map<string, number> = new Map()
+): number {
+  if (levels.has(modulePath)) {
+    return levels.get(modulePath)!;
+  }
 
-  // Используем graphData для анализа циклических импортов
-  const cyclicEdges = graphData?.cyclicEdges || [];
+  const deps = graph[modulePath] || [];
+  if (deps.length === 0) {
+    levels.set(modulePath, 0);
+    return 0;
+  }
 
-  // Используем packages для статистики по языкам
-  const moduleLanguages: Record<string, string> = {};
-  if (packages) {
-    for (const [modulePath, pkg] of Object.entries(packages)) {
-      moduleLanguages[modulePath] = pkg.language || 'unknown';
+  let maxDepth = 0;
+  for (const dep of deps) {
+    const depth = getModuleLevel(dep, graph, levels);
+    if (depth > maxDepth) {
+      maxDepth = depth;
     }
   }
 
-  for (const modulePath of Object.keys(importsFlow)) {
-    const imports = importsFlow[modulePath]?.importsFrom || [];
-    const language = moduleLanguages[modulePath] || 'unknown';
-
-    if (imports.length > 0) {
-      modulesWithImports++;
-      totalImports += imports.length;
-      importsByLanguage[language] = (importsByLanguage[language] || 0) + imports.length;
-
-      // Проверяем, есть ли циклические импорты
-      for (const imp of imports) {
-        if (cyclicEdges.some(edge => edge.includes(modulePath) && edge.includes(imp.module))) {
-          cyclicImports++;
-        }
-      }
-    }
-
-    const exports = exportsFlow[modulePath]?.exportsTo || [];
-    if (exports.length > 0) {
-      modulesWithExports++;
-      totalExports += exports.length;
-      exportsByLanguage[language] = (exportsByLanguage[language] || 0) + exports.length;
-    }
-  }
-
-  const totalModules = Object.keys(importsFlow).length || 1;
-
-  return {
-    totalImports,
-    totalExports,
-    modulesWithImports,
-    modulesWithExports,
-    avgImportsPerModule: totalImports / totalModules,
-    avgExportsPerModule: totalExports / totalModules,
-    cyclicImports,
-    importsByLanguage,
-    exportsByLanguage,
-  };
+  const level = maxDepth + 1;
+  levels.set(modulePath, level);
+  return level;
 }
 
-// ============================================================
-// ЭКСПОРТ ПО УМОЛЧАНИЮ
-// ============================================================
+/**
+ * Находит модули с наибольшим количеством зависимостей
+ */
+export function findModulesWithMostDependencies(
+  graph: Record<string, string[]>,
+  limit: number = 10
+): { module: string; count: number; dependencies: string[] }[] {
+  const results = Object.entries(graph)
+    .map(([module, deps]) => ({
+      module,
+      count: deps.length,
+      dependencies: deps,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, limit);
 
-export default {
-  buildExecutionGraph,
-  buildImportExportFlow,
-  buildAsyncExecutionGraph,
-  findEntryFunctions,
-  hasCyclicImports,
-  getImportExportStats,
-};
+  return results;
+}
+
+/**
+ * Находит модули, от которых больше всего зависят
+ */
+export function findMostDependentModules(
+  graph: Record<string, string[]>,
+  limit: number = 10
+): { module: string; count: number; dependents: string[] }[] {
+  const dependentsMap: Record<string, string[]> = {};
+
+  for (const [from, deps] of Object.entries(graph)) {
+    for (const dep of deps) {
+      if (!dependentsMap[dep]) {
+        dependentsMap[dep] = [];
+      }
+      dependentsMap[dep].push(from);
+    }
+  }
+
+  return Object.entries(dependentsMap)
+    .map(([module, dependents]) => ({
+      module,
+      count: dependents.length,
+      dependents,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, limit);
+}
+
+/**
+ * Проверяет, является ли модуль корневым (не имеет зависимостей)
+ */
+export function isRootModule(modulePath: string, graph: Record<string, string[]>): boolean {
+  const deps = graph[modulePath] || [];
+  return deps.length === 0;
+}
+
+/**
+ * Проверяет, является ли модуль листовым (от него никто не зависит)
+ */
+export function isLeafModule(modulePath: string, graph: Record<string, string[]>): boolean {
+  for (const deps of Object.values(graph)) {
+    if (deps.includes(modulePath)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Получает все модули на указанном уровне
+ */
+export function getModulesByLevel(level: number, graph: Record<string, string[]>): string[] {
+  const result: string[] = [];
+  const levels = new Map<string, number>();
+
+  for (const modulePath of Object.keys(graph)) {
+    const moduleLevel = getModuleLevel(modulePath, graph, levels);
+    if (moduleLevel === level) {
+      result.push(modulePath);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Строит путь от одного модуля к другому (BFS)
+ */
+export function findPath(
+  from: string,
+  to: string,
+  graph: Record<string, string[]>
+): string[] | null {
+  if (from === to) return [from];
+
+  const visited = new Set<string>();
+  const queue: { node: string; path: string[] }[] = [{ node: from, path: [from] }];
+
+  while (queue.length > 0) {
+    const { node, path } = queue.shift()!;
+
+    if (visited.has(node)) continue;
+    visited.add(node);
+
+    const deps = graph[node] || [];
+    for (const dep of deps) {
+      if (dep === to) {
+        return [...path, dep];
+      }
+      if (!visited.has(dep)) {
+        queue.push({ node: dep, path: [...path, dep] });
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Получает статистику по графу
+ */
+export function getGraphStats(graph: Record<string, string[]>): {
+  totalModules: number;
+  totalEdges: number;
+  avgDependencies: number;
+  maxDependencies: number;
+  minDependencies: number;
+  modulesWithNoDeps: number;
+  hasCycles: boolean;
+  cyclesCount: number;
+  maxDepth: number;
+} {
+  let totalEdges = 0;
+  let maxDeps = 0;
+  let minDeps = Infinity;
+  let modulesWithNoDeps = 0;
+
+  for (const deps of Object.values(graph)) {
+    const count = deps.length;
+    totalEdges += count;
+    if (count > maxDeps) maxDeps = count;
+    if (count < minDeps) minDeps = count;
+    if (count === 0) modulesWithNoDeps++;
+  }
+
+  const totalModules = Object.keys(graph).length;
+  const avgDependencies = totalModules > 0 ? totalEdges / totalModules : 0;
+  const cycles = findAllCycles(graph);
+
+  // Вычисляем максимальную глубину
+  let maxDepth = 0;
+  const levels = new Map<string, number>();
+  for (const modulePath of Object.keys(graph)) {
+    const depth = getModuleLevel(modulePath, graph, levels);
+    if (depth > maxDepth) maxDepth = depth;
+  }
+
+  return {
+    totalModules,
+    totalEdges,
+    avgDependencies,
+    maxDependencies: maxDeps,
+    minDependencies: minDeps === Infinity ? 0 : minDeps,
+    modulesWithNoDeps,
+    hasCycles: cycles.length > 0,
+    cyclesCount: cycles.length,
+    maxDepth,
+  };
+}

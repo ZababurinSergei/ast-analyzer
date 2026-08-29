@@ -35,6 +35,7 @@
     }
   },
   "scripts": {
+    "check":"npx tsc --noEmit --skipLibCheck",
     "start:win": "node ./dist/cli.js project ./src/cli.ts 15 -o ./reports/component-tree-deep",
     "start:win:abs": "node ./dist/cli.js project %CD%/src/cli.ts 15 -o ./reports/component-tree-deep",
     "start:ts": "NODE_OPTIONS=\"--trace-warnings --unhandled-rejections=strict\" tsx src/cli.ts project src/cli.ts 15 -o ./reports/component-tree-deep --entities 2>&1 | tee debug.log\n",

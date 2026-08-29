@@ -14,127 +14,20 @@ import {
 } from './call-collector.js';
 
 // ==========================================
-// ИНТЕРФЕЙСЫ
+// ИМПОРТ ТИПОВ ИЗ src/types.ts (ЕДИНЫЙ ИСТОЧНИК)
 // ==========================================
 
-export interface FunctionInfo {
-  name: string;
-  line: number;
-  isAsync: boolean;
-  isExported: boolean;
-  params: string[];
-  returnType?: string;
-  calls: string[];
-  calledBy: string[];
-  body?: string;
-  startLine: number;
-  endLine: number;
-  isMethod?: boolean;
-  className?: string;
-  isNested?: boolean;
-  parentFunction?: string;
-  isArrow?: boolean;
-  isEventHandler?: boolean;
-  eventType?: string;
-  depth: number;
-  complexity?: number;
-  security?: {
-    hasEval: boolean;
-    hasProcessEnv: boolean;
-    hasSensitiveData: boolean;
-    hasExec: boolean;
-    hasPassword: boolean;
-  };
-  // Дополнительные метаданные для Vue
-  _meta?: {
-    isVueComposable?: boolean;
-    isVueMacro?: boolean;
-    source?: string;
-    callName?: string;
-    isConst?: boolean;
-  };
-}
-
-export interface ClassInfo {
-  name: string;
-  line: number;
-  isExported: boolean;
-  methods: string[];
-  properties: string[];
-  extends?: string;
-  implements?: string[];
-  startLine: number;
-  endLine: number;
-}
-
-export interface ConstantInfo {
-  name: string;
-  line: number;
-  value?: any;
-  isExported: boolean;
-  type?: string;
-}
-
-export interface InterfaceInfo {
-  name: string;
-  line: number;
-  isExported: boolean;
-  properties: string[];
-  extends?: string[];
-  startLine: number;
-  endLine: number;
-}
-
-export interface TypeInfo {
-  name: string;
-  line: number;
-  isExported: boolean;
-  definition: string;
-}
-
-export interface VariableInfo {
-  name: string;
-  line: number;
-  isExported: boolean;
-  type?: string;
-  value?: any;
-}
-
-export interface ImportInfo {
-  source: string;
-  specifiers: {
-    local: string;
-    imported: string;
-    type: string;
-  }[];
-  loc: any;
-  isTypeOnly?: boolean;
-}
-
-export interface ExportInfo {
-  name: string;
-  type: 'function' | 'class' | 'constant' | 'value' | 'default';
-  isDefault: boolean;
-  loc: any;
-  params?: string[];
-  async?: boolean;
-  startLine?: number;
-  endLine?: number;
-}
-
-export interface EntitiesResult {
-  functions: FunctionInfo[];
-  classes: ClassInfo[];
-  constants: ConstantInfo[];
-  interfaces: InterfaceInfo[];
-  types: TypeInfo[];
-  variables: VariableInfo[];
-  imports: ImportInfo[];
-  exports: ExportInfo[];
-  callGraph: Record<string, string[]>;
-  moduleName: string;
-  filePath: string;
-}
+import type {
+  FunctionInfo,
+  ClassInfo,
+  ConstantInfo,
+  InterfaceInfo,
+  TypeInfo,
+  VariableInfo,
+  EntitiesResult,
+  ImportInfo,
+  ExportInfo,
+} from '../types.js';
 
 // ==========================================
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
@@ -542,10 +435,11 @@ function convertVueAnalysisToEntities(
         hasExec: false,
         hasPassword: false,
       },
-      _meta: {
-        isVueComposable: true,
-        source: comp.source,
-      },
+      id: `func_vue_${comp.name}`,
+      vscode: `vscode://file/${filePath}`,
+      callsInfo: [],
+      calledByInfo: [],
+      importedBy: [],
     };
     result.functions.push(funcInfo);
     result.callGraph[comp.name] = [];
@@ -615,7 +509,7 @@ function convertVueAnalysisToEntities(
         let innerMatch;
         while (
           (innerMatch = innerPattern.exec(scriptContent.substring(callMatch.index))) !== null
-          ) {
+        ) {
           const called = innerMatch[1];
           if (called && called !== caller && !calls.includes(called)) {
             calls.push(called);
@@ -681,15 +575,10 @@ function convertVueAnalysisToEntities(
   }
 
   // ==========================================
-  // ⭐ 9. ✅ ГЛАВНОЕ ИСПРАВЛЕНИЕ: СОХРАНЯЕМ ИМПОРТЫ ИЗ VUE
+  // 9. ИМПОРТЫ ИЗ VUE
   // ==========================================
-
-  // 9.1. Сохраняем импорты из vueAnalysis
   if (vueAnalysis.imports && vueAnalysis.imports.length > 0) {
-    // Очищаем существующие импорты, чтобы избежать дублирования
     result.imports = [];
-
-    console.log('@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@', vueAnalysis);
     for (const imp of vueAnalysis.imports) {
       result.imports.push({
         source: imp.source,
@@ -699,41 +588,17 @@ function convertVueAnalysisToEntities(
           type: 'ImportSpecifier',
         })),
         loc: null,
+        isTypeOnly: imp.isTypeOnly || false,
       });
-    }
-    console.log(`   📥 Vue-импортов (из vueAnalysis): ${result.imports.length}`);
-  }
-
-  // 9.2. Fallback: если импортов нет, извлекаем из скрипта (синхронно, без await)
-  if (result.imports.length === 0 && scriptContent) {
-    try {
-      // Используем синхронную функцию extractImportsFromSource
-      const { extractImportsFromSource } = require('../modes/vue-analyzer/extractors/imports.js');
-      const extractedImports = extractImportsFromSource(scriptContent);
-
-      if (extractedImports.length > 0) {
-        for (const imp of extractedImports) {
-          result.imports.push({
-            source: imp.source,
-            specifiers: imp.specifiers.map((s: string) => ({
-              local: s,
-              imported: s,
-              type: 'ImportSpecifier',
-            })),
-            loc: null,
-          });
-        }
-        console.log(`   📥 Vue-импортов (из скрипта): ${result.imports.length}`);
-      }
-    } catch (error) {
-      console.warn(`⚠️ Не удалось извлечь импорты из Vue-скрипта: ${error}`);
     }
   }
 
   // ==========================================
   // 10. ЛОГИРОВАНИЕ ИТОГОВОЙ СТАТИСТИКИ
   // ==========================================
-  console.log(`   🎯 Vue-анализ: ${result.functions.length} функций, ${result.constants.length} констант, ${result.imports.length} импортов`);
+  console.log(
+    `   🎯 Vue-анализ: ${result.functions.length} функций, ${result.constants.length} констант, ${result.imports.length} импортов`
+  );
 
   return result;
 }
@@ -802,7 +667,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
   const functionStack: string[] = [];
 
   // ==========================================
-  // ОБХОД AST (полный код обхода остается без изменений)
+  // ОБХОД AST
   // ==========================================
 
   function traverseNode(node: any, parent: any, depth: number, parentFunction?: string) {
@@ -996,11 +861,11 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
       const params = isArraySafe(node.params)
         ? node.params.map((p: any) => {
-          if (p.type === 'Identifier') return p.name || 'unknown';
-          if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
-          if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
-          return 'unknown';
-        })
+            if (p.type === 'Identifier') return p.name || 'unknown';
+            if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
+            if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
+            return 'unknown';
+          })
         : [];
 
       const isNested = parentFunctions.length > 0 || depth > 0;
@@ -1029,6 +894,11 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         depth: depth,
         complexity: calculateComplexity(node),
         security: analyzeSecurity(bodyText || ''),
+        id: filePath ? `func_${simpleHash(filePath)}_${fullName}` : `func_${fullName}`,
+        vscode: filePath ? `vscode://file/${filePath}:${node.loc?.start?.line || 1}` : '',
+        callsInfo: [],
+        calledByInfo: [],
+        importedBy: [],
       };
 
       functions.push(funcInfo);
@@ -1136,11 +1006,11 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
       const params = isArraySafe(node.params)
         ? node.params.map((p: any) => {
-          if (p.type === 'Identifier') return p.name || 'unknown';
-          if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
-          if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
-          return 'unknown';
-        })
+            if (p.type === 'Identifier') return p.name || 'unknown';
+            if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
+            if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
+            return 'unknown';
+          })
         : [];
 
       const isNested = parentFuncs.length > 0 || depth > 0;
@@ -1169,6 +1039,11 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         depth: depth,
         complexity: calculateComplexity(node),
         security: analyzeSecurity(bodyText || ''),
+        id: filePath ? `func_${simpleHash(filePath)}_${name}` : `func_${name}`,
+        vscode: filePath ? `vscode://file/${filePath}:${node.loc?.start?.line || 1}` : '',
+        callsInfo: [],
+        calledByInfo: [],
+        importedBy: [],
       };
 
       functions.push(funcInfo);
@@ -1201,10 +1076,10 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
         const params = isArraySafe(node.value?.params)
           ? node.value.params.map((p: any) => {
-            if (p.type === 'Identifier') return p.name || 'unknown';
-            if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
-            return 'unknown';
-          })
+              if (p.type === 'Identifier') return p.name || 'unknown';
+              if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
+              return 'unknown';
+            })
           : [];
 
         const parentFunc = className;
@@ -1230,6 +1105,11 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
           depth: depth,
           complexity: node.value?.body ? calculateComplexity(node.value.body) : 1,
           security: analyzeSecurity(bodyText || ''),
+          id: filePath ? `func_${simpleHash(filePath)}_${fullName}` : `func_${fullName}`,
+          vscode: filePath ? `vscode://file/${filePath}:${node.loc?.start?.line || 1}` : '',
+          callsInfo: [],
+          calledByInfo: [],
+          importedBy: [],
         };
 
         functions.push(funcInfo);
@@ -1578,6 +1458,20 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 }
 
 // ==========================================
+// ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ГЕНЕРАЦИИ ID
+// ==========================================
+
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(36).padStart(4, '0');
+}
+
+// ==========================================
 // ЭКСПОРТ ВСПОМОГАТЕЛЬНЫХ ФУНКЦИЙ
 // ==========================================
 
@@ -1642,6 +1536,12 @@ export {
   findUnusedFunctions,
   findUnresolvedCalls,
 };
+
+// ==========================================
+// ЭКСПОРТ ТИПА EntitiesResult
+// ==========================================
+
+export type { EntitiesResult };
 
 export default {
   extractEntities,

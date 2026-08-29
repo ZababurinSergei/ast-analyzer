@@ -48,6 +48,7 @@ import {
   saveEntityGraph,
   saveFullAnalysis,
   savePackageLockReport as saveEnhancedPackageLockReport,
+  saveOptimizedPackageLockReport,
 } from './reporters/json-reporter.js';
 import { generateInteractiveHTML } from './reporters/interactive-reporter.js';
 
@@ -76,11 +77,9 @@ import {
 
 const isWindows = process.platform === 'win32';
 const isMac = process.platform === 'darwin';
-// const isLinux = process.platform === 'linux';
 
 // Настройки для Windows
 if (isWindows) {
-  // Включаем поддержку длинных путей и увеличиваем память
   if (!process.env.NODE_OPTIONS) {
     process.env.NODE_OPTIONS = '--max-old-space-size=4096';
   }
@@ -93,9 +92,6 @@ console.log(`🖥️ OS: ${isWindows ? 'Windows' : isMac ? 'macOS' : 'Linux'}`);
 // ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ПОИСКА КОРНЯ ПРОЕКТА
 // ==========================================
 
-/**
- * Находит корень проекта (где находится package.json)
- */
 function findProjectRoot(startDir: string): string | null {
   let currentDir = path.resolve(startDir);
   const root = path.parse(currentDir).root;
@@ -110,17 +106,11 @@ function findProjectRoot(startDir: string): string | null {
   return null;
 }
 
-/**
- * Разрешает путь к файлу в абсолютный с поиском в нескольких местах
- * ИСПОЛЬЗУЕТСЯ в режиме project для преобразования путей
- */
 function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string | null {
-  // Если путь уже абсолютный и существует
   if (path.isAbsolute(filePath) && fs.existsSync(filePath)) {
     return filePath;
   }
 
-  // Пробуем разные варианты
   const candidates = [
     path.resolve(projectRoot, filePath),
     path.resolve(projectRoot, 'src', filePath),
@@ -129,7 +119,6 @@ function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string 
     path.resolve(process.cwd(), 'src', filePath),
   ];
 
-  // Добавляем варианты с нормализованными путями (Windows -> Unix)
   const normalizedFilePath = filePath.replace(/\\\\/g, '/');
   const additionalCandidates = [
     path.resolve(projectRoot, normalizedFilePath),
@@ -151,9 +140,6 @@ function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string 
 // ФУНКЦИЯ ДЛЯ ИЗВЛЕЧЕНИЯ СУЩНОСТЕЙ ИЗ PACKAGE-LOCK REPORT
 // ==========================================
 
-/**
- * Извлекает сущности из packageLockReport для интерактивного отчета
- */
 function extractEntitiesFromPackageLock(packageLockReport: any): EntitiesResult {
   const result: EntitiesResult = {
     functions: [],
@@ -178,19 +164,13 @@ function extractEntitiesFromPackageLock(packageLockReport: any): EntitiesResult 
   let totalCalls = 0;
 
   for (const [modulePath, pkg] of Object.entries(packageLockReport.packages)) {
-    // Проверяем, что pkg существует и имеет структуру
     if (!pkg || typeof pkg !== 'object') continue;
-
-    // Приводим к any для безопасного доступа к свойствам
     const pkgAny = pkg as any;
 
-    // Проверяем наличие entities
     if (!pkgAny.entities || typeof pkgAny.entities !== 'object') continue;
 
-    // Извлекаем функции с полной информацией
     if (Array.isArray(pkgAny.entities.functions)) {
       for (const func of pkgAny.entities.functions) {
-        // ✅ ЯВНОЕ ПРИВЕДЕНИЕ ТИПА
         const f = func as any;
         const calls = Array.isArray(f.calls) ? f.calls : [];
         totalCalls += calls.length;
@@ -210,12 +190,16 @@ function extractEntitiesFromPackageLock(packageLockReport: any): EntitiesResult 
           isMethod: f.isMethod || false,
           className: f.className || '',
           _modulePath: modulePath,
+          id: f.id || `func_${simpleHash(modulePath)}_${f.name}`,
+          vscode: f.vscode || `vscode://file/${modulePath}:${f.line}`,
+          callsInfo: f.callsInfo || [],
+          calledByInfo: f.calledByInfo || [],
+          importedBy: f.importedBy || [],
         } as any);
         totalFunctions++;
       }
     }
 
-    // Извлекаем классы
     if (Array.isArray(pkgAny.entities.classes)) {
       for (const cls of pkgAny.entities.classes) {
         const c = cls as any;
@@ -234,7 +218,6 @@ function extractEntitiesFromPackageLock(packageLockReport: any): EntitiesResult 
       }
     }
 
-    // Извлекаем константы
     if (Array.isArray(pkgAny.entities.constants)) {
       for (const constItem of pkgAny.entities.constants) {
         const c = constItem as any;
@@ -249,7 +232,6 @@ function extractEntitiesFromPackageLock(packageLockReport: any): EntitiesResult 
       }
     }
 
-    // Извлекаем интерфейсы
     if (Array.isArray(pkgAny.entities.interfaces)) {
       for (const intf of pkgAny.entities.interfaces) {
         const i = intf as any;
@@ -266,7 +248,6 @@ function extractEntitiesFromPackageLock(packageLockReport: any): EntitiesResult 
       }
     }
 
-    // Извлекаем типы
     if (Array.isArray(pkgAny.entities.types)) {
       for (const type of pkgAny.entities.types) {
         const t = type as any;
@@ -280,7 +261,6 @@ function extractEntitiesFromPackageLock(packageLockReport: any): EntitiesResult 
       }
     }
 
-    // Извлекаем переменные
     if (Array.isArray(pkgAny.entities.variables)) {
       for (const varItem of pkgAny.entities.variables) {
         const v = varItem as any;
@@ -312,9 +292,6 @@ function extractEntitiesFromPackageLock(packageLockReport: any): EntitiesResult 
 // ✅ ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ГАРАНТИИ МАССИВОВ
 // ==========================================
 
-/**
- * Гарантирует, что значение является массивом
- */
 function ensureArray<T>(value: any): T[] {
   if (Array.isArray(value)) return value;
   if (typeof value === 'string') {
@@ -328,9 +305,25 @@ function ensureArray<T>(value: any): T[] {
   return [];
 }
 
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(36).padStart(4, '0');
+}
+
 /**
- * Безопасно преобразует сущность в функцию с правильной типизацией
+ * Безопасно преобразует extends в строку
  */
+function safeExtends(value: string | string[] | undefined): string {
+  if (!value) return '';
+  if (Array.isArray(value)) return value.join(', ');
+  return value;
+}
+
 function safeFunctionEntity(item: any, modulePath: string): any {
   const f = item as any;
   return {
@@ -348,12 +341,14 @@ function safeFunctionEntity(item: any, modulePath: string): any {
     isMethod: f.isMethod || false,
     className: f.className || '',
     _modulePath: modulePath,
+    id: f.id || `func_${simpleHash(modulePath)}_${f.name}`,
+    vscode: f.vscode || `vscode://file/${modulePath}:${f.line}`,
+    callsInfo: ensureArray(f.callsInfo),
+    calledByInfo: ensureArray(f.calledByInfo),
+    importedBy: ensureArray(f.importedBy),
   };
 }
 
-/**
- * Безопасно преобразует сущность в класс
- */
 function safeClassEntity(item: any, modulePath: string): any {
   const c = item as any;
   return {
@@ -370,9 +365,6 @@ function safeClassEntity(item: any, modulePath: string): any {
   };
 }
 
-/**
- * Безопасно преобразует сущность в константу
- */
 function safeConstantEntity(item: any, modulePath: string): any {
   const c = item as any;
   return {
@@ -385,9 +377,6 @@ function safeConstantEntity(item: any, modulePath: string): any {
   };
 }
 
-/**
- * Безопасно преобразует сущность в интерфейс
- */
 function safeInterfaceEntity(item: any, modulePath: string): any {
   const i = item as any;
   return {
@@ -395,16 +384,13 @@ function safeInterfaceEntity(item: any, modulePath: string): any {
     properties: ensureArray(i.properties),
     line: i.line || 0,
     isExported: i.isExported || false,
-    extends: ensureArray(i.extends),
+    extends: safeExtends(i.extends),
     startLine: i.startLine || i.line || 0,
     endLine: i.endLine || i.line || 0,
     _modulePath: modulePath,
   };
 }
 
-/**
- * Безопасно преобразует сущность в тип
- */
 function safeTypeEntity(item: any, modulePath: string): any {
   const t = item as any;
   return {
@@ -416,9 +402,6 @@ function safeTypeEntity(item: any, modulePath: string): any {
   };
 }
 
-/**
- * Безопасно преобразует сущность в переменную
- */
 function safeVariableEntity(item: any, modulePath: string): any {
   const v = item as any;
   return {
@@ -448,17 +431,14 @@ interface ParsedArgs {
   includeBody?: boolean;
   fromFunction?: string;
   toFunction?: string;
+  optimized?: boolean;
 }
 
-// ✅ ЭКСПОРТИРУЕМ parseArgs для видимости в графе
 export function parseArgs(): ParsedArgs | null {
   const args = process.argv.slice(2);
 
-  // ✅ Нормализация путей для Windows
   const normalizedArgs = args.map(arg => {
-    // Не трогаем опции (начинаются с -)
     if (arg.startsWith('-')) return arg;
-    // Нормализуем пути
     return normalizePathForOS(arg);
   });
 
@@ -471,15 +451,15 @@ export function parseArgs(): ParsedArgs | null {
   let includeBody = false;
   let fromFunction: string | undefined;
   let toFunction: string | undefined;
+  let optimized = false;
   const cleanArgs: string[] = [];
 
-  // Извлекаем -o/--output и --tsconfig из аргументов
   for (let i = 0; i < normalizedArgs.length; i++) {
     const arg = normalizedArgs[i];
     if (arg === '-o' || arg === '--output') {
       if (arg && normalizedArgs[i + 1]) {
         outputDir = normalizedArgs[i + 1];
-        i++; // пропускаем значение
+        i++;
       }
     } else if (arg === '--tsconfig') {
       if (normalizedArgs[i + 1]) {
@@ -502,12 +482,13 @@ export function parseArgs(): ParsedArgs | null {
         toFunction = normalizedArgs[i + 1];
         i++;
       }
+    } else if (arg === '--optimized' || arg === '--opt') {
+      optimized = true;
     } else if (arg) {
       cleanArgs.push(arg);
     }
   }
 
-  // Временно заменяем argv для существующего парсинга
   const originalArgv = [...process.argv];
   const newArgv = [originalArgv[0] || 'node', originalArgv[1] || 'cli.js', ...cleanArgs];
   process.argv = newArgv;
@@ -518,7 +499,6 @@ export function parseArgs(): ParsedArgs | null {
     return null;
   }
 
-  // НОВЫЙ РЕЖИМ: hybrid-report - гибридный отчет (модули + функции)
   if (mode === 'hybrid-report' || mode === 'hybrid') {
     const targetPath = cleanArgs[1];
     const depth = cleanArgs[2] || '5';
@@ -541,10 +521,10 @@ export function parseArgs(): ParsedArgs | null {
       includeBody,
       fromFunction,
       toFunction,
+      optimized,
     };
   }
 
-  // НОВЫЙ РЕЖИМ: semantic - семантический анализ
   if (mode === 'semantic') {
     const targetPaths = cleanArgs.slice(1);
     if (targetPaths.length === 0) {
@@ -605,10 +585,10 @@ export function parseArgs(): ParsedArgs | null {
       includeBody,
       fromFunction,
       toFunction,
+      optimized,
     };
   }
 
-  // НОВЫЙ РЕЖИМ: verify - формальная верификация функции
   if (mode === 'verify') {
     const targetFile = cleanArgs[1];
     if (!targetFile) {
@@ -653,10 +633,10 @@ export function parseArgs(): ParsedArgs | null {
       includeBody,
       fromFunction,
       toFunction,
+      optimized,
     };
   }
 
-  // Режим: refactor - автоматический рефакторинг с выделением модулей
   if (mode === 'refactor') {
     const targetPath = cleanArgs[1];
     if (!targetPath) {
@@ -733,10 +713,10 @@ export function parseArgs(): ParsedArgs | null {
       includeBody,
       fromFunction,
       toFunction,
+      optimized,
     };
   }
 
-  // Режим: analyze - анализ файла без изменений
   if (mode === 'analyze') {
     const targetPath = cleanArgs[1];
     if (!targetPath) {
@@ -788,10 +768,10 @@ export function parseArgs(): ParsedArgs | null {
       includeBody,
       fromFunction,
       toFunction,
+      optimized,
     };
   }
 
-  // Mode: vue-analyze
   if (mode === 'vue-analyze' || mode === 'vue') {
     const targetPath = cleanArgs[1];
     if (!targetPath) {
@@ -839,10 +819,10 @@ export function parseArgs(): ParsedArgs | null {
       includeBody,
       fromFunction,
       toFunction,
+      optimized,
     };
   }
 
-  // Mode: split-module
   if (mode === 'split-module' || mode === 'split') {
     const targetPath = cleanArgs[1];
     if (!targetPath) {
@@ -942,10 +922,10 @@ export function parseArgs(): ParsedArgs | null {
       includeBody,
       fromFunction,
       toFunction,
+      optimized,
     };
   }
 
-  // Mode: minify-folder
   if (mode === 'minify-folder') {
     const targetPath = cleanArgs[1];
     if (!targetPath) {
@@ -1018,10 +998,10 @@ export function parseArgs(): ParsedArgs | null {
       includeBody,
       fromFunction,
       toFunction,
+      optimized,
     };
   }
 
-  // Mode: dead-code
   if (mode === 'dead-code') {
     const targetPath = cleanArgs[1];
     if (!targetPath) {
@@ -1042,10 +1022,10 @@ export function parseArgs(): ParsedArgs | null {
       includeBody,
       fromFunction,
       toFunction,
+      optimized,
     };
   }
 
-  // Mode: impact
   if (mode === 'impact') {
     const targetPath = cleanArgs[1];
     const entityName = cleanArgs[2];
@@ -1067,10 +1047,10 @@ export function parseArgs(): ParsedArgs | null {
       includeBody,
       fromFunction,
       toFunction,
+      optimized,
     };
   }
 
-  // Mode: prompt-pack
   if (mode === 'prompt-pack') {
     const targetPath = cleanArgs[1];
     const depth = cleanArgs[2];
@@ -1092,10 +1072,10 @@ export function parseArgs(): ParsedArgs | null {
       includeBody,
       fromFunction,
       toFunction,
+      optimized,
     };
   }
 
-  // Mode: minify (single file)
   if (mode === 'minify') {
     const targetPath = cleanArgs[1];
     if (!targetPath) {
@@ -1116,10 +1096,10 @@ export function parseArgs(): ParsedArgs | null {
       includeBody,
       fromFunction,
       toFunction,
+      optimized,
     };
   }
 
-  // Mode: project (graph)
   if (mode === 'project') {
     const targetPath = cleanArgs[1];
     const maxDepth = cleanArgs[2];
@@ -1141,10 +1121,10 @@ export function parseArgs(): ParsedArgs | null {
       includeBody,
       fromFunction,
       toFunction,
+      optimized,
     };
   }
 
-  // Mode: file (internal graph)
   if (mode === 'file') {
     const targetPath = cleanArgs[1];
     if (!targetPath) {
@@ -1165,6 +1145,7 @@ export function parseArgs(): ParsedArgs | null {
       includeBody,
       fromFunction,
       toFunction,
+      optimized,
     };
   }
 
@@ -1178,7 +1159,6 @@ export function parseArgs(): ParsedArgs | null {
 // MAIN CLI ENTRY POINT
 // ==========================================
 
-// ✅ ЭКСПОРТИРУЕМ runCLI для видимости в графе
 export async function runCLI(): Promise<void> {
   const parsed = parseArgs();
   if (!parsed) return;
@@ -1195,31 +1175,27 @@ export async function runCLI(): Promise<void> {
     includeBody,
     fromFunction,
     toFunction,
+    optimized,
   } = parsed;
 
-  // Сохраняем исходную директорию СРАЗУ
   const originalCwd = process.cwd();
 
-  // ✅ Нормализуем targetPath для Windows
   let normalizedTargetPath = targetPath;
   if (isWindows) {
     normalizedTargetPath = normalizePathForOS(targetPath);
   }
 
-  // 1. СНАЧАЛА обрабатываем tsconfig (до смены директории)
   if (tsconfigPath) {
     const resolvedTsconfig = path.isAbsolute(tsconfigPath)
       ? tsconfigPath
       : path.resolve(originalCwd, tsconfigPath);
 
-    // ✅ Нормализуем для Windows
     const normalizedTsconfig = normalizePathForOS(resolvedTsconfig);
 
     if (fs.existsSync(normalizedTsconfig)) {
       setTsConfigPath(normalizedTsconfig);
       console.log(`📄 TsConfig: ${normalizedTsconfig}`);
 
-      // Дополнительно загружаем и показываем алиасы
       const tsConfig = loadTsConfig(path.dirname(normalizedTsconfig));
       if (tsConfig?.compilerOptions?.paths) {
         console.log('🔗 Найдены алиасы в tsconfig:');
@@ -1233,14 +1209,11 @@ export async function runCLI(): Promise<void> {
     }
   }
 
-  // 2. ПОТОМ обрабатываем outputDir и меняем директорию
   let outputDirChanged = false;
   let currentTargetPath = normalizedTargetPath;
 
   if (outputDir) {
-    // Создаем директорию если её нет (относительно originalCwd)
     const absoluteOutputDir = path.resolve(originalCwd, outputDir);
-    // ✅ Нормализуем для Windows
     const normalizedOutputDir = normalizePathForOS(absoluteOutputDir);
 
     if (!fs.existsSync(normalizedOutputDir)) {
@@ -1248,31 +1221,25 @@ export async function runCLI(): Promise<void> {
       console.log(`📁 Создана выходная директория: ${normalizedOutputDir}`);
     }
 
-    // Преобразуем targetPath в абсолютный путь относительно исходной директории
     if (!path.isAbsolute(normalizedTargetPath)) {
       currentTargetPath = path.resolve(originalCwd, normalizedTargetPath);
-      // ✅ Нормализуем для Windows
       currentTargetPath = normalizePathForOS(currentTargetPath);
       console.log('📄 Преобразован относительный путь в абсолютный:');
       console.log(`   Было: ${normalizedTargetPath}`);
       console.log(`   Стало: ${currentTargetPath}`);
     }
 
-    // Проверяем существование файла
     if (!fs.existsSync(currentTargetPath)) {
-      console.log('@@@@@@@@@@@ 1 @@@@@@@@@@@@')
       console.error(`❌ Файл не найден: ${currentTargetPath}`);
       process.exit(1);
     }
 
-    // Меняем рабочую директорию
     process.chdir(normalizedOutputDir);
     outputDirChanged = true;
     console.log(`📂 Выходная директория: ${process.cwd()}\n`);
   }
 
   try {
-    // НОВЫЙ РЕЖИМ: hybrid-report - гибридный отчет (модули + функции)
     if (mode === 'hybrid-report' || mode === 'hybrid') {
       console.log(`\n${'='.repeat(60)}`);
       console.log('🔀 ГИБРИДНЫЙ ОТЧЕТ: МОДУЛИ + ФУНКЦИИ');
@@ -1283,7 +1250,6 @@ export async function runCLI(): Promise<void> {
       console.log(`📏 Глубина: ${depth}`);
       console.log(`📁 Выходная директория: ${process.cwd()}\n`);
 
-      // ✅ ИСПРАВЛЕНО: Ждем завершения промиса
       const report = await runHybridReport(currentTargetPath, depth, process.cwd());
 
       console.log('\n✅ ГИБРИДНЫЙ ОТЧЕТ СОЗДАН!');
@@ -1300,13 +1266,11 @@ export async function runCLI(): Promise<void> {
       return;
     }
 
-    // НОВЫЙ РЕЖИМ: semantic - семантический анализ
     if (mode === 'semantic') {
       console.log(`\n${'='.repeat(60)}`);
       console.log('🔬 СЕМАНТИЧЕСКИЙ АНАЛИЗ КОДА');
       console.log(`${'='.repeat(60)}\n`);
 
-      // Собираем все пути
       let paths: string[] = [currentTargetPath];
       if (extraArg) {
         paths = paths.concat(extraArg.split(','));
@@ -1327,7 +1291,6 @@ export async function runCLI(): Promise<void> {
       return;
     }
 
-    // НОВЫЙ РЕЖИМ: verify - формальная верификация
     if (mode === 'verify') {
       console.log(`\n${'='.repeat(60)}`);
       console.log('🔬 ФОРМАЛЬНАЯ ВЕРИФИКАЦИЯ');
@@ -1336,17 +1299,14 @@ export async function runCLI(): Promise<void> {
       const z3 = new Z3Verifier();
       await z3.initialize();
 
-      // Загружаем контракт из файла или создаем на основе анализа
       let contract: any = null;
 
       if (options?.contractPath && fs.existsSync(options.contractPath)) {
         const contractContent = fs.readFileSync(options.contractPath, 'utf-8');
         contract = JSON.parse(contractContent);
       } else {
-        // Создаем контракт для функции на основе имени
         console.log(`🔍 Анализ функции: ${options?.functionName || 'не указана'}`);
 
-        // Пример контракта для демонстрации
         contract = {
           name: options?.functionName || 'testFunction',
           params: [createIntParam('x'), createIntParam('y')],
@@ -1387,7 +1347,6 @@ export async function runCLI(): Promise<void> {
       return;
     }
 
-    // Режим: refactor - автоматический рефакторинг
     if (mode === 'refactor') {
       console.log(`\n${'='.repeat(60)}`);
       console.log('🔧 АВТОМАТИЧЕСКИЙ РЕФАКТОРИНГ');
@@ -1406,7 +1365,6 @@ export async function runCLI(): Promise<void> {
 
       const result = await refactor.refactor(currentTargetPath);
 
-      // Если включен семантический анализ, проверяем результат
       if (options?.semanticAnalysis && result.success && !options?.dryRun) {
         console.log(`\n${'='.repeat(60)}`);
         console.log('🔬 СЕМАНТИЧЕСКАЯ ПРОВЕРКА РЕЗУЛЬТАТА');
@@ -1446,7 +1404,6 @@ export async function runCLI(): Promise<void> {
       return;
     }
 
-    // Режим: analyze - анализ без изменений
     if (mode === 'analyze') {
       console.log(`\n${'='.repeat(60)}`);
       console.log('🔍 АНАЛИЗ ФАЙЛА (без изменений)');
@@ -1466,7 +1423,7 @@ export async function runCLI(): Promise<void> {
         for (let i = 0; i < result.modules.length; i++) {
           const module = result.modules[i];
           if (!module) continue;
-          console.log(`\n   ${i + 1}. Модуль \"${module.name}\":`);
+          console.log(`\n   ${i + 1}. Модуль "${module.name}":`);
           console.log(`      Экспорты: ${module.exports.join(', ')}`);
         }
       } else {
@@ -1475,7 +1432,6 @@ export async function runCLI(): Promise<void> {
       return;
     }
 
-    // Режим: vue-analyze
     if (mode === 'vue-analyze' || mode === 'vue') {
       console.log(`\n${'='.repeat(60)}`);
       console.log('🎯 АНАЛИЗ VUE КОМПОНЕНТА');
@@ -1487,7 +1443,6 @@ export async function runCLI(): Promise<void> {
         process.exit(1);
       }
 
-      // Сохраняем JSON отчет
       const jsonOutput = {
         ...analysis,
         timestamp: new Date().toISOString(),
@@ -1495,12 +1450,10 @@ export async function runCLI(): Promise<void> {
       fs.writeFileSync('vue-analysis.json', JSON.stringify(jsonOutput, null, 2));
       console.log('✅ JSON анализ сохранен: vue-analysis.json');
 
-      // Сохраняем Markdown отчет
       const markdownReport = generateVueComponentReport(analysis);
       fs.writeFileSync('vue-analysis.md', markdownReport);
       console.log('✅ Markdown отчет сохранен: vue-analysis.md');
 
-      // Выводим краткую информацию
       console.log('\n📊 КРАТКАЯ ИНФОРМАЦИЯ:');
       console.log(`   🏷️  Компонент: ${analysis.componentName}`);
       console.log(`   📥 Props: ${analysis.props.names.length}`);
@@ -1517,7 +1470,6 @@ export async function runCLI(): Promise<void> {
       return;
     }
 
-    // Mode: split-module
     if (mode === 'split-module' || mode === 'split') {
       console.log(`\n${'='.repeat(60)}`);
       console.log('🔪 РАЗБИЕНИЕ ФАЙЛА НА МОДУЛИ');
@@ -1534,7 +1486,6 @@ export async function runCLI(): Promise<void> {
       return;
     }
 
-    // Mode: minify-folder
     if (mode === 'minify-folder') {
       console.log(`\n${'='.repeat(60)}`);
       console.log('📁 РЕКУРСИВНАЯ МИНИФИКАЦИЯ ПРОЕКТА');
@@ -1544,7 +1495,6 @@ export async function runCLI(): Promise<void> {
       return;
     }
 
-    // Mode: dead-code
     if (mode === 'dead-code') {
       console.log(`🔎 Анализ мертвого кода: ${currentTargetPath}`);
       const report = findDeadCode(currentTargetPath);
@@ -1556,7 +1506,6 @@ export async function runCLI(): Promise<void> {
       return;
     }
 
-    // Mode: impact
     if (mode === 'impact') {
       if (!extraArg) {
         console.error('❌ Укажите имя сущности: node graph-analyzer.js impact <файл> <entity>');
@@ -1570,7 +1519,6 @@ export async function runCLI(): Promise<void> {
       return;
     }
 
-    // Mode: prompt-pack
     if (mode === 'prompt-pack') {
       const depth = extraArg ? parseInt(extraArg, 10) : 2;
       console.log(`🎒 Сборка промпт-пака для ${currentTargetPath} (глубина ${depth})`);
@@ -1581,7 +1529,6 @@ export async function runCLI(): Promise<void> {
       return;
     }
 
-    // Mode: minify (single file)
     if (mode === 'minify') {
       console.log(`✂️ Минификация: ${currentTargetPath}`);
       const minified = minifyForAI(currentTargetPath);
@@ -1597,12 +1544,10 @@ export async function runCLI(): Promise<void> {
       return;
     }
 
-    // Mode: project (graph)
     if (mode === 'project') {
       const maxDepth = extraArg ? parseInt(extraArg, 10) : Infinity;
       console.log(`📁 Построение графа проекта от ${currentTargetPath} (глубина ${maxDepth === Infinity ? '∞' : maxDepth})`);
 
-      // Передаем fromFunction и toFunction в buildProjectGraph
       const resultData = buildProjectGraph(
         currentTargetPath,
         maxDepth,
@@ -1620,7 +1565,6 @@ export async function runCLI(): Promise<void> {
         return;
       }
 
-      // ✅ Нормализуем пути в графе
       const normalizedData = normalizeGraphPaths(resultData);
 
       const cyclicEdges = findCyclicEdges(normalizedData.graph);
@@ -1641,7 +1585,6 @@ export async function runCLI(): Promise<void> {
       fs.writeFileSync('output.svg', svgContent);
       console.log('   ✅ output.svg');
 
-      // ✅ Генерируем HTML с нормализованным заголовком
       const htmlContent = generateHTMLReport(
         svgContent,
         dotContent,
@@ -1652,13 +1595,11 @@ export async function runCLI(): Promise<void> {
       fs.writeFileSync('report.html', htmlContent);
       console.log('   ✅ report.html');
 
-      // ✅ Сохраняем результат графа вызовов, если есть
       if (resultData.callGraphResult) {
         const callGraphPath = path.join(process.cwd(), 'call-graph-result.json');
         fs.writeFileSync(callGraphPath, JSON.stringify(resultData.callGraphResult, null, 2));
         console.log('   ✅ call-graph-result.json');
 
-        // Выводим результат в консоль
         if (resultData.callGraphResult.found) {
           console.log(`\n🔗 Путь от ${fromFunction || '?'} к ${toFunction || '?'}:`);
           console.log(`   ${resultData.callGraphResult.path.join(' → ')}`);
@@ -1669,7 +1610,6 @@ export async function runCLI(): Promise<void> {
         }
       }
 
-      // ✅ Если указан флаг --entities, сохраняем расширенный отчет в package-lock-report.json
       if (includeEntities && resultData.entities) {
         console.log('\n📊 Генерация расширенного отчета с сущностями...');
 
@@ -1684,17 +1624,15 @@ export async function runCLI(): Promise<void> {
         const enhancedReportPath = path.join(reportsDir, 'package-lock-report.json');
 
         try {
-          // ✅ Используем resolveAbsoluteFilePath для преобразования путей
           const absoluteFilePaths = allFiles.map(p => {
             const resolved = resolveAbsoluteFilePath(p, projectRoot);
             return resolved || path.resolve(projectRoot, p);
           });
 
-          // ✅ ИСПРАВЛЕНО: передаем resultData.entities в saveEnhancedPackageLockReport с опцией includeBody
           saveEnhancedPackageLockReport(
             resultData.rootKey,
             normalizedData.graph,
-            resultData.entities, // ← уже извлеченные сущности
+            resultData.entities,
             absoluteFilePaths,
             enhancedReportPath,
             { includeBody }
@@ -1702,7 +1640,6 @@ export async function runCLI(): Promise<void> {
           console.log(`\n✅ РАСШИРЕННЫЙ ОТЧЕТ СОХРАНЕН: ${enhancedReportPath}`);
           console.log(`📊 Включает: функции, константы, переменные, интерфейсы, типы, классы, вызовы`);
 
-          // Выводим статистику
           const stats = resultData.packageLockReport?.entityStats || {};
           console.log(`\n📊 СТАТИСТИКА СУЩНОСТЕЙ:`);
           console.log(`   • Функций: ${stats.totalFunctions || 0}`);
@@ -1713,11 +1650,7 @@ export async function runCLI(): Promise<void> {
           console.log(`   • Переменных: ${stats.totalVariables || 0}`);
           console.log(`   • Вызовов: ${stats.totalCalls || 0}`);
 
-          // ============================================
-          // 🆕 СОХРАНЯЕМ КОМПАКТНУЮ "ВСЕЛЕННУЮ" (ast-universe.json)
-          // ============================================
           try {
-            // Получаем уровень сжатия из переменной окружения или используем 1 (минимальный)
             const compressionLevel = parseInt(process.env.AST_COMPRESS_LEVEL || '1') as CompressionLevel;
             console.log(`\n📦 Генерация компактной "Вселенной" (уровень ${compressionLevel})...`);
 
@@ -1737,7 +1670,6 @@ export async function runCLI(): Promise<void> {
             console.log(`   📁 Модулей: ${compressed.stats.mods}`);
             console.log(`   📞 Вызовов: ${compressed.stats.calls}`);
 
-            // ✅ Безопасная проверка на undefined
             let withCalls = 0;
             if (compressed.callContext) {
               const callContext = compressed.callContext;
@@ -1748,7 +1680,6 @@ export async function runCLI(): Promise<void> {
               console.log(`   🔗 Функций с вызовами: ${withCalls}`);
             }
 
-            // Сохраняем также без уровня в имени для обратной совместимости
             if (compressionLevel === 1) {
               const defaultPath = path.join(process.cwd(), 'ast-universe.json');
               fs.copyFileSync(compressedPath, defaultPath);
@@ -1762,19 +1693,13 @@ export async function runCLI(): Promise<void> {
           console.error(`❌ Ошибка при сохранении расширенного отчета:`, error);
         }
 
-        // ============================================
-        // 🆕 ИСПОЛЬЗУЕМ ЕДИНЫЙ ИСТОЧНИК ДАННЫХ
-        // ============================================
         console.log('\n📊 Сбор данных через единый источник...');
 
         try {
-          // Строим единый источник данных
           const builder = new DataSourceBuilder(projectRoot);
 
-          // Добавляем все сущности из resultData.entities
           for (const [modulePath, entities] of Object.entries(resultData.entities || {})) {
             if (entities && typeof entities === 'object') {
-              // Преобразуем в правильный формат
               const entitiesResult: EntitiesResult = {
                 functions: ensureArray((entities as any).functions || []),
                 classes: ensureArray((entities as any).classes || []),
@@ -1792,20 +1717,13 @@ export async function runCLI(): Promise<void> {
             }
           }
 
-          // Добавляем граф
           builder.addGraph(resultData.rootKey, normalizedData.graph);
-
-          // Находим циклы
           builder.findCycles();
-
-          // Строим пакеты
           builder.buildPackages();
 
-          // Получаем доступ к данным
           const dataSource = builder.build();
           const accessor = new DataSourceAccessor(dataSource);
 
-          // Выводим статистику из единого источника
           const stats = accessor.getStats();
           console.log(`\n📊 СТАТИСТИКА ИЗ ЕДИНОГО ИСТОЧНИКА:`);
           console.log(`   • Модулей: ${stats.graph.modules}`);
@@ -1822,16 +1740,11 @@ export async function runCLI(): Promise<void> {
           console.error('❌ Ошибка при использовании единого источника данных:', error);
         }
 
-        // ============================================
-        // СБОР СУЩНОСТЕЙ ДЛЯ ИНТЕРАКТИВНОГО ОТЧЕТА
-        // ============================================
         let entitiesWithCalls: EntitiesResult;
 
-        // Если resultData.entities уже содержит сущности, используем их
         if (resultData.entities && Object.keys(resultData.entities).length > 0) {
           console.log('📊 Использование сущностей из resultData.entities...');
 
-          // Объединяем сущности из всех модулей
           entitiesWithCalls = {
             functions: [],
             classes: [],
@@ -1849,7 +1762,6 @@ export async function runCLI(): Promise<void> {
           for (const [modulePath, entities] of Object.entries(resultData.entities)) {
             if (!entities) continue;
 
-            // ✅ ГАРАНТИРУЕМ, ЧТО ВСЕ ПОЛЯ - МАССИВЫ
             const safeFunctions = ensureArray(entities.functions);
             const safeClasses = ensureArray(entities.classes);
             const safeConstants = ensureArray(entities.constants);
@@ -1857,37 +1769,30 @@ export async function runCLI(): Promise<void> {
             const safeTypes = ensureArray(entities.types);
             const safeVariables = ensureArray(entities.variables);
 
-            // ✅ ИСПОЛЬЗУЕМ БЕЗОПАСНЫЕ ФУНКЦИИ ПРЕОБРАЗОВАНИЯ
             for (const func of safeFunctions) {
               entitiesWithCalls.functions.push(safeFunctionEntity(func, modulePath));
             }
 
-            // Добавляем классы
             for (const cls of safeClasses) {
               entitiesWithCalls.classes.push(safeClassEntity(cls, modulePath));
             }
 
-            // Добавляем константы
             for (const constItem of safeConstants) {
               entitiesWithCalls.constants.push(safeConstantEntity(constItem, modulePath));
             }
 
-            // Добавляем интерфейсы
             for (const intf of safeInterfaces) {
               entitiesWithCalls.interfaces.push(safeInterfaceEntity(intf, modulePath));
             }
 
-            // Добавляем типы
             for (const type of safeTypes) {
               entitiesWithCalls.types.push(safeTypeEntity(type, modulePath));
             }
 
-            // Добавляем переменные
             for (const varItem of safeVariables) {
               entitiesWithCalls.variables.push(safeVariableEntity(varItem, modulePath));
             }
 
-            // Объединяем callGraph
             for (const [funcName, calls] of Object.entries(entities.callGraph || {})) {
               if (!entitiesWithCalls.callGraph[funcName]) {
                 entitiesWithCalls.callGraph[funcName] = [];
@@ -1906,11 +1811,9 @@ export async function runCLI(): Promise<void> {
           console.log(`   • Типов: ${entitiesWithCalls.types.length}`);
           console.log(`   • Переменных: ${entitiesWithCalls.variables.length}`);
         } else if (resultData.packageLockReport) {
-          // Если resultData.entities пустой, извлекаем из packageLockReport
           console.log('📊 resultData.entities пуст, извлечение из packageLockReport...');
           entitiesWithCalls = extractEntitiesFromPackageLock(resultData.packageLockReport);
         } else {
-          // Если ничего нет, создаем пустой объект и извлекаем из файлов
           console.log('📊 Извлечение сущностей из файлов проекта...');
           entitiesWithCalls = {
             functions: [],
@@ -1926,14 +1829,12 @@ export async function runCLI(): Promise<void> {
             filePath: 'all',
           };
 
-          // Извлекаем сущности из каждого файла в графе
           for (const filePath of Object.keys(normalizedData.graph)) {
             try {
               const absPath = path.resolve(filePath);
               if (fs.existsSync(absPath) && fs.statSync(absPath).isFile()) {
                 const fileEntities = extractEntitiesFromFile(absPath);
 
-                // ✅ ГАРАНТИРУЕМ МАССИВЫ
                 const safeFunctions = ensureArray(fileEntities.functions);
                 const safeClasses = ensureArray(fileEntities.classes);
                 const safeConstants = ensureArray(fileEntities.constants);
@@ -1941,32 +1842,26 @@ export async function runCLI(): Promise<void> {
                 const safeTypes = ensureArray(fileEntities.types);
                 const safeVariables = ensureArray(fileEntities.variables);
 
-                // Добавляем функции с информацией о модуле
                 for (const func of safeFunctions) {
                   entitiesWithCalls.functions.push(safeFunctionEntity(func, filePath));
                 }
 
-                // Добавляем классы
                 for (const cls of safeClasses) {
                   entitiesWithCalls.classes.push(safeClassEntity(cls, filePath));
                 }
 
-                // Добавляем константы
                 for (const constItem of safeConstants) {
                   entitiesWithCalls.constants.push(safeConstantEntity(constItem, filePath));
                 }
 
-                // Добавляем интерфейсы
                 for (const intf of safeInterfaces) {
                   entitiesWithCalls.interfaces.push(safeInterfaceEntity(intf, filePath));
                 }
 
-                // Добавляем типы
                 for (const type of safeTypes) {
                   entitiesWithCalls.types.push(safeTypeEntity(type, filePath));
                 }
 
-                // Добавляем переменные
                 for (const varItem of safeVariables) {
                   entitiesWithCalls.variables.push(safeVariableEntity(varItem, filePath));
                 }
@@ -1985,7 +1880,6 @@ export async function runCLI(): Promise<void> {
           console.log(`   • Переменных: ${entitiesWithCalls.variables.length}`);
         }
 
-        // Строим полный анализ для интерактивного отчета
         const fullAnalysis: FullAnalysis = {
           version: '3.0.0',
           root: currentTargetPath,
@@ -2001,6 +1895,13 @@ export async function runCLI(): Promise<void> {
               entitiesWithCalls.variables.length,
             hasCycles: hasCycles,
             cycles: normalizedData.cyclicEdges?.map((edge: string) => edge.split('->')) || [],
+            totalFunctions: entitiesWithCalls.functions.length,
+            totalClasses: entitiesWithCalls.classes.length,
+            totalConstants: entitiesWithCalls.constants.length,
+            totalInterfaces: entitiesWithCalls.interfaces.length,
+            totalTypes: entitiesWithCalls.types.length,
+            totalVariables: entitiesWithCalls.variables.length,
+            maxDepth: maxDepth,
           },
           moduleGraph: {
             nodes: [],
@@ -2012,7 +1913,6 @@ export async function runCLI(): Promise<void> {
           },
         };
 
-        // Заполняем moduleGraph
         const allModules = new Set<string>();
         allModules.add(normalizedData.rootKey);
 
@@ -2072,7 +1972,6 @@ export async function runCLI(): Promise<void> {
           }
         }
 
-        // Заполняем entityGraph с ребрами для вызовов
         for (const func of entitiesWithCalls.functions) {
           const modulePath = findModuleForEntity(func.name, normalizedData);
           const nodeId = modulePath ? `${modulePath}#${func.name}` : `#${func.name}`;
@@ -2119,7 +2018,6 @@ export async function runCLI(): Promise<void> {
           }
         }
 
-        // Добавляем классы
         for (const cls of entitiesWithCalls.classes) {
           const modulePath = findModuleForEntity(cls.name, normalizedData);
           const nodeId = modulePath ? `${modulePath}#${cls.name}` : `#${cls.name}`;
@@ -2133,7 +2031,7 @@ export async function runCLI(): Promise<void> {
               isExported: cls.isExported,
               methods: cls.methods,
               properties: cls.properties,
-              extends: cls.extends,
+              extends: cls.extends || '',
               implements: cls.implements,
               startLine: cls.startLine,
               endLine: cls.endLine,
@@ -2159,7 +2057,6 @@ export async function runCLI(): Promise<void> {
           }
         }
 
-        // Добавляем константы
         for (const constant of entitiesWithCalls.constants) {
           const modulePath = findModuleForEntity(constant.name, normalizedData);
           const nodeId = modulePath ? `${modulePath}#${constant.name}` : `#${constant.name}`;
@@ -2177,7 +2074,6 @@ export async function runCLI(): Promise<void> {
           });
         }
 
-        // Добавляем интерфейсы
         for (const intf of entitiesWithCalls.interfaces) {
           const modulePath = findModuleForEntity(intf.name, normalizedData);
           const nodeId = modulePath ? `${modulePath}#${intf.name}` : `#${intf.name}`;
@@ -2190,7 +2086,7 @@ export async function runCLI(): Promise<void> {
             metadata: {
               isExported: intf.isExported,
               properties: intf.properties,
-              extends: intf.extends,
+              extends: safeExtends(intf.extends),
               startLine: intf.startLine,
               endLine: intf.endLine,
             },
@@ -2206,7 +2102,6 @@ export async function runCLI(): Promise<void> {
           }
         }
 
-        // Добавляем типы
         for (const type of entitiesWithCalls.types) {
           const modulePath = findModuleForEntity(type.name, normalizedData);
           const nodeId = modulePath ? `${modulePath}#${type.name}` : `#${type.name}`;
@@ -2223,7 +2118,6 @@ export async function runCLI(): Promise<void> {
           });
         }
 
-        // Добавляем переменные
         for (const variable of entitiesWithCalls.variables) {
           const modulePath = findModuleForEntity(variable.name, normalizedData);
           const nodeId = modulePath ? `${modulePath}#${variable.name}` : `#${variable.name}`;
@@ -2241,11 +2135,9 @@ export async function runCLI(): Promise<void> {
           });
         }
 
-        // ✅ Генерируем интерактивный HTML отчет
         console.log('\n🌐 Генерация интерактивного HTML отчета...');
         const htmlPath = path.join(process.cwd(), 'interactive-report.html');
 
-        // Вызываем generateInteractiveHTML с анализом и сущностями
         await generateInteractiveHTML(fullAnalysis, htmlPath, entitiesWithCalls);
 
         console.log(`   ✅ interactive-report.html (интерактивный отчет)`);
@@ -2261,21 +2153,43 @@ export async function runCLI(): Promise<void> {
 
         console.log('\n🌐 Откройте interactive-report.html в браузере для интерактивного просмотра');
         console.log('📄 Откройте reports/entities-component-tree-deep/package-lock-report.json для детального анализа');
+
+        if (optimized) {
+          console.log('\n📊 Генерация оптимизированного отчета с встроенными связями...');
+
+          try {
+            const optimizedReportPath = path.join(process.cwd(), 'optimized-report.json');
+
+            saveOptimizedPackageLockReport(
+              resultData.rootKey,
+              normalizedData.graph,
+              resultData.entities || {},
+              optimizedReportPath,
+              {
+                includeBody: includeBody,
+                includeVscodeLinks: true,
+                includeStats: true,
+                includeMetadata: false,
+              }
+            );
+
+            console.log(`✅ Оптимизированный отчет сохранен: ${optimizedReportPath}`);
+            console.log(`   💡 Все связи встроены в сущности для быстрой навигации`);
+            console.log(`   🔗 VSCode ссылки для всех связанных сущностей`);
+          } catch (optError) {
+            console.error('❌ Ошибка при генерации оптимизированного отчета:', optError);
+          }
+        }
       }
 
-      // ==========================================
-      // ИСПОЛЬЗОВАНИЕ includeVueAnalysis
-      // ==========================================
       if (includeVueAnalysis) {
         console.log('\n🎯 Включен детальный Vue-анализ');
 
-        // Проверяем, есть ли Vue-файлы в проекте
         const vueFiles = Object.keys(normalizedData.graph).filter(f => f.endsWith('.vue'));
 
         if (vueFiles.length > 0) {
           console.log(`📊 Найдено Vue-файлов: ${vueFiles.length}`);
 
-          // Анализируем каждый Vue-файл и добавляем данные в отчет
           for (const vueFile of vueFiles) {
             try {
               const absPath = path.resolve(vueFile);
@@ -2293,7 +2207,6 @@ export async function runCLI(): Promise<void> {
                   console.log(`     🎭 Slots: ${vueAnalysis.slots.length}`);
                   console.log(`     🧩 Composables: ${vueAnalysis.composables.length}`);
 
-                  // Сохраняем Vue-анализ в отдельный файл
                   const vueReportPath = path.join(
                     process.cwd(),
                     `vue-analysis-${path.basename(vueFile, '.vue')}.json`
@@ -2320,7 +2233,6 @@ export async function runCLI(): Promise<void> {
         console.log(`\n⚠️ Обнаружено ${cyclicEdges.size} циклических зависимостей:`);
         console.log('='.repeat(60));
 
-        // Группируем по исходному файлу
         const cyclesByFile = new Map<string, Set<string>>();
         for (const edge of cyclicEdges) {
           const parts = edge.split('->');
@@ -2332,7 +2244,6 @@ export async function runCLI(): Promise<void> {
           }
         }
 
-        // Выводим в читаемом формате с нормализованными путями
         for (const [from, toSet] of cyclesByFile) {
           const shortFrom = normalizePathForDisplay(from);
           console.log(`\n📄 ${shortFrom}`);
@@ -2348,7 +2259,6 @@ export async function runCLI(): Promise<void> {
       return;
     }
 
-    // Mode: file (internal graph)
     if (mode === 'file') {
       console.log(`📄 Построение внутреннего графа файла ${currentTargetPath}`);
 
@@ -2358,7 +2268,6 @@ export async function runCLI(): Promise<void> {
         return;
       }
 
-      // ✅ Нормализуем пути в графе
       const normalizedData = normalizeGraphPaths(resultData);
 
       const cyclicEdges = findCyclicEdges(normalizedData.graph);
@@ -2379,7 +2288,6 @@ export async function runCLI(): Promise<void> {
       fs.writeFileSync('output.svg', svgContent);
       console.log('   ✅ output.svg');
 
-      // ✅ Генерируем HTML с нормализованным заголовком
       const htmlContent = generateHTMLReport(
         svgContent,
         dotContent,
@@ -2390,7 +2298,6 @@ export async function runCLI(): Promise<void> {
       fs.writeFileSync('report.html', htmlContent);
       console.log('   ✅ report.html');
 
-      // ✅ Если указан флаг --entities, генерируем графы сущностей для файла
       if (includeEntities) {
         console.log('\n📊 Генерация графов сущностей...');
 
@@ -2398,7 +2305,6 @@ export async function runCLI(): Promise<void> {
         if (ast) {
           const entities = extractEntities(ast, currentTargetPath);
 
-          // ✅ ВАЛИДАЦИЯ: убеждаемся, что calls это массив
           for (const func of entities.functions) {
             if (!Array.isArray(func.calls)) {
               func.calls = [];
@@ -2436,7 +2342,6 @@ export async function runCLI(): Promise<void> {
         console.log(`\n⚠️ Обнаружено ${cyclicEdges.size} циклических зависимостей во внутреннем графе файла:`);
         console.log('='.repeat(60));
 
-        // Группируем по исходной функции/сущности
         const cyclesByEntity = new Map<string, Set<string>>();
         for (const edge of cyclicEdges) {
           const parts = edge.split('->');
@@ -2448,7 +2353,6 @@ export async function runCLI(): Promise<void> {
           }
         }
 
-        // Выводим в читаемом формате
         for (const [from, toSet] of cyclesByEntity) {
           console.log(`\n📄 ${from}`);
           for (const to of toSet) {
@@ -2465,17 +2369,12 @@ export async function runCLI(): Promise<void> {
     console.error('❌ Ошибка:', error);
     process.exit(1);
   } finally {
-    // Возвращаемся в исходную директорию
     if (outputDirChanged) {
       process.chdir(originalCwd);
       console.log(`\n📂 Возврат в исходную директорию: ${originalCwd}`);
     }
   }
 }
-
-// ==========================================
-// ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ
-// ==========================================
 
 function findModuleForEntity(entityName: string, data: GraphData): string | null {
   for (const [modulePath, deps] of Object.entries(data.graph)) {

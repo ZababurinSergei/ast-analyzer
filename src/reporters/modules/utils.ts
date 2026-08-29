@@ -1,12 +1,11 @@
 // src/reporters/modules/utils.ts
-// Вспомогательные функции
 
-import fs from 'fs';
+import type { GraphData } from '../../types.js';
 import path from 'path';
-import { GraphData } from './types.js';
+import fs from 'fs';
 
 // ============================================================
-// БЕЗОПАСНАЯ РАБОТА С ТИПАМИ
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С МАССИВАМИ
 // ============================================================
 
 /**
@@ -27,11 +26,13 @@ export function ensureArray<T>(value: any): T[] {
 }
 
 /**
- * Безопасно преобразует значение в строку
+ * Безопасное преобразование в строку
  */
 export function safeString(value: any): string {
-  if (typeof value === 'string') return value;
   if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'boolean') return String(value);
   if (typeof value === 'object') {
     try {
       return JSON.stringify(value);
@@ -43,203 +44,94 @@ export function safeString(value: any): string {
 }
 
 /**
- * Безопасно преобразует значение в число
+ * Безопасное преобразование в число
  */
-export function safeNumber(value: any): number {
+export function safeNumber(value: any, defaultValue: number = 0): number {
   if (typeof value === 'number') return value;
   if (typeof value === 'string') {
-    const parsed = parseInt(value, 10);
-    return isNaN(parsed) ? 0 : parsed;
+    const parsed = parseFloat(value);
+    return isNaN(parsed) ? defaultValue : parsed;
   }
   if (typeof value === 'boolean') return value ? 1 : 0;
-  return 0;
+  return defaultValue;
 }
 
 /**
- * Безопасно преобразует значение в булево
+ * Безопасное преобразование в boolean
  */
-export function safeBoolean(value: any): boolean {
+export function safeBoolean(value: any, defaultValue: boolean = false): boolean {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'string') {
-    return value === 'true' || value === '1' || value === 'yes';
+    const lower = value.toLowerCase();
+    if (lower === 'true' || lower === '1' || lower === 'yes') return true;
+    if (lower === 'false' || lower === '0' || lower === 'no') return false;
+    return defaultValue;
   }
   if (typeof value === 'number') return value !== 0;
-  return !!value;
+  return defaultValue;
 }
 
 /**
- * Проверяет, является ли объект реальным (не строковым представлением)
+ * Проверяет, является ли значение объектом (не массивом, не null)
  */
-export function isRealObject(item: any): boolean {
-  if (!item) return false;
-  if (typeof item !== 'object') return false;
-  if (Array.isArray(item)) return false;
-  if (item.name === undefined) return false;
-  if (item.toString && item.toString() === '[object Object]') return false;
-  return true;
+export function isRealObject(value: any): boolean {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**
  * Фильтрует массив, оставляя только реальные объекты
  */
-export function filterRealObjects(arr: any[]): any[] {
-  if (!Array.isArray(arr)) return [];
-  return arr.filter((item: any) => isRealObject(item));
-}
-
-// ============================================================
-// САНИТАЙЗИНГ ДАННЫХ
-// ============================================================
-
-/**
- * Очищает отчет от некорректных данных
- */
-export function sanitizeEntities(report: any): any {
-  if (!report || !report.packages) return report;
-
-  const sanitized = { ...report };
-  sanitized.packages = {};
-
-  for (const [modulePath, pkg] of Object.entries(report.packages)) {
-    if (!pkg || typeof pkg !== 'object') {
-      sanitized.packages[modulePath] = pkg;
-      continue;
-    }
-
-    const entities = (pkg as any).entities || {};
-
-    sanitized.packages[modulePath] = {
-      ...pkg,
-      entities: {
-        functions: filterRealObjects(ensureArray(entities.functions)),
-        constants: filterRealObjects(ensureArray(entities.constants)),
-        variables: filterRealObjects(ensureArray(entities.variables)),
-        interfaces: filterRealObjects(ensureArray(entities.interfaces)),
-        types: filterRealObjects(ensureArray(entities.types)),
-        classes: filterRealObjects(ensureArray(entities.classes)),
-      },
-    };
-  }
-
-  return sanitized;
-}
-
-// ============================================================
-// БЕЗОПАСНЫЙ ОБХОД AST
-// ============================================================
-
-/**
- * Безопасно обходит AST, защищая от циклических ссылок и переполнения стека
- */
-export function safeTraverseAST(
-  node: any,
-  depth: number = 0,
-  visited: WeakSet<any> = new WeakSet()
-): any {
-  // Базовые случаи
-  if (!node || typeof node !== 'object') return node;
-
-  // Защита от циклических ссылок
-  if (visited.has(node)) {
-    return '[Circular]';
-  }
-  visited.add(node);
-
-  // Ограничение глубины
-  const MAX_DEPTH = 50;
-  if (depth > MAX_DEPTH) {
-    return '[Max Depth]';
-  }
-
-  // Обработка массивов
-  if (Array.isArray(node)) {
-    return node.map((item: any) => safeTraverseAST(item, depth + 1, visited));
-  }
-
-  // Обработка объектов
-  if (node.constructor && node.constructor.name === 'Object') {
-    const result: Record<string, any> = {};
-    for (const key of Object.keys(node)) {
-      // Пропускаем внутренние/несериализуемые свойства
-      if (shouldSkipKey(key)) {
-        continue;
-      }
-
-      const value = node[key];
-      if (typeof value === 'function') {
-        result[key] = '[Function]';
-      } else if (value && typeof value === 'object') {
-        result[key] = safeTraverseAST(value, depth + 1, visited);
-      } else {
-        result[key] = value;
-      }
-    }
-    return result;
-  }
-
-  // Обработка других объектов (Date, RegExp, Map, Set и т.д.)
-  try {
-    if (node.toString && node.toString() !== '[object Object]') {
-      return node.toString();
-    }
-
-    // Для объектов без понятного toString, пытаемся извлечь свойства
-    const result: Record<string, any> = {};
-    for (const key of Object.keys(node)) {
-      if (shouldSkipKey(key)) continue;
-
-      try {
-        const value = node[key];
-        if (typeof value === 'function') {
-          result[key] = '[Function]';
-        } else if (value && typeof value === 'object') {
-          result[key] = safeTraverseAST(value, depth + 1, visited);
-        } else {
-          result[key] = value;
-        }
-      } catch {
-        result[key] = '[Error]';
-      }
-    }
-    return Object.keys(result).length > 0 ? result : '[Object]';
-  } catch {
-    return '[Object]';
-  }
+export function filterRealObjects<T>(arr: any[]): T[] {
+  return arr.filter(item => isRealObject(item)) as T[];
 }
 
 /**
- * Проверяет, нужно ли пропустить ключ при сериализации
+ * Санитизирует сущности, удаляя циклические ссылки и опасные поля
  */
-function shouldSkipKey(key: string): boolean {
-  const skipKeys = new Set([
-    // Внутренние свойства AST
-    'parent',
-    'context',
-    'scope',
-    'ancestor',
-    'parentNode',
-    'parentElement',
-    'parentPath',
-    'parentObject',
-    'parentScope',
-    // Служебные свойства
-    '_safeCopy',
-    '_safeInfo',
-    'constructor',
-    'prototype',
-    '__proto__',
-    // Свойства, которые могут вызвать циклы
-    'parentSymbol',
-    'symbol',
-    'typeChecker',
-    'program',
-  ]);
-  return skipKeys.has(key);
+export function sanitizeEntities<T>(entities: T): T {
+  const seen = new WeakSet();
+
+  function sanitize(value: any): any {
+    if (value === null || value === undefined) return value;
+
+    // Обработка циклических ссылок
+    if (typeof value === 'object') {
+      if (seen.has(value)) return '[Circular]';
+      seen.add(value);
+    }
+
+    // Обработка массивов
+    if (Array.isArray(value)) {
+      return value.map(item => sanitize(item));
+    }
+
+    // Обработка объектов
+    if (typeof value === 'object') {
+      // Удаляем опасные поля
+      const safeKeys = Object.keys(value).filter(
+        key => !['_safeInfo', '__proto__', 'constructor', 'prototype'].includes(key)
+      );
+
+      const result: Record<string, any> = {};
+      for (const key of safeKeys) {
+        result[key] = sanitize(value[key]);
+      }
+      return result;
+    }
+
+    // Примитивные значения
+    return value;
+  }
+
+  return sanitize(entities) as T;
 }
 
-// ============================================================
-// РАБОТА С ФАЙЛАМИ И ПРОЕКТОМ
-// ============================================================
+/**
+ * Безопасный обход AST (удаляет циклические ссылки)
+ */
+export function safeTraverseAST<T>(obj: T): T {
+  return sanitizeEntities(obj);
+}
 
 /**
  * Находит корень проекта (где находится package.json)
@@ -261,75 +153,47 @@ export function findProjectRoot(startDir: string): string | null {
 /**
  * Находит файл в проекте по имени
  */
-export function findFileInProject(filePath: string, projectRoot: string): string | null {
-  const fileName = path.basename(filePath);
-
-  // Проверяем основные пути
-  const candidates = [
-    path.resolve(projectRoot, filePath),
-    path.resolve(projectRoot, 'src', filePath),
-    path.resolve(projectRoot, 'packages/ast-analyzer/src', filePath),
-    path.resolve(process.cwd(), filePath),
-    path.resolve(process.cwd(), 'src', filePath),
+export function findFileInProject(projectRoot: string, fileName: string): string | null {
+  const possiblePaths = [
+    path.resolve(projectRoot, fileName),
+    path.resolve(projectRoot, 'src', fileName),
+    path.resolve(projectRoot, 'packages', fileName),
+    path.resolve(projectRoot, 'lib', fileName),
+    path.resolve(projectRoot, 'dist', fileName),
   ];
 
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+  for (const candidate of possiblePaths) {
+    if (fs.existsSync(candidate)) {
       return candidate;
     }
   }
 
-  // Рекурсивный поиск по имени файла в src
-  const srcDir = path.resolve(projectRoot, 'src');
-  if (fs.existsSync(srcDir)) {
-    const walkDir = (dir: string): string | null => {
-      try {
-        const files = fs.readdirSync(dir);
-        for (const file of files) {
-          const fullPath = path.join(dir, file);
-          if (fs.statSync(fullPath).isDirectory()) {
-            const result = walkDir(fullPath);
-            if (result) return result;
-          } else if (file === fileName) {
-            return fullPath;
-          }
-        }
-      } catch (error: any) {
-        // Игнорируем ошибки
-      }
-      return null;
-    };
-
-    const foundPath = walkDir(srcDir);
-    if (foundPath) {
-      return foundPath;
-    }
-  }
-
   return null;
 }
 
 /**
- * Находит модуль для сущности в графе
+ * Находит модуль для сущности по имени
  */
 export function findModuleForEntity(entityName: string, data: GraphData): string | null {
-  if (!entityName || !data) return null;
+  const { graph } = data;
 
-  // Прямой поиск
-  for (const [modulePath, deps] of Object.entries(data.graph)) {
-    if (modulePath.includes(entityName)) return modulePath;
-    for (const dep of deps) {
-      if (dep.includes(entityName)) return dep;
-    }
+  // Проверяем, является ли имя сущности путем к модулю
+  if (graph[entityName]) {
+    return entityName;
   }
 
-  // Поиск по базовому имени (без расширения)
-  const baseName = entityName.replace(/\.[^.]+$/, '');
-  if (baseName !== entityName) {
-    for (const [modulePath, deps] of Object.entries(data.graph)) {
-      if (modulePath.includes(baseName)) return modulePath;
-      for (const dep of deps) {
-        if (dep.includes(baseName)) return dep;
+  // Ищем модуль, который содержит сущность
+  for (const [modulePath, deps] of Object.entries(graph)) {
+    // Проверяем, не является ли модуль самой сущностью
+    if (modulePath.includes(entityName)) {
+      return modulePath;
+    }
+
+    // Проверяем зависимости
+    const depsArray = deps as string[];
+    for (const dep of depsArray) {
+      if (dep.includes(entityName)) {
+        return dep;
       }
     }
   }
@@ -337,139 +201,185 @@ export function findModuleForEntity(entityName: string, data: GraphData): string
   return null;
 }
 
-// ============================================================
-// ДОПОЛНИТЕЛЬНЫЕ УТИЛИТЫ
-// ============================================================
-
 /**
- * Проверяет, является ли строка валидным JSON
+ * Нормализует путь для отображения
  */
-export function isValidJSON(str: string): boolean {
-  if (!str || typeof str !== 'string') return false;
-  try {
-    JSON.parse(str);
-    return true;
-  } catch {
-    return false;
+export function normalizePathForDisplay(filePath: string): string {
+  if (!filePath) return '';
+  const normalized = filePath.replace(/\\/g, '/');
+  const cwd = process.cwd().replace(/\\/g, '/');
+  if (normalized.startsWith(cwd + '/')) {
+    return normalized.substring(cwd.length + 1);
   }
+  return normalized;
 }
 
 /**
- * Безопасно парсит JSON, возвращая значение по умолчанию при ошибке
- */
-export function safeJSONParse<T>(str: string, defaultValue: T): T {
-  if (!str || typeof str !== 'string') return defaultValue;
-  try {
-    const parsed = JSON.parse(str);
-    return parsed !== null && parsed !== undefined ? parsed : defaultValue;
-  } catch {
-    return defaultValue;
-  }
-}
-
-/**
- * Создает уникальный идентификатор для сущности
- */
-export function createEntityId(modulePath: string, name: string): string {
-  const safeModule = safeString(modulePath).replace(/[^a-zA-Z0-9]/g, '_');
-  const safeName = safeString(name).replace(/[^a-zA-Z0-9]/g, '_');
-  return `${safeModule}#${safeName}`;
-}
-
-/**
- * Извлекает имя файла из пути
+ * Получает имя файла из пути
  */
 export function getFileName(filePath: string): string {
-  if (!filePath) return '';
   return path.basename(filePath);
 }
 
 /**
- * Извлекает расширение файла из пути
+ * Получает расширение файла
  */
 export function getFileExtension(filePath: string): string {
-  if (!filePath) return '';
-  const ext = path.extname(filePath);
-  return ext ? ext.slice(1) : '';
+  return path.extname(filePath);
 }
 
 /**
- * Проверяет, является ли файл TypeScript файлом
+ * Получает директорию файла
+ */
+export function getFileDirectory(filePath: string): string {
+  return path.dirname(filePath);
+}
+
+/**
+ * Проверяет, является ли файл TypeScript
  */
 export function isTypeScriptFile(filePath: string): boolean {
-  if (!filePath) return false;
-  const ext = getFileExtension(filePath);
-  return ['ts', 'tsx', 'mts', 'cts'].includes(ext);
+  return /\.(ts|tsx|mts|cts)$/i.test(filePath);
 }
 
 /**
- * Проверяет, является ли файл JavaScript файлом
+ * Проверяет, является ли файл JavaScript
  */
 export function isJavaScriptFile(filePath: string): boolean {
-  if (!filePath) return false;
-  const ext = getFileExtension(filePath);
-  return ['js', 'jsx', 'mjs', 'cjs'].includes(ext);
+  return /\.(js|jsx|mjs|cjs)$/i.test(filePath);
 }
 
 /**
- * Проверяет, является ли файл Vue файлом
+ * Проверяет, является ли файл Vue
  */
 export function isVueFile(filePath: string): boolean {
-  if (!filePath) return false;
-  return filePath.endsWith('.vue');
+  return /\.vue$/i.test(filePath);
 }
 
 /**
- * Определяет язык файла
+ * Проверяет, является ли файл JSX/TSX
+ */
+export function isJsxFile(filePath: string): boolean {
+  return /\.(jsx|tsx)$/i.test(filePath);
+}
+
+/**
+ * Определяет язык файла по расширению
  */
 export function detectLanguage(
   filePath: string
 ): 'typescript' | 'javascript' | 'vue' | 'jsx' | 'unknown' {
-  if (!filePath) return 'unknown';
   if (isVueFile(filePath)) return 'vue';
-  if (isTypeScriptFile(filePath)) {
-    if (filePath.endsWith('.tsx')) return 'jsx';
-    return 'typescript';
-  }
-  if (isJavaScriptFile(filePath)) {
-    if (filePath.endsWith('.jsx')) return 'jsx';
-    return 'javascript';
-  }
+  if (isJsxFile(filePath)) return 'jsx';
+  if (isTypeScriptFile(filePath)) return 'typescript';
+  if (isJavaScriptFile(filePath)) return 'javascript';
   return 'unknown';
 }
 
-// ============================================================
-// ЭКСПОРТ ПО УМОЛЧАНИЮ
-// ============================================================
+/**
+ * Сокращает длинный путь для отображения
+ */
+export function shortenPath(filePath: string, maxLength: number = 60): string {
+  if (!filePath) return '';
+  const normalized = normalizePathForDisplay(filePath);
+  if (normalized.length <= maxLength) return normalized;
 
+  const parts = normalized.split('/');
+  if (parts.length <= 3) return normalized;
+
+  const first = parts[0] || '';
+  const last = parts[parts.length - 1] || '';
+  const result = `${first}/.../${last}`;
+
+  return result.length <= maxLength ? result : last;
+}
+
+/**
+ * Генерирует VSCode ссылку для файла
+ */
+export function generateVscodeLink(filePath: string, line?: number): string {
+  const normalized = normalizePathForDisplay(filePath);
+  const fullPath = path.resolve(process.cwd(), normalized);
+  return line ? `vscode://file/${fullPath}:${line}` : `vscode://file/${fullPath}`;
+}
+
+/**
+ * Генерирует уникальный ID для функции
+ */
+export function generateFunctionId(filePath: string, funcName: string): string {
+  const hash = simpleHash(filePath);
+  return `func_${hash}_${funcName}`;
+}
+
+/**
+ * Генерирует уникальный ID для файла
+ */
+export function generateFileId(filePath: string): string {
+  const hash = simpleHash(filePath);
+  return `file_${hash}`;
+}
+
+/**
+ * Простой хеш для строки
+ */
+export function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(36).padStart(4, '0');
+}
+
+/**
+ * Проверяет, является ли путь абсолютным
+ */
+export function isAbsolutePath(filePath: string): boolean {
+  return path.isAbsolute(filePath);
+}
+
+/**
+ * Получает относительный путь от одного файла к другому
+ */
+export function getRelativePath(from: string, to: string): string {
+  const fromDir = path.dirname(from);
+  let relative = path.relative(fromDir, to);
+  if (!relative.startsWith('.') && !relative.startsWith('@')) {
+    relative = './' + relative;
+  }
+  return relative.replace(/\\/g, '/');
+}
+
+/**
+ * Экспорт по умолчанию
+ */
 export default {
-  // Безопасная работа с типами
   ensureArray,
   safeString,
   safeNumber,
   safeBoolean,
   isRealObject,
   filterRealObjects,
-
-  // Санитайзинг
   sanitizeEntities,
-
-  // Безопасный обход AST
   safeTraverseAST,
-
-  // Работа с файлами и проектом
   findProjectRoot,
   findFileInProject,
   findModuleForEntity,
-
-  // Дополнительные утилиты
-  isValidJSON,
-  safeJSONParse,
-  createEntityId,
+  normalizePathForDisplay,
   getFileName,
   getFileExtension,
+  getFileDirectory,
   isTypeScriptFile,
   isJavaScriptFile,
   isVueFile,
+  isJsxFile,
   detectLanguage,
+  shortenPath,
+  generateVscodeLink,
+  generateFunctionId,
+  generateFileId,
+  simpleHash,
+  isAbsolutePath,
+  getRelativePath,
 };

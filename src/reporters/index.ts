@@ -17,6 +17,7 @@ import {
   saveFullAnalysis,
   savePackageLockReport,
   saveCallGraphResult,
+  saveOptimizedPackageLockReport,
   buildModuleGraph,
   buildEntityGraph,
   buildFullAnalysis,
@@ -44,7 +45,7 @@ import * as utils from './modules/utils.js';
 import * as vue from './modules/vue.js';
 
 // ============================================================
-// ЭКСПОРТ ФУНКЦИЙ (для использования в других модулях)
+// ЭКСПОРТ ФУНКЦИЙ
 // ============================================================
 
 // Основные репортеры
@@ -59,6 +60,7 @@ export {
   saveFullAnalysis,
   savePackageLockReport,
   saveCallGraphResult,
+  saveOptimizedPackageLockReport,
   buildModuleGraph,
   buildEntityGraph,
   buildFullAnalysis,
@@ -78,31 +80,50 @@ export {
 } from './compressReport.js';
 
 // ============================================================
-// ЭКСПОРТ ТИПОВ
+// ЭКСПОРТ ТИПОВ (inline re-export без импорта)
 // ============================================================
 
-// Из json-reporter.js
+// ✅ Из json-reporter.js
 export type {
   EnhancedPackageLockReport,
   EnhancedPackageInfo,
   EnhancedEntityInfo,
 } from './json-reporter.js';
 
-// Из modules/types.js
+// ✅ Из modules/types.js - ТОЛЬКО СУЩЕСТВУЮЩИЕ ТИПЫ
 export type {
+  ModuleNode,
+  ModuleEdge,
+  EntityNode,
+  EntityEdge,
+  EntityStats,
+  FileStats,
   FunctionEntity,
   EnhancedFunctionInfo,
   EnhancedClassInfo,
+  EnhancedConstantInfo,
+  EnhancedVariableInfo,
+  EnhancedInterfaceInfo,
+  EnhancedTypeInfo,
+  ModuleGraph,
+  EntityGraph,
+  PackageLockImportInfo,
+  GraphData,
+  EntitiesResult,
+} from './modules/types.js';
+
+// ✅ Из ../types.js
+export type {
+  FullAnalysis,
   ArchitectureMetrics,
   ProjectSummary,
   VueAnalysis,
-  ModuleGraph,
-  EntityGraph,
-  FullAnalysis,
-} from './modules/types.js';
-
-// Из modules/statistics.js
-export type { EntityStats, FileStats } from './modules/statistics.js';
+  OptimizedReportOptions,
+  ExtendedFunctionInfo,
+  CallInfo,
+  CalledByInfo,
+  ImportedByInfo,
+} from '../types.js';
 
 // ============================================================
 // ЭКСПОРТ МОДУЛЕЙ
@@ -151,7 +172,7 @@ export const REPORTERS_VERSION = '3.0.1';
 export const REPORTERS_NAME = '@newkind/ast-analyzer/reporters';
 
 // ============================================================
-// ЭКСПОРТ ПО УМОЛЧАНИЮ (используем импортированные переменные)
+// ЭКСПОРТ ПО УМОЛЧАНИЮ
 // ============================================================
 
 export default {
@@ -167,6 +188,7 @@ export default {
   saveFullAnalysis,
   savePackageLockReport,
   saveCallGraphResult,
+  saveOptimizedPackageLockReport,
   buildModuleGraph,
   buildEntityGraph,
   buildFullAnalysis,

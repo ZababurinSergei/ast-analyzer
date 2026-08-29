@@ -1,7 +1,7 @@
 // src/core/data-sources.ts
 // Единые источники истины для всех модулей
 
-import type { EntitiesResult } from './entity-extractor.js';
+import type { EntitiesResult } from '../types.js';
 import fs from 'fs';
 import path from 'path';
 

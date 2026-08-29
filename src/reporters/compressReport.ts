@@ -1,5 +1,5 @@
 // src/reporters/compressReport.ts
-import type { EnhancedPackageLockReport } from './modules/types';
+import type { EnhancedPackageLockReport } from './json-reporter';
 
 export type CompressionLevel = 1 | 2 | 3 | 4 | 5;
 
@@ -151,7 +151,8 @@ export function compressReport(
     options.includeVSCodeLinks !== undefined ? options.includeVSCodeLinks : true;
 
   // 1. Строим список модулей и индекс
-  const modulePaths = Object.keys(report.packages || {});
+  const packages = report.packages || {};
+  const modulePaths = Object.keys(packages);
   const modIdx = new Map(modulePaths.map((p, i) => [p, i]));
 
   // 2. Строим список функций и индекс (учитываем модуль!)
@@ -159,9 +160,10 @@ export function compressReport(
   const funcIdx = new Map<string, number>();
   const funcDetails: Record<number, any> = {};
 
-  for (const [modPath, pkg] of Object.entries(report.packages || {})) {
+  for (const [modPath, pkg] of Object.entries(packages)) {
     const mi = modIdx.get(modPath)!;
-    const entities = pkg?.entities;
+    // ✅ Проверка на существование entities
+    const entities = pkg && typeof pkg === 'object' ? (pkg as any).entities : null;
     const funcs = entities?.functions || [];
 
     for (const func of funcs) {
@@ -261,8 +263,8 @@ export function compressReport(
   }
 
   // 3. Заполняем вызовы (c) для каждой функции
-  for (const [modPath, pkg] of Object.entries(report.packages || {})) {
-    const entities = pkg?.entities;
+  for (const [modPath, pkg] of Object.entries(packages)) {
+    const entities = pkg && typeof pkg === 'object' ? (pkg as any).entities : null;
     const funcs = entities?.functions || [];
 
     for (const func of funcs) {
@@ -272,7 +274,7 @@ export function compressReport(
 
       // Собираем все вызовы с информацией о линиях
       const callsWithInfo = (func.calls || [])
-        .map(call => {
+        .map((call: string) => {
           // Ищем вызываемую функцию в ТОМ ЖЕ модуле сначала
           const localKey = `${modPath}#${call}`;
           if (funcIdx.has(localKey)) {
@@ -283,7 +285,7 @@ export function compressReport(
             };
           }
           // Если не найдена в том же модуле, ищем в других
-          for (const [otherModPath] of Object.entries(report.packages || {})) {
+          for (const [otherModPath] of Object.entries(packages)) {
             if (otherModPath === modPath) continue;
             const otherKey = `${otherModPath}#${call}`;
             if (funcIdx.has(otherKey)) {
@@ -297,10 +299,11 @@ export function compressReport(
           return undefined;
         })
         .filter(
-          (item): item is { to: number; name: string; isLocal: boolean } => item !== undefined
+          (item: any): item is { to: number; name: string; isLocal: boolean } =>
+            item !== undefined && typeof item === 'object'
         );
 
-      const callIndices = callsWithInfo.map(c => c.to);
+      const callIndices = callsWithInfo.map((c: { to: number }) => c.to);
 
       // Уровень 1-3: простой массив вызовов
       if (level <= 3) {
@@ -344,8 +347,8 @@ export function compressReport(
       calledByMap[numIdx] = [];
     }
 
-    for (const [modPath, pkg] of Object.entries(report.packages || {})) {
-      const entities = pkg?.entities;
+    for (const [modPath, pkg] of Object.entries(packages)) {
+      const entities = pkg && typeof pkg === 'object' ? (pkg as any).entities : null;
       const funcs = entities?.functions || [];
 
       for (const func of funcs) {
@@ -354,17 +357,17 @@ export function compressReport(
         if (fromIdx === undefined) continue;
 
         const calls = (func.calls || [])
-          .map(call => {
+          .map((call: string) => {
             const localKey = `${modPath}#${call}`;
             if (funcIdx.has(localKey)) return funcIdx.get(localKey)!;
-            for (const [otherModPath] of Object.entries(report.packages || {})) {
+            for (const [otherModPath] of Object.entries(packages)) {
               if (otherModPath === modPath) continue;
               const otherKey = `${otherModPath}#${call}`;
               if (funcIdx.has(otherKey)) return funcIdx.get(otherKey)!;
             }
             return undefined;
           })
-          .filter((i): i is number => i !== undefined);
+          .filter((i: number | undefined): i is number => i !== undefined);
 
         for (const toIdx of calls) {
           if (calledByMap[toIdx]) {
@@ -388,121 +391,130 @@ export function compressReport(
   }
 
   // 5. Строим компактные пакеты (pkg)
-  const packages: any = {};
-  for (const [modPath, pkg] of Object.entries(report.packages || {})) {
+  const compactPackages: any = {};
+  for (const [modPath, pkg] of Object.entries(packages)) {
     const mi = modIdx.get(modPath)!;
-    const entities = pkg?.entities;
+    const entities = pkg && typeof pkg === 'object' ? (pkg as any).entities : null;
     const funcs = (entities?.functions || [])
       .map((f: any) => {
         const key = `${modPath}#${f.name}`;
         return funcIdx.get(key);
       })
-      .filter((i): i is number => i !== undefined);
+      .filter((i: number | undefined): i is number => i !== undefined);
 
     const pkgData: any = {
-      l: pkg?.language || 'ts',
-      s: pkg?.fileStats?.size || 0,
-      ln: pkg?.fileStats?.lines || 0,
-      entry: pkg?.isEntry || false,
+      l: (pkg && typeof pkg === 'object' && (pkg as any).language) || 'ts',
+      s: (pkg && typeof pkg === 'object' && (pkg as any).fileStats?.size) || 0,
+      ln: (pkg && typeof pkg === 'object' && (pkg as any).fileStats?.lines) || 0,
+      entry: (pkg && typeof pkg === 'object' && (pkg as any).isEntry) || false,
       f: funcs,
     };
 
     // ✅ УРОВЕНЬ 1: сохраняем максимум метаданных модуля
     if (level === 1) {
-      if (pkg?.fileStats) {
-        pkgData.fc = pkg.fileStats.functions || 0;
-        pkgData.cl = pkg.fileStats.classes || 0;
-        pkgData.cn = pkg.fileStats.constants || 0;
-        pkgData.in = pkg.fileStats.interfaces || 0;
-        pkgData.tp = pkg.fileStats.types || 0;
-        pkgData.vr = pkg.fileStats.variables || 0;
+      const fileStats = pkg && typeof pkg === 'object' ? (pkg as any).fileStats : null;
+      if (fileStats) {
+        pkgData.fc = fileStats.functions || 0;
+        pkgData.cl = fileStats.classes || 0;
+        pkgData.cn = fileStats.constants || 0;
+        pkgData.in = fileStats.interfaces || 0;
+        pkgData.tp = fileStats.types || 0;
+        pkgData.vr = fileStats.variables || 0;
       }
-      if (pkg?.vscode) {
-        pkgData.vs = pkg.vscode;
+      if (pkg && typeof pkg === 'object' && (pkg as any).vscode) {
+        pkgData.vs = (pkg as any).vscode;
       }
-      if (includeSourceCode && pkg?.sourceCode) {
-        pkgData.sc = pkg.sourceCode;
+      if (includeSourceCode && pkg && typeof pkg === 'object' && (pkg as any).sourceCode) {
+        pkgData.sc = (pkg as any).sourceCode;
       }
-      if (pkg?.vueAnalysis) {
+      const vueAnalysis = pkg && typeof pkg === 'object' ? (pkg as any).vueAnalysis : null;
+      if (vueAnalysis) {
         pkgData.vue = {
-          props: pkg.vueAnalysis.props?.names || [],
-          emits: pkg.vueAnalysis.emits?.names || [],
-          slots: pkg.vueAnalysis.slots || [],
-          composables: pkg.vueAnalysis.composables || [],
-          templateComplexity: pkg.vueAnalysis.templateComplexity || 0,
-          scriptType: pkg.vueAnalysis.scriptType || 'options',
-          isTS: pkg.vueAnalysis.isTS || false,
-          stats: pkg.vueAnalysis.stats || {},
+          props: vueAnalysis.props?.names || [],
+          emits: vueAnalysis.emits?.names || [],
+          slots: vueAnalysis.slots || [],
+          composables: vueAnalysis.composables || [],
+          templateComplexity: vueAnalysis.templateComplexity || 0,
+          scriptType: vueAnalysis.scriptType || 'options',
+          isTS: vueAnalysis.isTS || false,
+          stats: vueAnalysis.stats || {},
         };
       }
-      if (pkg?.imports && Object.keys(pkg.imports).length > 0) {
-        pkgData.imp = pkg.imports;
+      const imports = pkg && typeof pkg === 'object' ? (pkg as any).imports : null;
+      if (imports && Object.keys(imports).length > 0) {
+        pkgData.imp = imports;
       }
-      if (pkg?.exports && Object.keys(pkg.exports).length > 0) {
-        pkgData.exp = pkg.exports;
+      const exports = pkg && typeof pkg === 'object' ? (pkg as any).exports : null;
+      if (exports && Object.keys(exports).length > 0) {
+        pkgData.exp = exports;
       }
     }
 
     // Уровень 2: сохраняем основные метаданные
     if (level === 2) {
-      if (pkg?.fileStats) {
-        pkgData.fc = pkg.fileStats.functions || 0;
-        pkgData.cl = pkg.fileStats.classes || 0;
-        pkgData.cn = pkg.fileStats.constants || 0;
-        pkgData.in = pkg.fileStats.interfaces || 0;
-        pkgData.tp = pkg.fileStats.types || 0;
-        pkgData.vr = pkg.fileStats.variables || 0;
+      const fileStats = pkg && typeof pkg === 'object' ? (pkg as any).fileStats : null;
+      if (fileStats) {
+        pkgData.fc = fileStats.functions || 0;
+        pkgData.cl = fileStats.classes || 0;
+        pkgData.cn = fileStats.constants || 0;
+        pkgData.in = fileStats.interfaces || 0;
+        pkgData.tp = fileStats.types || 0;
+        pkgData.vr = fileStats.variables || 0;
       }
-      if (pkg?.vscode) {
-        pkgData.vs = pkg.vscode;
+      if (pkg && typeof pkg === 'object' && (pkg as any).vscode) {
+        pkgData.vs = (pkg as any).vscode;
       }
-      if (pkg?.vueAnalysis) {
+      const vueAnalysis = pkg && typeof pkg === 'object' ? (pkg as any).vueAnalysis : null;
+      if (vueAnalysis) {
         pkgData.vue = {
-          pr: pkg.vueAnalysis.props?.names?.length || 0,
-          em: pkg.vueAnalysis.emits?.names?.length || 0,
-          sl: pkg.vueAnalysis.slots?.length || 0,
-          co: pkg.vueAnalysis.composables?.length || 0,
+          pr: vueAnalysis.props?.names?.length || 0,
+          em: vueAnalysis.emits?.names?.length || 0,
+          sl: vueAnalysis.slots?.length || 0,
+          co: vueAnalysis.composables?.length || 0,
         };
       }
     }
 
     // Уровень 3: минимальные метаданные
     if (level === 3) {
-      if (pkg?.fileStats) {
-        pkgData.fc = pkg.fileStats.functions || 0;
-        pkgData.cl = pkg.fileStats.classes || 0;
+      const fileStats = pkg && typeof pkg === 'object' ? (pkg as any).fileStats : null;
+      if (fileStats) {
+        pkgData.fc = fileStats.functions || 0;
+        pkgData.cl = fileStats.classes || 0;
       }
-      if (pkg?.vscode) {
-        pkgData.vs = pkg.vscode;
+      if (pkg && typeof pkg === 'object' && (pkg as any).vscode) {
+        pkgData.vs = (pkg as any).vscode;
       }
     }
 
     // Уровень 4-5: только базовая информация
     if (level >= 4) {
-      if (pkg?.vscode) {
-        pkgData.vs = pkg.vscode;
+      if (pkg && typeof pkg === 'object' && (pkg as any).vscode) {
+        pkgData.vs = (pkg as any).vscode;
       }
-      if (pkg?.vueAnalysis) {
+      const vueAnalysis = pkg && typeof pkg === 'object' ? (pkg as any).vueAnalysis : null;
+      if (vueAnalysis) {
         pkgData.vue = {
-          pr: pkg.vueAnalysis.props?.names?.length || 0,
-          em: pkg.vueAnalysis.emits?.names?.length || 0,
-          sl: pkg.vueAnalysis.slots?.length || 0,
-          co: pkg.vueAnalysis.composables?.length || 0,
+          pr: vueAnalysis.props?.names?.length || 0,
+          em: vueAnalysis.emits?.names?.length || 0,
+          sl: vueAnalysis.slots?.length || 0,
+          co: vueAnalysis.composables?.length || 0,
         };
       }
     }
 
-    packages[mi] = pkgData;
+    compactPackages[mi] = pkgData;
   }
 
   // 6. Строим граф модулей (mgraph)
   const mgraph: Record<number, number[]> = {};
-  for (const [fromMod, deps] of Object.entries(report.dependencyGraph?.outwardDependencies || {})) {
+  const dependencyGraph = report.dependencyGraph || { outwardDependencies: {} };
+  for (const [fromMod, deps] of Object.entries(dependencyGraph.outwardDependencies || {})) {
     const fromIdx = modIdx.get(fromMod);
     if (fromIdx === undefined) continue;
     mgraph[fromIdx] = (deps || [])
       .map(d => modIdx.get(d))
-      .filter((i): i is number => i !== undefined);
+      .filter((i: number | undefined): i is number => i !== undefined);
   }
 
   // 7. Строим граф функций (fgraph) - для уровней 1-3
@@ -513,11 +525,17 @@ export function compressReport(
 
   // 8. Строим уровни (levels)
   const levels: Record<number, number[]> = {};
-  if (report.architectureMetrics?.modulesByLevel) {
-    for (const [levelNum, mods] of Object.entries(report.architectureMetrics.modulesByLevel)) {
-      levels[Number(levelNum)] = mods
-        .map(m => modIdx.get(m))
-        .filter((i): i is number => i !== undefined);
+  const architectureMetrics = report.architectureMetrics || {};
+  // ✅ ИСПРАВЛЕНО: используем optional chaining и безопасное приведение
+  const modulesByLevel = (architectureMetrics as any)?.modulesByLevel || {};
+  const maxDepth = (architectureMetrics as any)?.maxDepth || 0;
+  const hasCycles = (architectureMetrics as any)?.hasCycles || false;
+
+  if (Object.keys(modulesByLevel).length > 0) {
+    for (const [levelNum, mods] of Object.entries(modulesByLevel)) {
+      levels[Number(levelNum)] = (mods as string[])
+        .map((m: string) => modIdx.get(m))
+        .filter((i: number | undefined): i is number => i !== undefined);
     }
   }
 
@@ -527,8 +545,8 @@ export function compressReport(
     mods: modulePaths.length,
     calls: functions.reduce((sum, f) => sum + (f.c?.length || 0), 0),
     size: report.fileStats?.totalSize || 0,
-    depth: report.architectureMetrics?.maxDepth || 0,
-    cycles: report.architectureMetrics?.hasCycles || false,
+    depth: maxDepth,
+    cycles: hasCycles,
   };
 
   // 10. Формируем результат в зависимости от уровня
@@ -538,7 +556,7 @@ export function compressReport(
     root: modIdx.get(report.summary?.entryPoint || '') || 0,
     time: report.timestamp || new Date().toISOString(),
     modules: modulePaths,
-    pkg: packages,
+    pkg: compactPackages,
     funcs: functions,
     mgraph,
     fgraph,

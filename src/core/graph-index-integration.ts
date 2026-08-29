@@ -8,10 +8,10 @@ import type {
   IndexableEntity,
   IndexableEdge,
   SearchResult,
-  GraphIndexStats
+  GraphIndexStats,
 } from './graph-index.js';
 import { GraphIndexFactory } from './graph-index.js';
-import type { EntitiesResult } from './entity-extractor.js';
+import type { EntitiesResult } from '../types.js';
 
 export class GraphIndexIntegration {
   private index: GraphIndex | null = null;
@@ -115,7 +115,10 @@ export class GraphIndexIntegration {
   /**
    * Получить контекст сущности (модуль + соседи)
    */
-  getEntityContext(entityId: string, depth: number = 2): {
+  getEntityContext(
+    entityId: string,
+    depth: number = 2
+  ): {
     entity: IndexableEntity | undefined;
     neighbors: {
       outgoing: IndexableEntity[];
@@ -156,7 +159,10 @@ export class GraphIndexIntegration {
   /**
    * Найти путь между сущностями с метаданными
    */
-  findPathWithMetadata(fromId: string, toId: string): {
+  findPathWithMetadata(
+    fromId: string,
+    toId: string
+  ): {
     path: string[] | null;
     entities: IndexableEntity[];
     edges: IndexableEdge[];
@@ -176,9 +182,7 @@ export class GraphIndexIntegration {
     }
 
     for (let i = 0; i < path.length - 1; i++) {
-      const edge = this.index.getAllEdges().find(e =>
-        e.from === path[i] && e.to === path[i + 1]
-      );
+      const edge = this.index.getAllEdges().find(e => e.from === path[i] && e.to === path[i + 1]);
       if (edge) edges.push(edge);
     }
 

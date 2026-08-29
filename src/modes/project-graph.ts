@@ -7,7 +7,7 @@ import {
   isExternalModule,
   getTsConfigForFile,
 } from '../core/ast-parser.js';
-import type { EntitiesResult } from '../core/entity-extractor.js';
+import type { EntitiesResult } from '../types.js';
 import { IGNORE_NODE_MODULES } from '../config.js';
 import { walk } from 'estree-walker';
 import { normalizePathForDisplay } from '../utils/path-utils.js';
@@ -157,12 +157,87 @@ export interface PackageLockReport {
 }
 
 // ==========================================
+// ТИПЫ ДЛЯ ВСТРОЕННЫХ СВЯЗЕЙ (v3.0.1)
+// ==========================================
+
+export interface CallInfo {
+  targetId: string;
+  targetName: string;
+  targetFile: string;
+  targetLine: number;
+  targetVscode: string;
+  callLine: number;
+  callType: 'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
+}
+
+export interface CalledByInfo {
+  callerId: string;
+  callerName: string;
+  callerFile: string;
+  callerLine: number;
+  callerVscode: string;
+  callLine: number;
+  callType: 'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
+}
+
+export interface ImportedByInfo {
+  importerId: string;
+  importerFile: string;
+  importerVscode: string;
+  importLine: number;
+  specifier: string;
+  importType?: 'named' | 'default' | 'namespace' | 'type';
+}
+
+export interface ExtendedFunctionInfo {
+  id: string;
+  name: string;
+  file: string;
+  line: number;
+  kind: 'function';
+  isExported: boolean;
+  isAsync: boolean;
+  params: string[];
+  paramsCount: number;
+  vscode: string;
+  calls: CallInfo[];
+  calledBy: CalledByInfo[];
+  importedBy: ImportedByInfo[];
+  body?: string;
+  returnType?: string;
+}
+
+// ==========================================
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ ID
+// ==========================================
+
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(36).padStart(4, '0');
+}
+
+function generateFunctionId(filePath: string, funcName: string): string {
+  const fileHash = simpleHash(filePath);
+  return `func_${fileHash}_${funcName}`;
+}
+
+function generateFileId(filePath: string): string {
+  return `file_${simpleHash(filePath)}`;
+}
+
+// ==========================================
 // ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ПРЕОБРАЗОВАНИЯ ТИПОВ
 // ==========================================
 
 /**
  * Преобразует EnhancedEntityInfo в EntitiesResult для совместимости
  * ✅ ИСПРАВЛЕНО: правильная обработка calledBy (string[] или объекты)
+ * ✅ ИСПРАВЛЕНО: добавлены поля id, filePath, vscode
  */
 function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult {
   return {
@@ -174,11 +249,9 @@ function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult
           if (typeof cb === 'string') {
             return cb;
           } else if (cb && typeof cb === 'object') {
-            // Если это объект с полем function
             if ('function' in cb) {
               return cb.function || String(cb);
             }
-            // Если это объект с полем name
             if ('name' in cb) {
               return cb.name || String(cb);
             }
@@ -188,6 +261,8 @@ function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult
         });
       }
 
+      const filePath = (f as any).filePath || (f as any).file || '';
+
       return {
         name: f.name,
         line: f.line,
@@ -196,7 +271,7 @@ function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult
         params: f.params,
         returnType: f.returnType,
         calls: f.calls || [],
-        calledBy: calledBy, // ✅ теперь всегда string[]
+        calledBy: calledBy,
         body: f.body || '',
         startLine: f.startLine || f.line,
         endLine: f.endLine || f.line,
@@ -210,6 +285,12 @@ function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult
         depth: f.depth || 0,
         complexity: f.complexity,
         security: f.security,
+        // ✅ НОВЫЕ ПОЛЯ ДЛЯ СВЯЗЕЙ
+        id: (f as any).id || `func_${simpleHash(filePath)}_${f.name}`,
+        vscode: (f as any).vscode || `vscode://file/${filePath}:${f.line}`,
+        callsInfo: [],
+        calledByInfo: [],
+        importedBy: [],
       };
     }),
     classes: enhanced.classes.map(c => ({
@@ -258,6 +339,209 @@ function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult
     moduleName: '',
     filePath: '',
   };
+}
+
+// ==========================================
+// 🆕 ФУНКЦИЯ ДЛЯ ПОСТРОЕНИЯ СВЯЗЕЙ МЕЖДУ СУЩНОСТЯМИ
+// ==========================================
+
+/**
+ * Построение всех связей между сущностями
+ */
+export function buildRelationships(
+  entitiesMap: Record<string, EntitiesResult>
+): Record<string, ExtendedFunctionInfo> {
+  const result: Record<string, ExtendedFunctionInfo> = {};
+
+  // 1. Построить индекс: имя функции -> { id, file, line, vscode }
+  const funcIndex: Record<
+    string,
+    { id: string; file: string; line: number; vscode: string; isExported: boolean }
+  > = {};
+  const fileIndex: Record<string, { id: string; vscode: string }> = {};
+
+  for (const [filePath, entities] of Object.entries(entitiesMap)) {
+    // Сохраняем файл в индекс
+    fileIndex[filePath] = {
+      id: generateFileId(filePath),
+      vscode: `vscode://file/${filePath}`,
+    };
+
+    for (const func of entities.functions) {
+      const funcId = func.id || generateFunctionId(filePath, func.name);
+      func.id = funcId;
+      func.vscode = func.vscode || `vscode://file/${filePath}:${func.line}`;
+      func.callsInfo = func.callsInfo || [];
+      func.calledByInfo = func.calledByInfo || [];
+      func.importedBy = func.importedBy || [];
+
+      funcIndex[func.name] = {
+        id: funcId,
+        file: filePath,
+        line: func.line,
+        vscode: func.vscode,
+        isExported: func.isExported || false,
+      };
+
+      // Инициализируем расширенные поля
+      result[funcId] = {
+        id: funcId,
+        name: func.name,
+        file: filePath,
+        line: func.line,
+        kind: 'function',
+        isExported: func.isExported || false,
+        isAsync: func.isAsync || false,
+        params: func.params || [],
+        paramsCount: (func.params || []).length,
+        vscode: func.vscode,
+        calls: [],
+        calledBy: [],
+        importedBy: [],
+        body: func.body,
+        returnType: func.returnType,
+      };
+    }
+  }
+
+  // 2. Для каждой функции заполняем calls
+  for (const [filePath, entities] of Object.entries(entitiesMap)) {
+    for (const func of entities.functions) {
+      const funcId = func.id || generateFunctionId(filePath, func.name);
+      const extended = result[funcId];
+      if (!extended) continue;
+
+      // Преобразуем существующие calls (массив строк) в полные объекты
+      const callNames = func.calls || [];
+      extended.calls = callNames.map(callName => {
+        // Ищем в том же файле
+        const target = funcIndex[callName];
+        if (target) {
+          return {
+            targetId: target.id,
+            targetName: callName,
+            targetFile: target.file,
+            targetLine: target.line,
+            targetVscode: target.vscode,
+            callLine: func.line || 0,
+            callType: 'direct' as const,
+          };
+        }
+
+        // Если не найдена, ищем в других модулях
+        for (const [otherFile, otherEntities] of Object.entries(entitiesMap)) {
+          if (otherFile === filePath) continue;
+          const found = otherEntities.functions.find(f => f.name === callName);
+          if (found && found.isExported) {
+            const targetInfo = funcIndex[callName];
+            if (targetInfo) {
+              return {
+                targetId: targetInfo.id,
+                targetName: callName,
+                targetFile: targetInfo.file,
+                targetLine: targetInfo.line,
+                targetVscode: targetInfo.vscode,
+                callLine: func.line || 0,
+                callType: 'import' as const,
+              };
+            }
+          }
+        }
+
+        // Если не нашли, возвращаем заглушку
+        return {
+          targetId: 'unknown',
+          targetName: callName,
+          targetFile: 'unknown',
+          targetLine: 0,
+          targetVscode: '',
+          callLine: func.line || 0,
+          callType: 'direct' as const,
+        };
+      });
+    }
+  }
+
+  // 3. Заполняем calledBy (обратные ссылки)
+  // Инициализируем calledBy для всех функций
+  for (const funcId of Object.keys(result)) {
+    const funcInfo = result[funcId];
+    if (funcInfo) {
+      funcInfo.calledBy = [];
+    }
+  }
+
+  for (const [filePath, entities] of Object.entries(entitiesMap)) {
+    for (const func of entities.functions) {
+      const callerId = func.id || generateFunctionId(filePath, func.name);
+      const callerInfo = result[callerId];
+      if (!callerInfo) continue;
+
+      for (const call of callerInfo.calls) {
+        // Находим целевую функцию и добавляем обратную ссылку
+        if (call.targetId !== 'unknown') {
+          const targetInfo = result[call.targetId];
+          if (targetInfo) {
+            targetInfo.calledBy.push({
+              callerId: callerId,
+              callerName: func.name,
+              callerFile: filePath,
+              callerLine: func.line,
+              callerVscode: func.vscode || `vscode://file/${filePath}:${func.line}`,
+              callLine: call.callLine,
+              callType: call.callType,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Заполняем importedBy (из импортов)
+  for (const [filePath, entities] of Object.entries(entitiesMap)) {
+    // Получаем ID файла из индекса
+    const fileInfo = fileIndex[filePath];
+    const importerId = fileInfo?.id || generateFileId(filePath);
+    const importerVscode = fileInfo?.vscode || `vscode://file/${filePath}`;
+
+    for (const imp of entities.imports || []) {
+      // Определяем, какие функции импортируются
+      for (const spec of imp.specifiers) {
+        const specObj = typeof spec === 'string' ? { imported: spec, local: spec } : spec;
+        const importedName = specObj.imported || specObj.local || '';
+
+        if (!importedName) continue;
+
+        // Ищем функцию с таким именем в других файлах
+        for (const [otherFile, otherEntities] of Object.entries(entitiesMap)) {
+          if (otherFile === filePath) continue;
+          const found = otherEntities.functions.find(f => f.name === importedName);
+          if (found && found.isExported) {
+            const targetId = found.id || generateFunctionId(otherFile, found.name);
+            const targetInfo = result[targetId];
+            if (targetInfo) {
+              // Проверяем, не добавлен ли уже такой импортер
+              const exists = targetInfo.importedBy.some(
+                i => i.importerFile === filePath && i.specifier === (specObj.local || importedName)
+              );
+              if (!exists) {
+                targetInfo.importedBy.push({
+                  importerId: importerId,
+                  importerFile: filePath,
+                  importerVscode: importerVscode,
+                  importLine: imp.loc?.start?.line || 0,
+                  specifier: specObj.local || importedName,
+                });
+              }
+            }
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  return result;
 }
 
 // ==========================================
@@ -378,7 +662,7 @@ function findProjectRoot(startDir: string): string | null {
  */
 function resolveAbsoluteFilePath(filePath: string, projectRoot: string): string | null {
   // Нормализуем путь
-  const normalizedPath = filePath.replace(/\\/g, '/');
+  const normalizedPath = filePath.replace(/\\\\/g, '/');
 
   // Если путь уже абсолютный и существует
   if (path.isAbsolute(filePath) && fs.existsSync(filePath)) {
@@ -531,6 +815,7 @@ export function buildProjectGraph(
   entities?: Record<string, EntitiesResult>;
   packageLockReport?: PackageLockReport;
   callGraphResult?: CallGraphResult;
+  relationshipGraph?: Record<string, ExtendedFunctionInfo>;
 } {
   const graph: Record<string, string[]> = {};
   const visited = new Set<string>();
@@ -568,7 +853,11 @@ export function buildProjectGraph(
     // ==========================================
     // ✅ ПРОВЕРКА: парсим файл, но если это CSS — пропускаем
     // ==========================================
-    if (currentPath.endsWith('.css') || currentPath.endsWith('.scss') || currentPath.endsWith('.less')) {
+    if (
+      currentPath.endsWith('.css') ||
+      currentPath.endsWith('.scss') ||
+      currentPath.endsWith('.less')
+    ) {
       console.log(`⏭️ Пропуск стилевого файла: ${path.basename(currentPath)}`);
       continue;
     }
@@ -582,6 +871,16 @@ export function buildProjectGraph(
     if (includeEntities) {
       const enhancedEntities = extractEntitiesFromFile(currentPath);
       const entities = convertEnhancedToEntities(enhancedEntities);
+
+      // ✅ Добавляем ID и VSCode ссылки
+      for (const func of entities.functions) {
+        func.id = func.id || generateFunctionId(currentPath, func.name);
+        func.vscode = func.vscode || `vscode://file/${currentPath}:${func.line}`;
+        func.callsInfo = func.callsInfo || [];
+        func.calledByInfo = func.calledByInfo || [];
+        func.importedBy = func.importedBy || [];
+      }
+
       entitiesMap[relativeKey] = entities;
 
       for (const func of entities.functions) {
@@ -744,6 +1043,7 @@ export function buildProjectGraph(
     entities?: Record<string, EntitiesResult>;
     packageLockReport?: PackageLockReport;
     callGraphResult?: CallGraphResult;
+    relationshipGraph?: Record<string, ExtendedFunctionInfo>;
   } = {
     rootKey: normalizePathForDisplay(path.relative(process.cwd(), rootAbsPath) || rootAbsPath),
     graph: normalizedGraph,
@@ -764,6 +1064,16 @@ export function buildProjectGraph(
           if (fs.existsSync(absPath) && fs.statSync(absPath).isFile()) {
             const enhancedEntities = extractEntitiesFromFile(absPath);
             const entities = convertEnhancedToEntities(enhancedEntities);
+
+            // ✅ Добавляем ID и VSCode ссылки
+            for (const func of entities.functions) {
+              func.id = func.id || generateFunctionId(absPath, func.name);
+              func.vscode = func.vscode || `vscode://file/${absPath}:${func.line}`;
+              func.callsInfo = func.callsInfo || [];
+              func.calledByInfo = func.calledByInfo || [];
+              func.importedBy = func.importedBy || [];
+            }
+
             const normalizedKey = normalizePathForDisplay(modulePath);
             entitiesMap[normalizedKey] = entities;
 
@@ -884,6 +1194,25 @@ export function buildProjectGraph(
       }
       result.callGraphResult = buildCallGraphBetweenFunctions(allFuncs, fromFunction, toFunction);
     }
+
+    // ✅ Строим граф отношений (relationship graph) - НОВОЕ!
+    console.log('🔗 Построение графа отношений между сущностями...');
+    const relationshipGraph = buildRelationships(finalEntitiesMap);
+    result.relationshipGraph = relationshipGraph;
+
+    // Статистика по отношениям
+    let totalCallsInfo = 0;
+    let totalCalledBy = 0;
+    let totalImportedBy = 0;
+    for (const func of Object.values(relationshipGraph)) {
+      totalCallsInfo += func.calls.length;
+      totalCalledBy += func.calledBy.length;
+      totalImportedBy += func.importedBy.length;
+    }
+    console.log(`   📞 Всего вызовов (calls): ${totalCallsInfo}`);
+    console.log(`   📞 Всего обратных ссылок (calledBy): ${totalCalledBy}`);
+    console.log(`   📥 Всего импортеров (importedBy): ${totalImportedBy}`);
+    console.log(`   📊 Всего функций с отношениями: ${Object.keys(relationshipGraph).length}`);
   }
 
   return result;

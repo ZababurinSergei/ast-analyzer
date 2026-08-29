@@ -291,6 +291,14 @@ export type {
   MinifyFolderResult,
   ImpactReport,
   DeadCodeReport,
+
+  // ==========================================
+  // НОВЫЕ ТИПЫ ДЛЯ ВСТРОЕННЫХ СВЯЗЕЙ (v3.0.1)
+  // ==========================================
+  CallInfo,
+  CalledByInfo,
+  ImportedByInfo,
+  ExtendedFunctionInfo,
 } from './types.js';
 
 // ==========================================

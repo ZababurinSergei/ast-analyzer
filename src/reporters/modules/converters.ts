@@ -1,7 +1,6 @@
 // src/reporters/modules/converters.ts
-// Конвертеры данных - преобразование EntitiesResult в EnhancedEntityInfo
 
-import {
+import type {
   EntitiesResult,
   EnhancedEntityInfo,
   EnhancedFunctionInfo,
@@ -10,445 +9,330 @@ import {
   EnhancedInterfaceInfo,
   EnhancedTypeInfo,
   EnhancedClassInfo,
-  FunctionEntity,
-} from './types.js';
-
-import { safeString, safeNumber, safeBoolean, ensureArray } from './utils.js';
-
-// ============================================================
-// 🔧 convertToEnhancedEntityInfo - СОХРАНЯЕТ ВСЕ ПОЛЯ
-// ============================================================
+  FunctionInfo,
+} from '../../types.js';
 
 /**
- * Преобразует EntitiesResult в EnhancedEntityInfo
- * ✅ СОХРАНЯЕТ: calls, calledBy, body, complexity, security, signature, vscode
+ * Конвертирует EntitiesResult в EnhancedEntityInfo
  */
-export function convertToEnhancedEntityInfo(entities: EntitiesResult): EnhancedEntityInfo {
-  // Проверяем входные данные
-  if (!entities || typeof entities !== 'object') {
-    console.warn('⚠️ convertToEnhancedEntityInfo: entities is null or undefined');
-    return {
-      functions: [],
-      constants: [],
-      variables: [],
-      interfaces: [],
-      types: [],
-      classes: [],
-    };
-  }
-
-  // ✅ ЛОГИРУЕМ ВХОДНЫЕ ДАННЫЕ
-  const rawFunctions = ensureArray(entities.functions);
-  if (rawFunctions.length > 0) {
-    // console.log(`   📥 convertToEnhancedEntityInfo: входных функций: ${rawFunctions.length}`);
-    // const firstFunc = rawFunctions[0] as any;
-    // console.log(`   📥 Первая функция: ${firstFunc?.name || 'unknown'}`);
-  }
-
-  // ✅ Преобразуем функции с СОХРАНЕНИЕМ ВСЕХ ПОЛЕЙ
-  const functions: EnhancedFunctionInfo[] = rawFunctions.map(
-    (rawFunc: any): EnhancedFunctionInfo => {
-      // Если это уже FunctionEntity, возвращаем как есть
-      if (rawFunc && typeof rawFunc === 'object' && rawFunc._safeInfo !== undefined) {
-        return rawFunc as EnhancedFunctionInfo;
-      }
-
-      const func = rawFunc as any;
-      const funcName = safeString(func.name);
-
-      // ✅ СОХРАНЯЕМ calls как массив строк
-      const calls = ensureArray(func.calls).map((c: any) => safeString(c));
-
-      // ✅ СОХРАНЯЕМ calledBy как массив объектов
-      let calledBy: { function: string; module: string; line: number }[] = [];
-      const rawCalledBy = ensureArray(func.calledBy);
-
-      if (rawCalledBy.length > 0) {
-        if (typeof rawCalledBy[0] === 'string') {
-          calledBy = rawCalledBy.map((cb: any) => ({
-            function: safeString(cb),
-            module: safeString(func._modulePath || entities.moduleName || 'unknown'),
-            line: safeNumber(func.line || 0),
-          }));
-        } else {
-          calledBy = rawCalledBy.map((cb: any) => ({
-            function: safeString(cb.function || cb),
-            module: safeString(cb.module || func._modulePath || entities.moduleName || 'unknown'),
-            line: safeNumber(cb.line || func.line || 0),
-          }));
-        }
-      }
-
-      // ✅ СОХРАНЯЕМ security
-      let security = {
-        hasEval: false,
-        hasProcessEnv: false,
-        hasSensitiveData: false,
-        hasExec: false,
-        hasPassword: false,
-      };
-      if (func.security && typeof func.security === 'object') {
-        const sec = func.security as any;
-        security = {
-          hasEval: safeBoolean(sec.hasEval),
-          hasProcessEnv: safeBoolean(sec.hasProcessEnv),
-          hasSensitiveData: safeBoolean(sec.hasSensitiveData),
-          hasExec: safeBoolean(sec.hasExec),
-          hasPassword: safeBoolean(sec.hasPassword),
-        };
-      }
-
-      // ✅ СОХРАНЯЕМ body
-
-      const body =  '';
-      // const body = func.body || '';
-
-      // ✅ СОХРАНЯЕМ signature (будет заполнена позже в packages.ts)
-      const signature = func.signature || '';
-
-      // ✅ СОХРАНЯЕМ vscode (будет заполнена позже в packages.ts)
-      const vscode = func.vscode || '';
-
-      return {
-        name: funcName,
-        params: ensureArray(func.params).map((p: any) => safeString(p)),
-        paramTypes: ensureArray(func.paramTypes || func.params).map(() => 'any'),
-        line: safeNumber(func.line),
-        startLine: safeNumber(func.startLine || func.line),
-        endLine: safeNumber(func.endLine || func.line),
-        isAsync: safeBoolean(func.isAsync),
-        isExported: safeBoolean(func.isExported),
-        isMethod: safeBoolean(func.isMethod),
-        className: safeString(func.className),
-        // ✅ КРИТИЧЕСКИ ВАЖНО: сохраняем calls
-        calls: calls,
-        // ✅ КРИТИЧЕСКИ ВАЖНО: сохраняем calledBy
-        calledBy: calledBy,
-        returnType: safeString(func.returnType),
-        // ✅ КРИТИЧЕСКИ ВАЖНО: сохраняем body
-        body: body,
-        // ✅ НОВОЕ: сохраняем signature
-        signature: signature,
-        // ✅ НОВОЕ: сохраняем vscode
-        vscode: vscode,
-        isNested: safeBoolean(func.isNested),
-        parentFunction: safeString(func.parentFunction),
-        isArrow: safeBoolean(func.isArrow),
-        isEventHandler: safeBoolean(func.isEventHandler),
-        eventType: safeString(func.eventType),
-        depth: safeNumber(func.depth),
-        // ✅ КРИТИЧЕСКИ ВАЖНО: сохраняем complexity
-        complexity: safeNumber(func.complexity || 1),
-        // ✅ КРИТИЧЕСКИ ВАЖНО: сохраняем security
-        security: security,
-        _safeInfo: null,
-      };
-    }
-  );
-
-  // ✅ ЛОГИРУЕМ РЕЗУЛЬТАТ
-  if (functions.length > 0) {
-    // console.log(`   📤 convertToEnhancedEntityInfo: выходных функций: ${functions.length}`);
-    const firstFunc = functions[0];
-    if (firstFunc) {
-      // console.log(`   📤 Первая функция: ${firstFunc.name}, calls: ${firstFunc.calls.length}`);
-    }
-  }
-
-  // ✅ Преобразуем классы
-  const classes: EnhancedClassInfo[] = ensureArray(entities.classes).map((rawClass: any) => {
-    const c = rawClass as any;
-    return {
-      name: safeString(c.name),
-      methods: ensureArray(c.methods).map((m: any) => safeString(m)),
-      methodDetails: ensureArray(c.methodDetails || c.methods).map((m: any) => ({
-        name: safeString(m.name || m),
-        params: ensureArray(m.params || []).map((p: any) => safeString(p)),
-        returnType: safeString(m.returnType || 'any'),
-        isAsync: safeBoolean(m.isAsync || false),
-        line: safeNumber(m.line || c.line || 0),
-      })),
-      properties: ensureArray(c.properties).map((p: any) => safeString(p)),
-      propertyDetails: ensureArray(c.propertyDetails || c.properties).map((p: any) => ({
-        name: safeString(p.name || p),
-        type: safeString(p.type || 'any'),
-        line: safeNumber(p.line || c.line || 0),
-      })),
-      line: safeNumber(c.line),
-      isExported: safeBoolean(c.isExported),
-      extends: safeString(c.extends),
-      implements: ensureArray(c.implements).map((i: any) => safeString(i)),
-      startLine: safeNumber(c.startLine || c.line),
-      endLine: safeNumber(c.endLine || c.line),
-      // ✅ НОВОЕ: сохраняем body и vscode для классов
-      // body: c.body || '',
-      vscode: c.vscode || '',
-      _safeInfo: null,
-    };
-  });
-
-  // ✅ Преобразуем константы
-  const constants: EnhancedConstantInfo[] = ensureArray(entities.constants).map((rawConst: any) => {
-    const c = rawConst as any;
-    return {
-      name: safeString(c.name),
-      value: c.value,
-      line: safeNumber(c.line),
-      isExported: safeBoolean(c.isExported),
-      type: safeString(c.type),
-      _safeInfo: null,
-    };
-  });
-
-  // ✅ Преобразуем переменные
-  const variables: EnhancedVariableInfo[] = ensureArray(entities.variables).map((rawVar: any) => {
-    const v = rawVar as any;
-    return {
-      name: safeString(v.name),
-      value: v.value,
-      line: safeNumber(v.line),
-      isExported: safeBoolean(v.isExported),
-      type: safeString(v.type),
-      _safeInfo: null,
-    };
-  });
-
-  // ✅ Преобразуем интерфейсы
-  const interfaces: EnhancedInterfaceInfo[] = ensureArray(entities.interfaces).map(
-    (rawIntf: any) => {
-      const i = rawIntf as any;
-      return {
-        name: safeString(i.name),
-        properties: ensureArray(i.properties).map((p: any) => safeString(p)),
-        line: safeNumber(i.line),
-        isExported: safeBoolean(i.isExported),
-        extends: ensureArray(i.extends).map((e: any) => safeString(e)),
-        startLine: safeNumber(i.startLine || i.line),
-        endLine: safeNumber(i.endLine || i.line),
-        _safeInfo: null,
-      };
-    }
-  );
-
-  // ✅ Преобразуем типы
-  const types: EnhancedTypeInfo[] = ensureArray(entities.types).map((rawType: any) => {
-    const t = rawType as any;
-    return {
-      name: safeString(t.name),
-      definition: safeString(t.definition),
-      line: safeNumber(t.line),
-      isExported: safeBoolean(t.isExported),
-      _safeInfo: null,
-    };
-  });
-
-  // ✅ ЛОГИРУЕМ ИТОГОВУЮ СТАТИСТИКУ
-  // console.log(
-  //   `   📊 convertToEnhancedEntityInfo: функции с calls: ${functions.filter(f => f.calls.length > 0).length}`
-  // );
-  // console.log(
-  //   `   📊 convertToEnhancedEntityInfo: функции с calledBy: ${functions.filter(f => f.calledBy.length > 0).length}`
-  // );
-  // console.log(
-  //   `   📊 convertToEnhancedEntityInfo: функции с body: ${functions.filter(f => f.body && f.body.length > 0).length}`
-  // );
-
+export function convertToEnhancedEntityInfo(
+  entities: EntitiesResult,
+  filePath: string
+): EnhancedEntityInfo {
   return {
-    functions: functions as EnhancedFunctionInfo[],
-    constants,
-    variables,
-    interfaces,
-    types,
-    classes,
-  };
-}
-
-// ============================================================
-// ОБРАТНОЕ ПРЕОБРАЗОВАНИЕ
-// ============================================================
-
-/**
- * Преобразует EnhancedEntityInfo обратно в EntitiesResult
- */
-export function convertFromEnhancedEntityInfo(enhanced: EnhancedEntityInfo): EntitiesResult {
-  return {
-    functions: enhanced.functions.map((f: FunctionEntity) => ({
-      name: f.name,
-      params: f.params,
-      line: f.line,
-      isAsync: f.isAsync,
-      isExported: f.isExported,
-      isMethod: f.isMethod || false,
-      className: f.className || '',
-      calls: f.calls || [],
-      calledBy: f.calledBy || [],
-      returnType: f.returnType || 'any',
-      body: f.body || '',
-      isNested: f.isNested || false,
-      parentFunction: f.parentFunction || '',
-      isArrow: f.isArrow || false,
-      isEventHandler: f.isEventHandler || false,
-      eventType: f.eventType || '',
-      depth: f.depth || 0,
-      startLine: f.startLine || f.line,
-      endLine: f.endLine || f.line,
-      complexity: f.complexity || 1,
-      security: f.security || {
-        hasEval: false,
-        hasProcessEnv: false,
-        hasSensitiveData: false,
-        hasExec: false,
-        hasPassword: false,
-      },
-    })),
-    classes: enhanced.classes.map(c => ({
-      name: c.name,
-      methods: c.methods,
-      properties: c.properties,
-      line: c.line,
-      isExported: c.isExported,
-      extends: c.extends || '',
-      implements: c.implements || [],
-      startLine: c.startLine || c.line,
-      endLine: c.endLine || c.line,
-    })),
-    constants: enhanced.constants.map(c => ({
-      name: c.name,
-      value: c.value,
-      line: c.line,
-      isExported: c.isExported,
-      type: c.type || '',
-    })),
-    interfaces: enhanced.interfaces.map(i => ({
-      name: i.name,
-      properties: i.properties,
-      line: i.line,
-      isExported: i.isExported,
-      extends: i.extends || [],
-      startLine: i.startLine || i.line,
-      endLine: i.endLine || i.line,
-    })),
-    types: enhanced.types.map(t => ({
-      name: t.name,
-      definition: t.definition,
-      line: t.line,
-      isExported: t.isExported,
-    })),
-    variables: enhanced.variables.map(v => ({
-      name: v.name,
-      value: v.value,
-      line: v.line,
-      isExported: v.isExported,
-      type: v.type || '',
-    })),
-    imports: [],
-    exports: [],
-    callGraph: {},
-    moduleName: '',
-    filePath: '',
+    functions: convertFunctions(entities.functions || [], filePath),
+    constants: convertConstants(entities.constants || []),
+    variables: convertVariables(entities.variables || []),
+    interfaces: convertInterfaces(entities.interfaces || []),
+    types: convertTypes(entities.types || []),
+    classes: convertClasses(entities.classes || []),
   };
 }
 
 /**
- * Обогащает функции данными calledBy из внешнего источника
+ * Конвертирует функции в EnhancedFunctionInfo[]
  */
-export function enrichFunctionsWithCalledBy(
-  functions: FunctionEntity[],
-  allFunctions: FunctionEntity[]
-): FunctionEntity[] {
-  // Создаем карту всех функций по имени
-  const functionMap = new Map<string, FunctionEntity>();
-  for (const func of allFunctions) {
-    functionMap.set(func.name, func);
+function convertFunctions(functions: FunctionInfo[], filePath: string): EnhancedFunctionInfo[] {
+  if (!functions || functions.length === 0) {
+    return [];
   }
 
-  // Для каждой функции находим, кто ее вызывает
   return functions.map(func => {
-    const calledBy: { function: string; module: string; line: number }[] = [];
+    // Преобразуем calledBy в string[]
+    const calledBy: string[] = Array.isArray(func.calledBy)
+      ? func.calledBy.map((cb: any) => {
+          if (typeof cb === 'string') return cb;
+          if (cb && typeof cb === 'object') {
+            if ('function' in cb) return cb.function || String(cb);
+            if ('name' in cb) return cb.name || String(cb);
+          }
+          return String(cb);
+        })
+      : [];
 
-    for (const caller of allFunctions) {
-      if (caller.name === func.name) continue;
-      if (caller.calls.includes(func.name)) {
-        calledBy.push({
-          function: caller.name,
-          module: caller.className ? `${caller.className}` : 'unknown',
-          line: caller.line,
-        });
-      }
-    }
+    // Преобразуем calls в string[]
+    const calls: string[] = Array.isArray(func.calls)
+      ? func.calls.map((c: any) => (typeof c === 'string' ? c : c.name || String(c)))
+      : [];
+
+    // Безопасно получаем params
+    const params: string[] = Array.isArray(func.params) ? func.params : [];
+
+    // Безопасно получаем paramTypes
+    const paramTypes: string[] = Array.isArray((func as any).paramTypes)
+      ? (func as any).paramTypes
+      : params.map(() => 'any');
+
+    // Получаем security
+    const security = func.security || {
+      hasEval: false,
+      hasProcessEnv: false,
+      hasSensitiveData: false,
+      hasExec: false,
+      hasPassword: false,
+    };
 
     return {
-      ...func,
+      name: func.name || 'anonymous',
+      params: params,
+      paramTypes: paramTypes,
+      line: func.line || 0,
+      startLine: func.startLine || func.line || 0,
+      endLine: func.endLine || func.line || 0,
+      isAsync: func.isAsync || false,
+      isExported: func.isExported || false,
+      isMethod: func.isMethod || false,
+      className: func.className || '',
+      calls: calls,
       calledBy: calledBy,
+      returnType: func.returnType || 'any',
+      body: func.body || '',
+      isNested: func.isNested || false,
+      parentFunction: func.parentFunction || '',
+      isArrow: func.isArrow || false,
+      isEventHandler: func.isEventHandler || false,
+      eventType: func.eventType || '',
+      depth: func.depth || 0,
+      complexity: func.complexity || 1,
+      security: security,
+      vscode: func.vscode || `vscode://file/${filePath}:${func.line}`,
+      signature: (func as any).signature || '',
+      _safeInfo: null,
     };
   });
 }
 
 /**
- * Строит карту consumers для экспортов
+ * Конвертирует константы в EnhancedConstantInfo[]
  */
-export function buildConsumersMap(
-  functions: FunctionEntity[],
-  allFunctions: FunctionEntity[]
-): Map<string, { function: string; module: string; line: number }[]> {
-  const consumersMap = new Map<string, { function: string; module: string; line: number }[]>();
-
-  // Инициализируем карту для всех функций
-  for (const func of functions) {
-    if (func.isExported) {
-      consumersMap.set(func.name, []);
-    }
+function convertConstants(constants: any[]): EnhancedConstantInfo[] {
+  if (!constants || constants.length === 0) {
+    return [];
   }
 
-  // Для каждой функции ищем, кто ее вызывает
-  for (const caller of allFunctions) {
-    for (const call of caller.calls) {
-      if (consumersMap.has(call)) {
-        const consumers = consumersMap.get(call)!;
-        // Проверяем, нет ли уже такого потребителя
-        if (!consumers.some(c => c.function === caller.name && c.module === caller.className)) {
-          consumers.push({
-            function: caller.name,
-            module: caller.className || 'unknown',
-            line: caller.line,
-          });
-        }
-      }
-    }
-  }
-
-  return consumersMap;
+  return constants.map(c => ({
+    name: c.name || 'unknown',
+    line: c.line || 0,
+    isExported: c.isExported || false,
+    type: c.type || 'any',
+    value: c.value,
+    _safeInfo: null,
+  }));
 }
 
 /**
- * Проверяет, является ли объект реальным (не строковым представлением)
+ * Конвертирует переменные в EnhancedVariableInfo[]
  */
-export function isRealObject(item: any): boolean {
-  if (!item) return false;
-  if (typeof item !== 'object') return false;
-  if (Array.isArray(item)) return false;
-  if (item.name === undefined) return false;
-  if (item.toString && item.toString() === '[object Object]') return false;
-  return true;
+function convertVariables(variables: any[]): EnhancedVariableInfo[] {
+  if (!variables || variables.length === 0) {
+    return [];
+  }
+
+  return variables.map(v => ({
+    name: v.name || 'unknown',
+    line: v.line || 0,
+    isExported: v.isExported || false,
+    type: v.type || 'any',
+    value: v.value,
+    _safeInfo: null,
+  }));
 }
 
 /**
- * Фильтрует массив, оставляя только реальные объекты
+ * Конвертирует интерфейсы в EnhancedInterfaceInfo[]
  */
-export function filterRealObjects(arr: any[]): any[] {
-  if (!Array.isArray(arr)) return [];
-  return arr.filter((item: any) => isRealObject(item));
+function convertInterfaces(interfaces: any[]): EnhancedInterfaceInfo[] {
+  if (!interfaces || interfaces.length === 0) {
+    return [];
+  }
+
+  return interfaces.map(i => ({
+    name: i.name || 'unknown',
+    properties: Array.isArray(i.properties) ? i.properties : [],
+    line: i.line || 0,
+    startLine: i.startLine || i.line || 0,
+    endLine: i.endLine || i.line || 0,
+    isExported: i.isExported || false,
+    extends: Array.isArray(i.extends) ? i.extends : [],
+    _safeInfo: null,
+  }));
 }
 
-// ============================================================
-// ЭКСПОРТ ПО УМОЛЧАНИЮ
-// ============================================================
+/**
+ * Конвертирует типы в EnhancedTypeInfo[]
+ */
+function convertTypes(types: any[]): EnhancedTypeInfo[] {
+  if (!types || types.length === 0) {
+    return [];
+  }
 
+  return types.map(t => ({
+    name: t.name || 'unknown',
+    definition: t.definition || 'unknown',
+    line: t.line || 0,
+    isExported: t.isExported || false,
+    _safeInfo: null,
+  }));
+}
+
+/**
+ * Конвертирует классы в EnhancedClassInfo[]
+ */
+function convertClasses(classes: any[]): EnhancedClassInfo[] {
+  if (!classes || classes.length === 0) {
+    return [];
+  }
+
+  return classes.map(c => ({
+    name: c.name || 'unknown',
+    methods: Array.isArray(c.methods) ? c.methods : [],
+    properties: Array.isArray(c.properties) ? c.properties : [],
+    line: c.line || 0,
+    startLine: c.startLine || c.line || 0,
+    endLine: c.endLine || c.line || 0,
+    isExported: c.isExported || false,
+    extends: c.extends || '',
+    implements: Array.isArray(c.implements) ? c.implements : [],
+    _safeInfo: null,
+  }));
+}
+
+/**
+ * Конвертирует сущности с добавлением VSCode ссылок
+ */
+export function convertEntitiesWithVSCode(
+  entities: EntitiesResult,
+  filePath: string
+): EnhancedEntityInfo {
+  const result = convertToEnhancedEntityInfo(entities, filePath);
+
+  // Добавляем VSCode ссылки для функций
+  result.functions = result.functions.map(func => ({
+    ...func,
+    vscode: func.vscode || `vscode://file/${filePath}:${func.line}`,
+  }));
+
+  return result;
+}
+
+/**
+ * Создает пустую структуру EnhancedEntityInfo
+ */
+export function createEmptyEnhancedEntityInfo(): EnhancedEntityInfo {
+  return {
+    functions: [],
+    constants: [],
+    variables: [],
+    interfaces: [],
+    types: [],
+    classes: [],
+  };
+}
+
+/**
+ * Объединяет несколько EnhancedEntityInfo в одну
+ */
+export function mergeEnhancedEntityInfos(infos: EnhancedEntityInfo[]): EnhancedEntityInfo {
+  const result = createEmptyEnhancedEntityInfo();
+
+  for (const info of infos) {
+    result.functions.push(...info.functions);
+    result.constants.push(...info.constants);
+    result.variables.push(...info.variables);
+    result.interfaces.push(...info.interfaces);
+    result.types.push(...info.types);
+    result.classes.push(...info.classes);
+  }
+
+  return result;
+}
+
+/**
+ * Проверяет, является ли сущность экспортируемой
+ */
+export function isExportedEntity(entity: any): boolean {
+  return entity?.isExported === true;
+}
+
+/**
+ * Получает все экспортируемые функции из EnhancedEntityInfo
+ */
+export function getExportedFunctions(info: EnhancedEntityInfo): EnhancedFunctionInfo[] {
+  return info.functions.filter(f => f.isExported);
+}
+
+/**
+ * Получает все импортируемые функции (не экспортируемые)
+ */
+export function getInternalFunctions(info: EnhancedEntityInfo): EnhancedFunctionInfo[] {
+  return info.functions.filter(f => !f.isExported);
+}
+
+/**
+ * Группирует функции по типу (async/exported/method)
+ */
+export function groupFunctionsByType(functions: EnhancedFunctionInfo[]): {
+  async: EnhancedFunctionInfo[];
+  exported: EnhancedFunctionInfo[];
+  methods: EnhancedFunctionInfo[];
+  internal: EnhancedFunctionInfo[];
+} {
+  return {
+    async: functions.filter(f => f.isAsync),
+    exported: functions.filter(f => f.isExported),
+    methods: functions.filter(f => f.isMethod),
+    internal: functions.filter(f => !f.isExported && !f.isMethod),
+  };
+}
+
+/**
+ * Подсчитывает статистику по сущностям
+ */
+export function countEntities(info: EnhancedEntityInfo): {
+  functions: number;
+  constants: number;
+  variables: number;
+  interfaces: number;
+  types: number;
+  classes: number;
+  exported: number;
+  total: number;
+} {
+  const exported =
+    info.functions.filter(f => f.isExported).length +
+    info.constants.filter(c => c.isExported).length +
+    info.variables.filter(v => v.isExported).length +
+    info.interfaces.filter(i => i.isExported).length +
+    info.types.filter(t => t.isExported).length +
+    info.classes.filter(c => c.isExported).length;
+
+  return {
+    functions: info.functions.length,
+    constants: info.constants.length,
+    variables: info.variables.length,
+    interfaces: info.interfaces.length,
+    types: info.types.length,
+    classes: info.classes.length,
+    exported,
+    total:
+      info.functions.length +
+      info.constants.length +
+      info.variables.length +
+      info.interfaces.length +
+      info.types.length +
+      info.classes.length,
+  };
+}
+
+// Экспорт по умолчанию
 export default {
   convertToEnhancedEntityInfo,
-  convertFromEnhancedEntityInfo,
-  enrichFunctionsWithCalledBy,
-  buildConsumersMap,
-  isRealObject,
-  filterRealObjects,
+  convertEntitiesWithVSCode,
+  createEmptyEnhancedEntityInfo,
+  mergeEnhancedEntityInfos,
+  isExportedEntity,
+  getExportedFunctions,
+  getInternalFunctions,
+  groupFunctionsByType,
+  countEntities,
 };
