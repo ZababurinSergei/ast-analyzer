@@ -12,6 +12,8 @@ import { GraphModeManager } from './modules/GraphModeManager.js';
 import { CardModeManager } from './modules/CardModeManager.js';
 import { Router } from './modules/Router.js';
 import { LocationBar } from './modules/LocationBar.js';
+import { GraphSwitcher } from './modules/GraphSwitcher.js';
+import { SphereGraphManager } from './modules/SphereGraphManager.js';
 
 // ============================================================
 // СИМВОЛЫ ДЛЯ ГЛОБАЛЬНОГО ДОСТУПА
@@ -354,6 +356,10 @@ class App {
     // ✅ СОХРАНЯЕМ ССЫЛКУ НА СЕБЯ
     this.self = this;
 
+    // Граф-менеджер будет установлен через GraphSwitcher
+    this.graphManager = null;
+    this.graphSwitcher = null;
+
     // ============================================================
     // ВСЕ МЕТОДЫ КАК СТРЕЛОЧНЫЕ ФУНКЦИИ В КОНСТРУКТОРЕ
     // ============================================================
@@ -378,9 +384,12 @@ class App {
         this.breadcrumbManager.updateBreadcrumbs(modulePath, null);
       }
       this.renderModules();
+
+      // Обновляем граф через переключатель
       if (this.graphManager && typeof this.graphManager.updateGraphWithFocus === 'function') {
         this.graphManager.updateGraphWithFocus(modulePath, null, this.currentGraphMode);
       }
+
       this.updateFocusInfo(modulePath);
       this.scrollToModule(modulePath);
     };
@@ -403,9 +412,12 @@ class App {
         this.breadcrumbManager.updateBreadcrumbs(modulePath, funcName);
       }
       this.renderModules();
+
+      // Обновляем граф через переключатель
       if (this.graphManager && typeof this.graphManager.updateGraphWithFocus === 'function') {
         this.graphManager.updateGraphWithFocus(modulePath, funcName, this.currentGraphMode);
       }
+
       this.updateFocusInfo(modulePath, funcName);
       this.showFunctionDetail(funcName, modulePath);
       this.scrollToFunction(funcName, modulePath);
@@ -425,9 +437,12 @@ class App {
         this.breadcrumbManager.updateBreadcrumbs(null, null);
       }
       this.renderModules();
+
+      // Обновляем граф через переключатель
       if (this.graphManager && typeof this.graphManager.updateGraphWithFocus === 'function') {
         this.graphManager.updateGraphWithFocus(null, null, 'all');
       }
+
       this.hideFocusInfo();
       this.closeDetail();
     };
@@ -446,6 +461,8 @@ class App {
       }
 
       this.renderModules();
+
+      // Обновляем граф через переключатель
       if (this.graphManager && typeof this.graphManager.handleSearch === 'function') {
         this.graphManager.handleSearch(query);
       }
@@ -594,7 +611,7 @@ class App {
     };
 
     this.scrollToModule = modulePath => {
-      const card = document.querySelector(`.module-card[data-module="${modulePath}"]`);
+      const card = document.querySelector(`.module-card[data-module=\"${modulePath}\"]`);
       if (card) {
         card.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
@@ -602,7 +619,7 @@ class App {
 
     this.scrollToFunction = (funcName, modulePath) => {
       const el = document.querySelector(
-        `.func-item[data-func="${funcName}"][data-module="${modulePath}"]`
+        `.func-item[data-func=\"${funcName}\"][data-module=\"${modulePath}\"]`
       );
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -649,6 +666,26 @@ class App {
           e.preventDefault();
           if (this.locationBar && typeof this.locationBar._startEditing === 'function') {
             this.locationBar._startEditing();
+          }
+        }
+
+        // 🆕 Горячие клавиши для переключения графов
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+          if (e.key === '1') {
+            e.preventDefault();
+            if (this.graphSwitcher) {
+              this.graphSwitcher.switchTo('d3');
+            }
+          } else if (e.key === '2') {
+            e.preventDefault();
+            if (this.graphSwitcher) {
+              this.graphSwitcher.switchTo('vis');
+            }
+          } else if (e.key === '3') {
+            e.preventDefault();
+            if (this.graphSwitcher) {
+              this.graphSwitcher.switchTo('sphere');
+            }
           }
         }
       });
@@ -738,7 +775,7 @@ class App {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
+        .replace(/\"/g, '&quot;')
         .replace(/'/g, '&#039;');
     };
 
@@ -746,16 +783,16 @@ class App {
       if (!str) {
         return '';
       }
-      return String(str).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/'/g, "\\'");
+      return String(str).replace(/\\/g, '\\\\').replace(/\"/g, '\\"').replace(/'/g, "\\'");
     };
 
     this.showPlaceholder = () => {
       const grid = document.getElementById('modulesGrid');
       if (grid) {
         grid.innerHTML = `
-          <div style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #94a3b8;">
-            <div style="font-size: 48px; margin-bottom: 20px;">📊</div>
-            <h3 style="color: #60a5fa; margin-bottom: 10px;">Нет данных</h3>
+          <div style=\"grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: #94a3b8;\">
+            <div style=\"font-size: 48px; margin-bottom: 20px;\">📊</div>
+            <h3 style=\"color: #60a5fa; margin-bottom: 10px;\">Нет данных</h3>
           </div>
         `;
       }
@@ -763,6 +800,29 @@ class App {
 
     this.getFocusModule = () => this._focusModule;
     this.getFocusFunction = () => this._focusFunction;
+
+    /**
+     * Обновление графа при изменении фокуса или режима
+     */
+    this.updateView = () => {
+      if (this.graphManager && typeof this.graphManager.updateView === 'function') {
+        this.graphManager.updateView();
+      }
+      if (this.cardManager && typeof this.cardManager.renderModules === 'function') {
+        this.cardManager.renderModules();
+      }
+    };
+
+    /**
+     * Переключение типа графа
+     */
+    this.switchGraph = (type) => {
+      if (this.graphSwitcher && typeof this.graphSwitcher.switchTo === 'function') {
+        this.graphSwitcher.switchTo(type);
+        // Обновляем ссылку на менеджер
+        this.graphManager = this.graphSwitcher.getCurrentManager();
+      }
+    };
 
     // ============================================================
     // ИНИЦИАЛИЗАЦИЯ МЕНЕДЖЕРОВ
@@ -775,6 +835,7 @@ class App {
     this.cardModeManager = null;
     this.router = null;
     this.locationBar = null;
+    this.graphSwitcher = null;
 
     window[SYM_APP] = this;
     window[SYM_READY] = false;
@@ -803,11 +864,16 @@ class App {
 
     // Инициализация менеджеров
     this.cardManager = new CardManager(this);
-    // Используем VisGraphManager вместо GraphManager
-    this.graphManager = new VisGraphManager(this);
     this.breadcrumbManager = new BreadcrumbManager(this);
     this.graphModeManager = new GraphModeManager(this);
     this.cardModeManager = new CardModeManager(this);
+
+    // 🆕 Инициализация переключателя графов
+    this.graphSwitcher = new GraphSwitcher(this);
+    this.graphSwitcher.init();
+
+    // Получаем текущий менеджер графа
+    this.graphManager = this.graphSwitcher.getCurrentManager();
 
     // 🆕 Инициализация адресной строки (после роутера)
     this.locationBar = new LocationBar(this);
@@ -816,10 +882,6 @@ class App {
 
     this.updateStats();
     this.cardManager.init();
-    // Инициализируем граф
-    if (this.graphManager && typeof this.graphManager.init === 'function') {
-      this.graphManager.init();
-    }
     this.breadcrumbManager.init();
     this.breadcrumbManager.updateBreadcrumbs(null, null);
     this.graphModeManager.init();
@@ -845,10 +907,10 @@ class App {
       }
     }
 
-    console.log('✅ App initialized');
+    console.log('✅ App initialized with GraphSwitcher');
     console.log('📊 Данные готовы, модулей:', Object.keys(this.reportData?.packages || {}).length);
-    console.log('🧭 Router и LocationBar инициализированы');
-    console.log('📊 VisGraphManager используется вместо D3');
+    console.log('🧭 Текущий тип графа:', this.graphSwitcher?.getCurrentType());
+    console.log('🔄 Переключение графов: Ctrl+1 (D3), Ctrl+2 (Vis), Ctrl+3 (Сфера)');
   }
 
   // ============================================================
@@ -870,6 +932,8 @@ class App {
     console.log('  - setCardMode:', typeof this.setCardMode);
     console.log('  - closeDetail:', typeof this.closeDetail);
     console.log('  - renderModules:', typeof this.renderModules);
+    console.log('  - switchGraph:', typeof this.switchGraph);
+    console.log('  - updateView:', typeof this.updateView);
 
     // ✅ СОЗДАЕМ API С МЕТОДАМИ, КОТОРЫЕ ВЫЗЫВАЮТ APP
     const api = {
@@ -974,6 +1038,29 @@ class App {
         }
         console.warn('⚠️ navigateTo not yet initialized');
       },
+
+      // 🆕 Методы для работы с переключателем графов
+      getGraphSwitcher: () => app.graphSwitcher,
+      switchGraph: type => {
+        if (typeof app.switchGraph === 'function') {
+          return app.switchGraph(type);
+        }
+        console.warn('⚠️ switchGraph not yet initialized');
+      },
+      getCurrentGraphType: () => {
+        if (app.graphSwitcher) {
+          return app.graphSwitcher.getCurrentType();
+        }
+        return null;
+      },
+
+      // 🆕 Обновление представления
+      updateView: () => {
+        if (typeof app.updateView === 'function') {
+          return app.updateView();
+        }
+        console.warn('⚠️ updateView not yet initialized');
+      },
     };
 
     // ✅ ДОБАВЛЯЕМ МЕНЕДЖЕРЫ
@@ -1006,6 +1093,9 @@ class App {
     console.log('  - api.fitGraph:', typeof api.fitGraph);
     console.log('  - api.getRouter:', typeof api.getRouter);
     console.log('  - api.getLocationBar:', typeof api.getLocationBar);
+    console.log('  - api.switchGraph:', typeof api.switchGraph);
+    console.log('  - api.getCurrentGraphType:', typeof api.getCurrentGraphType);
+    console.log('  - api.updateView:', typeof api.updateView);
   }
 }
 
@@ -1021,14 +1111,22 @@ if (!window[SYM_APP]) {
     console.log('🚀 App loaded');
     console.log(`📊 Загружено ${Object.keys(app.reportData.packages || {}).length} пакетов`);
 
+    // Добавляем глобальный доступ к переключателю
+    window.graphSwitcher = app.graphSwitcher;
+    window.SphereGraph = app.graphManager;
+
     if (!window[SYM_READY]) {
       window[SYM_READY] = true;
     }
 
     console.log('🔑 Доступ через: window[Symbol.for("__AST_APP_API__")]');
-    console.log('🧭 Доступ к роутеру: window[Symbol.for("__AST_ROUTER__")]');
-    console.log('📍 Доступ к адресной строке: window[Symbol.for("__AST_LOCATION_BAR__")]');
-    console.log('📊 VisGraphManager активен вместо D3');
+    console.log('🔄 Переключатель графов: window.graphSwitcher');
+    console.log('🌍 Доступ к сфере: window.SphereGraph');
+    console.log('📌 Используйте: window.graphSwitcher.switchTo("sphere")');
+    console.log('📌 Доступные типы: d3, vis, sphere');
+    console.log('📌 Горячие клавиши: Ctrl+1 (D3), Ctrl+2 (Vis), Ctrl+3 (Сфера)');
+    console.log('📊 Используется SphereGraphManager для 3D графа в сфере');
+
   } catch (error) {
     console.error('❌ Failed to initialize App:', error);
     window[SYM_READY] = false;
@@ -1050,6 +1148,9 @@ if (!window[SYM_APP]) {
       'getRouter',
       'getLocationBar',
       'navigateTo',
+      'switchGraph',
+      'getCurrentGraphType',
+      'updateView',
     ].forEach(method => {
       fallbackApi[method] = function (...args) {
         console.warn(`⚠️ App not ready, ${method} called with:`, args);
@@ -1079,4 +1180,5 @@ export { REPORT_DATA, ALL_FUNCTIONS_DATA };
 
 console.log('📦 Модуль interactive-report.js загружен');
 console.log('📌 Статус приложения:', window[SYM_READY] ? '✅ ГОТОВ' : '⏳ ЗАГРУЗКА...');
-console.log('📊 Используется VisGraphManager для отображения графа');
+console.log('🔄 Доступные графы: D3 (2D), Vis (3D), Сфера (3D с векторами)');
+console.log('🌍 SphereGraphManager использует Three.js и WebGL');

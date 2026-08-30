@@ -879,35 +879,35 @@ export class VisGraphManager {
       physics: isHierarchical
         ? false
         : {
-            enabled: true,
-            solver: 'forceAtlas2Based',
-            forceAtlas2Based: {
-              gravitationalConstant: -50,
-              springLength: 120,
-              springConstant: 0.05,
-              damping: 0.9,
-            },
-            stabilization: {
-              iterations: 150,
-              updateInterval: 25,
-            },
-            maxVelocity: 50,
-            minVelocity: 0.1,
+          enabled: true,
+          solver: 'forceAtlas2Based',
+          forceAtlas2Based: {
+            gravitationalConstant: -50,
+            springLength: 120,
+            springConstant: 0.05,
+            damping: 0.9,
           },
+          stabilization: {
+            iterations: 150,
+            updateInterval: 25,
+          },
+          maxVelocity: 50,
+          minVelocity: 0.1,
+        },
       layout: isHierarchical
         ? {
-            hierarchical: {
-              enabled: true,
-              direction: 'UD',
-              sortMethod: 'directed',
-              nodeSpacing: 150,
-              levelSeparation: 120,
-              treeSpacing: 200,
-              blockShifting: true,
-              edgeMinimization: true,
-              parentCentralization: true,
-            },
-          }
+          hierarchical: {
+            enabled: true,
+            direction: 'UD',
+            sortMethod: 'directed',
+            nodeSpacing: 150,
+            levelSeparation: 120,
+            treeSpacing: 200,
+            blockShifting: true,
+            edgeMinimization: true,
+            parentCentralization: true,
+          },
+        }
         : { hierarchical: false },
       interaction: {
         hover: true,
@@ -916,7 +916,7 @@ export class VisGraphManager {
         navigationButtons: true,
         keyboard: true,
         dragNodes: true,
-        dragView: true,
+        dragView: false,  // ✅ ИСПРАВЛЕНО: отключаем перемещение при наведении
         zoomView: true,
       },
     };
@@ -945,7 +945,31 @@ export class VisGraphManager {
       options
     );
 
-    // Настраиваем события
+    // ✅ РУЧНАЯ ОБРАБОТКА ПЕРЕМЕЩЕНИЯ ТОЛЬКО ПО ЗАЖАТОЙ ЛЕВОЙ КНОПКЕ
+    let isDragging = false;
+    let dragStart = null;
+
+    // Перемещение разрешено только если не перетаскивается узел
+    this.network.on('dragStart', (params) => {
+      if (!params.nodes || params.nodes.length === 0) {
+        isDragging = true;
+      }
+    });
+
+    this.network.on('dragEnd', () => {
+      isDragging = false;
+    });
+
+    // Блокируем перемещение при наведении
+    this.network.on('hoverNode', () => {
+      // Ничего не делаем, просто предотвращаем стандартное поведение
+    });
+
+    this.network.on('blurNode', () => {
+      // Ничего не делаем
+    });
+
+    // Настраиваем события клика
     this.network.on('click', params => {
       if (params.nodes.length > 0) {
         this._showDetails(params.nodes[0]);

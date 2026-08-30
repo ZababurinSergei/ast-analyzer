@@ -92,27 +92,3 @@ export function convertToDOT(
   dot += '}\n';
   return dot;
 }
-
-/**
- * Рекурсивный обход графа в глубину (DFS)
- * @param node Текущий узел
- * @param graph Объект графа
- * @param visited Set посещенных узлов
- * @param callback Функция обратного вызова для каждого узла
- */
-export function dfs(
-  node: string,
-  graph: Record<string, string[]>,
-  visited: Set<string>,
-  callback: (node: string) => void
-): void {
-  if (visited.has(node)) return;
-
-  visited.add(node);
-  callback(node);
-
-  const neighbors = graph[node] || [];
-  for (const neighbor of neighbors) {
-    dfs(neighbor, graph, visited, callback);
-  }
-}

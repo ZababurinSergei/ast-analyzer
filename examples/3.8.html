@@ -1,0 +1,2193 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IDE Graph — Unified Viewer</title>
+  <style>
+      :root {
+          --bg: #0a0e17;
+          --bg2: #111725;
+          --bg3: #1a2236;
+          --border: #2a3450;
+          --t1: #e6edf3;
+          --t2: #9ca3af;
+          --t3: #5c6779;
+          --accent: #60a5fa;
+          --accent2: #22d3ee;
+          --yellow: #fbbf24;
+          --red: #f87171;
+          --green: #34d399;
+          --pink: #f472b6;
+          --purple: #a78bfa;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          background: var(--bg);
+          color: var(--t1);
+          overflow: hidden;
+          height: 100vh;
+          font-size: 13px;
+      }
+      .app {
+          display: grid;
+          grid-template-rows: auto auto auto 1fr;
+          height: 100vh;
+      }
+      .header {
+          background: linear-gradient(90deg, #000010, #0a0e2a);
+          border-bottom: 1px solid var(--border);
+          padding: 10px 20px;
+      }
+      .header h1 {
+          font-size: 17px;
+          font-weight: 600;
+          background: linear-gradient(90deg, #fbbf24, #f472b6, #60a5fa);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          margin-bottom: 6px;
+      }
+      .stats-line {
+          display: flex;
+          gap: 16px;
+          font-size: 12px;
+          color: var(--t2);
+          flex-wrap: wrap;
+      }
+      .stats-line strong { color: var(--yellow); font-weight: 600; }
+      .sub { font-size: 11px; color: var(--t3); margin-top: 4px; }
+
+      .controls-bar {
+          background: var(--bg2);
+          border-bottom: 1px solid var(--border);
+          padding: 8px 14px;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          align-items: center;
+      }
+      .group {
+          display: flex;
+          gap: 4px;
+          align-items: center;
+          padding: 0 8px;
+          border-right: 1px solid var(--border);
+      }
+      .group:last-child { border-right: none; }
+      .group-label {
+          font-size: 11px;
+          color: var(--t3);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-right: 4px;
+      }
+      .group button {
+          padding: 4px 10px;
+          border-radius: 4px;
+          border: 1px solid var(--border);
+          background: var(--bg3);
+          color: var(--t1);
+          font-size: 11px;
+          cursor: pointer;
+          transition: all 0.15s;
+          white-space: nowrap;
+      }
+      .group button:hover:not(:disabled) {
+          border-color: var(--accent);
+          color: var(--accent);
+      }
+      .group button.active {
+          background: var(--accent);
+          color: #0f172a;
+          border-color: var(--accent);
+          font-weight: 600;
+      }
+      .group button:disabled {
+          opacity: 0.3;
+          cursor: default;
+      }
+      .search-input {
+          padding: 5px 10px;
+          background: var(--bg3);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          color: var(--t1);
+          font-size: 12px;
+          outline: none;
+          min-width: 200px;
+      }
+      .search-input:focus { border-color: var(--accent); }
+      .hint {
+          font-size: 11px;
+          color: var(--t3);
+          margin-left: auto;
+      }
+
+      /* Location bar */
+      .location-bar {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 10px;
+          background: #0f172a;
+          border-radius: 6px;
+          border: 1px solid var(--border);
+          margin: 0 14px 8px 14px;
+          min-height: 32px;
+      }
+      .location-display {
+          flex: 1;
+          font-family: 'Fira Code', Consolas, monospace;
+          font-size: 12px;
+          color: var(--accent);
+          padding: 4px 8px;
+          cursor: pointer;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          min-width: 0;
+      }
+      .location-input {
+          flex: 1;
+          font-family: 'Fira Code', Consolas, monospace;
+          font-size: 12px;
+          color: var(--t1);
+          background: #0a0a1a;
+          border: 1px solid var(--accent2);
+          border-radius: 4px;
+          padding: 4px 8px;
+          outline: none;
+          display: none;
+          min-width: 0;
+      }
+      .location-nav-btn, .location-copy-btn {
+          background: none;
+          border: none;
+          color: #64748b;
+          cursor: pointer;
+          font-size: 13px;
+          padding: 4px 6px;
+          border-radius: 4px;
+          transition: all 0.15s;
+      }
+      .location-nav-btn:hover:not(:disabled) { color: var(--accent); }
+      .location-nav-btn:disabled { opacity: 0.3; cursor: default; }
+      .location-copy-btn:hover { color: var(--accent); }
+
+      /* Breadcrumbs */
+      .breadcrumbs-container {
+          padding: 6px 14px;
+          background: var(--bg2);
+          border-bottom: 1px solid var(--border);
+          overflow-x: auto;
+          white-space: nowrap;
+          font-size: 11px;
+      }
+      .breadcrumbs {
+          display: inline-flex;
+          gap: 4px;
+          align-items: center;
+      }
+      .crumb {
+          padding: 3px 8px;
+          border-radius: 4px;
+          color: var(--t2);
+          cursor: pointer;
+          transition: all 0.15s;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+      }
+      .crumb:hover { color: var(--accent); background: var(--bg3); }
+      .crumb.active { color: var(--yellow); font-weight: 600; }
+      .crumb-sep { color: var(--t3); padding: 0 2px; }
+
+      /* Focus info panel */
+      .focus-info {
+          background: var(--bg2);
+          border: 1px solid var(--accent2);
+          margin: 8px 14px;
+          padding: 10px 14px;
+          border-radius: 6px;
+          display: none;
+          position: relative;
+      }
+      .focus-info.active { display: block; }
+      .focus-info .title {
+          font-weight: 600;
+          color: var(--accent2);
+          margin-bottom: 6px;
+          font-size: 13px;
+      }
+      .focus-info .details {
+          font-size: 12px;
+          color: var(--t2);
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+          gap: 4px 16px;
+      }
+      .focus-info .close-btn {
+          position: absolute;
+          top: 6px;
+          right: 8px;
+          background: none;
+          border: none;
+          color: var(--t3);
+          cursor: pointer;
+          font-size: 14px;
+      }
+      .focus-info .close-btn:hover { color: var(--red); }
+
+      /* Graph container */
+      .graph-container {
+          position: relative;
+          flex: 1;
+          overflow: hidden;
+          background: radial-gradient(ellipse at center, #050818 0%, #000 100%);
+          cursor: grab;
+      }
+      .graph-container.dragging { cursor: grabbing; }
+      .graph-container canvas { width: 100%; height: 100%; display: block; }
+
+      /* Graph HUD + controls */
+      .graph-hud {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          background: rgba(5, 8, 24, 0.85);
+          border: 1px solid var(--border);
+          padding: 6px 12px;
+          border-radius: 6px;
+          font-family: monospace;
+          font-size: 10px;
+          color: var(--t2);
+          line-height: 1.5;
+          pointer-events: none;
+          backdrop-filter: blur(8px);
+      }
+      .graph-hud b { color: var(--yellow); }
+      .graph-hud .warp-active {
+          color: var(--pink);
+          animation: pulse-warp 0.6s infinite;
+      }
+      @keyframes pulse-warp { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+      .graph-controls {
+          position: absolute;
+          bottom: 12px;
+          left: 12px;
+          display: flex;
+          gap: 6px;
+          background: rgba(5, 8, 24, 0.85);
+          padding: 6px;
+          border-radius: 6px;
+          border: 1px solid var(--border);
+          backdrop-filter: blur(8px);
+          flex-wrap: wrap;
+      }
+      .graph-controls button {
+          padding: 4px 10px;
+          background: var(--bg3);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          color: var(--t1);
+          font-size: 11px;
+          cursor: pointer;
+      }
+      .graph-controls button:hover { border-color: var(--yellow); }
+      .graph-controls button.active {
+          background: var(--yellow);
+          color: #000;
+          border-color: var(--yellow);
+      }
+
+      /* Legend */
+      .graph-legend {
+          position: absolute;
+          bottom: 12px;
+          right: 12px;
+          background: rgba(5, 8, 24, 0.85);
+          border: 1px solid var(--border);
+          padding: 8px 10px;
+          border-radius: 6px;
+          backdrop-filter: blur(8px);
+          font-size: 10px;
+          max-width: 180px;
+      }
+      .legend-item {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 2px 0;
+          color: var(--t2);
+      }
+      .legend-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          flex-shrink: 0;
+          box-shadow: 0 0 4px currentColor;
+      }
+      .legend-line {
+          width: 20px;
+          height: 2px;
+          flex-shrink: 0;
+      }
+
+      /* Tooltip */
+      .tooltip {
+          position: fixed;
+          background: rgba(5, 8, 24, 0.95);
+          border: 1px solid var(--yellow);
+          border-radius: 6px;
+          padding: 8px 12px;
+          font-size: 12px;
+          pointer-events: none;
+          opacity: 0;
+          transition: opacity 0.15s;
+          z-index: 100;
+          max-width: 320px;
+          backdrop-filter: blur(8px);
+          box-shadow: 0 4px 20px rgba(251, 191, 36, 0.3);
+      }
+      .tooltip.show { opacity: 1; }
+      .tt-title { color: var(--yellow); font-weight: 600; margin-bottom: 2px; }
+      .tt-system { color: var(--purple); font-size: 11px; margin-bottom: 2px; }
+      .tt-file { color: var(--t2); font-size: 11px; font-family: monospace; }
+      .tt-vec { font-family: monospace; font-size: 10px; color: var(--accent); margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); }
+
+      /* Detail panel */
+      .detail-panel {
+          position: fixed;
+          top: 0;
+          right: 0;
+          width: 340px;
+          height: 100vh;
+          background: var(--bg2);
+          border-left: 1px solid var(--border);
+          transform: translateX(100%);
+          transition: transform 0.25s ease;
+          z-index: 200;
+          overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+      }
+      .detail-panel.open { transform: translateX(0); }
+      .dp-header {
+          padding: 12px 16px;
+          border-bottom: 1px solid var(--border);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          position: sticky;
+          top: 0;
+          background: var(--bg2);
+          z-index: 1;
+      }
+      .dp-title { font-size: 15px; font-weight: 600; color: var(--yellow); }
+      .dp-close {
+          background: none;
+          border: none;
+          color: var(--t3);
+          cursor: pointer;
+          font-size: 16px;
+      }
+      .dp-close:hover { color: var(--red); }
+      .dp-content { padding: 14px; }
+      .dp-section {
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          color: var(--t3);
+          margin: 14px 0 6px;
+          padding-bottom: 4px;
+          border-bottom: 1px solid var(--border);
+      }
+      .dp-row {
+          display: flex;
+          justify-content: space-between;
+          padding: 4px 0;
+          font-size: 12px;
+      }
+      .dp-row .k { color: var(--t3); }
+      .dp-row .v { color: var(--t1); font-weight: 500; text-align: right; }
+      .dp-vec {
+          font-family: monospace;
+          font-size: 11px;
+          background: var(--bg3);
+          border-radius: 4px;
+          padding: 8px;
+          margin: 8px 0;
+          color: var(--accent);
+          line-height: 1.6;
+      }
+      .dp-link-item {
+          padding: 5px 8px;
+          font-size: 12px;
+          cursor: pointer;
+          border-radius: 4px;
+          color: #d1d5db;
+          transition: background 0.15s;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 2px;
+      }
+      .dp-link-item:hover { background: var(--border); color: var(--yellow); }
+      .dp-link-item .arrow { color: var(--purple); }
+      .dp-badges { display: flex; gap: 4px; margin: 6px 0; flex-wrap: wrap; }
+      .badge {
+          display: inline-block;
+          padding: 2px 7px;
+          border-radius: 4px;
+          font-size: 9px;
+          font-weight: 600;
+      }
+      .b-exported { background: rgba(63, 185, 80, 0.15); color: var(--green); }
+      .b-async { background: rgba(210, 168, 255, 0.15); color: #d2a8ff; }
+      .b-entry { background: rgba(251, 191, 36, 0.15); color: var(--yellow); }
+      .b-high-complexity { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+
+      .warp-flash {
+          position: fixed;
+          inset: 0;
+          background: radial-gradient(circle, #fff 0%, #fbbf24 20%, transparent 60%);
+          pointer-events: none;
+          opacity: 0;
+          z-index: 50;
+          transition: opacity 0.15s;
+          mix-blend-mode: screen;
+      }
+
+      /* Scrollbar */
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: var(--bg2); }
+      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #2e3a6a; }
+
+      /* Mode-specific hints */
+      .mode-hint {
+          position: absolute;
+          top: 10px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: rgba(5, 8, 24, 0.85);
+          border: 1px solid var(--border);
+          padding: 6px 14px;
+          border-radius: 16px;
+          font-size: 11px;
+          color: var(--t2);
+          backdrop-filter: blur(8px);
+          pointer-events: none;
+          transition: opacity 0.5s;
+          white-space: nowrap;
+      }
+      .mode-hint.hide { opacity: 0; }
+
+      @media (max-width: 900px) {
+          .detail-panel { width: 100%; }
+          .group { padding: 0 4px; }
+          .hint { display: none; }
+      }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <h1>🌌 IDE Graph — Unified Viewer</h1>
+    <div class="stats-line">
+      <span>📁 Модулей: <strong id="statModules">0</strong></span>
+      <span>ƒ Функций: <strong id="statFunctions">0</strong></span>
+      <span>📞 Вызовов: <strong id="statCalls">0</strong></span>
+      <span>📤 Экспорт: <strong id="statExported">0</strong></span>
+      <span>⚡ Async: <strong id="statAsync">0</strong></span>
+      <span>🔗 Внутренних связей: <strong id="statLinks">0</strong></span>
+    </div>
+    <div class="sub">Два режима: <b style="color:var(--accent)">Граф</b> (force-directed сферическая раскладка) · <b style="color:var(--yellow)">Космос</b> (солнечные системы модулей)</div>
+  </header>
+
+  <nav class="controls-bar">
+    <div class="group">
+      <span class="group-label">🎨 Режим:</span>
+      <button class="active" data-view-mode="graph">🕸 Граф</button>
+      <button data-view-mode="cosmos">🌌 Космос</button>
+    </div>
+    <div class="group">
+      <span class="group-label">🎯 Фокус:</span>
+      <button id="btnFocusAll">Все</button>
+      <button id="btnFocusNeighbors">Соседи</button>
+      <button id="btnFocusOutward">Исходящие</button>
+      <button id="btnClearFocus">✕ Сброс</button>
+    </div>
+    <div class="group">
+      <span class="group-label">🔍</span>
+      <input class="search-input" id="searchInput" placeholder="Поиск функции...">
+    </div>
+    <div class="group">
+      <span class="group-label">🧭</span>
+      <button id="btnNavBack" disabled title="Назад">◀</button>
+      <button id="btnNavForward" disabled title="Вперёд">▶</button>
+      <button id="btnNavHome" title="Домой">🏠</button>
+    </div>
+    <span class="hint">💡 Клик = выделить · Двойной клик = фокус/прыжок · Пробел = пауза</span>
+  </nav>
+
+  <div class="location-bar" id="locationBar">
+    <button class="location-nav-btn" id="locBack" disabled>◀</button>
+    <button class="location-nav-btn" id="locForward" disabled>▶</button>
+    <span class="location-display" id="locDisplay">ide://universe</span>
+    <input class="location-input" id="locInput" placeholder="Введите путь: ide://module/function">
+    <button class="location-copy-btn" id="locCopy" title="Скопировать">📋</button>
+  </div>
+
+  <div class="breadcrumbs-container">
+    <div class="breadcrumbs" id="breadcrumbs"></div>
+  </div>
+
+  <div class="focus-info" id="focusInfo">
+    <button class="close-btn" id="btnCloseFocus">✕</button>
+    <div class="title" id="focusTitle">🎯 Фокус</div>
+    <div class="details" id="focusDetails"></div>
+  </div>
+
+  <div class="graph-container" id="graphContainer">
+    <canvas id="graphCanvas"></canvas>
+    <div class="mode-hint" id="modeHint">🕸 Force-directed граф на сфере · Равномерное распределение по R₃-последовательности Робертса</div>
+    <div class="graph-hud" id="hud">
+      <div>Режим: <b id="hud-mode">Граф</b></div>
+      <div>Zoom: <b id="hud-zoom">1.00x</b></div>
+      <div>Rot: <b id="hud-rx">0.0°</b> / <b id="hud-ry">0.0°</b></div>
+      <div id="hud-warp" style="display:none" class="warp-active">⚡ WARP ⚡</div>
+    </div>
+    <div class="graph-controls">
+      <button class="active" id="btnLabels">🏷 Имена</button>
+      <button class="active" id="btnAutoSpin">⟳ Авто</button>
+      <button class="active" id="btnOrbits">◯ Орбиты</button>
+      <button class="active" id="btnLinks">🔗 Связи</button>
+      <button class="active" id="btnNebulae">🌫 Туманности</button>
+      <button id="btnVectors">📐 Векторы</button>
+      <button id="btnReset">⟲ Сброс</button>
+    </div>
+    <div class="graph-legend" id="graphLegend"></div>
+  </div>
+
+  <div class="detail-panel" id="detailPanel">
+    <div class="dp-header">
+      <div class="dp-title" id="dpTitle">Функция</div>
+      <button class="dp-close" id="dpClose">✕</button>
+    </div>
+    <div class="dp-content" id="dpContent"></div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+<div class="warp-flash" id="warpFlash"></div>
+
+<script>
+  // ============================================================================
+  //  ДАННЫЕ (полный JSON из отчёта AST-анализатора)
+  // ============================================================================
+  const RAW_DATA = {"version":"3.0.0","entities":{"func_0000_add":{"id":"func_0000_add","name":"add","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":116,"isExported":false,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":116,"endLine":116,"calls":[],"calledBy":[{"callerId":"func_folm8l_useVirtualScroll","callerName":"useVirtualScroll","callType":"method"}]},"func_70tjw4_applyColumnFilter":{"id":"func_70tjw4_applyColumnFilter","name":"applyColumnFilter","file":"infoenergo-ui/src/composables/AiDataTable/useFilterState.ts","line":52,"isExported":false,"isAsync":false,"paramsCount":4,"complexity":1,"startLine":52,"endLine":63,"calls":[{"targetId":"func_lz153b_getCellDisplayText","targetName":"getCellDisplayText","callType":"direct"}],"calledBy":[{"callerId":"func_70tjw4_useFilterState","callerName":"useFilterState","callType":"direct"}]},"func_0000_close":{"id":"func_0000_close","name":"close","file":"infoenergo-ui/src/components/ui/AiContextMenu/AiContextMenu.vue","line":14,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":14,"endLine":14,"calls":[],"calledBy":[]},"func_5sw9lj_closeDialog":{"id":"func_5sw9lj_closeDialog","name":"closeDialog","file":"infoenergo-ui/src/composables/AiDialog/store.ts","line":44,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":2,"startLine":44,"endLine":48,"calls":[],"calledBy":[]},"func_5sw9lj_configureButtons":{"id":"func_5sw9lj_configureButtons","name":"configureButtons","file":"infoenergo-ui/src/composables/AiDialog/store.ts","line":8,"isExported":false,"isAsync":false,"paramsCount":3,"complexity":1,"startLine":8,"endLine":22,"calls":[],"calledBy":[{"callerId":"func_5sw9lj_showDialog","callerName":"showDialog","callType":"direct"}]},"func_0000_copy":{"id":"func_0000_copy","name":"copy","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":123,"isExported":false,"isAsync":true,"paramsCount":0,"complexity":1,"startLine":123,"endLine":123,"calls":[],"calledBy":[]},"func_70tjw4_createDefaultColumnFilterState":{"id":"func_70tjw4_createDefaultColumnFilterState","name":"createDefaultColumnFilterState","file":"infoenergo-ui/src/composables/AiDataTable/useFilterState.ts","line":38,"isExported":false,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":38,"endLine":43,"calls":[],"calledBy":[{"callerId":"func_70tjw4_useFilterState","callerName":"useFilterState","callType":"direct"}]},"func_rerp9w_createEmptyColumn":{"id":"func_rerp9w_createEmptyColumn","name":"createEmptyColumn","file":"infoenergo-ui/src/composables/AiDataTable/serviceColumnsFactories.ts","line":43,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":43,"endLine":48,"calls":[],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig","callType":"direct"}]},"func_rerp9w_createExpandColumn":{"id":"func_rerp9w_createExpandColumn","name":"createExpandColumn","file":"infoenergo-ui/src/composables/AiDataTable/serviceColumnsFactories.ts","line":29,"isExported":true,"isAsync":false,"paramsCount":2,"complexity":1,"startLine":29,"endLine":40,"calls":[],"calledBy":[{"callerId":"func_rerp9w_createServiceColumns","callerName":"createServiceColumns","callType":"direct"}]},"func_rerp9w_createSelectionColumn":{"id":"func_rerp9w_createSelectionColumn","name":"createSelectionColumn","file":"infoenergo-ui/src/composables/AiDataTable/serviceColumnsFactories.ts","line":16,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":16,"endLine":24,"calls":[],"calledBy":[{"callerId":"func_rerp9w_createServiceColumns","callerName":"createServiceColumns","callType":"direct"}]},"func_rerp9w_createServiceColumns":{"id":"func_rerp9w_createServiceColumns","name":"createServiceColumns","file":"infoenergo-ui/src/composables/AiDataTable/serviceColumnsFactories.ts","line":53,"isExported":true,"isAsync":false,"paramsCount":3,"complexity":1,"startLine":53,"endLine":69,"calls":[{"targetId":"func_rerp9w_createSelectionColumn","targetName":"createSelectionColumn","callType":"direct"},{"targetId":"func_rerp9w_createExpandColumn","targetName":"createExpandColumn","callType":"direct"}],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig","callType":"method"}]},"func_j7pkc5_createState":{"id":"func_j7pkc5_createState","name":"createState","file":"infoenergo-ui/src/composables/AiDataTable/useCache.ts","line":12,"isExported":false,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":12,"endLine":16,"calls":[],"calledBy":[{"callerId":"func_j7pkc5_useCache","callerName":"useCache","callType":"direct"}]},"func_0000_defineEmits":{"id":"func_0000_defineEmits","name":"defineEmits","file":"infoenergo-ui/src/components/ui/AiDataTable/components/FilterCell/HeaderCell/HeaderCell.vue","line":14,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":14,"endLine":14,"calls":[],"calledBy":[]},"func_0000_defineProps":{"id":"func_0000_defineProps","name":"defineProps","file":"infoenergo-ui/src/components/ui/AiDataTable/components/FilterCell/HeaderCell/HeaderCell.vue","line":13,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":13,"endLine":13,"calls":[],"calledBy":[]},"func_0000_delete":{"id":"func_0000_delete","name":"delete","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":119,"isExported":false,"isAsync":true,"paramsCount":0,"complexity":1,"startLine":119,"endLine":119,"calls":[],"calledBy":[{"callerId":"func_9tv3u2_useDataStore","callerName":"useDataStore","callType":"method"},{"callerId":"func_8iz54o_useChangesTracker","callerName":"useChangesTracker","callType":"method"}]},"func_0000_dialog":{"id":"func_0000_dialog","name":"dialog","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":23,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":23,"endLine":23,"calls":[{"targetId":"func_62mmbb_useDialog","targetName":"useDialog","callType":"direct"}],"calledBy":[]},"func_0000_doLoadData":{"id":"func_0000_doLoadData","name":"doLoadData","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":190,"isExported":true,"isAsync":true,"paramsCount":0,"complexity":1,"startLine":190,"endLine":190,"calls":[],"calledBy":[]},"func_0000_export":{"id":"func_0000_export","name":"export","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":134,"isExported":false,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":134,"endLine":134,"calls":[],"calledBy":[]},"func_lz153b_findBaseColumnByDataField":{"id":"func_lz153b_findBaseColumnByDataField","name":"findBaseColumnByDataField","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":60,"isExported":true,"isAsync":false,"paramsCount":2,"complexity":1,"startLine":60,"endLine":61,"calls":[{"targetId":"func_lz153b_flattenBaseColumns","targetName":"flattenBaseColumns","callType":"direct"}],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig","callType":"direct"}]},"func_lz153b_flattenBaseColumns":{"id":"func_lz153b_flattenBaseColumns","name":"flattenBaseColumns","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":53,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":53,"endLine":58,"calls":[{"targetId":"func_lz153b_isBaseColumn","targetName":"isBaseColumn","callType":"direct"},{"targetId":"func_lz153b_isParentColumn","targetName":"isParentColumn","callType":"direct"}],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig","callType":"direct"},{"callerId":"func_nu0fv2_useExportAdapter","callerName":"useExportAdapter","callType":"direct"},{"callerId":"func_lz153b_findBaseColumnByDataField","callerName":"findBaseColumnByDataField","callType":"direct"}]},"func_lz153b_getCellDisplayText":{"id":"func_lz153b_getCellDisplayText","name":"getCellDisplayText","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":18,"isExported":true,"isAsync":false,"paramsCount":2,"complexity":1,"startLine":18,"endLine":28,"calls":[],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig","callType":"direct"},{"callerId":"func_70tjw4_applyColumnFilter","callerName":"applyColumnFilter","callType":"direct"}]},"func_9efayj_getDefaultColumnConfig":{"id":"func_9efayj_getDefaultColumnConfig","name":"getDefaultColumnConfig","file":"infoenergo-ui/src/components/ui/AiDataTable/defaults.ts","line":72,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":72,"endLine":75,"calls":[],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig","callType":"direct"}]},"func_5sw9lj_getDialogState":{"id":"func_5sw9lj_getDialogState","name":"getDialogState","file":"infoenergo-ui/src/composables/AiDialog/store.ts","line":24,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":24,"endLine":24,"calls":[],"calledBy":[]},"func_0000_handleButtonClick":{"id":"func_0000_handleButtonClick","name":"handleButtonClick","file":"infoenergo-ui/src/components/ui/AiToolbar/AiToolbar.vue","line":25,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":25,"endLine":25,"calls":[],"calledBy":[]},"func_0000_handleClose":{"id":"func_0000_handleClose","name":"handleClose","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":48,"isExported":true,"isAsync":true,"paramsCount":1,"complexity":1,"startLine":48,"endLine":48,"calls":[],"calledBy":[]},"func_0000_handleContextMenu":{"id":"func_0000_handleContextMenu","name":"handleContextMenu","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":24,"isExported":true,"isAsync":false,"paramsCount":2,"complexity":1,"startLine":24,"endLine":24,"calls":[],"calledBy":[]},"func_0000_handleContextMenuSelect":{"id":"func_0000_handleContextMenuSelect","name":"handleContextMenuSelect","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":160,"isExported":true,"isAsync":true,"paramsCount":3,"complexity":1,"startLine":160,"endLine":160,"calls":[],"calledBy":[]},"func_0000_handleDropdownClick":{"id":"func_0000_handleDropdownClick","name":"handleDropdownClick","file":"infoenergo-ui/src/components/ui/AiToolbar/AiToolbar.vue","line":12,"isExported":true,"isAsync":false,"paramsCount":2,"complexity":1,"startLine":12,"endLine":12,"calls":[],"calledBy":[]},"func_0000_handleInputChange":{"id":"func_0000_handleInputChange","name":"handleInputChange","file":"infoenergo-ui/src/components/ui/AiToolbar/AiToolbar.vue","line":33,"isExported":true,"isAsync":false,"paramsCount":2,"complexity":1,"startLine":33,"endLine":33,"calls":[],"calledBy":[]},"func_0000_handleInputUpdate":{"id":"func_0000_handleInputUpdate","name":"handleInputUpdate","file":"infoenergo-ui/src/components/ui/AiToolbar/search/AiToolbarSearchInput.vue","line":9,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":9,"endLine":9,"calls":[],"calledBy":[]},"func_0000_handleLeftArrowClick":{"id":"func_0000_handleLeftArrowClick","name":"handleLeftArrowClick","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":40,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":40,"endLine":40,"calls":[],"calledBy":[]},"func_0000_handleRightArrowClick":{"id":"func_0000_handleRightArrowClick","name":"handleRightArrowClick","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":44,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":44,"endLine":44,"calls":[],"calledBy":[]},"func_0000_handleSelect":{"id":"func_0000_handleSelect","name":"handleSelect","file":"infoenergo-ui/src/components/ui/AiContextMenu/AiContextMenu.vue","line":19,"isExported":true,"isAsync":false,"paramsCount":2,"complexity":1,"startLine":19,"endLine":19,"calls":[],"calledBy":[]},"func_0000_handleToolbarButtonClick":{"id":"func_0000_handleToolbarButtonClick","name":"handleToolbarButtonClick","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":176,"isExported":true,"isAsync":true,"paramsCount":1,"complexity":1,"startLine":176,"endLine":176,"calls":[],"calledBy":[]},"func_0000_handleToolbarDropdownClick":{"id":"func_0000_handleToolbarDropdownClick","name":"handleToolbarDropdownClick","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":181,"isExported":true,"isAsync":true,"paramsCount":2,"complexity":1,"startLine":181,"endLine":181,"calls":[],"calledBy":[]},"func_0000_handleToolbarInputChange":{"id":"func_0000_handleToolbarInputChange","name":"handleToolbarInputChange","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":186,"isExported":true,"isAsync":false,"paramsCount":2,"complexity":1,"startLine":186,"endLine":186,"calls":[],"calledBy":[]},"func_0000_handleUpdate":{"id":"func_0000_handleUpdate","name":"handleUpdate","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":68,"isExported":true,"isAsync":true,"paramsCount":1,"complexity":1,"startLine":68,"endLine":68,"calls":[],"calledBy":[]},"func_0000_handleUpdateColumnChooserValue":{"id":"func_0000_handleUpdateColumnChooserValue","name":"handleUpdateColumnChooserValue","file":"infoenergo-ui/src/components/ui/AiToolbar/AiToolbar.vue","line":29,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":29,"endLine":29,"calls":[],"calledBy":[]},"func_gpzzu8_initGlobalSettings":{"id":"func_gpzzu8_initGlobalSettings","name":"initGlobalSettings","file":"infoenergo-ui/src/composables/common/useGlobalSettings.ts","line":47,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":47,"endLine":57,"calls":[{"targetId":"func_gpzzu8_validateTableApi","targetName":"validateTableApi","callType":"direct"}],"calledBy":[]},"func_lz153b_isAlwaysVisibleColumn":{"id":"func_lz153b_isAlwaysVisibleColumn","name":"isAlwaysVisibleColumn","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":30,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":2,"startLine":30,"endLine":31,"calls":[{"targetId":"func_lz153b_isServiceColumn","targetName":"isServiceColumn","callType":"direct"}],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig","callType":"direct"},{"callerId":"func_lz153b_isVisibleColumn","callerName":"isVisibleColumn","callType":"direct"}]},"func_lz153b_isBaseColumn":{"id":"func_lz153b_isBaseColumn","name":"isBaseColumn","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":36,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":36,"endLine":37,"calls":[],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig","callType":"direct"},{"callerId":"func_lz153b_isVisibleColumn","callerName":"isVisibleColumn","callType":"direct"},{"callerId":"func_lz153b_flattenBaseColumns","callerName":"flattenBaseColumns","callType":"direct"}]},"func_0000_isButtonDisabled":{"id":"func_0000_isButtonDisabled","name":"isButtonDisabled","file":"infoenergo-ui/src/components/ui/AiToolbar/AiToolbar.vue","line":40,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":40,"endLine":40,"calls":[],"calledBy":[]},"func_j7pkc5_isClean":{"id":"func_j7pkc5_isClean","name":"isClean","file":"infoenergo-ui/src/composables/AiDataTable/useCache.ts","line":8,"isExported":false,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":8,"endLine":8,"calls":[],"calledBy":[]},"func_lz153b_isEmptyColumn":{"id":"func_lz153b_isEmptyColumn","name":"isEmptyColumn","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":46,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":46,"endLine":47,"calls":[],"calledBy":[{"callerId":"func_lz153b_isServiceColumn","callerName":"isServiceColumn","callType":"direct"}]},"func_lz153b_isExpandColumn":{"id":"func_lz153b_isExpandColumn","name":"isExpandColumn","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":41,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":41,"endLine":41,"calls":[],"calledBy":[{"callerId":"func_lz153b_isServiceColumn","callerName":"isServiceColumn","callType":"direct"}]},"func_0000_isItemDisabled":{"id":"func_0000_isItemDisabled","name":"isItemDisabled","file":"infoenergo-ui/src/components/ui/AiToolbar/AiToolbar.vue","line":38,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":38,"endLine":38,"calls":[],"calledBy":[]},"func_lz153b_isParentColumn":{"id":"func_lz153b_isParentColumn","name":"isParentColumn","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":43,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":43,"endLine":44,"calls":[],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig","callType":"direct"},{"callerId":"func_lz153b_isServiceColumn","callerName":"isServiceColumn","callType":"direct"},{"callerId":"func_lz153b_flattenBaseColumns","callerName":"flattenBaseColumns","callType":"direct"}]},"func_lz153b_isSelectionColumn":{"id":"func_lz153b_isSelectionColumn","name":"isSelectionColumn","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":39,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":39,"endLine":39,"calls":[],"calledBy":[{"callerId":"func_lz153b_isServiceColumn","callerName":"isServiceColumn","callType":"direct"}]},"func_lz153b_isServiceColumn":{"id":"func_lz153b_isServiceColumn","name":"isServiceColumn","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":49,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":49,"endLine":50,"calls":[{"targetId":"func_lz153b_isSelectionColumn","targetName":"isSelectionColumn","callType":"direct"},{"targetId":"func_lz153b_isExpandColumn","targetName":"isExpandColumn","callType":"direct"},{"targetId":"func_lz153b_isParentColumn","targetName":"isParentColumn","callType":"direct"},{"targetId":"func_lz153b_isEmptyColumn","targetName":"isEmptyColumn","callType":"direct"}],"calledBy":[{"callerId":"func_lz153b_isAlwaysVisibleColumn","callerName":"isAlwaysVisibleColumn","callType":"direct"}]},"func_lz153b_isVisibleColumn":{"id":"func_lz153b_isVisibleColumn","name":"isVisibleColumn","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":33,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":2,"startLine":33,"endLine":34,"calls":[{"targetId":"func_lz153b_isAlwaysVisibleColumn","targetName":"isAlwaysVisibleColumn","callType":"direct"},{"targetId":"func_lz153b_isBaseColumn","targetName":"isBaseColumn","callType":"direct"}],"calledBy":[]},"func_i6ds4l_makeSorter":{"id":"func_i6ds4l_makeSorter","name":"makeSorter","file":"infoenergo-ui/src/composables/AiDataTable/common.ts","line":33,"isExported":true,"isAsync":false,"paramsCount":2,"complexity":1,"startLine":33,"endLine":56,"calls":[],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig","callType":"direct"}]},"func_0000_onClick":{"id":"func_0000_onClick","name":"onClick","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":151,"isExported":false,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":151,"endLine":151,"calls":[],"calledBy":[]},"func_0000_onContextmenu":{"id":"func_0000_onContextmenu","name":"onContextmenu","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":155,"isExported":false,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":155,"endLine":155,"calls":[],"calledBy":[]},"func_0000_onCreateFilter":{"id":"func_0000_onCreateFilter","name":"onCreateFilter","file":"infoenergo-ui/src/components/ui/AiFooter/AiFooter.vue","line":13,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":13,"endLine":13,"calls":[],"calledBy":[]},"func_0000_onDateFilterUpdate":{"id":"func_0000_onDateFilterUpdate","name":"onDateFilterUpdate","file":"infoenergo-ui/src/components/ui/AiDataTable/components/FilterCell/HeaderCell/HeaderCell.vue","line":31,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":31,"endLine":31,"calls":[],"calledBy":[]},"func_0000_onDblclick":{"id":"func_0000_onDblclick","name":"onDblclick","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":148,"isExported":false,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":148,"endLine":148,"calls":[],"calledBy":[]},"func_0000_onDialogNegativeClick":{"id":"func_0000_onDialogNegativeClick","name":"onDialogNegativeClick","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":80,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":80,"endLine":80,"calls":[],"calledBy":[]},"func_0000_onDialogNeutralClick":{"id":"func_0000_onDialogNeutralClick","name":"onDialogNeutralClick","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":87,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":87,"endLine":87,"calls":[],"calledBy":[]},"func_0000_onDialogPositiveClick":{"id":"func_0000_onDialogPositiveClick","name":"onDialogPositiveClick","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":73,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":73,"endLine":73,"calls":[],"calledBy":[]},"func_0000_onFilterInputUpdate":{"id":"func_0000_onFilterInputUpdate","name":"onFilterInputUpdate","file":"infoenergo-ui/src/components/ui/AiDataTable/components/FilterCell/HeaderCell/HeaderCell.vue","line":23,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":23,"endLine":23,"calls":[],"calledBy":[]},"func_0000_onFilterSelectUpdate":{"id":"func_0000_onFilterSelectUpdate","name":"onFilterSelectUpdate","file":"infoenergo-ui/src/components/ui/AiDataTable/components/FilterCell/HeaderCell/HeaderCell.vue","line":27,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":27,"endLine":27,"calls":[],"calledBy":[]},"func_0000_options":{"id":"func_0000_options","name":"options","file":"infoenergo-ui/src/components/ui/AiContextMenu/AiContextMenu.vue","line":9,"isExported":false,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":9,"endLine":9,"calls":[],"calledBy":[]},"func_0000_refresh":{"id":"func_0000_refresh","name":"refresh","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":108,"isExported":false,"isAsync":true,"paramsCount":0,"complexity":1,"startLine":108,"endLine":108,"calls":[],"calledBy":[]},"func_0000_rowClassName":{"id":"func_0000_rowClassName","name":"rowClassName","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":138,"isExported":true,"isAsync":false,"paramsCount":2,"complexity":1,"startLine":138,"endLine":138,"calls":[],"calledBy":[]},"func_0000_rowProps":{"id":"func_0000_rowProps","name":"rowProps","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":146,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":146,"endLine":146,"calls":[],"calledBy":[]},"func_0000_save":{"id":"func_0000_save","name":"save","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":127,"isExported":false,"isAsync":true,"paramsCount":0,"complexity":1,"startLine":127,"endLine":127,"calls":[],"calledBy":[]},"func_0000_search":{"id":"func_0000_search","name":"search","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":135,"isExported":false,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":135,"endLine":135,"calls":[],"calledBy":[]},"func_0000_settings":{"id":"func_0000_settings","name":"settings","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":131,"isExported":false,"isAsync":true,"paramsCount":1,"complexity":1,"startLine":131,"endLine":131,"calls":[],"calledBy":[]},"func_5sw9lj_showDialog":{"id":"func_5sw9lj_showDialog","name":"showDialog","file":"infoenergo-ui/src/composables/AiDialog/store.ts","line":26,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":26,"endLine":42,"calls":[{"targetId":"func_5sw9lj_configureButtons","targetName":"configureButtons","callType":"direct"}],"calledBy":[]},"func_0000_slots":{"id":"func_0000_slots","name":"slots","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":27,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":27,"endLine":27,"calls":[],"calledBy":[]},"func_i6ds4l_splitByHighlight":{"id":"func_i6ds4l_splitByHighlight","name":"splitByHighlight","file":"infoenergo-ui/src/composables/AiDataTable/common.ts","line":12,"isExported":true,"isAsync":false,"paramsCount":2,"complexity":3,"startLine":12,"endLine":31,"calls":[],"calledBy":[]},"func_70tjw4_toBooleanFilterState":{"id":"func_70tjw4_toBooleanFilterState","name":"toBooleanFilterState","file":"infoenergo-ui/src/composables/AiDataTable/useFilterState.ts","line":28,"isExported":false,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":28,"endLine":31,"calls":[],"calledBy":[{"callerId":"func_70tjw4_useFilterState","callerName":"useFilterState","callType":"direct"}]},"func_w6eo6o_useButtonsConfig":{"id":"func_w6eo6o_useButtonsConfig","name":"useButtonsConfig","file":"infoenergo-ui/src/composables/AiButton/useButtonsConfig.ts","line":9,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":9,"endLine":32,"calls":[],"calledBy":[]},"func_j7pkc5_useCache":{"id":"func_j7pkc5_useCache","name":"useCache","file":"infoenergo-ui/src/composables/AiDataTable/useCache.ts","line":18,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":3,"startLine":18,"endLine":28,"calls":[{"targetId":"func_j7pkc5_createState","targetName":"createState","callType":"direct"}],"calledBy":[{"callerId":"func_gfe862_useDataState","callerName":"useDataState","callType":"direct"}]},"func_8iz54o_useChangesTracker":{"id":"func_8iz54o_useChangesTracker","name":"useChangesTracker","file":"infoenergo-ui/src/composables/AiDataTable/useChangesTracker.ts","line":6,"isExported":true,"isAsync":false,"paramsCount":2,"complexity":1,"startLine":6,"endLine":127,"calls":[{"targetId":"func_0000_delete","targetName":"delete","callType":"method"}],"calledBy":[{"callerId":"func_gfe862_useDataState","callerName":"useDataState","callType":"direct"}]},"func_4c3d5e_useColumnsConfig":{"id":"func_4c3d5e_useColumnsConfig","name":"useColumnsConfig","file":"infoenergo-ui/src/composables/AiDataTable/useColumnsConfig.ts","line":43,"isExported":true,"isAsync":false,"paramsCount":7,"complexity":7,"startLine":43,"endLine":321,"calls":[{"targetId":"func_70tjw4_useFilterState","targetName":"useFilterState","callType":"direct"},{"targetId":"func_lz153b_isBaseColumn","targetName":"isBaseColumn","callType":"direct"},{"targetId":"func_lz153b_isAlwaysVisibleColumn","targetName":"isAlwaysVisibleColumn","callType":"direct"},{"targetId":"func_lz153b_flattenBaseColumns","targetName":"flattenBaseColumns","callType":"direct"},{"targetId":"func_lz153b_findBaseColumnByDataField","targetName":"findBaseColumnByDataField","callType":"direct"},{"targetId":"func_lz153b_getCellDisplayText","targetName":"getCellDisplayText","callType":"direct"},{"targetId":"func_9efayj_getDefaultColumnConfig","targetName":"getDefaultColumnConfig","callType":"direct"},{"targetId":"func_i6ds4l_makeSorter","targetName":"makeSorter","callType":"direct"},{"targetId":"func_lz153b_isParentColumn","targetName":"isParentColumn","callType":"direct"},{"targetId":"func_rerp9w_createServiceColumns","targetName":"createServiceColumns","callType":"method"},{"targetId":"func_rerp9w_createEmptyColumn","targetName":"createEmptyColumn","callType":"direct"}],"calledBy":[]},"func_l3oc3k_useContextMenuState":{"id":"func_l3oc3k_useContextMenuState","name":"useContextMenuState","file":"infoenergo-ui/src/composables/AiContextMenu/useContextMenuState.ts","line":8,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":3,"startLine":8,"endLine":34,"calls":[],"calledBy":[]},"func_gfe862_useDataState":{"id":"func_gfe862_useDataState","name":"useDataState","file":"infoenergo-ui/src/composables/AiDataTable/useDataState.ts","line":18,"isExported":true,"isAsync":false,"paramsCount":2,"complexity":5,"startLine":18,"endLine":186,"calls":[{"targetId":"func_j7pkc5_useCache","targetName":"useCache","callType":"direct"},{"targetId":"func_8iz54o_useChangesTracker","targetName":"useChangesTracker","callType":"direct"},{"targetId":"func_9tv3u2_useDataStore","targetName":"useDataStore","callType":"direct"},{"targetId":"func_62mmbb_useDialog","targetName":"useDialog","callType":"direct"}],"calledBy":[]},"func_9tv3u2_useDataStore":{"id":"func_9tv3u2_useDataStore","name":"useDataStore","file":"infoenergo-ui/src/composables/AiDataTable/useDataStore.ts","line":15,"isExported":true,"isAsync":false,"paramsCount":5,"complexity":15,"startLine":15,"endLine":356,"calls":[{"targetId":"func_gpzzu8_useGlobalSettings","targetName":"useGlobalSettings","callType":"direct"},{"targetId":"func_0000_delete","targetName":"delete","callType":"method"}],"calledBy":[{"callerId":"func_gfe862_useDataState","callerName":"useDataState","callType":"direct"}]},"func_62mmbb_useDialog":{"id":"func_62mmbb_useDialog","name":"useDialog","file":"infoenergo-ui/src/composables/AiDialog/useDialog.ts","line":4,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":4,"endLine":4,"calls":[],"calledBy":[{"callerId":"func_0000_dialog","callerName":"dialog","callType":"direct"},{"callerId":"func_gfe862_useDataState","callerName":"useDataState","callType":"direct"}]},"func_nu0fv2_useExportAdapter":{"id":"func_nu0fv2_useExportAdapter","name":"useExportAdapter","file":"infoenergo-ui/src/composables/AiDataTable/useExportAdapter.ts","line":23,"isExported":true,"isAsync":false,"paramsCount":7,"complexity":1,"startLine":23,"endLine":94,"calls":[{"targetId":"func_lz153b_flattenBaseColumns","targetName":"flattenBaseColumns","callType":"direct"},{"targetId":"func_gpzzu8_useGlobalSettings","targetName":"useGlobalSettings","callType":"direct"}],"calledBy":[]},"func_70tjw4_useFilterState":{"id":"func_70tjw4_useFilterState","name":"useFilterState","file":"infoenergo-ui/src/composables/AiDataTable/useFilterState.ts","line":70,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":70,"endLine":186,"calls":[{"targetId":"func_70tjw4_createDefaultColumnFilterState","targetName":"createDefaultColumnFilterState","callType":"direct"},{"targetId":"func_70tjw4_applyColumnFilter","targetName":"applyColumnFilter","callType":"direct"},{"targetId":"func_70tjw4_toBooleanFilterState","targetName":"toBooleanFilterState","callType":"direct"}],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig","callType":"direct"}]},"func_gpzzu8_useGlobalSettings":{"id":"func_gpzzu8_useGlobalSettings","name":"useGlobalSettings","file":"infoenergo-ui/src/composables/common/useGlobalSettings.ts","line":59,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":59,"endLine":64,"calls":[],"calledBy":[{"callerId":"func_s8gl12_useTableState","callerName":"useTableState","callType":"direct"},{"callerId":"func_nu0fv2_useExportAdapter","callerName":"useExportAdapter","callType":"direct"},{"callerId":"func_9tv3u2_useDataStore","callerName":"useDataStore","callType":"direct"}]},"func_s8gl12_useTableState":{"id":"func_s8gl12_useTableState","name":"useTableState","file":"infoenergo-ui/src/composables/AiDataTable/useTableState.ts","line":24,"isExported":true,"isAsync":false,"paramsCount":7,"complexity":3,"startLine":24,"endLine":234,"calls":[{"targetId":"func_gpzzu8_useGlobalSettings","targetName":"useGlobalSettings","callType":"direct"}],"calledBy":[]},"func_b005og_useTabsBaseOperations":{"id":"func_b005og_useTabsBaseOperations","name":"useTabsBaseOperations","file":"infoenergo-ui/src/composables/AiTabs/useTabsBaseOperations.ts","line":98,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":2,"startLine":98,"endLine":234,"calls":[{"targetId":"func_1vccrw_useTabsState","targetName":"useTabsState","callType":"direct"}],"calledBy":[]},"func_sdsj9s_useTabsScroll":{"id":"func_sdsj9s_useTabsScroll","name":"useTabsScroll","file":"infoenergo-ui/src/composables/AiTabs/useTabsScroll.ts","line":17,"isExported":true,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":17,"endLine":51,"calls":[],"calledBy":[]},"func_1vccrw_useTabsState":{"id":"func_1vccrw_useTabsState","name":"useTabsState","file":"infoenergo-ui/src/composables/AiTabs/useTabsState.ts","line":49,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":3,"startLine":49,"endLine":90,"calls":[],"calledBy":[{"callerId":"func_b005og_useTabsBaseOperations","callerName":"useTabsBaseOperations","callType":"direct"}]},"func_a70sc9_useToolbarConfig":{"id":"func_a70sc9_useToolbarConfig","name":"useToolbarConfig","file":"infoenergo-ui/src/composables/AiToolbar/useToolbarConfig.ts","line":13,"isExported":true,"isAsync":false,"paramsCount":6,"complexity":2,"startLine":13,"endLine":68,"calls":[],"calledBy":[]},"func_folm8l_useVirtualScroll":{"id":"func_folm8l_useVirtualScroll","name":"useVirtualScroll","file":"infoenergo-ui/src/composables/AiDataTable/useVirtualScroll.ts","line":10,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":5,"startLine":10,"endLine":383,"calls":[{"targetId":"func_0000_add","targetName":"add","callType":"method"}],"calledBy":[{"callerId":"func_0000_virtualScroll","callerName":"virtualScroll","callType":"direct"}]},"func_gpzzu8_validateTableApi":{"id":"func_gpzzu8_validateTableApi","name":"validateTableApi","file":"infoenergo-ui/src/composables/common/useGlobalSettings.ts","line":26,"isExported":false,"isAsync":false,"paramsCount":1,"complexity":1,"startLine":26,"endLine":45,"calls":[],"calledBy":[{"callerId":"func_gpzzu8_initGlobalSettings","callerName":"initGlobalSettings","callType":"direct"}]},"func_0000_virtualScroll":{"id":"func_0000_virtualScroll","name":"virtualScroll","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":96,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":96,"endLine":96,"calls":[{"targetId":"func_folm8l_useVirtualScroll","targetName":"useVirtualScroll","callType":"direct"}],"calledBy":[]},"func_0000_withDefaults":{"id":"func_0000_withDefaults","name":"withDefaults","file":"infoenergo-ui/src/components/ui/AiDataTable/components/FilterCell/SortButton/SortButton.vue","line":6,"isExported":true,"isAsync":false,"paramsCount":0,"complexity":1,"startLine":6,"endLine":6,"calls":[],"calledBy":[]}}};
+
+  // ============================================================================
+  //  ПОСТРОЕНИЕ ГРАФА
+  // ============================================================================
+  const CATEGORY_COLORS = {
+    component: '#60a5fa',  // Vue компоненты
+    composable: '#34d399', // composables
+    utility: '#fbbf24',    // utils/defaults
+    other: '#f472b6'
+  };
+  const CATEGORY_LABELS = {
+    component: 'Vue компонент',
+    composable: 'Composable',
+    utility: 'Утилиты/настройки',
+    other: 'Прочее'
+  };
+
+  function getCategory(file) {
+    if (!file) return 'other';
+    if (file.includes('/components/')) return 'component';
+    if (file.includes('/composables/common/')) return 'utility';
+    if (file.includes('/composables/')) return 'composable';
+    return 'other';
+  }
+
+  function getShortFile(file) {
+    if (!file) return 'unknown';
+    return file.split('/').pop().replace(/\.(vue|ts|js)$/, '');
+  }
+
+  function getModulePath(file) {
+    if (!file) return 'unknown';
+    const parts = file.split('/');
+    return parts.slice(-3).join('/').replace(/\.(vue|ts|js)$/, '');
+  }
+
+  // Узлы
+  const nodes = Object.values(RAW_DATA.entities).map(fn => ({
+    id: fn.id,
+    name: fn.name,
+    file: fn.file,
+    shortFile: getShortFile(fn.file),
+    module: getModulePath(fn.file),
+    category: getCategory(fn.file),
+    line: fn.line,
+    isExported: !!fn.isExported,
+    isAsync: !!fn.isAsync,
+    complexity: fn.complexity || 1,
+    paramsCount: fn.paramsCount || 0,
+    startLine: fn.startLine || fn.line,
+    endLine: fn.endLine || fn.line,
+    calls: fn.calls || [],
+    calledBy: fn.calledBy || [],
+    degree: 0,
+    // 3D координаты (для графа) и орбитальные (для космоса)
+    x: 0, y: 0, z: 0,
+    dir: null,
+    sx: 0, sy: 0, scale: 1, depth: 0,
+    // Орбита в космическом режиме
+    orbitRadius: 0, orbitPhase: 0, orbitSpeed: 0,
+    orbitTilt: 0, orbitAxis: 0,
+    planetRadius: 3,
+    hasRing: false, ringTilt: 0.5
+  }));
+  const nodeMap = new Map();
+  nodes.forEach(n => nodeMap.set(n.id, n));
+
+  // Связи
+  const links = [];
+  const linkSet = new Set();
+  Object.values(RAW_DATA.entities).forEach(fn => {
+    (fn.calls || []).forEach(call => {
+      if (call.targetId && nodeMap.has(call.targetId)) {
+        const key = `${fn.id}->${call.targetId}`;
+        if (!linkSet.has(key)) {
+          linkSet.add(key);
+          links.push({
+            sourceId: fn.id, targetId: call.targetId,
+            callType: call.callType || 'direct',
+            source: nodeMap.get(fn.id),
+            target: nodeMap.get(call.targetId)
+          });
+        }
+      }
+    });
+  });
+  links.forEach(l => { l.source.degree++; l.target.degree++; });
+  nodes.forEach(n => {
+    n.planetRadius = 3 + Math.min(6, n.degree * 0.8);
+    n.hasRing = n.isExported && Math.random() < 0.7;
+    n.ringTilt = 0.3 + Math.random() * 0.5;
+  });
+
+  // Группировка в модули (солнечные системы)
+  const modulesMap = new Map();
+  nodes.forEach(n => {
+    if (!modulesMap.has(n.module)) {
+      modulesMap.set(n.module, {
+        path: n.module,
+        shortName: getShortFile(n.module),
+        category: n.category,
+        functions: [],
+        sun: null
+      });
+    }
+    modulesMap.get(n.module).functions.push(n);
+    n.moduleRef = modulesMap.get(n.module);
+  });
+  const modules = Array.from(modulesMap.values());
+
+  // ============================================================================
+  //  СТАТИСТИКА
+  // ============================================================================
+  document.getElementById('statModules').textContent = modules.length;
+  document.getElementById('statFunctions').textContent = nodes.length;
+  document.getElementById('statCalls').textContent = links.length * 2;
+  document.getElementById('statExported').textContent = nodes.filter(n => n.isExported).length;
+  document.getElementById('statAsync').textContent = nodes.filter(n => n.isAsync).length;
+  document.getElementById('statLinks').textContent = links.length;
+
+  // ============================================================================
+  //  ГЛОБАЛЬНОЕ СОСТОЯНИЕ
+  // ============================================================================
+  const state = {
+    viewMode: 'graph',       // 'graph' | 'cosmos'
+    selected: null,
+    hovered: null,
+    hoveredSun: null,
+    focusMode: 'all',        // 'all' | 'neighbors' | 'outward'
+    searchQuery: '',
+    showLabels: true,
+    showAutoSpin: true,
+    showOrbits: true,
+    showLinks: true,
+    showNebulae: true,
+    showVectors: false,
+    rotX: 0.3, rotY: 0.4,
+    targetRotX: 0.3, targetRotY: 0.4,
+    zoom: 1.0, targetZoom: 1.0,
+    isDragging: false,
+    hasMoved: false,
+    lastMouse: {x: 0, y: 0},
+    timeRunning: true,
+    timeOffset: 0,
+    lastTime: performance.now(),
+    // Роутер
+    history: [{type: 'universe'}],
+    historyIndex: 0,
+    // Warp
+    warp: {active: false, startTime: 0, duration: 1800, targetRotX: 0, targetRotY: 0, targetZoom: 1}
+  };
+
+  // ============================================================================
+  //  СФЕРИЧЕСКАЯ РАСКЛАДКА (для режима "Граф")
+  //  R₃-последовательность Робертса + обратная трансформация
+  // ============================================================================
+  const SPHERE_R = 280;
+  const G_ROBERTS = 1.220744084605759475361685349108;
+  const A1 = 1/G_ROBERTS, A2 = 1/(G_ROBERTS*G_ROBERTS), A3 = 1/(G_ROBERTS*G_ROBERTS*G_ROBERTS);
+  const frac = v => v - Math.floor(v);
+  const norm3 = v => { const l = Math.hypot(v.x, v.y, v.z) || 1; return {x: v.x/l, y: v.y/l, z: v.z/l}; };
+
+  // Сортировка по модулю для мягкого кластеринга
+  const ordered = nodes.slice().sort((a, b) => a.module.localeCompare(b.module));
+  ordered.forEach((n, i) => {
+    const u1 = frac(0.5 + (i+1) * A1);
+    const u2 = frac(0.5 + (i+1) * A2);
+    const u3 = frac(0.5 + (i+1) * A3);
+    const phi = 2 * Math.PI * u1;
+    const cosT = 1 - 2 * u2;
+    const sinT = Math.sqrt(Math.max(0, 1 - cosT*cosT));
+    const r = SPHERE_R * Math.cbrt(u3);
+    n.x = r * sinT * Math.cos(phi);
+    n.y = r * cosT;
+    n.z = r * sinT * Math.sin(phi);
+    n.dir = norm3({x: n.x, y: n.y, z: n.z});
+  });
+
+  // Релаксация Ллойда (80 итераций)
+  const spacing = Math.cbrt((4/3 * Math.PI * SPHERE_R**3) / nodes.length);
+  const minDist = spacing * 0.82;
+  const anchors = nodes.map(n => ({x: n.x, y: n.y, z: n.z}));
+  for (let it = 0; it < 60; it++) {
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i+1; j < nodes.length; j++) {
+        const a = nodes[i], b = nodes[j];
+        let dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+        let d = Math.hypot(dx, dy, dz);
+        if (d < 1e-6) { dx = 0.01 * (i-j); dy = 0.01; dz = -0.01; d = Math.hypot(dx, dy, dz); }
+        if (d < minDist) {
+          const k = (minDist - d) / d * 0.5;
+          a.x -= dx * k; a.y -= dy * k; a.z -= dz * k;
+          b.x += dx * k; b.y += dy * k; b.z += dz * k;
+        }
+      }
+    }
+    nodes.forEach((n, i) => {
+      n.x += (anchors[i].x - n.x) * 0.08;
+      n.y += (anchors[i].y - n.y) * 0.08;
+      n.z += (anchors[i].z - n.z) * 0.08;
+      const l = Math.hypot(n.x, n.y, n.z), lim = SPHERE_R * 0.98;
+      if (l > lim) { n.x *= lim/l; n.y *= lim/l; n.z *= lim/l; }
+    });
+  }
+
+  // ============================================================================
+  //  КОСМИЧЕСКИЙ РЕЖИМ (солнечные системы)
+  // ============================================================================
+  const SUN_SPHERE_R = 700;
+  function fibonacciSphere(n, radius) {
+    const points = [];
+    const phi = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < n; i++) {
+      const y = 1 - (i / Math.max(n-1, 1)) * 2;
+      const r = Math.sqrt(1 - y*y);
+      const theta = phi * i;
+      points.push({x: Math.cos(theta) * r * radius, y: y * radius, z: Math.sin(theta) * r * radius});
+    }
+    return points;
+  }
+  const sunPositions = fibonacciSphere(modules.length, SUN_SPHERE_R);
+  modules.forEach((m, i) => {
+    m.sun = {
+      pos: sunPositions[i],
+      radius: 14 + Math.sqrt(m.functions.length) * 4,
+      screen: {x:0, y:0, z:0, r:0},
+      pulse: Math.random() * Math.PI * 2,
+      protuberancePhase: Math.random() * Math.PI * 2,
+      protuberanceCount: 2 + Math.floor(Math.random() * 4)
+    };
+    m.functions.forEach((fn, j) => {
+      fn.orbitRadius = 36 + j * 18;
+      fn.orbitPhase = Math.random() * Math.PI * 2;
+      fn.orbitSpeed = 0.0004 / Math.sqrt(fn.orbitRadius / 40);
+      fn.orbitTilt = (Math.random() - 0.5) * 0.6;
+      fn.orbitAxis = Math.random() * Math.PI * 2;
+    });
+  });
+
+  // ============================================================================
+  //  МНОГОСЛОЙНОЕ ЗВЁЗДНОЕ НЕБО + ТУМАННОСТИ
+  // ============================================================================
+  const starLayers = [
+    {depth: 3500, count: 1200, parallax: 0.15, sizeRange: [0.3, 1.0]},
+    {depth: 2000, count: 600, parallax: 0.45, sizeRange: [0.5, 1.4]},
+    {depth: 900, count: 200, parallax: 0.85, sizeRange: [0.8, 2.0]}
+  ];
+  const STAR_COLORS = ['#ffffff', '#ffffff', '#ffffff', '#fef3c7', '#bfdbfe', '#fca5a5', '#c4b5fd'];
+  function generateStarLayer(layer) {
+    const stars = [];
+    const phi = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < layer.count; i++) {
+      const y = 1 - (i / Math.max(layer.count-1, 1)) * 2 + (Math.random() - 0.5) * 0.1;
+      const r = Math.sqrt(Math.max(0, 1 - y*y));
+      const theta = phi * i + (Math.random() - 0.5) * 0.2;
+      const d = layer.depth + (Math.random() - 0.5) * 300;
+      stars.push({
+        x: Math.cos(theta) * r * d,
+        y: y * d,
+        z: Math.sin(theta) * r * d,
+        size: layer.sizeRange[0] + Math.random() * (layer.sizeRange[1] - layer.sizeRange[0]),
+        brightness: 0.3 + Math.random() * 0.7,
+        twinkle: Math.random() * Math.PI * 2,
+        twinkleSpeed: 0.5 + Math.random() * 2,
+        color: STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)]
+      });
+    }
+    return stars;
+  }
+  starLayers.forEach(l => { l.stars = generateStarLayer(l); });
+
+  const nebulae = [];
+  function initNebulae() {
+    nebulae.length = 0;
+    const colors = [
+      {r:120,g:80,b:200}, {r:200,g:80,b:150}, {r:80,g:150,b:220},
+      {r:100,g:200,b:150}, {r:220,g:150,b:80}
+    ];
+    for (let i = 0; i < 5; i++) {
+      const a = i * Math.PI * 2 / 5 + Math.random() * 0.5;
+      nebulae.push({
+        x: Math.cos(a) * 1800 + (Math.random() - 0.5) * 400,
+        y: (Math.random() - 0.5) * 1500,
+        z: Math.sin(a) * 1800 + (Math.random() - 0.5) * 400,
+        radius: 400 + Math.random() * 500,
+        color: colors[i],
+        opacity: 0.15 + Math.random() * 0.15,
+        pulse: Math.random() * Math.PI * 2
+      });
+    }
+    nebulae.push({
+      x: 0, y: 300, z: 2500, radius: 3000, isMilkyWay: true,
+      color: {r:180, g:150, b:220}, opacity: 0.08, pulse: 0,
+      angle: Math.PI / 6
+    });
+  }
+  initNebulae();
+
+  const meteors = [];
+  function spawnMeteor() {
+    if (!canvas) return;
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 8 + Math.random() * 12;
+    meteors.push({
+      x: canvas.width/devicePixelRatio * (0.1 + Math.random() * 0.8),
+      y: -20,
+      vx: Math.cos(angle) * speed * 0.3,
+      vy: speed,
+      life: 1.0,
+      length: 40 + Math.random() * 60,
+      color: Math.random() < 0.5 ? '#fef3c7' : '#bfdbfe'
+    });
+  }
+
+  // ============================================================================
+  //  CANVAS И ПРОЕКЦИЯ
+  // ============================================================================
+  const canvas = document.getElementById('graphCanvas');
+  const ctx = canvas.getContext('2d');
+  const container = document.getElementById('graphContainer');
+  const tooltip = document.getElementById('tooltip');
+  let cw, ch;
+
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    cw = container.clientWidth;
+    ch = container.clientHeight;
+    canvas.width = cw * dpr;
+    canvas.height = ch * dpr;
+    canvas.style.width = cw + 'px';
+    canvas.style.height = ch + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const FOCAL = 900;
+  function rot(p, rx = state.rotX, ry = state.rotY) {
+    const cy = Math.cos(ry), sy = Math.sin(ry);
+    let x = p.x * cy - p.z * sy;
+    let z = p.x * sinY(p) + p.z * cy;
+    const cosX = Math.cos(rx), sinX = Math.sin(rx);
+    const y2 = p.y * cosX - z * sinX;
+    const z2 = p.y * sinX + z * cosX;
+    return {x, y: y2, z: z2};
+  }
+  function sinY() { return Math.sin(state.rotY); }
+  function project(p3) {
+    const scale = FOCAL / (FOCAL + p3.z) * state.zoom;
+    return {x: cw/2 + p3.x * scale, y: ch/2 + p3.y * scale, z: p3.z, scale};
+  }
+  function projXYZ(x, y, z) {
+    const r = rot({x, y, z});
+    const scale = FOCAL / (FOCAL + r.z) * state.zoom;
+    return {x: cw/2 + r.x * scale, y: ch/2 + r.y * scale, z: r.z, scale};
+  }
+
+  // Правильное вращение (исправленная версия)
+  function rotatePoint(p, rxOverride, ryOverride) {
+    const rx = rxOverride !== undefined ? rxOverride : state.rotX;
+    const ry = ryOverride !== undefined ? ryOverride : state.rotY;
+    const cy = Math.cos(ry), sy = Math.sin(ry);
+    const x1 = p.x * cy - p.z * sy;
+    const z1 = p.x * sy + p.z * cy;
+    const y1 = p.y;
+    const cx = Math.cos(rx), sx = Math.sin(rx);
+    const y2 = y1 * cx - z1 * sx;
+    const z2 = y1 * sx + z1 * cx;
+    return {x: x1, y: y2, z: z2};
+  }
+
+  function projectPoint(p, rx, ry) {
+    const r = rotatePoint(p, rx, ry);
+    const scale = FOCAL / (FOCAL + r.z) * state.zoom;
+    return {x: cw/2 + r.x * scale, y: ch/2 + r.y * scale, z: r.z, scale};
+  }
+
+  // ============================================================================
+  //  ФИЛЬТРАЦИЯ И ПОДСВЕТКА
+  // ============================================================================
+  function isNodeVisible(n) {
+    if (state.searchQuery) {
+      const q = state.searchQuery.toLowerCase();
+      if (!n.name.toLowerCase().includes(q) && !n.file.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  }
+
+  function isNodeHighlighted(n) {
+    if (!state.selected) return true;
+    if (n.id === state.selected.id) return true;
+    if (state.focusMode === 'all') {
+      return n.id === state.selected.id ||
+        state.selected.calls.some(c => c.targetId === n.id) ||
+        state.selected.calledBy.some(c => c.callerId === n.id);
+    }
+    if (state.focusMode === 'neighbors') {
+      return n.id === state.selected.id ||
+        state.selected.calls.some(c => c.targetId === n.id) ||
+        state.selected.calledBy.some(c => c.callerId === n.id);
+    }
+    if (state.focusMode === 'outward') {
+      return n.id === state.selected.id || state.selected.calls.some(c => c.targetId === n.id);
+    }
+    return n.id === state.selected.id;
+  }
+
+  function isLinkHighlighted(l) {
+    if (!state.selected) return true;
+    if (state.focusMode === 'all' || state.focusMode === 'neighbors') {
+      return l.sourceId === state.selected.id || l.targetId === state.selected.id;
+    }
+    if (state.focusMode === 'outward') {
+      return l.sourceId === state.selected.id;
+    }
+    return l.sourceId === state.selected.id || l.targetId === state.selected.id;
+  }
+
+  // ============================================================================
+  //  РЕНДЕР: ГРАФ
+  // ============================================================================
+  function renderGraph() {
+    const now = performance.now();
+
+    // Звёзды
+    starLayers.forEach(layer => {
+      layer.stars.forEach(s => {
+        const px = state.rotY * layer.parallax;
+        const py = state.rotX * layer.parallax;
+        const r = rotatePoint(s, py, px);
+        if (r.z > FOCAL * 0.85) return;
+        const pr = projectPoint({x: r.x, y: r.y, z: r.z}, 0, 0);
+        // Проекция уже сделана выше, используем r напрямую
+        const scale = FOCAL / (FOCAL + r.z) * state.zoom;
+        const sx = cw/2 + r.x * scale;
+        const sy = ch/2 + r.y * scale;
+        const tw = 0.6 + 0.4 * Math.sin(now * 0.001 * s.twinkleSpeed + s.twinkle);
+        ctx.fillStyle = s.color;
+        ctx.globalAlpha = s.brightness * tw;
+        ctx.beginPath();
+        ctx.arc(sx, sy, s.size, 0, Math.PI * 2);
+        ctx.fill();
+        if (s.size > 1.3 && layer.parallax > 0.7) {
+          ctx.globalAlpha = s.brightness * tw * 0.3;
+          ctx.strokeStyle = s.color;
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(sx - s.size * 2, sy);
+          ctx.lineTo(sx + s.size * 2, sy);
+          ctx.moveTo(sx, sy - s.size * 2);
+          ctx.lineTo(sx, sy + s.size * 2);
+          ctx.stroke();
+        }
+      });
+    });
+    ctx.globalAlpha = 1;
+
+    // Wireframe сфера
+    ctx.strokeStyle = 'rgba(90, 120, 180, 0.07)';
+    ctx.lineWidth = 1;
+    for (let k = 0; k < 3; k++) {
+      ctx.beginPath();
+      for (let i = 0; i <= 64; i++) {
+        const a = i/64 * Math.PI * 2;
+        let p;
+        if (k === 0) p = {x: Math.cos(a) * SPHERE_R, y: 0, z: Math.sin(a) * SPHERE_R};
+        else if (k === 1) p = {x: 0, y: Math.cos(a) * SPHERE_R, z: Math.sin(a) * SPHERE_R};
+        else p = {x: Math.cos(a) * SPHERE_R, y: Math.sin(a) * SPHERE_R, z: 0};
+        const pr = projXYZ(p.x, p.y, p.z);
+        if (i === 0) ctx.moveTo(pr.x, pr.y);
+        else ctx.lineTo(pr.x, pr.y);
+      }
+      ctx.stroke();
+    }
+
+    // Векторы из центра
+    if (state.showVectors) {
+      const origin = projXYZ(0, 0, 0);
+      nodes.forEach(n => {
+        if (!isNodeVisible(n)) return;
+        const pr = projXYZ(n.x, n.y, n.z);
+        const d = 1 - (pr.z + SPHERE_R) / (2 * SPHERE_R);
+        ctx.globalAlpha = 0.05 + 0.3 * d;
+        ctx.strokeStyle = CATEGORY_COLORS[n.category];
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(origin.x, origin.y);
+        ctx.lineTo(pr.x, pr.y);
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    // Связи
+    if (state.showLinks) {
+      links.forEach(l => {
+        const s = l.source, t = l.target;
+        if (!isNodeVisible(s) || !isNodeVisible(t)) return;
+        const hl = isLinkHighlighted(l);
+        const p1 = projXYZ(s.x, s.y, s.z);
+        const p2 = projXYZ(t.x, t.y, t.z);
+        const avgZ = (p1.z + p2.z) / 2;
+        const d = 1 - (avgZ + SPHERE_R) / (2 * SPHERE_R);
+        let alpha = 0.06 + 0.5 * Math.pow(Math.max(0, d), 1.5);
+        if (!hl) alpha *= 0.08;
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = CATEGORY_COLORS[s.category];
+        ctx.lineWidth = hl ? 2 : 1;
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        // Кривая для эстетики
+        const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        const cx = mx - dy * 0.1, cy = my + dx * 0.1;
+        ctx.quadraticCurveTo(cx, cy, p2.x, p2.y);
+        ctx.stroke();
+
+        // Стрелка
+        const tPos = 0.95;
+        const ax = (1-tPos)*(1-tPos)*p1.x + 2*(1-tPos)*tPos*cx + tPos*tPos*p2.x;
+        const ay = (1-tPos)*(1-tPos)*p1.y + 2*(1-tPos)*tPos*cy + tPos*tPos*p2.y;
+        const tax = 2*(1-tPos)*(cx-p1.x) + 2*tPos*(p2.x-cx);
+        const tay = 2*(1-tPos)*(cy-p1.y) + 2*tPos*(p2.y-cy);
+        const tang = Math.atan2(tay, tax);
+        const arrowSize = hl ? 6 : 4;
+        ctx.fillStyle = CATEGORY_COLORS[s.category];
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax - arrowSize * Math.cos(tang - 0.4), ay - arrowSize * Math.sin(tang - 0.4));
+        ctx.lineTo(ax - arrowSize * Math.cos(tang + 0.4), ay - arrowSize * Math.sin(tang + 0.4));
+        ctx.closePath();
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+    }
+
+    // Ноды (сортировка по глубине)
+    const sortedNodes = nodes.filter(isNodeVisible).slice().sort((a, b) => {
+      const pa = projXYZ(a.x, a.y, a.z);
+      const pb = projXYZ(b.x, b.y, b.z);
+      return pb.z - pa.z;
+    });
+    sortedNodes.forEach(n => {
+      const pr = projXYZ(n.x, n.y, n.z);
+      const d = 1 - (pr.z + SPHERE_R) / (2 * SPHERE_R);
+      let alpha = 0.15 + 0.85 * Math.pow(Math.max(0, d), 1.3);
+      const hl = isNodeHighlighted(n);
+      if (!hl) alpha *= 0.12;
+      const isSel = state.selected && state.selected.id === n.id;
+      const isHov = state.hovered && state.hovered.id === n.id;
+      const r = n.planetRadius * pr.scale;
+      const col = CATEGORY_COLORS[n.category];
+
+      if (isSel || isHov) {
+        ctx.globalAlpha = alpha * 0.35;
+        ctx.beginPath();
+        ctx.arc(pr.x, pr.y, r + 6, 0, Math.PI * 2);
+        ctx.fillStyle = col;
+        ctx.fill();
+      }
+
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = col;
+      ctx.fill();
+      ctx.lineWidth = isSel ? 2.4 : 1.3;
+      ctx.strokeStyle = isSel ? '#fff' : isHov ? '#fef3c7' : shade(col, 18);
+      ctx.stroke();
+
+      // Блик
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.beginPath();
+      ctx.arc(pr.x - r * 0.35, pr.y - r * 0.35, r * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Async точка
+      if (n.isAsync) {
+        ctx.fillStyle = '#d2a8ff';
+        ctx.beginPath();
+        ctx.arc(pr.x + r * 0.6, pr.y - r * 0.6, Math.max(1.6, r * 0.22), 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Exported обводка
+      if (n.isExported) {
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(pr.x, pr.y, r + 1, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // Имя
+      if (state.showLabels && d > 0.5 && state.zoom > 0.55 && hl) {
+        ctx.globalAlpha = alpha * 0.9;
+        ctx.fillStyle = '#aeb9c9';
+        ctx.font = `${Math.max(8, 10 * pr.scale * Math.min(state.zoom, 1.4))}px -apple-system, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(n.name, pr.x, pr.y + r + 11);
+      }
+      ctx.globalAlpha = 1;
+
+      // Сохраняем для hit-test
+      n.sx = pr.x; n.sy = pr.y; n.sr = r; n.sz = pr.z;
+    });
+  }
+
+  // ============================================================================
+  //  РЕНДЕР: КОСМОС
+  // ============================================================================
+  function renderCosmos() {
+    const now = performance.now();
+    const warpStretch = getWarpStretch();
+
+    // 1. Туманности
+    if (state.showNebulae) {
+      nebulae.forEach(n => {
+        const r = rotatePoint({x: n.x, y: n.y, z: n.z});
+        if (r.z > FOCAL * 0.8) return;
+        const scale = FOCAL / (FOCAL + r.z) * state.zoom;
+        const pr = {x: cw/2 + r.x * scale, y: ch/2 + r.y * scale};
+        const rad = n.radius * scale;
+        if (rad < 20) return;
+        const pulse = n.isMilkyWay ? 1 : (1 + 0.15 * Math.sin(now * 0.0005 + n.pulse));
+        const grad = ctx.createRadialGradient(pr.x, pr.y, 0, pr.x, pr.y, rad * pulse);
+        const {r: cr, g: cg, b: cb} = n.color;
+        grad.addColorStop(0, `rgba(${cr},${cg},${cb},${n.opacity * 1.5})`);
+        grad.addColorStop(0.3, `rgba(${cr},${cg},${cb},${n.opacity})`);
+        grad.addColorStop(0.7, `rgba(${cr},${cg},${cb},${n.opacity * 0.4})`);
+        grad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        if (n.isMilkyWay) {
+          ctx.save();
+          ctx.translate(pr.x, pr.y);
+          ctx.rotate(n.angle + state.rotY * 0.1);
+          ctx.scale(1, 0.2);
+          ctx.arc(0, 0, rad, 0, Math.PI * 2);
+          ctx.restore();
+        } else {
+          ctx.arc(pr.x, pr.y, rad, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      });
+    }
+
+    // 2. Звёзды с параллаксом
+    starLayers.forEach(layer => {
+      layer.stars.forEach(s => {
+        const px = state.rotY * layer.parallax;
+        const py = state.rotX * layer.parallax;
+        const r = rotatePoint(s, py, px);
+        if (r.z > FOCAL * 0.85) return;
+        const scale = FOCAL / (FOCAL + r.z) * state.zoom;
+        const prX = cw/2 + r.x * scale;
+        const prY = ch/2 + r.y * scale;
+        const tw = 0.6 + 0.4 * Math.sin(now * 0.001 * s.twinkleSpeed + s.twinkle);
+        ctx.fillStyle = s.color;
+        if (warpStretch > 0.5) {
+          const cx = cw/2, cy = ch/2;
+          const dx = prX - cx, dy = prY - cy;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          const ang = Math.atan2(dy, dx);
+          const len = warpStretch * dist * 0.08 * s.brightness;
+          ctx.globalAlpha = s.brightness * tw;
+          ctx.strokeStyle = s.color;
+          ctx.lineWidth = s.size * (1 + warpStretch * 0.1);
+          ctx.beginPath();
+          ctx.moveTo(prX, prY);
+          ctx.lineTo(prX + Math.cos(ang) * len, prY + Math.sin(ang) * len);
+          ctx.stroke();
+        } else {
+          ctx.globalAlpha = s.brightness * tw;
+          ctx.beginPath();
+          ctx.arc(prX, prY, s.size, 0, Math.PI * 2);
+          ctx.fill();
+          if (s.size > 1.3 && layer.parallax > 0.7) {
+            ctx.globalAlpha = s.brightness * tw * 0.3;
+            ctx.strokeStyle = s.color;
+            ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            ctx.moveTo(prX - s.size * 2, prY);
+            ctx.lineTo(prX + s.size * 2, prY);
+            ctx.moveTo(prX, prY - s.size * 2);
+            ctx.lineTo(prX, prY + s.size * 2);
+            ctx.stroke();
+          }
+        }
+      });
+    });
+    ctx.globalAlpha = 1;
+
+    // 3. Метеоры
+    if (Math.random() < 0.015 && meteors.length < 3) spawnMeteor();
+    for (let i = meteors.length - 1; i >= 0; i--) {
+      const m = meteors[i];
+      m.x += m.vx; m.y += m.vy; m.life -= 0.025;
+      if (m.life <= 0 || m.y > ch + 50) { meteors.splice(i, 1); continue; }
+      const grad = ctx.createLinearGradient(m.x, m.y, m.x - m.vx * m.length * 0.1, m.y - m.vy * m.length * 0.1);
+      grad.addColorStop(0, m.color);
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.strokeStyle = grad;
+      ctx.globalAlpha = m.life;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(m.x, m.y);
+      ctx.lineTo(m.x - m.vx * m.length * 0.1, m.y - m.vy * m.length * 0.1);
+      ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // 4. Обновление позиций планет
+    nodes.forEach(n => {
+      const angle = n.orbitPhase + state.timeOffset * n.orbitSpeed * 1000;
+      const lx = Math.cos(angle) * n.orbitRadius;
+      const lyBase = Math.sin(angle) * n.orbitRadius;
+      const cosT = Math.cos(n.orbitTilt), sinT = Math.sin(n.orbitTilt);
+      const cosA = Math.cos(n.orbitAxis), sinA = Math.sin(n.orbitAxis);
+      const lx2 = lx * cosA - lyBase * sinA * sinT;
+      const ly2 = lx * sinA + lyBase * cosA * sinT;
+      const lz2 = lyBase * cosT;
+      n.x = n.moduleRef.sun.pos.x + lx2;
+      n.y = n.moduleRef.sun.pos.y + ly2;
+      n.z = n.moduleRef.sun.pos.z + lz2;
+    });
+
+    // 5. Проекция солнц
+    modules.forEach(m => {
+      const r = rotatePoint(m.sun.pos);
+      const scale = FOCAL / (FOCAL + r.z) * state.zoom;
+      m.sun.screen.x = cw/2 + r.x * scale;
+      m.sun.screen.y = ch/2 + r.y * scale;
+      m.sun.screen.z = r.z;
+      m.sun.screen.r = m.sun.radius * scale;
+    });
+
+    // 6. Орбиты
+    if (state.showOrbits && warpStretch < 1) {
+      modules.forEach(m => {
+        m.functions.forEach(fn => {
+          ctx.strokeStyle = 'rgba(167, 139, 250, 0.08)';
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          const steps = 48;
+          for (let i = 0; i <= steps; i++) {
+            const a = (i / steps) * Math.PI * 2;
+            const lx = Math.cos(a) * fn.orbitRadius;
+            const lyBase = Math.sin(a) * fn.orbitRadius;
+            const cosT = Math.cos(fn.orbitTilt), sinT = Math.sin(fn.orbitTilt);
+            const cosA = Math.cos(fn.orbitAxis), sinA = Math.sin(fn.orbitAxis);
+            const lx2 = lx * cosA - lyBase * sinA * sinT;
+            const ly2 = lx * sinA + lyBase * cosA * sinT;
+            const lz2 = lyBase * cosT;
+            const worldPos = {x: m.sun.pos.x + lx2, y: m.sun.pos.y + ly2, z: m.sun.pos.z + lz2};
+            const r = rotatePoint(worldPos);
+            const scale = FOCAL / (FOCAL + r.z) * state.zoom;
+            const px = cw/2 + r.x * scale, py = ch/2 + r.y * scale;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+        });
+      });
+    }
+
+    // 7. Межмодульные связи
+    if (state.showLinks && warpStretch < 1) {
+      const interLinks = links.filter(l => l.source.moduleRef !== l.target.moduleRef);
+      interLinks.forEach(l => {
+        const s = l.source, t = l.target;
+        const p1 = projXYZ(s.x, s.y, s.z);
+        const p2 = projXYZ(t.x, t.y, t.z);
+        const avgZ = (p1.z + p2.z) / 2;
+        const depthFactor = (avgZ + SUN_SPHERE_R) / (2 * SUN_SPHERE_R);
+        let alpha = 0.08 + (1 - depthFactor) * 0.35;
+        const hl = (state.hovered && (s.id === state.hovered.id || t.id === state.hovered.id)) ||
+          (state.selected && (s.id === state.selected.id || t.id === state.selected.id));
+        if (hl) alpha = Math.min(alpha * 2, 0.9);
+        ctx.strokeStyle = hl ? `rgba(251, 191, 36, ${alpha})` : `rgba(167, 139, 250, ${alpha * 0.6})`;
+        ctx.lineWidth = hl ? 1.5 : 0.6;
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        const cx = mx - dy * 0.15, cy = my + dx * 0.15;
+        ctx.quadraticCurveTo(cx, cy, p2.x, p2.y);
+        ctx.stroke();
+        if (hl) {
+          const tt = (now * 0.0005) % 1;
+          const px = (1-tt)*(1-tt)*p1.x + 2*(1-tt)*tt*cx + tt*tt*p2.x;
+          const py = (1-tt)*(1-tt)*p1.y + 2*(1-tt)*tt*cy + tt*tt*p2.y;
+          ctx.fillStyle = '#fbbf24';
+          ctx.beginPath();
+          ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+    }
+
+    // 8. Солнца
+    const sortedSuns = modules.slice().sort((a, b) => b.sun.screen.z - a.sun.screen.z);
+    sortedSuns.forEach(m => {
+      const s = m.sun.screen;
+      const pulse = 1 + 0.08 * Math.sin(now * 0.002 + m.sun.pulse);
+      const isHov = state.hoveredSun === m;
+      const isSel = state.selected && state.selected.moduleRef === m;
+      const boost = (isHov || isSel) ? 1.3 : 1;
+
+      // Корона
+      const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 5 * pulse * boost);
+      grad.addColorStop(0, 'rgba(254, 243, 199, 0.6)');
+      grad.addColorStop(0.2, 'rgba(251, 191, 36, 0.3)');
+      grad.addColorStop(0.5, 'rgba(245, 158, 11, 0.1)');
+      grad.addColorStop(1, 'rgba(245, 158, 11, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r * 5 * pulse * boost, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Протуберанцы
+      if (warpStretch < 1) {
+        for (let p = 0; p < m.sun.protuberanceCount; p++) {
+          const ang = (p / m.sun.protuberanceCount) * Math.PI * 2 + now * 0.0003 + m.sun.protuberancePhase;
+          const len = s.r * (1.5 + Math.sin(now * 0.001 + p) * 0.8);
+          const px = s.x + Math.cos(ang) * len;
+          const py = s.y + Math.sin(ang) * len;
+          const pGrad = ctx.createRadialGradient(px, py, 0, px, py, s.r * 1.5);
+          pGrad.addColorStop(0, 'rgba(251, 191, 36, 0.5)');
+          pGrad.addColorStop(0.5, 'rgba(245, 158, 11, 0.2)');
+          pGrad.addColorStop(1, 'rgba(245, 158, 11, 0)');
+          ctx.fillStyle = pGrad;
+          ctx.beginPath();
+          ctx.arc(px, py, s.r * 1.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Внутренняя корона
+      const grad2 = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.r * 2 * pulse);
+      grad2.addColorStop(0, 'rgba(255, 255, 255, 1)');
+      grad2.addColorStop(0.4, 'rgba(254, 243, 199, 0.9)');
+      grad2.addColorStop(1, 'rgba(251, 191, 36, 0)');
+      ctx.fillStyle = grad2;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r * 2 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+
+      if ((state.showLabels || isHov || isSel) && warpStretch < 1) {
+        ctx.font = `${isHov || isSel ? 'bold ' : ''}11px -apple-system, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        const metrics = ctx.measureText(m.shortName);
+        const tx = s.x, ty = s.y + s.r * 2.5;
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(tx - metrics.width/2 - 4, ty - 2, metrics.width + 8, 16);
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillText(m.shortName, tx, ty);
+      }
+    });
+
+    // 9. Планеты
+    const sortedPlanets = nodes.filter(isNodeVisible).slice().sort((a, b) => {
+      const pa = projXYZ(a.x, a.y, a.z);
+      const pb = projXYZ(b.x, b.y, b.z);
+      return pb.z - pa.z;
+    });
+    sortedPlanets.forEach(n => {
+      const pr = projXYZ(n.x, n.y, n.z);
+      const d = 1 - (pr.z + SUN_SPHERE_R) / (2 * SUN_SPHERE_R);
+      let alpha = 0.15 + 0.85 * Math.pow(Math.max(0, d), 1.3);
+      const hl = isNodeHighlighted(n);
+      if (!hl) alpha *= 0.12;
+      const isSel = state.selected && state.selected.id === n.id;
+      const isHov = state.hovered && state.hovered.id === n.id;
+      const col = CATEGORY_COLORS[n.category];
+      const r = n.planetRadius * pr.scale;
+
+      // Атмосфера
+      const grad = ctx.createRadialGradient(pr.x, pr.y, 0, pr.x, pr.y, r * 3);
+      grad.addColorStop(0, col + '66');
+      grad.addColorStop(1, col + '00');
+      ctx.fillStyle = grad;
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y, r * 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Задняя часть кольца
+      if (n.hasRing && warpStretch < 1) {
+        ctx.save();
+        ctx.translate(pr.x, pr.y);
+        ctx.scale(1, Math.sin(n.ringTilt));
+        ctx.strokeStyle = col + 'aa';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 2.2, Math.PI, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Тело
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Тень от солнца
+      if (warpStretch < 1) {
+        const sunScreen = n.moduleRef.sun.screen;
+        const angToSun = Math.atan2(sunScreen.y - pr.y, sunScreen.x - pr.x);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+        ctx.beginPath();
+        ctx.arc(pr.x - Math.cos(angToSun) * r * 0.3, pr.y - Math.sin(angToSun) * r * 0.3, r * 1.02, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(pr.x, pr.y, r, angToSun - Math.PI/2, angToSun + Math.PI/2);
+        ctx.fill();
+      }
+
+      // Блик
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.beginPath();
+      ctx.arc(pr.x - r * 0.35, pr.y - r * 0.35, r * 0.35, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Передняя часть кольца
+      if (n.hasRing && warpStretch < 1) {
+        ctx.save();
+        ctx.translate(pr.x, pr.y);
+        ctx.scale(1, Math.sin(n.ringTilt));
+        ctx.strokeStyle = col + 'cc';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 2.2, 0, Math.PI);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      if (n.isExported) {
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(pr.x, pr.y, r + 1, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      if (isSel || isHov) {
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(pr.x, pr.y, r + 3, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      if (state.showLabels && d > 0.5 && state.zoom > 0.55 && hl) {
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#aeb9c9';
+        ctx.font = `${Math.max(8, 10 * pr.scale * Math.min(state.zoom, 1.4))}px -apple-system, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(n.name, pr.x, pr.y + r + 11);
+      }
+      ctx.globalAlpha = 1;
+
+      n.sx = pr.x; n.sy = pr.y; n.sr = r; n.sz = pr.z;
+    });
+
+    // Вспышка при варпе
+    if (warpStretch > 8) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${(warpStretch - 8) * 0.03})`;
+      ctx.fillRect(0, 0, cw, ch);
+    }
+  }
+
+  function getWarpStretch() {
+    if (!state.warp.active) return 0;
+    const t = (performance.now() - state.warp.startTime) / state.warp.duration;
+    if (t >= 1) {
+      state.warp.active = false;
+      document.getElementById('hud-warp').style.display = 'none';
+      const flash = document.getElementById('warpFlash');
+      flash.style.opacity = '1';
+      setTimeout(() => { flash.style.opacity = '0'; }, 100);
+      setTimeout(() => { flash.style.opacity = '0.3'; }, 180);
+      setTimeout(() => { flash.style.opacity = '0'; }, 280);
+      return 0;
+    }
+    const curve = Math.sin(t * Math.PI);
+    return curve * 15;
+  }
+
+  function triggerWarp(target) {
+    let targetRotX, targetRotY;
+    if (target.sun) {
+      // Модуль (солнце)
+      const p = target.sun.pos;
+      targetRotY = -Math.atan2(p.x, p.z);
+      targetRotX = Math.atan2(p.y, Math.sqrt(p.x*p.x + p.z*p.z));
+    } else {
+      // Узел (планета)
+      targetRotY = -Math.atan2(target.x, target.z);
+      targetRotX = Math.atan2(target.y, Math.sqrt(target.x*target.x + target.z*target.z));
+    }
+    state.warp.active = true;
+    state.warp.startTime = performance.now();
+    let dY = targetRotY - state.rotY;
+    while (dY > Math.PI) dY -= Math.PI * 2;
+    while (dY < -Math.PI) dY += Math.PI * 2;
+    state.targetRotX = targetRotX;
+    state.targetRotY = state.rotY + dY;
+    state.targetZoom = state.viewMode === 'cosmos' ? 1.9 : 1.6;
+    document.getElementById('hud-warp').style.display = 'block';
+  }
+
+  function shade(hex, amt) {
+    const r = Math.min(255, parseInt(hex.slice(1,3),16) + amt);
+    const g = Math.min(255, parseInt(hex.slice(3,5),16) + amt);
+    const b = Math.min(255, parseInt(hex.slice(5,7),16) + amt);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  // ============================================================================
+  //  ГЛАВНЫЙ ЦИКЛ АНИМАЦИИ
+  // ============================================================================
+  function animate() {
+    const now = performance.now();
+    const dt = (now - state.lastTime) / 1000;
+    state.lastTime = now;
+    if (state.timeRunning) state.timeOffset += dt;
+
+    // Плавное движение камеры
+    const smooth = state.warp.active ? 0.25 : 0.15;
+    state.rotX += (state.targetRotX - state.rotX) * smooth;
+    state.rotY += (state.targetRotY - state.rotY) * smooth;
+    state.zoom += (state.targetZoom - state.zoom) * smooth;
+
+    if (state.showAutoSpin && !state.isDragging && !state.selected && !state.warp.active) {
+      state.targetRotY += 0.002;
+    }
+
+    ctx.clearRect(0, 0, cw, ch);
+
+    if (state.viewMode === 'graph') {
+      renderGraph();
+    } else {
+      renderCosmos();
+    }
+
+    document.getElementById('hud-zoom').textContent = state.zoom.toFixed(2) + 'x';
+    document.getElementById('hud-rx').textContent = (state.rotX * 180 / Math.PI).toFixed(1) + '°';
+    document.getElementById('hud-ry').textContent = (state.rotY * 180 / Math.PI).toFixed(1) + '°';
+
+    requestAnimationFrame(animate);
+  }
+  animate();
+
+  // ============================================================================
+  //  HIT-TEST И INTERACTION
+  // ============================================================================
+  function pick(mx, my) {
+    // Ноды (ближние имеют приоритет)
+    let best = null, bestZ = Infinity;
+    nodes.forEach(n => {
+      if (!isNodeVisible(n)) return;
+      const dx = mx - n.sx, dy = my - n.sy;
+      if (dx*dx + dy*dy <= (n.sr + 4) * (n.sr + 4)) {
+        if (!best || n.sz < bestZ) { best = n; bestZ = n.sz; }
+      }
+    });
+    if (best) return {type: 'node', obj: best};
+
+    // В космосе — солнца
+    if (state.viewMode === 'cosmos') {
+      let bestSun = null, bestSZ = Infinity;
+      modules.forEach(m => {
+        const s = m.sun.screen;
+        const dx = mx - s.x, dy = my - s.y;
+        if (dx*dx + dy*dy <= (s.r * 2) * (s.r * 2)) {
+          if (!bestSun || s.z < bestSZ) { bestSun = m; bestSZ = s.z; }
+        }
+      });
+      if (bestSun) return {type: 'module', obj: bestSun};
+    }
+    return null;
+  }
+
+  canvas.addEventListener('mousedown', e => {
+    state.isDragging = true;
+    state.hasMoved = false;
+    state.lastMouse = {x: e.clientX, y: e.clientY};
+    container.classList.add('dragging');
+  });
+  window.addEventListener('mouseup', () => {
+    state.isDragging = false;
+    container.classList.remove('dragging');
+  });
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+
+    if (state.isDragging) {
+      const dx = e.clientX - state.lastMouse.x;
+      const dy = e.clientY - state.lastMouse.y;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) state.hasMoved = true;
+      state.targetRotY += dx * 0.005;
+      state.targetRotX += dy * 0.005;
+      state.targetRotX = Math.max(-Math.PI/2, Math.min(Math.PI/2, state.targetRotX));
+      state.lastMouse = {x: e.clientX, y: e.clientY};
+      if (state.warp.active) {
+        state.warp.active = false;
+        document.getElementById('hud-warp').style.display = 'none';
+      }
+      state.hovered = null;
+      state.hoveredSun = null;
+      hideTooltip();
+      return;
+    }
+
+    const hit = pick(mx, my);
+    if (hit && hit.type === 'node') {
+      state.hovered = hit.obj;
+      state.hoveredSun = null;
+      canvas.style.cursor = 'pointer';
+      showNodeTooltip(e, hit.obj);
+    } else if (hit && hit.type === 'module') {
+      state.hovered = null;
+      state.hoveredSun = hit.obj;
+      canvas.style.cursor = 'pointer';
+      showModuleTooltip(e, hit.obj);
+    } else {
+      state.hovered = null;
+      state.hoveredSun = null;
+      canvas.style.cursor = 'grab';
+      hideTooltip();
+    }
+  });
+
+  canvas.addEventListener('click', e => {
+    if (state.hasMoved) return;
+    const rect = canvas.getBoundingClientRect();
+    const hit = pick(e.clientX - rect.left, e.clientY - rect.top);
+    if (hit && hit.type === 'node') {
+      selectNode(hit.obj);
+    } else if (hit && hit.type === 'module') {
+      triggerWarp(hit.obj);
+      showFocusInfo(hit.obj);
+    } else {
+      clearSelection();
+    }
+  });
+
+  canvas.addEventListener('dblclick', e => {
+    const rect = canvas.getBoundingClientRect();
+    const hit = pick(e.clientX - rect.left, e.clientY - rect.top);
+    if (hit && hit.type === 'node') {
+      triggerWarp(hit.obj);
+      selectNode(hit.obj);
+    } else if (hit && hit.type === 'module') {
+      triggerWarp(hit.obj);
+      showFocusInfo(hit.obj);
+    }
+  });
+
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 0.9 : 1.1;
+    state.targetZoom = Math.max(0.3, Math.min(3.5, state.targetZoom * factor));
+  }, {passive: false});
+
+  // ============================================================================
+  //  TOOLTIP
+  // ============================================================================
+  function showNodeTooltip(e, n) {
+    const interLinks = links.filter(l => l.sourceId === n.id || l.targetId === n.id).length;
+    const len = Math.hypot(n.x, n.y, n.z);
+    tooltip.innerHTML = `
+    <div class="tt-title">${state.viewMode === 'cosmos' ? '🪐' : '●'} ${n.name}</div>
+    <div class="tt-system">☀ ${n.moduleRef.shortName} · ${CATEGORY_LABELS[n.category]}</div>
+    <div class="tt-file">${n.file}:${n.line}</div>
+    <div style="margin-top:4px; font-size:11px; color:var(--t2);">
+      Сложность: ${n.complexity} · Связей: ${interLinks}
+      ${n.isExported ? ' · <span style="color:var(--yellow);">💍 export</span>' : ''}
+      ${n.isAsync ? ' · <span style="color:#d2a8ff;">⚡ async</span>' : ''}
+    </div>
+    <div class="tt-vec">P = (${n.x.toFixed(1)}, ${n.y.toFixed(1)}, ${n.z.toFixed(1)})<br>|P| = ${len.toFixed(1)} · ${Math.round(len/SPHERE_R*100)}% R</div>
+    <div style="margin-top:3px; font-size:10px; color:var(--purple);">
+      Клик = детали · Двойной клик = прыжок
+    </div>
+  `;
+    tooltip.classList.add('show');
+    tooltip.style.left = Math.min(e.clientX + 12, innerWidth - 330) + 'px';
+    tooltip.style.top = Math.min(e.clientY + 12, innerHeight - 250) + 'px';
+  }
+  function showModuleTooltip(e, m) {
+    const totalSignals = m.functions.reduce((sum, fn) =>
+      sum + links.filter(l => l.sourceId === fn.id || l.targetId === fn.id).length, 0);
+    tooltip.innerHTML = `
+    <div class="tt-title">☀ ${m.shortName}</div>
+    <div class="tt-file">${m.path}</div>
+    <div style="margin-top:4px; font-size:11px; color:var(--t2);">
+      Планет: ${m.functions.length} · Сигналов: ${totalSignals}<br>
+      <span style="color:var(--yellow);">⚡ Клик = warp-прыжок</span>
+    </div>
+  `;
+    tooltip.classList.add('show');
+    tooltip.style.left = Math.min(e.clientX + 12, innerWidth - 330) + 'px';
+    tooltip.style.top = Math.min(e.clientY + 12, innerHeight - 180) + 'px';
+  }
+  function hideTooltip() { tooltip.classList.remove('show'); }
+
+  // ============================================================================
+  //  SELECTION + DETAIL PANEL
+  // ============================================================================
+  function selectNode(n) {
+    state.selected = n;
+    showFocusInfo(n);
+    showDetailPanel(n);
+    navigateTo('function', {module: n.module, name: n.name});
+  }
+  function clearSelection() {
+    state.selected = null;
+    state.hovered = null;
+    state.hoveredSun = null;
+    hideFocusInfo();
+    hideDetailPanel();
+    navigateTo('universe');
+  }
+
+  function showFocusInfo(obj) {
+    const fi = document.getElementById('focusInfo');
+    const title = document.getElementById('focusTitle');
+    const details = document.getElementById('focusDetails');
+
+    if (obj.name) {
+      // Нода
+      const callers = links.filter(l => l.targetId === obj.id);
+      const callees = links.filter(l => l.sourceId === obj.id);
+      title.textContent = `🎯 Фокус: ${obj.name}`;
+      details.innerHTML = `
+      <div><b style="color:var(--t3)">Модуль:</b> <span style="color:var(--accent)">${obj.moduleRef.shortName}</span></div>
+      <div><b style="color:var(--t3)">Тип:</b> ${CATEGORY_LABELS[obj.category]}</div>
+      <div><b style="color:var(--t3)">Сложность:</b> ${obj.complexity}</div>
+      <div><b style="color:var(--t3)">Параметров:</b> ${obj.paramsCount}</div>
+      <div><b style="color:var(--t3)">Входящих:</b> ${callers.length}</div>
+      <div><b style="color:var(--t3)">Исходящих:</b> ${callees.length}</div>
+      <div><b style="color:var(--t3)">Экспорт:</b> ${obj.isExported ? '✓' : '✗'}</div>
+      <div><b style="color:var(--t3)">Async:</b> ${obj.isAsync ? '✓' : '✗'}</div>
+    `;
+    } else {
+      // Модуль
+      const interCount = obj.functions.reduce((s, fn) =>
+        s + links.filter(l => l.sourceId === fn.id || l.targetId === fn.id).length, 0);
+      title.textContent = `☀ Модуль: ${obj.shortName}`;
+      details.innerHTML = `
+      <div><b style="color:var(--t3)">Путь:</b> <span style="color:var(--accent); font-family:monospace">${obj.path}</span></div>
+      <div><b style="color:var(--t3)">Функций:</b> ${obj.functions.length}</div>
+      <div><b style="color:var(--t3)">Связей:</b> ${interCount}</div>
+      <div><b style="color:var(--t3)">Протуберанцы:</b> 🔥 ${obj.sun.protuberanceCount}</div>
+    `;
+    }
+    fi.classList.add('active');
+  }
+  function hideFocusInfo() { document.getElementById('focusInfo').classList.remove('active'); }
+
+  function showDetailPanel(n) {
+    const callers = links.filter(l => l.targetId === n.id);
+    const callees = links.filter(l => l.sourceId === n.id);
+    const len = Math.hypot(n.x, n.y, n.z);
+
+    document.getElementById('dpTitle').textContent = `ƒ ${n.name}`;
+    let html = '';
+
+    // Бейджи
+    html += '<div class="dp-badges">';
+    if (n.isExported) html += '<span class="badge b-exported">exported</span>';
+    if (n.isAsync) html += '<span class="badge b-async">async</span>';
+    if (n.complexity >= 5) html += '<span class="badge b-high-complexity">complex</span>';
+    if (callers.length === 0 && callees.length === 0) html += '<span class="badge b-entry">isolated</span>';
+    html += '</div>';
+
+    // Вектор
+    html += `<div class="dp-vec">
+    Вектор позиции:<br>
+    x = ${n.x.toFixed(2)}<br>
+    y = ${n.y.toFixed(2)}<br>
+    z = ${n.z.toFixed(2)}<br>
+    |P| = ${len.toFixed(2)} · ${Math.round(len/SPHERE_R*100)}% от R
+  </div>`;
+
+    // Свойства
+    html += '<div class="dp-section">📋 Свойства</div>';
+    html += `<div class="dp-row"><span class="k">Модуль</span><span class="v" style="color:${CATEGORY_COLORS[n.category]}">${n.moduleRef.shortName}</span></div>`;
+    html += `<div class="dp-row"><span class="k">Категория</span><span class="v">${CATEGORY_LABELS[n.category]}</span></div>`;
+    html += `<div class="dp-row"><span class="k">Файл</span><span class="v" style="font-family:monospace; font-size:10px">${n.shortFile}:${n.line}</span></div>`;
+    html += `<div class="dp-row"><span class="k">Строки</span><span class="v">${n.startLine}–${n.endLine}</span></div>`;
+    html += `<div class="dp-row"><span class="k">Сложность</span><span class="v">${n.complexity}</span></div>`;
+    html += `<div class="dp-row"><span class="k">Параметров</span><span class="v">${n.paramsCount}</span></div>`;
+    html += `<div class="dp-row"><span class="k">Степень (degree)</span><span class="v">${n.degree}</span></div>`;
+
+    // Вызывается из
+    if (callers.length) {
+      html += `<div class="dp-section">📥 Вызывается из (${callers.length})</div>`;
+      callers.forEach(l => {
+        html += `<div class="dp-link-item" data-id="${l.sourceId}"><span class="arrow">←</span><span>${l.source.name}</span><span style="color:var(--t3); font-size:10px; margin-left:auto">${l.source.moduleRef.shortName}</span></div>`;
+      });
+    }
+
+    // Вызывает
+    if (callees.length) {
+      html += `<div class="dp-section">📤 Вызывает (${callees.length})</div>`;
+      callees.forEach(l => {
+        html += `<div class="dp-link-item" data-id="${l.targetId}"><span class="arrow">→</span><span>${l.target.name}</span><span style="color:var(--t3); font-size:10px; margin-left:auto">${l.target.moduleRef.shortName}</span></div>`;
+      });
+    }
+
+    document.getElementById('dpContent').innerHTML = html;
+    document.getElementById('detailPanel').classList.add('open');
+
+    // Клик по элементам в панели
+    document.querySelectorAll('.dp-link-item').forEach(el => {
+      el.onclick = () => {
+        const n = nodeMap.get(el.dataset.id);
+        if (n) {
+          selectNode(n);
+          triggerWarp(n);
+        }
+      };
+    });
+  }
+  function hideDetailPanel() { document.getElementById('detailPanel').classList.remove('open'); }
+
+  // ============================================================================
+  //  РОУТЕР (адресная строка, навигация, хлебные крошки)
+  // ============================================================================
+  function navigateTo(type, data = {}) {
+    const route = {type, ...data, timestamp: Date.now()};
+    // Удаляем будущие записи
+    state.history = state.history.slice(0, state.historyIndex + 1);
+    state.history.push(route);
+    state.historyIndex = state.history.length - 1;
+    updateLocationBar();
+    updateBreadcrumbs();
+    updateNavButtons();
+  }
+  function goBack() {
+    if (state.historyIndex > 0) {
+      state.historyIndex--;
+      applyRoute(state.history[state.historyIndex]);
+      updateLocationBar();
+      updateBreadcrumbs();
+      updateNavButtons();
+    }
+  }
+  function goForward() {
+    if (state.historyIndex < state.history.length - 1) {
+      state.historyIndex++;
+      applyRoute(state.history[state.historyIndex]);
+      updateLocationBar();
+      updateBreadcrumbs();
+      updateNavButtons();
+    }
+  }
+  function applyRoute(route) {
+    if (route.type === 'universe') clearSelection();
+    else if (route.type === 'function') {
+      const n = nodes.find(x => x.name === route.name && x.module === route.module);
+      if (n) selectNode(n);
+    }
+  }
+  function updateLocationBar() {
+    const route = state.history[state.historyIndex];
+    let path = 'ide://universe';
+    if (route.type === 'function') path = `ide://${route.module}/${route.name}`;
+    else if (route.type === 'module') path = `ide://${route.module}`;
+    else if (route.type === 'search') path = `ide://search?q=${encodeURIComponent(route.query)}`;
+    document.getElementById('locDisplay').textContent = path;
+    document.getElementById('locInput').value = path;
+  }
+  function updateBreadcrumbs() {
+    const bc = document.getElementById('breadcrumbs');
+    const route = state.history[state.historyIndex];
+    let html = `<span class="crumb ${route.type === 'universe' ? 'active' : ''}" data-action="home">🏠 universe</span>`;
+    if (route.type === 'function') {
+      html += `<span class="crumb-sep">›</span>`;
+      html += `<span class="crumb">${route.module.split('/').pop()}</span>`;
+      html += `<span class="crumb-sep">›</span>`;
+      html += `<span class="crumb active">${route.name}</span>`;
+    } else if (route.type === 'module') {
+      html += `<span class="crumb-sep">›</span>`;
+      html += `<span class="crumb active">${route.module}</span>`;
+    }
+    bc.innerHTML = html;
+    bc.querySelectorAll('.crumb').forEach(c => {
+      c.onclick = () => {
+        if (c.dataset.action === 'home') clearSelection();
+      };
+    });
+  }
+  function updateNavButtons() {
+    const canBack = state.historyIndex > 0;
+    const canForward = state.historyIndex < state.history.length - 1;
+    document.getElementById('btnNavBack').disabled = !canBack;
+    document.getElementById('btnNavForward').disabled = !canForward;
+    document.getElementById('locBack').disabled = !canBack;
+    document.getElementById('locForward').disabled = !canForward;
+  }
+
+  // ============================================================================
+  //  UI CONTROLS
+  // ============================================================================
+  // Режимы просмотра
+  document.querySelectorAll('[data-view-mode]').forEach(btn => {
+    btn.onclick = () => {
+      state.viewMode = btn.dataset.viewMode;
+      document.querySelectorAll('[data-view-mode]').forEach(b => b.classList.toggle('active', b === btn));
+      document.getElementById('hud-mode').textContent = state.viewMode === 'graph' ? 'Граф' : 'Космос';
+      const hint = document.getElementById('modeHint');
+      hint.textContent = state.viewMode === 'graph'
+        ? '🕸 Force-directed граф на сфере · R₃-последовательность Робертса + релаксация Ллойда'
+        : '🌌 Космос · солнечные системы модулей · орбиты, туманности, warp-прыжки';
+      hint.classList.remove('hide');
+      setTimeout(() => hint.classList.add('hide'), 4000);
+    };
+  });
+
+  // Фокус
+  document.getElementById('btnFocusAll').onclick = () => setFocusMode('all');
+  document.getElementById('btnFocusNeighbors').onclick = () => setFocusMode('neighbors');
+  document.getElementById('btnFocusOutward').onclick = () => setFocusMode('outward');
+  document.getElementById('btnClearFocus').onclick = () => { clearSelection(); };
+  document.getElementById('btnCloseFocus').onclick = () => { hideFocusInfo(); };
+
+  function setFocusMode(mode) {
+    state.focusMode = mode;
+    ['btnFocusAll', 'btnFocusNeighbors', 'btnFocusOutward'].forEach(id => {
+      const btn = document.getElementById(id);
+      btn.classList.toggle('active', btn.id === `btnFocus${mode.charAt(0).toUpperCase()+mode.slice(1)}` ||
+        (mode === 'all' && btn.id === 'btnFocusAll') ||
+        (mode === 'neighbors' && btn.id === 'btnFocusNeighbors') ||
+        (mode === 'outward' && btn.id === 'btnFocusOutward'));
+    });
+  }
+  setFocusMode('all');
+
+  // Поиск
+  const searchInput = document.getElementById('searchInput');
+  let searchDebounce = null;
+  searchInput.addEventListener('input', function() {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => {
+      state.searchQuery = this.value.trim();
+      if (state.searchQuery) navigateTo('search', {query: state.searchQuery});
+      else navigateTo('universe');
+    }, 300);
+  });
+
+  // Навигация
+  document.getElementById('btnNavBack').onclick = goBack;
+  document.getElementById('btnNavForward').onclick = goForward;
+  document.getElementById('btnNavHome').onclick = () => clearSelection();
+  document.getElementById('locBack').onclick = goBack;
+  document.getElementById('locForward').onclick = goForward;
+  document.getElementById('locCopy').onclick = () => {
+    const text = document.getElementById('locDisplay').textContent;
+    navigator.clipboard?.writeText(text);
+    const btn = document.getElementById('locCopy');
+    const old = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(() => btn.textContent = old, 800);
+  };
+
+  // Горячие клавиши
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
+      e.preventDefault();
+      state.timeRunning = !state.timeRunning;
+      document.getElementById('btnAutoSpin').classList.toggle('active', state.timeRunning && state.showAutoSpin);
+    }
+    if (e.altKey && e.code === 'ArrowLeft') { e.preventDefault(); goBack(); }
+    if (e.altKey && e.code === 'ArrowRight') { e.preventDefault(); goForward(); }
+    if (e.altKey && e.code === 'Home') { e.preventDefault(); clearSelection(); }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
+      e.preventDefault();
+      const input = document.getElementById('locInput');
+      input.style.display = 'block';
+      document.getElementById('locDisplay').style.display = 'none';
+      input.focus();
+      input.select();
+    }
+    if (e.key === 'Escape') clearSelection();
+  });
+
+  // Address bar edit/commit
+  document.getElementById('locDisplay').onclick = () => {
+    const input = document.getElementById('locInput');
+    input.style.display = 'block';
+    document.getElementById('locDisplay').style.display = 'none';
+    input.focus();
+    input.select();
+  };
+  document.getElementById('locInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const val = e.target.value.trim();
+      e.target.style.display = 'none';
+      document.getElementById('locDisplay').style.display = 'block';
+      // Парсинг: ide://module/name
+      const m = val.match(/^ide:\/\/(.+?)(?:\/(.+?))?(?:\?q=(.+?))?$/);
+      if (m) {
+        if (m[3]) {
+          searchInput.value = decodeURIComponent(m[3]);
+          state.searchQuery = decodeURIComponent(m[3]);
+        } else if (m[2]) {
+          const n = nodes.find(x => x.name === m[2] && x.module === m[1]);
+          if (n) { selectNode(n); triggerWarp(n); }
+        } else if (m[1] && m[1] !== 'universe') {
+          const mod = modules.find(x => x.path === m[1]);
+          if (mod) { triggerWarp(mod); showFocusInfo(mod); }
+        } else clearSelection();
+      }
+    } else if (e.key === 'Escape') {
+      e.target.style.display = 'none';
+      document.getElementById('locDisplay').style.display = 'block';
+    }
+  });
+  document.getElementById('locInput').addEventListener('blur', e => {
+    e.target.style.display = 'none';
+    document.getElementById('locDisplay').style.display = 'block';
+  });
+
+  // Кнопки графа
+  document.getElementById('btnLabels').onclick = function() {
+    state.showLabels = !state.showLabels;
+    this.classList.toggle('active', state.showLabels);
+  };
+  document.getElementById('btnAutoSpin').onclick = function() {
+    state.showAutoSpin = !state.showAutoSpin;
+    state.timeRunning = state.showAutoSpin;
+    this.classList.toggle('active', state.showAutoSpin);
+  };
+  document.getElementById('btnOrbits').onclick = function() {
+    state.showOrbits = !state.showOrbits;
+    this.classList.toggle('active', state.showOrbits);
+  };
+  document.getElementById('btnLinks').onclick = function() {
+    state.showLinks = !state.showLinks;
+    this.classList.toggle('active', state.showLinks);
+  };
+  document.getElementById('btnNebulae').onclick = function() {
+    state.showNebulae = !state.showNebulae;
+    this.classList.toggle('active', state.showNebulae);
+  };
+  document.getElementById('btnVectors').onclick = function() {
+    state.showVectors = !state.showVectors;
+    this.classList.toggle('active', state.showVectors);
+  };
+  document.getElementById('btnReset').onclick = () => {
+    clearSelection();
+    searchInput.value = '';
+    state.searchQuery = '';
+    state.targetRotX = 0.3;
+    state.targetRotY = 0.4;
+    state.targetZoom = 1.0;
+  };
+
+  document.getElementById('dpClose').onclick = () => hideDetailPanel();
+
+  // Заполняем легенду
+  function buildLegend() {
+    const legend = document.getElementById('graphLegend');
+    let html = '';
+    Object.entries(CATEGORY_COLORS).forEach(([cat, color]) => {
+      html += `<div class="legend-item"><span class="legend-dot" style="background:${color}"></span><span>${CATEGORY_LABELS[cat]}</span></div>`;
+    });
+    html += `<div class="legend-item" style="margin-top:4px"><span style="width:10px;height:10px;border:1px solid var(--yellow);border-radius:50%;display:inline-block"></span><span>💍 exported</span></div>`;
+    html += `<div class="legend-item"><span style="width:6px;height:6px;background:#d2a8ff;border-radius:50%;display:inline-block"></span><span>⚡ async</span></div>`;
+    legend.innerHTML = html;
+  }
+  buildLegend();
+
+  // Скрыть подсказку через 5 сек
+  setTimeout(() => document.getElementById('modeHint').classList.add('hide'), 5000);
+
+  // Инициализация
+  updateNavButtons();
+  updateLocationBar();
+  updateBreadcrumbs();
+
+  console.log(`✅ IDE Graph loaded: ${nodes.length} nodes, ${links.length} links, ${modules.length} modules`);
+</script>
+</body>
+</html>

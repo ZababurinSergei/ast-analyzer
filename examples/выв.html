@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Полный 3D Граф Зависимостей</title>
+  <style>
+      * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+      }
+      body {
+          overflow: hidden;
+          background: #0a0a1a;
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          color: #fff;
+      }
+      #loader {
+          position: fixed;
+          inset: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background: #0a0a1a;
+          z-index: 100;
+          transition: opacity 0.8s ease;
+      }
+      #loader.hidden {
+          opacity: 0;
+          pointer-events: none;
+      }
+      #loader .spinner {
+          width: 60px;
+          height: 60px;
+          border: 4px solid rgba(255, 255, 255, 0.05);
+          border-top-color: #64f0ff;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+      }
+      #loader .status {
+          margin-top: 20px;
+          font-size: 16px;
+          color: #888;
+      }
+      @keyframes spin {
+          to {
+              transform: rotate(360deg);
+          }
+      }
+
+      #info {
+          position: absolute;
+          top: 20px;
+          left: 50%;
+          transform: translateX(-50%);
+          color: #fff;
+          background: rgba(0, 0, 0, 0.7);
+          padding: 10px 20px;
+          border-radius: 8px;
+          font-size: 13px;
+          pointer-events: none;
+          z-index: 10;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          backdrop-filter: blur(4px);
+          white-space: nowrap;
+      }
+      #info span {
+          color: #64f0ff;
+      }
+
+      #legend {
+          position: absolute;
+          top: 80px;
+          right: 20px;
+          background: rgba(0, 0, 0, 0.75);
+          padding: 12px 16px;
+          border-radius: 8px;
+          border: 1px solid rgba(255, 255, 255, 0.06);
+          backdrop-filter: blur(8px);
+          z-index: 10;
+          font-size: 12px;
+          max-width: 180px;
+      }
+      #legend .item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin: 4px 0;
+      }
+      #legend .color {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          flex-shrink: 0;
+      }
+      #legend .label {
+          color: #aaa;
+      }
+
+      #tooltip {
+          position: absolute;
+          display: none;
+          background: rgba(8, 8, 28, 0.94);
+          color: #fff;
+          padding: 14px 18px;
+          border-radius: 10px;
+          font-size: 13px;
+          pointer-events: none;
+          z-index: 20;
+          max-width: 350px;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          backdrop-filter: blur(12px);
+          box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
+          line-height: 1.6;
+      }
+      #tooltip .name {
+          font-weight: 700;
+          color: #64f0ff;
+          font-size: 15px;
+          margin-bottom: 4px;
+      }
+      #tooltip .detail {
+          color: #aaa;
+          font-size: 12px;
+      }
+      #tooltip .badge {
+          display: inline-block;
+          padding: 0 8px;
+          border-radius: 4px;
+          font-size: 10px;
+          font-weight: 600;
+          text-transform: uppercase;
+          background: rgba(255, 255, 255, 0.06);
+          color: #ccc;
+          margin-top: 4px;
+      }
+
+      #stats-bar {
+          position: absolute;
+          bottom: 20px;
+          left: 20px;
+          color: #555;
+          font-size: 12px;
+          font-family: 'Courier New', monospace;
+          z-index: 10;
+          background: rgba(0, 0, 0, 0.5);
+          padding: 8px 14px;
+          border-radius: 6px;
+          border: 1px solid rgba(255, 255, 255, 0.04);
+      }
+      #controls-hint {
+          position: absolute;
+          bottom: 20px;
+          right: 20px;
+          color: #444;
+          font-size: 12px;
+          z-index: 10;
+          background: rgba(0, 0, 0, 0.5);
+          padding: 8px 14px;
+          border-radius: 6px;
+          border: 1px solid rgba(255, 255, 255, 0.04);
+      }
+
+      @media (max-width: 700px) {
+          #info {
+              font-size: 11px;
+              padding: 6px 12px;
+              white-space: normal;
+              max-width: 90%;
+              top: 12px;
+          }
+          #legend {
+              display: none;
+          }
+          #controls-hint {
+              display: none;
+          }
+          #stats-bar {
+              font-size: 10px;
+              padding: 4px 10px;
+              bottom: 12px;
+              left: 12px;
+          }
+      }
+  </style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="spinner"></div>
+  <div class="status" id="loadStatus">⏳ Загрузка данных...</div>
+</div>
+
+<div id="info">🌐 Полный Граф Зависимостей • <span id="nodeCount">0</span> узлов • <span id="edgeCount">0</span> связей</div>
+
+<div id="legend">
+  <div class="item"><span class="color" style="background:#ff6b6b;"></span><span class="label">Вызов (call)</span></div>
+  <div class="item"><span class="color" style="background:#ffd93d;"></span><span class="label">Импорт (import)</span></div>
+  <div class="item"><span class="color" style="background:#6bcb77;"></span><span class="label">Функциональная</span></div>
+  <div class="item" style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.05);padding-top:6px;">
+    <span class="label" style="font-size:10px;color:#666;">Группы по модулям</span>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+<div id="stats-bar">⚡ Клик по узлу → информация</div>
+<div id="controls-hint">🖱 Вращать: мышь • Масштаб: колесо • Двойной клик: авто-вращение</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js">
+</script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js">
+</script>
+
+<script>
+  // ================================================================
+  // 1. КОНФИГУРАЦИЯ
+  // ================================================================
+
+  const JSON_URL = 'report.json'; // <-- УКАЖИТЕ ПУТЬ К ВАШЕМУ JSON
+
+  let rawData = null;
+  let allNodes = [];
+  let allEdges = [];
+  let nodeMap = {};
+
+  const loaderEl = document.getElementById('loader');
+  const statusEl = document.getElementById('loadStatus');
+
+  // ================================================================
+  // 2. ГРУППЫ И ЦВЕТА
+  // ================================================================
+
+  const groupColors = {
+    'cli': 0x00d4ff,
+    'core': 0xff6b6b,
+    'formal': 0xffd93d,
+    'utils': 0x6bcb77,
+    'semantic': 0x4d96ff,
+    'reporters': 0xff6b9d,
+    'vue': 0x9b59b6,
+    'modes': 0x00b894,
+    'refactor': 0xf39c12,
+    'ci-cd': 0xe74c3c,
+    'interfaces': 0x1abc9c,
+    'checkers': 0x3498db,
+    'other': 0x888888,
+  };
+
+  function detectGroup(filePath) {
+    if (!filePath) return 'other';
+    const lower = filePath.toLowerCase();
+    if (lower.includes('cli')) return 'cli';
+    if (lower.includes('core')) return 'core';
+    if (lower.includes('formal') || lower.includes('z3')) return 'formal';
+    if (lower.includes('utils')) return 'utils';
+    if (lower.includes('semantic')) return 'semantic';
+    if (lower.includes('reporters') || lower.includes('html') || lower.includes('json')) return 'reporters';
+    if (lower.includes('vue') || lower.includes('component')) return 'vue';
+    if (lower.includes('modes') || lower.includes('mode')) return 'modes';
+    if (lower.includes('refactor')) return 'refactor';
+    if (lower.includes('ci-cd')) return 'ci-cd';
+    if (lower.includes('interfaces')) return 'interfaces';
+    if (lower.includes('checkers')) return 'checkers';
+    return 'other';
+  }
+
+  // ================================================================
+  // 3. ЗАГРУЗКА И ПАРСИНГ
+  // ================================================================
+
+  async function loadData() {
+    try {
+      statusEl.textContent = '⏳ Загрузка данных...';
+
+      const response = await fetch(JSON_URL);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const data = await response.json();
+      rawData = data;
+
+      statusEl.textContent = '📊 Парсинг графа...';
+      parseFullGraph(data);
+
+      statusEl.textContent = `✅ Загружено: ${allNodes.length} узлов, ${allEdges.length} связей`;
+      setTimeout(() => loaderEl.classList.add('hidden'), 300);
+
+      document.getElementById('nodeCount').textContent = allNodes.length;
+      document.getElementById('edgeCount').textContent = allEdges.length;
+
+      initScene();
+
+    } catch (err) {
+      console.error('❌ Ошибка:', err);
+      statusEl.textContent = '❌ Ошибка загрузки';
+      // Показываем демо
+      setTimeout(() => {
+        statusEl.textContent = '📊 Демо-режим';
+        loadDemoData();
+        loaderEl.classList.add('hidden');
+        document.getElementById('nodeCount').textContent = allNodes.length;
+        document.getElementById('edgeCount').textContent = allEdges.length;
+        initScene();
+      }, 1000);
+    }
+  }
+
+  // ================================================================
+  // 4. ПОЛНЫЙ ПАРСИНГ ГРАФА
+  // ================================================================
+
+  function parseFullGraph(data) {
+    const fileIndex = data.fileIndex || {};
+    const entities = data.entities || {};
+    const callEdges = data.callGraph?.edges || [];
+    const importEdges = data.importGraph?.edges || [];
+
+    // --- Создаем узлы из ВСЕХ сущностей ---
+    const nodeData = {};
+
+    for (const [id, entity] of Object.entries(entities)) {
+      const fileId = entity.file || '';
+      const fileName = fileIndex[fileId] || fileId || 'unknown';
+
+      nodeData[id] = {
+        id: id,
+        label: entity.name || id,
+        file: fileName,
+        line: entity.line || 0,
+        kind: entity.kind || 'function',
+        isExported: entity.isExported || false,
+        params: entity.params || [],
+        group: detectGroup(fileName),
+        calls: 0,
+        called: 0,
+        imports: 0,
+        importedBy: 0,
+      };
+    }
+
+    // --- Считаем статистику вызовов ---
+    callEdges.forEach(edge => {
+      const from = edge.from;
+      const to = edge.to;
+      if (nodeData[from]) nodeData[from].calls = (nodeData[from].calls || 0) + 1;
+      if (nodeData[to]) nodeData[to].called = (nodeData[to].called || 0) + 1;
+    });
+
+    // --- Считаем статистику импортов ---
+    importEdges.forEach(edge => {
+      const from = edge.from;
+      const to = edge.to;
+      if (nodeData[from]) nodeData[from].imports = (nodeData[from].imports || 0) + 1;
+      if (nodeData[to]) nodeData[to].importedBy = (nodeData[to].importedBy || 0) + 1;
+    });
+
+    // --- Формируем список узлов (ВСЕ, у которых есть хоть одна связь) ---
+    allNodes = [];
+    for (const [id, node] of Object.entries(nodeData)) {
+      const total = (node.calls || 0) + (node.called || 0) + (node.imports || 0) + (node.importedBy || 0);
+      if (total === 0) continue; // Пропускаем изолированные
+      allNodes.push(node);
+    }
+
+    // --- Формируем ВСЕ ребра ---
+    const edgeSet = new Set();
+    allEdges = [];
+
+    // Вызовы
+    callEdges.forEach(edge => {
+      const from = edge.from;
+      const to = edge.to;
+      const fromExists = allNodes.some(n => n.id === from);
+      const toExists = allNodes.some(n => n.id === to);
+      if (!fromExists || !toExists) return;
+
+      const key = `${from}->${to}:call`;
+      if (edgeSet.has(key)) return;
+      edgeSet.add(key);
+
+      allEdges.push({
+        from: from,
+        to: to,
+        type: edge.type || 'direct',
+        category: 'call',
+        line: edge.line || 0,
+      });
+    });
+
+    // Импорты
+    importEdges.forEach(edge => {
+      const from = edge.from;
+      const to = edge.to;
+      const fromExists = allNodes.some(n => n.id === from);
+      const toExists = allNodes.some(n => n.id === to);
+      if (!fromExists || !toExists) return;
+
+      const key = `${from}->${to}:import`;
+      if (edgeSet.has(key)) return;
+      edgeSet.add(key);
+
+      allEdges.push({
+        from: from,
+        to: to,
+        type: edge.type || 'named',
+        category: 'import',
+        line: edge.line || 0,
+      });
+    });
+
+    // --- Если всё еще мало связей, добавляем функциональные зависимости ---
+    // (на основе анализа: если A вызывает B, то A зависит от B)
+    // Уже есть в callEdges
+
+    console.log(`📊 Полный граф: ${allNodes.length} узлов, ${allEdges.length} ребер`);
+    console.log(`   Вызовы: ${callEdges.length}, Импорты: ${importEdges.length}`);
+  }
+
+  // ================================================================
+  // 5. ДЕМО-ДАННЫЕ С БОЛЬШИМ ЧИСЛОМ СВЯЗЕЙ
+  // ================================================================
+
+  function loadDemoData() {
+    // Генерируем больше узлов и связей для демонстрации
+    const prefixes = ['cli', 'core', 'utils', 'parser', 'analyzer', 'reporter', 'validator', 'extractor', 'builder',
+      'resolver'
+    ];
+    const suffixes = ['run', 'init', 'parse', 'build', 'analyze', 'validate', 'extract', 'resolve', 'transform',
+      'compile'
+    ];
+
+    allNodes = [];
+    const nodeIds = [];
+
+    // Создаем 50 узлов
+    for (let i = 0; i < 50; i++) {
+      const p = prefixes[i % prefixes.length];
+      const s = suffixes[Math.floor(i / prefixes.length) % suffixes.length];
+      const id = `${p}.${s}_${i}`;
+      const group = p;
+      nodeIds.push(id);
+      allNodes.push({
+        id: id,
+        label: `${p}.${s}`,
+        group: group,
+        file: `src/${group}/${s}.ts`,
+        line: i * 10,
+        kind: 'function',
+        isExported: i % 3 === 0,
+        calls: Math.floor(Math.random() * 15),
+        called: Math.floor(Math.random() * 10),
+        imports: Math.floor(Math.random() * 5),
+        importedBy: Math.floor(Math.random() * 3),
+      });
+    }
+
+    // Создаем связи (каждый узел связан с несколькими другими)
+    allEdges = [];
+    const edgeSet = new Set();
+
+    for (let i = 0; i < nodeIds.length; i++) {
+      const from = nodeIds[i];
+      // Каждый узел вызывает 2-5 других
+      const numCalls = 2 + Math.floor(Math.random() * 4);
+      for (let j = 0; j < numCalls; j++) {
+        const toIdx = (i + 1 + j + Math.floor(Math.random() * 3)) % nodeIds.length;
+        const to = nodeIds[toIdx];
+        if (from === to) continue;
+        const key = `${from}->${to}:call`;
+        if (!edgeSet.has(key)) {
+          edgeSet.add(key);
+          allEdges.push({
+            from: from,
+            to: to,
+            type: 'direct',
+            category: 'call',
+            line: i * 5 + j,
+          });
+        }
+      }
+      // Добавляем несколько импортов
+      if (i % 2 === 0) {
+        const toIdx = (i + 3) % nodeIds.length;
+        const to = nodeIds[toIdx];
+        const key = `${from}->${to}:import`;
+        if (!edgeSet.has(key) && from !== to) {
+          edgeSet.add(key);
+          allEdges.push({
+            from: from,
+            to: to,
+            type: 'named',
+            category: 'import',
+            line: i * 3,
+          });
+        }
+      }
+    }
+
+    console.log(`📊 Демо-данные: ${allNodes.length} узлов, ${allEdges.length} ребер`);
+  }
+
+  // ================================================================
+  // 6. THREE.JS — СЦЕНА
+  // ================================================================
+
+  let scene, camera, renderer, controls;
+  let nodeObjects = [];
+  let nodeMap3d = {};
+  let edgeObjects = [];
+
+  function initScene() {
+    if (allNodes.length === 0) {
+      console.warn('Нет данных');
+      return;
+    }
+
+    // --- Сцена ---
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0a1a);
+
+    // --- Камера ---
+    const nodeCount = allNodes.length;
+    const distance = Math.max(12, Math.min(30, nodeCount * 0.4));
+    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(distance * 0.8, distance * 0.6, distance);
+    camera.lookAt(0, 0, 0);
+
+    // --- Рендерер ---
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    // --- Контрол ---
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.4;
+    controls.minDistance = 5;
+    controls.maxDistance = 60;
+    controls.target.set(0, 0, 0);
+
+    // --- Сфера ---
+    const radius = Math.max(6, Math.min(12, nodeCount * 0.15));
+    const sphereMat = new THREE.MeshBasicMaterial({
+      color: 0x1a1a3a,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.1,
+    });
+    const sphere = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.98, 48, 48), sphereMat);
+    scene.add(sphere);
+
+    // --- Размещаем узлы ---
+    const numNodes = allNodes.length;
+    const phi = Math.PI * (3 - Math.sqrt(5));
+    nodeObjects = [];
+    nodeMap3d = {};
+
+    allNodes.forEach((node, i) => {
+      const y = 1 - (i / (numNodes - 1)) * 2;
+      const rAtY = Math.sqrt(1 - y * y);
+      const theta = phi * i;
+
+      const x = Math.cos(theta) * rAtY;
+      const z = Math.sin(theta) * rAtY;
+      const pos = new THREE.Vector3(x * radius, y * radius, z * radius);
+
+      const group = node.group || 'other';
+      const color = groupColors[group] || 0x888888;
+      const importance = (node.calls || 0) + (node.called || 0) + (node.imports || 0) + (node.importedBy || 0);
+      const size = Math.max(0.4, Math.min(1.8, 0.6 + importance * 0.02));
+
+      // Узел
+      const geo = new THREE.SphereGeometry(size * 0.5, 20, 20);
+      const mat = new THREE.MeshStandardMaterial({
+        color: color,
+        emissive: color,
+        emissiveIntensity: 0.15,
+        roughness: 0.3,
+        metalness: 0.5,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.copy(pos);
+      mesh.userData = { nodeId: node.id };
+      scene.add(mesh);
+
+      // Свечение
+      const glowMat = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.08,
+      });
+      const glow = new THREE.Mesh(new THREE.SphereGeometry(size * 0.8, 12, 12), glowMat);
+      glow.position.copy(pos);
+      scene.add(glow);
+
+      nodeObjects.push(mesh);
+      nodeMap3d[node.id] = { mesh, glow, data: node, pos, color };
+    });
+
+    // --- Ребра ---
+    const edgeGroup = new THREE.Group();
+    scene.add(edgeGroup);
+    edgeObjects = [];
+
+    allEdges.forEach((edge, idx) => {
+      const from = nodeMap3d[edge.from];
+      const to = nodeMap3d[edge.to];
+      if (!from || !to) return;
+
+      const mid = from.pos.clone().add(to.pos).multiplyScalar(0.5);
+      const dist = from.pos.distanceTo(to.pos);
+      const height = dist * 0.08;
+      mid.normalize().multiplyScalar(radius + height);
+
+      const curve = new THREE.QuadraticBezierCurve3(from.pos, mid, to.pos);
+      const pts = curve.getPoints(16);
+
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+
+      // Цвет в зависимости от типа связи
+      let color;
+      if (edge.category === 'import') {
+        color = new THREE.Color(0xffd93d);
+      } else if (edge.category === 'call') {
+        // Оттенок в зависимости от типа вызова
+        const hue = 0.55 + (idx / allEdges.length) * 0.2;
+        color = new THREE.Color().setHSL(hue, 0.6, 0.5);
+      } else {
+        color = new THREE.Color(0x6bcb77);
+      }
+
+      const mat = new THREE.LineBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.15 + (idx / allEdges.length) * 0.15,
+      });
+      const line = new THREE.Line(geo, mat);
+      edgeGroup.add(line);
+      edgeObjects.push(line);
+    });
+
+    // --- Звезды ---
+    const starsGeo = new THREE.BufferGeometry();
+    const starsCount = 4000;
+    const starsPos = new Float32Array(starsCount * 3);
+    for (let i = 0; i < starsCount * 3; i += 3) {
+      starsPos[i] = (Math.random() - 0.5) * 250;
+      starsPos[i + 1] = (Math.random() - 0.5) * 250;
+      starsPos[i + 2] = (Math.random() - 0.5) * 250;
+    }
+    starsGeo.setAttribute('position', new THREE.BufferAttribute(starsPos, 3));
+    const starsMat = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 0.1,
+      transparent: true,
+      opacity: 0.4,
+    });
+    const stars = new THREE.Points(starsGeo, starsMat);
+    scene.add(stars);
+
+    // --- Освещение ---
+    const ambient = new THREE.AmbientLight(0x404060, 0.5);
+    scene.add(ambient);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    dirLight.position.set(10, 20, 10);
+    scene.add(dirLight);
+
+    const backLight = new THREE.DirectionalLight(0x4488ff, 0.3);
+    backLight.position.set(-10, -5, -10);
+    scene.add(backLight);
+
+    // --- Интерактивность ---
+    setupInteraction();
+
+    // --- Анимация ---
+    animate();
+
+    console.log('✅ 3D Сцена загружена');
+  }
+
+  // ================================================================
+  // 7. ИНТЕРАКТИВНОСТЬ
+  // ================================================================
+
+  let hoveredNode = null;
+
+  function setupInteraction() {
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    const tooltip = document.getElementById('tooltip');
+
+    renderer.domElement.addEventListener('click', (event) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(nodeObjects);
+
+      if (intersects.length > 0) {
+        const hit = intersects[0].object;
+        const nodeId = hit.userData?.nodeId;
+        if (nodeId && nodeMap3d[nodeId]) {
+          const data = nodeMap3d[nodeId].data;
+          showTooltip(event.clientX, event.clientY, data, true);
+          setTimeout(() => { tooltip.style.display = 'none'; }, 6000);
+        }
+      }
+    });
+
+    renderer.domElement.addEventListener('mousemove', (event) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(nodeObjects);
+
+      if (intersects.length > 0) {
+        const hit = intersects[0].object;
+        const nodeId = hit.userData?.nodeId;
+        if (nodeId && nodeMap3d[nodeId]) {
+          renderer.domElement.style.cursor = 'pointer';
+          const data = nodeMap3d[nodeId].data;
+          showTooltip(event.clientX, event.clientY, data, false);
+
+          if (hoveredNode !== hit) {
+            if (hoveredNode) {
+              const s = hoveredNode.scale.x / 1.25;
+              hoveredNode.scale.set(s, s, s);
+            }
+            hoveredNode = hit;
+            const s = hit.scale.x * 1.25;
+            hit.scale.set(s, s, s);
+          }
+          return;
+        }
+      }
+
+      renderer.domElement.style.cursor = 'default';
+      tooltip.style.display = 'none';
+      if (hoveredNode) {
+        const s = hoveredNode.scale.x / 1.25;
+        hoveredNode.scale.set(s, s, s);
+        hoveredNode = null;
+      }
+    });
+
+    renderer.domElement.addEventListener('dblclick', () => {
+      if (controls) controls.autoRotate = !controls.autoRotate;
+    });
+  }
+
+  function showTooltip(x, y, data, isClick) {
+    const tooltip = document.getElementById('tooltip');
+    const group = data.group || 'other';
+    const color = groupColors[group] || 0x888888;
+    const hexColor = '#' + color.toString(16).padStart(6, '0');
+
+    const kindEmoji = {
+      'function': '⚡',
+      'class': '📦',
+      'interface': '📐',
+      'type': '📝',
+      'constant': '📌',
+      'variable': '📎'
+    };
+
+    tooltip.innerHTML = `
+                <div class="name">${kindEmoji[data.kind] || '📄'} ${data.label}</div>
+                <div class="detail">📁 ${data.file || 'unknown'}</div>
+                <div class="detail">📂 Группа: <span style="color:${hexColor}">${group}</span></div>
+                <div class="detail">📞 Вызовов: ${data.calls || 0} | 📩 Вызывается: ${data.called || 0}</div>
+                <div class="detail">📦 Импортов: ${data.imports || 0} | 📥 Импортируется: ${data.importedBy || 0}</div>
+                <div class="detail" style="font-size:11px;color:#666;margin-top:4px;">${data.id}</div>
+                ${data.isExported ? '<div class="badge" style="border-left:2px solid #6bcb77;">🔓 Экспортируется</div>' : ''}
+                ${data.params && data.params.length ? `<div class="detail">📋 Параметры: ${data.params.join(', ')}</div>` : ''}
+            `;
+
+    tooltip.style.display = 'block';
+    const left = Math.min(x + 16, window.innerWidth - 360);
+    const top = Math.min(y + 16, window.innerHeight - 200);
+    tooltip.style.left = Math.max(10, left) + 'px';
+    tooltip.style.top = Math.max(10, top) + 'px';
+  }
+
+  // ================================================================
+  // 8. АНИМАЦИЯ
+  // ================================================================
+
+  function animate() {
+    requestAnimationFrame(animate);
+    if (controls) controls.update();
+
+    const time = Date.now() * 0.001;
+    nodeObjects.forEach((obj, i) => {
+      if (obj !== hoveredNode) {
+        const pulse = 1 + Math.sin(time * 0.5 + i * 0.3) * 0.03;
+        obj.scale.set(pulse, pulse, pulse);
+      }
+    });
+
+    if (renderer && scene && camera) {
+      renderer.render(scene, camera);
+    }
+  }
+
+  // ================================================================
+  // 9. АДАПТАЦИЯ
+  // ================================================================
+
+  window.addEventListener('resize', () => {
+    if (!camera || !renderer) return;
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // ================================================================
+  // 10. ЗАПУСК
+  // ================================================================
+
+  loadData();
+  console.log('🌐 Полный граф зависимостей — загрузка...');
+</script>
+</body>
+</html>

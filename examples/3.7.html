@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>🌌 Космическая карта IDE — infoenergo-ui</title>
+  <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #000; color: #e6e6e6; overflow: hidden; height: 100vh; }
+      .app { display: grid; grid-template-columns: 280px 1fr 320px; grid-template-rows: 56px 1fr; height: 100vh; }
+      header { grid-column: 1 / 4; background: linear-gradient(90deg, #000010, #0a0e2a); border-bottom: 1px solid #1e2a4a; display: flex; align-items: center; padding: 0 20px; gap: 16px; }
+      header h1 { font-size: 18px; font-weight: 600; background: linear-gradient(90deg, #fbbf24, #f472b6, #60a5fa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+      header .stats { display: flex; gap: 20px; margin-left: auto; font-size: 13px; color: #9ca3af; }
+      header .stats b { color: #fbbf24; font-weight: 600; }
+      .sidebar { background: #000010; border-right: 1px solid #1e2a4a; padding: 16px; overflow-y: auto; }
+      .sidebar h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #9ca3af; margin-bottom: 10px; margin-top: 16px; }
+      .sidebar h3:first-child { margin-top: 0; }
+      .search { width: 100%; padding: 8px 12px; background: #0a0e1a; border: 1px solid #1e2a4a; border-radius: 6px; color: #e6e6e6; font-size: 13px; outline: none; }
+      .search:focus { border-color: #fbbf24; }
+      .module-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; transition: background 0.15s; color: #d1d5db; }
+      .module-item:hover { background: #1e2a4a; color: #fbbf24; }
+      .module-item .star { width: 8px; height: 8px; border-radius: 50%; background: radial-gradient(circle, #fef3c7, #f59e0b); box-shadow: 0 0 4px #fbbf24; }
+      .module-item .count { margin-left: auto; color: #6b7280; font-size: 10px; }
+      .legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 0; color: #9ca3af; }
+      .legend-item .dot { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 6px currentColor; }
+      .graph-container { position: relative; background: radial-gradient(ellipse at center, #050818 0%, #000 100%); overflow: hidden; cursor: grab; }
+      .graph-container:active { cursor: grabbing; }
+      canvas { width: 100%; height: 100%; display: block; }
+      .controls { position: absolute; bottom: 16px; left: 16px; display: flex; gap: 8px; background: rgba(5, 8, 24, 0.85); padding: 8px; border-radius: 8px; border: 1px solid #1e2a4a; backdrop-filter: blur(8px); flex-wrap: wrap; }
+      .btn { padding: 6px 12px; background: #0a0e1a; border: 1px solid #1e2a4a; border-radius: 4px; color: #e6e6e6; font-size: 12px; cursor: pointer; transition: all 0.15s; }
+      .btn:hover { background: #1e2a4a; border-color: #fbbf24; }
+      .btn.active { background: #fbbf24; border-color: #fbbf24; color: #000; }
+      .btn.primary { background: linear-gradient(90deg, #a78bfa, #60a5fa); color: #000; border-color: transparent; font-weight: 600; }
+      .btn.primary:hover { filter: brightness(1.2); }
+      .hint { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); background: rgba(5, 8, 24, 0.85); border: 1px solid #1e2a4a; padding: 8px 16px; border-radius: 20px; font-size: 12px; color: #9ca3af; backdrop-filter: blur(8px); pointer-events: none; }
+      .info-panel { background: #000010; border-left: 1px solid #1e2a4a; padding: 16px; overflow-y: auto; }
+      .info-panel h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #9ca3af; margin-bottom: 10px; }
+      .info-empty { color: #6b7280; font-size: 13px; text-align: center; padding: 40px 20px; font-style: italic; }
+      .info-card { background: #0a0e1a; border: 1px solid #1e2a4a; border-radius: 8px; padding: 14px; margin-bottom: 12px; }
+      .info-card .name { font-size: 15px; font-weight: 600; color: #fbbf24; word-break: break-all; margin-bottom: 4px; }
+      .info-card .system { font-size: 11px; color: #a78bfa; margin-bottom: 4px; }
+      .info-card .file { font-size: 11px; color: #9ca3af; font-family: monospace; word-break: break-all; margin-bottom: 10px; }
+      .info-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 12px; border-bottom: 1px solid #1e2a4a; }
+      .info-row:last-child { border-bottom: none; }
+      .info-row .label { color: #9ca3af; }
+      .info-row .value { color: #e6e6e6; font-weight: 500; }
+      .link-list { max-height: 200px; overflow-y: auto; }
+      .link-item { padding: 5px 8px; font-size: 12px; cursor: pointer; border-radius: 4px; color: #d1d5db; transition: background 0.15s; display: flex; align-items: center; gap: 6px; }
+      .link-item:hover { background: #1e2a4a; color: #fbbf24; }
+      .link-item .arrow { color: #a78bfa; }
+      .tooltip { position: absolute; background: rgba(5, 8, 24, 0.95); border: 1px solid #fbbf24; border-radius: 6px; padding: 8px 12px; font-size: 12px; pointer-events: none; opacity: 0; transition: opacity 0.15s; z-index: 100; max-width: 320px; backdrop-filter: blur(8px); box-shadow: 0 4px 20px rgba(251, 191, 36, 0.3); }
+      .tooltip .tt-name { color: #fbbf24; font-weight: 600; margin-bottom: 2px; }
+      .tooltip .tt-system { color: #a78bfa; font-size: 11px; margin-bottom: 2px; }
+      .tooltip .tt-file { color: #9ca3af; font-size: 11px; font-family: monospace; }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: #000010; }
+      ::-webkit-scrollbar-thumb { background: #1e2a4a; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #2e3a6a; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>🌌 Космическая карта IDE</h1>
+    <span style="color:#6b7280; font-size:13px;">infoenergo-ui · солнечные системы модулей</span>
+    <div class="stats">
+      <div>Систем: <b id="stat-suns">0</b></div>
+      <div>Планет: <b id="stat-nodes">0</b></div>
+      <div>Связей: <b id="stat-links">0</b></div>
+      <div>Радиус галактики: <b id="stat-radius">0</b></div>
+    </div>
+  </header>
+
+  <aside class="sidebar">
+    <h3>🔍 Поиск планеты</h3>
+    <input type="text" class="search" id="search" placeholder="Имя функции...">
+    <h3>☀ Солнечные системы</h3>
+    <div id="modules-list"></div>
+    <h3>🎨 Легенда</h3>
+    <div class="legend-item"><span class="dot" style="background:#fbbf24; color:#fbbf24;"></span>☀ Солнце (модуль/файл)</div>
+    <div class="legend-item"><span class="dot" style="background:#60a5fa; color:#60a5fa;"></span>🪐 Компонент Vue</div>
+    <div class="legend-item"><span class="dot" style="background:#34d399; color:#34d399;"></span>🪐 Composable</div>
+    <div class="legend-item"><span class="dot" style="background:#f472b6; color:#f472b6;"></span>🪐 Прочее</div>
+    <div class="legend-item" style="margin-top:6px;"><span style="width:24px; height:2px; background:repeating-linear-gradient(90deg, #a78bfa 0 4px, transparent 4px 8px);"></span>📡 Межпланетная связь (пунктир)</div>
+    <h3>💡 Управление</h3>
+    <div style="font-size:12px; color:#9ca3af; line-height:1.6;">
+      • Перетаскивание — вращение вселенной<br>
+      • Колесо мыши — зум (до 0.05×)<br>
+      • Клик по планете — её карта + связи<br>
+      • Двойной клик — прыжок к системе<br>
+      • Пробел — пауза времени<br>
+      • <b style="color:#a78bfa;">Кнопка «🌌 Вся сфера» — показать всю галактику</b>
+    </div>
+  </aside>
+
+  <main class="graph-container">
+    <canvas id="graph"></canvas>
+    <div class="hint">🌌 Солнца — модули · Планеты — функции · Пунктир — связи между мирами</div>
+    <div class="controls">
+      <button class="btn primary" id="btn-fit">🌌 Вся сфера</button>
+      <button class="btn" id="btn-reset">⟲ Сброс</button>
+      <button class="btn active" id="btn-time">⏸ Время</button>
+      <button class="btn active" id="btn-orbits">◯ Орбиты</button>
+      <button class="btn active" id="btn-links">📡 Связи</button>
+      <button class="btn" id="btn-labels">🏷 Имена</button>
+    </div>
+    <div class="tooltip" id="tooltip"></div>
+  </main>
+
+  <aside class="info-panel">
+    <h3>🗺 Карта объекта</h3>
+    <div id="info-content">
+      <div class="info-empty">Выберите планету или солнце для просмотра карты мира</div>
+    </div>
+  </aside>
+</div>
+
+<script>
+  // ============ ДАННЫЕ ============
+  const rawData = {"version":"3.0.0","entities":{"func_0000_add":{"id":"func_0000_add","name":"add","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":116,"kind":"function","isExported":false,"isAsync":false,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[{"callerId":"func_folm8l_useVirtualScroll","callerName":"useVirtualScroll","callerFile":"infoenergo-ui/src/composables/AiDataTable/useVirtualScroll.ts"}]},"func_70tjw4_applyColumnFilter":{"id":"func_70tjw4_applyColumnFilter","name":"applyColumnFilter","file":"infoenergo-ui/src/composables/AiDataTable/useFilterState.ts","line":52,"isExported":false,"isAsync":false,"paramsCount":4,"complexity":1,"calls":[{"targetName":"applyNumberFilter","callType":"direct"},{"targetName":"applyStringFilter","callType":"direct"},{"targetId":"func_lz153b_getCellDisplayText","targetName":"getCellDisplayText","callType":"direct"}],"calledBy":[{"callerId":"func_70tjw4_useFilterState","callerName":"useFilterState"}]},"func_0000_close":{"id":"func_0000_close","name":"close","file":"infoenergo-ui/src/components/ui/AiContextMenu/AiContextMenu.vue","line":14,"isExported":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_5sw9lj_closeDialog":{"id":"func_5sw9lj_closeDialog","name":"closeDialog","file":"infoenergo-ui/src/composables/AiDialog/store.ts","line":44,"isExported":true,"paramsCount":1,"complexity":2,"calls":[],"calledBy":[]},"func_5sw9lj_configureButtons":{"id":"func_5sw9lj_configureButtons","name":"configureButtons","file":"infoenergo-ui/src/composables/AiDialog/store.ts","line":8,"isExported":false,"paramsCount":3,"complexity":1,"calls":[{"targetName":"trim","callType":"method"},{"targetName":"push","callType":"array_method"},{"targetName":"addButton","callType":"direct"}],"calledBy":[{"callerId":"func_5sw9lj_showDialog","callerName":"showDialog"}]},"func_0000_copy":{"id":"func_0000_copy","name":"copy","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":123,"isAsync":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_70tjw4_createDefaultColumnFilterState":{"id":"func_70tjw4_createDefaultColumnFilterState","name":"createDefaultColumnFilterState","file":"infoenergo-ui/src/composables/AiDataTable/useFilterState.ts","line":38,"paramsCount":1,"complexity":1,"calls":[{"targetName":"createEmptyDateFilterState","callType":"direct"}],"calledBy":[{"callerId":"func_70tjw4_useFilterState","callerName":"useFilterState"}]},"func_rerp9w_createEmptyColumn":{"id":"func_rerp9w_createEmptyColumn","name":"createEmptyColumn","file":"infoenergo-ui/src/composables/AiDataTable/serviceColumnsFactories.ts","line":43,"isExported":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig"}]},"func_rerp9w_createExpandColumn":{"id":"func_rerp9w_createExpandColumn","name":"createExpandColumn","file":"infoenergo-ui/src/composables/AiDataTable/serviceColumnsFactories.ts","line":29,"isExported":true,"paramsCount":2,"complexity":1,"calls":[{"targetName":"h","callType":"direct"}],"calledBy":[{"callerId":"func_rerp9w_createServiceColumns","callerName":"createServiceColumns"}]},"func_rerp9w_createSelectionColumn":{"id":"func_rerp9w_createSelectionColumn","name":"createSelectionColumn","file":"infoenergo-ui/src/composables/AiDataTable/serviceColumnsFactories.ts","line":16,"isExported":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[{"callerId":"func_rerp9w_createServiceColumns","callerName":"createServiceColumns"}]},"func_rerp9w_createServiceColumns":{"id":"func_rerp9w_createServiceColumns","name":"createServiceColumns","file":"infoenergo-ui/src/composables/AiDataTable/serviceColumnsFactories.ts","line":53,"isExported":true,"paramsCount":3,"complexity":1,"calls":[{"targetName":"push","callType":"array_method"},{"targetId":"func_rerp9w_createSelectionColumn","targetName":"createSelectionColumn","callType":"direct"},{"targetId":"func_rerp9w_createExpandColumn","targetName":"createExpandColumn","callType":"direct"}],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig"}]},"func_j7pkc5_createState":{"id":"func_j7pkc5_createState","name":"createState","file":"infoenergo-ui/src/composables/AiDataTable/useCache.ts","line":12,"paramsCount":0,"complexity":1,"calls":[{"targetName":"reactive","callType":"vue"},{"targetName":"Map","callType":"constructor"}],"calledBy":[{"callerId":"func_j7pkc5_useCache","callerName":"useCache"}]},"func_0000_defineEmits":{"id":"func_0000_defineEmits","name":"defineEmits","file":"infoenergo-ui/src/components/ui/AiDataTable/components/FilterCell/HeaderCell/HeaderCell.vue","line":14,"isExported":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_0000_defineProps":{"id":"func_0000_defineProps","name":"defineProps","file":"infoenergo-ui/src/components/ui/AiDataTable/components/FilterCell/HeaderCell/HeaderCell.vue","line":13,"isExported":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_0000_delete":{"id":"func_0000_delete","name":"delete","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":119,"isAsync":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[{"callerId":"func_9tv3u2_useDataStore","callerName":"useDataStore"},{"callerId":"func_8iz54o_useChangesTracker","callerName":"useChangesTracker"}]},"func_0000_dialog":{"id":"func_0000_dialog","name":"dialog","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":23,"isExported":true,"paramsCount":0,"complexity":1,"calls":[{"targetId":"func_62mmbb_useDialog","targetName":"useDialog","callType":"direct"}],"calledBy":[]},"func_0000_doLoadData":{"id":"func_0000_doLoadData","name":"doLoadData","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":190,"isExported":true,"isAsync":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_0000_export":{"id":"func_0000_export","name":"export","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":134,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[]},"func_lz153b_findBaseColumnByDataField":{"id":"func_lz153b_findBaseColumnByDataField","name":"findBaseColumnByDataField","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":60,"isExported":true,"paramsCount":2,"complexity":1,"calls":[{"targetId":"func_lz153b_flattenBaseColumns","targetName":"flattenBaseColumns","callType":"direct"},{"targetName":"find","callType":"array_method"}],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig"}]},"func_lz153b_flattenBaseColumns":{"id":"func_lz153b_flattenBaseColumns","name":"flattenBaseColumns","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":53,"isExported":true,"paramsCount":1,"complexity":1,"calls":[{"targetName":"flatMap","callType":"array_method"},{"targetId":"func_lz153b_isBaseColumn","targetName":"isBaseColumn","callType":"direct"},{"targetId":"func_lz153b_isParentColumn","targetName":"isParentColumn","callType":"direct"}],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig"},{"callerId":"func_nu0fv2_useExportAdapter","callerName":"useExportAdapter"},{"callerId":"func_lz153b_findBaseColumnByDataField","callerName":"findBaseColumnByDataField"}]},"func_lz153b_getCellDisplayText":{"id":"func_lz153b_getCellDisplayText","name":"getCellDisplayText","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":18,"isExported":true,"paramsCount":2,"complexity":1,"calls":[{"targetName":"toTimestamp","callType":"direct"},{"targetName":"String","callType":"external"},{"targetName":"format","callType":"method"}],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig"},{"callerId":"func_70tjw4_applyColumnFilter","callerName":"applyColumnFilter"}]},"func_9efayj_getDefaultColumnConfig":{"id":"func_9efayj_getDefaultColumnConfig","name":"getDefaultColumnConfig","file":"infoenergo-ui/src/components/ui/AiDataTable/defaults.ts","line":72,"isExported":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig"}]},"func_5sw9lj_getDialogState":{"id":"func_5sw9lj_getDialogState","name":"getDialogState","file":"infoenergo-ui/src/composables/AiDialog/store.ts","line":24,"isExported":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_0000_handleButtonClick":{"id":"func_0000_handleButtonClick","name":"handleButtonClick","file":"infoenergo-ui/src/components/ui/AiToolbar/AiToolbar.vue","line":25,"isExported":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[]},"func_0000_handleClose":{"id":"func_0000_handleClose","name":"handleClose","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":48,"isExported":true,"isAsync":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[]},"func_0000_handleContextMenu":{"id":"func_0000_handleContextMenu","name":"handleContextMenu","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":24,"isExported":true,"paramsCount":2,"complexity":1,"calls":[],"calledBy":[]},"func_0000_handleContextMenuSelect":{"id":"func_0000_handleContextMenuSelect","name":"handleContextMenuSelect","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":160,"isExported":true,"isAsync":true,"paramsCount":3,"complexity":1,"calls":[],"calledBy":[]},"func_0000_handleDropdownClick":{"id":"func_0000_handleDropdownClick","name":"handleDropdownClick","file":"infoenergo-ui/src/components/ui/AiToolbar/AiToolbar.vue","line":12,"isExported":true,"paramsCount":2,"complexity":1,"calls":[],"calledBy":[]},"func_0000_handleInputChange":{"id":"func_0000_handleInputChange","name":"handleInputChange","file":"infoenergo-ui/src/components/ui/AiToolbar/AiToolbar.vue","line":33,"isExported":true,"paramsCount":2,"complexity":1,"calls":[],"calledBy":[]},"func_0000_handleInputUpdate":{"id":"func_0000_handleInputUpdate","name":"handleInputUpdate","file":"infoenergo-ui/src/components/ui/AiToolbar/search/AiToolbarSearchInput.vue","line":9,"isExported":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[]},"func_0000_handleLeftArrowClick":{"id":"func_0000_handleLeftArrowClick","name":"handleLeftArrowClick","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":40,"isExported":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_0000_handleRightArrowClick":{"id":"func_0000_handleRightArrowClick","name":"handleRightArrowClick","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":44,"isExported":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_0000_handleSelect":{"id":"func_0000_handleSelect","name":"handleSelect","file":"infoenergo-ui/src/components/ui/AiContextMenu/AiContextMenu.vue","line":19,"isExported":true,"paramsCount":2,"complexity":1,"calls":[],"calledBy":[]},"func_0000_handleToolbarButtonClick":{"id":"func_0000_handleToolbarButtonClick","name":"handleToolbarButtonClick","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":176,"isExported":true,"isAsync":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[]},"func_0000_handleToolbarDropdownClick":{"id":"func_0000_handleToolbarDropdownClick","name":"handleToolbarDropdownClick","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":181,"isExported":true,"isAsync":true,"paramsCount":2,"complexity":1,"calls":[],"calledBy":[]},"func_0000_handleToolbarInputChange":{"id":"func_0000_handleToolbarInputChange","name":"handleToolbarInputChange","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":186,"isExported":true,"paramsCount":2,"complexity":1,"calls":[],"calledBy":[]},"func_0000_handleUpdate":{"id":"func_0000_handleUpdate","name":"handleUpdate","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":68,"isExported":true,"isAsync":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[]},"func_0000_handleUpdateColumnChooserValue":{"id":"func_0000_handleUpdateColumnChooserValue","name":"handleUpdateColumnChooserValue","file":"infoenergo-ui/src/components/ui/AiToolbar/AiToolbar.vue","line":29,"isExported":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[]},"func_gpzzu8_initGlobalSettings":{"id":"func_gpzzu8_initGlobalSettings","name":"initGlobalSettings","file":"infoenergo-ui/src/composables/common/useGlobalSettings.ts","line":47,"isExported":true,"paramsCount":1,"complexity":1,"calls":[{"targetId":"func_gpzzu8_validateTableApi","targetName":"validateTableApi","callType":"direct"}],"calledBy":[]},"func_lz153b_isAlwaysVisibleColumn":{"id":"func_lz153b_isAlwaysVisibleColumn","name":"isAlwaysVisibleColumn","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":30,"isExported":true,"paramsCount":1,"complexity":2,"calls":[{"targetId":"func_lz153b_isServiceColumn","targetName":"isServiceColumn","callType":"direct"}],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig"},{"callerId":"func_lz153b_isVisibleColumn","callerName":"isVisibleColumn"}]},"func_lz153b_isBaseColumn":{"id":"func_lz153b_isBaseColumn","name":"isBaseColumn","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":36,"isExported":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig"},{"callerId":"func_lz153b_isVisibleColumn","callerName":"isVisibleColumn"},{"callerId":"func_lz153b_flattenBaseColumns","callerName":"flattenBaseColumns"}]},"func_0000_isButtonDisabled":{"id":"func_0000_isButtonDisabled","name":"isButtonDisabled","file":"infoenergo-ui/src/components/ui/AiToolbar/AiToolbar.vue","line":40,"isExported":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[]},"func_j7pkc5_isClean":{"id":"func_j7pkc5_isClean","name":"isClean","file":"infoenergo-ui/src/composables/AiDataTable/useCache.ts","line":8,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[]},"func_lz153b_isEmptyColumn":{"id":"func_lz153b_isEmptyColumn","name":"isEmptyColumn","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":46,"isExported":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[{"callerId":"func_lz153b_isServiceColumn","callerName":"isServiceColumn"}]},"func_lz153b_isExpandColumn":{"id":"func_lz153b_isExpandColumn","name":"isExpandColumn","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":41,"isExported":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[{"callerId":"func_lz153b_isServiceColumn","callerName":"isServiceColumn"}]},"func_0000_isItemDisabled":{"id":"func_0000_isItemDisabled","name":"isItemDisabled","file":"infoenergo-ui/src/components/ui/AiToolbar/AiToolbar.vue","line":38,"isExported":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_lz153b_isParentColumn":{"id":"func_lz153b_isParentColumn","name":"isParentColumn","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":43,"isExported":true,"paramsCount":1,"complexity":1,"calls":[{"targetName":"isArray","callType":"method"}],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig"},{"callerId":"func_lz153b_isServiceColumn","callerName":"isServiceColumn"},{"callerId":"func_lz153b_flattenBaseColumns","callerName":"flattenBaseColumns"}]},"func_lz153b_isSelectionColumn":{"id":"func_lz153b_isSelectionColumn","name":"isSelectionColumn","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":39,"isExported":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[{"callerId":"func_lz153b_isServiceColumn","callerName":"isServiceColumn"}]},"func_lz153b_isServiceColumn":{"id":"func_lz153b_isServiceColumn","name":"isServiceColumn","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":49,"isExported":true,"paramsCount":1,"complexity":1,"calls":[{"targetId":"func_lz153b_isSelectionColumn","targetName":"isSelectionColumn","callType":"direct"},{"targetId":"func_lz153b_isExpandColumn","targetName":"isExpandColumn","callType":"direct"},{"targetId":"func_lz153b_isParentColumn","targetName":"isParentColumn","callType":"direct"},{"targetId":"func_lz153b_isEmptyColumn","targetName":"isEmptyColumn","callType":"direct"}],"calledBy":[{"callerId":"func_lz153b_isAlwaysVisibleColumn","callerName":"isAlwaysVisibleColumn"}]},"func_lz153b_isVisibleColumn":{"id":"func_lz153b_isVisibleColumn","name":"isVisibleColumn","file":"infoenergo-ui/src/composables/AiDataTable/columnUtils.ts","line":33,"isExported":true,"paramsCount":1,"complexity":2,"calls":[{"targetId":"func_lz153b_isAlwaysVisibleColumn","targetName":"isAlwaysVisibleColumn","callType":"direct"},{"targetId":"func_lz153b_isBaseColumn","targetName":"isBaseColumn","callType":"direct"}],"calledBy":[]},"func_i6ds4l_makeSorter":{"id":"func_i6ds4l_makeSorter","name":"makeSorter","file":"infoenergo-ui/src/composables/AiDataTable/common.ts","line":33,"isExported":true,"paramsCount":2,"complexity":1,"calls":[{"targetName":"Number","callType":"external"},{"targetName":"parseRussianDateTimeToTimestamp","callType":"direct"},{"targetName":"Boolean","callType":"external"},{"targetName":"String","callType":"external"},{"targetName":"localeCompare","callType":"method"}],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig"}]},"func_0000_onClick":{"id":"func_0000_onClick","name":"onClick","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":151,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_0000_onContextmenu":{"id":"func_0000_onContextmenu","name":"onContextmenu","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":155,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[]},"func_0000_onCreateFilter":{"id":"func_0000_onCreateFilter","name":"onCreateFilter","file":"infoenergo-ui/src/components/ui/AiFooter/AiFooter.vue","line":13,"isExported":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_0000_onDateFilterUpdate":{"id":"func_0000_onDateFilterUpdate","name":"onDateFilterUpdate","file":"infoenergo-ui/src/components/ui/AiDataTable/components/FilterCell/HeaderCell/HeaderCell.vue","line":31,"isExported":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[]},"func_0000_onDblclick":{"id":"func_0000_onDblclick","name":"onDblclick","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":148,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_0000_onDialogNegativeClick":{"id":"func_0000_onDialogNegativeClick","name":"onDialogNegativeClick","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":80,"isExported":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_0000_onDialogNeutralClick":{"id":"func_0000_onDialogNeutralClick","name":"onDialogNeutralClick","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":87,"isExported":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_0000_onDialogPositiveClick":{"id":"func_0000_onDialogPositiveClick","name":"onDialogPositiveClick","file":"infoenergo-ui/src/components/ui/AiTabs/AiTabs.vue","line":73,"isExported":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_0000_onFilterInputUpdate":{"id":"func_0000_onFilterInputUpdate","name":"onFilterInputUpdate","file":"infoenergo-ui/src/components/ui/AiDataTable/components/FilterCell/HeaderCell/HeaderCell.vue","line":23,"isExported":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[]},"func_0000_onFilterSelectUpdate":{"id":"func_0000_onFilterSelectUpdate","name":"onFilterSelectUpdate","file":"infoenergo-ui/src/components/ui/AiDataTable/components/FilterCell/HeaderCell/HeaderCell.vue","line":27,"isExported":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[]},"func_0000_options":{"id":"func_0000_options","name":"options","file":"infoenergo-ui/src/components/ui/AiContextMenu/AiContextMenu.vue","line":9,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_0000_refresh":{"id":"func_0000_refresh","name":"refresh","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":108,"isAsync":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_0000_rowClassName":{"id":"func_0000_rowClassName","name":"rowClassName","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":138,"isExported":true,"paramsCount":2,"complexity":1,"calls":[],"calledBy":[]},"func_0000_rowProps":{"id":"func_0000_rowProps","name":"rowProps","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":146,"isExported":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[]},"func_0000_save":{"id":"func_0000_save","name":"save","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":127,"isAsync":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]},"func_0000_search":{"id":"func_0000_search","name":"search","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":135,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[]},"func_0000_settings":{"id":"func_0000_settings","name":"settings","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":131,"isAsync":true,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[]},"func_5sw9lj_showDialog":{"id":"func_5sw9lj_showDialog","name":"showDialog","file":"infoenergo-ui/src/composables/AiDialog/store.ts","line":26,"isExported":true,"paramsCount":1,"complexity":1,"calls":[{"targetName":"error","callType":"method"},{"targetName":"resolve","callType":"method"},{"targetName":"trim","callType":"method"},{"targetId":"func_5sw9lj_configureButtons","targetName":"configureButtons","callType":"direct"}],"calledBy":[]},"func_0000_slots":{"id":"func_0000_slots","name":"slots","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":27,"isExported":true,"paramsCount":0,"complexity":1,"calls":[{"targetName":"useSlots","callType":"vue"}],"calledBy":[]},"func_i6ds4l_splitByHighlight":{"id":"func_i6ds4l_splitByHighlight","name":"splitByHighlight","file":"infoenergo-ui/src/composables/AiDataTable/common.ts","line":12,"isExported":true,"paramsCount":2,"complexity":3,"calls":[{"targetName":"toLowerCase","callType":"method"},{"targetName":"includes","callType":"array_method"},{"targetName":"indexOf","callType":"array_method"},{"targetName":"push","callType":"array_method"},{"targetName":"slice","callType":"array_method"}],"calledBy":[]},"func_70tjw4_toBooleanFilterState":{"id":"func_70tjw4_toBooleanFilterState","name":"toBooleanFilterState","file":"infoenergo-ui/src/composables/AiDataTable/useFilterState.ts","line":28,"paramsCount":1,"complexity":1,"calls":[],"calledBy":[{"callerId":"func_70tjw4_useFilterState","callerName":"useFilterState"}]},"func_w6eo6o_useButtonsConfig":{"id":"func_w6eo6o_useButtonsConfig","name":"useButtonsConfig","file":"infoenergo-ui/src/composables/AiButton/useButtonsConfig.ts","line":9,"isExported":true,"paramsCount":1,"complexity":1,"calls":[{"targetName":"getConfigureType","callType":"direct"},{"targetName":"reactive","callType":"vue"},{"targetName":"toRef","callType":"vue"}],"calledBy":[]},"func_j7pkc5_useCache":{"id":"func_j7pkc5_useCache","name":"useCache","file":"infoenergo-ui/src/composables/AiDataTable/useCache.ts","line":18,"isExported":true,"paramsCount":1,"complexity":3,"calls":[{"targetId":"func_j7pkc5_createState","targetName":"createState","callType":"direct"},{"targetName":"get","callType":"method"},{"targetName":"set","callType":"method"}],"calledBy":[{"callerId":"func_gfe862_useDataState","callerName":"useDataState"}]},"func_8iz54o_useChangesTracker":{"id":"func_8iz54o_useChangesTracker","name":"useChangesTracker","file":"infoenergo-ui/src/composables/AiDataTable/useChangesTracker.ts","line":6,"isExported":true,"paramsCount":2,"complexity":1,"calls":[{"targetName":"computed","callType":"vue"},{"targetName":"has","callType":"method"},{"targetName":"from","callType":"method"},{"targetName":"keys","callType":"method"},{"targetName":"clear","callType":"method"},{"targetName":"isNewRow","callType":"direct"},{"targetName":"get","callType":"method"},{"targetName":"set","callType":"method"},{"targetName":"is","callType":"method"},{"targetId":"func_0000_delete","targetName":"delete","callType":"method"}],"calledBy":[{"callerId":"func_gfe862_useDataState","callerName":"useDataState"}]},"func_4c3d5e_useColumnsConfig":{"id":"func_4c3d5e_useColumnsConfig","name":"useColumnsConfig","file":"infoenergo-ui/src/composables/AiDataTable/useColumnsConfig.ts","line":43,"isExported":true,"paramsCount":7,"complexity":7,"calls":[{"targetName":"filter","callType":"array_method"},{"targetName":"ref","callType":"vue"},{"targetId":"func_70tjw4_useFilterState","targetName":"useFilterState","callType":"direct"},{"targetName":"map","callType":"array_method"},{"targetId":"func_lz153b_isBaseColumn","targetName":"isBaseColumn","callType":"direct"},{"targetId":"func_lz153b_isAlwaysVisibleColumn","targetName":"isAlwaysVisibleColumn","callType":"direct"},{"targetName":"includes","callType":"array_method"},{"targetName":"push","callType":"array_method"},{"targetName":"findIndex","callType":"array_method"},{"targetName":"splice","callType":"array_method"},{"targetId":"func_lz153b_flattenBaseColumns","targetName":"flattenBaseColumns","callType":"direct"},{"targetName":"Number","callType":"external"},{"targetId":"func_lz153b_findBaseColumnByDataField","targetName":"findBaseColumnByDataField","callType":"direct"},{"targetName":"clearTimeout","callType":"external"},{"targetName":"setTimeout","callType":"external"},{"targetName":"trim","callType":"method"},{"targetName":"toLowerCase","callType":"method"},{"targetName":"some","callType":"array_method"},{"targetId":"func_lz153b_getCellDisplayText","targetName":"getCellDisplayText","callType":"direct"},{"targetName":"matchesSearch","callType":"direct"},{"targetName":"every","callType":"array_method"},{"targetName":"getNaiveFilterConfigFunction","callType":"direct"},{"targetName":"setupColumnChooser","callType":"direct"},{"targetName":"h","callType":"direct"},{"targetName":"isModified","callType":"direct"},{"targetName":"getValidationErrorMessage","callType":"direct"},{"targetName":"modifyData","callType":"direct"},{"targetId":"func_9efayj_getDefaultColumnConfig","targetName":"getDefaultColumnConfig","callType":"direct"},{"targetId":"func_i6ds4l_makeSorter","targetName":"makeSorter","callType":"direct"},{"targetName":"resolveEditable","callType":"direct"},{"targetName":"createFieldRenderer","callType":"direct"},{"targetName":"updateFilterState","callType":"direct"},{"targetName":"applyFilterSelection","callType":"direct"},{"targetName":"setFilterInput","callType":"direct"},{"targetName":"setDateFilterState","callType":"direct"},{"targetId":"func_lz153b_isParentColumn","targetName":"isParentColumn","callType":"direct"},{"targetName":"buildColumnHierarchy","callType":"direct"},{"targetName":"transformToTableColumn","callType":"direct"},{"targetId":"func_rerp9w_createServiceColumns","targetName":"createServiceColumns","callType":"method"},{"targetId":"func_rerp9w_createEmptyColumn","targetName":"createEmptyColumn","callType":"direct"},{"targetName":"rebuildColumns","callType":"direct"},{"targetName":"initializeColumns","callType":"direct"},{"targetName":"onUnmounted","callType":"vue"}],"calledBy":[]},"func_l3oc3k_useContextMenuState":{"id":"func_l3oc3k_useContextMenuState","name":"useContextMenuState","file":"infoenergo-ui/src/composables/AiContextMenu/useContextMenuState.ts","line":8,"isExported":true,"paramsCount":0,"complexity":3,"calls":[{"targetName":"ref","callType":"vue"},{"targetName":"preventDefault","callType":"method"}],"calledBy":[]},"func_gfe862_useDataState":{"id":"func_gfe862_useDataState","name":"useDataState","file":"infoenergo-ui/src/composables/AiDataTable/useDataState.ts","line":18,"isExported":true,"paramsCount":2,"complexity":5,"calls":[{"targetName":"inject","callType":"vue"},{"targetId":"func_j7pkc5_useCache","targetName":"useCache","callType":"direct"},{"targetId":"func_8iz54o_useChangesTracker","targetName":"useChangesTracker","callType":"direct"},{"targetId":"func_9tv3u2_useDataStore","targetName":"useDataStore","callType":"direct"},{"targetId":"func_62mmbb_useDialog","targetName":"useDialog","callType":"direct"},{"targetName":"loadData","callType":"direct"},{"targetName":"show","callType":"method"},{"targetName":"saveData","callType":"direct"},{"targetName":"getData","callType":"direct"},{"targetName":"resetChanges","callType":"direct"},{"targetName":"getUpdatedRowKeys","callType":"direct"},{"targetName":"getInsertedRowKeys","callType":"direct"},{"targetName":"saveModifiedData","callType":"direct"},{"targetName":"insertNewRow","callType":"direct"},{"targetName":"trackInsert","callType":"direct"},{"targetName":"deleteRows","callType":"direct"},{"targetName":"trackDelete","callType":"direct"},{"targetName":"applyChangesToData","callType":"direct"},{"targetName":"updateRowField","callType":"direct"},{"targetName":"trackUpdate","callType":"direct"},{"targetName":"createCopiedRow","callType":"direct"},{"targetName":"setLocalData","callType":"direct"}],"calledBy":[]},"func_9tv3u2_useDataStore":{"id":"func_9tv3u2_useDataStore","name":"useDataStore","file":"infoenergo-ui/src/composables/AiDataTable/useDataStore.ts","line":15,"isExported":true,"paramsCount":5,"complexity":15,"calls":[{"targetName":"useMessage","callType":"direct"},{"targetId":"func_gpzzu8_useGlobalSettings","targetName":"useGlobalSettings","callType":"direct"},{"targetName":"flatMap","callType":"array_method"},{"targetName":"reactive","callType":"vue"},{"targetName":"find","callType":"array_method"},{"targetName":"findIndex","callType":"array_method"},{"targetName":"fromEntries","callType":"method"},{"targetName":"map","callType":"array_method"},{"targetName":"random","callType":"method"},{"targetName":"getDataRowByKey","callType":"direct"},{"targetName":"data","callType":"method"},{"targetName":"clear","callType":"method"},{"targetName":"success","callType":"method"},{"targetName":"push","callType":"array_method"},{"targetName":"error","callType":"method"},{"targetName":"String","callType":"external"},{"targetName":"filter","callType":"array_method"},{"targetName":"createValidationErrorKey","callType":"direct"},{"targetName":"set","callType":"method"},{"targetName":"getNewRowData","callType":"direct"},{"targetName":"getDataRowIndexByKey","callType":"direct"},{"targetName":"splice","callType":"array_method"},{"targetName":"get","callType":"method"},{"targetName":"sort","callType":"array_method"},{"targetName":"deleteNewRows","callType":"direct"},{"targetName":"getNewCopiedRowData","callType":"direct"},{"targetName":"entries","callType":"method"},{"targetName":"keys","callType":"method"},{"targetName":"unshift","callType":"array_method"},{"targetName":"from","callType":"method"},{"targetName":"values","callType":"method"},{"targetName":"applyChangesToData","callType":"direct"},{"targetId":"func_0000_delete","targetName":"delete","callType":"method"}],"calledBy":[{"callerId":"func_gfe862_useDataState","callerName":"useDataState"}]},"func_62mmbb_useDialog":{"id":"func_62mmbb_useDialog","name":"useDialog","file":"infoenergo-ui/src/composables/AiDialog/useDialog.ts","line":4,"isExported":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[{"callerId":"func_0000_dialog","callerName":"dialog"},{"callerId":"func_gfe862_useDataState","callerName":"useDataState"}]},"func_nu0fv2_useExportAdapter":{"id":"func_nu0fv2_useExportAdapter","name":"useExportAdapter","file":"infoenergo-ui/src/composables/AiDataTable/useExportAdapter.ts","line":23,"isExported":true,"paramsCount":7,"complexity":1,"calls":[{"targetId":"func_lz153b_flattenBaseColumns","targetName":"flattenBaseColumns","callType":"direct"},{"targetName":"map","callType":"array_method"},{"targetName":"filterRows","callType":"direct"},{"targetName":"filter","callType":"array_method"},{"targetName":"includes","callType":"array_method"},{"targetName":"getRowKey","callType":"direct"},{"targetId":"func_gpzzu8_useGlobalSettings","targetName":"useGlobalSettings","callType":"direct"},{"targetName":"exportCallback","callType":"direct"},{"targetName":"getSelectedRowsData","callType":"direct"},{"targetName":"Error","callType":"external"}],"calledBy":[]},"func_70tjw4_useFilterState":{"id":"func_70tjw4_useFilterState","name":"useFilterState","file":"infoenergo-ui/src/composables/AiDataTable/useFilterState.ts","line":70,"isExported":true,"paramsCount":0,"complexity":1,"calls":[{"targetId":"func_70tjw4_createDefaultColumnFilterState","targetName":"createDefaultColumnFilterState","callType":"direct"},{"targetName":"ensureColumnFilter","callType":"direct"},{"targetName":"normalizeFilterInput","callType":"direct"},{"targetName":"cloneDateFilterState","callType":"direct"},{"targetName":"applyDateFilter","callType":"direct"},{"targetName":"createEmptyDateFilterState","callType":"direct"},{"targetName":"isEmptyFilterInput","callType":"direct"},{"targetName":"Boolean","callType":"external"},{"targetId":"func_70tjw4_applyColumnFilter","targetName":"applyColumnFilter","callType":"direct"},{"targetName":"assign","callType":"method"},{"targetId":"func_70tjw4_toBooleanFilterState","targetName":"toBooleanFilterState","callType":"direct"},{"targetName":"createEmptyFilterInput","callType":"direct"}],"calledBy":[{"callerId":"func_4c3d5e_useColumnsConfig","callerName":"useColumnsConfig"}]},"func_gpzzu8_useGlobalSettings":{"id":"func_gpzzu8_useGlobalSettings","name":"useGlobalSettings","file":"infoenergo-ui/src/composables/common/useGlobalSettings.ts","line":59,"isExported":true,"paramsCount":0,"complexity":1,"calls":[{"targetName":"Error","callType":"constructor"}],"calledBy":[{"callerId":"func_s8gl12_useTableState","callerName":"useTableState"},{"callerId":"func_nu0fv2_useExportAdapter","callerName":"useExportAdapter"},{"callerId":"func_9tv3u2_useDataStore","callerName":"useDataStore"}]},"func_s8gl12_useTableState":{"id":"func_s8gl12_useTableState","name":"useTableState","file":"infoenergo-ui/src/composables/AiDataTable/useTableState.ts","line":24,"isExported":true,"paramsCount":7,"complexity":3,"calls":[{"targetName":"ref","callType":"vue"},{"targetName":"random","callType":"method"},{"targetId":"func_gpzzu8_useGlobalSettings","targetName":"useGlobalSettings","callType":"direct"},{"targetName":"includes","callType":"array_method"},{"targetName":"some","callType":"array_method"},{"targetName":"at","callType":"method"},{"targetName":"find","callType":"array_method"},{"targetName":"filter","callType":"array_method"},{"targetName":"map","callType":"array_method"},{"targetName":"getColumnsSettings","callType":"direct"},{"targetName":"error","callType":"method"},{"targetName":"resolveViewId","callType":"direct"},{"targetName":"userChanges","callType":"method"},{"targetName":"String","callType":"external"},{"targetName":"clearTimeout","callType":"external"},{"targetName":"cancelScheduledAutoSave","callType":"direct"},{"targetName":"setTimeout","callType":"external"},{"targetName":"setUserDataChanges","callType":"direct"},{"targetName":"triggerAutoSave","callType":"direct"},{"targetName":"applyColumnsSettings","callType":"direct"},{"targetName":"resetTableToolbarSettings","callType":"direct"},{"targetName":"rebuildColumns","callType":"direct"},{"targetName":"onResetState","callType":"direct"},{"targetName":"watch","callType":"vue"},{"targetName":"onScopeDispose","callType":"direct"}],"calledBy":[]},"func_b005og_useTabsBaseOperations":{"id":"func_b005og_useTabsBaseOperations","name":"useTabsBaseOperations","file":"infoenergo-ui/src/composables/AiTabs/useTabsBaseOperations.ts","line":98,"isExported":true,"paramsCount":0,"complexity":2,"calls":[{"targetId":"func_1vccrw_useTabsState","targetName":"useTabsState","callType":"direct"},{"targetName":"find","callType":"array_method"},{"targetName":"isInTabBarFunc","callType":"direct"},{"targetName":"setTabs","callType":"direct"},{"targetName":"setActiveTab","callType":"direct"},{"targetName":"findIndex","callType":"array_method"},{"targetName":"splice","callType":"array_method"},{"targetName":"min","callType":"method"},{"targetName":"some","callType":"array_method"},{"targetName":"map","callType":"array_method"},{"targetName":"value","callType":"direct"}],"calledBy":[]},"func_sdsj9s_useTabsScroll":{"id":"func_sdsj9s_useTabsScroll","name":"useTabsScroll","file":"infoenergo-ui/src/composables/AiTabs/useTabsScroll.ts","line":17,"isExported":true,"paramsCount":1,"complexity":1,"calls":[{"targetName":"querySelector","callType":"method"},{"targetName":"getTabsScrollContainer","callType":"direct"},{"targetName":"scrollBy","callType":"method"}],"calledBy":[]},"func_1vccrw_useTabsState":{"id":"func_1vccrw_useTabsState","name":"useTabsState","file":"infoenergo-ui/src/composables/AiTabs/useTabsState.ts","line":49,"isExported":true,"paramsCount":0,"complexity":3,"calls":[{"targetName":"computed","callType":"vue"}],"calledBy":[{"callerId":"func_b005og_useTabsBaseOperations","callerName":"useTabsBaseOperations"}]},"func_a70sc9_useToolbarConfig":{"id":"func_a70sc9_useToolbarConfig","name":"useToolbarConfig","file":"infoenergo-ui/src/composables/AiToolbar/useToolbarConfig.ts","line":13,"isExported":true,"paramsCount":6,"complexity":2,"calls":[{"targetName":"useSettingsDropdown","callType":"direct"},{"targetName":"map","callType":"array_method"},{"targetName":"value","callType":"direct"},{"targetName":"getSearchValue","callType":"direct"},{"targetName":"getDropdownOptions","callType":"direct"},{"targetName":"filter","callType":"array_method"},{"targetName":"shallowRef","callType":"direct"},{"targetName":"createToolbarItems","callType":"direct"}],"calledBy":[]},"func_folm8l_useVirtualScroll":{"id":"func_folm8l_useVirtualScroll","name":"useVirtualScroll","file":"infoenergo-ui/src/composables/AiDataTable/useVirtualScroll.ts","line":10,"isExported":true,"paramsCount":0,"complexity":5,"calls":[{"targetName":"ref","callType":"vue"},{"targetName":"createElement","callType":"method"},{"targetName":"AbortController","callType":"constructor"},{"targetName":"computed","callType":"vue"},{"targetName":"ceil","callType":"method"},{"targetName":"max","callType":"method"},{"targetName":"getVirtualScrollTools","callType":"direct"},{"targetName":"Error","callType":"constructor"},{"targetName":"getData","callType":"method"},{"targetName":"nextTick","callType":"direct"},{"targetName":"querySelector","callType":"method"},{"targetName":"remove","callType":"method"},{"targetId":"func_0000_add","targetName":"add","callType":"method"},{"targetName":"appendChild","callType":"method"},{"targetName":"assign","callType":"method"},{"targetName":"min","callType":"method"},{"targetName":"floor","callType":"method"},{"targetName":"clampGlobalPosition","callType":"direct"},{"targetName":"clampData","callType":"direct"},{"targetName":"clampThumb","callType":"direct"},{"targetName":"translateY","callType":"direct"},{"targetName":"updateDataScrollTop","callType":"direct"},{"targetName":"removeDataFromTop","callType":"method"},{"targetName":"removeDataFromBottom","callType":"method"},{"targetName":"isScrollBlocked","callType":"direct"},{"targetName":"updateGlobalPosition","callType":"direct"},{"targetName":"loadNextPageInWindow","callType":"direct"},{"targetName":"loadPrevPageInWindow","callType":"direct"},{"targetName":"updateThumb","callType":"direct"},{"targetName":"updateDataTransform","callType":"direct"},{"targetName":"preventDefault","callType":"method"},{"targetName":"sign","callType":"method"},{"targetName":"applyScroll","callType":"direct"},{"targetName":"getBoundingClientRect","callType":"method"},{"targetName":"setPointerCapture","callType":"method"},{"targetName":"globalFromThumbTop","callType":"direct"},{"targetName":"applyFromClientY","callType":"direct"},{"targetName":"releasePointerCapture","callType":"method"},{"targetName":"removeEventListener","callType":"method"},{"targetName":"calcCurrentPage","callType":"direct"},{"targetName":"refreshData","callType":"direct"},{"targetName":"addEventListener","callType":"method"},{"targetName":"syncWindowAfterThumbJump","callType":"direct"},{"targetName":"ResizeObserver","callType":"constructor"},{"targetName":"createDataContainerObserver","callType":"direct"},{"targetName":"observe","callType":"method"},{"targetName":"initState","callType":"direct"},{"targetName":"removeScrollbarRail","callType":"direct"},{"targetName":"initScrollbarContainer","callType":"direct"},{"targetName":"initDataContainer","callType":"direct"},{"targetName":"createScrollbarTrack","callType":"direct"},{"targetName":"createScrollbarThumb","callType":"direct"},{"targetName":"createScrollbar","callType":"direct"},{"targetName":"getDataLength","callType":"method"},{"targetName":"disconnect","callType":"method"},{"targetName":"abort","callType":"method"}],"calledBy":[{"callerId":"func_0000_virtualScroll","callerName":"virtualScroll"}]},"func_gpzzu8_validateTableApi":{"id":"func_gpzzu8_validateTableApi","name":"validateTableApi","file":"infoenergo-ui/src/composables/common/useGlobalSettings.ts","line":26,"paramsCount":1,"complexity":1,"calls":[{"targetName":"Error","callType":"constructor"}],"calledBy":[{"callerId":"func_gpzzu8_initGlobalSettings","callerName":"initGlobalSettings"}]},"func_0000_virtualScroll":{"id":"func_0000_virtualScroll","name":"virtualScroll","file":"infoenergo-ui/src/components/ui/AiDataTable/AiDataTable.vue","line":96,"isExported":true,"paramsCount":0,"complexity":1,"calls":[{"targetId":"func_folm8l_useVirtualScroll","targetName":"useVirtualScroll","callType":"direct"}],"calledBy":[]},"func_0000_withDefaults":{"id":"func_0000_withDefaults","name":"withDefaults","file":"infoenergo-ui/src/components/ui/AiDataTable/components/FilterCell/SortButton/SortButton.vue","line":6,"isExported":true,"paramsCount":0,"complexity":1,"calls":[],"calledBy":[]}}};
+
+  // ============ ПОСТРОЕНИЕ ГРАФА ============
+  const entities = rawData.entities;
+  const nodes = [];
+  const links = [];
+  const nodeMap = new Map();
+
+  function getCategory(file) {
+    if (!file) return 'other';
+    if (file.includes('/components/')) return 'component';
+    if (file.includes('/composables/')) return 'composable';
+    return 'other';
+  }
+
+  const categoryColors = { component: '#60a5fa', composable: '#34d399', other: '#f472b6' };
+  const categoryLabels = { component: 'Компонент Vue', composable: 'Composable', other: 'Прочее' };
+
+  Object.values(entities).forEach(fn => {
+    const node = {
+      id: fn.id, name: fn.name, file: fn.file,
+      category: getCategory(fn.file),
+      isExported: fn.isExported, isAsync: fn.isAsync,
+      complexity: fn.complexity || 1, paramsCount: fn.paramsCount || 0, line: fn.line,
+      callsCount: (fn.calls || []).length, calledByCount: (fn.calledBy || []).length,
+      calls: fn.calls || [], calledBy: fn.calledBy || [],
+      pos: {x: 0, y: 0, z: 0},
+      screen: {x: 0, y: 0, z: 0, r: 0, visible: false, behindCamera: false}
+    };
+    nodes.push(node);
+    nodeMap.set(fn.id, node);
+  });
+
+  const linkSet = new Set();
+  Object.values(entities).forEach(fn => {
+    (fn.calls || []).forEach(call => {
+      if (call.targetId && nodeMap.has(call.targetId)) {
+        const key = `${fn.id}->${call.targetId}`;
+        if (!linkSet.has(key)) {
+          linkSet.add(key);
+          links.push({ source: fn.id, target: call.targetId, callType: call.callType || 'direct' });
+        }
+      }
+    });
+  });
+
+  const modulesMap = new Map();
+  nodes.forEach(n => {
+    const file = n.file || 'unknown';
+    if (!modulesMap.has(file)) modulesMap.set(file, {file, functions: [], sun: null});
+    modulesMap.get(file).functions.push(n);
+    n.module = modulesMap.get(file);
+  });
+  const modules = Array.from(modulesMap.values());
+
+  modules.forEach(m => {
+    m.maxOrbitRadius = 0;
+    m.functions.forEach((fn, j) => {
+      const r = 30 + j * 14;
+      fn.orbitRadius = r;
+      if (r > m.maxOrbitRadius) m.maxOrbitRadius = r;
+    });
+  });
+
+  const SUN_SPHERE_RADIUS = 1400;
+  const MIN_SYSTEM_GAP = 30;
+
+  function fibonacciSphere(n, radius) {
+    const points = [];
+    const phi = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < n; i++) {
+      const y = 1 - (i / Math.max(n - 1, 1)) * 2;
+      const r = Math.sqrt(1 - y * y);
+      const theta = phi * i;
+      points.push({ x: Math.cos(theta) * r * radius, y: y * radius, z: Math.sin(theta) * r * radius });
+    }
+    return points;
+  }
+
+  const sunPositions = fibonacciSphere(modules.length, SUN_SPHERE_RADIUS);
+  modules.forEach((m, i) => {
+    m.sun = {
+      pos: sunPositions[i],
+      radius: 12 + Math.sqrt(m.functions.length) * 3,
+      screen: {x: 0, y: 0, z: 0, r: 0, visible: false, behindCamera: false},
+      pulse: Math.random() * Math.PI * 2
+    };
+  });
+  modules.forEach(m => {
+    m.sun.systemRadius = m.maxOrbitRadius + m.sun.radius + MIN_SYSTEM_GAP;
+  });
+
+  function relaxSystems(iterations = 80) {
+    for (let iter = 0; iter < iterations; iter++) {
+      let moved = false;
+      for (let i = 0; i < modules.length; i++) {
+        for (let j = i + 1; j < modules.length; j++) {
+          const a = modules[i].sun, b = modules[j].sun;
+          const dx = b.pos.x - a.pos.x, dy = b.pos.y - a.pos.y, dz = b.pos.z - a.pos.z;
+          const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+          const minDist = a.systemRadius + b.systemRadius;
+          if (dist < minDist && dist > 0.001) {
+            const overlap = (minDist - dist) / 2;
+            const nx = dx / dist, ny = dy / dist, nz = dz / dist;
+            a.pos.x -= nx * overlap * 1.05; a.pos.y -= ny * overlap * 1.05; a.pos.z -= nz * overlap * 1.05;
+            b.pos.x += nx * overlap * 1.05; b.pos.y += ny * overlap * 1.05; b.pos.z += nz * overlap * 1.05;
+            const ra = Math.sqrt(a.pos.x*a.pos.x + a.pos.y*a.pos.y + a.pos.z*a.pos.z);
+            const rb = Math.sqrt(b.pos.x*b.pos.x + b.pos.y*b.pos.y + b.pos.z*b.pos.z);
+            if (ra > 0) { a.pos.x = a.pos.x / ra * SUN_SPHERE_RADIUS; a.pos.y = a.pos.y / ra * SUN_SPHERE_RADIUS; a.pos.z = a.pos.z / ra * SUN_SPHERE_RADIUS; }
+            if (rb > 0) { b.pos.x = b.pos.x / rb * SUN_SPHERE_RADIUS; b.pos.y = b.pos.y / rb * SUN_SPHERE_RADIUS; b.pos.z = b.pos.z / rb * SUN_SPHERE_RADIUS; }
+            moved = true;
+          }
+        }
+      }
+      if (!moved) break;
+    }
+  }
+  relaxSystems();
+
+  modules.forEach(m => {
+    m.functions.forEach((fn, j) => {
+      fn.orbitPhase = Math.random() * Math.PI * 2;
+      fn.orbitSpeed = 0.0004 / Math.sqrt(fn.orbitRadius / 30);
+      fn.orbitTilt = (Math.random() - 0.5) * 0.5;
+      fn.orbitAxis = Math.random() * Math.PI * 2;
+      fn.planetRadius = 2 + Math.min(fn.complexity * 0.6, 3);
+    });
+  });
+
+  const interLinks = links.filter(l => {
+    const s = nodeMap.get(l.source), t = nodeMap.get(l.target);
+    return s && t && s.file !== t.file;
+  });
+
+  // ============ РАСЧЁТ ГАЛАКТИЧЕСКОГО РАДИУСА ============
+  // Реальный радиус галактики = радиус сферы солнц + максимальная система
+  let galaxyRadius = SUN_SPHERE_RADIUS;
+  modules.forEach(m => {
+    const totalR = SUN_SPHERE_RADIUS + m.sun.systemRadius;
+    if (totalR > galaxyRadius) galaxyRadius = totalR;
+  });
+  document.getElementById('stat-radius').textContent = Math.round(galaxyRadius);
+
+  document.getElementById('stat-suns').textContent = modules.length;
+  document.getElementById('stat-nodes').textContent = nodes.length;
+  document.getElementById('stat-links').textContent = interLinks.length;
+
+  const modulesList = document.getElementById('modules-list');
+  const shortName = (file) => file.split('/').pop().replace(/\.(vue|ts|js)$/, '');
+  modules.sort((a, b) => b.functions.length - a.functions.length).forEach(m => {
+    const item = document.createElement('div');
+    item.className = 'module-item';
+    item.innerHTML = `<span class="star"></span><span>${shortName(m.file)}</span><span class="count">${m.functions.length} 🪐</span>`;
+    item.addEventListener('click', () => {
+      targetRotY = -Math.atan2(m.sun.pos.x, m.sun.pos.z);
+      targetRotX = Math.atan2(m.sun.pos.y, Math.sqrt(m.sun.pos.x*m.sun.pos.x + m.sun.pos.z*m.sun.pos.z));
+      targetZoom = 1.8;
+      selectedNode = null; selectedModule = m;
+      showModuleInfo(m);
+    });
+    modulesList.appendChild(item);
+  });
+
+  const canvas = document.getElementById('graph');
+  const ctx = canvas.getContext('2d');
+  const container = document.querySelector('.graph-container');
+  const tooltip = document.getElementById('tooltip');
+
+  let width, height;
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    width = container.clientWidth; height = container.clientHeight;
+    canvas.width = width * dpr; canvas.height = height * dpr;
+    canvas.style.width = width + 'px'; canvas.style.height = height + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const stars = [];
+  for (let i = 0; i < 600; i++) {
+    stars.push({
+      x: Math.random(), y: Math.random(),
+      size: Math.random() * 1.5 + 0.3,
+      brightness: Math.random() * 0.7 + 0.2,
+      twinkle: Math.random() * Math.PI * 2,
+      color: Math.random() < 0.1 ? '#a78bfa' : (Math.random() < 0.15 ? '#fbbf24' : '#ffffff')
+    });
+  }
+
+  let rotX = 0.3, rotY = 0, zoom = 0.55;
+  let targetRotX = rotX, targetRotY = rotY, targetZoom = zoom;
+
+  let isDragging = false, lastMouse = {x: 0, y: 0};
+  let timeRunning = true, showOrbits = true, showLinks = true, showLabels = false;
+  let hoveredNode = null, hoveredSun = null, selectedNode = null, selectedModule = null;
+  let searchQuery = '', timeOffset = 0, lastTime = performance.now();
+
+  function rotatePoint(p) {
+    const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
+    let x = p.x * cosY - p.z * sinY, z = p.x * sinY + p.z * cosY, y = p.y;
+    const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
+    return {x, y: y * cosX - z * sinX, z: y * sinX + z * cosX};
+  }
+
+  const FOCAL = 1200;
+  function project(p3) {
+    const denom = FOCAL + p3.z;
+    if (denom <= 0.001) return { x: -99999, y: -99999, z: p3.z, scale: 0, behindCamera: true };
+    const scale = FOCAL / denom * zoom;
+    return { x: width / 2 + p3.x * scale, y: height / 2 + p3.y * scale, z: p3.z, scale, behindCamera: false };
+  }
+
+  function isNodeVisible(node) {
+    if (node.screen.behindCamera) return false;
+    if (searchQuery && !node.name.toLowerCase().includes(searchQuery) && !(node.file || '').toLowerCase().includes(searchQuery)) return false;
+    return true;
+  }
+
+  function isLinkHighlighted(link) {
+    if (selectedNode && (link.source === selectedNode.id || link.target === selectedNode.id)) return true;
+    if (selectedModule) {
+      const s = nodeMap.get(link.source), t = nodeMap.get(link.target);
+      if (s.module === selectedModule || t.module === selectedModule) return true;
+    }
+    if (hoveredNode && (link.source === hoveredNode.id || link.target === hoveredNode.id)) return true;
+    return false;
+  }
+
+  // ============ 🌌 ПОКАЗАТЬ ВСЮ СФЕРУ ============
+  // Вычисляет zoom, при котором вся галактика помещается на экране
+  function fitAllSpheres() {
+    // Сбрасываем вращение в нейтральное положение
+    targetRotX = 0.3;
+    targetRotY = 0;
+
+    // Вычисляем zoom так, чтобы радиус галактики умещался в меньшую сторону экрана
+    // Формула: galaxyRadius * zoom * (FOCAL / (FOCAL + 0)) < min(width, height) / 2 * padding
+    // При z=0 (центр): scale = zoom, значит galaxyRadius * zoom < minDim / 2
+    const minDim = Math.min(width, height);
+    const padding = 0.85; // 85% экрана — оставляем поля
+    const computedZoom = (minDim / 2 * padding) / galaxyRadius;
+
+    // Ограничиваем разумными пределами
+    targetZoom = Math.max(0.05, Math.min(3, computedZoom));
+
+    // Сбрасываем выбор
+    selectedNode = null;
+    selectedModule = null;
+    document.getElementById('info-content').innerHTML = '<div class="info-empty">Вся галактика infoenergo-ui · выберите объект для изучения</div>';
+  }
+
+  // При загрузке — сразу показываем всю сферу
+  setTimeout(fitAllSpheres, 100);
+
+  // ============ РЕНДЕР ============
+  function render() {
+    ctx.clearRect(0, 0, width, height);
+    const now = performance.now();
+
+    stars.forEach(s => {
+      const tw = 0.6 + 0.4 * Math.sin(now * 0.001 + s.twinkle);
+      ctx.fillStyle = s.color;
+      ctx.globalAlpha = s.brightness * tw;
+      ctx.beginPath();
+      ctx.arc(s.x * width, s.y * height, s.size, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+
+    nodes.forEach(n => {
+      const angle = n.orbitPhase + timeOffset * n.orbitSpeed * 1000;
+      const lx = Math.cos(angle) * n.orbitRadius;
+      const lyBase = Math.sin(angle) * n.orbitRadius;
+      const cosT = Math.cos(n.orbitTilt), sinT = Math.sin(n.orbitTilt);
+      const cosA = Math.cos(n.orbitAxis), sinA = Math.sin(n.orbitAxis);
+      const lx2 = lx * cosA - lyBase * sinA * sinT;
+      const ly2 = lx * sinA + lyBase * cosA * sinT;
+      const lz2 = lyBase * cosT;
+      n.pos.x = n.module.sun.pos.x + lx2;
+      n.pos.y = n.module.sun.pos.y + ly2;
+      n.pos.z = n.module.sun.pos.z + lz2;
+    });
+
+    modules.forEach(m => {
+      if (!m.sun) return;
+      const rotated = rotatePoint(m.sun.pos);
+      const pr = project(rotated);
+      m.sun.screen.x = pr.x; m.sun.screen.y = pr.y; m.sun.screen.z = rotated.z;
+      m.sun.screen.behindCamera = pr.behindCamera;
+      m.sun.screen.r = pr.behindCamera ? 0 : Math.max(0.1, m.sun.radius * pr.scale);
+      m.sun.screen.visible = !pr.behindCamera;
+    });
+    nodes.forEach(n => {
+      const rotated = rotatePoint(n.pos);
+      const pr = project(rotated);
+      n.screen.x = pr.x; n.screen.y = pr.y; n.screen.z = rotated.z;
+      n.screen.behindCamera = pr.behindCamera;
+      n.screen.r = pr.behindCamera ? 0 : Math.max(0.1, n.planetRadius * pr.scale);
+      n.screen.visible = !pr.behindCamera && isNodeVisible(n);
+    });
+
+    if (showOrbits) {
+      modules.forEach(m => {
+        if (!m.sun || m.sun.screen.behindCamera) return;
+        const isSelMod = selectedModule === m;
+        m.functions.forEach(fn => {
+          ctx.strokeStyle = isSelMod ? 'rgba(167, 139, 250, 0.25)' : 'rgba(167, 139, 250, 0.08)';
+          ctx.lineWidth = isSelMod ? 0.8 : 0.5;
+          ctx.beginPath();
+          const steps = 48;
+          let started = false;
+          for (let i = 0; i <= steps; i++) {
+            const a = (i / steps) * Math.PI * 2;
+            const lx = Math.cos(a) * fn.orbitRadius;
+            const lyBase = Math.sin(a) * fn.orbitRadius;
+            const cosT = Math.cos(fn.orbitTilt), sinT = Math.sin(fn.orbitTilt);
+            const cosA = Math.cos(fn.orbitAxis), sinA = Math.sin(fn.orbitAxis);
+            const lx2 = lx * cosA - lyBase * sinA * sinT;
+            const ly2 = lx * sinA + lyBase * cosA * sinT;
+            const lz2 = lyBase * cosT;
+            const pr = project(rotatePoint({ x: m.sun.pos.x + lx2, y: m.sun.pos.y + ly2, z: m.sun.pos.z + lz2 }));
+            if (pr.behindCamera) { started = false; continue; }
+            if (!started) { ctx.moveTo(pr.x, pr.y); started = true; }
+            else ctx.lineTo(pr.x, pr.y);
+          }
+          ctx.stroke();
+        });
+      });
+    }
+
+    if (showLinks) {
+      interLinks.forEach(link => {
+        if (isLinkHighlighted(link)) return;
+        const s = nodeMap.get(link.source), t = nodeMap.get(link.target);
+        if (!s.screen.visible || !t.screen.visible) return;
+        const avgZ = (s.screen.z + t.screen.z) / 2;
+        const depthFactor = (avgZ + SUN_SPHERE_RADIUS) / (2 * SUN_SPHERE_RADIUS);
+        const baseAlpha = 0.05 + (1 - depthFactor) * 0.15;
+        ctx.strokeStyle = `rgba(167, 139, 250, ${baseAlpha})`;
+        ctx.lineWidth = 0.4;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(s.screen.x, s.screen.y);
+        const mx = (s.screen.x + t.screen.x) / 2, my = (s.screen.y + t.screen.y) / 2;
+        const dx = t.screen.x - s.screen.x, dy = t.screen.y - s.screen.y;
+        ctx.quadraticCurveTo(mx - dy * 0.08, my + dx * 0.08, t.screen.x, t.screen.y);
+        ctx.stroke();
+      });
+
+      interLinks.forEach(link => {
+        if (!isLinkHighlighted(link)) return;
+        const s = nodeMap.get(link.source), t = nodeMap.get(link.target);
+        if (!s.screen.visible || !t.screen.visible) return;
+        const mx = (s.screen.x + t.screen.x) / 2, my = (s.screen.y + t.screen.y) / 2;
+        const dx = t.screen.x - s.screen.x, dy = t.screen.y - s.screen.y;
+        const cx = mx - dy * 0.15, cy = my + dx * 0.15;
+
+        ctx.strokeStyle = 'rgba(167, 139, 250, 0.3)';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(s.screen.x, s.screen.y);
+        ctx.quadraticCurveTo(cx, cy, t.screen.x, t.screen.y);
+        ctx.stroke();
+
+        const dashOffset = -(now * 0.05) % 20;
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.9)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([8, 6]);
+        ctx.lineDashOffset = dashOffset;
+        ctx.beginPath();
+        ctx.moveTo(s.screen.x, s.screen.y);
+        ctx.quadraticCurveTo(cx, cy, t.screen.x, t.screen.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const tt = (now * 0.0005) % 1;
+        const px = (1-tt)*(1-tt)*s.screen.x + 2*(1-tt)*tt*cx + tt*tt*t.screen.x;
+        const py = (1-tt)*(1-tt)*s.screen.y + 2*(1-tt)*tt*cy + tt*tt*t.screen.y;
+        const sigGrad = ctx.createRadialGradient(px, py, 0, px, py, 8);
+        sigGrad.addColorStop(0, 'rgba(251, 191, 36, 0.8)');
+        sigGrad.addColorStop(1, 'rgba(251, 191, 36, 0)');
+        ctx.fillStyle = sigGrad;
+        ctx.beginPath(); ctx.arc(px, py, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(px, py, 2, 0, Math.PI * 2); ctx.fill();
+      });
+    }
+
+    const renderables = [];
+    modules.forEach(m => {
+      if (!m.sun || !m.sun.screen.visible || m.sun.screen.behindCamera) return;
+      if (m.sun.screen.r <= 0) return;
+      renderables.push({ type: 'sun', z: m.sun.screen.z, data: m });
+    });
+    nodes.forEach(n => {
+      if (!n.screen.visible || n.screen.behindCamera || n.screen.r <= 0) return;
+      renderables.push({ type: 'planet', z: n.screen.z, data: n });
+    });
+    renderables.sort((a, b) => b.z - a.z);
+    renderables.forEach(item => {
+      if (item.type === 'sun') drawSun(item.data, now);
+      else drawPlanet(item.data, now);
+    });
+  }
+
+  function drawSun(m, now) {
+    const s = m.sun.screen;
+    if (s.r <= 0) return;
+    const pulse = 1 + 0.08 * Math.sin(now * 0.002 + m.sun.pulse);
+    const isHover = hoveredSun === m;
+    const isSel = selectedModule === m || (selectedNode && selectedNode.module === m);
+    const boost = (isHover || isSel) ? 1.3 : 1;
+
+    const outerR = Math.max(0.1, s.r * 5 * pulse * boost);
+    const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, outerR);
+    grad.addColorStop(0, 'rgba(254, 243, 199, 0.6)');
+    grad.addColorStop(0.2, 'rgba(251, 191, 36, 0.3)');
+    grad.addColorStop(0.5, 'rgba(245, 158, 11, 0.1)');
+    grad.addColorStop(1, 'rgba(245, 158, 11, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(s.x, s.y, outerR, 0, Math.PI * 2); ctx.fill();
+
+    const innerR = Math.max(0.1, s.r * 2 * pulse);
+    const grad2 = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, innerR);
+    grad2.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    grad2.addColorStop(0.4, 'rgba(254, 243, 199, 0.9)');
+    grad2.addColorStop(1, 'rgba(251, 191, 36, 0)');
+    ctx.fillStyle = grad2;
+    ctx.beginPath(); ctx.arc(s.x, s.y, innerR, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(s.x, s.y, Math.max(0.1, s.r * 0.7), 0, Math.PI * 2); ctx.fill();
+
+    if (showLabels || isHover || isSel) {
+      const name = shortName(m.file);
+      ctx.font = `${isHover || isSel ? 'bold ' : ''}11px -apple-system, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      const metrics = ctx.measureText(name);
+      const tx = s.x, ty = s.y + s.r * 2.5;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(tx - metrics.width / 2 - 4, ty - 2, metrics.width + 8, 16);
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillText(name, tx, ty);
+    }
+  }
+
+  function drawPlanet(n, now) {
+    if (n.screen.r <= 0) return;
+    const color = categoryColors[n.category];
+    const isHover = hoveredNode && hoveredNode.id === n.id;
+    const isSel = selectedNode && selectedNode.id === n.id;
+    const isConnected = (hoveredNode || selectedNode) && interLinks.some(l => {
+      const ref = hoveredNode || selectedNode;
+      return (l.source === ref.id && l.target === n.id) || (l.target === ref.id && l.source === n.id);
+    });
+
+    const atmoR = Math.max(0.1, n.screen.r * 3);
+    const grad = ctx.createRadialGradient(n.screen.x, n.screen.y, 0, n.screen.x, n.screen.y, atmoR);
+    grad.addColorStop(0, color + '66');
+    grad.addColorStop(1, color + '00');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(n.screen.x, n.screen.y, atmoR, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(n.screen.x, n.screen.y, n.screen.r, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.beginPath();
+    ctx.arc(n.screen.x - n.screen.r * 0.35, n.screen.y - n.screen.r * 0.35, Math.max(0.1, n.screen.r * 0.35), 0, Math.PI * 2);
+    ctx.fill();
+
+    if (n.isExported) {
+      ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(n.screen.x, n.screen.y, n.screen.r + 1, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    if (isConnected && !isHover && !isSel) {
+      ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(n.screen.x, n.screen.y, n.screen.r + 3, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    if (showLabels || isHover || isSel) {
+      ctx.font = `${isHover || isSel ? 'bold ' : ''}10px -apple-system, sans-serif`;
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      const tx = n.screen.x + n.screen.r + 4, ty = n.screen.y;
+      const metrics = ctx.measureText(n.name);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(tx - 2, ty - 6, metrics.width + 4, 12);
+      ctx.fillStyle = isHover || isSel ? '#fbbf24' : '#e6e6e6';
+      ctx.fillText(n.name, tx, ty);
+    }
+  }
+
+  function animate() {
+    const now = performance.now();
+    const dt = (now - lastTime) / 1000;
+    lastTime = now;
+    if (timeRunning) timeOffset += dt;
+    rotX += (targetRotX - rotX) * 0.15;
+    rotY += (targetRotY - rotY) * 0.15;
+    zoom += (targetZoom - zoom) * 0.15;
+    render();
+    requestAnimationFrame(animate);
+  }
+  animate();
+
+  canvas.addEventListener('mousedown', (e) => { isDragging = true; lastMouse = {x: e.clientX, y: e.clientY}; });
+  window.addEventListener('mouseup', () => { isDragging = false; });
+
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+
+    if (isDragging) {
+      const dx = e.clientX - lastMouse.x, dy = e.clientY - lastMouse.y;
+      targetRotY += dx * 0.005; targetRotX += dy * 0.005;
+      targetRotX = Math.max(-Math.PI/2, Math.min(Math.PI/2, targetRotX));
+      lastMouse = {x: e.clientX, y: e.clientY};
+      hoveredNode = null; hoveredSun = null;
+      tooltip.style.opacity = 0;
+      return;
+    }
+
+    let found = null;
+    const sorted = [...nodes].filter(n => n.screen.visible && !n.screen.behindCamera).sort((a, b) => a.screen.z - b.screen.z);
+    for (const n of sorted) {
+      const dx = mx - n.screen.x, dy = my - n.screen.y;
+      if (dx*dx + dy*dy <= (n.screen.r + 4) * (n.screen.r + 4)) { found = n; break; }
+    }
+
+    let foundSun = null;
+    if (!found) {
+      const sortedS = [...modules].filter(m => m.sun && m.sun.screen.visible && !m.sun.screen.behindCamera).sort((a, b) => a.sun.screen.z - b.sun.screen.z);
+      for (const m of sortedS) {
+        const s = m.sun.screen;
+        const dx = mx - s.x, dy = my - s.y;
+        if (dx*dx + dy*dy <= (s.r * 2) * (s.r * 2)) { foundSun = m; break; }
+      }
+    }
+
+    hoveredNode = found; hoveredSun = foundSun;
+
+    if (found) {
+      canvas.style.cursor = 'pointer';
+      const interCount = interLinks.filter(l => l.source === found.id || l.target === found.id).length;
+      tooltip.innerHTML = `
+      <div class="tt-name">🪐 ${found.name}</div>
+      <div class="tt-system">☀ Система: ${shortName(found.file)}</div>
+      <div class="tt-file">${found.file || '—'} :${found.line}</div>
+      <div style="margin-top:4px; font-size:11px; color:#9ca3af;">Сложность: ${found.complexity} · 📡 Связей: ${interCount}</div>
+    `;
+      tooltip.style.opacity = 1;
+      tooltip.style.left = (e.clientX + 12) + 'px';
+      tooltip.style.top = (e.clientY + 12) + 'px';
+    } else if (foundSun) {
+      canvas.style.cursor = 'pointer';
+      const totalSignals = foundSun.functions.reduce((sum, fn) => sum + interLinks.filter(l => l.source === fn.id || l.target === fn.id).length, 0);
+      tooltip.innerHTML = `
+      <div class="tt-name">☀ ${shortName(foundSun.file)}</div>
+      <div class="tt-file">${foundSun.file}</div>
+      <div style="margin-top:4px; font-size:11px; color:#9ca3af;">Планет: ${foundSun.functions.length} · 📡 Сигналов: ${totalSignals}</div>
+    `;
+      tooltip.style.opacity = 1;
+      tooltip.style.left = (e.clientX + 12) + 'px';
+      tooltip.style.top = (e.clientY + 12) + 'px';
+    } else {
+      canvas.style.cursor = 'grab';
+      tooltip.style.opacity = 0;
+    }
+  });
+
+  canvas.addEventListener('click', () => {
+    if (hoveredNode) { selectedNode = hoveredNode; selectedModule = null; showNodeInfo(hoveredNode); }
+    else if (hoveredSun) { selectedModule = hoveredSun; selectedNode = null; showModuleInfo(hoveredSun); }
+    else { selectedNode = null; selectedModule = null; }
+  });
+
+  canvas.addEventListener('dblclick', () => {
+    const target = hoveredNode ? hoveredNode.module : hoveredSun;
+    if (target) {
+      targetRotY = -Math.atan2(target.sun.pos.x, target.sun.pos.z);
+      targetRotX = Math.atan2(target.sun.pos.y, Math.sqrt(target.sun.pos.x*target.sun.pos.x + target.sun.pos.z*target.sun.pos.z));
+      targetZoom = 1.8;
+      if (hoveredNode) { selectedNode = hoveredNode; selectedModule = null; showNodeInfo(hoveredNode); }
+      else { selectedModule = hoveredSun; selectedNode = null; showModuleInfo(hoveredSun); }
+    }
+  });
+
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    targetZoom *= e.deltaY > 0 ? 0.9 : 1.1;
+    // ✅ Минимальный zoom уменьшен с 0.2 до 0.05 — можно видеть всю сферу
+    targetZoom = Math.max(0.05, Math.min(3, targetZoom));
+  }, {passive: false});
+
+  function showNodeInfo(d) {
+    const outgoing = interLinks.filter(l => l.source === d.id).map(l => {
+      const t = nodeMap.get(l.target);
+      return `<div class="link-item" data-id="${t.id}"><span class="arrow">📡→</span>${t.name} <span style="color:#6b7280; font-size:10px;">(${shortName(t.file)})</span></div>`;
+    }).join('') || '<div style="color:#6b7280; font-size:12px; padding:4px;">Нет связей с другими мирами</div>';
+    const incoming = interLinks.filter(l => l.target === d.id).map(l => {
+      const s = nodeMap.get(l.source);
+      return `<div class="link-item" data-id="${s.id}"><span class="arrow">📡←</span>${s.name} <span style="color:#6b7280; font-size:10px;">(${shortName(s.file)})</span></div>`;
+    }).join('') || '<div style="color:#6b7280; font-size:12px; padding:4px;">Нет входящих связей из других миров</div>';
+
+    document.getElementById('info-content').innerHTML = `
+    <div class="info-card">
+      <div class="name">🪐 ${d.name}</div>
+      <div class="system">☀ Система: ${shortName(d.file)}</div>
+      <div class="file">${d.file} :${d.line}</div>
+      <div class="info-row"><span class="label">Категория</span><span class="value" style="color:${categoryColors[d.category]}">${categoryLabels[d.category]}</span></div>
+      <div class="info-row"><span class="label">Сложность</span><span class="value">${d.complexity}</span></div>
+      <div class="info-row"><span class="label">Параметров</span><span class="value">${d.paramsCount}</span></div>
+      <div class="info-row"><span class="label">Экспортируется</span><span class="value">${d.isExported ? '✓ да' : '✗ нет'}</span></div>
+      <div class="info-row"><span class="label">Асинхронная</span><span class="value">${d.isAsync ? '✓ да' : '✗ нет'}</span></div>
+    </div>
+    <div class="info-card">
+      <h3 style="margin-bottom:8px;">📡 Исходящие сигналы (${interLinks.filter(l => l.source === d.id).length})</h3>
+      <div class="link-list">${outgoing}</div>
+    </div>
+    <div class="info-card">
+      <h3 style="margin-bottom:8px;">📡 Входящие сигналы (${interLinks.filter(l => l.target === d.id).length})</h3>
+      <div class="link-list">${incoming}</div>
+    </div>
+  `;
+
+    document.querySelectorAll('.link-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const target = nodeMap.get(el.dataset.id);
+        if (target) {
+          selectedNode = target; selectedModule = null;
+          showNodeInfo(target);
+          targetRotY = -Math.atan2(target.module.sun.pos.x, target.module.sun.pos.z);
+          targetRotX = Math.atan2(target.module.sun.pos.y, Math.sqrt(target.module.sun.pos.x*target.module.sun.pos.x + target.module.sun.pos.z*target.module.sun.pos.z));
+        }
+      });
+    });
+  }
+
+  function showModuleInfo(m) {
+    const planets = m.functions.map(fn => {
+      const interCount = interLinks.filter(l => l.source === fn.id || l.target === fn.id).length;
+      return `<div class="link-item" data-id="${fn.id}"><span style="color:${categoryColors[fn.category]};">🪐</span>${fn.name}<span style="color:#6b7280; font-size:10px; margin-left:auto;">📡${interCount}</span></div>`;
+    }).join('');
+    const totalSignals = m.functions.reduce((sum, fn) => sum + interLinks.filter(l => l.source === fn.id || l.target === fn.id).length, 0);
+
+    document.getElementById('info-content').innerHTML = `
+    <div class="info-card">
+      <div class="name">☀ ${shortName(m.file)}</div>
+      <div class="file">${m.file}</div>
+      <div class="info-row"><span class="label">Планет в системе</span><span class="value">${m.functions.length}</span></div>
+      <div class="info-row"><span class="label">Всего сигналов</span><span class="value">📡 ${totalSignals}</span></div>
+      <div class="info-row"><span class="label">Позиция</span><span class="value" style="font-family:monospace; font-size:10px;">x:${m.sun.pos.x.toFixed(0)} y:${m.sun.pos.y.toFixed(0)} z:${m.sun.pos.z.toFixed(0)}</span></div>
+    </div>
+    <div class="info-card">
+      <h3 style="margin-bottom:8px;">🪐 Планеты системы</h3>
+      <div class="link-list">${planets}</div>
+    </div>
+  `;
+
+    document.querySelectorAll('.link-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const target = nodeMap.get(el.dataset.id);
+        if (target) { selectedNode = target; selectedModule = null; showNodeInfo(target); }
+      });
+    });
+  }
+
+  // ============ КНОПКИ ============
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    targetRotX = 0.3; targetRotY = 0; targetZoom = 0.55;
+    selectedNode = null; selectedModule = null;
+    document.getElementById('info-content').innerHTML = '<div class="info-empty">Выберите планету или солнце для просмотра карты мира</div>';
+  });
+
+  // 🌌 НОВАЯ КНОПКА — показать всю сферу
+  document.getElementById('btn-fit').addEventListener('click', fitAllSpheres);
+
+  document.getElementById('btn-time').addEventListener('click', (e) => {
+    timeRunning = !timeRunning;
+    e.target.classList.toggle('active', timeRunning);
+    e.target.textContent = timeRunning ? '⏸ Время' : '▶ Время';
+  });
+  document.getElementById('btn-orbits').addEventListener('click', (e) => { showOrbits = !showOrbits; e.target.classList.toggle('active', showOrbits); });
+  document.getElementById('btn-links').addEventListener('click', (e) => { showLinks = !showLinks; e.target.classList.toggle('active', showLinks); });
+  document.getElementById('btn-labels').addEventListener('click', (e) => { showLabels = !showLabels; e.target.classList.toggle('active', showLabels); });
+  document.getElementById('search').addEventListener('input', (e) => { searchQuery = e.target.value.toLowerCase().trim(); });
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
+      e.preventDefault();
+      timeRunning = !timeRunning;
+      const btn = document.getElementById('btn-time');
+      btn.classList.toggle('active', timeRunning);
+      btn.textContent = timeRunning ? '⏸ Время' : '▶ Время';
+    }
+    // ✅ Горячая клавиша F — показать всю сферу
+    if (e.code === 'KeyF' && e.target.tagName !== 'INPUT') {
+      e.preventDefault();
+      fitAllSpheres();
+    }
+  });
+</script>
+</body>
+</html>
