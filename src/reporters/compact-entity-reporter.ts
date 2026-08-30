@@ -1,9 +1,29 @@
-// packages/ast-analyzer/src/reporters/compact-entity-reporter.ts
+// src/reporters/compact-entity-reporter.ts
 
 import fs from 'fs';
 import path from 'path';
 import { COMPACT_REPORT_CONFIG, type PresetConfig } from '../config.js';
-import type { EntitiesResult, FunctionInfo } from '../types.js';
+import type { EntitiesResult } from '../types.js';
+import idManager from '../core/IdManager.js';
+
+// ============================================
+// ТИПЫ ДЛЯ РЕБЕР ГРАФОВ
+// ============================================
+
+interface CallGraphEdge {
+  from: string;
+  to: string;
+  line: number;
+  type: 'direct' | 'import' | 'method' | 'computed' | 'watch' | 'event';
+}
+
+interface ImportGraphEdge {
+  from: string;
+  to: string;
+  specifiers: string[];
+  line: number;
+  type: 'named' | 'default' | 'namespace' | 'type';
+}
 
 export interface CompactReportOptions {
   /** Использовать пресет из конфига */
@@ -41,13 +61,53 @@ export interface CompactReportOptions {
 export interface CompactEntityReport {
   version: string;
   timestamp?: string;
-  totalFunctions?: number;
-  totalCalls?: number;
-  totalCalledBy?: number;
-  totalImportedBy?: number;
-  totalEnums?: number;
-  totalDecorators?: number;
+
+  // === ГЛОБАЛЬНЫЕ ИНДЕКСЫ ===
+  functionIndex: Record<string, string>; // id -> name
+  fileIndex: Record<string, string>; // id -> path
+  moduleIndex: Record<string, string>; // id -> module name
+
+  // === СУЩНОСТИ С ССЫЛКАМИ ПО ID ===
   entities: Record<string, any>;
+
+  // === ГРАФЫ С ССЫЛКАМИ ПО ID ===
+  callGraph?: {
+    edges: CallGraphEdge[];
+    stats: {
+      totalEdges: number;
+      uniqueCallers: number;
+      uniqueCallees: number;
+      mostCalled: { functionId: string; count: number }[];
+      topCallers: { functionId: string; count: number }[];
+    };
+  };
+
+  importGraph?: {
+    edges: ImportGraphEdge[];
+    stats: {
+      totalEdges: number;
+      uniqueImporters: number;
+      uniqueImported: number;
+      mostImported: { fileId: string; count: number }[];
+    };
+  };
+
+  stats: {
+    totalFunctions: number;
+    totalCalls: number;
+    totalCalledBy: number;
+    totalImportedBy: number;
+    totalEnums: number;
+    totalDecorators: number;
+    totalFiles: number;
+    totalModules: number;
+  };
+
+  legend?: {
+    kinds?: Record<string, string>;
+    callTypes?: Record<string, string>;
+    importTypes?: Record<string, string>;
+  };
 }
 
 // ============================================
@@ -64,19 +124,85 @@ function simpleHash(str: string): string {
   return Math.abs(hash).toString(36).padStart(4, '0');
 }
 
-function generateFunctionId(filePath: string, funcName: string): string {
-  const relativePath = path.relative(process.cwd(), filePath);
-  const fileHash = simpleHash(relativePath);
-  return `func_${fileHash}_${funcName}`;
-}
-
 function generateFileId(filePath: string): string {
   const relativePath = path.relative(process.cwd(), filePath);
   return `file_${simpleHash(relativePath)}`;
 }
 
+function generateModuleId(moduleName: string): string {
+  return `module_${simpleHash(moduleName)}`;
+}
+
+function shortenPath(filePath: string, maxLength: number = 60): string {
+  const relative = path.relative(process.cwd(), filePath);
+  if (relative.length <= maxLength) return relative;
+  const parts = relative.split('/');
+  if (parts.length <= 2) return relative;
+  const first = parts[0] || '';
+  const lastTwo = parts.slice(-2);
+  return first + '/.../' + lastTwo.join('/');
+}
+
 // ============================================
-// ОПРЕДЕЛЕНИЕ ТИПА ВЫЗОВА
+// 1. ГЕНЕРАЦИЯ ИНДЕКСОВ
+// ============================================
+
+function generateIndices(entitiesMap: Record<string, EntitiesResult>): {
+  functionIndex: Record<string, string>;
+  fileIndex: Record<string, string>;
+  moduleIndex: Record<string, string>;
+  functionIdMap: Map<string, string>;
+  fileIdMap: Map<string, string>;
+} {
+  const functionIndex: Record<string, string> = {};
+  const functionIdMap = new Map<string, string>();
+  const fileIndex: Record<string, string> = {};
+  const fileIdMap = new Map<string, string>();
+  const moduleIndex: Record<string, string> = {};
+
+  // 1. Индексы файлов
+  for (const [filePath] of Object.entries(entitiesMap)) {
+    const fileId = generateFileId(filePath);
+    const moduleName = path.basename(path.dirname(filePath));
+
+    fileIndex[fileId] = shortenPath(filePath);
+    fileIdMap.set(filePath, fileId);
+
+    const moduleId = generateModuleId(moduleName);
+    moduleIndex[moduleId] = moduleName;
+  }
+
+  // 2. Индексы функций
+  for (const [filePath, entities] of Object.entries(entitiesMap)) {
+    const moduleName = path.basename(filePath, path.extname(filePath));
+
+    for (const func of entities.functions || []) {
+      let id = `${moduleName}.${func.name}`;
+
+      // Если есть конфликт, добавляем номер строки
+      if (functionIndex[id]) {
+        id = `${moduleName}.${func.name}_${func.line}`;
+      }
+
+      functionIndex[id] = func.name;
+      functionIdMap.set(func.name, id);
+
+      // Сохраняем ID в функции
+      func.id = id;
+    }
+  }
+
+  return {
+    functionIndex,
+    functionIdMap,
+    fileIndex,
+    fileIdMap,
+    moduleIndex,
+  };
+}
+
+// ============================================
+// 2. ОПРЕДЕЛЕНИЕ ТИПА ВЫЗОВА
 // ============================================
 
 const VUE_COMPOSABLES = new Set([
@@ -113,414 +239,316 @@ const VUE_COMPOSABLES = new Set([
   'defineComponent',
 ]);
 
-const ARRAY_METHODS = new Set([
-  'push',
-  'pop',
-  'shift',
-  'unshift',
-  'splice',
-  'slice',
-  'map',
-  'filter',
-  'find',
-  'findIndex',
-  'forEach',
-  'reduce',
-  'reduceRight',
-  'some',
-  'every',
-  'includes',
-  'indexOf',
-  'lastIndexOf',
-  'join',
-  'concat',
-  'reverse',
-  'sort',
-  'flat',
-  'flatMap',
-  'fill',
-  'copyWithin',
-  'toReversed',
-  'toSorted',
-  'toSpliced',
-  'with',
-  'findLast',
-  'findLastIndex',
-]);
-
-const OPERATORS = new Set([
-  'if',
-  'else',
-  'for',
-  'while',
-  'do',
-  'switch',
-  'case',
-  'break',
-  'continue',
-  'return',
-  'throw',
-  'try',
-  'catch',
-  'finally',
-  'debugger',
-  'const',
-  'let',
-  'var',
-  'function',
-  'class',
-  'extends',
-  'implements',
-  'interface',
-  'type',
-  'enum',
-  'namespace',
-  'module',
-  'declare',
-  'export',
-  'import',
-  'default',
-  'new',
-  'delete',
-  'typeof',
-  'instanceof',
-  'void',
-  'this',
-  'super',
-  'null',
-  'undefined',
-  'true',
-  'false',
-  'async',
-  'await',
-  'yield',
-  'static',
-  'public',
-  'private',
-  'protected',
-  'readonly',
-  'abstract',
-  'override',
-]);
-
-const GLOBAL_OBJECTS = new Set([
-  'console',
-  'Math',
-  'Date',
-  'JSON',
-  'Promise',
-  'Symbol',
-  'setTimeout',
-  'setInterval',
-  'clearTimeout',
-  'clearInterval',
-  'String',
-  'Number',
-  'Boolean',
-  'Array',
-  'Object',
-  'Function',
-  'Map',
-  'Set',
-  'WeakMap',
-  'WeakSet',
-  'RegExp',
-  'Error',
-  'Buffer',
-  'process',
-  '__dirname',
-  '__filename',
-  'require',
-  'module',
-  'exports',
-  'URL',
-  'URLSearchParams',
-  'Proxy',
-  'Reflect',
-]);
-
-function detectCallTypeImproved(
+function detectCallType(
   callName: string,
-  funcBody: string,
-  currentFunctionName: string
-): 'direct' | 'import' | 'array_method' | 'vue' | 'external' | 'operator' | 'self' {
-  if (OPERATORS.has(callName)) return 'operator';
-  if (callName === currentFunctionName) return 'self';
-  if (ARRAY_METHODS.has(callName)) return 'array_method';
-  if (VUE_COMPOSABLES.has(callName)) return 'vue';
-  if (GLOBAL_OBJECTS.has(callName)) return 'external';
-  if (funcBody.includes(`.${callName}(`)) return 'direct';
+  funcBody: string
+): 'direct' | 'import' | 'method' | 'computed' | 'watch' | 'event' {
+  // Vue композаблы
+  if (VUE_COMPOSABLES.has(callName)) {
+    return 'computed';
+  }
+
+  // Vue события
+  if (
+    callName.startsWith('emit') ||
+    callName.startsWith('on') ||
+    callName.includes('Event') ||
+    callName.startsWith('$emit')
+  ) {
+    return 'event';
+  }
+
+  // Вызов через объект: obj.method()
+  if (funcBody && funcBody.includes(`.${callName}(`)) {
+    return 'method';
+  }
+
+  // Импортированные функции (определяется по контексту)
+  if (
+    funcBody &&
+    (funcBody.includes(`import { ${callName} }`) || funcBody.includes(`import ${callName}`))
+  ) {
+    return 'import';
+  }
+
   return 'direct';
 }
 
 // ============================================
-// ПОСТРОЕНИЕ ИНДЕКСА ФУНКЦИЙ
+// 3. ПОСТРОЕНИЕ CALL GRAPH
 // ============================================
 
-function buildFunctionIndex(entitiesMap: Record<string, EntitiesResult>): Map<
-  string,
-  {
-    id: string;
-    file: string;
-    line: number;
-    vscode: string;
-    func: FunctionInfo;
-  }
-> {
-  const index = new Map<
-    string,
-    {
-      id: string;
-      file: string;
-      line: number;
-      vscode: string;
-      func: FunctionInfo;
-    }
-  >();
-
-  for (const [filePath, entities] of Object.entries(entitiesMap)) {
-    for (const func of entities.functions || []) {
-      const id = func.id || generateFunctionId(filePath, func.name);
-      const vscode = func.vscode || `vscode://file/${filePath}:${func.line}`;
-
-      index.set(func.name, {
-        id,
-        file: filePath,
-        line: func.line || 0,
-        vscode,
-        func,
-      });
-
-      // Также индексируем по полному имени (с модулем) для разрешения конфликтов
-      const fullName = `${filePath}#${func.name}`;
-      index.set(fullName, {
-        id,
-        file: filePath,
-        line: func.line || 0,
-        vscode,
-        func,
-      });
-    }
-  }
-
-  return index;
-}
-
-// ============================================
-// ПОСТРОЕНИЕ СВЯЗЕЙ МЕЖДУ ФУНКЦИЯМИ
-// ============================================
-
-function buildFunctionRelationships(
+function buildCallGraph(
   entitiesMap: Record<string, EntitiesResult>,
-  funcIndex: Map<
-    string,
-    { id: string; file: string; line: number; vscode: string; func: FunctionInfo }
-  >
-): {
-  calls: Record<string, any[]>;
-  calledBy: Record<string, any[]>;
-  importedBy: Record<string, any[]>;
-} {
-  const calls: Record<string, any[]> = {};
-  const calledBy: Record<string, any[]> = {};
-  const importedBy: Record<string, any[]> = {};
+  functionIdMap: Map<string, string>
+): CompactEntityReport['callGraph'] {
+  const callGraphEdges: CallGraphEdge[] = [];
+  const callCounts = new Map<string, number>();
+  const callerCounts = new Map<string, number>();
 
-  // Инициализация
-  for (const [filePath, entities] of Object.entries(entitiesMap)) {
+  for (const [_filePath, entities] of Object.entries(entitiesMap)) {
     for (const func of entities.functions || []) {
-      const id = func.id || generateFunctionId(filePath, func.name);
-      calls[id] = [];
-      calledBy[id] = [];
-      importedBy[id] = [];
-    }
-  }
+      const callerId = func.id;
+      if (!callerId) continue;
 
-  // ============================================
-  // 1. Строим calls для каждой функции
-  // ============================================
-  for (const [filePath, entities] of Object.entries(entitiesMap)) {
-    for (const func of entities.functions || []) {
-      const id = func.id || generateFunctionId(filePath, func.name);
-      if (!calls[id]) continue;
-
-      const callNames = func.calls || [];
-      const funcBody = func.body || '';
-
-      for (const callName of callNames) {
-        // Определяем тип вызова
-        const callType = detectCallTypeImproved(callName, funcBody, func.name);
-
-        // Пропускаем операторы и самовызовы
-        if (callType === 'operator') continue;
-        if (callType === 'self') continue;
-
+      const calls = func.calls || [];
+      for (const callName of calls) {
         // Ищем вызываемую функцию
-        let target = funcIndex.get(callName);
-        let finalCallType = callType;
+        const targetId = functionIdMap.get(callName);
+        if (targetId && targetId !== callerId) {
+          // Добавляем ребро
+          callGraphEdges.push({
+            from: callerId,
+            to: targetId,
+            line: func.line || 0,
+            type: detectCallType(callName, func.body || ''),
+          });
 
-        // Если не нашли по имени, ищем в других файлах
-        if (!target) {
-          for (const [otherFile, otherEntities] of Object.entries(entitiesMap)) {
-            if (otherFile === filePath) continue;
-            const found = otherEntities.functions.find(f => f.name === callName);
-            if (found && found.isExported) {
-              const targetId = found.id || generateFunctionId(otherFile, callName);
-              target = {
-                id: targetId,
-                file: otherFile,
-                line: found.line || 0,
-                vscode: found.vscode || `vscode://file/${otherFile}:${found.line}`,
-                func: found,
-              };
-              if (callType === 'direct') {
-                finalCallType = 'import';
-              }
-              break;
-            }
-          }
-        }
-
-        if (target) {
-          calls[id].push({
-            targetId: target.id,
-            targetName: callName,
-            targetFile: target.file,
-            targetLine: target.line,
-            targetVscode: target.vscode,
-            callLine: func.line || 0,
-            callType: finalCallType,
-          });
-        } else if (callType === 'vue' || callType === 'external') {
-          // Внешние вызовы (Vue, глобальные)
-          calls[id].push({
-            targetId: callType === 'vue' ? `vue_${callName}` : `global_${callName}`,
-            targetName: callName,
-            targetFile: callType === 'vue' ? 'vue' : 'global',
-            targetLine: 0,
-            targetVscode: '',
-            callLine: func.line || 0,
-            callType: callType,
-          });
-        } else {
-          // Если не нашли, добавляем как неизвестный вызов
-          calls[id].push({
-            targetId: 'unknown',
-            targetName: callName,
-            targetFile: 'unknown',
-            targetLine: 0,
-            targetVscode: '',
-            callLine: func.line || 0,
-            callType: 'external',
-          });
+          // Считаем статистику
+          callCounts.set(targetId, (callCounts.get(targetId) || 0) + 1);
+          callerCounts.set(callerId, (callerCounts.get(callerId) || 0) + 1);
         }
       }
     }
   }
 
-  // ============================================
-  // 2. Строим calledBy (обратные ссылки)
-  // ============================================
-  for (const [callerId, callList] of Object.entries(calls)) {
-    for (const call of callList) {
-      const targetId = call.targetId;
-      if (
-        targetId &&
-        targetId !== 'unknown' &&
-        !targetId.startsWith('vue_') &&
-        !targetId.startsWith('global_')
-      ) {
-        if (calledBy[targetId]) {
-          // Находим информацию о вызывающей функции
-          let callerInfo = null;
-          for (const [filePath, entities] of Object.entries(entitiesMap)) {
-            const func = entities.functions.find(f => {
-              const fId = f.id || generateFunctionId(filePath, f.name);
-              return fId === callerId;
-            });
-            if (func) {
-              callerInfo = {
-                id: callerId,
-                name: func.name,
-                file: filePath,
-                line: func.line || 0,
-                vscode: func.vscode || `vscode://file/${filePath}:${func.line}`,
-              };
-              break;
-            }
-          }
+  // Сортируем для статистики
+  const mostCalled = Array.from(callCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([functionId, count]) => ({ functionId, count }));
 
-          if (callerInfo) {
-            // Проверяем, не добавлен ли уже такой caller
-            const exists = calledBy[targetId].some((c: any) => c.callerId === callerId);
-            if (!exists) {
-              calledBy[targetId].push({
-                callerId: callerInfo.id,
-                callerName: callerInfo.name,
-                callerFile: callerInfo.file,
-                callerLine: callerInfo.line,
-                callerVscode: callerInfo.vscode,
-                callLine: call.callLine,
-                callType: call.callType,
-              });
-            }
-          }
-        }
-      }
-    }
-  }
+  const topCallers = Array.from(callerCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([functionId, count]) => ({ functionId, count }));
 
-  // ============================================
-  // 3. Строим importedBy из импортов
-  // ============================================
-  for (const [filePath, entities] of Object.entries(entitiesMap)) {
-    const imports = entities.imports || [];
-    const importerId = generateFileId(filePath);
-    const importerVscode = `vscode://file/${filePath}`;
+  // Уникальные ID
+  const uniqueCallers = new Set(callGraphEdges.map((e: CallGraphEdge) => e.from));
+  const uniqueCallees = new Set(callGraphEdges.map((e: CallGraphEdge) => e.to));
 
-    for (const imp of imports) {
-      for (const spec of imp.specifiers) {
-        let importedName: string | undefined;
-        let localName: string | undefined;
-
-        if (typeof spec === 'string') {
-          importedName = spec;
-          localName = spec;
-        } else if (spec && typeof spec === 'object') {
-          importedName = spec.imported || spec.local;
-          localName = spec.local || spec.imported;
-        }
-
-        if (!importedName) continue;
-
-        const target = funcIndex.get(importedName);
-        if (target && target.file !== filePath) {
-          const targetId = target.id;
-          if (importedBy[targetId]) {
-            // Проверяем, не добавлен ли уже такой импортер
-            const exists = importedBy[targetId].some(
-              (i: any) => i.importerFile === filePath && i.specifier === (localName || importedName)
-            );
-            if (!exists) {
-              importedBy[targetId].push({
-                importerId: importerId,
-                importerFile: filePath,
-                importerVscode: importerVscode,
-                importLine: (imp as any).loc?.start?.line || 0,
-                specifier: localName || importedName,
-                importType: (imp as any).isTypeOnly ? 'type' : 'named',
-              });
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return { calls, calledBy, importedBy };
+  return {
+    edges: callGraphEdges,
+    stats: {
+      totalEdges: callGraphEdges.length,
+      uniqueCallers: uniqueCallers.size,
+      uniqueCallees: uniqueCallees.size,
+      mostCalled,
+      topCallers,
+    },
+  };
 }
 
 // ============================================
-// ИЗВЛЕЧЕНИЕ ENUM И ДЕКОРАТОРОВ
+// 4. ПОСТРОЕНИЕ calledBy ИЗ CALL GRAPH
+// ============================================
+
+function buildCalledByFromCallGraph(
+  callGraph: CompactEntityReport['callGraph']
+): Record<string, string[]> {
+  const calledByMap: Record<string, string[]> = {};
+
+  if (!callGraph) return calledByMap;
+
+  for (const edge of callGraph.edges) {
+    const targetId = edge.to;
+    if (!calledByMap[targetId]) {
+      calledByMap[targetId] = [];
+    }
+    // Добавляем только уникальные callerId
+    if (!calledByMap[targetId]?.includes(edge.from)) {
+      calledByMap[targetId].push(edge.from);
+    }
+  }
+
+  return calledByMap;
+}
+
+// ============================================
+// 5. РЕЗОЛВИНГ ПУТЕЙ ИМПОРТОВ
+// ============================================
+
+function resolveImportPath(
+  fromFile: string,
+  importPath: string,
+  entitiesMap: Record<string, EntitiesResult>
+): string | null {
+  const fromDir = path.dirname(fromFile);
+
+  // Относительные пути
+  if (importPath.startsWith('.')) {
+    const resolved = path.resolve(fromDir, importPath);
+    const extensions = ['.ts', '.tsx', '.js', '.jsx', '.vue', '.mjs', '.cjs'];
+
+    for (const ext of extensions) {
+      const candidate = resolved + ext;
+      if (entitiesMap[candidate]) {
+        return candidate;
+      }
+    }
+
+    for (const ext of extensions) {
+      const candidate = path.join(resolved, `index${ext}`);
+      if (entitiesMap[candidate]) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  // Алиасы (@/, #/, ~/)
+  if (importPath.startsWith('@/') || importPath.startsWith('#/') || importPath.startsWith('~/')) {
+    const baseName = importPath.replace(/^[@#~]\//, '');
+    for (const modulePath of Object.keys(entitiesMap)) {
+      if (
+        modulePath.endsWith(baseName) ||
+        modulePath.endsWith(baseName + '.ts') ||
+        modulePath.endsWith(baseName + '.js')
+      ) {
+        return modulePath;
+      }
+    }
+    return null;
+  }
+
+  return null;
+}
+
+// ============================================
+// 6. ПОСТРОЕНИЕ IMPORT GRAPH
+// ============================================
+
+function buildImportGraph(
+  entitiesMap: Record<string, EntitiesResult>,
+  fileIdMap: Map<string, string>
+): CompactEntityReport['importGraph'] {
+  const importGraphEdges: ImportGraphEdge[] = [];
+  const importCounts = new Map<string, number>();
+
+  for (const [filePath, entities] of Object.entries(entitiesMap)) {
+    const fromFileId = fileIdMap.get(filePath);
+    if (!fromFileId) continue;
+
+    const imports = entities.imports || [];
+    for (const imp of imports) {
+      const source = imp.source;
+      if (!source) continue;
+
+      const resolvedPath = resolveImportPath(filePath, source, entitiesMap);
+      if (!resolvedPath) continue;
+
+      const toFileId = fileIdMap.get(resolvedPath);
+      if (!toFileId) continue;
+
+      const specifiers: string[] = [];
+      let importType: 'named' | 'default' | 'namespace' | 'type' = 'named';
+
+      for (const spec of imp.specifiers) {
+        if (typeof spec === 'string') {
+          specifiers.push(spec);
+        } else {
+          specifiers.push(spec.imported || spec.local);
+          if (spec.type === 'ImportDefaultSpecifier') importType = 'default';
+          else if (spec.type === 'ImportNamespaceSpecifier') importType = 'namespace';
+        }
+      }
+
+      if (imp.isTypeOnly) importType = 'type';
+
+      importGraphEdges.push({
+        from: fromFileId,
+        to: toFileId,
+        specifiers,
+        line: imp.loc?.start?.line || 0,
+        type: importType,
+      });
+
+      importCounts.set(toFileId, (importCounts.get(toFileId) || 0) + 1);
+    }
+  }
+
+  const mostImported = Array.from(importCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([fileId, count]) => ({ fileId, count }));
+
+  const uniqueImporters = new Set(importGraphEdges.map((e: ImportGraphEdge) => e.from));
+  const uniqueImported = new Set(importGraphEdges.map((e: ImportGraphEdge) => e.to));
+
+  return {
+    edges: importGraphEdges,
+    stats: {
+      totalEdges: importGraphEdges.length,
+      uniqueImporters: uniqueImporters.size,
+      uniqueImported: uniqueImported.size,
+      mostImported,
+    },
+  };
+}
+
+// ============================================
+// 7. ПОСТРОЕНИЕ ОПТИМИЗИРОВАННЫХ СУЩНОСТЕЙ
+// ============================================
+
+function buildOptimizedEntities(
+  entitiesMap: Record<string, EntitiesResult>,
+  functionIdMap: Map<string, string>,
+  fileIdMap: Map<string, string>
+): Record<string, any> {
+  const entities: Record<string, any> = {};
+
+  for (const [filePath, fileEntities] of Object.entries(entitiesMap)) {
+    const fileId = fileIdMap.get(filePath);
+    if (!fileId) continue;
+
+    for (const func of fileEntities.functions || []) {
+      const id = func.id || functionIdMap.get(func.name);
+      if (!id) continue;
+
+      const entity: any = {
+        id: id,
+        file: fileId,
+        line: func.line || 0,
+        kind: 'function',
+      };
+
+      if (func.name) entity.name = func.name;
+      if (func.isExported) entity.isExported = true;
+      if (func.isAsync) entity.isAsync = true;
+      if (func.isArrow) entity.isArrow = true;
+      if (func.isMethod) entity.isMethod = true;
+      if (func.isNested) entity.isNested = true;
+      if (func.isEventHandler) entity.isEventHandler = true;
+
+      if (func.params && func.params.length > 0) entity.params = func.params;
+      if (func.returnType && func.returnType !== 'any') entity.returnType = func.returnType;
+      if (func.className) entity.className = func.className;
+      if (func.eventType) entity.eventType = func.eventType;
+
+      if (func.parentFunction) {
+        const parentId = functionIdMap.get(func.parentFunction);
+        if (parentId) entity.parentFunction = parentId;
+      }
+
+      if (func.depth && func.depth > 0) entity.depth = func.depth;
+      if (func.complexity && func.complexity > 1) entity.complexity = func.complexity;
+
+      if (func.calls && func.calls.length > 0) {
+        const callIds = func.calls
+          .map(callName => functionIdMap.get(callName))
+          .filter((id): id is string => id !== undefined && id !== entity.id);
+        if (callIds.length > 0) entity.calls = callIds;
+      }
+
+      entities[id] = entity;
+    }
+  }
+
+  return entities;
+}
+
+// ============================================
+// 8. ИЗВЛЕЧЕНИЕ ENUM И ДЕКОРАТОРОВ
 // ============================================
 
 function extractEnumsFromContent(
@@ -528,20 +556,20 @@ function extractEnumsFromContent(
 ): { name: string; values: string[]; line: number; isExported: boolean }[] {
   const enums: { name: string; values: string[]; line: number; isExported: boolean }[] = [];
 
-  const enumRegex = /(?:export\s+)?enum\s+(\w+)\s*\{([^}]*)\}/g;
+  const enumRegex = /(?:export\\s+)?enum\\s+(\\w+)\\s*\\{([^}]*)\\}/g;
   let match: RegExpExecArray | null;
   while ((match = enumRegex.exec(content)) !== null) {
     const name = match[1] || 'unnamed';
     const valuesStr = match[2] || '';
     const isExported = content.includes(`export enum ${name}`);
-    const line = content.substring(0, match.index).split('\n').length;
+    const line = content.substring(0, match.index).split('\\n').length;
 
     const values = valuesStr
       .split(',')
       .map(v => v.trim())
       .filter(v => v)
       .map(v => {
-        const assignMatch = v.match(/^(\w+)\s*=\s*(.+)$/);
+        const assignMatch = v.match(/^(\\w+)\\s*=\\s*(.+)$/);
         if (assignMatch) {
           const key = assignMatch[1] || '';
           const val = assignMatch[2]?.trim() || '';
@@ -553,19 +581,19 @@ function extractEnumsFromContent(
     enums.push({ name, values, line, isExported });
   }
 
-  const constEnumRegex = /(?:export\s+)?const\s+enum\s+(\w+)\s*\{([^}]*)\}/g;
+  const constEnumRegex = /(?:export\\s+)?const\\s+enum\\s+(\\w+)\\s*\\{([^}]*)\\}/g;
   while ((match = constEnumRegex.exec(content)) !== null) {
     const name = match[1] || 'unnamed';
     const valuesStr = match[2] || '';
     const isExported = content.includes(`export const enum ${name}`);
-    const line = content.substring(0, match.index).split('\n').length;
+    const line = content.substring(0, match.index).split('\\n').length;
 
     const values = valuesStr
       .split(',')
       .map(v => v.trim())
       .filter(v => v)
       .map(v => {
-        const assignMatch = v.match(/^(\w+)\s*=\s*(.+)$/);
+        const assignMatch = v.match(/^(\\w+)\\s*=\\s*(.+)$/);
         if (assignMatch) {
           const key = assignMatch[1] || '';
           const val = assignMatch[2]?.trim() || '';
@@ -586,7 +614,7 @@ function extractDecoratorsFromContent(
   const decorators: { name: string; target: string; line: number; args: string[] }[] = [];
 
   const decoratorRegex =
-    /@(\w+)(?:\(([^)]*)\))?\s*(?:class|function|method|property|accessor)\s+(\w+)/g;
+    /@(\\w+)(?:\\\\(([^)]*)\\\\))?\\s*(?:class|function|method|property|accessor)\\s+(\\w+)/g;
   let match: RegExpExecArray | null;
   while ((match = decoratorRegex.exec(content)) !== null) {
     const name = match[1] || 'unknown';
@@ -597,13 +625,13 @@ function extractDecoratorsFromContent(
           .filter(a => a)
       : [];
     const target = match[3] || 'unknown';
-    const line = content.substring(0, match.index).split('\n').length;
+    const line = content.substring(0, match.index).split('\\n').length;
 
     decorators.push({ name, target, line, args });
   }
 
   const decoratorMultiLineRegex =
-    /@(\w+)(?:\(([^)]*)\))?\s*\n\s*(?:class|function|method|property|accessor)\s+(\w+)/g;
+    /@(\\w+)(?:\\\\(([^)]*)\\\\))?\\s*\\n\\s*(?:class|function|method|property|accessor)\\s+(\\w+)/g;
   while ((match = decoratorMultiLineRegex.exec(content)) !== null) {
     const name = match[1] || 'unknown';
     const args = match[2]
@@ -613,7 +641,7 @@ function extractDecoratorsFromContent(
           .filter(a => a)
       : [];
     const target = match[3] || 'unknown';
-    const line = content.substring(0, match.index).split('\n').length;
+    const line = content.substring(0, match.index).split('\\n').length;
 
     const exists = decorators.some(d => d.name === name && d.target === target && d.line === line);
     if (!exists) {
@@ -625,7 +653,7 @@ function extractDecoratorsFromContent(
 }
 
 // ============================================
-// ОСНОВНАЯ ФУНКЦИЯ
+// 9. ОСНОВНАЯ ФУНКЦИЯ
 // ============================================
 
 export function generateCompactEntityReport(
@@ -633,10 +661,13 @@ export function generateCompactEntityReport(
   outputPath: string,
   options: CompactReportOptions = {}
 ): CompactEntityReport {
-  console.log('\n🔧 Генерация компактного отчета сущностей (УЛУЧШЕННАЯ ВЕРСИЯ)...');
+  console.log('\\n🔧 Генерация компактного отчета с индексацией и графами...');
   console.log('='.repeat(60));
 
   const startTime = Date.now();
+
+  // Очищаем кэш IdManager перед генерацией
+  idManager.clear();
 
   // === 1. ЗАГРУЗКА КОНФИГУРАЦИИ ===
   let config: PresetConfig;
@@ -726,34 +757,6 @@ export function generateCompactEntityReport(
     };
   }
 
-  // Объединяем с переданными опциями
-  const entityFields = { ...config.entityFields, ...(options.entityFields || {}) } as Record<
-    string,
-    boolean
-  >;
-  const relFields = {
-    calls: {
-      ...(config.relationshipFields?.calls || {}),
-      ...(options.relationshipFields?.calls || {}),
-    } as Record<string, boolean>,
-    calledBy: {
-      ...(config.relationshipFields?.calledBy || {}),
-      ...(options.relationshipFields?.calledBy || {}),
-    } as Record<string, boolean>,
-    importedBy: {
-      ...(config.relationshipFields?.importedBy || {}),
-      ...(options.relationshipFields?.importedBy || {}),
-    } as Record<string, boolean>,
-  };
-  const filters = { ...(config.filters || {}), ...(options.filters || {}) } as {
-    entityTypes?: Record<string, boolean>;
-    onlyExported?: boolean;
-    onlyNonExported?: boolean;
-    includeModules?: string[];
-    excludeModules?: string[];
-    minComplexity?: number;
-    maxDepth?: number;
-  };
   const formatting = { ...(config.formatting || {}), ...(options.formatting || {}) } as {
     indentSize?: number;
     sortKeys?: boolean;
@@ -762,34 +765,63 @@ export function generateCompactEntityReport(
     includeStats?: boolean;
   };
 
-  console.log(
-    `📋 Поля сущностей: ${Object.entries(entityFields).filter(([, v]) => v).length} включено`
-  );
-  console.log(`📋 Calls: ${relFields.calls.enabled ? 'включены' : 'выключены'}`);
-  console.log(`📋 CalledBy: ${relFields.calledBy.enabled ? 'включены' : 'выключены'}`);
-  console.log(`📋 ImportedBy: ${relFields.importedBy.enabled ? 'включены' : 'выключены'}`);
+  // === 2. ГЕНЕРАЦИЯ ИНДЕКСОВ ===
+  console.log('\\n📊 Генерация индексов...');
+  const { functionIndex, functionIdMap, fileIndex, fileIdMap, moduleIndex } =
+    generateIndices(entitiesMap);
 
-  // === 2. СОЗДАНИЕ СУЩНОСТЕЙ ===
-  const entities: Record<string, any> = {};
-  let totalFunctions = 0;
-  let totalEnums = 0;
-  let totalDecorators = 0;
+  console.log(`   📋 Индексов функций: ${Object.keys(functionIndex).length}`);
+  console.log(`   📋 Индексов файлов: ${Object.keys(fileIndex).length}`);
+  console.log(`   📋 Индексов модулей: ${Object.keys(moduleIndex).length}`);
 
-  // Сокращаем пути
-  function shortenPath(filePath: string): string {
-    if (!filePath) return '';
-    try {
-      const relative = path.relative(process.cwd(), filePath);
-      if (relative.startsWith('..') || path.isAbsolute(relative)) {
-        return filePath.replace(/^.*[\\/](?:packages[\\/])?/, '');
-      }
-      return relative.replace(/\\/g, '/');
-    } catch {
-      return filePath.replace(/^.*[\\/](?:packages[\\/])?/, '');
+  // === 3. ПОСТРОЕНИЕ ОПТИМИЗИРОВАННЫХ СУЩНОСТЕЙ ===
+  console.log('\\n📦 Построение оптимизированных сущностей...');
+  const entities = buildOptimizedEntities(entitiesMap, functionIdMap, fileIdMap);
+  console.log(`   📊 Сущностей: ${Object.keys(entities).length}`);
+
+  // === 4. ПОСТРОЕНИЕ CALL GRAPH ===
+  console.log('\\n🔄 Построение графа вызовов (Call Graph)...');
+  const callGraph = buildCallGraph(entitiesMap, functionIdMap);
+  console.log(`   📊 Вызовов: ${callGraph?.edges.length || 0}`);
+  console.log(`   📊 Уникальных вызывающих: ${callGraph?.stats.uniqueCallers || 0}`);
+  console.log(`   📊 Уникальных вызываемых: ${callGraph?.stats.uniqueCallees || 0}`);
+
+  if (callGraph && callGraph.stats.mostCalled && callGraph.stats.mostCalled.length > 0) {
+    const mostCalled = callGraph.stats.mostCalled.slice(0, 3);
+    const names = mostCalled.map(m => functionIndex[m.functionId] || 'unknown');
+    console.log(`   📊 Самые вызываемые: ${names.join(', ')}`);
+  }
+
+  // === 5. ПОСТРОЕНИЕ calledBy ИЗ CALL GRAPH ===
+  console.log('\\n📞 Построение обратных вызовов (calledBy)...');
+  const calledByMap = buildCalledByFromCallGraph(callGraph);
+  console.log(`   📊 Функций с обратными вызовами: ${Object.keys(calledByMap).length}`);
+
+  // Добавляем calledBy в сущности
+  for (const [id, calledBy] of Object.entries(calledByMap)) {
+    if (entities[id]) {
+      entities[id].calledBy = calledBy;
     }
   }
 
-  // Получаем содержимое файлов для извлечения enum и декораторов
+  // === 6. ПОСТРОЕНИЕ IMPORT GRAPH ===
+  console.log('\\n📥 Построение графа импортов (Import Graph)...');
+  const importGraph = buildImportGraph(entitiesMap, fileIdMap);
+  console.log(`   📊 Импортов: ${importGraph?.edges.length || 0}`);
+  console.log(`   📊 Уникальных импортеров: ${importGraph?.stats.uniqueImporters || 0}`);
+  console.log(`   📊 Уникальных импортируемых: ${importGraph?.stats.uniqueImported || 0}`);
+
+  if (importGraph && importGraph.stats.mostImported && importGraph.stats.mostImported.length > 0) {
+    const mostImported = importGraph.stats.mostImported.slice(0, 3);
+    const names = mostImported.map(m => fileIndex[m.fileId] || m.fileId);
+    console.log(`   📊 Самые импортируемые: ${names.join(', ')}`);
+  }
+
+  // === 7. ИЗВЛЕЧЕНИЕ ENUM И ДЕКОРАТОРОВ ===
+  console.log('\\n📚 Извлечение enum и декораторов...');
+  let totalEnums = 0;
+  let totalDecorators = 0;
+
   const fileContents: Record<string, string> = {};
   for (const filePath of Object.keys(entitiesMap)) {
     try {
@@ -801,210 +833,146 @@ export function generateCompactEntityReport(
     }
   }
 
-  // Извлекаем enum и декораторы
   for (const [filePath, content] of Object.entries(fileContents)) {
     if (!content) continue;
 
-    // Проверка фильтра модулей
-    if (options.filters?.excludeModules?.some((m: string) => filePath.includes(m))) continue;
-    if (
-      options.filters?.includeModules?.length &&
-      !options.filters.includeModules.some((m: string) => filePath.includes(m))
-    )
-      continue;
+    const fileId = fileIdMap.get(filePath);
+    if (!fileId) continue;
 
-    const shortPath = shortenPath(filePath);
-
-    // Извлекаем enum
     const enums = extractEnumsFromContent(content);
     for (const enumItem of enums) {
-      if (filters.entityTypes && filters.entityTypes.enum === false) continue;
-
-      const id = `enum_${simpleHash(shortPath)}_${enumItem.name}`;
-      const entity: any = {
-        id: id,
+      const id = `enum_${simpleHash(filePath)}_${enumItem.name}`;
+      entities[id] = {
+        id,
         name: enumItem.name,
-        file: shortPath,
+        file: fileId,
         line: enumItem.line,
         kind: 'enum',
-        vscode: `vscode://file/${shortPath}:${enumItem.line}`,
         values: enumItem.values,
         isExported: enumItem.isExported,
         memberCount: enumItem.values.length,
-        calls: [],
-        calledBy: [],
-        importedBy: [],
       };
-      entities[id] = entity;
       totalEnums++;
     }
 
-    // Извлекаем декораторы
     const decorators = extractDecoratorsFromContent(content);
     for (const decorator of decorators) {
-      if (filters.entityTypes && filters.entityTypes.decorator === false) continue;
-
-      const id = `decorator_${simpleHash(shortPath)}_${decorator.name}_${decorator.target}`;
-      const entity: any = {
-        id: id,
+      const id = `decorator_${simpleHash(filePath)}_${decorator.name}_${decorator.target}`;
+      entities[id] = {
+        id,
         name: decorator.name,
-        file: shortPath,
+        file: fileId,
         line: decorator.line,
         kind: 'decorator',
-        vscode: `vscode://file/${shortPath}:${decorator.line}`,
         target: decorator.target,
         args: decorator.args,
-        calls: [],
-        calledBy: [],
-        importedBy: [],
       };
-      entities[id] = entity;
       totalDecorators++;
     }
   }
 
-  // Создаем функции
-  for (const [filePath, fileEntities] of Object.entries(entitiesMap)) {
-    // Проверка фильтра модулей
-    if (options.filters?.excludeModules?.some((m: string) => filePath.includes(m))) continue;
-    if (
-      options.filters?.includeModules?.length &&
-      !options.filters.includeModules.some((m: string) => filePath.includes(m))
-    )
-      continue;
+  console.log(`   📊 Enum: ${totalEnums}, Декораторов: ${totalDecorators}`);
 
-    const shortPath = shortenPath(filePath);
-
-    for (const func of fileEntities.functions || []) {
-      // Фильтр по типу сущности
-      if (filters.entityTypes && filters.entityTypes.function === false) continue;
-
-      // Фильтр по экспорту
-      if (filters.onlyExported && !func.isExported) continue;
-      if (filters.onlyNonExported && func.isExported) continue;
-
-      // Фильтр по сложности
-      if ((func.complexity || 0) < (filters.minComplexity || 0)) continue;
-
-      // Фильтр по глубине
-      if ((func.depth || 0) > (filters.maxDepth || Infinity)) continue;
-
-      const id = func.id || generateFunctionId(filePath, func.name);
-      const vscode = func.vscode || `vscode://file/${shortPath}:${func.line}`;
-
-      const entity: any = {
-        id,
-        name: func.name,
-        file: shortPath,
-        line: func.line || 0,
-        kind: 'function',
-        vscode: vscode,
-        isExported: func.isExported || false,
-        isAsync: func.isAsync || false,
-        params: func.params || [],
-        paramsCount: (func.params || []).length,
-        returnType: func.returnType || 'any',
-        isMethod: func.isMethod || false,
-        className: func.className || '',
-        isNested: func.isNested || false,
-        parentFunction: func.parentFunction || '',
-        isArrow: func.isArrow || false,
-        isEventHandler: func.isEventHandler || false,
-        eventType: func.eventType || '',
-        depth: func.depth || 0,
-        complexity: func.complexity || 1,
-        startLine: func.startLine || func.line || 0,
-        endLine: func.endLine || func.line || 0,
-        calls: [],
-        calledBy: [],
-        importedBy: [],
-      };
-
-      entities[id] = entity;
-      totalFunctions++;
-    }
-  }
-
-  console.log(
-    `📊 Создано сущностей: функций ${totalFunctions}, enum ${totalEnums}, декораторов ${totalDecorators}`
-  );
-
-  // === 3. ПОСТРОЕНИЕ ИНДЕКСА ФУНКЦИЙ ===
-  console.log('🔗 Построение индекса функций...');
-  const funcIndex = buildFunctionIndex(entitiesMap);
-  console.log(`   📊 Индексировано функций: ${funcIndex.size}`);
-
-  // === 4. ПОСТРОЕНИЕ ВЫЗОВОВ (CALLS) ===
-  console.log('🔗 Построение вызовов (calls)...');
-
-  const relationships = buildFunctionRelationships(entitiesMap, funcIndex);
-
+  // === 8. ПОДСЧЕТ СТАТИСТИКИ ===
   let totalCalls = 0;
   let totalCalledBy = 0;
   let totalImportedBy = 0;
+  let totalFunctions = 0;
 
-  // Добавляем связи в сущности
-  for (const [id, callList] of Object.entries(relationships.calls)) {
-    if (entities[id]) {
-      entities[id].calls = callList;
-      totalCalls += callList.length;
+  for (const entity of Object.values(entities)) {
+    if (entity.kind === 'function') {
+      totalFunctions++;
+      if (entity.calls) totalCalls += entity.calls.length;
+      if (entity.calledBy) totalCalledBy += entity.calledBy.length;
     }
   }
 
-  for (const [id, calledByList] of Object.entries(relationships.calledBy)) {
-    if (entities[id]) {
-      entities[id].calledBy = calledByList;
-      totalCalledBy += calledByList.length;
-    }
+  if (importGraph) {
+    totalImportedBy = importGraph.edges.length;
   }
 
-  for (const [id, importedByList] of Object.entries(relationships.importedBy)) {
-    if (entities[id]) {
-      entities[id].importedBy = importedByList;
-      totalImportedBy += importedByList.length;
-    }
-  }
+  const totalFiles = Object.keys(fileIndex).length;
+  const totalModules = Object.keys(moduleIndex).length;
 
-  console.log(`📞 Вызовов (calls): ${totalCalls}`);
-  console.log(`📞 Обратных вызовов (calledBy): ${totalCalledBy}`);
-  console.log(`📥 Импортеров (importedBy): ${totalImportedBy}`);
+  // === 9. ФОРМИРОВАНИЕ ОТЧЕТА ===
+  console.log('\\n📄 Формирование отчета...');
 
-  // === 5. ФОРМИРОВАНИЕ ОТЧЕТА ===
   const report: CompactEntityReport = {
-    version: '3.0.0',
-    entities: {},
+    version: '3.0.1',
+    timestamp: new Date().toISOString(),
+
+    functionIndex,
+    fileIndex,
+    moduleIndex,
+
+    entities,
+
+    callGraph,
+    importGraph,
+
+    stats: {
+      totalFunctions,
+      totalCalls,
+      totalCalledBy,
+      totalImportedBy,
+      totalEnums,
+      totalDecorators,
+      totalFiles,
+      totalModules,
+    },
+
+    legend: {
+      kinds: {
+        function: 'Function declaration',
+        class: 'Class declaration',
+        enum: 'Enum declaration',
+        decorator: 'Decorator',
+        constant: 'Constant',
+        interface: 'Interface',
+        type: 'Type alias',
+        variable: 'Variable',
+      },
+      callTypes: {
+        direct: 'Direct function call',
+        import: 'Imported function call',
+        method: 'Method call',
+        computed: 'Vue computed/watcher',
+        watch: 'Vue watch',
+        event: 'Event handler',
+      },
+      importTypes: {
+        named: 'Named import',
+        default: 'Default import',
+        namespace: 'Namespace import',
+        type: 'Type-only import',
+      },
+    },
   };
 
-  if (formatting.includeTimestamp !== false) {
-    report.timestamp = new Date().toISOString();
-  }
-
-  if (formatting.includeStats !== false) {
-    report.totalFunctions = totalFunctions;
-    report.totalCalls = totalCalls;
-    report.totalCalledBy = totalCalledBy;
-    report.totalImportedBy = totalImportedBy;
-    report.totalEnums = totalEnums;
-    report.totalDecorators = totalDecorators;
-  }
-
-  // Сортировка сущностей
-  let sortedEntities = entities;
+  // === 10. СОРТИРОВКА (опционально) ===
   if (formatting.sortEntities !== false) {
-    sortedEntities = Object.fromEntries(
+    const sortedEntities = Object.fromEntries(
       Object.entries(entities).sort((a, b) => {
-        const kindOrder = { function: 0, enum: 1, decorator: 2 };
+        const kindOrder = {
+          function: 0,
+          enum: 1,
+          decorator: 2,
+          class: 3,
+          constant: 4,
+          interface: 5,
+          type: 6,
+          variable: 7,
+        };
         const aOrder = kindOrder[a[1].kind as keyof typeof kindOrder] ?? 99;
         const bOrder = kindOrder[b[1].kind as keyof typeof kindOrder] ?? 99;
         if (aOrder !== bOrder) return aOrder - bOrder;
-        return a[1].name.localeCompare(b[1].name);
+        return (a[1].name || '').localeCompare(b[1].name || '');
       })
     );
+    report.entities = sortedEntities;
   }
 
-  report.entities = sortedEntities;
-
-  // === 6. СОХРАНЕНИЕ ===
+  // === 11. СОХРАНЕНИЕ ===
   const indent = formatting.indentSize || 2;
   const json = JSON.stringify(report, null, indent);
 
@@ -1014,60 +982,48 @@ export function generateCompactEntityReport(
   }
   fs.writeFileSync(outputPath, json, 'utf-8');
 
-  // === 7. СТАТИСТИКА ===
+  // === 12. ИТОГОВАЯ СТАТИСТИКА ===
   const sizeKB = (json.length / 1024).toFixed(2);
-  console.log(`\n✅ Компактный отчет сохранен: ${outputPath}`);
+  console.log(`\\n✅ Отчет сохранен: ${outputPath}`);
   console.log(`📊 Размер: ${sizeKB} KB`);
   console.log(`📊 Функций: ${totalFunctions}`);
+  console.log(`📊 Вызовов: ${totalCalls}`);
+  console.log(`📊 Обратных вызовов: ${totalCalledBy}`);
+  console.log(`📊 Импортов: ${totalImportedBy}`);
+  console.log(`📊 Файлов: ${totalFiles}`);
+  console.log(`📊 Модулей: ${totalModules}`);
   console.log(`📊 Enum: ${totalEnums}`);
   console.log(`📊 Декораторов: ${totalDecorators}`);
-  console.log(`📞 Вызовов (calls): ${totalCalls}`);
-  console.log(`📞 Обратных вызовов (calledBy): ${totalCalledBy}`);
-  console.log(`📥 Импортеров (importedBy): ${totalImportedBy}`);
   console.log(`⏱️  Время: ${((Date.now() - startTime) / 1000).toFixed(2)} сек`);
 
-  // Проверка наличия связей
-  const entitiesWithCalls = Object.values(report.entities).filter(
-    e => e.calls && e.calls.length > 0
+  const entitiesWithCalls = Object.values(entities).filter(
+    e => e.kind === 'function' && e.calls && e.calls.length > 0
   );
-  const entitiesWithCalledBy = Object.values(report.entities).filter(
-    e => e.calledBy && e.calledBy.length > 0
-  );
-  const entitiesWithImportedBy = Object.values(report.entities).filter(
-    e => e.importedBy && e.importedBy.length > 0
+  const entitiesWithCalledBy = Object.values(entities).filter(
+    e => e.kind === 'function' && e.calledBy && e.calledBy.length > 0
   );
 
-  console.log(`\n📊 СТАТИСТИКА СВЯЗЕЙ:`);
-  console.log(`   🔗 Сущностей с вызовами (calls): ${entitiesWithCalls.length}`);
-  console.log(`   🔗 Сущностей с обратными вызовами (calledBy): ${entitiesWithCalledBy.length}`);
-  console.log(`   📥 Сущностей с импортерами (importedBy): ${entitiesWithImportedBy.length}`);
+  console.log(`\\n📊 СТАТИСТИКА СВЯЗЕЙ:`);
+  console.log(`   🔗 Сущностей с вызовами: ${entitiesWithCalls.length}`);
+  console.log(`   🔗 Сущностей с обратными вызовами: ${entitiesWithCalledBy.length}`);
 
   if (entitiesWithCalls.length > 0) {
     const sample = entitiesWithCalls[0];
     console.log(`   📋 Пример: ${sample.name} → ${sample.calls.length} вызовов`);
-    for (const call of sample.calls.slice(0, 3)) {
-      console.log(`      📞 ${call.targetName} (${call.callType})`);
-    }
   }
 
-  if (entitiesWithImportedBy.length > 0) {
-    const sample = entitiesWithImportedBy[0];
-    console.log(`   📋 Пример импортеров: ${sample.name} → ${sample.importedBy.length} импортеров`);
-    for (const imp of sample.importedBy.slice(0, 3)) {
-      console.log(`      📥 ${imp.importerFile} (${imp.specifier})`);
-    }
-  }
-
-  if (entitiesWithCalls.length === 0 && entitiesWithImportedBy.length === 0) {
-    console.log(`\n⚠️ Внимание: связи между функциями не найдены`);
+  if (entitiesWithCalls.length === 0) {
+    console.log(`\\n⚠️ Внимание: вызовы между функциями не найдены`);
     console.log(`   Проверьте, что в проекте есть вызовы функций и они правильно резолвятся`);
   }
 
+  const idStats = idManager.getStats();
+  console.log(`\\n🔑 СТАТИСТИКА ID:`);
+  console.log(`   📝 Всего сгенерировано ID: ${idStats.total}`);
+  console.log(`   ✅ Уникальных ID: ${idStats.unique}`);
+  console.log(`   📊 Всего сущностей в отчете: ${Object.keys(report.entities).length}`);
+
   return report;
 }
-
-// ============================================
-// ЭКСПОРТ ПО УМОЛЧАНИЮ
-// ============================================
 
 export default generateCompactEntityReport;

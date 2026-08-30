@@ -83,6 +83,9 @@ import { buildPackages } from './modules/packages.js';
 
 import { createDefaultSecurity } from './modules/types.js';
 
+// ✅ Импортируем IdManager
+import idManager from '../core/IdManager.js';
+
 // ============================================================
 // ИМПОРТ ДЛЯ VUE АНАЛИЗАТОРА
 // ============================================================
@@ -101,13 +104,6 @@ function simpleHash(str: string): string {
     hash = hash & hash;
   }
   return Math.abs(hash).toString(36).padStart(4, '0');
-}
-
-function generateFunctionId(filePath: string, funcName: string): string {
-  // ✅ ИСПРАВЛЕНО: используем полный относительный путь для хеша
-  const relativePath = path.relative(process.cwd(), filePath);
-  const fileHash = simpleHash(relativePath);
-  return `func_${fileHash}_${funcName}`;
 }
 
 function generateFileId(filePath: string): string {
@@ -404,7 +400,13 @@ function collectImporters(
   // Инициализируем для всех функций
   for (const [filePath, entities] of Object.entries(entitiesMap)) {
     for (const func of entities.functions || []) {
-      const id = func.id || generateFunctionId(filePath, func.name);
+      const id = func.id || idManager.getFunctionId({
+        filePath,
+        funcName: func.name,
+        line: func.line || 0,
+        parentFunction: func.parentFunction,
+        depth: func.depth || 0
+      });
       importedByMap[id] = [];
     }
   }
@@ -438,7 +440,13 @@ function collectImporters(
         const targetFunc = targetEntities.functions.find(f => f.name === importedName);
         if (!targetFunc) continue;
 
-        const targetId = targetFunc.id || generateFunctionId(resolvedPath, importedName);
+        const targetId = targetFunc.id || idManager.getFunctionId({
+          filePath: resolvedPath,
+          funcName: importedName,
+          line: targetFunc.line || 0,
+          parentFunction: targetFunc.parentFunction,
+          depth: targetFunc.depth || 0
+        });
 
         // Проверяем существование массива перед push
         if (!importedByMap[targetId]) {
@@ -704,6 +712,9 @@ export function buildEnhancedPackageLockReport(
   _filePaths?: string[],
   _options?: { includeBody?: boolean }
 ): EnhancedPackageLockReport {
+  // Очищаем кэш IdManager перед генерацией
+  idManager.clear();
+
   const projectRoot = findProjectRoot(process.cwd()) || process.cwd();
 
   const metadata = createMetadata();
@@ -802,7 +813,11 @@ export function buildEnhancedPackageLockReport(
   return {
     ...metadata,
     packages,
-    dependencyGraph,
+    dependencyGraph: {
+      direction: 'bidirectional' as const,
+      inwardDependencies: dependencyGraph.inwardDependencies || {},
+      outwardDependencies: dependencyGraph.outwardDependencies || {},
+    },
     executionGraph,
     importExportFlow: safeImportExportFlow,
     callGraph,
@@ -825,6 +840,9 @@ export function savePackageLockReport(
   outputPath: string,
   _options?: { includeBody?: boolean }
 ): void {
+  // Очищаем кэш IdManager перед генерацией
+  idManager.clear();
+
   // Нормализуем сущности
   const normalizedEntitiesMap: Record<string, EntitiesResult> = {};
   for (const [key, entities] of Object.entries(entitiesMap)) {
@@ -836,7 +854,13 @@ export function savePackageLockReport(
     normalizedEntitiesMap[key] = {
       functions: ensureArray(entities.functions).map((f: any) => ({
         ...f,
-        id: f.id || generateFunctionId(key, f.name),
+        id: f.id || idManager.getFunctionId({
+          filePath: key,
+          funcName: f.name,
+          line: f.line || 0,
+          parentFunction: f.parentFunction,
+          depth: f.depth || 0
+        }),
         vscode: f.vscode || `vscode://file/${key}:${f.line}`,
         calls: ensureArray(f.calls),
         calledBy: ensureArray(f.calledBy),
@@ -880,7 +904,13 @@ export function savePackageLockReport(
           returns: func.returnType || 'any',
           line: func.line || 0,
           consumers: [],
-          id: func.id || generateFunctionId(modulePath, func.name),
+          id: func.id || idManager.getFunctionId({
+            filePath: modulePath,
+            funcName: func.name,
+            line: func.line || 0,
+            parentFunction: func.parentFunction,
+            depth: func.depth || 0
+          }),
           vscode: func.vscode || `vscode://file/${modulePath}:${func.line}`,
         };
       }
@@ -1089,7 +1119,11 @@ export function savePackageLockReport(
     version: '3.0.0',
     lockfileVersion: 3,
     packages,
-    dependencyGraph,
+    dependencyGraph: {
+      direction: 'bidirectional' as const,
+      inwardDependencies: dependencyGraph.inwardDependencies || {},
+      outwardDependencies: dependencyGraph.outwardDependencies || {},
+    },
     executionGraph,
     importExportFlow: safeImportExportFlow,
     callGraph,
@@ -1131,6 +1165,18 @@ export function savePackageLockReport(
       if (func.vscode) totalWithVSCode++;
     }
   }
+
+  // Валидация ID
+  const validation = idManager.validate();
+  if (!validation.valid) {
+    console.warn(`⚠️ Найдены дублирующиеся ID: ${validation.duplicates.join(', ')}`);
+  }
+
+  // Статистика ID
+  const stats = idManager.getStats();
+  console.log(`\n🔑 СТАТИСТИКА ID (savePackageLockReport):`);
+  console.log(`   📝 Всего сгенерировано ID: ${stats.total}`);
+  console.log(`   ✅ Уникальных ID: ${stats.unique}`);
 
   console.log(`✅ Enhanced package-lock report saved: ${outputPath}`);
   console.log(`📊 Functions: ${report.entityStats?.totalFunctions || 0}`);
@@ -1258,7 +1304,13 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
       security: func.security || createDefaultSecurity(),
       body: func.body || '',
       vscode: funcAny.vscode || '',
-      id: funcAny.id || generateFunctionId(modulePath || 'unknown', funcName),
+      id: funcAny.id || idManager.getFunctionId({
+        filePath: modulePath || 'unknown',
+        funcName: funcName,
+        line: func.line || 0,
+        parentFunction: func.parentFunction,
+        depth: func.depth || 0
+      }),
     };
 
     // ✅ ИСПРАВЛЕНО: добавляем signature и importedFrom с проверкой
@@ -1587,7 +1639,13 @@ export function buildOptimizedRelationships(
     };
 
     for (const func of entities.functions || []) {
-      const id = func.id || generateFunctionId(filePath, func.name);
+      const id = func.id || idManager.getFunctionId({
+        filePath,
+        funcName: func.name,
+        line: func.line || 0,
+        parentFunction: func.parentFunction,
+        depth: func.depth || 0
+      });
       funcIndex[func.name] = {
         id,
         file: filePath,
@@ -1600,7 +1658,13 @@ export function buildOptimizedRelationships(
   // 2. Для каждой функции заполняем calls
   for (const [filePath, entities] of Object.entries(entitiesMap)) {
     for (const func of entities.functions || []) {
-      const id = func.id || generateFunctionId(filePath, func.name);
+      const id = func.id || idManager.getFunctionId({
+        filePath,
+        funcName: func.name,
+        line: func.line || 0,
+        parentFunction: func.parentFunction,
+        depth: func.depth || 0
+      });
       relationships.calls[id] = [];
 
       // Преобразуем существующие calls (массив строк) в полные объекты
@@ -1624,7 +1688,13 @@ export function buildOptimizedRelationships(
             if (otherFile === filePath) continue;
             const foundFunc = (otherEntities.functions || []).find((f: any) => f.name === callName);
             if (foundFunc) {
-              const targetId = foundFunc.id || generateFunctionId(otherFile, callName);
+              const targetId = foundFunc.id || idManager.getFunctionId({
+                filePath: otherFile,
+                funcName: callName,
+                line: foundFunc.line || 0,
+                parentFunction: foundFunc.parentFunction,
+                depth: foundFunc.depth || 0
+              });
               relationships.calls[id].push({
                 targetId,
                 targetName: callName,
@@ -1659,7 +1729,13 @@ export function buildOptimizedRelationships(
   // Инициализируем calledBy для всех функций
   for (const [filePath, entities] of Object.entries(entitiesMap)) {
     for (const func of entities.functions || []) {
-      const id = func.id || generateFunctionId(filePath, func.name);
+      const id = func.id || idManager.getFunctionId({
+        filePath,
+        funcName: func.name,
+        line: func.line || 0,
+        parentFunction: func.parentFunction,
+        depth: func.depth || 0
+      });
       relationships.calledBy[id] = [];
     }
   }
@@ -1673,7 +1749,13 @@ export function buildOptimizedRelationships(
         let callerInfo = null;
         for (const [filePath, entities] of Object.entries(entitiesMap)) {
           const func = (entities.functions || []).find((f: any) => {
-            const fId = f.id || generateFunctionId(filePath, f.name);
+            const fId = f.id || idManager.getFunctionId({
+              filePath,
+              funcName: f.name,
+              line: f.line || 0,
+              parentFunction: f.parentFunction,
+              depth: f.depth || 0
+            });
             return fId === callerId;
           });
           if (func) {
@@ -1724,6 +1806,9 @@ export function saveOptimizedPackageLockReport(
   outputPath: string,
   options: OptimizedReportOptions = {}
 ): void {
+  // Очищаем кэш IdManager перед генерацией
+  idManager.clear();
+
   const {
     includeBody = false,
     includeVscodeLinks = true,
@@ -1745,7 +1830,13 @@ export function saveOptimizedPackageLockReport(
 
   for (const [filePath, fileEntities] of Object.entries(entitiesMap)) {
     for (const func of fileEntities.functions || []) {
-      const id = func.id || generateFunctionId(filePath, func.name);
+      const id = func.id || idManager.getFunctionId({
+        filePath,
+        funcName: func.name,
+        line: func.line || 0,
+        parentFunction: func.parentFunction,
+        depth: func.depth || 0
+      });
       const vscode = includeVscodeLinks
         ? `vscode://file/${filePath}:${func.line}`
         : '';
@@ -1824,6 +1915,18 @@ export function saveOptimizedPackageLockReport(
   fs.writeFileSync(outputPath, json, 'utf-8');
 
   // 5. Выводим статистику
+  // Валидация ID
+  const validation = idManager.validate();
+  if (!validation.valid) {
+    console.warn(`⚠️ Найдены дублирующиеся ID: ${validation.duplicates.join(', ')}`);
+  }
+
+  // Статистика ID
+  const stats = idManager.getStats();
+  console.log(`\n🔑 СТАТИСТИКА ID (saveOptimizedPackageLockReport):`);
+  console.log(`   📝 Всего сгенерировано ID: ${stats.total}`);
+  console.log(`   ✅ Уникальных ID: ${stats.unique}`);
+
   console.log(`✅ Оптимизированный отчет сохранен: ${outputPath}`);
   console.log(`📊 Функций: ${totalFunctions}`);
   console.log(`📞 Вызовов (calls): ${totalCalls}`);
@@ -2119,7 +2222,13 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         vscode: `vscode://file/${absolutePath}:${functionDecl.getStartLineNumber()}`,
         signature: '',
         _safeInfo: null,
-        id: generateFunctionId(absolutePath, name),
+        id: idManager.getFunctionId({
+          filePath: absolutePath,
+          funcName: name,
+          line: functionDecl.getStartLineNumber(),
+          parentFunction: undefined,
+          depth: 0
+        }),
       });
     }
 
@@ -2202,7 +2311,13 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
             vscode: `vscode://file/${absolutePath}:${decl.getStartLineNumber()}`,
             signature: '',
             _safeInfo: null,
-            id: generateFunctionId(absolutePath, name),
+            id: idManager.getFunctionId({
+              filePath: absolutePath,
+              funcName: name,
+              line: decl.getStartLineNumber(),
+              parentFunction: undefined,
+              depth: 0
+            }),
           });
 
           // Удаляем эту константу из constants, чтобы не дублировать

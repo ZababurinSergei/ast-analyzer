@@ -169,7 +169,7 @@ export function createUniverse(report: EnhancedPackageLockReport): CompactUniver
 // ============================================================
 
 export const REPORTERS_VERSION = '3.0.1';
-export const REPORTERS_NAME = '@newkind/ast-analyzer/reporters';
+export const REPORTERS_NAME = 'reporters';
 
 // ============================================================
 // ЭКСПОРТ ПО УМОЛЧАНИЮ

@@ -12,6 +12,7 @@ import {
   findUnusedFunctions,
   findUnresolvedCalls,
 } from './call-collector.js';
+import idManager from './IdManager.js';
 
 // ==========================================
 // ИМПОРТ ТИПОВ ИЗ src/types.ts (ЕДИНЫЙ ИСТОЧНИК)
@@ -369,9 +370,9 @@ function convertVueImportsToImportInfo(
     return [];
   }
 
-  return vueImports.map((imp) => ({
+  return vueImports.map(imp => ({
     source: imp.source,
-    specifiers: imp.specifiers.map((s) => ({
+    specifiers: imp.specifiers.map(s => ({
       local: s,
       imported: s,
       type: 'ImportSpecifier',
@@ -461,7 +462,13 @@ function convertVueAnalysisToEntities(
         hasExec: false,
         hasPassword: false,
       },
-      id: `func_vue_${comp.name}`,
+      // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID
+      id: idManager.getFunctionId({
+        filePath,
+        funcName: comp.name,
+        line: 0,
+        type: 'vue',
+      }),
       vscode: `vscode://file/${filePath}`,
       callsInfo: [],
       calledByInfo: [],
@@ -535,7 +542,7 @@ function convertVueAnalysisToEntities(
         let innerMatch;
         while (
           (innerMatch = innerPattern.exec(scriptContent.substring(callMatch.index))) !== null
-          ) {
+        ) {
           const called = innerMatch[1];
           if (called && called !== caller && !calls.includes(called)) {
             calls.push(called);
@@ -601,7 +608,7 @@ function convertVueAnalysisToEntities(
   }
 
   // ==========================================
-  // 9. ✅ ИМПОРТЫ ИЗ VUE (с правильной конвертацией)
+  // 9. ИМПОРТЫ ИЗ VUE (с правильной конвертацией)
   // ==========================================
   if (vueAnalysis.imports && vueAnalysis.imports.length > 0) {
     result.imports = convertVueImportsToImportInfo(vueAnalysis.imports);
@@ -647,8 +654,6 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
       if (vueAnalysis) {
         console.log(`🎯 Используем Vue-анализатор для ${path.basename(filePath)}`);
         const entities = convertVueAnalysisToEntities(vueAnalysis, filePath);
-        // ✅ ДОБАВЛЯЕМ: копируем импорты (уже сконвертированы внутри convertVueAnalysisToEntities)
-        // entities.imports уже содержит правильный формат ImportInfo[]
         return entities;
       }
     } catch (error) {
@@ -878,17 +883,28 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
       const params = isArraySafe(node.params)
         ? node.params.map((p: any) => {
-          if (p.type === 'Identifier') return p.name || 'unknown';
-          if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
-          if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
-          return 'unknown';
-        })
+            if (p.type === 'Identifier') return p.name || 'unknown';
+            if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
+            if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
+            return 'unknown';
+          })
         : [];
 
       const isNested = parentFunctions.length > 0 || depth > 0;
       const parentFunc = parentFunctions.length > 0 ? parentFunctions.join('.') : undefined;
 
       const bodyText = node.body ? extractBodyText(node.body) : undefined;
+
+      // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID
+      const funcId = idManager.getFunctionId({
+        filePath: filePath || 'unknown',
+        funcName: fullName || name,
+        line: node.loc?.start?.line || 1,
+        parentFunction: parentFunc,
+        depth: depth,
+        type: 'function',
+      });
+
       const funcInfo: FunctionInfo = {
         name: fullName,
         line: node.loc?.start?.line || 1,
@@ -911,7 +927,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         depth: depth,
         complexity: calculateComplexity(node),
         security: analyzeSecurity(bodyText || ''),
-        id: filePath ? `func_${simpleHash(filePath)}_${fullName}` : `func_${fullName}`,
+        id: funcId,
         vscode: filePath ? `vscode://file/${filePath}:${node.loc?.start?.line || 1}` : '',
         callsInfo: [],
         calledByInfo: [],
@@ -1023,17 +1039,28 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
       const params = isArraySafe(node.params)
         ? node.params.map((p: any) => {
-          if (p.type === 'Identifier') return p.name || 'unknown';
-          if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
-          if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
-          return 'unknown';
-        })
+            if (p.type === 'Identifier') return p.name || 'unknown';
+            if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
+            if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
+            return 'unknown';
+          })
         : [];
 
       const isNested = parentFuncs.length > 0 || depth > 0;
       parentFunc = parentFuncs.length > 0 ? parentFuncs.join('.') : undefined;
 
       const bodyText = node.body ? extractBodyText(node.body) : undefined;
+
+      // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID
+      const funcId = idManager.getFunctionId({
+        filePath: filePath || 'unknown',
+        funcName: name,
+        line: node.loc?.start?.line || 1,
+        parentFunction: parentFunc,
+        depth: depth,
+        type: 'function',
+      });
+
       const funcInfo: FunctionInfo = {
         name,
         line: node.loc?.start?.line || 1,
@@ -1056,7 +1083,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         depth: depth,
         complexity: calculateComplexity(node),
         security: analyzeSecurity(bodyText || ''),
-        id: filePath ? `func_${simpleHash(filePath)}_${name}` : `func_${name}`,
+        id: funcId,
         vscode: filePath ? `vscode://file/${filePath}:${node.loc?.start?.line || 1}` : '',
         callsInfo: [],
         calledByInfo: [],
@@ -1093,14 +1120,24 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
         const params = isArraySafe(node.value?.params)
           ? node.value.params.map((p: any) => {
-            if (p.type === 'Identifier') return p.name || 'unknown';
-            if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
-            return 'unknown';
-          })
+              if (p.type === 'Identifier') return p.name || 'unknown';
+              if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
+              return 'unknown';
+            })
           : [];
 
         const parentFunc = className;
         const bodyText = node.value?.body ? extractBodyText(node.value.body) : undefined;
+
+        // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID
+        const funcId = idManager.getFunctionId({
+          filePath: filePath || 'unknown',
+          funcName: fullName,
+          line: node.loc?.start?.line || 1,
+          parentFunction: parentFunc,
+          depth: depth,
+          type: 'function',
+        });
 
         const funcInfo: FunctionInfo = {
           name: fullName,
@@ -1122,7 +1159,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
           depth: depth,
           complexity: node.value?.body ? calculateComplexity(node.value.body) : 1,
           security: analyzeSecurity(bodyText || ''),
-          id: filePath ? `func_${simpleHash(filePath)}_${fullName}` : `func_${fullName}`,
+          id: funcId,
           vscode: filePath ? `vscode://file/${filePath}:${node.loc?.start?.line || 1}` : '',
           callsInfo: [],
           calledByInfo: [],
@@ -1472,20 +1509,6 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
   result.filePath = filePath || 'unknown';
 
   return result;
-}
-
-// ==========================================
-// ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ГЕНЕРАЦИИ ID
-// ==========================================
-
-function simpleHash(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash).toString(36).padStart(4, '0');
 }
 
 // ==========================================

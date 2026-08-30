@@ -24,6 +24,13 @@ export { findCyclicEdges, convertToDOT, dfs } from './core/graph-utils.js';
 export { setTsConfigPath, loadTsConfig, resolveAliasPath } from './core/tsconfig-resolver.js';
 
 // ==========================================
+// ЭКСПОРТ IdManager
+// ==========================================
+
+export { IdManager, idManager } from './core/IdManager.js';
+export type { IdContext } from './core/IdManager.js';
+
+// ==========================================
 // ЭКСПОРТ РЕЖИМОВ (MODES)
 // ==========================================
 
@@ -228,24 +235,58 @@ export {
 // Генерация HTML отчётов
 export { generateHTMLReport, escapeHtml } from './reporters/html-reporter.js';
 
-// Генерация Markdown отчётов
+// Генерация интерактивных HTML отчётов
+export { generateInteractiveHTML } from './reporters/interactive-reporter.js';
+
+// JSON репортеры
 export {
-  generateStatsMarkdown,
-  generateExportsMarkdown,
-  generateImportsMarkdown,
-  generateClustersMarkdown,
-  generateCyclicEdgesMarkdown,
-  generateSuggestedStructureMarkdown,
-  generateCallGraphMarkdown,
-  generateSplitModulePromptMarkdown,
-  escapeMarkdown,
-} from './reporters/markdown-reporter.js';
+  buildEnhancedPackageLockReport,
+  saveModuleGraph,
+  saveEntityGraph,
+  saveFullAnalysis,
+  savePackageLockReport,
+  saveCallGraphResult,
+  saveOptimizedPackageLockReport,
+  buildModuleGraph,
+  buildEntityGraph,
+  buildFullAnalysis,
+  extractEntitiesFromFile,
+} from './reporters/json-reporter.js';
 
-// ==========================================
-// ЭКСПОРТ ENV (ПУТИ И ПРЕСЕТЫ)
-// ==========================================
+// Компактный формат (Universe)
+export {
+  compressReport,
+  UniverseNavigator,
+  loadUniverse,
+  createNavigator,
+  type CompactUniverse,
+  type CompactPackage,
+  type CompactFunction,
+  type CompactStats,
+} from './reporters/compressReport.js';
 
-export { getRootPath, getPathSymbol, type EnvPreset, type EnvConfig } from './reporters/env.js';
+// createUniverse экспортируется из reporters/index.js
+export { createUniverse } from './reporters/index.js';
+
+// Модули репортеров
+export {
+  metadata,
+  statistics,
+  graphs,
+  flows,
+  architecture,
+  summary,
+  packages,
+  converters,
+  utils,
+  vue,
+} from './reporters/index.js';
+
+// Константы репортеров
+export { REPORTERS_VERSION, REPORTERS_NAME } from './reporters/index.js';
+
+// ENV для репортеров
+export { getRootPath, getPathSymbol } from './reporters/env.js';
 
 // ==========================================
 // ЭКСПОРТ ТИПОВ

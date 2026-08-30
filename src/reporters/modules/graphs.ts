@@ -1,108 +1,89 @@
 // src/reporters/modules/graphs.ts
-// Графы зависимостей
+// Модуль для построения и анализа графов зависимостей
 
-export interface DependencyGraph {
-  direction: 'bidirectional';
+/**
+ * Строит граф зависимостей (входящие и исходящие)
+ * ✅ ИСПРАВЛЕНО: инициализирует ВСЕ узлы, даже без зависимостей
+ */
+export function buildDependencyGraph(graph: Record<string, string[]>): {
   inwardDependencies: Record<string, string[]>;
   outwardDependencies: Record<string, string[]>;
-}
+} {
+  const inwardDependencies: Record<string, string[]> = {};
+  const outwardDependencies: Record<string, string[]> = {};
 
-export function buildDependencyGraph(graph: Record<string, string[]>): DependencyGraph {
-  const inwardDeps: Record<string, string[]> = {};
-  const outwardDeps: Record<string, string[]> = {};
-
-  // Инициализация структур для всех модулей
-  for (const modulePath of Object.keys(graph)) {
-    inwardDeps[modulePath] = [];
-    outwardDeps[modulePath] = [];
+  // ✅ ШАГ 1: Инициализируем ВСЕ узлы с пустыми массивами
+  // Это гарантирует, что даже узлы без зависимостей будут иметь запись в графе
+  for (const node of Object.keys(graph)) {
+    outwardDependencies[node] = [];
+    inwardDependencies[node] = [];
   }
 
-  // Заполнение зависимостей
+  // ✅ ШАГ 2: Добавляем ребра между узлами
   for (const [from, deps] of Object.entries(graph)) {
-    for (const dep of deps) {
-      if (inwardDeps[from]) {
-        inwardDeps[from].push(dep);
+    // Проверяем, что массив зависимостей существует
+    if (!Array.isArray(deps)) {
+      continue;
+    }
+
+    // Убеждаемся, что у узла есть запись в графе
+    if (!outwardDependencies[from]) {
+      outwardDependencies[from] = [];
+    }
+
+    for (const to of deps) {
+      // Добавляем исходящую зависимость
+      outwardDependencies[from].push(to);
+
+      // Добавляем входящую зависимость (обратную связь)
+      if (!inwardDependencies[to]) {
+        inwardDependencies[to] = [];
       }
-      if (outwardDeps[dep]) {
-        outwardDeps[dep].push(from);
-      }
+      inwardDependencies[to].push(from);
     }
   }
 
-  return {
-    direction: 'bidirectional',
-    inwardDependencies: inwardDeps,
-    outwardDependencies: outwardDeps,
-  };
+  return { inwardDependencies, outwardDependencies };
 }
 
 /**
- * Проверяет наличие циклических зависимостей в графе
+ * Находит циклические зависимости в графе
+ * ✅ ИСПРАВЛЕНО: использует безопасное получение соседей
  */
-export function findCycles(graphData: Record<string, string[]>): boolean {
-  const visited = new Set<string>();
-  const recursionStack = new Set<string>();
-
-  const dfs = (node: string): boolean => {
-    if (recursionStack.has(node)) return true;
-    if (visited.has(node)) return false;
-
-    visited.add(node);
-    recursionStack.add(node);
-
-    const neighbors = graphData[node] || [];
-    for (const neighbor of neighbors) {
-      if (dfs(neighbor)) return true;
-    }
-
-    recursionStack.delete(node);
-    return false;
-  };
-
-  for (const node of Object.keys(graphData)) {
-    if (dfs(node)) return true;
-  }
-  return false;
-}
-
-/**
- * Находит все циклические зависимости в графе
- */
-export function findAllCycles(graphData: Record<string, string[]>): string[][] {
+export function findCycles(adjacency: Record<string, string[]>): string[][] {
   const cycles: string[][] = [];
   const visited = new Set<string>();
   const recursionStack = new Set<string>();
   const path: string[] = [];
 
-  const dfs = (node: string) => {
+  function dfs(node: string) {
+    // Если узел уже в стеке рекурсии - найден цикл
     if (recursionStack.has(node)) {
-      // Найден цикл
       const cycleStart = path.indexOf(node);
       if (cycleStart !== -1) {
-        const cycle = path.slice(cycleStart);
-        // Добавляем замыкающее ребро
-        const fullCycle = [...cycle, node];
-        cycles.push(fullCycle);
+        cycles.push(path.slice(cycleStart));
       }
       return;
     }
 
+    // Если узел уже посещен - пропускаем
     if (visited.has(node)) return;
 
     visited.add(node);
     recursionStack.add(node);
     path.push(node);
 
-    const neighbors = graphData[node] || [];
+    // ✅ БЕЗОПАСНОЕ ПОЛУЧЕНИЕ СОСЕДЕЙ
+    const neighbors = getNeighborsSafe(adjacency, node);
     for (const neighbor of neighbors) {
       dfs(neighbor);
     }
 
     recursionStack.delete(node);
     path.pop();
-  };
+  }
 
-  for (const node of Object.keys(graphData)) {
+  for (const node of Object.keys(adjacency)) {
     if (!visited.has(node)) {
       dfs(node);
     }
@@ -112,152 +93,132 @@ export function findAllCycles(graphData: Record<string, string[]>): string[][] {
 }
 
 /**
- * Находит циклические ребра в графе
- */
-export function findCyclicEdges(graphData: Record<string, string[]>): Set<string> {
-  const cyclicEdges = new Set<string>();
-  const visited = new Set<string>();
-  const recursionStack = new Set<string>();
-  const path: string[] = [];
-
-  const dfs = (node: string) => {
-    if (recursionStack.has(node)) {
-      const cycleStart = path.indexOf(node);
-      if (cycleStart !== -1) {
-        for (let i = cycleStart; i < path.length; i++) {
-          const from = path[i];
-          const to = i + 1 < path.length ? path[i + 1] : node;
-          if (from && to) {
-            cyclicEdges.add(`${from}->${to}`);
-          }
-        }
-      }
-      return;
-    }
-
-    if (visited.has(node)) return;
-
-    visited.add(node);
-    recursionStack.add(node);
-    path.push(node);
-
-    const neighbors = graphData[node] || [];
-    for (const neighbor of neighbors) {
-      dfs(neighbor);
-    }
-
-    recursionStack.delete(node);
-    path.pop();
-  };
-
-  for (const node of Object.keys(graphData)) {
-    if (!visited.has(node)) {
-      dfs(node);
-    }
-  }
-
-  return cyclicEdges;
-}
-
-/**
  * Вычисляет максимальную глубину графа
+ * ✅ ИСПРАВЛЕНО: обрабатывает узлы без соседей
  */
-export function getMaxDepth(graphData: Record<string, string[]>): number {
-  let max = 0;
+export function getMaxDepth(adjacency: Record<string, string[]>): number {
+  let maxDepth = 0;
   const visited = new Set<string>();
 
-  const dfs = (node: string, depth: number) => {
+  function dfs(node: string, depth: number) {
     if (visited.has(node)) return;
     visited.add(node);
-    max = Math.max(max, depth);
+    maxDepth = Math.max(maxDepth, depth);
 
-    const neighbors = graphData[node] || [];
+    // ✅ БЕЗОПАСНОЕ ПОЛУЧЕНИЕ СОСЕДЕЙ
+    const neighbors = getNeighborsSafe(adjacency, node);
     for (const neighbor of neighbors) {
       dfs(neighbor, depth + 1);
     }
-  };
+  }
 
-  // Находим корневые узлы (те, на которые никто не ссылается)
-  const called = new Set<string>();
-  for (const deps of Object.values(graphData)) {
-    for (const dep of deps) {
-      called.add(dep);
+  // Обходим все узлы графа
+  for (const node of Object.keys(adjacency)) {
+    if (!visited.has(node)) {
+      dfs(node, 0);
     }
   }
 
-  const roots = Object.keys(graphData).filter((node: string) => !called.has(node));
-
-  // Если корневых узлов нет, значит есть циклы, берем все узлы
-  if (roots.length === 0) {
-    for (const node of Object.keys(graphData)) {
-      if (!visited.has(node)) {
-        dfs(node, 0);
-      }
-    }
-  } else {
-    for (const root of roots) {
-      dfs(root, 0);
-    }
-  }
-
-  return max;
+  return maxDepth;
 }
 
 /**
- * Группирует модули по уровням (BFS от корней)
+ * Группирует модули по уровням (BFS от корня)
+ * ✅ ИСПРАВЛЕНО: использует безопасное получение соседей
+ * ✅ ИСПРАВЛЕНО: защита от undefined в adjacency
  */
-export function getModulesByLevel(outwardDeps: Record<string, string[]>): Record<number, string[]> {
-  const modulesByLevel: Record<number, string[]> = {};
-  const queue: { node: string; level: number }[] = [];
+export function getModulesByLevel(
+  rootKey: string,
+  adjacency: Record<string, string[]>
+): Record<number, string[]> {
+  const levels: Record<number, string[]> = {};
   const visited = new Set<string>();
+  const queue: { node: string; level: number }[] = [{ node: rootKey, level: 0 }];
 
-  // Находим корневые узлы (те, на которые никто не ссылается)
-  const called = new Set<string>();
-  for (const deps of Object.values(outwardDeps)) {
-    for (const dep of deps) {
-      called.add(dep);
-    }
-  }
-
-  const roots = Object.keys(outwardDeps).filter((node: string) => !called.has(node));
-
-  // Если корневых узлов нет, берем все узлы с уровнем 0
-  if (roots.length === 0) {
-    for (const node of Object.keys(outwardDeps)) {
-      queue.push({ node, level: 0 });
-    }
-  } else {
-    for (const root of roots) {
-      queue.push({ node: root, level: 0 });
-    }
+  // ✅ Защита: если rootKey нет в adjacency, возвращаем пустой результат
+  if (!adjacency || typeof adjacency !== 'object' || !adjacency[rootKey]) {
+    return levels;
   }
 
   while (queue.length > 0) {
     const { node, level } = queue.shift()!;
+
     if (visited.has(node)) continue;
     visited.add(node);
 
-    if (!modulesByLevel[level]) {
-      modulesByLevel[level] = [];
+    if (!levels[level]) {
+      levels[level] = [];
     }
-    modulesByLevel[level].push(node);
+    levels[level].push(node);
 
-    const deps = outwardDeps[node] || [];
-    for (const dep of deps) {
-      if (!visited.has(dep)) {
-        queue.push({ node: dep, level: level + 1 });
+    // ✅ БЕЗОПАСНОЕ ПОЛУЧЕНИЕ СОСЕДЕЙ
+    const neighbors = getNeighborsSafe(adjacency, node);
+    if (Array.isArray(neighbors)) {
+      for (const neighbor of neighbors) {
+        if (!visited.has(neighbor)) {
+          queue.push({ node: neighbor, level: level + 1 });
+        }
       }
     }
   }
 
-  return modulesByLevel;
+  return levels;
 }
 
 /**
- * Находит путь между двумя узлами в графе (BFS)
+ * Проверяет, есть ли циклы в графе
  */
-export function findPathBetweenNodes(
-  graphData: Record<string, string[]>,
+export function hasCycles(adjacency: Record<string, string[]>): boolean {
+  const cycles = findCycles(adjacency);
+  return cycles.length > 0;
+}
+
+/**
+ * Находит все пути между двумя узлами (ограниченная глубина)
+ * ✅ ИСПРАВЛЕНО: использует безопасное получение соседей
+ */
+export function findAllPaths(
+  adjacency: Record<string, string[]>,
+  from: string,
+  to: string,
+  maxDepth: number = 10
+): string[][] {
+  const paths: string[][] = [];
+  const visited = new Set<string>();
+
+  function dfs(current: string, path: string[], depth: number) {
+    if (depth > maxDepth) return;
+    if (visited.has(current)) return;
+    if (path.includes(current)) return; // предотвращаем циклы
+
+    const newPath = [...path, current];
+
+    if (current === to) {
+      paths.push(newPath);
+      return;
+    }
+
+    visited.add(current);
+
+    // ✅ БЕЗОПАСНОЕ ПОЛУЧЕНИЕ СОСЕДЕЙ
+    const neighbors = getNeighborsSafe(adjacency, current);
+    for (const neighbor of neighbors) {
+      dfs(neighbor, newPath, depth + 1);
+    }
+
+    visited.delete(current);
+  }
+
+  dfs(from, [], 0);
+  return paths;
+}
+
+/**
+ * Находит кратчайший путь между двумя узлами (BFS)
+ * ✅ ИСПРАВЛЕНО: использует безопасное получение соседей
+ */
+export function findShortestPath(
+  adjacency: Record<string, string[]>,
   from: string,
   to: string
 ): string[] | null {
@@ -268,10 +229,12 @@ export function findPathBetweenNodes(
 
   while (queue.length > 0) {
     const { node, path } = queue.shift()!;
+
     if (visited.has(node)) continue;
     visited.add(node);
 
-    const neighbors = graphData[node] || [];
+    // ✅ БЕЗОПАСНОЕ ПОЛУЧЕНИЕ СОСЕДЕЙ
+    const neighbors = getNeighborsSafe(adjacency, node);
     for (const neighbor of neighbors) {
       if (neighbor === to) {
         return [...path, neighbor];
@@ -286,186 +249,321 @@ export function findPathBetweenNodes(
 }
 
 /**
- * Находит все пути между двумя узлами (с ограничением глубины)
+ * Находит все достижимые узлы из указанного
+ * ✅ ИСПРАВЛЕНО: использует безопасное получение соседей
  */
-export function findAllPathsBetweenNodes(
-  graphData: Record<string, string[]>,
-  from: string,
-  to: string,
-  maxDepth: number = 10
-): string[][] {
-  const paths: string[][] = [];
+export function findReachableNodes(adjacency: Record<string, string[]>, start: string): string[] {
+  const reachable = new Set<string>();
+  const queue: string[] = [start];
 
-  const dfs = (current: string, path: string[], depth: number) => {
-    if (depth > maxDepth) return;
-    if (path.includes(current)) return; // Предотвращаем циклы
+  while (queue.length > 0) {
+    const node = queue.shift()!;
+    if (reachable.has(node)) continue;
+    reachable.add(node);
 
-    const newPath = [...path, current];
-
-    if (current === to) {
-      paths.push(newPath);
-      return;
-    }
-
-    const neighbors = graphData[current] || [];
+    // ✅ БЕЗОПАСНОЕ ПОЛУЧЕНИЕ СОСЕДЕЙ
+    const neighbors = getNeighborsSafe(adjacency, node);
     for (const neighbor of neighbors) {
-      dfs(neighbor, newPath, depth + 1);
+      if (!reachable.has(neighbor)) {
+        queue.push(neighbor);
+      }
     }
-  };
+  }
 
-  dfs(from, [], 0);
-  return paths;
+  return Array.from(reachable);
 }
 
 /**
- * Находит все узлы, от которых зависит указанный узел (входящие зависимости)
+ * Находит strongly connected components (SCC) в графе
+ * Алгоритм Тарьяна
+ * ✅ ИСПРАВЛЕНО: добавлены проверки на undefined для lowlink
  */
-export function findDependents(graphData: Record<string, string[]>, node: string): string[] {
-  const dependents: string[] = [];
-  const visited = new Set<string>();
+export function findSCC(adjacency: Record<string, string[]>): string[][] {
+  const sccs: string[][] = [];
+  const index: Record<string, number> = {};
+  const lowlink: Record<string, number> = {};
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  let nextIndex = 0;
 
-  const dfs = (current: string) => {
-    if (visited.has(current)) return;
-    visited.add(current);
+  function strongConnect(node: string) {
+    index[node] = nextIndex;
+    lowlink[node] = nextIndex;
+    nextIndex++;
+    stack.push(node);
+    onStack.add(node);
 
-    for (const [caller, deps] of Object.entries(graphData)) {
-      if (deps.includes(current) && !visited.has(caller)) {
-        dependents.push(caller);
-        dfs(caller);
+    const neighbors = getNeighborsSafe(adjacency, node);
+    for (const neighbor of neighbors) {
+      if (index[neighbor] === undefined) {
+        strongConnect(neighbor);
+        // ✅ ИСПРАВЛЕНО: проверка на undefined перед Math.min
+        const lowlinkNode = lowlink[node];
+        const lowlinkNeighbor = lowlink[neighbor];
+        if (lowlinkNode !== undefined && lowlinkNeighbor !== undefined) {
+          lowlink[node] = Math.min(lowlinkNode, lowlinkNeighbor);
+        } else if (lowlinkNeighbor !== undefined) {
+          lowlink[node] = lowlinkNeighbor;
+        }
+      } else if (onStack.has(neighbor)) {
+        // ✅ ИСПРАВЛЕНО: проверка на undefined перед Math.min
+        const lowlinkNode = lowlink[node];
+        const indexNeighbor = index[neighbor];
+        if (lowlinkNode !== undefined && indexNeighbor !== undefined) {
+          lowlink[node] = Math.min(lowlinkNode, indexNeighbor);
+        } else if (indexNeighbor !== undefined) {
+          lowlink[node] = indexNeighbor;
+        }
       }
     }
-  };
 
-  dfs(node);
-  return dependents;
+    // ✅ ИСПРАВЛЕНО: проверка на undefined перед сравнением
+    const lowlinkNode = lowlink[node];
+    const indexNode = index[node];
+    if (lowlinkNode !== undefined && indexNode !== undefined && lowlinkNode === indexNode) {
+      const scc: string[] = [];
+      let w: string | undefined;
+      do {
+        w = stack.pop();
+        if (w) {
+          onStack.delete(w);
+          scc.push(w);
+        }
+      } while (w !== node);
+      if (scc.length > 0) {
+        sccs.push(scc);
+      }
+    }
+  }
+
+  for (const node of Object.keys(adjacency)) {
+    if (index[node] === undefined) {
+      strongConnect(node);
+    }
+  }
+
+  return sccs;
 }
 
 /**
- * Находит все узлы, от которых зависит указанный узел (исходящие зависимости)
+ * ✅ ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: безопасное получение соседей
+ * ✅ ИСПРАВЛЕНО: полная защита от undefined и не-массивов
+ * Гарантирует, что всегда возвращается массив (даже если ключ отсутствует)
  */
-export function findDependencies(graphData: Record<string, string[]>, node: string): string[] {
-  const dependencies: string[] = [];
-  const visited = new Set<string>();
+function getNeighborsSafe(adjacency: Record<string, string[]>, node: string): string[] {
+  // ✅ Проверяем, что adjacency существует и является объектом
+  if (!adjacency || typeof adjacency !== 'object') {
+    return [];
+  }
 
-  const dfs = (current: string) => {
-    if (visited.has(current)) return;
-    visited.add(current);
+  // ✅ Проверяем, что node существует
+  if (!node) {
+    return [];
+  }
 
-    const deps = graphData[current] || [];
-    for (const dep of deps) {
-      if (!visited.has(dep)) {
-        dependencies.push(dep);
-        dfs(dep);
+  // ✅ Получаем соседей
+  const neighbors = adjacency[node];
+
+  // ✅ Если neighbors не существует - возвращаем пустой массив
+  if (!neighbors) {
+    return [];
+  }
+
+  // ✅ Если neighbors уже массив - возвращаем его
+  if (Array.isArray(neighbors)) {
+    return neighbors;
+  }
+
+  // ✅ Если neighbors - объект, пытаемся преобразовать в массив строк
+  if (typeof neighbors === 'object' && neighbors !== null) {
+    try {
+      const values = Object.values(neighbors);
+      if (Array.isArray(values) && values.every(v => typeof v === 'string')) {
+        return values as string[];
       }
+    } catch {
+      // Игнорируем ошибки преобразования
     }
-  };
+  }
 
-  dfs(node);
-  return dependencies;
+  // ✅ В любом другом случае возвращаем пустой массив
+  return [];
 }
 
 /**
  * Проверяет, является ли граф ациклическим
  */
-export function isAcyclic(graphData: Record<string, string[]>): boolean {
-  return !findCycles(graphData);
+export function isAcyclic(adjacency: Record<string, string[]>): boolean {
+  return !hasCycles(adjacency);
 }
 
 /**
- * Возвращает статистику по графу
+ * Получает топологическую сортировку графа (если он ациклический)
  */
-export function getGraphStats(graphData: Record<string, string[]>): {
-  totalNodes: number;
-  totalEdges: number;
-  maxDepth: number;
-  hasCycles: boolean;
-  cyclesCount: number;
-  avgDegree: number;
-} {
-  const totalNodes = Object.keys(graphData).length;
-  let totalEdges = 0;
-  for (const deps of Object.values(graphData)) {
-    totalEdges += deps.length;
+export function topologicalSort(adjacency: Record<string, string[]>): string[] | null {
+  if (hasCycles(adjacency)) {
+    return null;
   }
 
-  const hasCycles = findCycles(graphData);
-  const cycles = findAllCycles(graphData);
-  const maxDepth = getMaxDepth(graphData);
-  const avgDegree = totalNodes > 0 ? totalEdges / totalNodes : 0;
+  const visited = new Set<string>();
+  const result: string[] = [];
 
-  return {
-    totalNodes,
-    totalEdges,
-    maxDepth,
-    hasCycles,
-    cyclesCount: cycles.length,
-    avgDegree,
-  };
-}
+  function dfs(node: string) {
+    if (visited.has(node)) return;
+    visited.add(node);
 
-/**
- * Экспортирует граф в формате DOT для визуализации
- */
-export function exportToDOT(
-  graphData: Record<string, string[]>,
-  options?: {
-    title?: string;
-    highlightCycles?: boolean;
-    highlightPath?: string[];
-  }
-): string {
-  const title = options?.title || 'Dependency Graph';
-  let dot = `digraph "${title}" {\n`;
-  dot += '  rankdir=LR;\n';
-  dot += '  node [shape=box, style="filled,rounded", fillcolor="#f3f4f6"];\n';
-  dot += '  edge [color="#9ca3af", arrowhead=vee];\n\n';
-
-  // Находим циклические ребра для подсветки
-  const cyclicEdges = options?.highlightCycles ? findCyclicEdges(graphData) : new Set<string>();
-  const pathSet = options?.highlightPath ? new Set(options.highlightPath) : new Set<string>();
-
-  // Добавляем узлы
-  for (const node of Object.keys(graphData)) {
-    const isInPath = pathSet.has(node);
-    const color = isInPath ? '#4f46e5' : '#f3f4f6';
-    const fontColor = isInPath ? '#ffffff' : '#1f2937';
-    const penwidth = isInPath ? '2.5' : '1';
-    dot += `  "${node}" [fillcolor="${color}", fontcolor="${fontColor}", penwidth=${penwidth}];\n`;
+    const neighbors = getNeighborsSafe(adjacency, node);
+    for (const neighbor of neighbors) {
+      dfs(neighbor);
+    }
+    result.unshift(node);
   }
 
-  // Добавляем ребра
-  for (const [from, deps] of Object.entries(graphData)) {
-    for (const to of deps) {
-      const edgeKey = `${from}->${to}`;
-      const isCycle = cyclicEdges.has(edgeKey);
-      const isInPath = pathSet.has(from) && pathSet.has(to);
-
-      const color = isCycle ? '#ef4444' : isInPath ? '#4f46e5' : '#9ca3af';
-      const style = isCycle ? 'dashed' : 'solid';
-      const penwidth = isCycle ? '2.5' : isInPath ? '2' : '1';
-      const label = isCycle ? ' цикл' : '';
-
-      dot += `  "${from}" -> "${to}" [color="${color}", style="${style}", penwidth=${penwidth}, label="${label}"];\n`;
+  for (const node of Object.keys(adjacency)) {
+    if (!visited.has(node)) {
+      dfs(node);
     }
   }
 
-  dot += '}\n';
-  return dot;
+  return result;
 }
 
-// Экспорт по умолчанию
+/**
+ * Вычисляет степень узла (количество входящих и исходящих ребер)
+ * ✅ ИСПРАВЛЕНО: удалена неиспользуемая переменная 'key'
+ */
+export function getNodeDegree(
+  adjacency: Record<string, string[]>,
+  node: string
+): { in: number; out: number } {
+  const out = getNeighborsSafe(adjacency, node).length;
+  let inCount = 0;
+
+  // ✅ ИСПРАВЛЕНО: используем '_' для неиспользуемой переменной
+  for (const [, neighbors] of Object.entries(adjacency)) {
+    if (Array.isArray(neighbors) && neighbors.includes(node)) {
+      inCount++;
+    }
+  }
+
+  return { in: inCount, out };
+}
+
+/**
+ * Находит узлы с наибольшей степенью (хабы)
+ */
+export function findHubs(
+  adjacency: Record<string, string[]>,
+  limit: number = 10
+): { node: string; degree: number }[] {
+  const degrees: { node: string; degree: number }[] = [];
+
+  for (const node of Object.keys(adjacency)) {
+    const { in: inCount, out: outCount } = getNodeDegree(adjacency, node);
+    degrees.push({ node, degree: inCount + outCount });
+  }
+
+  degrees.sort((a, b) => b.degree - a.degree);
+  return degrees.slice(0, limit);
+}
+
+/**
+ * Находит изолированные узлы (без входящих и исходящих ребер)
+ */
+export function findIsolatedNodes(adjacency: Record<string, string[]>): string[] {
+  const isolated: string[] = [];
+
+  for (const node of Object.keys(adjacency)) {
+    const { in: inCount, out: outCount } = getNodeDegree(adjacency, node);
+    if (inCount === 0 && outCount === 0) {
+      isolated.push(node);
+    }
+  }
+
+  return isolated;
+}
+
+/**
+ * Вычисляет плотность графа (отношение ребер к максимально возможному количеству)
+ */
+export function getGraphDensity(adjacency: Record<string, string[]>): number {
+  const nodes = Object.keys(adjacency).length;
+  if (nodes <= 1) return 0;
+
+  let edges = 0;
+  for (const neighbors of Object.values(adjacency)) {
+    if (Array.isArray(neighbors)) {
+      edges += neighbors.length;
+    }
+  }
+
+  const maxEdges = nodes * (nodes - 1);
+  return maxEdges > 0 ? edges / maxEdges : 0;
+}
+
+/**
+ * Проверяет, связан ли граф (все узлы достижимы из корня)
+ */
+export function isConnected(adjacency: Record<string, string[]>, rootKey: string): boolean {
+  const reachable = findReachableNodes(adjacency, rootKey);
+  return reachable.length === Object.keys(adjacency).length;
+}
+
+/**
+ * Находит компоненты связности в графе
+ */
+export function findConnectedComponents(adjacency: Record<string, string[]>): string[][] {
+  const visited = new Set<string>();
+  const components: string[][] = [];
+
+  for (const node of Object.keys(adjacency)) {
+    if (visited.has(node)) continue;
+
+    const component: string[] = [];
+    const queue: string[] = [node];
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (visited.has(current)) continue;
+      visited.add(current);
+      component.push(current);
+
+      const neighbors = getNeighborsSafe(adjacency, current);
+      for (const neighbor of neighbors) {
+        if (!visited.has(neighbor)) {
+          queue.push(neighbor);
+        }
+      }
+    }
+
+    if (component.length > 0) {
+      components.push(component);
+    }
+  }
+
+  return components;
+}
+
+// ============================================================
+// ЭКСПОРТ ПО УМОЛЧАНИЮ
+// ============================================================
+
 export default {
   buildDependencyGraph,
   findCycles,
-  findAllCycles,
-  findCyclicEdges,
   getMaxDepth,
   getModulesByLevel,
-  findPathBetweenNodes,
-  findAllPathsBetweenNodes,
-  findDependents,
-  findDependencies,
+  hasCycles,
+  findAllPaths,
+  findShortestPath,
+  findReachableNodes,
+  findSCC,
   isAcyclic,
-  getGraphStats,
-  exportToDOT,
+  topologicalSort,
+  getNodeDegree,
+  findHubs,
+  findIsolatedNodes,
+  getGraphDensity,
+  isConnected,
+  findConnectedComponents,
 };
