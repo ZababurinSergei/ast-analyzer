@@ -435,6 +435,7 @@ interface ParsedArgs {
   toFunction?: string;
   optimized?: boolean;
   maxDepth?: number;
+  useTemplates?: boolean; // 🆕 Новая опция для шаблонов
 }
 
 export function parseArgs(): ParsedArgs | null {
@@ -457,6 +458,7 @@ export function parseArgs(): ParsedArgs | null {
   let optimized = false;
   let preset: string | undefined;
   let maxDepth = 5;
+  let useTemplates = true; // 🆕 По умолчанию шаблоны включены
   const cleanArgs: string[] = [];
 
   for (let i = 0; i < normalizedArgs.length; i++) {
@@ -508,6 +510,12 @@ export function parseArgs(): ParsedArgs | null {
           i++;
         }
       }
+    } else if (arg === '--no-templates') {
+      // 🆕 Отключение шаблонов
+      useTemplates = false;
+    } else if (arg === '--templates') {
+      // 🆕 Явное включение шаблонов
+      useTemplates = true;
     } else if (arg) {
       cleanArgs.push(arg);
     }
@@ -547,6 +555,7 @@ export function parseArgs(): ParsedArgs | null {
       toFunction,
       optimized,
       maxDepth,
+      useTemplates,
     };
   }
 
@@ -555,7 +564,7 @@ export function parseArgs(): ParsedArgs | null {
 
     if (!targetPath) {
       console.error('❌ Укажите путь к файлу для генерации компактного отчета');
-      console.error('   Использование: compact-report <file> [--preset <name>] [--max-depth <n>] [--output <file>]');
+      console.error('   Использование: compact-report <file> [--preset <name>] [--max-depth <n>] [--output <file>] [--no-templates]');
       process.argv = originalArgv;
       return null;
     }
@@ -574,6 +583,7 @@ export function parseArgs(): ParsedArgs | null {
       toFunction,
       optimized,
       maxDepth,
+      useTemplates, // 🆕 Передаем опцию
     };
   }
 
@@ -639,6 +649,7 @@ export function parseArgs(): ParsedArgs | null {
       toFunction,
       optimized,
       maxDepth,
+      useTemplates,
     };
   }
 
@@ -688,6 +699,7 @@ export function parseArgs(): ParsedArgs | null {
       toFunction,
       optimized,
       maxDepth,
+      useTemplates,
     };
   }
 
@@ -769,6 +781,7 @@ export function parseArgs(): ParsedArgs | null {
       toFunction,
       optimized,
       maxDepth,
+      useTemplates,
     };
   }
 
@@ -825,6 +838,7 @@ export function parseArgs(): ParsedArgs | null {
       toFunction,
       optimized,
       maxDepth,
+      useTemplates,
     };
   }
 
@@ -877,6 +891,7 @@ export function parseArgs(): ParsedArgs | null {
       toFunction,
       optimized,
       maxDepth,
+      useTemplates,
     };
   }
 
@@ -981,6 +996,7 @@ export function parseArgs(): ParsedArgs | null {
       toFunction,
       optimized,
       maxDepth,
+      useTemplates,
     };
   }
 
@@ -1058,6 +1074,7 @@ export function parseArgs(): ParsedArgs | null {
       toFunction,
       optimized,
       maxDepth,
+      useTemplates,
     };
   }
 
@@ -1083,6 +1100,7 @@ export function parseArgs(): ParsedArgs | null {
       toFunction,
       optimized,
       maxDepth,
+      useTemplates,
     };
   }
 
@@ -1109,6 +1127,7 @@ export function parseArgs(): ParsedArgs | null {
       toFunction,
       optimized,
       maxDepth,
+      useTemplates,
     };
   }
 
@@ -1135,6 +1154,7 @@ export function parseArgs(): ParsedArgs | null {
       toFunction,
       optimized,
       maxDepth,
+      useTemplates,
     };
   }
 
@@ -1160,6 +1180,7 @@ export function parseArgs(): ParsedArgs | null {
       toFunction,
       optimized,
       maxDepth,
+      useTemplates,
     };
   }
 
@@ -1186,6 +1207,7 @@ export function parseArgs(): ParsedArgs | null {
       toFunction,
       optimized,
       maxDepth: maxDepthArg ? parseInt(maxDepthArg, 10) : 5,
+      useTemplates,
     };
   }
 
@@ -1211,6 +1233,7 @@ export function parseArgs(): ParsedArgs | null {
       toFunction,
       optimized,
       maxDepth,
+      useTemplates,
     };
   }
 
@@ -1242,6 +1265,7 @@ export async function runCLI(): Promise<void> {
     toFunction,
     optimized,
     maxDepth = 5,
+    useTemplates = true, // 🆕 По умолчанию шаблоны включены
   } = parsed;
 
   const originalCwd = process.cwd();
@@ -1312,6 +1336,7 @@ export async function runCLI(): Promise<void> {
       console.log(`${'='.repeat(60)}\n`);
       console.log(`📄 Точка входа: ${currentTargetPath}`);
       console.log(`📏 Глубина анализа: ${maxDepth}`);
+      console.log(`📋 Использование шаблонов: ${useTemplates ? 'ВКЛЮЧЕНО' : 'ВЫКЛЮЧЕНО'}`);
 
       // Устанавливаем пресет
       if (extraArg) {
@@ -1354,6 +1379,7 @@ export async function runCLI(): Promise<void> {
         {
           usePreset: true,
           maxDepth: maxDepth,
+          useTemplates: useTemplates, // 🆕 Передаем опцию в генератор
         }
       );
 
@@ -1543,7 +1569,7 @@ export async function runCLI(): Promise<void> {
         for (let i = 0; i < result.modules.length; i++) {
           const module = result.modules[i];
           if (!module) continue;
-          console.log(`\n   ${i + 1}. Модуль "${module.name}":`);
+          console.log(`\n   ${i + 1}. Модуль \"${module.name}\":`);
           console.log(`      Экспорты: ${module.exports.join(', ')}`);
         }
       } else {
@@ -1772,7 +1798,7 @@ export async function runCLI(): Promise<void> {
 
           try {
             const compressionLevel = parseInt(process.env.AST_COMPRESS_LEVEL || '1') as CompressionLevel;
-            console.log(`\n📦 Генерация компактной "Вселенной" (уровень ${compressionLevel})...`);
+            console.log(`\n📦 Генерация компактной \"Вселенной\" (уровень ${compressionLevel})...`);
 
             const compressed = compressReport(resultData.packageLockReport, {
               level: compressionLevel,

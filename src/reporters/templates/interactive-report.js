@@ -1,7 +1,6 @@
 // packages/ast-analyzer/src/reporters/templates/interactive-report.js
 
-import context from './package-lock-report.json' with { type: 'json' };
-import { DataConverter } from './data-converter.js';
+import context from './entities.json' with { type: 'json' };
 import 'd3';
 const d3 = window.d3;
 
@@ -28,67 +27,314 @@ const SYM_LOCATION_BAR = Symbol.for('__AST_LOCATION_BAR__');
 const SYM_ROUTE_CHANGE = Symbol.for('__AST_ROUTE_CHANGE__');
 
 // ============================================================
+// АДАПТЕР ДАННЫХ (ВСТРОЕННЫЙ)
+// ============================================================
+
+/**
+ * Преобразует новый формат данных в старый (с packages)
+ */
+function adaptData(rawData) {
+  console.log('🔄 Адаптация данных из нового формата...');
+
+  const result = {
+    packages: {},
+    dependencyGraph: {
+      direction: 'bidirectional',
+      inwardDependencies: {},
+      outwardDependencies: {},
+    },
+    entityStats: {
+      totalFunctions: 0,
+      totalConstants: 0,
+      totalVariables: 0,
+      totalInterfaces: 0,
+      totalTypes: 0,
+      totalClasses: 0,
+      totalCalls: 0,
+      totalExportedFunctions: 0,
+      totalAsyncFunctions: 0,
+    },
+    fileStats: {
+      totalFiles: 0,
+      totalSize: 0,
+      totalLines: 0,
+    },
+    timestamp: new Date().toISOString(),
+    version: rawData.version || '3.0.0',
+    name: 'ast-analyzer',
+    lockfileVersion: 3,
+  };
+
+  // Если уже есть packages - возвращаем как есть
+  if (rawData.packages) {
+    console.log('✅ Данные уже в формате packages');
+    return rawData;
+  }
+
+  // 1. Строим карты
+  const functionIndex = rawData.functionIndex || {};
+  const fileIndex = rawData.fileIndex || {};
+  const moduleIndex = rawData.moduleIndex || {};
+  const entities = rawData.entities || {};
+  const callEdges = rawData.callGraph?.edges || [];
+  const importEdges = rawData.importGraph?.edges || [];
+
+  console.log(`  📊 Функций: ${Object.keys(functionIndex).length}`);
+  console.log(`  📁 Файлов: ${Object.keys(fileIndex).length}`);
+  console.log(`  📦 Модулей: ${Object.keys(moduleIndex).length}`);
+  console.log(`  🔗 Связей вызовов: ${callEdges.length}`);
+  console.log(`  🔗 Связей импортов: ${importEdges.length}`);
+
+  // 2. Создаем структуру packages по файлам
+  const fileFunctions = new Map();
+
+  for (const [funcId, funcName] of Object.entries(functionIndex)) {
+    const entityData = entities[funcId] || {};
+    const fileId = entityData.file;
+
+    if (!fileId) continue;
+
+    if (!fileFunctions.has(fileId)) {
+      fileFunctions.set(fileId, []);
+    }
+
+    fileFunctions.get(fileId).push({
+      id: funcId,
+      name: funcName,
+      file: fileId,
+      line: entityData.line || 0,
+      kind: entityData.kind || 'function',
+      isAsync: entityData.isAsync || false,
+      isArrow: entityData.isArrow || false,
+      isNested: entityData.isNested || false,
+      depth: entityData.depth || 0,
+      params: entityData.params || [],
+      calledBy: entityData.calledBy || [],
+      $t: entityData.$t || 'function_nested_1',
+    });
+  }
+
+  // 3. Строим карту вызовов
+  const callMap = new Map();
+  for (const edge of callEdges) {
+    if (!callMap.has(edge.from)) {
+      callMap.set(edge.from, []);
+    }
+    callMap.get(edge.from).push(edge.to);
+  }
+
+  // 4. Создаем packages
+  for (const [fileId, functions] of fileFunctions) {
+    const filePath = fileIndex[fileId] || fileId;
+
+    // Сортируем функции по линии
+    functions.sort((a, b) => (a.line || 0) - (b.line || 0));
+
+    // Определяем язык
+    let language = 'unknown';
+    if (filePath.endsWith('.ts') || filePath.endsWith('.tsx')) language = 'typescript';
+    else if (filePath.endsWith('.js') || filePath.endsWith('.jsx')) language = 'javascript';
+    else if (filePath.endsWith('.vue')) language = 'vue';
+    else if (filePath.endsWith('.json')) language = 'json';
+
+    // Проверяем, является ли файл точкой входа
+    const isEntry =
+      filePath.includes('cli.ts') || filePath.includes('index.ts') || filePath.includes('main.ts');
+
+    // Создаем функции в старом формате
+    const funcs = functions.map(f => {
+      // Получаем вызовы для этой функции
+      const calleeIds = callMap.get(f.id) || [];
+      const calleeNames = calleeIds.map(id => functionIndex[id]).filter(Boolean);
+
+      // Проверяем, экспортирована ли функция
+      const isExported =
+        f.name &&
+        (f.name.startsWith('export_') ||
+          f.name.includes('default') ||
+          (f.$t && f.$t.includes('export')));
+
+      return {
+        name: f.name || '',
+        params: f.params || [],
+        paramTypes: [],
+        line: f.line || 0,
+        startLine: f.line || 0,
+        endLine: f.line || 0,
+        isAsync: f.isAsync || false,
+        isExported: isExported,
+        isMethod: f.kind === 'function_method' || f.kind === 'function_method_async',
+        className: '',
+        calls: calleeNames,
+        calledBy: f.calledBy || [],
+        returnType: 'any',
+        body: '',
+        isNested: f.isNested || false,
+        parentFunction: undefined,
+        isArrow: f.isArrow || false,
+        isEventHandler: false,
+        eventType: undefined,
+        depth: f.depth || 0,
+        complexity: 0,
+      };
+    });
+
+    // Собираем экспорты
+    const exports = {};
+    for (const f of functions) {
+      const isExported =
+        f.name &&
+        (f.name.startsWith('export_') ||
+          f.name.includes('default') ||
+          (f.$t && f.$t.includes('export')));
+      if (isExported) {
+        exports[f.name] = {
+          type: 'function',
+          isAsync: f.isAsync || false,
+          params: f.params || [],
+          returns: 'any',
+          line: f.line || 0,
+        };
+      }
+    }
+
+    // Создаем пакет
+    result.packages[filePath] = {
+      resolved: `file:${filePath}`,
+      displayPath: filePath,
+      type: 'module',
+      language: language,
+      isEntry: isEntry,
+      imports: {},
+      exports: exports,
+      entities: {
+        functions: funcs,
+        constants: [],
+        variables: [],
+        interfaces: [],
+        types: [],
+        classes: [],
+      },
+      fileStats: {
+        size: 0,
+        lines: functions.reduce((max, f) => Math.max(max, f.line || 0), 0),
+        functions: functions.length,
+        classes: 0,
+        constants: 0,
+        interfaces: 0,
+        types: 0,
+        variables: 0,
+      },
+    };
+  }
+
+  // 5. Добавляем импорты
+  for (const edge of importEdges) {
+    const fromPath = fileIndex[edge.from];
+    const toPath = fileIndex[edge.to];
+
+    if (fromPath && toPath && result.packages[fromPath]) {
+      const pkg = result.packages[fromPath];
+      if (!pkg.imports[toPath]) {
+        pkg.imports[toPath] = {
+          specifiers: [],
+          line: edge.line || 0,
+          type: edge.type || 'named',
+        };
+      }
+      if (edge.specifiers) {
+        pkg.imports[toPath].specifiers.push(...edge.specifiers);
+      }
+    }
+  }
+
+  // 6. Строим граф зависимостей
+  const inwardDeps = {};
+  const outwardDeps = {};
+
+  for (const edge of importEdges) {
+    const fromPath = fileIndex[edge.from];
+    const toPath = fileIndex[edge.to];
+
+    if (fromPath && toPath && result.packages[fromPath] && result.packages[toPath]) {
+      if (!inwardDeps[toPath]) inwardDeps[toPath] = [];
+      if (!inwardDeps[toPath].includes(fromPath)) {
+        inwardDeps[toPath].push(fromPath);
+      }
+
+      if (!outwardDeps[fromPath]) outwardDeps[fromPath] = [];
+      if (!outwardDeps[fromPath].includes(toPath)) {
+        outwardDeps[fromPath].push(toPath);
+      }
+    }
+  }
+
+  result.dependencyGraph.inwardDependencies = inwardDeps;
+  result.dependencyGraph.outwardDependencies = outwardDeps;
+
+  // 7. Статистика
+  let totalFunctions = 0;
+  let totalCalls = 0;
+  let totalExportedFunctions = 0;
+  let totalAsyncFunctions = 0;
+
+  for (const pkg of Object.values(result.packages)) {
+    if (!pkg) continue;
+    for (const func of pkg.entities.functions || []) {
+      totalFunctions++;
+      totalCalls += (func.calls || []).length;
+      if (func.isExported) totalExportedFunctions++;
+      if (func.isAsync) totalAsyncFunctions++;
+    }
+  }
+
+  result.entityStats.totalFunctions = totalFunctions;
+  result.entityStats.totalCalls = totalCalls;
+  result.entityStats.totalExportedFunctions = totalExportedFunctions;
+  result.entityStats.totalAsyncFunctions = totalAsyncFunctions;
+  result.fileStats.totalFiles = Object.keys(result.packages).length;
+  result.fileStats.totalLines = Object.values(result.packages).reduce(
+    (sum, pkg) => sum + (pkg.fileStats?.lines || 0),
+    0
+  );
+
+  console.log(
+    `✅ Адаптация завершена: ${Object.keys(result.packages).length} пакетов, ${totalFunctions} функций`
+  );
+
+  return result;
+}
+
+// ============================================================
 // ЗАГРУЗКА ДАННЫХ
 // ============================================================
 
 const rawReportData = context;
-const rawFunctionsData = [];
 
-for (const [modulePath, pkg] of Object.entries(context.packages || {})) {
-  if (!pkg) {
-    continue;
-  }
-  for (const func of pkg.entities?.functions || []) {
-    rawFunctionsData.push({ modulePath, func });
-  }
-}
-
-let REPORT_DATA = null;
-let ALL_FUNCTIONS_DATA = [];
-
-if (DataConverter && rawReportData) {
-  console.log('🔄 Используем DataConverter...');
-
-  if (rawReportData.packages) {
-    REPORT_DATA = rawReportData;
-    if (rawFunctionsData && rawFunctionsData.length > 0) {
-      const entitiesWithCalls = {
-        functions: rawFunctionsData.map(item => item.func || item),
-      };
-      REPORT_DATA = DataConverter.enrichReport(REPORT_DATA, entitiesWithCalls);
-    }
-  } else if (rawReportData.moduleGraph) {
-    REPORT_DATA = DataConverter.buildReportFromAnalysis(rawReportData);
-  } else {
-    REPORT_DATA = rawReportData;
-  }
-
-  if (REPORT_DATA && REPORT_DATA.packages) {
-    ALL_FUNCTIONS_DATA = [];
-    for (const [modulePath, pkg] of Object.entries(REPORT_DATA.packages)) {
-      if (!pkg) {
-        continue;
-      }
-      for (const func of pkg.entities?.functions || []) {
-        ALL_FUNCTIONS_DATA.push({ modulePath, func });
-      }
-    }
-  }
-} else {
-  REPORT_DATA = rawReportData;
-  ALL_FUNCTIONS_DATA = rawFunctionsData || [];
-}
+// 🔥 АДАПТИРУЕМ ДАННЫЕ
+console.log('🔄 Преобразование данных из нового формата...');
+const REPORT_DATA = adaptData(rawReportData);
 
 console.log('✅ Данные загружены и преобразованы');
-console.log('📊 Модулей:', Object.keys(REPORT_DATA?.packages || {}).length);
-console.log('ƒ Функций:', ALL_FUNCTIONS_DATA?.length || 0);
+console.log('📊 Модулей:', Object.keys(REPORT_DATA.packages || {}).length);
+
+// Строим список всех функций
+const ALL_FUNCTIONS_DATA = [];
+for (const [modulePath, pkg] of Object.entries(REPORT_DATA.packages || {})) {
+  if (!pkg) continue;
+  for (const func of pkg.entities?.functions || []) {
+    ALL_FUNCTIONS_DATA.push({ modulePath, func });
+  }
+}
+
+console.log(`ƒ Функций: ${ALL_FUNCTIONS_DATA.length}`);
 
 window[SYM_REPORT_DATA] = REPORT_DATA;
 window[SYM_FUNCTIONS_DATA] = ALL_FUNCTIONS_DATA;
 window[SYM_DATA_VERSION] = 1;
 
 // ============================================================
-// КЛАСС APP - ВСЕ МЕТОДЫ В КОНСТРУКТОРЕ
+// КЛАСС APP
 // ============================================================
 
 class App {
@@ -773,6 +1019,7 @@ if (!window[SYM_APP]) {
   try {
     const app = new App();
     console.log('🚀 App loaded');
+    console.log(`📊 Загружено ${Object.keys(app.reportData.packages || {}).length} пакетов`);
 
     if (!window[SYM_READY]) {
       window[SYM_READY] = true;
@@ -810,9 +1057,6 @@ if (!window[SYM_APP]) {
     });
     window[SYM_APP_API] = fallbackApi;
   }
-} else {
-  console.log('ℹ️ Приложение уже создано');
-  window[SYM_READY] = true;
 }
 
 // ============================================================

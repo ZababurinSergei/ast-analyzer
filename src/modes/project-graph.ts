@@ -1,4 +1,4 @@
-// packages/ast-analyzer/src/modes/project-graph.ts
+// src/modes/project-graph.ts
 import path from 'path';
 import fs from 'fs';
 import {
@@ -18,6 +18,7 @@ import {
 } from '../reporters/json-reporter.js';
 import { extractEntitiesFromFile } from '../reporters/json-reporter.js';
 import { collectDeclaredFunctions, buildCallGraphFromAST } from '../core/call-collector.js';
+import idManager from '../core/IdManager.js';
 
 // ==========================================
 // ТИП: Информация о функции в формате package-lock
@@ -167,7 +168,8 @@ export interface CallInfo {
   targetLine: number;
   targetVscode: string;
   callLine: number;
-  callType: 'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
+  callType:
+    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
 }
 
 export interface CalledByInfo {
@@ -177,7 +179,8 @@ export interface CalledByInfo {
   callerLine: number;
   callerVscode: string;
   callLine: number;
-  callType: 'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
+  callType:
+    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
 }
 
 export interface ImportedByInfo {
@@ -219,12 +222,6 @@ function simpleHash(str: string): string {
     hash = hash & hash;
   }
   return Math.abs(hash).toString(36).padStart(4, '0');
-}
-
-function generateFunctionId(filePath: string, funcName: string): string {
-  const relativePath = path.relative(process.cwd(), filePath);
-  const fileHash = simpleHash(relativePath);
-  return `func_${fileHash}_${funcName}`;
 }
 
 function generateFileId(filePath: string): string {
@@ -307,7 +304,16 @@ function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): EntitiesResult
         depth: f.depth || 0,
         complexity: f.complexity,
         security: f.security,
-        id: (f as any).id || generateFunctionId(filePath, f.name),
+        // ✅ ИСПОЛЬЗУЕМ НОВЫЙ КОМПАКТНЫЙ МЕТОД IdManager
+        id:
+          (f as any).id ||
+          idManager.generateCompactId({
+            filePath: filePath,
+            funcName: f.name,
+            line: f.line || 0,
+            parentFunction: f.parentFunction,
+            depth: f.depth || 0,
+          }),
         vscode: (f as any).vscode || `vscode://file/${filePath}:${f.line}`,
         callsInfo: [],
         calledByInfo: [],
@@ -384,7 +390,16 @@ export function buildRelationships(
     };
 
     for (const func of entities.functions) {
-      const funcId = func.id || generateFunctionId(filePath, func.name);
+      // ✅ ИСПОЛЬЗУЕМ НОВЫЙ КОМПАКТНЫЙ МЕТОД IdManager
+      const funcId =
+        func.id ||
+        idManager.generateCompactId({
+          filePath: filePath,
+          funcName: func.name,
+          line: func.line || 0,
+          parentFunction: func.parentFunction,
+          depth: func.depth || 0,
+        });
       func.id = funcId;
       func.vscode = func.vscode || `vscode://file/${filePath}:${func.line}`;
       func.callsInfo = func.callsInfo || [];
@@ -421,7 +436,15 @@ export function buildRelationships(
 
   for (const [filePath, entities] of Object.entries(entitiesMap)) {
     for (const func of entities.functions) {
-      const funcId = func.id || generateFunctionId(filePath, func.name);
+      const funcId =
+        func.id ||
+        idManager.generateCompactId({
+          filePath: filePath,
+          funcName: func.name,
+          line: func.line || 0,
+          parentFunction: func.parentFunction,
+          depth: func.depth || 0,
+        });
       const extended = result[funcId];
       if (!extended) continue;
 
@@ -481,7 +504,15 @@ export function buildRelationships(
 
   for (const [filePath, entities] of Object.entries(entitiesMap)) {
     for (const func of entities.functions) {
-      const callerId = func.id || generateFunctionId(filePath, func.name);
+      const callerId =
+        func.id ||
+        idManager.generateCompactId({
+          filePath: filePath,
+          funcName: func.name,
+          line: func.line || 0,
+          parentFunction: func.parentFunction,
+          depth: func.depth || 0,
+        });
       const callerInfo = result[callerId];
       if (!callerInfo) continue;
 
@@ -520,7 +551,15 @@ export function buildRelationships(
           if (otherFile === filePath) continue;
           const found = otherEntities.functions.find(f => f.name === importedName);
           if (found && found.isExported) {
-            const targetId = found.id || generateFunctionId(otherFile, found.name);
+            const targetId =
+              found.id ||
+              idManager.generateCompactId({
+                filePath: otherFile,
+                funcName: found.name,
+                line: found.line || 0,
+                parentFunction: found.parentFunction,
+                depth: found.depth || 0,
+              });
             const targetInfo = result[targetId];
             if (targetInfo) {
               const exists = targetInfo.importedBy.some(
@@ -809,7 +848,10 @@ function collectAllFunctionNames(ast: any): Set<string> {
       names.add(node.id.name);
     }
     if (node.type === 'VariableDeclarator' && node.id?.name) {
-      if (node.init && (node.init.type === 'ArrowFunctionExpression' || node.init.type === 'FunctionExpression')) {
+      if (
+        node.init &&
+        (node.init.type === 'ArrowFunctionExpression' || node.init.type === 'FunctionExpression')
+      ) {
         names.add(node.id.name);
       }
     }
@@ -859,12 +901,7 @@ function collectAllFunctionsRecursive(
 
     if (func.body && typeof func.body === 'object') {
       const nestedAst = { type: 'Program', body: [func.body] };
-      const nested = collectAllFunctionsRecursive(
-        nestedAst,
-        filePath,
-        maxDepth,
-        currentDepth + 1
-      );
+      const nested = collectAllFunctionsRecursive(nestedAst, filePath, maxDepth, currentDepth + 1);
       functions.push(...nested);
     }
   }
@@ -909,16 +946,20 @@ function extractNestedFunctionsFromAST(ast: any): any[] {
         calls: collectCallsFromNode(node.body, allFunctionNames, node.id.name),
         calledBy: [],
         body: node.body ? JSON.stringify(node.body) : '',
-        id: generateFunctionId('', node.id.name),
+        // ✅ ИСПОЛЬЗУЕМ НОВЫЙ КОМПАКТНЫЙ МЕТОД IdManager
+        id: idManager.generateCompactId({
+          filePath: '',
+          funcName: node.id.name,
+          line: node.loc?.start?.line || 1,
+          parentFunction: findParentFunctionName(node),
+          depth: 0,
+        }),
         vscode: `vscode://file/${''}:${node.loc?.start?.line || 1}`,
       });
     }
 
     if (node.type === 'VariableDeclarator' && node.init) {
-      if (
-        node.init.type === 'ArrowFunctionExpression' ||
-        node.init.type === 'FunctionExpression'
-      ) {
+      if (node.init.type === 'ArrowFunctionExpression' || node.init.type === 'FunctionExpression') {
         const name = node.id?.name;
         if (name) {
           functions.push({
@@ -937,7 +978,14 @@ function extractNestedFunctionsFromAST(ast: any): any[] {
             calls: collectCallsFromNode(node.init.body, allFunctionNames, name),
             calledBy: [],
             body: node.init.body ? JSON.stringify(node.init.body) : '',
-            id: generateFunctionId('', name),
+            // ✅ ИСПОЛЬЗУЕМ НОВЫЙ КОМПАКТНЫЙ МЕТОД IdManager
+            id: idManager.generateCompactId({
+              filePath: '',
+              funcName: name,
+              line: node.loc?.start?.line || 1,
+              parentFunction: findParentFunctionName(node),
+              depth: 0,
+            }),
             vscode: `vscode://file/${''}:${node.loc?.start?.line || 1}`,
           });
         }
@@ -985,7 +1033,11 @@ function findParentFunctionName(node: any): string | undefined {
  * Собирает вызовы из AST узла
  * Использует functionNames для фильтрации локальных вызовов
  */
-function collectCallsFromNode(node: any, _functionNames: Set<string>, currentFunction: string): string[] {
+function collectCallsFromNode(
+  node: any,
+  _functionNames: Set<string>,
+  currentFunction: string
+): string[] {
   const calls: string[] = [];
   if (!node || typeof node !== 'object') return calls;
 
@@ -1086,11 +1138,22 @@ function extractFunctionsFromAST(ast: any): any[] {
         depth: 0,
         complexity: 1,
         body: node.body ? JSON.stringify(node.body) : '',
+        // ✅ ИСПОЛЬЗУЕМ НОВЫЙ КОМПАКТНЫЙ МЕТОД IdManager
+        id: idManager.generateCompactId({
+          filePath: '',
+          funcName: funcName,
+          line: node.loc?.start?.line || 1,
+          parentFunction: '',
+          depth: 0,
+        }),
       });
     }
 
     if (node.type === 'VariableDeclarator' && node.id?.name) {
-      if (node.init && (node.init.type === 'ArrowFunctionExpression' || node.init.type === 'FunctionExpression')) {
+      if (
+        node.init &&
+        (node.init.type === 'ArrowFunctionExpression' || node.init.type === 'FunctionExpression')
+      ) {
         const funcName = node.id.name;
         const isExported = isNodeExported(node, parent);
         const calls = collectCallsFromNode(node.init.body, allFunctionNames, funcName);
@@ -1115,6 +1178,14 @@ function extractFunctionsFromAST(ast: any): any[] {
           depth: 0,
           complexity: 1,
           body: node.init.body ? JSON.stringify(node.init.body) : '',
+          // ✅ ИСПОЛЬЗУЕМ НОВЫЙ КОМПАКТНЫЙ МЕТОД IdManager
+          id: idManager.generateCompactId({
+            filePath: '',
+            funcName: funcName,
+            line: node.loc?.start?.line || 1,
+            parentFunction: '',
+            depth: 0,
+          }),
         });
       }
     }
@@ -1145,6 +1216,14 @@ function extractFunctionsFromAST(ast: any): any[] {
         depth: 0,
         complexity: 1,
         body: node.value?.body ? JSON.stringify(node.value.body) : '',
+        // ✅ ИСПОЛЬЗУЕМ НОВЫЙ КОМПАКТНЫЙ МЕТОД IdManager
+        id: idManager.generateCompactId({
+          filePath: '',
+          funcName: `${className}.${methodName}`,
+          line: node.loc?.start?.line || 1,
+          parentFunction: '',
+          depth: 0,
+        }),
       });
     }
 
@@ -1264,7 +1343,16 @@ export function buildProjectGraph(
       };
 
       for (const func of entities.functions) {
-        func.id = func.id || generateFunctionId(currentPath, func.name);
+        // ✅ ИСПОЛЬЗУЕМ НОВЫЙ КОМПАКТНЫЙ МЕТОД IdManager
+        func.id =
+          func.id ||
+          idManager.generateCompactId({
+            filePath: currentPath,
+            funcName: func.name,
+            line: func.line || 0,
+            parentFunction: func.parentFunction,
+            depth: func.depth || 0,
+          });
         func.vscode = func.vscode || `vscode://file/${currentPath}:${func.line}`;
         func.callsInfo = func.callsInfo || [];
         func.calledByInfo = func.calledByInfo || [];
@@ -1454,7 +1542,16 @@ export function buildProjectGraph(
             const entities = convertEnhancedToEntities(enhancedEntities);
 
             for (const func of entities.functions) {
-              func.id = func.id || generateFunctionId(absPath, func.name);
+              // ✅ ИСПОЛЬЗУЕМ НОВЫЙ КОМПАКТНЫЙ МЕТОД IdManager
+              func.id =
+                func.id ||
+                idManager.generateCompactId({
+                  filePath: absPath,
+                  funcName: func.name,
+                  line: func.line || 0,
+                  parentFunction: func.parentFunction,
+                  depth: func.depth || 0,
+                });
               func.vscode = func.vscode || `vscode://file/${absPath}:${func.line}`;
               func.callsInfo = func.callsInfo || [];
               func.calledByInfo = func.calledByInfo || [];
@@ -1940,9 +2037,14 @@ function extractValueFromNode(node: any): any {
   if (!node) return undefined;
   if (node.type === 'Literal') return node.value;
   if (node.type === 'Identifier') return node.name;
-  if (node.type === 'UnaryExpression') return `${node.operator}${extractValueFromNode(node.argument)}`;
-  if (node.type === 'BinaryExpression') return `${extractValueFromNode(node.left)} ${node.operator} ${extractValueFromNode(node.right)}`;
-  if (node.type === 'ArrayExpression') return node.elements.map((e: any) => extractValueFromNode(e)).filter((v: any) => v !== undefined);
+  if (node.type === 'UnaryExpression')
+    return `${node.operator}${extractValueFromNode(node.argument)}`;
+  if (node.type === 'BinaryExpression')
+    return `${extractValueFromNode(node.left)} ${node.operator} ${extractValueFromNode(node.right)}`;
+  if (node.type === 'ArrayExpression')
+    return node.elements
+      .map((e: any) => extractValueFromNode(e))
+      .filter((v: any) => v !== undefined);
   if (node.type === 'ObjectExpression') {
     const obj: Record<string, any> = {};
     for (const prop of node.properties) {
@@ -1953,8 +2055,10 @@ function extractValueFromNode(node: any): any {
     }
     return obj;
   }
-  if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') return '[Function]';
-  if (node.type === 'TemplateLiteral') return node.quasis.map((q: any) => q.value?.raw || '').join('');
+  if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression')
+    return '[Function]';
+  if (node.type === 'TemplateLiteral')
+    return node.quasis.map((q: any) => q.value?.raw || '').join('');
   if (node.type === 'NewExpression') return `new ${node.callee?.name || '...'}()`;
   return undefined;
 }

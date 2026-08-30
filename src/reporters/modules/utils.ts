@@ -1,11 +1,11 @@
 // src/reporters/modules/utils.ts
 
-import type { GraphData } from '../../types.js';
 import path from 'path';
 import fs from 'fs';
+import { IdManager } from '../../core/IdManager.js';
 
 // ============================================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С МАССИВАМИ
+// БАЗОВЫЕ УТИЛИТЫ ДЛЯ РАБОТЫ С ДАННЫМИ
 // ============================================================
 
 /**
@@ -72,69 +72,94 @@ export function safeBoolean(value: any, defaultValue: boolean = false): boolean 
 }
 
 /**
- * Проверяет, является ли значение объектом (не массивом, не null)
+ * Проверяет, является ли значение реальным объектом (не null, не массив)
  */
 export function isRealObject(value: any): boolean {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**
- * Фильтрует массив, оставляя только реальные объекты
+ * Фильтрует только реальные объекты из массива
  */
-export function filterRealObjects<T>(arr: any[]): T[] {
-  return arr.filter(item => isRealObject(item)) as T[];
+export function filterRealObjects(arr: any[]): any[] {
+  if (!Array.isArray(arr)) return [];
+  return arr.filter(item => isRealObject(item));
 }
 
 /**
- * Санитизирует сущности, удаляя циклические ссылки и опасные поля
+ * Санитайзит сущности, удаляя опасные поля
  */
-export function sanitizeEntities<T>(entities: T): T {
-  const seen = new WeakSet();
+export function sanitizeEntities<T>(entities: T[]): T[] {
+  if (!Array.isArray(entities)) return [];
+  return entities.map(entity => sanitize(entity));
+}
 
-  function sanitize(value: any): any {
-    if (value === null || value === undefined) return value;
+/**
+ * Санитайзит один объект
+ */
+function sanitize<T>(entity: T): T {
+  if (!entity || typeof entity !== 'object') return entity;
 
-    // Обработка циклических ссылок
-    if (typeof value === 'object') {
-      if (seen.has(value)) return '[Circular]';
-      seen.add(value);
+  const result = { ...entity } as any;
+
+  // Удаляем опасные поля
+  delete result._safeInfo;
+  delete result.__proto__;
+  delete result.constructor;
+
+  // Рекурсивно обрабатываем вложенные объекты
+  for (const key of Object.keys(result)) {
+    if (result[key] && typeof result[key] === 'object') {
+      result[key] = sanitize(result[key]);
     }
-
-    // Обработка массивов
-    if (Array.isArray(value)) {
-      return value.map(item => sanitize(item));
-    }
-
-    // Обработка объектов
-    if (typeof value === 'object') {
-      // Удаляем опасные поля
-      const safeKeys = Object.keys(value).filter(
-        key => !['_safeInfo', '__proto__', 'constructor', 'prototype'].includes(key)
-      );
-
-      const result: Record<string, any> = {};
-      for (const key of safeKeys) {
-        result[key] = sanitize(value[key]);
-      }
-      return result;
-    }
-
-    // Примитивные значения
-    return value;
   }
 
-  return sanitize(entities) as T;
+  return result;
 }
 
 /**
- * Безопасный обход AST (удаляет циклические ссылки)
+ * Безопасно обходит AST и сохраняет только нужные поля
+ * ✅ Сохраняет ID функций
  */
-export function safeTraverseAST<T>(obj: T): T {
-  return sanitizeEntities(obj);
+export function safeTraverseAST(obj: any): any {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  if (typeof obj !== 'object') {
+    return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => safeTraverseAST(item));
+  }
+
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    // ✅ Сохраняем id и другие важные поля
+    if (key === 'id' || key === 'vscode' || key === 'line' || key === 'name') {
+      result[key] = value;
+    } else if (key === 'metadata') {
+      // ✅ Проверяем, что value является объектом перед использованием spread
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        const safeMetadata = { ...value };
+        // ✅ Проверяем наличие свойства перед удалением
+        if ('_safeInfo' in safeMetadata) {
+          delete safeMetadata._safeInfo;
+        }
+        result[key] = safeMetadata;
+      } else {
+        result[key] = value;
+      }
+    } else if (key !== '_safeInfo' && key !== '__proto__' && key !== 'constructor') {
+      result[key] = safeTraverseAST(value);
+    }
+  }
+  return result;
 }
 
 /**
- * Находит корень проекта (где находится package.json)
+ * Находит корень проекта (директорию с package.json)
  */
 export function findProjectRoot(startDir: string): string | null {
   let currentDir = path.resolve(startDir);
@@ -153,64 +178,140 @@ export function findProjectRoot(startDir: string): string | null {
 /**
  * Находит файл в проекте по имени
  */
-export function findFileInProject(projectRoot: string, fileName: string): string | null {
-  const possiblePaths = [
-    path.resolve(projectRoot, fileName),
-    path.resolve(projectRoot, 'src', fileName),
-    path.resolve(projectRoot, 'packages', fileName),
-    path.resolve(projectRoot, 'lib', fileName),
-    path.resolve(projectRoot, 'dist', fileName),
-  ];
+export function findFileInProject(
+  fileName: string,
+  projectRoot: string,
+  extensions: string[] = ['.ts', '.tsx', '.js', '.jsx', '.vue']
+): string | null {
+  const walk = (dir: string): string | null => {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
 
-  for (const candidate of possiblePaths) {
-    if (fs.existsSync(candidate)) {
-      return candidate;
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+
+        if (entry.isDirectory()) {
+          if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === 'build') {
+            continue;
+          }
+          const result = walk(fullPath);
+          if (result) return result;
+        } else if (entry.isFile()) {
+          const baseName = path.basename(entry.name, path.extname(entry.name));
+          if (baseName === fileName) {
+            return fullPath;
+          }
+          // Проверяем с расширениями
+          for (const ext of extensions) {
+            if (entry.name === fileName + ext) {
+              return fullPath;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      // Игнорируем ошибки доступа
     }
-  }
+    return null;
+  };
 
-  return null;
+  return walk(projectRoot);
 }
 
 /**
  * Находит модуль для сущности по имени
  */
-export function findModuleForEntity(entityName: string, data: GraphData): string | null {
-  const { graph } = data;
-
-  // Проверяем, является ли имя сущности путем к модулю
-  if (graph[entityName]) {
-    return entityName;
-  }
-
-  // Ищем модуль, который содержит сущность
-  for (const [modulePath, deps] of Object.entries(graph)) {
-    // Проверяем, не является ли модуль самой сущностью
+export function findModuleForEntity(
+  entityName: string,
+  data: { graph: Record<string, string[]> }
+): string | null {
+  for (const [modulePath, deps] of Object.entries(data.graph)) {
     if (modulePath.includes(entityName)) {
       return modulePath;
     }
-
-    // Проверяем зависимости
-    const depsArray = deps as string[];
-    for (const dep of depsArray) {
-      if (dep.includes(entityName)) {
-        return dep;
+    if (Array.isArray(deps)) {
+      for (const dep of deps) {
+        if (dep.includes(entityName)) {
+          return dep;
+        }
       }
     }
   }
-
   return null;
 }
+
+// ============================================================
+// ✅ ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ ID - ИСПОЛЬЗУЮТ IdManager
+// ============================================================
+
+/**
+ * ✅ Использует статический метод из IdManager
+ * Генерирует уникальный ID для функции с номером строки
+ * @param filePath - Путь к файлу
+ * @param funcName - Имя функции
+ * @param line - Номер строки (ОБЯЗАТЕЛЬНЫЙ)
+ * @returns Уникальный ID функции
+ */
+export function generateFunctionId(filePath: string, funcName: string, line: number): string {
+  return IdManager.generateFunctionId(filePath, funcName, line);
+}
+
+/**
+ * ✅ Использует статический метод из IdManager
+ * Генерирует ID для файла
+ * @param filePath - Путь к файлу
+ * @returns Уникальный ID файла
+ */
+export function generateFileId(filePath: string): string {
+  return IdManager.generateFileId(filePath);
+}
+
+/**
+ * ✅ Использует статический метод из IdManager
+ * Генерирует ID для модуля
+ * @param moduleName - Имя модуля
+ * @returns Уникальный ID модуля
+ */
+export function generateModuleId(moduleName: string): string {
+  return IdManager.generateModuleId(moduleName);
+}
+
+// ============================================================
+// УТИЛИТЫ ДЛЯ РАБОТЫ С ПУТЯМИ
+// ============================================================
 
 /**
  * Нормализует путь для отображения
  */
-export function normalizePathForDisplay(filePath: string): string {
+export function normalizePathForDisplay(filePath: string, baseDir: string = process.cwd()): string {
   if (!filePath) return '';
-  const normalized = filePath.replace(/\\/g, '/');
-  const cwd = process.cwd().replace(/\\/g, '/');
-  if (normalized.startsWith(cwd + '/')) {
-    return normalized.substring(cwd.length + 1);
+
+  let normalized = filePath;
+
+  // Делаем относительным
+  if (path.isAbsolute(normalized)) {
+    try {
+      normalized = path.relative(baseDir, normalized);
+    } catch {
+      // Оставляем как есть
+    }
   }
+
+  // Заменяем обратные слеши на прямые
+  normalized = normalized.replace(/\\/g, '/');
+
+  // Убираем избыточные точки
+  if (normalized.startsWith('../')) {
+    const parts = normalized.split('/');
+    const filtered = parts.filter(p => p !== '..' && p !== '.');
+    if (filtered.length > 0) {
+      const candidate = filtered.join('/');
+      if (candidate && candidate.length > 0) {
+        normalized = candidate;
+      }
+    }
+  }
+
   return normalized;
 }
 
@@ -236,35 +337,37 @@ export function getFileDirectory(filePath: string): string {
 }
 
 /**
- * Проверяет, является ли файл TypeScript
+ * Проверяет, является ли файл TypeScript файлом
  */
 export function isTypeScriptFile(filePath: string): boolean {
-  return /\.(ts|tsx|mts|cts)$/i.test(filePath);
+  const ext = path.extname(filePath);
+  return ['.ts', '.tsx', '.mts', '.cts'].includes(ext);
 }
 
 /**
- * Проверяет, является ли файл JavaScript
+ * Проверяет, является ли файл JavaScript файлом
  */
 export function isJavaScriptFile(filePath: string): boolean {
-  return /\.(js|jsx|mjs|cjs)$/i.test(filePath);
+  const ext = path.extname(filePath);
+  return ['.js', '.jsx', '.mjs', '.cjs'].includes(ext);
 }
 
 /**
- * Проверяет, является ли файл Vue
+ * Проверяет, является ли файл Vue файлом
  */
 export function isVueFile(filePath: string): boolean {
-  return /\.vue$/i.test(filePath);
+  return filePath.endsWith('.vue');
 }
 
 /**
- * Проверяет, является ли файл JSX/TSX
+ * Проверяет, является ли файл JSX файлом
  */
 export function isJsxFile(filePath: string): boolean {
-  return /\.(jsx|tsx)$/i.test(filePath);
+  return filePath.endsWith('.jsx') || filePath.endsWith('.tsx');
 }
 
 /**
- * Определяет язык файла по расширению
+ * Определяет язык файла
  */
 export function detectLanguage(
   filePath: string
@@ -280,56 +383,50 @@ export function detectLanguage(
  * Сокращает длинный путь для отображения
  */
 export function shortenPath(filePath: string, maxLength: number = 60): string {
-  if (!filePath) return '';
   const normalized = normalizePathForDisplay(filePath);
   if (normalized.length <= maxLength) return normalized;
 
   const parts = normalized.split('/');
-  if (parts.length <= 3) return normalized;
+  if (parts.length <= 2) return normalized;
 
-  const first = parts[0] || '';
-  const last = parts[parts.length - 1] || '';
-  const result = `${first}/.../${last}`;
+  let prefix = '';
+  let startIndex = 0;
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i] === '..' || parts[i] === '.') {
+      prefix += parts[i] + '/';
+      startIndex = i + 1;
+    } else {
+      break;
+    }
+  }
 
-  return result.length <= maxLength ? result : last;
+  const remaining = parts.slice(startIndex);
+  if (remaining.length <= 2) return normalized;
+
+  const first = remaining[0] || '';
+  const lastTwo = remaining.slice(-2);
+
+  let result = prefix;
+  if (first) {
+    result += first + '/.../';
+  }
+  result += lastTwo.join('/');
+
+  return result;
 }
 
 /**
  * Генерирует VSCode ссылку для файла
  */
-export function generateVscodeLink(filePath: string, line?: number): string {
-  const normalized = normalizePathForDisplay(filePath);
-  const fullPath = path.resolve(process.cwd(), normalized);
-  return line ? `vscode://file/${fullPath}:${line}` : `vscode://file/${fullPath}`;
-}
-
-/**
- * Генерирует уникальный ID для функции
- */
-export function generateFunctionId(filePath: string, funcName: string): string {
-  const hash = simpleHash(filePath);
-  return `func_${hash}_${funcName}`;
-}
-
-/**
- * Генерирует уникальный ID для файла
- */
-export function generateFileId(filePath: string): string {
-  const hash = simpleHash(filePath);
-  return `file_${hash}`;
-}
-
-/**
- * Простой хеш для строки
- */
-export function simpleHash(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
+export function generateVscodeLink(filePath: string, line?: number, column?: number): string {
+  let link = `vscode://file/${filePath}`;
+  if (line !== undefined) {
+    link += `:${line}`;
+    if (column !== undefined) {
+      link += `:${column}`;
+    }
   }
-  return Math.abs(hash).toString(36).padStart(4, '0');
+  return link;
 }
 
 /**
@@ -340,20 +437,16 @@ export function isAbsolutePath(filePath: string): boolean {
 }
 
 /**
- * Получает относительный путь от одного файла к другому
+ * Получает относительный путь
  */
 export function getRelativePath(from: string, to: string): string {
-  const fromDir = path.dirname(from);
-  let relative = path.relative(fromDir, to);
-  if (!relative.startsWith('.') && !relative.startsWith('@')) {
-    relative = './' + relative;
-  }
-  return relative.replace(/\\/g, '/');
+  return path.relative(from, to);
 }
 
-/**
- * Экспорт по умолчанию
- */
+// ============================================================
+// ЭКСПОРТ ПО УМОЛЧАНИЮ
+// ============================================================
+
 export default {
   ensureArray,
   safeString,
@@ -366,6 +459,9 @@ export default {
   findProjectRoot,
   findFileInProject,
   findModuleForEntity,
+  generateFunctionId,
+  generateFileId,
+  generateModuleId,
   normalizePathForDisplay,
   getFileName,
   getFileExtension,
@@ -377,9 +473,6 @@ export default {
   detectLanguage,
   shortenPath,
   generateVscodeLink,
-  generateFunctionId,
-  generateFileId,
-  simpleHash,
   isAbsolutePath,
   getRelativePath,
 };

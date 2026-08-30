@@ -400,7 +400,7 @@ function collectImporters(
   // Инициализируем для всех функций
   for (const [filePath, entities] of Object.entries(entitiesMap)) {
     for (const func of entities.functions || []) {
-      const id = func.id || idManager.getFunctionId({
+      const id = func.id || idManager.generateCompactId({
         filePath,
         funcName: func.name,
         line: func.line || 0,
@@ -440,7 +440,7 @@ function collectImporters(
         const targetFunc = targetEntities.functions.find(f => f.name === importedName);
         if (!targetFunc) continue;
 
-        const targetId = targetFunc.id || idManager.getFunctionId({
+        const targetId = targetFunc.id || idManager.generateCompactId({
           filePath: resolvedPath,
           funcName: importedName,
           line: targetFunc.line || 0,
@@ -854,7 +854,7 @@ export function savePackageLockReport(
     normalizedEntitiesMap[key] = {
       functions: ensureArray(entities.functions).map((f: any) => ({
         ...f,
-        id: f.id || idManager.getFunctionId({
+        id: f.id || idManager.generateCompactId({
           filePath: key,
           funcName: f.name,
           line: f.line || 0,
@@ -896,6 +896,7 @@ export function savePackageLockReport(
     // Функции
     for (const func of entities.functions || []) {
       if (func.isExported && func.name) {
+        // ❌ Убираем id из тела объекта
         exports[func.name] = {
           direction: 'outward',
           type: 'function',
@@ -904,13 +905,6 @@ export function savePackageLockReport(
           returns: func.returnType || 'any',
           line: func.line || 0,
           consumers: [],
-          id: func.id || idManager.getFunctionId({
-            filePath: modulePath,
-            funcName: func.name,
-            line: func.line || 0,
-            parentFunction: func.parentFunction,
-            depth: func.depth || 0
-          }),
           vscode: func.vscode || `vscode://file/${modulePath}:${func.line}`,
         };
       }
@@ -1304,7 +1298,7 @@ export function buildEntityGraph(data: GraphData, entities: EntitiesResult): Ent
       security: func.security || createDefaultSecurity(),
       body: func.body || '',
       vscode: funcAny.vscode || '',
-      id: funcAny.id || idManager.getFunctionId({
+      id: funcAny.id || idManager.generateCompactId({
         filePath: modulePath || 'unknown',
         funcName: funcName,
         line: func.line || 0,
@@ -1639,7 +1633,7 @@ export function buildOptimizedRelationships(
     };
 
     for (const func of entities.functions || []) {
-      const id = func.id || idManager.getFunctionId({
+      const id = func.id || idManager.generateCompactId({
         filePath,
         funcName: func.name,
         line: func.line || 0,
@@ -1658,7 +1652,7 @@ export function buildOptimizedRelationships(
   // 2. Для каждой функции заполняем calls
   for (const [filePath, entities] of Object.entries(entitiesMap)) {
     for (const func of entities.functions || []) {
-      const id = func.id || idManager.getFunctionId({
+      const id = func.id || idManager.generateCompactId({
         filePath,
         funcName: func.name,
         line: func.line || 0,
@@ -1688,7 +1682,7 @@ export function buildOptimizedRelationships(
             if (otherFile === filePath) continue;
             const foundFunc = (otherEntities.functions || []).find((f: any) => f.name === callName);
             if (foundFunc) {
-              const targetId = foundFunc.id || idManager.getFunctionId({
+              const targetId = foundFunc.id || idManager.generateCompactId({
                 filePath: otherFile,
                 funcName: callName,
                 line: foundFunc.line || 0,
@@ -1729,7 +1723,7 @@ export function buildOptimizedRelationships(
   // Инициализируем calledBy для всех функций
   for (const [filePath, entities] of Object.entries(entitiesMap)) {
     for (const func of entities.functions || []) {
-      const id = func.id || idManager.getFunctionId({
+      const id = func.id || idManager.generateCompactId({
         filePath,
         funcName: func.name,
         line: func.line || 0,
@@ -1749,7 +1743,7 @@ export function buildOptimizedRelationships(
         let callerInfo = null;
         for (const [filePath, entities] of Object.entries(entitiesMap)) {
           const func = (entities.functions || []).find((f: any) => {
-            const fId = f.id || idManager.getFunctionId({
+            const fId = f.id || idManager.generateCompactId({
               filePath,
               funcName: f.name,
               line: f.line || 0,
@@ -1822,7 +1816,7 @@ export function saveOptimizedPackageLockReport(
   const relationships = buildOptimizedRelationships(entitiesMap, graph);
 
   // 2. Собрать все функции в единый словарь
-  const entities: Record<string, ExtendedFunctionInfo> = {};
+  const entities: Record<string, Omit<ExtendedFunctionInfo, 'id'>> = {};
   let totalFunctions = 0;
   let totalCalls = 0;
   let totalCalledBy = 0;
@@ -1830,7 +1824,7 @@ export function saveOptimizedPackageLockReport(
 
   for (const [filePath, fileEntities] of Object.entries(entitiesMap)) {
     for (const func of fileEntities.functions || []) {
-      const id = func.id || idManager.getFunctionId({
+      const id = func.id || idManager.generateCompactId({
         filePath,
         funcName: func.name,
         line: func.line || 0,
@@ -1850,8 +1844,8 @@ export function saveOptimizedPackageLockReport(
       totalCalledBy += funcCalledBy.length;
       totalImportedBy += funcImportedBy.length;
 
-      const entity: ExtendedFunctionInfo = {
-        id,
+      // ✅ Убираем id из тела объекта
+      const entity: Omit<ExtendedFunctionInfo, 'id'> = {
         name: func.name,
         file: filePath,
         line: func.line || 0,
@@ -1890,6 +1884,7 @@ export function saveOptimizedPackageLockReport(
         };
       }
 
+      // ✅ Ключом объекта является id
       entities[id] = entity;
       totalFunctions++;
     }
@@ -2222,7 +2217,7 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         vscode: `vscode://file/${absolutePath}:${functionDecl.getStartLineNumber()}`,
         signature: '',
         _safeInfo: null,
-        id: idManager.getFunctionId({
+        id: idManager.generateCompactId({
           filePath: absolutePath,
           funcName: name,
           line: functionDecl.getStartLineNumber(),
@@ -2311,7 +2306,7 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
             vscode: `vscode://file/${absolutePath}:${decl.getStartLineNumber()}`,
             signature: '',
             _safeInfo: null,
-            id: idManager.getFunctionId({
+            id: idManager.generateCompactId({
               filePath: absolutePath,
               funcName: name,
               line: decl.getStartLineNumber(),

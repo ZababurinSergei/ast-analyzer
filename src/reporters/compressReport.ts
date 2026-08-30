@@ -825,6 +825,104 @@ export class UniverseNavigator {
   toJSON(): CompressedReport {
     return this.data;
   }
+
+  // ============================================================
+  // НОВЫЕ МЕТОДЫ ДЛЯ РАБОТЫ С ШАБЛОНАМИ
+  // ============================================================
+
+  /**
+   * Разворачивает шаблоны в полные сущности для навигации
+   * Используется для работы с отчетами, содержащими секцию templates
+   */
+  expandTemplates(): Record<string, any> {
+    const data = this.data as any;
+    if (!data.templates || !data.entities) {
+      return data.entities || {};
+    }
+
+    const expanded: Record<string, any> = {};
+
+    for (const [id, entity] of Object.entries(data.entities)) {
+      const entityObj = entity as any;
+      if (entityObj.$t && data.templates[entityObj.$t]) {
+        // Объединяем шаблон и сущность
+        expanded[id] = {
+          ...data.templates[entityObj.$t],
+          ...entityObj,
+        };
+        // Удаляем ссылку на шаблон из результата
+        delete expanded[id].$t;
+      } else {
+        expanded[id] = entityObj;
+      }
+    }
+
+    return expanded;
+  }
+
+  /**
+   * Получить сущность с развернутыми шаблонами
+   * @param id - ID сущности
+   * @returns Сущность с развернутым шаблоном или undefined
+   */
+  getExpandedEntity(id: string): any {
+    const data = this.data as any;
+    const entity = data.entities?.[id];
+    if (!entity) return undefined;
+
+    if (entity.$t && data.templates?.[entity.$t]) {
+      const expanded = {
+        ...data.templates[entity.$t],
+        ...entity,
+      };
+      delete expanded.$t;
+      return expanded;
+    }
+
+    return entity;
+  }
+
+  /**
+   * Получить все сущности с развернутыми шаблонами
+   * @returns Record<string, any> Все сущности с развернутыми шаблонами
+   */
+  getAllExpandedEntities(): Record<string, any> {
+    return this.expandTemplates();
+  }
+
+  /**
+   * Проверить, использует ли отчет шаблоны
+   */
+  hasTemplates(): boolean {
+    const data = this.data as any;
+    return !!(data.templates && Object.keys(data.templates).length > 0);
+  }
+
+  /**
+   * Получить статистику по шаблонам
+   */
+  getTemplateStats(): {
+    totalTemplates: number;
+    totalEntities: number;
+    usage: Record<string, number>;
+  } | null {
+    const data = this.data as any;
+    if (!data.templates || !data.entities) return null;
+
+    const usage: Record<string, number> = {};
+    for (const entity of Object.values(data.entities)) {
+      const entityObj = entity as any;
+      if (entityObj.$t) {
+        usage[entityObj.$t] = (usage[entityObj.$t] || 0) + 1;
+      }
+    }
+
+    return {
+      totalTemplates: Object.keys(data.templates).length,
+      totalEntities: Object.keys(data.entities).length,
+      usage,
+    };
+  }
 }
 
 /**

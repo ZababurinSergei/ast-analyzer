@@ -15,7 +15,7 @@ import {
 import idManager from './IdManager.js';
 
 // ==========================================
-// ИМПОРТ ТИПОВ ИЗ src/types.ts (ЕДИНЫЙ ИСТОЧНИК)
+// ИМПОРТ ТИПОВ ИЗ src/types.js (ЕДИНЫЙ ИСТОЧНИК)
 // ==========================================
 
 import type {
@@ -462,8 +462,8 @@ function convertVueAnalysisToEntities(
         hasExec: false,
         hasPassword: false,
       },
-      // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID
-      id: idManager.getFunctionId({
+      // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID С НОМЕРОМ СТРОКИ
+      id: idManager.generateCompactId({
         filePath,
         funcName: comp.name,
         line: 0,
@@ -542,7 +542,7 @@ function convertVueAnalysisToEntities(
         let innerMatch;
         while (
           (innerMatch = innerPattern.exec(scriptContent.substring(callMatch.index))) !== null
-        ) {
+          ) {
           const called = innerMatch[1];
           if (called && called !== caller && !calls.includes(called)) {
             calls.push(called);
@@ -883,11 +883,11 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
       const params = isArraySafe(node.params)
         ? node.params.map((p: any) => {
-            if (p.type === 'Identifier') return p.name || 'unknown';
-            if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
-            if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
-            return 'unknown';
-          })
+          if (p.type === 'Identifier') return p.name || 'unknown';
+          if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
+          if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
+          return 'unknown';
+        })
         : [];
 
       const isNested = parentFunctions.length > 0 || depth > 0;
@@ -895,8 +895,8 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
       const bodyText = node.body ? extractBodyText(node.body) : undefined;
 
-      // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID
-      const funcId = idManager.getFunctionId({
+      // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID С НОМЕРОМ СТРОКИ
+      const funcId = idManager.generateCompactId({
         filePath: filePath || 'unknown',
         funcName: fullName || name,
         line: node.loc?.start?.line || 1,
@@ -1039,11 +1039,11 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
       const params = isArraySafe(node.params)
         ? node.params.map((p: any) => {
-            if (p.type === 'Identifier') return p.name || 'unknown';
-            if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
-            if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
-            return 'unknown';
-          })
+          if (p.type === 'Identifier') return p.name || 'unknown';
+          if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
+          if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
+          return 'unknown';
+        })
         : [];
 
       const isNested = parentFuncs.length > 0 || depth > 0;
@@ -1051,8 +1051,8 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
       const bodyText = node.body ? extractBodyText(node.body) : undefined;
 
-      // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID
-      const funcId = idManager.getFunctionId({
+      // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID С НОМЕРОМ СТРОКИ
+      const funcId = idManager.generateCompactId({
         filePath: filePath || 'unknown',
         funcName: name,
         line: node.loc?.start?.line || 1,
@@ -1120,17 +1120,17 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
         const params = isArraySafe(node.value?.params)
           ? node.value.params.map((p: any) => {
-              if (p.type === 'Identifier') return p.name || 'unknown';
-              if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
-              return 'unknown';
-            })
+            if (p.type === 'Identifier') return p.name || 'unknown';
+            if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
+            return 'unknown';
+          })
           : [];
 
         const parentFunc = className;
         const bodyText = node.value?.body ? extractBodyText(node.value.body) : undefined;
 
-        // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID
-        const funcId = idManager.getFunctionId({
+        // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID С НОМЕРОМ СТРОКИ
+        const funcId = idManager.generateCompactId({
           filePath: filePath || 'unknown',
           funcName: fullName,
           line: node.loc?.start?.line || 1,

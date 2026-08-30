@@ -196,6 +196,18 @@ export class VisGraphManager {
     }
 
     this.allEntities = this._extractAllEntities(reportData);
+
+    // ✅ УДАЛЯЕМ ДУБЛИКАТЫ СРАЗУ ПРИ ЗАГРУЗКЕ
+    const uniqueEntities = new Map();
+    for (const entity of this.allEntities) {
+      if (!uniqueEntities.has(entity.id)) {
+        uniqueEntities.set(entity.id, entity);
+      } else {
+        console.warn(`⚠️ Дубликат при загрузке: ${entity.id}`);
+      }
+    }
+    this.allEntities = Array.from(uniqueEntities.values());
+
     this.allEdges = this._buildEntityEdges(this.allEntities, reportData);
 
     console.log(`📊 Загружено сущностей: ${this.allEntities.length}`);
@@ -662,6 +674,18 @@ export class VisGraphManager {
       filteredEdges = this.allEdges.filter(e => searchIds.has(e.from) && searchIds.has(e.to));
     }
 
+    // ✅ УДАЛЯЕМ ДУБЛИКАТЫ УЗЛОВ ПО ID
+    const uniqueEntities = new Map();
+    for (const entity of filteredEntities) {
+      if (!uniqueEntities.has(entity.id)) {
+        uniqueEntities.set(entity.id, entity);
+      } else {
+        // Если дубликат найден, логируем предупреждение
+        console.warn(`⚠️ Дубликат узла: ${entity.id}, пропускаем`);
+      }
+    }
+    filteredEntities = Array.from(uniqueEntities.values());
+
     // Строим узлы для vis-network
     const nodes = filteredEntities.map(e => {
       const group = this._detectGroup(e);
@@ -745,7 +769,8 @@ export class VisGraphManager {
       };
     });
 
-    // Строим ребра
+    // ✅ УДАЛЯЕМ ДУБЛИКАТЫ РЕБЕР
+    const uniqueEdges = new Map();
     const edgeColors = {
       contains: '#3b82f6',
       calls: '#f59e0b',
@@ -754,21 +779,35 @@ export class VisGraphManager {
       implements: '#a78bfa',
     };
 
-    const visEdges = filteredEdges.map((e, i) => {
-      const color = edgeColors[e.type] || '#3a4a73';
-      return {
-        id: 'e' + i,
-        from: e.from,
-        to: e.to,
-        label: e.label || '',
-        arrows: 'to',
-        color: { color: color, highlight: '#7aa2ff' },
-        smooth: { type: 'dynamic' },
-        font: { size: 8, color: '#64748b' },
-        width: e.type === 'calls' ? 1.5 : 1,
-        dashes: e.type === 'import' ? [4, 4] : false,
-      };
-    });
+    // Фильтруем ребра, чтобы они существовали в узлах
+    const validNodeIds = new Set(nodes.map(n => n.id));
+    const validEdges = filteredEdges.filter(
+      e => validNodeIds.has(e.from) && validNodeIds.has(e.to)
+    );
+
+    for (const edge of validEdges) {
+      // Создаем уникальный ключ для ребра
+      const key = `${edge.from}->${edge.to}:${edge.type}`;
+      if (!uniqueEdges.has(key)) {
+        const color = edgeColors[edge.type] || '#3a4a73';
+        uniqueEdges.set(key, {
+          id: 'e' + uniqueEdges.size,
+          from: edge.from,
+          to: edge.to,
+          label: edge.label || '',
+          arrows: 'to',
+          color: { color: color, highlight: '#7aa2ff' },
+          smooth: { type: 'dynamic' },
+          font: { size: 8, color: '#64748b' },
+          width: edge.type === 'calls' ? 1.5 : 1,
+          dashes: edge.type === 'import' ? [4, 4] : false,
+        });
+      }
+    }
+
+    const visEdges = Array.from(uniqueEdges.values());
+
+    console.log(`📊 Узлов: ${nodes.length}, Ребер: ${visEdges.length}`);
 
     return { nodes, edges: visEdges, entityData: filteredEntities };
   }

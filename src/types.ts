@@ -1404,21 +1404,38 @@ export interface CompactUniverse {
     depth: number;
     cycles: boolean;
   };
-  callDetails?: Record<number, {
-    calls: { to: number; line: number; isAsync: boolean }[];
-    calledBy: { from: number; line: number }[];
-  }>;
-  callContext?: Record<number, {
-    params: string[];
-    returnType: string;
-    isExported: boolean;
-    isAsync: boolean;
-    line: number;
-    endLine: number;
-    calls: { to: number; line: number; column: number; isAsync: boolean; isMethod: boolean; className?: string }[];
-    calledBy: { from: number; line: number; column: number }[];
-    dependencies: number[];
-  }>;
+  callDetails?: Record<
+    number,
+    {
+      calls: { to: number; line: number; isAsync: boolean }[];
+      calledBy: { from: number; line: number }[];
+    }
+  >;
+  callContext?: Record<
+    number,
+    {
+      params: string[];
+      returnType: string;
+      isExported: boolean;
+      isAsync: boolean;
+      line: number;
+      endLine: number;
+      calls: {
+        to: number;
+        line: number;
+        column: number;
+        isAsync: boolean;
+        isMethod: boolean;
+        className?: string;
+      }[];
+      calledBy: {
+        from: number;
+        line: number;
+        column: number;
+      }[];
+      dependencies: number[];
+    }
+  >;
 }
 
 export interface CompactFunction {
@@ -1436,6 +1453,125 @@ export interface CompactFunction {
   vscode?: string;
   security?: any;
   signature?: string;
+}
+
+// ==========================================
+// ТИПЫ ДЛЯ КОМПАКТНОГО ОТЧЕТА С ШАБЛОНАМИ (v3.0.2)
+// ==========================================
+
+/**
+ * Шаблон сущности для компактного отчета
+ * Содержит общие поля для группы сущностей одного типа
+ */
+export interface EntityTemplate {
+  /** Тип сущности: function, class, interface, type, constant, variable */
+  kind: string;
+  /** Является ли вложенной (для функций) */
+  isNested?: boolean;
+  /** Глубина вложенности (для функций) */
+  depth?: number;
+  /** Является ли асинхронной (для функций) */
+  isAsync?: boolean;
+  /** Является ли методом класса (для функций) */
+  isMethod?: boolean;
+  /** Экспортируется ли сущность */
+  isExported?: boolean;
+  /** Является ли стрелочной функцией */
+  isArrow?: boolean;
+  /** Является ли обработчиком события */
+  isEventHandler?: boolean;
+}
+
+/**
+ * Расширенный компактный отчет с поддержкой шаблонов
+ */
+export interface CompactEntityReport {
+  /** Версия формата отчета */
+  version: string;
+  /** Временная метка создания */
+  timestamp?: string;
+
+  /** Секция шаблонов - общие поля для групп сущностей */
+  templates?: Record<string, EntityTemplate>;
+
+  /** Глобальные индексы */
+  functionIndex: Record<string, string>; // id -> name
+  fileIndex: Record<string, string>; // id -> path
+  moduleIndex: Record<string, string>; // id -> module name
+
+  /** Сущности с ссылками на шаблоны */
+  entities: Record<string, any>;
+
+  /** Граф вызовов */
+  callGraph?: {
+    edges: CallGraphEdge[];
+    stats: {
+      totalEdges: number;
+      uniqueCallers: number;
+      uniqueCallees: number;
+      mostCalled: { functionId: string; count: number }[];
+      topCallers: { functionId: string; count: number }[];
+    };
+  };
+
+  /** Граф импортов */
+  importGraph?: {
+    edges: ImportGraphEdge[];
+    stats: {
+      totalEdges: number;
+      uniqueImporters: number;
+      uniqueImported: number;
+      mostImported: { fileId: string; count: number }[];
+      totalImports: number;
+      resolvedImports: number;
+      unresolvedImports: number;
+    };
+  };
+
+  /** Статистика */
+  stats: {
+    totalFunctions: number;
+    totalCalls: number;
+    totalCalledBy: number;
+    totalImportedBy: number;
+    totalEnums: number;
+    totalDecorators: number;
+    totalFiles: number;
+    totalModules: number;
+  };
+
+  /** Статистика использования шаблонов */
+  templateStats?: {
+    totalTemplates: number;
+    totalEntities: number;
+    usage: Record<string, number>;
+  };
+
+  /** Легенда */
+  legend?: {
+    kinds?: Record<string, string>;
+    callTypes?: Record<string, string>;
+    importTypes?: Record<string, string>;
+  };
+}
+
+// ==========================================
+// ВСПОМОГАТЕЛЬНЫЕ ТИПЫ ДЛЯ ГРАФОВ
+// ==========================================
+
+export interface CallGraphEdge {
+  from: string;
+  to: string;
+  line: number;
+  type: 'direct' | 'import' | 'method' | 'computed' | 'watch' | 'event';
+}
+
+export interface ImportGraphEdge {
+  from: string;
+  to: string;
+  specifiers: string[];
+  line: number;
+  type: 'named' | 'default' | 'namespace' | 'type';
 }
 
 // ==========================================
