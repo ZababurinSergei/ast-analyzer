@@ -32,6 +32,9 @@ import {
   createNavigator,
 } from './compressReport.js';
 
+// Ультра-компактный формат (НОВОЕ!)
+import { generateUltraCompactReport } from './compact-entity-reporter.js';
+
 // Модули
 import * as metadata from './modules/metadata.js';
 import * as statistics from './modules/statistics.js';
@@ -78,6 +81,9 @@ export {
   type CompactFunction,
   type CompactStats,
 } from './compressReport.js';
+
+// Ультра-компактный формат (НОВОЕ!)
+export { generateUltraCompactReport } from './compact-entity-reporter.js';
 
 // ============================================================
 // ЭКСПОРТ ТИПОВ (inline re-export без импорта)
@@ -154,6 +160,7 @@ export { getRootPath, getPathSymbol } from './env.js';
 
 import type { CompactUniverse } from './compressReport.js';
 import type { EnhancedPackageLockReport } from './json-reporter.js';
+import type { EntitiesResult } from '../types.js';
 
 /**
  * Создает компактную версию отчета для быстрой навигации
@@ -164,11 +171,42 @@ export function createUniverse(report: EnhancedPackageLockReport): CompactUniver
   return compressReport(report);
 }
 
+/**
+ * Создает ультра-компактную версию отчета с удалением дублей (НОВОЕ!)
+ * @param entitiesMap - Карта сущностей
+ * @param outputPath - Путь для сохранения
+ * @param options - Опции генерации
+ * @returns Объект ультра-компактного отчета
+ */
+export function createUltraUniverse(
+  entitiesMap: Record<string, EntitiesResult>,
+  outputPath?: string,
+  options?: {
+    useBitFlags?: boolean;
+    useDictionaries?: boolean;
+    readableKeys?: boolean;
+    useTemplates?: boolean;
+    maxDepth?: number;
+  }
+): any {
+  // Используем generateUltraCompactReport с передачей опций
+  // Функция возвращает отчет и (опционально) сохраняет его
+  const report = generateUltraCompactReport(entitiesMap, outputPath || './ultra-universe.json', {
+    useBitFlags: options?.useBitFlags !== false,
+    useDictionaries: options?.useDictionaries !== false,
+    readableKeys: options?.readableKeys !== false,
+    useTemplates: options?.useTemplates !== false,
+    maxDepth: options?.maxDepth || 10,
+  });
+
+  return report;
+}
+
 // ============================================================
 // КОНСТАНТЫ
 // ============================================================
 
-export const REPORTERS_VERSION = '3.0.1';
+export const REPORTERS_VERSION = '4.0.0';
 export const REPORTERS_NAME = 'reporters';
 
 // ============================================================
@@ -200,6 +238,10 @@ export default {
   UniverseNavigator,
   loadUniverse,
   createNavigator,
+
+  // Ультра-компактный формат (НОВОЕ!)
+  generateUltraCompactReport,
+  createUltraUniverse,
 
   // Модули
   metadata,

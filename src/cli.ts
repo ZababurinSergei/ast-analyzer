@@ -52,7 +52,10 @@ import {
 } from './reporters/json-reporter.js';
 import { generateInteractiveHTML } from './reporters/interactive-reporter.js';
 import { COMPACT_REPORT_CONFIG } from './config.js';
-import { generateCompactEntityReport } from './reporters/compact-entity-reporter.js';
+import {
+  generateCompactEntityReport,
+  generateUltraCompactReport,
+} from './reporters/compact-entity-reporter.js';
 
 // ============================================
 // 🆕 ЕДИНЫЙ ИСТОЧНИК ДАННЫХ
@@ -435,7 +438,13 @@ interface ParsedArgs {
   toFunction?: string;
   optimized?: boolean;
   maxDepth?: number;
-  useTemplates?: boolean; // 🆕 Новая опция для шаблонов
+  useTemplates?: boolean;
+  ultraCompact?: boolean;
+  ultraCompactOptions?: {
+    useBitFlags?: boolean;
+    useDictionaries?: boolean;
+    readableKeys?: boolean;
+  };
 }
 
 export function parseArgs(): ParsedArgs | null {
@@ -458,7 +467,13 @@ export function parseArgs(): ParsedArgs | null {
   let optimized = false;
   let preset: string | undefined;
   let maxDepth = 5;
-  let useTemplates = true; // 🆕 По умолчанию шаблоны включены
+  let useTemplates = true;
+  let ultraCompact = false;
+  const ultraCompactOptions = {
+    useBitFlags: true,
+    useDictionaries: true,
+    readableKeys: true,
+  };
   const cleanArgs: string[] = [];
 
   for (let i = 0; i < normalizedArgs.length; i++) {
@@ -497,11 +512,9 @@ export function parseArgs(): ParsedArgs | null {
         i++;
       }
     } else if (arg === '--max-depth' || arg === '-d') {
-      // ✅ ИСПРАВЛЕНО: проверка на undefined перед parseInt
       const nextIndex = i + 1;
       if (nextIndex < normalizedArgs.length && normalizedArgs[nextIndex] !== undefined) {
         const nextArg = normalizedArgs[nextIndex];
-        // Проверяем, что это не флаг (не начинается с '-')
         if (!nextArg.startsWith('-')) {
           const parsed = parseInt(nextArg, 10);
           if (!isNaN(parsed) && parsed > 0) {
@@ -511,11 +524,17 @@ export function parseArgs(): ParsedArgs | null {
         }
       }
     } else if (arg === '--no-templates') {
-      // 🆕 Отключение шаблонов
       useTemplates = false;
     } else if (arg === '--templates') {
-      // 🆕 Явное включение шаблонов
       useTemplates = true;
+    } else if (arg === '--ultra-compact' || arg === '--ultra') {
+      ultraCompact = true;
+    } else if (arg === '--no-bit-flags') {
+      ultraCompactOptions.useBitFlags = false;
+    } else if (arg === '--no-dictionaries') {
+      ultraCompactOptions.useDictionaries = false;
+    } else if (arg === '--minify-keys') {
+      ultraCompactOptions.readableKeys = false;
     } else if (arg) {
       cleanArgs.push(arg);
     }
@@ -556,6 +575,8 @@ export function parseArgs(): ParsedArgs | null {
       optimized,
       maxDepth,
       useTemplates,
+      ultraCompact,
+      ultraCompactOptions,
     };
   }
 
@@ -565,6 +586,7 @@ export function parseArgs(): ParsedArgs | null {
     if (!targetPath) {
       console.error('❌ Укажите путь к файлу для генерации компактного отчета');
       console.error('   Использование: compact-report <file> [--preset <name>] [--max-depth <n>] [--output <file>] [--no-templates]');
+      console.error('   🆕 Ультра-компактный режим: compact-report <file> --ultra-compact [--no-bit-flags] [--no-dictionaries]');
       process.argv = originalArgv;
       return null;
     }
@@ -583,7 +605,9 @@ export function parseArgs(): ParsedArgs | null {
       toFunction,
       optimized,
       maxDepth,
-      useTemplates, // 🆕 Передаем опцию
+      useTemplates,
+      ultraCompact,
+      ultraCompactOptions,
     };
   }
 
@@ -650,6 +674,8 @@ export function parseArgs(): ParsedArgs | null {
       optimized,
       maxDepth,
       useTemplates,
+      ultraCompact,
+      ultraCompactOptions,
     };
   }
 
@@ -700,6 +726,8 @@ export function parseArgs(): ParsedArgs | null {
       optimized,
       maxDepth,
       useTemplates,
+      ultraCompact,
+      ultraCompactOptions,
     };
   }
 
@@ -782,6 +810,8 @@ export function parseArgs(): ParsedArgs | null {
       optimized,
       maxDepth,
       useTemplates,
+      ultraCompact,
+      ultraCompactOptions,
     };
   }
 
@@ -839,6 +869,8 @@ export function parseArgs(): ParsedArgs | null {
       optimized,
       maxDepth,
       useTemplates,
+      ultraCompact,
+      ultraCompactOptions,
     };
   }
 
@@ -892,6 +924,8 @@ export function parseArgs(): ParsedArgs | null {
       optimized,
       maxDepth,
       useTemplates,
+      ultraCompact,
+      ultraCompactOptions,
     };
   }
 
@@ -997,6 +1031,8 @@ export function parseArgs(): ParsedArgs | null {
       optimized,
       maxDepth,
       useTemplates,
+      ultraCompact,
+      ultraCompactOptions,
     };
   }
 
@@ -1075,6 +1111,8 @@ export function parseArgs(): ParsedArgs | null {
       optimized,
       maxDepth,
       useTemplates,
+      ultraCompact,
+      ultraCompactOptions,
     };
   }
 
@@ -1101,6 +1139,8 @@ export function parseArgs(): ParsedArgs | null {
       optimized,
       maxDepth,
       useTemplates,
+      ultraCompact,
+      ultraCompactOptions,
     };
   }
 
@@ -1128,6 +1168,8 @@ export function parseArgs(): ParsedArgs | null {
       optimized,
       maxDepth,
       useTemplates,
+      ultraCompact,
+      ultraCompactOptions,
     };
   }
 
@@ -1155,6 +1197,8 @@ export function parseArgs(): ParsedArgs | null {
       optimized,
       maxDepth,
       useTemplates,
+      ultraCompact,
+      ultraCompactOptions,
     };
   }
 
@@ -1181,6 +1225,8 @@ export function parseArgs(): ParsedArgs | null {
       optimized,
       maxDepth,
       useTemplates,
+      ultraCompact,
+      ultraCompactOptions,
     };
   }
 
@@ -1208,6 +1254,8 @@ export function parseArgs(): ParsedArgs | null {
       optimized,
       maxDepth: maxDepthArg ? parseInt(maxDepthArg, 10) : 5,
       useTemplates,
+      ultraCompact,
+      ultraCompactOptions,
     };
   }
 
@@ -1234,6 +1282,8 @@ export function parseArgs(): ParsedArgs | null {
       optimized,
       maxDepth,
       useTemplates,
+      ultraCompact,
+      ultraCompactOptions,
     };
   }
 
@@ -1265,7 +1315,9 @@ export async function runCLI(): Promise<void> {
     toFunction,
     optimized,
     maxDepth = 5,
-    useTemplates = true, // 🆕 По умолчанию шаблоны включены
+    useTemplates = true,
+    ultraCompact = false,
+    ultraCompactOptions = { useBitFlags: true, useDictionaries: true, readableKeys: true },
   } = parsed;
 
   const originalCwd = process.cwd();
@@ -1338,7 +1390,14 @@ export async function runCLI(): Promise<void> {
       console.log(`📏 Глубина анализа: ${maxDepth}`);
       console.log(`📋 Использование шаблонов: ${useTemplates ? 'ВКЛЮЧЕНО' : 'ВЫКЛЮЧЕНО'}`);
 
-      // Устанавливаем пресет
+      if (ultraCompact) {
+        console.log(`🚀 УЛЬТРА-КОМПАКТНЫЙ РЕЖИМ: ВКЛЮЧЕН`);
+        console.log(`   • Битовые флаги: ${ultraCompactOptions.useBitFlags ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
+        console.log(`   • Словари: ${ultraCompactOptions.useDictionaries ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
+        console.log(`   • Читаемые ключи: ${ultraCompactOptions.readableKeys ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
+        console.log(`   • Ожидаемая экономия: ~60-70%`);
+      }
+
       if (extraArg) {
         const presets = ['minimal', 'standard', 'full', 'relationshipsOnly'];
         if (presets.includes(extraArg)) {
@@ -1353,7 +1412,6 @@ export async function runCLI(): Promise<void> {
 
       console.log(`📁 Выходная директория: ${process.cwd()}\n`);
 
-      // Строим граф с сущностями и рекурсивным обходом
       console.log('🔍 Построение графа зависимостей с рекурсивным анализом...');
       const result = buildProjectGraph(currentTargetPath, maxDepth, true);
 
@@ -1368,20 +1426,53 @@ export async function runCLI(): Promise<void> {
       );
       console.log(`📊 Найдено сущностей: ${totalEntities}`);
 
-      // Генерируем компактный отчет с рекурсивным обходом
       const outputFile = outputDir ? 'entities.json' : 'entities.json';
       const outputPath = path.join(process.cwd(), outputFile);
       console.log(`\n📁 Сохранение в: ${outputPath}`);
 
-      generateCompactEntityReport(
-        result.entities,
-        outputPath,
-        {
-          usePreset: true,
-          maxDepth: maxDepth,
-          useTemplates: useTemplates, // 🆕 Передаем опцию в генератор
+      if (ultraCompact) {
+        console.log('🚀 Генерация ультра-компактного отчета (с удалением дублей)...');
+
+        // Используем правильные опции для generateUltraCompactReport
+        const report = generateUltraCompactReport(
+          result.entities,
+          outputPath,
+          {
+            useBitFlags: ultraCompactOptions.useBitFlags,
+            useDictionaries: ultraCompactOptions.useDictionaries,
+            readableKeys: ultraCompactOptions.readableKeys,
+            useTemplates: useTemplates,
+            maxDepth: maxDepth,
+          }
+        );
+
+        const reportSize = JSON.stringify(report).length;
+        const sizeKB = (reportSize / 1024).toFixed(2);
+
+        console.log(`\n✅ УЛЬТРА-КОМПАКТНЫЙ ОТЧЕТ СОЗДАН!`);
+        console.log(`📊 Размер: ${sizeKB} KB`);
+        console.log(`📊 Функций: ${Object.keys(report.functionIndex).length}`);
+        console.log(`📊 Вызовов: ${report.callGraph?.edges?.length || 0}`);
+        console.log(`📊 Уникальных параметров: ${Object.keys(report.parameterDictionary || {}).length}`);
+        console.log(`📊 Уникальных типов: ${Object.keys(report.typeDictionary || {}).length}`);
+
+        if (report.templateStats) {
+          console.log(`📋 Шаблонов: ${report.templateStats.totalTemplates}`);
+          console.log(`📋 Сущностей с шаблонами: ${report.templateStats.totalEntities}`);
         }
-      );
+      } else {
+        console.log('📋 Генерация стандартного компактного отчета...');
+
+        generateCompactEntityReport(
+          result.entities,
+          outputPath,
+          {
+            usePreset: true,
+            maxDepth: maxDepth,
+            useTemplates: useTemplates,
+          }
+        );
+      }
 
       return;
     }
@@ -1569,7 +1660,7 @@ export async function runCLI(): Promise<void> {
         for (let i = 0; i < result.modules.length; i++) {
           const module = result.modules[i];
           if (!module) continue;
-          console.log(`\n   ${i + 1}. Модуль \"${module.name}\":`);
+          console.log(`\n   ${i + 1}. Модуль "${module.name}":`);
           console.log(`      Экспорты: ${module.exports.join(', ')}`);
         }
       } else {
@@ -1713,15 +1804,21 @@ export async function runCLI(): Promise<void> {
 
       const normalizedData = normalizeGraphPaths(resultData);
 
+      // Получаем циклические зависимости из графа
       const cyclicEdges = findCyclicEdges(normalizedData.graph);
       const hasCycles = cyclicEdges.size > 0;
-      normalizedData.hasCycles = hasCycles;
-      normalizedData.cyclicEdges = Array.from(cyclicEdges);
 
-      fs.writeFileSync('output.json', JSON.stringify(normalizedData, null, 2));
-      console.log(`   ✅ output.json (${Object.keys(normalizedData.graph).length} узлов)`);
+      // Добавляем информацию о циклах в normalizedData
+      const graphDataWithCycles = {
+        ...normalizedData,
+        hasCycles: hasCycles,
+        cyclicEdges: Array.from(cyclicEdges),
+      };
 
-      const dotContent = convertToDOT(normalizedData, cyclicEdges);
+      fs.writeFileSync('output.json', JSON.stringify(graphDataWithCycles, null, 2));
+      console.log(`   ✅ output.json (${Object.keys(graphDataWithCycles.graph).length} узлов)`);
+
+      const dotContent = convertToDOT(graphDataWithCycles, cyclicEdges);
       fs.writeFileSync('output.dot', dotContent);
       console.log('   ✅ output.dot');
 
@@ -1734,7 +1831,7 @@ export async function runCLI(): Promise<void> {
       const htmlContent = generateHTMLReport(
         svgContent,
         dotContent,
-        JSON.stringify(normalizedData, null, 2),
+        JSON.stringify(graphDataWithCycles, null, 2),
         normalizePathForDisplay(currentTargetPath),
         hasCycles
       );
@@ -1798,7 +1895,7 @@ export async function runCLI(): Promise<void> {
 
           try {
             const compressionLevel = parseInt(process.env.AST_COMPRESS_LEVEL || '1') as CompressionLevel;
-            console.log(`\n📦 Генерация компактной \"Вселенной\" (уровень ${compressionLevel})...`);
+            console.log(`\n📦 Генерация компактной "Вселенной" (уровень ${compressionLevel})...`);
 
             const compressed = compressReport(resultData.packageLockReport, {
               level: compressionLevel,
@@ -2040,7 +2137,7 @@ export async function runCLI(): Promise<void> {
               entitiesWithCalls.types.length +
               entitiesWithCalls.variables.length,
             hasCycles: hasCycles,
-            cycles: normalizedData.cyclicEdges?.map((edge: string) => edge.split('->')) || [],
+            cycles: graphDataWithCycles.cyclicEdges?.map((edge: string) => edge.split('->')) || [],
             totalFunctions: entitiesWithCalls.functions.length,
             totalClasses: entitiesWithCalls.classes.length,
             totalConstants: entitiesWithCalls.constants.length,
@@ -2418,13 +2515,17 @@ export async function runCLI(): Promise<void> {
 
       const cyclicEdges = findCyclicEdges(normalizedData.graph);
       const hasCycles = cyclicEdges.size > 0;
-      normalizedData.hasCycles = hasCycles;
-      normalizedData.cyclicEdges = Array.from(cyclicEdges);
 
-      fs.writeFileSync('output.json', JSON.stringify(normalizedData, null, 2));
-      console.log(`   ✅ output.json (${Object.keys(normalizedData.graph).length} узлов)`);
+      const graphDataWithCycles = {
+        ...normalizedData,
+        hasCycles: hasCycles,
+        cyclicEdges: Array.from(cyclicEdges),
+      };
 
-      const dotContent = convertToDOT(normalizedData, cyclicEdges);
+      fs.writeFileSync('output.json', JSON.stringify(graphDataWithCycles, null, 2));
+      console.log(`   ✅ output.json (${Object.keys(graphDataWithCycles.graph).length} узлов)`);
+
+      const dotContent = convertToDOT(graphDataWithCycles, cyclicEdges);
       fs.writeFileSync('output.dot', dotContent);
       console.log('   ✅ output.dot');
 
@@ -2437,7 +2538,7 @@ export async function runCLI(): Promise<void> {
       const htmlContent = generateHTMLReport(
         svgContent,
         dotContent,
-        JSON.stringify(normalizedData, null, 2),
+        JSON.stringify(graphDataWithCycles, null, 2),
         normalizePathForDisplay(currentTargetPath),
         hasCycles
       );

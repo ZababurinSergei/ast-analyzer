@@ -18,7 +18,7 @@ export {
 export { minifyCodeString, minifyForAI } from './core/minifier.js';
 
 // Утилиты для работы с графами
-export { findCyclicEdges, convertToDOT, dfs } from './core/graph-utils.js';
+export { findCyclicEdges, convertToDOT } from './core/graph-utils.js';
 
 // Работа с tsconfig (алиасы)
 export { setTsConfigPath, loadTsConfig, resolveAliasPath } from './core/tsconfig-resolver.js';

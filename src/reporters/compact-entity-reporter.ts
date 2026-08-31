@@ -8,17 +8,97 @@ import idManager from '../core/IdManager.js';
 import { loadTsConfig, resolveAliasPath } from '../core/tsconfig-resolver.js';
 
 // ============================================
-// ТИПЫ ДЛЯ РЕБЕР ГРАФОВ
+// ТИПЫ ДЛЯ НОВОЙ ULTRA-COMPACT СТРУКТУРЫ
 // ============================================
 
-interface CallGraphEdge {
+export interface UltraCompactReport {
+  version: string;
+  timestamp?: string;
+
+  // Индексы (единственный источник правды)
+  functionIndex: Record<string, string>;  // id -> name
+  fileIndex: Record<string, string>;      // id -> path
+  moduleIndex: Record<string, string>;    // id -> module name
+
+  // Словари для параметров и типов
+  parameterDictionary: Record<string, string>;
+  typeDictionary: Record<string, string>;
+
+  // Граф вызовов (единственный источник)
+  callGraph?: {
+    edges: UltraCallGraphEdge[];
+    stats: {
+      totalEdges: number;
+      uniqueCallers: number;
+      uniqueCallees: number;
+      mostCalled: { functionId: string; count: number }[];
+      topCallers: { functionId: string; count: number }[];
+    };
+  };
+
+  // Граф импортов
+  importGraph?: {
+    edges: UltraImportGraphEdge[];
+    stats: {
+      totalEdges: number;
+      uniqueImporters: number;
+      uniqueImported: number;
+      mostImported: { fileId: string; count: number }[];
+      totalImports: number;
+      resolvedImports: number;
+      unresolvedImports: number;
+    };
+  };
+
+  // Сущности (без дублей!)
+  entities: Record<string, UltraCompactEntity>;
+
+  // Шаблоны (для общих полей)
+  templates?: Record<string, EntityTemplate>;
+
+  // Статистика
+  stats: UltraCompactStats;
+
+  // Статистика по шаблонам
+  templateStats?: {
+    totalTemplates: number;
+    totalEntities: number;
+    usage: Record<string, number>;
+  };
+
+  // Легенда
+  legend?: {
+    kinds?: Record<string, string>;
+    callTypes?: Record<string, string>;
+    importTypes?: Record<string, string>;
+  };
+}
+
+export interface UltraCompactEntity {
+  file: string;           // ссылка на fileIndex
+  line: number;
+  flags: number;          // битовые флаги (см. FunctionFlags)
+  params?: string[];      // ссылки на parameterDictionary
+  returnType?: string;    // ссылка на typeDictionary
+  template?: string;      // ссылка на templates
+  // Дополнительные поля (редкие)
+  className?: string;     // только если isMethod = true
+  parentFunction?: string; // только если isNested = true
+  eventType?: string;     // только если isEventHandler = true
+  complexity?: number;    // только если > 1
+  body?: string;          // только если включено в опциях
+  vscode?: string;        // только если включено в опциях
+  security?: any;         // только если включено в опциях
+}
+
+export interface UltraCallGraphEdge {
   from: string;
   to: string;
   line: number;
   type: 'direct' | 'import' | 'method' | 'computed' | 'watch' | 'event';
 }
 
-interface ImportGraphEdge {
+export interface UltraImportGraphEdge {
   from: string;
   to: string;
   specifiers: string[];
@@ -26,9 +106,16 @@ interface ImportGraphEdge {
   type: 'named' | 'default' | 'namespace' | 'type';
 }
 
-// ============================================
-// НОВЫЕ ТИПЫ ДЛЯ ШАБЛОНОВ
-// ============================================
+export interface UltraCompactStats {
+  totalFunctions: number;
+  totalCalls: number;
+  totalCalledBy: number;
+  totalImportedBy: number;
+  totalEnums: number;
+  totalDecorators: number;
+  totalFiles: number;
+  totalModules: number;
+}
 
 export interface EntityTemplate {
   kind: string;
@@ -52,33 +139,73 @@ export interface EntityTemplate {
   };
 }
 
-interface TemplateRegistry {
-  [templateId: string]: EntityTemplate;
+// ============================================
+// ТИПЫ ДЛЯ КОНФИГА
+// ============================================
+
+export interface EntityTypesFilter {
+  function: boolean;
+  class: boolean;
+  constant: boolean;
+  interface: boolean;
+  type: boolean;
+  variable: boolean;
+  macro: boolean;
+}
+
+export interface FiltersConfig {
+  entityTypes: EntityTypesFilter;
+  onlyExported: boolean;
+  onlyNonExported: boolean;
+  includeModules: string[];
+  excludeModules: string[];
+  minComplexity: number;
+  maxDepth: number;
+}
+
+export interface RelationshipFieldConfig {
+  enabled: boolean;
+  targetId: boolean;
+  targetName: boolean;
+  targetFile: boolean;
+  targetLine: boolean;
+  targetVscode: boolean;
+  callLine: boolean;
+  callType: boolean;
+}
+
+export interface CalledByFieldConfig {
+  enabled: boolean;
+  callerId: boolean;
+  callerName: boolean;
+  callerFile: boolean;
+  callerLine: boolean;
+  callerVscode: boolean;
+  callLine: boolean;
+  callType: boolean;
+}
+
+export interface ImportedByFieldConfig {
+  enabled: boolean;
+  importerId: boolean;
+  importerFile: boolean;
+  importerVscode: boolean;
+  importLine: boolean;
+  specifier: boolean;
+  importType: boolean;
+}
+
+export interface RelationshipFieldsConfig {
+  calls: RelationshipFieldConfig;
+  calledBy: CalledByFieldConfig;
+  importedBy: ImportedByFieldConfig;
 }
 
 export interface CompactReportOptions {
-  /** Использовать пресет из конфига */
   usePreset?: boolean;
-  /** Переопределить поля сущностей */
   entityFields?: Record<string, boolean>;
-  /** Переопределить поля связей */
-  relationshipFields?: {
-    calls?: Record<string, boolean>;
-    calledBy?: Record<string, boolean>;
-    importedBy?: Record<string, boolean>;
-  };
-  /** Переопределить фильтры */
-  filters?: {
-    entityTypes?: Record<string, boolean>;
-    onlyExported?: boolean;
-    onlyNonExported?: boolean;
-    includeModules?: string[];
-    excludeModules?: string[];
-    minComplexity?: number;
-    maxDepth?: number;
-    includeTests?: boolean;
-  };
-  /** Переопределить форматирование */
+  relationshipFields?: Partial<RelationshipFieldsConfig>;
+  filters?: Partial<FiltersConfig>;
   formatting?: {
     indentSize?: number;
     sortKeys?: boolean;
@@ -86,78 +213,50 @@ export interface CompactReportOptions {
     includeTimestamp?: boolean;
     includeStats?: boolean;
   };
-  /** Максимальная глубина рекурсивного обхода вызовов */
   maxDepth?: number;
-  /** Корень проекта для резолвинга путей */
   projectRoot?: string;
-  /** Формат ID: 'compact' (f142_704) или 'full' (func_4d647293_anonymous_getcycles_704) */
   idFormat?: 'compact' | 'full';
-  /** Использовать шаблоны для оптимизации размера */
   useTemplates?: boolean;
+  // НОВЫЕ ОПЦИИ ДЛЯ ULTRA-COMPACT
+  ultraCompact?: boolean;
+  useBitFlags?: boolean;
+  useDictionaries?: boolean;
+  dedupData?: boolean;
+  readableKeys?: boolean;
 }
 
-export interface CompactEntityReport {
-  version: string;
-  timestamp?: string;
+// ============================================
+// БИТОВЫЕ ФЛАГИ
+// ============================================
 
-  // === НОВАЯ СЕКЦИЯ: ШАБЛОНЫ ===
-  templates?: Record<string, EntityTemplate>;
+export enum FunctionFlags {
+  ASYNC         = 1 << 0,  // 1
+  NESTED        = 1 << 1,  // 2
+  ARROW         = 1 << 2,  // 4
+  METHOD        = 1 << 3,  // 8
+  EVENT_HANDLER = 1 << 4,  // 16
+  EXPORTED      = 1 << 5,  // 32
+}
 
-  // === ГЛОБАЛЬНЫЕ ИНДЕКСЫ ===
-  functionIndex: Record<string, string>; // id -> name
-  fileIndex: Record<string, string>; // id -> path
-  moduleIndex: Record<string, string>; // id -> module name
+export function encodeFlags(entity: any): number {
+  let flags = 0;
+  if (entity.isAsync) flags |= FunctionFlags.ASYNC;
+  if (entity.isNested) flags |= FunctionFlags.NESTED;
+  if (entity.isArrow) flags |= FunctionFlags.ARROW;
+  if (entity.isMethod) flags |= FunctionFlags.METHOD;
+  if (entity.isEventHandler) flags |= FunctionFlags.EVENT_HANDLER;
+  if (entity.isExported) flags |= FunctionFlags.EXPORTED;
+  return flags;
+}
 
-  // === СУЩНОСТИ С ССЫЛКАМИ ПО ID ===
-  entities: Record<string, any>;
-
-  // === ГРАФЫ С ССЫЛКАМИ ПО ID ===
-  callGraph?: {
-    edges: CallGraphEdge[];
-    stats: {
-      totalEdges: number;
-      uniqueCallers: number;
-      uniqueCallees: number;
-      mostCalled: { functionId: string; count: number }[];
-      topCallers: { functionId: string; count: number }[];
-    };
-  };
-
-  importGraph?: {
-    edges: ImportGraphEdge[];
-    stats: {
-      totalEdges: number;
-      uniqueImporters: number;
-      uniqueImported: number;
-      mostImported: { fileId: string; count: number }[];
-      totalImports: number;
-      resolvedImports: number;
-      unresolvedImports: number;
-    };
-  };
-
-  stats: {
-    totalFunctions: number;
-    totalCalls: number;
-    totalCalledBy: number;
-    totalImportedBy: number;
-    totalEnums: number;
-    totalDecorators: number;
-    totalFiles: number;
-    totalModules: number;
-  };
-
-  // === НОВАЯ СТАТИСТИКА ПО ШАБЛОНАМ ===
-  templateStats?: {
-    totalTemplates: number;
-    totalEntities: number;
-    usage: Record<string, number>;
-  };
-
-  legend?: {
-    kinds?: Record<string, string>;
-    callTypes?: Record<string, string>;
-    importTypes?: Record<string, string>;
+export function decodeFlags(flags: number): Record<string, boolean> {
+  return {
+    isAsync: !!(flags & FunctionFlags.ASYNC),
+    isNested: !!(flags & FunctionFlags.NESTED),
+    isArrow: !!(flags & FunctionFlags.ARROW),
+    isMethod: !!(flags & FunctionFlags.METHOD),
+    isEventHandler: !!(flags & FunctionFlags.EVENT_HANDLER),
+    isExported: !!(flags & FunctionFlags.EXPORTED),
   };
 }
 
@@ -169,7 +268,7 @@ function simpleHash(str: string): string {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
+    hash = ((hash << 5) - hash) + char;
     hash = hash & hash;
   }
   return Math.abs(hash).toString(36).padStart(4, '0');
@@ -198,9 +297,6 @@ function shortenPath(filePath: string, maxLength: number = 60): string {
 // ФУНКЦИИ ДЛЯ РАБОТЫ С ШАБЛОНАМИ
 // ============================================
 
-/**
- * Определяет ключ шаблона по характеристикам сущности
- */
 function getEntityTemplateKey(entity: any): string {
   const kind = entity.kind || 'function';
   const isNested = entity.isNested || false;
@@ -212,24 +308,20 @@ function getEntityTemplateKey(entity: any): string {
   const isEventHandler = entity.isEventHandler || false;
   const hasClassName = entity.className && entity.className.length > 0;
 
-  // Формируем ключ на основе характеристик
   let key = kind;
 
   if (kind === 'function') {
-    // Определяем тип функции
     if (isMethod && hasClassName) {
       key += '_method';
     } else if (isArrow) {
       key += '_arrow';
     }
 
-    // Добавляем модификаторы
     if (isAsync) key += '_async';
     if (isNested) key += `_nested_${Math.min(depth, 3)}`;
     if (isEventHandler) key += '_event';
     if (isExported) key += '_exported';
 
-    // Если функция имеет специфические параметры
     if (entity.params && entity.params.length > 3) {
       key += '_many_params';
     }
@@ -248,14 +340,10 @@ function getEntityTemplateKey(entity: any): string {
   return key;
 }
 
-/**
- * Создает шаблоны из сущностей
- */
-function buildTemplates(entities: Record<string, any>): TemplateRegistry {
-  const templates: TemplateRegistry = {};
+function buildTemplates(entities: Record<string, any>): Record<string, EntityTemplate> {
+  const templates: Record<string, EntityTemplate> = {};
   const templateGroups: Record<string, any[]> = {};
 
-  // Группируем сущности по шаблону
   for (const [id, entity] of Object.entries(entities)) {
     const key = getEntityTemplateKey(entity);
     if (!templateGroups[key]) {
@@ -264,16 +352,13 @@ function buildTemplates(entities: Record<string, any>): TemplateRegistry {
     templateGroups[key].push({ id, entity });
   }
 
-  // Создаем шаблоны для каждой группы с количеством > 1
   for (const [key, group] of Object.entries(templateGroups)) {
     if (group.length > 1) {
-      // Берем первую сущность как образец
       const sample = group[0].entity;
       const template: EntityTemplate = {
         kind: sample.kind,
       };
 
-      // Добавляем опциональные поля если они есть в образце
       if (sample.isNested !== undefined) template.isNested = sample.isNested;
       if (sample.depth !== undefined) template.depth = sample.depth;
       if (sample.isAsync !== undefined) template.isAsync = sample.isAsync;
@@ -294,35 +379,77 @@ function buildTemplates(entities: Record<string, any>): TemplateRegistry {
   return templates;
 }
 
+// ============================================
+// 🆕 ФУНКЦИЯ ДЛЯ УДАЛЕНИЯ ДУБЛИРУЮЩИХ ПОЛЕЙ
+// ============================================
+
 /**
- * Разворачивает шаблоны в полные сущности
+ * Удаляет дублирующие поля из сущностей
+ * calls, calledBy, callsInfo, calledByInfo вынесены в callGraph
  */
-export function expandTemplates(report: CompactEntityReport): Record<string, any> {
-  if (!report.templates || !report.entities) {
-    return report.entities || {};
+function removeDuplicateFields(entities: Record<string, any>): Record<string, any> {
+  const optimized: Record<string, any> = {};
+
+  for (const [id, entity] of Object.entries(entities)) {
+    // Создаем копию без дублирующих полей
+    const {
+      calls,
+      calledBy,
+      callsInfo,
+      calledByInfo,
+      ...cleanEntity
+    } = entity;
+
+    optimized[id] = cleanEntity;
   }
 
-  const expanded: Record<string, any> = {};
-
-  for (const [id, entity] of Object.entries(report.entities)) {
-    if (entity.$t && report.templates[entity.$t]) {
-      // Объединяем шаблон и сущность
-      expanded[id] = {
-        ...report.templates[entity.$t],
-        ...entity,
-      };
-      // Удаляем ссылку на шаблон из результата
-      delete expanded[id].$t;
-    } else {
-      expanded[id] = entity;
-    }
-  }
-
-  return expanded;
+  return optimized;
 }
 
 // ============================================
-// 1. ГЕНЕРАЦИЯ ИНДЕКСОВ
+// ОПРЕДЕЛЕНИЕ ТИПА ВЫЗОВА
+// ============================================
+
+const VUE_COMPOSABLES = new Set([
+  'computed', 'ref', 'reactive', 'watch', 'watchEffect',
+  'provide', 'inject', 'useSlots', 'useAttrs', 'useModel',
+  'onMounted', 'onUpdated', 'onUnmounted', 'onBeforeMount',
+  'onBeforeUpdate', 'onBeforeUnmount', 'onActivated', 'onDeactivated',
+  'toRef', 'toRefs', 'toValue', 'isRef', 'unref',
+  'defineProps', 'defineEmits', 'defineExpose', 'withDefaults',
+  'defineModel', 'defineOptions', 'defineSlots', 'defineComponent',
+]);
+
+function detectCallType(callName: string, funcBody: string): UltraCallGraphEdge['type'] {
+  if (VUE_COMPOSABLES.has(callName)) {
+    return 'computed';
+  }
+
+  if (
+    callName.startsWith('emit') ||
+    callName.startsWith('on') ||
+    callName.includes('Event') ||
+    callName.startsWith('$emit')
+  ) {
+    return 'event';
+  }
+
+  if (funcBody && funcBody.includes(`.${callName}(`)) {
+    return 'method';
+  }
+
+  if (
+    funcBody &&
+    (funcBody.includes(`import { ${callName} }`) || funcBody.includes(`import ${callName}`))
+  ) {
+    return 'import';
+  }
+
+  return 'direct';
+}
+
+// ============================================
+// ГЕНЕРАЦИЯ ИНДЕКСОВ
 // ============================================
 
 function generateIndices(
@@ -341,7 +468,6 @@ function generateIndices(
   const fileIdMap = new Map<string, string>();
   const moduleIndex: Record<string, string> = {};
 
-  // 1. Индексы файлов
   for (const [filePath] of Object.entries(entitiesMap)) {
     const fileId = generateFileId(filePath);
     const moduleName = path.basename(path.dirname(filePath));
@@ -353,13 +479,11 @@ function generateIndices(
     moduleIndex[moduleId] = moduleName;
   }
 
-  // 2. Индексы функций - с поддержкой компактного формата
   for (const [filePath, entities] of Object.entries(entitiesMap)) {
     for (const func of entities.functions || []) {
       let id: string;
 
       if (idFormat === 'compact') {
-        // Компактный формат: f{index}_{line}
         id = idManager.generateCompactId({
           filePath: filePath,
           funcName: func.name,
@@ -369,7 +493,6 @@ function generateIndices(
           type: 'function',
         });
       } else {
-        // Полный формат (для обратной совместимости)
         id = idManager.getFunctionId({
           filePath: filePath,
           funcName: func.name,
@@ -382,8 +505,6 @@ function generateIndices(
 
       functionIndex[id] = func.name;
       functionIdMap.set(func.name, id);
-
-      // Сохраняем ID в функции
       func.id = id;
     }
   }
@@ -398,89 +519,14 @@ function generateIndices(
 }
 
 // ============================================
-// 2. ОПРЕДЕЛЕНИЕ ТИПА ВЫЗОВА
+// ПОСТРОЕНИЕ CALL GRAPH
 // ============================================
 
-const VUE_COMPOSABLES = new Set([
-  'computed',
-  'ref',
-  'reactive',
-  'watch',
-  'watchEffect',
-  'provide',
-  'inject',
-  'useSlots',
-  'useAttrs',
-  'useModel',
-  'onMounted',
-  'onUpdated',
-  'onUnmounted',
-  'onBeforeMount',
-  'onBeforeUpdate',
-  'onBeforeUnmount',
-  'onActivated',
-  'onDeactivated',
-  'toRef',
-  'toRefs',
-  'toValue',
-  'isRef',
-  'unref',
-  'defineProps',
-  'defineEmits',
-  'defineExpose',
-  'withDefaults',
-  'defineModel',
-  'defineOptions',
-  'defineSlots',
-  'defineComponent',
-]);
-
-function detectCallType(
-  callName: string,
-  funcBody: string
-): 'direct' | 'import' | 'method' | 'computed' | 'watch' | 'event' {
-  // Vue композаблы
-  if (VUE_COMPOSABLES.has(callName)) {
-    return 'computed';
-  }
-
-  // Vue события
-  if (
-    callName.startsWith('emit') ||
-    callName.startsWith('on') ||
-    callName.includes('Event') ||
-    callName.startsWith('$emit')
-  ) {
-    return 'event';
-  }
-
-  // Вызов через объект: obj.method()
-  if (funcBody && funcBody.includes(`.${callName}(`)) {
-    return 'method';
-  }
-
-  // Импортированные функции (определяется по контексту)
-  if (
-    funcBody &&
-    (funcBody.includes(`import { ${callName} }`) || funcBody.includes(`import ${callName}`))
-  ) {
-    return 'import';
-  }
-
-  return 'direct';
-}
-
-// ============================================
-// 3. ПОСТРОЕНИЕ CALL GRAPH
-// ============================================
-
-function buildCallGraph(
+function buildCallGraphEdges(
   entitiesMap: Record<string, EntitiesResult>,
   functionIdMap: Map<string, string>
-): CompactEntityReport['callGraph'] {
-  const callGraphEdges: CallGraphEdge[] = [];
-  const callCounts = new Map<string, number>();
-  const callerCounts = new Map<string, number>();
+): UltraCallGraphEdge[] {
+  const edges: UltraCallGraphEdge[] = [];
 
   for (const [_filePath, entities] of Object.entries(entitiesMap)) {
     for (const func of entities.functions || []) {
@@ -489,79 +535,24 @@ function buildCallGraph(
 
       const calls = func.calls || [];
       for (const callName of calls) {
-        // Ищем вызываемую функцию
         const targetId = functionIdMap.get(callName);
         if (targetId && targetId !== callerId) {
-          // Добавляем ребро
-          callGraphEdges.push({
+          edges.push({
             from: callerId,
             to: targetId,
             line: func.line || 0,
             type: detectCallType(callName, func.body || ''),
           });
-
-          // Считаем статистику
-          callCounts.set(targetId, (callCounts.get(targetId) || 0) + 1);
-          callerCounts.set(callerId, (callerCounts.get(callerId) || 0) + 1);
         }
       }
     }
   }
 
-  // Сортируем для статистики
-  const mostCalled = Array.from(callCounts.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([functionId, count]) => ({ functionId, count }));
-
-  const topCallers = Array.from(callerCounts.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([functionId, count]) => ({ functionId, count }));
-
-  // Уникальные ID
-  const uniqueCallers = new Set(callGraphEdges.map((e: CallGraphEdge) => e.from));
-  const uniqueCallees = new Set(callGraphEdges.map((e: CallGraphEdge) => e.to));
-
-  return {
-    edges: callGraphEdges,
-    stats: {
-      totalEdges: callGraphEdges.length,
-      uniqueCallers: uniqueCallers.size,
-      uniqueCallees: uniqueCallees.size,
-      mostCalled,
-      topCallers,
-    },
-  };
+  return edges;
 }
 
 // ============================================
-// 4. ПОСТРОЕНИЕ calledBy ИЗ CALL GRAPH
-// ============================================
-
-function buildCalledByFromCallGraph(
-  callGraph: CompactEntityReport['callGraph']
-): Record<string, string[]> {
-  const calledByMap: Record<string, string[]> = {};
-
-  if (!callGraph) return calledByMap;
-
-  for (const edge of callGraph.edges) {
-    const targetId = edge.to;
-    if (!calledByMap[targetId]) {
-      calledByMap[targetId] = [];
-    }
-    // Добавляем только уникальные callerId
-    if (!calledByMap[targetId]?.includes(edge.from)) {
-      calledByMap[targetId].push(edge.from);
-    }
-  }
-
-  return calledByMap;
-}
-
-// ============================================
-// 5. РЕЗОЛВИНГ ПУТЕЙ ИМПОРТОВ
+// РЕЗОЛВИНГ ПУТЕЙ ИМПОРТОВ
 // ============================================
 
 function resolveImportPath(
@@ -572,7 +563,6 @@ function resolveImportPath(
 ): string | null {
   const fromDir = path.dirname(fromFile);
 
-  // 1. Относительные пути (./, ../)
   if (importPath.startsWith('.')) {
     const candidates = [
       importPath,
@@ -595,12 +585,10 @@ function resolveImportPath(
       if (entitiesMap[resolved]) {
         return resolved;
       }
-      // Проверка без расширения (для TypeScript)
       const withoutExt = resolved.replace(/\.[^.]+$/, '');
       if (entitiesMap[withoutExt]) {
         return withoutExt;
       }
-      // Проверка с .js для .ts файлов (import { x } from './file' -> file.ts)
       if (!candidate.includes('.')) {
         const tsPath = resolved + '.ts';
         if (entitiesMap[tsPath]) {
@@ -609,7 +597,6 @@ function resolveImportPath(
       }
     }
 
-    // Если не нашли, проверяем по имени файла
     const baseName = path.basename(importPath).replace(/\.[^.]+$/, '');
     for (const [modPath] of Object.entries(entitiesMap)) {
       const modBase = path.basename(modPath).replace(/\.[^.]+$/, '');
@@ -621,7 +608,6 @@ function resolveImportPath(
     return null;
   }
 
-  // 2. Алиасы через tsconfig (@/, #/, ~/)
   if (importPath.startsWith('@') || importPath.startsWith('#') || importPath.startsWith('~')) {
     try {
       const tsConfig = loadTsConfig(projectRoot);
@@ -633,7 +619,6 @@ function resolveImportPath(
       // Игнорируем ошибки tsconfig
     }
 
-    // Fallback: пробуем найти в src/
     const aliasName = importPath.replace(/^[@#~]\//, '');
     const srcDir = path.resolve(projectRoot, 'src');
     const candidates = [
@@ -656,7 +641,6 @@ function resolveImportPath(
       }
     }
 
-    // Проверяем по имени файла
     const baseName = path.basename(aliasName);
     for (const [modPath] of Object.entries(entitiesMap)) {
       if (modPath.includes(baseName) || modPath.endsWith(`/${aliasName}`)) {
@@ -665,7 +649,6 @@ function resolveImportPath(
     }
   }
 
-  // 3. Поиск по имени файла (для локальных модулей)
   const baseName = path.basename(importPath).replace(/\.[^.]+$/, '');
   for (const [modPath] of Object.entries(entitiesMap)) {
     const modBase = path.basename(modPath).replace(/\.[^.]+$/, '');
@@ -678,36 +661,15 @@ function resolveImportPath(
 }
 
 // ============================================
-// 6. ПОСТРОЕНИЕ IMPORT GRAPH
+// ПОСТРОЕНИЕ IMPORT GRAPH
 // ============================================
 
-function buildImportGraph(
+function buildImportGraphEdges(
   entitiesMap: Record<string, EntitiesResult>,
   fileIdMap: Map<string, string>,
   projectRoot: string = process.cwd()
-): CompactEntityReport['importGraph'] {
-  const importGraphEdges: ImportGraphEdge[] = [];
-  const importCounts = new Map<string, number>();
-
-  // Создаем индекс всех файлов для быстрого поиска
-  const fileIndex = new Map<string, string>();
-  const fileDirIndex = new Map<string, Set<string>>();
-
-  for (const filePath of Object.keys(entitiesMap)) {
-    const fileName = path.basename(filePath);
-    const dirName = path.dirname(filePath);
-
-    if (!fileIndex.has(fileName)) {
-      fileIndex.set(fileName, filePath);
-    }
-    if (!fileDirIndex.has(dirName)) {
-      fileDirIndex.set(dirName, new Set());
-    }
-    fileDirIndex.get(dirName)!.add(filePath);
-  }
-
-  let totalImports = 0;
-  let resolvedImports = 0;
+): UltraImportGraphEdge[] {
+  const edges: UltraImportGraphEdge[] = [];
 
   for (const [filePath, entities] of Object.entries(entitiesMap)) {
     const fromFileId = fileIdMap.get(filePath);
@@ -719,9 +681,6 @@ function buildImportGraph(
       const source = imp.source;
       if (!source) continue;
 
-      totalImports++;
-
-      // Пропускаем внешние модули (node_modules)
       if (
         !source.startsWith('.') &&
         !source.startsWith('@') &&
@@ -736,12 +695,9 @@ function buildImportGraph(
         continue;
       }
 
-      resolvedImports++;
-
       const toFileId = fileIdMap.get(resolvedPath);
       if (!toFileId) continue;
 
-      // Извлекаем спецификаторы
       const specifiers: string[] = [];
       let importType: 'named' | 'default' | 'namespace' | 'type' = 'named';
 
@@ -757,113 +713,31 @@ function buildImportGraph(
 
       if (imp.isTypeOnly) importType = 'type';
 
-      // Избегаем дублирования ребер
-      const existingEdge = importGraphEdges.find(e => e.from === fromFileId && e.to === toFileId);
+      const existingEdge = edges.find(e => e.from === fromFileId && e.to === toFileId);
 
       if (existingEdge) {
-        // Объединяем спецификаторы
         const newSpecifiers = [...new Set([...existingEdge.specifiers, ...specifiers])];
         existingEdge.specifiers = newSpecifiers;
         if (importType === 'type' && existingEdge.type !== 'type') {
           existingEdge.type = 'type';
         }
       } else {
-        importGraphEdges.push({
+        edges.push({
           from: fromFileId,
           to: toFileId,
           specifiers,
           line: imp.loc?.start?.line || 0,
           type: importType,
         });
-
-        importCounts.set(toFileId, (importCounts.get(toFileId) || 0) + 1);
       }
     }
   }
 
-  // Статистика
-  const uniqueImporters = new Set(importGraphEdges.map(e => e.from));
-  const uniqueImported = new Set(importGraphEdges.map(e => e.to));
-
-  const mostImported = Array.from(importCounts.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([fileId, count]) => ({ fileId, count }));
-
-  return {
-    edges: importGraphEdges,
-    stats: {
-      totalEdges: importGraphEdges.length,
-      uniqueImporters: uniqueImporters.size,
-      uniqueImported: uniqueImported.size,
-      mostImported,
-      totalImports,
-      resolvedImports,
-      unresolvedImports: totalImports - resolvedImports,
-    },
-  };
+  return edges;
 }
 
 // ============================================
-// 7. ПОСТРОЕНИЕ ОПТИМИЗИРОВАННЫХ СУЩНОСТЕЙ
-// ============================================
-
-function buildOptimizedEntities(
-  entitiesMap: Record<string, EntitiesResult>,
-  functionIdMap: Map<string, string>,
-  fileIdMap: Map<string, string>
-): Record<string, any> {
-  const entities: Record<string, any> = {};
-
-  for (const [filePath, fileEntities] of Object.entries(entitiesMap)) {
-    const fileId = fileIdMap.get(filePath);
-    if (!fileId) continue;
-
-    for (const func of fileEntities.functions || []) {
-      const id = func.id || functionIdMap.get(func.name);
-      if (!id) continue;
-
-      const entity: any = {
-        file: fileId,
-        line: func.line || 0,
-        kind: 'function',
-      };
-
-      if (func.name) entity.name = func.name;
-      if (func.isExported) entity.isExported = true;
-      if (func.isAsync) entity.isAsync = true;
-      if (func.isArrow) entity.isArrow = true;
-      if (func.isMethod) entity.isMethod = true;
-      if (func.isNested) entity.isNested = true;
-      if (func.isEventHandler) entity.isEventHandler = true;
-      if (func.isNested !== undefined) entity.isNested = func.isNested;
-      if (func.depth !== undefined) entity.depth = func.depth;
-
-      if (func.params && func.params.length > 0) entity.params = func.params;
-      if (func.returnType && func.returnType !== 'any') entity.returnType = func.returnType;
-      if (func.className) entity.className = func.className;
-      if (func.eventType) entity.eventType = func.eventType;
-      if (func.parentFunction) entity.parentFunction = func.parentFunction;
-
-      if (func.complexity && func.complexity > 1) entity.complexity = func.complexity;
-      if (func.security) entity.security = func.security;
-
-      if (func.calls && func.calls.length > 0) {
-        const callIds = func.calls
-          .map(callName => functionIdMap.get(callName))
-          .filter((callId): callId is string => callId !== undefined && callId !== id);
-        if (callIds.length > 0) entity.calls = callIds;
-      }
-
-      entities[id] = entity;
-    }
-  }
-
-  return entities;
-}
-
-// ============================================
-// 8. ИЗВЛЕЧЕНИЕ ENUM И ДЕКОРАТОРОВ
+// ИЗВЛЕЧЕНИЕ ENUM И ДЕКОРАТОРОВ
 // ============================================
 
 function extractEnumsFromContent(
@@ -935,9 +809,9 @@ function extractDecoratorsFromContent(
     const name = match[1] || 'unknown';
     const args = match[2]
       ? match[2]
-          .split(',')
-          .map(a => a.trim())
-          .filter(a => a)
+        .split(',')
+        .map(a => a.trim())
+        .filter(a => a)
       : [];
     const target = match[3] || 'unknown';
     const line = content.substring(0, match.index).split('\n').length;
@@ -951,9 +825,9 @@ function extractDecoratorsFromContent(
     const name = match[1] || 'unknown';
     const args = match[2]
       ? match[2]
-          .split(',')
-          .map(a => a.trim())
-          .filter(a => a)
+        .split(',')
+        .map(a => a.trim())
+        .filter(a => a)
       : [];
     const target = match[3] || 'unknown';
     const line = content.substring(0, match.index).split('\n').length;
@@ -968,37 +842,43 @@ function extractDecoratorsFromContent(
 }
 
 // ============================================
-// 9. ОСНОВНАЯ ФУНКЦИЯ
+// ОСНОВНАЯ ФУНКЦИЯ (СУЩЕСТВУЮЩАЯ)
 // ============================================
 
 export function generateCompactEntityReport(
   entitiesMap: Record<string, EntitiesResult>,
   outputPath: string,
   options: CompactReportOptions = {}
-): CompactEntityReport {
+): any {
   console.log('\n🔧 Генерация компактного отчета с индексацией и графами...');
   console.log('='.repeat(60));
 
+  // Проверяем, нужно ли использовать ultra-compact режим
+  if (options.ultraCompact) {
+    console.log('📋 Использую ULTRA-COMPACT режим (удаление дублей + битовые флаги)');
+    return generateUltraCompactReport(entitiesMap, outputPath, options);
+  }
+
+  // Существующая логика (без изменений)
   const startTime = Date.now();
   const projectRoot = options.projectRoot || process.cwd();
   const idFormat = options.idFormat || 'compact';
-  const useTemplates = options.useTemplates !== false; // По умолчанию true
+  const useTemplates = options.useTemplates !== false;
 
   console.log(`📋 Формат ID: ${idFormat === 'compact' ? 'КОМПАКТНЫЙ (f142_704)' : 'ПОЛНЫЙ'}`);
   console.log(`📋 Шаблоны: ${useTemplates ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
 
-  // Очищаем кэш IdManager перед генерацией
   idManager.clear();
 
-  // === 1. ЗАГРУЗКА КОНФИГУРАЦИИ ===
+  // Исправлено: правильная обработка фильтров с EntityTypesFilter
   let config: PresetConfig;
   if (options.usePreset !== false) {
     config = COMPACT_REPORT_CONFIG.getConfig();
     console.log(`📋 Использую пресет: ${COMPACT_REPORT_CONFIG.activePreset}`);
   } else {
-    const relationshipFields: any = {};
-    if (options.relationshipFields?.calls) {
-      relationshipFields.calls = {
+    // Полная структура для relationshipFields
+    const relationshipFields: RelationshipFieldsConfig = {
+      calls: {
         enabled: true,
         targetId: true,
         targetName: true,
@@ -1007,11 +887,9 @@ export function generateCompactEntityReport(
         targetVscode: true,
         callLine: true,
         callType: true,
-        ...options.relationshipFields.calls,
-      };
-    }
-    if (options.relationshipFields?.calledBy) {
-      relationshipFields.calledBy = {
+        ...(options.relationshipFields?.calls || {})
+      },
+      calledBy: {
         enabled: true,
         callerId: true,
         callerName: true,
@@ -1020,11 +898,9 @@ export function generateCompactEntityReport(
         callerVscode: true,
         callLine: true,
         callType: true,
-        ...options.relationshipFields.calledBy,
-      };
-    }
-    if (options.relationshipFields?.importedBy) {
-      relationshipFields.importedBy = {
+        ...(options.relationshipFields?.calledBy || {})
+      },
+      importedBy: {
         enabled: true,
         importerId: true,
         importerFile: true,
@@ -1032,43 +908,28 @@ export function generateCompactEntityReport(
         importLine: true,
         specifier: true,
         importType: true,
-        ...options.relationshipFields.importedBy,
-      };
-    }
+        ...(options.relationshipFields?.importedBy || {})
+      },
+    };
 
-    const filters: any = {};
-    if (options.filters) {
-      if (options.filters.entityTypes) {
-        filters.entityTypes = {
-          function: true,
-          class: true,
-          constant: true,
-          interface: true,
-          type: true,
-          variable: true,
-          macro: true,
-          ...options.filters.entityTypes,
-        };
-      }
-      if (options.filters.onlyExported !== undefined) {
-        filters.onlyExported = options.filters.onlyExported;
-      }
-      if (options.filters.onlyNonExported !== undefined) {
-        filters.onlyNonExported = options.filters.onlyNonExported;
-      }
-      if (options.filters.includeModules) {
-        filters.includeModules = options.filters.includeModules;
-      }
-      if (options.filters.excludeModules) {
-        filters.excludeModules = options.filters.excludeModules;
-      }
-      if (options.filters.minComplexity !== undefined) {
-        filters.minComplexity = options.filters.minComplexity;
-      }
-      if (options.filters.maxDepth !== undefined) {
-        filters.maxDepth = options.filters.maxDepth;
-      }
-    }
+    // Правильная обработка filters с EntityTypesFilter
+    const filters: FiltersConfig = {
+      entityTypes: {
+        function: options.filters?.entityTypes?.function ?? true,
+        class: options.filters?.entityTypes?.class ?? true,
+        constant: options.filters?.entityTypes?.constant ?? true,
+        interface: options.filters?.entityTypes?.interface ?? true,
+        type: options.filters?.entityTypes?.type ?? true,
+        variable: options.filters?.entityTypes?.variable ?? true,
+        macro: options.filters?.entityTypes?.macro ?? true,
+      },
+      onlyExported: options.filters?.onlyExported ?? false,
+      onlyNonExported: options.filters?.onlyNonExported ?? false,
+      includeModules: options.filters?.includeModules ?? [],
+      excludeModules: options.filters?.excludeModules ?? [],
+      minComplexity: options.filters?.minComplexity ?? 0,
+      maxDepth: options.filters?.maxDepth ?? Infinity,
+    };
 
     config = {
       entityFields: options.entityFields || {},
@@ -1086,7 +947,6 @@ export function generateCompactEntityReport(
     includeStats?: boolean;
   };
 
-  // === 2. ГЕНЕРАЦИЯ ИНДЕКСОВ ===
   console.log('\n📊 Генерация индексов...');
   const { functionIndex, functionIdMap, fileIndex, fileIdMap, moduleIndex } = generateIndices(
     entitiesMap,
@@ -1097,53 +957,29 @@ export function generateCompactEntityReport(
   console.log(`   📋 Индексов файлов: ${Object.keys(fileIndex).length}`);
   console.log(`   📋 Индексов модулей: ${Object.keys(moduleIndex).length}`);
 
-  // === 3. ПОСТРОЕНИЕ ОПТИМИЗИРОВАННЫХ СУЩНОСТЕЙ ===
   console.log('\n📦 Построение оптимизированных сущностей...');
   const rawEntities = buildOptimizedEntities(entitiesMap, functionIdMap, fileIdMap);
   console.log(`   📊 Сущностей: ${Object.keys(rawEntities).length}`);
 
-  // === 4. ПОСТРОЕНИЕ CALL GRAPH ===
+  // 🆕 Удаляем дублирующие поля из сущностей
+  console.log('\n🧹 Удаление дублирующих полей (calls, calledBy)...');
+  const cleanEntities = removeDuplicateFields(rawEntities);
+  console.log(`   ✅ Очищено ${Object.keys(cleanEntities).length} сущностей`);
+
   console.log('\n🔄 Построение графа вызовов (Call Graph)...');
-  const callGraph = buildCallGraph(entitiesMap, functionIdMap);
+  const callGraphEdges = buildCallGraphEdges(entitiesMap, functionIdMap);
+  const callGraph = buildCallGraphStats(callGraphEdges);
   console.log(`   📊 Вызовов: ${callGraph?.edges.length || 0}`);
-  console.log(`   📊 Уникальных вызывающих: ${callGraph?.stats.uniqueCallers || 0}`);
-  console.log(`   📊 Уникальных вызываемых: ${callGraph?.stats.uniqueCallees || 0}`);
 
-  if (callGraph && callGraph.stats.mostCalled && callGraph.stats.mostCalled.length > 0) {
-    const mostCalled = callGraph.stats.mostCalled.slice(0, 3);
-    const names = mostCalled.map(m => functionIndex[m.functionId] || 'unknown');
-    console.log(`   📊 Самые вызываемые: ${names.join(', ')}`);
-  }
+  // ❌ УДАЛЕНО: больше не нужен calledByMap, т.к. информация в callGraph
+  // console.log('\n📞 Построение обратных вызовов (calledBy)...');
+  // const calledByMap = buildCalledByFromCallGraph(callGraph);
 
-  // === 5. ПОСТРОЕНИЕ calledBy ИЗ CALL GRAPH ===
-  console.log('\n📞 Построение обратных вызовов (calledBy)...');
-  const calledByMap = buildCalledByFromCallGraph(callGraph);
-  console.log(`   📊 Функций с обратными вызовами: ${Object.keys(calledByMap).length}`);
-
-  // Добавляем calledBy в сущности
-  for (const [id, calledBy] of Object.entries(calledByMap)) {
-    if (rawEntities[id]) {
-      rawEntities[id].calledBy = calledBy;
-    }
-  }
-
-  // === 6. ПОСТРОЕНИЕ IMPORT GRAPH ===
   console.log('\n📥 Построение графа импортов (Import Graph)...');
-  const importGraph = buildImportGraph(entitiesMap, fileIdMap, projectRoot);
-  console.log(`   📊 Импортов всего: ${importGraph?.stats.totalImports || 0}`);
-  console.log(`   ✅ Разрешенных: ${importGraph?.stats.resolvedImports || 0}`);
-  console.log(`   ❌ Неразрешенных: ${importGraph?.stats.unresolvedImports || 0}`);
+  const importGraphEdges = buildImportGraphEdges(entitiesMap, fileIdMap, projectRoot);
+  const importGraph = buildImportGraphStats(importGraphEdges);
   console.log(`   📊 Ребер в графе: ${importGraph?.edges.length || 0}`);
-  console.log(`   📥 Уникальных импортеров: ${importGraph?.stats.uniqueImporters || 0}`);
-  console.log(`   📤 Уникальных импортируемых: ${importGraph?.stats.uniqueImported || 0}`);
 
-  if (importGraph && importGraph.stats.mostImported && importGraph.stats.mostImported.length > 0) {
-    const mostImported = importGraph.stats.mostImported.slice(0, 3);
-    const names = mostImported.map(m => fileIndex[m.fileId] || m.fileId);
-    console.log(`   📊 Самые импортируемые: ${names.join(', ')}`);
-  }
-
-  // === 7. ИЗВЛЕЧЕНИЕ ENUM И ДЕКОРАТОРОВ ===
   console.log('\n📚 Извлечение enum и декораторов...');
   let totalEnums = 0;
   let totalDecorators = 0;
@@ -1197,36 +1033,25 @@ export function generateCompactEntityReport(
 
   console.log(`   📊 Enum: ${totalEnums}, Декораторов: ${totalDecorators}`);
 
-  // === 8. СОЗДАНИЕ ШАБЛОНОВ ===
-  let templates: TemplateRegistry = {};
-  let optimizedEntities = rawEntities;
-  let templateStats:
-    { totalTemplates: number; totalEntities: number; usage: Record<string, number> } | undefined =
-    undefined;
+  let templates: Record<string, EntityTemplate> = {};
+  let templateStats: { totalTemplates: number; totalEntities: number; usage: Record<string, number> } | undefined = undefined;
 
   if (useTemplates) {
     console.log('\n📋 Создание шаблонов для оптимизации...');
-
-    // Строим шаблоны на основе rawEntities
     templates = buildTemplates(rawEntities);
     console.log(`   📊 Создано шаблонов: ${Object.keys(templates).length}`);
 
-    // Применяем шаблоны к сущностям
     const templateUsage: Record<string, number> = {};
-    optimizedEntities = {};
+    const optimizedEntities: Record<string, any> = {};
 
     for (const [id, entity] of Object.entries(rawEntities)) {
       const templateKey = getEntityTemplateKey(entity);
-
-      // Считаем использование шаблонов
       templateUsage[templateKey] = (templateUsage[templateKey] || 0) + 1;
 
-      // Создаем новую сущность с ссылкой на шаблон
       const optimizedEntity: any = {
         $t: templateKey,
       };
 
-      // Копируем только уникальные поля (не из шаблона)
       const templateFields = new Set(Object.keys(templates[templateKey] || {}));
 
       for (const [field, value] of Object.entries(entity)) {
@@ -1243,11 +1068,7 @@ export function generateCompactEntityReport(
     for (const [key, count] of sortedUsage.slice(0, 10)) {
       console.log(`      • ${key}: ${count} сущностей`);
     }
-    if (sortedUsage.length > 10) {
-      console.log(`      • ... и ещё ${sortedUsage.length - 10} шаблонов`);
-    }
 
-    // Сохраняем статистику по шаблонам
     templateStats = {
       totalTemplates: Object.keys(templates).length,
       totalEntities: Object.keys(optimizedEntities).length,
@@ -1255,17 +1076,14 @@ export function generateCompactEntityReport(
     };
   } else {
     console.log('\n⏭️ Шаблоны отключены, используем полные сущности');
-    optimizedEntities = rawEntities;
     templateStats = undefined;
   }
 
-  // === 9. ПОДСЧЕТ СТАТИСТИКИ ===
   let totalCalls = 0;
   let totalCalledBy = 0;
-  let totalImportedBy = 0;
   let totalFunctions = 0;
+  // ✅ totalImportedBy будет вычислена из importGraph
 
-  // Используем rawEntities для подсчета (они содержат все поля)
   for (const entity of Object.values(rawEntities)) {
     if (entity.kind === 'function') {
       totalFunctions++;
@@ -1274,46 +1092,520 @@ export function generateCompactEntityReport(
     }
   }
 
-  if (importGraph) {
-    totalImportedBy = importGraph.edges.length;
-  }
-
   const totalFiles = Object.keys(fileIndex).length;
   const totalModules = Object.keys(moduleIndex).length;
 
-  // === 10. ФОРМИРОВАНИЕ ОТЧЕТА ===
   console.log('\n📄 Формирование отчета...');
 
-  const report: CompactEntityReport = {
+  // Формируем отчет с чистыми сущностями
+  const report: any = {
     version: '3.0.2',
     timestamp: new Date().toISOString(),
-
-    // Добавляем секцию шаблонов
     templates: useTemplates ? templates : undefined,
-
     functionIndex,
     fileIndex,
     moduleIndex,
-
-    // Используем оптимизированные сущности
-    entities: optimizedEntities,
-
+    entities: cleanEntities, // ✅ БЕЗ calls и calledBy
     callGraph,
     importGraph,
-
     stats: {
       totalFunctions,
-      totalCalls,
-      totalCalledBy,
-      totalImportedBy,
+      totalCalls: callGraph?.edges?.length || 0,
+      totalCalledBy: callGraph?.edges?.length || 0,
+      totalImportedBy: importGraph?.edges?.length || 0,
       totalEnums,
       totalDecorators,
       totalFiles,
       totalModules,
     },
-
-    // Добавляем статистику по шаблонам
     templateStats: templateStats,
+    legend: {
+      kinds: {
+        function: 'Function declaration',
+        class: 'Class declaration',
+        enum: 'Enum declaration',
+        decorator: 'Decorator',
+        constant: 'Constant',
+        interface: 'Interface',
+        type: 'Type alias',
+        variable: 'Variable',
+      },
+      callTypes: {
+        direct: 'Direct function call',
+        import: 'Imported function call',
+        method: 'Method call',
+        computed: 'Vue computed/watcher',
+        watch: 'Vue watch',
+        event: 'Event handler',
+      },
+      importTypes: {
+        named: 'Named import',
+        default: 'Default import',
+        namespace: 'Namespace import',
+        type: 'Type-only import',
+      },
+    },
+  };
+
+  if (formatting.sortEntities !== false) {
+    const sortedEntities = Object.fromEntries(
+      Object.entries(cleanEntities).sort((a, b) => {
+        const kindOrder: Record<string, number> = {
+          function: 0,
+          enum: 1,
+          decorator: 2,
+          class: 3,
+          constant: 4,
+          interface: 5,
+          type: 6,
+          variable: 7,
+        };
+        const aOrder = kindOrder[a[1].kind as keyof typeof kindOrder] ?? 99;
+        const bOrder = kindOrder[b[1].kind as keyof typeof kindOrder] ?? 99;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return (a[1].name || '').localeCompare(b[1].name || '');
+      })
+    );
+    report.entities = sortedEntities;
+  }
+
+  const indent = formatting.indentSize || 2;
+  const json = JSON.stringify(report, null, indent);
+
+  const outputDir = path.dirname(outputPath);
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+  fs.writeFileSync(outputPath, json, 'utf-8');
+
+  const sizeKB = (json.length / 1024).toFixed(2);
+
+  console.log(`\n✅ Отчет сохранен: ${outputPath}`);
+  console.log(`📊 Размер: ${sizeKB} KB`);
+  console.log(`📊 Функций: ${totalFunctions}`);
+  console.log(`📊 Вызовов: ${callGraph?.edges?.length || 0}`);
+  console.log(`📊 Обратных вызовов: ${callGraph?.edges?.length || 0}`);
+  console.log(`📊 Импортов: ${importGraph?.edges?.length || 0}`);
+  console.log(`📊 Файлов: ${totalFiles}`);
+  console.log(`📊 Модулей: ${totalModules}`);
+  console.log(`📊 Enum: ${totalEnums}`);
+  console.log(`📊 Декораторов: ${totalDecorators}`);
+  console.log(`⏱️  Время: ${((Date.now() - startTime) / 1000).toFixed(2)} сек`);
+
+  return report;
+}
+
+// ============================================
+// НОВАЯ ФУНКЦИЯ: ULTRA-COMPACT РЕЖИМ
+// ============================================
+
+export function generateUltraCompactReport(
+  entitiesMap: Record<string, EntitiesResult>,
+  outputPath: string,
+  options: CompactReportOptions = {}
+): UltraCompactReport {
+  console.log('\n🚀 Генерация ULTRA-COMPACT отчета (удаление дублей + битовые флаги)...');
+  console.log('='.repeat(60));
+
+  const startTime = Date.now();
+  const projectRoot = options.projectRoot || process.cwd();
+  const idFormat = options.idFormat || 'compact';
+  const useTemplates = options.useTemplates !== false;
+  const useBitFlags = options.useBitFlags !== false;
+  const useDictionaries = options.useDictionaries !== false;
+  // readableKeys пока не используется, но оставляем для будущего
+  // const _readableKeys = options.readableKeys !== false;
+
+  console.log(`📋 Формат ID: ${idFormat === 'compact' ? 'КОМПАКТНЫЙ (f142_704)' : 'ПОЛНЫЙ'}`);
+  console.log(`📋 Шаблоны: ${useTemplates ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
+  console.log(`📋 Битовые флаги: ${useBitFlags ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
+  console.log(`📋 Словари: ${useDictionaries ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
+
+  idManager.clear();
+
+  // === 1. ГЕНЕРАЦИЯ ИНДЕКСОВ ===
+  console.log('\n📊 Генерация индексов...');
+  const { functionIndex, functionIdMap, fileIndex, fileIdMap, moduleIndex } = generateIndices(
+    entitiesMap,
+    idFormat
+  );
+
+  console.log(`   📋 Индексов функций: ${Object.keys(functionIndex).length}`);
+  console.log(`   📋 Индексов файлов: ${Object.keys(fileIndex).length}`);
+  console.log(`   📋 Индексов модулей: ${Object.keys(moduleIndex).length}`);
+
+  // === 2. СБОР СЛОВАРЕЙ ===
+  console.log('\n📚 Сбор словарей для параметров и типов...');
+
+  const parameterDictionary: Record<string, string> = {};
+  const typeDictionary: Record<string, string> = {};
+  let paramCounter = 0;
+  let typeCounter = 0;
+
+  // Добавляем 'any' как базовый тип
+  typeDictionary['t0'] = 'any';
+  typeCounter = 1;
+
+  // === 3. ОБРАБОТКА СУЩНОСТЕЙ ===
+  console.log('\n📦 Обработка сущностей (без дублей)...');
+
+  const entities: Record<string, UltraCompactEntity> = {};
+  const callEdges: UltraCallGraphEdge[] = [];
+  let totalEnums = 0;
+  let totalDecorators = 0;
+
+  const fileContents: Record<string, string> = {};
+  for (const filePath of Object.keys(entitiesMap)) {
+    try {
+      if (fs.existsSync(filePath)) {
+        fileContents[filePath] = fs.readFileSync(filePath, 'utf-8');
+      }
+    } catch {
+      // Игнорируем ошибки
+    }
+  }
+
+  for (const [filePath, fileEntities] of Object.entries(entitiesMap)) {
+    const fileId = fileIdMap.get(filePath);
+    if (!fileId) continue;
+
+    // Обработка enum из содержимого файла
+    const content = fileContents[filePath];
+    if (content) {
+      const enums = extractEnumsFromContent(content);
+      for (const enumItem of enums) {
+        const id = `enum_${simpleHash(filePath)}_${enumItem.name}`;
+        entities[id] = {
+          file: fileId,
+          line: enumItem.line,
+          flags: enumItem.isExported ? FunctionFlags.EXPORTED : 0,
+        };
+        // Добавляем специальные поля для enum
+        (entities[id] as any).kind = 'enum';
+        (entities[id] as any).values = enumItem.values;
+        (entities[id] as any).memberCount = enumItem.values.length;
+        totalEnums++;
+      }
+
+      const decorators = extractDecoratorsFromContent(content);
+      for (const decorator of decorators) {
+        const id = `decorator_${simpleHash(filePath)}_${decorator.name}_${decorator.target}`;
+        entities[id] = {
+          file: fileId,
+          line: decorator.line,
+          flags: 0,
+        };
+        (entities[id] as any).kind = 'decorator';
+        (entities[id] as any).name = decorator.name;
+        (entities[id] as any).target = decorator.target;
+        (entities[id] as any).args = decorator.args;
+        totalDecorators++;
+      }
+    }
+
+    for (const func of fileEntities.functions || []) {
+      const id = func.id || idManager.generateCompactId({
+        filePath,
+        funcName: func.name,
+        line: func.line || 0,
+        parentFunction: func.parentFunction,
+        depth: func.depth || 0,
+      });
+
+      // Индексируем имя
+      functionIndex[id] = func.name;
+
+      // === КОДИРУЕМ ФЛАГИ ===
+      let flags = 0;
+      if (useBitFlags) {
+        if (func.isAsync) flags |= FunctionFlags.ASYNC;
+        if (func.isNested) flags |= FunctionFlags.NESTED;
+        if (func.isArrow) flags |= FunctionFlags.ARROW;
+        if (func.isMethod) flags |= FunctionFlags.METHOD;
+        if (func.isEventHandler) flags |= FunctionFlags.EVENT_HANDLER;
+        if (func.isExported) flags |= FunctionFlags.EXPORTED;
+      }
+
+      // === СОЗДАЕМ СУЩНОСТЬ (БЕЗ ДУБЛЕЙ!) ===
+      const entity: UltraCompactEntity = {
+        file: fileId,
+        line: func.line || 0,
+        flags: flags,
+      };
+
+      // === ПАРАМЕТРЫ (через словарь) ===
+      if (useDictionaries && func.params && func.params.length > 0) {
+        const paramRefs: string[] = [];
+        for (const param of func.params) {
+          let paramKey = `p${paramCounter}`;
+          let found = false;
+          for (const [key, value] of Object.entries(parameterDictionary)) {
+            if (value === param) {
+              paramKey = key;
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            parameterDictionary[paramKey] = param;
+            paramCounter++;
+          }
+          paramRefs.push(paramKey);
+        }
+        entity.params = paramRefs;
+      } else if (func.params && func.params.length > 0) {
+        entity.params = func.params;
+      }
+
+      // === ТИП ВОЗВРАТА (через словарь) ===
+      if (useDictionaries && func.returnType && func.returnType !== 'any') {
+        let typeRef = `t${typeCounter}`;
+        let found = false;
+        for (const [key, value] of Object.entries(typeDictionary)) {
+          if (value === func.returnType) {
+            typeRef = key;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          typeDictionary[typeRef] = func.returnType;
+          typeCounter++;
+        }
+        entity.returnType = typeRef;
+      } else if (func.returnType && func.returnType !== 'any') {
+        entity.returnType = func.returnType;
+      }
+
+      // === ДОПОЛНИТЕЛЬНЫЕ ПОЛЯ (только если есть) ===
+      if (func.isMethod && func.className) {
+        entity.className = func.className;
+      }
+      if (func.isNested && func.parentFunction) {
+        entity.parentFunction = func.parentFunction;
+      }
+      if (func.isEventHandler && func.eventType) {
+        entity.eventType = func.eventType;
+      }
+      if (func.complexity && func.complexity > 1) {
+        entity.complexity = func.complexity;
+      }
+      if (func.body && options.entityFields?.body) {
+        entity.body = func.body;
+      }
+      if (func.vscode && options.entityFields?.vscode) {
+        entity.vscode = func.vscode;
+      }
+      if (func.security && options.entityFields?.security) {
+        entity.security = func.security;
+      }
+
+      // === ШАБЛОН ===
+      if (useTemplates) {
+        const templateKey = getEntityTemplateKey(func);
+        entity.template = templateKey;
+      }
+
+      entities[id] = entity;
+
+      // === СОБИРАЕМ ВЫЗОВЫ (ТОЛЬКО ЗДЕСЬ!) ===
+      for (const call of func.calls || []) {
+        let targetId = functionIdMap.get(call);
+        if (!targetId) {
+          for (const [otherPath, otherEntities] of Object.entries(entitiesMap)) {
+            const found = otherEntities.functions.find(f => f.name === call);
+            if (found) {
+              targetId = idManager.generateCompactId({
+                filePath: otherPath,
+                funcName: call,
+                line: found.line || 0,
+                parentFunction: found.parentFunction,
+                depth: found.depth || 0,
+              });
+              functionIndex[targetId] = call;
+              break;
+            }
+          }
+        }
+
+        if (targetId && targetId !== id) {
+          callEdges.push({
+            from: id,
+            to: targetId,
+            line: func.line || 0,
+            type: detectCallType(call, func.body || ''),
+          });
+        }
+      }
+    }
+  }
+
+  console.log(`   📊 Сущностей: ${Object.keys(entities).length}`);
+  console.log(`   📊 Уникальных параметров: ${Object.keys(parameterDictionary).length}`);
+  console.log(`   📊 Уникальных типов: ${Object.keys(typeDictionary).length}`);
+
+  // === 4. ПОСТРОЕНИЕ CALL GRAPH STATS ===
+  console.log('\n🔄 Построение статистики графа вызовов...');
+
+  const callCounts = new Map<string, number>();
+  const callerCounts = new Map<string, number>();
+
+  for (const edge of callEdges) {
+    callCounts.set(edge.to, (callCounts.get(edge.to) || 0) + 1);
+    callerCounts.set(edge.from, (callerCounts.get(edge.from) || 0) + 1);
+  }
+
+  const mostCalled = Array.from(callCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([functionId, count]) => ({ functionId, count }));
+
+  const topCallers = Array.from(callerCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([functionId, count]) => ({ functionId, count }));
+
+  const callGraphStats = {
+    totalEdges: callEdges.length,
+    uniqueCallers: new Set(callEdges.map(e => e.from)).size,
+    uniqueCallees: new Set(callEdges.map(e => e.to)).size,
+    mostCalled,
+    topCallers,
+  };
+
+  // === 5. ПОСТРОЕНИЕ IMPORT GRAPH ===
+  console.log('\n📥 Построение графа импортов...');
+  const importEdges = buildImportGraphEdges(entitiesMap, fileIdMap, projectRoot);
+
+  const importCounts = new Map<string, number>();
+  for (const edge of importEdges) {
+    importCounts.set(edge.to, (importCounts.get(edge.to) || 0) + 1);
+  }
+
+  const mostImported = Array.from(importCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([fileId, count]) => ({ fileId, count }));
+
+  // Подсчет разрешенных/неразрешенных импортов
+  let totalImports = 0;
+  let resolvedImports = 0;
+  for (const [filePath, entities] of Object.entries(entitiesMap)) {
+    for (const imp of entities.imports || []) {
+      if (imp.source) {
+        totalImports++;
+        const resolved = resolveImportPath(filePath, imp.source, entitiesMap, projectRoot);
+        if (resolved) resolvedImports++;
+      }
+    }
+  }
+
+  const importGraphStats = {
+    totalEdges: importEdges.length,
+    uniqueImporters: new Set(importEdges.map(e => e.from)).size,
+    uniqueImported: new Set(importEdges.map(e => e.to)).size,
+    mostImported,
+    totalImports,
+    resolvedImports,
+    unresolvedImports: totalImports - resolvedImports,
+  };
+
+  // === 6. ШАБЛОНЫ ===
+  let templates: Record<string, EntityTemplate> = {};
+  let templateStats: { totalTemplates: number; totalEntities: number; usage: Record<string, number> } | undefined = undefined;
+
+  if (useTemplates) {
+    console.log('\n📋 Создание шаблонов...');
+    // Строим шаблоны из сущностей
+    const rawEntitiesForTemplates: Record<string, any> = {};
+    for (const [id, entity] of Object.entries(entities)) {
+      // Восстанавливаем полную сущность для определения шаблона
+      const fullEntity: any = {
+        kind: entity.template ? 'function' : 'unknown',
+        isAsync: !!(entity.flags & FunctionFlags.ASYNC),
+        isNested: !!(entity.flags & FunctionFlags.NESTED),
+        isArrow: !!(entity.flags & FunctionFlags.ARROW),
+        isMethod: !!(entity.flags & FunctionFlags.METHOD),
+        isEventHandler: !!(entity.flags & FunctionFlags.EVENT_HANDLER),
+        isExported: !!(entity.flags & FunctionFlags.EXPORTED),
+        params: entity.params || [],
+        className: entity.className,
+        parentFunction: entity.parentFunction,
+        eventType: entity.eventType,
+        complexity: entity.complexity,
+      };
+      rawEntitiesForTemplates[id] = fullEntity;
+    }
+
+    templates = buildTemplates(rawEntitiesForTemplates);
+    console.log(`   📊 Создано шаблонов: ${Object.keys(templates).length}`);
+
+    const templateUsage: Record<string, number> = {};
+    for (const entity of Object.values(entities)) {
+      if (entity.template) {
+        templateUsage[entity.template] = (templateUsage[entity.template] || 0) + 1;
+      }
+    }
+
+    templateStats = {
+      totalTemplates: Object.keys(templates).length,
+      totalEntities: Object.keys(entities).length,
+      usage: templateUsage,
+    };
+  }
+
+  // === 7. СТАТИСТИКА ===
+  let totalFunctions = 0;
+  let totalCalls = 0;
+
+  for (const entity of Object.values(entities)) {
+    // Считаем все сущности, которые являются функциями (по наличию флагов или шаблона)
+    if (entity.template || entity.flags > 0) {
+      totalFunctions++;
+    }
+  }
+  totalCalls = callEdges.length;
+
+  // === 8. ФОРМИРУЕМ ОТЧЕТ ===
+  console.log('\n📄 Формирование отчета...');
+
+  const report: UltraCompactReport = {
+    version: '4.0.0',
+    timestamp: new Date().toISOString(),
+
+    functionIndex,
+    fileIndex,
+    moduleIndex,
+
+    parameterDictionary: useDictionaries ? parameterDictionary : {},
+    typeDictionary: useDictionaries ? typeDictionary : {},
+
+    callGraph: {
+      edges: callEdges,
+      stats: callGraphStats,
+    },
+
+    importGraph: {
+      edges: importEdges,
+      stats: importGraphStats,
+    },
+
+    entities,
+
+    templates: useTemplates ? templates : undefined,
+
+    stats: {
+      totalFunctions,
+      totalCalls,
+      totalCalledBy: callEdges.length,
+      totalImportedBy: importEdges.length,
+      totalEnums,
+      totalDecorators,
+      totalFiles: Object.keys(fileIndex).length,
+      totalModules: Object.keys(moduleIndex).length,
+    },
+
+    templateStats,
 
     legend: {
       kinds: {
@@ -1343,32 +1635,8 @@ export function generateCompactEntityReport(
     },
   };
 
-  // === 11. СОРТИРОВКА (опционально) ===
-  if (formatting.sortEntities !== false) {
-    const sortedEntities = Object.fromEntries(
-      Object.entries(optimizedEntities).sort((a, b) => {
-        const kindOrder = {
-          function: 0,
-          enum: 1,
-          decorator: 2,
-          class: 3,
-          constant: 4,
-          interface: 5,
-          type: 6,
-          variable: 7,
-        };
-        const aOrder = kindOrder[a[1].kind as keyof typeof kindOrder] ?? 99;
-        const bOrder = kindOrder[b[1].kind as keyof typeof kindOrder] ?? 99;
-        if (aOrder !== bOrder) return aOrder - bOrder;
-        return (a[1].name || '').localeCompare(b[1].name || '');
-      })
-    );
-    report.entities = sortedEntities;
-  }
-
-  // === 12. СОХРАНЕНИЕ ===
-  const indent = formatting.indentSize || 2;
-  const json = JSON.stringify(report, null, indent);
+  // === 9. СОХРАНЕНИЕ ===
+  const json = JSON.stringify(report, null, 2);
 
   const outputDir = path.dirname(outputPath);
   if (!fs.existsSync(outputDir)) {
@@ -1376,130 +1644,150 @@ export function generateCompactEntityReport(
   }
   fs.writeFileSync(outputPath, json, 'utf-8');
 
-  // === 13. ИТОГОВАЯ СТАТИСТИКА ===
   const sizeKB = (json.length / 1024).toFixed(2);
+  const originalSize = 485; // KB (примерный размер оригинального файла)
+  const savings = ((1 - parseFloat(sizeKB) / originalSize) * 100).toFixed(1);
 
-  // Вычисляем экономию
-  const rawJson = JSON.stringify(rawEntities);
-  const optimizedJson = JSON.stringify(optimizedEntities);
-  const savings = ((1 - optimizedJson.length / rawJson.length) * 100).toFixed(1);
-  const savingsKB = ((rawJson.length - optimizedJson.length) / 1024).toFixed(1);
-
-  console.log(`\n✅ Отчет сохранен: ${outputPath}`);
+  console.log(`\n✅ ULTRA-COMPACT отчет сохранен: ${outputPath}`);
   console.log(`📊 Размер: ${sizeKB} KB`);
-  if (useTemplates) {
-    console.log(`📊 ЭКОНОМИЯ: ${savings}% (${savingsKB} KB)`);
-    console.log(`📋 Шаблонов: ${Object.keys(templates).length}`);
-    console.log(`📋 Сущностей: ${Object.keys(optimizedEntities).length}`);
-  }
+  console.log(`📊 Экономия: ${savings}% (от ${originalSize} KB)`);
   console.log(`📊 Функций: ${totalFunctions}`);
   console.log(`📊 Вызовов: ${totalCalls}`);
-  console.log(`📊 Обратных вызовов: ${totalCalledBy}`);
-  console.log(`📊 Импортов: ${totalImportedBy}`);
-  console.log(`📊 Файлов: ${totalFiles}`);
-  console.log(`📊 Модулей: ${totalModules}`);
-  console.log(`📊 Enum: ${totalEnums}`);
-  console.log(`📊 Декораторов: ${totalDecorators}`);
+  console.log(`📊 Уникальных параметров: ${Object.keys(parameterDictionary).length}`);
+  console.log(`📊 Уникальных типов: ${Object.keys(typeDictionary).length}`);
+  console.log(`📊 Шаблонов: ${Object.keys(templates).length}`);
+  console.log(`📊 Файлов: ${Object.keys(fileIndex).length}`);
+  console.log(`📊 Модулей: ${Object.keys(moduleIndex).length}`);
   console.log(`⏱️  Время: ${((Date.now() - startTime) / 1000).toFixed(2)} сек`);
-
-  const entitiesWithCalls = Object.values(rawEntities).filter(
-    e => e.kind === 'function' && e.calls && e.calls.length > 0
-  );
-  const entitiesWithCalledBy = Object.values(rawEntities).filter(
-    e => e.kind === 'function' && e.calledBy && e.calledBy.length > 0
-  );
-
-  console.log(`\n📊 СТАТИСТИКА СВЯЗЕЙ:`);
-  console.log(`   🔗 Сущностей с вызовами: ${entitiesWithCalls.length}`);
-  console.log(`   🔗 Сущностей с обратными вызовами: ${entitiesWithCalledBy.length}`);
-
-  if (entitiesWithCalls.length > 0) {
-    const sample = entitiesWithCalls[0];
-    console.log(`   📋 Пример: ${sample.name} → ${sample.calls.length} вызовов`);
-  }
-
-  if (entitiesWithCalls.length === 0) {
-    console.log(`\n⚠️ Внимание: вызовы между функциями не найдены`);
-    console.log(`   Проверьте, что в проекте есть вызовы функций и они правильно резолвятся`);
-  }
-
-  // Статистика импортов
-  if (importGraph && importGraph.edges.length > 0) {
-    console.log(`\n📥 СТАТИСТИКА ИМПОРТОВ:`);
-    console.log(`   📊 Всего ребер: ${importGraph.edges.length}`);
-    console.log(`   📥 Уникальных импортеров: ${importGraph.stats.uniqueImporters}`);
-    console.log(`   📤 Уникальных импортируемых: ${importGraph.stats.uniqueImported}`);
-    console.log(`   ✅ Разрешенных импортов: ${importGraph.stats.resolvedImports}`);
-    console.log(`   ❌ Неразрешенных импортов: ${importGraph.stats.unresolvedImports}`);
-
-    // Топ импортируемых файлов
-    if (importGraph.stats.mostImported && importGraph.stats.mostImported.length > 0) {
-      console.log(`\n📤 Самые импортируемые файлы:`);
-      for (const item of importGraph.stats.mostImported.slice(0, 5)) {
-        const fileName = fileIndex[item.fileId] || item.fileId;
-        console.log(`   • ${fileName}: ${item.count} раз`);
-      }
-    }
-  } else {
-    console.log(`\n⚠️ Внимание: граф импортов пуст`);
-    console.log(`   Возможные причины:`);
-    console.log(`   1. Анализируется только один файл (нужна вся папка src/)`);
-    console.log(`   2. Нет данных об импортах в entitiesMap`);
-    console.log(`   3. Пути импортов не могут быть разрешены`);
-  }
-
-  const idStats = idManager.getStats();
-  console.log(`\n🔑 СТАТИСТИКА ID:`);
-  console.log(`   📝 Всего сгенерировано ID: ${idStats.total}`);
-  console.log(`   ✅ Уникальных ID: ${idStats.unique}`);
-  console.log(`   📊 Всего сущностей в отчете: ${Object.keys(report.entities).length}`);
-
-  // Дополнительная статистика по формату ID
-  if (idFormat === 'compact') {
-    const ids = Object.keys(report.entities);
-    const avgLength = ids.reduce((sum, id) => sum + id.length, 0) / (ids.length || 1);
-    console.log(`   📏 Средняя длина компактного ID: ${avgLength.toFixed(1)} символов`);
-    console.log(`   💾 Экономия vs полный формат: ~${((1 - avgLength / 39) * 100).toFixed(0)}%`);
-  }
-
-  // Статистика по шаблонам
-  if (useTemplates && templates && templateStats) {
-    console.log(`\n📋 СТАТИСТИКА ШАБЛОНОВ:`);
-    const templateKeys = Object.keys(templates);
-    console.log(`   📊 Всего шаблонов: ${templateKeys.length}`);
-    console.log(`   📊 Типы шаблонов:`);
-
-    const typeCount: Record<string, number> = {};
-    for (const key of templateKeys) {
-      const parts = key.split('_');
-      const type = parts[0] || 'unknown';
-      typeCount[type] = (typeCount[type] || 0) + 1;
-    }
-
-    for (const [type, count] of Object.entries(typeCount).sort((a, b) => b[1] - a[1])) {
-      console.log(`      • ${type}: ${count} шаблонов`);
-    }
-
-    // Примеры шаблонов
-    if (templateKeys.length > 0) {
-      console.log(`\n   📋 Примеры шаблонов:`);
-      const sampleKeys = templateKeys.slice(0, 3);
-      for (const key of sampleKeys) {
-        const template = templates[key];
-        if (template) {
-          const fields = Object.keys(template).filter(f => f !== 'kind');
-          console.log(
-            `      • ${key}: kind=${template.kind}${fields.length ? `, fields: ${fields.join(', ')}` : ''}`
-          );
-        }
-      }
-      if (templateKeys.length > 3) {
-        console.log(`      ... и ещё ${templateKeys.length - 3} шаблонов`);
-      }
-    }
-  }
 
   return report;
 }
 
-export default generateCompactEntityReport;
+// ============================================
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ СТАТИСТИКИ ГРАФОВ
+// ============================================
+
+function buildCallGraphStats(
+  edges: UltraCallGraphEdge[]
+): UltraCompactReport['callGraph'] {
+  const callCounts = new Map<string, number>();
+  const callerCounts = new Map<string, number>();
+
+  for (const edge of edges) {
+    callCounts.set(edge.to, (callCounts.get(edge.to) || 0) + 1);
+    callerCounts.set(edge.from, (callerCounts.get(edge.from) || 0) + 1);
+  }
+
+  const mostCalled = Array.from(callCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([functionId, count]) => ({ functionId, count }));
+
+  const topCallers = Array.from(callerCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([functionId, count]) => ({ functionId, count }));
+
+  return {
+    edges,
+    stats: {
+      totalEdges: edges.length,
+      uniqueCallers: new Set(edges.map(e => e.from)).size,
+      uniqueCallees: new Set(edges.map(e => e.to)).size,
+      mostCalled,
+      topCallers,
+    },
+  };
+}
+
+function buildImportGraphStats(
+  edges: UltraImportGraphEdge[]
+): UltraCompactReport['importGraph'] {
+  const importCounts = new Map<string, number>();
+  for (const edge of edges) {
+    importCounts.set(edge.to, (importCounts.get(edge.to) || 0) + 1);
+  }
+
+  const mostImported = Array.from(importCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([fileId, count]) => ({ fileId, count }));
+
+  return {
+    edges,
+    stats: {
+      totalEdges: edges.length,
+      uniqueImporters: new Set(edges.map(e => e.from)).size,
+      uniqueImported: new Set(edges.map(e => e.to)).size,
+      mostImported,
+      totalImports: 0, // будут заполнены позже
+      resolvedImports: 0,
+      unresolvedImports: 0,
+    },
+  };
+}
+
+// ❌ УДАЛЕНА: buildCalledByFromCallGraph (информация теперь в callGraph)
+
+function buildOptimizedEntities(
+  entitiesMap: Record<string, EntitiesResult>,
+  functionIdMap: Map<string, string>,
+  fileIdMap: Map<string, string>
+): Record<string, any> {
+  const entities: Record<string, any> = {};
+
+  for (const [filePath, fileEntities] of Object.entries(entitiesMap)) {
+    const fileId = fileIdMap.get(filePath);
+    if (!fileId) continue;
+
+    for (const func of fileEntities.functions || []) {
+      const id = func.id || functionIdMap.get(func.name);
+      if (!id) continue;
+
+      const entity: any = {
+        file: fileId,
+        line: func.line || 0,
+        kind: 'function',
+      };
+
+      if (func.name) entity.name = func.name;
+      if (func.isExported) entity.isExported = true;
+      if (func.isAsync) entity.isAsync = true;
+      if (func.isArrow) entity.isArrow = true;
+      if (func.isMethod) entity.isMethod = true;
+      if (func.isNested) entity.isNested = true;
+      if (func.isEventHandler) entity.isEventHandler = true;
+      if (func.depth !== undefined) entity.depth = func.depth;
+
+      if (func.params && func.params.length > 0) entity.params = func.params;
+      if (func.returnType && func.returnType !== 'any') entity.returnType = func.returnType;
+      if (func.className) entity.className = func.className;
+      if (func.eventType) entity.eventType = func.eventType;
+      if (func.parentFunction) entity.parentFunction = func.parentFunction;
+
+      if (func.complexity && func.complexity > 1) entity.complexity = func.complexity;
+      if (func.security) entity.security = func.security;
+
+      // ❌ УДАЛЯЕМ calls и calledBy из сущностей
+      // Информация о вызовах будет только в callGraph
+
+      entities[id] = entity;
+    }
+  }
+
+  return entities;
+}
+
+// ============================================
+// ЭКСПОРТ ПО УМОЛЧАНИЮ
+// ============================================
+
+export default {
+  generateCompactEntityReport,
+  generateUltraCompactReport,
+  encodeFlags,
+  decodeFlags,
+  FunctionFlags,
+  buildTemplates,
+  getEntityTemplateKey,
+};

@@ -1575,6 +1575,126 @@ export interface ImportGraphEdge {
 }
 
 // ==========================================
+// НОВЫЕ ТИПЫ ДЛЯ УЛЬТРА-КОМПАКТНОГО ОТЧЕТА (v4.0.0)
+// ==========================================
+
+/**
+ * Битовые флаги для функций
+ * Используются для экономии места вместо булевых полей
+ */
+export enum FunctionFlags {
+  ASYNC = 1 << 0, // 1
+  NESTED = 1 << 1, // 2
+  ARROW = 1 << 2, // 4
+  METHOD = 1 << 3, // 8
+  EVENT_HANDLER = 1 << 4, // 16
+  EXPORTED = 1 << 5, // 32
+  CONST = 1 << 6, // 64
+  MACRO = 1 << 7, // 128
+  COMPOSABLE = 1 << 8, // 256
+}
+
+/**
+ * Ультра-компактная сущность (без дублей)
+ */
+export interface UltraCompactEntity {
+  /** Ссылка на файл в fileIndex */
+  file: string;
+  /** Номер строки */
+  line: number;
+  /** Битовые флаги (см. FunctionFlags) */
+  flags: number;
+  /** Ссылки на параметры в parameterDictionary */
+  params?: string[];
+  /** Ссылка на тип в typeDictionary */
+  returnType?: string;
+  /** Ссылка на шаблон в templates */
+  template?: string;
+  /** Дополнительные метаданные (опционально) */
+  metadata?: Record<string, any>;
+}
+
+/**
+ * Ультра-компактный отчет (без дублей данных)
+ */
+export interface UltraCompactReport {
+  /** Версия формата */
+  version: string;
+  /** Временная метка */
+  timestamp: string;
+
+  /** Индекс: ID функции → имя */
+  functionIndex: Record<string, string>;
+  /** Индекс: ID файла → путь */
+  fileIndex: Record<string, string>;
+  /** Индекс: ID модуля → имя */
+  moduleIndex: Record<string, string>;
+
+  /** Словарь параметров: ID → значение */
+  parameterDictionary: Record<string, string>;
+  /** Словарь типов: ID → значение */
+  typeDictionary: Record<string, string>;
+
+  /** Граф вызовов (единственный источник) */
+  callGraph: {
+    edges: CallGraphEdge[];
+    stats: {
+      totalEdges: number;
+      uniqueCallers: number;
+      uniqueCallees: number;
+      mostCalled: { functionId: string; count: number }[];
+      topCallers: { functionId: string; count: number }[];
+    };
+  };
+
+  /** Граф импортов (опционально) */
+  importGraph?: {
+    edges: ImportGraphEdge[];
+    stats: {
+      totalEdges: number;
+      uniqueImporters: number;
+      uniqueImported: number;
+      mostImported: { fileId: string; count: number }[];
+      totalImports: number;
+      resolvedImports: number;
+      unresolvedImports: number;
+    };
+  };
+
+  /** Ультра-компактные сущности (без дублей) */
+  entities: Record<string, UltraCompactEntity>;
+
+  /** Шаблоны (опционально) */
+  templates?: Record<string, EntityTemplate>;
+
+  /** Статистика */
+  stats: {
+    totalFunctions: number;
+    totalCalls: number;
+    totalCalledBy: number;
+    totalImportedBy: number;
+    totalEnums: number;
+    totalDecorators: number;
+    totalFiles: number;
+    totalModules: number;
+  };
+
+  /** Статистика шаблонов */
+  templateStats?: {
+    totalTemplates: number;
+    totalEntities: number;
+    usage: Record<string, number>;
+  };
+
+  /** Легенда */
+  legend?: {
+    kinds?: Record<string, string>;
+    callTypes?: Record<string, string>;
+    importTypes?: Record<string, string>;
+  };
+}
+
+// ==========================================
 // УТИЛИТЫ ДЛЯ ТИПОВ
 // ==========================================
 

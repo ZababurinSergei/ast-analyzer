@@ -12,7 +12,7 @@
 // ТИПЫ ДЛЯ КОНФИГА
 // ============================================
 
-export type PresetName = 'minimal' | 'standard' | 'full' | 'relationshipsOnly';
+export type PresetName = 'minimal' | 'standard' | 'full' | 'relationshipsOnly' | 'ultraCompact';
 
 export interface EntityFieldsConfig {
   id: boolean;
@@ -124,6 +124,31 @@ export interface PresetConfig {
   formatting: Partial<FormattingConfig>;
 }
 
+// ============================================
+// НОВЫЙ ТИП ДЛЯ УЛЬТРА-КОМПАКТНОГО РЕЖИМА
+// ============================================
+
+export interface UltraCompactConfig {
+  /** Включить удаление дублирующихся данных */
+  enableDedup: boolean;
+  /** Использовать битовые флаги вместо булевых полей */
+  useBitFlags: boolean;
+  /** Использовать словари для параметров и типов */
+  useDictionaries: boolean;
+  /** Сохранять читаемые ключи (не сокращать) */
+  readableKeys: boolean;
+  /** Версия формата */
+  version: string;
+  /** Удалить calls/calledBy из entities (только в callGraph) */
+  removeCallsFromEntities: boolean;
+  /** Удалить name из entities (только в functionIndex) */
+  removeNameFromEntities: boolean;
+  /** Удалить file из entities (только в fileIndex) */
+  removeFileFromEntities: boolean;
+  /** Сжать массив calledBy в битовую маску (если возможно) */
+  compressCalledBy: boolean;
+}
+
 export interface CompactReportConfig {
   version: string;
   entityFields: EntityFieldsConfig;
@@ -133,6 +158,8 @@ export interface CompactReportConfig {
   output: OutputConfig;
   presets: Record<PresetName, PresetConfig>;
   activePreset: PresetName;
+  /** Новая секция для ультра-компактного режима */
+  ultraCompact: UltraCompactConfig;
   getConfig(): PresetConfig;
   getEnabledEntityFields(): (keyof EntityFieldsConfig)[];
   getEnabledRelationshipFields(relationship: keyof RelationshipFieldsConfig): string[];
@@ -283,6 +310,21 @@ export const COMPACT_REPORT_CONFIG: CompactReportConfig = {
     prettyPrint: true, // Красивый вывод (с отступами)
     minify: false, // Минификация JSON (без пробелов)
     generateMarkdown: false, // Генерировать Markdown отчет
+  },
+
+  // ============================================
+  // НОВАЯ СЕКЦИЯ: УЛЬТРА-КОМПАКТНЫЙ РЕЖИМ
+  // ============================================
+  ultraCompact: {
+    enableDedup: true, // Удаление дублирующихся данных
+    useBitFlags: true, // Битовые флаги вместо булевых полей
+    useDictionaries: true, // Словари для параметров и типов
+    readableKeys: true, // Сохранять читаемые ключи
+    version: '4.0.0', // Версия формата
+    removeCallsFromEntities: true, // Удалить calls/calledBy из entities
+    removeNameFromEntities: true, // Удалить name из entities
+    removeFileFromEntities: true, // Удалить file из entities
+    compressCalledBy: false, // Сжать calledBy (пока отключено)
   },
 
   /**
@@ -636,11 +678,98 @@ export const COMPACT_REPORT_CONFIG: CompactReportConfig = {
         includeStats: true,
       },
     },
+
+    // === НОВЫЙ ПРЕСЕТ: УЛЬТРА-КОМПАКТНЫЙ ===
+    ultraCompact: {
+      entityFields: {
+        id: true,
+        name: true, // будет удален при генерации (но в конфиге оставляем)
+        file: true, // будет удален при генерации
+        line: true,
+        kind: true,
+        vscode: true,
+        isExported: true, // будет заменен на битовые флаги
+        isAsync: true, // будет заменен на битовые флаги
+        params: true, // будет заменен на словарь
+        paramsCount: false,
+        returnType: true, // будет заменен на словарь
+        isMethod: true, // будет заменен на битовые флаги
+        className: false,
+        isNested: true, // будет заменен на битовые флаги
+        parentFunction: false,
+        isArrow: true, // будет заменен на битовые флаги
+        depth: false,
+        isEventHandler: true, // будет заменен на битовые флаги
+        eventType: false,
+        complexity: false,
+        startLine: false,
+        endLine: false,
+        body: false,
+        security: false,
+        signature: false,
+        metadata: false,
+      },
+      relationshipFields: {
+        calls: {
+          enabled: true,
+          targetId: true,
+          targetName: false, // берется из functionIndex
+          targetFile: false, // берется из fileIndex
+          targetLine: false,
+          targetVscode: false,
+          callLine: true,
+          callType: true,
+        },
+        calledBy: {
+          enabled: true,
+          callerId: true,
+          callerName: false,
+          callerFile: false,
+          callerLine: false,
+          callerVscode: false,
+          callLine: true,
+          callType: true,
+        },
+        importedBy: {
+          enabled: true,
+          importerId: true,
+          importerFile: false,
+          importerVscode: false,
+          importLine: false,
+          specifier: true,
+          importType: false,
+        },
+      },
+      filters: {
+        entityTypes: {
+          function: true,
+          class: true,
+          constant: true,
+          interface: true,
+          type: true,
+          variable: true,
+          macro: true,
+        },
+        onlyExported: false,
+        onlyNonExported: false,
+        includeModules: [],
+        excludeModules: [],
+        minComplexity: 0,
+        maxDepth: Infinity,
+      },
+      formatting: {
+        indentSize: 2,
+        sortKeys: true,
+        sortEntities: true,
+        includeTimestamp: true,
+        includeStats: true,
+      },
+    },
   },
 
   /**
    * Выбор активного пресета
-   * Возможные значения: 'minimal' | 'standard' | 'full' | 'relationshipsOnly'
+   * Возможные значения: 'minimal' | 'standard' | 'full' | 'relationshipsOnly' | 'ultraCompact'
    */
   activePreset: 'standard',
 

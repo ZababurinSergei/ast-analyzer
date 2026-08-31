@@ -276,6 +276,70 @@ export class IdManager {
   }
 
   /**
+   * ✅ НОВЫЙ СТАТИЧЕСКИЙ МЕТОД для генерации стабильного ID
+   * Используется в ultra-compact режиме
+   */
+  static generateStableId(filePath: string, funcName: string, line: number): string {
+    const relativePath = path.relative(process.cwd(), filePath);
+    const fileHash = simpleHash(relativePath);
+    const nameHash = simpleHash(funcName);
+    return `f${fileHash}_${nameHash}_${line}`;
+  }
+
+  /**
+   * ✅ НОВЫЙ МЕТОД: Генерирует ID для сущности с учетом типа
+   * Универсальный метод для всех типов сущностей
+   */
+  generateEntityId(
+    filePath: string,
+    name: string,
+    line: number,
+    type: 'function' | 'class' | 'constant' | 'interface' | 'type' | 'variable' = 'function'
+  ): string {
+    const absolutePath = path.resolve(filePath);
+    const contextKey = `${absolutePath}:${type}:${name}:${line}`;
+
+    // Проверяем кэш
+    if (this.idMap.has(contextKey)) {
+      return this.idMap.get(contextKey)!;
+    }
+
+    // Генерируем ID
+    const hash = this.generateHash(contextKey);
+    const safeName = this.sanitizeName(name);
+    const prefix =
+      type === 'function'
+        ? 'func'
+        : type === 'class'
+          ? 'cls'
+          : type === 'constant'
+            ? 'const'
+            : type === 'interface'
+              ? 'intf'
+              : type === 'type'
+                ? 'type'
+                : 'var';
+
+    let id = `${prefix}_${hash}_${safeName}_${line}`;
+
+    // Гарантируем уникальность
+    let counter = 0;
+    while (this.usedIds.has(id)) {
+      counter++;
+      id = `${prefix}_${hash}_${safeName}_${line}_${counter}`;
+    }
+
+    this.idMap.set(contextKey, id);
+    this.usedIds.add(id);
+
+    if (this.debug) {
+      console.log(`🔑 [IdManager] Generated entity ID: ${id} for ${name} in ${filePath}:${line}`);
+    }
+
+    return id;
+  }
+
+  /**
    * Генерирует ID для Vue компонента
    */
   getVueFunctionId(
@@ -297,116 +361,28 @@ export class IdManager {
    * Генерирует ID для класса
    */
   getClassId(filePath: string, className: string, line: number): string {
-    const absolutePath = path.resolve(filePath);
-    const contextKey = `${absolutePath}:class:${className}:${line}`;
-
-    if (this.idMap.has(contextKey)) {
-      return this.idMap.get(contextKey)!;
-    }
-
-    const hash = this.generateHash(contextKey);
-    const safeName = this.sanitizeName(className);
-    // ✅ ВСЕГДА добавляем номер строки
-    const id = `class_${hash}_${safeName}_${line}`;
-
-    let counter = 0;
-    let finalId = id;
-    while (this.usedIds.has(finalId)) {
-      counter++;
-      finalId = `class_${hash}_${safeName}_${line}_${counter}`;
-    }
-
-    this.idMap.set(contextKey, finalId);
-    this.usedIds.add(finalId);
-
-    return finalId;
+    return this.generateEntityId(filePath, className, line, 'class');
   }
 
   /**
    * Генерирует ID для константы
    */
   getConstantId(filePath: string, constName: string, line: number): string {
-    const absolutePath = path.resolve(filePath);
-    const contextKey = `${absolutePath}:const:${constName}:${line}`;
-
-    if (this.idMap.has(contextKey)) {
-      return this.idMap.get(contextKey)!;
-    }
-
-    const hash = this.generateHash(contextKey);
-    const safeName = this.sanitizeName(constName);
-    // ✅ ВСЕГДА добавляем номер строки
-    const id = `const_${hash}_${safeName}_${line}`;
-
-    let counter = 0;
-    let finalId = id;
-    while (this.usedIds.has(finalId)) {
-      counter++;
-      finalId = `const_${hash}_${safeName}_${line}_${counter}`;
-    }
-
-    this.idMap.set(contextKey, finalId);
-    this.usedIds.add(finalId);
-
-    return finalId;
+    return this.generateEntityId(filePath, constName, line, 'constant');
   }
 
   /**
    * Генерирует ID для интерфейса
    */
   getInterfaceId(filePath: string, interfaceName: string, line: number): string {
-    const absolutePath = path.resolve(filePath);
-    const contextKey = `${absolutePath}:interface:${interfaceName}:${line}`;
-
-    if (this.idMap.has(contextKey)) {
-      return this.idMap.get(contextKey)!;
-    }
-
-    const hash = this.generateHash(contextKey);
-    const safeName = this.sanitizeName(interfaceName);
-    // ✅ ВСЕГДА добавляем номер строки
-    const id = `intf_${hash}_${safeName}_${line}`;
-
-    let counter = 0;
-    let finalId = id;
-    while (this.usedIds.has(finalId)) {
-      counter++;
-      finalId = `intf_${hash}_${safeName}_${line}_${counter}`;
-    }
-
-    this.idMap.set(contextKey, finalId);
-    this.usedIds.add(finalId);
-
-    return finalId;
+    return this.generateEntityId(filePath, interfaceName, line, 'interface');
   }
 
   /**
    * Генерирует ID для типа
    */
   getTypeId(filePath: string, typeName: string, line: number): string {
-    const absolutePath = path.resolve(filePath);
-    const contextKey = `${absolutePath}:type:${typeName}:${line}`;
-
-    if (this.idMap.has(contextKey)) {
-      return this.idMap.get(contextKey)!;
-    }
-
-    const hash = this.generateHash(contextKey);
-    const safeName = this.sanitizeName(typeName);
-    // ✅ ВСЕГДА добавляем номер строки
-    const id = `type_${hash}_${safeName}_${line}`;
-
-    let counter = 0;
-    let finalId = id;
-    while (this.usedIds.has(finalId)) {
-      counter++;
-      finalId = `type_${hash}_${safeName}_${line}_${counter}`;
-    }
-
-    this.idMap.set(contextKey, finalId);
-    this.usedIds.add(finalId);
-
-    return finalId;
+    return this.generateEntityId(filePath, typeName, line, 'type');
   }
 
   /**
