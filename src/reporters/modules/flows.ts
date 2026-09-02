@@ -1,21 +1,30 @@
 // src/reporters/modules/flows.ts
-import type { EnhancedPackageLockReport, EnhancedPackageInfo } from '../json-reporter.js';
-import type { EntitiesResult } from '../../types.js';
 
-// ============================================================
-// ФУНКЦИИ ДЛЯ ПОСТРОЕНИЯ ГРАФА ВЫПОЛНЕНИЯ (EXECUTION GRAPH)
-// ============================================================
+import type { EntitiesResult, GraphData, EnhancedPackageInfo } from '../../types.js';
 
 /**
- * Строит граф выполнения (execution graph) на основе графа зависимостей
- * и информации о сущностях
+ * Строит граф выполнения на основе графа зависимостей и сущностей
  */
 export function buildExecutionGraph(
-  rootKey: string,
+  entryPoint: string,
   entitiesMap: Record<string, EntitiesResult>,
-  _graphData: { rootKey: string; graph: Record<string, string[]> },
-  _packages: Record<string, EnhancedPackageInfo>
-): EnhancedPackageLockReport['executionGraph'] {
+  _data: GraphData,
+  packages: Record<string, EnhancedPackageInfo>
+): {
+  entryPoint: string;
+  direction: 'top-down';
+  entryFunctions: string[];
+  executionFlow: {
+    type: 'sequential' | 'parallel' | 'conditional';
+    steps: {
+      func: string;
+      module: string;
+      direction: 'inward' | 'outward' | 'self';
+      isAsync: boolean;
+      branches?: Record<string, any>;
+    }[];
+  };
+} {
   const entryFunctions: string[] = [];
   const steps: {
     func: string;
@@ -25,176 +34,101 @@ export function buildExecutionGraph(
     branches?: Record<string, any>;
   }[] = [];
 
-  // Находим точки входа: экспортируемые функции из корневого модуля
-  const rootEntities = entitiesMap[rootKey];
+  // Находим все функции в корневом модуле
+  const rootEntities = entitiesMap[entryPoint];
   if (rootEntities) {
     for (const func of rootEntities.functions || []) {
-      if (func.isExported && func.name) {
+      if (func.isExported) {
         entryFunctions.push(func.name);
+        steps.push({
+          func: func.name,
+          module: entryPoint,
+          direction: 'outward',
+          isAsync: func.isAsync || false,
+        });
       }
     }
   }
 
-  // Если нет экспортов, используем все функции корневого модуля
+  // Если нет экспортов, берем все функции
   if (entryFunctions.length === 0 && rootEntities) {
     for (const func of rootEntities.functions || []) {
-      if (func.name) {
-        entryFunctions.push(func.name);
-      }
+      entryFunctions.push(func.name);
+      steps.push({
+        func: func.name,
+        module: entryPoint,
+        direction: 'self',
+        isAsync: func.isAsync || false,
+      });
     }
   }
 
-  // Строим шаги выполнения (BFS от точек входа)
-  const visited = new Set<string>();
-  const queue: { func: string; module: string; direction: 'inward' | 'outward' | 'self' }[] = [];
+  // Добавляем функции из зависимостей
+  const deps = _data.graph[entryPoint] || [];
+  for (const dep of deps) {
+    const depEntities = entitiesMap[dep];
+    if (!depEntities) continue;
 
-  for (const funcName of entryFunctions) {
-    queue.push({
-      func: funcName,
-      module: rootKey,
-      direction: 'outward',
-    });
-  }
-
-  while (queue.length > 0) {
-    const item = queue.shift()!;
-    const key = `${item.module}#${item.func}`;
-
-    if (visited.has(key)) continue;
-    visited.add(key);
-
-    // Определяем isAsync
-    let isAsync = false;
-    const entities = entitiesMap[item.module];
-    if (entities) {
-      const func = entities.functions?.find((f: any) => f.name === item.func);
-      if (func) {
-        isAsync = func.isAsync || false;
-      }
-    }
-
-    steps.push({
-      func: item.func,
-      module: item.module,
-      direction: item.direction,
-      isAsync,
-    });
-
-    // Находим вызовы из текущей функции
-    const callGraph = entitiesMap[item.module]?.callGraph || {};
-    const calls = callGraph[item.func] || [];
-
-    for (const call of calls) {
-      // Ищем вызываемую функцию в том же модуле
-      const sameModuleFunc = entitiesMap[item.module]?.functions?.find((f: any) => f.name === call);
-      if (sameModuleFunc) {
-        queue.push({
-          func: call,
-          module: item.module,
-          direction: 'self',
+    for (const func of depEntities.functions || []) {
+      if (func.isExported) {
+        steps.push({
+          func: func.name,
+          module: dep,
+          direction: 'inward',
+          isAsync: func.isAsync || false,
         });
-        continue;
-      }
-
-      // Ищем в других модулях
-      let found = false;
-      for (const [modulePath, modEntities] of Object.entries(entitiesMap)) {
-        if (modulePath === item.module) continue;
-        const func = modEntities.functions?.find((f: any) => f.name === call);
-        if (func && func.isExported) {
-          queue.push({
-            func: call,
-            module: modulePath,
-            direction: 'inward',
-          });
-          found = true;
-          break;
-        }
-      }
-
-      // Если не нашли, добавляем как outward (внешний вызов)
-      if (!found) {
-        // Проверяем, не является ли вызов внешним импортом
-        const imports = entitiesMap[item.module]?.imports || [];
-        let isExternal = false;
-        for (const imp of imports) {
-          if (
-            imp.source &&
-            (imp.source.includes(call) ||
-              imp.specifiers.some((s: any) => {
-                const spec = typeof s === 'string' ? s : s.imported || s.local;
-                return spec === call;
-              }))
-          ) {
-            isExternal = true;
-            break;
-          }
-        }
-
-        if (isExternal) {
-          steps.push({
-            func: call,
-            module: item.module,
-            direction: 'outward',
-            isAsync: false,
-          });
-        }
       }
     }
   }
 
-  // Определяем тип выполнения
-  let executionType: 'sequential' | 'parallel' | 'conditional' = 'sequential';
-
-  // Проверяем наличие ветвлений (условий)
-  const hasConditional = steps.some(s => {
-    const entities = entitiesMap[s.module];
-    if (!entities) return false;
-    const func = entities.functions?.find((f: any) => f.name === s.func);
-    if (!func || !func.body) return false;
-    return func.body.includes('if') || func.body.includes('?') || func.body.includes('switch');
-  });
-
-  if (hasConditional) {
-    executionType = 'conditional';
-  } else if (steps.length > 1) {
-    // Проверяем наличие параллельных вызовов (Promise.all, await Promise.all)
-    const hasParallel = steps.some(s => {
-      const entities = entitiesMap[s.module];
-      if (!entities) return false;
-      const func = entities.functions?.find((f: any) => f.name === s.func);
-      if (!func || !func.body) return false;
-      return func.body.includes('Promise.all') || func.body.includes('await Promise');
-    });
-    if (hasParallel) {
-      executionType = 'parallel';
-    }
+  // Проверяем наличие пакета для корневого модуля
+  const rootPackage = packages[entryPoint];
+  if (rootPackage && !rootPackage.isEntry) {
+    // Если корневой пакет не отмечен как entry, но является точкой входа
+    (packages[entryPoint] as any).isEntry = true;
   }
 
   return {
-    entryPoint: rootKey,
+    entryPoint,
     direction: 'top-down',
     entryFunctions,
     executionFlow: {
-      type: executionType,
+      type: steps.length > 1 ? 'sequential' : 'sequential',
       steps,
     },
   };
 }
 
-// ============================================================
-// ФУНКЦИИ ДЛЯ ПОСТРОЕНИЯ IMPORT/EXPORT FLOW
-// ============================================================
-
 /**
- * Строит поток импортов и экспортов между модулями
+ * Строит поток импортов/экспортов между модулями
  */
 export function buildImportExportFlow(
   graph: Record<string, string[]>,
   entitiesMap: Record<string, EntitiesResult>,
-  _graphData: { rootKey: string; graph: Record<string, string[]> },
+  _data: GraphData,
   _packages: Record<string, EnhancedPackageInfo>
-): EnhancedPackageLockReport['importExportFlow'] {
+): {
+  imports: Record<
+    string,
+    {
+      importsFrom: {
+        module: string;
+        type: 'named' | 'default' | 'namespace';
+        imports: string[];
+      }[];
+    }
+  >;
+  exports: Record<
+    string,
+    {
+      exportsTo: {
+        module: string;
+        type: 'named' | 'default';
+        exports: string[];
+      }[];
+    }
+  >;
+} {
   const imports: Record<
     string,
     {
@@ -223,145 +157,95 @@ export function buildImportExportFlow(
     exports[modulePath] = { exportsTo: [] };
   }
 
-  // Анализируем импорты из entitiesMap
-  for (const [modulePath, entities] of Object.entries(entitiesMap)) {
+  // Анализируем импорты каждого модуля
+  for (const [modulePath, deps] of Object.entries(graph)) {
+    const entities = entitiesMap[modulePath];
     if (!entities) continue;
 
-    for (const imp of entities.imports || []) {
+    // Собираем импорты из AST
+    const importList = entities.imports || [];
+
+    for (const imp of importList) {
       const source = imp.source;
       if (!source) continue;
 
-      // Определяем тип импорта
-      let importType: 'named' | 'default' | 'namespace' = 'named';
+      // Пытаемся найти целевой модуль
+      let targetModule: string | undefined;
 
-      const specifiers = imp.specifiers || [];
-      const hasDefault = specifiers.some((s: any) => {
-        const spec = typeof s === 'string' ? s : s.imported || s.local;
-        return spec === 'default' || spec === 'default as';
-      });
-      const hasNamespace = specifiers.some((s: any) => {
-        const spec = typeof s === 'string' ? s : s.imported || s.local;
-        return spec.includes('* as');
-      });
-
-      if (hasNamespace) importType = 'namespace';
-      else if (hasDefault) importType = 'default';
-
-      const importNames: string[] = [];
-      for (const spec of specifiers) {
-        const specObj = typeof spec === 'string' ? { imported: spec, local: spec } : spec;
-        const name = specObj.imported || specObj.local || '';
-        if (name && name !== 'default' && !name.includes('* as')) {
-          importNames.push(name);
+      // Проверяем, есть ли такой модуль в графе
+      for (const dep of deps) {
+        if (dep.includes(source) || source.includes(dep)) {
+          targetModule = dep;
+          break;
         }
       }
 
-      // Находим модуль-источник
-      let targetModule = source;
-      // Проверяем, есть ли такой модуль в графе
-      if (!graph[source]) {
-        // Пробуем найти по имени файла
-        const baseName = source.split('/').pop() || '';
-        for (const modPath of Object.keys(graph)) {
-          if (modPath.endsWith(baseName) || modPath.includes(source)) {
-            targetModule = modPath;
+      // Если не нашли, пробуем по имени файла
+      if (!targetModule) {
+        const baseName =
+          source
+            .split('/')
+            .pop()
+            ?.replace(/\.[^.]+$/, '') || '';
+        for (const dep of deps) {
+          const depBaseName =
+            dep
+              .split('/')
+              .pop()
+              ?.replace(/\.[^.]+$/, '') || '';
+          if (depBaseName === baseName) {
+            targetModule = dep;
             break;
           }
         }
       }
 
-      if (targetModule && imports[modulePath]) {
-        // Проверяем, не добавлен ли уже такой импорт
-        const existing = imports[modulePath].importsFrom.find(
-          (item: any) => item.module === targetModule
-        );
-        if (existing) {
-          // Добавляем новые имена
-          for (const name of importNames) {
-            if (!existing.imports.includes(name)) {
-              existing.imports.push(name);
-            }
-          }
-        } else {
-          imports[modulePath].importsFrom.push({
-            module: targetModule,
-            type: importType,
-            imports: importNames,
-          });
+      if (!targetModule) {
+        // Пропускаем неразрешенные импорты (внешние модули)
+        continue;
+      }
+
+      // Определяем тип импорта
+      let importType: 'named' | 'default' | 'namespace' = 'named';
+      const specifiers: string[] = [];
+
+      for (const spec of imp.specifiers) {
+        const specObj = typeof spec === 'string' ? { imported: spec, local: spec } : spec;
+        const name = specObj.imported || specObj.local || '';
+        if (name) {
+          specifiers.push(name);
         }
 
-        // Добавляем экспорт в целевой модуль
-        const targetExports = exports[targetModule];
-        if (targetExports) {
-          const exportNames = importNames.filter(name => {
-            // Проверяем, что сущность действительно экспортируется
-            const targetEntities = entitiesMap[targetModule];
-            if (!targetEntities) return false;
-            const func = targetEntities.functions?.find((f: any) => f.name === name);
-            const constItem = targetEntities.constants?.find((c: any) => c.name === name);
-            const varItem = targetEntities.variables?.find((v: any) => v.name === name);
-            const cls = targetEntities.classes?.find((c: any) => c.name === name);
-            const intf = targetEntities.interfaces?.find((i: any) => i.name === name);
-            const type = targetEntities.types?.find((t: any) => t.name === name);
-            return (
-              func?.isExported ||
-              constItem?.isExported ||
-              varItem?.isExported ||
-              cls?.isExported ||
-              intf?.isExported ||
-              type?.isExported
-            );
-          });
-
-          if (exportNames.length > 0) {
-            const existingExport = targetExports.exportsTo.find(
-              (item: any) => item.module === modulePath
-            );
-            if (existingExport) {
-              for (const name of exportNames) {
-                if (!existingExport.exports.includes(name)) {
-                  existingExport.exports.push(name);
-                }
-              }
-            } else {
-              targetExports.exportsTo.push({
-                module: modulePath,
-                type: importType === 'namespace' ? 'named' : importType,
-                exports: exportNames,
-              });
-            }
-          }
+        const specType = (specObj as any).type;
+        if (specType === 'ImportDefaultSpecifier') {
+          importType = 'default';
+        } else if (specType === 'ImportNamespaceSpecifier') {
+          importType = 'namespace';
         }
       }
-    }
-  }
 
-  // Добавляем реэкспорты
-  // Реэкспорты определяются через ExportNamedDeclaration с source в AST
-  // В модели EntitiesResult они представлены как exports с дополнительным полем source
-  for (const [modulePath, entities] of Object.entries(entitiesMap)) {
-    if (!entities) continue;
+      // Добавляем импорт
+      if (specifiers.length > 0) {
+        if (!imports[modulePath]) {
+          imports[modulePath] = { importsFrom: [] };
+        }
 
-    for (const exp of entities.exports || []) {
-      // Проверяем наличие source через приведение к any
-      // Реэкспорты имеют поле source, обычные экспорты - нет
-      const expAny = exp as any;
-      const source = expAny.source;
+        const moduleImports = imports[modulePath];
+        if (moduleImports) {
+          const existing = moduleImports.importsFrom.find(item => item.module === targetModule);
 
-      // Если есть source и это не default экспорт - это реэкспорт
-      if (source && typeof source === 'string' && !exp.isDefault) {
-        const targetExports = exports[modulePath];
-        if (targetExports) {
-          const existing = targetExports.exportsTo.find((item: any) => item.module === source);
           if (existing) {
-            if (!existing.exports.includes(exp.name)) {
-              existing.exports.push(exp.name);
+            // Добавляем новые спецификаторы
+            for (const spec of specifiers) {
+              if (!existing.imports.includes(spec)) {
+                existing.imports.push(spec);
+              }
             }
           } else {
-            targetExports.exportsTo.push({
-              module: source,
-              type: 'named',
-              exports: [exp.name],
+            moduleImports.importsFrom.push({
+              module: targetModule,
+              type: importType,
+              imports: specifiers,
             });
           }
         }
@@ -369,68 +253,174 @@ export function buildImportExportFlow(
     }
   }
 
-  return {
-    imports,
-    exports,
-  };
-}
+  // Строим обратные связи (экспорты)
+  for (const [modulePath, moduleImports] of Object.entries(imports)) {
+    if (!moduleImports) continue;
 
-// ============================================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-// ============================================================
+    for (const imp of moduleImports.importsFrom) {
+      const targetModule = imp.module;
 
-/**
- * Находит все модули, которые зависят от указанного
- */
-export function findDependents(modulePath: string, graph: Record<string, string[]>): string[] {
-  const dependents: string[] = [];
+      if (!exports[targetModule]) {
+        exports[targetModule] = { exportsTo: [] };
+      }
 
-  for (const [from, deps] of Object.entries(graph)) {
-    if (deps.includes(modulePath)) {
-      dependents.push(from);
+      const targetExports = exports[targetModule];
+      if (targetExports) {
+        // Проверяем, не добавлен ли уже такой экспорт
+        const existing = targetExports.exportsTo.find(item => item.module === modulePath);
+
+        if (existing) {
+          // Добавляем новые экспорты
+          for (const exp of imp.imports) {
+            if (!existing.exports.includes(exp)) {
+              existing.exports.push(exp);
+            }
+          }
+        } else {
+          targetExports.exportsTo.push({
+            module: modulePath,
+            type: imp.type === 'namespace' ? 'named' : imp.type,
+            exports: [...imp.imports],
+          });
+        }
+      }
     }
   }
 
+  // Удаляем пустые записи из imports
+  const importKeys = Object.keys(imports);
+  for (const modulePath of importKeys) {
+    const moduleImports = imports[modulePath];
+    if (moduleImports && moduleImports.importsFrom.length === 0) {
+      delete imports[modulePath];
+    }
+  }
+
+  // Удаляем пустые записи из exports
+  const exportKeys = Object.keys(exports);
+  for (const modulePath of exportKeys) {
+    const moduleExports = exports[modulePath];
+    if (moduleExports && moduleExports.exportsTo.length === 0) {
+      delete exports[modulePath];
+    }
+  }
+
+  return { imports, exports };
+}
+
+/**
+ * Находит путь между двумя функциями в графе вызовов
+ */
+export function findCallPath(
+  fromFunction: string,
+  toFunction: string,
+  callGraph: Record<string, string[]>
+): {
+  found: boolean;
+  path: string[];
+  reason?: string;
+} {
+  if (!callGraph[fromFunction]) {
+    return {
+      found: false,
+      path: [],
+      reason: `Function '${fromFunction}' not found in call graph`,
+    };
+  }
+
+  if (!callGraph[toFunction]) {
+    return {
+      found: false,
+      path: [],
+      reason: `Function '${toFunction}' not found in call graph`,
+    };
+  }
+
+  const visited = new Set<string>();
+  const queue: { func: string; path: string[] }[] = [{ func: fromFunction, path: [fromFunction] }];
+
+  while (queue.length > 0) {
+    const { func, path } = queue.shift()!;
+
+    if (visited.has(func)) continue;
+    visited.add(func);
+
+    if (func === toFunction) {
+      return { found: true, path };
+    }
+
+    const calls = callGraph[func] || [];
+    for (const call of calls) {
+      if (!visited.has(call)) {
+        queue.push({ func: call, path: [...path, call] });
+      }
+    }
+  }
+
+  return {
+    found: false,
+    path: [],
+    reason: `No path found from '${fromFunction}' to '${toFunction}'`,
+  };
+}
+
+/**
+ * Находит все функции, которые зависят от указанной
+ */
+export function findDependents(
+  functionName: string,
+  callGraph: Record<string, string[]>
+): string[] {
+  const dependents: string[] = [];
+  const visited = new Set<string>();
+
+  const find = (name: string) => {
+    if (visited.has(name)) return;
+    visited.add(name);
+
+    for (const [caller, callees] of Object.entries(callGraph)) {
+      if (callees.includes(name) && !visited.has(caller)) {
+        dependents.push(caller);
+        find(caller);
+      }
+    }
+  };
+
+  find(functionName);
   return dependents;
 }
 
 /**
- * Находит все модули, от которых зависит указанный
+ * Находит все функции, от которых зависит указанная
  */
-export function findDependencies(modulePath: string, graph: Record<string, string[]>): string[] {
-  return graph[modulePath] || [];
-}
+export function findDependencies(
+  functionName: string,
+  callGraph: Record<string, string[]>
+): string[] {
+  const dependencies: string[] = [];
+  const visited = new Set<string>();
 
-/**
- * Проверяет, есть ли циклические зависимости между модулями
- */
-export function hasCyclicDependencies(
-  modulePath: string,
-  graph: Record<string, string[]>,
-  visited: Set<string> = new Set(),
-  stack: Set<string> = new Set()
-): boolean {
-  if (stack.has(modulePath)) return true;
-  if (visited.has(modulePath)) return false;
+  const find = (name: string) => {
+    if (visited.has(name)) return;
+    visited.add(name);
 
-  visited.add(modulePath);
-  stack.add(modulePath);
-
-  const deps = graph[modulePath] || [];
-  for (const dep of deps) {
-    if (hasCyclicDependencies(dep, graph, visited, stack)) {
-      return true;
+    const callees = callGraph[name] || [];
+    for (const callee of callees) {
+      if (!visited.has(callee)) {
+        dependencies.push(callee);
+        find(callee);
+      }
     }
-  }
+  };
 
-  stack.delete(modulePath);
-  return false;
+  find(functionName);
+  return dependencies;
 }
 
 /**
- * Находит все циклические зависимости в графе
+ * Находит циклические зависимости в графе вызовов
  */
-export function findAllCycles(graph: Record<string, string[]>): string[][] {
+export function findCallCycles(callGraph: Record<string, string[]>): string[][] {
   const cycles: string[][] = [];
   const visited = new Set<string>();
   const recursionStack = new Set<string>();
@@ -451,16 +441,16 @@ export function findAllCycles(graph: Record<string, string[]>): string[][] {
     recursionStack.add(node);
     path.push(node);
 
-    const deps = graph[node] || [];
-    for (const dep of deps) {
-      dfs(dep);
+    const callees = callGraph[node] || [];
+    for (const callee of callees) {
+      dfs(callee);
     }
 
     recursionStack.delete(node);
     path.pop();
   };
 
-  for (const node of Object.keys(graph)) {
+  for (const node of Object.keys(callGraph)) {
     if (!visited.has(node)) {
       dfs(node);
     }
@@ -470,201 +460,95 @@ export function findAllCycles(graph: Record<string, string[]>): string[][] {
 }
 
 /**
- * Получает уровень модуля (глубину) в графе
+ * Возвращает статистику по графу вызовов
  */
-export function getModuleLevel(
-  modulePath: string,
-  graph: Record<string, string[]>,
-  levels: Map<string, number> = new Map()
-): number {
-  if (levels.has(modulePath)) {
-    return levels.get(modulePath)!;
-  }
-
-  const deps = graph[modulePath] || [];
-  if (deps.length === 0) {
-    levels.set(modulePath, 0);
-    return 0;
-  }
-
-  let maxDepth = 0;
-  for (const dep of deps) {
-    const depth = getModuleLevel(dep, graph, levels);
-    if (depth > maxDepth) {
-      maxDepth = depth;
-    }
-  }
-
-  const level = maxDepth + 1;
-  levels.set(modulePath, level);
-  return level;
-}
-
-/**
- * Находит модули с наибольшим количеством зависимостей
- */
-export function findModulesWithMostDependencies(
-  graph: Record<string, string[]>,
-  limit: number = 10
-): { module: string; count: number; dependencies: string[] }[] {
-  const results = Object.entries(graph)
-    .map(([module, deps]) => ({
-      module,
-      count: deps.length,
-      dependencies: deps,
-    }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, limit);
-
-  return results;
-}
-
-/**
- * Находит модули, от которых больше всего зависят
- */
-export function findMostDependentModules(
-  graph: Record<string, string[]>,
-  limit: number = 10
-): { module: string; count: number; dependents: string[] }[] {
-  const dependentsMap: Record<string, string[]> = {};
-
-  for (const [from, deps] of Object.entries(graph)) {
-    for (const dep of deps) {
-      if (!dependentsMap[dep]) {
-        dependentsMap[dep] = [];
-      }
-      dependentsMap[dep].push(from);
-    }
-  }
-
-  return Object.entries(dependentsMap)
-    .map(([module, dependents]) => ({
-      module,
-      count: dependents.length,
-      dependents,
-    }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, limit);
-}
-
-/**
- * Проверяет, является ли модуль корневым (не имеет зависимостей)
- */
-export function isRootModule(modulePath: string, graph: Record<string, string[]>): boolean {
-  const deps = graph[modulePath] || [];
-  return deps.length === 0;
-}
-
-/**
- * Проверяет, является ли модуль листовым (от него никто не зависит)
- */
-export function isLeafModule(modulePath: string, graph: Record<string, string[]>): boolean {
-  for (const deps of Object.values(graph)) {
-    if (deps.includes(modulePath)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/**
- * Получает все модули на указанном уровне
- */
-export function getModulesByLevel(level: number, graph: Record<string, string[]>): string[] {
-  const result: string[] = [];
-  const levels = new Map<string, number>();
-
-  for (const modulePath of Object.keys(graph)) {
-    const moduleLevel = getModuleLevel(modulePath, graph, levels);
-    if (moduleLevel === level) {
-      result.push(modulePath);
-    }
-  }
-
-  return result;
-}
-
-/**
- * Строит путь от одного модуля к другому (BFS)
- */
-export function findPath(
-  from: string,
-  to: string,
-  graph: Record<string, string[]>
-): string[] | null {
-  if (from === to) return [from];
-
-  const visited = new Set<string>();
-  const queue: { node: string; path: string[] }[] = [{ node: from, path: [from] }];
-
-  while (queue.length > 0) {
-    const { node, path } = queue.shift()!;
-
-    if (visited.has(node)) continue;
-    visited.add(node);
-
-    const deps = graph[node] || [];
-    for (const dep of deps) {
-      if (dep === to) {
-        return [...path, dep];
-      }
-      if (!visited.has(dep)) {
-        queue.push({ node: dep, path: [...path, dep] });
-      }
-    }
-  }
-
-  return null;
-}
-
-/**
- * Получает статистику по графу
- */
-export function getGraphStats(graph: Record<string, string[]>): {
-  totalModules: number;
+export function getCallGraphStats(callGraph: Record<string, string[]>): {
+  totalNodes: number;
   totalEdges: number;
-  avgDependencies: number;
-  maxDependencies: number;
-  minDependencies: number;
-  modulesWithNoDeps: number;
-  hasCycles: boolean;
-  cyclesCount: number;
-  maxDepth: number;
+  entryPoints: string[];
+  exitPoints: string[];
+  avgOutDegree: number;
+  maxOutDegree: number;
+  cycles: number;
 } {
-  let totalEdges = 0;
-  let maxDeps = 0;
-  let minDeps = Infinity;
-  let modulesWithNoDeps = 0;
+  const nodes = Object.keys(callGraph);
+  const edges = Object.values(callGraph).reduce((sum, callees) => sum + callees.length, 0);
 
-  for (const deps of Object.values(graph)) {
-    const count = deps.length;
-    totalEdges += count;
-    if (count > maxDeps) maxDeps = count;
-    if (count < minDeps) minDeps = count;
-    if (count === 0) modulesWithNoDeps++;
+  // Точки входа (функции, которые не вызываются)
+  const called = new Set<string>();
+  for (const callees of Object.values(callGraph)) {
+    for (const callee of callees) {
+      called.add(callee);
+    }
   }
+  const entryPoints = nodes.filter(n => !called.has(n));
 
-  const totalModules = Object.keys(graph).length;
-  const avgDependencies = totalModules > 0 ? totalEdges / totalModules : 0;
-  const cycles = findAllCycles(graph);
+  // Точки выхода (функции, которые никого не вызывают)
+  const exitPoints = nodes.filter(n => (callGraph[n] || []).length === 0);
 
-  // Вычисляем максимальную глубину
-  let maxDepth = 0;
-  const levels = new Map<string, number>();
-  for (const modulePath of Object.keys(graph)) {
-    const depth = getModuleLevel(modulePath, graph, levels);
-    if (depth > maxDepth) maxDepth = depth;
-  }
+  // Степени
+  const outDegrees = nodes.map(n => (callGraph[n] || []).length);
+  const avgOutDegree =
+    outDegrees.length > 0 ? outDegrees.reduce((a, b) => a + b, 0) / outDegrees.length : 0;
+  const maxOutDegree = outDegrees.length > 0 ? Math.max(...outDegrees) : 0;
+
+  // Циклы
+  const cycles = findCallCycles(callGraph);
 
   return {
-    totalModules,
-    totalEdges,
-    avgDependencies,
-    maxDependencies: maxDeps,
-    minDependencies: minDeps === Infinity ? 0 : minDeps,
-    modulesWithNoDeps,
-    hasCycles: cycles.length > 0,
-    cyclesCount: cycles.length,
-    maxDepth,
+    totalNodes: nodes.length,
+    totalEdges: edges,
+    entryPoints,
+    exitPoints,
+    avgOutDegree,
+    maxOutDegree,
+    cycles: cycles.length,
   };
 }
+
+/**
+ * Строит граф вызовов из сущностей
+ */
+export function buildCallGraphFromEntities(
+  entitiesMap: Record<string, EntitiesResult>
+): Record<string, string[]> {
+  const callGraph: Record<string, string[]> = {};
+
+  for (const entities of Object.values(entitiesMap)) {
+    if (!entities) continue;
+
+    for (const func of entities.functions || []) {
+      const key = func.isMethod && func.className ? `${func.className}.${func.name}` : func.name;
+      if (!callGraph[key]) {
+        callGraph[key] = [];
+      }
+      const calls = func.calls || [];
+      callGraph[key] = calls;
+    }
+
+    // Добавляем методы классов
+    for (const cls of entities.classes || []) {
+      if (!cls.name) continue;
+      for (const method of cls.methods || []) {
+        const key = `${cls.name}.${method}`;
+        if (!callGraph[key]) {
+          callGraph[key] = [];
+        }
+      }
+    }
+  }
+
+  return callGraph;
+}
+
+// Экспорт по умолчанию
+export default {
+  buildExecutionGraph,
+  buildImportExportFlow,
+  findCallPath,
+  findDependents,
+  findDependencies,
+  findCallCycles,
+  getCallGraphStats,
+  buildCallGraphFromEntities,
+};

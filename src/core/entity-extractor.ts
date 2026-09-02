@@ -462,7 +462,6 @@ function convertVueAnalysisToEntities(
         hasExec: false,
         hasPassword: false,
       },
-      // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID С НОМЕРОМ СТРОКИ
       id: idManager.generateCompactId({
         filePath,
         funcName: comp.name,
@@ -470,9 +469,8 @@ function convertVueAnalysisToEntities(
         type: 'vue',
       }),
       vscode: `vscode://file/${filePath}`,
-      callsInfo: [],
-      calledByInfo: [],
-      importedBy: [],
+      moduleId: idManager.getModuleId ? idManager.getModuleId(filePath) : undefined,
+      fileId: idManager.getFileId ? idManager.getFileId(filePath) : undefined,
     };
     result.functions.push(funcInfo);
     result.callGraph[comp.name] = [];
@@ -597,9 +595,9 @@ function convertVueAnalysisToEntities(
     const funcName = func.name;
     if (!funcName) continue;
 
+    func.calledBy = [];
     for (const otherFunc of result.functions) {
       if (otherFunc.calls && otherFunc.calls.includes(funcName)) {
-        if (!func.calledBy) func.calledBy = [];
         if (!func.calledBy.includes(otherFunc.name)) {
           func.calledBy.push(otherFunc.name);
         }
@@ -608,7 +606,7 @@ function convertVueAnalysisToEntities(
   }
 
   // ==========================================
-  // 9. ИМПОРТЫ ИЗ VUE (с правильной конвертацией)
+  // 9. ИМПОРТЫ ИЗ VUE
   // ==========================================
   if (vueAnalysis.imports && vueAnalysis.imports.length > 0) {
     result.imports = convertVueImportsToImportInfo(vueAnalysis.imports);
@@ -687,6 +685,10 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
   let currentFunction: string | null = null;
   let currentClass: string | null = null;
   const functionStack: string[] = [];
+
+  // ✅ ПОЛУЧАЕМ ID МОДУЛЯ И ФАЙЛА (ЕСЛИ ДОСТУПНЫ)
+  const moduleId = filePath && idManager.getModuleId ? idManager.getModuleId(filePath) : undefined;
+  const fileId = filePath && idManager.getFileId ? idManager.getFileId(filePath) : undefined;
 
   // ==========================================
   // ОБХОД AST
@@ -895,7 +897,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
       const bodyText = node.body ? extractBodyText(node.body) : undefined;
 
-      // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID С НОМЕРОМ СТРОКИ
+      // ✅ ГЕНЕРИРУЕМ ID С УЧЕТОМ МОДУЛЯ И ФАЙЛА
       const funcId = idManager.generateCompactId({
         filePath: filePath || 'unknown',
         funcName: fullName || name,
@@ -929,9 +931,9 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         security: analyzeSecurity(bodyText || ''),
         id: funcId,
         vscode: filePath ? `vscode://file/${filePath}:${node.loc?.start?.line || 1}` : '',
-        callsInfo: [],
-        calledByInfo: [],
-        importedBy: [],
+        // ✅ ДОБАВЛЯЕМ moduleId И fileId ДЛЯ КОРРЕКТНОЙ ИДЕНТИФИКАЦИИ
+        moduleId: moduleId,
+        fileId: fileId,
       };
 
       functions.push(funcInfo);
@@ -1051,7 +1053,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
       const bodyText = node.body ? extractBodyText(node.body) : undefined;
 
-      // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID С НОМЕРОМ СТРОКИ
+      // ✅ ГЕНЕРИРУЕМ ID С УЧЕТОМ МОДУЛЯ И ФАЙЛА
       const funcId = idManager.generateCompactId({
         filePath: filePath || 'unknown',
         funcName: name,
@@ -1085,9 +1087,9 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         security: analyzeSecurity(bodyText || ''),
         id: funcId,
         vscode: filePath ? `vscode://file/${filePath}:${node.loc?.start?.line || 1}` : '',
-        callsInfo: [],
-        calledByInfo: [],
-        importedBy: [],
+        // ✅ ДОБАВЛЯЕМ moduleId И fileId ДЛЯ КОРРЕКТНОЙ ИДЕНТИФИКАЦИИ
+        moduleId: moduleId,
+        fileId: fileId,
       };
 
       functions.push(funcInfo);
@@ -1129,7 +1131,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         const parentFunc = className;
         const bodyText = node.value?.body ? extractBodyText(node.value.body) : undefined;
 
-        // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID С НОМЕРОМ СТРОКИ
+        // ✅ ГЕНЕРИРУЕМ ID С УЧЕТОМ МОДУЛЯ И ФАЙЛА
         const funcId = idManager.generateCompactId({
           filePath: filePath || 'unknown',
           funcName: fullName,
@@ -1161,9 +1163,9 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
           security: analyzeSecurity(bodyText || ''),
           id: funcId,
           vscode: filePath ? `vscode://file/${filePath}:${node.loc?.start?.line || 1}` : '',
-          callsInfo: [],
-          calledByInfo: [],
-          importedBy: [],
+          // ✅ ДОБАВЛЯЕМ moduleId И fileId ДЛЯ КОРРЕКТНОЙ ИДЕНТИФИКАЦИИ
+          moduleId: moduleId,
+          fileId: fileId,
         };
 
         functions.push(funcInfo);
@@ -1215,6 +1217,8 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         startLine: node.loc?.start?.line || 1,
         endLine: node.loc?.end?.line || 1,
       };
+      (classInfo as any).moduleId = moduleId;
+      (classInfo as any).fileId = fileId;
 
       classes.push(classInfo);
 
@@ -1245,21 +1249,27 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
             const isConst = kind === 'const';
 
             if (isConst) {
-              constants.push({
+              const constInfo: ConstantInfo = {
                 name: name || 'unknown',
                 line: decl.loc?.start?.line || node.loc?.start?.line || 1,
                 value: extractValue(decl.init),
                 isExported,
                 type: decl.init?.type || undefined,
-              });
+              };
+              (constInfo as any).moduleId = moduleId;
+              (constInfo as any).fileId = fileId;
+              constants.push(constInfo);
             } else {
-              variables.push({
+              const varInfo: VariableInfo = {
                 name: name || 'unknown',
                 line: decl.loc?.start?.line || node.loc?.start?.line || 1,
                 isExported,
                 type: decl.init?.type || undefined,
                 value: extractValue(decl.init),
-              });
+              };
+              (varInfo as any).moduleId = moduleId;
+              (varInfo as any).fileId = fileId;
+              variables.push(varInfo);
             }
           }
         }
@@ -1283,7 +1293,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         }
       }
 
-      interfaces.push({
+      const intfInfo: InterfaceInfo = {
         name: name || 'unknown',
         line: node.loc?.start?.line || 1,
         isExported,
@@ -1291,7 +1301,10 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         extends: node.extends?.map((e: any) => e.expression?.name || e.name) || [],
         startLine: node.loc?.start?.line || 1,
         endLine: node.loc?.end?.line || 1,
-      });
+      };
+      (intfInfo as any).moduleId = moduleId;
+      (intfInfo as any).fileId = fileId;
+      interfaces.push(intfInfo);
     }
 
     // ==========================================
@@ -1301,12 +1314,15 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
       const name = node.id.name;
       const isExported = isNodeExported(node, parent);
 
-      types.push({
+      const typeInfo: TypeInfo = {
         name: name || 'unknown',
         line: node.loc?.start?.line || 1,
         isExported,
         definition: node.typeAnnotation?.type || 'unknown',
-      });
+      };
+      (typeInfo as any).moduleId = moduleId;
+      (typeInfo as any).fileId = fileId;
+      types.push(typeInfo);
     }
 
     // ==========================================
@@ -1383,7 +1399,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
   }
 
   // ==========================================
-  // СБОР ВЫЗОВОВ
+  // СБОР ВЫЗОВОВ - ОСНОВНОЙ ПРОХОД
   // ==========================================
   for (const func of functions) {
     let funcNode: any = null;
@@ -1408,7 +1424,8 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
       if (node.type === 'VariableDeclarator' && node.id?.name === func.name) {
         if (
           node.init &&
-          (node.init.type === 'ArrowFunctionExpression' || node.init.type === 'FunctionExpression')
+          (node.init.type === 'ArrowFunctionExpression' ||
+            node.init.type === 'FunctionExpression')
         ) {
           funcNode = node.init;
           found = true;
@@ -1445,11 +1462,139 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         includeAllIdentifiers: true,
         includeLocalCalls: true,
       });
-      func.calls = calls;
 
       if (calls.length > 0 && process.env.DEBUG === 'true') {
         console.log(`  📞 ${func.name} вызывает: ${calls.join(', ')}`);
       }
+
+      callGraph[func.name] ??= [];
+      for (const call of calls) {
+        if (!callGraph[func.name]!.includes(call)) {
+          callGraph[func.name]!.push(call);
+        }
+      }
+      func.calls = calls;
+    }
+  }
+
+  // ==========================================
+  // ДОПОЛНИТЕЛЬНЫЙ СБОР ВЫЗОВОВ - ВСЕ ВЫЗОВЫ, ВКЛЮЧАЯ ВЛОЖЕННЫЕ
+  // ==========================================
+
+  // Функция для рекурсивного сбора ВСЕХ вызовов из любого узла AST
+  function collectAllCallsRecursive(node: any, visited: Set<any>): string[] {
+    if (!node || visited.has(node)) return [];
+    visited.add(node);
+
+    const calls: string[] = [];
+
+    // CallExpression - прямой вызов функции
+    if (node.type === 'CallExpression' && node.callee) {
+      if (node.callee.type === 'Identifier') {
+        calls.push(node.callee.name);
+      } else if (node.callee.type === 'MemberExpression' && node.callee.property) {
+        if (node.callee.property.type === 'Identifier') {
+          calls.push(node.callee.property.name);
+        }
+      }
+    }
+
+    // NewExpression - вызов конструктора
+    if (node.type === 'NewExpression' && node.callee) {
+      if (node.callee.type === 'Identifier') {
+        calls.push(node.callee.name);
+      }
+    }
+
+    // Рекурсивный обход всех детей узла
+    for (const key of Object.keys(node)) {
+      const child = node[key];
+      if (child && typeof child === 'object') {
+        if (Array.isArray(child)) {
+          for (const item of child) {
+            if (item && typeof item === 'object') {
+              calls.push(...collectAllCallsRecursive(item, visited));
+            }
+          }
+        } else {
+          calls.push(...collectAllCallsRecursive(child, visited));
+        }
+      }
+    }
+
+    return calls;
+  }
+
+  // Функция для поиска узла функции в AST по имени
+  function findFunctionNodeByName(astNode: any, name: string): any | null {
+    if (!astNode || typeof astNode !== 'object') return null;
+
+    // Проверяем текущий узел
+    if (astNode.type === 'FunctionDeclaration' && astNode.id?.name === name) {
+      return astNode;
+    }
+    if (astNode.type === 'FunctionExpression' && astNode.id?.name === name) {
+      return astNode;
+    }
+    if (astNode.type === 'VariableDeclarator' && astNode.id?.name === name) {
+      if (astNode.init &&
+        (astNode.init.type === 'ArrowFunctionExpression' ||
+          astNode.init.type === 'FunctionExpression')) {
+        return astNode.init;
+      }
+    }
+    if (astNode.type === 'MethodDefinition' && astNode.key?.name === name) {
+      return astNode.value;
+    }
+
+    // Рекурсивный обход детей
+    for (const key of Object.keys(astNode)) {
+      const child = astNode[key];
+      if (child && typeof child === 'object') {
+        if (Array.isArray(child)) {
+          for (const item of child) {
+            if (item && typeof item === 'object') {
+              const result = findFunctionNodeByName(item, name);
+              if (result) return result;
+            }
+          }
+        } else {
+          const result = findFunctionNodeByName(child, name);
+          if (result) return result;
+        }
+      }
+    }
+
+    return null;
+  }
+
+  // Проходим по всем функциям и собираем ВСЕ вызовы из их тела
+  for (const func of functions) {
+    const funcNode = findFunctionNodeByName(ast, func.name);
+    if (funcNode) {
+      // Собираем ВСЕ вызовы, включая вложенные функции и выражения
+      const allCalls = collectAllCallsRecursive(funcNode, new Set());
+
+      // Фильтруем вызовы: убираем самого себя и дубликаты
+      const filteredCalls = allCalls.filter(call => call !== func.name);
+
+      // Проверяем существование массива перед доступом
+      if (!callGraph[func.name]) {
+        callGraph[func.name] = [];
+      }
+
+      // Безопасный доступ с проверкой
+      const callArray = callGraph[func.name];
+      if (callArray) {
+        for (const call of filteredCalls) {
+          if (!callArray.includes(call)) {
+            callArray.push(call);
+          }
+        }
+      }
+
+      // Обновляем func.calls (⚠️ deprecated, используйте callGraph.edges)
+      func.calls = callGraph[func.name] || [];
     }
   }
 
@@ -1457,38 +1602,12 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
   // ПОСТРОЕНИЕ calledBy
   // ==========================================
   for (const func of functions) {
+    func.calledBy = [];
     for (const otherFunc of functions) {
-      if (otherFunc.calls.includes(func.name) && !func.calledBy.includes(otherFunc.name)) {
-        func.calledBy.push(otherFunc.name);
-      }
-    }
-  }
-
-  // ==========================================
-  // ПОСТРОЕНИЕ callGraph
-  // ==========================================
-  for (const func of functions) {
-    if (!callGraph[func.name]) {
-      callGraph[func.name] = [];
-    }
-    const funcCalls = callGraph[func.name];
-    if (funcCalls) {
-      for (const call of func.calls) {
-        if (!funcCalls.includes(call)) {
-          funcCalls.push(call);
+      if (otherFunc.calls && otherFunc.calls.includes(func.name)) {
+        if (!func.calledBy.includes(otherFunc.name)) {
+          func.calledBy.push(otherFunc.name);
         }
-      }
-    }
-  }
-
-  for (const func of functions) {
-    if (func.parentFunction) {
-      if (!callGraph[func.parentFunction]) {
-        callGraph[func.parentFunction] = [];
-      }
-      const parentCalls = callGraph[func.parentFunction];
-      if (parentCalls && !parentCalls.includes(func.name)) {
-        parentCalls.push(func.name);
       }
     }
   }
@@ -1507,6 +1626,14 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
   result.callGraph = callGraph;
   result.moduleName = filePath ? path.basename(filePath) : 'unknown';
   result.filePath = filePath || 'unknown';
+
+  // ==========================================
+  // ДОБАВЛЯЕМ moduleId И fileId В РЕЗУЛЬТАТ
+  // ==========================================
+  if (filePath) {
+    (result as any)._moduleId = moduleId;
+    (result as any)._fileId = fileId;
+  }
 
   return result;
 }

@@ -2,18 +2,23 @@
 
 import type { SourceFile, Node, FunctionDeclaration } from 'ts-morph';
 import { Project, SyntaxKind } from 'ts-morph';
-import { CFGAnalyzer } from '../semantic/CFGAnalyzer';
-import { CallGraphAnalyzer } from '../semantic/CallGraphAnalyzer';
-import { TypeAnalyzer } from '../semantic/TypeAnalyzer';
-import { DataFlowAnalyzer } from '../semantic/DataFlowAnalyzer';
-import type { FunctionContract } from '../formal/Z3Verifier';
-import { Z3Verifier, range } from '../formal/Z3Verifier';
-import type { JSXAnalysisResult } from '../semantic/JSXAnalyzer';
-import { JSXAnalyzer } from '../semantic/JSXAnalyzer';
+import { CFGAnalyzer } from '../semantic/CFGAnalyzer.js';
+import { CallGraphAnalyzer } from '../semantic/CallGraphAnalyzer.js';
+import { TypeAnalyzer } from '../semantic/TypeAnalyzer.js';
+import { DataFlowAnalyzer } from '../semantic/DataFlowAnalyzer.js';
+import type { FunctionContract } from '../formal/Z3Verifier.js';
+import { Z3Verifier, range } from '../formal/Z3Verifier.js';
+import type { JSXAnalysisResult } from '../semantic/JSXAnalyzer.js';
+import { JSXAnalyzer } from '../semantic/JSXAnalyzer.js';
 import fs from 'fs';
 import path from 'path';
 import { glob } from 'glob';
 import { findWasmPath } from '../utils/wasm-utils.js';
+import { Logger, LogLevel } from '../utils/Logger.js';
+
+// ============================================
+// ТИПЫ
+// ============================================
 
 export interface PipelineResult {
   success: boolean;
@@ -35,6 +40,11 @@ export interface PipelineResult {
   timestamp: string;
   duration: number;
   jsxAnalysis?: JSXAnalysisResult;
+  summary?: {
+    errors: number;
+    warnings: number;
+    info: number;
+  };
 }
 
 export interface PipelineIssue {
@@ -77,7 +87,17 @@ export interface PipelineOptions {
   outputDir?: string;
   failOnWarnings?: boolean;
   wasmPath?: string;
+  verbose?: boolean;
+  enableCFG?: boolean;
+  enableCallGraph?: boolean;
+  enableTypeAnalysis?: boolean;
+  enableDataFlow?: boolean;
+  enableJSX?: boolean;
 }
+
+// ============================================
+// ОСНОВНОЙ КЛАСС
+// ============================================
 
 export class SemanticPipeline {
   private project: Project;
@@ -87,8 +107,9 @@ export class SemanticPipeline {
   private dataFlowAnalyzer: DataFlowAnalyzer;
   private initialized = false;
   private wasmPath: string;
+  private logger: Logger;
 
-  constructor(options?: { wasmPath?: string }) {
+  constructor(options?: { wasmPath?: string; logLevel?: string }) {
     // Определяем путь к WASM
     if (options?.wasmPath) {
       this.wasmPath = options.wasmPath;
@@ -96,7 +117,12 @@ export class SemanticPipeline {
       this.wasmPath = findWasmPath();
     }
 
-    console.log(`🔧 WASM path: ${this.wasmPath}`);
+    this.logger = new Logger(
+      options?.logLevel ? this.parseLogLevel(options.logLevel) : LogLevel.INFO,
+      './semantic-pipeline.log'
+    );
+
+    this.logger.info(`🔧 WASM path: ${this.wasmPath}`);
 
     this.project = new Project({
       compilerOptions: {
@@ -116,20 +142,55 @@ export class SemanticPipeline {
     this.z3Verifier = new Z3Verifier();
   }
 
+  // ============================================
+  // ИНИЦИАЛИЗАЦИЯ
+  // ============================================
+
+  private parseLogLevel(level: string): LogLevel {
+    const map: Record<string, LogLevel> = {
+      debug: LogLevel.DEBUG,
+      info: LogLevel.INFO,
+      warn: LogLevel.WARN,
+      error: LogLevel.ERROR,
+      none: LogLevel.NONE,
+    };
+    return map[level.toLowerCase()] || LogLevel.INFO;
+  }
+
+  async initialize(): Promise<void> {
+    if (this.initialized) {
+      this.logger.debug('SemanticPipeline already initialized');
+      return;
+    }
+
+    this.logger.info('🚀 Initializing Semantic Pipeline...');
+
+    try {
+      await this.z3Verifier.initialize();
+      this.initialized = true;
+      this.logger.info('✅ All components initialized successfully');
+    } catch (error) {
+      this.logger.error('❌ Initialization failed:', { error: String(error) });
+      throw error;
+    }
+  }
+
+  // ============================================
+  // ОСНОВНОЙ МЕТОД RUN
+  // ============================================
+
   async run(filePaths: string[], options: PipelineOptions = {}): Promise<PipelineResult> {
     const startTime = Date.now();
 
-    console.log('\n' + '='.repeat(70));
-    console.log('🔬 SEMANTIC ANALYSIS PIPELINE');
-    console.log('='.repeat(70));
-    console.log(`📁 Files: ${filePaths.length}`);
-    console.log(`🔧 Formal verification: ${options.formalVerification ? 'ON' : 'OFF'}`);
-    console.log(`📊 Max complexity threshold: ${options.maxComplexity || 10}`);
-    console.log(`🎯 Critical functions: ${options.criticalFunctions?.length || 0}\n`);
+    await this.initialize();
 
-    if (!this.initialized) {
-      await this.initialize();
-    }
+    this.logger.info('\n' + '='.repeat(70));
+    this.logger.info('🔬 SEMANTIC ANALYSIS PIPELINE');
+    this.logger.info('='.repeat(70));
+    this.logger.info(`📁 Files: ${filePaths.length}`);
+    this.logger.info(`🔧 Formal verification: ${options.formalVerification ? 'ON' : 'OFF'}`);
+    this.logger.info(`📊 Max complexity threshold: ${options.maxComplexity || 10}`);
+    this.logger.info(`🎯 Critical functions: ${options.criticalFunctions?.length || 0}\n`);
 
     const issues: PipelineIssue[] = [];
     const verificationResults: VerificationResult[] = [];
@@ -149,108 +210,128 @@ export class SemanticPipeline {
       fs.existsSync(this.wasmPath) && fs.readdirSync(this.wasmPath).some(f => f.endsWith('.wasm'));
 
     if (!wasmAvailable) {
-      console.warn('⚠️ WASM not available, Call Graph analysis will be skipped');
-      console.warn(`   Looking for WASM in: ${this.wasmPath}`);
+      this.logger.warn('⚠️ WASM not available, Call Graph analysis will be skipped');
+      this.logger.warn(`   Looking for WASM in: ${this.wasmPath}`);
     }
 
-    for (const filePath of filePaths) {
+    // Собираем все файлы для анализа
+    const allFiles = await this.collectFiles(filePaths);
+
+    if (allFiles.length === 0) {
+      this.logger.error('❌ No files found for analysis');
+      return this.createEmptyResult(startTime);
+    }
+
+    for (const filePath of allFiles) {
       if (!fs.existsSync(filePath)) {
-        console.warn(`⚠️ File not found: ${filePath}`);
+        this.logger.warn(`⚠️ File not found: ${filePath}`);
         continue;
       }
 
-      console.log(`\n📄 Analyzing: ${path.basename(filePath)}`);
+      this.logger.info(`\n📄 Analyzing: ${path.basename(filePath)}`);
       totalFiles++;
 
       let sourceFile: SourceFile | undefined;
       try {
         sourceFile = this.project.addSourceFileAtPath(filePath);
         if (!sourceFile) {
-          console.error(`  ❌ Failed to load: ${filePath}`);
+          this.logger.error(`  ❌ Failed to load: ${filePath}`);
           continue;
         }
       } catch (error) {
-        console.error(`  ❌ Error loading: ${error}`);
+        this.logger.error(`  ❌ Error loading:`, { error: String(error) });
         continue;
       }
 
-      // JSX/TSX АНАЛИЗ
-      if (filePath.endsWith('.tsx') || filePath.endsWith('.jsx')) {
-        console.log('  ⚛️ Analyzing JSX/TSX...');
+      // ============================================
+      // 1. JSX/TSX АНАЛИЗ
+      // ============================================
+      if (options.enableJSX !== false && (filePath.endsWith('.tsx') || filePath.endsWith('.jsx'))) {
+        this.logger.info('  ⚛️ Analyzing JSX/TSX...');
 
-        const jsxAnalyzer = new JSXAnalyzer(filePath);
-        const jsxAnalysis = jsxAnalyzer.analyze(sourceFile);
+        try {
+          const jsxAnalyzer = new JSXAnalyzer(filePath);
+          const jsxAnalysis = jsxAnalyzer.analyze(sourceFile);
 
-        jsxResults.set(filePath, jsxAnalysis);
+          jsxResults.set(filePath, jsxAnalysis);
 
-        for (const error of jsxAnalysis.propTypeErrors) {
-          issues.push({
-            id: `jsx_${Date.now()}_${Math.random()}`,
-            type: 'type_error',
-            severity: 'error',
-            file: filePath,
-            line: error.location.line,
-            column: error.location.column,
-            message: error.message,
-            suggestion: 'Check prop types for component',
-          });
-        }
-
-        console.log(`     📊 JSX elements: ${jsxAnalysis.elements.length}`);
-        console.log(`     🧩 Components: ${jsxAnalysis.componentProps.size}`);
-
-        if (jsxAnalysis.missingImports.length > 0) {
-          console.log(`     ⚠️ Missing imports: ${jsxAnalysis.missingImports.join(', ')}`);
-        }
-      }
-
-      // 1. CFG анализ
-      console.log('  🔀 Building Control Flow Graph...');
-      try {
-        const cfg = this.cfgAnalyzer.build(sourceFile);
-        const unreachable = cfg.findUnreachableBlocks();
-
-        for (const block of unreachable) {
-          const firstInst = block.instructions[0];
-          if (firstInst) {
+          for (const error of jsxAnalysis.propTypeErrors) {
             issues.push({
-              id: `unreachable_${Date.now()}_${Math.random()}`,
-              type: 'unreachable_code',
-              severity: 'warning',
+              id: `jsx_${Date.now()}_${Math.random()}`,
+              type: 'type_error',
+              severity: 'error',
               file: filePath,
-              line: firstInst.getStartLineNumber(),
-              column: firstInst.getStartLinePos(),
-              message: 'Unreachable code detected',
-              suggestion:
-                'Remove or refactor this code block, or check the condition that makes it unreachable',
+              line: error.location.line,
+              column: error.location.column,
+              message: error.message,
+              suggestion: 'Check prop types for component',
             });
           }
-          unreachableBlocks++;
-        }
 
-        const complexity = this.calculateComplexity(cfg);
-        cyclomaticComplexity += complexity;
+          this.logger.info(`     📊 JSX elements: ${jsxAnalysis.elements.length}`);
+          this.logger.info(`     🧩 Components: ${jsxAnalysis.componentProps.size}`);
 
-        if (complexity > (options.maxComplexity || 10)) {
-          issues.push({
-            id: `complexity_${Date.now()}_${Math.random()}`,
-            type: 'complexity',
-            severity: 'warning',
-            file: filePath,
-            line: 1,
-            column: 1,
-            message: `High cyclomatic complexity: ${complexity} (threshold: ${options.maxComplexity || 10})`,
-            suggestion: 'Consider breaking down the function into smaller, more focused functions',
-          });
+          if (jsxAnalysis.missingImports.length > 0) {
+            this.logger.info(`     ⚠️ Missing imports: ${jsxAnalysis.missingImports.join(', ')}`);
+          }
+        } catch (error) {
+          this.logger.warn(`     ⚠️ JSX analysis failed:`, { error: String(error) });
         }
-      } catch (error) {
-        console.error(`  ❌ CFG analysis failed: ${error}`);
-        // Не прерываем выполнение, продолжаем с другими анализаторами
       }
 
-      // 2. Call Graph анализ (только если WASM доступен)
-      if (wasmAvailable) {
-        console.log('  🕸️ Building Call Graph...');
+      // ============================================
+      // 2. CFG АНАЛИЗ (Control Flow Graph)
+      // ============================================
+      if (options.enableCFG !== false) {
+        this.logger.info('  🔀 Building Control Flow Graph...');
+        try {
+          const cfg = this.cfgAnalyzer.build(sourceFile);
+          const unreachable = cfg.findUnreachableBlocks();
+
+          for (const block of unreachable) {
+            const firstInst = block.instructions[0];
+            if (firstInst) {
+              issues.push({
+                id: `unreachable_${Date.now()}_${Math.random()}`,
+                type: 'unreachable_code',
+                severity: 'warning',
+                file: filePath,
+                line: firstInst.getStartLineNumber(),
+                column: firstInst.getStartLinePos(),
+                message: 'Unreachable code detected',
+                suggestion:
+                  'Remove or refactor this code block, or check the condition that makes it unreachable',
+              });
+            }
+            unreachableBlocks++;
+          }
+
+          const complexity = this.calculateComplexity(cfg);
+          cyclomaticComplexity += complexity;
+
+          if (complexity > (options.maxComplexity || 10)) {
+            issues.push({
+              id: `complexity_${Date.now()}_${Math.random()}`,
+              type: 'complexity',
+              severity: 'warning',
+              file: filePath,
+              line: 1,
+              column: 1,
+              message: `High cyclomatic complexity: ${complexity} (threshold: ${options.maxComplexity || 10})`,
+              suggestion:
+                'Consider breaking down the function into smaller, more focused functions',
+            });
+          }
+        } catch (error) {
+          this.logger.warn(`  ❌ CFG analysis failed:`, { error: String(error) });
+        }
+      }
+
+      // ============================================
+      // 3. CALL GRAPH АНАЛИЗ
+      // ============================================
+      if (options.enableCallGraph !== false && wasmAvailable) {
+        this.logger.info('  🕸️ Building Call Graph...');
         try {
           const callGraph = await this.callGraphAnalyzer.analyze(filePath, options.maxDepth || 10);
           const unused = callGraph.findUnusedFunctions();
@@ -291,103 +372,112 @@ export class SemanticPipeline {
             });
           }
 
-          // ✅ ИСПРАВЛЕННЫЙ ВЫЗОВ: используем analyzeAllJSXComponents с правильным параметром
+          // JSX компонент зависимости
           try {
             const rootDir = path.dirname(filePath);
             const jsxDeps = await this.callGraphAnalyzer.analyzeAllJSXComponents(rootDir);
             if (jsxDeps.size > 0) {
-              console.log(`     📦 JSX component dependencies: ${jsxDeps.size}`);
+              this.logger.info(`     📦 JSX component dependencies: ${jsxDeps.size}`);
               for (const [component, deps] of jsxDeps) {
-                console.log(`       ${component} → ${deps.join(', ')}`);
+                this.logger.info(`       ${component} → ${deps.join(', ')}`);
               }
             }
           } catch (jsxError) {
-            console.warn('     ⚠️ JSX analysis error:', jsxError);
-            // Не прерываем выполнение, продолжаем с другими анализаторами
+            this.logger.warn('     ⚠️ JSX analysis error:', { error: String(jsxError) });
           }
         } catch (error) {
-          console.error(`  ❌ Call graph analysis failed: ${error}`);
+          this.logger.warn(`  ❌ Call graph analysis failed:`, { error: String(error) });
         }
-      } else {
-        console.log('  ⏭️ Call Graph analysis skipped (WASM not available)');
+      } else if (options.enableCallGraph !== false && !wasmAvailable) {
+        this.logger.info('  ⏭️ Call Graph analysis skipped (WASM not available)');
       }
 
-      // 3. Type анализ
-      console.log('  📝 Analyzing Types...');
-      try {
-        const typeAnalyzer = new TypeAnalyzer(filePath);
-        const typeAnalysis = typeAnalyzer.analyze();
-        const errors = typeAnalysis.findTypeErrors();
+      // ============================================
+      // 4. TYPE АНАЛИЗ
+      // ============================================
+      if (options.enableTypeAnalysis !== false) {
+        this.logger.info('  📝 Analyzing Types...');
+        try {
+          const typeAnalyzer = new TypeAnalyzer(filePath);
+          const typeAnalysis = typeAnalyzer.analyze();
+          const errors = typeAnalysis.findTypeErrors();
 
-        typeErrors += errors.length;
+          typeErrors += errors.length;
 
-        for (const error of errors) {
-          issues.push({
-            id: `type_${Date.now()}_${Math.random()}`,
-            type: 'type_error',
-            severity: 'error',
-            file: filePath,
-            line: error.location.line,
-            column: error.location.column,
-            message: `Type mismatch: ${error.message}`,
-            suggestion: `Change type to '${error.expected}' or use type assertion 'as ${error.expected}'`,
-            code: `Expected: ${error.expected}, Got: ${error.actual}`,
-          });
-        }
-      } catch (error) {
-        console.error(`  ❌ Type analysis failed: ${error}`);
-      }
-
-      // 4. Data Flow анализ
-      console.log('  🌊 Analyzing Data Flow...');
-      try {
-        const dataFlow = this.dataFlowAnalyzer.analyze(sourceFile);
-        const unusedVars = dataFlow.findUnusedVariables();
-        const reassignedConsts = dataFlow.findReassignedConstants();
-
-        unusedVariables += unusedVars.length;
-
-        for (const varNode of unusedVars) {
-          issues.push({
-            id: `unused_var_${Date.now()}_${Math.random()}`,
-            type: 'unused_variable',
-            severity: 'info',
-            file: filePath,
-            line: varNode.line,
-            column: varNode.column,
-            message: `Variable '${varNode.name}' is declared but never used`,
-            suggestion: 'Remove the variable or use it in the code',
-            code: varNode.name,
-          });
-        }
-
-        for (const constNode of reassignedConsts) {
-          issues.push({
-            id: `reassign_${Date.now()}_${Math.random()}`,
-            type: 'data_flow',
-            severity: 'error',
-            file: filePath,
-            line: constNode.line,
-            column: constNode.column,
-            message: `Constant '${constNode.name}' is reassigned`,
-            suggestion: "Use 'let' instead of 'const' or remove the reassignment",
-            code: constNode.name,
-          });
-        }
-
-        if (options.checkNullPointers) {
-          const nullIssues = await this.checkNullPointers(sourceFile);
-          for (const issue of nullIssues) {
-            issues.push(issue);
+          for (const error of errors) {
+            issues.push({
+              id: `type_${Date.now()}_${Math.random()}`,
+              type: 'type_error',
+              severity: 'error',
+              file: filePath,
+              line: error.location.line,
+              column: error.location.column,
+              message: `Type mismatch: ${error.message}`,
+              suggestion: `Change type to '${error.expected}' or use type assertion 'as ${error.expected}'`,
+              code: `Expected: ${error.expected}, Got: ${error.actual}`,
+            });
           }
+        } catch (error) {
+          this.logger.warn(`  ❌ Type analysis failed:`, { error: String(error) });
         }
-      } catch (error) {
-        console.error(`  ❌ Data flow analysis failed: ${error}`);
       }
 
-      // 5. Формальная верификация (опционально)
+      // ============================================
+      // 5. DATA FLOW АНАЛИЗ
+      // ============================================
+      if (options.enableDataFlow !== false) {
+        this.logger.info('  🌊 Analyzing Data Flow...');
+        try {
+          const dataFlow = this.dataFlowAnalyzer.analyze(sourceFile);
+          const unusedVars = dataFlow.findUnusedVariables();
+          const reassignedConsts = dataFlow.findReassignedConstants();
+
+          unusedVariables += unusedVars.length;
+
+          for (const varNode of unusedVars) {
+            issues.push({
+              id: `unused_var_${Date.now()}_${Math.random()}`,
+              type: 'unused_variable',
+              severity: 'info',
+              file: filePath,
+              line: varNode.line,
+              column: varNode.column,
+              message: `Variable '${varNode.name}' is declared but never used`,
+              suggestion: 'Remove the variable or use it in the code',
+              code: varNode.name,
+            });
+          }
+
+          for (const constNode of reassignedConsts) {
+            issues.push({
+              id: `reassign_${Date.now()}_${Math.random()}`,
+              type: 'data_flow',
+              severity: 'error',
+              file: filePath,
+              line: constNode.line,
+              column: constNode.column,
+              message: `Constant '${constNode.name}' is reassigned`,
+              suggestion: "Use 'let' instead of 'const' or remove the reassignment",
+              code: constNode.name,
+            });
+          }
+
+          if (options.checkNullPointers) {
+            const nullIssues = await this.checkNullPointers(sourceFile);
+            for (const issue of nullIssues) {
+              issues.push(issue);
+            }
+          }
+        } catch (error) {
+          this.logger.warn(`  ❌ Data flow analysis failed:`, { error: String(error) });
+        }
+      }
+
+      // ============================================
+      // 6. ФОРМАЛЬНАЯ ВЕРИФИКАЦИЯ
+      // ============================================
       if (options.formalVerification) {
-        console.log('  🔬 Running Formal Verification...');
+        this.logger.info('  🔬 Running Formal Verification...');
 
         const functions = sourceFile.getFunctions();
         const criticalSet = new Set(options.criticalFunctions || []);
@@ -425,19 +515,24 @@ export class SemanticPipeline {
                   code: result.error,
                 });
               } else {
-                console.log(`    ✅ ${funcName} verified (${result.time}ms)`);
+                this.logger.info(`    ✅ ${funcName} verified (${result.time}ms)`);
               }
             } catch (error) {
-              console.error(`    ❌ Verification failed for ${funcName}: ${error}`);
+              this.logger.error(`    ❌ Verification failed for ${funcName}:`, { error: String(error) });
             }
           }
         }
       }
     }
 
+    // ============================================
+    // 7. ИТОГИ
+    // ============================================
+
     const duration = Date.now() - startTime;
     const errorCount = issues.filter(i => i.severity === 'error').length;
     const warningCount = issues.filter(i => i.severity === 'warning').length;
+    const infoCount = issues.filter(i => i.severity === 'info').length;
     const success = errorCount === 0 && (!options.failOnWarnings || warningCount === 0);
 
     const metrics = {
@@ -462,6 +557,11 @@ export class SemanticPipeline {
       timestamp: new Date().toISOString(),
       duration,
       jsxAnalysis: jsxResults.size > 0 ? Array.from(jsxResults.values())[0] : undefined,
+      summary: {
+        errors: errorCount,
+        warnings: warningCount,
+        info: infoCount,
+      },
     };
 
     this.printReport(result);
@@ -477,17 +577,71 @@ export class SemanticPipeline {
     return result;
   }
 
-  private async initialize(): Promise<void> {
-    console.log('🚀 Initializing Semantic Pipeline...');
+  // ============================================
+  // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
+  // ============================================
 
-    try {
-      await this.z3Verifier.initialize();
-      this.initialized = true;
-      console.log('✅ All components initialized successfully');
-    } catch (error) {
-      console.error('❌ Initialization failed:', error);
-      throw error;
+  private async collectFiles(paths: string[]): Promise<string[]> {
+    const files: string[] = [];
+    const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.vue'];
+
+    for (const inputPath of paths) {
+      const resolvedPath = path.resolve(inputPath);
+
+      if (!fs.existsSync(resolvedPath)) {
+        this.logger.warn(`⚠️ Path does not exist: ${inputPath}`);
+        continue;
+      }
+
+      const stat = fs.statSync(resolvedPath);
+
+      if (stat.isFile()) {
+        if (extensions.includes(path.extname(resolvedPath))) {
+          files.push(resolvedPath);
+        }
+      } else if (stat.isDirectory()) {
+        const pattern = `${resolvedPath}/**/*{${extensions.join(',')}}`;
+        const matched = await glob(pattern, {
+          nodir: true,
+          ignore: [
+            '**/node_modules/**',
+            '**/dist/**',
+            '**/build/**',
+            '**/coverage/**',
+            '**/*.d.ts',
+            '**/*.test.ts',
+            '**/*.spec.ts',
+          ],
+          absolute: true,
+        });
+        files.push(...matched);
+      }
     }
+
+    return [...new Set(files)];
+  }
+
+  private createEmptyResult(startTime: number): PipelineResult {
+    return {
+      success: false,
+      metrics: {
+        totalFunctions: 0,
+        totalFiles: 0,
+        unusedFunctions: 0,
+        unusedVariables: 0,
+        potentialBugs: 0,
+        verifiedFunctions: 0,
+        cyclomaticComplexity: 0,
+        dataFlowIssues: 0,
+        typeErrors: 0,
+        cyclicDependencies: 0,
+        unreachableBlocks: 0,
+      },
+      issues: [],
+      verificationResults: [],
+      timestamp: new Date().toISOString(),
+      duration: Date.now() - startTime,
+    };
   }
 
   private async extractContract(func: FunctionDeclaration): Promise<FunctionContract> {
@@ -627,68 +781,74 @@ export class SemanticPipeline {
     return Math.max(1, edges - nodes + 2);
   }
 
+  // ============================================
+  // ОТЧЕТЫ
+  // ============================================
+
   private printReport(result: PipelineResult): void {
-    console.log('\n' + '='.repeat(70));
-    console.log('📊 SEMANTIC ANALYSIS REPORT');
-    console.log('='.repeat(70));
+    const { logger } = this;
+
+    logger.info('\n' + '='.repeat(70));
+    logger.info('📊 SEMANTIC ANALYSIS REPORT');
+    logger.info('='.repeat(70));
 
     const statusIcon = result.success ? '✅' : '❌';
     const statusText = result.success ? 'PASSED' : 'FAILED';
-    console.log(`${statusIcon} Status: ${statusText}`);
-    console.log(`⏱️  Duration: ${(result.duration / 1000).toFixed(2)}s`);
-    console.log(`📅 Timestamp: ${new Date(result.timestamp).toLocaleString()}`);
+    logger.info(`${statusIcon} Status: ${statusText}`);
+    logger.info(`⏱️  Duration: ${(result.duration / 1000).toFixed(2)}s`);
+    logger.info(`📅 Timestamp: ${new Date(result.timestamp).toLocaleString()}`);
 
-    console.log('\n📈 Metrics:');
-    console.log(`   • Total files analyzed: ${result.metrics.totalFiles}`);
-    console.log(`   • Total functions: ${result.metrics.totalFunctions}`);
-    console.log(`   • Unused functions: ${result.metrics.unusedFunctions}`);
-    console.log(`   • Unused variables: ${result.metrics.unusedVariables}`);
-    console.log(`   • Cyclomatic complexity (total): ${result.metrics.cyclomaticComplexity}`);
-    console.log(`   • Type errors: ${result.metrics.typeErrors}`);
-    console.log(`   • Cyclic dependencies: ${result.metrics.cyclicDependencies}`);
-    console.log(`   • Unreachable blocks: ${result.metrics.unreachableBlocks}`);
-    console.log(
+    logger.info('\n📈 Metrics:');
+    logger.info(`   • Total files analyzed: ${result.metrics.totalFiles}`);
+    logger.info(`   • Total functions: ${result.metrics.totalFunctions}`);
+    logger.info(`   • Unused functions: ${result.metrics.unusedFunctions}`);
+    logger.info(`   • Unused variables: ${result.metrics.unusedVariables}`);
+    logger.info(`   • Cyclomatic complexity (total): ${result.metrics.cyclomaticComplexity}`);
+    logger.info(`   • Type errors: ${result.metrics.typeErrors}`);
+    logger.info(`   • Cyclic dependencies: ${result.metrics.cyclicDependencies}`);
+    logger.info(`   • Unreachable blocks: ${result.metrics.unreachableBlocks}`);
+    logger.info(
       `   • Verified functions: ${result.metrics.verifiedFunctions}/${result.verificationResults.length}`
     );
 
     if (result.jsxAnalysis) {
-      console.log('\n⚛️ JSX/TSX Statistics:');
-      console.log(`   • JSX elements: ${result.jsxAnalysis.elements.length}`);
-      console.log(`   • Components: ${result.jsxAnalysis.componentProps.size}`);
-      console.log(`   • Prop type errors: ${result.jsxAnalysis.propTypeErrors.length}`);
+      logger.info('\n⚛️ JSX/TSX Statistics:');
+      logger.info(`   • JSX elements: ${result.jsxAnalysis.elements.length}`);
+      logger.info(`   • Components: ${result.jsxAnalysis.componentProps.size}`);
+      logger.info(`   • Prop type errors: ${result.jsxAnalysis.propTypeErrors.length}`);
     }
 
     const errorCount = result.issues.filter(i => i.severity === 'error').length;
     const warningCount = result.issues.filter(i => i.severity === 'warning').length;
     const infoCount = result.issues.filter(i => i.severity === 'info').length;
 
-    console.log('\n⚠️ Issues Summary:');
-    console.log(`   • Errors: ${errorCount}`);
-    console.log(`   • Warnings: ${warningCount}`);
-    console.log(`   • Info: ${infoCount}`);
+    logger.info('\n⚠️ Issues Summary:');
+    logger.info(`   • Errors: ${errorCount}`);
+    logger.info(`   • Warnings: ${warningCount}`);
+    logger.info(`   • Info: ${infoCount}`);
 
     if (errorCount > 0) {
-      console.log('\n🔴 Top Errors (first 10):');
+      logger.info('\n🔴 Top Errors (first 10):');
       for (const error of result.issues.slice(0, 10)) {
         const fileName = path.basename(error.file);
-        console.log(`   • ${fileName}:${error.line} - ${error.message}`);
+        logger.info(`   • ${fileName}:${error.line} - ${error.message}`);
         if (error.suggestion) {
-          console.log(`     💡 ${error.suggestion}`);
+          logger.info(`     💡 ${error.suggestion}`);
         }
       }
       if (errorCount > 10) {
-        console.log(`   ... and ${errorCount - 10} more errors`);
+        logger.info(`   ... and ${errorCount - 10} more errors`);
       }
     }
 
     if (warningCount > 0 && result.success) {
-      console.log('\n🟡 Warnings (first 5):');
+      logger.info('\n🟡 Warnings (first 5):');
       for (const warning of result.issues.slice(0, 5)) {
         const fileName = path.basename(warning.file);
-        console.log(`   • ${fileName}:${warning.line} - ${warning.message}`);
+        logger.info(`   • ${fileName}:${warning.line} - ${warning.message}`);
       }
       if (warningCount > 5) {
-        console.log(`   ... and ${warningCount - 5} more warnings`);
+        logger.info(`   ... and ${warningCount - 5} more warnings`);
       }
     }
 
@@ -696,16 +856,16 @@ export class SemanticPipeline {
       const verified = result.verificationResults.filter(r => r.isValid);
       const failed = result.verificationResults.filter(r => !r.isValid);
 
-      console.log('\n🔬 Formal Verification Results:');
-      console.log(`   • Verified: ${verified.length}`);
-      console.log(`   • Failed: ${failed.length}`);
+      logger.info('\n🔬 Formal Verification Results:');
+      logger.info(`   • Verified: ${verified.length}`);
+      logger.info(`   • Failed: ${failed.length}`);
 
       if (failed.length > 0) {
-        console.log('\n   Failed functions:');
+        logger.info('\n   Failed functions:');
         for (const fail of failed.slice(0, 5)) {
-          console.log(`   • ${fail.functionName} (${fail.file})`);
+          logger.info(`   • ${fail.functionName} (${fail.file})`);
           if (fail.counterexample) {
-            console.log(
+            logger.info(
               `     Counterexample: ${JSON.stringify(Object.fromEntries(fail.counterexample))}`
             );
           }
@@ -713,14 +873,14 @@ export class SemanticPipeline {
       }
     }
 
-    console.log('\n' + '='.repeat(70));
+    logger.info('\n' + '='.repeat(70));
 
     if (result.success) {
-      console.log('✨ PIPELINE COMPLETED SUCCESSFULLY');
+      logger.info('✨ PIPELINE COMPLETED SUCCESSFULLY');
     } else {
-      console.log('❌ PIPELINE FAILED - Please fix the errors above');
+      logger.info('❌ PIPELINE FAILED - Please fix the errors above');
     }
-    console.log('='.repeat(70) + '\n');
+    logger.info('='.repeat(70) + '\n');
   }
 
   private async saveReport(
@@ -738,23 +898,27 @@ export class SemanticPipeline {
     if (format === 'json' || format === 'html') {
       const jsonPath = path.join(outputDir, `${baseName}.json`);
       fs.writeFileSync(jsonPath, JSON.stringify(result, null, 2));
-      console.log(`📄 JSON report saved: ${jsonPath}`);
+      this.logger.info(`📄 JSON report saved: ${jsonPath}`);
     }
 
     if (format === 'html') {
       const htmlPath = path.join(outputDir, `${baseName}.html`);
       fs.writeFileSync(htmlPath, this.generateHTMLReport(result));
-      console.log(`📊 HTML report saved: ${htmlPath}`);
+      this.logger.info(`📊 HTML report saved: ${htmlPath}`);
     }
 
     if (format === 'markdown') {
       const mdPath = path.join(outputDir, `${baseName}.md`);
       fs.writeFileSync(mdPath, this.generateMarkdownReport(result));
-      console.log(`📝 Markdown report saved: ${mdPath}`);
+      this.logger.info(`📝 Markdown report saved: ${mdPath}`);
     }
   }
 
   private generateHTMLReport(result: PipelineResult): string {
+    // const errorCount = result.issues.filter(i => i.severity === 'error').length;
+    // const warningCount = result.issues.filter(i => i.severity === 'warning').length;
+    // const infoCount = result.issues.filter(i => i.severity === 'info').length;
+    
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1106,7 +1270,22 @@ export class SemanticPipeline {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
   }
+
+  // ============================================
+  // ДИСПОЗИЦИЯ
+  // ============================================
+
+  async dispose(): Promise<void> {
+    await this.z3Verifier.dispose();
+    this.logger.close();
+    this.initialized = false;
+    this.logger.info('✅ SemanticPipeline disposed');
+  }
 }
+
+// ============================================
+// УТИЛИТНАЯ ФУНКЦИЯ ДЛЯ ЗАПУСКА
+// ============================================
 
 export async function runSemanticPipeline(
   paths: string[],
@@ -1159,3 +1338,5 @@ export async function runSemanticPipeline(
 
   return pipeline.run(files, options);
 }
+
+export default SemanticPipeline;

@@ -1,147 +1,33 @@
 // src/reporters/modules/types.ts
+// ============================================================
+// ТИПЫ ДЛЯ МОДУЛЕЙ РЕПОРТЕРОВ
+// ============================================================
 
 // ============================================================
-// ТИПЫ ДЛЯ МОДУЛЕЙ REPORTERS
+// ОСНОВНЫЕ ТИПЫ ДЛЯ СУЩНОСТЕЙ
 // ============================================================
 
-export interface ModuleNode {
-  id: string;
-  name: string;
-  path: string;
-  type: 'module' | 'component' | 'vue' | 'external';
-  level: number;
-  metadata: {
-    size: number;
-    lines: number;
-    language: string;
-    isEntry: boolean;
-    functionsCount?: number;
-    classesCount?: number;
-    exportsCount?: number;
+export interface SecurityInfo {
+  hasEval: boolean;
+  hasProcessEnv: boolean;
+  hasSensitiveData: boolean;
+  hasExec: boolean;
+  hasPassword: boolean;
+}
+
+export function createDefaultSecurity(): SecurityInfo {
+  return {
+    hasEval: false,
+    hasProcessEnv: false,
+    hasSensitiveData: false,
+    hasExec: false,
+    hasPassword: false,
   };
 }
 
-export interface ModuleEdge {
-  from: string;
-  to: string;
-  type: 'import' | 'external' | 're-export' | 'dynamic_import';
-  specifiers: string[];
-  sourceCode?: string;
-}
-
-export interface ModuleGraph {
-  nodes: ModuleNode[];
-  edges: ModuleEdge[];
-  stats?: {
-    totalNodes: number;
-    totalEdges: number;
-    maxDepth: number;
-    hasCycles: boolean;
-    cyclesCount: number;
-  };
-}
-
-export interface EntityNode {
-  id: string;
-  name: string;
-  type: 'function' | 'class' | 'constant' | 'interface' | 'type' | 'variable' | 'enum' | 'module';
-  module: string;
-  line: number;
-  metadata: {
-    isExported: boolean;
-    dataType?: string;
-    value?: any;
-    params?: string[];
-    returnType?: string;
-    isAsync?: boolean;
-    isMethod?: boolean;
-    className?: string;
-    properties?: string[];
-    methods?: string[];
-    extends?: string;
-    implements?: string[];
-    extendsInterfaces?: string[];
-    definition?: string;
-    calledBy?: string[];
-    calls?: string[];
-    startLine?: number;
-    endLine?: number;
-    visibility?: 'public' | 'private' | 'protected' | 'internal';
-    tags?: string[];
-    complexity?: number;
-    security?: {
-      hasEval: boolean;
-      hasProcessEnv: boolean;
-      hasSensitiveData: boolean;
-      hasExec: boolean;
-      hasPassword: boolean;
-    };
-    body?: string;
-    vscode?: string;
-    id?: string;
-  };
-}
-
-export interface EntityEdge {
-  from: string;
-  to: string;
-  type:
-    | 'function_call'
-    | 'constant_reference'
-    | 'class_extends'
-    | 'class_implements'
-    | 'interface_extends'
-    | 'type_reference'
-    | 'method_call'
-    | 'property_access'
-    | 'import_binding'
-    | 'export_binding'
-    | 'parameter_type'
-    | 'return_type'
-    | 'variable_reference'
-    | 'enum_member';
-  line?: number;
-  count?: number;
-}
-
-export interface EntityGraph {
-  nodes: EntityNode[];
-  edges: EntityEdge[];
-  stats?: {
-    totalNodes: number;
-    totalEdges: number;
-    functionsCount: number;
-    classesCount: number;
-    constantsCount: number;
-    interfacesCount: number;
-    typesCount: number;
-    variablesCount: number;
-    hasCycles: boolean;
-    cyclesCount: number;
-  };
-}
-
-export interface EntityStats {
-  total: number;
-  exported: number;
-  private: number;
-  byModule: Record<string, number>;
-  byType: {
-    functions: number;
-    classes: number;
-    constants: number;
-    interfaces: number;
-    types: number;
-    variables: number;
-    enums: number;
-  };
-}
-
-export interface FileStats {
-  totalFiles: number;
-  totalSize: number;
-  totalLines: number;
-}
+// ============================================================
+// FUNCTION ENTITY
+// ============================================================
 
 export interface FunctionEntity {
   name: string;
@@ -165,59 +51,213 @@ export interface FunctionEntity {
   eventType: string;
   depth: number;
   complexity: number;
-  security: {
+  security: SecurityInfo;
+  vscode: string;
+  signature: string;
+  _safeInfo: any;
+  // ✅ ДОБАВЛЕНЫ НЕДОСТАЮЩИЕ ПОЛЯ
+  filePath?: string;
+  moduleName?: string;
+  _modulePath?: string;
+  callsInfo?: any[];
+  calledByInfo?: any[];
+  importedBy?: any[];
+  id?: string;
+  isConst?: boolean;
+  isMacro?: boolean;
+  isComposable?: boolean;
+  source?: string;
+  moduleId?: string;
+  fileId?: string;
+}
+
+// ============================================================
+// ENHANCED ENTITY INFO
+// ============================================================
+
+export interface EnhancedEntityInfo {
+  functions: FunctionEntity[];
+  constants: EnhancedConstantInfo[];
+  variables: EnhancedVariableInfo[];
+  interfaces: EnhancedInterfaceInfo[];
+  types: EnhancedTypeInfo[];
+  classes: EnhancedClassInfo[];
+  imports?: {
+    source: string;
+    specifiers: string[];
+    isTypeOnly: boolean;
+  }[];
+}
+
+// ============================================================
+// ENHANCED PACKAGE INFO
+// ============================================================
+
+export interface EnhancedPackageInfo {
+  version: string;
+  resolved: string;
+  displayPath?: string;
+  type: 'module' | 'commonjs';
+  language: 'typescript' | 'javascript' | 'vue' | 'jsx';
+  isEntry: boolean;
+  imports: Record<string, PackageLockImportInfo>;
+  exports: Record<string, PackageLockExportInfo>;
+  entities: EnhancedEntityInfo;
+  fileStats: {
+    size: number;
+    lines: number;
+    functions: number;
+    classes: number;
+    constants: number;
+    interfaces: number;
+    types: number;
+    variables: number;
+  };
+  vueAnalysis?: VueAnalysis;
+  complexity?: {
+    average: number;
+    max: number;
+    functions: Record<string, number>;
+  };
+  security?: {
     hasEval: boolean;
     hasProcessEnv: boolean;
     hasSensitiveData: boolean;
     hasExec: boolean;
-    hasPassword: boolean;
+    issues: string[];
   };
   vscode?: string;
-  signature?: string;
-  _safeInfo?: any;
-  id?: string;
-  callsInfo?: CallInfo[];
-  calledByInfo?: CalledByInfo[];
-  importedBy?: ImportedByInfo[];
+  sourceCode?: string;
 }
 
 // ============================================================
-// ТИПЫ ДЛЯ СВЯЗЕЙ (ВСТРОЕННЫЙ ФОРМАТ)
+// ENHANCED PACKAGE LOCK REPORT
 // ============================================================
 
-export interface CallInfo {
-  targetId: string;
-  targetName: string;
-  targetFile: string;
-  targetLine: number;
-  targetVscode: string;
-  callLine: number;
-  callType:
-    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
-}
-
-export interface CalledByInfo {
-  callerId: string;
-  callerName: string;
-  callerFile: string;
-  callerLine: number;
-  callerVscode: string;
-  callLine: number;
-  callType:
-    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
-}
-
-export interface ImportedByInfo {
-  importerId: string;
-  importerFile: string;
-  importerVscode: string;
-  importLine: number;
-  specifier: string;
-  importType?: 'named' | 'default' | 'namespace' | 'type';
+export interface EnhancedPackageLockReport {
+  name: string;
+  version: string;
+  lockfileVersion: number;
+  packages: Record<string, EnhancedPackageInfo>;
+  dependencyGraph: {
+    direction: 'bidirectional';
+    inwardDependencies: Record<string, string[]>;
+    outwardDependencies: Record<string, string[]>;
+  };
+  executionGraph: {
+    entryPoint: string;
+    direction: 'top-down';
+    entryFunctions: string[];
+    executionFlow: {
+      type: 'sequential' | 'parallel' | 'conditional';
+      steps: {
+        func: string;
+        module: string;
+        direction: 'inward' | 'outward' | 'self';
+        isAsync: boolean;
+        branches?: Record<string, any>;
+      }[];
+    };
+  };
+  importExportFlow: {
+    imports: Record<
+      string,
+      {
+        importsFrom: {
+          module: string;
+          type: 'named' | 'default' | 'namespace';
+          imports: string[];
+        }[];
+      }
+    >;
+    exports: Record<
+      string,
+      {
+        exportsTo: {
+          module: string;
+          type: 'named' | 'default';
+          exports: string[];
+        }[];
+      }
+    >;
+  };
+  callGraph?: CallGraphResult;
+  entityStats: EntityStats;
+  fileStats: FileStats;
+  architectureMetrics?: ArchitectureMetrics;
+  summary?: ProjectSummary;
+  timestamp: string;
 }
 
 // ============================================================
-// РАСШИРЕННЫЕ ТИПЫ ДЛЯ СУЩНОСТЕЙ
+// CALL GRAPH RESULT
+// ============================================================
+
+export interface CallGraphResult {
+  from: string;
+  to: string;
+  path: string[];
+  found: boolean;
+  reason?: string;
+  nodes: {
+    function: string;
+    module: string;
+    line: number;
+    isAsync: boolean;
+  }[];
+  edges: {
+    from: string;
+    to: string;
+    line?: number;
+  }[];
+}
+
+// ============================================================
+// PACKAGE LOCK TYPES
+// ============================================================
+
+export interface PackageLockImportInfo {
+  direction: 'inward';
+  type: 'import' | 'external-import' | 'internal-import';
+  specifiers: string[];
+  functions: Record<string, PackageLockFunctionInfo>;
+}
+
+export interface PackageLockExportInfo {
+  direction: 'outward';
+  type: 'export';
+  isAsync: boolean;
+  params: string[];
+  returns: string;
+  line: number;
+  consumers: {
+    module: string;
+    direction: 'outward';
+    type: 'import' | 'call';
+  }[];
+}
+
+export interface PackageLockFunctionInfo {
+  isAsync: boolean;
+  isExported: boolean;
+  params: string[];
+  line: number;
+  direction?: 'inward' | 'outward' | 'self';
+  calls?: {
+    target: string;
+    direction: 'inward' | 'outward' | 'self';
+    isAsync: boolean;
+    line?: number;
+  }[];
+  consumers?: {
+    module: string;
+    direction: 'outward';
+    type: 'import' | 'call';
+  }[];
+}
+
+// ============================================================
+// ENHANCED ENTITY TYPES
 // ============================================================
 
 export interface EnhancedFunctionInfo extends FunctionEntity {
@@ -231,13 +271,7 @@ export interface EnhancedFunctionInfo extends FunctionEntity {
   eventType: string;
   depth: number;
   complexity: number;
-  security: {
-    hasEval: boolean;
-    hasProcessEnv: boolean;
-    hasSensitiveData: boolean;
-    hasExec: boolean;
-    hasPassword: boolean;
-  };
+  security: SecurityInfo;
   vscode: string;
   signature: string;
   _safeInfo: any;
@@ -293,72 +327,30 @@ export interface EnhancedClassInfo {
   _safeInfo: any;
 }
 
-export interface EnhancedEntityInfo {
-  functions: EnhancedFunctionInfo[];
-  constants: EnhancedConstantInfo[];
-  variables: EnhancedVariableInfo[];
-  interfaces: EnhancedInterfaceInfo[];
-  types: EnhancedTypeInfo[];
-  classes: EnhancedClassInfo[];
-  imports?: PackageLockImportInfo[];
-}
-
-export interface PackageLockImportInfo {
-  source: string;
-  specifiers: string[];
-  isTypeOnly: boolean;
-}
-
 // ============================================================
-// ТИПЫ ДЛЯ ПАКЕТОВ
+// STATISTICS TYPES
 // ============================================================
 
-export interface EnhancedPackageInfo {
-  version: string;
-  resolved: string;
-  displayPath?: string;
-  type: 'module' | 'commonjs';
-  language: 'typescript' | 'javascript' | 'vue' | 'jsx';
-  isEntry: boolean;
-  imports: Record<string, any>;
-  exports: Record<string, any>;
-  entities: {
-    functions: FunctionEntity[];
-    constants: EnhancedConstantInfo[];
-    variables: EnhancedVariableInfo[];
-    interfaces: EnhancedInterfaceInfo[];
-    types: EnhancedTypeInfo[];
-    classes: EnhancedClassInfo[];
-  };
-  fileStats: {
-    size: number;
-    lines: number;
-    functions: number;
-    classes: number;
-    constants: number;
-    interfaces: number;
-    types: number;
-    variables: number;
-  };
-  vueAnalysis?: VueAnalysis;
-  complexity?: {
-    average: number;
-    max: number;
-    functions: Record<string, number>;
-  };
-  security?: {
-    hasEval: boolean;
-    hasProcessEnv: boolean;
-    hasSensitiveData: boolean;
-    hasExec: boolean;
-    issues: string[];
-  };
-  vscode?: string;
-  sourceCode?: string;
+export interface EntityStats {
+  totalFunctions: number;
+  totalConstants: number;
+  totalVariables: number;
+  totalInterfaces: number;
+  totalTypes: number;
+  totalClasses: number;
+  totalCalls: number;
+  totalExportedFunctions: number;
+  totalAsyncFunctions: number;
+}
+
+export interface FileStats {
+  totalFiles: number;
+  totalSize: number;
+  totalLines: number;
 }
 
 // ============================================================
-// ТИПЫ ДЛЯ АРХИТЕКТУРНЫХ МЕТРИК
+// ARCHITECTURE TYPES
 // ============================================================
 
 export interface ArchitectureMetrics {
@@ -388,7 +380,7 @@ export interface ArchitectureMetrics {
 }
 
 // ============================================================
-// ТИПЫ ДЛЯ РЕЗЮМЕ ПРОЕКТА
+// PROJECT SUMMARY
 // ============================================================
 
 export interface ProjectSummary {
@@ -405,7 +397,7 @@ export interface ProjectSummary {
 }
 
 // ============================================================
-// ТИПЫ ДЛЯ VUE АНАЛИЗА
+// VUE ANALYSIS
 // ============================================================
 
 export interface VueAnalysis {
@@ -432,133 +424,199 @@ export interface VueAnalysis {
 }
 
 // ============================================================
-// ТИПЫ ДЛЯ РАСШИРЕННОГО ОТЧЕТА
+// GRAPH TYPES
 // ============================================================
 
-export interface EnhancedPackageLockReport {
-  name: string;
-  version: string;
-  lockfileVersion: number;
-  packages: Record<string, EnhancedPackageInfo>;
-  dependencyGraph: {
-    direction: 'bidirectional';
-    inwardDependencies: Record<string, string[]>;
-    outwardDependencies: Record<string, string[]>;
-  };
-  executionGraph: {
-    entryPoint: string;
-    direction: 'top-down';
-    entryFunctions: string[];
-    executionFlow: {
-      type: 'sequential' | 'parallel' | 'conditional';
-      steps: {
-        func: string;
-        module: string;
-        direction: 'inward' | 'outward' | 'self';
-        isAsync: boolean;
-        branches?: Record<string, any>;
-      }[];
-    };
-  };
-  importExportFlow: {
-    imports: Record<
-      string,
-      {
-        importsFrom: {
-          module: string;
-          type: 'named' | 'default' | 'namespace';
-          imports: string[];
-        }[];
-      }
-    >;
-    exports: Record<
-      string,
-      {
-        exportsTo: {
-          module: string;
-          type: 'named' | 'default';
-          exports: string[];
-        }[];
-      }
-    >;
-  };
-  callGraph?: Record<string, string[]>;
-  entityStats?: {
-    totalFunctions: number;
-    totalConstants: number;
-    totalVariables: number;
-    totalInterfaces: number;
-    totalTypes: number;
-    totalClasses: number;
-    totalCalls: number;
-    totalExportedFunctions: number;
-    totalAsyncFunctions: number;
-  };
-  fileStats?: {
-    totalFiles: number;
-    totalSize: number;
-    totalLines: number;
-  };
-  timestamp?: string;
-  architectureMetrics?: ArchitectureMetrics;
-  summary?: ProjectSummary;
-}
-
-// ============================================================
-// ТИПЫ ДЛЯ ОТЧЕТА С ВСТРОЕННЫМИ СВЯЗЯМИ (RELATIONSHIP REPORT)
-// ============================================================
-
-export interface ExtendedFunctionEntity {
+export interface ModuleNode {
   id: string;
   name: string;
-  file: string;
-  line: number;
-  kind: 'function' | 'class' | 'constant' | 'interface' | 'type' | 'variable' | 'macro';
-  isExported: boolean;
-  isAsync: boolean;
-  params: string[];
-  paramsCount: number;
-  vscode: string;
-  calls: CallInfo[];
-  calledBy: CalledByInfo[];
-  importedBy: ImportedByInfo[];
-  body?: string;
-  returnType?: string;
-  typeRef?: string;
-  metadata?: Record<string, any>;
+  path: string;
+  type: 'module' | 'component' | 'vue' | 'external';
+  level: number;
+  metadata: {
+    size: number;
+    lines: number;
+    language: 'javascript' | 'typescript' | 'vue' | 'jsx' | 'unknown';
+    isEntry: boolean;
+    functionsCount?: number;
+    classesCount?: number;
+    exportsCount?: number;
+  };
 }
 
-export interface RelationshipReport {
-  version: string;
-  timestamp: string;
-  root: string;
-  entities: Record<string, ExtendedFunctionEntity>;
-  stats: {
-    totalFunctions: number;
-    totalCalls: number;
-    totalCalledBy: number;
-    totalImportedBy: number;
-    totalFiles: number;
+export interface ModuleEdge {
+  from: string;
+  to: string;
+  type: 'import' | 'external' | 're-export' | 'dynamic_import';
+  specifiers: string[];
+  sourceCode?: string;
+}
+
+export interface ModuleGraph {
+  nodes: ModuleNode[];
+  edges: ModuleEdge[];
+  stats?: {
+    totalNodes: number;
+    totalEdges: number;
+    maxDepth: number;
+    hasCycles: boolean;
+    cyclesCount: number;
+  };
+}
+
+export interface EntityNode {
+  id: string;
+  name: string;
+  type: 'function' | 'class' | 'constant' | 'interface' | 'type' | 'variable' | 'enum' | 'module';
+  module: string;
+  line: number;
+  metadata: {
+    isExported: boolean;
+    dataType?: string;
+    value?: any;
+    params?: string[];
+    returnType?: string;
+    isAsync?: boolean;
+    isMethod?: boolean;
+    className?: string;
+    properties?: string[];
+    methods?: string[];
+    extends?: string;
+    implements?: string[];
+    extendsInterfaces?: string[];
+    definition?: string;
+    calledBy?: string[];
+    calls?: string[];
+    startLine?: number;
+    endLine?: number;
+    visibility?: 'public' | 'private' | 'protected' | 'internal';
+    tags?: string[];
+    complexity?: number;
+    security?: SecurityInfo;
+    body?: string;
+    vscode?: string;
+    id?: string;
+    signature?: string;
+    importedFrom?: string;
+  };
+}
+
+export interface EntityEdge {
+  from: string;
+  to: string;
+  type:
+    | 'function_call'
+    | 'constant_reference'
+    | 'class_extends'
+    | 'class_implements'
+    | 'interface_extends'
+    | 'type_reference'
+    | 'method_call'
+    | 'property_access'
+    | 'import_binding'
+    | 'export_binding'
+    | 'parameter_type'
+    | 'return_type'
+    | 'variable_reference'
+    | 'enum_member';
+  line?: number;
+  count?: number;
+}
+
+export interface EntityGraph {
+  nodes: EntityNode[];
+  edges: EntityEdge[];
+  stats?: {
+    totalNodes: number;
+    totalEdges: number;
+    functionsCount: number;
+    classesCount: number;
+    constantsCount: number;
+    interfacesCount: number;
+    typesCount: number;
+    variablesCount: number;
+    hasCycles: boolean;
+    cyclesCount: number;
   };
 }
 
 // ============================================================
-// ВСПОМОГАТЕЛЬНЫЕ ТИПЫ
+// FULL ANALYSIS
 // ============================================================
 
-export interface SecurityInfo {
-  hasEval: boolean;
-  hasProcessEnv: boolean;
-  hasSensitiveData: boolean;
-  hasExec: boolean;
-  hasPassword: boolean;
+export interface FullAnalysis {
+  version: string;
+  root: string;
+  timestamp: string;
+  stats: {
+    totalModules: number;
+    totalEntities: number;
+    hasCycles: boolean;
+    cycles: string[][];
+    totalFunctions: number;
+    totalClasses: number;
+    totalConstants: number;
+    totalInterfaces: number;
+    totalTypes: number;
+    totalVariables: number;
+    maxDepth: number;
+  };
+  moduleGraph: ModuleGraph;
+  entityGraph: EntityGraph;
 }
 
-export interface ImportExportItem {
+// ============================================================
+// EXECUTION FLOW
+// ============================================================
+
+export interface ExecutionStep {
+  func: string;
   module: string;
-  type: 'named' | 'default' | 'namespace';
-  imports: string[];
+  direction: 'inward' | 'outward' | 'self';
+  isAsync: boolean;
+  branches?: Record<string, any>;
 }
+
+export interface ExecutionGraph {
+  entryPoint: string;
+  direction: 'top-down';
+  entryFunctions: string[];
+  executionFlow: {
+    type: 'sequential' | 'parallel' | 'conditional';
+    steps: ExecutionStep[];
+  };
+}
+
+// ============================================================
+// IMPORT/EXPORT FLOW
+// ============================================================
+
+export interface ImportExportFlow {
+  imports: Record<
+    string,
+    {
+      importsFrom: {
+        module: string;
+        type: 'named' | 'default' | 'namespace';
+        imports: string[];
+      }[];
+    }
+  >;
+  exports: Record<
+    string,
+    {
+      exportsTo: {
+        module: string;
+        type: 'named' | 'default';
+        exports: string[];
+      }[];
+    }
+  >;
+}
+
+// ============================================================
+// DATA SOURCE TYPES
+// ============================================================
 
 export interface GraphData {
   rootKey: string;
@@ -574,47 +632,19 @@ export interface EntitiesResult {
   interfaces: EnhancedInterfaceInfo[];
   types: EnhancedTypeInfo[];
   variables: EnhancedVariableInfo[];
-  imports: PackageLockImportInfo[];
-  exports: ExportInfo[];
+  imports: {
+    source: string;
+    specifiers: string[];
+    isTypeOnly: boolean;
+  }[];
+  exports: {
+    name: string;
+    type: string;
+    isDefault: boolean;
+  }[];
   callGraph: Record<string, string[]>;
   moduleName: string;
   filePath: string;
-}
-
-export interface ExportInfo {
-  name: string;
-  type: 'function' | 'class' | 'constant' | 'value' | 'default';
-  isDefault: boolean;
-  loc: Location | null;
-  params?: string[];
-  async?: boolean;
-  startLine?: number;
-  endLine?: number;
-}
-
-export interface Location {
-  start: {
-    line: number;
-    column: number;
-  };
-  end: {
-    line: number;
-    column: number;
-  };
-}
-
-// ============================================================
-// ФУНКЦИЯ ДЛЯ СОЗДАНИЯ DEFAULT SECURITY
-// ============================================================
-
-export function createDefaultSecurity(): SecurityInfo {
-  return {
-    hasEval: false,
-    hasProcessEnv: false,
-    hasSensitiveData: false,
-    hasExec: false,
-    hasPassword: false,
-  };
 }
 
 // ============================================================

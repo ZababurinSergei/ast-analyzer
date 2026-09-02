@@ -29,8 +29,9 @@ function analyzeModuleStructure(
     }
   }
 
-  const ast = parseFile(filePath);
-  if (!ast) return null;
+  const parsed = parseFile(filePath);
+  if (!parsed) return null;
+  const ast = parsed.ast; // ✅ Получаем ast из ParsedFileInfo
 
   const code = fs.readFileSync(filePath, 'utf-8');
   const lines = code.split('\n');

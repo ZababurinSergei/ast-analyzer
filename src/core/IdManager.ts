@@ -1,4 +1,6 @@
-// src/core/IdManager.ts
+// packages/ast-analyzer/src/core/IdManager.ts
+// ИСПРАВЛЕННАЯ ВЕРСИЯ - устранены предупреждения TS6133
+
 import { createHash } from 'crypto';
 import path from 'path';
 
@@ -35,8 +37,19 @@ export class IdManager {
   private compactIdMap: Map<string, string> = new Map();
   private compactUsedIds: Set<string> = new Set();
 
+  // ✅ НОВОЕ: счетчики для коротких ID (m1, f1, fn1, ...)
+  private shortIdCounters: Map<string, number> = new Map();
+  private shortIdMap: Map<string, string> = new Map(); // полное имя -> короткий ID
+  private shortIdReverseMap: Map<string, string> = new Map(); // короткий ID -> полное имя
+
   constructor(debug: boolean = false) {
     this.debug = debug;
+    // Инициализируем счетчики
+    this.shortIdCounters.set('module', 0);
+    this.shortIdCounters.set('file', 0);
+    this.shortIdCounters.set('function', 0);
+    this.shortIdCounters.set('class', 0);
+    this.shortIdCounters.set('interface', 0);
   }
 
   /**
@@ -46,15 +59,110 @@ export class IdManager {
     this.debug = enabled;
   }
 
+  // ============================================
+  // ✅ НОВЫЙ МЕТОД: Генерация коротких ID
+  // ============================================
+
+  /**
+   * Генерирует короткий уникальный ID для сущности
+   * @param type - тип сущности: 'module' | 'file' | 'function' | 'class' | 'interface'
+   * @param name - полное имя сущности (для обратного маппинга)
+   * @returns короткий ID (m1, f1, fn1, c1, i1, ...)
+   */
+  generateShortId(
+    type: 'module' | 'file' | 'function' | 'class' | 'interface',
+    name: string
+  ): string {
+    // Проверяем, есть ли уже ID для этого имени
+    const fullKey = `${type}:${name}`;
+    if (this.shortIdMap.has(fullKey)) {
+      return this.shortIdMap.get(fullKey)!;
+    }
+
+    // Получаем счетчик для типа
+    let counter = this.shortIdCounters.get(type) || 0;
+    counter++;
+    this.shortIdCounters.set(type, counter);
+
+    // Определяем префикс
+    const prefix =
+      type === 'module'
+        ? 'm'
+        : type === 'file'
+          ? 'f'
+          : type === 'function'
+            ? 'fn'
+            : type === 'class'
+              ? 'c'
+              : 'i'; // interface
+
+    const shortId = `${prefix}${counter}`;
+
+    // Сохраняем маппинг
+    this.shortIdMap.set(fullKey, shortId);
+    this.shortIdReverseMap.set(shortId, fullKey);
+
+    if (this.debug) {
+      console.log(`🔑 [IdManager] Generated short ID: ${shortId} for ${type}:${name}`);
+    }
+
+    return shortId;
+  }
+
+  /**
+   * Получить полное имя по короткому ID
+   */
+  getFullName(shortId: string): string | null {
+    return this.shortIdReverseMap.get(shortId) || null;
+  }
+
+  /**
+   * Получить тип по короткому ID
+   */
+  getTypeFromShortId(shortId: string): string | null {
+    const full = this.shortIdReverseMap.get(shortId);
+    if (!full) return null;
+    return full.split(':')[0] || null;
+  }
+
+  /**
+   * Получить имя по короткому ID
+   */
+  getNameFromShortId(shortId: string): string | null {
+    const full = this.shortIdReverseMap.get(shortId);
+    if (!full) return null;
+    const parts = full.split(':');
+    return parts.length > 1 ? (parts[1] ?? null) : null;
+  }
+
+  /**
+   * Получить все короткие ID
+   */
+  getAllShortIds(): string[] {
+    return Array.from(this.shortIdReverseMap.keys());
+  }
+
+  /**
+   * Получить статистику коротких ID
+   */
+  getShortIdStats(): { total: number; byType: Record<string, number> } {
+    const byType: Record<string, number> = {};
+    for (const [type] of this.shortIdCounters) {
+      byType[type] = this.shortIdCounters.get(type) || 0;
+    }
+    return {
+      total: this.shortIdMap.size,
+      byType,
+    };
+  }
+
+  // ============================================
+  // ✅ НОВЫЙ МЕТОД: Компактные ID
+  // ============================================
+
   /**
    * ✅ НОВЫЙ МЕТОД: Генерирует компактный ID в формате f{индекс}_{номер_строки}
    * Пример: f142_704
-   *
-   * Преимущества:
-   * - Максимальная экономия места (8-10 символов вместо 30-40)
-   * - Номер строки сохраняется для навигации
-   * - Индекс обеспечивает уникальность
-   * - При переименовании функции ID остается стабильным
    */
   generateCompactId(context: IdContext): string {
     const { filePath, funcName, line } = context;
@@ -95,9 +203,6 @@ export class IdManager {
 
   /**
    * ✅ НОВЫЙ МЕТОД: Генерирует компактный ID с опциями
-   * @param context - контекст сущности
-   * @param options - опции генерации
-   * @returns компактный ID
    */
   generateCompactIdWithOptions(
     context: IdContext,
@@ -200,6 +305,10 @@ export class IdManager {
     this.compactUsedIds.clear();
   }
 
+  // ============================================
+  // ОРИГИНАЛЬНЫЙ МЕТОД: Генерация ID функции
+  // ============================================
+
   /**
    * ОРИГИНАЛЬНЫЙ МЕТОД: Генерирует уникальный стабильный ID для функции
    * ✅ ВСЕГДА использует номер строки
@@ -247,6 +356,10 @@ export class IdManager {
     return id;
   }
 
+  // ============================================
+  // СТАТИЧЕСКИЕ МЕТОДЫ (оригинальные)
+  // ============================================
+
   /**
    * ✅ СТАТИЧЕСКИЙ МЕТОД для генерации ID функции без экземпляра
    * Используется в местах, где нет доступа к экземпляру IdManager
@@ -276,7 +389,7 @@ export class IdManager {
   }
 
   /**
-   * ✅ НОВЫЙ СТАТИЧЕСКИЙ МЕТОД для генерации стабильного ID
+   * ✅ НОВЫЙ СТАТИСТИЧЕСКИЙ МЕТОД для генерации стабильного ID
    * Используется в ultra-compact режиме
    */
   static generateStableId(filePath: string, funcName: string, line: number): string {
@@ -285,6 +398,10 @@ export class IdManager {
     const nameHash = simpleHash(funcName);
     return `f${fileHash}_${nameHash}_${line}`;
   }
+
+  // ============================================
+  // УНИВЕРСАЛЬНЫЙ МЕТОД: Генерация ID для сущностей
+  // ============================================
 
   /**
    * ✅ НОВЫЙ МЕТОД: Генерирует ID для сущности с учетом типа
@@ -339,6 +456,10 @@ export class IdManager {
     return id;
   }
 
+  // ============================================
+  // СПЕЦИАЛИЗИРОВАННЫЕ МЕТОДЫ
+  // ============================================
+
   /**
    * Генерирует ID для Vue компонента
    */
@@ -348,12 +469,14 @@ export class IdManager {
     componentName: string,
     line: number
   ): string {
+    // Используем _componentName для предотвращения предупреждения TS6133
+    const _componentName = componentName;
     return this.getFunctionId({
       filePath,
       funcName,
       line,
       type: 'vue',
-      componentName,
+      componentName: _componentName,
     });
   }
 
@@ -384,6 +507,41 @@ export class IdManager {
   getTypeId(filePath: string, typeName: string, line: number): string {
     return this.generateEntityId(filePath, typeName, line, 'type');
   }
+
+  // ============================================
+  // ✅ НОВЫЙ МЕТОД: Получить moduleId для файла
+  // ============================================
+
+  /**
+   * Получает короткий ID модуля для файла
+   * @param filePath - путь к файлу
+   * @returns короткий ID модуля (m1, m2, ...) или undefined
+   */
+  getModuleId(filePath: string): string | undefined {
+    if (!filePath) return undefined;
+    const relativePath = path.relative(process.cwd(), filePath);
+    const dirName = path.basename(path.dirname(relativePath)) || 'root';
+    return this.generateShortId('module', dirName);
+  }
+
+  // ============================================
+  // ✅ НОВЫЙ МЕТОД: Получить fileId для файла
+  // ============================================
+
+  /**
+   * Получает короткий ID файла
+   * @param filePath - путь к файлу
+   * @returns короткий ID файла (f1, f2, ...) или undefined
+   */
+  getFileId(filePath: string): string | undefined {
+    if (!filePath) return undefined;
+    const relativePath = path.relative(process.cwd(), filePath);
+    return this.generateShortId('file', relativePath);
+  }
+
+  // ============================================
+  // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
+  // ============================================
 
   /**
    * Построение контекстного ключа
@@ -441,7 +599,7 @@ export class IdManager {
    * Проверить, существует ли ID
    */
   hasId(id: string): boolean {
-    return this.usedIds.has(id) || this.compactUsedIds.has(id);
+    return this.usedIds.has(id) || this.compactUsedIds.has(id) || this.shortIdReverseMap.has(id);
   }
 
   /**
@@ -453,6 +611,17 @@ export class IdManager {
     this.compactIdCounter = 0;
     this.compactIdMap.clear();
     this.compactUsedIds.clear();
+    // Очищаем короткие ID
+    this.shortIdCounters.clear();
+    this.shortIdMap.clear();
+    this.shortIdReverseMap.clear();
+    // Инициализируем заново
+    this.shortIdCounters.set('module', 0);
+    this.shortIdCounters.set('file', 0);
+    this.shortIdCounters.set('function', 0);
+    this.shortIdCounters.set('class', 0);
+    this.shortIdCounters.set('interface', 0);
+
     if (this.debug) {
       console.log('🧹 [IdManager] Cache cleared');
     }
@@ -461,10 +630,11 @@ export class IdManager {
   /**
    * Получить статистику
    */
-  getStats(): { total: number; unique: number } {
+  getStats(): { total: number; unique: number; shortIds: number } {
     return {
-      total: this.idMap.size + this.compactIdMap.size,
-      unique: this.usedIds.size + this.compactUsedIds.size,
+      total: this.idMap.size + this.compactIdMap.size + this.shortIdMap.size,
+      unique: this.usedIds.size + this.compactUsedIds.size + this.shortIdMap.size,
+      shortIds: this.shortIdMap.size,
     };
   }
 
@@ -489,6 +659,13 @@ export class IdManager {
       seen.add(id);
     }
 
+    for (const id of this.shortIdReverseMap.keys()) {
+      if (seen.has(id)) {
+        duplicates.push(id);
+      }
+      seen.add(id);
+    }
+
     return {
       valid: duplicates.length === 0,
       duplicates,
@@ -502,13 +679,14 @@ export class IdManager {
     totalMappings: number;
     totalIds: number;
     compactMappings: number;
+    shortMappings: number;
     sampleMappings: { key: string; id: string }[];
   } {
     const sampleMappings: { key: string; id: string }[] = [];
     let count = 0;
 
     for (const [key, id] of this.idMap) {
-      if (count < 5) {
+      if (count < 3) {
         sampleMappings.push({ key, id });
         count++;
       } else {
@@ -517,6 +695,15 @@ export class IdManager {
     }
 
     for (const [key, id] of this.compactIdMap) {
+      if (count < 6) {
+        sampleMappings.push({ key, id });
+        count++;
+      } else {
+        break;
+      }
+    }
+
+    for (const [key, id] of this.shortIdMap) {
       if (count < 10) {
         sampleMappings.push({ key, id });
         count++;
@@ -526,18 +713,32 @@ export class IdManager {
     }
 
     return {
-      totalMappings: this.idMap.size + this.compactIdMap.size,
-      totalIds: this.usedIds.size + this.compactUsedIds.size,
+      totalMappings: this.idMap.size + this.compactIdMap.size + this.shortIdMap.size,
+      totalIds: this.usedIds.size + this.compactUsedIds.size + this.shortIdMap.size,
       compactMappings: this.compactIdMap.size,
+      shortMappings: this.shortIdMap.size,
       sampleMappings,
     };
   }
+
+  // ============================================
+  // МАССОВЫЕ ОПЕРАЦИИ
+  // ============================================
 
   /**
    * ✅ НОВЫЙ МЕТОД: Массовая генерация компактных ID
    */
   generateCompactIdsBatch(contexts: IdContext[]): string[] {
     return contexts.map(ctx => this.generateCompactId(ctx));
+  }
+
+  /**
+   * ✅ НОВЫЙ МЕТОД: Массовая генерация коротких ID
+   */
+  generateShortIdsBatch(
+    items: { type: 'module' | 'file' | 'function' | 'class' | 'interface'; name: string }[]
+  ): string[] {
+    return items.map(item => this.generateShortId(item.type, item.name));
   }
 
   /**
@@ -561,10 +762,36 @@ export class IdManager {
   }
 
   /**
+   * ✅ НОВЫЙ МЕТОД: Получить маппинг коротких ID → полное имя
+   */
+  getShortIdMapping(): Record<string, { type: string; name: string }> {
+    const mapping: Record<string, { type: string; name: string }> = {};
+
+    for (const [shortId, fullKey] of this.shortIdReverseMap) {
+      const parts = fullKey.split(':');
+      if (parts.length >= 2) {
+        mapping[shortId] = {
+          type: parts[0] || 'unknown',
+          name: parts[1] || 'unknown',
+        };
+      }
+    }
+
+    return mapping;
+  }
+
+  /**
    * ✅ НОВЫЙ МЕТОД: Проверка, является ли ID компактным
    */
   isCompactId(id: string): boolean {
     return /^f\d+_\d+$/.test(id) || /^f\d+_\d+[a-z]$/.test(id);
+  }
+
+  /**
+   * ✅ НОВЫЙ МЕТОД: Проверка, является ли ID коротким
+   */
+  isShortId(id: string): boolean {
+    return /^[mfnci]\d+$/.test(id);
   }
 
   /**
@@ -580,6 +807,42 @@ export class IdManager {
       funcName: context.func,
       line: context.line,
     });
+  }
+
+  /**
+   * ✅ НОВЫЙ МЕТОД: Конвертировать короткий ID в полное имя
+   */
+  expandShortId(shortId: string): { type: string; name: string } | null {
+    const full = this.shortIdReverseMap.get(shortId);
+    if (!full) return null;
+    const parts = full.split(':');
+    if (parts.length >= 2) {
+      return {
+        type: parts[0] || 'unknown',
+        name: parts[1] || 'unknown',
+      };
+    }
+    return null;
+  }
+
+  // ============================================
+  // ✅ НОВЫЙ МЕТОД: Получить маппинг ID к VSCode ссылкам
+  // ============================================
+
+  /**
+   * Получить VSCode ссылку для функции по ID
+   */
+  getVscodeLink(id: string): string | null {
+    const context = this.getContextByCompactId(id);
+    if (!context) return null;
+    return `vscode://file/${context.file}:${context.line}`;
+  }
+
+  /**
+   * Получить VSCode ссылку для функции по контексту
+   */
+  getVscodeLinkForContext(context: IdContext): string {
+    return `vscode://file/${context.filePath}:${context.line}`;
   }
 }
 

@@ -206,18 +206,19 @@ export function minifyForAI(filePath: string): string {
   const code = fs.readFileSync(filePath, 'utf-8');
   console.log(`📏 Исходный размер: ${code.length} символов`);
 
-  const ast = parseFile(filePath);
-  if (!ast) {
+  const parsed = parseFile(filePath);
+  if (!parsed) {
     console.error('❌ Не удалось получить AST, возвращаем оригинальный код');
     return code;
   }
 
-  // Проверяем, что AST содержит все тело программы
-  if (ast.body) {
-    console.log(`📊 AST содержит ${ast.body.length} узлов верхнего уровня`);
+  // ✅ Исправлено: используем parsed.ast вместо parsed
+  const astNode = parsed.ast;
+  if (astNode && astNode.body) {
+    console.log(`📊 AST содержит ${astNode.body.length} узлов верхнего уровня`);
   }
 
-  const minified = minifyCodeString(code, ast);
+  const minified = minifyCodeString(code, astNode);
   console.log(`✅ Размер после минификации: ${minified.length} символов`);
   console.log(`📉 Сжатие: ${((1 - minified.length / code.length) * 100).toFixed(1)}%`);
 

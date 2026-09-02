@@ -21,8 +21,9 @@ export function runImpactAnalysis(targetFile: string, entityName: string): strin
   for (const file of allFiles) {
     if (path.resolve(file) === targetAbsPath) continue;
 
-    const ast = parseFile(file);
-    if (!ast) continue;
+    const parsed = parseFile(file);
+    if (!parsed) continue;
+    const ast = parsed.ast; // ✅ Получаем ast из ParsedFileInfo
 
     const fileRelKey = path.relative(process.cwd(), file);
     const currentDir = path.dirname(file);

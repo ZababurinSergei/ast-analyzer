@@ -178,7 +178,8 @@ export function buildFileInternalGraph(
   filePath: string,
   _options: { maxDepth?: number } = {}
 ): { rootKey: string; graph: Record<string, string[]> } | null {
-  const ast = parseFile(filePath);
+  const parsed = parseFile(filePath);
+  const ast = parsed?.ast;
 
   // ✅ УСИЛЕННАЯ ПРОВЕРКА AST
   if (!ast) {

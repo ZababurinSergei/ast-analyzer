@@ -1,4 +1,6 @@
-// core/ast-parser.ts
+// packages/ast-analyzer/src/core/ast-parser.ts
+// ИСПРАВЛЕННАЯ ВЕРСИЯ - удалены неиспользуемые импорты и исправлены ESLint ошибки
+
 import fs from 'fs';
 import path from 'path';
 import parser from '@typescript-eslint/parser';
@@ -65,29 +67,13 @@ let tsConfigCache: TsConfig | null = null;
 let tsConfigBaseDirCache: string | null = null;
 
 // ==========================================
-// НОВЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С ПУТЯМИ
+// ФУНКЦИИ ДЛЯ РАБОТЫ С ПУТЯМИ (используем path-utils)
 // ==========================================
 
-/**
- * Разрешает путь к файлу в абсолютный
- */
-function resolveAbsolutePath(filePath: string): string {
-  if (!filePath) return '';
-  if (path.isAbsolute(filePath)) return filePath;
-  return path.resolve(process.cwd(), filePath);
-}
+import { resolveAbsolutePath, validateAndResolvePath, normalizePathForOS } from '../utils/path-utils.js';
 
-/**
- * Проверяет существование файла и возвращает абсолютный путь
- */
-function validateAndResolvePath(filePath: string): string | null {
-  const absolutePath = resolveAbsolutePath(filePath);
-  if (!fs.existsSync(absolutePath)) {
-    console.warn(`⚠️ Файл не найден: ${absolutePath}`);
-    return null;
-  }
-  return absolutePath;
-}
+// Реэкспортируем для обратной совместимости
+export { resolveAbsolutePath, validateAndResolvePath, normalizePathForOS };
 
 // ==========================================
 // ФУНКЦИЯ С КЭШИРОВАНИЕМ
@@ -120,6 +106,33 @@ export interface VueSFCData {
   styles: string[];
   customBlocks: Record<string, string[]>;
   scriptType: 'basic' | 'setup' | 'ts' | 'tsSetup' | null;
+}
+
+// ==========================================
+// НОВЫЙ ИНТЕРФЕЙС ДЛЯ ИНФОРМАЦИИ О ФАЙЛЕ
+// ==========================================
+
+export interface ParsedFileInfo {
+  /** AST дерево */
+  ast: any;
+  /** Путь к файлу */
+  filePath: string;
+  /** Имя модуля (директория) */
+  moduleName: string;
+  /** Короткий ID файла (генерируется при сохранении) */
+  fileId?: string;
+  /** Короткий ID модуля */
+  moduleId?: string;
+  /** Является ли файл Vue компонентом */
+  isVue: boolean;
+  /** Является ли файл TypeScript */
+  isTypeScript: boolean;
+  /** Содержимое файла */
+  content: string;
+  /** Импорты из файла */
+  imports: { source: string; specifiers: string[]; isTypeOnly: boolean; line?: number }[];
+  /** Экспорты из файла */
+  exports: { name: string; type: string; isDefault: boolean; line?: number }[];
 }
 
 // ==========================================
@@ -196,13 +209,155 @@ export function parseVueSFCFile(filePath: string): VueSFCData | null {
   }
 }
 
+// ==========================================
+// НОВАЯ ФУНКЦИЯ: СБОР ИМПОРТОВ ИЗ AST
+// ==========================================
+
+function collectImportsFromAST(ast: any): { source: string; specifiers: string[]; isTypeOnly: boolean; line?: number }[] {
+  const imports: { source: string; specifiers: string[]; isTypeOnly: boolean; line?: number }[] = [];
+
+  if (!ast || !ast.body) return imports;
+
+  walk(ast, {
+    enter(node: any) {
+      if (node.type === 'ImportDeclaration' && node.source) {
+        const source = node.source.value;
+        const specifiers: string[] = [];
+        const isTypeOnly = node.importKind === 'type' || false;
+
+        for (const spec of node.specifiers || []) {
+          if (spec.type === 'ImportSpecifier') {
+            const name = spec.imported?.name || spec.local?.name;
+            if (name) specifiers.push(name);
+          } else if (spec.type === 'ImportDefaultSpecifier') {
+            const name = spec.local?.name;
+            if (name) specifiers.push(`default as ${name}`);
+          } else if (spec.type === 'ImportNamespaceSpecifier') {
+            const name = spec.local?.name;
+            if (name) specifiers.push(`* as ${name}`);
+          }
+        }
+
+        if (source && specifiers.length > 0) {
+          imports.push({
+            source,
+            specifiers,
+            isTypeOnly,
+            line: node.loc?.start?.line
+          });
+        }
+      }
+    }
+  });
+
+  return imports;
+}
+
+// ==========================================
+// НОВАЯ ФУНКЦИЯ: СБОР ЭКСПОРТОВ ИЗ AST
+// ==========================================
+
+function collectExportsFromAST(ast: any): { name: string; type: string; isDefault: boolean; line?: number }[] {
+  const exports: { name: string; type: string; isDefault: boolean; line?: number }[] = [];
+
+  if (!ast || !ast.body) return exports;
+
+  walk(ast, {
+    enter(node: any) {
+      // ExportNamedDeclaration
+      if (node.type === 'ExportNamedDeclaration' && node.declaration) {
+        const decl = node.declaration;
+        let name = '';
+        let type = 'value';
+
+        if (decl.type === 'FunctionDeclaration' && decl.id) {
+          name = decl.id.name;
+          type = 'function';
+        } else if (decl.type === 'ClassDeclaration' && decl.id) {
+          name = decl.id.name;
+          type = 'class';
+        } else if (decl.type === 'VariableDeclaration') {
+          for (const d of decl.declarations || []) {
+            if (d.id?.name) {
+              exports.push({
+                name: d.id.name,
+                type: 'variable',
+                isDefault: false,
+                line: d.loc?.start?.line || node.loc?.start?.line
+              });
+            }
+          }
+          return;
+        }
+
+        if (name) {
+          exports.push({
+            name,
+            type,
+            isDefault: false,
+            line: node.loc?.start?.line
+          });
+        }
+      }
+
+      // ExportDefaultDeclaration
+      if (node.type === 'ExportDefaultDeclaration' && node.declaration) {
+        const decl = node.declaration;
+        let name = 'default';
+        let type = 'value';
+
+        if (decl.type === 'FunctionDeclaration' && decl.id) {
+          name = decl.id.name || 'default';
+          type = 'function';
+        } else if (decl.type === 'ClassDeclaration' && decl.id) {
+          name = decl.id.name || 'default';
+          type = 'class';
+        } else if (decl.type === 'Identifier') {
+          name = decl.name || 'default';
+          type = 'value';
+        }
+
+        exports.push({
+          name,
+          type,
+          isDefault: true,
+          line: node.loc?.start?.line
+        });
+      }
+
+      // ExportNamedDeclaration with specifiers: export { a, b }
+      if (node.type === 'ExportNamedDeclaration' && node.specifiers) {
+        for (const spec of node.specifiers || []) {
+          if (spec.type === 'ExportSpecifier' && spec.exported) {
+            const name = spec.exported.name || spec.local?.name;
+            if (name) {
+              exports.push({
+                name,
+                type: 'value',
+                isDefault: false,
+                line: node.loc?.start?.line
+              });
+            }
+          }
+        }
+      }
+    }
+  });
+
+  return exports;
+}
+
+// ==========================================
+// ОСНОВНАЯ ФУНКЦИЯ ПАРСИНГА (ОБНОВЛЕННАЯ)
+// ==========================================
+
 /**
  * Парсит файл в AST с поддержкой Vue SFC и нормализацией путей
  * @param filePath Путь к файлу
  * @param _options Опции парсинга (зарезервировано)
- * @returns AST дерево или null
+ * @returns ParsedFileInfo или null
  */
-export function parseFile(filePath: string, _options?: { extractTemplate?: boolean }): any {
+export function parseFile(filePath: string, _options?: { extractTemplate?: boolean }): ParsedFileInfo | null {
   try {
     // ✅ Нормализуем путь
     const resolvedPath = validateAndResolvePath(filePath);
@@ -228,6 +383,9 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
 
     let isVue = false;
     let isTypeScript = false;
+    const moduleName = path.basename(path.dirname(resolvedPath));
+    let imports: { source: string; specifiers: string[]; isTypeOnly: boolean; line?: number }[] = [];
+    let exports: { name: string; type: string; isDefault: boolean; line?: number }[] = [];
 
     if (filePath.endsWith('.vue')) {
       isVue = true;
@@ -334,11 +492,14 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
     if (!ast.body || !Array.isArray(ast.body)) {
       console.warn(`⚠️ AST не содержит body для файла: ${resolvedPath}`);
       return {
-        type: 'Program',
-        body: [],
-        sourceType: 'module',
-        comments: [],
-        tokens: [],
+        ast: { type: 'Program', body: [], sourceType: 'module', comments: [], tokens: [] },
+        filePath: resolvedPath,
+        moduleName,
+        isVue,
+        isTypeScript,
+        content: code,
+        imports: [],
+        exports: []
       };
     }
 
@@ -355,21 +516,35 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       `📊 Содержимое AST: Classes=${hasClasses}, Functions=${hasFunctions}, Variables=${hasVariables}`
     );
 
-    if (isVue) {
-      let importCount = 0;
-      importCount = ast.body.filter((node: any) => node?.type === 'ImportDeclaration').length;
-      console.log(`   📥 Найдено импортов: ${importCount}`);
+    // ✅ СБОР ИМПОРТОВ И ЭКСПОРТОВ
+    imports = collectImportsFromAST(ast);
+    exports = collectExportsFromAST(ast);
+
+    if (imports.length > 0) {
+      console.log(`   📥 Найдено импортов: ${imports.length}`);
+    }
+    if (exports.length > 0) {
+      console.log(`   📤 Найдено экспортов: ${exports.length}`);
     }
 
-    // ✅ СОХРАНЯЕМ ИСХОДНЫЙ КОД ДЛЯ ПОСЛЕДУЮЩЕГО АНАЛИЗА
-    // Используем расширенный тип ESLintProgram
     if (isVue && ast) {
       ast._originalCode = code;
       ast._isVue = true;
       ast._vueType = isTypeScript ? 'tsSetup' : 'setup';
     }
 
-    return ast;
+    // ✅ ВОЗВРАЩАЕМ РАСШИРЕННУЮ ИНФОРМАЦИЮ
+    return {
+      ast,
+      filePath: resolvedPath,
+      moduleName,
+      isVue,
+      isTypeScript,
+      content: code,
+      imports,
+      exports
+    };
+
   } catch (e) {
     if (e instanceof Error && (e as any).code === 'ENOENT') {
       console.warn(`⚠️ Файл не найден: ${filePath}`);

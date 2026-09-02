@@ -161,7 +161,9 @@ export interface FunctionInfo {
   isExported: boolean;
   params: string[];
   returnType?: string;
+  /** @deprecated Используйте callGraph.edges для получения вызовов */
   calls: string[];
+  /** @deprecated Используйте callGraph.edges для получения вызывающих */
   calledBy: string[];
   body?: string;
   startLine: number;
@@ -188,8 +190,10 @@ export interface FunctionInfo {
   // ============================================
   id?: string; // Уникальный ID сущности
   vscode?: string; // VSCode ссылка на функцию
-  callsInfo?: CallInfo[]; // Полная информация о вызовах
-  calledByInfo?: CalledByInfo[]; // Полная информация о вызывающих
+  /** @deprecated Используйте callGraph.edges для получения информации о вызовах */
+  callsInfo?: CallInfo[];
+  /** @deprecated Используйте callGraph.edges для получения информации о вызывающих */
+  calledByInfo?: CalledByInfo[];
   importedBy?: ImportedByInfo[]; // Полная информация об импортерах
 
   // Дополнительные поля для совместимости
@@ -206,6 +210,16 @@ export interface FunctionInfo {
 
   // Поле signature для совместимости
   signature?: string;
+
+  // 🆕 НОВЫЕ ПОЛЯ ДЛЯ КОМПАКТНОГО ФОРМАТА
+  moduleId?: string; // Короткий ID модуля (m1, m2, ...)
+  fileId?: string; // Короткий ID файла (f1, f2, ...)
+
+  // 🆕 НОВОЕ ПОЛЕ ДЛЯ УНИКАЛЬНОЙ ИДЕНТИФИКАЦИИ
+  /** Уникальный ключ функции: moduleId:fileId:functionName */
+  _uniqueKey?: string;
+  /** Полный путь для идентификации: module/file/function */
+  _fullPath?: string;
 }
 
 // ==========================================
@@ -223,12 +237,12 @@ export interface ExtendedFunctionInfo {
   params: string[];
   paramsCount: number;
   vscode: string;
-  calls: CallInfo[];
-  calledBy: CalledByInfo[];
   importedBy: ImportedByInfo[];
   body?: string;
   returnType?: string;
   metadata?: Record<string, any>;
+  /** Уникальный ключ: moduleId:fileId:functionName */
+  _uniqueKey?: string;
 }
 
 // ==========================================
@@ -772,7 +786,8 @@ export type CLIMode =
   | 'refactor'
   | 'analyze'
   | 'vue-analyze'
-  | 'vue';
+  | 'vue'
+  | 'compact'; // 🆕 НОВЫЙ РЕЖИМ
 
 export interface ProjectCLIArgs {
   mode: 'project';
@@ -891,6 +906,21 @@ export interface VueAnalyzeCLIArgs {
   };
 }
 
+// 🆕 НОВЫЙ ТИП ДЛЯ КОМПАКТНОГО РЕЖИМА
+export interface CompactCLIArgs {
+  mode: 'compact';
+  targetPath: string;
+  outputPath?: string;
+  options?: {
+    ultraCompact?: boolean;
+    useBitFlags?: boolean;
+    useDictionaries?: boolean;
+    readableKeys?: boolean;
+    useTemplates?: boolean;
+    maxDepth?: number;
+  };
+}
+
 export type CLIArgs =
   | ProjectCLIArgs
   | FileCLIArgs
@@ -906,6 +936,7 @@ export type CLIArgs =
   | RefactorCLIArgs
   | AnalyzeCLIArgs
   | VueAnalyzeCLIArgs
+  | CompactCLIArgs
   | null;
 
 // ==========================================
@@ -1084,6 +1115,8 @@ export interface EnhancedFunctionInfo extends FunctionInfo {
   vscode: string;
   signature: string;
   _safeInfo: any;
+  /** Уникальный ключ: moduleId:fileId:functionName */
+  _uniqueKey?: string;
 }
 
 export interface EnhancedConstantInfo {
@@ -1136,29 +1169,9 @@ export interface EnhancedClassInfo {
   _safeInfo: any;
 }
 
-export interface EnhancedEntityInfo {
-  functions: EnhancedFunctionInfo[];
-  constants: EnhancedConstantInfo[];
-  variables: EnhancedVariableInfo[];
-  interfaces: EnhancedInterfaceInfo[];
-  types: EnhancedTypeInfo[];
-  classes: EnhancedClassInfo[];
-  imports?: PackageLockImportInfo[];
-}
-
-export interface PackageLockImportInfo {
-  source: string;
-  specifiers: string[];
-  isTypeOnly: boolean;
-}
-
-export interface SecurityInfo {
-  hasEval: boolean;
-  hasProcessEnv: boolean;
-  hasSensitiveData: boolean;
-  hasExec: boolean;
-  hasPassword: boolean;
-}
+// ==========================================
+// 🆕 ТИПЫ ДЛЯ ENHANCED PACKAGE LOCK REPORT
+// ==========================================
 
 export interface EnhancedPackageLockReport {
   name: string;
@@ -1207,8 +1220,25 @@ export interface EnhancedPackageLockReport {
       }
     >;
   };
-  callGraph?: Record<string, string[]>;
-  entityStats?: {
+  callGraph?: {
+    from: string;
+    to: string;
+    path: string[];
+    found: boolean;
+    reason?: string;
+    nodes: {
+      function: string;
+      module: string;
+      line: number;
+      isAsync: boolean;
+    }[];
+    edges: {
+      from: string;
+      to: string;
+      line?: number;
+    }[];
+  };
+  entityStats: {
     totalFunctions: number;
     totalConstants: number;
     totalVariables: number;
@@ -1219,606 +1249,163 @@ export interface EnhancedPackageLockReport {
     totalExportedFunctions: number;
     totalAsyncFunctions: number;
   };
-  fileStats?: {
+  fileStats: {
     totalFiles: number;
     totalSize: number;
     totalLines: number;
   };
-  timestamp?: string;
   architectureMetrics?: ArchitectureMetrics;
   summary?: ProjectSummary;
-}
-
-// ==========================================
-// ТИПЫ ДЛЯ МОДУЛЕЙ ИЗ REPORTERS
-// ==========================================
-
-export interface ModuleNode {
-  id: string;
-  name: string;
-  path: string;
-  type: 'module' | 'component' | 'vue' | 'external';
-  level: number;
-  metadata: {
-    size: number;
-    lines: number;
-    language: string;
-    isEntry: boolean;
-    functionsCount?: number;
-    classesCount?: number;
-    exportsCount?: number;
-  };
-}
-
-export interface ModuleEdge {
-  from: string;
-  to: string;
-  type: 'import' | 'external' | 're-export' | 'dynamic_import';
-  specifiers: string[];
-  sourceCode?: string;
-}
-
-export interface EntityNode {
-  id: string;
-  name: string;
-  type: 'function' | 'class' | 'constant' | 'interface' | 'type' | 'variable' | 'enum' | 'module';
-  module: string;
-  line: number;
-  metadata: {
-    isExported: boolean;
-    dataType?: string;
-    value?: any;
-    params?: string[];
-    returnType?: string;
-    isAsync?: boolean;
-    isMethod?: boolean;
-    className?: string;
-    properties?: string[];
-    methods?: string[];
-    extends?: string;
-    implements?: string[];
-    extendsInterfaces?: string[];
-    definition?: string;
-    calledBy?: string[];
-    calls?: string[];
-    startLine?: number;
-    endLine?: number;
-    visibility?: 'public' | 'private' | 'protected' | 'internal';
-    tags?: string[];
-    complexity?: number;
-    security?: {
-      hasEval: boolean;
-      hasProcessEnv: boolean;
-      hasSensitiveData: boolean;
-      hasExec: boolean;
-      hasPassword: boolean;
-    };
-    body?: string;
-    vscode?: string;
-    id?: string;
-  };
-}
-
-export interface EntityEdge {
-  from: string;
-  to: string;
-  type:
-    | 'function_call'
-    | 'constant_reference'
-    | 'class_extends'
-    | 'class_implements'
-    | 'interface_extends'
-    | 'type_reference'
-    | 'method_call'
-    | 'property_access'
-    | 'import_binding'
-    | 'export_binding'
-    | 'parameter_type'
-    | 'return_type'
-    | 'variable_reference'
-    | 'enum_member';
-  line?: number;
-  count?: number;
-}
-
-export interface EntityStats {
-  total: number;
-  exported: number;
-  private: number;
-  byModule: Record<string, number>;
-  byType: {
-    functions: number;
-    classes: number;
-    constants: number;
-    interfaces: number;
-    types: number;
-    variables: number;
-    enums: number;
-  };
-}
-
-export interface FileStats {
-  totalFiles: number;
-  totalSize: number;
-  totalLines: number;
-}
-
-export interface FunctionEntity {
-  name: string;
-  params: string[];
-  paramTypes: string[];
-  line: number;
-  startLine: number;
-  endLine: number;
-  isAsync: boolean;
-  isExported: boolean;
-  isMethod: boolean;
-  className: string;
-  calls: string[];
-  calledBy: string[];
-  returnType: string;
-  body: string;
-  isNested: boolean;
-  parentFunction: string;
-  isArrow: boolean;
-  isEventHandler: boolean;
-  eventType: string;
-  depth: number;
-  complexity: number;
-  security: {
-    hasEval: boolean;
-    hasProcessEnv: boolean;
-    hasSensitiveData: boolean;
-    hasExec: boolean;
-    hasPassword: boolean;
-  };
-  vscode?: string;
-  signature?: string;
-  _safeInfo?: any;
-  id?: string;
-  callsInfo?: CallInfo[];
-  calledByInfo?: CalledByInfo[];
-  importedBy?: ImportedByInfo[];
-}
-
-// ==========================================
-// ТИПЫ ДЛЯ КОМПАКТНОЙ ВСЕЛЕННОЙ (ast-universe.json)
-// ==========================================
-
-export interface CompactUniverse {
-  version: string;
-  level: number;
-  root: number;
   timestamp: string;
-  modules: string[];
-  packages: Record<number, any>;
-  functions: CompactFunction[];
-  moduleGraph: Record<number, number[]>;
-  functionGraph: Record<number, number[]>;
-  levels: Record<number, number[]>;
-  stats: {
-    functions: number;
-    modules: number;
-    calls: number;
-    size: number;
-    depth: number;
-    cycles: boolean;
-  };
-  callDetails?: Record<
-    number,
-    {
-      calls: { to: number; line: number; isAsync: boolean }[];
-      calledBy: { from: number; line: number }[];
-    }
-  >;
-  callContext?: Record<
-    number,
-    {
-      params: string[];
-      returnType: string;
-      isExported: boolean;
-      isAsync: boolean;
-      line: number;
-      endLine: number;
-      calls: {
-        to: number;
-        line: number;
-        column: number;
-        isAsync: boolean;
-        isMethod: boolean;
-        className?: string;
-      }[];
-      calledBy: {
-        from: number;
-        line: number;
-        column: number;
-      }[];
-      dependencies: number[];
-    }
-  >;
-}
-
-export interface CompactFunction {
-  name: string;
-  module: number;
-  line: number;
-  isExported?: boolean;
-  isAsync?: boolean;
-  params?: string[];
-  returnType?: string;
-  calls?: number[];
-  startLine?: number;
-  endLine?: number;
-  body?: string;
-  vscode?: string;
-  security?: any;
-  signature?: string;
 }
 
 // ==========================================
-// ТИПЫ ДЛЯ КОМПАКТНОГО ОТЧЕТА С ШАБЛОНАМИ (v3.0.2)
+// ТИП ДЛЯ ENHANCED ENTITY INFO
+// ==========================================
+
+export interface EnhancedEntityInfo {
+  functions: EnhancedFunctionInfo[];
+  constants: EnhancedConstantInfo[];
+  variables: EnhancedVariableInfo[];
+  interfaces: EnhancedInterfaceInfo[];
+  types: EnhancedTypeInfo[];
+  classes: EnhancedClassInfo[];
+  imports?: {
+    source: string;
+    specifiers: string[];
+    isTypeOnly: boolean;
+  }[];
+}
+
+// ==========================================
+// 🆕 НОВЫЕ ТИПЫ ДЛЯ КОМПАКТНОГО ФОРМАТА (v4.0.0)
 // ==========================================
 
 /**
- * Шаблон сущности для компактного отчета
- * Содержит общие поля для группы сущностей одного типа
+ * Компактный отчет - самодостаточный формат с короткими индексами
+ * и читаемыми ключами объектов
  */
-export interface EntityTemplate {
-  /** Тип сущности: function, class, interface, type, constant, variable */
-  kind: string;
-  /** Является ли вложенной (для функций) */
-  isNested?: boolean;
-  /** Глубина вложенности (для функций) */
-  depth?: number;
-  /** Является ли асинхронной (для функций) */
-  isAsync?: boolean;
-  /** Является ли методом класса (для функций) */
-  isMethod?: boolean;
-  /** Экспортируется ли сущность */
-  isExported?: boolean;
-  /** Является ли стрелочной функцией */
-  isArrow?: boolean;
-  /** Является ли обработчиком события */
-  isEventHandler?: boolean;
-}
-
-/**
- * Расширенный компактный отчет с поддержкой шаблонов
- */
-export interface CompactEntityReport {
-  /** Версия формата отчета */
+export interface CompactReport {
+  /** Версия формата */
   version: string;
-  /** Временная метка создания */
-  timestamp?: string;
+  /** Время генерации */
+  timestamp: string;
+  /** Корневой модуль (m1, m2, ...) */
+  root: string;
+  /** Легенда для расшифровки ключей */
+  legend: Record<string, string>;
 
-  /** Секция шаблонов - общие поля для групп сущностей */
-  templates?: Record<string, EntityTemplate>;
+  /** Индекс модулей: m1 → "cli" */
+  moduleIndex: Record<string, string>;
+  /** Индекс файлов: f1 → { path, module } */
+  fileIndex: Record<string, { path: string; module: string }>;
+  /** Индекс функций: fn1 → { name, module, file } */
+  functionIndex: Record<string, { name: string; module: string; file: string }>;
 
-  /** Глобальные индексы */
-  functionIndex: Record<string, string>; // id -> name
-  fileIndex: Record<string, string>; // id -> path
-  moduleIndex: Record<string, string>; // id -> module name
+  /** Данные модулей */
+  modules: Record<string, CompactModule>;
 
-  /** Сущности с ссылками на шаблоны */
-  entities: Record<string, any>;
-
-  /** Граф вызовов */
-  callGraph?: {
-    edges: CallGraphEdge[];
-    stats: {
-      totalEdges: number;
-      uniqueCallers: number;
-      uniqueCallees: number;
-      mostCalled: { functionId: string; count: number }[];
-      topCallers: { functionId: string; count: number }[];
-    };
+  /** Обратные индексы */
+  reverseIndex: {
+    /** Кто импортирует функцию: fn1 → [{ from: "m1", line: 45 }] */
+    importedBy: Record<string, { from: string; line: number }[]>;
   };
 
-  /** Граф импортов */
-  importGraph?: {
-    edges: ImportGraphEdge[];
-    stats: {
-      totalEdges: number;
-      uniqueImporters: number;
-      uniqueImported: number;
-      mostImported: { fileId: string; count: number }[];
-      totalImports: number;
-      resolvedImports: number;
-      unresolvedImports: number;
-    };
-  };
+  /** Неразрешенные импорты */
+  unresolved: {
+    module: string;
+    target: string;
+    line: number;
+  }[];
 
-  /** Статистика */
+  /** Общая статистика */
   stats: {
+    totalModules: number;
+    totalFiles: number;
     totalFunctions: number;
     totalCalls: number;
-    totalCalledBy: number;
-    totalImportedBy: number;
-    totalEnums: number;
-    totalDecorators: number;
-    totalFiles: number;
-    totalModules: number;
-  };
-
-  /** Статистика использования шаблонов */
-  templateStats?: {
-    totalTemplates: number;
-    totalEntities: number;
-    usage: Record<string, number>;
-  };
-
-  /** Легенда */
-  legend?: {
-    kinds?: Record<string, string>;
-    callTypes?: Record<string, string>;
-    importTypes?: Record<string, string>;
+    totalImports: number;
+    totalExports: number;
+    totalUnresolved: number;
   };
 }
 
+/**
+ * Компактный модуль
+ */
+export interface CompactModule {
+  /** Имя модуля */
+  name: string;
+  /** Путь к файлу */
+  path: string;
+  /** Ссылка на файл (f1, f2, ...) */
+  file: string;
+
+  /** Импорты модуля */
+  imports: {
+    from: string; // moduleId
+    specifiers: string[];
+    line: number;
+    type?: 'named' | 'default' | 'namespace' | 'type';
+  }[];
+
+  /** Экспорты модуля */
+  exports: {
+    function: string; // functionId
+    name: string;
+  }[];
+
+  /** Функции модуля */
+  functions: Record<string, CompactFunction>;
+
+  /** Статистика модуля */
+  stats: {
+    functions: number;
+    imports: number;
+    exports: number;
+    dependencies: number;
+  };
+}
+
+/**
+ * Компактная функция
+ */
+export interface CompactFunction {
+  /** Имя функции */
+  name: string;
+  /** Строка определения */
+  line: number;
+  /** Битовые флаги: 1=async, 2=nested, 4=arrow, 8=method, 16=event, 32=exported */
+  flags: number;
+  /** Параметры */
+  params: string[];
+  /** Асинхронная */
+  isAsync: boolean;
+  /** Экспортируется */
+  isExported: boolean;
+
+  /** Вызовы функции */
+  calls: {
+    to: string; // functionId
+    line: number;
+    type: 'direct' | 'import' | 'method' | 'computed' | 'watch' | 'event';
+  }[];
+}
+
 // ==========================================
-// ВСПОМОГАТЕЛЬНЫЕ ТИПЫ ДЛЯ ГРАФОВ
+// ТИП ДЛЯ COMPACT CALL
 // ==========================================
 
-export interface CallGraphEdge {
-  from: string;
+export interface CompactCall {
   to: string;
   line: number;
   type: 'direct' | 'import' | 'method' | 'computed' | 'watch' | 'event';
 }
 
-export interface ImportGraphEdge {
-  from: string;
-  to: string;
-  specifiers: string[];
-  line: number;
-  type: 'named' | 'default' | 'namespace' | 'type';
-}
-
 // ==========================================
-// НОВЫЕ ТИПЫ ДЛЯ УЛЬТРА-КОМПАКТНОГО ОТЧЕТА (v4.0.0)
+// ЭКСПОРТ ПО УМОЛЧАНИЮ
 // ==========================================
-
-/**
- * Битовые флаги для функций
- * Используются для экономии места вместо булевых полей
- */
-export enum FunctionFlags {
-  ASYNC = 1 << 0, // 1
-  NESTED = 1 << 1, // 2
-  ARROW = 1 << 2, // 4
-  METHOD = 1 << 3, // 8
-  EVENT_HANDLER = 1 << 4, // 16
-  EXPORTED = 1 << 5, // 32
-  CONST = 1 << 6, // 64
-  MACRO = 1 << 7, // 128
-  COMPOSABLE = 1 << 8, // 256
-}
-
-/**
- * Ультра-компактная сущность (без дублей)
- */
-export interface UltraCompactEntity {
-  /** Ссылка на файл в fileIndex */
-  file: string;
-  /** Номер строки */
-  line: number;
-  /** Битовые флаги (см. FunctionFlags) */
-  flags: number;
-  /** Ссылки на параметры в parameterDictionary */
-  params?: string[];
-  /** Ссылка на тип в typeDictionary */
-  returnType?: string;
-  /** Ссылка на шаблон в templates */
-  template?: string;
-  /** Дополнительные метаданные (опционально) */
-  metadata?: Record<string, any>;
-}
-
-/**
- * Ультра-компактный отчет (без дублей данных)
- */
-export interface UltraCompactReport {
-  /** Версия формата */
-  version: string;
-  /** Временная метка */
-  timestamp: string;
-
-  /** Индекс: ID функции → имя */
-  functionIndex: Record<string, string>;
-  /** Индекс: ID файла → путь */
-  fileIndex: Record<string, string>;
-  /** Индекс: ID модуля → имя */
-  moduleIndex: Record<string, string>;
-
-  /** Словарь параметров: ID → значение */
-  parameterDictionary: Record<string, string>;
-  /** Словарь типов: ID → значение */
-  typeDictionary: Record<string, string>;
-
-  /** Граф вызовов (единственный источник) */
-  callGraph: {
-    edges: CallGraphEdge[];
-    stats: {
-      totalEdges: number;
-      uniqueCallers: number;
-      uniqueCallees: number;
-      mostCalled: { functionId: string; count: number }[];
-      topCallers: { functionId: string; count: number }[];
-    };
-  };
-
-  /** Граф импортов (опционально) */
-  importGraph?: {
-    edges: ImportGraphEdge[];
-    stats: {
-      totalEdges: number;
-      uniqueImporters: number;
-      uniqueImported: number;
-      mostImported: { fileId: string; count: number }[];
-      totalImports: number;
-      resolvedImports: number;
-      unresolvedImports: number;
-    };
-  };
-
-  /** Ультра-компактные сущности (без дублей) */
-  entities: Record<string, UltraCompactEntity>;
-
-  /** Шаблоны (опционально) */
-  templates?: Record<string, EntityTemplate>;
-
-  /** Статистика */
-  stats: {
-    totalFunctions: number;
-    totalCalls: number;
-    totalCalledBy: number;
-    totalImportedBy: number;
-    totalEnums: number;
-    totalDecorators: number;
-    totalFiles: number;
-    totalModules: number;
-  };
-
-  /** Статистика шаблонов */
-  templateStats?: {
-    totalTemplates: number;
-    totalEntities: number;
-    usage: Record<string, number>;
-  };
-
-  /** Легенда */
-  legend?: {
-    kinds?: Record<string, string>;
-    callTypes?: Record<string, string>;
-    importTypes?: Record<string, string>;
-  };
-}
-
-// ==========================================
-// УТИЛИТЫ ДЛЯ ТИПОВ
-// ==========================================
-
-export type EntityType = EntityNode['type'];
-export type EdgeType = EntityEdge['type'];
-
-export function isExported(node: EntityNode): boolean {
-  return node.metadata.isExported || false;
-}
-
-export function isFunction(node: EntityNode): boolean {
-  return node.type === 'function';
-}
-
-export function isClass(node: EntityNode): boolean {
-  return node.type === 'class';
-}
-
-export function isConstant(node: EntityNode): boolean {
-  return node.type === 'constant';
-}
-
-export function isInterface(node: EntityNode): boolean {
-  return node.type === 'interface';
-}
-
-export function isType(node: EntityNode): boolean {
-  return node.type === 'type';
-}
-
-export function isVariable(node: EntityNode): boolean {
-  return node.type === 'variable';
-}
-
-export function getEntityColor(type: EntityType): string {
-  switch (type) {
-    case 'function':
-      return '#4f46e5';
-    case 'class':
-      return '#7c3aed';
-    case 'constant':
-      return '#059669';
-    case 'interface':
-      return '#0ea5e9';
-    case 'type':
-      return '#f59e0b';
-    case 'variable':
-      return '#ef4444';
-    case 'enum':
-      return '#8b5cf6';
-    case 'module':
-      return '#6b7280';
-    default:
-      return '#9ca3af';
-  }
-}
-
-export function getEntityIcon(type: EntityType): string {
-  switch (type) {
-    case 'function':
-      return 'ƒ';
-    case 'class':
-      return '📦';
-    case 'constant':
-      return '📌';
-    case 'interface':
-      return '📋';
-    case 'type':
-      return '📝';
-    case 'variable':
-      return '📄';
-    case 'enum':
-      return '🔢';
-    case 'module':
-      return '📁';
-    default:
-      return '•';
-  }
-}
-
-export function getEdgeColor(type: EdgeType): string {
-  switch (type) {
-    case 'function_call':
-      return '#f59e0b';
-    case 'constant_reference':
-      return '#059669';
-    case 'class_extends':
-      return '#7c3aed';
-    case 'class_implements':
-      return '#8b5cf6';
-    case 'interface_extends':
-      return '#0ea5e9';
-    case 'type_reference':
-      return '#f59e0b';
-    case 'method_call':
-      return '#f97316';
-    case 'property_access':
-      return '#ec4899';
-    case 'import_binding':
-      return '#3b82f6';
-    case 'export_binding':
-      return '#22c55e';
-    case 'parameter_type':
-      return '#8b5cf6';
-    case 'return_type':
-      return '#ef4444';
-    case 'variable_reference':
-      return '#f43f5e';
-    case 'enum_member':
-      return '#a855f7';
-    default:
-      return '#6b7280';
-  }
-}
 
 export default {
-  isExported,
-  isFunction,
-  isClass,
-  isConstant,
-  isInterface,
-  isType,
-  isVariable,
-  getEntityColor,
-  getEntityIcon,
-  getEdgeColor,
+  // Типы экспортируются автоматически
 };
