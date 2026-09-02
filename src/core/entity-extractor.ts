@@ -751,51 +751,70 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
     }
 
     // ==========================================
-    // 2. EXPORT NAMED DECLARATION
+    // 2. EXPORT NAMED DECLARATION (ИСПРАВЛЕНО)
     // ==========================================
     if (node.type === 'ExportNamedDeclaration') {
       let exportName = '';
-      let exportType: ExportInfo['type'] = 'default';
+      let exportType: ExportInfo['type'] = 'value';
 
       if (node.declaration) {
         const decl = node.declaration;
         if (decl.type === 'FunctionDeclaration' && decl.id) {
           exportName = decl.id.name;
           exportType = 'function';
+          exports.push({
+            name: exportName,
+            type: exportType,
+            isDefault: false,
+            loc: decl.loc || node.loc,
+          });
         } else if (decl.type === 'ClassDeclaration' && decl.id) {
           exportName = decl.id.name;
           exportType = 'class';
+          exports.push({
+            name: exportName,
+            type: exportType,
+            isDefault: false,
+            loc: decl.loc || node.loc,
+          });
         } else if (decl.type === 'VariableDeclaration') {
-          if (isArraySafe(node.declarations)) {
-            for (const d of node.declarations) {
+          // Обрабатываем переменные
+          if (decl.declarations && Array.isArray(decl.declarations)) {
+            for (const d of decl.declarations) {
               if (d.id?.name) {
                 exportName = d.id.name;
                 exportType = 'constant';
+                exports.push({
+                  name: exportName,
+                  type: exportType,
+                  isDefault: false,
+                  loc: d.loc || node.loc,
+                });
               }
             }
           }
+          // Не возвращаем, чтобы продолжить обход
         }
-      } else if (isArraySafe(node.specifiers)) {
+      } else if (node.specifiers && Array.isArray(node.specifiers)) {
+        // export { a, b, c }
         for (const spec of node.specifiers) {
           if (spec.exported) {
-            exportName = spec.exported.name;
+            exportName = spec.exported.name || spec.exported.value;
             exportType = 'value';
+            exports.push({
+              name: exportName,
+              type: exportType,
+              isDefault: false,
+              loc: spec.loc || node.loc,
+            });
           }
         }
-      }
-
-      if (exportName) {
-        exports.push({
-          name: exportName,
-          type: exportType,
-          isDefault: false,
-          loc: node.loc,
-        });
+        // Не возвращаем, чтобы продолжить обход
       }
     }
 
     // ==========================================
-    // 3. EXPORT DEFAULT DECLARATION
+    // 3. EXPORT DEFAULT DECLARATION (ИСПРАВЛЕНО)
     // ==========================================
     if (node.type === 'ExportDefaultDeclaration') {
       let exportName = 'default';
@@ -811,6 +830,10 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
           exportType = 'class';
         } else if (decl.type === 'Identifier') {
           exportName = decl.name || 'default';
+          exportType = 'value';
+        } else {
+          // Анонимный экспорт
+          exportName = 'default';
           exportType = 'value';
         }
       }
@@ -931,7 +954,6 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         security: analyzeSecurity(bodyText || ''),
         id: funcId,
         vscode: filePath ? `vscode://file/${filePath}:${node.loc?.start?.line || 1}` : '',
-        // ✅ ДОБАВЛЯЕМ moduleId И fileId ДЛЯ КОРРЕКТНОЙ ИДЕНТИФИКАЦИИ
         moduleId: moduleId,
         fileId: fileId,
       };
@@ -1087,7 +1109,6 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         security: analyzeSecurity(bodyText || ''),
         id: funcId,
         vscode: filePath ? `vscode://file/${filePath}:${node.loc?.start?.line || 1}` : '',
-        // ✅ ДОБАВЛЯЕМ moduleId И fileId ДЛЯ КОРРЕКТНОЙ ИДЕНТИФИКАЦИИ
         moduleId: moduleId,
         fileId: fileId,
       };
@@ -1163,7 +1184,6 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
           security: analyzeSecurity(bodyText || ''),
           id: funcId,
           vscode: filePath ? `vscode://file/${filePath}:${node.loc?.start?.line || 1}` : '',
-          // ✅ ДОБАВЛЯЕМ moduleId И fileId ДЛЯ КОРРЕКТНОЙ ИДЕНТИФИКАЦИИ
           moduleId: moduleId,
           fileId: fileId,
         };
@@ -1593,7 +1613,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         }
       }
 
-      // Обновляем func.calls (⚠️ deprecated, используйте callGraph.edges)
+      // Обновляем func.calls
       func.calls = callGraph[func.name] || [];
     }
   }
