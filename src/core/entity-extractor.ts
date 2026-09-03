@@ -754,62 +754,61 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
     // 2. EXPORT NAMED DECLARATION (ИСПРАВЛЕНО)
     // ==========================================
     if (node.type === 'ExportNamedDeclaration') {
-      let exportName = '';
-      let exportType: ExportInfo['type'] = 'value';
+      // Проверяем, является ли это re-экспортом (export ... from)
+      const isReExport = !!node.source;
+      const sourceModule = node.source?.value || undefined;
 
       if (node.declaration) {
         const decl = node.declaration;
         if (decl.type === 'FunctionDeclaration' && decl.id) {
-          exportName = decl.id.name;
-          exportType = 'function';
+          const exportName = decl.id.name;
           exports.push({
             name: exportName,
-            type: exportType,
+            type: 'function',
             isDefault: false,
+            isReExport: false,
             loc: decl.loc || node.loc,
           });
         } else if (decl.type === 'ClassDeclaration' && decl.id) {
-          exportName = decl.id.name;
-          exportType = 'class';
+          const exportName = decl.id.name;
           exports.push({
             name: exportName,
-            type: exportType,
+            type: 'class',
             isDefault: false,
+            isReExport: false,
             loc: decl.loc || node.loc,
           });
         } else if (decl.type === 'VariableDeclaration') {
-          // Обрабатываем переменные
           if (decl.declarations && Array.isArray(decl.declarations)) {
             for (const d of decl.declarations) {
               if (d.id?.name) {
-                exportName = d.id.name;
-                exportType = 'constant';
+                const exportName = d.id.name;
                 exports.push({
                   name: exportName,
-                  type: exportType,
+                  type: 'constant',
                   isDefault: false,
+                  isReExport: false,
                   loc: d.loc || node.loc,
                 });
               }
             }
           }
-          // Не возвращаем, чтобы продолжить обход
         }
       } else if (node.specifiers && Array.isArray(node.specifiers)) {
-        // export { a, b, c }
+        // export { a, b, c } или export { a, b } from 'module'
         for (const spec of node.specifiers) {
           if (spec.exported) {
-            exportName = spec.exported.name || spec.exported.value;
-            exportType = 'value';
+            const exportName = spec.exported.name || spec.exported.value;
             exports.push({
               name: exportName,
-              type: exportType,
+              type: 'value',
               isDefault: false,
+              isReExport: isReExport,
+              source: sourceModule,
               loc: spec.loc || node.loc,
             });
           }
         }
-        // Не возвращаем, чтобы продолжить обход
       }
     }
 
@@ -817,31 +816,31 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
     // 3. EXPORT DEFAULT DECLARATION (ИСПРАВЛЕНО)
     // ==========================================
     if (node.type === 'ExportDefaultDeclaration') {
-      let exportName = 'default';
+      let actualName: string | undefined;
       let exportType: ExportInfo['type'] = 'default';
 
       if (node.declaration) {
         const decl = node.declaration;
         if (decl.type === 'FunctionDeclaration' && decl.id) {
-          exportName = decl.id.name || 'default';
+          actualName = decl.id.name;
           exportType = 'function';
         } else if (decl.type === 'ClassDeclaration' && decl.id) {
-          exportName = decl.id.name || 'default';
+          actualName = decl.id.name;
           exportType = 'class';
         } else if (decl.type === 'Identifier') {
-          exportName = decl.name || 'default';
+          actualName = decl.name;
           exportType = 'value';
         } else {
-          // Анонимный экспорт
-          exportName = 'default';
+          actualName = 'default';
           exportType = 'value';
         }
       }
 
       exports.push({
-        name: exportName,
+        name: actualName || 'default',
         type: exportType,
         isDefault: true,
+        isReExport: false,
         loc: node.loc,
       });
     }
@@ -1613,7 +1612,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         }
       }
 
-      // Обновляем func.calls
+      // Обновляем func.calls (⚠️ deprecated, используйте callGraph.edges)
       func.calls = callGraph[func.name] || [];
     }
   }

@@ -312,12 +312,11 @@ export function generateCompactReport(
 
     // 3.3 ЭКСПОРТЫ (ИСПРАВЛЕНО - полная информация)
     if (includeExports) {
-      // Собираем все экспорты из entities.exports
       for (const exp of entities.exports || []) {
         const expName = exp.name || 'default';
-
-        // Проверяем, является ли это default экспортом
         const isDefault = exp.isDefault || false;
+        const isReExport = exp.isReExport || false;
+        // const sourceModule = exp.source || undefined;
 
         // Ищем функцию с таким именем
         const expFunc = entities.functions.find(f => f.name === expName);
@@ -327,18 +326,19 @@ export function generateCompactReport(
           if (funcId) {
             const funcIdx = parseInt(funcId.replace('fn', ''));
 
-            // Проверяем, является ли экспорт типом
-            const isTypeExport = (exp as any).isTypeOnly === true;
+            // Определяем тип экспорта
+            let exportType = 'ne'; // named export
+            if (isDefault)
+              exportType = 'de'; // default export
+            else if (isReExport) exportType = 're'; // re-export
 
             relations.exports.push([
               moduleId,
               funcIdx,
               exp.loc?.start?.line || 0,
-              isTypeExport
-                ? RELATION_TYPES.typeExport
-                : isDefault ? 'de' : 'ne',
+              exportType,
               expName,
-              expName
+              expName,
             ]);
             exportCounter++;
           }
@@ -354,13 +354,12 @@ export function generateCompactReport(
               funcMap.set(constKey, constId);
               nameToFuncId.set(expName, constId);
 
-              // Добавляем константу как функцию в индекс
               functions.push({
                 n: expName,
                 m: moduleId,
                 f: fileId,
                 l: constItem.line || 0,
-                fl: 'e', // помечаем как экспортированную
+                fl: 'e',
               });
 
               functionIndex[constId] = {
@@ -370,13 +369,17 @@ export function generateCompactReport(
             }
 
             const constIdx = parseInt(constId.replace('fn', ''));
+            let exportType = 'ne';
+            if (isDefault) exportType = 'de';
+            else if (isReExport) exportType = 're';
+
             relations.exports.push([
               moduleId,
               constIdx,
               constItem.line || 0,
-              isDefault ? 'de' : 'ne',
+              exportType,
               expName,
-              expName
+              expName,
             ]);
             exportCounter++;
           }
@@ -384,7 +387,7 @@ export function generateCompactReport(
       }
     }
 
-    // 3.4 НАСЛЕДОВАНИЕ (добавлен анализ классов)
+    // 3.4 НАСЛЕДОВАНИЕ (ИСПРАВЛЕНО - добавлен анализ классов)
     if (includeInheritance) {
       for (const cls of entities.classes || []) {
         if (!cls.name) continue;
@@ -558,16 +561,15 @@ export function generateCompactReport(
       }
     }
 
-    // 3.6 RE-EXPORTS (добавлен анализ)
+    // 3.6 RE-EXPORTS (ИСПРАВЛЕНО - добавлен анализ)
     for (const exp of entities.exports || []) {
       // Проверяем, является ли экспорт re-экспортом
-      const expAny = exp as any;
-      const isReExport = expAny.isReExport === true || expAny.source !== undefined;
+      const isReExport = exp.isReExport === true || exp.source !== undefined;
 
       if (isReExport && exp.name) {
         // Находим исходный модуль
         let sourceModuleId: string | undefined;
-        const sourcePath = expAny.source || exp.name;
+        const sourcePath = exp.source || exp.name;
 
         for (const [otherPath] of Object.entries(entitiesMap)) {
           if (otherPath.includes(sourcePath) || sourcePath.includes(path.basename(otherPath))) {
@@ -592,30 +594,24 @@ export function generateCompactReport(
   }
 
   // ============================================
-  // 3.7 ФИКСТИВНЫЕ ЭКСПОРТЫ (НА ОСНОВЕ ФЛАГОВ)
+  // 3.7 FALLBACK: ЭКСПОРТЫ НА ОСНОВЕ ФЛАГОВ
   // ============================================
   // Если экспорты не были собраны, создаем их на основе флагов
   if (relations.exports.length === 0) {
-    console.log('   🔧 Создание экспортов на основе флагов...');
+    console.log('   🔧 Создание экспортов на основе флагов (fallback)...');
     for (const func of functions) {
       if (func.fl && func.fl.includes('e')) {
         const funcIdx = parseInt(func.n.replace('fn', ''));
-        // Проверяем, не добавлен ли уже этот экспорт
         const exists = relations.exports.some(e => e[1] === funcIdx);
         if (!exists) {
-          relations.exports.push([
-            func.m,        // module
-            funcIdx,       // function index
-            func.l,        // line
-            'ne',          // named export
-            func.n,        // name
-            func.n         // local name
-          ]);
+          relations.exports.push([func.m, funcIdx, func.l, 'ne', func.n, func.n]);
           exportCounter++;
         }
       }
     }
-    console.log(`   ✅ Создано ${relations.exports.length} экспортов из флагов`);
+    if (relations.exports.length > 0) {
+      console.log(`   ✅ Создано ${relations.exports.length} экспортов из флагов`);
+    }
   }
 
   // ============================================
@@ -650,13 +646,13 @@ export function generateCompactReport(
     }
   }
 
-  // Функции с экспортами (исправлено)
+  // Функции с экспортами
   const funcsWithExports = new Set<number>();
   for (const exp of relations.exports) {
     funcsWithExports.add(exp[1]);
   }
 
-  // Экспортированные функции с вызовами (исправлено)
+  // Экспортированные функции с вызовами
   const exportedWithCalls = new Set<number>();
   for (const id of funcsWithExports) {
     if (funcsWithCalls.has(id)) {
@@ -666,59 +662,59 @@ export function generateCompactReport(
 
   const stats = includeStats
     ? {
-      // Базовые метрики
-      tf: functionCounter,
-      tc: relations.calls.length,
-      tm: moduleCounter,
-      tfils: fileCounter,
-      cy: false,
-      ti: relations.imports.length,
-      te: relations.exports.length,
-      tun: funcsWithoutCalls.size,
+        // Базовые метрики
+        tf: functionCounter,
+        tc: relations.calls.length,
+        tm: moduleCounter,
+        tfils: fileCounter,
+        cy: false,
+        ti: relations.imports.length,
+        te: relations.exports.length,
+        tun: funcsWithoutCalls.size,
 
-      // НОВЫЕ метрики
-      tr: relations.inheritance.length,
-      ttd: relations.typeDeps.length,
-      tre: relations.reExports.length,
-      tmod: Object.keys(entitiesMap).length,
+        // НОВЫЕ метрики
+        tr: relations.inheritance.length,
+        ttd: relations.typeDeps.length,
+        tre: relations.reExports.length,
+        tmod: Object.keys(entitiesMap).length,
 
-      // Качественные метрики
-      exported: exportedFuncs,
-      async: asyncFuncs,
-      methods: methodFuncs,
-      arrows: arrowFuncs,
-      isolated: funcsWithoutCalls.size,
+        // Качественные метрики
+        exported: exportedFuncs,
+        async: asyncFuncs,
+        methods: methodFuncs,
+        arrows: arrowFuncs,
+        isolated: funcsWithoutCalls.size,
 
-      // Метрики вызовов
-      funcsWithCalls: funcsWithCalls.size,
-      calledFuncs: calledFuncs.size,
-      avgCallsPerFunc:
-        functionCounter > 0 ? Number((relations.calls.length / functionCounter).toFixed(2)) : 0,
-      maxCalls:
-        relations.calls.length > 0
-          ? Math.max(
-            ...relations.calls.map(c => {
-              let count = 0;
-              for (const call of relations.calls) {
-                if (call[0] === c[0]) count++;
-              }
-              return count;
-            })
-          )
-          : 0,
+        // Метрики вызовов
+        funcsWithCalls: funcsWithCalls.size,
+        calledFuncs: calledFuncs.size,
+        avgCallsPerFunc:
+          functionCounter > 0 ? Number((relations.calls.length / functionCounter).toFixed(2)) : 0,
+        maxCalls:
+          relations.calls.length > 0
+            ? Math.max(
+                ...relations.calls.map(c => {
+                  let count = 0;
+                  for (const call of relations.calls) {
+                    if (call[0] === c[0]) count++;
+                  }
+                  return count;
+                })
+              )
+            : 0,
 
-      // Импорты и экспорты
-      defaultExports: defaultExports.size,
-      typeExports: relations.exports.filter(e => e[3] === 'te').length,
-      typeImports: relations.imports.filter(i => i[3] === 'to').length,
+        // Импорты и экспорты
+        defaultExports: defaultExports.size,
+        typeExports: relations.exports.filter(e => e[3] === 'te').length,
+        typeImports: relations.imports.filter(i => i[3] === 'to').length,
 
-      // Структура
-      modulesWithFunctions: new Set(functions.map(f => f.m)).size,
-      filesWithFunctions: new Set(functions.map(f => f.f)).size,
+        // Структура
+        modulesWithFunctions: new Set(functions.map(f => f.m)).size,
+        filesWithFunctions: new Set(functions.map(f => f.f)).size,
 
-      // НОВОЕ: экспортированные функции с вызовами (исправлено)
-      exportedWithCalls: exportedWithCalls.size,
-    }
+        // Экспортированные функции с вызовами
+        exportedWithCalls: exportedWithCalls.size,
+      }
     : undefined;
 
   // ============================================
@@ -745,9 +741,9 @@ export function generateCompactReport(
       c: relations.calls,
       i: relations.imports,
       e: relations.exports, // ИСПРАВЛЕНО - теперь содержит все экспорты
-      h: relations.inheritance, // теперь содержит наследование
-      td: relations.typeDeps, // расширенные типовые зависимости
-      re: relations.reExports, // re-экспорты
+      h: relations.inheritance, // ИСПРАВЛЕНО - теперь содержит наследование
+      td: relations.typeDeps, // ИСПРАВЛЕНО - расширенные типовые зависимости
+      re: relations.reExports, // ИСПРАВЛЕНО - re-экспорты
     };
   } else {
     report.graph = relations.calls;

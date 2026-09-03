@@ -48,6 +48,9 @@ export interface ExportInfo {
   async?: boolean;
   startLine?: number;
   endLine?: number;
+  // НОВЫЕ ПОЛЯ ДЛЯ RE-ЭКСПОРТОВ
+  isReExport?: boolean;   // Является ли re-экспортом
+  source?: string;        // Исходный модуль для re-экспорта
 }
 
 // ==========================================
@@ -127,7 +130,14 @@ export interface CallInfo {
   targetVscode: string;
   callLine: number;
   callType:
-    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
+    | 'direct'
+    | 'import'
+    | 'computed'
+    | 'watch'
+    | 'event'
+    | 'lifecycle'
+    | 'method'
+    | 'constructor';
 }
 
 export interface CalledByInfo {
@@ -138,7 +148,14 @@ export interface CalledByInfo {
   callerVscode: string;
   callLine: number;
   callType:
-    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
+    | 'direct'
+    | 'import'
+    | 'computed'
+    | 'watch'
+    | 'event'
+    | 'lifecycle'
+    | 'method'
+    | 'constructor';
 }
 
 export interface ImportedByInfo {
