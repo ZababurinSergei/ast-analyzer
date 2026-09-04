@@ -48,9 +48,8 @@ export interface ExportInfo {
   async?: boolean;
   startLine?: number;
   endLine?: number;
-  // НОВЫЕ ПОЛЯ ДЛЯ RE-ЭКСПОРТОВ
-  isReExport?: boolean;   // Является ли re-экспортом
-  source?: string;        // Исходный модуль для re-экспорта
+  isReExport?: boolean;
+  source?: string;
 }
 
 // ==========================================
@@ -130,14 +129,7 @@ export interface CallInfo {
   targetVscode: string;
   callLine: number;
   callType:
-    | 'direct'
-    | 'import'
-    | 'computed'
-    | 'watch'
-    | 'event'
-    | 'lifecycle'
-    | 'method'
-    | 'constructor';
+    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
 }
 
 export interface CalledByInfo {
@@ -148,14 +140,7 @@ export interface CalledByInfo {
   callerVscode: string;
   callLine: number;
   callType:
-    | 'direct'
-    | 'import'
-    | 'computed'
-    | 'watch'
-    | 'event'
-    | 'lifecycle'
-    | 'method'
-    | 'constructor';
+    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
 }
 
 export interface ImportedByInfo {
@@ -178,9 +163,7 @@ export interface FunctionInfo {
   isExported: boolean;
   params: string[];
   returnType?: string;
-  /** @deprecated Используйте callGraph.edges для получения вызовов */
   calls: string[];
-  /** @deprecated Используйте callGraph.edges для получения вызывающих */
   calledBy: string[];
   body?: string;
   startLine: number;
@@ -201,46 +184,28 @@ export interface FunctionInfo {
     hasExec: boolean;
     hasPassword: boolean;
   };
-
-  // ============================================
-  // НОВЫЕ ПОЛЯ ДЛЯ ВСТРОЕННЫХ СВЯЗЕЙ (v3.0.1)
-  // ============================================
-  id?: string; // Уникальный ID сущности
-  vscode?: string; // VSCode ссылка на функцию
-  /** @deprecated Используйте callGraph.edges для получения информации о вызовах */
+  id?: string;
+  vscode?: string;
   callsInfo?: CallInfo[];
-  /** @deprecated Используйте callGraph.edges для получения информации о вызывающих */
   calledByInfo?: CalledByInfo[];
-  importedBy?: ImportedByInfo[]; // Полная информация об импортерах
-
-  // Дополнительные поля для совместимости
+  importedBy?: ImportedByInfo[];
   filePath?: string;
   moduleName?: string;
   _modulePath?: string;
   _safeInfo?: any;
-
-  // Дополнительные поля для Vue
   isConst?: boolean;
   isMacro?: boolean;
   isComposable?: boolean;
   source?: string;
-
-  // Поле signature для совместимости
   signature?: string;
-
-  // 🆕 НОВЫЕ ПОЛЯ ДЛЯ КОМПАКТНОГО ФОРМАТА
-  moduleId?: string; // Короткий ID модуля (m1, m2, ...)
-  fileId?: string; // Короткий ID файла (f1, f2, ...)
-
-  // 🆕 НОВОЕ ПОЛЕ ДЛЯ УНИКАЛЬНОЙ ИДЕНТИФИКАЦИИ
-  /** Уникальный ключ функции: moduleId:fileId:functionName */
+  moduleId?: string;
+  fileId?: string;
   _uniqueKey?: string;
-  /** Полный путь для идентификации: module/file/function */
   _fullPath?: string;
 }
 
 // ==========================================
-// РАСШИРЕННАЯ ИНФОРМАЦИЯ О ФУНКЦИИ (С ВСТРОЕННЫМИ СВЯЗЯМИ)
+// РАСШИРЕННАЯ ИНФОРМАЦИЯ О ФУНКЦИИ
 // ==========================================
 
 export interface ExtendedFunctionInfo {
@@ -258,7 +223,6 @@ export interface ExtendedFunctionInfo {
   body?: string;
   returnType?: string;
   metadata?: Record<string, any>;
-  /** Уникальный ключ: moduleId:fileId:functionName */
   _uniqueKey?: string;
 }
 
@@ -412,7 +376,7 @@ export interface AnalysisResult {
 }
 
 // ==========================================
-// ТИПЫ ДЛЯ СУЩНОСТЕЙ (устаревшие, для обратной совместимости)
+// ТИПЫ ДЛЯ СУЩНОСТЕЙ (устаревшие)
 // ==========================================
 
 export interface EntitiesResultLegacy {
@@ -518,7 +482,7 @@ export interface EntityGraphNode {
     id?: string;
     signature?: string;
     importedFrom?: string;
-    type?: string; // Для обратной совместимости
+    type?: string;
   };
 }
 
@@ -562,7 +526,7 @@ export interface EntityGraph {
 }
 
 // ==========================================
-// ПОЛНЫЙ АНАЛИЗ (ОБЪЕДИНЕНИЕ ДВУХ ГРАФОВ)
+// ПОЛНЫЙ АНАЛИЗ
 // ==========================================
 
 export interface FullAnalysis {
@@ -804,7 +768,7 @@ export type CLIMode =
   | 'analyze'
   | 'vue-analyze'
   | 'vue'
-  | 'compact'; // 🆕 НОВЫЙ РЕЖИМ
+  | 'compact';
 
 export interface ProjectCLIArgs {
   mode: 'project';
@@ -923,7 +887,6 @@ export interface VueAnalyzeCLIArgs {
   };
 }
 
-// 🆕 НОВЫЙ ТИП ДЛЯ КОМПАКТНОГО РЕЖИМА
 export interface CompactCLIArgs {
   mode: 'compact';
   targetPath: string;
@@ -1132,7 +1095,6 @@ export interface EnhancedFunctionInfo extends FunctionInfo {
   vscode: string;
   signature: string;
   _safeInfo: any;
-  /** Уникальный ключ: moduleId:fileId:functionName */
   _uniqueKey?: string;
 }
 
@@ -1187,7 +1149,7 @@ export interface EnhancedClassInfo {
 }
 
 // ==========================================
-// 🆕 ТИПЫ ДЛЯ ENHANCED PACKAGE LOCK REPORT
+// ТИПЫ ДЛЯ ENHANCED PACKAGE LOCK REPORT
 // ==========================================
 
 export interface EnhancedPackageLockReport {
@@ -1298,44 +1260,23 @@ export interface EnhancedEntityInfo {
 // 🆕 НОВЫЕ ТИПЫ ДЛЯ КОМПАКТНОГО ФОРМАТА (v4.0.0)
 // ==========================================
 
-/**
- * Компактный отчет - самодостаточный формат с короткими индексами
- * и читаемыми ключами объектов
- */
 export interface CompactReport {
-  /** Версия формата */
   version: string;
-  /** Время генерации */
   timestamp: string;
-  /** Корневой модуль (m1, m2, ...) */
   root: string;
-  /** Легенда для расшифровки ключей */
   legend: Record<string, string>;
-
-  /** Индекс модулей: m1 → "cli" */
   moduleIndex: Record<string, string>;
-  /** Индекс файлов: f1 → { path, module } */
   fileIndex: Record<string, { path: string; module: string }>;
-  /** Индекс функций: fn1 → { name, module, file } */
   functionIndex: Record<string, { name: string; module: string; file: string }>;
-
-  /** Данные модулей */
   modules: Record<string, CompactModule>;
-
-  /** Обратные индексы */
   reverseIndex: {
-    /** Кто импортирует функцию: fn1 → [{ from: "m1", line: 45 }] */
     importedBy: Record<string, { from: string; line: number }[]>;
   };
-
-  /** Неразрешенные импорты */
   unresolved: {
     module: string;
     target: string;
     line: number;
   }[];
-
-  /** Общая статистика */
   stats: {
     totalModules: number;
     totalFiles: number;
@@ -1347,35 +1288,21 @@ export interface CompactReport {
   };
 }
 
-/**
- * Компактный модуль
- */
 export interface CompactModule {
-  /** Имя модуля */
   name: string;
-  /** Путь к файлу */
   path: string;
-  /** Ссылка на файл (f1, f2, ...) */
   file: string;
-
-  /** Импорты модуля */
   imports: {
-    from: string; // moduleId
+    from: string;
     specifiers: string[];
     line: number;
     type?: 'named' | 'default' | 'namespace' | 'type';
   }[];
-
-  /** Экспорты модуля */
   exports: {
-    function: string; // functionId
+    function: string;
     name: string;
   }[];
-
-  /** Функции модуля */
   functions: Record<string, CompactFunction>;
-
-  /** Статистика модуля */
   stats: {
     functions: number;
     imports: number;
@@ -1384,39 +1311,74 @@ export interface CompactModule {
   };
 }
 
-/**
- * Компактная функция
- */
 export interface CompactFunction {
-  /** Имя функции */
   name: string;
-  /** Строка определения */
   line: number;
-  /** Битовые флаги: 1=async, 2=nested, 4=arrow, 8=method, 16=event, 32=exported */
   flags: number;
-  /** Параметры */
   params: string[];
-  /** Асинхронная */
   isAsync: boolean;
-  /** Экспортируется */
   isExported: boolean;
-
-  /** Вызовы функции */
   calls: {
-    to: string; // functionId
+    to: string;
     line: number;
     type: 'direct' | 'import' | 'method' | 'computed' | 'watch' | 'event';
   }[];
 }
 
-// ==========================================
-// ТИП ДЛЯ COMPACT CALL
-// ==========================================
-
 export interface CompactCall {
   to: string;
   line: number;
   type: 'direct' | 'import' | 'method' | 'computed' | 'watch' | 'event';
+}
+
+// ==========================================
+// 🆕 НОВЫЕ ТИПЫ ДЛЯ UI ТРЁХКОЛОНОЧНОГО ИНТЕРФЕЙСА (с короткими ключами)
+// ==========================================
+
+/**
+ * Импорт/экспорт связи: [fromFile, name, line]
+ * fromFile: ID файла, null если внешний
+ * name: имя импортируемой/экспортируемой сущности
+ * line: строка в файле
+ */
+export type UIImportTuple = [string | null, string, number];
+
+/**
+ * Вызов функции: [callerFn, calleeFn, line, type]
+ * callerFn: ID вызывающей функции (fn1, fn2, ...)
+ * calleeFn: ID вызываемой функции (fn1, fn2, ...)
+ * line: строка вызова
+ * type: тип вызова (d, a, m, c)
+ */
+export type UICallTuple = [string, string, number, string];
+
+/**
+ * Данные для одного файла в UI
+ * Все ключи короткие для минимального размера
+ */
+export interface UIFileData {
+  /** importedBy — кто импортирует этот файл (левая панель) */
+  ib: UIImportTuple[];
+  /** imports — что импортирует этот файл (правая панель) */
+  im: UIImportTuple[];
+  /** calls — вызовы функций из этого файла (правая панель) */
+  ca: UICallTuple[];
+  /** exports — экспорты файла (центр) */
+  ex: string[];
+  /** functions — функции в файле (центр) */
+  fn: string[];
+}
+
+/**
+ * UI индекс для быстрой навигации по трём колонкам
+ * a = active (активный файл)
+ * f = files (данные по файлам)
+ */
+export interface UIIndex {
+  /** activeFileId — текущий активный файл */
+  a: string;
+  /** files — данные по каждому файлу */
+  f: Record<string, UIFileData>;
 }
 
 // ==========================================
