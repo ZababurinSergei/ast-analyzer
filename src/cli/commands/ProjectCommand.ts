@@ -1,5 +1,5 @@
 // packages/ast-analyzer/src/cli/commands/ProjectCommand.ts
-// ИСПРАВЛЕННАЯ ВЕРСИЯ - все ошибки TypeScript устранены
+// ПОЛНАЯ ВЕРСИЯ - все ошибки исправлены
 
 import fs from 'fs';
 import path from 'path';
@@ -61,7 +61,7 @@ export class ProjectCommand {
   private async execute(file: string, options: any): Promise<void> {
     const startTime = Date.now();
 
-    console.log('\\n' + '='.repeat(70));
+    console.log('\n' + '='.repeat(70));
     console.log('📊 PROJECT GRAPH ANALYSIS');
     console.log('='.repeat(70));
     console.log(`📄 Entry point: ${file}`);
@@ -72,6 +72,7 @@ export class ProjectCommand {
     console.log(`🎯 From: ${options.from || 'auto'}`);
     console.log(`🎯 To: ${options.to || 'auto'}`);
     console.log(`📁 Output: ${options.output}`);
+    console.log(`🚀 Optimized: ${options.optimized ? 'ON' : 'OFF'}`);
 
     // Проверяем существование файла
     const resolvedFile = path.resolve(file);
@@ -86,7 +87,7 @@ export class ProjectCommand {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    console.log('\\n🔍 Building project graph...');
+    console.log('\n🔍 Building project graph...');
 
     // Импортируем buildProjectGraph
     const { buildProjectGraph } = await import('../../modes/project-graph.js');
@@ -109,7 +110,7 @@ export class ProjectCommand {
       totalEdges += deps.length;
     }
 
-    console.log(`\\n✅ Graph built in ${duration}s`);
+    console.log(`\n✅ Graph built in ${duration}s`);
     console.log(`   📦 Modules: ${totalModules}`);
     console.log(`   🔗 Dependencies: ${totalEdges}`);
 
@@ -137,7 +138,7 @@ export class ProjectCommand {
         }
       }
 
-      console.log(`\\n📊 Entities:`);
+      console.log(`\n📊 Entities:`);
       console.log(`   • Functions: ${totalFunctions}`);
       console.log(`   • Classes: ${totalClasses}`);
       console.log(`   • Constants: ${totalConstants}`);
@@ -160,7 +161,7 @@ export class ProjectCommand {
           totalImportedBy += f.importedBy?.length || 0;
         }
 
-        console.log(`\\n🔗 Relationships:`);
+        console.log(`\n🔗 Relationships:`);
         console.log(`   • Functions with relationships: ${relCount}`);
         console.log(`   • Calls: ${totalCallsInfo}`);
         console.log(`   • Called by: ${totalCalledBy}`);
@@ -170,7 +171,7 @@ export class ProjectCommand {
 
     // Если есть callGraphResult, выводим путь
     if (result.callGraphResult) {
-      console.log(`\\n🕸️ Call Graph Path:`);
+      console.log(`\n🕸️ Call Graph Path:`);
       if (result.callGraphResult.found) {
         console.log(`   ✅ Path found: ${result.callGraphResult.path?.join(' → ') || 'empty'}`);
         console.log(`   📊 Nodes in path: ${result.callGraphResult.nodes?.length || 0}`);
@@ -181,26 +182,36 @@ export class ProjectCommand {
     }
 
     // Сохраняем результаты
-    console.log('\\n💾 Saving results...');
+    console.log('\n💾 Saving results...');
 
     // Основной JSON отчет
     const jsonPath = path.join(outputDir, 'project-graph.json');
     fs.writeFileSync(jsonPath, JSON.stringify(result, null, 2));
     console.log(`   ✅ ${jsonPath}`);
 
-    // Если есть сущности, сохраняем оптимизированный отчет
+    // ✅ ИСПРАВЛЕНО: используем generateCompactReport вместо удаленной функции
     if (options.optimized && result.entities) {
-      console.log('\\n📊 Generating optimized report with embedded relationships...');
-
-      const { saveOptimizedPackageLockReport } = await import('../../reporters/json-reporter.js');
+      console.log('\n📊 Generating optimized report with embedded relationships...');
+      const { generateCompactReport } = await import('../../reporters/compact-reporter.js');
 
       const optimizedPath = path.join(outputDir, 'optimized-report.json');
-      saveOptimizedPackageLockReport(result.rootKey, result.graph, result.entities, optimizedPath, {
-        includeBody: options.includeBody || false,
-        includeVscodeLinks: true,
+
+      // Генерируем компактный отчет с опциями
+      generateCompactReport(result.entities, optimizedPath, {
+        useBitFlags: true,
+        useDictionaries: true,
+        readableKeys: true,
+        useTemplates: true,
+        maxDepth: parseInt(options.depth),
+        includeRelations: true,
         includeStats: true,
-        includeMetadata: false,
+        includeTypes: true,
+        includeInheritance: true,
+        includeExports: true,
+        includeConstants: true,
+        // ✅ НЕ ИСПОЛЬЗУЕМ ultraCompact здесь
       });
+
       console.log(`   ✅ ${optimizedPath}`);
       console.log(`   💡 All relationships embedded in entities for fast navigation`);
     }
@@ -215,7 +226,7 @@ export class ProjectCommand {
       }
 
       if (vueFiles.length > 0) {
-        console.log(`\\n⚛️ Found ${vueFiles.length} Vue files`);
+        console.log(`\n⚛️ Found ${vueFiles.length} Vue files`);
 
         const { analyzeVueComponent } = await import('../../modes/vue-analyzer/index.js');
 
@@ -247,9 +258,8 @@ export class ProjectCommand {
 
     // Генерируем компактный отчет (исправленный импорт)
     if (options.entities && result.entities) {
-      console.log('\\n📦 Generating compact universe report...');
+      console.log('\n📦 Generating compact universe report...');
 
-      // ✅ ИСПРАВЛЕНО: используем правильный путь к модулю
       const { generateCompactReport } = await import('../../reporters/compact-reporter.js');
 
       const compactPath = path.join(outputDir, 'compact-universe.json');
@@ -259,13 +269,15 @@ export class ProjectCommand {
         readableKeys: true,
         useTemplates: true,
         maxDepth: parseInt(options.depth),
+        includeRelations: true,
+        includeStats: true,
       });
       console.log(`   ✅ ${compactPath}`);
     }
 
-    // Генерируем HTML отчет если есть svg
+    // Генерируем HTML отчет если есть graph
     if (result.graph && Object.keys(result.graph).length > 0) {
-      console.log('\\n📄 Generating HTML report...');
+      console.log('\n📄 Generating HTML report...');
 
       const { convertToDOT, findCyclicEdges } = await import('../../core/graph-utils.js');
       const { generateHTMLReport } = await import('../../reporters/html-reporter.js');
@@ -295,13 +307,13 @@ export class ProjectCommand {
       console.log(`   ✅ ${htmlPath}`);
 
       if (hasCycles) {
-        console.log(`\\n⚠️ Found ${cyclicEdges.size} cyclic dependencies!`);
+        console.log(`\n⚠️ Found ${cyclicEdges.size} cyclic dependencies!`);
         console.log('   Check project-report.html for visualization');
       }
     }
 
     // Финальный вывод
-    console.log('\\n' + '='.repeat(70));
+    console.log('\n' + '='.repeat(70));
     console.log('✨ PROJECT GRAPH ANALYSIS COMPLETE');
     console.log('='.repeat(70));
     console.log(`⏱️  Total time: ${duration}s`);
@@ -319,7 +331,7 @@ export class ProjectCommand {
       console.log(`🕸️ Path: ${result.callGraphResult.path.join(' → ')}`);
     }
 
-    console.log('='.repeat(70) + '\\n');
+    console.log('='.repeat(70) + '\n');
 
     // Сохраняем метаданные
     const hasCyclesFlag = result.stats?.hasCycles || false;

@@ -5,7 +5,9 @@ import type { Command } from 'commander';
 import path from 'path';
 import fs from 'fs';
 import { generateCompactReport } from '../../reporters/compact-reporter.js';
-import type { CompactReportStats } from '../../reporters/compact-reporter.js';
+
+// Используем any вместо несуществующего типа
+type CompactReportStats = any;
 
 /**
  * Команда для рекурсивного компакт-отчета
@@ -40,10 +42,7 @@ export class CompactRecursiveCommand {
       )
       .option('--no-relations', 'Отключить дополнительные типы связей (только вызовы)')
       .option('--no-stats', 'Отключить статистику')
-      .option('--include-body', 'Включить тела функций в отчет', false)
-      .option('--include-security', 'Включить информацию о безопасности', false)
       .option('--no-templates', 'Отключить использование шаблонов')
-      .option('--no-legend', 'Отключить легенду (экономия места)')
       .option('-v, --verbose', 'Подробный вывод', false)
       .action(async (entry: string, options: any) => {
         try {
@@ -161,7 +160,7 @@ export class CompactRecursiveCommand {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    // Используем обновленный генератор
+    // Используем ТОЛЬКО существующие опции generateCompactReport
     const report = generateCompactReport(entitiesMap, outputPath, {
       useBitFlags: true,
       useDictionaries: true,
@@ -170,9 +169,10 @@ export class CompactRecursiveCommand {
       maxDepth: parseInt(options.depth, 10),
       includeRelations: options.relations !== false,
       includeStats: options.stats !== false,
-      includeBody: options.includeBody || false,
-      includeSecurity: options.includeSecurity || false,
-      includeLegend: options.legend !== false,
+      includeTypes: true,
+      includeInheritance: true,
+      includeExports: true,
+      includeConstants: true,
     });
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -228,9 +228,6 @@ export class CompactRecursiveCommand {
       `   • Дополнительные связи: ${options.relations !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`
     );
     console.log(`   • Статистика: ${options.stats !== false ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
-    console.log(`   • Тела функций: ${options.includeBody ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
-    console.log(`   • Безопасность: ${options.includeSecurity ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
-    console.log(`   • Легенда: ${options.legend !== false ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
 
     // Размер файла
     if (fs.existsSync(outputPath)) {

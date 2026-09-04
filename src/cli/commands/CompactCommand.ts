@@ -1,5 +1,5 @@
 // packages/ast-analyzer/src/cli/commands/CompactCommand.ts
-// НОВЫЙ ФАЙЛ - Полный текст
+// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ
 
 import type { Command } from 'commander';
 import path from 'path';
@@ -57,11 +57,8 @@ export class CompactCommand {
       });
   }
 
-  /**
-   * Выполняет генерацию компактного отчета
-   */
   private async execute(paths: string[], options: any): Promise<void> {
-    console.log('\\n' + '='.repeat(70));
+    console.log('\n' + '='.repeat(70));
     console.log('📋 ГЕНЕРАЦИЯ КОМПАКТНОГО ОТЧЕТА СУЩНОСТЕЙ');
     console.log('='.repeat(70));
     console.log(`📁 Пути: ${paths.join(', ')}`);
@@ -73,7 +70,7 @@ export class CompactCommand {
     console.log(`🔒 Информация о безопасности: ${options.includeSecurity ? 'ДА' : 'НЕТ'}`);
     console.log('');
 
-    // Применяем пресет
+    // Проверяем пресет
     const presets = ['minimal', 'standard', 'full', 'relationshipsOnly', 'ultraCompact'];
     if (!presets.includes(options.preset)) {
       console.warn(`⚠️ Неизвестный пресет: ${options.preset}, используем 'standard'`);
@@ -97,11 +94,10 @@ export class CompactCommand {
     }
 
     try {
-      // Импортируем необходимые модули - используем правильный путь к compact-reporter
+      // Импортируем только generateCompactReport
+      const { generateCompactReport } = await import('../../reporters/compact-reporter.js');
       const { parseFile } = await import('../../core/ast-parser.js');
       const { extractEntities } = await import('../../core/entity-extractor.js');
-      const { generateCompactReport, generateUltraCompactReport } =
-        await import('../../reporters/compact-reporter.js');
 
       // Собираем сущности из всех файлов
       const entitiesMap: Record<string, any> = {};
@@ -149,10 +145,7 @@ export class CompactCommand {
       console.log(`   • Констант: ${totalConstants}`);
       console.log('');
 
-      // Генерируем отчет
-      let report;
-      const startTime = Date.now();
-
+      // Формируем опции для генератора
       const reportOptions = {
         useBitFlags: options.bitFlags !== false,
         useDictionaries: options.dictionaries !== false,
@@ -161,38 +154,39 @@ export class CompactCommand {
         maxDepth: parseInt(options.maxDepth),
         includeBody: options.includeBody,
         includeSecurity: options.includeSecurity,
+        includeRelations: true,
+        includeStats: true,
+        includeTypes: true,
+        includeInheritance: true,
+        includeExports: true,
+        includeConstants: true,
+        // ultraCompact передаем как опцию для генератора
+        ultraCompact: options.ultra || false,
       };
 
-      if (options.ultra) {
-        console.log('🚀 Генерация ультра-компактного отчета...');
-        report = generateUltraCompactReport(entitiesMap, outputPath, reportOptions);
-      } else {
-        console.log('📋 Генерация компактного отчета...');
-        report = generateCompactReport(entitiesMap, outputPath, reportOptions);
-      }
-
+      // Генерируем отчет (единая функция для всех режимов)
+      console.log(`📋 Генерация ${options.ultra ? 'ультра-компактного' : 'компактного'} отчета...`);
+      const startTime = Date.now();
+      const report = generateCompactReport(entitiesMap, outputPath, reportOptions);
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
       // Выводим результаты
       this.printResults(report, outputPath, duration, options);
 
-      // Сохраняем дополнительную информацию
+      // Сохраняем дополнительную информацию в verbose режиме
       if (options.verbose) {
         this.saveVerboseInfo(report, outputDir, entitiesMap);
       }
     } catch (error) {
       console.error('❌ Ошибка при генерации отчета:', error);
       if (options.verbose && error instanceof Error && error.stack) {
-        console.error('\\n📚 Стек ошибки:');
+        console.error('\n📚 Стек ошибки:');
         console.error(error.stack);
       }
       process.exit(1);
     }
   }
 
-  /**
-   * Собирает файлы для анализа
-   */
   private async collectFiles(paths: string[], recursive: boolean): Promise<string[]> {
     const files: string[] = [];
     const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.vue'];
@@ -242,32 +236,30 @@ export class CompactCommand {
     return [...new Set(files)];
   }
 
-  /**
-   * Выводит результаты
-   */
   private printResults(report: any, outputPath: string, duration: string, options: any): void {
     const sizeKB = (JSON.stringify(report).length / 1024).toFixed(2);
 
-    console.log('\\n' + '='.repeat(70));
+    console.log('\n' + '='.repeat(70));
     console.log('✅ ОТЧЕТ УСПЕШНО СОЗДАН!');
     console.log('='.repeat(70));
     console.log(`📄 Файл: ${outputPath}`);
     console.log(`📊 Размер: ${sizeKB} KB`);
     console.log(`⏱️  Время: ${duration} сек`);
 
-    console.log('\\n📊 СТАТИСТИКА ОТЧЕТА:');
-    if (report.stats) {
-      console.log(`   • Модулей: ${report.stats.totalModules || 0}`);
-      console.log(`   • Файлов: ${report.stats.totalFiles || 0}`);
-      console.log(`   • Функций: ${report.stats.totalFunctions || 0}`);
-      console.log(`   • Вызовов: ${report.stats.totalCalls || 0}`);
-      console.log(`   • Импортов: ${report.stats.totalImports || 0}`);
-      console.log(`   • Экспортов: ${report.stats.totalExports || 0}`);
-      console.log(`   • Неразрешенных: ${report.stats.totalUnresolved || 0}`);
+    console.log('\n📊 СТАТИСТИКА ОТЧЕТА:');
+    if (report.st) {
+      console.log(`   • Модулей: ${report.st.tm || 0}`);
+      console.log(`   • Файлов: ${report.st.tfils || 0}`);
+      console.log(`   • Функций: ${report.st.tf || 0}`);
+      console.log(`   • Вызовов: ${report.st.tc || 0}`);
+      console.log(`   • Импортов: ${report.st.ti || 0}`);
+      console.log(`   • Экспортов: ${report.st.te || 0}`);
+      console.log(`   • Неиспользуемых: ${report.st.tun || 0}`);
+      console.log(`   • Констант: ${report.st.tcn || 0}`);
+      console.log(`   • Циклов: ${report.st.cy ? 'ЕСТЬ' : 'НЕТ'}`);
     }
 
-    // Информация о сжатии
-    console.log('\\n📦 ИНФОРМАЦИЯ О СЖАТИИ:');
+    console.log('\n📦 ИНФОРМАЦИЯ О СЖАТИИ:');
     console.log(`   • Режим: ${options.ultra ? 'УЛЬТРА-КОМПАКТНЫЙ' : 'КОМПАКТНЫЙ'}`);
     console.log(`   • Битовые флаги: ${options.bitFlags !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
     console.log(`   • Словари: ${options.dictionaries !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
@@ -276,7 +268,7 @@ export class CompactCommand {
     console.log(`   • Легенда: ${options.legend !== false ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
 
     if (report.legend && options.legend !== false) {
-      console.log('\\n📖 ЛЕГЕНДА (кратко):');
+      console.log('\n📖 ЛЕГЕНДА (кратко):');
       const legendKeys = Object.keys(report.legend).slice(0, 5);
       for (const key of legendKeys) {
         const desc = report.legend[key];
@@ -289,9 +281,9 @@ export class CompactCommand {
       }
     }
 
-    // Предупреждения
+    // Предупреждения о неразрешенных импортах
     if (report.unresolved && report.unresolved.length > 0) {
-      console.log(`\\n⚠️ НЕРАЗРЕШЕННЫХ ИМПОРТОВ: ${report.unresolved.length}`);
+      console.log(`\n⚠️ НЕРАЗРЕШЕННЫХ ИМПОРТОВ: ${report.unresolved.length}`);
       if (options.verbose) {
         for (const unres of report.unresolved.slice(0, 5)) {
           console.log(`   • Модуль ${unres.module}: ${unres.target} (строка ${unres.line})`);
@@ -302,16 +294,17 @@ export class CompactCommand {
       }
     }
 
-    console.log('\\n' + '='.repeat(70));
+    console.log('\n' + '='.repeat(70));
 
-    // Подсказки по использованию
-    console.log('\\n💡 КАК ИСПОЛЬЗОВАТЬ ОТЧЕТ:');
+    console.log('\n💡 КАК ИСПОЛЬЗОВАТЬ ОТЧЕТ:');
     console.log('   • Откройте файл в любом текстовом редакторе');
-    console.log('   • Используйте индекс functionIndex для поиска функций по ID');
-    console.log('   • moduleIndex и fileIndex для навигации по модулям и файлам');
-    console.log('   • callGraph для анализа всех связей между функциями');
-    console.log('   • functionCalls для быстрого доступа к вызовам каждой функции');
-    console.log('   • nodeDetails для детальной информации о каждой сущности');
+    console.log('   • Используйте индексы mi/fl для навигации');
+    console.log('   • fns - список всех функций');
+    console.log('   • cn - список всех констант');
+    console.log('   • gr.c - граф вызовов');
+    console.log('   • gr.i - граф импортов');
+    console.log('   • gr.e - граф экспортов');
+    console.log('   • st - общая статистика');
     console.log('   • Легенда (legend) для расшифровки всех кодов и ключей');
 
     if (options.ultra) {
@@ -322,25 +315,19 @@ export class CompactCommand {
     console.log('');
   }
 
-  /**
-   * Сохраняет дополнительную информацию для verbose режима
-   */
   private saveVerboseInfo(report: any, outputDir: string, entitiesMap: Record<string, any>): void {
     // Сохраняем полную статистику по модулям
     const statsPath = path.join(outputDir, 'compact-stats.json');
     const stats = {
-      modules: report.modules ? Object.keys(report.modules).length : 0,
-      files: report.files ? Object.keys(report.files).length : 0,
-      functions: report.functionIndex ? Object.keys(report.functionIndex).length : 0,
-      calls: report.functionCalls
-        ? (Object.values(report.functionCalls) as any[][]).reduce(
-            (sum: number, calls: any[]) => sum + calls.length,
-            0
-          )
-        : 0,
-      modulesData: report.modules || {},
-      filesData: report.files || {},
-      functionIndex: report.functionIndex || {},
+      modules: report.mi ? Object.keys(report.mi).length : 0,
+      files: report.fl ? Object.keys(report.fl).length : 0,
+      functions: report.fns ? report.fns.length : 0,
+      constants: report.cn ? report.cn.length : 0,
+      calls: report.gr?.c ? report.gr.c.length : 0,
+      imports: report.gr?.i ? report.gr.i.length : 0,
+      exports: report.gr?.e ? report.gr.e.length : 0,
+      modulesData: report.mi || {},
+      filesData: report.fl || {},
     };
     fs.writeFileSync(statsPath, JSON.stringify(stats, null, 2));
     console.log(`📄 Детальная статистика сохранена: ${statsPath}`);
@@ -355,76 +342,92 @@ export class CompactCommand {
         constantsCount: entities.constants?.length || 0,
         importsCount: entities.imports?.length || 0,
         exportsCount: entities.exports?.length || 0,
+        interfacesCount: entities.interfaces?.length || 0,
+        typesCount: entities.types?.length || 0,
+        variablesCount: entities.variables?.length || 0,
       };
     }
     fs.writeFileSync(entitiesPath, JSON.stringify(readableEntities, null, 2));
     console.log(`📄 Информация о сущностях сохранена: ${entitiesPath}`);
 
     // Сохраняем граф вызовов в DOT формате для визуализации
-    if (report.callGraph && report.callGraph.nodes && report.callGraph.edges) {
+    if (report.gr?.c && report.gr.c.length > 0) {
       const dotPath = path.join(outputDir, 'compact-callgraph.dot');
-      const dot = this.generateDOT(report.callGraph);
+      const dot = this.generateDOT(report);
       fs.writeFileSync(dotPath, dot);
       console.log(`📄 DOT граф сохранен: ${dotPath}`);
     }
   }
 
-  /**
-   * Генерирует DOT граф для визуализации
-   */
-  private generateDOT(callGraph: any): string {
-    let dot = 'digraph CallGraph {\\n';
-    dot += '  rankdir=LR;\\n';
-    dot += '  node [shape=box, style="filled,rounded", fillcolor="#f3f4f6"];\\n';
-    dot += '  edge [color="#9ca3af", arrowhead=vee];\\n\\n';
+  private generateDOT(report: any): string {
+    let dot = 'digraph CallGraph {\n';
+    dot += '  rankdir=LR;\n';
+    dot += '  node [shape=box, style="filled,rounded", fillcolor="#f3f4f6"];\n';
+    dot += '  edge [color="#9ca3af", arrowhead=vee];\n\n';
 
-    // Узлы
-    const nodes = callGraph.nodes || [];
-    for (let i = 0; i < nodes.length; i++) {
-      const name = nodes[i] || `node_${i}`;
-      const isEntry = callGraph.entryPoints && callGraph.entryPoints.includes(i);
-      const color = isEntry ? '#4f46e5' : '#f3f4f6';
-      const fontColor = isEntry ? '#ffffff' : '#1f2937';
-      const label = isEntry ? `⭐ ${name}` : name;
-      dot += `  "n${i}" [fillcolor="${color}", fontcolor="${fontColor}", label="${label}"];\\n`;
-    }
-
-    dot += '\\n';
-
-    // Ребра
-    const edges = callGraph.edges || [];
-    for (const edge of edges) {
-      const [from, to, line, typeIdx] = edge;
-      const types = callGraph.types || ['call'];
-      const type = types[typeIdx] || 'call';
-      const color = type === 'call' ? '#3b82f6' : type === 'import' ? '#22c55e' : '#f59e0b';
-      const style = type === 'import' ? 'dashed' : 'solid';
-      dot += `  "n${from}" -> "n${to}" [color="${color}", style="${style}", label="${type}${line ? ` [${line}]` : ''}"];\\n`;
-    }
-
-    // Циклы
-    const cycles = callGraph.cycles || [];
-    if (cycles.length > 0) {
-      dot += '\\n  // Циклические зависимости:\\n';
-      for (const cycle of cycles) {
-        dot += `  // ${cycle.join(' → ')}\\n`;
+    // Получаем имена функций из fns
+    const functionNames: Record<string, string> = {};
+    if (report.fns) {
+      for (const func of report.fns) {
+        if (func && func.length >= 2) {
+          functionNames[func[0]] = func[1];
+        }
       }
     }
 
-    dot += '}\\n';
+    // Узлы - все функции из fns
+    const nodes = new Set<string>();
+    if (report.fns) {
+      for (const func of report.fns) {
+        if (func && func.length >= 2) {
+          nodes.add(func[0]);
+        }
+      }
+    }
+
+    // Определяем точки входа (функции, которые никто не вызывает)
+    const called = new Set<string>();
+    if (report.gr?.c) {
+      for (const call of report.gr.c) {
+        if (call && call.length >= 2) {
+          called.add(call[1]);
+        }
+      }
+    }
+
+    for (const nodeId of nodes) {
+      const name = functionNames[nodeId] || nodeId;
+      const isEntry = !called.has(nodeId);
+      const color = isEntry ? '#4f46e5' : '#f3f4f6';
+      const fontColor = isEntry ? '#ffffff' : '#1f2937';
+      const label = isEntry ? `⭐ ${name}` : name;
+      dot += `  "${nodeId}" [fillcolor="${color}", fontcolor="${fontColor}", label="${label}"];\n`;
+    }
+
+    dot += '\n';
+
+    // Ребра - вызовы из gr.c
+    if (report.gr?.c) {
+      for (const call of report.gr.c) {
+        if (call && call.length >= 3) {
+          const from = call[0];
+          const to = call[1];
+          const line = call[2] || 0;
+          const type = call[3] || 'd';
+          const color = type === 'a' ? '#ef4444' : type === 'm' ? '#f59e0b' : '#3b82f6';
+          const style = type === 'a' ? 'dashed' : 'solid';
+          dot += `  "${from}" -> "${to}" [color="${color}", style="${style}", label="${type}${line ? ` [${line}]` : ''}"];\n`;
+        }
+      }
+    }
+
+    dot += '}\n';
     return dot;
   }
 
-  /**
-   * Возвращает команду для регистрации
-   */
   getCommand(): Command {
     return this.program;
   }
 }
-
-// ============================================================
-// ЭКСПОРТ ПО УМОЛЧАНИЮ
-// ============================================================
 
 export default CompactCommand;

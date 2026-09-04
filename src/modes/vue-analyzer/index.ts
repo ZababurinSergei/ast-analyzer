@@ -41,7 +41,7 @@ export { buildCallGraphFromScript } from './callgraph.js';
 // Report
 export { generateVueComponentReport } from './report.js';
 
-// Utils
+// Utils - только используемые функции
 export { getNodeValue } from './utils.js';
 
 import type { VueComponentAnalysis, AnalysisOptions } from './types.js';
@@ -288,10 +288,10 @@ export function analyzeVueComponent(
 
     // Паттерны вызовов: func(), object.method(), emit(), composable()
     const callPatterns = [
-      /\b(\w+)\(/g,                    // func()
-      /\b(\w+)\.(\w+)\(/g,             // object.method()
-      /emit\(['"]([^'"]+)['"]\)/g,     // emit('event')
-      /\b(use\w+)\(/g,                 // useComposable()
+      /\b(\w+)\(/g, // func()
+      /\b(\w+)\.(\w+)\(/g, // object.method()
+      /emit\(['"]([^'"]+)['"]\)/g, // emit('event')
+      /\b(use\w+)\(/g, // useComposable()
     ];
 
     for (const pattern of callPatterns) {
