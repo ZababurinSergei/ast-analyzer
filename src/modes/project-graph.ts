@@ -1,5 +1,8 @@
-// packages/ast-analyzer/src/modes/project-graph.ts
+// src/modes/project-graph.ts
 // ИСПРАВЛЕННАЯ ВЕРСИЯ - все ошибки TypeScript устранены
+// Удалены неиспользуемые функции: buildEntitiesMap, buildReport,
+// findPathBetweenFunctions, buildRelationshipGraph
+// Функции встроены в buildProjectGraph для улучшения читаемости
 
 import path from 'path';
 import fs from 'fs';
@@ -106,10 +109,41 @@ export function buildProjectGraph(
 
   if (includeEntities) {
     console.log('\n📦 Extracting entities...');
-    const entitiesMap = buildEntitiesMap(graphData.graph);
-    const report = buildReport(graphData, entitiesMap);
+
+    // ✅ ВСТРОЕННАЯ ЛОГИКА ВМЕСТО buildEntitiesMap
+    const entitiesMap: Record<string, EntitiesResult> = {};
+    for (const filePath of Object.keys(graphData.graph)) {
+      try {
+        const absPath = path.resolve(filePath);
+        if (fs.existsSync(absPath) && fs.statSync(absPath).isFile()) {
+          const enhancedEntities = extractEntitiesFromFile(absPath);
+          if (enhancedEntities && Object.keys(enhancedEntities).length > 0) {
+            entitiesMap[filePath] = enhancedEntities as unknown as EntitiesResult;
+          }
+        }
+      } catch (error) {
+        // Игнорируем ошибки
+      }
+    }
+
+    // ✅ ВСТРОЕННАЯ ЛОГИКА ВМЕСТО buildReport
+    const reportBuilder = new ReportBuilder();
+    const report = reportBuilder.build(graphData, entitiesMap);
+    const packageLockReport = {
+      ...report,
+      name: 'ast-analyzer',
+      version: '3.0.0',
+      lockfileVersion: 3,
+      timestamp: new Date().toISOString(),
+      dependencyGraph: {
+        direction: 'bidirectional' as const,
+        inwardDependencies: buildInwardDependencies(graphData.graph),
+        outwardDependencies: graphData.graph,
+      },
+    };
+
     result.entities = entitiesMap;
-    result.packageLockReport = report;
+    result.packageLockReport = packageLockReport;
 
     let totalFunctions = 0;
     let totalCalls = 0;
@@ -125,19 +159,182 @@ export function buildProjectGraph(
     console.log(`   📞 Calls: ${totalCalls}`);
     console.log(`   📥 Imports: ${totalImports}`);
 
+    // ✅ ВСТРОЕННАЯ ЛОГИКА ВМЕСТО findPathBetweenFunctions
     if (fromFunction && toFunction) {
       console.log(`\n🔍 Finding path: ${fromFunction} → ${toFunction}`);
-      const pathResult = findPathBetweenFunctions(report, fromFunction, toFunction);
-      result.callGraphResult = pathResult;
-      if (pathResult.found) {
-        console.log(`   ✅ Path found: ${pathResult.path?.join(' → ')}`);
+
+      const nodes: string[] = packageLockReport.callGraph?.nodes || [];
+      const edges: [number, number, number, number, number][] =
+        packageLockReport.callGraph?.edges || [];
+
+      const nodeIndex = new Map<string, number>();
+      for (let i = 0; i < nodes.length; i++) {
+        const nodeName = nodes[i];
+        if (nodeName !== undefined) {
+          nodeIndex.set(nodeName, i);
+        }
+      }
+
+      const fromIdx = nodeIndex.get(fromFunction);
+      const toIdx = nodeIndex.get(toFunction);
+
+      let callGraphResult: CallGraphPathResult;
+
+      if (fromIdx === undefined) {
+        callGraphResult = {
+          found: false,
+          reason: `Function '${fromFunction}' not found in call graph`,
+        };
+      } else if (toIdx === undefined) {
+        callGraphResult = {
+          found: false,
+          reason: `Function '${toFunction}' not found in call graph`,
+        };
       } else {
-        console.log(`   ❌ Path not found: ${pathResult.reason}`);
+        const callGraph: Record<number, number[]> = {};
+        for (const [f, t] of edges) {
+          if (!callGraph[f]) callGraph[f] = [];
+          callGraph[f].push(t);
+        }
+
+        const visited = new Set<number>();
+        const queue: { node: number; path: number[] }[] = [{ node: fromIdx, path: [fromIdx] }];
+        let found = false;
+        let pathNames: string[] = [];
+        let pathNodes: { function: string; module: string; line: number; isAsync: boolean }[] = [];
+        let pathEdges: { from: string; to: string; line: number }[] = [];
+
+        while (queue.length > 0 && !found) {
+          const { node, path: currentPath } = queue.shift()!;
+
+          if (visited.has(node)) continue;
+          visited.add(node);
+
+          if (node === toIdx) {
+            // ✅ БЕЗОПАСНОЕ ПОЛУЧЕНИЕ ИМЕН (исправлено)
+            pathNames = currentPath.map(i => {
+              const name = nodes[i];
+              return name !== undefined ? name : `unknown_${i}`;
+            });
+
+            pathNodes = currentPath.map(i => ({
+              function: nodes[i] !== undefined ? nodes[i] : `unknown_${i}`,
+              module: 'unknown',
+              line: 0,
+              isAsync: false,
+            }));
+
+            pathEdges = currentPath
+              .slice(0, -1)
+              .map((i, idx) => {
+                const nextIdx = currentPath[idx + 1];
+                if (nextIdx === undefined) return null;
+
+                const fromName = nodes[i] !== undefined ? nodes[i] : `unknown_${i}`;
+                const toName = nodes[nextIdx] !== undefined ? nodes[nextIdx] : `unknown_${nextIdx}`;
+
+                return {
+                  from: fromName,
+                  to: toName,
+                  line: 0,
+                };
+              })
+              .filter((item): item is { from: string; to: string; line: number } => item !== null);
+
+            found = true;
+            break;
+          }
+
+          for (const neighbor of callGraph[node] || []) {
+            if (!visited.has(neighbor)) {
+              queue.push({ node: neighbor, path: [...currentPath, neighbor] });
+            }
+          }
+        }
+
+        if (found) {
+          callGraphResult = {
+            found: true,
+            path: pathNames,
+            nodes: pathNodes,
+            edges: pathEdges,
+          };
+        } else {
+          callGraphResult = {
+            found: false,
+            reason: `No path found from '${fromFunction}' to '${toFunction}'`,
+          };
+        }
+      }
+
+      result.callGraphResult = callGraphResult;
+
+      if (callGraphResult.found) {
+        console.log(`   ✅ Path found: ${callGraphResult.path?.join(' → ')}`);
+      } else {
+        console.log(`   ❌ Path not found: ${callGraphResult.reason}`);
       }
     }
 
+    // ✅ ВСТРОЕННАЯ ЛОГИКА ВМЕСТО buildRelationshipGraph
     console.log('\n🔗 Building relationship graph...');
-    const relationshipGraph = buildRelationshipGraph(report);
+
+    const relationshipGraph: Record<string, RelationshipNode> = {};
+    const nodeDetails = packageLockReport.nodeDetails || {};
+
+    for (const [idx, detail] of Object.entries(nodeDetails)) {
+      const detailObj = detail as any;
+      const funcName = detailObj?.n || `func_${idx}`;
+      const fileId = detailObj?.f || 'unknown';
+      const files = packageLockReport.files || {};
+      const fileInfo = files[fileId] || { path: 'unknown' };
+
+      relationshipGraph[funcName] = {
+        id: idx,
+        name: funcName,
+        file: fileInfo.path || 'unknown',
+        line: detailObj?.ln || 0,
+        kind: (detailObj?.tp as RelationshipNode['kind']) || 'function',
+        isExported: !!(detailObj?.fg & 32),
+        isAsync: !!(detailObj?.fg & 1),
+        params: detailObj?.p || [],
+        calls: detailObj?.cl || [],
+        calledBy: [],
+        importedBy: [],
+      };
+    }
+
+    // Строим calledBy
+    for (const [funcName, info] of Object.entries(relationshipGraph)) {
+      for (const [otherName, otherInfo] of Object.entries(relationshipGraph)) {
+        if (otherInfo.calls.includes(funcName)) {
+          info.calledBy.push(otherName);
+        }
+      }
+    }
+
+    // Строим importedBy
+    const reverseIndex = (packageLockReport as any).reverseIndex || {};
+    const importedByMap = reverseIndex.importedBy || {};
+
+    for (const [targetId, importers] of Object.entries(importedByMap)) {
+      for (const [, info] of Object.entries(relationshipGraph)) {
+        if (info.id === targetId) {
+          for (const imp of importers as any[]) {
+            info.importedBy.push({
+              importerId: imp.from || '',
+              importerFile: imp.file || '',
+              importerVscode: imp.vscode || '',
+              importLine: imp.line || 0,
+              specifier: imp.specifier || '',
+              importType: imp.importType || 'named',
+            });
+          }
+          break;
+        }
+      }
+    }
+
     result.relationshipGraph = relationshipGraph;
     let totalRelations = 0;
     for (const node of Object.values(relationshipGraph)) {
@@ -155,45 +352,8 @@ export function buildProjectGraph(
 }
 
 // ============================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ
 // ============================================
-
-function buildEntitiesMap(graph: Record<string, string[]>): Record<string, EntitiesResult> {
-  const entitiesMap: Record<string, EntitiesResult> = {};
-  for (const filePath of Object.keys(graph)) {
-    try {
-      const absPath = path.resolve(filePath);
-      if (fs.existsSync(absPath) && fs.statSync(absPath).isFile()) {
-        const enhancedEntities = extractEntitiesFromFile(absPath);
-        if (enhancedEntities && Object.keys(enhancedEntities).length > 0) {
-          // Приводим через unknown, т.к. EnhancedEntityInfo содержит все поля EntitiesResult
-          // плюс дополнительные поля (imports)
-          entitiesMap[filePath] = enhancedEntities as unknown as EntitiesResult;
-        }
-      }
-    } catch (error) {
-      // Игнорируем ошибки
-    }
-  }
-  return entitiesMap;
-}
-
-function buildReport(graphData: GraphData, entitiesMap: Record<string, EntitiesResult>): any {
-  const reportBuilder = new ReportBuilder();
-  const report = reportBuilder.build(graphData, entitiesMap);
-  return {
-    ...report,
-    name: 'ast-analyzer',
-    version: '3.0.0',
-    lockfileVersion: 3,
-    timestamp: new Date().toISOString(),
-    dependencyGraph: {
-      direction: 'bidirectional' as const,
-      inwardDependencies: buildInwardDependencies(graphData.graph),
-      outwardDependencies: graphData.graph,
-    },
-  };
-}
 
 function buildInwardDependencies(graph: Record<string, string[]>): Record<string, string[]> {
   const inward: Record<string, string[]> = {};
@@ -204,134 +364,6 @@ function buildInwardDependencies(graph: Record<string, string[]>): Record<string
     }
   }
   return inward;
-}
-
-function findPathBetweenFunctions(report: any, from: string, to: string): CallGraphPathResult {
-  const nodes = report.callGraph?.nodes || [];
-  const edges = report.callGraph?.edges || [];
-
-  const nodeIndex = new Map<string, number>();
-  for (let i = 0; i < nodes.length; i++) {
-    nodeIndex.set(nodes[i], i);
-  }
-
-  const fromIdx = nodeIndex.get(from);
-  const toIdx = nodeIndex.get(to);
-
-  if (fromIdx === undefined) {
-    return { found: false, reason: `Function '${from}' not found in call graph` };
-  }
-  if (toIdx === undefined) {
-    return { found: false, reason: `Function '${to}' not found in call graph` };
-  }
-
-  const callGraph: Record<number, number[]> = {};
-  for (const [f, t] of edges) {
-    if (!callGraph[f]) callGraph[f] = [];
-    callGraph[f].push(t);
-  }
-
-  const visited = new Set<number>();
-  const queue: { node: number; path: number[] }[] = [{ node: fromIdx, path: [fromIdx] }];
-
-  while (queue.length > 0) {
-    const { node, path: currentPath } = queue.shift()!;
-    if (visited.has(node)) continue;
-    visited.add(node);
-
-    if (node === toIdx) {
-      const pathNames = currentPath.map(i => nodes[i]);
-      const pathNodes = currentPath.map(i => ({
-        function: nodes[i],
-        module: 'unknown',
-        line: 0,
-        isAsync: false,
-      }));
-      const pathEdges = currentPath
-        .slice(0, -1)
-        .map((i, idx) => {
-          const nextIdx = currentPath[idx + 1];
-          if (nextIdx === undefined) return null;
-          return {
-            from: nodes[i],
-            to: nodes[nextIdx],
-            line: 0,
-          };
-        })
-        .filter(Boolean) as { from: string; to: string; line: number }[];
-      return {
-        found: true,
-        path: pathNames,
-        nodes: pathNodes,
-        edges: pathEdges,
-      };
-    }
-
-    for (const neighbor of callGraph[node] || []) {
-      if (!visited.has(neighbor)) {
-        queue.push({ node: neighbor, path: [...currentPath, neighbor] });
-      }
-    }
-  }
-
-  return { found: false, reason: `No path found from '${from}' to '${to}'` };
-}
-
-function buildRelationshipGraph(report: any): Record<string, RelationshipNode> {
-  const result: Record<string, RelationshipNode> = {};
-  const nodeDetails = report.nodeDetails || {};
-
-  for (const [idx, detail] of Object.entries(nodeDetails)) {
-    const detailObj = detail as any;
-    const funcName = detailObj?.n || `func_${idx}`;
-    const fileId = detailObj?.f || 'unknown';
-    const files = report.files || {};
-    const fileInfo = files[fileId] || { path: 'unknown' };
-
-    result[funcName] = {
-      id: idx,
-      name: funcName,
-      file: fileInfo.path || 'unknown',
-      line: detailObj?.ln || 0,
-      kind: (detailObj?.tp as RelationshipNode['kind']) || 'function',
-      isExported: !!(detailObj?.fg & 32),
-      isAsync: !!(detailObj?.fg & 1),
-      params: detailObj?.p || [],
-      calls: detailObj?.cl || [],
-      calledBy: [],
-      importedBy: [],
-    };
-  }
-
-  for (const [funcName, info] of Object.entries(result)) {
-    for (const [otherName, otherInfo] of Object.entries(result)) {
-      if (otherInfo.calls.includes(funcName)) {
-        info.calledBy.push(otherName);
-      }
-    }
-  }
-
-  const reverseIndex = report.reverseIndex || {};
-  const importedByMap = reverseIndex.importedBy || {};
-  for (const [targetId, importers] of Object.entries(importedByMap)) {
-    for (const [_funcName, info] of Object.entries(result)) {
-      if (info.id === targetId) {
-        for (const imp of importers as any[]) {
-          info.importedBy.push({
-            importerId: imp.from || '',
-            importerFile: imp.file || '',
-            importerVscode: imp.vscode || '',
-            importLine: imp.line || 0,
-            specifier: imp.specifier || '',
-            importType: imp.importType || 'named',
-          });
-        }
-        break;
-      }
-    }
-  }
-
-  return result;
 }
 
 // ============================================

@@ -5,170 +5,6 @@ import { normalizePathForDisplay } from '../utils/path-utils.js';
 import { collectDeclaredFunctions, buildCallGraphFromAST } from '../core/call-collector.js';
 
 /**
- * Рекурсивно собирает объявления функций, классов и переменных из AST
- * @param node Текущий узел AST
- * @param declarations Объект для хранения объявлений
- * @param depth Текущая глубина рекурсии
- * @param maxDepth Максимальная глубина рекурсии
- */
-function collectDeclarationsRecursive(
-  node: any,
-  declarations: Record<string, { type: string; node: any }>,
-  depth: number = 0,
-  maxDepth: number = 100
-): void {
-  if (!node || typeof node !== 'object') return;
-  if (depth > maxDepth) return;
-
-  // ✅ Обработка экспортов
-  if (node.type === 'ExportNamedDeclaration') {
-    if (node.declaration) {
-      // Рекурсивно обрабатываем declaration
-      collectDeclarationsRecursive(node.declaration, declarations, depth + 1, maxDepth);
-    }
-    return; // Не продолжаем дальше, чтобы не дублировать
-  }
-
-  // Проверяем текущий узел на наличие объявлений
-  if (node.type === 'FunctionDeclaration' && node.id) {
-    declarations[node.id.name] = { type: 'function', node: node };
-  }
-
-  // ✅ Исправлено: проверяем наличие body у класса
-  if (node.type === 'ClassDeclaration' && node.id) {
-    // Для TypeScript классов body может быть объектом с body.body
-    if (node.body) {
-      declarations[node.id.name] = { type: 'class', node: node };
-
-      // ✅ ДОПОЛНИТЕЛЬНО: добавляем методы класса как отдельные объявления
-      if (node.body.body && Array.isArray(node.body.body)) {
-        for (const method of node.body.body) {
-          // Обрабатываем MethodDefinition и PropertyDefinition (для стрелочных методов)
-          if (
-            (method.type === 'MethodDefinition' || method.type === 'PropertyDefinition') &&
-            method.key?.name
-          ) {
-            declarations[method.key.name] = { type: 'function', node: method };
-          }
-        }
-      }
-    } else {
-      console.warn(`⚠️ Класс ${node.id.name} не имеет body, пропускаем`);
-    }
-  }
-
-  if (node.type === 'VariableDeclaration') {
-    if (node.declarations && Array.isArray(node.declarations)) {
-      node.declarations.forEach((decl: any) => {
-        if (decl.id?.name) {
-          declarations[decl.id.name] = { type: 'variable', node: decl };
-        }
-      });
-    }
-  }
-
-  // ✅ НОВОЕ: собираем вложенные функции внутри блоков
-  if (node.type === 'BlockStatement' && node.body) {
-    for (const child of node.body) {
-      if (child.type === 'FunctionDeclaration' && child.id) {
-        // Добавляем вложенную функцию в declarations
-        declarations[child.id.name] = { type: 'function', node: child };
-      }
-    }
-  }
-
-  // ✅ НОВОЕ: собираем функции внутри IIFE и других выражений
-  if (node.type === 'CallExpression' && node.callee?.type === 'FunctionExpression') {
-    const funcNode = node.callee;
-    if (funcNode.id?.name) {
-      declarations[funcNode.id.name] = { type: 'function', node: funcNode };
-    }
-    // Также проверяем тело функции
-    if (funcNode.body) {
-      collectDeclarationsRecursive(funcNode.body, declarations, depth + 1, maxDepth);
-    }
-  }
-
-  // ✅ НОВОЕ: собираем стрелочные функции в переменных
-  if (node.type === 'VariableDeclarator' && node.id?.name) {
-    if (
-      node.init &&
-      (node.init.type === 'ArrowFunctionExpression' || node.init.type === 'FunctionExpression')
-    ) {
-      declarations[node.id.name] = { type: 'function', node: node.init };
-    }
-  }
-
-  // ✅ УЛУЧШЕННЫЙ СБОР ДЕТЕЙ ДЛЯ РЕКУРСИВНОГО ОБХОДА
-  const childrenToTraverse: any[] = [];
-
-  // body - проверяем, что это массив или объект
-  if (node.body) {
-    if (Array.isArray(node.body)) {
-      childrenToTraverse.push(...node.body);
-    } else if (typeof node.body === 'object') {
-      childrenToTraverse.push(node.body);
-    }
-  }
-
-  // ⭐ ДЛЯ КЛАССОВ - отдельная обработка
-  if (node.type === 'ClassDeclaration' && node.body && Array.isArray(node.body.body)) {
-    childrenToTraverse.push(...node.body.body);
-  }
-
-  // consequent/alternate (if/else)
-  if (node.consequent) childrenToTraverse.push(node.consequent);
-  if (node.alternate) childrenToTraverse.push(node.alternate);
-
-  // cases (switch)
-  if (node.cases) {
-    node.cases.forEach((caseNode: any) => {
-      if (caseNode.consequent) {
-        childrenToTraverse.push(...caseNode.consequent);
-      }
-    });
-  }
-
-  // init/update/test (for, while, do-while)
-  if (node.init) childrenToTraverse.push(node.init);
-  if (node.update) childrenToTraverse.push(node.update);
-  if (node.test) childrenToTraverse.push(node.test);
-
-  // handler/finalizer (try-catch-finally)
-  if (node.handler) childrenToTraverse.push(node.handler);
-  if (node.finalizer) childrenToTraverse.push(node.finalizer);
-
-  // object (catch clause)
-  if (node.param) childrenToTraverse.push(node.param);
-
-  // arguments (function calls)
-  if (node.arguments && Array.isArray(node.arguments)) {
-    childrenToTraverse.push(...node.arguments);
-  }
-
-  // properties (object expressions)
-  if (node.properties && Array.isArray(node.properties)) {
-    childrenToTraverse.push(...node.properties);
-  }
-
-  // elements (array expressions)
-  if (node.elements && Array.isArray(node.elements)) {
-    childrenToTraverse.push(...node.elements);
-  }
-
-  // expression (return, throw, etc.)
-  if (node.argument) childrenToTraverse.push(node.argument);
-  if (node.expression) childrenToTraverse.push(node.expression);
-
-  // ✅ БЕЗОПАСНАЯ ФИЛЬТРАЦИЯ ДЕТЕЙ
-  const validChildren = childrenToTraverse.filter(child => child && typeof child === 'object');
-
-  for (const child of validChildren) {
-    collectDeclarationsRecursive(child, declarations, depth + 1, maxDepth);
-  }
-}
-
-/**
  * Строит внутренний граф зависимостей внутри одного файла
  * @param filePath Путь к файлу
  * @param _options Опции (maxDepth - максимальная глубина анализа) - опционально, пока не используется
@@ -181,16 +17,15 @@ export function buildFileInternalGraph(
   const parsed = parseFile(filePath);
   const ast = parsed?.ast;
 
-  // ✅ УСИЛЕННАЯ ПРОВЕРКА AST
+  // УСИЛЕННАЯ ПРОВЕРКА AST
   if (!ast) {
     console.warn(`⚠️ Не удалось получить AST для файла: ${filePath}`);
     return null;
   }
 
-  // ✅ ПРОВЕРКА НА НАЛИЧИЕ body
+  // ПРОВЕРКА НА НАЛИЧИЕ body
   if (!ast.body || !Array.isArray(ast.body)) {
     console.warn(`⚠️ AST не содержит body для файла: ${filePath}`);
-    // Вместо null возвращаем пустой граф
     return {
       rootKey: normalizePathForDisplay(path.basename(filePath)),
       graph: {},
@@ -200,15 +35,153 @@ export function buildFileInternalGraph(
   const declarations: Record<string, { type: string; node: any }> = {};
   const relations: { from: string; to: string }[] = [];
 
-  // Используем рекурсивный сбор объявлений вместо обхода только верхнего уровня
+  // ВСТРОЕННАЯ РЕКУРСИВНАЯ ФУНКЦИЯ ДЛЯ СБОРА ОБЪЯВЛЕНИЙ
+  function collectDeclarationsRecursive(
+    node: any,
+    declarations: Record<string, { type: string; node: any }>,
+    depth: number = 0,
+    maxDepth: number = 100
+  ): void {
+    if (!node || typeof node !== 'object') return;
+    if (depth > maxDepth) return;
+
+    // Обработка экспортов
+    if (node.type === 'ExportNamedDeclaration') {
+      if (node.declaration) {
+        collectDeclarationsRecursive(node.declaration, declarations, depth + 1, maxDepth);
+      }
+      return;
+    }
+
+    // Проверяем текущий узел на наличие объявлений
+    if (node.type === 'FunctionDeclaration' && node.id) {
+      declarations[node.id.name] = { type: 'function', node: node };
+    }
+
+    // Проверяем классы
+    if (node.type === 'ClassDeclaration' && node.id) {
+      if (node.body) {
+        declarations[node.id.name] = { type: 'class', node: node };
+
+        if (node.body.body && Array.isArray(node.body.body)) {
+          for (const method of node.body.body) {
+            if (
+              (method.type === 'MethodDefinition' || method.type === 'PropertyDefinition') &&
+              method.key?.name
+            ) {
+              declarations[method.key.name] = { type: 'function', node: method };
+            }
+          }
+        }
+      } else {
+        console.warn(`⚠️ Класс ${node.id.name} не имеет body, пропускаем`);
+      }
+    }
+
+    if (node.type === 'VariableDeclaration') {
+      if (node.declarations && Array.isArray(node.declarations)) {
+        node.declarations.forEach((decl: any) => {
+          if (decl.id?.name) {
+            declarations[decl.id.name] = { type: 'variable', node: decl };
+          }
+        });
+      }
+    }
+
+    // Собираем вложенные функции внутри блоков
+    if (node.type === 'BlockStatement' && node.body) {
+      for (const child of node.body) {
+        if (child.type === 'FunctionDeclaration' && child.id) {
+          declarations[child.id.name] = { type: 'function', node: child };
+        }
+      }
+    }
+
+    // Собираем функции внутри IIFE и других выражений
+    if (node.type === 'CallExpression' && node.callee?.type === 'FunctionExpression') {
+      const funcNode = node.callee;
+      if (funcNode.id?.name) {
+        declarations[funcNode.id.name] = { type: 'function', node: funcNode };
+      }
+      if (funcNode.body) {
+        collectDeclarationsRecursive(funcNode.body, declarations, depth + 1, maxDepth);
+      }
+    }
+
+    // Собираем стрелочные функции в переменных
+    if (node.type === 'VariableDeclarator' && node.id?.name) {
+      if (
+        node.init &&
+        (node.init.type === 'ArrowFunctionExpression' || node.init.type === 'FunctionExpression')
+      ) {
+        declarations[node.id.name] = { type: 'function', node: node.init };
+      }
+    }
+
+    // СБОР ДЕТЕЙ ДЛЯ РЕКУРСИВНОГО ОБХОДА
+    const childrenToTraverse: any[] = [];
+
+    if (node.body) {
+      if (Array.isArray(node.body)) {
+        childrenToTraverse.push(...node.body);
+      } else if (typeof node.body === 'object') {
+        childrenToTraverse.push(node.body);
+      }
+    }
+
+    if (node.type === 'ClassDeclaration' && node.body && Array.isArray(node.body.body)) {
+      childrenToTraverse.push(...node.body.body);
+    }
+
+    if (node.consequent) childrenToTraverse.push(node.consequent);
+    if (node.alternate) childrenToTraverse.push(node.alternate);
+
+    if (node.cases) {
+      node.cases.forEach((caseNode: any) => {
+        if (caseNode.consequent) {
+          childrenToTraverse.push(...caseNode.consequent);
+        }
+      });
+    }
+
+    if (node.init) childrenToTraverse.push(node.init);
+    if (node.update) childrenToTraverse.push(node.update);
+    if (node.test) childrenToTraverse.push(node.test);
+
+    if (node.handler) childrenToTraverse.push(node.handler);
+    if (node.finalizer) childrenToTraverse.push(node.finalizer);
+    if (node.param) childrenToTraverse.push(node.param);
+
+    if (node.arguments && Array.isArray(node.arguments)) {
+      childrenToTraverse.push(...node.arguments);
+    }
+
+    if (node.properties && Array.isArray(node.properties)) {
+      childrenToTraverse.push(...node.properties);
+    }
+
+    if (node.elements && Array.isArray(node.elements)) {
+      childrenToTraverse.push(...node.elements);
+    }
+
+    if (node.argument) childrenToTraverse.push(node.argument);
+    if (node.expression) childrenToTraverse.push(node.expression);
+
+    const validChildren = childrenToTraverse.filter(child => child && typeof child === 'object');
+
+    for (const child of validChildren) {
+      collectDeclarationsRecursive(child, declarations, depth + 1, maxDepth);
+    }
+  }
+
+  // Используем встроенную функцию для сбора объявлений
   try {
     collectDeclarationsRecursive(ast, declarations);
 
-    // ✅ НОВОЕ: используем collectDeclaredFunctions для поиска пропущенных функций
+    // Используем collectDeclaredFunctions для поиска пропущенных функций
     const declaredFunctions = collectDeclaredFunctions(ast);
     for (const funcName of declaredFunctions) {
       if (!declarations[funcName]) {
-        // Находим узел функции в AST
         let found = false;
         function findFunction(node: any) {
           if (found) return;
@@ -256,14 +229,13 @@ export function buildFileInternalGraph(
     }
   } catch (error) {
     console.warn(`⚠️ Ошибка при сборе объявлений: ${error}`);
-    // Возвращаем пустой граф вместо null
     return {
       rootKey: normalizePathForDisplay(path.basename(filePath)),
       graph: {},
     };
   }
 
-  // ✅ НОВОЕ: используем buildCallGraphFromAST для полного графа вызовов
+  // Используем buildCallGraphFromAST для полного графа вызовов
   let callGraphFromAST: Map<string, Set<string>> | null = null;
   try {
     callGraphFromAST = buildCallGraphFromAST(ast);
@@ -278,7 +250,6 @@ export function buildFileInternalGraph(
 
     const entityNode = declaration.node;
 
-    // ✅ Используем callGraphFromAST если доступен
     if (callGraphFromAST) {
       const calls = callGraphFromAST.get(currentEntity);
       if (calls) {
@@ -290,15 +261,12 @@ export function buildFileInternalGraph(
       }
     }
 
-    // ✅ ДОПОЛНИТЕЛЬНО: обход AST для поиска вызовов (как резерв)
+    // ДОПОЛНИТЕЛЬНО: обход AST для поиска вызовов (как резерв)
     walk(entityNode, {
       enter(node: any) {
-        // Если встретили идентификатор (вызов переменной/функции)
         if (node.type === 'Identifier') {
           const name = node.name;
-          // Проверяем, ссылается ли он на другое объявление в этом же файле
           if (name !== currentEntity && declarations[name]) {
-            // Проверяем, что это не часть объявления
             const parent = node.parent;
             if (
               parent &&
@@ -311,7 +279,6 @@ export function buildFileInternalGraph(
           }
         }
 
-        // ✅ НОВОЕ: прямой поиск CallExpression
         if (node.type === 'CallExpression' && node.callee?.type === 'Identifier') {
           const name = node.callee.name;
           if (name !== currentEntity && declarations[name]) {
@@ -328,7 +295,7 @@ export function buildFileInternalGraph(
     fileGraph[key] = [];
   });
 
-  // ✅ Удаляем дубликаты связей
+  // Удаляем дубликаты связей
   const uniqueRelations = new Map<string, Set<string>>();
   for (const rel of relations) {
     if (!uniqueRelations.has(rel.from)) {
@@ -343,12 +310,12 @@ export function buildFileInternalGraph(
     }
   }
 
-  // ✅ НОРМАЛИЗУЕМ КОРНЕВОЙ КЛЮЧ
+  // НОРМАЛИЗУЕМ КОРНЕВОЙ КЛЮЧ
   const normalizedRootKey = normalizePathForDisplay(path.basename(filePath));
 
-  // ✅ ЛОГИРУЕМ СТАТИСТИКУ
+  // ЛОГИРУЕМ СТАТИСТИКУ
   const totalFunctions = Object.keys(declarations).filter(
-    key => declarations[key]?.type === 'function' || declarations[key]?.type === 'function'
+    key => declarations[key]?.type === 'function'
   ).length;
   const totalEdges = relations.length;
 

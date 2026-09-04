@@ -1,4 +1,5 @@
 // src/core/entity-extractor.ts
+// ОБНОВЛЕННАЯ ВЕРСИЯ - УДАЛЕНЫ НЕИСПОЛЬЗУЕМЫЕ ФУНКЦИИ
 
 import { walk } from 'estree-walker';
 import path from 'path';
@@ -34,29 +35,9 @@ import type {
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ==========================================
 
-function isArraySafe(value: any): boolean {
-  return value && Array.isArray(value);
-}
-
-function getNodeType(node: any): string {
-  if (!node) return 'null';
-  if (typeof node !== 'object') return typeof node;
-  if (node.type) return node.type;
-  if (node.constructor?.name) return node.constructor.name;
-  return 'unknown';
-}
-
-function getNodeLocation(node: any): string {
-  if (!node) return 'unknown';
-  if (node.loc?.start) {
-    return `line ${node.loc.start.line}, column ${node.loc.start.column}`;
-  }
-  if (node.start !== undefined) {
-    return `position ${node.start}`;
-  }
-  return 'unknown location';
-}
-
+/**
+ * Проверяет, является ли узел обработчиком события
+ */
 function isEventHandler(node: any): boolean {
   if (!node) return false;
 
@@ -92,6 +73,9 @@ function isEventHandler(node: any): boolean {
   return false;
 }
 
+/**
+ * Извлекает тип события из узла
+ */
 function extractEventType(node: any): string | undefined {
   if (!node) return undefined;
 
@@ -117,6 +101,9 @@ function extractEventType(node: any): string | undefined {
   return undefined;
 }
 
+/**
+ * Вычисляет цикломатическую сложность
+ */
 function calculateComplexity(node: any): number {
   let complexity = 1;
 
@@ -167,6 +154,9 @@ function calculateComplexity(node: any): number {
   return complexity;
 }
 
+/**
+ * Анализирует безопасность тела функции
+ */
 function analyzeSecurity(body: string): FunctionInfo['security'] {
   const security = {
     hasEval: false,
@@ -203,6 +193,9 @@ function analyzeSecurity(body: string): FunctionInfo['security'] {
   return security;
 }
 
+/**
+ * Проверяет, экспортируется ли узел
+ */
 function isNodeExported(node: any, parent: any): boolean {
   if (!node) return false;
 
@@ -241,6 +234,9 @@ function isNodeExported(node: any, parent: any): boolean {
   return false;
 }
 
+/**
+ * Извлекает текст тела функции
+ */
 function extractBodyText(body: any): string | undefined {
   if (!body) return undefined;
 
@@ -277,6 +273,9 @@ function extractBodyText(body: any): string | undefined {
   return body.type || undefined;
 }
 
+/**
+ * Извлекает значение из узла
+ */
 function extractValue(node: any): any {
   if (!node) return undefined;
 
@@ -297,7 +296,7 @@ function extractValue(node: any): any {
   }
 
   if (node.type === 'ArrayExpression') {
-    if (isArraySafe(node.elements)) {
+    if (Array.isArray(node.elements)) {
       return node.elements.map((e: any) => extractValue(e)).filter((v: any) => v !== undefined);
     }
     return [];
@@ -305,7 +304,7 @@ function extractValue(node: any): any {
 
   if (node.type === 'ObjectExpression') {
     const obj: Record<string, any> = {};
-    if (isArraySafe(node.properties)) {
+    if (Array.isArray(node.properties)) {
       for (const prop of node.properties) {
         if (prop.type === 'Property' && prop.key) {
           const key = prop.key.name || prop.key.value;
@@ -323,7 +322,7 @@ function extractValue(node: any): any {
   }
 
   if (node.type === 'TemplateLiteral') {
-    if (isArraySafe(node.quasis)) {
+    if (Array.isArray(node.quasis)) {
       return node.quasis.map((q: any) => q.value?.raw || '').join('');
     }
     return '';
@@ -340,6 +339,9 @@ function extractValue(node: any): any {
 // ФУНКЦИЯ ДЛЯ СОЗДАНИЯ ПУСТОГО РЕЗУЛЬТАТА
 // ==========================================
 
+/**
+ * Создает пустой результат сущностей
+ */
 function createEmptyEntitiesResult(filePath?: string): EntitiesResult {
   return {
     functions: [],
@@ -634,11 +636,9 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
     return createEmptyEntitiesResult(filePath);
   }
 
-  if (!isArraySafe(ast.body)) {
-    const nodeType = getNodeType(ast.body);
-    const location = getNodeLocation(ast.body);
+  if (!Array.isArray(ast.body)) {
     console.warn(
-      `⚠️ AST.body не является массивом для ${filePath || 'unknown'}, тип: ${nodeType}, ${location}, пропускаем`
+      `⚠️ AST.body не является массивом для ${filePath || 'unknown'}, пропускаем`
     );
     return createEmptyEntitiesResult(filePath);
   }
@@ -713,7 +713,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
       const isTypeOnly = node.importKind === 'type';
       const specifiers: { local: string; imported: string; type: string }[] = [];
 
-      if (isArraySafe(node.specifiers)) {
+      if (Array.isArray(node.specifiers)) {
         for (const spec of node.specifiers) {
           if (!spec) continue;
           if (spec.type === 'ImportSpecifier') {
@@ -754,7 +754,6 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
     // 2. EXPORT NAMED DECLARATION (ИСПРАВЛЕНО)
     // ==========================================
     if (node.type === 'ExportNamedDeclaration') {
-      // Проверяем, является ли это re-экспортом (export ... from)
       const isReExport = !!node.source;
       const sourceModule = node.source?.value || undefined;
 
@@ -795,7 +794,6 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
           }
         }
       } else if (node.specifiers && Array.isArray(node.specifiers)) {
-        // export { a, b, c } или export { a, b } from 'module'
         for (const spec of node.specifiers) {
           if (spec.exported) {
             const exportName = spec.exported.name || spec.exported.value;
@@ -905,7 +903,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         }
       }
 
-      const params = isArraySafe(node.params)
+      const params = Array.isArray(node.params)
         ? node.params.map((p: any) => {
           if (p.type === 'Identifier') return p.name || 'unknown';
           if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
@@ -968,7 +966,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
       functionStack.push(fullName);
 
       if (node.body) {
-        if (node.body.type === 'BlockStatement' && isArraySafe(node.body.body)) {
+        if (node.body.type === 'BlockStatement' && Array.isArray(node.body.body)) {
           for (const child of node.body.body) {
             traverseNode(child, node, depth + 1, fullName);
           }
@@ -1060,7 +1058,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         }
       }
 
-      const params = isArraySafe(node.params)
+      const params = Array.isArray(node.params)
         ? node.params.map((p: any) => {
           if (p.type === 'Identifier') return p.name || 'unknown';
           if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
@@ -1119,7 +1117,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
       }
 
       if (node.body) {
-        if (node.body.type === 'BlockStatement' && isArraySafe(node.body.body)) {
+        if (node.body.type === 'BlockStatement' && Array.isArray(node.body.body)) {
           for (const child of node.body.body) {
             traverseNode(child, node, depth + 1, name);
           }
@@ -1140,7 +1138,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         const isExported = isNodeExported(node, parent);
         const fullName = `${className}.${methodName}`;
 
-        const params = isArraySafe(node.value?.params)
+        const params = Array.isArray(node.value?.params)
           ? node.value.params.map((p: any) => {
             if (p.type === 'Identifier') return p.name || 'unknown';
             if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
@@ -1194,7 +1192,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         }
 
         if (node.value && node.value.body) {
-          if (node.value.body.type === 'BlockStatement' && isArraySafe(node.value.body.body)) {
+          if (node.value.body.type === 'BlockStatement' && Array.isArray(node.value.body.body)) {
             for (const child of node.value.body.body) {
               traverseNode(child, node, depth + 1, fullName);
             }
@@ -1213,7 +1211,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
       const methods: string[] = [];
       const properties: string[] = [];
 
-      if (isArraySafe(node.body?.body)) {
+      if (Array.isArray(node.body?.body)) {
         for (const member of node.body.body) {
           if (!member) continue;
           if (member.type === 'MethodDefinition' && member.key) {
@@ -1244,7 +1242,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
       const previousClass = currentClass;
       currentClass = name;
 
-      if (node.body && isArraySafe(node.body.body)) {
+      if (node.body && Array.isArray(node.body.body)) {
         for (const member of node.body.body) {
           traverseNode(member, node, depth + 1, name);
         }
@@ -1260,7 +1258,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
       const isExported = isNodeExported(node, parent);
       const kind = node.kind;
 
-      if (isArraySafe(node.declarations)) {
+      if (Array.isArray(node.declarations)) {
         for (const decl of node.declarations) {
           if (!decl) continue;
           if (decl.id?.type === 'Identifier') {
@@ -1303,7 +1301,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
       const isExported = isNodeExported(node, parent);
 
       const properties: string[] = [];
-      if (isArraySafe(node.body?.body)) {
+      if (Array.isArray(node.body?.body)) {
         for (const member of node.body.body) {
           if (!member) continue;
           if (member.key?.name) {
@@ -1371,23 +1369,23 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
     if (node.object) childrenToTraverse.push(node.object);
     if (node.property) childrenToTraverse.push(node.property);
 
-    if (isArraySafe(node.arguments)) {
+    if (Array.isArray(node.arguments)) {
       childrenToTraverse.push(...node.arguments);
     }
-    if (isArraySafe(node.properties)) {
+    if (Array.isArray(node.properties)) {
       childrenToTraverse.push(...node.properties);
     }
-    if (isArraySafe(node.elements)) {
+    if (Array.isArray(node.elements)) {
       childrenToTraverse.push(...node.elements);
     }
-    if (isArraySafe(node.cases)) {
+    if (Array.isArray(node.cases)) {
       for (const caseNode of node.cases) {
         if (caseNode.consequent) {
           childrenToTraverse.push(...caseNode.consequent);
         }
       }
     }
-    if (isArraySafe(node.handlers)) {
+    if (Array.isArray(node.handlers)) {
       childrenToTraverse.push(...node.handlers);
     }
 
