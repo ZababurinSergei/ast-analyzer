@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Кодекс — квест-ходок по графу проекта</title>
+  <style>
+      :root{--bg:#0b0e14;--panel:#12172290;--line:#232c3f;--txt:#d7dfec;--dim:#8a93a6;
+          --gold:#e8b33d;--gold2:#f5d47a;--cyan:#4fd8e0;--vio:#9a8cf5;--grn:#6ee7a0;--red:#f87171}
+      *{box-sizing:border-box}html,body{height:100%}
+      body{margin:0;background:radial-gradient(1200px 700px at 70% -10%,#16203a55,transparent),var(--bg);
+          color:var(--txt);font:14px/1.45 "Segoe UI",system-ui,sans-serif;overflow:hidden}
+      code,.mono{font-family:ui-monospace,Consolas,"Cascadia Mono",monospace}
+      header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:8px 14px;
+          border-bottom:1px solid var(--line);background:linear-gradient(180deg,#101623,#0c1018)}
+      .logo{font-family:Georgia,serif;font-size:19px;letter-spacing:1px;color:var(--gold2)}
+      .logo small{color:var(--dim);font-size:12px;font-family:inherit}
+      .rank{display:flex;flex-direction:column;min-width:180px}
+      .rank .rn{font-size:12px;color:var(--gold2)}
+      .xpbar{height:7px;background:#1a2233;border-radius:5px;overflow:hidden;border:1px solid #2a3550;margin-top:3px}
+      .xpbar i{display:block;height:100%;background:linear-gradient(90deg,#8a6a1c,var(--gold));transition:width .4s}
+      .rank .xt{font-size:10px;color:var(--dim)}
+      .chips{display:flex;gap:6px;font-size:12px;color:var(--dim)}.chips b{color:var(--txt)}
+      .spacer{flex:1}
+      input[type=search]{background:#0d1320;border:1px solid #2a3550;color:var(--txt);border-radius:7px;padding:6px 10px;width:210px;font-size:13px}
+      button{background:#1a2233;border:1px solid #2c3854;color:var(--txt);border-radius:8px;padding:6px 11px;cursor:pointer;font-size:13px}
+      button:hover{border-color:var(--gold);color:var(--gold2)}
+      main{display:grid;grid-template-columns:300px 1fr 360px;height:calc(100vh - 54px)}
+      aside{overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:10px;background:#0c101799}
+      #left{border-right:1px solid var(--line)}#right{border-left:1px solid var(--line)}
+      .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}
+      .panel h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);font-family:Georgia,serif}
+      .quest{border:1px solid var(--line);border-radius:9px;padding:7px 9px;margin-bottom:7px;background:#0e1320}
+      .quest .qt{display:flex;justify-content:space-between;font-size:13px}
+      .quest .qd{font-size:11px;color:var(--dim);margin:2px 0 5px}
+      .qbar{height:5px;background:#1a2233;border-radius:4px;overflow:hidden}
+      .qbar i{display:block;height:100%;background:linear-gradient(90deg,#4a6a2c,var(--grn))}
+      .quest.done{opacity:.55;border-color:#3d5a3d}
+      .quest.done .qt::after{content:"✔";color:var(--grn)}
+      #log{font-size:11px;max-height:180px;overflow-y:auto}
+      .log-line{padding:2px 0;border-bottom:1px dashed #1c2436;color:var(--dim)}
+      .log-line .lt{color:#566179;margin-right:5px;font-size:10px}
+      #stage{position:relative;overflow:hidden}
+      #roomsign{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:7;
+          background:#101826f0;border:1px solid var(--gold);color:var(--gold2);
+          padding:9px 26px;border-radius:14px;font-family:Georgia,serif;font-size:17px;text-align:center;
+          box-shadow:0 4px 24px #0008;pointer-events:none;max-width:60%}
+      #roomsign b{color:#fff}
+      #roomsign .sub{display:block;font-size:11px;color:var(--dim);font-family:"Segoe UI";margin-top:2px}
+      #poscol{position:absolute;top:10px;left:12px;z-index:6;display:flex;flex-direction:column;gap:6px;max-width:44%}
+      #poschip{font-size:12px;background:#0d121dcc;border:1px solid var(--line);padding:6px 12px;border-radius:16px;backdrop-filter:blur(4px)}
+      #poschip b{color:var(--gold2)}
+      #poschip .sub{color:var(--dim);font-size:10px}
+      #routebar{display:none;font-size:11px;background:#0d121dcc;border:1px solid var(--vio);padding:6px 10px;border-radius:12px;backdrop-filter:blur(4px)}
+      #routebar .rch{display:inline-block;padding:1px 8px;margin:2px;border-radius:10px;border:1px solid #384;cursor:pointer;font-family:ui-monospace,monospace}
+      #routebar .rch.nx{border-color:var(--gold);color:var(--gold2)}
+      #routebar button{font-size:11px;padding:2px 8px;margin-left:4px}
+      #hint{position:absolute;top:10px;right:12px;z-index:5;font-size:11px;color:var(--dim);background:#0d121dcc;
+          border:1px solid var(--line);padding:5px 12px;border-radius:20px;max-width:340px}
+      #legend{position:absolute;bottom:10px;left:12px;z-index:5;font-size:11px;color:var(--dim);background:#0d121dcc;
+          border:1px solid var(--line);padding:8px 12px;border-radius:10px;max-width:300px}
+      #legend .l{display:flex;align-items:center;gap:7px;margin:2px 0}
+      .sw{width:22px;height:0;border-top:2px solid}
+      .doorchip{display:inline-block;padding:0 6px;border-radius:4px;font-size:10px;font-weight:700}
+      #banner{position:absolute;top:70px;left:50%;transform:translateX(-50%);z-index:9;background:#101826ee;
+          border:1px solid var(--gold);color:var(--gold2);padding:9px 20px;border-radius:12px;display:none;font-size:13px;max-width:80%}
+      #banner.bad{border-color:var(--red);color:var(--red)}#banner.good{border-color:var(--grn);color:var(--grn)}
+      svg{width:100%;height:100%;display:block;cursor:grab}
+      svg.panning{cursor:grabbing}
+      .edge{opacity:.5}
+      svg.hov .edge{opacity:.08}svg.hov .edge.hl{opacity:.95}
+      svg.hov .node{opacity:.22}svg.hov .node.hl{opacity:1}
+      .node{cursor:pointer}
+      .node text{pointer-events:none;fill:#cdd6e4;font-size:10px;text-anchor:middle;paint-order:stroke;stroke:#0b0e14;stroke-width:3px}
+      .node.n-mod text{font-size:12px;font-weight:600}
+      .node.n-mod text.cnt{fill:#fff;font-size:11px;stroke:none;font-weight:700}
+      .node.far{opacity:.45}
+      .node.sealed text{fill:#6a7488}
+      .node text.pin{font-size:15px;stroke:none}
+      .node.n-ext text.doortxt{font-size:12px;font-weight:700;fill:#fff;stroke-width:2px}
+      .node.n-ext text.doortxt.small{font-size:9px;font-weight:600;fill:#e7ecf5}
+      .roombg{pointer-events:none}
+      text.roomlabel{fill:#7fa8e8;font-size:12px;font-weight:700;letter-spacing:1px;pointer-events:none}
+      .walkring{fill:none;stroke:var(--grn);stroke-dasharray:4 4;stroke-width:1.7;opacity:.95}
+      .routering{fill:none;stroke:#fbbf24;stroke-dasharray:2 3;stroke-width:2}
+      .pulse{fill:none;stroke:var(--gold2);stroke-width:2;transform-box:fill-box;transform-origin:center;animation:pu 1.6s infinite}
+      @keyframes pu{0%{opacity:.9;transform:scale(1)}75%{opacity:0;transform:scale(1.6)}100%{opacity:0}}
+      .node.sel circle.main{stroke:#fff;stroke-width:3px}
+      .node.insp circle.main,.node.insp rect.main{stroke:#fff;stroke-width:2px;stroke-dasharray:3 2}
+      .node.denied circle.main,.node.denied rect.main{stroke:var(--red)!important;stroke-width:3px!important}
+      .d-head{display:flex;gap:10px;align-items:center}
+      .d-icon{font-size:28px}
+      .d-title{font-size:16px;font-family:Georgia,serif;color:var(--gold2)}
+      .d-sub{font-size:12px;color:var(--dim)}
+      .d-path{font-size:11px;color:#5f8fbf;margin:6px 0;word-break:break-all}
+      .d-stats{font-size:12px;color:var(--dim);margin-bottom:8px}
+      .sect{margin-top:12px}.sect h4{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)}
+      .here{display:inline-block;background:#3a2c0e;border:1px solid var(--gold);color:var(--gold2);font-size:11px;border-radius:8px;padding:3px 9px;margin:4px 0}
+      .locknote{font-size:11px;color:var(--dim);background:#161c2b;border:1px dashed #38415a;border-radius:8px;padding:6px 9px;margin:6px 0}
+      .fn-item{display:flex;align-items:center;gap:6px;padding:4px 7px;border-radius:7px;cursor:pointer;font-size:12px}
+      .fn-item:hover{background:#1a2233}
+      .fn-item .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .fn-item .loc{color:#566179;font-size:10px}
+      .fn-item .go{font-size:10px;color:var(--grn)}
+      .fn-item .lk{font-size:10px;color:#566179}
+      .b{font-size:9px;padding:1px 4px;border-radius:4px;font-weight:700}
+      .b.e{background:#4a3a10;color:var(--gold2)}.b.a{background:#123c40;color:var(--cyan)}
+      .b.m{background:#2d2350;color:var(--vio)}.b.n{background:#1d3a2a;color:var(--grn)}
+      .b.r{background:#3a2440;color:#e879f9}.b.v{background:#402d12;color:#fbbf24}
+      .chip{display:inline-block;background:#141c2c;border:1px solid #2a3550;border-radius:14px;padding:3px 10px;margin:2px;
+          font-size:11px;cursor:pointer;font-family:ui-monospace,monospace}
+      .chip:hover{border-color:var(--gold);color:var(--gold2)}
+      .chip.w{border-color:#3d6a4d}.chip.w::after{content:" ➡";color:var(--grn)}
+      .const{border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-bottom:6px;background:#0e1320}
+      .const.clickable{cursor:pointer}.const.clickable:hover{border-color:var(--vio)}
+      .const .cn{color:var(--vio);font-family:ui-monospace,monospace;font-size:12px}
+      .const .cl{color:#566179;font-size:10px;float:right}
+      .const pre{display:none;margin:6px 0 0;font-size:11px;color:var(--grn);white-space:pre-wrap;word-break:break-all}
+      .const.open pre{display:block}
+      .file-l{font-size:10px;color:#5f8fbf;font-family:ui-monospace,monospace;padding:1px 0;word-break:break-all}
+      .btnrow{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap}.btnrow button{font-size:12px}
+      .fnlist{max-height:230px;overflow-y:auto;border:1px solid var(--line);border-radius:8px}
+      #toasts{position:fixed;top:60px;right:16px;z-index:99;display:flex;flex-direction:column;gap:8px}
+      .toast{background:#13200fee;border:1px solid var(--grn);color:var(--grn);padding:10px 16px;border-radius:10px;
+          font-size:13px;animation:tin .3s,tout .5s 3s forwards;box-shadow:0 6px 24px #000a}
+      @keyframes tin{from{transform:translateX(60px);opacity:0}}@keyframes tout{to{transform:translateX(60px);opacity:0}}
+      #intro{position:fixed;inset:0;background:#05070bdd;z-index:100;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+      #intro .card{max-width:620px;background:#101623;border:1px solid var(--gold);border-radius:16px;padding:26px 30px}
+      #intro h1{font-family:Georgia,serif;color:var(--gold2);margin:0 0 10px;font-size:24px}
+      #intro p{font-size:13px}
+      #intro li{font-size:12px;color:var(--dim);margin:3px 0}
+      #intro .big{margin-top:14px;font-size:15px;padding:10px 22px;border-color:var(--gold);color:var(--gold2)}
+      aside::-webkit-scrollbar,#log::-webkit-scrollbar,.fnlist::-webkit-scrollbar{width:8px}
+      aside::-webkit-scrollbar-thumb,#log::-webkit-scrollbar-thumb,.fnlist::-webkit-scrollbar-thumb{background:#263149;border-radius:4px}
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">⚔️ КОДЕКС <small>· квест-ходок по графу проекта</small></div>
+  <div class="rank"><span class="rn" id="rankName">🐣 Новик</span>
+    <div class="xpbar"><i id="xpFill" style="width:0%"></i></div>
+    <span class="xt" id="xpText">0 XP</span></div>
+  <div class="chips" id="counters"></div>
+  <div class="spacer"></div>
+  <input type="search" id="search" list="fnlist" placeholder="🔍 найти функцию и проложить маршрут…">
+  <datalist id="fnlist"></datalist>
+  <button id="btnView">🗺 Карта</button>
+  <button id="btnBack" title="Откатиться по пройденному пути">⬅ Назад</button>
+  <button id="btnOracle" title="Проверить граф на циклы">🔮 Оракул</button>
+  <button id="btnReset" title="Сбросить прогресс">↺</button>
+</header>
+<main>
+  <aside id="left">
+    <div class="panel"><h3>📜 Журнал квестов</h3><div id="quests"></div></div>
+    <div class="panel"><h3>🪶 Летопись переходов</h3><div id="log"></div></div>
+  </aside>
+  <section id="stage">
+    <div id="roomsign"></div>
+    <div id="poscol"><div id="poschip"></div><div id="routebar"></div></div>
+    <div id="hint"></div>
+    <div id="legend">
+      <div class="l"><span style="color:var(--gold2)">◉</span> пульсация + 📍 — вы здесь</div>
+      <div class="l"><span style="color:var(--grn)">◌</span> зелёный пунктир — сюда можно шагнуть</div>
+      <div class="l"><span class="doorchip" style="background:#3a2c0e;color:#e0a83c">🚪 →</span> выход (модуль зовёт наружу)</div>
+      <div class="l"><span class="doorchip" style="background:#12301f;color:#6ee7a0">🚪 ←</span> вход (зовут сюда)</div>
+      <div class="l"><span class="doorchip" style="background:#241d3f;color:#9a8cf5">🚪 ⇄</span> дверь в обе стороны</div>
+      <div class="l"><span class="sw" style="border-color:#e0a83c"></span> вызов <span class="sw" style="border-color:#4fd8e0;margin-left:6px"></span> async <span class="sw" style="border-color:#9a8cf5;border-top-style:dashed;margin-left:6px"></span> импорт</div>
+      <div class="l" style="color:#566179">Имена функций — реальные, восстановлены из отчёта.</div>
+    </div>
+    <div id="banner"></div>
+    <svg id="graph">
+      <defs>
+        <marker id="ar-gd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0L10,5L0,10z" fill="#e0a83c"/></marker>
+        <marker id="ar-cy" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0L10,5L0,10z" fill="#4fd8e0"/></marker>
+        <marker id="ar-vi" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0L10,5L0,10z" fill="#9a8cf5"/></marker>
+        <marker id="ar-gy" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0L10,5L0,10z" fill="#7d8aa8"/></marker>
+      </defs>
+      <g id="vp"><g id="gE"></g><g id="gN"></g></g>
+    </svg>
+  </section>
+  <aside id="right"><div id="details"></div></aside>
+</main>
+<div id="toasts"></div>
+<div id="intro" style="display:none">
+  <div class="card">
+    <h1>⚔️ Кодекс: ходок по графу проекта</h1>
+    <p>Ты стоишь у точки входа — комната <b class="mono">src</b>. Каждый модуль — это <b>комната</b>. Между комнатами — <b>двери 🚪</b>: <span style="color:var(--gold)">→ выход</span>, <span style="color:var(--grn)">← вход</span>, <span style="color:var(--vio)">⇄ обе</span>. Телепортов нет: <b>ходить можно только по связям графа</b>.</p>
+    <ul>
+      <li>📍 — твоя позиция. Вывеска сверху показывает, в какой комнате ты сейчас.</li>
+      <li>Из комнаты — в любую её функцию или в дверь соседнего модуля.</li>
+      <li>Из функции — в вызываемые, вызывающие, импорты, или назад в свою комнату.</li>
+      <li>Одинарный клик — досье (смотреть можно на всё). Двойной клик — шаг (только в зелёном пунктире).</li>
+      <li>До далёкой цели — «проложить маршрут» или поиск: пойдёшь по кратчайшему пути пошагово или на авто.</li>
+      <li>⬅ Назад — честный откат по пройденному пути. 🗺 — карта проекта.</li>
+      <li>Комнаты <span class="mono">cli, semantic, interfaces</span> запечатаны: в отчёте у них нет функций и связей.</li>
+    </ul>
+    <button class="big" id="btnStart">🚶 Начать путь</button>
+  </div>
+</div>
+
+<script>
+  /* ================= ДАННЫЕ ОТЧЁТА ================= */
+  const MODS=["src","utils","cli","commands","modes","core","vue-analyzer","ci-cd","formal","refactor","reporters","hybrid-report","extractors","semantic","interfaces","generators","checkers","modules"];
+  const META={1:["🚪","корень проекта · точка входа"],2:["🧰","утилиты: пути, флаги, логи, wasm"],3:["🔒","CLI-исполнитель"],4:["⌨️","команды CLI"],5:["🧪","режимы анализа и графов"],6:["⚙️","ядро: парсеры, графы, минификатор"],7:["🐉","анализатор Vue SFC"],8:["🚀","CI/CD пайплайны"],9:["🧙","формальная верификация (Z3)"],10:["🔧","авто-рефакторинг"],11:["📚","репортёры: compact / html / json"],12:["📖","гибридный отчёт"],13:["⛏️","экстракторы Vue-сущностей"],14:["🔒","семантические анализаторы"],15:["🔒","интерфейсы рефакторинга"],16:["🖨️","генераторы DOT / HTML / Markdown"],17:["⚖️","проверки эквивалентности"],18:["🧮","метрики и секции отчёта"]};
+  const SEALED=new Set([3,14,15]);
+  const REACHABLE=[1,2,4,5,6,7,8,9,10,11,12,13,16,17,18];
+  const MOD_PATH={1:"src",2:"src/utils",3:"src/cli",4:"src/cli/commands",5:"src/modes",6:"src/core",7:"src/modes/vue-analyzer",8:"src/ci-cd",9:"src/formal",10:"src/refactor",11:"src/reporters",12:"src/modes/hybrid-report",13:"src/modes/vue-analyzer/extractors",14:"src/semantic",15:"src/refactor/interfaces",16:"src/modes/hybrid-report/generators",17:"src/formal/checkers",18:"src/reporters/modules"};
+  const FILES=["src/cli.ts","src/utils/is-main.ts","src/cli/CLIExecutor.ts","src/cli/commands/ProjectCommand.ts","src/cli/commands/FileCommand.ts","src/cli/commands/MinifyCommand.ts","src/cli/commands/SplitModuleCommand.ts","src/cli/commands/VueAnalyzeCommand.ts","src/cli/commands/SemanticCommand.ts","src/cli/commands/VerifyCommand.ts","src/cli/commands/RefactorCommand.ts","src/cli/commands/CompactCommand.ts","src/cli/commands/HybridReportCommand.ts","src/cli/commands/InitCommand.ts","src/cli/commands/StatusCommand.ts","src/cli/commands/ImpactCommand.ts","src/cli/commands/DeadCodeCommand.ts","src/cli/commands/PromptPackCommand.ts","src/cli/commands/MinifyFolderCommand.ts","src/cli/commands/CompactRecursiveCommand.ts","src/modes/project-graph.ts","src/modes/file-graph.ts","src/core/minifier.ts","src/modes/minify-folder.ts","src/modes/prompt-pack.ts","src/modes/split-module.ts","src/modes/vue-analyzer/index.ts","src/modes/impact.ts","src/modes/dead-code.ts","src/ci-cd/SemanticPipeline.ts","src/formal/Z3Verifier.ts","src/refactor/AutoRefactor.ts","src/core/ast-parser.ts","src/core/entity-extractor.ts","src/reporters/compact-reporter.ts","src/modes/hybrid-report/index.ts","src/utils/askQuestion.ts","src/ci-cd/ESLintPipeline.ts","src/core/graph-utils.ts","src/reporters/html-reporter.ts","src/utils/path-utils.ts","src/formal/index.ts","src/refactor/TypeScriptValidator.ts","src/config.ts","src/core/ProjectGraphBuilder.ts","src/reporters/json-reporter.ts","src/reporters/core/ReportBuilder.ts","src/types.ts","src/core/call-collector.ts","src/modes/vue-analyzer.ts","src/modes/vue-analyzer/types.ts","src/modes/vue-analyzer/parser.ts","src/modes/vue-analyzer/extractors/index.ts","src/modes/vue-analyzer/template.ts","src/modes/vue-analyzer/callgraph.ts","src/modes/vue-analyzer/report.ts","src/modes/vue-analyzer/utils.ts","src/semantic/CFGAnalyzer.ts","src/semantic/CallGraphAnalyzer.ts","src/semantic/TypeAnalyzer.ts","src/semantic/DataFlowAnalyzer.ts","src/semantic/JSXAnalyzer.ts","src/utils/wasm-utils.ts","src/utils/Logger.ts","src/formal/ExpressionParser.ts","src/formal/FunctionBodyModeler.ts","src/refactor/ModuleExtractor.ts","src/refactor/ImportManager.ts","src/refactor/ESLintASTFixer.ts","src/refactor/CodeValidator.ts","src/refactor/CodeFixer.ts","src/refactor/TemplateUpdater.ts","src/refactor/SyntaxValidator.ts","src/refactor/ModuleTypeDetector.ts","src/refactor/BackupManager.ts","src/refactor/interfaces/IRefactorContext.ts","src/refactor/types.ts","src/core/tsconfig-resolver.ts","src/core/IdManager.ts","src/modes/hybrid-report/types.ts","src/modes/hybrid-report/cli.ts","src/modes/hybrid-report/builder.ts","src/modes/hybrid-report/analyzer.ts","src/modes/hybrid-report/generators/dot.ts","src/modes/hybrid-report/generators/html.ts","src/modes/hybrid-report/generators/markdown.ts","src/formal/checkers/FileEquivalenceChecker.ts","src/formal/checkers/RefactoringEquivalenceChecker.ts","src/reporters/modules/types.ts","src/reporters/modules/utils.ts","src/reporters/modules/metadata.ts","src/reporters/modules/statistics.ts","src/reporters/modules/graphs.ts","src/reporters/modules/flows.ts","src/reporters/modules/architecture.ts","src/reporters/modules/summary.ts","src/reporters/modules/packages.ts","src/utils/flag-utils.ts","src/modes/vue-analyzer/extractors/props.ts","src/modes/vue-analyzer/extractors/emits.ts","src/modes/vue-analyzer/extractors/expose.ts","src/modes/vue-analyzer/extractors/imports.ts","src/modes/vue-analyzer/extractors/composables.ts","src/modes/vue-analyzer/extractors/functions.ts","src/modes/vue-analyzer/extractors/constants.ts","src/modes/vue-analyzer/extractors/variables.ts","src/modes/vue-analyzer/extractors/types.ts","src/modes/vue-analyzer/extractors/interfaces.ts","src/formal/checkers/EquivalenceChecker.ts","src/core/ASTComparator.ts","src/core/SignatureComparator.ts","src/core/CallGraphComparator.ts"];
+  const FNS=[
+    [1,"main",1,1,67,"a"],[2,"isMainModule",2,2,9,"e"],[3,"createFileCommand",4,5,368,"e"],[4,"runSplitModule",4,7,321,"ae"],[5,"extractAllFunctions",4,13,277,"e"],[6,"findFunctionByName",4,13,295,"e"],[7,"getFunctionsByLevel",4,13,314,"e"],[8,"getExportedFunctions",4,13,334,"e"],[9,"getAsyncFunctions",4,13,354,"e"],[10,"getFunctionStats",4,13,374,"e"],
+    [11,"createInitCommand",4,14,715,"e"],[12,"minifyFolder",4,19,422,"ae"],[13,"minifyFolderSync",4,19,434,"e"],[14,"buildProjectGraph",5,21,70,"e"],[15,"buildEntitiesMap",5,21,161,"0"],[16,"buildReport",5,21,181,"0"],[17,"buildInwardDependencies",5,21,198,"0"],[18,"findPathBetweenFunctions",5,21,209,"0"],[19,"buildRelationshipGraph",5,21,280,"0"],[20,"exportToDOT",5,21,341,"e"],
+    [21,"findCyclesInGraph",5,21,355,"e"],[22,"getGraphStats",5,21,382,"e"],[23,"findPathInGraph",5,21,394,"e"],[24,"collectDeclarationsRecursive",5,22,14,"0"],[25,"buildFileInternalGraph",5,22,177,"e"],[26,"collectAllNodes",6,23,8,"0"],[27,"minifyCodeString",6,23,47,"e"],[28,"shouldPreserveValue",6,23,139,"0"],[29,"minifyForAI",6,23,203,"e"],[30,"generateDirectoryTree",5,24,24,"e"],
+    [31,"collectFiles",5,24,86,"e"],[32,"minifyFolder",5,24,139,"e"],[33,"buildAiPromptPack",5,25,13,"e"],[34,"analyzeModuleStructure",5,26,18,"e"],[35,"identifyClusters",5,26,262,"e"],[36,"buildSplitModulePrompt",5,26,375,"e"],[37,"analyzeVueComponent",7,27,77,"e"],[38,"enhanceWithVueAnalysis",7,27,402,"e"],[39,"analyzeVueComponentCli",7,27,434,"ae"],[40,"runImpactAnalysis",5,28,12,"e"],
+    [41,"findDeadCode",5,29,11,"e"],[42,"runSemanticPipeline",8,30,1290,"ae"],[43,"createIntVar",9,31,53,"0"],[44,"createBoolVar",9,31,57,"0"],[45,"createIntVal",9,31,61,"0"],[46,"createIntParam",9,31,1010,"e"],[47,"createBoolParam",9,31,1014,"e"],[48,"createStringParam",9,31,1018,"e"],[49,"eq",9,31,1022,"e"],[50,"neq",9,31,1026,"e"],
+    [51,"range",9,31,1030,"e"],[52,"implies",9,31,1034,"e"],[53,"and",9,31,1043,"e"],[54,"or",9,31,1052,"e"],[55,"not",9,31,1059,"e"],[56,"if_",9,31,1066,"e"],[57,"compare",9,31,1085,"e"],[58,"assign",9,31,1149,"e"],[59,"add",9,31,1153,"e"],[60,"sub",9,31,1157,"e"],
+    [61,"mul",9,31,1161,"e"],[62,"div",9,31,1165,"e"],[63,"addExpr",9,31,1172,"e"],[64,"subExpr",9,31,1186,"e"],[65,"mulExpr",9,31,1200,"e"],[66,"divExpr",9,31,1214,"e"],[67,"getDefaultWasmPath",10,32,42,"0"],[68,"getTsConfigForFile",6,33,87,"e"],[69,"parseVueSFCFile",6,33,145,"e"],[70,"collectImportsFromAST",6,33,216,"0"],
+    [71,"collectExportsFromAST",6,33,260,"0"],[72,"parseFile",6,33,360,"e"],[73,"isExternalModule",6,33,564,"e"],[74,"resolveFilePath",6,33,597,"e"],[75,"getAllProjectFiles",6,33,721,"e"],[76,"extractFunctionsFromAST",6,33,759,"e"],[77,"extractClassesFromAST",6,33,819,"e"],[78,"extractConstantsFromAST",6,33,865,"e"],[79,"extractInterfacesFromAST",6,33,899,"e"],[80,"extractTypesFromAST",6,33,938,"e"],
+    [81,"extractVariablesFromAST",6,33,965,"e"],[82,"isNodeExported",6,33,1001,"0"],[83,"extractValueFromNode",6,33,1034,"0"],[84,"isArraySafe",6,34,37,"0"],[85,"getNodeType",6,34,41,"0"],[86,"getNodeLocation",6,34,49,"0"],[87,"isEventHandler",6,34,60,"0"],[88,"extractEventType",6,34,95,"0"],[89,"calculateComplexity",6,34,120,"0"],[90,"analyzeSecurity",6,34,170,"0"],
+    [91,"isNodeExported",6,34,206,"0"],[92,"extractBodyText",6,34,244,"0"],[93,"extractValue",6,34,280,"0"],[94,"createEmptyEntitiesResult",6,34,343,"0"],[95,"convertVueImportsToImportInfo",6,34,366,"0"],[96,"convertVueAnalysisToEntities",6,34,389,"0"],[97,"extractEntities",6,34,629,"e"],[98,"extractEntitiesFromAST",6,34,672,"0"],[99,"extractCallGraph",6,34,1664,"e"],[100,"generateCompactReport",11,35,115,"e"],
+    [101,"encodeFlags",11,35,932,"0"],[102,"findFunctionByName",11,35,959,"e"],[103,"findConstantByName",11,35,979,"e"],[104,"getFunctionCalls",11,35,1000,"e"],[105,"getFunctionCallers",11,35,1009,"e"],[106,"getFileName",11,35,1018,"e"],[107,"getModuleName",11,35,1025,"e"],[108,"getFunctionInfo",11,35,1032,"e"],[109,"decodeFlags",11,35,1055,"e"],[110,"hasCyclicDependencies",12,36,245,"e"],
+    [111,"getModulesByLevel",12,36,252,"e"],[112,"getAllFunctions",12,36,259,"e"],[113,"getFunctionsByExportSource",12,36,270,"e"],[114,"getFunctionsStats",12,36,288,"e"],[115,"askQuestion",2,37,11,"e"],[116,"askYesNo",2,37,31,"ae"],[117,"askChoice",2,37,52,"ae"],[118,"findCyclicEdges",6,39,8,"e"],[119,"convertToDOT",6,39,60,"e"],[120,"escapeHtml",11,40,9,"e"],
+    [121,"generateHTMLReport",11,40,27,"e"],[122,"normalizePathForDisplay",2,41,11,"e"],[123,"getFileNameForDisplay",2,41,42,"e"],[124,"normalizePathForOS",2,41,51,"e"],[125,"normalizeGraphPaths",2,41,59,"e"],[126,"resolveAbsolutePath",2,41,82,"e"],[127,"validateAndResolvePath",2,41,94,"e"],[128,"createContractTemplate",9,42,125,"e"],[129,"addPrecondition",9,42,143,"e"],[130,"addPostcondition",9,42,156,"e"],
+    [131,"addInvariant",9,42,169,"e"],[132,"addBody",9,42,182,"e"],[133,"buildContract",9,42,192,"e"],[134,"createContractFromSignature",9,42,207,"e"],[135,"validatePostconditions",9,42,232,"e"],[136,"generateVerificationReport",9,42,243,"e"],[137,"areContractsEquivalent",9,42,272,"e"],[138,"checkFileEquivalence",9,42,293,"ae"],[139,"checkRefactoringEquivalence",9,42,309,"ae"],[140,"checkFunctionEquivalence",9,42,331,"ae"],
+    [141,"checkExpressionEquivalence",9,42,349,"ae"],[142,"verifyFunction",9,42,365,"ae"],[143,"extractEntitiesFromFile",11,46,184,"e"],[144,"extractValueFromNode",11,46,564,"0"],[145,"collectAllCalls",6,49,11,"e"],[146,"collectAllCallsUnfiltered",6,49,248,"e"],[147,"collectDeclaredFunctions",6,49,288,"e"],[148,"buildCallGraphFromAST",6,49,351,"e"],[149,"findUnusedFunctions",6,49,444,"e"],[150,"findUnresolvedCalls",6,49,471,"e"],
+    [151,"collectCallsFromBlock",6,49,481,"e"],[152,"collectCallsFromFunction",6,49,496,"e"],[153,"findCallers",6,49,529,"e"],[154,"isFunctionCalled",6,49,599,"e"],[155,"parseVueFile",7,52,15,"e"],[156,"findTypeScriptPath",7,52,40,"0"],[157,"compileScriptBlock",7,52,70,"e"],[158,"analyzeTemplate",7,54,9,"e"],[159,"buildCallGraphFromScript",7,55,8,"e"],[160,"generateVueComponentReport",7,56,8,"e"],
+    [161,"getNodeValue",7,57,8,"e"],[162,"safeString",7,57,83,"e"],[163,"findWasmPath",2,63,14,"e"],[164,"isWasmAvailable",2,63,66,"e"],[165,"getAvailableGrammars",2,63,75,"e"],[166,"createWasmSymlink",2,63,94,"e"],[167,"copyWasmFiles",2,63,124,"e"],[168,"parseLogLevel",2,64,261,"e"],[169,"getGlobalLogger",2,64,277,"e"],[170,"setGlobalLogger",2,64,284,"e"],
+    [171,"createExpressionParser",9,65,968,"e"],[172,"parseExpression",9,65,975,"e"],[173,"validateExpression",9,65,983,"e"],[174,"extractVariables",9,65,991,"e"],[175,"isValidForZ3",9,65,999,"e"],[176,"toZ3String",9,65,1007,"e"],[177,"parseFunctionBody",9,65,1020,"e"],[178,"createFunctionVariables",9,65,1050,"e"],[179,"verifyFunctionWithBody",9,65,1077,"ae"],[180,"createContractFromExpression",9,65,1184,"e"],
+    [181,"createContractWithAutoPreconditions",9,65,1210,"e"],[182,"canParseExpression",9,65,1259,"e"],[183,"isSimpleExpression",9,65,1270,"e"],[184,"extractVariablesFromExpression",9,65,1280,"e"],[185,"determineModuleExtension",10,67,36,"0"],[186,"hasTypeScriptSyntax",10,67,65,"0"],[187,"hasESMSpecificSyntax",10,67,89,"0"],[188,"hasSpecialConstructs",10,67,102,"0"],[189,"setTsConfigPath",6,78,22,"e"],[190,"loadTsConfig",6,78,33,"e"],
+    [191,"getTsConfigDir",6,78,82,"e"],[192,"getCachedTsConfig",6,78,89,"e"],[193,"clearTsConfigCache",6,78,96,"e"],[194,"resolveAliasPath",6,78,109,"e"],[195,"hasAliases",6,78,171,"e"],[196,"getAliases",6,78,181,"e"],[197,"getBaseUrl",6,78,191,"e"],[198,"isAliasPath",6,78,201,"e"],[199,"resolveAliasPattern",6,78,222,"e"],[200,"addAlias",6,78,263,"e"],
+    [201,"removeAlias",6,78,287,"e"],[202,"simpleHash",6,79,20,"0"],[203,"runHybridReport",12,81,20,"ae"],[204,"buildHybridReport",12,82,16,"e"],[205,"analyzeModule",12,83,19,"e"],[206,"generateHybridDOT",16,84,10,"e"],[207,"generateHybridHTML",16,85,13,"ae"],[208,"generateHybridMarkdown",16,86,10,"e"],[209,"isEquivalencePassed",17,87,714,"e"],[210,"hasCriticalIssues",17,87,719,"e"],
+    [211,"getSummary",17,87,724,"e"],[212,"isRefactoringEquivalent",17,88,865,"e"],[213,"needsRefactoringReview",17,88,869,"e"],[214,"hasCriticalIssues",17,88,873,"e"],[215,"createDefaultSecurity",18,89,18,"e"],[216,"ensureArray",18,90,15,"e"],[217,"safeString",18,90,31,"e"],[218,"safeNumber",18,90,49,"e"],[219,"safeBoolean",18,90,62,"e"],[220,"isRealObject",18,90,77,"e"],
+    [221,"filterRealObjects",18,90,84,"e"],[222,"sanitizeEntities",18,90,92,"e"],[223,"sanitize",18,90,100,"0"],[224,"safeTraverseAST",18,90,124,"e"],[225,"findProjectRoot",18,90,164,"e"],[226,"findFileInProject",18,90,181,"e"],[227,"findModuleForEntity",18,90,224,"e"],[228,"generateFunctionId",18,90,255,"e"],[229,"generateFileId",18,90,265,"e"],[230,"generateModuleId",18,90,275,"e"],
+    [231,"normalizePathForDisplay",18,90,286,"e"],[232,"getFileName",18,90,321,"e"],[233,"getFileExtension",18,90,328,"e"],[234,"getFileDirectory",18,90,335,"e"],[235,"isTypeScriptFile",18,90,342,"e"],[236,"isJavaScriptFile",18,90,350,"e"],[237,"isVueFile",18,90,358,"e"],[238,"isJsxFile",18,90,365,"e"],[239,"detectLanguage",18,90,372,"e"],[240,"shortenPath",18,90,385,"e"],
+    [241,"generateVscodeLink",18,90,421,"e"],[242,"isAbsolutePath",18,90,435,"e"],[243,"getRelativePath",18,90,442,"e"],[244,"createMetadata",18,91,11,"e"],[245,"getReportName",18,91,20,"e"],[246,"getReportVersion",18,91,24,"e"],[247,"getLockfileVersion",18,91,28,"e"],[248,"getDefaultTimestamp",18,91,32,"e"],[249,"formatTimestamp",18,91,36,"e"],[250,"getReportMetadata",18,91,40,"e"],
+    [251,"calculateEntityStats",18,92,8,"e"],[252,"calculateFileStats",18,92,83,"e"],[253,"buildDependencyGraph",18,93,8,"e"],[254,"findCycles",18,93,53,"e"],[255,"getMaxDepth",18,93,99,"e"],[256,"getModulesByLevel",18,93,130,"e"],[257,"hasCycles",18,93,171,"e"],[258,"findAllPaths",18,93,180,"e"],[259,"findShortestPath",18,93,220,"e"],[260,"findReachableNodes",18,93,255,"e"],
+    [261,"findSCC",18,93,281,"e"],[262,"getNeighborsSafe",18,93,353,"0"],[263,"isAcyclic",18,93,396,"e"],[264,"topologicalSort",18,93,403,"e"],[265,"getNodeDegree",18,93,435,"e"],[266,"findHubs",18,93,455,"e"],[267,"findIsolatedNodes",18,93,473,"e"],[268,"getGraphDensity",18,93,489,"e"],[269,"isConnected",18,93,507,"e"],[270,"findConnectedComponents",18,93,515,"e"],
+    [271,"buildExecutionGraph",18,94,8,"e"],[272,"buildImportExportFlow",18,94,105,"e"],[273,"findCallPath",18,94,314,"e"],[274,"findDependents",18,94,370,"e"],[275,"findDependencies",18,94,396,"e"],[276,"findCallCycles",18,94,423,"e"],[277,"getCallGraphStats",18,94,465,"e"],[278,"buildCallGraphFromEntities",18,94,512,"e"],[279,"buildArchitectureMetrics",18,95,12,"e"],[280,"exportArchitectureMetrics",18,95,151,"e"],
+    [281,"generateArchitectureReport",18,95,158,"e"],[282,"checkArchitectureHealth",18,95,215,"e"],[283,"buildSummary",18,96,6,"e"],[284,"generateQuickSummary",18,96,32,"e"],[285,"isProjectHealthy",18,96,54,"e"],[286,"getProjectMaturity",18,96,61,"e"],[287,"generateSummaryMarkdown",18,96,95,"e"],[288,"safeCopy",18,97,21,"0"],[289,"buildPackages",18,97,48,"e"],[290,"encodeFlags",2,98,66,"e"],
+    [291,"decodeFlags",2,98,100,"e"],[292,"getFlagsList",2,98,132,"e"],[293,"hasFlag",2,98,158,"e"],[294,"setFlag",2,98,168,"e"],[295,"clearFlag",2,98,178,"e"],[296,"toggleFlag",2,98,188,"e"],[297,"encodeFlagsAdvanced",2,98,198,"e"],[298,"decodeFlagsAdvanced",2,98,221,"e"],[299,"flagsToString",2,98,247,"e"],[300,"countFlags",2,98,256,"e"],
+    [301,"hasAnyFlag",2,98,272,"e"],[302,"hasAllFlags",2,98,282,"e"],[303,"extractPropsFromSource",13,99,11,"e"],[304,"extractPropsFromCompiledScript",13,99,244,"e"],[305,"extractPropsFromAST",13,99,312,"e"],[306,"extractEmitsFromSource",13,100,11,"e"],[307,"extractEmitsFromCompiledScript",13,100,57,"e"],[308,"extractEmitsFromAST",13,100,104,"e"],[309,"extractExposeFromCompiledScript",13,101,9,"e"],[310,"extractExposeFromAST",13,101,22,"e"],
+    [311,"extractImportsFromAST",13,102,9,"e"],[312,"extractImportsFromSource",13,102,63,"e"],[313,"extractImportsWithDetails",13,102,188,"e"],[314,"groupImportsByType",13,102,275,"e"],[315,"isImportUsed",13,102,325,"e"],[316,"filterUnusedImports",13,102,358,"e"],[317,"extractComposablesFromAST",13,103,9,"e"],[318,"extractComposablesFromSource",13,103,77,"e"],[319,"extractFunctionsFromScript",13,104,10,"e"],[320,"extractFunctionsFromScriptFallback",13,104,384,"0"],
+    [321,"isNodeExported",13,104,697,"0"],[322,"getParamName",13,104,721,"0"],[323,"extractBodyText",13,104,752,"0"],[324,"getReturnType",13,104,795,"0"],[325,"extractConstantsFromAST",13,105,10,"e"],[326,"isNodeExported",13,105,162,"0"],[327,"extractConstantsFromScript",13,105,186,"e"],[328,"extractConstantsFromSource",13,105,209,"0"],[329,"isCatchClause",13,106,11,"0"],[330,"extractVariablesFromAST",13,106,18,"e"],
+    [331,"isNodeExported",13,106,297,"0"],[332,"extractVariablesFromScript",13,106,321,"e"],[333,"extractVariablesFromSource",13,106,344,"0"],[334,"extractTypesFromAST",13,107,9,"e"],[335,"getTypeDefinition",13,107,88,"0"],[336,"isNodeExported",13,107,254,"0"],[337,"extractTypesFromScript",13,107,276,"e"],[338,"extractTypesFromSource",13,107,299,"0"],[339,"isTSInterfaceDeclaration",13,108,9,"0"],[340,"isTSTypeAliasDeclaration",13,108,16,"0"],
+    [341,"isTSTypeLiteral",13,108,23,"0"],[342,"isTSPropertySignature",13,108,30,"0"],[343,"isTSIndexSignature",13,108,37,"0"],[344,"isTSMethodSignature",13,108,44,"0"],[345,"isExportNamedDeclaration",13,108,51,"0"],[346,"isIdentifier",13,108,58,"0"],[347,"isTSQualifiedName",13,108,65,"0"],[348,"isExportSpecifier",13,108,72,"0"],[349,"isLiteral",13,108,79,"0"],[350,"isTSExpressionWithTypeArguments",13,108,86,"0"],
+    [351,"isExportDefaultDeclaration",13,108,93,"0"],[352,"getNodeKey",13,108,100,"0"],[353,"getNodeName",13,108,112,"0"],[354,"getNodeParent",13,108,129,"0"],[355,"extractInterfacesFromAST",13,108,137,"e"],[356,"isNodeExported",13,108,293,"0"],[357,"extractInterfacesFromScript",13,108,317,"e"],[358,"extractInterfacesFromSource",13,108,340,"0"],[359,"isEquivalent",17,109,1559,"e"],[360,"needsReview",17,109,1564,"e"],
+    [361,"confidenceLevel",17,109,1572,"e"],[362,"isSignatureCompatible",6,111,781,"e"],[363,"compareSignatures",6,111,786,"e"],[364,"findFunctionByName",6,111,794,"e"],[365,"findFunctionBySignature",6,111,801,"e"],[366,"createEmptyCallGraph",6,112,655,"e"],[367,"mergeCallGraphs",6,112,663,"e"]
+  ];
+  const CALLS=[[4,36,321,"a"],[14,15,70,"d"],[14,16,70,"d"],[14,18,70,"d"],[14,19,70,"d"],[16,17,181,"d"],[22,21,382,"d"],[25,24,177,"d"],[27,26,47,"d"],[27,28,47,"d"],[29,27,203,"d"],[32,31,139,"d"],[32,30,139,"d"],[36,34,375,"d"],[36,35,375,"d"],[38,37,402,"d"],[39,37,434,"a"],[72,69,360,"d"],[72,70,360,"d"],[72,71,360,"d"],[74,68,597,"d"],[76,356,759,"d"],[77,356,819,"d"],[325,356,865,"d"],[325,144,865,"d"],[355,356,899,"d"],[334,356,938,"d"],[330,356,965,"d"],[330,144,965,"d"],[93,84,280,"d"],[96,94,389,"d"],[96,95,389,"d"],[97,94,629,"d"],[97,84,629,"d"],[97,85,629,"d"],[97,86,629,"d"],[97,96,629,"d"],[97,98,629,"d"],[98,94,672,"d"],[98,84,672,"d"],[98,356,672,"d"],[98,87,672,"d"],[98,88,672,"d"],[98,323,672,"d"],[98,89,672,"d"],[98,90,672,"d"],[98,93,672,"d"],[100,290,115,"d"],[108,104,1032,"d"],[108,105,1032,"d"],[114,112,288,"d"],[116,115,31,"a"],[117,115,52,"a"],[121,120,27,"d"],[123,231,42,"d"],[125,231,59,"d"],[126,124,82,"d"],[127,126,94,"d"],[134,128,207,"d"],[143,144,184,"d"],[148,147,351,"d"],[149,147,444,"d"],[149,148,444,"d"],[150,147,471,"d"],[150,146,471,"d"],[151,145,481,"d"],[152,145,496,"d"],[153,147,529,"d"],[153,152,529,"d"],[157,156,70,"d"],[164,163,66,"d"],[165,163,75,"d"],[166,163,94,"d"],[167,163,124,"d"],[185,186,36,"d"],[185,187,36,"d"],[221,220,84,"d"],[222,223,92,"d"],[239,237,372,"d"],[239,238,372,"d"],[239,235,372,"d"],[239,236,372,"d"],[240,231,385,"d"],[250,245,40,"d"],[250,246,40,"d"],[250,247,40,"d"],[250,248,40,"d"],[254,262,53,"d"],[255,262,99,"d"],[256,262,130,"d"],[257,254,171,"d"],[258,262,180,"d"],[259,262,220,"d"],[260,262,255,"d"],[261,262,281,"d"],[263,257,396,"d"],[264,257,403,"d"],[264,262,403,"d"],[265,262,435,"d"],[266,265,455,"d"],[267,265,473,"d"],[269,260,507,"d"],[270,262,515,"d"],[277,276,465,"d"],[287,286,95,"d"],[289,239,48,"d"],[289,288,48,"d"],[297,290,198,"d"],[298,291,221,"d"],[299,292,247,"d"],[316,315,358,"d"],[319,320,10,"d"],[319,356,10,"d"],[319,322,10,"d"],[319,323,10,"d"],[319,324,10,"d"],[324,323,795,"d"],[325,356,10,"d"],[327,325,186,"d"],[327,328,186,"d"],[330,356,18,"d"],[330,329,18,"d"],[332,330,321,"d"],[332,333,321,"d"],[334,356,9,"d"],[334,335,9,"d"],[337,334,276,"d"],[337,338,276,"d"],[355,339,137,"d"],[355,356,137,"d"],[355,350,137,"d"],[355,346,137,"d"],[355,347,137,"d"],[355,342,137,"d"],[355,352,137,"d"],[355,349,137,"d"],[355,343,137,"d"],[355,344,137,"d"],[355,340,137,"d"],[355,341,137,"d"],[355,345,137,"d"],[355,348,137,"d"],[355,353,137,"d"],[356,345,293,"d"],[356,351,293,"d"],[356,354,293,"d"],[357,355,317,"d"],[357,358,317,"d"]];
+  const IMPS=[[1,2],[3,118],[3,119],[3,121],[3,125],[32,29],[14,143],[24,72],[24,231],[24,147],[24,148],[26,72],[30,29],[33,14],[33,29],[34,72],[34,29],[34,25],[34,118],[34,37],[34,160],[37,155],[37,157],[37,158],[37,303],[37,304],[37,305],[37,306],[37,307],[37,308],[37,309],[37,310],[37,311],[37,312],[37,317],[37,318],[37,319],[37,327],[37,332],[37,337],[37,357],[37,159],[37,160],[40,72],[40,75],[40,74],[41,72],[41,75],[41,74],[42,51],[42,163],[43,172],[43,173],[43,174],[43,175],[43,176],[67,168],[68,190],[68,194],[68,191],[68,126],[68,127],[68,124],[84,37],[84,145],[84,146],[84,147],[84,148],[84,149],[84,150],[110,203],[110,204],[110,205],[110,206],[110,207],[110,208],[120,231],[120,123],[128,46],[128,47],[128,48],[128,49],[128,50],[128,51],[128,52],[128,53],[128,54],[128,55],[128,56],[128,57],[128,58],[128,59],[128,60],[128,61],[128,62],[128,63],[128,64],[128,65],[128,66],[128,171],[128,172],[128,173],[128,174],[128,175],[128,176],[128,177],[128,178],[128,179],[128,180],[128,181],[128,182],[128,183],[128,184],[128,212],[128,213],[128,214],[143,216],[143,217],[143,218],[143,219],[143,220],[143,221],[143,222],[143,224],[143,225],[143,226],[143,227],[143,244],[143,245],[143,246],[143,247],[143,251],[143,252],[143,253],[143,254],[143,255],[143,256],[143,271],[143,272],[143,279],[143,283],[143,289],[189,124],[203,25],[203,118],[203,119],[203,204],[203,206],[203,207],[203,208],[204,14],[204,118],[204,205],[207,206],[279,254],[279,255],[279,256],[303,161],[306,161],[325,161],[329,161],[359,51],[359,49],[359,54]];
+  const CONSTS=[[1,"cli",null,1,1,62],[2,"__filename",null,4,11,9],[3,"__dirname",null,4,11,10],[4,"__filename",null,10,32,38],[5,"__dirname",null,10,32,39],[6,"SUPPORTED_EXTENSIONS",[".ts",".mjs",".js",".tsx",".jsx",".vue"],6,33,44],[7,"DEFAULT_EXCLUDE_PATTERNS",["node_modules",".git","dist","build","coverage",".nyc_output","__pycache__",".cache",".next","out",".nuxt",".output",".vercel","tmp","temp"],6,33,45],[8,"SHORT_KEYS","словарь коротких ключей (38 пар)",11,35,18],[9,"FLAG_MAP",{"1":"a","2":"e","4":"m","8":"r","16":"v","32":"n"},11,35,62],[10,"RELATION_TYPES","26 типов связей",11,35,72],[11,"HYBRID_REPORT_VERSION","1.0.0",12,36,159],[12,"HYBRID_REPORT_NAME","@newkind/ast-analyzer/hybrid-report",12,36,164],[13,"FORMAL_MODULE_VERSION","3.0.0",9,42,105],[14,"FORMAL_MODULE_NAME","@newkind/ast-analyzer/formal",9,42,106],[15,"COMPACT_REPORT_CONFIG","конфигурация отчёта, пресеты: minimal / standard / full / relationshipsOnly / ultraCompact",1,44,174],[16,"IGNORE_NODE_MODULES",true,1,44,846],[17,"SUPPORTED_EXTENSIONS",[".ts",".mjs",".js",".tsx",".jsx",".vue"],1,44,847],[18,"DEFAULT_EXCLUDE_PATTERNS",["node_modules",".git","dist","build","coverage",".nyc_output","__pycache__",".cache",".next","out",".nuxt",".output",".vercel","tmp","temp"],1,44,848],[19,"VUE_SCRIPT_PATTERN",null,1,44,865],[20,"__filename",null,7,52,9],[21,"__dirname",null,7,52,10],[22,"__filename",null,2,63,6],[23,"__dirname",null,2,63,7],[24,"idManager",null,6,79,854],[25,"STANDARD_FUNCTION",0,2,98,291],[26,"NESTED_FUNCTION",null,2,98,294],[27,"ASYNC_NESTED_FUNCTION",null,2,98,297],[28,"EXPORTED_FUNCTION",null,2,98,300],[29,"METHOD_FUNCTION",null,2,98,303],[30,"ARROW_FUNCTION",null,2,98,306],[31,"COMPOSABLE_FUNCTION",null,2,98,309],[32,"VUE_MACRO",null,2,98,312]];
+  const EXTRA_FILES={3:[3],14:[58,59,60,61,62],15:[76]};
+  const PAL=["#f59e0b","#22d3ee","#a78bfa","#34d399","#f472b6","#60a5fa","#facc15","#fb7185","#4ade80","#c084fc","#38bdf8","#fbbf24","#2dd4bf","#e879f9","#a3e635","#f97316","#94a3b8","#fca5a5"];
+  const FLB={a:"async",e:"export",m:"метод",n:"вложенная",r:"стрелка",v:"Vue-макрос"};
+
+  /* ================= ПРОИЗВОДНЫЕ КАРТЫ ================= */
+  const FN={},MODFNS={};
+  FNS.forEach(f=>{const o={id:f[0],name:f[1],mod:f[2],file:f[3],line:f[4],flags:String(f[5])};FN[f[0]]=o;(MODFNS[f[2]]||(MODFNS[f[2]]=[])).push(f[0]);});
+  const OUT={},INN={},IMP_OUT={},IMP_INN={},DEG={};
+  CALLS.forEach(([a,b,l,t])=>{(OUT[a]||(OUT[a]=[])).push({o:b,l,t});(INN[b]||(INN[b]=[])).push({o:a,l,t});});
+  IMPS.forEach(([a,b])=>{(IMP_OUT[a]||(IMP_OUT[a]=[])).push(b);(IMP_INN[b]||(IMP_INN[b]=[])).push(a);});
+  FNS.forEach(f=>DEG[f[0]]=(OUT[f[0]]?OUT[f[0]].length:0)+(INN[f[0]]?INN[f[0]].length:0));
+  const MREL={},ADJ={},OUTMOD={},INMOD={};
+  function bump(a,b){const ma=FN[a].mod,mb=FN[b].mod;if(ma!==mb){const k=ma+">"+mb;MREL[k]=(MREL[k]||0)+1;
+    (ADJ[ma]||(ADJ[ma]=new Set())).add(mb);(ADJ[mb]||(ADJ[mb]=new Set())).add(ma);
+    (OUTMOD[ma]||(OUTMOD[ma]=new Set())).add(mb);(INMOD[mb]||(INMOD[mb]=new Set())).add(ma);}}
+  CALLS.forEach(([a,b])=>bump(a,b));IMPS.forEach(([a,b])=>bump(a,b));
+  const adjModules=m=>[...(ADJ[m]||[])];
+  function modFiles(m){const s=new Set();(MODFNS[m]||[]).forEach(id=>s.add(FN[id].file));(EXTRA_FILES[m]||[]).forEach(x=>s.add(x));return[...s].sort((a,b)=>a-b);}
+  const modName=m=>MODS[m-1],meta=m=>META[m],pal=m=>PAL[(m-1)%PAL.length];
+
+  /* ================= СОСТОЯНИЕ ================= */
+  const LS="codex-walker-v3";
+  function fresh(){return{v:3,xp:0,mods:new Set(),fns:new Set(),consts:new Set(),fnsteps:0,moves:0,quests:new Set(),oracle:false,search:false,infn:false,mapOpened:false};}
+  function load(){try{const d=JSON.parse(localStorage.getItem(LS));if(d&&d.v===3){const s=fresh();
+    Object.assign(s,{xp:d.xp||0,moves:d.moves||0,fnsteps:d.fnsteps||0,oracle:!!d.oracle,search:!!d.search,infn:!!d.infn,mapOpened:!!d.mapOpened});
+    s.mods=new Set(d.mods);s.fns=new Set(d.fns);s.consts=new Set(d.consts);s.quests=new Set(d.quests);return s;}}catch(e){}
+    return fresh();}
+  let S=load();
+  function save(){try{localStorage.setItem(LS,JSON.stringify({v:3,xp:S.xp,mods:[...S.mods],fns:[...S.fns],consts:[...S.consts],
+    fnsteps:S.fnsteps,moves:S.moves,quests:[...S.quests],oracle:S.oracle,search:S.search,infn:S.infn,mapOpened:S.mapOpened}));}catch(e){}}
+  const RANKS=[[0,"Новик","🐣"],[150,"Странник","🥾"],[400,"Следопыт","🧭"],[800,"Картограф","🗺️"],[1400,"Мастер гильдии","⚒️"],[2200,"Архимаг кода","🧙"],[3200,"Легенда графов","🌟"]];
+  function rankInfo(xp){let r=RANKS[0],next=null;for(let i=0;i<RANKS.length;i++){if(xp>=RANKS[i][0]){r=RANKS[i];next=RANKS[i+1]||null;}}return{r,next};}
+
+  /* ================= ПРАВИЛА ПЕРЕДВИЖЕНИЯ ================= */
+  let POS={type:"module",id:1};
+  let TRAIL=[{type:"module",id:1}];
+  let VIEWMODE="scene";
+  let INSPECT={type:"module",id:1};
+  let ROUTE=[];
+  let autoTok=null;
+  const keyOf=p=>p.type==="module"?"m"+p.id:"f"+p.id;
+  const fromKey=k=>k[0]==="m"?{type:"module",id:+k.slice(1)}:{type:"fn",id:+k.slice(1)};
+  const currentMod=()=>POS.type==="module"?POS.id:FN[POS.id].mod;
+  function neighborsOf(p){
+    if(p.type==="module"){const r=[];(MODFNS[p.id]||[]).forEach(f=>r.push({type:"fn",id:f}));
+      adjModules(p.id).forEach(m=>r.push({type:"module",id:m}));return r;}
+    const f=p.id,r=[{type:"module",id:FN[f].mod}],seen=new Set(["m"+FN[f].mod]);
+    const push=x=>{const k=keyOf(x);if(!seen.has(k)){seen.add(k);r.push(x);}};
+    (OUT[f]||[]).forEach(o=>push({type:"fn",id:o.o}));
+    (INN[f]||[]).forEach(o=>push({type:"fn",id:o.o}));
+    (IMP_OUT[f]||[]).forEach(o=>push({type:"fn",id:o}));
+    (IMP_INN[f]||[]).forEach(o=>push({type:"fn",id:o}));
+    return r;}
+  function isWalkable(t){return neighborsOf(POS).some(n=>keyOf(n)===keyOf(t));}
+  function buildRoute(from,to){const st=keyOf(from),en=keyOf(to);if(st===en)return[];
+    const prev={},seen=new Set([st]),q=[st];
+    while(q.length){const cur=q.shift();if(cur===en)break;
+      for(const nb of neighborsOf(fromKey(cur))){const k=keyOf(nb);if(!seen.has(k)){seen.add(k);prev[k]=cur;q.push(k);}}}
+    if(!seen.has(en))return null;
+    const path=[];let c=en;while(c!==st){path.unshift(fromKey(c));c=prev[c];}return path;}
+  function posName(p){return p.type==="module"?"комната "+modName(p.id):FN[p.id].name+"()";}
+
+  /* ================= ОТКРЫТИЯ И ПЕРЕХОДЫ ================= */
+  function discoverModule(m){if(!S.mods.has(m)){S.mods.add(m);S.xp+=20;toast(`Открыта комната ${modName(m)} (+20 XP)`);
+    log(`Открыта комната <b>${modName(m)}</b> (+20 XP)`);renderHeader();checkQuests();save();}}
+  function discoverFn(id){if(!S.fns.has(id)){S.fns.add(id);S.xp+=5;
+    log(`Открыта функция <b>${FN[id].name}</b> (+5 XP)`);renderHeader();checkQuests();save();}}
+  function reject(msg){banner("🚫 "+msg,"bad");log("🚫 "+msg);
+    const k=keyOf(INSPECT);if(NODE_EL[k]){NODE_EL[k].classList.add("denied");setTimeout(()=>NODE_EL[k]&&NODE_EL[k].classList.remove("denied"),700);}}
+  function moveTo(t,viaRoute){
+    if(!isWalkable(t)){reject(`${posName(t)} — не сосед текущей позиции. Ходить можно только по связям графа.`);return false;}
+    const wasFn=POS.type==="fn";
+    if(!viaRoute){stopAuto();ROUTE=[];renderRoutebar();}
+    POS=t;TRAIL.push(t);INSPECT=t;S.moves++;
+    if(t.type==="fn"){S.infn=true;if(wasFn)S.fnsteps++;}
+    log(`Шаг ${S.moves}: ${posName(TRAIL[TRAIL.length-2])} → ${posName(t)}`);
+    if(t.type==="module")discoverModule(t.id);else discoverFn(t.id);
+    checkQuests();save();render();return true;}
+  function goBack(){if(TRAIL.length<2){banner("Ты у самой точки входа — отступать некуда.","");return;}
+    stopAuto();ROUTE=[];TRAIL.pop();POS=TRAIL[TRAIL.length-1];INSPECT=POS;log(`↩ Откат к ${posName(POS)}`);render();}
+
+  /* ================= КВЕСТЫ ================= */
+  function cntFnsInMod(m){let c=0;S.fns.forEach(id=>{if(FN[id].mod===m)c++;});return c;}
+  const visitedReachable=()=>REACHABLE.filter(m=>S.mods.has(m)).length;
+  const QUESTS=[
+    {id:"wake",icon:"🌅",name:"Точка входа",desc:"Ты в комнате src. Открой карту проекта (кнопка 🗺)",xp:10,prog:()=>[S.mapOpened?1:0,1]},
+    {id:"dive",icon:"🤿",name:"Погружение",desc:"Войди внутрь любой функции (двойной клик по доступному узлу)",xp:20,prog:()=>[S.infn?1:0,1]},
+    {id:"scout",icon:"🧭",name:"Разведка",desc:"Доберись до 3 комнат",xp:40,prog:()=>[Math.min(S.mods.size,3),3]},
+    {id:"gate",icon:"🛡️",name:"Страж входа",desc:"Войди в функцию main() — точку входа проекта",xp:30,prog:()=>[S.fns.has(1)?1:0,1]},
+    {id:"forge",icon:"⚙️",name:"Ядро",desc:"Открой 5 функций комнаты core",xp:60,prog:()=>[Math.min(cntFnsInMod(6),5),5]},
+    {id:"formal",icon:"🧙",name:"Формальная верификация",desc:"Доберись до комнаты formal",xp:30,prog:()=>[S.mods.has(9)?1:0,1]},
+    {id:"dragon",icon:"🐉",name:"Vue-анализатор",desc:"Доберись до комнаты vue-analyzer",xp:30,prog:()=>[S.mods.has(7)?1:0,1]},
+    {id:"trace",icon:"🐾",name:"По вызовам",desc:"Сделай 3 перехода функция → функция",xp:60,prog:()=>[Math.min(S.fnsteps,3),3]},
+    {id:"relic",icon:"🏺",name:"Константы",desc:"Изучи 5 констант (стоя в их комнате)",xp:40,prog:()=>[Math.min(S.consts.size,5),5]},
+    {id:"deep",icon:"🕯️",name:"Глубокая разведка",desc:"Доберись до 10 комнат",xp:80,prog:()=>[Math.min(S.mods.size,10),10]},
+    {id:"all",icon:"👑",name:"Полная карта",desc:"Посети все 15 достижимых комнат (cli, semantic, interfaces запечатаны)",xp:150,prog:()=>[visitedReachable(),15]},
+    {id:"k25",icon:"📜",name:"Знаток функций",desc:"Открой 25 функций",xp:80,prog:()=>[Math.min(S.fns.size,25),25]},
+    {id:"k100",icon:"🌟",name:"Легенда графов",desc:"Открой 100 функций",xp:200,prog:()=>[Math.min(S.fns.size,100),100]},
+    {id:"oracle",icon:"🔮",name:"Оракул",desc:"Спроси Оракула о циклах, стоя на карте проекта",xp:40,prog:()=>[S.oracle?1:0,1]},
+    {id:"hound",icon:"🔍",name:"Ищейка",desc:"Найди функцию через поиск и проложи к ней маршрут",xp:30,prog:()=>[S.search?1:0,1]},
+    {id:"walk10",icon:"🚶",name:"Ходок",desc:"Сделай 10 шагов по графу",xp:50,prog:()=>[Math.min(S.moves,10),10]},
+  ];
+  function checkQuests(){let ch=false;
+    for(const q of QUESTS){if(S.quests.has(q.id))continue;const[c,g]=q.prog();if(c>=g){S.quests.add(q.id);S.xp+=q.xp;
+      toast(`🏆 Квест выполнен: ${q.name} (+${q.xp} XP)`);log(`Квест «${q.name}» завершён!`);ch=true;}}
+    if(ch){renderQuests();renderHeader();save();}}
+
+  /* ================= UI-МЕЛОЧИ ================= */
+  function toast(m){const d=document.createElement("div");d.className="toast";d.textContent=m;
+    document.getElementById("toasts").appendChild(d);setTimeout(()=>d.remove(),3700);}
+  function log(m){const box=document.getElementById("log");const d=document.createElement("div");d.className="log-line";
+    d.innerHTML=`<span class="lt">${new Date().toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})}</span>${m}`;
+    box.prepend(d);while(box.children.length>60)box.lastChild.remove();}
+  let banT=null;
+  function banner(m,k){const b=document.getElementById("banner");b.textContent=m;b.className=k||"";b.style.display="block";
+    clearTimeout(banT);banT=setTimeout(()=>b.style.display="none",5000);}
+  function renderHeader(){const{r,next}=rankInfo(S.xp);
+    document.getElementById("rankName").textContent=`${r[2]} ${r[1]}`;
+    document.getElementById("xpText").textContent=next?`${S.xp} / ${next[0]} XP`:`${S.xp} XP — предел`;
+    document.getElementById("xpFill").style.width=(next?Math.min(100,(S.xp-r[0])/(next[0]-r[0])*100):100)+"%";
+    document.getElementById("counters").innerHTML=`🚪 комнаты <b>${visitedReachable()}/15</b> · 📜 функции <b>${S.fns.size}/367</b> · 🏺 константы <b>${S.consts.size}/32</b> · 🚶 шаги <b>${S.moves}</b>`;}
+  function renderQuests(){const box=document.getElementById("quests");box.innerHTML="";
+    [...QUESTS].sort((a,b)=>(S.quests.has(a.id)?1:0)-(S.quests.has(b.id)?1:0)).forEach(q=>{
+      const[c,g]=q.prog();const d=document.createElement("div");d.className="quest"+(S.quests.has(q.id)?" done":"");
+      d.innerHTML=`<div class="qt"><span>${q.icon} ${q.name}</span><span style="color:var(--gold)">+${q.xp}</span></div>
+  <div class="qd">${q.desc}</div><div class="qbar"><i style="width:${Math.min(100,c/g*100)}%"></i></div>`;
+      box.appendChild(d);});}
+
+  /* ================= SVG ================= */
+  const svg=document.getElementById("graph"),vp=document.getElementById("vp"),gE=document.getElementById("gE"),gN=document.getElementById("gN");
+  const NS="http://www.w3.org/2000/svg";
+  function el(t,at,p){const e=document.createElementNS(NS,t);for(const k in at)e.setAttribute(k,at[k]);if(p)p.appendChild(e);return e;}
+  let vt={x:0,y:0,k:1};
+  function applyVT(){vp.setAttribute("transform",`translate(${vt.x},${vt.y}) scale(${vt.k})`);}
+  svg.addEventListener("wheel",e=>{e.preventDefault();const r=svg.getBoundingClientRect();const mx=e.clientX-r.left,my=e.clientY-r.top;
+    const nz=Math.max(.25,Math.min(4,vt.k*Math.exp(-e.deltaY*.0012)));const f=nz/vt.k;
+    vt.x=mx-(mx-vt.x)*f;vt.y=my-(my-vt.y)*f;vt.k=nz;applyVT();},{passive:false});
+  let pan=null;
+  svg.addEventListener("pointerdown",e=>{if(e.target.closest(".node"))return;pan={x:e.clientX,y:e.clientY};svg.classList.add("panning");svg.setPointerCapture(e.pointerId);});
+  svg.addEventListener("pointermove",e=>{if(!pan)return;vt.x+=e.clientX-pan.x;vt.y+=e.clientY-pan.y;pan={x:e.clientX,y:e.clientY};applyVT();});
+  svg.addEventListener("pointerup",()=>{pan=null;svg.classList.remove("panning");});
+
+  function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+  function layout(nodes,edges,W,H,seed){const n=nodes.length;if(!n)return;
+    const rnd=mulberry32(seed);const k=Math.sqrt(W*H/n)*.9;
+    nodes.forEach((nd,i)=>{const a=i/n*Math.PI*2;const r=Math.min(W,H)*.33;
+      nd.x=W/2+Math.cos(a)*r*(.6+rnd()*.7);nd.y=H/2+Math.sin(a)*r*(.6+rnd()*.7);});
+    const byId={};nodes.forEach(nd=>byId[nd.id]=nd);edges.forEach(e=>{e.a=byId[e.s];e.b=byId[e.t];});
+    let temp=Math.min(W,H)*.14;const iters=n>60?230:330;
+    for(let it=0;it<iters;it++){
+      nodes.forEach(nd=>{nd.dx=0;nd.dy=0;});
+      for(let i=0;i<n;i++){const a=nodes[i];
+        for(let j=i+1;j<n;j++){const b=nodes[j];let dx=a.x-b.x,dy=a.y-b.y;let d=Math.sqrt(dx*dx+dy*dy)||.01;
+          if(d<k*3){const f=k*k/d;a.dx+=dx/d*f;a.dy+=dy/d*f;b.dx-=dx/d*f;b.dy-=dy/d*f;}}}
+      for(const e of edges){if(!e.a||!e.b)continue;let dx=e.a.x-e.b.x,dy=e.a.y-e.b.y;let d=Math.sqrt(dx*dx+dy*dy)||.01;
+        const f=d*d/k*.35;e.a.dx-=dx/d*f;e.a.dy-=dy/d*f;e.b.dx+=dx/d*f;e.b.dy+=dy/d*f;}
+      for(const nd of nodes){nd.dx+=(W/2-nd.x)*.035;nd.dy+=(H/2-nd.y)*.035;}
+      for(const nd of nodes){const d=Math.sqrt(nd.dx*nd.dx+nd.dy*nd.dy)||.01;const cap=Math.min(d,temp);
+        nd.x+=nd.dx/d*cap;nd.y+=nd.dy/d*cap;
+        nd.x=Math.max(50,Math.min(W-50,nd.x));nd.y=Math.max(45,Math.min(H-55,nd.y));}
+      temp*=.96;}}
+
+  /* ================= ПОСТРОЕНИЕ ГРАФОВ ================= */
+  const fnR=id=>6+Math.min(9,DEG[id]*1.1)+((FN[id].flags.indexOf("e")>=0)?1:0);
+  function buildProject(){
+    const nodes=MODS.map((nm,i)=>{const m=i+1;const fc=(MODFNS[m]||[]).length;
+      return{id:"m"+m,type:"mod",mid:m,label:nm,cnt:fc,r:15+Math.min(17,fc*.5),sealed:SEALED.has(m)};});
+    const edges=Object.keys(MREL).map(k=>{const[a,b]=k.split(">");
+      return{s:"m"+a,t:"m"+b,kind:"dep",w:Math.min(1.4+Math.log2(1+MREL[k])*1.3,5),label:`${modName(+a)} → ${modName(+b)} · ${MREL[k]} связей`};});
+    return{nodes,edges};}
+  function buildModule(mid){
+    const ids=MODFNS[mid]||[];
+    const nodes=ids.map(id=>({id:"f"+id,type:"fn",fnid:id,label:FN[id].name,r:fnR(id)}));
+    const edges=[],seen=new Set();
+    const push=(s,t,kind,label)=>{const key=s+"|"+t+"|"+kind;if(seen.has(key))return;seen.add(key);edges.push({s,t,kind,label});};
+    CALLS.forEach(([a,b,l,t])=>{if(FN[a].mod===mid&&FN[b].mod===mid)push("f"+a,"f"+b,t==="a"?"async":"call",`${FN[a].name} → ${FN[b].name} (стр. ${l})`);});
+    const ext={};
+    function extEdge(om,fnId,dir,kind){
+      const e=ext[om]||(ext[om]={n:0,in:0,out:0});e.n++;
+      if(dir==="out"){e.out++;push("f"+fnId,"x"+om,kind,`${FN[fnId].name} → комната ${modName(om)}`);}
+      else{e.in++;push("x"+om,"f"+fnId,kind,`комната ${modName(om)} → ${FN[fnId].name}`);}}
+    CALLS.forEach(([a,b])=>{if(FN[a].mod===mid&&FN[b].mod!==mid)extEdge(FN[b].mod,a,"out","call");
+    else if(FN[b].mod===mid&&FN[a].mod!==mid)extEdge(FN[a].mod,b,"in","call");});
+    IMPS.forEach(([a,b])=>{if(FN[a].mod===mid&&FN[b].mod!==mid)extEdge(FN[b].mod,a,"out","imp");
+    else if(FN[b].mod===mid&&FN[a].mod!==mid)extEdge(FN[a].mod,b,"in","imp");});
+    Object.keys(ext).forEach(m=>{const e=ext[m];const nm=modName(+m);
+      const w=Math.max(92,nm.length*7+56);
+      nodes.push({id:"x"+m,type:"ext",mid:+m,label:nm,cnt:e.n,in:e.in,out:e.out,r:w/2,w:w});});
+    return{nodes,edges};}
+  function buildEgo(fid){
+    const set=new Map();const add=(id,ex)=>{if(!set.has(id))set.set(id,Object.assign({id:"f"+id,type:"fn",fnid:id,label:FN[id].name,r:fnR(id)},ex));};
+    add(fid,{r:fnR(fid)+5});
+    const edges=[],seen=new Set();const push=(s,t,kind)=>{const k=s+">"+t+kind;if(seen.has(k))return;seen.add(k);edges.push({s,t,kind});};
+    (OUT[fid]||[]).forEach(({o,t})=>{add(o);push("f"+fid,"f"+o,t==="a"?"async":"call");});
+    (INN[fid]||[]).forEach(({o,t})=>{add(o);push("f"+o,"f"+fid,t==="a"?"async":"call");});
+    (IMP_OUT[fid]||[]).forEach(o=>{add(o);push("f"+fid,"f"+o,"imp");});
+    (IMP_INN[fid]||[]).forEach(o=>{add(o);push("f"+o,"f"+fid,"imp");});
+    CALLS.forEach(([a,b,l,t])=>{if(a!==fid&&b!==fid&&set.has(a)&&set.has(b))push("f"+a,"f"+b,t==="a"?"async":"call");});
+    IMPS.forEach(([a,b])=>{if(a!==fid&&b!==fid&&set.has(a)&&set.has(b))push("f"+a,"f"+b,"imp");});
+    return{nodes:[...set.values()],edges};}
+
+  /* ================= ОТРИСОВКА ================= */
+  let NODE_EL={},ND_EDGES={},HOV_ADJ={};
+  function edgeCoords(e){const dx=e.b.x-e.a.x,dy=e.b.y-e.a.y;const d=Math.sqrt(dx*dx+dy*dy)||.01;const ux=dx/d,uy=dy/d;
+    return{x1:e.a.x+ux*(e.a.r+2),y1:e.a.y+uy*(e.a.r+2),x2:e.b.x-ux*(e.b.r+5),y2:e.b.y-uy*(e.b.r+5)};}
+  function sceneWalkSet(){const s=new Set();
+    if(VIEWMODE==="map"){adjModules(currentMod()).forEach(m=>s.add("m"+m));}
+    else if(POS.type==="module"){(MODFNS[POS.id]||[]).forEach(f=>s.add("f"+f));adjModules(POS.id).forEach(m=>s.add("m"+m));}
+    else neighborsOf(POS).forEach(p=>s.add(keyOf(p)));
+    return s;}
+  function drawGraph(g,opt){
+    const W=svg.clientWidth||900,H=svg.clientHeight||700;
+    svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+    if(!g.nodes.length){gE.innerHTML="";gN.innerHTML="";return;}
+    const seed=g.nodes.length*7919+g.edges.length*31+(VIEWMODE==="map"?17:(POS.id||1));
+    layout(g.nodes,g.edges,W,H,seed);
+    gE.innerHTML="";gN.innerHTML="";NODE_EL={};ND_EDGES={};HOV_ADJ={};
+    // --- рамка комнаты ---
+    if(opt.roomLabel){
+      const fns=g.nodes.filter(n=>n.type==="fn");
+      if(fns.length){
+        const pad=36;
+        const xs=fns.map(n=>n.x),ys=fns.map(n=>n.y);
+        const minx=Math.min(...xs)-pad,maxx=Math.max(...xs)+pad,miny=Math.min(...ys)-pad,maxy=Math.max(...ys)+pad;
+        el("rect",{x:minx,y:miny,width:maxx-minx,height:maxy-miny,rx:18,class:"roombg",fill:"#0e132088",stroke:"#3a4a6a","stroke-dasharray":"7 5","stroke-width":1.5},gE);
+        el("text",{x:minx+14,y:miny+20,class:"roomlabel"},gE).textContent="🚪 КОМНАТА: "+opt.roomLabel;
+      }}
+    g.nodes.forEach(nd=>{HOV_ADJ[nd.id]=new Set();ND_EDGES[nd.id]=[];});
+    g.edges=g.edges.filter(e=>e.a&&e.b);
+    g.edges.forEach(e=>{HOV_ADJ[e.s].add(e.t);HOV_ADJ[e.t].add(e.s);
+      const col=e.kind==="async"?"#4fd8e0":e.kind==="call"?"#e0a83c":e.kind==="imp"?"#9a8cf5":"#7d8aa8";
+      const mk=e.kind==="async"?"ar-cy":e.kind==="call"?"ar-gd":e.kind==="imp"?"ar-vi":"ar-gy";
+      const c=edgeCoords(e);
+      const line=el("line",Object.assign(c,{class:"edge",stroke:col,"stroke-width":e.w||1.4,"marker-end":`url(#${mk})`}),gE);
+      if(e.kind==="imp")line.setAttribute("stroke-dasharray","5 4");
+      el("title",{},line).textContent=e.label||`${e.a.label} → ${e.b.label}`;
+      const rec={line,e};ND_EDGES[e.s].push(rec);ND_EDGES[e.t].push(rec);});
+    const fnFont=g.nodes.length>45?"8.5px":"10.5px";
+    g.nodes.forEach(nd=>{
+      const grp=el("g",{class:"node n-"+nd.type,transform:`translate(${nd.x},${nd.y})`},gN);
+      const isCur=opt.cur===nd.id,isWalk=opt.walk.has(nd.id),isNext=opt.rn===nd.id;
+      if(nd.type==="mod"){
+        const vis=S.mods.has(nd.mid);
+        if(nd.sealed)el("circle",{r:nd.r,class:"main",fill:"#161b26",stroke:"#3a4152","stroke-width":1.3,"stroke-dasharray":"2 3"},grp);
+        else if(vis)el("circle",{r:nd.r,class:"main",fill:pal(nd.mid),"fill-opacity":.9,stroke:"#f5d47a","stroke-width":2},grp);
+        else el("circle",{r:nd.r,class:"main",fill:"#232a3b",stroke:"#4a5468","stroke-width":1.3,"stroke-dasharray":"4 3"},grp);
+        el("text",{class:"cnt",y:4},grp).textContent=nd.sealed?"🔒":nd.cnt;
+        el("text",{y:nd.r+14},grp).textContent=nd.label+(nd.sealed?"":vis?"":" · не открыта");
+        if(nd.sealed){grp.classList.add("sealed");
+          el("title",{},grp).textContent=`комната ${modName(nd.mid)} · ${MOD_PATH[nd.mid]}\n🔒 запечатана: в отчёте нет функций и связей`;}
+        else el("title",{},grp).textContent=`комната ${modName(nd.mid)} · ${MOD_PATH[nd.mid]}\nфункций: ${nd.cnt}${isWalk?"\n✅ можно шагнуть (двойной клик)":isCur?"":"\n🔒 напрямую не добраться — нужен маршрут"}`;
+        if(VIEWMODE==="map"&&!isCur&&!isWalk&&!nd.sealed)grp.classList.add("far");
+      }else if(nd.type==="fn"){
+        const f=FN[nd.fnid];
+        if(f.flags.indexOf("a")>=0)el("circle",{r:nd.r+3.5,fill:"none",stroke:"#4fd8e0","stroke-opacity":.55,"stroke-width":1.5},grp);
+        el("circle",{r:nd.r,class:"main",fill:pal(f.mod),"fill-opacity":.88,stroke:f.flags.indexOf("e")>=0?"#f5d47a":"#00000066","stroke-width":f.flags.indexOf("e")>=0?2:1},grp);
+        // реальное имя функции — всегда видно
+        const lb=el("text",{y:nd.r+12,style:"font-size:"+fnFont},grp);lb.textContent=nd.label;
+        el("title",{},grp).textContent=`${f.name}()\nкомната ${modName(f.mod)} · ${FILES[f.file-1]}:${f.line}${isWalk?"\n✅ можно шагнуть (двойной клик)":""}`;
+      }else{ // --- ДВЕРЬ ---
+        const w=nd.w||92,h=42;
+        const out=nd.out>0,inc=nd.in>0;
+        const col=out&&inc?"#9a8cf5":out?"#e0a83c":"#6ee7a0";
+        const dlabel=out&&inc?"⇄ вход и выход":out?"→ выход":"← вход";
+        el("rect",{x:-w/2,y:-h/2,width:w,height:h,rx:9,class:"main",fill:"#141b2a",stroke:col,"stroke-width":2.2},grp);
+        el("text",{y:-4,class:"doortxt"},grp).textContent="🚪 "+nd.label;
+        el("text",{y:13,class:"doortxt small"},grp).textContent=dlabel;
+        el("title",{},grp).textContent=`Дверь в комнату ${nd.label}\n${dlabel}\nсвязей: ${nd.cnt} (вх: ${nd.in}, вых: ${nd.out})\nдвойной клик — пройти`;
+      }
+      if(isWalk)el("circle",{r:nd.r+6,class:"walkring"},grp);
+      if(isNext)el("circle",{r:nd.r+9,class:"routering"},grp);
+      if(isCur){el("circle",{r:nd.r+6,class:"pulse"},grp);
+        el("text",{class:"pin",y:-nd.r-8},grp).textContent="📍";}
+      NODE_EL[nd.id]=grp;
+      grp.addEventListener("pointerenter",()=>hover(nd,true));
+      grp.addEventListener("pointerleave",()=>hover(nd,false));
+      grp.addEventListener("pointerdown",ev=>startDrag(ev,nd,grp));
+      grp.addEventListener("click",ev=>{ev.stopPropagation();nodeClick(nd);});
+      grp.addEventListener("dblclick",ev=>{ev.stopPropagation();nodeDbl(nd);});});
+    vt={x:0,y:0,k:1};applyVT();markInspect();}
+  function hover(nd,on){svg.classList.toggle("hov",on);
+    if(!on){Object.values(NODE_EL).forEach(g=>g.classList.remove("hl"));
+      document.querySelectorAll(".edge.hl").forEach(l=>l.classList.remove("hl"));return;}
+    NODE_EL[nd.id].classList.add("hl");
+    HOV_ADJ[nd.id].forEach(id=>NODE_EL[id]&&NODE_EL[id].classList.add("hl"));
+    ND_EDGES[nd.id].forEach(r=>r.line.classList.add("hl"));}
+  function updatePos(nd,grp){grp.setAttribute("transform",`translate(${nd.x},${nd.y})`);
+    ND_EDGES[nd.id].forEach(r=>{const c=edgeCoords(r.e);for(const k in c)r.line.setAttribute(k,c[k]);});}
+  function startDrag(ev,nd,grp){ev.stopPropagation();let moved=0;const sx=ev.clientX,sy=ev.clientY;
+    grp.setPointerCapture(ev.pointerId);let lx=ev.clientX,ly=ev.clientY;
+    const mv=e=>{moved=Math.max(moved,Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy));
+      nd.x+=(e.clientX-lx)/vt.k;nd.y+=(e.clientY-ly)/vt.k;lx=e.clientX;ly=e.clientY;updatePos(nd,grp);};
+    grp.addEventListener("pointermove",mv);
+    grp.addEventListener("pointerup",()=>grp.removeEventListener("pointermove",mv),{once:true});}
+  function posFromNode(nd){return nd.type==="fn"?{type:"fn",id:nd.fnid}:{type:"module",id:nd.mid};}
+  function nodeClick(nd){INSPECT=posFromNode(nd);renderDossier();markInspect();}
+  function nodeDbl(nd){
+    if(VIEWMODE==="map"){const mid=nd.mid;
+      if(mid===currentMod()){VIEWMODE="scene";render();return;}
+      if(SEALED.has(mid)){reject(`${modName(mid)} запечатана: в отчёте нет функций и связей`);return;}
+      moveTo({type:"module",id:mid});return;}
+    moveTo(posFromNode(nd));}
+  function markInspect(){document.querySelectorAll(".node.insp").forEach(g=>g.classList.remove("insp"));
+    const g=NODE_EL[keyOf(INSPECT)];if(g)g.classList.add("insp");}
+
+  /* ================= РЕНДЕР ================= */
+  function renderRoomSign(){const rs=document.getElementById("roomsign");
+    if(VIEWMODE==="map"){rs.innerHTML=`🗺 Карта проекта<span class="sub">вы в комнате: <b class="mono">${modName(currentMod())}</b></span>`;}
+    else if(POS.type==="module"){rs.innerHTML=`🚪 Комната: <b class="mono">${modName(POS.id)}</b><span class="sub mono">${MOD_PATH[POS.id]}</span>`;}
+    else{const f=FN[POS.id];rs.innerHTML=`🚪 Комната: <b class="mono">${modName(f.mod)}</b><span class="sub">вы у функции <b class="mono">${f.name}()</b></span>`;}}
+  function renderPosChip(){const pc=document.getElementById("poschip");
+    if(POS.type==="module"){const m=POS.id;
+      pc.innerHTML=`📍 <b>${modName(m)}</b> <span class="sub mono">${MOD_PATH[m]}</span> · шагов: ${S.moves}`;}
+    else{const f=FN[POS.id];
+      pc.innerHTML=`📍 <b>${f.name}()</b> <span class="sub mono">${FILES[f.file-1]}:${f.line}</span> · шагов: ${S.moves}`;}}
+  function renderRoutebar(){const rb=document.getElementById("routebar");
+    if(!ROUTE.length){rb.style.display="none";return;}
+    rb.style.display="block";
+    rb.innerHTML=`🧭 Маршрут (${ROUTE.length}): `+
+      ROUTE.map((p,i)=>`<span class="rch${i===0?" nx":""}" data-i="${i}">${i+1}. ${posName(p)}</span>`).join(" → ")+
+      ` <button data-r="step">▶ шаг</button><button data-r="auto" id="btnAuto">⏩ авто</button><button data-r="cancel">✖</button>`;}
+  document.getElementById("routebar").addEventListener("click",e=>{
+    const r=e.target.dataset.r;if(r==="step"){stepRoute();return;}
+    if(r==="auto"){if(autoTok)stopAuto();else startAuto();return;}
+    if(r==="cancel"){stopAuto();ROUTE=[];renderRoutebar();return;}
+    if(e.target.dataset.i){INSPECT=ROUTE[+e.target.dataset.i];renderDossier();}});
+  function stepRoute(){if(!ROUTE.length){stopAuto();return;}
+    const t=ROUTE[0];
+    if(isWalkable(t)){moveTo(t,true);ROUTE.shift();renderRoutebar();
+      if(!ROUTE.length){stopAuto();banner("🏁 Маршрут пройден","good");}}
+    else{stopAuto();ROUTE=[];renderRoutebar();banner("Маршрут сбился — перепроложи путь","bad");}}
+  function startAuto(){if(autoTok)return;autoTok=setInterval(stepRoute,700);
+    const b=document.getElementById("btnAuto");if(b)b.textContent="⏸ стоп";}
+  function stopAuto(){if(autoTok){clearInterval(autoTok);autoTok=null;}
+    const b=document.getElementById("btnAuto");if(b)b.textContent="⏩ авто";}
+  function render(){
+    document.getElementById("btnView").textContent=VIEWMODE==="map"?"🚪 Комната":"🗺 Карта";
+    renderRoomSign();renderPosChip();
+    let g;
+    if(VIEWMODE==="map")g=buildProject();
+    else if(POS.type==="module")g=buildModule(POS.id);
+    else g=buildEgo(POS.id);
+    const roomLabel=(VIEWMODE==="scene"&&POS.type==="module")?modName(POS.id):null;
+    drawGraph(g,{walk:sceneWalkSet(),cur:keyOf(POS),rn:ROUTE.length?keyOf(ROUTE[0]):null,roomLabel});
+    document.getElementById("hint").textContent=VIEWMODE==="map"
+      ?"карта проекта: двойной клик по соседу — шагнуть · 📍 — текущая комната · дальние за замком"
+      :POS.type==="module"
+        ?"одинарный клик — досье · двойной клик — шагнуть (зелёный пунктир) · 🚪 — двери в соседние комнаты"
+        :"одинарный клик — досье · двойной клик — шагнуть к соседу · 📍 — функция, в которой ты стоишь";
+    renderDossier();renderRoutebar();}
+
+  /* ================= ДОСЬЕ ================= */
+  const details=document.getElementById("details");
+  function badges(fl){let h="";for(const ch of fl){if(FLB[ch])h+=`<span class="b ${ch}" title="${FLB[ch]}">${ch}</span>`;}
+    return h||'<span class="b" style="background:#22293a;color:#78829a">std</span>';}
+  function fnLine(id){const f=FN[id];const here=POS.type==="fn"&&POS.id===id;
+    const walk=isWalkable({type:"fn",id});
+    return `<div class="fn-item" data-a="fn-insp" data-id="${id}">${badges(f.flags)}<span class="nm mono">${f.name}</span>
+  <span class="loc">:${f.line}</span>${here?'<span class="go">📍</span>':walk?'<span class="go">➡ войти</span>':'<span class="lk">🔒</span>'}</div>`;}
+  function renderDossier(){
+    const T=INSPECT;let h="";
+    const isHere=keyOf(T)===keyOf(POS);
+    if(T.type==="module"){
+      const m=T.id,L=meta(m),fns=[...(MODFNS[m]||[])].sort((a,b)=>DEG[b]-DEG[a]);
+      const hereMod=currentMod()===m&&POS.type==="module";
+      const outs=[...(OUTMOD[m]||[])],ins=[...(INMOD[m]||[])];
+      h=`<div class="panel"><div class="d-head"><div class="d-icon">${L[0]}</div><div>
+   <div class="d-title mono">${modName(m)}</div><div class="d-sub">${L[1]}</div></div></div>
+   <div class="d-path mono">${MOD_PATH[m]}</div>
+   <div class="d-stats">функций: <b>${fns.length}</b> · файлов: <b>${modFiles(m).length}</b>${SEALED.has(m)?' · <span style="color:var(--red)">запечатана</span>':''}</div>
+   ${isHere?'<div class="here">📍 Вы здесь</div>':""}
+   ${SEALED.has(m)?'<div class="locknote">🔒 В отчёте у комнаты нет объявленных функций и связей — дойти сюда нельзя.</div>':""}
+   ${!isHere&&!SEALED.has(m)?routeBlock({type:"module",id:m}):""}
+   <div class="sect"><h4>🚪 Двери комнаты</h4>
+    ${outs.length?`<div style="margin:2px 0"><span class="doorchip" style="background:#3a2c0e;color:#e0a83c">→ выходы</span> ${outs.map(x=>modChip(x,hereMod)).join("")}</div>`:'<div style="font-size:11px;color:var(--dim)">выходов нет</div>'}
+    ${ins.length?`<div style="margin:2px 0"><span class="doorchip" style="background:#12301f;color:#6ee7a0">← входы</span> ${ins.map(x=>modChip(x,hereMod)).join("")}</div>`:'<div style="font-size:11px;color:var(--dim)">входов нет</div>'}
+   </div>
+   <div class="sect"><h4>Функции (${fns.length})</h4>
+   ${fns.length?`<div class="fnlist">${fns.map(fnLine).join("")}</div>`:'<div style="font-size:12px;color:var(--dim)">Функций нет.</div>'}</div>
+   ${renderConsts(m,hereMod)}
+   <div class="sect"><h4>Файлы</h4>${modFiles(m).map(f=>`<div class="file-l">${FILES[f-1]}</div>`).join("")}</div></div>`;
+    }else{
+      const id=T.id,f=FN[id];
+      const outs=OUT[id]||[],ins=INN[id]||[],io=IMP_OUT[id]||[],ii=IMP_INN[id]||[];
+      h=`<div class="panel"><div class="d-head"><div class="d-icon">🗡️</div><div>
+   <div class="d-title mono" style="font-size:15px">${f.flags.indexOf("a")>=0?"async ":""}${f.name}()</div>
+   <div class="d-sub">${badges(f.flags)}</div></div></div>
+   <div class="d-path mono">${FILES[f.file-1]} : ${f.line} · <span class="chip" data-a="mod-insp" data-id="${f.mod}" style="display:inline-block">комната ${modName(f.mod)}</span></div>
+   ${isHere?'<div class="here">📍 Вы здесь</div>':routeBlock({type:"fn",id})}
+   <div class="sect"><h4>➡️ Вызывает (${outs.length})</h4>${outs.length?outs.map(o=>relChip(o.o)).join(""):'<span style="font-size:11px;color:var(--dim)">нет исходящих вызовов</span>'}</div>
+   <div class="sect"><h4>⬅️ Вызывается из (${ins.length})</h4>${ins.length?ins.map(o=>relChip(o.o)).join(""):'<span style="font-size:11px;color:var(--dim)">никто не вызывает — точка входа или мёртвый код</span>'}</div>
+   ${io.length?`<div class="sect"><h4>📦 Импортирует (${io.length})</h4>${io.map(o=>relChip(o)).join("")}</div>`:""}
+   ${ii.length?`<div class="sect"><h4>📥 Импортируется в (${ii.length})</h4>${ii.map(o=>relChip(o)).join("")}</div>`:""}</div>`;
+    }
+    details.innerHTML=h;
+    function relChip(o){const w=isWalkable({type:"fn",id:o});
+      return `<span class="chip${w?" w":""}" data-a="fn-insp" data-id="${o}">${FN[o].name}</span>`;}
+    function modChip(x,here){const w=here&&isWalkable({type:"module",id:+x});
+      return `<span class="chip${w?" w":""}" data-a="mod-insp" data-id="${x}">${modName(+x)}</span>`;}
+    function routeBlock(t){
+      if(isWalkable(t))return `<div class="btnrow"><button data-a="move" data-t="${t.type}" data-id="${t.id}">🚶 Перейти сюда (1 шаг)</button></div>`;
+      const r=buildRoute(POS,t);
+      if(r===null)return '<div class="locknote">🔒 Путь не существует.</div>';
+      return `<div class="locknote">🔒 Напрямую не добраться. Кратчайший путь отсюда: <b>${r.length} шаг(ов)</b>.</div>
+   <div class="btnrow"><button data-a="route">🧭 Проложить маршрут</button></div>`;}}
+  function renderConsts(m,active){const cs=CONSTS.filter(c=>c[3]===m);if(!cs.length)return"";
+    return `<div class="sect"><h4>Константы (${cs.length})</h4>${cs.map(c=>{
+      const open=S.consts.has("c"+c[0]);
+      return `<div class="const${open?" open":""}${active?" clickable":""}" ${active?`data-a="const" data-id="c${c[0]}"`:""}>
+   <span class="cl">${FILES[c[4]-1]}:${c[5]}</span><span class="cn">${c[1]}</span><pre>${JSON.stringify(c[2])}</pre></div>`;}).join("")}
+  ${active?"":'<div style="font-size:10px;color:var(--dim)">Изучать константы можно только стоя в этой комнате.</div>'}</div>`;}
+  details.addEventListener("click",e=>{const t=e.target.closest("[data-a]");if(!t)return;
+    const a=t.dataset.a;
+    if(a==="mod-insp"){INSPECT={type:"module",id:+t.dataset.id};renderDossier();markInspect();}
+    else if(a==="fn-insp"){INSPECT={type:"fn",id:+t.dataset.id};renderDossier();markInspect();}
+    else if(a==="move"){moveTo({type:t.dataset.t==="module"?"module":"fn",id:+t.dataset.id});}
+    else if(a==="route"){const r=buildRoute(POS,INSPECT);if(r){ROUTE=r;stopAuto();renderRoutebar();
+      log(`Проложен маршрут: ${r.length} шагов до ${posName(INSPECT)}`);}else banner("Путь не существует","bad");}
+    else if(a==="const"){t.classList.toggle("open");const id=t.dataset.id;
+      if(!S.consts.has(id)){S.consts.add(id);S.xp+=3;log(`Изучена константа (+3 XP)`);renderHeader();checkQuests();save();}}});
+
+  /* ================= КНОПКИ / ПОИСК / ОРАКУЛ ================= */
+  document.getElementById("btnView").onclick=()=>{VIEWMODE=VIEWMODE==="map"?"scene":"map";
+    if(VIEWMODE==="map"&&!S.mapOpened){S.mapOpened=true;checkQuests();save();}
+    render();};
+  document.getElementById("btnBack").onclick=goBack;
+  document.getElementById("btnReset").onclick=()=>{if(confirm("Сбросить весь прогресс?")){localStorage.removeItem(LS);localStorage.removeItem("codex-intro3");location.reload();}};
+  document.getElementById("btnOracle").onclick=()=>{
+    let ids,out,names;
+    if(VIEWMODE==="map"){ids=MODS.map((_,i)=>i+1);out={};ids.forEach(m=>out[m]=[]);
+      Object.keys(MREL).forEach(k=>{const[a,b]=k.split(">");out[+a].push(+b);});names=m=>modName(m);}
+    else if(POS.type==="module"){ids=MODFNS[POS.id]||[];out={};ids.forEach(i=>out[i]=[]);
+      CALLS.forEach(([a,b])=>{if(FN[a].mod===POS.id&&FN[b].mod===POS.id)out[a].push(b);});names=i=>FN[i].name;}
+    else{ids=[POS.id];out={[POS.id]:[]};names=i=>FN[i].name;}
+    const cyc=detectCycle(ids,out);
+    if(!cyc.length)banner("🔮 Оракул: циклов не найдено — граф ацикличен ✨","good");
+    else banner("🔮 Оракул: найден цикл: "+cyc.map(names).join(" → ")+" → …","bad");
+    if(VIEWMODE==="map"&&!S.oracle){S.oracle=true;checkQuests();save();}};
+  function detectCycle(ids,out){const indeg={};ids.forEach(n=>indeg[n]=0);
+    ids.forEach(n=>(out[n]||[]).forEach(m=>{if(indeg[m]!=null)indeg[m]++;}));
+    const q=ids.filter(n=>indeg[n]===0),seen=new Set();
+    while(q.length){const n=q.pop();seen.add(n);(out[n]||[]).forEach(m=>{if(indeg[m]!=null&&--indeg[m]===0)q.push(m);});}
+    const rest=ids.filter(n=>!seen.has(n));if(!rest.length)return[];
+    const inR=new Set(rest);let cur=rest[0];const path=[cur],pos={[cur]:0};
+    for(let g=0;g<rest.length+2;g++){const nxt=(out[cur]||[]).find(x=>inR.has(x));if(nxt==null)break;
+      if(pos[nxt]!=null)return path.slice(pos[nxt]);pos[nxt]=path.length;path.push(nxt);cur=nxt;}
+    return rest.slice(0,4);}
+  const searchEl=document.getElementById("search");
+  function doSearch(q){q=(q||"").trim().toLowerCase();if(!q)return;
+    const hit=FNS.find(f=>f[1].toLowerCase()===q)||FNS.find(f=>f[1].toLowerCase().includes(q));
+    if(!hit){banner("Не найдено. Попробуй другое имя.","bad");return;}
+    INSPECT={type:"fn",id:hit[0]};
+    if(keyOf(POS)===keyOf(INSPECT)){renderDossier();markInspect();return;}
+    const r=buildRoute(POS,INSPECT);
+    if(r){ROUTE=r;S.search=true;stopAuto();log(`🔍 Найдено: ${hit[1]} — маршрут ${r.length} шагов`);
+      toast(`🔍 ${hit[1]}: маршрут ${r.length} шагов`);checkQuests();save();renderRoutebar();renderDossier();markInspect();}
+    else banner("Эта функция недосягаема.","bad");}
+  searchEl.addEventListener("keydown",e=>{if(e.key==="Enter")doSearch(searchEl.value);});
+  searchEl.addEventListener("change",()=>doSearch(searchEl.value));
+  const dl=document.getElementById("fnlist");
+  FNS.forEach(f=>{const o=document.createElement("option");o.value=f[1];o.label=`${modName(f[2])} · ${FILES[f[3]-1]}`;dl.appendChild(o);});
+  window.addEventListener("keydown",e=>{if(e.key==="Escape"){
+    if(VIEWMODE==="map"){VIEWMODE="scene";render();}
+    else if(POS.type==="fn"){INSPECT={type:"module",id:FN[POS.id].mod};renderDossier();markInspect();}}});
+  let rzT=null;window.addEventListener("resize",()=>{clearTimeout(rzT);rzT=setTimeout(render,200);});
+
+  /* ================= СТАРТ ================= */
+  renderHeader();renderQuests();render();
+  log("Точка входа: комната <b>src</b> (src/cli.ts). Телепорты отключены — только по связям графа.");
+  if(!localStorage.getItem("codex-intro3"))document.getElementById("intro").style.display="flex";
+  document.getElementById("btnStart").onclick=()=>{document.getElementById("intro").style.display="none";
+    localStorage.setItem("codex-intro3","1");toast("🚶 Путь начался");};
+</script>
+</body>
+</html>

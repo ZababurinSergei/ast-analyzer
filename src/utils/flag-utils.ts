@@ -46,7 +46,57 @@ export enum FunctionFlags {
   NULLABLE = 1 << 15, // 32768
   /** Default export */
   DEFAULT_EXPORT = 1 << 16, // 65536
+
+  // ============================================
+  // ✅ НОВЫЕ ФЛАГИ (добавлены в v5.1.0)
+  // ============================================
+
+  /** Self функция (изолированная, без вызовов) */
+  SELF = 1 << 17, // 131072
+  /** Динамический импорт */
+  DYNAMIC = 1 << 18, // 262144
+  /** Конфигурация (process.env, config файлы) */
+  CONFIG = 1 << 19, // 524288
+  /** Внешняя библиотека */
+  EXTERNAL = 1 << 20, // 1048576
+  /** Vue шаблон */
+  VUE_TEMPLATE = 1 << 21, // 2097152
+  /** Асинхронная цепочка */
+  ASYNC_CHAIN = 1 << 22, // 4194304
+  /** Замыкание */
+  CLOSURE = 1 << 23, // 8388608
+  /** Типовая зависимость */
+  TYPE_DEP = 1 << 24, // 16777216
 }
+
+// ============================================
+// ПРЕДВЫЧИСЛЕНИЕ КОМБИНАЦИЙ ФЛАГОВ
+// ============================================
+
+const flagCombinations = new Map<number, string[]>();
+
+function precomputeFlagCombinations(): void {
+  const flagEntries = Object.entries(FunctionFlags).filter(
+    ([key, value]) => typeof value === 'number' && !key.startsWith('_')
+  );
+
+  const maxMask = 1 << flagEntries.length;
+
+  for (let i = 0; i < maxMask; i++) {
+    const active: string[] = [];
+    for (let j = 0; j < flagEntries.length; j++) {
+      if (i & (1 << j)) {
+        const key = flagEntries[j]?.[0] || '';
+        if (key) {
+          active.push(key);
+        }
+      }
+    }
+    flagCombinations.set(i, active);
+  }
+}
+
+precomputeFlagCombinations();
 
 /**
  * Кодирует булевы свойства функции в число (битовые флаги)
@@ -84,6 +134,16 @@ export function encodeFlags(entity: any): number {
   if (entity.isNullable) flags |= FunctionFlags.NULLABLE;
   if (entity.isDefaultExport) flags |= FunctionFlags.DEFAULT_EXPORT;
 
+  // ✅ НОВЫЕ ФЛАГИ
+  if (entity.isSelf) flags |= FunctionFlags.SELF;
+  if (entity.isDynamic) flags |= FunctionFlags.DYNAMIC;
+  if (entity.isConfig) flags |= FunctionFlags.CONFIG;
+  if (entity.isExternal) flags |= FunctionFlags.EXTERNAL;
+  if (entity.isVueTemplate) flags |= FunctionFlags.VUE_TEMPLATE;
+  if (entity.isAsyncChain) flags |= FunctionFlags.ASYNC_CHAIN;
+  if (entity.isClosure) flags |= FunctionFlags.CLOSURE;
+  if (entity.isTypeDep) flags |= FunctionFlags.TYPE_DEP;
+
   return flags;
 }
 
@@ -116,7 +176,33 @@ export function decodeFlags(flags: number): Record<string, boolean> {
     isOptional: !!(flags & FunctionFlags.OPTIONAL),
     isNullable: !!(flags & FunctionFlags.NULLABLE),
     isDefaultExport: !!(flags & FunctionFlags.DEFAULT_EXPORT),
+
+    // ✅ НОВЫЕ ФЛАГИ
+    isSelf: !!(flags & FunctionFlags.SELF),
+    isDynamic: !!(flags & FunctionFlags.DYNAMIC),
+    isConfig: !!(flags & FunctionFlags.CONFIG),
+    isExternal: !!(flags & FunctionFlags.EXTERNAL),
+    isVueTemplate: !!(flags & FunctionFlags.VUE_TEMPLATE),
+    isAsyncChain: !!(flags & FunctionFlags.ASYNC_CHAIN),
+    isClosure: !!(flags & FunctionFlags.CLOSURE),
+    isTypeDep: !!(flags & FunctionFlags.TYPE_DEP),
   };
+}
+
+/**
+ * Оптимизированная версия decodeFlags с предвычислением
+ * @param flags - Число с битовыми флагами
+ * @returns Объект с булевыми свойствами
+ */
+export function decodeFlagsOptimized(flags: number): Record<string, boolean> {
+  const result: Record<string, boolean> = {};
+  const active = flagCombinations.get(flags) || [];
+
+  for (const flag of active) {
+    result[flag.toLowerCase()] = true;
+  }
+
+  return result;
 }
 
 /**
@@ -283,9 +369,9 @@ export function hasAllFlags(flags: number, flagList: FunctionFlags[]): boolean {
   return flagList.every(flag => !!(flags & flag));
 }
 
-// ============================================================
+// ============================================
 // КОНСТАНТЫ ДЛЯ ЧАСТО ИСПОЛЬЗУЕМЫХ КОМБИНАЦИЙ
-// ============================================================
+// ============================================
 
 /** Стандартная функция (без особых флагов) */
 export const STANDARD_FUNCTION = 0;
@@ -311,14 +397,43 @@ export const COMPOSABLE_FUNCTION = FunctionFlags.COMPOSABLE | FunctionFlags.EXPO
 /** Vue макрос */
 export const VUE_MACRO = FunctionFlags.MACRO | FunctionFlags.EXPORTED;
 
-// ============================================================
+// ============================================
+// ✅ НОВЫЕ КОНСТАНТЫ (v5.1.0)
+// ============================================
+
+/** Self функция (изолированная) */
+export const SELF_FUNCTION = FunctionFlags.SELF;
+
+/** Динамический импорт */
+export const DYNAMIC_IMPORT = FunctionFlags.DYNAMIC;
+
+/** Конфигурационная функция */
+export const CONFIG_FUNCTION = FunctionFlags.CONFIG;
+
+/** Внешняя библиотека */
+export const EXTERNAL_LIB = FunctionFlags.EXTERNAL;
+
+/** Vue шаблон */
+export const VUE_TEMPLATE_FUNCTION = FunctionFlags.VUE_TEMPLATE;
+
+/** Асинхронная цепочка */
+export const ASYNC_CHAIN_FUNCTION = FunctionFlags.ASYNC_CHAIN;
+
+/** Замыкание */
+export const CLOSURE_FUNCTION = FunctionFlags.CLOSURE;
+
+/** Типовая зависимость */
+export const TYPE_DEP_FUNCTION = FunctionFlags.TYPE_DEP;
+
+// ============================================
 // ЭКСПОРТ ПО УМОЛЧАНИЮ
-// ============================================================
+// ============================================
 
 export default {
   FunctionFlags,
   encodeFlags,
   decodeFlags,
+  decodeFlagsOptimized,
   getFlagsList,
   hasFlag,
   setFlag,
@@ -340,4 +455,14 @@ export default {
   ARROW_FUNCTION,
   COMPOSABLE_FUNCTION,
   VUE_MACRO,
+
+  // ✅ Новые константы
+  SELF_FUNCTION,
+  DYNAMIC_IMPORT,
+  CONFIG_FUNCTION,
+  EXTERNAL_LIB,
+  VUE_TEMPLATE_FUNCTION,
+  ASYNC_CHAIN_FUNCTION,
+  CLOSURE_FUNCTION,
+  TYPE_DEP_FUNCTION,
 };

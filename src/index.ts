@@ -1,5 +1,5 @@
 // packages/ast-analyzer/src/index.ts
-// ИСПРАВЛЕННАЯ ВЕРСИЯ - только два генератора отчетов
+// ИСПРАВЛЕННАЯ ВЕРСИЯ - удалены дублирующиеся экспорты
 
 // ==========================================
 // ЭКСПОРТ ЯДРА (CORE)
@@ -253,29 +253,15 @@ export {
   getFileName,
   getModuleName,
   getFunctionInfo,
+  // Self functions
+  getAllSelfFunctions,
+  isSelfFunction,
+  findSelfFunctionByName,
 } from './reporters/compact-reporter.js';
 
 // HTML репортеры (оставляем)
 export { generateHTMLReport, escapeHtml } from './reporters/html-reporter.js';
 export { generateInteractiveHTML } from './reporters/interactive-reporter.js';
-
-// ❌ УДАЛЕНЫ ВСЕ СТАРЫЕ ГЕНЕРАТОРЫ:
-// - generateCompactReport (старый)
-// - generateUltraCompactReport
-// - compressReport
-// - UniverseNavigator
-// - loadUniverse
-// - createNavigator
-// - loadCompactReport
-// - findFunctionById (старый)
-// - findFunctionByName (старый)
-// - buildCallGraphFromReport
-// - findCallers
-// - findImporters
-// - generateShortIndices
-// - encodeFlags (старый)
-// - decodeFlags (старый)
-// - FunctionFlags (старый)
 
 // ==========================================
 // ЭКСПОРТ ТИПОВ (только из types.ts)
@@ -326,13 +312,6 @@ export type {
   ImportedByInfo,
   ExtendedFunctionInfo,
 
-  // Компактный формат - ТОЛЬКО ТИПЫ
-  // (реализация в compact-reporter.ts)
-  // type CompactReport,  // экспортируется из compact-reporter.ts
-  // type CompactModule,  // больше не используется
-  // type CompactFunction, // больше не используется
-  // type CompactCall,    // больше не используется
-
   // Графы
   GraphData,
   ProjectGraphOptions,
@@ -360,6 +339,48 @@ export {
   generateTempId,
   ensureDirectoryExists,
 } from './utils.js';
+
+// ==========================================
+// ЭКСПОРТ УТИЛИТ (НОВЫЕ)
+// ==========================================
+
+// Self функции утилиты
+export {
+  // Функции для работы с self функциями
+  getAllSelfFunctions as getAllSelfFunctionsUtil,
+  isSelfFunction as isSelfFunctionUtil,
+  findSelfFunctionByName as findSelfFunctionByNameUtil,
+} from './reporters/compact-reporter.js';
+
+// Сжатие путей
+export { compressPath, pathToIndex, getPathIndexMap, clearPathCache } from './utils/path-utils.js';
+
+// Флаги
+export {
+  FunctionFlags,
+  encodeFlags,
+  decodeFlags as decodeFlagsUtil,
+  getFlagsList,
+  hasFlag,
+  setFlag,
+  clearFlag,
+  toggleFlag,
+  encodeFlagsAdvanced,
+  decodeFlagsAdvanced,
+  flagsToString,
+  countFlags,
+  hasAnyFlag,
+  hasAllFlags,
+  // Константы
+  STANDARD_FUNCTION,
+  NESTED_FUNCTION,
+  ASYNC_NESTED_FUNCTION,
+  EXPORTED_FUNCTION,
+  METHOD_FUNCTION,
+  ARROW_FUNCTION,
+  COMPOSABLE_FUNCTION,
+  VUE_MACRO,
+} from './utils/flag-utils.js';
 
 // ==========================================
 // CLI RUNNER

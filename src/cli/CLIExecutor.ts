@@ -44,6 +44,13 @@ export class CLIExecutor {
     this.registerHybridReportCommand();
     this.registerInitCommand();
     this.registerStatusCommand();
+
+    // ============================================
+    // ✅ НОВЫЕ КОМАНДЫ (v5.1.0)
+    // ============================================
+    this.registerSelfCommand();
+    this.registerAnalyzeExtendedCommand();
+    this.registerCacheCommand();
   }
 
   // ============================================
@@ -643,6 +650,7 @@ export class CLIExecutor {
           readableKeys: !options.minifyKeys,
           useTemplates: true,
           maxDepth: parseInt(options.maxDepth),
+          includeSelfFunctions: true, // ✅ ВКЛЮЧАЕМ SELF FUNCTIONS
         });
 
         console.log(`\\n✅ Report saved: ${outputPath}`);
@@ -650,6 +658,7 @@ export class CLIExecutor {
         console.log(`   • Modules: ${report.stats.tm}`);
         console.log(`   • Files: ${report.files?.length || 0}`);
         console.log(`   • Functions: ${report.stats.tf}`);
+        console.log(`   • Self functions: ${report.stats.tsf || 0}`); // ✅ НОВОЕ
         console.log(`   • Calls: ${report.stats.tc}`);
         console.log(`   • Imports: ${report.stats.ti || 0}`);
         console.log(`   • Exports: ${report.stats.tex || 0}`);
@@ -772,7 +781,7 @@ export class CLIExecutor {
         console.log('='.repeat(60));
 
         const projectPath = path.resolve(options.path);
-        console.log(`📁 Project: ${projectPath}\\n`);
+        console.log(`📁 Project: ${projectPath}\n`);
 
         const { glob } = await import('glob');
 
@@ -813,9 +822,9 @@ export class CLIExecutor {
         // Проверяем ESLint
         const eslintConfigPath = path.join(projectPath, '.eslintrc.json');
         if (fs.existsSync(eslintConfigPath)) {
-          console.log('\\n📝 ESLint config: ✅ found');
+          console.log('\n📝 ESLint config: ✅ found');
         } else {
-          console.log('\\n📝 ESLint config: ❌ missing');
+          console.log('\n📝 ESLint config: ❌ missing');
           console.log('   💡 Run: npx ast-analyzer init');
         }
 
@@ -828,11 +837,770 @@ export class CLIExecutor {
           console.log('   💡 Run: npx ast-analyzer init');
         }
 
-        console.log('\\n💡 Commands to try:');
+        console.log('\n💡 Commands to try:');
         console.log('   • npx ast-analyzer project . --entities');
         console.log('   • npx ast-analyzer status');
         console.log('   • npx ast-analyzer compact . --ultra');
+        console.log('   • npx ast-analyzer self . --output self.json'); // ✅ НОВАЯ КОМАНДА
+        console.log('   • npx ast-analyzer analyze-extended .'); // ✅ НОВАЯ КОМАНДА
       });
+  }
+
+  // ============================================
+  // ✅ НОВАЯ КОМАНДА: SELF — поиск изолированных функций
+  // ============================================
+
+  private registerSelfCommand(): void {
+    this.program
+      .command('self <paths...>')
+      .description('🔍 Find isolated functions (self functions) — functions with no calls')
+      .option('-o, --output <file>', 'Output file', 'self-functions.json')
+      .option('-r, --recursive', 'Search recursively', true)
+      .option('--with-calls', 'Include functions that have calls but are not called', false)
+      .option('--format <format>', 'Output format (json, markdown, text)', 'json')
+      .option('-v, --verbose', 'Verbose output')
+      .action(async (paths: string[], options: any) => {
+        console.log('🔍 Searching for self functions (isolated functions)...');
+        console.log(`📁 Paths: ${paths.join(', ')}`);
+        console.log(`📄 Output: ${options.output}`);
+        console.log(`📋 Format: ${options.format}`);
+
+        const { glob } = await import('glob');
+        const { idManager } = await import('../core/IdManager.js');
+
+        const allFiles: string[] = [];
+        const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
+
+        for (const inputPath of paths) {
+          const resolvedPath = path.resolve(inputPath);
+          if (!fs.existsSync(resolvedPath)) continue;
+
+          const stat = fs.statSync(resolvedPath);
+          if (stat.isFile()) {
+            if (extensions.includes(path.extname(resolvedPath))) {
+              allFiles.push(resolvedPath);
+            }
+          } else if (stat.isDirectory()) {
+            const pattern = options.recursive
+              ? `${resolvedPath}/**/*{${extensions.join(',')}}`
+              : `${resolvedPath}/*{${extensions.join(',')}}`;
+
+            const matched = await glob(pattern, {
+              nodir: true,
+              ignore: [
+                '**/node_modules/**',
+                '**/dist/**',
+                '**/build/**',
+                '**/coverage/**',
+                '**/*.d.ts',
+                '**/*.test.ts',
+                '**/*.spec.ts',
+              ],
+              absolute: true,
+            });
+            allFiles.push(...matched);
+          }
+        }
+
+        const uniqueFiles = [...new Set(allFiles)];
+        console.log(`📊 Found ${uniqueFiles.length} files to analyze\n`);
+
+        const selfFunctions: {
+          id: string;
+          name: string;
+          file: string;
+          line: number;
+          isExported: boolean;
+          isAsync: boolean;
+          params: string[];
+        }[] = [];
+
+        const allFunctions: {
+          name: string;
+          file: string;
+          line: number;
+          calls: string[];
+          calledBy: string[];
+          isExported: boolean;
+          isAsync: boolean;
+          params: string[];
+        }[] = [];
+
+        let processed = 0;
+        for (const filePath of uniqueFiles) {
+          processed++;
+          if (options.verbose) {
+            process.stdout.write(`\r   📄 Processing: ${processed}/${uniqueFiles.length}`);
+          }
+
+          try {
+            const { parseFile } = await import('../core/ast-parser.js');
+            const { extractEntities } = await import('../core/entity-extractor.js');
+
+            const parsed = parseFile(filePath);
+            if (!parsed) continue;
+
+            const entities = extractEntities(parsed.ast, filePath);
+            if (!entities || !entities.functions) continue;
+
+            const fileFunctions = entities.functions || [];
+
+            // Собираем все функции для анализа
+            for (const func of fileFunctions) {
+              if (!func.name) continue;
+
+              const calls = (func.calls || []).filter(c => c && c !== func.name);
+              const calledBy = (func.calledBy || []).filter(c => c && c !== func.name);
+
+              // Проверяем, является ли функция self (изолированной)
+              const hasCalls = calls.length > 0;
+              const hasCalledBy = calledBy.length > 0;
+
+              if (!hasCalls && !hasCalledBy) {
+                const selfId = idManager.generateSelfId(
+                  func.name,
+                  filePath,
+                  func.line || 0
+                );
+
+                selfFunctions.push({
+                  id: selfId,
+                  name: func.name,
+                  file: path.relative(process.cwd(), filePath),
+                  line: func.line || 0,
+                  isExported: func.isExported || false,
+                  isAsync: func.isAsync || false,
+                  params: func.params || [],
+                });
+              }
+
+              // Собираем все функции для статистики
+              allFunctions.push({
+                name: func.name,
+                file: path.relative(process.cwd(), filePath),
+                line: func.line || 0,
+                calls,
+                calledBy,
+                isExported: func.isExported || false,
+                isAsync: func.isAsync || false,
+                params: func.params || [],
+              });
+            }
+          } catch (error) {
+            if (options.verbose) {
+              console.warn(`\n   ⚠️ Error processing ${filePath}:`, error);
+            }
+          }
+        }
+
+        if (options.verbose) {
+          console.log('\n');
+        }
+
+        // Статистика
+        const totalFunctions = allFunctions.length;
+        const selfCount = selfFunctions.length;
+        const exportedSelf = selfFunctions.filter(f => f.isExported).length;
+        const asyncSelf = selfFunctions.filter(f => f.isAsync).length;
+
+        // Формируем результат
+        const result = {
+          version: '5.1.0',
+          timestamp: new Date().toISOString(),
+          stats: {
+            totalFunctions,
+            selfFunctions: selfCount,
+            exportedSelf,
+            asyncSelf,
+            percentSelf: totalFunctions > 0 ? ((selfCount / totalFunctions) * 100).toFixed(1) : '0',
+          },
+          selfFunctions,
+          allFunctions: options.withCalls ? allFunctions : undefined,
+        };
+
+        // Сохраняем результат
+        const outputPath = path.resolve(options.output);
+        const outputDir = path.dirname(outputPath);
+        if (!fs.existsSync(outputDir)) {
+          fs.mkdirSync(outputDir, { recursive: true });
+        }
+
+        let content: string;
+        switch (options.format) {
+          case 'markdown':
+            content = this.generateSelfMarkdown(result);
+            break;
+          case 'text':
+            content = this.generateSelfText(result);
+            break;
+          case 'json':
+          default:
+            content = JSON.stringify(result, null, 2);
+        }
+
+        fs.writeFileSync(outputPath, content);
+        console.log(`\n✅ Self functions report saved: ${outputPath}`);
+        console.log(`\n📊 STATISTICS:`);
+        console.log(`   • Total functions: ${totalFunctions}`);
+        console.log(`   • Self functions: ${selfCount} (${result.stats.percentSelf}%)`);
+        console.log(`   • Exported self: ${exportedSelf}`);
+        console.log(`   • Async self: ${asyncSelf}`);
+
+        if (selfCount > 0 && options.verbose) {
+          console.log('\n📋 Top self functions:');
+          for (const sf of selfFunctions.slice(0, 10)) {
+            console.log(`   • ${sf.name} (${sf.file}:${sf.line})`);
+          }
+          if (selfCount > 10) {
+            console.log(`   ... and ${selfCount - 10} more`);
+          }
+        }
+
+        if (selfCount === 0) {
+          console.log('\n💡 No self functions found. Try:');
+          console.log('   • Check if your code has isolated helper functions');
+          console.log('   • Look for utility functions without dependencies');
+        }
+      });
+  }
+
+  // ============================================
+  // ✅ НОВАЯ КОМАНДА: ANALYZE-EXTENDED — расширенный анализ
+  // ============================================
+
+  private registerAnalyzeExtendedCommand(): void {
+    this.program
+      .command('analyze-extended <paths...>')
+      .description('🔬 Extended analysis: dynamic imports, configs, external libs, Vue templates, async chains, closures, type deps')
+      .option('-o, --output <file>', 'Output file', 'extended-analysis.json')
+      .option('-r, --recursive', 'Search recursively', true)
+      .option('--no-dynamic', 'Disable dynamic imports analysis')
+      .option('--no-config', 'Disable config references analysis')
+      .option('--no-libs', 'Disable external libraries analysis')
+      .option('--no-vue', 'Disable Vue templates analysis')
+      .option('--no-async', 'Disable async chains analysis')
+      .option('--no-closures', 'Disable closures analysis')
+      .option('--no-types', 'Disable type dependencies analysis')
+      .option('--format <format>', 'Output format (json, markdown)', 'json')
+      .option('-v, --verbose', 'Verbose output')
+      .action(async (paths: string[], options: any) => {
+        console.log('🔬 Running extended analysis...');
+        console.log(`📁 Paths: ${paths.join(', ')}`);
+        console.log(`📄 Output: ${options.output}`);
+        console.log(`📋 Format: ${options.format}`);
+
+        const { glob } = await import('glob');
+
+        const allFiles: string[] = [];
+        const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.vue'];
+
+        for (const inputPath of paths) {
+          const resolvedPath = path.resolve(inputPath);
+          if (!fs.existsSync(resolvedPath)) continue;
+
+          const stat = fs.statSync(resolvedPath);
+          if (stat.isFile()) {
+            if (extensions.includes(path.extname(resolvedPath))) {
+              allFiles.push(resolvedPath);
+            }
+          } else if (stat.isDirectory()) {
+            const pattern = options.recursive
+              ? `${resolvedPath}/**/*{${extensions.join(',')}}`
+              : `${resolvedPath}/*{${extensions.join(',')}}`;
+
+            const matched = await glob(pattern, {
+              nodir: true,
+              ignore: [
+                '**/node_modules/**',
+                '**/dist/**',
+                '**/build/**',
+                '**/coverage/**',
+                '**/*.d.ts',
+                '**/*.test.ts',
+                '**/*.spec.ts',
+              ],
+              absolute: true,
+            });
+            allFiles.push(...matched);
+          }
+        }
+
+        const uniqueFiles = [...new Set(allFiles)];
+        console.log(`📊 Found ${uniqueFiles.length} files to analyze\n`);
+
+        // Результаты анализа
+        const results: any = {
+          version: '5.1.0',
+          timestamp: new Date().toISOString(),
+          files: uniqueFiles.length,
+          analysis: {
+            dynamicImports: [] as any[],
+            configRefs: [] as any[],
+            externalLibs: [] as any[],
+            vueTemplates: [] as any[],
+            asyncChains: [] as any[],
+            closures: [] as any[],
+            typeDeps: [] as any[],
+          },
+          stats: {
+            dynamicImports: 0,
+            configRefs: 0,
+            externalLibs: 0,
+            vueTemplates: 0,
+            asyncChains: 0,
+            closures: 0,
+            typeDeps: 0,
+          },
+        };
+
+        let processed = 0;
+        for (const filePath of uniqueFiles) {
+          processed++;
+          if (options.verbose) {
+            process.stdout.write(`\r   📄 Processing: ${processed}/${uniqueFiles.length}`);
+          }
+
+          try {
+            const content = fs.readFileSync(filePath, 'utf-8');
+
+            // 1. Динамические импорты
+            if (options.dynamic !== false) {
+              const imports = this.extractDynamicImports(content);
+              if (imports.length > 0) {
+                results.analysis.dynamicImports.push({
+                  file: path.relative(process.cwd(), filePath),
+                  imports,
+                });
+                results.stats.dynamicImports += imports.length;
+              }
+            }
+
+            // 2. Конфигурации
+            if (options.config !== false) {
+              const configs = this.extractConfigRefs(content);
+              if (configs.length > 0) {
+                results.analysis.configRefs.push({
+                  file: path.relative(process.cwd(), filePath),
+                  configs,
+                });
+                results.stats.configRefs += configs.length;
+              }
+            }
+
+            // 3. Внешние библиотеки
+            if (options.libs !== false) {
+              const libs = this.extractExternalLibs(content);
+              if (libs.length > 0) {
+                results.analysis.externalLibs.push({
+                  file: path.relative(process.cwd(), filePath),
+                  libs,
+                });
+                results.stats.externalLibs += libs.length;
+              }
+            }
+
+            // 4. Vue шаблоны
+            if (options.vue !== false) {
+              const templates = this.extractVueTemplates(content);
+              if (templates.length > 0) {
+                results.analysis.vueTemplates.push({
+                  file: path.relative(process.cwd(), filePath),
+                  templates,
+                });
+                results.stats.vueTemplates += templates.length;
+              }
+            }
+
+            // 5. Асинхронные цепочки
+            if (options.async !== false) {
+              const chains = this.extractAsyncChains(content);
+              if (chains.length > 0) {
+                results.analysis.asyncChains.push({
+                  file: path.relative(process.cwd(), filePath),
+                  chains,
+                });
+                results.stats.asyncChains += chains.length;
+              }
+            }
+
+            // 6. Замыкания
+            if (options.closures !== false) {
+              const closures = this.extractClosures(content);
+              if (closures.length > 0) {
+                results.analysis.closures.push({
+                  file: path.relative(process.cwd(), filePath),
+                  closures,
+                });
+                results.stats.closures += closures.length;
+              }
+            }
+
+            // 7. Типовые зависимости
+            if (options.types !== false) {
+              const types = this.extractTypeDeps(content);
+              if (types.length > 0) {
+                results.analysis.typeDeps.push({
+                  file: path.relative(process.cwd(), filePath),
+                  types,
+                });
+                results.stats.typeDeps += types.length;
+              }
+            }
+          } catch (error) {
+            if (options.verbose) {
+              console.warn(`\n   ⚠️ Error processing ${filePath}:`, error);
+            }
+          }
+        }
+
+        if (options.verbose) {
+          console.log('\n');
+        }
+
+        // Сохраняем результат
+        const outputPath = path.resolve(options.output);
+        const outputDir = path.dirname(outputPath);
+        if (!fs.existsSync(outputDir)) {
+          fs.mkdirSync(outputDir, { recursive: true });
+        }
+
+        let content: string;
+        if (options.format === 'markdown') {
+          content = this.generateExtendedMarkdown(results);
+        } else {
+          content = JSON.stringify(results, null, 2);
+        }
+
+        fs.writeFileSync(outputPath, content);
+        console.log(`\n✅ Extended analysis saved: ${outputPath}`);
+        console.log(`\n📊 STATISTICS:`);
+        console.log(`   • Dynamic imports: ${results.stats.dynamicImports}`);
+        console.log(`   • Config refs: ${results.stats.configRefs}`);
+        console.log(`   • External libs: ${results.stats.externalLibs}`);
+        console.log(`   • Vue templates: ${results.stats.vueTemplates}`);
+        console.log(`   • Async chains: ${results.stats.asyncChains}`);
+        console.log(`   • Closures: ${results.stats.closures}`);
+        console.log(`   • Type deps: ${results.stats.typeDeps}`);
+      });
+  }
+
+  // ============================================
+  // ✅ НОВАЯ КОМАНДА: CACHE — управление кэшем
+  // ============================================
+
+  private registerCacheCommand(): void {
+    this.program
+      .command('cache')
+      .description('📦 Manage analysis cache')
+      .option('--clear', 'Clear all cache')
+      .option('--stats', 'Show cache statistics')
+      .option('--ttl <ms>', 'Set cache TTL in milliseconds', '300000')
+      .action(async (options) => {
+        console.log('📦 Cache Management');
+        console.log('='.repeat(40));
+
+        // Импортируем кэш из json-reporter
+        let analysisCache: any = null;
+        try {
+          const module = await import('../reporters/json-reporter.js');
+          analysisCache = (module as any).analysisCache;
+        } catch {
+          console.log('⚠️ Cache module not loaded');
+        }
+
+        if (options.clear) {
+          if (analysisCache && typeof analysisCache.clear === 'function') {
+            analysisCache.clear();
+            console.log('✅ Cache cleared');
+          } else {
+            console.log('ℹ️ Cache is empty or not available');
+          }
+          return;
+        }
+
+        if (options.stats) {
+          if (analysisCache && typeof analysisCache.getStats === 'function') {
+            const stats = analysisCache.getStats();
+            console.log(`\n📊 Cache Statistics:`);
+            console.log(`   • Entries: ${stats.size || 0}`);
+            console.log(`   • TTL: ${options.ttl}ms`);
+            console.log(`   • Memory: ${stats.memory || 'N/A'}`);
+          } else {
+            console.log('ℹ️ Cache statistics not available');
+          }
+          return;
+        }
+
+        // Показываем справку
+        console.log('\n📖 Cache Commands:');
+        console.log('   • npx ast-analyzer cache --stats    - Show cache stats');
+        console.log('   • npx ast-analyzer cache --clear    - Clear cache');
+        console.log('   • npx ast-analyzer cache --ttl 600000 - Set TTL to 10 minutes');
+        console.log('\n💡 Cache stores analysis results for 5 minutes by default');
+      });
+  }
+
+  // ============================================
+  // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ДЛЯ НОВЫХ КОМАНД
+  // ============================================
+
+  private extractDynamicImports(content: string): any[] {
+    const imports: any[] = [];
+    const regex = /import\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/g;
+    let match;
+    while ((match = regex.exec(content)) !== null) {
+      const pathMatch = match[1];
+      imports.push({
+        path: pathMatch || '',
+        line: content.substring(0, match.index).split('\n').length + 1,
+        type: pathMatch && pathMatch.includes('${') ? 'template' : 'literal',
+      });
+    }
+    return imports;
+  }
+
+  private extractConfigRefs(content: string): any[] {
+    const configs: any[] = [];
+    const patterns = [
+      /process\.env\.(\w+)/g,
+      /require\s*\(\s*['"](.*\.config\.(js|ts))['"]\s*\)/g,
+      /import\s+.*\s+from\s+['"](.*\.config\.(js|ts))['"]/g,
+    ];
+
+    for (const pattern of patterns) {
+      let match;
+      while ((match = pattern.exec(content)) !== null) {
+        const name = match[1] || match[2] || '';
+        configs.push({
+          name: name,
+          line: content.substring(0, match.index).split('\n').length + 1,
+          type: pattern === patterns[0] ? 'env' : 'config',
+        });
+      }
+    }
+    return configs;
+  }
+
+  private extractExternalLibs(content: string): any[] {
+    const libs: any[] = [];
+    const regex = /import\s+.*\s+from\s+['"]([^.'"][^'"]*)['"]/g;
+    let match;
+    while ((match = regex.exec(content)) !== null) {
+      const libName = match[1];
+      if (libName && !libName.startsWith('.') && !libName.startsWith('/')) {
+        const existing = libs.find(l => l.name === libName);
+        if (existing) {
+          existing.count++;
+        } else {
+          libs.push({ name: libName, count: 1 });
+        }
+      }
+    }
+    return libs;
+  }
+
+  private extractVueTemplates(content: string): any[] {
+    const templates: any[] = [];
+    const templateMatch = content.match(/<template>([\s\S]*?)<\/template>/);
+    if (templateMatch) {
+      const template = templateMatch[1] || '';
+      const componentRegex = /<([A-Z][a-zA-Z]*)/g;
+      let match;
+      while ((match = componentRegex.exec(template)) !== null) {
+        templates.push({
+          name: match[1] || '',
+          line: template ? template.substring(0, match.index).split('\n').length + 1 : 0,
+        });
+      }
+    }
+    return templates;
+  }
+
+  private extractAsyncChains(content: string): any[] {
+    const chains: any[] = [];
+    const asyncRegex = /async\s+function\s+(\w+)|const\s+(\w+)\s*=\s*async\s*\(/g;
+    let match;
+    while ((match = asyncRegex.exec(content)) !== null) {
+      const name = match[1] || match[2] || '';
+      if (name) {
+        const start = match.index;
+        const end = content.indexOf('}', start);
+        const body = content.substring(start, end);
+        const awaitCount = (body.match(/await/g) || []).length;
+        chains.push({
+          name,
+          awaitCount,
+          line: content.substring(0, match.index).split('\n').length + 1,
+        });
+      }
+    }
+    return chains;
+  }
+
+  private extractClosures(content: string): any[] {
+    const closures: any[] = [];
+    const funcRegex = /function\s*\([^)]*\)\s*\{([\s\S]*?)\}/g;
+    let match;
+    while ((match = funcRegex.exec(content)) !== null) {
+      const body = match[1] || '';
+      const varRegex = /\b(\w+)\b/g;
+      let varMatch;
+      const declared = new Set<string>();
+      const used = new Set<string>();
+
+      const declRegex = /(?:var|let|const)\s+(\w+)/g;
+      let declMatch;
+      while ((declMatch = declRegex.exec(body)) !== null) {
+        declared.add(declMatch[1] || '');
+      }
+
+      while ((varMatch = varRegex.exec(body)) !== null) {
+        const name = varMatch[1] || '';
+        if (!declared.has(name) && !['function', 'return', 'if', 'for', 'while'].includes(name)) {
+          used.add(name);
+        }
+      }
+
+      if (used.size > 0) {
+        closures.push({
+          line: content.substring(0, match.index).split('\n').length + 1,
+          variables: Array.from(used),
+        });
+      }
+    }
+    return closures;
+  }
+
+  private extractTypeDeps(content: string): any[] {
+    const deps: any[] = [];
+
+    // Интерфейсы
+    const interfaceRegex = /interface\s+(\w+)\s*(?:extends\s+([^{]+))?/g;
+    let match;
+    while ((match = interfaceRegex.exec(content)) !== null) {
+      deps.push({
+        name: match[1] || '',
+        type: 'interface',
+        extends: match[2] ? match[2].split(',').map((e: string) => e.trim()) : [],
+      });
+    }
+
+    // Type aliases
+    const typeRegex = /type\s+(\w+)\s*=\s*([^;]+)/g;
+    while ((match = typeRegex.exec(content)) !== null) {
+      deps.push({
+        name: match[1] || '',
+        type: 'type-alias',
+        definition: (match[2] || '').trim(),
+      });
+    }
+
+    // Generics
+    const genericRegex = /<(\w+)(?:\s+extends\s+(\w+))?>/g;
+    while ((match = genericRegex.exec(content)) !== null) {
+      deps.push({
+        name: match[1] || '',
+        type: 'generic',
+        extends: match[2] || null,
+      });
+    }
+
+    return deps;
+  }
+
+  private generateSelfMarkdown(result: any): string {
+    let md = '# 🔍 Self Functions Report\n\n';
+    md += `**Generated:** ${new Date(result.timestamp).toLocaleString()}\n`;
+    md += `**Version:** ${result.version}\n\n`;
+
+    md += '## 📊 Statistics\n\n';
+    md += '| Metric | Value |\n';
+    md += '|--------|-------|\n';
+    md += `| Total functions | ${result.stats.totalFunctions} |\n`;
+    md += `| Self functions | ${result.stats.selfFunctions} |\n`;
+    md += `| Percentage | ${result.stats.percentSelf}% |\n`;
+    md += `| Exported self | ${result.stats.exportedSelf} |\n`;
+    md += `| Async self | ${result.stats.asyncSelf} |\n\n`;
+
+    if (result.selfFunctions.length > 0) {
+      md += '## 📋 Self Functions\n\n';
+      md += '| ID | Name | File | Line | Exported | Async |\n';
+      md += '|----|------|------|------|----------|-------|\n';
+      for (const sf of result.selfFunctions) {
+        md += `| ${sf.id} | ${sf.name} | ${sf.file} | ${sf.line} | ${sf.isExported ? '✅' : '❌'} | ${sf.isAsync ? '✅' : '❌'} |\n`;
+      }
+      md += '\n';
+    }
+
+    return md;
+  }
+
+  private generateSelfText(result: any): string {
+    let text = '🔍 SELF FUNCTIONS REPORT\n';
+    text += '='.repeat(50) + '\n\n';
+    text += `Total functions: ${result.stats.totalFunctions}\n`;
+    text += `Self functions: ${result.stats.selfFunctions} (${result.stats.percentSelf}%)\n`;
+    text += `Exported self: ${result.stats.exportedSelf}\n`;
+    text += `Async self: ${result.stats.asyncSelf}\n\n`;
+
+    if (result.selfFunctions.length > 0) {
+      text += 'SELF FUNCTIONS:\n';
+      text += '-'.repeat(40) + '\n';
+      for (const sf of result.selfFunctions) {
+        text += `  ${sf.id}: ${sf.name} (${sf.file}:${sf.line})\n`;
+      }
+    }
+
+    return text;
+  }
+
+  private generateExtendedMarkdown(results: any): string {
+    let md = '# 🔬 Extended Analysis Report\n\n';
+    md += `**Generated:** ${new Date(results.timestamp).toLocaleString()}\n`;
+    md += `**Files analyzed:** ${results.files}\n\n`;
+
+    md += '## 📊 Statistics\n\n';
+    md += '| Category | Count |\n';
+    md += '|----------|-------|\n';
+    md += `| Dynamic imports | ${results.stats.dynamicImports} |\n`;
+    md += `| Config refs | ${results.stats.configRefs} |\n`;
+    md += `| External libs | ${results.stats.externalLibs} |\n`;
+    md += `| Vue templates | ${results.stats.vueTemplates} |\n`;
+    md += `| Async chains | ${results.stats.asyncChains} |\n`;
+    md += `| Closures | ${results.stats.closures} |\n`;
+    md += `| Type deps | ${results.stats.typeDeps} |\n\n`;
+
+    // Dynamic imports
+    if (results.analysis.dynamicImports.length > 0) {
+      md += '## 🔗 Dynamic Imports\n\n';
+      for (const item of results.analysis.dynamicImports) {
+        md += `### ${item.file}\n\n`;
+        for (const imp of item.imports) {
+          md += `- ${imp.path} (line ${imp.line})\n`;
+        }
+        md += '\n';
+      }
+    }
+
+    // External libs
+    if (results.analysis.externalLibs.length > 0) {
+      md += '## 📦 External Libraries\n\n';
+      const allLibs: Record<string, number> = {};
+      for (const item of results.analysis.externalLibs) {
+        for (const lib of item.libs) {
+          allLibs[lib.name] = (allLibs[lib.name] || 0) + lib.count;
+        }
+      }
+      const sorted = Object.entries(allLibs).sort((a, b) => b[1] - a[1]);
+      md += '| Library | Usage count |\n';
+      md += '|---------|-------------|\n';
+      for (const [name, count] of sorted.slice(0, 20)) {
+        md += `| ${name} | ${count} |\n`;
+      }
+      md += '\n';
+    }
+
+    return md;
   }
 
   // ============================================

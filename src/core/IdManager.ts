@@ -42,6 +42,11 @@ export class IdManager {
   private shortIdMap: Map<string, string> = new Map(); // полное имя -> короткий ID
   private shortIdReverseMap: Map<string, string> = new Map(); // короткий ID -> полное имя
 
+  // ✅ НОВОЕ: счетчики для self functions (sf1, sf2, ...)
+  private selfIdCounter: number = 0;
+  private selfIdMap: Map<string, string> = new Map(); // имя -> sf1, sf2, ...
+  private selfIdReverseMap: Map<string, string> = new Map(); // sf1 -> имя
+
   constructor(debug: boolean = false) {
     this.debug = debug;
     // Инициализируем счетчики
@@ -153,6 +158,137 @@ export class IdManager {
     return {
       total: this.shortIdMap.size,
       byType,
+    };
+  }
+
+  // ============================================
+  // ✅ НОВЫЙ МЕТОД: Self Functions ID (sf1, sf2, ...)
+  // ============================================
+
+  /**
+   * Генерирует ID для self функции (изолированной)
+   * @param name - имя функции
+   * @param filePath - путь к файлу
+   * @param line - номер строки
+   * @returns ID в формате sf1, sf2, ...
+   */
+  generateSelfId(name: string, filePath?: string, line?: number): string {
+    // Проверяем, есть ли уже ID для этого имени
+    if (this.selfIdMap.has(name)) {
+      return this.selfIdMap.get(name)!;
+    }
+
+    this.selfIdCounter++;
+    const id = `sf${this.selfIdCounter}`;
+
+    // Сохраняем маппинг с дополнительной информацией
+    const fullKey = `${name}:${filePath || 'unknown'}:${line || 0}`;
+    this.selfIdMap.set(name, id);
+    this.selfIdReverseMap.set(id, fullKey);
+
+    if (this.debug) {
+      console.log(`🔑 [IdManager] Generated self ID: ${id} for ${name} (${filePath}:${line})`);
+    }
+
+    return id;
+  }
+
+  /**
+   * Проверяет, является ли ID self функцией
+   */
+  isSelfId(id: string): boolean {
+    return id.startsWith('sf');
+  }
+
+  /**
+   * Получает имя по self ID
+   */
+  getNameFromSelfId(id: string): string | null {
+    const full = this.selfIdReverseMap.get(id);
+    if (!full) return null;
+    return full.split(':')[0] || null;
+  }
+
+  /**
+   * Получает полную информацию по self ID
+   */
+  getSelfInfo(id: string): { name: string; filePath: string; line: number } | null {
+    const full = this.selfIdReverseMap.get(id);
+    if (!full) return null;
+    const parts = full.split(':');
+    return {
+      name: parts[0] || 'unknown',
+      filePath: parts[1] || 'unknown',
+      line: parseInt(parts[2] || '0', 10),
+    };
+  }
+
+  /**
+   * Получает все self ID
+   */
+  getAllSelfIds(): string[] {
+    return Array.from(this.selfIdReverseMap.keys());
+  }
+
+  /**
+   * Получает все self функции в виде массива
+   */
+  getAllSelfFunctions(): { id: string; name: string; filePath: string; line: number }[] {
+    const result: { id: string; name: string; filePath: string; line: number }[] = [];
+    for (const [id, full] of this.selfIdReverseMap) {
+      const parts = full.split(':');
+      result.push({
+        id,
+        name: parts[0] || 'unknown',
+        filePath: parts[1] || 'unknown',
+        line: parseInt(parts[2] || '0', 10),
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Проверяет, является ли функция self (изолированной)
+   * @param _name - имя функции (не используется, оставлен для совместимости)
+   * @param calls - массив вызовов функции
+   * @param calledBy - массив вызывающих функцию
+   * @returns true если функция изолирована
+   */
+  isSelfFunction(_name: string, calls: string[] = [], calledBy: string[] = []): boolean {
+    const hasCalls = calls && calls.length > 0;
+    const hasCalledBy = calledBy && calledBy.length > 0;
+    return !hasCalls && !hasCalledBy;
+  }
+
+  /**
+   * Регистрирует self функцию (если она изолирована)
+   */
+  registerSelfIfIsolated(
+    name: string,
+    calls: string[] = [],
+    calledBy: string[] = [],
+    filePath?: string,
+    line?: number
+  ): string | null {
+    if (this.isSelfFunction(name, calls, calledBy)) {
+      return this.generateSelfId(name, filePath, line);
+    }
+    return null;
+  }
+
+  /**
+   * Получить статистику self функций
+   */
+  getSelfStats(): { total: number; byFile: Record<string, number> } {
+    const byFile: Record<string, number> = {};
+    for (const [, full] of this.selfIdReverseMap) {
+      const parts = full.split(':');
+      const filePath = parts[1] || 'unknown';
+      byFile[filePath] = (byFile[filePath] || 0) + 1;
+    }
+    return {
+      total: this.selfIdReverseMap.size,
+      byFile,
     };
   }
 
@@ -399,6 +535,15 @@ export class IdManager {
     return `f${fileHash}_${nameHash}_${line}`;
   }
 
+  /**
+   * ✅ НОВЫЙ СТАТИСТИЧЕСКИЙ МЕТОД для генерации self ID
+   */
+  static generateSelfIdStatic(name: string, filePath: string, line: number): string {
+    const fileHash = simpleHash(path.relative(process.cwd(), filePath));
+    const nameHash = simpleHash(name);
+    return `sf_${fileHash}_${nameHash}_${line}`;
+  }
+
   // ============================================
   // УНИВЕРСАЛЬНЫЙ МЕТОД: Генерация ID для сущностей
   // ============================================
@@ -599,7 +744,7 @@ export class IdManager {
    * Проверить, существует ли ID
    */
   hasId(id: string): boolean {
-    return this.usedIds.has(id) || this.compactUsedIds.has(id) || this.shortIdReverseMap.has(id);
+    return this.usedIds.has(id) || this.compactUsedIds.has(id) || this.shortIdReverseMap.has(id) || this.selfIdReverseMap.has(id);
   }
 
   /**
@@ -615,6 +760,10 @@ export class IdManager {
     this.shortIdCounters.clear();
     this.shortIdMap.clear();
     this.shortIdReverseMap.clear();
+    // Очищаем self ID
+    this.selfIdCounter = 0;
+    this.selfIdMap.clear();
+    this.selfIdReverseMap.clear();
     // Инициализируем заново
     this.shortIdCounters.set('module', 0);
     this.shortIdCounters.set('file', 0);
@@ -630,11 +779,12 @@ export class IdManager {
   /**
    * Получить статистику
    */
-  getStats(): { total: number; unique: number; shortIds: number } {
+  getStats(): { total: number; unique: number; shortIds: number; selfIds: number } {
     return {
-      total: this.idMap.size + this.compactIdMap.size + this.shortIdMap.size,
-      unique: this.usedIds.size + this.compactUsedIds.size + this.shortIdMap.size,
+      total: this.idMap.size + this.compactIdMap.size + this.shortIdMap.size + this.selfIdMap.size,
+      unique: this.usedIds.size + this.compactUsedIds.size + this.shortIdMap.size + this.selfIdMap.size,
       shortIds: this.shortIdMap.size,
+      selfIds: this.selfIdMap.size,
     };
   }
 
@@ -666,6 +816,13 @@ export class IdManager {
       seen.add(id);
     }
 
+    for (const id of this.selfIdReverseMap.keys()) {
+      if (seen.has(id)) {
+        duplicates.push(id);
+      }
+      seen.add(id);
+    }
+
     return {
       valid: duplicates.length === 0,
       duplicates,
@@ -680,6 +837,7 @@ export class IdManager {
     totalIds: number;
     compactMappings: number;
     shortMappings: number;
+    selfMappings: number;
     sampleMappings: { key: string; id: string }[];
   } {
     const sampleMappings: { key: string; id: string }[] = [];
@@ -712,11 +870,21 @@ export class IdManager {
       }
     }
 
+    for (const [key, id] of this.selfIdMap) {
+      if (count < 10) {
+        sampleMappings.push({ key, id });
+        count++;
+      } else {
+        break;
+      }
+    }
+
     return {
-      totalMappings: this.idMap.size + this.compactIdMap.size + this.shortIdMap.size,
-      totalIds: this.usedIds.size + this.compactUsedIds.size + this.shortIdMap.size,
+      totalMappings: this.idMap.size + this.compactIdMap.size + this.shortIdMap.size + this.selfIdMap.size,
+      totalIds: this.usedIds.size + this.compactUsedIds.size + this.shortIdMap.size + this.selfIdMap.size,
       compactMappings: this.compactIdMap.size,
       shortMappings: this.shortIdMap.size,
+      selfMappings: this.selfIdMap.size,
       sampleMappings,
     };
   }
@@ -739,6 +907,15 @@ export class IdManager {
     items: { type: 'module' | 'file' | 'function' | 'class' | 'interface'; name: string }[]
   ): string[] {
     return items.map(item => this.generateShortId(item.type, item.name));
+  }
+
+  /**
+   * ✅ НОВЫЙ МЕТОД: Массовая генерация self ID
+   */
+  generateSelfIdsBatch(
+    items: { name: string; filePath?: string; line?: number }[]
+  ): string[] {
+    return items.map(item => this.generateSelfId(item.name, item.filePath, item.line));
   }
 
   /**
@@ -781,17 +958,35 @@ export class IdManager {
   }
 
   /**
+   * ✅ НОВЫЙ МЕТОД: Получить маппинг self ID → полное имя
+   */
+  getSelfIdMapping(): Record<string, { name: string; filePath: string; line: number }> {
+    const mapping: Record<string, { name: string; filePath: string; line: number }> = {};
+
+    for (const [id, full] of this.selfIdReverseMap) {
+      const parts = full.split(':');
+      mapping[id] = {
+        name: parts[0] || 'unknown',
+        filePath: parts[1] || 'unknown',
+        line: parseInt(parts[2] || '0', 10),
+      };
+    }
+
+    return mapping;
+  }
+
+  /**
    * ✅ НОВЫЙ МЕТОД: Проверка, является ли ID компактным
    */
   isCompactId(id: string): boolean {
-    return /^f\d+_\d+$/.test(id) || /^f\d+_\d+[a-z]$/.test(id);
+    return /^f\\d+_\\d+$/.test(id) || /^f\\d+_\\d+[a-z]$/.test(id);
   }
 
   /**
    * ✅ НОВЫЙ МЕТОД: Проверка, является ли ID коротким
    */
   isShortId(id: string): boolean {
-    return /^[mfnci]\d+$/.test(id);
+    return /^[mfnci]\\d+$/.test(id);
   }
 
   /**
@@ -825,6 +1020,20 @@ export class IdManager {
     return null;
   }
 
+  /**
+   * ✅ НОВЫЙ МЕТОД: Конвертировать self ID в полное имя
+   */
+  expandSelfId(selfId: string): { name: string; filePath: string; line: number } | null {
+    const full = this.selfIdReverseMap.get(selfId);
+    if (!full) return null;
+    const parts = full.split(':');
+    return {
+      name: parts[0] || 'unknown',
+      filePath: parts[1] || 'unknown',
+      line: parseInt(parts[2] || '0', 10),
+    };
+  }
+
   // ============================================
   // ✅ НОВЫЙ МЕТОД: Получить маппинг ID к VSCode ссылкам
   // ============================================
@@ -843,6 +1052,15 @@ export class IdManager {
    */
   getVscodeLinkForContext(context: IdContext): string {
     return `vscode://file/${context.filePath}:${context.line}`;
+  }
+
+  /**
+   * Получить VSCode ссылку для self функции
+   */
+  getSelfVscodeLink(selfId: string): string | null {
+    const info = this.getSelfInfo(selfId);
+    if (!info) return null;
+    return `vscode://file/${info.filePath}:${info.line}`;
   }
 }
 

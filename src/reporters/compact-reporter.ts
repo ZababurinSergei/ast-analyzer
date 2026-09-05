@@ -1,16 +1,21 @@
 // packages/ast-analyzer/src/reporters/compact-reporter.ts
-// ОБНОВЛЕННАЯ ВЕРСИЯ - ИСПРАВЛЕНЫ ВСЕ ПРОБЛЕМЫ
-// - Добавлены проверки на null/undefined для всех массивов
-// - Исправлен анализ экспортов (gr.e)
-// - Добавлена поддержка наследования (gr.h)
-// - Добавлены re-экспорты (gr.re)
-// - Добавлены зависимости констант (gr.cd)
-// - Удалены дублирующиеся секции (fi, ui)
-// - ДОБАВЛЕНА СЕКЦИЯ SELF FUNCTIONS (sf) С ИНДЕКСАМИ
+// ПОЛНАЯ ВЕРСИЯ С ИНТЕГРИРОВАННЫМИ АНАЛИЗАТОРАМИ
+// Версия: 5.1.0-optimized
 
 import type { EntitiesResult } from '../types.js';
 import path from 'path';
 import fs from 'fs';
+
+// Импортируем анализаторы из json-reporter
+import {
+  extractDynamicImports,
+  extractConfigRefs,
+  extractExternalLibs,
+  extractVueTemplates,
+  extractAsyncChains,
+  extractClosures,
+  extractTypeDeps,
+} from './json-reporter.js';
 
 // ============================================
 // КОНСТАНТЫ ДЛЯ СЖАТИЯ
@@ -59,6 +64,15 @@ export const SHORT_KEYS = {
   defaultExports: 'defaultExports',
   typeExports: 'typeExports',
   typeImports: 'typeImports',
+  // НОВЫЕ СТАТИСТИКИ
+  dynamicImports: 'di',
+  configRefs: 'cfg',
+  externalLibsCount: 'ext',
+  vueTemplates: 'vt',
+  asyncChains: 'asyncChains',
+  closures: 'closures',
+  reflections: 'reflections',
+  typeDeps: 'typeDeps',
 };
 
 export const FLAG_MAP = {
@@ -68,6 +82,15 @@ export const FLAG_MAP = {
   '8': 'r', // arrow
   '16': 'v', // event
   '32': 'n', // nested
+  // НОВЫЕ ФЛАГИ
+  '64': 's', // self (изолированная функция)
+  '128': 'd', // dynamic import
+  '256': 'c', // config
+  '512': 'x', // external
+  '1024': 't', // vue template
+  '2048': 'a', // async chain
+  '4096': 'l', // closure
+  '8192': 'y', // type dependency
 };
 
 // УНИКАЛЬНЫЕ КЛЮЧИ для каждого типа
@@ -86,7 +109,7 @@ export const RELATION_TYPES = {
   typeOnly: 'to',
   sideEffect: 'se',
 
-  // Экспорты (сохранены в текущем формате)
+  // Экспорты
   namedExport: 'ne',
   defaultExport: 'de',
   reExportExport: 're',
@@ -108,7 +131,141 @@ export const RELATION_TYPES = {
   constValue: 'val',
   constEnum: 'enum',
   constConfig: 'config',
+
+  // НОВЫЕ ТИПЫ СВЯЗЕЙ
+  dynamicImport: 'di',
+  configReference: 'cfg',
+  externalLib: 'ext',
+  vueTemplate: 'vt',
+  asyncChain: 'async',
+  closure: 'closures',
+  typeDependency: 'types',
+  reflection: 'reflection',
 };
+
+// ============================================
+// КЭШИРОВАНИЕ
+// ============================================
+
+interface CacheEntry {
+  data: any;
+  timestamp: number;
+  hash: string;
+}
+
+class ReportCache {
+  private cache = new Map<string, CacheEntry>();
+  private TTL = 5 * 60 * 1000; // 5 минут
+
+  get(key: string): any | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > this.TTL) {
+      this.cache.delete(key);
+      return null;
+    }
+    return entry.data;
+  }
+
+  set(key: string, data: any): void {
+    const hash = this.generateHash(data);
+    this.cache.set(key, { data, timestamp: Date.now(), hash });
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  size(): number {
+    return this.cache.size;
+  }
+
+  private generateHash(data: any): string {
+    const str = JSON.stringify(data);
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return hash.toString(36);
+  }
+}
+
+const reportCache = new ReportCache();
+
+// ============================================
+// СЖАТИЕ ДАННЫХ
+// ============================================
+
+function compressCalls(calls: any[]): any[] {
+  if (!calls || calls.length === 0) return calls;
+
+  return calls.map(call => {
+    const compressed = [...call];
+
+    if (typeof compressed[2] === 'number' && compressed[2] > 1000) {
+      compressed[2] = compressed[2] - 1000;
+    }
+
+    return compressed;
+  });
+}
+
+function compressPaths(data: any): any {
+  if (!data) return data;
+
+  if (data.fl && typeof data.fl === 'object') {
+    const compressed: Record<string, string> = {};
+    for (const [key, value] of Object.entries(data.fl)) {
+      const parts = (value as string).split('/');
+      if (parts.length > 4) {
+        const first = parts[0] || '';
+        const lastTwo = parts.slice(-2);
+        compressed[key] = first + '/.../' + lastTwo.join('/');
+      } else {
+        compressed[key] = value as string;
+      }
+    }
+    data.fl = compressed;
+  }
+
+  return data;
+}
+
+// ============================================
+// МИГРАЦИЯ ДАННЫХ
+// ============================================
+
+function migrateReport(data: any): any {
+  const version = data.v || '4.0.0';
+
+  if (version === '4.0.0' || version.startsWith('4.')) {
+    if (!data.st) data.st = {};
+    if (!data.st.tsf) data.st.tsf = 0;
+    if (!data.st.di) data.st.di = 0;
+    if (!data.st.cfg) data.st.cfg = 0;
+    if (!data.st.ext) data.st.ext = 0;
+    if (!data.st.vt) data.st.vt = 0;
+    if (!data.st.asyncChains) data.st.asyncChains = 0;
+    if (!data.st.closures) data.st.closures = 0;
+    if (!data.st.typeDeps) data.st.typeDeps = 0;
+
+    if (!data.gr) data.gr = {};
+    if (!data.gr.di) data.gr.di = [];
+    if (!data.gr.cfg) data.gr.cfg = [];
+    if (!data.gr.ext) data.gr.ext = [];
+    if (!data.gr.vt) data.gr.vt = [];
+    if (!data.gr.async) data.gr.async = [];
+    if (!data.gr.closures) data.gr.closures = [];
+    if (!data.gr.types) data.gr.types = [];
+    if (!data.gr.reflection) data.gr.reflection = [];
+
+    data.v = '5.1.0';
+  }
+
+  return data;
+}
 
 // ============================================
 // ОСНОВНАЯ ФУНКЦИЯ
@@ -129,8 +286,16 @@ export function generateCompactReport(
     includeInheritance?: boolean;
     includeExports?: boolean;
     includeConstants?: boolean;
-    /** Включить секцию self functions (по умолчанию true) */
     includeSelfFunctions?: boolean;
+    includeDynamicImports?: boolean;
+    includeConfigRefs?: boolean;
+    includeExternalLibs?: boolean;
+    includeVueTemplates?: boolean;
+    includeAsyncChains?: boolean;
+    includeClosures?: boolean;
+    includeTypeDeps?: boolean;
+    useCompression?: boolean;
+    useCaching?: boolean;
   } = {}
 ): any {
   console.log('\n🚀 Генерация ОПТИМИЗИРОВАННОГО компактного отчета...');
@@ -144,7 +309,25 @@ export function generateCompactReport(
     includeExports = true,
     includeConstants = true,
     includeSelfFunctions = true,
+    includeDynamicImports = true,
+    includeConfigRefs = true,
+    includeExternalLibs = true,
+    includeVueTemplates = true,
+    includeAsyncChains = true,
+    includeClosures = true,
+    includeTypeDeps = true,
+    useCompression = true,
+    useCaching = true,
   } = options;
+
+  const cacheKey = outputPath ? `${outputPath}:${JSON.stringify(options)}` : null;
+  if (useCaching && cacheKey) {
+    const cached = reportCache.get(cacheKey);
+    if (cached) {
+      console.log('📦 Использован кэшированный отчет');
+      return cached;
+    }
+  }
 
   // ============================================
   // 1. СБОР ДАННЫХ
@@ -152,32 +335,37 @@ export function generateCompactReport(
 
   const moduleIndex: Record<string, string> = {};
   const fileIndex: Record<string, string> = {};
-  const functions: any[] = []; // [id, name, module, file, line, flags]
-  const constants: any[] = []; // [id, name, value, module, file, line, flags]
-  const selfFunctions: any[] = []; // [id, name, file, line] — СЕКЦИЯ SELF FUNCTIONS
+  const functions: any[] = [];
+  const constants: any[] = [];
+  const selfFunctions: any[] = [];
 
-  // Все типы связей в одном месте
   const relations = {
-    calls: [] as any[], // [fromIdx, toIdx, line, type]
-    imports: [] as any[], // [fromFuncId, toFuncId, importedName, importType, fileId, line]
-    exports: [] as any[], // [moduleId, funcIdx, line, exportType, name, alias] - ТЕКУЩИЙ ФОРМАТ
-    inheritance: [] as any[], // [childId, parentId, inheritanceType, fileId, line]
-    typeDeps: [] as any[], // [fromId, toId, depType, fileId, line]
-    reExports: [] as any[], // [fromId, toId, originalName, fileId, line]
-    constUses: [] as any[], // [funcId, constId, fileId, line]
-    constDeps: [] as any[], // [fromConstId, toConstId, fileId, line]
-    constExports: [] as any[], // [constId, exportName, exportType, fileId, line]
+    calls: [] as any[],
+    imports: [] as any[],
+    exports: [] as any[],
+    inheritance: [] as any[],
+    typeDeps: [] as any[],
+    reExports: [] as any[],
+    constUses: [] as any[],
+    constDeps: [] as any[],
+    constExports: [] as any[],
+    // НОВЫЕ ТИПЫ СВЯЗЕЙ
+    dynamicImports: [] as any[],
+    configRefs: [] as any[],
+    externalLibs: [] as any[],
+    vueTemplates: [] as any[],
+    asyncChains: [] as any[],
+    closures: [] as any[],
+    reflections: [] as any[],
   };
 
-  // Вспомогательные Map
   const moduleMap = new Map<string, string>();
   const fileMap = new Map<string, string>();
-  const funcMap = new Map<string, string>(); // key → funcId
-  const constMap = new Map<string, string>(); // key → constId
+  const funcMap = new Map<string, string>();
+  const constMap = new Map<string, string>();
   const nameToFuncId = new Map<string, string>();
   const nameToConstId = new Map<string, string>();
 
-  // ДОПОЛНИТЕЛЬНЫЙ MAP: имя функции → её данные (для определения self)
   const funcDataMap = new Map<
     string,
     { name: string; fileId: string; line: number; calls: string[]; calledBy: string[] }
@@ -194,7 +382,6 @@ export function generateCompactReport(
   // ============================================
 
   for (const [filePath, entities] of Object.entries(entitiesMap)) {
-    // Проверка на null/undefined
     if (!entities) continue;
 
     const dirName = path.basename(path.dirname(filePath)) || 'root';
@@ -214,7 +401,6 @@ export function generateCompactReport(
       fileIndex[fileId] = filePath;
     }
 
-    // Функции - НОВЫЙ КОМПАКТНЫЙ ФОРМАТ
     const funcs = entities.functions || [];
     for (const func of funcs) {
       if (!func || !func.name) continue;
@@ -230,7 +416,6 @@ export function generateCompactReport(
 
         const flags = encodeFlags(func);
 
-        // [id, name, module, file, line, flags]
         functions.push([
           funcId,
           func.name,
@@ -240,7 +425,6 @@ export function generateCompactReport(
           flags
         ]);
 
-        // СОХРАНЯЕМ ДАННЫЕ ДЛЯ ОПРЕДЕЛЕНИЯ SELF
         funcDataMap.set(func.name, {
           name: func.name,
           fileId,
@@ -251,7 +435,6 @@ export function generateCompactReport(
       }
     }
 
-    // Константы - НОВАЯ СЕКЦИЯ
     if (includeConstants) {
       const consts = entities.constants || [];
       for (const constItem of consts) {
@@ -268,7 +451,6 @@ export function generateCompactReport(
 
           const flags = constItem.isExported ? 'e' : '';
 
-          // [id, name, value, module, file, line, flags]
           constants.push([
             constId,
             constItem.name,
@@ -292,12 +474,9 @@ export function generateCompactReport(
       const hasCalls = data.calls && data.calls.length > 0;
       const hasCalledBy = data.calledBy && data.calledBy.length > 0;
 
-      // Self function: НЕТ исходящих вызовов И НЕТ входящих вызовов
       if (!hasCalls && !hasCalledBy) {
         selfFunctionCounter++;
         const selfId = `sf${selfFunctionCounter}`;
-
-        // [id, name, file, line]
         selfFunctions.push([selfId, name, data.fileId, data.line]);
       }
     }
@@ -307,15 +486,14 @@ export function generateCompactReport(
   // 4. ВТОРОЙ ПРОХОД: ВСЕ ТИПЫ СВЯЗЕЙ
   // ============================================
 
-  // Строим индекс для быстрого поиска ID по имени
   const funcNameToId = new Map<string, string>();
   for (const func of functions) {
-    funcNameToId.set(func[1], func[0]); // name → id
+    funcNameToId.set(func[1], func[0]);
   }
 
   const constNameToId = new Map<string, string>();
   for (const constItem of constants) {
-    constNameToId.set(constItem[1], constItem[0]); // name → id
+    constNameToId.set(constItem[1], constItem[0]);
   }
 
   for (const [filePath, entities] of Object.entries(entitiesMap)) {
@@ -325,7 +503,7 @@ export function generateCompactReport(
     const moduleId = moduleMap.get(dirName)!;
     const fileId = fileMap.get(filePath)!;
 
-    // 3.1 ВЫЗОВЫ (calls)
+    // 4.1 ВЫЗОВЫ (calls)
     const funcs = entities.functions || [];
     for (const func of funcs) {
       if (!func || !func.name) continue;
@@ -341,7 +519,7 @@ export function generateCompactReport(
         const toId = nameToFuncId.get(call);
         if (toId) {
           const toIdx = parseInt(toId.replace('fn', ''), 10);
-          let callType = 'd'; // direct
+          let callType = 'd';
           if (func.isAsync) callType = 'a';
           if (func.isMethod) callType = 'm';
           if (func.isEventHandler) callType = 'c';
@@ -356,7 +534,7 @@ export function generateCompactReport(
       }
     }
 
-    // 3.2 ИМПОРТЫ (imports) - НОВЫЙ ФОРМАТ
+    // 4.2 ИМПОРТЫ (imports)
     const imports = entities.imports || [];
     for (const imp of imports) {
       if (!imp || !imp.source) continue;
@@ -385,7 +563,7 @@ export function generateCompactReport(
         const fromFuncId = nameToFuncId.get(firstFunc.name);
         if (!fromFuncId) continue;
 
-        let importType = 'n'; // named
+        let importType = 'n';
         if (typeof spec === 'string') {
           if (spec === 'default') importType = 'df';
           else if (spec === '*') importType = 'ns';
@@ -408,7 +586,7 @@ export function generateCompactReport(
       }
     }
 
-    // 3.3 ЭКСПОРТЫ (exports) - ИСПРАВЛЕНО: извлекаем из entities.exports
+    // 4.3 ЭКСПОРТЫ (exports)
     if (includeExports) {
       const exports = entities.exports || [];
       for (const exp of exports) {
@@ -418,11 +596,9 @@ export function generateCompactReport(
         const isDefault = exp.isDefault || false;
         const isReExport = exp.isReExport || false;
 
-        // Проверяем все возможные источники экспорта
         let funcId: string | undefined;
         let funcIdx = -1;
 
-        // 1. Ищем функцию с таким именем
         const expFunc = funcs.find(f => f && f.name === expName);
         if (expFunc) {
           funcId = nameToFuncId.get(expName);
@@ -431,7 +607,6 @@ export function generateCompactReport(
           }
         }
 
-        // 2. Если не нашли функцию, ищем константу
         if (funcIdx === -1 && includeConstants) {
           const consts = entities.constants || [];
           const constItem = consts.find(c => c && c.name === expName);
@@ -454,13 +629,11 @@ export function generateCompactReport(
           }
         }
 
-        // 3. Если нашли функцию, добавляем экспорт
         if (funcIdx !== -1) {
           let exportType = 'ne';
           if (isDefault) exportType = 'de';
           else if (isReExport) exportType = 're';
 
-          // ТЕКУЩИЙ ФОРМАТ: [moduleId, funcIdx, line, exportType, name, alias]
           relations.exports.push([
             moduleId,
             funcIdx,
@@ -473,9 +646,8 @@ export function generateCompactReport(
       }
     }
 
-    // 3.4 НАСЛЕДОВАНИЕ (inheritance) - ИСПРАВЛЕНО: добавлена поддержка классов и интерфейсов
+    // 4.4 НАСЛЕДОВАНИЕ (inheritance)
     if (includeInheritance) {
-      // Классы
       const classes = entities.classes || [];
       for (const cls of classes) {
         if (!cls || !cls.name) continue;
@@ -483,7 +655,6 @@ export function generateCompactReport(
         const childId = nameToFuncId.get(cls.name);
         if (!childId) continue;
 
-        // extends
         if (cls.extends) {
           const parentId = nameToFuncId.get(cls.extends);
           if (parentId) {
@@ -497,7 +668,6 @@ export function generateCompactReport(
           }
         }
 
-        // implements
         const implements_ = cls.implements || [];
         for (const impl of implements_) {
           if (!impl) continue;
@@ -514,7 +684,6 @@ export function generateCompactReport(
         }
       }
 
-      // Интерфейсы extends
       const interfaces = entities.interfaces || [];
       for (const intf of interfaces) {
         if (!intf || !intf.name) continue;
@@ -539,7 +708,7 @@ export function generateCompactReport(
       }
     }
 
-    // 3.5 ТИПОВЫЕ ЗАВИСИМОСТИ (typeDeps)
+    // 4.5 ТИПОВЫЕ ЗАВИСИМОСТИ (typeDeps)
     if (includeTypes) {
       for (const func of funcs) {
         if (!func || !func.name) continue;
@@ -547,7 +716,6 @@ export function generateCompactReport(
         const fromId = nameToFuncId.get(func.name);
         if (!fromId) continue;
 
-        // Параметры
         const params = func.params || [];
         for (const param of params) {
           if (!param) continue;
@@ -563,7 +731,6 @@ export function generateCompactReport(
           }
         }
 
-        // Return type
         if (func.returnType) {
           const toId = nameToFuncId.get(func.returnType);
           if (toId) {
@@ -578,7 +745,6 @@ export function generateCompactReport(
         }
       }
 
-      // Интерфейсы типовые зависимости
       const interfaces = entities.interfaces || [];
       for (const intf of interfaces) {
         if (!intf || !intf.name) continue;
@@ -603,7 +769,7 @@ export function generateCompactReport(
       }
     }
 
-    // 3.6 RE-EXPORTS - ИСПРАВЛЕНО: улучшен анализ re-экспортов
+    // 4.6 RE-EXPORTS
     const exports = entities.exports || [];
     for (const exp of exports) {
       if (!exp || !exp.name) continue;
@@ -618,7 +784,6 @@ export function generateCompactReport(
       let toId: string | undefined;
       let found = false;
 
-      // 1. Ищем в импортах
       const imports = entities.imports || [];
       for (const imp of imports) {
         if (!imp) continue;
@@ -647,7 +812,6 @@ export function generateCompactReport(
         if (found) break;
       }
 
-      // 2. Если не нашли в импортах, ищем по имени в других файлах
       if (!found) {
         for (const [otherPath, otherEntities] of Object.entries(entitiesMap)) {
           if (otherPath === filePath || !otherEntities) continue;
@@ -666,7 +830,6 @@ export function generateCompactReport(
         }
       }
 
-      // 3. Если нашли, добавляем re-экспорт
       if (toId) {
         relations.reExports.push([
           fromId,
@@ -678,7 +841,7 @@ export function generateCompactReport(
       }
     }
 
-    // 3.7 ИСПОЛЬЗОВАНИЕ КОНСТАНТ (constUses)
+    // 4.7 ИСПОЛЬЗОВАНИЕ КОНСТАНТ (constUses)
     if (includeConstants) {
       for (const func of funcs) {
         if (!func || !func.name) continue;
@@ -706,7 +869,7 @@ export function generateCompactReport(
       }
     }
 
-    // 3.8 ЗАВИСИМОСТИ КОНСТАНТ (constDeps) - ИСПРАВЛЕНО: добавлен анализ
+    // 4.8 ЗАВИСИМОСТИ КОНСТАНТ (constDeps)
     if (includeConstants) {
       const consts = entities.constants || [];
       for (const constItem of consts) {
@@ -721,15 +884,12 @@ export function generateCompactReport(
             typeof value === 'boolean' ? String(value) :
               value !== null && value !== undefined ? JSON.stringify(value) : '';
 
-        // Проверяем все другие константы на наличие ссылок
         for (const otherConst of consts) {
           if (!otherConst || otherConst.name === constItem.name || !otherConst.name) continue;
 
-          // Проверяем, ссылается ли значение на другую константу
           if (strValue.includes(otherConst.name)) {
             const toId = nameToConstId.get(otherConst.name);
             if (toId) {
-              // Проверяем, не добавлена ли уже такая зависимость
               const exists = relations.constDeps.some(
                 dep => dep[0] === fromId && dep[1] === toId
               );
@@ -746,10 +906,184 @@ export function generateCompactReport(
         }
       }
     }
+
+    // ============================================
+    // 4.9 НОВЫЕ ТИПЫ СВЯЗЕЙ - ИНТЕГРАЦИЯ АНАЛИЗАТОРОВ!
+    // ============================================
+
+    // 4.9.1 ДИНАМИЧЕСКИЕ ИМПОРТЫ (dynamicImports)
+    if (includeDynamicImports) {
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const dynamicImports = extractDynamicImports(content);
+        for (const di of dynamicImports) {
+          relations.dynamicImports.push([
+            fileId,
+            di.line,
+            di.path,
+            di.type || 'literal'
+          ]);
+        }
+        if (dynamicImports.length > 0) {
+          console.log(`   📥 Найдено динамических импортов: ${dynamicImports.length} в ${path.basename(filePath)}`);
+        }
+      } catch (error) {
+        // Игнорируем ошибки чтения
+      }
+    }
+
+    // 4.9.2 КОНФИГУРАЦИИ (configRefs)
+    if (includeConfigRefs) {
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const configs = extractConfigRefs(content);
+        for (const cfg of configs) {
+          relations.configRefs.push([
+            fileId,
+            cfg.line,
+            cfg.name,
+            cfg.type || 'env'
+          ]);
+        }
+        if (configs.length > 0) {
+          console.log(`   ⚙️ Найдено ссылок на конфигурации: ${configs.length} в ${path.basename(filePath)}`);
+        }
+      } catch (error) {
+        // Игнорируем ошибки чтения
+      }
+    }
+
+    // 4.9.3 ВНЕШНИЕ БИБЛИОТЕКИ (externalLibs)
+    if (includeExternalLibs) {
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const libs = extractExternalLibs(content);
+        for (const lib of libs) {
+          relations.externalLibs.push([
+            fileId,
+            lib.name,
+            lib.version || 'unknown',
+            lib.count || 0,
+            0 // calls
+          ]);
+        }
+        if (libs.length > 0) {
+          console.log(`   📦 Найдено внешних библиотек: ${libs.length} в ${path.basename(filePath)}`);
+        }
+      } catch (error) {
+        // Игнорируем ошибки чтения
+      }
+    }
+
+    // 4.9.4 VUE ШАБЛОНЫ (vueTemplates)
+    if (includeVueTemplates && filePath.endsWith('.vue')) {
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const templates = extractVueTemplates(content);
+        for (const vt of templates) {
+          relations.vueTemplates.push([
+            fileId,
+            vt.line,
+            vt.name,
+            vt.type || 'component'
+          ]);
+        }
+        if (templates.length > 0) {
+          console.log(`   🎯 Найдено Vue шаблонов: ${templates.length} в ${path.basename(filePath)}`);
+        }
+      } catch (error) {
+        // Игнорируем ошибки чтения
+      }
+    }
+
+    // 4.9.5 АСИНХРОННЫЕ ЦЕПОЧКИ (asyncChains)
+    if (includeAsyncChains) {
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const chains = extractAsyncChains(content);
+        for (const chain of chains) {
+          const funcId = nameToFuncId.get(chain.name);
+          if (funcId) {
+            relations.asyncChains.push([
+              funcId,
+              chain.awaitCount || 0,
+              chain.chain?.length || 0,
+              chain.line || 0
+            ]);
+          }
+        }
+        if (chains.length > 0) {
+          console.log(`   ⚡ Найдено асинхронных цепочек: ${chains.length} в ${path.basename(filePath)}`);
+        }
+      } catch (error) {
+        // Игнорируем ошибки чтения
+      }
+    }
+
+    // 4.9.6 ЗАМЫКАНИЯ (closures)
+    if (includeClosures) {
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const closures = extractClosures(content);
+        for (const closure of closures) {
+          for (const func of funcs) {
+            if (func && func.line && Math.abs(func.line - closure.line) < 3) {
+              const funcId = nameToFuncId.get(func.name);
+              if (funcId) {
+                relations.closures.push([
+                  funcId,
+                  closure.line || 0,
+                  closure.variables?.slice(0, 5) || [],
+                  closure.count || 0
+                ]);
+                break;
+              }
+            }
+          }
+        }
+        if (closures.length > 0) {
+          console.log(`   🔒 Найдено замыканий: ${closures.length} в ${path.basename(filePath)}`);
+        }
+      } catch (error) {
+        // Игнорируем ошибки чтения
+      }
+    }
+
+    // 4.9.7 ТИПОВЫЕ ЗАВИСИМОСТИ (typeDeps) - расширенный анализ
+    if (includeTypeDeps) {
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const typeDeps = extractTypeDeps(content);
+        for (const dep of typeDeps) {
+          const fromId = nameToFuncId.get(dep.name);
+          if (fromId) {
+            if (dep.extends) {
+              for (const ext of dep.extends) {
+                const toId = nameToFuncId.get(ext);
+                if (toId) {
+                  relations.typeDeps.push([
+                    fromId,
+                    toId,
+                    'ex',
+                    fileId,
+                    dep.line || 0
+                  ]);
+                }
+              }
+            }
+          }
+        }
+        if (typeDeps.length > 0) {
+          console.log(`   📐 Найдено типовых зависимостей: ${typeDeps.length} в ${path.basename(filePath)}`);
+        }
+      } catch (error) {
+        // Игнорируем ошибки чтения
+      }
+    }
   }
 
   // ============================================
-  // 5. СТАТИСТИКА (упрощенная)
+  // 5. СТАТИСТИКА (обновленная)
   // ============================================
 
   const totalFunctions = functions.length;
@@ -759,10 +1093,8 @@ export function generateCompactReport(
   const totalModules = moduleCounter;
   const totalFiles = fileCounter;
 
-  // Вычисляем дополнительные метрики
   const asyncFuncs = functions.filter(f => f[5] && f[5].includes('a')).length;
 
-  // Функции без вызовов (изолированные)
   const funcsWithCalls = new Set<number>();
   const calledFuncs = new Set<number>();
   for (const call of relations.calls) {
@@ -775,7 +1107,6 @@ export function generateCompactReport(
     return !funcsWithCalls.has(funcIdx) && !calledFuncs.has(funcIdx);
   }).length;
 
-  // Среднее и максимальное число вызовов
   let avgCalls = 0;
   let maxCalls = 0;
   if (totalFunctions > 0) {
@@ -790,6 +1121,15 @@ export function generateCompactReport(
       maxCalls = Math.max(...counts);
     }
   }
+
+  // НОВАЯ СТАТИСТИКА
+  const diCount = relations.dynamicImports.length;
+  const cfgCount = relations.configRefs.length;
+  const extCount = relations.externalLibs.length;
+  const vtCount = relations.vueTemplates.length;
+  const asyncChainsCount = relations.asyncChains.length;
+  const closuresCount = relations.closures.length;
+  const typeDepsCount = relations.typeDeps.length;
 
   const stats = includeStats ? {
     tf: totalFunctions,
@@ -818,7 +1158,16 @@ export function generateCompactReport(
     exportedWithCalls: 0,
     defaultExports: 0,
     typeExports: 0,
-    typeImports: 0
+    typeImports: 0,
+    // НОВЫЕ СТАТИСТИКИ - теперь будут заполняться!
+    di: diCount,
+    cfg: cfgCount,
+    ext: extCount,
+    vt: vtCount,
+    asyncChains: asyncChainsCount,
+    closures: closuresCount,
+    reflections: 0,
+    typeDeps: typeDepsCount,
   } : undefined;
 
   // ============================================
@@ -826,56 +1175,56 @@ export function generateCompactReport(
   // ============================================
 
   const report: any = {
-    v: '5.0.0-optimized',
+    v: '5.1.0-optimized',
     ts: new Date().toISOString(),
     r: 'm1',
   };
 
-  // Индексы (только mi и fl, fi удален)
   report.mi = moduleIndex;
   report.fl = fileIndex;
-
-  // Функции (новый компактный формат)
   report.fns = functions;
 
-  // СЕКЦИЯ SELF FUNCTIONS (с индексом sf1, sf2, ...)
   if (includeSelfFunctions && selfFunctions.length > 0) {
     report.sf = selfFunctions;
   }
 
-  // Константы (новая секция)
   if (includeConstants && constants.length > 0) {
     report.cn = constants;
   }
 
-  // Все связи
   if (includeRelations) {
     report.gr = {
-      c: relations.calls || [],
+      c: useCompression ? compressCalls(relations.calls || []) : relations.calls || [],
       i: relations.imports || [],
-      e: relations.exports || [], // СОХРАНЕН ТЕКУЩИЙ ФОРМАТ
+      e: relations.exports || [],
       h: relations.inheritance || [],
       td: relations.typeDeps || [],
       re: relations.reExports || [],
       uc: relations.constUses || [],
       cd: relations.constDeps || [],
       ce: relations.constExports || [],
+      // НОВЫЕ СВЯЗИ - теперь с данными!
+      di: relations.dynamicImports || [],
+      cfg: relations.configRefs || [],
+      ext: relations.externalLibs || [],
+      vt: relations.vueTemplates || [],
+      async: relations.asyncChains || [],
+      closures: relations.closures || [],
+      reflection: relations.reflections || [],
+      types: relations.typeDeps || [],
     };
   } else {
-    report.graph = relations.calls || [];
+    report.graph = useCompression ? compressCalls(relations.calls || []) : relations.calls || [];
   }
 
-  // Статистика (упрощенная)
   if (stats) {
     report.st = stats;
   }
 
-  // Легенда флагов
   if (functions.some(f => f[5] && f[5] !== '0')) {
     report.flg = FLAG_MAP;
   }
 
-  // Дополнительная информация о типах связей
   if (includeRelations) {
     report.legend = {
       callTypes: {
@@ -883,6 +1232,7 @@ export function generateCompactReport(
         a: 'async',
         m: 'method',
         c: 'callback',
+        di: 'dynamic-import',
       },
       importTypes: {
         n: 'named',
@@ -915,7 +1265,31 @@ export function generateCompactReport(
         enum: 'enum',
         config: 'config',
       },
+      dynamicImportTypes: {
+        literal: 'literal',
+        template: 'template-literal',
+        concat: 'concatenation',
+      },
+      configTypes: {
+        env: 'environment-variable',
+        file: 'config-file',
+        variable: 'config-variable',
+      },
+      vueTemplateTypes: {
+        component: 'component',
+        directive: 'directive',
+      },
     };
+  }
+
+  if (useCompression) {
+    compressPaths(report);
+  }
+
+  const migrated = migrateReport(report);
+
+  if (useCaching && cacheKey) {
+    reportCache.set(cacheKey, migrated);
   }
 
   // ============================================
@@ -923,7 +1297,7 @@ export function generateCompactReport(
   // ============================================
 
   if (outputPath) {
-    const json = JSON.stringify(report, null, 2);
+    const json = JSON.stringify(migrated, null, 2);
     const outputDir = path.dirname(outputPath);
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
@@ -950,30 +1324,45 @@ export function generateCompactReport(
     console.log(`   📌 Экспортов констант: ${(relations.constExports || []).length}`);
     console.log(`   📌 Модулей: ${moduleCounter}`);
     console.log(`   📌 Файлов: ${fileCounter}`);
+
+    console.log(`\n📊 НОВЫЕ ТИПЫ СВЯЗЕЙ (интегрированы!):`);
+    console.log(`   📌 Динамических импортов: ${(relations.dynamicImports || []).length}`);
+    console.log(`   📌 Конфигураций: ${(relations.configRefs || []).length}`);
+    console.log(`   📌 Внешних библиотек: ${(relations.externalLibs || []).length}`);
+    console.log(`   📌 Vue шаблонов: ${(relations.vueTemplates || []).length}`);
+    console.log(`   📌 Асинхронных цепочек: ${(relations.asyncChains || []).length}`);
+    console.log(`   📌 Замыканий: ${(relations.closures || []).length}`);
+
     console.log(`   ⏱️  Время: ${duration} сек`);
 
     console.log(`\n💡 СТРУКТУРА ОТЧЕТА (оптимизированная):`);
-    console.log(`   📌 Индексы: mi, fl (fi удален - данные в fns)`);
-    console.log(`   📌 Функции: fns (компактные массивы) ✅ НОВЫЙ ФОРМАТ`);
+    console.log(`   📌 Индексы: mi, fl`);
+    console.log(`   📌 Функции: fns (компактные массивы)`);
     console.log(`   📌 Self функции: sf (изолированные функции) ✅ НОВОЕ`);
-    console.log(`   📌 Константы: cn (новая секция) ✅ НОВОЕ`);
+    console.log(`   📌 Константы: cn`);
     console.log(`   📌 Связи: gr {`);
     console.log(`      • c  - вызовы (calls)`);
-    console.log(`      • i  - импорты (imports) ✅ НОВЫЙ ФОРМАТ`);
-    console.log(`      • e  - экспорты (exports) 🔒 ТЕКУЩИЙ ФОРМАТ`);
-    console.log(`      • h  - наследование (inheritance) ✅ ИСПРАВЛЕНО`);
-    console.log(`      • td - типовые зависимости (typeDeps) ✅ ИСПРАВЛЕНО`);
-    console.log(`      • re - re-экспорты (reExports) ✅ ИСПРАВЛЕНО`);
-    console.log(`      • uc - использование констант (constUses) ✅ НОВОЕ`);
-    console.log(`      • cd - зависимости констант (constDeps) ✅ ИСПРАВЛЕНО`);
-    console.log(`      • ce - экспорты констант (constExports) ✅ НОВОЕ`);
+    console.log(`      • i  - импорты (imports)`);
+    console.log(`      • e  - экспорты (exports)`);
+    console.log(`      • h  - наследование (inheritance)`);
+    console.log(`      • td - типовые зависимости (typeDeps)`);
+    console.log(`      • re - re-экспорты (reExports)`);
+    console.log(`      • uc - использование констант (constUses)`);
+    console.log(`      • cd - зависимости констант (constDeps)`);
+    console.log(`      • ce - экспорты констант (constExports)`);
+    console.log(`      • di - динамические импорты (dynamicImports) ✅ ИНТЕГРИРОВАНО!`);
+    console.log(`      • cfg - конфигурации (configRefs) ✅ ИНТЕГРИРОВАНО!`);
+    console.log(`      • ext - внешние библиотеки (externalLibs) ✅ ИНТЕГРИРОВАНО!`);
+    console.log(`      • vt - Vue шаблоны (vueTemplates) ✅ ИНТЕГРИРОВАНО!`);
+    console.log(`      • async - асинхронные цепочки (asyncChains) ✅ ИНТЕГРИРОВАНО!`);
+    console.log(`      • closures - замыкания (closures) ✅ ИНТЕГРИРОВАНО!`);
+    console.log(`      • types - типовые зависимости (typeDeps) ✅ ИНТЕГРИРОВАНО!`);
     console.log(`   }`);
-    console.log(`   📌 Статистика: st (упрощенная) ✅ НОВОЕ`);
+    console.log(`   📌 Статистика: st (расширенная) ✅ НОВОЕ`);
     console.log(`   📌 Легенда: legend (расширенная) ✅ НОВОЕ`);
-    console.log(`   📌 ui - УДАЛЕН (дублирование)`);
   }
 
-  return report;
+  return migrated;
 }
 
 // ============================================
@@ -988,6 +1377,15 @@ function encodeFlags(func: any): string {
   if (func.isArrow) flags |= 8;
   if (func.isEventHandler) flags |= 16;
   if (func.isNested) flags |= 32;
+  // НОВЫЕ ФЛАГИ
+  if (func.isSelf) flags |= 64;
+  if (func.isDynamic) flags |= 128;
+  if (func.isConfig) flags |= 256;
+  if (func.isExternal) flags |= 512;
+  if (func.isVueTemplate) flags |= 1024;
+  if (func.isAsyncChain) flags |= 2048;
+  if (func.isClosure) flags |= 4096;
+  if (func.isTypeDep) flags |= 8192;
 
   if (flags === 0) return '0';
 
@@ -1004,9 +1402,6 @@ function encodeFlags(func: any): string {
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ПОИСКА
 // ============================================
 
-/**
- * Находит функцию по имени в отчете
- */
 export function findFunctionByName(report: any, name: string): any | null {
   if (!report.fns) return null;
   for (const func of report.fns) {
@@ -1024,9 +1419,6 @@ export function findFunctionByName(report: any, name: string): any | null {
   return null;
 }
 
-/**
- * Находит self функцию по имени в отчете
- */
 export function findSelfFunctionByName(report: any, name: string): any | null {
   if (!report.sf) return null;
   for (const sf of report.sf) {
@@ -1042,9 +1434,6 @@ export function findSelfFunctionByName(report: any, name: string): any | null {
   return null;
 }
 
-/**
- * Находит константу по имени в отчете
- */
 export function findConstantByName(report: any, name: string): any | null {
   if (!report.cn) return null;
   for (const constItem of report.cn) {
@@ -1063,41 +1452,26 @@ export function findConstantByName(report: any, name: string): any | null {
   return null;
 }
 
-/**
- * Получает вызовы функции по ее ID
- */
 export function getFunctionCalls(report: any, funcId: string): any[] {
   if (!report.gr || !report.gr.c) return [];
   const idx = parseInt(funcId.replace('fn', ''), 10);
   return report.gr.c.filter((call: any) => call[0] === idx);
 }
 
-/**
- * Получает вызывающие функцию по ее ID
- */
 export function getFunctionCallers(report: any, funcId: string): any[] {
   if (!report.gr || !report.gr.c) return [];
   const idx = parseInt(funcId.replace('fn', ''), 10);
   return report.gr.c.filter((call: any) => call[1] === idx);
 }
 
-/**
- * Получает имя файла по ID
- */
 export function getFileName(report: any, fileId: string): string | null {
   return report.fl?.[fileId] || null;
 }
 
-/**
- * Получает имя модуля по ID
- */
 export function getModuleName(report: any, moduleId: string): string | null {
   return report.mi?.[moduleId] || null;
 }
 
-/**
- * Получает полную информацию о функции по ID
- */
 export function getFunctionInfo(report: any, funcId: string): any | null {
   if (!report.fns) return null;
   for (const func of report.fns) {
@@ -1117,9 +1491,6 @@ export function getFunctionInfo(report: any, funcId: string): any | null {
   return null;
 }
 
-/**
- * Получает все self функции из отчета
- */
 export function getAllSelfFunctions(report: any): any[] {
   if (!report.sf) return [];
   return report.sf.map((sf: any) => ({
@@ -1130,17 +1501,10 @@ export function getAllSelfFunctions(report: any): any[] {
   }));
 }
 
-/**
- * Проверяет, является ли функция self (изолированной)
- */
 export function isSelfFunction(report: any, funcName: string): boolean {
   if (!report.sf) return false;
   return report.sf.some((sf: any) => sf[1] === funcName);
 }
-
-// ============================================
-// ДЕКОДИРОВАНИЕ ФЛАГОВ
-// ============================================
 
 export function decodeFlags(flags: string): Record<string, boolean> {
   const result: Record<string, boolean> = {
@@ -1150,6 +1514,14 @@ export function decodeFlags(flags: string): Record<string, boolean> {
     isArrow: false,
     isEventHandler: false,
     isNested: false,
+    isSelf: false,
+    isDynamic: false,
+    isConfig: false,
+    isExternal: false,
+    isVueTemplate: false,
+    isAsyncChain: false,
+    isClosure: false,
+    isTypeDep: false,
   };
 
   if (!flags || flags === '0') return result;
@@ -1164,12 +1536,26 @@ export function decodeFlags(flags: string): Record<string, boolean> {
         if (flag & 8) result.isArrow = true;
         if (flag & 16) result.isEventHandler = true;
         if (flag & 32) result.isNested = true;
+        if (flag & 64) result.isSelf = true;
+        if (flag & 128) result.isDynamic = true;
+        if (flag & 256) result.isConfig = true;
+        if (flag & 512) result.isExternal = true;
+        if (flag & 1024) result.isVueTemplate = true;
+        if (flag & 2048) result.isAsyncChain = true;
+        if (flag & 4096) result.isClosure = true;
+        if (flag & 8192) result.isTypeDep = true;
       }
     }
   }
 
   return result;
 }
+
+// ============================================
+// ЭКСПОРТ КЭША ДЛЯ ВНЕШНЕГО ИСПОЛЬЗОВАНИЯ
+// ============================================
+
+export { reportCache, compressPaths, compressCalls, migrateReport };
 
 // ============================================
 // ЭКСПОРТ ТИПОВ ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ
@@ -1198,4 +1584,8 @@ export default {
   getAllSelfFunctions,
   isSelfFunction,
   decodeFlags,
+  reportCache,
+  compressPaths,
+  compressCalls,
+  migrateReport,
 };

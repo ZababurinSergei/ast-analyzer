@@ -149,6 +149,82 @@ export interface UltraCompactConfig {
   compressCalledBy: boolean;
 }
 
+// ============================================
+// НОВАЯ СЕКЦИЯ: АНАЛИЗАТОРЫ
+// ============================================
+
+export interface AnalyzersConfig {
+  /** Анализ динамических импортов import() */
+  dynamicImports: boolean;
+  /** Анализ ссылок на конфигурации (process.env, config файлы) */
+  configRefs: boolean;
+  /** Анализ внешних библиотек */
+  externalLibs: boolean;
+  /** Анализ Vue шаблонов */
+  vueTemplates: boolean;
+  /** Анализ асинхронных цепочек */
+  asyncChains: boolean;
+  /** Анализ замыканий */
+  closures: boolean;
+  /** Анализ типовых зависимостей */
+  typeDeps: boolean;
+  /** Анализ изолированных функций (self functions) */
+  selfFunctions: boolean;
+}
+
+// ============================================
+// НОВАЯ СЕКЦИЯ: СЖАТИЕ
+// ============================================
+
+export interface CompressionConfig {
+  /** Включить сжатие данных */
+  enabled: boolean;
+  /** Delta-кодирование для чисел (строки, позиции) */
+  deltaEncoding: boolean;
+  /** RLE сжатие для повторяющих паттернов */
+  rleCompression: boolean;
+  /** Сжатие путей (сокращение длинных путей) */
+  pathCompression: boolean;
+  /** Минимальная длина пути для сжатия */
+  minPathLength: number;
+}
+
+// ============================================
+// НОВАЯ СЕКЦИЯ: КЭШИРОВАНИЕ
+// ============================================
+
+export interface CachingConfig {
+  /** Включить кэширование результатов */
+  enabled: boolean;
+  /** Время жизни кэша в миллисекундах (по умолчанию 5 минут) */
+  ttl: number;
+  /** Максимальное количество записей в кэше */
+  maxEntries: number;
+  /** Включить кэширование на диск */
+  persistToDisk: boolean;
+  /** Путь для сохранения кэша на диск */
+  cachePath: string;
+}
+
+// ============================================
+// НОВАЯ СЕКЦИЯ: МИГРАЦИЯ
+// ============================================
+
+export interface MigrationConfig {
+  /** Включить миграцию данных */
+  enabled: boolean;
+  /** Целевая версия формата */
+  targetVersion: string;
+  /** Автоматически мигрировать старые данные */
+  autoMigrate: boolean;
+  /** Сохранять резервную копию при миграции */
+  backupOnMigrate: boolean;
+}
+
+// ============================================
+// ОСНОВНОЙ ИНТЕРФЕЙС КОНФИГУРАЦИИ
+// ============================================
+
 export interface CompactReportConfig {
   version: string;
   entityFields: EntityFieldsConfig;
@@ -160,11 +236,27 @@ export interface CompactReportConfig {
   activePreset: PresetName;
   /** Новая секция для ультра-компактного режима */
   ultraCompact: UltraCompactConfig;
+  /** НОВАЯ СЕКЦИЯ: Анализаторы */
+  analyzers: AnalyzersConfig;
+  /** НОВАЯ СЕКЦИЯ: Сжатие */
+  compression: CompressionConfig;
+  /** НОВАЯ СЕКЦИЯ: Кэширование */
+  caching: CachingConfig;
+  /** НОВАЯ СЕКЦИЯ: Миграция */
+  migration: MigrationConfig;
   getConfig(): PresetConfig;
   getEnabledEntityFields(): (keyof EntityFieldsConfig)[];
   getEnabledRelationshipFields(relationship: keyof RelationshipFieldsConfig): string[];
   isEntityTypeEnabled(type: string): boolean;
   isModuleIncluded(modulePath: string): boolean;
+  /** Проверить, включен ли анализатор */
+  isAnalyzerEnabled(analyzer: keyof AnalyzersConfig): boolean;
+  /** Получить настройки сжатия */
+  getCompressionConfig(): CompressionConfig;
+  /** Получить настройки кэширования */
+  getCachingConfig(): CachingConfig;
+  /** Получить настройки миграции */
+  getMigrationConfig(): MigrationConfig;
 }
 
 // ============================================
@@ -325,6 +417,52 @@ export const COMPACT_REPORT_CONFIG: CompactReportConfig = {
     removeNameFromEntities: true, // Удалить name из entities
     removeFileFromEntities: true, // Удалить file из entities
     compressCalledBy: false, // Сжать calledBy (пока отключено)
+  },
+
+  // ============================================
+  // НОВАЯ СЕКЦИЯ: АНАЛИЗАТОРЫ
+  // ============================================
+  analyzers: {
+    dynamicImports: true, // Анализ динамических импортов import()
+    configRefs: true, // Анализ ссылок на конфигурации
+    externalLibs: true, // Анализ внешних библиотек
+    vueTemplates: true, // Анализ Vue шаблонов
+    asyncChains: true, // Анализ асинхронных цепочек
+    closures: true, // Анализ замыканий
+    typeDeps: true, // Анализ типовых зависимостей
+    selfFunctions: true, // Анализ изолированных функций
+  },
+
+  // ============================================
+  // НОВАЯ СЕКЦИЯ: СЖАТИЕ
+  // ============================================
+  compression: {
+    enabled: true, // Включить сжатие данных
+    deltaEncoding: true, // Delta-кодирование для чисел
+    rleCompression: true, // RLE сжатие для повторяющихся паттернов
+    pathCompression: true, // Сжатие путей
+    minPathLength: 30, // Минимальная длина пути для сжатия
+  },
+
+  // ============================================
+  // НОВАЯ СЕКЦИЯ: КЭШИРОВАНИЕ
+  // ============================================
+  caching: {
+    enabled: true, // Включить кэширование
+    ttl: 300000, // 5 минут
+    maxEntries: 100, // Максимум записей в кэше
+    persistToDisk: false, // Сохранять на диск
+    cachePath: './.ast-cache', // Путь для кэша на диске
+  },
+
+  // ============================================
+  // НОВАЯ СЕКЦИЯ: МИГРАЦИЯ
+  // ============================================
+  migration: {
+    enabled: true, // Включить миграцию
+    targetVersion: '5.1.0', // Целевая версия
+    autoMigrate: true, // Автоматическая миграция
+    backupOnMigrate: true, // Резервная копия при миграции
   },
 
   /**
@@ -830,6 +968,34 @@ export const COMPACT_REPORT_CONFIG: CompactReportConfig = {
       return !excludeModules.some((m: string) => modulePath.includes(m));
     }
     return true;
+  },
+
+  /**
+   * Проверить, включен ли анализатор
+   */
+  isAnalyzerEnabled(analyzer: keyof AnalyzersConfig): boolean {
+    return this.analyzers[analyzer] !== false;
+  },
+
+  /**
+   * Получить настройки сжатия
+   */
+  getCompressionConfig(): CompressionConfig {
+    return this.compression;
+  },
+
+  /**
+   * Получить настройки кэширования
+   */
+  getCachingConfig(): CachingConfig {
+    return this.caching;
+  },
+
+  /**
+   * Получить настройки миграции
+   */
+  getMigrationConfig(): MigrationConfig {
+    return this.migration;
   },
 };
 
