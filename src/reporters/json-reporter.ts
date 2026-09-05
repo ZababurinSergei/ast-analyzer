@@ -1,5 +1,6 @@
 // src/reporters/json-reporter.ts
-// ПОЛНАЯ ВЕРСИЯ С УЛУЧШЕННЫМИ АНАЛИЗАТОРАМИ
+// ОБНОВЛЕННАЯ ВЕРСИЯ - использует analyzers модуль
+// Полностью очищена от дублирующихся анализаторов
 
 import fs from 'fs';
 import path from 'path';
@@ -88,8 +89,20 @@ import { buildSummary } from './modules/summary.js';
 
 import { buildPackages } from './modules/packages.js';
 
-// Импортируем idManager для генерации ID
+// ✅ Импортируем idManager для генерации ID
 import idManager from '../core/IdManager.js';
+
+// ✅ Импортируем анализаторы из единого модуля
+import {
+  extractDynamicImports,
+  extractConfigRefs,
+  extractExternalLibs,
+  extractVueTemplates,
+  extractAsyncChains,
+  extractClosures,
+  extractTypeDeps,
+  analyzeContent,
+} from '../analyzers/index.js';
 
 // ============================================================
 // КЭШИРОВАНИЕ РЕЗУЛЬТАТОВ
@@ -117,7 +130,6 @@ export class AnalysisCache {
   }
 
   set(key: string, data: any): void {
-    // Если превышен лимит, удаляем самые старые записи
     if (this.cache.size >= this.maxEntries) {
       const oldest = Array.from(this.cache.entries())
         .sort((a, b) => a[1].timestamp - b[1].timestamp)
@@ -157,7 +169,7 @@ export class AnalysisCache {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
+      hash = (hash << 5) - hash + char;
       hash = hash & hash;
     }
     return hash.toString(36);
@@ -210,12 +222,10 @@ export class DataMigrator {
   }
 
   private migrateToV51(data: any): any {
-    // Добавляем self functions если их нет
     if (!data.sf) data.sf = [];
     if (!data.st) data.st = {};
     if (!data.st.tsf) data.st.tsf = data.sf.length || 0;
 
-    // Добавляем легенду если её нет
     if (!data.legend) {
       data.legend = {
         callTypes: {
@@ -292,7 +302,7 @@ export type {
 };
 
 // ============================================================
-// ЭКСПОРТ ВСЕХ ФУНКЦИЙ
+// ЭКСПОРТ ВСЕХ ФУНКЦИЙ (кроме анализаторов - они в analyzers/)
 // ============================================================
 
 export {
@@ -334,861 +344,27 @@ export { buildSummary } from './modules/summary.js';
 export { buildPackages } from './modules/packages.js';
 
 // ============================================================
-// НОВЫЕ АНАЛИЗАТОРЫ
+// РЕЭКСПОРТ АНАЛИЗАТОРОВ ИЗ analyzers МОДУЛЯ
 // ============================================================
 
-/**
- * 1. Извлечение динамических импортов: import()
- */
-export function extractDynamicImports(content: string): any[] {
-  const imports: any[] = [];
-  const regex = /import\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/g;
-  let match;
-  while ((match = regex.exec(content)) !== null) {
-    const path = match[1];
-    const line = content.substring(0, match.index).split('\n').length + 1;
-    let type = 'literal';
-    if (path && path.includes('${')) type = 'template';
-    else if (path && (path.includes('+') || path.includes('?'))) type = 'conditional';
-    else if (path && /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(path)) type = 'variable';
-
-    imports.push({
-      path: path || '',
-      line,
-      type,
-      index: match.index,
-    });
-  }
-  return imports;
-}
-
-/**
- * 2. Извлечение ссылок на конфигурации
- */
-export function extractConfigRefs(content: string): any[] {
-  const configs: any[] = [];
-  const patterns = [
-    { regex: /process\.env\.([A-Z_][A-Z0-9_]*)/g, type: 'env' },
-    { regex: /require\s*\(\s*['"]([^'"]*\.config\.(js|ts|mjs|cjs))['"]\s*\)/g, type: 'require' },
-    { regex: /import\s+.*\s+from\s+['"]([^'"]*\.config\.(js|ts|mjs|cjs))['"]/g, type: 'import' },
-    { regex: /import\s*\(\s*['"]([^'"]*\.config\.(js|ts|mjs|cjs))['"]\s*\)/g, type: 'dynamic' },
-    { regex: /(?:const|let|var)\s+config\s*=\s*require\s*\(\s*['"]([^'"]*\.config\.(js|ts))['"]\s*\)/g, type: 'require' },
-  ];
-
-  for (const { regex, type } of patterns) {
-    let match;
-    while ((match = regex.exec(content)) !== null) {
-      const name = match[1];
-      if (name) {
-        const line = content.substring(0, match.index).split('\n').length + 1;
-        configs.push({
-          name,
-          type,
-          line,
-          fullMatch: match[0],
-        });
-      }
-    }
-  }
-
-  return configs;
-}
-
-/**
- * 3. Извлечение внешних библиотек
- */
-export function extractExternalLibs(content: string): any[] {
-  const libs: any[] = [];
-  const libMap = new Map<string, { count: number; firstLine: number; imports: string[] }>();
-
-  // Импорты
-  const importRegex = /import\s+(?:type\s+)?(?:{[^}]*}|[^{}\s]+|\*\s+as\s+\w+)\s+from\s+['"]([^.'"][^'"]*)['"]/g;
-  let match;
-  while ((match = importRegex.exec(content)) !== null) {
-    const name = match[1];
-    if (name && !name.startsWith('.') && !name.startsWith('/')) {
-      const baseName = name.split('/')[0] || name;
-      if (!libMap.has(baseName)) {
-        libMap.set(baseName, { count: 0, firstLine: 0, imports: [] });
-      }
-      const entry = libMap.get(baseName)!;
-      entry.count++;
-      if (entry.firstLine === 0) {
-        entry.firstLine = content.substring(0, match.index).split('\n').length + 1;
-      }
-      if (!entry.imports.includes(name)) {
-        entry.imports.push(name);
-      }
-    }
-  }
-
-  // require()
-  const requireRegex = /(?:const|let|var)\s+\w+\s*=\s*require\s*\(\s*['"]([^.'"][^'"]*)['"]\s*\)/g;
-  while ((match = requireRegex.exec(content)) !== null) {
-    const name = match[1];
-    if (name && !name.startsWith('.') && !name.startsWith('/')) {
-      const baseName = name.split('/')[0] || name;
-      if (!libMap.has(baseName)) {
-        libMap.set(baseName, { count: 0, firstLine: 0, imports: [] });
-      }
-      const entry = libMap.get(baseName)!;
-      entry.count++;
-      if (entry.firstLine === 0) {
-        entry.firstLine = content.substring(0, match.index).split('\n').length + 1;
-      }
-      if (!entry.imports.includes(name)) {
-        entry.imports.push(name);
-      }
-    }
-  }
-
-  for (const [name, data] of libMap) {
-    libs.push({
-      name,
-      count: data.count,
-      firstLine: data.firstLine,
-      imports: data.imports,
-      version: 'unknown',
-    });
-  }
-
-  return libs.sort((a, b) => b.count - a.count);
-}
-
-/**
- * 4. Извлечение Vue шаблонов (ИСПРАВЛЕНО: удалена неиспользуемая переменная lines)
- */
-export function extractVueTemplates(content: string): any[] {
-  const templates: any[] = [];
-
-  // Извлечение компонентов из Vue шаблона
-  const templateMatch = content.match(/<template>([\s\S]*?)<\/template>/);
-  if (templateMatch) {
-    const template = templateMatch[1] || '';
-
-    // Статические компоненты <ComponentName>
-    const staticRegex = /<([A-Z][a-zA-Z0-9]*)/g;
-    let match;
-    while ((match = staticRegex.exec(template)) !== null) {
-      const name = match[1];
-      if (name) {
-        const line = template.substring(0, match.index).split('\n').length + 1;
-        templates.push({
-          name,
-          type: 'static',
-          line,
-          fileLine: line,
-        });
-      }
-    }
-
-    // Динамические компоненты <component :is="...">
-    const dynamicRegex = /<component\s+:is\s*=\s*["']([^"']+)["']/g;
-    while ((match = dynamicRegex.exec(template)) !== null) {
-      const name = match[1];
-      if (name) {
-        const line = template.substring(0, match.index).split('\n').length + 1;
-        templates.push({
-          name,
-          type: 'dynamic',
-          line,
-          fileLine: line,
-        });
-      }
-    }
-
-    // Слоты
-    const slotRegex = /<slot\s+(?:name\s*=\s*["']([^"']+)["'])?/g;
-    while ((match = slotRegex.exec(template)) !== null) {
-      const name = match[1] || 'default';
-      const line = template.substring(0, match.index).split('\n').length + 1;
-      templates.push({
-        name: `slot:${name}`,
-        type: 'slot',
-        line,
-        fileLine: line,
-      });
-    }
-
-    // Директивы
-    const directiveRegex = /(v-(?:if|for|show|model|on|bind))\s*[:=]/g;
-    while ((match = directiveRegex.exec(template)) !== null) {
-      const name = match[1];
-      if (name) {
-        const line = template.substring(0, match.index).split('\n').length + 1;
-        templates.push({
-          name,
-          type: 'directive',
-          line,
-          fileLine: line,
-        });
-      }
-    }
-  }
-
-  return templates;
-}
-
-/**
- * 5. Извлечение асинхронных цепочек (УЛУЧШЕННАЯ ВЕРСИЯ)
- */
-export function extractAsyncChains(content: string): any[] {
-  const chains: any[] = [];
-
-  if (!content || content.trim() === '') {
-    return chains;
-  }
-
-  // 1. async function name() { ... }
-  const asyncFuncRegex = /async\s+function\s+(\w+)\s*\([^)]*\)\s*\{([\s\S]*?)(?=\n\s*\})/g;
-  let match;
-  while ((match = asyncFuncRegex.exec(content)) !== null) {
-    const name = match[1];
-    const body = match[2] || '';
-    const awaitCount = (body.match(/await/g) || []).length;
-    const line = content.substring(0, match.index).split('\n').length + 1;
-
-    if (awaitCount > 0) {
-      const awaitChain: string[] = [];
-      const awaitRegex = /await\s+(\w+)\s*\(/g;
-      let awaitMatch;
-      while ((awaitMatch = awaitRegex.exec(body)) !== null) {
-        if (awaitMatch && awaitMatch[1]) {
-          awaitChain.push(awaitMatch[1]);
-        }
-      }
-
-      const hasPromiseAll = body.includes('Promise.all');
-      const hasTryCatch = body.includes('try') && body.includes('catch');
-
-      chains.push({
-        name: name || 'anonymous',
-        line,
-        awaitCount,
-        chain: awaitChain,
-        hasTryCatch,
-        hasPromiseAll,
-        type: 'async-function',
-        body: body.length > 100 ? body.substring(0, 100) + '...' : body,
-      });
-    }
-  }
-
-  // 2. const name = async () => { ... }
-  const arrowRegex = /(?:const|let)\s+(\w+)\s*=\s*async\s*\([^)]*\)\s*=>\s*\{([\s\S]*?)(?=\n\s*\})/g;
-  while ((match = arrowRegex.exec(content)) !== null) {
-    const name = match[1];
-    const body = match[2] || '';
-    const awaitCount = (body.match(/await/g) || []).length;
-    const line = content.substring(0, match.index).split('\n').length + 1;
-
-    if (awaitCount > 0 && name) {
-      const awaitChain: string[] = [];
-      const awaitRegex = /await\s+(\w+)\s*\(/g;
-      let awaitMatch;
-      while ((awaitMatch = awaitRegex.exec(body)) !== null) {
-        if (awaitMatch && awaitMatch[1]) {
-          awaitChain.push(awaitMatch[1]);
-        }
-      }
-
-      const hasPromiseAll = body.includes('Promise.all');
-      const hasTryCatch = body.includes('try') && body.includes('catch');
-
-      const exists = chains.some(c => c.name === name && c.line === line);
-      if (!exists) {
-        chains.push({
-          name: name || 'anonymous',
-          line,
-          awaitCount,
-          chain: awaitChain,
-          hasTryCatch,
-          hasPromiseAll,
-          type: 'arrow-function',
-          body: body.length > 100 ? body.substring(0, 100) + '...' : body,
-        });
-      }
-    }
-  }
-
-  // 3. async function expression: const name = async function() { ... }
-  const funcExprRegex = /(?:const|let)\s+(\w+)\s*=\s*async\s+function\s*\([^)]*\)\s*\{([\s\S]*?)(?=\n\s*\})/g;
-  while ((match = funcExprRegex.exec(content)) !== null) {
-    const name = match[1];
-    const body = match[2] || '';
-    const awaitCount = (body.match(/await/g) || []).length;
-    const line = content.substring(0, match.index).split('\n').length + 1;
-
-    if (awaitCount > 0 && name) {
-      const awaitChain: string[] = [];
-      const awaitRegex = /await\s+(\w+)\s*\(/g;
-      let awaitMatch;
-      while ((awaitMatch = awaitRegex.exec(body)) !== null) {
-        if (awaitMatch && awaitMatch[1]) {
-          awaitChain.push(awaitMatch[1]);
-        }
-      }
-
-      const hasPromiseAll = body.includes('Promise.all');
-      const hasTryCatch = body.includes('try') && body.includes('catch');
-
-      const exists = chains.some(c => c.name === name && c.line === line);
-      if (!exists) {
-        chains.push({
-          name: name || 'anonymous',
-          line,
-          awaitCount,
-          chain: awaitChain,
-          hasTryCatch,
-          hasPromiseAll,
-          type: 'function-expression',
-          body: body.length > 100 ? body.substring(0, 100) + '...' : body,
-        });
-      }
-    }
-  }
-
-  // 4. IIFE async: (async () => { ... })()
-  const iifeRegex = /\(\s*async\s*\([^)]*\)\s*=>\s*\{([\s\S]*?)\}\s*\)\(/g;
-  while ((match = iifeRegex.exec(content)) !== null) {
-    const body = match[1] || '';
-    const awaitCount = (body.match(/await/g) || []).length;
-    const line = content.substring(0, match.index).split('\n').length + 1;
-
-    if (awaitCount > 0) {
-      const awaitChain: string[] = [];
-      const awaitRegex = /await\s+(\w+)\s*\(/g;
-      let awaitMatch;
-      while ((awaitMatch = awaitRegex.exec(body)) !== null) {
-        if (awaitMatch && awaitMatch[1]) {
-          awaitChain.push(awaitMatch[1]);
-        }
-      }
-
-      const hasPromiseAll = body.includes('Promise.all');
-      const hasTryCatch = body.includes('try') && body.includes('catch');
-
-      chains.push({
-        name: 'iife',
-        line,
-        awaitCount,
-        chain: awaitChain,
-        hasTryCatch,
-        hasPromiseAll,
-        type: 'iife',
-        body: body.length > 100 ? body.substring(0, 100) + '...' : body,
-      });
-    }
-  }
-
-  // 5. Методы классов: async method() { ... }
-  const methodRegex = /async\s+(\w+)\s*\([^)]*\)\s*\{([\s\S]*?)(?=\n\s*\})/g;
-  while ((match = methodRegex.exec(content)) !== null) {
-    const name = match[1];
-    const body = match[2] || '';
-    const awaitCount = (body.match(/await/g) || []).length;
-    const line = content.substring(0, match.index).split('\n').length + 1;
-
-    if (awaitCount > 0 && name) {
-      const awaitChain: string[] = [];
-      const awaitRegex = /await\s+(\w+)\s*\(/g;
-      let awaitMatch;
-      while ((awaitMatch = awaitRegex.exec(body)) !== null) {
-        if (awaitMatch && awaitMatch[1]) {
-          awaitChain.push(awaitMatch[1]);
-        }
-      }
-
-      const hasPromiseAll = body.includes('Promise.all');
-      const hasTryCatch = body.includes('try') && body.includes('catch');
-
-      const exists = chains.some(c => c.name === name && c.line === line);
-      if (!exists) {
-        chains.push({
-          name: name || 'anonymous',
-          line,
-          awaitCount,
-          chain: awaitChain,
-          hasTryCatch,
-          hasPromiseAll,
-          type: 'method',
-          body: body.length > 100 ? body.substring(0, 100) + '...' : body,
-        });
-      }
-    }
-  }
-
-  // 6. Стрелочные функции с телом в скобках: async () => { ... }
-  const arrowBlockRegex = /async\s*\([^)]*\)\s*=>\s*\{([\s\S]*?)\}/g;
-  while ((match = arrowBlockRegex.exec(content)) !== null) {
-    const body = match[1] || '';
-    const awaitCount = (body.match(/await/g) || []).length;
-    const line = content.substring(0, match.index).split('\n').length + 1;
-
-    if (awaitCount > 0) {
-      const awaitChain: string[] = [];
-      const awaitRegex = /await\s+(\w+)\s*\(/g;
-      let awaitMatch;
-      while ((awaitMatch = awaitRegex.exec(body)) !== null) {
-        if (awaitMatch && awaitMatch[1]) {
-          awaitChain.push(awaitMatch[1]);
-        }
-      }
-
-      const hasPromiseAll = body.includes('Promise.all');
-      const hasTryCatch = body.includes('try') && body.includes('catch');
-
-      // Пытаемся найти имя через родительский узел
-      let name = 'anonymous';
-      const parentMatch = content.substring(0, match.index).match(/(?:const|let)\s+(\w+)\s*=\s*$/);
-      if (parentMatch && parentMatch[1]) {
-        name = parentMatch[1];
-      }
-
-      const exists = chains.some(c => c.name === name && c.line === line);
-      if (!exists) {
-        chains.push({
-          name: name || 'anonymous',
-          line,
-          awaitCount,
-          chain: awaitChain,
-          hasTryCatch,
-          hasPromiseAll,
-          type: 'arrow-block',
-          body: body.length > 100 ? body.substring(0, 100) + '...' : body,
-        });
-      }
-    }
-  }
-
-  // Удаляем дубликаты
-  const unique: any[] = [];
-  const seen = new Set<string>();
-  for (const chain of chains) {
-    const key = `${chain.name}:${chain.line}:${chain.awaitCount}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      unique.push(chain);
-    }
-  }
-
-  return unique;
-}
-
-/**
- * 6. Извлечение замыканий (УЛУЧШЕННАЯ ВЕРСИЯ)
- */
-export function extractClosures(content: string): any[] {
-  const closures: any[] = [];
-
-  if (!content || content.trim() === '') {
-    return closures;
-  }
-
-  // 1. Ищем функции, которые используют внешние переменные
-  // function name() { ... }
-  const funcRegex = /function\s+(\w+)?\s*\([^)]*\)\s*\{([\s\S]*?)(?=\n\s*\})/g;
-  let match;
-  while ((match = funcRegex.exec(content)) !== null) {
-    const funcName = match[1] || 'anonymous';
-    const body = match[2] || '';
-    const start = match.index;
-    const line = content.substring(0, start).split('\n').length + 1;
-
-    // Ищем объявленные внутри переменные
-    const declared = new Set<string>();
-    const declRegex = /(?:var|let|const)\s+(\w+)/g;
-    let declMatch;
-    while ((declMatch = declRegex.exec(body)) !== null) {
-      if (declMatch && declMatch[1]) {
-        declared.add(declMatch[1]);
-      }
-    }
-
-    // Ищем параметры функции
-    const paramMatch = match[0].match(/\(([^)]*)\)/);
-    if (paramMatch && paramMatch[1]) {
-      const params = paramMatch[1].split(',').map(p => p.trim().split(':')[0]?.trim() || '').filter(Boolean);
-      for (const p of params) {
-        if (p) {
-          declared.add(p);
-        }
-      }
-    }
-
-    // Ищем использованные внешние переменные
-    const used = new Set<string>();
-    const varRegex = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\b/g;
-    let varMatch;
-    const reserved = new Set([
-      'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch',
-      'case', 'break', 'continue', 'throw', 'try', 'catch', 'finally', 'debugger',
-      'var', 'let', 'const', 'class', 'extends', 'new', 'this', 'super', 'typeof',
-      'instanceof', 'void', 'delete', 'true', 'false', 'null', 'undefined', 'NaN',
-      'Infinity', 'arguments', 'eval', 'import', 'export', 'default', 'async', 'await',
-      'yield', 'static', 'get', 'set', 'constructor', 'abstract', 'interface',
-      'Promise', 'console', 'process', 'module', 'require', '__dirname', '__filename'
-    ]);
-
-    while ((varMatch = varRegex.exec(body)) !== null) {
-      const name = varMatch[1];
-      if (name && !declared.has(name) && !reserved.has(name)) {
-        used.add(name);
-      }
-    }
-
-    if (used.size > 0) {
-      // Проверяем, не является ли это замыканием в замыкании
-      const nestedClosures = extractClosures(body);
-      const nestedCount = nestedClosures.length;
-
-      closures.push({
-        name: funcName || 'anonymous',
-        line,
-        variables: Array.from(used),
-        count: used.size,
-        bodyLength: body.length,
-        isNested: nestedCount > 0,
-        nestedCount: nestedCount,
-      });
-    }
-  }
-
-  // 2. Стрелочные функции: () => { ... }
-  const arrowRegex = /\([^)]*\)\s*=>\s*\{([\s\S]*?)(?=\n\s*\})/g;
-  while ((match = arrowRegex.exec(content)) !== null) {
-    const body = match[1] || '';
-    const start = match.index;
-    const line = content.substring(0, start).split('\n').length + 1;
-
-    // Находим имя переменной, в которой хранится стрелочная функция
-    let funcName = 'anonymous';
-    const nameMatch = content.substring(0, start).match(/(?:const|let|var)\s+(\w+)\s*=\s*$/);
-    if (nameMatch && nameMatch[1]) {
-      funcName = nameMatch[1];
-    }
-
-    // Ищем объявленные внутри переменные
-    const declared = new Set<string>();
-    const declRegex = /(?:var|let|const)\s+(\w+)/g;
-    let declMatch;
-    while ((declMatch = declRegex.exec(body)) !== null) {
-      if (declMatch && declMatch[1]) {
-        declared.add(declMatch[1]);
-      }
-    }
-
-    // Ищем параметры
-    const paramMatch = match[0].match(/\(([^)]*)\)/);
-    if (paramMatch && paramMatch[1]) {
-      const params = paramMatch[1].split(',').map(p => p.trim().split(':')[0]?.trim() || '').filter(Boolean);
-      for (const p of params) {
-        if (p) {
-          declared.add(p);
-        }
-      }
-    }
-
-    // Ищем использованные внешние переменные
-    const used = new Set<string>();
-    const varRegex = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\b/g;
-    let varMatch;
-    const reserved = new Set([
-      'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch',
-      'case', 'break', 'continue', 'throw', 'try', 'catch', 'finally', 'debugger',
-      'var', 'let', 'const', 'class', 'extends', 'new', 'this', 'super', 'typeof',
-      'instanceof', 'void', 'delete', 'true', 'false', 'null', 'undefined', 'NaN',
-      'Infinity', 'arguments', 'eval', 'import', 'export', 'default', 'async', 'await',
-      'yield', 'static', 'get', 'set', 'constructor', 'abstract', 'interface',
-      'Promise', 'console', 'process', 'module', 'require', '__dirname', '__filename'
-    ]);
-
-    while ((varMatch = varRegex.exec(body)) !== null) {
-      const name = varMatch[1];
-      if (name && !declared.has(name) && !reserved.has(name)) {
-        used.add(name);
-      }
-    }
-
-    if (used.size > 0) {
-      closures.push({
-        name: funcName || 'anonymous',
-        line,
-        variables: Array.from(used),
-        count: used.size,
-        bodyLength: body.length,
-        isNested: false,
-        nestedCount: 0,
-        type: 'arrow',
-      });
-    }
-  }
-
-  // 3. Методы объектов: method() { ... }
-  const methodRegex = /(\w+)\s*\([^)]*\)\s*\{([\s\S]*?)(?=\n\s*\})/g;
-  while ((match = methodRegex.exec(content)) !== null) {
-    const funcName = match[1];
-    const body = match[2] || '';
-    const start = match.index;
-    const line = content.substring(0, start).split('\n').length + 1;
-
-    // Проверяем, что это не ключевое слово
-    const keywords = ['if', 'else', 'for', 'while', 'switch', 'try', 'catch', 'finally'];
-    if (!funcName || keywords.includes(funcName)) {
-      continue;
-    }
-
-    // Ищем объявленные внутри переменные
-    const declared = new Set<string>();
-    const declRegex = /(?:var|let|const)\s+(\w+)/g;
-    let declMatch;
-    while ((declMatch = declRegex.exec(body)) !== null) {
-      if (declMatch && declMatch[1]) {
-        declared.add(declMatch[1]);
-      }
-    }
-
-    // Ищем параметры
-    const paramMatch = match[0].match(/\(([^)]*)\)/);
-    if (paramMatch && paramMatch[1]) {
-      const params = paramMatch[1].split(',').map(p => p.trim().split(':')[0]?.trim() || '').filter(Boolean);
-      for (const p of params) {
-        if (p) {
-          declared.add(p);
-        }
-      }
-    }
-
-    // Ищем использованные внешние переменные
-    const used = new Set<string>();
-    const varRegex = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\b/g;
-    let varMatch;
-    const reserved = new Set([
-      'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch',
-      'case', 'break', 'continue', 'throw', 'try', 'catch', 'finally', 'debugger',
-      'var', 'let', 'const', 'class', 'extends', 'new', 'this', 'super', 'typeof',
-      'instanceof', 'void', 'delete', 'true', 'false', 'null', 'undefined', 'NaN',
-      'Infinity', 'arguments', 'eval', 'import', 'export', 'default', 'async', 'await',
-      'yield', 'static', 'get', 'set', 'constructor', 'abstract', 'interface',
-      'Promise', 'console', 'process', 'module', 'require', '__dirname', '__filename'
-    ]);
-
-    while ((varMatch = varRegex.exec(body)) !== null) {
-      const name = varMatch[1];
-      if (name && !declared.has(name) && !reserved.has(name)) {
-        used.add(name);
-      }
-    }
-
-    if (used.size > 0) {
-      closures.push({
-        name: funcName || 'anonymous',
-        line,
-        variables: Array.from(used),
-        count: used.size,
-        bodyLength: body.length,
-        isNested: false,
-        nestedCount: 0,
-        type: 'method',
-      });
-    }
-  }
-
-  // 4. IIFE: (function() { ... })()
-  const iifeRegex = /\(\s*function\s*\([^)]*\)\s*\{([\s\S]*?)\}\s*\)\(/g;
-  while ((match = iifeRegex.exec(content)) !== null) {
-    const body = match[1] || '';
-    const start = match.index;
-    const line = content.substring(0, start).split('\n').length + 1;
-
-    // Ищем объявленные внутри переменные
-    const declared = new Set<string>();
-    const declRegex = /(?:var|let|const)\s+(\w+)/g;
-    let declMatch;
-    while ((declMatch = declRegex.exec(body)) !== null) {
-      if (declMatch && declMatch[1]) {
-        declared.add(declMatch[1]);
-      }
-    }
-
-    // Ищем использованные внешние переменные
-    const used = new Set<string>();
-    const varRegex = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\b/g;
-    let varMatch;
-    const reserved = new Set([
-      'function', 'return', 'if', 'else', 'for', 'while', 'do', 'switch',
-      'case', 'break', 'continue', 'throw', 'try', 'catch', 'finally', 'debugger',
-      'var', 'let', 'const', 'class', 'extends', 'new', 'this', 'super', 'typeof',
-      'instanceof', 'void', 'delete', 'true', 'false', 'null', 'undefined', 'NaN',
-      'Infinity', 'arguments', 'eval', 'import', 'export', 'default', 'async', 'await',
-      'yield', 'static', 'get', 'set', 'constructor', 'abstract', 'interface',
-      'Promise', 'console', 'process', 'module', 'require', '__dirname', '__filename'
-    ]);
-
-    while ((varMatch = varRegex.exec(body)) !== null) {
-      const name = varMatch[1];
-      if (name && !declared.has(name) && !reserved.has(name)) {
-        used.add(name);
-      }
-    }
-
-    if (used.size > 0) {
-      closures.push({
-        name: 'iife',
-        line,
-        variables: Array.from(used),
-        count: used.size,
-        bodyLength: body.length,
-        isNested: false,
-        nestedCount: 0,
-        type: 'iife',
-      });
-    }
-  }
-
-  // Удаляем дубликаты (похожие замыкания с одинаковыми переменными)
-  const unique: any[] = [];
-  const seen = new Set<string>();
-  for (const closure of closures) {
-    const key = `${closure.name}:${closure.line}:${closure.variables.sort().join(',')}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      unique.push(closure);
-    }
-  }
-
-  // Сортируем по количеству переменных
-  unique.sort((a, b) => b.count - a.count);
-
-  return unique;
-}
-
-/**
- * 7. Извлечение типовых зависимостей
- */
-export function extractTypeDeps(content: string): any[] {
-  const deps: any[] = [];
-
-  // Интерфейсы
-  const interfaceRegex = /(?:export\s+)?interface\s+(\w+)\s*(?:<[^>]+>)?\s*(?:extends\s+([^{]+))?\s*\{/g;
-  let match;
-  while ((match = interfaceRegex.exec(content)) !== null) {
-    const name = match[1];
-    const extendsStr = match[2] || '';
-    const line = content.substring(0, match.index).split('\n').length + 1;
-    const isExported = content.substring(0, match.index).includes('export interface');
-
-    const extendsList = extendsStr.split(',').map(e => e.trim()).filter(Boolean);
-
-    deps.push({
-      name: name || '',
-      type: 'interface',
-      line,
-      isExported,
-      extends: extendsList,
-      properties: extractInterfaceProperties(content, match.index),
-    });
-  }
-
-  // Type aliases
-  const typeRegex = /(?:export\s+)?type\s+(\w+)\s*(?:<[^>]+>)?\s*=\s*([^;]+);/g;
-  while ((match = typeRegex.exec(content)) !== null) {
-    const name = match[1];
-    const definition = match[2]?.trim() || '';
-    const line = content.substring(0, match.index).split('\n').length + 1;
-    const isExported = content.substring(0, match.index).includes('export type');
-
-    let kind = 'alias';
-    if (definition.startsWith('{')) kind = 'object';
-    else if (definition.startsWith('[')) kind = 'array';
-    else if (definition.includes('|')) kind = 'union';
-    else if (definition.includes('&')) kind = 'intersection';
-    else if (definition.includes('=>')) kind = 'function';
-
-    deps.push({
-      name: name || '',
-      type: 'type-alias',
-      line,
-      isExported,
-      definition,
-      kind,
-    });
-  }
-
-  // Generics
-  const genericRegex = /<(\w+)(?:\s+extends\s+(\w+))?>/g;
-  while ((match = genericRegex.exec(content)) !== null) {
-    const name = match[1];
-    const extendsType = match[2] || null;
-    const line = content.substring(0, match.index).split('\n').length + 1;
-
-    const exists = deps.some(d => d.name === name && d.type === 'generic');
-    if (!exists) {
-      deps.push({
-        name: name || '',
-        type: 'generic',
-        line,
-        extends: extendsType,
-      });
-    }
-  }
-
-  // Enum
-  const enumRegex = /(?:export\s+)?enum\s+(\w+)\s*\{/g;
-  while ((match = enumRegex.exec(content)) !== null) {
-    const name = match[1];
-    const line = content.substring(0, match.index).split('\n').length + 1;
-    const isExported = content.substring(0, match.index).includes('export enum');
-
-    deps.push({
-      name: name || '',
-      type: 'enum',
-      line,
-      isExported,
-    });
-  }
-
-  return deps;
-}
-
-/**
- * Вспомогательная функция: извлечение свойств интерфейса
- */
-export function extractInterfaceProperties(content: string, startIndex: number): string[] {
-  const properties: string[] = [];
-  let braceCount = 0;
-  let i = startIndex;
-  let foundOpen = false;
-
-  while (i < content.length && !foundOpen) {
-    if (content[i] === '{') {
-      foundOpen = true;
-      braceCount = 1;
-      i++;
-    } else {
-      i++;
-    }
-  }
-
-  while (i < content.length && braceCount > 0) {
-    if (content[i] === '{') braceCount++;
-    if (content[i] === '}') braceCount--;
-
-    if (braceCount === 1) {
-      const lineEnd = content.indexOf('\n', i);
-      const line = content.substring(i, lineEnd > 0 ? lineEnd : content.length);
-      const propMatch = line.match(/^\s*(\w+)\s*(?:\?)?\s*:/);
-      if (propMatch && propMatch[1]) {
-        properties.push(propMatch[1]);
-      }
-    }
-
-    i++;
-    if (content[i] === '\n') i++;
-  }
-
-  return properties;
-}
+export {
+  extractDynamicImports,
+  extractConfigRefs,
+  extractExternalLibs,
+  extractVueTemplates,
+  extractAsyncChains,
+  extractClosures,
+  extractTypeDeps,
+  analyzeContent,
+  type AnalysisResult,
+  type DynamicImport,
+  type ConfigRef,
+  type ExternalLib,
+  type VueTemplate,
+  type AsyncChain,
+  type Closure,
+  type TypeDep,
+} from '../analyzers/index.js';
 
 // ============================================================
 // extractEntitiesFromFile - ОСНОВНАЯ ФУНКЦИЯ
@@ -1245,52 +421,51 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
     const content = sourceFile.getText();
 
     // ============================================================
-    // НОВЫЕ АНАЛИЗАТОРЫ
+    // ИСПОЛЬЗУЕМ analyzeContent ИЗ analyzers МОДУЛЯ
     // ============================================================
 
-    // 1. Динамические импорты
-    const dynamicImports = extractDynamicImports(content);
-    if (dynamicImports.length > 0) {
-      (entities as any).dynamicImports = dynamicImports;
+    const analysis = analyzeContent(content, absolutePath, {
+      includeDynamicImports: true,
+      includeConfigRefs: true,
+      includeExternalLibs: true,
+      includeVueTemplates: true,
+      includeAsyncChains: true,
+      includeClosures: true,
+      includeTypeDeps: true,
+    });
+
+    // Добавляем результаты анализа в entities
+    if (analysis.dynamicImports.length > 0) {
+      (entities as any).dynamicImports = analysis.dynamicImports;
     }
 
-    // 2. Конфигурации
-    const configRefs = extractConfigRefs(content);
-    if (configRefs.length > 0) {
-      (entities as any).configRefs = configRefs;
+    if (analysis.configRefs.length > 0) {
+      (entities as any).configRefs = analysis.configRefs;
     }
 
-    // 3. Внешние библиотеки
-    const externalLibs = extractExternalLibs(content);
-    if (externalLibs.length > 0) {
-      (entities as any).externalLibs = externalLibs;
+    if (analysis.externalLibs.length > 0) {
+      (entities as any).externalLibs = analysis.externalLibs;
     }
 
-    // 4. Vue шаблоны
-    if (filePath.endsWith('.vue')) {
-      const vueTemplates = extractVueTemplates(content);
-      if (vueTemplates.length > 0) {
-        (entities as any).vueTemplates = vueTemplates;
-      }
+    if (analysis.vueTemplates.length > 0) {
+      (entities as any).vueTemplates = analysis.vueTemplates;
     }
 
-    // 5. Асинхронные цепочки (УЛУЧШЕННАЯ ВЕРСИЯ)
-    const asyncChains = extractAsyncChains(content);
-    if (asyncChains.length > 0) {
-      (entities as any).asyncChains = asyncChains;
+    if (analysis.asyncChains.length > 0) {
+      (entities as any).asyncChains = analysis.asyncChains;
     }
 
-    // 6. Замыкания (УЛУЧШЕННАЯ ВЕРСИЯ)
-    const closures = extractClosures(content);
-    if (closures.length > 0) {
-      (entities as any).closures = closures;
+    if (analysis.closures.length > 0) {
+      (entities as any).closures = analysis.closures;
     }
 
-    // 7. Типовые зависимости
-    const typeDeps = extractTypeDeps(content);
-    if (typeDeps.length > 0) {
-      (entities as any).typeDeps = typeDeps;
+    if (analysis.typeDeps.length > 0) {
+      (entities as any).typeDeps = analysis.typeDeps;
     }
+
+    // ============================================================
+    // ИЗВЛЕЧЕНИЕ ИМПОРТОВ
+    // ============================================================
 
     const importedNames = new Set<string>();
     try {
@@ -1331,6 +506,10 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       console.warn('⚠️ Ошибка при извлечении импортов:', error);
     }
 
+    // ============================================================
+    // ИЗВЛЕЧЕНИЕ ФУНКЦИЙ
+    // ============================================================
+
     const functions = sourceFile.getFunctions();
     for (const functionDecl of functions) {
       const name = functionDecl.getName();
@@ -1362,7 +541,7 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
             complexity++;
           }
         });
-      } catch (error: any) {
+      } catch {
         complexity = 1;
       }
 
@@ -1371,8 +550,8 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         hasEval: bodyText.includes('eval(') || bodyText.includes('eval ('),
         hasProcessEnv: bodyText.includes('process.env'),
         hasSensitiveData:
-          /['"][a-zA-Z0-9_\-]{32,}['"]/.test(bodyText) ||
-          /'"]sk-[a-zA-Z0-9]{20,}['"]/.test(bodyText),
+          /['\"][a-zA-Z0-9_\-]{32,}['\"]/.test(bodyText) ||
+          /'\"sk-[a-zA-Z0-9]{20,}['\"]/.test(bodyText),
         hasExec: bodyText.includes('exec(') || bodyText.includes('exec ('),
         hasPassword: /\b(password|passwd|pwd|secret|token|api[_-]?key)\b/i.test(bodyText),
       };
@@ -1380,7 +559,8 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       const moduleName = path.basename(path.dirname(absolutePath));
 
       const hasCalls = calls.length > 0;
-      const isSelf = !hasCalls;
+      const hasCalledBy = false;
+      const isSelf = !hasCalls && !hasCalledBy;
 
       entities.functions.push({
         name,
@@ -1423,6 +603,10 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       });
     }
 
+    // ============================================================
+    // ИЗВЛЕЧЕНИЕ СТРЕЛОЧНЫХ ФУНКЦИЙ
+    // ============================================================
+
     const variableDeclarations = sourceFile.getVariableDeclarations();
     for (const decl of variableDeclarations) {
       const name = decl.getName();
@@ -1454,8 +638,8 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
             hasEval: bodyText.includes('eval(') || bodyText.includes('eval ('),
             hasProcessEnv: bodyText.includes('process.env'),
             hasSensitiveData:
-              /['"][a-zA-Z0-9_\-]{32,}['"]/.test(bodyText) ||
-              /'"]sk-[a-zA-Z0-9]{20,}['"]/.test(bodyText),
+              /['\"][a-zA-Z0-9_\-]{32,}['\"]/.test(bodyText) ||
+              /'\"sk-[a-zA-Z0-9]{20,}['\"]/.test(bodyText),
             hasExec: bodyText.includes('exec(') || bodyText.includes('exec ('),
             hasPassword: /\b(password|passwd|pwd|secret|token|api[_-]?key)\b/i.test(bodyText),
           };
@@ -1468,7 +652,7 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
                 complexity++;
               }
             });
-          } catch (error: any) {
+          } catch {
             complexity = 1;
           }
 
@@ -1525,6 +709,10 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       }
     }
 
+    // ============================================================
+    // ИЗВЛЕЧЕНИЕ КОНСТАНТ И ПЕРЕМЕННЫХ
+    // ============================================================
+
     for (const decl of variableDeclarations) {
       const name = decl.getName();
       const initializer = decl.getInitializer();
@@ -1549,6 +737,10 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         entities.variables.push(info);
       }
     }
+
+    // ============================================================
+    // ИЗВЛЕЧЕНИЕ КЛАССОВ
+    // ============================================================
 
     const classes = sourceFile.getClasses();
     for (const cls of classes) {
@@ -1586,6 +778,10 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       });
     }
 
+    // ============================================================
+    // ИЗВЛЕЧЕНИЕ ИНТЕРФЕЙСОВ
+    // ============================================================
+
     const interfaces = sourceFile.getInterfaces();
     for (const intf of interfaces) {
       const name = intf.getName();
@@ -1607,6 +803,10 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         _safeInfo: null,
       });
     }
+
+    // ============================================================
+    // ИЗВЛЕЧЕНИЕ ТИПОВ
+    // ============================================================
 
     const typeAliases = sourceFile.getTypeAliases();
     for (const typeAlias of typeAliases) {
@@ -1632,7 +832,7 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
     console.log(`   Переменных: ${entities.variables.length}`);
     console.log(`   Импортов: ${entities.imports?.length || 0}`);
 
-    // НОВОЕ: статистика по улучшенным анализаторам
+    // Статистика по новым анализаторам
     const diCount = (entities as any).dynamicImports?.length || 0;
     const cfgCount = (entities as any).configRefs?.length || 0;
     const extCount = (entities as any).externalLibs?.length || 0;
@@ -1642,7 +842,7 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
     const typeCount = (entities as any).typeDeps?.length || 0;
 
     if (diCount + cfgCount + extCount + vtCount + asyncCount + closureCount + typeCount > 0) {
-      console.log(`   📊 Расширенный анализ (улучшенный):`);
+      console.log(`   📊 Расширенный анализ (из analyzers модуля):`);
       if (diCount) console.log(`      Динамических импортов: ${diCount}`);
       if (cfgCount) console.log(`      Конфигураций: ${cfgCount}`);
       if (extCount) console.log(`      Внешних библиотек: ${extCount}`);
@@ -1708,31 +908,30 @@ function extractValueFromNode(node: any): any {
     }
 
     return undefined;
-  } catch (error: any) {
+  } catch {
     return undefined;
   }
 }
 
 // ============================================================
-// ЭКСПОРТ ПО УМОЛЧАНИЮ - ТОЛЬКО ИСПОЛЬЗУЕМЫЕ ФУНКЦИИ
+// ЭКСПОРТ ПО УМОЛЧАНИЮ
 // ============================================================
 
 export default {
   extractEntitiesFromFile,
-  // Кэширование
   AnalysisCache,
   analysisCache,
-  // Миграция
   DataMigrator,
   migrator,
-  // Новые анализаторы (улучшенные)
+  // Реэкспорт анализаторов из analyzers модуля
   extractDynamicImports,
   extractConfigRefs,
   extractExternalLibs,
   extractVueTemplates,
-  extractAsyncChains,   // ← УЛУЧШЕННАЯ ВЕРСИЯ
-  extractClosures,      // ← УЛУЧШЕННАЯ ВЕРСИЯ
+  extractAsyncChains,
+  extractClosures,
   extractTypeDeps,
+  analyzeContent,
   metadata: {
     createMetadata,
     getReportName,

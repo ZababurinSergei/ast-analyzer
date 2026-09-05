@@ -1,258 +1,379 @@
 // src/reporters/modules/vue.ts
-// Vue-анализ для отчетов
+// Модуль для анализа Vue компонентов в отчетах
 
-import { analyzeVueComponent } from '../../modes/vue-analyzer.js';
-import { EnhancedPackageInfo, VueAnalysis } from './types.js';
-import { safeString } from './utils.js';
+import type { EnhancedPackageInfo, VueAnalysis } from '../../types.js';
 
 /**
- * Добавляет Vue-анализ к пакету
- * @param modulePath - Путь к Vue файлу
- * @param pkg - Объект пакета для обогащения
- * @returns Обогащенный пакет с vueAnalysis
+ * Проверяет, является ли пакет Vue компонентом
  */
-export function enrichWithVueAnalysis(
-  modulePath: string,
-  pkg: EnhancedPackageInfo
-): EnhancedPackageInfo {
-  if (!modulePath.endsWith('.vue')) {
-    return pkg;
-  }
-
-  try {
-    const vueAnalysis = analyzeVueComponent(modulePath, {
-      includeTemplateAST: true,
-      includeScriptAST: true,
-      extractComposableCalls: true,
-    });
-
-    if (vueAnalysis) {
-      // Явно используем тип VueAnalysis для типизации
-      const vueData: VueAnalysis = {
-        props: vueAnalysis.props,
-        emits: vueAnalysis.emits,
-        slots: vueAnalysis.slots,
-        composables: vueAnalysis.composables.map((c: any) => safeString(c.name || c)),
-        templateComplexity: vueAnalysis.template.complexity || 0,
-        scriptType: vueAnalysis.script.isSetup ? 'setup' : 'options',
-        isTS: vueAnalysis.script.isTS || false,
-        stats: {
-          scriptLines: vueAnalysis.stats.scriptLines || 0,
-          templateLines: vueAnalysis.stats.templateLines || 0,
-          styleCount: vueAnalysis.stats.styleCount || 0,
-        },
-      };
-
-      return {
-        ...pkg,
-        vueAnalysis: vueData,
-        fileStats: {
-          ...pkg.fileStats,
-          functions:
-            (pkg.fileStats?.functions || 0) +
-            (vueAnalysis.composables?.length || 0) +
-            (vueAnalysis.script?.content?.split('\n')?.filter((l: string) => l.includes('function'))
-              ?.length || 0),
-        },
-      };
-    }
-  } catch (error: any) {
-    console.warn(
-      `⚠️ Failed to analyze Vue component ${modulePath}:`,
-      error?.message || String(error)
-    );
-  }
-
-  return pkg;
+export function isVuePackage(pkg: EnhancedPackageInfo): boolean {
+  return (
+    pkg.language === 'vue' ||
+    (pkg.fileStats && pkg.fileStats.functions > 0 && pkg.resolved?.includes('.vue'))
+  );
 }
 
 /**
- * Добавляет Vue-анализ ко всем пакетам
- * @param packages - Объект со всеми пакетами
- * @returns Обогащенные пакеты с vueAnalysis
+ * Извлекает Vue анализ из пакета
  */
-export function enrichAllWithVueAnalysis(
-  packages: Record<string, EnhancedPackageInfo>
-): Record<string, EnhancedPackageInfo> {
-  const enrichedPackages: Record<string, EnhancedPackageInfo> = {};
-
-  for (const [modulePath, pkg] of Object.entries(packages)) {
-    enrichedPackages[modulePath] = enrichWithVueAnalysis(modulePath, pkg);
-  }
-
-  return enrichedPackages;
-}
-
-/**
- * Подсчитывает Vue-статистику по всем пакетам
- */
-export function calculateVueStats(packages: Record<string, EnhancedPackageInfo>): {
-  vueComponents: number;
-  totalComposables: number;
-  vueFiles: string[];
-  vueAnalysisMap: Map<string, VueAnalysis>;
-} {
-  const vueFiles: string[] = [];
-  let totalComposables = 0;
-  const vueAnalysisMap = new Map<string, VueAnalysis>();
-
-  for (const [modulePath, pkg] of Object.entries(packages)) {
-    if (pkg.vueAnalysis) {
-      vueFiles.push(modulePath);
-      totalComposables += pkg.vueAnalysis.composables?.length || 0;
-
-      // Сохраняем VueAnalysis в Map для дальнейшего использования
-      vueAnalysisMap.set(modulePath, pkg.vueAnalysis);
-    }
-  }
-
-  return {
-    vueComponents: vueFiles.length,
-    totalComposables,
-    vueFiles,
-    vueAnalysisMap,
-  };
-}
-
-/**
- * Генерирует отчет по Vue-компонентам с использованием типа VueAnalysis
- */
-export function generateVueReport(packages: Record<string, EnhancedPackageInfo>): string {
-  const stats = calculateVueStats(packages);
-
-  let report = '## 🎯 Vue Components Report\n\n';
-  report += `**Total Vue components:** ${stats.vueComponents}\n`;
-  report += `**Total composables:** ${stats.totalComposables}\n\n`;
-
-  if (stats.vueFiles.length > 0) {
-    report += '### 📁 Vue Files\n\n';
-    for (const file of stats.vueFiles) {
-      const pkg = packages[file];
-      if (!pkg?.vueAnalysis) continue;
-
-      // Явно используем VueAnalysis тип
-      const vueData: VueAnalysis = pkg.vueAnalysis;
-
-      report += `#### ${file}\n`;
-      report += `- **Props:** ${vueData.props?.names?.length || 0}\n`;
-      report += `  - ${vueData.props?.names?.join(', ') || 'none'}\n`;
-      report += `- **Emits:** ${vueData.emits?.names?.length || 0}\n`;
-      report += `  - ${vueData.emits?.names?.join(', ') || 'none'}\n`;
-      report += `- **Slots:** ${vueData.slots?.length || 0}\n`;
-      report += `  - ${vueData.slots?.join(', ') || 'none'}\n`;
-      report += `- **Composables:** ${vueData.composables?.length || 0}\n`;
-      report += `  - ${vueData.composables?.join(', ') || 'none'}\n`;
-      report += `- **Template complexity:** ${vueData.templateComplexity || 0}\n`;
-      report += `- **TypeScript:** ${vueData.isTS ? '✅' : '❌'}\n`;
-      report += `- **Script type:** ${vueData.scriptType}\n`;
-      report += `- **Lines:** script=${vueData.stats?.scriptLines || 0}, template=${vueData.stats?.templateLines || 0}, styles=${vueData.stats?.styleCount || 0}\n\n`;
-    }
-  } else {
-    report += 'ℹ️ No Vue components found.\n';
-  }
-
-  return report;
-}
-
-/**
- * Получает VueAnalysis для конкретного файла
- */
-export function getVueAnalysis(
-  packages: Record<string, EnhancedPackageInfo>,
-  modulePath: string
-): VueAnalysis | null {
-  const pkg = packages[modulePath];
-  if (!pkg?.vueAnalysis) {
+export function extractVueAnalysis(pkg: EnhancedPackageInfo): VueAnalysis | null {
+  if (!isVuePackage(pkg)) {
     return null;
   }
-  return pkg.vueAnalysis;
-}
 
-/**
- * Проверяет, является ли файл Vue компонентом
- */
-export function isVueFile(modulePath: string): boolean {
-  return modulePath.endsWith('.vue');
-}
-
-/**
- * Получает все Vue файлы из пакетов
- */
-export function getVueFiles(packages: Record<string, EnhancedPackageInfo>): string[] {
-  return Object.keys(packages).filter(path => isVueFile(path));
-}
-
-/**
- * Создает сводку по Vue компонентам в формате таблицы
- */
-export function generateVueSummaryTable(packages: Record<string, EnhancedPackageInfo>): string {
-  const stats = calculateVueStats(packages);
-
-  if (stats.vueFiles.length === 0) {
-    return 'No Vue components found.';
+  // Если уже есть Vue анализ, возвращаем его
+  if (pkg.vueAnalysis) {
+    return pkg.vueAnalysis;
   }
 
-  let table = '| File | Props | Emits | Slots | Composables | Complexity | TypeScript |\n';
-  table += '|------|-------|-------|-------|-------------|------------|------------|\n';
+  // Создаем базовый Vue анализ из данных пакета
+  const vueAnalysis: VueAnalysis = {
+    props: {
+      names: [],
+      types: {},
+      required: {},
+      defaults: {},
+    },
+    emits: {
+      names: [],
+      types: {},
+    },
+    slots: [],
+    composables: [],
+    templateComplexity: 0,
+    scriptType: 'setup',
+    isTS: pkg.language === 'typescript' || pkg.language === 'vue',
+    stats: {
+      scriptLines: pkg.fileStats?.lines || 0,
+      templateLines: 0,
+      styleCount: 0,
+    },
+  };
 
-  for (const file of stats.vueFiles) {
-    const pkg = packages[file];
-    if (!pkg?.vueAnalysis) continue;
-
-    const vueData: VueAnalysis = pkg.vueAnalysis;
-    table += `| ${file} | ${vueData.props?.names?.length || 0} | ${vueData.emits?.names?.length || 0} | ${vueData.slots?.length || 0} | ${vueData.composables?.length || 0} | ${vueData.templateComplexity || 0} | ${vueData.isTS ? '✅' : '❌'} |\n`;
-  }
-
-  return table;
-}
-
-/**
- * Анализирует сложность Vue компонентов
- */
-export function analyzeVueComplexity(packages: Record<string, EnhancedPackageInfo>): {
-  averageComplexity: number;
-  maxComplexity: number;
-  complexComponents: { file: string; complexity: number }[];
-} {
-  const complexities: { file: string; complexity: number }[] = [];
-
-  for (const [file, pkg] of Object.entries(packages)) {
-    if (pkg.vueAnalysis) {
-      const complexity = pkg.vueAnalysis.templateComplexity || 0;
-      complexities.push({ file, complexity });
+  // Извлекаем composables из функций
+  if (pkg.entities && pkg.entities.functions) {
+    for (const func of pkg.entities.functions) {
+      if (func.name && func.name.startsWith('use') && func.isExported) {
+        vueAnalysis.composables.push(func.name);
+      }
     }
   }
 
-  if (complexities.length === 0) {
-    return {
-      averageComplexity: 0,
-      maxComplexity: 0,
-      complexComponents: [],
-    };
-  }
+  return vueAnalysis;
+}
 
-  const sorted = [...complexities].sort((a, b) => b.complexity - a.complexity);
-  const total = complexities.reduce((sum, c) => sum + c.complexity, 0);
-
+/**
+ * Обогащает пакет Vue анализом
+ */
+export function enrichWithVueAnalysis(
+  pkg: EnhancedPackageInfo,
+  vueAnalysis: VueAnalysis
+): EnhancedPackageInfo {
   return {
-    averageComplexity: total / complexities.length,
-    maxComplexity: sorted[0]?.complexity || 0,
-    complexComponents: sorted.filter(c => c.complexity > 20),
+    ...pkg,
+    vueAnalysis,
+    fileStats: {
+      ...pkg.fileStats,
+      functions: pkg.fileStats?.functions || 0,
+      classes: pkg.fileStats?.classes || 0,
+      constants: pkg.fileStats?.constants || 0,
+      interfaces: pkg.fileStats?.interfaces || 0,
+      types: pkg.fileStats?.types || 0,
+      variables: pkg.fileStats?.variables || 0,
+      size: pkg.fileStats?.size || 0,
+      lines: pkg.fileStats?.lines || 0,
+    },
   };
 }
 
-// ============================================================
-// ЭКСПОРТ ПО УМОЛЧАНИЮ
-// ============================================================
+/**
+ * Собирает статистику по Vue компонентам
+ */
+export function collectVueStats(packages: Record<string, EnhancedPackageInfo>): {
+  totalComponents: number;
+  totalComposables: number;
+  byScriptType: { setup: number; options: number };
+  byLanguage: { ts: number; js: number };
+} {
+  const stats = {
+    totalComponents: 0,
+    totalComposables: 0,
+    byScriptType: { setup: 0, options: 0 },
+    byLanguage: { ts: 0, js: 0 },
+  };
 
+  for (const pkg of Object.values(packages)) {
+    if (!isVuePackage(pkg)) continue;
+
+    stats.totalComponents++;
+
+    const vueAnalysis = extractVueAnalysis(pkg);
+    if (vueAnalysis) {
+      stats.totalComposables += vueAnalysis.composables.length;
+
+      if (vueAnalysis.scriptType === 'setup') {
+        stats.byScriptType.setup++;
+      } else {
+        stats.byScriptType.options++;
+      }
+
+      if (vueAnalysis.isTS) {
+        stats.byLanguage.ts++;
+      } else {
+        stats.byLanguage.js++;
+      }
+    }
+  }
+
+  return stats;
+}
+
+/**
+ * Генерирует Markdown отчет по Vue компонентам
+ */
+export function generateVueMarkdownReport(packages: Record<string, EnhancedPackageInfo>): string {
+  const vuePackages = Object.entries(packages).filter(([, pkg]) => isVuePackage(pkg));
+
+  if (vuePackages.length === 0) {
+    return '';
+  }
+
+  const stats = collectVueStats(packages);
+
+  let md = '## 🎯 Vue Components\n\n';
+  md += `**Total components:** ${stats.totalComponents}\n`;
+  md += `**Total composables:** ${stats.totalComposables}\n`;
+  md += `**Script type:** Setup ${stats.byScriptType.setup}, Options ${stats.byScriptType.options}\n`;
+  md += `**Language:** TS ${stats.byLanguage.ts}, JS ${stats.byLanguage.js}\n\n`;
+
+  md += '### 📄 Component List\n\n';
+  md += '| Component | Props | Emits | Slots | Composables | Type |\n';
+  md += '|-----------|-------|-------|-------|-------------|------|\n';
+
+  for (const [path, pkg] of vuePackages) {
+    const vueAnalysis = extractVueAnalysis(pkg);
+    const name = path.split('/').pop()?.replace('.vue', '') || 'unknown';
+
+    if (vueAnalysis) {
+      md += `| ${name} | ${vueAnalysis.props.names.length} | ${vueAnalysis.emits.names.length} | ${vueAnalysis.slots.length} | ${vueAnalysis.composables.length} | ${vueAnalysis.isTS ? 'TS' : 'JS'} |\n`;
+    } else {
+      md += `| ${name} | - | - | - | - | - |\n`;
+    }
+  }
+
+  md += '\n';
+
+  return md;
+}
+
+/**
+ * Генерирует JSON данные по Vue компонентам
+ */
+export function generateVueJSONData(packages: Record<string, EnhancedPackageInfo>): {
+  components: {
+    path: string;
+    name: string;
+    props: string[];
+    emits: string[];
+    slots: string[];
+    composables: string[];
+    isTS: boolean;
+    scriptType: 'setup' | 'options';
+  }[];
+  stats: {
+    total: number;
+    composables: number;
+    setup: number;
+    options: number;
+    ts: number;
+    js: number;
+  };
+} {
+  const components: {
+    path: string;
+    name: string;
+    props: string[];
+    emits: string[];
+    slots: string[];
+    composables: string[];
+    isTS: boolean;
+    scriptType: 'setup' | 'options';
+  }[] = [];
+
+  for (const [path, pkg] of Object.entries(packages)) {
+    if (!isVuePackage(pkg)) continue;
+
+    const vueAnalysis = extractVueAnalysis(pkg);
+    const name = path.split('/').pop()?.replace('.vue', '') || 'unknown';
+
+    components.push({
+      path,
+      name,
+      props: vueAnalysis?.props.names || [],
+      emits: vueAnalysis?.emits.names || [],
+      slots: vueAnalysis?.slots || [],
+      composables: vueAnalysis?.composables || [],
+      isTS: vueAnalysis?.isTS || false,
+      scriptType: vueAnalysis?.scriptType || 'options',
+    });
+  }
+
+  const stats = collectVueStats(packages);
+
+  return {
+    components,
+    stats: {
+      total: stats.totalComponents,
+      composables: stats.totalComposables,
+      setup: stats.byScriptType.setup,
+      options: stats.byScriptType.options,
+      ts: stats.byLanguage.ts,
+      js: stats.byLanguage.js,
+    },
+  };
+}
+
+/**
+ * Находит все Vue компоненты в пакетах
+ */
+export function findVueComponents(packages: Record<string, EnhancedPackageInfo>): string[] {
+  const components: string[] = [];
+
+  for (const [path, pkg] of Object.entries(packages)) {
+    if (isVuePackage(pkg)) {
+      components.push(path);
+    }
+  }
+
+  return components;
+}
+
+/**
+ * Находит все composables в пакетах
+ */
+export function findComposables(
+  packages: Record<string, EnhancedPackageInfo>
+): { name: string; source: string }[] {
+  const composables: { name: string; source: string }[] = [];
+
+  for (const [path, pkg] of Object.entries(packages)) {
+    if (!isVuePackage(pkg)) continue;
+
+    const vueAnalysis = extractVueAnalysis(pkg);
+    if (vueAnalysis) {
+      for (const comp of vueAnalysis.composables) {
+        composables.push({ name: comp, source: path });
+      }
+    }
+  }
+
+  return composables;
+}
+
+/**
+ * Проверяет, используется ли composable
+ */
+export function isComposableUsed(
+  composableName: string,
+  packages: Record<string, EnhancedPackageInfo>
+): boolean {
+  for (const pkg of Object.values(packages)) {
+    if (!isVuePackage(pkg)) continue;
+
+    const vueAnalysis = extractVueAnalysis(pkg);
+    if (vueAnalysis && vueAnalysis.composables.includes(composableName)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Находит неиспользуемые composables
+ */
+export function findUnusedComposables(
+  packages: Record<string, EnhancedPackageInfo>
+): { name: string; source: string }[] {
+  const usedComposables = new Set<string>();
+
+  // Собираем все используемые composables
+  for (const pkg of Object.values(packages)) {
+    if (!isVuePackage(pkg)) continue;
+
+    const vueAnalysis = extractVueAnalysis(pkg);
+    if (vueAnalysis) {
+      for (const comp of vueAnalysis.composables) {
+        usedComposables.add(comp);
+      }
+    }
+  }
+
+  // Находим composables, которые объявлены но не используются
+  const unused: { name: string; source: string }[] = [];
+  const declared = new Map<string, string>();
+
+  for (const [path, pkg] of Object.entries(packages)) {
+    if (!isVuePackage(pkg)) continue;
+
+    const vueAnalysis = extractVueAnalysis(pkg);
+    if (vueAnalysis) {
+      for (const func of pkg.entities?.functions || []) {
+        if (func.name && func.name.startsWith('use') && func.isExported) {
+          declared.set(func.name, path);
+        }
+      }
+    }
+  }
+
+  for (const [name, source] of declared) {
+    if (!usedComposables.has(name)) {
+      unused.push({ name, source });
+    }
+  }
+
+  return unused;
+}
+
+/**
+ * Получает количество Vue компонентов
+ */
+export function getVueComponentCount(packages: Record<string, EnhancedPackageInfo>): number {
+  let count = 0;
+  for (const pkg of Object.values(packages)) {
+    if (isVuePackage(pkg)) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * Получает общее количество composables
+ */
+export function getComposablesCount(packages: Record<string, EnhancedPackageInfo>): number {
+  let count = 0;
+  for (const pkg of Object.values(packages)) {
+    if (!isVuePackage(pkg)) continue;
+    const vueAnalysis = extractVueAnalysis(pkg);
+    if (vueAnalysis) {
+      count += vueAnalysis.composables.length;
+    }
+  }
+  return count;
+}
+
+// Экспорт по умолчанию
 export default {
+  isVuePackage,
+  extractVueAnalysis,
   enrichWithVueAnalysis,
-  enrichAllWithVueAnalysis,
-  calculateVueStats,
-  generateVueReport,
-  getVueAnalysis,
-  isVueFile,
-  getVueFiles,
-  generateVueSummaryTable,
-  analyzeVueComplexity,
+  collectVueStats,
+  generateVueMarkdownReport,
+  generateVueJSONData,
+  findVueComponents,
+  findComposables,
+  isComposableUsed,
+  findUnusedComposables,
+  getVueComponentCount,
+  getComposablesCount,
 };

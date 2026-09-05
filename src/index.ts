@@ -1,5 +1,5 @@
-// packages/ast-analyzer/src/index.ts
-// ИСПРАВЛЕННАЯ ВЕРСИЯ - удалены дублирующиеся экспорты
+// src/index.ts
+// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ - УСТРАНЕНЫ ДУБЛИКАТЫ
 
 // ==========================================
 // ЭКСПОРТ ЯДРА (CORE)
@@ -246,22 +246,46 @@ export {
   generateCompactReport,
   type CompactReport,
   CompactFlags,
-  decodeFlags,
   findFunctionByName,
   getFunctionCalls,
   getFunctionCallers,
   getFileName,
   getModuleName,
   getFunctionInfo,
-  // Self functions
-  getAllSelfFunctions,
-  isSelfFunction,
-  findSelfFunctionByName,
 } from './reporters/compact-reporter.js';
 
-// HTML репортеры (оставляем)
+// ==========================================
+// HTML РЕПОРТЕРЫ (оставляем)
+// ==========================================
+
 export { generateHTMLReport, escapeHtml } from './reporters/html-reporter.js';
 export { generateInteractiveHTML } from './reporters/interactive-reporter.js';
+
+// ==========================================
+// ✅ НОВЫЙ ЭКСПОРТ: АНАЛИЗАТОРЫ (вынесены в отдельный модуль)
+// ==========================================
+
+export {
+  // Основные анализаторы
+  extractDynamicImports,
+  extractConfigRefs,
+  extractExternalLibs,
+  extractVueTemplates,
+  extractAsyncChains,
+  extractClosures,
+  extractTypeDeps,
+  // Универсальная функция
+  analyzeContent,
+  // Типы
+  type DynamicImport,
+  type ConfigRef,
+  type ExternalLib,
+  type VueTemplate,
+  type AsyncChain,
+  type Closure,
+  type TypeDep,
+  type AnalysisResult,
+} from './analyzers/index.js';
 
 // ==========================================
 // ЭКСПОРТ ТИПОВ (только из types.ts)
@@ -282,7 +306,6 @@ export type {
   MethodInfo,
 
   // Структуры анализа
-  AnalysisResult,
   CallGraph as CallGraphType,
 
   // Кластеры
@@ -344,14 +367,6 @@ export {
 // ЭКСПОРТ УТИЛИТ (НОВЫЕ)
 // ==========================================
 
-// Self функции утилиты
-export {
-  // Функции для работы с self функциями
-  getAllSelfFunctions as getAllSelfFunctionsUtil,
-  isSelfFunction as isSelfFunctionUtil,
-  findSelfFunctionByName as findSelfFunctionByNameUtil,
-} from './reporters/compact-reporter.js';
-
 // Сжатие путей
 export { compressPath, pathToIndex, getPathIndexMap, clearPathCache } from './utils/path-utils.js';
 
@@ -359,7 +374,7 @@ export { compressPath, pathToIndex, getPathIndexMap, clearPathCache } from './ut
 export {
   FunctionFlags,
   encodeFlags,
-  decodeFlags as decodeFlagsUtil,
+  decodeFlags,
   getFlagsList,
   hasFlag,
   setFlag,

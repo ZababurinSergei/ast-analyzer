@@ -1,142 +1,275 @@
 // src/reporters/modules/summary.ts
-// Резюме проекта
+import type { ProjectSummary } from '../../types.js';
+import type { EnhancedPackageLockReport } from './types.js';
 
-import { ProjectSummary, ArchitectureMetrics } from './types.js';
+/**
+ * Строит резюме проекта
+ */
+export function buildSummary(report: EnhancedPackageLockReport): ProjectSummary {
+  const packages = Object.values(report.packages || {});
+  const hasVue = packages.some(p => p.language === 'vue' || p.language === 'jsx');
+  const hasTypescript = packages.some(p => p.language === 'typescript');
+  const hasJavaScript = packages.some(p => p.language === 'javascript');
 
-export function buildSummary(
-  rootKey: string,
-  metrics: ArchitectureMetrics,
-  packages: Record<string, any>
-): ProjectSummary {
-  const isMonorepo = Object.keys(packages).some((p: string) => p.includes('packages/'));
+  // Определяем тип проекта
+  let projectType: 'monorepo' | 'single' | 'unknown' = 'unknown';
+  const packageCount = Object.keys(report.packages || {}).length;
+
+  if (packageCount > 1) {
+    // Проверяем, есть ли несколько корневых модулей
+    const roots = Object.values(report.packages || {}).filter(p => p.isEntry);
+    if (roots.length > 1) {
+      projectType = 'monorepo';
+    } else {
+      projectType = 'single';
+    }
+  } else if (packageCount === 1) {
+    projectType = 'single';
+  }
+
+  // Находим точку входа
+  let entryPoint = 'unknown';
+  for (const [path, pkg] of Object.entries(report.packages || {})) {
+    if (pkg.isEntry) {
+      entryPoint = path;
+      break;
+    }
+  }
+
+  // Если не нашли entry point, берем первый пакет
+  if (entryPoint === 'unknown' && packageCount > 0) {
+    const firstPath = Object.keys(report.packages || {})[0];
+    if (firstPath) {
+      entryPoint = firstPath;
+    }
+  }
+
+  // Вычисляем статистику
+  let totalModules = packageCount;
+  let totalFunctions = 0;
+  let vueComponents = 0;
+  let hasCycles = false;
+  let maxDepth = 0;
+
+  // Получаем данные из архитектурных метрик, если они есть
+  const archMetrics = report.architectureMetrics;
+  if (archMetrics) {
+    totalModules = archMetrics.totalModules || packageCount;
+    totalFunctions = archMetrics.totalFunctions || 0;
+    vueComponents = archMetrics.vueComponents || 0;
+    hasCycles = archMetrics.hasCycles || false;
+    maxDepth = archMetrics.maxDepth || 0;
+  } else {
+    // Fallback: вычисляем из пакетов через entities.functions
+    for (const pkg of packages) {
+      if (pkg.entities && pkg.entities.functions) {
+        totalFunctions += pkg.entities.functions.length;
+      }
+      if (pkg.language === 'vue') {
+        vueComponents++;
+      }
+    }
+
+    // Проверяем циклы в графе зависимостей
+    const graph = report.dependencyGraph;
+    if (graph) {
+      // Проверяем наличие циклов через анализ inward/outward зависимостей
+      const visited = new Set<string>();
+      const recursionStack = new Set<string>();
+
+      const dfs = (node: string) => {
+        if (recursionStack.has(node)) {
+          hasCycles = true;
+          return;
+        }
+        if (visited.has(node)) return;
+
+        visited.add(node);
+        recursionStack.add(node);
+
+        const deps = graph.outwardDependencies[node] || [];
+        for (const dep of deps) {
+          dfs(dep);
+          if (hasCycles) break;
+        }
+
+        recursionStack.delete(node);
+      };
+
+      for (const node of Object.keys(graph.outwardDependencies)) {
+        if (!visited.has(node)) {
+          dfs(node);
+          if (hasCycles) break;
+        }
+      }
+    }
+  }
+
+  // Определяем здоровье архитектуры
+  let architectureHealth: 'healthy' | 'moderate' | 'unhealthy' = 'healthy';
+
+  if (hasCycles) {
+    architectureHealth = 'unhealthy';
+  } else if (totalModules > 50 && totalFunctions > 500) {
+    architectureHealth = 'moderate';
+  } else if (totalModules > 100) {
+    architectureHealth = 'moderate';
+  }
+
+  // Технологии
+  const technologies: string[] = [];
+  if (hasTypescript) technologies.push('TypeScript');
+  if (hasJavaScript) technologies.push('JavaScript');
+  if (hasVue) technologies.push('Vue');
+
+  // Краткое резюме
+  let quickSummary = '';
+  if (architectureHealth === 'healthy') {
+    quickSummary = '✅ Архитектура здорова. Нет циклических зависимостей.';
+  } else if (architectureHealth === 'moderate') {
+    quickSummary = '⚠️ Архитектура требует внимания. Возможны проблемы с масштабированием.';
+  } else {
+    quickSummary = '❌ Обнаружены критические проблемы: циклические зависимости.';
+  }
+
+  if (hasCycles) {
+    quickSummary += ' 🔄 Обнаружены циклические зависимости!';
+  }
 
   return {
-    projectType: isMonorepo ? 'monorepo' : 'single',
-    entryPoint: rootKey,
-    totalModules: metrics.totalModules,
-    totalFunctions: metrics.totalFunctions,
-    vueComponents: metrics.vueComponents,
-    hasCycles: metrics.hasCycles,
-    maxDepth: metrics.maxDepth,
-    architectureHealth: metrics.isAcyclic ? '✅ Healthy' : '⚠️ Has cycles',
+    projectType,
+    entryPoint,
+    totalModules,
+    totalFunctions,
+    vueComponents,
+    hasCycles,
+    maxDepth,
+    architectureHealth,
+    quickSummary,
+    technologies: technologies.length > 0 ? technologies : undefined,
   };
 }
 
-// ============================================================
-// ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С РЕЗЮМЕ
-// ============================================================
-
 /**
- * Генерирует краткое текстовое описание проекта
+ * Строит краткое резюме проекта
  */
-export function generateQuickSummary(summary: ProjectSummary): string {
-  const parts: string[] = [];
-
-  parts.push(`📁 Project: ${summary.projectType === 'monorepo' ? 'Monorepo' : 'Single project'}`);
-  parts.push(`📄 Entry point: ${summary.entryPoint}`);
-  parts.push(`📦 Modules: ${summary.totalModules}`);
-  parts.push(`ƒ Functions: ${summary.totalFunctions}`);
-
-  if (summary.vueComponents > 0) {
-    parts.push(`🎯 Vue components: ${summary.vueComponents}`);
+export function buildQuickSummary(report: EnhancedPackageLockReport): string {
+  const summary = buildSummary(report);
+  let result = `📊 Статистика проекта:\n`;
+  result += `   📁 Тип: ${summary.projectType}\n`;
+  result += `   📄 Точка входа: ${summary.entryPoint}\n`;
+  result += `   📦 Модулей: ${summary.totalModules}\n`;
+  result += `   🔧 Функций: ${summary.totalFunctions}\n`;
+  result += `   🧩 Vue компонентов: ${summary.vueComponents}\n`;
+  result += `   🔄 Циклических зависимостей: ${summary.hasCycles ? '✅ ЕСТЬ' : '❌ НЕТ'}\n`;
+  result += `   📏 Максимальная глубина: ${summary.maxDepth}\n`;
+  result += `   🏥 Здоровье архитектуры: ${summary.architectureHealth}\n`;
+  if (summary.technologies && summary.technologies.length > 0) {
+    result += `   🛠️ Технологии: ${summary.technologies.join(', ')}\n`;
   }
-
-  parts.push(`🔄 Cycles: ${summary.hasCycles ? '⚠️ Yes' : '✅ No'}`);
-  parts.push(`📏 Max depth: ${summary.maxDepth}`);
-  parts.push(`🏗️  Health: ${summary.architectureHealth}`);
-
-  return parts.join(' | ');
+  return result;
 }
 
 /**
- * Проверяет, здоров ли проект
+ * Проверяет, есть ли критические проблемы
  */
-export function isProjectHealthy(summary: ProjectSummary): boolean {
-  return !summary.hasCycles && summary.architectureHealth.includes('Healthy');
+export function hasCriticalIssues(summary: ProjectSummary): boolean {
+  return summary.hasCycles || summary.architectureHealth === 'unhealthy';
 }
 
 /**
- * Возвращает уровень зрелости проекта
+ * Проверяет, требует ли проект внимания
  */
-export function getProjectMaturity(
-  summary: ProjectSummary
-): 'excellent' | 'good' | 'needs_improvement' | 'critical' {
-  let score = 0;
-
-  // Нет циклов - хорошо
-  if (!summary.hasCycles) score += 30;
-  else score -= 10;
-
-  // Малая глубина - хорошо
-  if (summary.maxDepth <= 3) score += 20;
-  else if (summary.maxDepth <= 5) score += 10;
-  else score -= 10;
-
-  // Много модулей - хорошо
-  if (summary.totalModules >= 10) score += 20;
-  else if (summary.totalModules >= 5) score += 10;
-
-  // Много функций - хорошо
-  if (summary.totalFunctions >= 50) score += 20;
-  else if (summary.totalFunctions >= 20) score += 10;
-
-  // Vue компоненты - хорошо
-  if (summary.vueComponents > 0) score += 10;
-
-  if (score >= 80) return 'excellent';
-  if (score >= 60) return 'good';
-  if (score >= 40) return 'needs_improvement';
-  return 'critical';
+export function requiresAttention(summary: ProjectSummary): boolean {
+  return summary.architectureHealth !== 'healthy' || summary.totalModules > 100;
 }
 
 /**
- * Генерирует Markdown-отчет на основе резюме
+ * Возвращает рекомендованные действия
  */
-export function generateSummaryMarkdown(summary: ProjectSummary): string {
-  let md = '## 📊 Project Summary\n\n';
+export function getRecommendations(summary: ProjectSummary): string[] {
+  const recommendations: string[] = [];
 
-  md += '| Metric | Value |\n';
-  md += '|--------|-------|\n';
-  md += `| **Project Type** | ${summary.projectType} |\n`;
-  md += `| **Entry Point** | \`${summary.entryPoint}\` |\n`;
-  md += `| **Total Modules** | ${summary.totalModules} |\n`;
-  md += `| **Total Functions** | ${summary.totalFunctions} |\n`;
-  md += `| **Vue Components** | ${summary.vueComponents} |\n`;
-  md += `| **Cyclic Dependencies** | ${summary.hasCycles ? '⚠️ Yes' : '✅ No'} |\n`;
-  md += `| **Max Depth** | ${summary.maxDepth} |\n`;
-  md += `| **Architecture Health** | ${summary.architectureHealth} |\n`;
-
-  md += '\n';
-
-  // Добавляем рекомендации
   if (summary.hasCycles) {
-    md += '### ⚠️ Recommendations\n\n';
-    md += '1. **Break cyclic dependencies** - Use dependency inversion\n';
-    md += '2. **Extract common code** to separate modules\n';
-    md += '3. **Review module boundaries** and responsibilities\n';
+    recommendations.push('🔴 Устраните циклические зависимости');
+    recommendations.push('   - Выделите общий код в отдельный модуль');
+    recommendations.push('   - Используйте Dependency Injection');
+    recommendations.push('   - Внедрите интерфейсы для разрыва связей');
   }
 
-  if (summary.maxDepth > 5) {
-    md += '\n⚠️ **Deep dependency tree detected** (depth > 5). Consider:\n';
-    md += '- Reducing unnecessary dependencies\n';
-    md += '- Flattening the module structure\n';
-    md += '- Using dependency injection\n';
+  if (summary.totalModules > 100) {
+    recommendations.push('📦 Рассмотрите разбиение на подпроекты или монорепозиторий');
   }
 
-  const maturity = getProjectMaturity(summary);
-  md += `\n**Maturity Level:** ${maturity.toUpperCase().replace('_', ' ')}\n`;
+  if (summary.totalFunctions > 1000) {
+    recommendations.push('🔧 Оптимизируйте количество функций, возможно дублирование кода');
+  }
 
-  return md;
+  if (summary.vueComponents > 50) {
+    recommendations.push(
+      '⚛️ Рассмотрите использование композиции (composables) для Vue компонентов'
+    );
+  }
+
+  if (summary.maxDepth > 10) {
+    recommendations.push('📏 Слишком глубокая вложенность зависимостей. Рассмотрите рефакторинг.');
+  }
+
+  if (recommendations.length === 0) {
+    recommendations.push('✅ Архитектура в отличном состоянии!');
+  }
+
+  return recommendations;
 }
 
-// ============================================================
+/**
+ * Генерирует полный отчет по проекту
+ */
+export function generateProjectSummaryReport(report: EnhancedPackageLockReport): string {
+  const summary = buildSummary(report);
+  const recommendations = getRecommendations(summary);
+
+  let output = '='.repeat(70) + '\n';
+  output += '📊 SUMMARY\n';
+  output += '='.repeat(70) + '\n\n';
+
+  output += `📁 Project Type: ${summary.projectType}\n`;
+  output += `📄 Entry Point: ${summary.entryPoint}\n`;
+  output += `📦 Total Modules: ${summary.totalModules}\n`;
+  output += `🔧 Total Functions: ${summary.totalFunctions}\n`;
+  output += `🧩 Vue Components: ${summary.vueComponents}\n`;
+  output += `🔄 Has Cycles: ${summary.hasCycles ? 'YES ❌' : 'NO ✅'}\n`;
+  output += `📏 Max Depth: ${summary.maxDepth}\n`;
+  output += `🏥 Architecture Health: ${summary.architectureHealth.toUpperCase()}\n`;
+
+  if (summary.technologies && summary.technologies.length > 0) {
+    output += `🛠️ Technologies: ${summary.technologies.join(', ')}\n`;
+  }
+
+  output += '\n' + '='.repeat(70) + '\n';
+  output += '💡 RECOMMENDATIONS\n';
+  output += '='.repeat(70) + '\n\n';
+
+  for (const rec of recommendations) {
+    output += `  ${rec}\n`;
+  }
+
+  output += '\n' + '='.repeat(70) + '\n';
+  output += `📅 Generated: ${new Date().toISOString()}\n`;
+  output += '='.repeat(70) + '\n';
+
+  return output;
+}
+
+// ============================================
 // ЭКСПОРТ ПО УМОЛЧАНИЮ
-// ============================================================
+// ============================================
 
 export default {
   buildSummary,
-  generateQuickSummary,
-  isProjectHealthy,
-  getProjectMaturity,
-  generateSummaryMarkdown,
+  buildQuickSummary,
+  hasCriticalIssues,
+  requiresAttention,
+  getRecommendations,
+  generateProjectSummaryReport,
 };
