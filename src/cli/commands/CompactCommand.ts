@@ -1,5 +1,5 @@
 // packages/ast-analyzer/src/cli/commands/CompactCommand.ts
-// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ
+// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ - ДОБАВЛЕНА ПОДДЕРЖКА SELF FUNCTIONS
 
 import type { Command } from 'commander';
 import path from 'path';
@@ -11,12 +11,13 @@ import { glob } from 'glob';
  *
  * Особенности:
  * - Минимизированные ключи (экономия до 45% размера)
- * - Короткие ID (m1, f1, fn1, ...)
+ * - Короткие ID (m1, f1, fn1, sf1, ...)
  * - Битовые флаги вместо булевых полей
  * - Словари для параметров и типов
  * - Ультра-компактный режим (максимальное сжатие)
  * - Поддержка шаблонов для повторяющихся структур
  * - Полная легенда для всех кодов и ключей
+ * - Self functions — изолированные функции (не вызывают и не вызываются)
  */
 export class CompactCommand {
   private program: Command;
@@ -46,6 +47,11 @@ export class CompactCommand {
       .option('--include-security', 'Включить информацию о безопасности', false)
       .option('--no-templates', 'Отключить использование шаблонов')
       .option('--no-legend', 'Отключить легенду (экономия места)')
+      .option(
+        '--no-self-functions',
+        'Отключить секцию self functions (изолированные функции)',
+        false
+      )
       .option('-v, --verbose', 'Подробный вывод', false)
       .action(async (paths: string[], options: any) => {
         try {
@@ -68,6 +74,7 @@ export class CompactCommand {
     console.log(`📏 Глубина: ${options.maxDepth}`);
     console.log(`📝 Включить тела функций: ${options.includeBody ? 'ДА' : 'НЕТ'}`);
     console.log(`🔒 Информация о безопасности: ${options.includeSecurity ? 'ДА' : 'НЕТ'}`);
+    console.log(`🔍 Self functions: ${options.selfFunctions !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
     console.log('');
 
     // Проверяем пресет
@@ -104,6 +111,7 @@ export class CompactCommand {
       let totalFunctions = 0;
       let totalClasses = 0;
       let totalConstants = 0;
+      let totalSelfFunctions = 0;
 
       for (const filePath of files) {
         if (options.verbose) {
@@ -127,6 +135,17 @@ export class CompactCommand {
             totalFunctions += entities.functions?.length || 0;
             totalClasses += entities.classes?.length || 0;
             totalConstants += entities.constants?.length || 0;
+
+            // Подсчет self functions (функции без вызовов)
+            if (options.selfFunctions !== false) {
+              for (const func of entities.functions || []) {
+                const hasCalls = func.calls && func.calls.length > 0;
+                const hasCalledBy = func.calledBy && func.calledBy.length > 0;
+                if (!hasCalls && !hasCalledBy) {
+                  totalSelfFunctions++;
+                }
+              }
+            }
           }
         } catch (error) {
           console.warn(`   ⚠️ Ошибка при обработке ${path.basename(filePath)}:`, error);
@@ -143,6 +162,9 @@ export class CompactCommand {
       console.log(`   • Функций: ${totalFunctions}`);
       console.log(`   • Классов: ${totalClasses}`);
       console.log(`   • Констант: ${totalConstants}`);
+      if (options.selfFunctions !== false) {
+        console.log(`   • Self функций: ${totalSelfFunctions}`);
+      }
       console.log('');
 
       // Формируем опции для генератора
@@ -160,7 +182,7 @@ export class CompactCommand {
         includeInheritance: true,
         includeExports: true,
         includeConstants: true,
-        // ultraCompact передаем как опцию для генератора
+        includeSelfFunctions: options.selfFunctions !== false, // ✅ НОВАЯ ОПЦИЯ
         ultraCompact: options.ultra || false,
       };
 
@@ -251,6 +273,7 @@ export class CompactCommand {
       console.log(`   • Модулей: ${report.st.tm || 0}`);
       console.log(`   • Файлов: ${report.st.tfils || 0}`);
       console.log(`   • Функций: ${report.st.tf || 0}`);
+      console.log(`   • Self функций: ${report.st.tsf || 0}`); // ✅
       console.log(`   • Вызовов: ${report.st.tc || 0}`);
       console.log(`   • Импортов: ${report.st.ti || 0}`);
       console.log(`   • Экспортов: ${report.st.te || 0}`);
@@ -266,6 +289,9 @@ export class CompactCommand {
     console.log(`   • Минификация ключей: ${options.minifyKeys ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
     console.log(`   • Шаблоны: ${options.templates !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
     console.log(`   • Легенда: ${options.legend !== false ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
+    console.log(
+      `   • Self functions: ${options.selfFunctions !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`
+    );
 
     if (report.legend && options.legend !== false) {
       console.log('\n📖 ЛЕГЕНДА (кратко):');
@@ -278,6 +304,25 @@ export class CompactCommand {
       }
       if (Object.keys(report.legend).length > 5) {
         console.log(`   ... и ещё ${Object.keys(report.legend).length - 5} ключей`);
+      }
+    }
+
+    // Self functions статистика
+    if (report.sf && report.sf.length > 0) {
+      console.log(`\n🔍 SELF FUNCTIONS (изолированные функции): ${report.sf.length}`);
+      if (options.verbose) {
+        const sampleSize = Math.min(report.sf.length, 5);
+        console.log('   Примеры:');
+        for (let i = 0; i < sampleSize; i++) {
+          const sf = report.sf[i];
+          if (sf) {
+            const fileName = report.fl?.[sf[2]] || sf[2];
+            console.log(`   • ${sf[1]} (${fileName}:${sf[3]})`);
+          }
+        }
+        if (report.sf.length > 5) {
+          console.log(`   ... и ещё ${report.sf.length - 5} self functions`);
+        }
       }
     }
 
@@ -300,16 +345,22 @@ export class CompactCommand {
     console.log('   • Откройте файл в любом текстовом редакторе');
     console.log('   • Используйте индексы mi/fl для навигации');
     console.log('   • fns - список всех функций');
+    console.log('   • sf - список self функций (изолированные) ✅ НОВОЕ');
     console.log('   • cn - список всех констант');
     console.log('   • gr.c - граф вызовов');
     console.log('   • gr.i - граф импортов');
     console.log('   • gr.e - граф экспортов');
     console.log('   • st - общая статистика');
+    console.log('   • tsf - общее количество self функций');
     console.log('   • Легенда (legend) для расшифровки всех кодов и ключей');
 
     if (options.ultra) {
       console.log('   🚀 Ультра-компактный режим: идеально для отправки в AI');
       console.log('   📊 Экономия места: ~70% по сравнению со стандартным форматом');
+    }
+
+    if (report.sf && report.sf.length > 0) {
+      console.log('   🔍 Self functions: функции без вызовов — отличные кандидаты для выделения');
     }
 
     console.log('');
@@ -322,6 +373,7 @@ export class CompactCommand {
       modules: report.mi ? Object.keys(report.mi).length : 0,
       files: report.fl ? Object.keys(report.fl).length : 0,
       functions: report.fns ? report.fns.length : 0,
+      selfFunctions: report.sf ? report.sf.length : 0, // ✅
       constants: report.cn ? report.cn.length : 0,
       calls: report.gr?.c ? report.gr.c.length : 0,
       imports: report.gr?.i ? report.gr.i.length : 0,
@@ -345,6 +397,9 @@ export class CompactCommand {
         interfacesCount: entities.interfaces?.length || 0,
         typesCount: entities.types?.length || 0,
         variablesCount: entities.variables?.length || 0,
+        selfFunctionsCount: (entities.functions || []).filter(
+          (f: any) => !(f.calls && f.calls.length > 0) && !(f.calledBy && f.calledBy.length > 0)
+        ).length, // ✅
       };
     }
     fs.writeFileSync(entitiesPath, JSON.stringify(readableEntities, null, 2));
@@ -356,6 +411,19 @@ export class CompactCommand {
       const dot = this.generateDOT(report);
       fs.writeFileSync(dotPath, dot);
       console.log(`📄 DOT граф сохранен: ${dotPath}`);
+    }
+
+    // Сохраняем self functions в отдельный файл
+    if (report.sf && report.sf.length > 0) {
+      const sfPath = path.join(outputDir, 'compact-self-functions.json');
+      const sfData = report.sf.map((sf: any[]) => ({
+        id: sf[0],
+        name: sf[1],
+        file: report.fl?.[sf[2]] || sf[2],
+        line: sf[3],
+      }));
+      fs.writeFileSync(sfPath, JSON.stringify(sfData, null, 2));
+      console.log(`📄 Self functions сохранены: ${sfPath}`);
     }
   }
 
@@ -395,13 +463,37 @@ export class CompactCommand {
       }
     }
 
+    // Определяем self functions (изолированные)
+    const selfIds = new Set<string>();
+    if (report.sf) {
+      for (const sf of report.sf) {
+        if (sf && sf.length >= 1) {
+          selfIds.add(sf[0]);
+        }
+      }
+    }
+
     for (const nodeId of nodes) {
       const name = functionNames[nodeId] || nodeId;
       const isEntry = !called.has(nodeId);
-      const color = isEntry ? '#4f46e5' : '#f3f4f6';
-      const fontColor = isEntry ? '#ffffff' : '#1f2937';
-      const label = isEntry ? `⭐ ${name}` : name;
-      dot += `  "${nodeId}" [fillcolor="${color}", fontcolor="${fontColor}", label="${label}"];\n`;
+      const isSelf = selfIds.has(nodeId);
+      let color = '#f3f4f6';
+      let fontColor = '#1f2937';
+      let label = name;
+      let shape = 'box';
+
+      if (isEntry) {
+        color = '#4f46e5';
+        fontColor = '#ffffff';
+        label = `⭐ ${name}`;
+      } else if (isSelf) {
+        color = '#22d3ee';
+        fontColor = '#0f172a';
+        shape = 'ellipse';
+        label = `🔹 ${name}`;
+      }
+
+      dot += `  "${nodeId}" [fillcolor="${color}", fontcolor="${fontColor}", label="${label}", shape="${shape}"];\n`;
     }
 
     dot += '\n';
@@ -416,7 +508,10 @@ export class CompactCommand {
           const type = call[3] || 'd';
           const color = type === 'a' ? '#ef4444' : type === 'm' ? '#f59e0b' : '#3b82f6';
           const style = type === 'a' ? 'dashed' : 'solid';
-          dot += `  "${from}" -> "${to}" [color="${color}", style="${style}", label="${type}${line ? ` [${line}]` : ''}"];\n`;
+          const isSelfFrom = selfIds.has(from);
+          const isSelfTo = selfIds.has(to);
+          const penwidth = isSelfFrom || isSelfTo ? '0.5' : '1';
+          dot += `  "${from}" -> "${to}" [color="${color}", style="${style}", penwidth=${penwidth}, label="${type}${line ? ` [${line}]` : ''}"];\n`;
         }
       }
     }

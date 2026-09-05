@@ -219,7 +219,7 @@
     "format:check": "prettier --check \"src/**/*.ts\"",
     "preinstall": "",
     "========== ОТЧЕТЫ ================": "",
-    "report:compact:fileddddd":"tsx ./src/cli.ts compact-recursive ./src/cli.ts --preset full --depth 1000 -o ./reports/project-compact-full.json",
+    "report:compact:fileddddd":"tsx ./src/cli.ts compact-recursive ./src/index.ts --preset full --depth 1000 -o ./reports/project-compact-full.json",
     "report:compact:file": "tsx ./src/cli.ts compact ./src/cli.ts --ultra -o ./reports/cli-compact.json",
     "report:compact:folder": "tsx ./src/cli.ts compact ./src --ultra -o ./reports/folder-compact.json",
     "report:compact:project": "tsx ./src/cli.ts compact-recursive ./src/cli.ts --ultra --depth 100 -o ./reports/project-compact.json",

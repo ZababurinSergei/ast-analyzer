@@ -1,5 +1,6 @@
 // packages/ast-analyzer/src/cli/commands/CompactRecursiveCommand.ts
 // ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ - БЕЗ ДУБЛЕЙ, ВСЕ ОШИБКИ TypeScript И ESLint ИСПРАВЛЕНЫ
+// ДОБАВЛЕНА ПОДДЕРЖКА СЕКЦИИ SELF FUNCTIONS (sf) С ВОЗМОЖНОСТЬЮ ОТКЛЮЧЕНИЯ
 
 import type { Command } from 'commander';
 import path from 'path';
@@ -18,6 +19,7 @@ type CompactReportStats = any;
  * - НЕТ ДУБЛИРОВАНИЯ: каждый тип данных в одном месте
  * - НОВЫЕ ТИПЫ СВЯЗЕЙ: импорты, экспорты, наследование, типовые зависимости
  * - СЖАТИЕ: короткие ключи, сжатые флаги
+ * - SELF FUNCTIONS: изолированные функции с индексами sf1, sf2, ...
  * - ВСЕ ОШИБКИ TypeScript И ESLint ИСПРАВЛЕНЫ
  */
 export class CompactRecursiveCommand {
@@ -43,6 +45,7 @@ export class CompactRecursiveCommand {
       .option('--no-relations', 'Отключить дополнительные типы связей (только вызовы)')
       .option('--no-stats', 'Отключить статистику')
       .option('--no-templates', 'Отключить использование шаблонов')
+      .option('--no-self-functions', 'Отключить секцию self functions (изолированные функции)') // ✅ НОВАЯ ОПЦИЯ
       .option('-v, --verbose', 'Подробный вывод', false)
       .action(async (entry: string, options: any) => {
         try {
@@ -70,6 +73,9 @@ export class CompactRecursiveCommand {
       `🔗 Дополнительные связи: ${options.relations !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`
     );
     console.log(`📊 Статистика: ${options.stats !== false ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
+    console.log(
+      `🧩 Self functions: ${options.selfFunctions !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}` // ✅
+    );
     console.log('');
 
     if (!fs.existsSync(entryPath)) {
@@ -173,6 +179,7 @@ export class CompactRecursiveCommand {
       includeInheritance: true,
       includeExports: true,
       includeConstants: true,
+      includeSelfFunctions: options.selfFunctions !== false, // ✅ ПЕРЕДАЕМ ОПЦИЮ
     });
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -189,6 +196,7 @@ export class CompactRecursiveCommand {
 
     console.log('\n📊 СТАТИСТИКА ОТЧЕТА:');
     console.log(`   • Функций: ${reportStats.tf ?? 0}`);
+    console.log(`   • Self функций: ${reportStats.tsf ?? 0}`); // ✅
     console.log(`   • Вызовов: ${reportStats.tc ?? 0}`);
     console.log(`   • Модулей: ${reportStats.tm ?? 0}`);
     console.log(`   • Файлов: ${reportStats.tfils ?? 0}`);
@@ -205,6 +213,7 @@ export class CompactRecursiveCommand {
     console.log('      • fi - functionIndex (ссылки)');
     console.log('   📌 Данные (только здесь!):');
     console.log('      • fns - функции (БЕЗ calls!)');
+    console.log('      • sf - self functions (изолированные функции) ✅ НОВОЕ');
     console.log('   📌 Связи (все в одном месте):');
 
     const hasRelations = report.gr !== undefined;
@@ -219,7 +228,7 @@ export class CompactRecursiveCommand {
     }
 
     console.log('   📌 Статистика (вычисляемые данные):');
-    console.log('      • st - stats');
+    console.log('      • st - stats (включая tsf - total self functions)');
 
     // Информация о сжатии
     console.log('\n📦 ИНФОРМАЦИЯ О СЖАТИИ:');
@@ -228,6 +237,9 @@ export class CompactRecursiveCommand {
       `   • Дополнительные связи: ${options.relations !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`
     );
     console.log(`   • Статистика: ${options.stats !== false ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
+    console.log(
+      `   • Self functions: ${options.selfFunctions !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}` // ✅
+    );
 
     // Размер файла
     if (fs.existsSync(outputPath)) {
@@ -241,19 +253,23 @@ export class CompactRecursiveCommand {
     console.log('   ✅ Нет дублирования информации');
     console.log('   ✅ Все связи в едином графе');
     console.log('   ✅ Добавлены новые типы связей (без дублей)');
+    console.log('   ✅ Self functions с индексами sf1, sf2, ...');
 
     // Подсказки по использованию
     console.log('\n💡 КАК ИСПОЛЬЗОВАТЬ ОТЧЕТ:');
     console.log('   • mi/fl/fi - для навигации по индексам');
     console.log('   • fns - все функции с метаданными');
-    console.log('   • gr.c - кто кого вызывает');
+    if (report.sf && report.sf.length > 0) {
+      console.log(`   • sf - self функции (${report.sf.length} изолированных функций) ✅`); // ✅
+    }
     if (hasRelations) {
+      console.log('   • gr.c - кто кого вызывает');
       console.log('   • gr.i - кто от кого зависит (импорты)');
       console.log('   • gr.e - кто что экспортирует');
       console.log('   • gr.h - иерархия классов');
       console.log('   • gr.td - типовые зависимости');
     }
-    console.log('   • st - общая статистика');
+    console.log('   • st - общая статистика (включая tsf)');
 
     console.log('\n' + '='.repeat(70) + '\n');
   }

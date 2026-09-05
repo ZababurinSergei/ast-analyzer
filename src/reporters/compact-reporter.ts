@@ -6,6 +6,7 @@
 // - Добавлены re-экспорты (gr.re)
 // - Добавлены зависимости констант (gr.cd)
 // - Удалены дублирующиеся секции (fi, ui)
+// - ДОБАВЛЕНА СЕКЦИЯ SELF FUNCTIONS (sf) С ИНДЕКСАМИ
 
 import type { EntitiesResult } from '../types.js';
 import path from 'path';
@@ -41,6 +42,7 @@ export const SHORT_KEYS = {
   totalConstExports: 'tce',
   totalConstUses: 'tuc',
   totalConstDeps: 'tcd',
+  totalSelfFunctions: 'tsf',
   hasCycles: 'cy',
   timestamp: 'ts',
   version: 'v',
@@ -127,6 +129,8 @@ export function generateCompactReport(
     includeInheritance?: boolean;
     includeExports?: boolean;
     includeConstants?: boolean;
+    /** Включить секцию self functions (по умолчанию true) */
+    includeSelfFunctions?: boolean;
   } = {}
 ): any {
   console.log('\n🚀 Генерация ОПТИМИЗИРОВАННОГО компактного отчета...');
@@ -139,6 +143,7 @@ export function generateCompactReport(
     includeInheritance = true,
     includeExports = true,
     includeConstants = true,
+    includeSelfFunctions = true,
   } = options;
 
   // ============================================
@@ -149,6 +154,7 @@ export function generateCompactReport(
   const fileIndex: Record<string, string> = {};
   const functions: any[] = []; // [id, name, module, file, line, flags]
   const constants: any[] = []; // [id, name, value, module, file, line, flags]
+  const selfFunctions: any[] = []; // [id, name, file, line] — СЕКЦИЯ SELF FUNCTIONS
 
   // Все типы связей в одном месте
   const relations = {
@@ -171,10 +177,17 @@ export function generateCompactReport(
   const nameToFuncId = new Map<string, string>();
   const nameToConstId = new Map<string, string>();
 
+  // ДОПОЛНИТЕЛЬНЫЙ MAP: имя функции → её данные (для определения self)
+  const funcDataMap = new Map<
+    string,
+    { name: string; fileId: string; line: number; calls: string[]; calledBy: string[] }
+  >();
+
   let moduleCounter = 0;
   let fileCounter = 0;
   let functionCounter = 0;
   let constantCounter = 0;
+  let selfFunctionCounter = 0;
 
   // ============================================
   // 2. ПЕРВЫЙ ПРОХОД: ИНДЕКСЫ И ФУНКЦИИ
@@ -226,6 +239,15 @@ export function generateCompactReport(
           func.line || 0,
           flags
         ]);
+
+        // СОХРАНЯЕМ ДАННЫЕ ДЛЯ ОПРЕДЕЛЕНИЯ SELF
+        funcDataMap.set(func.name, {
+          name: func.name,
+          fileId,
+          line: func.line || 0,
+          calls: func.calls || [],
+          calledBy: func.calledBy || [],
+        });
       }
     }
 
@@ -262,7 +284,27 @@ export function generateCompactReport(
   }
 
   // ============================================
-  // 3. ВТОРОЙ ПРОХОД: ВСЕ ТИПЫ СВЯЗЕЙ
+  // 3. ОПРЕДЕЛЕНИЕ SELF FUNCTIONS
+  // ============================================
+
+  if (includeSelfFunctions) {
+    for (const [name, data] of funcDataMap) {
+      const hasCalls = data.calls && data.calls.length > 0;
+      const hasCalledBy = data.calledBy && data.calledBy.length > 0;
+
+      // Self function: НЕТ исходящих вызовов И НЕТ входящих вызовов
+      if (!hasCalls && !hasCalledBy) {
+        selfFunctionCounter++;
+        const selfId = `sf${selfFunctionCounter}`;
+
+        // [id, name, file, line]
+        selfFunctions.push([selfId, name, data.fileId, data.line]);
+      }
+    }
+  }
+
+  // ============================================
+  // 4. ВТОРОЙ ПРОХОД: ВСЕ ТИПЫ СВЯЗЕЙ
   // ============================================
 
   // Строим индекс для быстрого поиска ID по имени
@@ -707,11 +749,12 @@ export function generateCompactReport(
   }
 
   // ============================================
-  // 4. СТАТИСТИКА (упрощенная)
+  // 5. СТАТИСТИКА (упрощенная)
   // ============================================
 
   const totalFunctions = functions.length;
   const totalConstants = constants.length;
+  const totalSelfFunctions = selfFunctions.length;
   const totalCalls = relations.calls.length;
   const totalModules = moduleCounter;
   const totalFiles = fileCounter;
@@ -767,6 +810,7 @@ export function generateCompactReport(
     ttd: (relations.typeDeps || []).length,
     tre: (relations.reExports || []).length,
     ti: (relations.imports || []).length,
+    tsf: totalSelfFunctions,
     funcsWithCalls: funcsWithCalls.size,
     calledFuncs: calledFuncs.size,
     modulesWithFunctions: new Set(functions.map(f => f[2])).size,
@@ -778,7 +822,7 @@ export function generateCompactReport(
   } : undefined;
 
   // ============================================
-  // 5. ФОРМИРОВАНИЕ ОТЧЕТА
+  // 6. ФОРМИРОВАНИЕ ОТЧЕТА
   // ============================================
 
   const report: any = {
@@ -793,6 +837,11 @@ export function generateCompactReport(
 
   // Функции (новый компактный формат)
   report.fns = functions;
+
+  // СЕКЦИЯ SELF FUNCTIONS (с индексом sf1, sf2, ...)
+  if (includeSelfFunctions && selfFunctions.length > 0) {
+    report.sf = selfFunctions;
+  }
 
   // Константы (новая секция)
   if (includeConstants && constants.length > 0) {
@@ -870,7 +919,7 @@ export function generateCompactReport(
   }
 
   // ============================================
-  // 6. СОХРАНЕНИЕ
+  // 7. СОХРАНЕНИЕ
   // ============================================
 
   if (outputPath) {
@@ -888,6 +937,7 @@ export function generateCompactReport(
     console.log(`📊 Размер: ${sizeKB} KB`);
     console.log(`\n📊 СТАТИСТИКА:`);
     console.log(`   📌 Функций: ${totalFunctions}`);
+    console.log(`   📌 Self функций: ${totalSelfFunctions}`);
     console.log(`   📌 Констант: ${totalConstants}`);
     console.log(`   📌 Вызовов: ${(relations.calls || []).length}`);
     console.log(`   📌 Импортов: ${(relations.imports || []).length}`);
@@ -905,6 +955,7 @@ export function generateCompactReport(
     console.log(`\n💡 СТРУКТУРА ОТЧЕТА (оптимизированная):`);
     console.log(`   📌 Индексы: mi, fl (fi удален - данные в fns)`);
     console.log(`   📌 Функции: fns (компактные массивы) ✅ НОВЫЙ ФОРМАТ`);
+    console.log(`   📌 Self функции: sf (изолированные функции) ✅ НОВОЕ`);
     console.log(`   📌 Константы: cn (новая секция) ✅ НОВОЕ`);
     console.log(`   📌 Связи: gr {`);
     console.log(`      • c  - вызовы (calls)`);
@@ -967,6 +1018,24 @@ export function findFunctionByName(report: any, name: string): any | null {
         file: func[3],
         line: func[4],
         flags: func[5] || '0'
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Находит self функцию по имени в отчете
+ */
+export function findSelfFunctionByName(report: any, name: string): any | null {
+  if (!report.sf) return null;
+  for (const sf of report.sf) {
+    if (sf[1] === name) {
+      return {
+        id: sf[0],
+        name: sf[1],
+        file: sf[2],
+        line: sf[3]
       };
     }
   }
@@ -1048,6 +1117,27 @@ export function getFunctionInfo(report: any, funcId: string): any | null {
   return null;
 }
 
+/**
+ * Получает все self функции из отчета
+ */
+export function getAllSelfFunctions(report: any): any[] {
+  if (!report.sf) return [];
+  return report.sf.map((sf: any) => ({
+    id: sf[0],
+    name: sf[1],
+    file: sf[2],
+    line: sf[3]
+  }));
+}
+
+/**
+ * Проверяет, является ли функция self (изолированной)
+ */
+export function isSelfFunction(report: any, funcName: string): boolean {
+  if (!report.sf) return false;
+  return report.sf.some((sf: any) => sf[1] === funcName);
+}
+
 // ============================================
 // ДЕКОДИРОВАНИЕ ФЛАГОВ
 // ============================================
@@ -1098,11 +1188,14 @@ export default {
   FLAG_MAP,
   RELATION_TYPES,
   findFunctionByName,
+  findSelfFunctionByName,
   findConstantByName,
   getFunctionCalls,
   getFunctionCallers,
   getFileName,
   getModuleName,
   getFunctionInfo,
+  getAllSelfFunctions,
+  isSelfFunction,
   decodeFlags,
 };
