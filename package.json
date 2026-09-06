@@ -1,6 +1,6 @@
 {
   "name": "@newkind/ast-analyzer",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "description": "AST Analyzer - AI Toolkit for code analysis, graph visualization, refactoring, semantic analysis, and formal verification",
   "type": "module",
   "main": "dist/index.js",
