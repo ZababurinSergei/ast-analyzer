@@ -132,7 +132,7 @@ export function buildProjectGraph(
     const packageLockReport = {
       ...report,
       name: 'ast-analyzer',
-      version: '3.0.0',
+      version: '3.1.2',
       lockfileVersion: 3,
       timestamp: new Date().toISOString(),
       dependencyGraph: {
