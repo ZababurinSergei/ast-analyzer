@@ -1,11 +1,13 @@
 // packages/ast-analyzer/src/cli/commands/CompactRecursiveCommand.ts
 // ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ - БЕЗ ДУБЛЕЙ, ВСЕ ОШИБКИ TypeScript И ESLint ИСПРАВЛЕНЫ
 // ДОБАВЛЕНА ПОДДЕРЖКА СЕКЦИИ SELF FUNCTIONS (sf) С ВОЗМОЖНОСТЬЮ ОТКЛЮЧЕНИЯ
+// ДОБАВЛЕНА ПОДДЕРЖКА ГИБКОГО КОНФИГА С ПРЕСЕТАМИ
 
 import type { Command } from 'commander';
 import path from 'path';
 import fs from 'fs';
 import { generateCompactReport } from '../../reporters/compact-reporter.js';
+import { getPresetNames, createCompactConfig } from '../../reporters/CompactReportConfig.js';
 
 // Используем any вместо несуществующего типа
 type CompactReportStats = any;
@@ -20,6 +22,7 @@ type CompactReportStats = any;
  * - НОВЫЕ ТИПЫ СВЯЗЕЙ: импорты, экспорты, наследование, типовые зависимости
  * - СЖАТИЕ: короткие ключи, сжатые флаги
  * - SELF FUNCTIONS: изолированные функции с индексами sf1, sf2, ...
+ * - ГИБКИЙ КОНФИГ: 5 пресетов + 30+ опций для тонкой настройки
  * - ВСЕ ОШИБКИ TypeScript И ESLint ИСПРАВЛЕНЫ
  */
 export class CompactRecursiveCommand {
@@ -33,19 +36,62 @@ export class CompactRecursiveCommand {
   private register(): void {
     this.program
       .command('compact-recursive <entry>')
-      .description('📋 Генерация компактного отчета для всего проекта (без дублирования)')
+      .description('📋 Генерация компактного отчета для всего проекта с гибкой настройкой полей')
+
+      // === ОСНОВНЫЕ ОПЦИИ ===
       .option('-o, --output <file>', 'Выходной файл', './reports/ast-analyzer-full.json')
       .option('-d, --depth <n>', 'Максимальная глубина анализа', '100')
-      .option('--ultra', 'Ультра-компактный режим (максимальное сжатие)')
       .option(
         '--preset <name>',
-        'Пресет: minimal, standard, full, relationshipsOnly, ultraCompact',
+        `Пресет: ${getPresetNames().join(', ')}. Подробнее: https://docs.ast-analyzer.dev/presets`,
         'standard'
       )
-      .option('--no-relations', 'Отключить дополнительные типы связей (только вызовы)')
-      .option('--no-stats', 'Отключить статистику')
+      .option('--ultra', 'Ультра-компактный режим (максимальное сжатие, экономия ~70%)')
+
+      // === ВКЛЮЧЕНИЕ/ОТКЛЮЧЕНИЕ СУЩНОСТЕЙ ===
+      .option('--no-functions', 'Отключить функции (fns)')
+      .option('--no-constants', 'Отключить константы (cn)')
+      .option('--no-self-functions', 'Отключить self-функции (sf)')
+
+      // === ВКЛЮЧЕНИЕ/ОТКЛЮЧЕНИЕ СВЯЗЕЙ ===
+      .option('--no-relations', 'Отключить все связи (gr.*)')
+      .option('--no-calls', 'Отключить вызовы (gr.c)')
+      .option('--no-imports', 'Отключить импорты (gr.i)')
+      .option('--no-exports', 'Отключить экспорты (gr.e)')
+      .option('--no-inheritance', 'Отключить наследование (gr.h)')
+      .option('--no-type-deps', 'Отключить типовые зависимости (gr.td)')
+      .option('--no-re-exports', 'Отключить re-экспорты (gr.re)')
+      .option('--no-const-uses', 'Отключить использование констант (gr.uc)')
+      .option('--no-const-deps', 'Отключить зависимости констант (gr.cd)')
+      .option('--no-const-exports', 'Отключить экспорты констант (gr.ce)')
+
+      // === РАСШИРЕННЫЙ АНАЛИЗ ===
+      .option('--no-dynamic-imports', 'Отключить динамические импорты (gr.di)')
+      .option('--no-config-refs', 'Отключить конфигурации (gr.cfg)')
+      .option('--no-external-libs', 'Отключить внешние библиотеки (gr.ext)')
+      .option('--no-vue-templates', 'Отключить Vue шаблоны (gr.vt)')
+      .option('--no-async-chains', 'Отключить асинхронные цепочки (gr.async)')
+      .option('--no-closures', 'Отключить замыкания (gr.closures)')
+
+      // === СТАТИСТИКА ===
+      .option('--no-stats', 'Отключить статистику (st)')
+      .option('--no-extended-stats', 'Отключить расширенную статистику')
+
+      // === МЕТАДАННЫЕ ===
+      .option('--no-flags', 'Отключить битовые флаги (flg)')
+      .option('--no-types', 'Отключить типы (types)')
+      .option('--no-legend', 'Отключить легенду (legend)')
+      .option('--include-body', 'Включить тела функций (увеличивает размер)')
+      .option('--include-security', 'Включить информацию о безопасности')
+
+      // === ФОРМАТИРОВАНИЕ ===
+      .option('--minify-keys', 'Минифицировать ключи (более короткие имена)')
+      .option('--no-bit-flags', 'Отключить битовые флаги (использовать полные булевы поля)')
+      .option('--no-dictionaries', 'Отключить словари для параметров и типов')
       .option('--no-templates', 'Отключить использование шаблонов')
-      .option('--no-self-functions', 'Отключить секцию self functions (изолированные функции)') // ✅ НОВАЯ ОПЦИЯ
+      .option('--readable-keys', 'Использовать читаемые ключи (вместо сокращений)')
+      .option('--include-vscode', 'Включить VSCode ссылки для функций')
+
       .option('-v, --verbose', 'Подробный вывод', false)
       .action(async (entry: string, options: any) => {
         try {
@@ -62,20 +108,37 @@ export class CompactRecursiveCommand {
     const entryPath = path.resolve(entry);
 
     console.log('\n' + '='.repeat(70));
-    console.log('📋 КОМПАКТНЫЙ ОТЧЕТ (БЕЗ ДУБЛИРОВАНИЯ)');
+    console.log('📋 КОМПАКТНЫЙ ОТЧЕТ С ГИБКОЙ НАСТРОЙКОЙ');
     console.log('='.repeat(70));
     console.log(`📄 Точка входа: ${entryPath}`);
     console.log(`📏 Глубина: ${options.depth}`);
-    console.log(`🚀 Ультра-компактный: ${options.ultra ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}`);
     console.log(`📋 Пресет: ${options.preset}`);
     console.log(`📁 Выходной файл: ${options.output}`);
+    console.log(`🚀 Ультра-компактный: ${options.ultra ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}`);
+
+    // Показываем что включено
+    console.log('\n📊 ВКЛЮЧЕННЫЕ КОМПОНЕНТЫ:');
+    console.log(`   • Функции: ${options.functions !== false ? '✅' : '❌'}`);
+    console.log(`   • Константы: ${options.constants !== false ? '✅' : '❌'}`);
+    console.log(`   • Self-функции: ${options.selfFunctions !== false ? '✅' : '❌'}`);
     console.log(
-      `🔗 Дополнительные связи: ${options.relations !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`
+      `   • Вызовы: ${options.calls !== false && options.relations !== false ? '✅' : '❌'}`
     );
-    console.log(`📊 Статистика: ${options.stats !== false ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
     console.log(
-      `🧩 Self functions: ${options.selfFunctions !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}` // ✅
+      `   • Импорты: ${options.imports !== false && options.relations !== false ? '✅' : '❌'}`
     );
+    console.log(
+      `   • Экспорты: ${options.exports !== false && options.relations !== false ? '✅' : '❌'}`
+    );
+    console.log(
+      `   • Наследование: ${options.inheritance !== false && options.relations !== false ? '✅' : '❌'}`
+    );
+    console.log(
+      `   • Типовые зависимости: ${options.typeDeps !== false && options.relations !== false ? '✅' : '❌'}`
+    );
+    console.log(`   • Статистика: ${options.stats !== false ? '✅' : '❌'}`);
+    console.log(`   • Расширенный анализ: ${options.extendedStats !== false ? '✅' : '❌'}`);
+    console.log(`   • Тела функций: ${options.includeBody ? '✅' : '❌'}`);
     console.log('');
 
     if (!fs.existsSync(entryPath)) {
@@ -157,8 +220,8 @@ export class CompactRecursiveCommand {
       process.exit(1);
     }
 
-    // Шаг 4: Генерируем отчет БЕЗ ДУБЛИРОВАНИЯ
-    console.log('\n📋 Шаг 4: Генерация компактного отчета (без дублирования)...');
+    // Шаг 4: Генерируем отчет с применением конфига
+    console.log('\n📋 Шаг 4: Генерация компактного отчета с применением конфига...');
 
     const outputPath = path.resolve(options.output);
     const outputDir = path.dirname(outputPath);
@@ -166,20 +229,111 @@ export class CompactRecursiveCommand {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    // Используем ТОЛЬКО существующие опции generateCompactReport
+    // Создаем конфиг из опций
+    const configBuilder = createCompactConfig(options.preset || 'standard');
+
+    // Применяем опции из командной строки
+    // Форматирование
+    if (options.ultra)
+      configBuilder.setMinifyKeys(true).setUseBitFlags(true).setUseDictionaries(true);
+    if (options.minifyKeys) configBuilder.setMinifyKeys(true);
+    if (options.bitFlags === false) configBuilder.setUseBitFlags(false);
+    if (options.dictionaries === false) configBuilder.setUseDictionaries(false);
+    if (options.templates === false) configBuilder.setUseTemplates(false);
+    if (options.readableKeys) configBuilder.setReadableKeys(true);
+    if (options.includeBody) configBuilder.setIncludeBody(true);
+    if (options.includeSecurity) configBuilder.setIncludeSecurity(true);
+    if (options.includeVSCode) configBuilder.setIncludeVSCode(true);
+    if (options.depth) configBuilder.setMaxDepth(parseInt(options.depth, 10));
+
+    // Сущности
+    if (options.functions === false) configBuilder.includeFunctions(false);
+    if (options.constants === false) configBuilder.includeConstants(false);
+    if (options.selfFunctions === false) configBuilder.includeSelfFunctions(false);
+
+    // Связи - если relations отключены, отключаем всё
+    if (options.relations === false) {
+      configBuilder
+        .includeCalls(false)
+        .includeImports(false)
+        .includeExports(false)
+        .includeInheritance(false)
+        .includeTypeDeps(false)
+        .includeReExports(false)
+        .includeConstUses(false)
+        .includeConstDeps(false)
+        .includeConstExports(false);
+    } else {
+      // Иначе применяем индивидуальные опции
+      if (options.calls === false) configBuilder.includeCalls(false);
+      if (options.imports === false) configBuilder.includeImports(false);
+      if (options.exports === false) configBuilder.includeExports(false);
+      if (options.inheritance === false) configBuilder.includeInheritance(false);
+      if (options.typeDeps === false) configBuilder.includeTypeDeps(false);
+      if (options.reExports === false) configBuilder.includeReExports(false);
+      if (options.constUses === false) configBuilder.includeConstUses(false);
+      if (options.constDeps === false) configBuilder.includeConstDeps(false);
+      if (options.constExports === false) configBuilder.includeConstExports(false);
+    }
+
+    // Расширенный анализ
+    if (options.dynamicImports === false) configBuilder.includeDynamicImports(false);
+    if (options.configRefs === false) configBuilder.includeConfigRefs(false);
+    if (options.externalLibs === false) configBuilder.includeExternalLibs(false);
+    if (options.vueTemplates === false) configBuilder.includeVueTemplates(false);
+    if (options.asyncChains === false) configBuilder.includeAsyncChains(false);
+    if (options.closures === false) configBuilder.includeClosures(false);
+
+    // Статистика
+    if (options.stats === false) {
+      configBuilder.includeBasicStats(false).includeExtendedStats(false);
+    }
+    if (options.extendedStats === false) {
+      configBuilder.includeExtendedStats(false);
+    }
+
+    // Метаданные
+    if (options.flags === false) configBuilder.includeFlags(false);
+    if (options.types === false) configBuilder.includeTypes(false);
+    if (options.legend === false) configBuilder.includeLegend(false);
+
+    const config = configBuilder.build();
+    const genOptions = configBuilder.toGeneratorOptions();
+
+    console.log('\n📋 ИТОГОВАЯ КОНФИГУРАЦИЯ:');
+    console.log(`   • Пресет: ${options.preset}`);
+    console.log(`   • Функции: ${config.functions ? '✅' : '❌'}`);
+    console.log(`   • Константы: ${config.constants ? '✅' : '❌'}`);
+    console.log(`   • Self-функции: ${config.selfFunctions ? '✅' : '❌'}`);
+    console.log(`   • Вызовы: ${config.relations.calls ? '✅' : '❌'}`);
+    console.log(`   • Импорты: ${config.relations.imports ? '✅' : '❌'}`);
+    console.log(`   • Экспорты: ${config.relations.exports ? '✅' : '❌'}`);
+    console.log(`   • Наследование: ${config.relations.inheritance ? '✅' : '❌'}`);
+    console.log(`   • Типовые зависимости: ${config.relations.typeDeps ? '✅' : '❌'}`);
+    console.log(`   • Re-экспорты: ${config.relations.reExports ? '✅' : '❌'}`);
+    console.log(`   • Использование констант: ${config.relations.constUses ? '✅' : '❌'}`);
+    console.log(`   • Зависимости констант: ${config.relations.constDeps ? '✅' : '❌'}`);
+    console.log(`   • Экспорты констант: ${config.relations.constExports ? '✅' : '❌'}`);
+    console.log(`   • Динамические импорты: ${config.extended.dynamicImports ? '✅' : '❌'}`);
+    console.log(`   • Конфигурации: ${config.extended.configRefs ? '✅' : '❌'}`);
+    console.log(`   • Внешние библиотеки: ${config.extended.externalLibs ? '✅' : '❌'}`);
+    console.log(`   • Vue шаблоны: ${config.extended.vueTemplates ? '✅' : '❌'}`);
+    console.log(`   • Асинхронные цепочки: ${config.extended.asyncChains ? '✅' : '❌'}`);
+    console.log(`   • Замыкания: ${config.extended.closures ? '✅' : '❌'}`);
+    console.log(`   • Баз. статистика: ${config.stats.basic ? '✅' : '❌'}`);
+    console.log(`   • Расш. статистика: ${config.stats.extended ? '✅' : '❌'}`);
+    console.log(`   • Битовые флаги: ${config.useBitFlags ? '✅' : '❌'}`);
+    console.log(`   • Словари: ${config.useDictionaries ? '✅' : '❌'}`);
+    console.log(`   • Шаблоны: ${config.useTemplates ? '✅' : '❌'}`);
+    console.log(`   • Тела функций: ${config.includeBody ? '✅' : '❌'}`);
+    console.log(`   • VSCode ссылки: ${config.includeVSCode ? '✅' : '❌'}`);
+    console.log('');
+
+    // Генерируем отчет с использованием конфига
     const report = generateCompactReport(entitiesMap, outputPath, {
-      useBitFlags: true,
-      useDictionaries: true,
-      readableKeys: true,
-      useTemplates: options.templates !== false,
-      maxDepth: parseInt(options.depth, 10),
-      includeRelations: options.relations !== false,
-      includeStats: options.stats !== false,
-      includeTypes: true,
-      includeInheritance: true,
-      includeExports: true,
-      includeConstants: true,
-      includeSelfFunctions: options.selfFunctions !== false, // ✅ ПЕРЕДАЕМ ОПЦИЮ
+      ...genOptions,
+      ultra: options.ultra || false,
+      preset: options.preset,
     });
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -196,7 +350,7 @@ export class CompactRecursiveCommand {
 
     console.log('\n📊 СТАТИСТИКА ОТЧЕТА:');
     console.log(`   • Функций: ${reportStats.tf ?? 0}`);
-    console.log(`   • Self функций: ${reportStats.tsf ?? 0}`); // ✅
+    console.log(`   • Self функций: ${reportStats.tsf ?? 0}`);
     console.log(`   • Вызовов: ${reportStats.tc ?? 0}`);
     console.log(`   • Модулей: ${reportStats.tm ?? 0}`);
     console.log(`   • Файлов: ${reportStats.tfils ?? 0}`);
@@ -204,48 +358,37 @@ export class CompactRecursiveCommand {
     console.log(`   • Экспортов: ${reportStats.te ?? 0}`);
     console.log(`   • Наследований: ${reportStats.tr ?? 0}`);
     console.log(`   • Типовых зависимостей: ${reportStats.ttd ?? 0}`);
+    console.log(`   • Re-экспортов: ${reportStats.tre ?? 0}`);
+    console.log(`   • Констант: ${reportStats.tcn ?? 0}`);
+    console.log(`   • Использований констант: ${reportStats.tuc ?? 0}`);
+    console.log(`   • Зависимостей констант: ${reportStats.tcd ?? 0}`);
+    console.log(`   • Экспортов констант: ${reportStats.tce ?? 0}`);
+    console.log(`   • Динамических импортов: ${reportStats.di ?? 0}`);
+    console.log(`   • Конфигураций: ${reportStats.cfg ?? 0}`);
+    console.log(`   • Внешних библиотек: ${reportStats.ext ?? 0}`);
+    console.log(`   • Vue шаблонов: ${reportStats.vt ?? 0}`);
+    console.log(`   • Асинхронных цепочек: ${reportStats.asyncChains ?? 0}`);
+    console.log(`   • Замыканий: ${reportStats.closures ?? 0}`);
     console.log(`   • Циклов: ${reportStats.cy ? 'ЕСТЬ' : 'НЕТ'}`);
-
-    console.log('\n📋 СТРУКТУРА ОТЧЕТА (БЕЗ ДУБЛЕЙ):');
-    console.log('   📌 Индексы (только здесь!):');
-    console.log('      • mi - moduleIndex (имена модулей)');
-    console.log('      • fl - fileIndex (пути файлов)');
-    console.log('      • fi - functionIndex (ссылки)');
-    console.log('   📌 Данные (только здесь!):');
-    console.log('      • fns - функции (БЕЗ calls!)');
-    console.log('      • sf - self functions (изолированные функции) ✅ НОВОЕ');
-    console.log('   📌 Связи (все в одном месте):');
-
-    const hasRelations = report.gr !== undefined;
-    if (hasRelations) {
-      console.log('      • gr.c - вызовы (calls)');
-      if (report.gr?.i) console.log('      • gr.i - импорты (imports) ✅ НОВОЕ');
-      if (report.gr?.e) console.log('      • gr.e - экспорты (exports) ✅ НОВОЕ');
-      if (report.gr?.h) console.log('      • gr.h - наследование (inheritance) ✅ НОВОЕ');
-      if (report.gr?.td) console.log('      • gr.td - типовые зависимости (typeDeps) ✅ НОВОЕ');
-    } else {
-      console.log('      • graph - вызовы (только)');
-    }
-
-    console.log('   📌 Статистика (вычисляемые данные):');
-    console.log('      • st - stats (включая tsf - total self functions)');
 
     // Информация о сжатии
     console.log('\n📦 ИНФОРМАЦИЯ О СЖАТИИ:');
     console.log(`   • Режим: ${options.ultra ? 'УЛЬТРА-КОМПАКТНЫЙ' : 'КОМПАКТНЫЙ'}`);
-    console.log(
-      `   • Дополнительные связи: ${options.relations !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`
-    );
-    console.log(`   • Статистика: ${options.stats !== false ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
-    console.log(
-      `   • Self functions: ${options.selfFunctions !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}` // ✅
-    );
+    console.log(`   • Пресет: ${options.preset}`);
+    console.log(`   • Битовые флаги: ${config.useBitFlags ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
+    console.log(`   • Словари: ${config.useDictionaries ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
+    console.log(`   • Минификация ключей: ${config.minifyKeys ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
+    console.log(`   • Шаблоны: ${config.useTemplates ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
+    console.log(`   • Легенда: ${config.legend ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
+    console.log(`   • Self functions: ${config.selfFunctions ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
+    console.log(`   • Тела функций: ${config.includeBody ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
 
     // Размер файла
     if (fs.existsSync(outputPath)) {
       const stat = fs.statSync(outputPath);
       const sizeKB = (stat.size / 1024).toFixed(2);
-      console.log(`   • Размер файла: ${sizeKB} KB`);
+      const sizeMB = (stat.size / 1024 / 1024).toFixed(2);
+      console.log(`   • Размер файла: ${sizeKB} KB (${sizeMB} MB)`);
     }
 
     console.log('\n💡 ПРИНЦИП "ЕДИНЫЙ ИСТОЧНИК ИСТИНЫ":');
@@ -255,23 +398,54 @@ export class CompactRecursiveCommand {
     console.log('   ✅ Добавлены новые типы связей (без дублей)');
     console.log('   ✅ Self functions с индексами sf1, sf2, ...');
 
-    // Подсказки по использованию
     console.log('\n💡 КАК ИСПОЛЬЗОВАТЬ ОТЧЕТ:');
     console.log('   • mi/fl/fi - для навигации по индексам');
     console.log('   • fns - все функции с метаданными');
     if (report.sf && report.sf.length > 0) {
-      console.log(`   • sf - self функции (${report.sf.length} изолированных функций) ✅`); // ✅
+      console.log(`   • sf - self функции (${report.sf.length} изолированных функций)`);
     }
-    if (hasRelations) {
+    if (report.gr) {
       console.log('   • gr.c - кто кого вызывает');
       console.log('   • gr.i - кто от кого зависит (импорты)');
       console.log('   • gr.e - кто что экспортирует');
       console.log('   • gr.h - иерархия классов');
       console.log('   • gr.td - типовые зависимости');
+      console.log('   • gr.re - re-экспорты');
+      console.log('   • gr.uc - использование констант');
+      console.log('   • gr.cd - зависимости констант');
+      console.log('   • gr.ce - экспорты констант');
+      console.log('   • gr.di - динамические импорты');
+      console.log('   • gr.cfg - конфигурации');
+      console.log('   • gr.ext - внешние библиотеки');
+      console.log('   • gr.vt - Vue шаблоны');
+      console.log('   • gr.async - асинхронные цепочки');
+      console.log('   • gr.closures - замыкания');
     }
-    console.log('   • st - общая статистика (включая tsf)');
+    console.log(
+      '   • st - общая статистика (включая tsf, di, cfg, ext, vt, asyncChains, closures)'
+    );
+    console.log('   • legend - легенда для расшифровки всех кодов');
 
-    console.log('\n' + '='.repeat(70) + '\n');
+    console.log('\n💡 ПРИМЕРЫ КОМАНД:');
+    console.log('   # Полный отчет');
+    console.log('   npx ast-analyzer compact-recursive ./src/index.ts --preset full --depth 1000');
+    console.log('');
+    console.log('   # Только графы (минимальный размер)');
+    console.log('   npx ast-analyzer compact-recursive ./src/index.ts --preset relationships');
+    console.log('');
+    console.log('   # Ультра-компактный');
+    console.log('   npx ast-analyzer compact-recursive ./src/index.ts --preset ultra --ultra');
+    console.log('');
+    console.log('   # С телами функций');
+    console.log(
+      '   npx ast-analyzer compact-recursive ./src/index.ts --preset full --include-body'
+    );
+    console.log('');
+    console.log('   # Без импортов и экспортов (только вызовы)');
+    console.log('   npx ast-analyzer compact-recursive ./src/index.ts --no-imports --no-exports');
+    console.log('');
+
+    console.log('='.repeat(70) + '\n');
   }
 
   getCommand(): Command {

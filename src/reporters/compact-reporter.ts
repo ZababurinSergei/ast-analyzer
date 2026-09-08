@@ -1,5 +1,6 @@
 // src/reporters/compact-reporter.ts
-// ПОЛНАЯ ВЕРСИЯ - С ИСПРАВЛЕННЫМИ ЭКСПОРТАМИ
+// ПОЛНАЯ ВЕРСИЯ - С ИСПРАВЛЕННЫМИ ЭКСПОРТАМИ И ОБНОВЛЕННОЙ СТАТИСТИКОЙ
+// Версия: 5.1.0 - с поддержкой gr.e, gr.re, gr.ce
 
 import type { EntitiesResult } from '../types.js';
 import path from 'path';
@@ -250,6 +251,13 @@ function migrateReport(data: any): any {
     if (!data.gr.types) data.gr.types = [];
     data.v = '5.1.0';
   }
+  // ✅ Добавляем поля для экспортов
+  if (!data.st.te) data.st.te = 0;
+  if (!data.st.tre) data.st.tre = 0;
+  if (!data.st.tce) data.st.tce = 0;
+  if (!data.gr.e) data.gr.e = [];
+  if (!data.gr.re) data.gr.re = [];
+  if (!data.gr.ce) data.gr.ce = [];
   return data;
 }
 
@@ -314,7 +322,7 @@ export function generateCompactReport(
     useCaching?: boolean;
   } = {}
 ): any {
-  console.log('\n🚀 Генерация ОПТИМИЗИРОВАННОГО компактного отчета...');
+  console.log('\\n🚀 Генерация ОПТИМИЗИРОВАННОГО компактного отчета...');
   const startTime = Date.now();
 
   const {
@@ -376,13 +384,13 @@ export function generateCompactReport(
   const relations = {
     calls: [] as any[],
     imports: [] as any[],
-    exports: [] as any[],
+    exports: [] as any[],      // ✅ ОБЫЧНЫЕ ЭКСПОРТЫ ФУНКЦИЙ
+    reExports: [] as any[],    // ✅ РЕЭКСПОРТЫ ФУНКЦИЙ
     inheritance: [] as any[],
     typeDeps: [] as any[],
-    reExports: [] as any[],
     constUses: [] as any[],
     constDeps: [] as any[],
-    constExports: [] as any[],
+    constExports: [] as any[], // ✅ ЭКСПОРТЫ КОНСТАНТ
     dynamicImports: [] as any[],
     configRefs: [] as any[],
     externalLibs: [] as any[],
@@ -404,6 +412,9 @@ export function generateCompactReport(
     string,
     { name: string; fileId: string; line: number; calls: string[]; calledBy: string[] }
   >();
+
+  // ✅ ГЛОБАЛЬНЫЙ ИНДЕКС ФУНКЦИЙ ПО ИМЕНИ (для реэкспортов)
+  const globalFuncIndex = new Map<string, { fileId: string; funcId: string; idx: number }>();
 
   let moduleCounter = 0;
   let fileCounter = 0;
@@ -460,6 +471,12 @@ export function generateCompactReport(
           calls: func.calls || [],
           calledBy: func.calledBy || [],
         });
+
+        // ✅ Заполняем глобальный индекс
+        const idx = functionCounter;
+        if (!globalFuncIndex.has(func.name) || func.isExported) {
+          globalFuncIndex.set(func.name, { fileId, funcId, idx });
+        }
       }
     }
 
@@ -531,6 +548,7 @@ export function generateCompactReport(
     const dirName = path.basename(path.dirname(filePath)) || 'root';
     const moduleId = moduleMap.get(dirName)!;
     const fileId = fileMap.get(filePath)!;
+    const moduleIdx = parseInt(moduleId.replace('m', ''));
 
     // 4.1 ВЫЗОВЫ (calls)
     const funcs = entities.functions || [];
@@ -610,7 +628,9 @@ export function generateCompactReport(
       }
     }
 
-    // 4.3 ЭКСПОРТЫ (exports)
+    // ============================================
+    // 4.3 ЭКСПОРТЫ (ОБНОВЛЕНО — с поддержкой реэкспортов)
+    // ============================================
     if (includeExports) {
       const exports = entities.exports || [];
       for (const exp of exports) {
@@ -619,53 +639,68 @@ export function generateCompactReport(
         const expName = exp.name || 'default';
         const isDefault = exp.isDefault || false;
         const isReExport = exp.isReExport || false;
+        const source = exp.source || null;
 
-        let funcId: string | undefined;
+        // Ищем функцию в текущем файле
+        let funcId = nameToFuncId.get(expName);
         let funcIdx = -1;
+        let foundInCurrentFile = false;
 
-        const expFunc = funcs.find(f => f && f.name === expName);
-        if (expFunc) {
-          funcId = nameToFuncId.get(expName);
-          if (funcId) {
-            funcIdx = parseInt(funcId.replace('fn', ''), 10);
-          }
+        if (funcId) {
+          funcIdx = parseInt(funcId.replace('fn', ''), 10);
+          foundInCurrentFile = true;
         }
 
-        if (funcIdx === -1 && includeConstants) {
-          const consts = entities.constants || [];
-          const constItem = consts.find(c => c && c.name === expName);
-          if (constItem) {
-            const constId = nameToConstId.get(expName);
-            if (constId) {
-              let exportType = 'ne';
-              if (isDefault) exportType = 'de';
-              else if (isReExport) exportType = 're';
-
-              relations.constExports.push([
-                constId,
-                expName,
-                exportType,
-                fileId,
-                constItem.line || 0,
-              ]);
-              continue;
-            }
-          }
+        // Если не нашли в текущем файле — ищем в глобальном индексе
+        if (!foundInCurrentFile && globalFuncIndex.has(expName)) {
+          const globalEntry = globalFuncIndex.get(expName)!;
+          funcId = globalEntry.funcId;
+          funcIdx = globalEntry.idx;
         }
 
+        // ============================================
+        // 4.3a. РЕЭКСПОРТЫ (export { name } from 'module')
+        // ============================================
+        if (isReExport && funcIdx !== -1 && source) {
+          // Проверяем, не добавлен ли уже этот реэкспорт
+          const exists = relations.reExports.some(
+            (r: any) => r[0] === moduleIdx && r[1] === funcIdx && r[2] === source
+          );
+          if (!exists) {
+            relations.reExports.push([
+              moduleIdx,
+              funcIdx,
+              source,
+              expName,
+              exp.loc?.start?.line || 0,
+              're-export',
+            ]);
+          }
+          continue; // Пропускаем добавление в обычные экспорты
+        }
+
+        // ============================================
+        // 4.3b. ОБЫЧНЫЕ ЭКСПОРТЫ (export function name)
+        // ============================================
         if (funcIdx !== -1) {
-          let exportType = 'ne';
-          if (isDefault) exportType = 'de';
-          else if (isReExport) exportType = 're';
+          // Проверяем, не добавлен ли уже этот экспорт
+          const exists = relations.exports.some(
+            (e: any) => e[1] === funcIdx && e[4] === expName
+          );
+          if (!exists) {
+            let exportType = 'ne'; // named-export
+            if (isDefault) exportType = 'de'; // default-export
+            else if (exp.type === 'type') exportType = 'te'; // type-export
 
-          relations.exports.push([
-            moduleId,
-            funcIdx,
-            exp.loc?.start?.line || 0,
-            exportType,
-            expName,
-            expName,
-          ]);
+            relations.exports.push([
+              moduleIdx,
+              funcIdx,
+              exp.loc?.start?.line || 0,
+              exportType,
+              expName,
+              expName,
+            ]);
+          }
         }
       }
     }
@@ -757,7 +792,7 @@ export function generateCompactReport(
       }
     }
 
-    // 4.6 RE-EXPORTS
+    // 4.6 RE-EXPORTS (дополнительная проверка)
     const exports = entities.exports || [];
     for (const exp of exports) {
       if (!exp || !exp.name) continue;
@@ -819,7 +854,19 @@ export function generateCompactReport(
       }
 
       if (toId) {
-        relations.reExports.push([fromId, toId, originalName, fileId, exp.loc?.start?.line || 0]);
+        const exists = relations.reExports.some(
+          (r: any) => r[0] === moduleIdx && r[1] === parseInt(toId.replace('fn', '')) && r[2] === exp.source
+        );
+        if (!exists) {
+          relations.reExports.push([
+            moduleIdx,
+            parseInt(toId.replace('fn', ''), 10),
+            exp.source || 'unknown',
+            originalName,
+            exp.loc?.start?.line || 0,
+            're-export',
+          ]);
+        }
       }
     }
 
@@ -883,8 +930,38 @@ export function generateCompactReport(
       }
     }
 
+    // 4.9 ЭКСПОРТЫ КОНСТАНТ (constExports) — gr.ce
+    if (includeConstants) {
+      const consts = entities.constants || [];
+      for (const constItem of consts) {
+        if (!constItem || !constItem.name) continue;
+
+        // Проверяем, экспортируется ли константа
+        const isExported = constItem.isExported || false;
+        if (!isExported) continue;
+
+        const constId = nameToConstId.get(constItem.name);
+        if (!constId) continue;
+
+        // Добавляем экспорт константы
+        const constIdx = parseInt(constId.replace('c', ''), 10);
+        const exists = relations.constExports.some(
+          (ce: any) => ce[0] === moduleIdx && ce[1] === constIdx
+        );
+        if (!exists) {
+          relations.constExports.push([
+            moduleIdx,
+            constIdx,
+            constItem.name,
+            constItem.line || 0,
+            'const-export',
+          ]);
+        }
+      }
+    }
+
     // ============================================
-    // 4.9 НОВЫЕ ТИПЫ СВЯЗЕЙ - ИНТЕГРАЦИЯ analyzeContent
+    // 4.10 НОВЫЕ ТИПЫ СВЯЗЕЙ - ИНТЕГРАЦИЯ analyzeContent
     // ============================================
 
     // Получаем содержимое файла для анализа
@@ -907,29 +984,29 @@ export function generateCompactReport(
         includeTypeDeps,
       });
 
-      // 4.9.1 ДИНАМИЧЕСКИЕ ИМПОРТЫ (dynamicImports)
+      // 4.10.1 ДИНАМИЧЕСКИЕ ИМПОРТЫ (dynamicImports)
       for (const di of analysis.dynamicImports) {
         relations.dynamicImports.push([fileId, di.line, di.path, di.type]);
       }
 
-      // 4.9.2 КОНФИГУРАЦИИ (configRefs)
+      // 4.10.2 КОНФИГУРАЦИИ (configRefs)
       for (const cfg of analysis.configRefs) {
         relations.configRefs.push([fileId, cfg.line, cfg.name, cfg.type]);
       }
 
-      // 4.9.3 ВНЕШНИЕ БИБЛИОТЕКИ (externalLibs)
+      // 4.10.3 ВНЕШНИЕ БИБЛИОТЕКИ (externalLibs)
       for (const lib of analysis.externalLibs) {
         relations.externalLibs.push([fileId, lib.name, lib.version, lib.count, 0]);
       }
 
-      // 4.9.4 VUE ШАБЛОНЫ (vueTemplates)
+      // 4.10.4 VUE ШАБЛОНЫ (vueTemplates)
       if (includeVueTemplates && hasVueFiles && filePath.endsWith('.vue')) {
         for (const vt of analysis.vueTemplates) {
           relations.vueTemplates.push([fileId, vt.line, vt.name, vt.type]);
         }
       }
 
-      // 4.9.5 АСИНХРОННЫЕ ЦЕПОЧКИ (asyncChains)
+      // 4.10.5 АСИНХРОННЫЕ ЦЕПОЧКИ (asyncChains)
       for (const chain of analysis.asyncChains) {
         let funcId = null;
 
@@ -969,7 +1046,7 @@ export function generateCompactReport(
         }
       }
 
-      // 4.9.6 ЗАМЫКАНИЯ (closures)
+      // 4.10.6 ЗАМЫКАНИЯ (closures)
       for (const closure of analysis.closures) {
         let funcId = null;
 
@@ -1003,7 +1080,7 @@ export function generateCompactReport(
         }
       }
 
-      // 4.9.7 ТИПОВЫЕ ЗАВИСИМОСТИ (typeDeps) - расширенный анализ
+      // 4.10.7 ТИПОВЫЕ ЗАВИСИМОСТИ (typeDeps) - расширенный анализ
       for (const dep of analysis.typeDeps) {
         const fromId = nameToFuncId.get(dep.name);
         if (fromId && dep.extends) {
@@ -1028,6 +1105,11 @@ export function generateCompactReport(
   const totalCalls = relations.calls.length;
   const totalModules = moduleCounter;
   const totalFiles = fileCounter;
+
+  // ✅ НОВЫЕ СТАТИСТИКИ ДЛЯ ЭКСПОРТОВ
+  const totalExports = relations.exports.length;       // gr.e
+  const totalReExports = relations.reExports.length;   // gr.re
+  const totalConstExports = relations.constExports.length; // gr.ce
 
   const asyncFuncs = functions.filter(f => f[5] && f[5].includes('a')).length;
 
@@ -1064,19 +1146,19 @@ export function generateCompactReport(
       tc: totalCalls,
       tm: totalModules,
       tfils: totalFiles,
-      te: (relations.exports || []).length + (relations.constExports || []).length,
+      te: totalExports,                     // ✅ ОБЫЧНЫЕ ЭКСПОРТЫ ФУНКЦИЙ
+      tre: totalReExports,                  // ✅ РЕЭКСПОРТЫ ФУНКЦИЙ
+      tce: totalConstExports,               // ✅ ЭКСПОРТЫ КОНСТАНТ
       tun: isolated,
       async: asyncFuncs,
       cy: false,
       avgCalls: avgCalls,
       maxCalls: maxCalls,
       tcn: totalConstants,
-      tce: (relations.constExports || []).length,
       tuc: (relations.constUses || []).length,
       tcd: (relations.constDeps || []).length,
       tr: (relations.inheritance || []).length,
       ttd: (relations.typeDeps || []).length,
-      tre: (relations.reExports || []).length,
       ti: (relations.imports || []).length,
       tsf: totalSelfFunctions,
       funcsWithCalls: funcsWithCalls.size,
@@ -1125,14 +1207,14 @@ export function generateCompactReport(
     report.gr = {
       c: useCompression ? compressCalls(relations.calls || []) : relations.calls || [],
       i: relations.imports || [],
-      e: relations.exports || [],
+      e: relations.exports || [],          // ✅ ОБЫЧНЫЕ ЭКСПОРТЫ ФУНКЦИЙ
       h: relations.inheritance || [],
       td: relations.typeDeps || [],
-      re: relations.reExports || [],
+      re: relations.reExports || [],       // ✅ РЕЭКСПОРТЫ ФУНКЦИЙ
       uc: relations.constUses || [],
       cd: relations.constDeps || [],
-      ce: relations.constExports || [],
-      // НОВЫЕ СВЯЗИ - с данными!
+      ce: relations.constExports || [],    // ✅ ЭКСПОРТЫ КОНСТАНТ
+      // НОВЫЕ СВЯЗИ
       di: relations.dynamicImports || [],
       cfg: relations.configRefs || [],
       ext: relations.externalLibs || [],
@@ -1176,6 +1258,12 @@ export function generateCompactReport(
         de: 'default-export',
         re: 're-export',
         te: 'type-export',
+        ce: 'const-export',              // ✅ ДОБАВЛЕНО
+      },
+      reExportTypes: {
+        named: 'named-re-export',
+        all: 'all-re-export',
+        group: 'group-re-export',
       },
       inheritanceTypes: {
         ex: 'extends',
@@ -1236,25 +1324,25 @@ export function generateCompactReport(
     const sizeKB = (json.length / 1024).toFixed(2);
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
-    console.log(`\n✅ Оптимизированный отчет сохранен: ${outputPath}`);
+    console.log(`\\n✅ Оптимизированный отчет сохранен: ${outputPath}`);
     console.log(`📊 Размер: ${sizeKB} KB`);
-    console.log(`\n📊 СТАТИСТИКА:`);
+    console.log(`\\n📊 СТАТИСТИКА:`);
     console.log(`   📌 Функций: ${totalFunctions}`);
     console.log(`   📌 Self функций: ${totalSelfFunctions}`);
     console.log(`   📌 Констант: ${totalConstants}`);
     console.log(`   📌 Вызовов: ${relations.calls.length}`);
     console.log(`   📌 Импортов: ${relations.imports.length}`);
-    console.log(`   📌 Экспортов: ${relations.exports.length + relations.constExports.length}`);
+    console.log(`   📌 Экспортов функций (gr.e): ${relations.exports.length}`);     // ✅ НОВОЕ
+    console.log(`   📌 Реэкспортов (gr.re): ${relations.reExports.length}`);        // ✅ НОВОЕ
+    console.log(`   📌 Экспортов констант (gr.ce): ${relations.constExports.length}`); // ✅ НОВОЕ
     console.log(`   📌 Наследований: ${relations.inheritance.length}`);
     console.log(`   📌 Типовых зависимостей: ${relations.typeDeps.length}`);
-    console.log(`   📌 Re-экспортов: ${relations.reExports.length}`);
     console.log(`   📌 Использований констант: ${relations.constUses.length}`);
     console.log(`   📌 Зависимостей констант: ${relations.constDeps.length}`);
-    console.log(`   📌 Экспортов констант: ${relations.constExports.length}`);
     console.log(`   📌 Модулей: ${moduleCounter}`);
     console.log(`   📌 Файлов: ${fileCounter}`);
 
-    console.log(`\n📊 НОВЫЕ ТИПЫ СВЯЗЕЙ (интегрированы!):`);
+    console.log(`\\n📊 НОВЫЕ ТИПЫ СВЯЗЕЙ (интегрированы!):`);
     console.log(`   📌 Динамических импортов: ${relations.dynamicImports.length}`);
     console.log(`   📌 Конфигураций: ${relations.configRefs.length}`);
     console.log(`   📌 Внешних библиотек: ${relations.externalLibs.length}`);
@@ -1267,7 +1355,7 @@ export function generateCompactReport(
 
     // Детали асинхронных цепочек
     if (relations.asyncChains.length > 0) {
-      console.log(`\n⚡ Детали асинхронных цепочек:`);
+      console.log(`\\n⚡ Детали асинхронных цепочек:`);
       const asyncChainDetails = relations.asyncChains.slice(0, 5);
       for (const chain of asyncChainDetails) {
         const funcId = chain[0];
@@ -1292,7 +1380,7 @@ export function generateCompactReport(
 
     // Детали замыканий
     if (relations.closures.length > 0) {
-      console.log(`\n🔒 Детали замыканий:`);
+      console.log(`\\n🔒 Детали замыканий:`);
       const closureDetails = relations.closures.slice(0, 5);
       for (const closure of closureDetails) {
         const funcId = closure[0];
@@ -1315,9 +1403,43 @@ export function generateCompactReport(
       }
     }
 
+    // ✅ Детали экспортов
+    if (relations.exports.length > 0) {
+      console.log(`\\n📤 Детали экспортов функций (gr.e):`);
+      for (const exp of relations.exports.slice(0, 5)) {
+        const [_moduleIdx, funcIdx, line, type, name] = exp;
+        console.log(`   • ${name} (fn${funcIdx}) — ${type} — строка ${line}`);
+      }
+      if (relations.exports.length > 5) {
+        console.log(`   ... и ещё ${relations.exports.length - 5} экспортов`);
+      }
+    }
+
+    if (relations.reExports.length > 0) {
+      console.log(`\\n🔄 Детали реэкспортов (gr.re):`);
+      for (const exp of relations.reExports.slice(0, 5)) {
+        const [_moduleIdx, funcIdx, source, name, line] = exp;
+        console.log(`   • ${name} (fn${funcIdx}) — из '${source}' — строка ${line}`);
+      }
+      if (relations.reExports.length > 5) {
+        console.log(`   ... и ещё ${relations.reExports.length - 5} реэкспортов`);
+      }
+    }
+
+    if (relations.constExports.length > 0) {
+      console.log(`\\n📌 Детали экспортов констант (gr.ce):`);
+      for (const exp of relations.constExports.slice(0, 5)) {
+        const [_moduleIdx, constIdx, name, line] = exp;
+        console.log(`   • ${name} (c${constIdx}) — строка ${line}`);
+      }
+      if (relations.constExports.length > 5) {
+        console.log(`   ... и ещё ${relations.constExports.length - 5} экспортов констант`);
+      }
+    }
+
     console.log(`   ⏱️  Время: ${duration} сек`);
 
-    console.log(`\n💡 СТРУКТУРА ОТЧЕТА (оптимизированная):`);
+    console.log(`\\n💡 СТРУКТУРА ОТЧЕТА (оптимизированная):`);
     console.log(`   📌 Индексы: mi, fl`);
     console.log(`   📌 Функции: fns (компактные массивы)`);
     console.log(`   📌 Self функции: sf (изолированные функции) ✅ НОВОЕ`);
@@ -1325,13 +1447,13 @@ export function generateCompactReport(
     console.log(`   📌 Связи: gr {`);
     console.log(`      • c  - вызовы (calls)`);
     console.log(`      • i  - импорты (imports)`);
-    console.log(`      • e  - экспорты (exports)`);
+    console.log(`      • e  - экспорты функций (exports) ✅ НОВОЕ`);
     console.log(`      • h  - наследование (inheritance)`);
     console.log(`      • td - типовые зависимости (typeDeps)`);
-    console.log(`      • re - re-экспорты (reExports)`);
+    console.log(`      • re - реэкспорты (reExports) ✅ НОВОЕ`);
     console.log(`      • uc - использование констант (constUses)`);
     console.log(`      • cd - зависимости констант (constDeps)`);
-    console.log(`      • ce - экспорты констант (constExports)`);
+    console.log(`      • ce - экспорты констант (constExports) ✅ НОВОЕ`);
     console.log(`      • di - динамические импорты (dynamicImports) ✅ ИНТЕГРИРОВАНО!`);
     console.log(`      • cfg - конфигурации (configRefs) ✅ ИНТЕГРИРОВАНО!`);
     console.log(`      • ext - внешние библиотеки (externalLibs) ✅ ИНТЕГРИРОВАНО!`);
@@ -1501,7 +1623,7 @@ export function decodeFlags(flags: string): Record<string, boolean> {
 }
 
 // ============================================
-// ✅ ЭКСПОРТ ТИПОВ (ТОЛЬКО ТИПЫ)
+// ✅ ЭКСПОРТ ТИПОВ
 // ============================================
 
 export interface CompactReport {
@@ -1527,7 +1649,9 @@ export interface CompactReport {
     totalFunctions: number;
     totalCalls: number;
     totalImports: number;
-    totalExports: number;
+    totalExports: number;      // ✅ ОБЫЧНЫЕ ЭКСПОРТЫ
+    totalReExports: number;    // ✅ РЕЭКСПОРТЫ
+    totalConstExports: number; // ✅ ЭКСПОРТЫ КОНСТАНТ
     totalUnresolved: number;
   };
 }
@@ -1570,7 +1694,7 @@ export interface CompactFunction {
 }
 
 // ============================================
-// ✅ ЭКСПОРТ ENUM (ЗНАЧЕНИЕ)
+// ✅ ЭКСПОРТ ENUM
 // ============================================
 
 export enum CompactFlags {
@@ -1592,7 +1716,7 @@ export enum CompactFlags {
 }
 
 // ============================================
-// ЭКСПОРТ ПО УМОЛЧАНИЮ (ТОЛЬКО ЗНАЧЕНИЯ)
+// ЭКСПОРТ ПО УМОЛЧАНИЮ
 // ============================================
 
 export default {
@@ -1615,7 +1739,5 @@ export default {
   compressPaths,
   compressCalls,
   migrateReport,
-  // ✅ CompactFlags - ЭТО ENUM (ЗНАЧЕНИЕ), МОЖНО В default export
   CompactFlags,
-  // ❌ CompactReport - ЭТО ИНТЕРФЕЙС (ТИП), НЕЛЬЗЯ В default export
 };

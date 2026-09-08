@@ -41,7 +41,19 @@ export interface ImportInfo {
 
 export interface ExportInfo {
   name: string;
-  type: 'function' | 'class' | 'constant' | 'value' | 'default';
+  type:
+    | 'function'
+    | 'class'
+    | 'constant'
+    | 'value'
+    | 'default'
+    | 'interface'
+    | 'type'
+    | 'enum'
+    | 'object'
+    | 'all'
+    | 're-export'
+    | 'named';
   isDefault: boolean;
   loc: Location | null;
   params?: string[];
@@ -50,6 +62,8 @@ export interface ExportInfo {
   endLine?: number;
   isReExport?: boolean;
   source?: string;
+  isTypeOnly?: boolean;
+  specifiers?: string[];
 }
 
 // ==========================================

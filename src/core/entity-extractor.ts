@@ -1,5 +1,6 @@
 // src/core/entity-extractor.ts
-// ОБНОВЛЕННАЯ ВЕРСИЯ - УДАЛЕНЫ НЕИСПОЛЬЗУЕМЫЕ ФУНКЦИИ
+// ОБНОВЛЕННАЯ ВЕРСИЯ - УДВОЕННАЯ ОБРАБОТКА ЭКСПОРТОВ
+// Добавлена поддержка ExportSpecifier для export { a, b } и реэкспортов
 
 import { walk } from 'estree-walker';
 import path from 'path';
@@ -751,12 +752,34 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
     }
 
     // ==========================================
-    // 2. EXPORT NAMED DECLARATION (ИСПРАВЛЕНО)
+    // 2. EXPORT NAMED DECLARATION (ИСПРАВЛЕНО - ДОБАВЛЕНА ОБРАБОТКА SPECIFIERS)
     // ==========================================
     if (node.type === 'ExportNamedDeclaration') {
       const isReExport = !!node.source;
-      const sourceModule = node.source?.value || undefined;
+      const sourceModule = node.source?.value;
 
+      // ✅ ОБРАБОТКА SPECIFIERS (export { a, b } from 'module')
+      if (node.specifiers && node.specifiers.length > 0) {
+        for (const spec of node.specifiers) {
+          if (spec.type === 'ExportSpecifier') {
+            const exportName = spec.exported?.name || spec.local?.name;
+            if (exportName) {
+              const isTypeExport = node.exportKind === 'type' || false;
+              exports.push({
+                name: exportName,
+                type: isTypeExport ? 'type' : 'value',
+                isDefault: false,
+                isReExport: isReExport,
+                source: sourceModule,
+                loc: spec.loc || node.loc,
+                isTypeOnly: isTypeExport,
+              });
+            }
+          }
+        }
+      }
+
+      // Обработка declaration
       if (node.declaration) {
         const decl = node.declaration;
         if (decl.type === 'FunctionDeclaration' && decl.id) {
@@ -765,7 +788,8 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
             name: exportName,
             type: 'function',
             isDefault: false,
-            isReExport: false,
+            isReExport: isReExport,
+            source: sourceModule,
             loc: decl.loc || node.loc,
           });
         } else if (decl.type === 'ClassDeclaration' && decl.id) {
@@ -774,7 +798,8 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
             name: exportName,
             type: 'class',
             isDefault: false,
-            isReExport: false,
+            isReExport: isReExport,
+            source: sourceModule,
             loc: decl.loc || node.loc,
           });
         } else if (decl.type === 'VariableDeclaration') {
@@ -786,32 +811,49 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
                   name: exportName,
                   type: 'constant',
                   isDefault: false,
-                  isReExport: false,
+                  isReExport: isReExport,
+                  source: sourceModule,
                   loc: d.loc || node.loc,
                 });
               }
             }
           }
-        }
-      } else if (node.specifiers && Array.isArray(node.specifiers)) {
-        for (const spec of node.specifiers) {
-          if (spec.exported) {
-            const exportName = spec.exported.name || spec.exported.value;
-            exports.push({
-              name: exportName,
-              type: 'value',
-              isDefault: false,
-              isReExport: isReExport,
-              source: sourceModule,
-              loc: spec.loc || node.loc,
-            });
-          }
+        } else if (decl.type === 'TSInterfaceDeclaration' && decl.id) {
+          const exportName = decl.id.name;
+          exports.push({
+            name: exportName,
+            type: 'interface',
+            isDefault: false,
+            isReExport: isReExport,
+            source: sourceModule,
+            loc: decl.loc || node.loc,
+          });
+        } else if (decl.type === 'TSTypeAliasDeclaration' && decl.id) {
+          const exportName = decl.id.name;
+          exports.push({
+            name: exportName,
+            type: 'type',
+            isDefault: false,
+            isReExport: isReExport,
+            source: sourceModule,
+            loc: decl.loc || node.loc,
+          });
+        } else if (decl.type === 'TSEnumDeclaration' && decl.id) {
+          const exportName = decl.id.name;
+          exports.push({
+            name: exportName,
+            type: 'enum',
+            isDefault: false,
+            isReExport: isReExport,
+            source: sourceModule,
+            loc: decl.loc || node.loc,
+          });
         }
       }
     }
 
     // ==========================================
-    // 3. EXPORT DEFAULT DECLARATION (ИСПРАВЛЕНО)
+    // 3. EXPORT DEFAULT DECLARATION
     // ==========================================
     if (node.type === 'ExportDefaultDeclaration') {
       let actualName: string | undefined;
@@ -844,7 +886,21 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
     }
 
     // ==========================================
-    // 4. FUNCTION DECLARATION / EXPRESSION
+    // 4. EXPORT ALL DECLARATION (export * from 'module')
+    // ==========================================
+    if (node.type === 'ExportAllDeclaration' && node.source) {
+      exports.push({
+        name: '*',
+        type: 'all',
+        isDefault: false,
+        isReExport: true,
+        source: node.source.value,
+        loc: node.loc,
+      });
+    }
+
+    // ==========================================
+    // 5. FUNCTION DECLARATION / EXPRESSION
     // ==========================================
     if ((node.type === 'FunctionDeclaration' || node.type === 'FunctionExpression') && node.id) {
       const name = node.id.name;
@@ -980,7 +1036,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
     }
 
     // ==========================================
-    // 5. ARROW FUNCTION EXPRESSION
+    // 6. ARROW FUNCTION EXPRESSION
     // ==========================================
     if (node.type === 'ArrowFunctionExpression') {
       let name = 'anonymous_arrow';
@@ -1128,7 +1184,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
     }
 
     // ==========================================
-    // 6. METHOD DEFINITION
+    // 7. METHOD DEFINITION
     // ==========================================
     if (node.type === 'MethodDefinition' && node.key) {
       const methodName = node.key.name || node.key.value;
@@ -1202,7 +1258,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
     }
 
     // ==========================================
-    // 7. CLASS DECLARATION
+    // 8. CLASS DECLARATION
     // ==========================================
     if (node.type === 'ClassDeclaration' && node.id) {
       const name = node.id.name;
@@ -1252,7 +1308,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
     }
 
     // ==========================================
-    // 8. VARIABLE DECLARATION
+    // 9. VARIABLE DECLARATION
     // ==========================================
     if (node.type === 'VariableDeclaration') {
       const isExported = isNodeExported(node, parent);
@@ -1294,7 +1350,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
     }
 
     // ==========================================
-    // 9. TS INTERFACE DECLARATION
+    // 10. TS INTERFACE DECLARATION
     // ==========================================
     if (node.type === 'TSInterfaceDeclaration' && node.id) {
       const name = node.id.name;
@@ -1325,7 +1381,7 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
     }
 
     // ==========================================
-    // 10. TS TYPE ALIAS DECLARATION
+    // 11. TS TYPE ALIAS DECLARATION
     // ==========================================
     if (node.type === 'TSTypeAliasDeclaration' && node.id) {
       const name = node.id.name;
@@ -1650,6 +1706,19 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
   if (filePath) {
     (result as any)._moduleId = moduleId;
     (result as any)._fileId = fileId;
+  }
+
+  // ==========================================
+  // ЛОГИРОВАНИЕ СТАТИСТИКИ ЭКСПОРТОВ
+  // ==========================================
+  console.log(`📤 Экспортов собрано: ${exports.length}`);
+  if (exports.length > 0) {
+    const reExports = exports.filter(e => e.isReExport);
+    const namedExports = exports.filter(e => !e.isReExport && !e.isDefault);
+    const defaultExports = exports.filter(e => e.isDefault);
+    console.log(`   • Обычных экспортов: ${namedExports.length}`);
+    console.log(`   • Реэкспортов: ${reExports.length}`);
+    console.log(`   • Default экспортов: ${defaultExports.length}`);
   }
 
   return result;

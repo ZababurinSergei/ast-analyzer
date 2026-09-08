@@ -1,5 +1,5 @@
-// packages/ast-analyzer/src/core/ast-parser.ts
-// ИСПРАВЛЕННАЯ ВЕРСИЯ - удалены неиспользуемые импорты и исправлены ESLint ошибки
+// src/core/ast-parser.ts
+// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ - исправлен сбор ExportSpecifier
 
 import fs from 'fs';
 import path from 'path';
@@ -132,7 +132,7 @@ export interface ParsedFileInfo {
   /** Импорты из файла */
   imports: { source: string; specifiers: string[]; isTypeOnly: boolean; line?: number }[];
   /** Экспорты из файла */
-  exports: { name: string; type: string; isDefault: boolean; line?: number }[];
+  exports: { name: string; type: string; isDefault: boolean; line?: number; isReExport?: boolean; source?: string }[];
 }
 
 // ==========================================
@@ -254,57 +254,139 @@ function collectImportsFromAST(ast: any): { source: string; specifiers: string[]
 }
 
 // ==========================================
-// НОВАЯ ФУНКЦИЯ: СБОР ЭКСПОРТОВ ИЗ AST
+// ✅ ОБНОВЛЕННАЯ ФУНКЦИЯ: СБОР ЭКСПОРТОВ ИЗ AST
 // ==========================================
 
-function collectExportsFromAST(ast: any): { name: string; type: string; isDefault: boolean; line?: number }[] {
-  const exports: { name: string; type: string; isDefault: boolean; line?: number }[] = [];
+/**
+ * Собирает все экспорты из AST
+ * ✅ ИСПРАВЛЕНО: добавлена поддержка ExportSpecifier для export { a, b }
+ */
+export function collectExportsFromAST(ast: any): {
+  name: string;
+  type: string;
+  isDefault: boolean;
+  line?: number;
+  isReExport?: boolean;
+  source?: string;
+  specifiers?: string[];
+}[] {
+  const exports: any[] = [];
 
   if (!ast || !ast.body) return exports;
 
   walk(ast, {
     enter(node: any) {
-      // ExportNamedDeclaration
+      // ============================================
+      // 1. ExportNamedDeclaration с declaration
+      // ============================================
       if (node.type === 'ExportNamedDeclaration' && node.declaration) {
         const decl = node.declaration;
-        let name = '';
-        let type = 'value';
 
         if (decl.type === 'FunctionDeclaration' && decl.id) {
-          name = decl.id.name;
-          type = 'function';
+          exports.push({
+            name: decl.id.name,
+            type: 'function',
+            isDefault: false,
+            line: node.loc?.start?.line,
+            isReExport: false,
+          });
         } else if (decl.type === 'ClassDeclaration' && decl.id) {
-          name = decl.id.name;
-          type = 'class';
+          exports.push({
+            name: decl.id.name,
+            type: 'class',
+            isDefault: false,
+            line: node.loc?.start?.line,
+            isReExport: false,
+          });
         } else if (decl.type === 'VariableDeclaration') {
-          for (const d of decl.declarations || []) {
+          for (const d of decl.declarations) {
             if (d.id?.name) {
               exports.push({
                 name: d.id.name,
                 type: 'variable',
                 isDefault: false,
-                line: d.loc?.start?.line || node.loc?.start?.line
+                line: d.loc?.start?.line || node.loc?.start?.line,
+                isReExport: false,
               });
             }
           }
-          return;
-        }
-
-        if (name) {
+        } else if (decl.type === 'TSInterfaceDeclaration' && decl.id) {
           exports.push({
-            name,
-            type,
+            name: decl.id.name,
+            type: 'interface',
             isDefault: false,
-            line: node.loc?.start?.line
+            line: node.loc?.start?.line,
+            isReExport: false,
+          });
+        } else if (decl.type === 'TSTypeAliasDeclaration' && decl.id) {
+          exports.push({
+            name: decl.id.name,
+            type: 'type',
+            isDefault: false,
+            line: node.loc?.start?.line,
+            isReExport: false,
+          });
+        } else if (decl.type === 'TSEnumDeclaration' && decl.id) {
+          exports.push({
+            name: decl.id.name,
+            type: 'enum',
+            isDefault: false,
+            line: node.loc?.start?.line,
+            isReExport: false,
           });
         }
       }
 
-      // ExportDefaultDeclaration
+      // ============================================
+      // 2. ✅ РЕЭКСПОРТЫ: export { a, b } from 'module'
+      // ============================================
+      if (node.type === 'ExportNamedDeclaration' && node.specifiers && node.specifiers.length > 0) {
+        const isReExport = !!node.source;
+        const sourceModule = node.source?.value;
+
+        // Собираем все specifiers
+        const specifierNames: string[] = [];
+        for (const spec of node.specifiers) {
+          if (spec.type === 'ExportSpecifier') {
+            const exportedName = spec.exported?.name || spec.local?.name;
+            if (exportedName) {
+              specifierNames.push(exportedName);
+
+              // Добавляем каждый specifier как отдельный экспорт
+              exports.push({
+                name: exportedName,
+                type: isReExport ? 're-export' : 'named',
+                isDefault: false,
+                line: node.loc?.start?.line,
+                isReExport: isReExport,
+                source: sourceModule,
+                specifier: spec.local?.name || spec.exported?.name,
+              });
+            }
+          }
+        }
+
+        // Если это реэкспорт, добавляем также групповую информацию
+        if (isReExport && specifierNames.length > 0) {
+          exports.push({
+            name: `{ ${specifierNames.join(', ')} }`,
+            type: 're-export-group',
+            isDefault: false,
+            line: node.loc?.start?.line,
+            isReExport: true,
+            source: sourceModule,
+            specifiers: specifierNames,
+          });
+        }
+      }
+
+      // ============================================
+      // 3. ExportDefaultDeclaration
+      // ============================================
       if (node.type === 'ExportDefaultDeclaration' && node.declaration) {
         const decl = node.declaration;
         let name = 'default';
-        let type = 'value';
+        let type = 'default';
 
         if (decl.type === 'FunctionDeclaration' && decl.id) {
           name = decl.id.name || 'default';
@@ -315,27 +397,51 @@ function collectExportsFromAST(ast: any): { name: string; type: string; isDefaul
         } else if (decl.type === 'Identifier') {
           name = decl.name || 'default';
           type = 'value';
+        } else if (decl.type === 'ObjectExpression') {
+          name = 'default';
+          type = 'object';
+        } else if (decl.type === 'ArrowFunctionExpression') {
+          name = 'default';
+          type = 'function';
         }
 
         exports.push({
           name,
           type,
           isDefault: true,
-          line: node.loc?.start?.line
+          line: node.loc?.start?.line,
+          isReExport: false,
         });
       }
 
-      // ExportNamedDeclaration with specifiers: export { a, b }
-      if (node.type === 'ExportNamedDeclaration' && node.specifiers) {
-        for (const spec of node.specifiers || []) {
-          if (spec.type === 'ExportSpecifier' && spec.exported) {
-            const name = spec.exported.name || spec.local?.name;
-            if (name) {
+      // ============================================
+      // 4. ExportAllDeclaration: export * from 'module'
+      // ============================================
+      if (node.type === 'ExportAllDeclaration' && node.source) {
+        exports.push({
+          name: '*',
+          type: 'all',
+          isDefault: false,
+          line: node.loc?.start?.line,
+          isReExport: true,
+          source: node.source.value,
+        });
+      }
+
+      // ============================================
+      // 5. ✅ ExportNamedDeclaration без declaration (только specifiers)
+      // ============================================
+      if (node.type === 'ExportNamedDeclaration' && !node.declaration && node.specifiers) {
+        for (const spec of node.specifiers) {
+          if (spec.type === 'ExportSpecifier') {
+            const exportedName = spec.exported?.name || spec.local?.name;
+            if (exportedName) {
               exports.push({
-                name,
-                type: 'value',
+                name: exportedName,
+                type: 'named',
                 isDefault: false,
-                line: node.loc?.start?.line
+                line: node.loc?.start?.line,
+                isReExport: false,
               });
             }
           }
@@ -344,7 +450,16 @@ function collectExportsFromAST(ast: any): { name: string; type: string; isDefaul
     }
   });
 
-  return exports;
+  // Удаляем дубликаты (оставляем первое вхождение)
+  const seen = new Set<string>();
+  const unique = exports.filter(exp => {
+    const key = `${exp.name}:${exp.isReExport ? 're' : 'normal'}:${exp.source || 'self'}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return unique;
 }
 
 // ==========================================
@@ -385,7 +500,7 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
     let isTypeScript = false;
     const moduleName = path.basename(path.dirname(resolvedPath));
     let imports: { source: string; specifiers: string[]; isTypeOnly: boolean; line?: number }[] = [];
-    let exports: { name: string; type: string; isDefault: boolean; line?: number }[] = [];
+    let exports: { name: string; type: string; isDefault: boolean; line?: number; isReExport?: boolean; source?: string }[] = [];
 
     if (filePath.endsWith('.vue')) {
       isVue = true;
