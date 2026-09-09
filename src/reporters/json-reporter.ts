@@ -1,10 +1,12 @@
 // src/reporters/json-reporter.ts
 // ОБНОВЛЕННАЯ ВЕРСИЯ - использует analyzers модуль
 // Полностью очищена от дублирующихся анализаторов
+// ✅ ДОБАВЛЕНА ПОДДЕРЖКА ЭКСПОРТОВ
 
 import fs from 'fs';
 import path from 'path';
 import { Project, Node } from 'ts-morph';
+import { parseFile } from '../core/ast-parser.js';
 
 import type {
   GraphData,
@@ -387,6 +389,7 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
     types: [],
     classes: [],
     imports: [],
+    exports: [], // ✅ ДОБАВЛЕНО ПОЛЕ ДЛЯ ЭКСПОРТОВ
   };
 
   const absolutePath = filePath;
@@ -822,6 +825,40 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       });
     }
 
+    // ============================================================
+    // ✅ ИЗВЛЕЧЕНИЕ ЭКСПОРТОВ (НОВОЕ)
+    // ============================================================
+
+    // Используем parseFile для получения экспортов из AST
+    const parsed = parseFile(absolutePath);
+
+    if (parsed && parsed.exports && parsed.exports.length > 0) {
+      entities.exports = parsed.exports.map((exp: any) => ({
+        name: exp.name,
+        type: exp.type || 'value',
+        isDefault: exp.isDefault || false,
+        line: exp.line || 0,
+        isReExport: exp.isReExport || false,
+        source: exp.source || undefined,
+      }));
+
+      // ✅ ЛОГИРУЕМ НАЙДЕННЫЕ ЭКСПОРТЫ
+      const reExports = entities.exports.filter(e => e.isReExport);
+      if (reExports.length > 0) {
+        console.log(`   📤 Реэкспортов: ${reExports.length}`);
+        for (const re of reExports.slice(0, 3)) {
+          console.log(`      • ${re.name} from '${re.source}'`);
+        }
+        if (reExports.length > 3) {
+          console.log(`      ... и ещё ${reExports.length - 3} реэкспортов`);
+        }
+      }
+    }
+
+    // ============================================================
+    // ЛОГИРОВАНИЕ
+    // ============================================================
+
     const relativePath = path.relative(process.cwd(), absolutePath);
     console.log(`✅ Извлечено сущностей из ${relativePath}:`);
     console.log(`   Функций: ${entities.functions.length}`);
@@ -831,6 +868,7 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
     console.log(`   Типов: ${entities.types.length}`);
     console.log(`   Переменных: ${entities.variables.length}`);
     console.log(`   Импортов: ${entities.imports?.length || 0}`);
+    console.log(`   📤 Экспортов: ${entities.exports?.length || 0}`);  // ✅ ДОБАВЛЕНО
 
     // Статистика по новым анализаторам
     const diCount = (entities as any).dynamicImports?.length || 0;
@@ -850,6 +888,12 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       if (asyncCount) console.log(`      Асинхронных цепочек: ${asyncCount}`);
       if (closureCount) console.log(`      Замыканий: ${closureCount}`);
       if (typeCount) console.log(`      Типовых зависимостей: ${typeCount}`);
+    }
+
+    // ✅ ЛОГИРУЕМ РЕЭКСПОРТЫ ОТДЕЛЬНО
+    const reExportsCount = entities.exports?.filter(e => e.isReExport).length || 0;
+    if (reExportsCount > 0) {
+      console.log(`   🔄 Реэкспортов: ${reExportsCount}`);
     }
 
     // Сохраняем в кэш

@@ -1,117 +1,230 @@
 // src/utils/flag-utils.ts
-// Утилиты для работы с битовыми флагами
-// Используется для компактного хранения булевых свойств в JSON отчетах
+// МАКСИМАЛЬНАЯ ПРОИЗВОДИТЕЛЬНОСТЬ - LRU Cache + Precomputed Hot Combinations
 
 /**
  * Перечисление битовых флагов для функций
- * Каждый флаг занимает 1 бит в числе
- *
- * Пример: flags = 0b00000110 означает:
- *   - NESTED = 1 (бит 1)
- *   - ARROW = 1 (бит 2)
- *   - остальные = 0
  */
 export enum FunctionFlags {
-  /** Асинхронная функция (async) */
-  ASYNC = 1 << 0, // 1
-  /** Вложенная функция (объявлена внутри другой функции) */
-  NESTED = 1 << 1, // 2
-  /** Стрелочная функция (=>) */
-  ARROW = 1 << 2, // 4
-  /** Метод класса */
-  METHOD = 1 << 3, // 8
-  /** Обработчик события */
+  ASYNC = 1 << 0,        // 1
+  NESTED = 1 << 1,       // 2
+  ARROW = 1 << 2,        // 4
+  METHOD = 1 << 3,       // 8
   EVENT_HANDLER = 1 << 4, // 16
-  /** Экспортируется (export) */
-  EXPORTED = 1 << 5, // 32
-  /** Константа (const) */
-  CONST = 1 << 6, // 64
-  /** Vue макрос (defineProps, defineEmits, etc.) */
-  MACRO = 1 << 7, // 128
-  /** Vue composable (use*) */
-  COMPOSABLE = 1 << 8, // 256
-  /** Генератор (function*) */
-  GENERATOR = 1 << 9, // 512
-  /** Приватный метод/свойство */
-  PRIVATE = 1 << 10, // 1024
-  /** Защищенный метод/свойство */
-  PROTECTED = 1 << 11, // 2048
-  /** Статический метод/свойство */
-  STATIC = 1 << 12, // 4096
-  /** Readonly свойство */
-  READONLY = 1 << 13, // 8192
-  /** Опциональный параметр/свойство */
-  OPTIONAL = 1 << 14, // 16384
-  /** Nullable тип */
-  NULLABLE = 1 << 15, // 32768
-  /** Default export */
+  EXPORTED = 1 << 5,     // 32
+  CONST = 1 << 6,        // 64
+  MACRO = 1 << 7,        // 128
+  COMPOSABLE = 1 << 8,   // 256
+  GENERATOR = 1 << 9,    // 512
+  PRIVATE = 1 << 10,     // 1024
+  PROTECTED = 1 << 11,   // 2048
+  STATIC = 1 << 12,      // 4096
+  READONLY = 1 << 13,    // 8192
+  OPTIONAL = 1 << 14,    // 16384
+  NULLABLE = 1 << 15,    // 32768
   DEFAULT_EXPORT = 1 << 16, // 65536
-
-  // ============================================
-  // ✅ НОВЫЕ ФЛАГИ (добавлены в v5.1.0)
-  // ============================================
-
-  /** Self функция (изолированная, без вызовов) */
-  SELF = 1 << 17, // 131072
-  /** Динамический импорт */
-  DYNAMIC = 1 << 18, // 262144
-  /** Конфигурация (process.env, config файлы) */
-  CONFIG = 1 << 19, // 524288
-  /** Внешняя библиотека */
-  EXTERNAL = 1 << 20, // 1048576
-  /** Vue шаблон */
+  SELF = 1 << 17,        // 131072
+  DYNAMIC = 1 << 18,     // 262144
+  CONFIG = 1 << 19,      // 524288
+  EXTERNAL = 1 << 20,    // 1048576
   VUE_TEMPLATE = 1 << 21, // 2097152
-  /** Асинхронная цепочка */
   ASYNC_CHAIN = 1 << 22, // 4194304
-  /** Замыкание */
-  CLOSURE = 1 << 23, // 8388608
-  /** Типовая зависимость */
-  TYPE_DEP = 1 << 24, // 16777216
+  CLOSURE = 1 << 23,     // 8388608
+  TYPE_DEP = 1 << 24,    // 16777216
 }
 
 // ============================================
-// ПРЕДВЫЧИСЛЕНИЕ КОМБИНАЦИЙ ФЛАГОВ
+// LRU CACHE ДЛЯ МАКСИМАЛЬНОЙ ПРОИЗВОДИТЕЛЬНОСТИ
 // ============================================
 
-const flagCombinations = new Map<number, string[]>();
+class LRUCache<K, V> {
+  private cache = new Map<K, V>();
+  private readonly maxSize: number;
+  private hits = 0;
+  private misses = 0;
 
-function precomputeFlagCombinations(): void {
-  const flagEntries = Object.entries(FunctionFlags).filter(
-    ([key, value]) => typeof value === 'number' && !key.startsWith('_')
-  );
+  constructor(maxSize: number = 2000) {
+    this.maxSize = maxSize;
+  }
 
-  const maxMask = 1 << flagEntries.length;
+  get(key: K): V | undefined {
+    const value = this.cache.get(key);
+    if (value !== undefined) {
+      this.hits++;
+      // Обновляем позицию (перемещаем в конец)
+      this.cache.delete(key);
+      this.cache.set(key, value);
+      return value;
+    }
+    this.misses++;
+    return undefined;
+  }
 
-  for (let i = 0; i < maxMask; i++) {
-    const active: string[] = [];
-    for (let j = 0; j < flagEntries.length; j++) {
-      if (i & (1 << j)) {
-        const key = flagEntries[j]?.[0] || '';
-        if (key) {
-          active.push(key);
-        }
+  set(key: K, value: V): void {
+    if (this.cache.size >= this.maxSize) {
+      // Удаляем первый (самый старый) элемент
+      const firstKey = this.cache.keys().next().value;
+      if (firstKey !== undefined) {
+        this.cache.delete(firstKey);
       }
     }
-    flagCombinations.set(i, active);
+    this.cache.set(key, value);
+  }
+
+  getStats(): { size: number; hits: number; misses: number; hitRate: number } {
+    const total = this.hits + this.misses;
+    return {
+      size: this.cache.size,
+      hits: this.hits,
+      misses: this.misses,
+      hitRate: total > 0 ? (this.hits / total) * 100 : 0,
+    };
+  }
+
+  clear(): void {
+    this.cache.clear();
+    this.hits = 0;
+    this.misses = 0;
   }
 }
 
-precomputeFlagCombinations();
+// ============================================
+// ПРЕДВАРИТЕЛЬНО ВЫЧИСЛЕННЫЕ ГОРЯЧИЕ КОМБИНАЦИИ
+// ============================================
+
+// Только самые частые комбинации (не все 33 миллиона!)
+const HOT_COMBINATIONS = new Map<number, Record<string, boolean>>();
+
+// Предварительно вычисляем ТОЛЬКО часто используемые комбинации
+function precomputeHotCombinations(): void {
+  // 1. Базовая функция (без флагов)
+  HOT_COMBINATIONS.set(0, {});
+
+  // 2. Экспортированная функция
+  HOT_COMBINATIONS.set(FunctionFlags.EXPORTED, { isExported: true });
+
+  // 3. Асинхронная функция
+  HOT_COMBINATIONS.set(FunctionFlags.ASYNC, { isAsync: true });
+
+  // 4. Стрелочная функция
+  HOT_COMBINATIONS.set(FunctionFlags.ARROW, { isArrow: true });
+
+  // 5. Экспортированная + асинхронная
+  HOT_COMBINATIONS.set(
+    FunctionFlags.EXPORTED | FunctionFlags.ASYNC,
+    { isExported: true, isAsync: true }
+  );
+
+  // 6. Экспортированная + стрелочная
+  HOT_COMBINATIONS.set(
+    FunctionFlags.EXPORTED | FunctionFlags.ARROW,
+    { isExported: true, isArrow: true }
+  );
+
+  // 7. Метод класса
+  HOT_COMBINATIONS.set(
+    FunctionFlags.METHOD | FunctionFlags.NESTED,
+    { isMethod: true, isNested: true }
+  );
+
+  // 8. Экспортированный метод
+  HOT_COMBINATIONS.set(
+    FunctionFlags.EXPORTED | FunctionFlags.METHOD | FunctionFlags.NESTED,
+    { isExported: true, isMethod: true, isNested: true }
+  );
+
+  // 9. Vue composable
+  HOT_COMBINATIONS.set(
+    FunctionFlags.COMPOSABLE | FunctionFlags.EXPORTED,
+    { isComposable: true, isExported: true }
+  );
+
+  // 10. Self функция (изолированная)
+  HOT_COMBINATIONS.set(
+    FunctionFlags.SELF,
+    { isSelf: true }
+  );
+
+  // 11. Async + Self
+  HOT_COMBINATIONS.set(
+    FunctionFlags.ASYNC | FunctionFlags.SELF,
+    { isAsync: true, isSelf: true }
+  );
+
+  // 12. Экспортированная + Self
+  HOT_COMBINATIONS.set(
+    FunctionFlags.EXPORTED | FunctionFlags.SELF,
+    { isExported: true, isSelf: true }
+  );
+
+  // 13. Vue макрос
+  HOT_COMBINATIONS.set(
+    FunctionFlags.MACRO | FunctionFlags.EXPORTED,
+    { isMacro: true, isExported: true }
+  );
+
+  // 14. Асинхронная цепочка
+  HOT_COMBINATIONS.set(
+    FunctionFlags.ASYNC_CHAIN,
+    { isAsyncChain: true }
+  );
+
+  // 15. Замыкание
+  HOT_COMBINATIONS.set(
+    FunctionFlags.CLOSURE,
+    { isClosure: true }
+  );
+
+  // 16. Типовая зависимость
+  HOT_COMBINATIONS.set(
+    FunctionFlags.TYPE_DEP,
+    { isTypeDep: true }
+  );
+
+  // 17. Асинхронная + вложенная
+  HOT_COMBINATIONS.set(
+    FunctionFlags.ASYNC | FunctionFlags.NESTED,
+    { isAsync: true, isNested: true }
+  );
+
+  // 18. Экспортированная + вложенная
+  HOT_COMBINATIONS.set(
+    FunctionFlags.EXPORTED | FunctionFlags.NESTED,
+    { isExported: true, isNested: true }
+  );
+
+  // 19. Динамический импорт
+  HOT_COMBINATIONS.set(
+    FunctionFlags.DYNAMIC,
+    { isDynamic: true }
+  );
+
+  // 20. Внешняя библиотека
+  HOT_COMBINATIONS.set(
+    FunctionFlags.EXTERNAL,
+    { isExternal: true }
+  );
+}
+
+// Выполняем предварительное вычисление горячих комбинаций
+precomputeHotCombinations();
+
+// ============================================
+// ОСНОВНОЙ КЭШ ДЛЯ ДЕКОДИРОВАНИЯ
+// ============================================
+
+const decodeCache = new LRUCache<number, Record<string, boolean>>(2000);
+
+// Список всех флагов для итерации
+const FLAG_ENTRIES = Object.entries(FunctionFlags)
+  .filter(([key, value]) => typeof value === 'number' && !key.startsWith('_'))
+  .map(([key, value]) => ({ key, value: value as number }));
+
+// ============================================
+// ОСНОВНЫЕ ФУНКЦИИ
+// ============================================
 
 /**
- * Кодирует булевы свойства функции в число (битовые флаги)
- * @param entity - Объект сущности (функции)
- * @returns Число с установленными битами
- *
- * @example
- * const entity = {
- *   isAsync: true,
- *   isNested: false,
- *   isArrow: true,
- *   isExported: true
- * };
- * const flags = encodeFlags(entity);
- * // flags = 0b00100101 (37)
+ * Кодирует булевы свойства в битовые флаги (оптимизировано)
  */
 export function encodeFlags(entity: any): number {
   let flags = 0;
@@ -133,8 +246,6 @@ export function encodeFlags(entity: any): number {
   if (entity.isOptional) flags |= FunctionFlags.OPTIONAL;
   if (entity.isNullable) flags |= FunctionFlags.NULLABLE;
   if (entity.isDefaultExport) flags |= FunctionFlags.DEFAULT_EXPORT;
-
-  // ✅ НОВЫЕ ФЛАГИ
   if (entity.isSelf) flags |= FunctionFlags.SELF;
   if (entity.isDynamic) flags |= FunctionFlags.DYNAMIC;
   if (entity.isConfig) flags |= FunctionFlags.CONFIG;
@@ -148,80 +259,62 @@ export function encodeFlags(entity: any): number {
 }
 
 /**
- * Декодирует битовые флаги обратно в объект с булевыми свойствами
- * @param flags - Число с битовыми флагами
- * @returns Объект с булевыми свойствами
- *
- * @example
- * const flags = 37; // 0b00100101
- * const decoded = decodeFlags(flags);
- * // { isAsync: true, isArrow: true, isExported: true }
+ * Декодирует флаги (с использованием LRU-кэша и горячих комбинаций)
+ * МАКСИМАЛЬНАЯ ПРОИЗВОДИТЕЛЬНОСТЬ
  */
 export function decodeFlags(flags: number): Record<string, boolean> {
-  return {
-    isAsync: !!(flags & FunctionFlags.ASYNC),
-    isNested: !!(flags & FunctionFlags.NESTED),
-    isArrow: !!(flags & FunctionFlags.ARROW),
-    isMethod: !!(flags & FunctionFlags.METHOD),
-    isEventHandler: !!(flags & FunctionFlags.EVENT_HANDLER),
-    isExported: !!(flags & FunctionFlags.EXPORTED),
-    isConst: !!(flags & FunctionFlags.CONST),
-    isMacro: !!(flags & FunctionFlags.MACRO),
-    isComposable: !!(flags & FunctionFlags.COMPOSABLE),
-    isGenerator: !!(flags & FunctionFlags.GENERATOR),
-    isPrivate: !!(flags & FunctionFlags.PRIVATE),
-    isProtected: !!(flags & FunctionFlags.PROTECTED),
-    isStatic: !!(flags & FunctionFlags.STATIC),
-    isReadonly: !!(flags & FunctionFlags.READONLY),
-    isOptional: !!(flags & FunctionFlags.OPTIONAL),
-    isNullable: !!(flags & FunctionFlags.NULLABLE),
-    isDefaultExport: !!(flags & FunctionFlags.DEFAULT_EXPORT),
-
-    // ✅ НОВЫЕ ФЛАГИ
-    isSelf: !!(flags & FunctionFlags.SELF),
-    isDynamic: !!(flags & FunctionFlags.DYNAMIC),
-    isConfig: !!(flags & FunctionFlags.CONFIG),
-    isExternal: !!(flags & FunctionFlags.EXTERNAL),
-    isVueTemplate: !!(flags & FunctionFlags.VUE_TEMPLATE),
-    isAsyncChain: !!(flags & FunctionFlags.ASYNC_CHAIN),
-    isClosure: !!(flags & FunctionFlags.CLOSURE),
-    isTypeDep: !!(flags & FunctionFlags.TYPE_DEP),
-  };
-}
-
-/**
- * Оптимизированная версия decodeFlags с предвычислением
- * @param flags - Число с битовыми флагами
- * @returns Объект с булевыми свойствами
- */
-export function decodeFlagsOptimized(flags: number): Record<string, boolean> {
-  const result: Record<string, boolean> = {};
-  const active = flagCombinations.get(flags) || [];
-
-  for (const flag of active) {
-    result[flag.toLowerCase()] = true;
+  // 1. Проверяем горячие комбинации (O(1))
+  const hot = HOT_COMBINATIONS.get(flags);
+  if (hot !== undefined) {
+    return { ...hot };
   }
+
+  // 2. Проверяем LRU-кэш (O(1))
+  const cached = decodeCache.get(flags);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  // 3. Вычисляем на лету (редкий случай)
+  const result: Record<string, boolean> = {};
+  for (const { key, value } of FLAG_ENTRIES) {
+    result[key.toLowerCase()] = !!(flags & value);
+  }
+
+  // Сохраняем в кэш
+  decodeCache.set(flags, result);
 
   return result;
 }
 
 /**
- * Получает список установленных флагов в виде строк
- * @param flags - Число с битовыми флагами
- * @returns Массив названий установленных флагов
- *
- * @example
- * const flags = 37;
- * const list = getFlagsList(flags);
- * // ['ASYNC', 'ARROW', 'EXPORTED']
+ * Декодирует флаги с префиксом (для быстрого доступа)
+ */
+export function decodeFlagsPrefixed(flags: number, prefix: string = ''): Record<string, boolean> {
+  const decoded = decodeFlags(flags);
+  if (!prefix) return decoded;
+
+  const result: Record<string, boolean> = {};
+  for (const [key, value] of Object.entries(decoded)) {
+    result[`${prefix}${key.charAt(0).toUpperCase()}${key.slice(1)}`] = value;
+  }
+  return result;
+}
+
+/**
+ * Получает список установленных флагов (оптимизировано)
  */
 export function getFlagsList(flags: number): string[] {
   const result: string[] = [];
-  const flagMap = Object.entries(FunctionFlags)
-    .filter(([key, value]) => typeof value === 'number' && !key.startsWith('_'))
-    .map(([key, value]) => ({ key, value: value as number }));
 
-  for (const { key, value } of flagMap) {
+  // Сначала проверяем горячие комбинации
+  const hot = HOT_COMBINATIONS.get(flags);
+  if (hot !== undefined) {
+    return Object.keys(hot).map(k => k.toUpperCase());
+  }
+
+  // Иначе вычисляем
+  for (const { key, value } of FLAG_ENTRIES) {
     if (flags & value) {
       result.push(key);
     }
@@ -231,25 +324,43 @@ export function getFlagsList(flags: number): string[] {
 }
 
 /**
- * Проверяет, установлен ли конкретный флаг
- * @param flags - Число с битовыми флагами
- * @param flag - Проверяемый флаг
- * @returns true если флаг установлен
- *
- * @example
- * const flags = 37;
- * const hasAsync = hasFlag(flags, FunctionFlags.ASYNC); // false
- * const hasArrow = hasFlag(flags, FunctionFlags.ARROW); // true
+ * Проверяет, установлен ли флаг (быстрая проверка)
  */
 export function hasFlag(flags: number, flag: FunctionFlags): boolean {
   return !!(flags & flag);
 }
 
 /**
+ * Проверяет несколько флагов одновременно (оптимизировано)
+ */
+export function hasFlags(flags: number, ...flagList: FunctionFlags[]): boolean[] {
+  return flagList.map(flag => !!(flags & flag));
+}
+
+/**
+ * Проверяет, установлены ли ВСЕ указанные флаги
+ */
+export function hasAllFlags(flags: number, ...flagList: FunctionFlags[]): boolean {
+  let mask = 0;
+  for (const flag of flagList) {
+    mask |= flag;
+  }
+  return (flags & mask) === mask;
+}
+
+/**
+ * Проверяет, установлен ли ХОТЯ БЫ ОДИН из указанных флагов
+ */
+export function hasAnyFlag(flags: number, ...flagList: FunctionFlags[]): boolean {
+  let mask = 0;
+  for (const flag of flagList) {
+    mask |= flag;
+  }
+  return !!(flags & mask);
+}
+
+/**
  * Устанавливает флаг
- * @param flags - Исходное число с битовыми флагами
- * @param flag - Флаг для установки
- * @returns Новое число с установленным флагом
  */
 export function setFlag(flags: number, flag: FunctionFlags): number {
   return flags | flag;
@@ -257,29 +368,20 @@ export function setFlag(flags: number, flag: FunctionFlags): number {
 
 /**
  * Снимает флаг
- * @param flags - Исходное число с битовыми флагами
- * @param flag - Флаг для снятия
- * @returns Новое число без указанного флага
  */
 export function clearFlag(flags: number, flag: FunctionFlags): number {
   return flags & ~flag;
 }
 
 /**
- * Переключает флаг (устанавливает если был снят, и наоборот)
- * @param flags - Исходное число с битовыми флагами
- * @param flag - Флаг для переключения
- * @returns Новое число с переключенным флагом
+ * Переключает флаг
  */
 export function toggleFlag(flags: number, flag: FunctionFlags): number {
   return flags ^ flag;
 }
 
 /**
- * Кодирует флаги из объекта в число с поддержкой кастомных полей
- * @param entity - Объект сущности
- * @param customFieldMap - Карта кастомных полей для кодирования
- * @returns Число с битовыми флагами
+ * Кодирует флаги с кастомными полями
  */
 export function encodeFlagsAdvanced(
   entity: any,
@@ -299,10 +401,7 @@ export function encodeFlagsAdvanced(
 }
 
 /**
- * Декодирует флаги в объект с поддержкой кастомных полей
- * @param flags - Число с битовыми флагами
- * @param customFieldMap - Карта кастомных полей для декодирования
- * @returns Объект с булевыми свойствами
+ * Декодирует флаги с кастомными полями
  */
 export function decodeFlagsAdvanced(
   flags: number,
@@ -320,24 +419,14 @@ export function decodeFlagsAdvanced(
 }
 
 /**
- * Возвращает человеко-читаемое представление флагов
- * @param flags - Число с битовыми флагами
- * @param separator - Разделитель между флагами
- * @returns Строка с названиями флагов
- *
- * @example
- * const flags = 37;
- * const str = flagsToString(flags);
- * // 'ASYNC | ARROW | EXPORTED'
+ * Строковое представление флагов
  */
 export function flagsToString(flags: number, separator: string = ' | '): string {
   return getFlagsList(flags).join(separator);
 }
 
 /**
- * Получает количество установленных флагов
- * @param flags - Число с битовыми флагами
- * @returns Количество установленных битов
+ * Количество установленных флагов (быстрый подсчет)
  */
 export function countFlags(flags: number): number {
   let count = 0;
@@ -350,79 +439,38 @@ export function countFlags(flags: number): number {
 }
 
 /**
- * Проверяет, есть ли хотя бы один установленный флаг из списка
- * @param flags - Число с битовыми флагами
- * @param flagList - Список флагов для проверки
- * @returns true если хотя бы один флаг из списка установлен
+ * Получить статистику кэша
  */
-export function hasAnyFlag(flags: number, flagList: FunctionFlags[]): boolean {
-  return flagList.some(flag => !!(flags & flag));
+export function getCacheStats(): { size: number; hits: number; misses: number; hitRate: number } {
+  return decodeCache.getStats();
 }
 
 /**
- * Проверяет, установлены ли все флаги из списка
- * @param flags - Число с битовыми флагами
- * @param flagList - Список флагов для проверки
- * @returns true если все флаги из списка установлены
+ * Очистить кэш
  */
-export function hasAllFlags(flags: number, flagList: FunctionFlags[]): boolean {
-  return flagList.every(flag => !!(flags & flag));
+export function clearCache(): void {
+  decodeCache.clear();
 }
 
 // ============================================
-// КОНСТАНТЫ ДЛЯ ЧАСТО ИСПОЛЬЗУЕМЫХ КОМБИНАЦИЙ
+// КОНСТАНТЫ
 // ============================================
 
-/** Стандартная функция (без особых флагов) */
 export const STANDARD_FUNCTION = 0;
-
-/** Вложенная неэкспортируемая функция */
 export const NESTED_FUNCTION = FunctionFlags.NESTED;
-
-/** Асинхронная вложенная функция */
 export const ASYNC_NESTED_FUNCTION = FunctionFlags.ASYNC | FunctionFlags.NESTED;
-
-/** Экспортируемая функция */
 export const EXPORTED_FUNCTION = FunctionFlags.EXPORTED;
-
-/** Метод класса */
 export const METHOD_FUNCTION = FunctionFlags.METHOD | FunctionFlags.NESTED;
-
-/** Стрелочная функция */
 export const ARROW_FUNCTION = FunctionFlags.ARROW;
-
-/** Vue composable */
 export const COMPOSABLE_FUNCTION = FunctionFlags.COMPOSABLE | FunctionFlags.EXPORTED;
-
-/** Vue макрос */
 export const VUE_MACRO = FunctionFlags.MACRO | FunctionFlags.EXPORTED;
-
-// ============================================
-// ✅ НОВЫЕ КОНСТАНТЫ (v5.1.0)
-// ============================================
-
-/** Self функция (изолированная) */
 export const SELF_FUNCTION = FunctionFlags.SELF;
-
-/** Динамический импорт */
 export const DYNAMIC_IMPORT = FunctionFlags.DYNAMIC;
-
-/** Конфигурационная функция */
 export const CONFIG_FUNCTION = FunctionFlags.CONFIG;
-
-/** Внешняя библиотека */
 export const EXTERNAL_LIB = FunctionFlags.EXTERNAL;
-
-/** Vue шаблон */
 export const VUE_TEMPLATE_FUNCTION = FunctionFlags.VUE_TEMPLATE;
-
-/** Асинхронная цепочка */
 export const ASYNC_CHAIN_FUNCTION = FunctionFlags.ASYNC_CHAIN;
-
-/** Замыкание */
 export const CLOSURE_FUNCTION = FunctionFlags.CLOSURE;
-
-/** Типовая зависимость */
 export const TYPE_DEP_FUNCTION = FunctionFlags.TYPE_DEP;
 
 // ============================================
@@ -433,9 +481,12 @@ export default {
   FunctionFlags,
   encodeFlags,
   decodeFlags,
-  decodeFlagsOptimized,
+  decodeFlagsPrefixed,
   getFlagsList,
   hasFlag,
+  hasFlags,
+  hasAllFlags,
+  hasAnyFlag,
   setFlag,
   clearFlag,
   toggleFlag,
@@ -443,8 +494,8 @@ export default {
   decodeFlagsAdvanced,
   flagsToString,
   countFlags,
-  hasAnyFlag,
-  hasAllFlags,
+  getCacheStats,
+  clearCache,
 
   // Константы
   STANDARD_FUNCTION,
@@ -455,8 +506,6 @@ export default {
   ARROW_FUNCTION,
   COMPOSABLE_FUNCTION,
   VUE_MACRO,
-
-  // ✅ Новые константы
   SELF_FUNCTION,
   DYNAMIC_IMPORT,
   CONFIG_FUNCTION,
