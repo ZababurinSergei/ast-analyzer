@@ -1,359 +1,197 @@
 // src/reporters/CompactReportConfig.ts
-// НОВЫЙ ФАЙЛ - Единый конфиг для управления полями отчёта
-// Версия: 1.0.0
+// ОБНОВЛЕННАЯ ВЕРСИЯ - body отключен во всех пресетах
 
 export interface CompactReportConfig {
   // === ОСНОВНЫЕ ПОЛЯ ===
-  version: boolean; // Версия формата
-  timestamp: boolean; // Время генерации
-  root: boolean; // Корневой модуль
-  legend: boolean; // Легенда
-
-  // === ИНДЕКСЫ ===
-  moduleIndex: boolean; // mi - индексы модулей
-  fileIndex: boolean; // fl - индексы файлов
-  functionIndex: boolean; // fi - индексы функций
+  version: boolean;
+  timestamp: boolean;
+  root: boolean;
+  legend: boolean;
 
   // === СУЩНОСТИ ===
-  functions: boolean; // fns - функции
-  constants: boolean; // cn - константы
-  selfFunctions: boolean; // sf - self-функции
+  includeFiles: boolean;
+  includeModules: boolean;
+  includeFunctions: boolean;
+  includeConstants: boolean;
+  includeClasses: boolean;
+  includeInterfaces: boolean;
+  includeTypes: boolean;
+  includeVariables: boolean;
 
-  // === ГРАФЫ (СВЯЗИ) ===
-  relations: {
-    calls: boolean; // gr.c - вызовы
-    imports: boolean; // gr.i - импорты
-    exports: boolean; // gr.e - экспорты
-    inheritance: boolean; // gr.h - наследование
-    typeDeps: boolean; // gr.td - типовые зависимости
-    reExports: boolean; // gr.re - re-экспорты
-    constUses: boolean; // gr.uc - использование констант
-    constDeps: boolean; // gr.cd - зависимости констант
-    constExports: boolean; // gr.ce - экспорты констант
-  };
-
-  // === РАСШИРЕННЫЙ АНАЛИЗ ===
-  extended: {
-    dynamicImports: boolean; // gr.di - динамические импорты
-    configRefs: boolean; // gr.cfg - конфигурации
-    externalLibs: boolean; // gr.ext - внешние библиотеки
-    vueTemplates: boolean; // gr.vt - Vue шаблоны
-    asyncChains: boolean; // gr.async - асинхронные цепочки
-    closures: boolean; // gr.closures - замыкания
-    reflections: boolean; // gr.reflection - рефлексия
-  };
+  // === СВЯЗИ ===
+  includeCalls: boolean;
+  includeImports: boolean;
+  includeExports: boolean;
+  includeInheritance: boolean;
+  includeTypeDeps: boolean;
 
   // === СТАТИСТИКА ===
-  stats: {
-    basic: boolean; // st - базовая статистика
-    extended: boolean; // st - расширенная статистика
-    byModule: boolean; // st.byModule - по модулям
-    byFile: boolean; // st.byFile - по файлам
-    byType: boolean; // st.byType - по типам
-  };
+  includeStats: boolean;
+  includeCycles: boolean;
 
-  // === МЕТАДАННЫЕ ===
-  metadata: {
-    flags: boolean; // flg - битовые флаги
-    types: boolean; // types - типы
-    errors: boolean; // errors - ошибки
-  };
-
-  // === ПРЕСЕТЫ ===
-  preset?: 'minimal' | 'standard' | 'full' | 'relationships' | 'ultra' | 'custom';
-
-  // === ДОПОЛНИТЕЛЬНО ===
-  minifyKeys: boolean; // Минифицировать ключи
-  useBitFlags: boolean; // Использовать битовые флаги
-  useDictionaries: boolean; // Использовать словари
-  useTemplates: boolean; // Использовать шаблоны
-  readableKeys: boolean; // Читаемые ключи
-  includeBody: boolean; // Включать тела функций
-  includeSecurity: boolean; // Включать информацию о безопасности
-  includeVSCode: boolean; // Включать VSCode ссылки
-  maxDepth: number; // Максимальная глубина
+  // === ФОРМАТИРОВАНИЕ ===
+  minifyKeys: boolean;
+  useBitFlags: boolean;
+  useDictionaries: boolean;
+  useTemplates: boolean;
+  readableKeys: boolean;
+  includeBody: boolean; // ПО УМОЛЧАНИЮ false
+  includeSecurity: boolean;
+  includeVSCode: boolean;
+  maxDepth: number;
 }
 
 // ============================================
-// ПРЕСЕТЫ КОНФИГУРАЦИЙ
+// ПРЕСЕТЫ — body ОТКЛЮЧЕН ВО ВСЕХ
 // ============================================
 
 export const PRESETS: Record<string, Partial<CompactReportConfig>> = {
-  // === МИНИМАЛЬНЫЙ — только самое важное ===
+  // === МИНИМАЛЬНЫЙ ===
   minimal: {
-    version: true,
-    timestamp: true,
-    root: true,
-    legend: false,
-    moduleIndex: true,
-    fileIndex: true,
-    functionIndex: true,
-    functions: true,
-    constants: false,
-    selfFunctions: false,
-    relations: {
-      calls: true,
-      imports: true,
-      exports: true,
-      inheritance: false,
-      typeDeps: false,
-      reExports: false,
-      constUses: false,
-      constDeps: false,
-      constExports: false,
-    },
-    extended: {
-      dynamicImports: false,
-      configRefs: false,
-      externalLibs: false,
-      vueTemplates: false,
-      asyncChains: false,
-      closures: false,
-      reflections: false,
-    },
-    stats: {
-      basic: true,
-      extended: false,
-      byModule: false,
-      byFile: false,
-      byType: false,
-    },
-    metadata: {
-      flags: false,
-      types: false,
-      errors: false,
-    },
-    minifyKeys: true,
+    includeFiles: true,
+    includeModules: true,
+    includeFunctions: true,
+    includeConstants: false,
+    includeClasses: false,
+    includeInterfaces: false,
+    includeTypes: false,
+    includeVariables: false,
+    includeCalls: true,
+    includeImports: true,
+    includeExports: true,
+    includeInheritance: false,
+    includeTypeDeps: false,
+    includeStats: true,
+    includeCycles: false,
     useBitFlags: true,
     useDictionaries: true,
-    useTemplates: true,
     readableKeys: false,
-    includeBody: false,
+    includeBody: false, // ❌ ОТКЛЮЧЕН
     includeSecurity: false,
     includeVSCode: false,
     maxDepth: 10,
   },
 
-  // === СТАНДАРТНЫЙ — баланс размера и информации ===
+  // === СТАНДАРТНЫЙ ===
   standard: {
-    version: true,
-    timestamp: true,
-    root: true,
-    legend: true,
-    moduleIndex: true,
-    fileIndex: true,
-    functionIndex: true,
-    functions: true,
-    constants: true,
-    selfFunctions: true,
-    relations: {
-      calls: true,
-      imports: true,
-      exports: true,
-      inheritance: true,
-      typeDeps: true,
-      reExports: true,
-      constUses: true,
-      constDeps: true,
-      constExports: true,
-    },
-    extended: {
-      dynamicImports: true,
-      configRefs: true,
-      externalLibs: true,
-      vueTemplates: true,
-      asyncChains: true,
-      closures: true,
-      reflections: true,
-    },
-    stats: {
-      basic: true,
-      extended: true,
-      byModule: true,
-      byFile: true,
-      byType: true,
-    },
-    metadata: {
-      flags: true,
-      types: true,
-      errors: false,
-    },
-    minifyKeys: false,
+    includeFiles: true,
+    includeModules: true,
+    includeFunctions: true,
+    includeConstants: true,
+    includeClasses: true,
+    includeInterfaces: true,
+    includeTypes: true,
+    includeVariables: true,
+    includeCalls: true,
+    includeImports: true,
+    includeExports: true,
+    includeInheritance: true,
+    includeTypeDeps: true,
+    includeStats: true,
+    includeCycles: true,
     useBitFlags: true,
     useDictionaries: true,
-    useTemplates: true,
     readableKeys: true,
-    includeBody: false,
+    includeBody: false, // ❌ ОТКЛЮЧЕН
     includeSecurity: false,
     includeVSCode: true,
     maxDepth: 50,
   },
 
-  // === ПОЛНЫЙ — все данные ===
+  // === ПОЛНЫЙ ===
   full: {
-    version: true,
-    timestamp: true,
-    root: true,
-    legend: true,
-    moduleIndex: true,
-    fileIndex: true,
-    functionIndex: true,
-    functions: true,
-    constants: true,
-    selfFunctions: true,
-    relations: {
-      calls: true,
-      imports: true,
-      exports: true,
-      inheritance: true,
-      typeDeps: true,
-      reExports: true,
-      constUses: true,
-      constDeps: true,
-      constExports: true,
-    },
-    extended: {
-      dynamicImports: true,
-      configRefs: true,
-      externalLibs: true,
-      vueTemplates: true,
-      asyncChains: true,
-      closures: true,
-      reflections: true,
-    },
-    stats: {
-      basic: true,
-      extended: true,
-      byModule: true,
-      byFile: true,
-      byType: true,
-    },
-    metadata: {
-      flags: true,
-      types: true,
-      errors: true,
-    },
-    minifyKeys: false,
+    includeFiles: true,
+    includeModules: true,
+    includeFunctions: true,
+    includeConstants: true,
+    includeClasses: true,
+    includeInterfaces: true,
+    includeTypes: true,
+    includeVariables: true,
+    includeCalls: true,
+    includeImports: true,
+    includeExports: true,
+    includeInheritance: true,
+    includeTypeDeps: true,
+    includeStats: true,
+    includeCycles: true,
     useBitFlags: true,
     useDictionaries: true,
-    useTemplates: true,
     readableKeys: true,
-    includeBody: true,
+    includeBody: false, // ❌ ОТКЛЮЧЕН (даже в full!)
     includeSecurity: true,
     includeVSCode: true,
     maxDepth: 1000,
   },
 
-  // === ТОЛЬКО СВЯЗИ — минимальный размер для графов ===
+  // === ТОЛЬКО СВЯЗИ ===
   relationships: {
-    version: true,
-    timestamp: true,
-    root: true,
-    legend: true,
-    moduleIndex: true,
-    fileIndex: true,
-    functionIndex: true,
-    functions: true,
-    constants: false,
-    selfFunctions: false,
-    relations: {
-      calls: true,
-      imports: true,
-      exports: true,
-      inheritance: true,
-      typeDeps: true,
-      reExports: true,
-      constUses: false,
-      constDeps: false,
-      constExports: false,
-    },
-    extended: {
-      dynamicImports: true,
-      configRefs: true,
-      externalLibs: true,
-      vueTemplates: false,
-      asyncChains: false,
-      closures: false,
-      reflections: false,
-    },
-    stats: {
-      basic: true,
-      extended: false,
-      byModule: false,
-      byFile: false,
-      byType: false,
-    },
-    metadata: {
-      flags: false,
-      types: false,
-      errors: false,
-    },
-    minifyKeys: true,
+    includeFiles: true,
+    includeModules: true,
+    includeFunctions: true,
+    includeConstants: false,
+    includeClasses: false,
+    includeInterfaces: false,
+    includeTypes: false,
+    includeVariables: false,
+    includeCalls: true,
+    includeImports: true,
+    includeExports: true,
+    includeInheritance: true,
+    includeTypeDeps: true,
+    includeStats: true,
+    includeCycles: true,
     useBitFlags: true,
     useDictionaries: true,
-    useTemplates: true,
     readableKeys: false,
-    includeBody: false,
+    includeBody: false, // ❌ ОТКЛЮЧЕН
     includeSecurity: false,
     includeVSCode: false,
     maxDepth: 1000,
   },
 
-  // === УЛЬТРА-КОМПАКТНЫЙ — максимальное сжатие ===
+  // === УЛЬТРА-КОМПАКТНЫЙ ===
   ultra: {
-    version: true,
-    timestamp: true,
-    root: false,
-    legend: false,
-    moduleIndex: true,
-    fileIndex: true,
-    functionIndex: true,
-    functions: true,
-    constants: false,
-    selfFunctions: false,
-    relations: {
-      calls: true,
-      imports: true,
-      exports: true,
-      inheritance: false,
-      typeDeps: false,
-      reExports: false,
-      constUses: false,
-      constDeps: false,
-      constExports: false,
-    },
-    extended: {
-      dynamicImports: false,
-      configRefs: false,
-      externalLibs: false,
-      vueTemplates: false,
-      asyncChains: false,
-      closures: false,
-      reflections: false,
-    },
-    stats: {
-      basic: true,
-      extended: false,
-      byModule: false,
-      byFile: false,
-      byType: false,
-    },
-    metadata: {
-      flags: false,
-      types: false,
-      errors: false,
-    },
-    minifyKeys: true,
+    includeFiles: true,
+    includeModules: true,
+    includeFunctions: true,
+    includeConstants: false,
+    includeClasses: false,
+    includeInterfaces: false,
+    includeTypes: false,
+    includeVariables: false,
+    includeCalls: true,
+    includeImports: true,
+    includeExports: true,
+    includeInheritance: false,
+    includeTypeDeps: false,
+    includeStats: true,
+    includeCycles: false,
     useBitFlags: true,
     useDictionaries: true,
-    useTemplates: true,
     readableKeys: false,
-    includeBody: false,
+    includeBody: false, // ❌ ОТКЛЮЧЕН
     includeSecurity: false,
     includeVSCode: false,
     maxDepth: 100,
   },
 };
+
+// ============================================
+// ОПИСАНИЯ ПРЕСЕТОВ
+// ============================================
+
+export function getPresetDescription(preset: string): string {
+  const descriptions: Record<string, string> = {
+    minimal:
+      'Минимальный граф: только файлы, модули, функции и основные связи. Тела функций отключены.',
+    standard: 'Стандартный граф: все сущности и основные связи. Тела функций отключены.',
+    full: 'Полный граф: все сущности, связи и метаданные (кроме тел функций). Тела функций отключены.',
+    relationships: 'Только связи: граф зависимостей без деталей сущностей. Тела функций отключены.',
+    ultra: 'Ультра-компактный: только основные сущности и связи. Тела функций отключены.',
+  };
+  return descriptions[preset] || 'Стандартный пресет. Тела функций отключены.';
+}
 
 // ============================================
 // КОНСТРУКТОР КОНФИГА
@@ -369,243 +207,117 @@ export class CompactReportConfigBuilder {
       timestamp: true,
       root: true,
       legend: true,
-      moduleIndex: true,
-      fileIndex: true,
-      functionIndex: true,
-      functions: true,
-      constants: true,
-      selfFunctions: true,
-      relations: {
-        calls: true,
-        imports: true,
-        exports: true,
-        inheritance: true,
-        typeDeps: true,
-        reExports: true,
-        constUses: true,
-        constDeps: true,
-        constExports: true,
-      },
-      extended: {
-        dynamicImports: true,
-        configRefs: true,
-        externalLibs: true,
-        vueTemplates: true,
-        asyncChains: true,
-        closures: true,
-        reflections: true,
-      },
-      stats: {
-        basic: true,
-        extended: true,
-        byModule: true,
-        byFile: true,
-        byType: true,
-      },
-      metadata: {
-        flags: true,
-        types: true,
-        errors: true,
-      },
+      includeFiles: true,
+      includeModules: true,
+      includeFunctions: true,
+      includeConstants: true,
+      includeClasses: true,
+      includeInterfaces: true,
+      includeTypes: true,
+      includeVariables: true,
+      includeCalls: true,
+      includeImports: true,
+      includeExports: true,
+      includeInheritance: true,
+      includeTypeDeps: true,
+      includeStats: true,
+      includeCycles: true,
       minifyKeys: false,
       useBitFlags: true,
       useDictionaries: true,
       useTemplates: true,
       readableKeys: true,
-      includeBody: false,
+      includeBody: false, // ❌ ПО УМОЛЧАНИЮ ОТКЛЮЧЕН
       includeSecurity: false,
       includeVSCode: true,
-      maxDepth: 100,
+      maxDepth: 50,
       ...base,
-    } as CompactReportConfig;
+    };
   }
 
-  // === МЕТОДЫ ДЛЯ ВКЛЮЧЕНИЯ/ОТКЛЮЧЕНИЯ ===
+  // === СЕТТЕРЫ ===
 
   setPreset(preset: keyof typeof PRESETS): this {
     const base = PRESETS[preset] || PRESETS.standard;
-    this.config = { ...this.config, ...base } as CompactReportConfig;
+    this.config = { ...this.config, ...base };
     return this;
   }
 
-  // Основные поля
-  includeVersion(value: boolean = true): this {
-    this.config.version = value;
+  includeFiles(value: boolean = true): this {
+    this.config.includeFiles = value;
     return this;
   }
 
-  includeTimestamp(value: boolean = true): this {
-    this.config.timestamp = value;
+  includeModules(value: boolean = true): this {
+    this.config.includeModules = value;
     return this;
   }
 
-  includeRoot(value: boolean = true): this {
-    this.config.root = value;
-    return this;
-  }
-
-  includeLegend(value: boolean = true): this {
-    this.config.legend = value;
-    return this;
-  }
-
-  // Индексы
-  includeModuleIndex(value: boolean = true): this {
-    this.config.moduleIndex = value;
-    return this;
-  }
-
-  includeFileIndex(value: boolean = true): this {
-    this.config.fileIndex = value;
-    return this;
-  }
-
-  includeFunctionIndex(value: boolean = true): this {
-    this.config.functionIndex = value;
-    return this;
-  }
-
-  // Сущности
   includeFunctions(value: boolean = true): this {
-    this.config.functions = value;
+    this.config.includeFunctions = value;
     return this;
   }
 
   includeConstants(value: boolean = true): this {
-    this.config.constants = value;
+    this.config.includeConstants = value;
     return this;
   }
 
-  includeSelfFunctions(value: boolean = true): this {
-    this.config.selfFunctions = value;
+  includeClasses(value: boolean = true): this {
+    this.config.includeClasses = value;
     return this;
   }
 
-  // Связи
-  includeCalls(value: boolean = true): this {
-    this.config.relations.calls = value;
-    return this;
-  }
-
-  includeImports(value: boolean = true): this {
-    this.config.relations.imports = value;
-    return this;
-  }
-
-  includeExports(value: boolean = true): this {
-    this.config.relations.exports = value;
-    return this;
-  }
-
-  includeInheritance(value: boolean = true): this {
-    this.config.relations.inheritance = value;
-    return this;
-  }
-
-  includeTypeDeps(value: boolean = true): this {
-    this.config.relations.typeDeps = value;
-    return this;
-  }
-
-  includeReExports(value: boolean = true): this {
-    this.config.relations.reExports = value;
-    return this;
-  }
-
-  includeConstUses(value: boolean = true): this {
-    this.config.relations.constUses = value;
-    return this;
-  }
-
-  includeConstDeps(value: boolean = true): this {
-    this.config.relations.constDeps = value;
-    return this;
-  }
-
-  includeConstExports(value: boolean = true): this {
-    this.config.relations.constExports = value;
-    return this;
-  }
-
-  // Расширенный анализ
-  includeDynamicImports(value: boolean = true): this {
-    this.config.extended.dynamicImports = value;
-    return this;
-  }
-
-  includeConfigRefs(value: boolean = true): this {
-    this.config.extended.configRefs = value;
-    return this;
-  }
-
-  includeExternalLibs(value: boolean = true): this {
-    this.config.extended.externalLibs = value;
-    return this;
-  }
-
-  includeVueTemplates(value: boolean = true): this {
-    this.config.extended.vueTemplates = value;
-    return this;
-  }
-
-  includeAsyncChains(value: boolean = true): this {
-    this.config.extended.asyncChains = value;
-    return this;
-  }
-
-  includeClosures(value: boolean = true): this {
-    this.config.extended.closures = value;
-    return this;
-  }
-
-  includeReflections(value: boolean = true): this {
-    this.config.extended.reflections = value;
-    return this;
-  }
-
-  // Статистика
-  includeBasicStats(value: boolean = true): this {
-    this.config.stats.basic = value;
-    return this;
-  }
-
-  includeExtendedStats(value: boolean = true): this {
-    this.config.stats.extended = value;
-    return this;
-  }
-
-  includeStatsByModule(value: boolean = true): this {
-    this.config.stats.byModule = value;
-    return this;
-  }
-
-  includeStatsByFile(value: boolean = true): this {
-    this.config.stats.byFile = value;
-    return this;
-  }
-
-  includeStatsByType(value: boolean = true): this {
-    this.config.stats.byType = value;
-    return this;
-  }
-
-  // Метаданные
-  includeFlags(value: boolean = true): this {
-    this.config.metadata.flags = value;
+  includeInterfaces(value: boolean = true): this {
+    this.config.includeInterfaces = value;
     return this;
   }
 
   includeTypes(value: boolean = true): this {
-    this.config.metadata.types = value;
+    this.config.includeTypes = value;
     return this;
   }
 
-  includeErrors(value: boolean = true): this {
-    this.config.metadata.errors = value;
+  includeVariables(value: boolean = true): this {
+    this.config.includeVariables = value;
     return this;
   }
 
-  // Опции форматирования
+  includeCalls(value: boolean = true): this {
+    this.config.includeCalls = value;
+    return this;
+  }
+
+  includeImports(value: boolean = true): this {
+    this.config.includeImports = value;
+    return this;
+  }
+
+  includeExports(value: boolean = true): this {
+    this.config.includeExports = value;
+    return this;
+  }
+
+  includeInheritance(value: boolean = true): this {
+    this.config.includeInheritance = value;
+    return this;
+  }
+
+  includeTypeDeps(value: boolean = true): this {
+    this.config.includeTypeDeps = value;
+    return this;
+  }
+
+  includeStats(value: boolean = true): this {
+    this.config.includeStats = value;
+    return this;
+  }
+
+  includeCycles(value: boolean = true): this {
+    this.config.includeCycles = value;
+    return this;
+  }
+
   setMinifyKeys(value: boolean = true): this {
     this.config.minifyKeys = value;
     return this;
@@ -631,6 +343,18 @@ export class CompactReportConfigBuilder {
     return this;
   }
 
+  /**
+   * Включить тела функций в отчет
+   * @param value - true для включения, false для отключения
+   * @returns this для цепочки вызовов
+   *
+   * @example
+   * // Включить тела функций
+   * configBuilder.setIncludeBody(true);
+   *
+   * // Отключить тела функций (по умолчанию)
+   * configBuilder.setIncludeBody(false);
+   */
   setIncludeBody(value: boolean = true): this {
     this.config.includeBody = value;
     return this;
@@ -651,52 +375,36 @@ export class CompactReportConfigBuilder {
     return this;
   }
 
-  // === ПОЛУЧЕНИЕ КОНФИГА ===
-
   build(): CompactReportConfig {
     return { ...this.config };
   }
 
-  // === ПРЕОБРАЗОВАНИЕ В ОБЪЕКТ ДЛЯ ПЕРЕДАЧИ В ГЕНЕРАТОР ===
-
   toGeneratorOptions(): any {
     const config = this.config;
     return {
-      // Базовые
+      includeFiles: config.includeFiles,
+      includeModules: config.includeModules,
+      includeFunctions: config.includeFunctions,
+      includeConstants: config.includeConstants,
+      includeClasses: config.includeClasses,
+      includeInterfaces: config.includeInterfaces,
+      includeTypes: config.includeTypes,
+      includeVariables: config.includeVariables,
+      includeCalls: config.includeCalls,
+      includeImports: config.includeImports,
+      includeExports: config.includeExports,
+      includeInheritance: config.includeInheritance,
+      includeTypeDeps: config.includeTypeDeps,
+      includeStats: config.includeStats,
+      includeCycles: config.includeCycles,
       useBitFlags: config.useBitFlags,
       useDictionaries: config.useDictionaries,
       readableKeys: config.readableKeys,
       useTemplates: config.useTemplates,
-      maxDepth: config.maxDepth,
       includeBody: config.includeBody,
       includeSecurity: config.includeSecurity,
       includeVSCode: config.includeVSCode,
-
-      // Сущности
-      includeRelations: true,
-      includeStats: config.stats.basic || config.stats.extended,
-      includeTypes: config.metadata.types,
-      includeInheritance: config.relations.inheritance,
-      includeExports: config.relations.exports,
-      includeConstants: config.constants,
-      includeSelfFunctions: config.selfFunctions,
-
-      // Связи
-      includeCalls: config.relations.calls,
-      includeImports: config.relations.imports,
-      includeTypeDeps: config.relations.typeDeps,
-      includeReExports: config.relations.reExports,
-      includeConstUses: config.relations.constUses,
-      includeConstDeps: config.relations.constDeps,
-      includeConstExports: config.relations.constExports,
-
-      // Расширенный анализ
-      includeDynamicImports: config.extended.dynamicImports,
-      includeConfigRefs: config.extended.configRefs,
-      includeExternalLibs: config.extended.externalLibs,
-      includeVueTemplates: config.extended.vueTemplates,
-      includeAsyncChains: config.extended.asyncChains,
-      includeClosures: config.extended.closures,
+      maxDepth: config.maxDepth,
     };
   }
 }
@@ -713,17 +421,6 @@ export function createCompactConfig(
 
 export function getPresetNames(): string[] {
   return Object.keys(PRESETS);
-}
-
-export function getPresetDescription(preset: string): string {
-  const descriptions: Record<string, string> = {
-    minimal: 'Только основное: функции, вызовы, импорты, экспорты',
-    standard: 'Баланс размера и информации: все основные поля',
-    full: 'Все данные: полный анализ с метаданными',
-    relationships: 'Только связи: минимальный размер для графов',
-    ultra: 'Максимальное сжатие: минимум полей',
-  };
-  return descriptions[preset] || 'Стандартный пресет';
 }
 
 // ============================================
