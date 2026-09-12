@@ -1,78 +1,63 @@
 // src/index.ts
-// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ - УСТРАНЕНЫ ДУБЛИКАТЫ
+// ИСПРАВЛЕННЫЙ ФАЙЛ - Правильный импорт runCLI из cli.js
+// + Исправлен экспорт типов из reporters (удалён CompactReport, добавлены реальные типы)
 
-// ==========================================
-// ЭКСПОРТ ЯДРА (CORE)
-// ==========================================
+/**
+ * AST Analyzer - основной экспортный файл
+ * Все API сохранены для обратной совместимости
+ */
 
-// Парсинг и работа с AST
-export {
-  parseFile,
-  isExternalModule,
-  resolveFilePath,
-  getAllProjectFiles,
-  walk,
-} from './core/ast-parser.js';
+// ============================================\
+// ОСНОВНЫЕ ЭКСПОРТЫ (всегда нужны)\
+// ============================================\
 
-// Минификация кода
+// Ядро
+export { parseFile, isExternalModule, resolveFilePath } from './core/ast-parser.js';
 export { minifyCodeString, minifyForAI } from './core/minifier.js';
-
-// Утилиты для работы с графами
 export { findCyclicEdges, convertToDOT } from './core/graph-utils.js';
-
-// Работа с tsconfig (алиасы)
 export { setTsConfigPath, loadTsConfig, resolveAliasPath } from './core/tsconfig-resolver.js';
 
-// ==========================================
-// ЭКСПОРТ IdManager
-// ==========================================
-
+// ID Manager
 export { IdManager, idManager } from './core/IdManager.js';
 export type { IdContext } from './core/IdManager.js';
 
-// ==========================================
-// ЭКСПОРТ ProjectGraphBuilder
-// ==========================================
-
+// Project Graph
 export { ProjectGraphBuilder } from './core/ProjectGraphBuilder.js';
 
-// ==========================================
-// ЭКСПОРТ РЕЖИМОВ (MODES)
-// ==========================================
+// ============================================\
+// РЕЖИМЫ (modes)\
+// ============================================\
 
-// Режим 1: Проектный граф
+// Project graph
 export { buildProjectGraph } from './modes/project-graph.js';
 
-// Режим 2: Внутренний граф файла
+// File graph
 export { buildFileInternalGraph } from './modes/file-graph.js';
 
-// Режим 3: Минификация одного файла
+// Minify
 export { minifyFile } from './modes/minify-file.js';
-
-// Режим 4: Рекурсивная минификация папки
 export { minifyFolder, generateDirectoryTree, collectFiles } from './modes/minify-folder.js';
 
-// Режим 5: Prompt Pack для ИИ
+// Prompt pack
 export { buildAiPromptPack } from './modes/prompt-pack.js';
 
-// Режим 6: Разбиение файла на модули
+// Split module
 export {
   buildSplitModulePrompt,
   analyzeModuleStructure,
   identifyClusters,
 } from './modes/split-module.js';
 
-// Режим 7: Анализ зоны влияния
+// Impact
 export { runImpactAnalysis } from './modes/impact.js';
 
-// Режим 8: Поиск мертвого кода
+// Dead code
 export { findDeadCode } from './modes/dead-code.js';
 
-// ==========================================
-// ЭКСПОРТ VUE АНАЛИЗАТОРА
-// ==========================================
+// ============================================\
+// VUE АНАЛИЗАТОР\
+// ============================================\
 
-// Vue SFC парсер и анализатор
 export {
   parseVueFile,
   analyzeVueComponent,
@@ -82,21 +67,18 @@ export {
   type AnalysisOptions,
 } from './modes/vue-analyzer/index.js';
 
-// ==========================================
-// ЭКСПОРТ СЕМАНТИЧЕСКОГО АНАЛИЗА
-// ==========================================
+// ============================================\
+// СЕМАНТИЧЕСКИЙ АНАЛИЗ\
+// ============================================\
 
-// CFG (Control Flow Graph) анализатор
 export { CFGAnalyzer, type BasicBlock, type ControlFlowGraph } from './semantic/CFGAnalyzer.js';
 
-// Call Graph анализатор
 export {
   CallGraphAnalyzer,
   type CallGraphNode,
   type CallGraph,
 } from './semantic/CallGraphAnalyzer.js';
 
-// Type анализатор
 export {
   TypeAnalyzer,
   type TypeInfo as TypeInfoType,
@@ -104,7 +86,6 @@ export {
   type TypeError,
 } from './semantic/TypeAnalyzer.js';
 
-// Data Flow анализатор
 export {
   DataFlowAnalyzer,
   type DataFlowNode,
@@ -112,7 +93,6 @@ export {
   type DataFlowGraph,
 } from './semantic/DataFlowAnalyzer.js';
 
-// Семантический пайплайн
 export {
   SemanticPipeline,
   type PipelineResult,
@@ -120,11 +100,10 @@ export {
   type VerificationResult as PipelineVerificationResult,
 } from './ci-cd/SemanticPipeline.js';
 
-// ==========================================
-// ЭКСПОРТ ФОРМАЛЬНОЙ ВЕРИФИКАЦИИ (ИЗ formal/index.ts)
-// ==========================================
+// ============================================\
+// ФОРМАЛЬНАЯ ВЕРИФИКАЦИЯ\
+// ============================================\
 
-// Все экспорты из formal модуля
 export {
   // Основные классы
   Z3Verifier,
@@ -211,9 +190,9 @@ export {
   FORMAL_MODULE_NAME,
 } from './formal/index.js';
 
-// ==========================================
-// ЭКСПОРТ РЕФАКТОРИНГА
-// ==========================================
+// ============================================\
+// РЕФАКТОРИНГ\
+// ============================================\
 
 export {
   AutoRefactor,
@@ -234,39 +213,57 @@ export {
   type FixResult,
 } from './refactor/index.js';
 
-// ==========================================
-// ЭКСПОРТ РЕПОРТЕРОВ - ТОЛЬКО ДВА ГЕНЕРАТОРА!
-// ==========================================
+// ============================================\
+// РЕПОРТЕРЫ\
+// ✅ ИСПРАВЛЕНО: убран CompactReport (нет в reporters/index.ts),\
+//    добавлены реальные экспортируемые типы\
+// ============================================\
 
-// 1. ПОЛНЫЙ ОТЧЕТ - все метаданные
-export { generateFullReport, type FullReport } from './reporters/full-reporter.js';
-
-// 2. КОМПАКТНЫЙ ОТЧЕТ - только граф + минимум
+// Значения (функции)
 export {
+  generateFullReport,
   generateCompactReport,
-  type CompactReport,
-  CompactFlags,
-  findFunctionByName,
-  getFunctionCalls,
-  getFunctionCallers,
-  getFileName,
-  getModuleName,
-  getFunctionInfo,
-} from './reporters/compact-reporter.js';
+  decodeCompactReport,
+  readAndDecode,
+  readFullJson,
+  Codec,
+  generateHTMLReport,
+  escapeHtml,
+  generateInteractiveHTML,
+  REPORTERS_VERSION,
+  REPORTERS_NAME,
+} from './reporters/index.js';
 
-// ==========================================
-// HTML РЕПОРТЕРЫ (оставляем)
-// ==========================================
+// Типы
+export type {
+  // Полный отчёт
+  FullReport,
 
-export { generateHTMLReport, escapeHtml } from './reporters/html-reporter.js';
-export { generateInteractiveHTML } from './reporters/interactive-reporter.js';
+  // Компактный отчёт
+  GenerateReportOptions,
+  GenerateReportResult,
 
-// ==========================================
-// ✅ НОВЫЙ ЭКСПОРТ: АНАЛИЗАТОРЫ (вынесены в отдельный модуль)
-// ==========================================
+  // Codec
+  FullJSON,
+  CompactJSON,
+  CodecLegend,
+  ModuleData,
+  FileData,
+  FunctionData,
+  ClassData,
+  ConstantData,
+  ExportData,
+  ImportData,
+  CallData,
+  ReExportData,
+  StatisticsData,
+} from './reporters/index.js';
+
+// ============================================\
+// АНАЛИЗАТОРЫ\
+// ============================================\
 
 export {
-  // Основные анализаторы
   extractDynamicImports,
   extractConfigRefs,
   extractExternalLibs,
@@ -274,9 +271,7 @@ export {
   extractAsyncChains,
   extractClosures,
   extractTypeDeps,
-  // Универсальная функция
   analyzeContent,
-  // Типы
   type DynamicImport,
   type ConfigRef,
   type ExternalLib,
@@ -287,9 +282,9 @@ export {
   type AnalysisResult,
 } from './analyzers/index.js';
 
-// ==========================================
-// ЭКСПОРТ ТИПОВ (только из types.ts)
-// ==========================================
+// ============================================\
+// ТИПЫ\
+// ============================================\
 
 export type {
   // Статистика
@@ -329,7 +324,7 @@ export type {
   ImpactReport,
   DeadCodeReport,
 
-  // Связи (v3.0.1)
+  // Связи
   CallInfo,
   CalledByInfo,
   ImportedByInfo,
@@ -338,22 +333,24 @@ export type {
   // Графы
   GraphData,
   ProjectGraphOptions,
+
+  // 🆕 Компактный отчёт (из types.ts, не из reporters)
+  CompactReport,
+  CompactModule,
+  CompactFunction,
+  CompactCall,
 } from './types.js';
 
-// ==========================================
-// ЭКСПОРТ КОНФИГУРАЦИИ
-// ==========================================
+// ============================================\
+// КОНФИГУРАЦИЯ И УТИЛИТЫ\
+// ============================================\
 
 export {
-  IGNORE_NODE_MODULES,
   SUPPORTED_EXTENSIONS,
   DEFAULT_EXCLUDE_PATTERNS,
   VUE_SCRIPT_PATTERN,
+  IGNORE_NODE_MODULES,
 } from './config.js';
-
-// ==========================================
-// ЭКСПОРТ УТИЛИТ
-// ==========================================
 
 export {
   showHelp,
@@ -363,184 +360,31 @@ export {
   ensureDirectoryExists,
 } from './utils.js';
 
-// ==========================================
-// ЭКСПОРТ УТИЛИТ (НОВЫЕ)
-// ==========================================
-
-// Сжатие путей
-export { compressPath, pathToIndex, getPathIndexMap, clearPathCache } from './utils/path-utils.js';
-
-// Флаги
-export {
-  FunctionFlags,
-  encodeFlags,
-  decodeFlags,
-  getFlagsList,
-  hasFlag,
-  setFlag,
-  clearFlag,
-  toggleFlag,
-  encodeFlagsAdvanced,
-  decodeFlagsAdvanced,
-  flagsToString,
-  countFlags,
-  hasAnyFlag,
-  hasAllFlags,
-  // Константы
-  STANDARD_FUNCTION,
-  NESTED_FUNCTION,
-  ASYNC_NESTED_FUNCTION,
-  EXPORTED_FUNCTION,
-  METHOD_FUNCTION,
-  ARROW_FUNCTION,
-  COMPOSABLE_FUNCTION,
-  VUE_MACRO,
-} from './utils/flag-utils.js';
-
-// ==========================================
-// CLI RUNNER
-// ==========================================
-
-import { CLIExecutor as CLIExecutorClass } from './cli/CLIExecutor.js';
-export { CLIExecutorClass as CLIExecutor };
-
-export { default as cliExecutor } from './cli/CLIExecutor.js';
-
-export const runCLI = async (): Promise<void> => {
-  const { CLIExecutor } = await import('./cli/CLIExecutor.js');
-  const cli = new CLIExecutor();
-  await cli.run();
-};
-
-export default runCLI;
-
-// ==========================================
-// ВЕРСИЯ
-// ==========================================
+// ============================================\
+// ВЕРСИЯ\
+// ============================================\
 
 export const VERSION = '5.0.0';
 export const NAME = 'ast-analyzer';
 
-// ==========================================
-// ОСНОВНЫЕ API ДЛЯ ВНЕШНЕГО ИСПОЛЬЗОВАНИЯ
-// ==========================================
+// ============================================\
+// CLI - БЕЗ ЦИКЛИЧЕСКОЙ ЗАВИСИМОСТИ\
+// ============================================\
 
-import type { PipelineResult } from './ci-cd/SemanticPipeline.js';
-import type { VerificationResult as FormalVerificationResult } from './formal/index.js';
-import type { ControlFlowGraph } from './semantic/CFGAnalyzer.js';
-import type { CallGraph } from './semantic/CallGraphAnalyzer.js';
-import type { TypeAnalysisResult } from './semantic/TypeAnalyzer.js';
-import type { DataFlowGraph } from './semantic/DataFlowAnalyzer.js';
+export { CLIExecutor } from './cli/CLIExecutor.js';
 
-import { TypeAnalyzer as TypeAnalyzerClass } from './semantic/TypeAnalyzer.js';
+// ✅ ИСПРАВЛЕНО: runCLI - это default экспорт из cli.js
+// Используем import с правильным синтаксисом
+import cli from './cli.js';
 
 /**
- * Быстрый анализ файла с семантикой
+ * Запуск CLI из командной строки
+ * Используется как точка входа для CLI
  */
-export async function analyzeWithSemantics(
-  filePath: string,
-  options: { formal?: boolean; critical?: string[] } = {}
-): Promise<PipelineResult> {
-  const { SemanticPipeline } = await import('./ci-cd/SemanticPipeline.js');
-  const pipeline = new SemanticPipeline();
-  return pipeline.run([filePath], {
-    formalVerification: options.formal || false,
-    criticalFunctions: options.critical || [],
-  });
-}
+export const runCLI = cli.run.bind(cli);
 
-/**
- * Формальная верификация функции
- */
-export async function verifyFunction(
-  filePath: string,
-  functionName: string
-): Promise<FormalVerificationResult> {
-  const { Z3Verifier, createIntParam, range } = await import('./formal/index.js');
-  const { Project } = await import('ts-morph');
+// ============================================\
+// ЭКСПОРТ ПО УМОЛЧАНИЮ\
+// ============================================\
 
-  const project = new Project();
-  const sourceFile = project.addSourceFileAtPath(filePath);
-  const func = sourceFile.getFunction(functionName);
-
-  if (!func) {
-    throw new Error(`Function ${functionName} not found in ${filePath}`);
-  }
-
-  const verifier = new Z3Verifier();
-  await verifier.initialize();
-
-  const params = func.getParameters().map(p => createIntParam(p.getName()));
-  const returnType = func.getReturnType();
-
-  const result = await verifier.verifyFunction({
-    name: functionName,
-    params,
-    returnType: returnType.isNumber() ? 'int' : 'void',
-    preconditions: params.map(p => range(p.name, -1000, 1000)),
-    postconditions: [],
-    invariants: [],
-  });
-
-  await verifier.dispose();
-  return result;
-}
-
-/**
- * Получить CFG для файла
- */
-export async function getControlFlowGraph(filePath: string): Promise<ControlFlowGraph> {
-  const { Project } = await import('ts-morph');
-  const { CFGAnalyzer } = await import('./semantic/CFGAnalyzer.js');
-
-  const project = new Project();
-  const sourceFile = project.addSourceFileAtPath(filePath);
-  const analyzer = new CFGAnalyzer();
-
-  return analyzer.build(sourceFile);
-}
-
-/**
- * Получить Call Graph для файла
- */
-export async function getCallGraph(entryPoint: string, maxDepth = 5): Promise<CallGraph> {
-  const { CallGraphAnalyzer } = await import('./semantic/CallGraphAnalyzer.js');
-  const analyzer = new CallGraphAnalyzer();
-
-  return analyzer.analyze(entryPoint, maxDepth);
-}
-
-/**
- * Получить типы для файла
- */
-export function getTypeInfo(filePath: string): TypeAnalysisResult {
-  const analyzer = new TypeAnalyzerClass(filePath);
-  return analyzer.analyze();
-}
-
-/**
- * Получить Data Flow Graph для файла
- */
-export async function getDataFlowGraph(filePath: string): Promise<DataFlowGraph> {
-  const { Project } = await import('ts-morph');
-  const { DataFlowAnalyzer } = await import('./semantic/DataFlowAnalyzer.js');
-
-  const project = new Project();
-  const sourceFile = project.addSourceFileAtPath(filePath);
-  const analyzer = new DataFlowAnalyzer();
-
-  return analyzer.analyze(sourceFile);
-}
-
-// ==========================================
-// ЭКСПОРТ ВСЕХ CLI МОДУЛЕЙ
-// ==========================================
-
-export { runCLI as runMainCLI };
-
-// ==========================================
-// КОНСТАНТЫ ДЛЯ РЕПОРТЕРОВ
-// ==========================================
-
-export const REPORTERS_VERSION = '5.0.0';
-export const REPORTERS_NAME = 'reporters';
+export default runCLI;

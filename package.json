@@ -51,7 +51,8 @@
     }
   },
   "scripts": {
-    "build:graph": "tsx ./src/cli.ts compact-recursive ./src/index.ts --preset full --depth 1000 -o ./src/index.json",
+    "check": "npx tsc --noEmit --skipLibCheck --excludeDirectories ./src/process",
+    "build:graph": "tsx ./src/cli.ts compact-recursive ./src/index.ts --preset full --depth 1000 -o ./src/process/index.json",
     "build": "tsc -p tsconfig.json",
     "build:watch": "tsc -p tsconfig.json --watch",
     "dev": "tsx ./src/cli.ts",
@@ -85,7 +86,6 @@
     "version:minor": "npm version minor",
     "version:major": "npm version major",
     "===================== СИСТЕМНЫЕ ВЫЗОВЫ =====================": "",
-    "check": "npx tsc --noEmit --skipLibCheck",
     "start:win": "node ./dist/cli.js project ./src/cli.ts 15 -o ./reports/component-tree-deep",
     "start:win:abs": "node ./dist/cli.js project %CD%/src/cli.ts 15 -o ./reports/component-tree-deep",
     "start:ts": "NODE_OPTIONS=\"--trace-warnings --unhandled-rejections=strict\" tsx src/cli.ts project src/cli.ts 15 -o ./reports/component-tree-deep --entities 2>&1 | tee debug.log\n",

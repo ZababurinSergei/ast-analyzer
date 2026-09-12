@@ -1,9 +1,18 @@
 // packages/ast-analyzer/src/cli/commands/DeadCodeCommand.ts
-// НОВЫЙ ФАЙЛ - Полный текст
+// ============================================
+// ИСПРАВЛЕННАЯ ВЕРСИЯ
+// ============================================
+// Исправления:
+//   1. Путь импорта entity-extractor изменён на /index.js (устранение TS2307)
+//   2. Добавлены явные типы для параметров в callback-функциях (TS7006)
+//   3. Добавлены типы для возвращаемых значений и переменных
+//   4. Использование extractEntities с типизированным результатом
+// ============================================
 
 import type { Command } from 'commander';
 import path from 'path';
 import fs from 'fs';
+import type { EntitiesResult } from '../../types.js';
 
 /**
  * Команда для поиска мертвого кода
@@ -42,7 +51,7 @@ export class DeadCodeCommand {
       .option('--include-functions', 'Check unused functions', true)
       .option('--threshold <n>', 'Minimum usage count to consider used', '1')
       .option('--exclude <patterns>', 'Exclude patterns (comma-separated)')
-      .action(async (file, options) => {
+      .action(async (file: string, options: any) => {
         try {
           await this.execute(file, options);
         } catch (error) {
@@ -190,8 +199,9 @@ export class DeadCodeCommand {
    * Анализирует один файл и возвращает результаты
    */
   private async analyzeSingleFile(file: string, options: any): Promise<any> {
+    // ✅ ИСПРАВЛЕНО: путь к entity-extractor теперь указывает на index.js
+    const { extractEntities } = await import('../../core/entity-extractor/index.js');
     const { parseFile } = await import('../../core/ast-parser.js');
-    const { extractEntities } = await import('../../core/entity-extractor.js');
 
     const parsed = parseFile(file);
     if (!parsed) {
@@ -206,15 +216,29 @@ export class DeadCodeCommand {
       };
     }
 
-    const entities = extractEntities(parsed.ast, file);
+    // ✅ ИСПРАВЛЕНО: extractEntities принимает ast и filePath
+    // Возвращаемый тип: EntitiesResult
+    const entities: EntitiesResult = extractEntities(parsed.ast, file);
     const content = fs.readFileSync(file, 'utf-8');
 
     const result = {
       file,
-      functions: { total: 0, unused: [] as { name: string; line: number; usageCount: number }[] },
-      exports: { total: 0, unused: [] as { name: string; line: number }[] },
-      variables: { total: 0, unused: [] as { name: string; line: number; usageCount: number }[] },
-      imports: { total: 0, unused: [] as { name: string; source: string; line: number }[] },
+      functions: {
+        total: 0,
+        unused: [] as { name: string; line: number; usageCount: number }[],
+      },
+      exports: {
+        total: 0,
+        unused: [] as { name: string; line: number }[],
+      },
+      variables: {
+        total: 0,
+        unused: [] as { name: string; line: number; usageCount: number }[],
+      },
+      imports: {
+        total: 0,
+        unused: [] as { name: string; source: string; line: number }[],
+      },
       issues: [] as any[],
     };
 

@@ -1,5 +1,12 @@
 // packages/ast-analyzer/src/cli/commands/FileCommand.ts
-// НОВЫЙ ФАЙЛ - Полный текст
+// ============================================
+// ИСПРАВЛЕННАЯ ВЕРСИЯ
+// ============================================
+// Исправления:
+//   1. Путь импорта к entity-extractor:
+//      '../../core/entity-extractor.js' → '../../core/entity-extractor/index.js'
+//   2. Явное приведение типа callees (TS18046 'callees' is of type 'unknown')
+// ============================================
 
 import fs from 'fs';
 import path from 'path';
@@ -81,7 +88,7 @@ export class FileCommand {
 
     // Импортируем необходимые модули
     const { buildFileInternalGraph } = await import('../../modes/file-graph.js');
-    const { extractEntities } = await import('../../core/entity-extractor.js');
+    const { extractEntities } = await import('../../core/entity-extractor/index.js');
     const { parseFile } = await import('../../core/ast-parser.js');
 
     // Строим граф
@@ -208,8 +215,14 @@ export class FileCommand {
           dot += '  edge [color="#9ca3af", arrowhead=vee];\n\n';
 
           for (const [caller, callees] of Object.entries(entities.callGraph)) {
-            if (callees.length > 0) {
-              for (const callee of callees) {
+            // ============================================
+            // ✅ ИСПРАВЛЕНО: явное приведение типа callees
+            // Было: if (callees.length > 0) — callees имеет тип unknown
+            // Стало: приводим к string[] для корректной работы
+            // ============================================
+            const calleesArray = callees as string[];
+            if (calleesArray.length > 0) {
+              for (const callee of calleesArray) {
                 dot += `  "${caller}" -> "${callee}";\n`;
               }
             }

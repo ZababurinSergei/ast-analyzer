@@ -2,15 +2,13 @@
 // ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ - БЕЗ ДУБЛЕЙ, ВСЕ ОШИБКИ TypeScript И ESLint ИСПРАВЛЕНЫ
 // ДОБАВЛЕНА ПОДДЕРЖКА СЕКЦИИ SELF FUNCTIONS (sf) С ВОЗМОЖНОСТЬЮ ОТКЛЮЧЕНИЯ
 // ДОБАВЛЕНА ПОДДЕРЖКА ГИБКОГО КОНФИГА С ПРЕСЕТАМИ
+// ✅ ОБНОВЛЕНО: адаптация под новую структуру GenerateReportResult (compact-reporter v6.0.0)
 
 import type { Command } from 'commander';
 import path from 'path';
 import fs from 'fs';
 import { generateCompactReport } from '../../reporters/compact-reporter.js';
 import { getPresetNames, createCompactConfig } from '../../reporters/CompactReportConfig.js';
-
-// Используем any вместо несуществующего типа
-type CompactReportStats = any;
 
 /**
  * Команда для рекурсивного компакт-отчета
@@ -329,11 +327,16 @@ export class CompactRecursiveCommand {
     console.log(`   • VSCode ссылки: ${config.includeVSCode ? '✅' : '❌'}`);
     console.log('');
 
-    // Генерируем отчет с использованием конфига
+    // ============================================
+    // ✅ ИСПРАВЛЕНО: используем новую структуру GenerateReportResult
+    // ============================================
     const report = generateCompactReport(entitiesMap, outputPath, {
       ...genOptions,
       ultra: options.ultra || false,
       preset: options.preset,
+      verbose: options.verbose,
+      compress: true,
+      saveFullJson: true,
     });
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -345,33 +348,29 @@ export class CompactRecursiveCommand {
     console.log(`📄 Файл: ${outputPath}`);
     console.log(`⏱️  Время: ${duration} сек`);
 
-    // БЕЗОПАСНОЕ ПОЛУЧЕНИЕ СТАТИСТИКИ
-    const reportStats = (report.st || {}) as CompactReportStats;
+    // ============================================
+    // ✅ ИСПРАВЛЕНО: безопасное получение статистики из новой структуры
+    // ============================================
+    const fullStats = report.full?.statistics;
 
     console.log('\n📊 СТАТИСТИКА ОТЧЕТА:');
-    console.log(`   • Функций: ${reportStats.tf ?? 0}`);
-    console.log(`   • Self функций: ${reportStats.tsf ?? 0}`);
-    console.log(`   • Вызовов: ${reportStats.tc ?? 0}`);
-    console.log(`   • Модулей: ${reportStats.tm ?? 0}`);
-    console.log(`   • Файлов: ${reportStats.tfils ?? 0}`);
-    console.log(`   • Импортов: ${reportStats.ti ?? 0}`);
-    console.log(`   • Экспортов: ${reportStats.te ?? 0}`);
-    console.log(`   • Наследований: ${reportStats.tr ?? 0}`);
-    console.log(`   • Типовых зависимостей: ${reportStats.ttd ?? 0}`);
-    console.log(`   • Re-экспортов: ${reportStats.tre ?? 0}`);
-    console.log(`   • Констант: ${reportStats.tcn ?? 0}`);
-    console.log(`   • Использований констант: ${reportStats.tuc ?? 0}`);
-    console.log(`   • Зависимостей констант: ${reportStats.tcd ?? 0}`);
-    console.log(`   • Экспортов констант: ${reportStats.tce ?? 0}`);
-    console.log(`   • Динамических импортов: ${reportStats.di ?? 0}`);
-    console.log(`   • Конфигураций: ${reportStats.cfg ?? 0}`);
-    console.log(`   • Внешних библиотек: ${reportStats.ext ?? 0}`);
-    console.log(`   • Vue шаблонов: ${reportStats.vt ?? 0}`);
-    console.log(`   • Асинхронных цепочек: ${reportStats.asyncChains ?? 0}`);
-    console.log(`   • Замыканий: ${reportStats.closures ?? 0}`);
-    console.log(`   • Циклов: ${reportStats.cy ? 'ЕСТЬ' : 'НЕТ'}`);
+    if (fullStats) {
+      console.log(`   • Функций: ${fullStats.totalFunctions}`);
+      console.log(`   • Классов: ${fullStats.totalClasses}`);
+      console.log(`   • Констант: ${fullStats.totalConstants}`);
+      console.log(`   • Вызовов: ${fullStats.totalCalls}`);
+      console.log(`   • Модулей: ${fullStats.totalModules}`);
+      console.log(`   • Файлов: ${fullStats.totalFiles}`);
+      console.log(`   • Импортов: ${fullStats.totalImports}`);
+      console.log(`   • Экспортов: ${fullStats.totalExports}`);
+      console.log(`   • Реэкспортов: ${fullStats.totalReExports}`);
+    } else {
+      console.log('   ⚠️ Статистика недоступна');
+    }
 
-    // Информация о сжатии
+    // ============================================
+    // ✅ ИСПРАВЛЕНО: размеры из report.stats
+    // ============================================
     console.log('\n📦 ИНФОРМАЦИЯ О СЖАТИИ:');
     console.log(`   • Режим: ${options.ultra ? 'УЛЬТРА-КОМПАКТНЫЙ' : 'КОМПАКТНЫЙ'}`);
     console.log(`   • Пресет: ${options.preset}`);
@@ -383,12 +382,26 @@ export class CompactRecursiveCommand {
     console.log(`   • Self functions: ${config.selfFunctions ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
     console.log(`   • Тела функций: ${config.includeBody ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
 
-    // Размер файла
-    if (fs.existsSync(outputPath)) {
-      const stat = fs.statSync(outputPath);
-      const sizeKB = (stat.size / 1024).toFixed(2);
-      const sizeMB = (stat.size / 1024 / 1024).toFixed(2);
-      console.log(`   • Размер файла: ${sizeKB} KB (${sizeMB} MB)`);
+    // Размеры файлов
+    if (report.stats.compactSize !== undefined) {
+      const sizeKB = (report.stats.compactSize / 1024).toFixed(2);
+      const sizeMB = (report.stats.compactSize / 1024 / 1024).toFixed(2);
+      console.log(`   • Размер сжатого: ${sizeKB} KB (${sizeMB} MB)`);
+    }
+    if (report.stats.fullSize !== undefined) {
+      const fullSizeKB = (report.stats.fullSize / 1024).toFixed(2);
+      console.log(`   • Размер полного: ${fullSizeKB} KB`);
+    }
+    if (report.stats.compressionRatio !== undefined) {
+      console.log(`   • Коэффициент сжатия: ${report.stats.compressionRatio.toFixed(1)}%`);
+    }
+
+    // Информация о путях файлов
+    if (report.compactPath) {
+      console.log(`   • Сжатый JSON: ${report.compactPath}`);
+    }
+    if (report.fullPath) {
+      console.log(`   • Полный JSON: ${report.fullPath}`);
     }
 
     console.log('\n💡 ПРИНЦИП "ЕДИНЫЙ ИСТОЧНИК ИСТИНЫ":');
@@ -401,29 +414,16 @@ export class CompactRecursiveCommand {
     console.log('\n💡 КАК ИСПОЛЬЗОВАТЬ ОТЧЕТ:');
     console.log('   • mi/fl/fi - для навигации по индексам');
     console.log('   • fns - все функции с метаданными');
-    if (report.sf && report.sf.length > 0) {
-      console.log(`   • sf - self функции (${report.sf.length} изолированных функций)`);
+    if (report.compact?.legend) {
+      console.log('   • sf - self функции (изолированные)');
     }
-    if (report.gr) {
-      console.log('   • gr.c - кто кого вызывает');
-      console.log('   • gr.i - кто от кого зависит (импорты)');
-      console.log('   • gr.e - кто что экспортирует');
-      console.log('   • gr.h - иерархия классов');
-      console.log('   • gr.td - типовые зависимости');
-      console.log('   • gr.re - re-экспорты');
-      console.log('   • gr.uc - использование констант');
-      console.log('   • gr.cd - зависимости констант');
-      console.log('   • gr.ce - экспорты констант');
-      console.log('   • gr.di - динамические импорты');
-      console.log('   • gr.cfg - конфигурации');
-      console.log('   • gr.ext - внешние библиотеки');
-      console.log('   • gr.vt - Vue шаблоны');
-      console.log('   • gr.async - асинхронные цепочки');
-      console.log('   • gr.closures - замыкания');
-    }
-    console.log(
-      '   • st - общая статистика (включая tsf, di, cfg, ext, vt, asyncChains, closures)'
-    );
+    console.log('   • gr.c - кто кого вызывает');
+    console.log('   • gr.i - кто от кого зависит (импорты)');
+    console.log('   • gr.e - кто что экспортирует');
+    console.log('   • gr.h - иерархия классов');
+    console.log('   • gr.td - типовые зависимости');
+    console.log('   • gr.re - re-экспорты');
+    console.log('   • st - общая статистика');
     console.log('   • legend - легенда для расшифровки всех кодов');
 
     console.log('\n💡 ПРИМЕРЫ КОМАНД:');

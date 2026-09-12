@@ -1,5 +1,7 @@
 // packages/ast-analyzer/src/cli/CLIExecutor.ts
 // НОВЫЙ ФАЙЛ - Полный текст
+// ✅ ИСПРАВЛЕНО: обновлён под новую структуру GenerateReportResult (v6.0.0)
+// ✅ ИСПРАВЛЕНО v2: пути к entity-extractor (index.js), типы параметров c: string
 
 import { Command } from 'commander';
 import path from 'path';
@@ -478,7 +480,7 @@ export class CLIExecutor {
           process.exit(1);
         }
 
-        console.log(`\\n📋 Contract:`);
+        console.log(`\n📋 Contract:`);
         console.log(`   Function: ${contract.name}`);
         console.log(
           `   Params: ${contract.params.map((p: any) => `${p.name}:${p.type}`).join(', ')}`
@@ -489,18 +491,18 @@ export class CLIExecutor {
         const result = await z3.verifyFunction(contract);
 
         if (result.isValid) {
-          console.log(`\\n✅ Function VERIFIED!`);
+          console.log(`\n✅ Function VERIFIED!`);
           console.log(`   ${contract.name} satisfies all contracts`);
         } else {
-          console.log(`\\n❌ Function NOT VERIFIED!`);
+          console.log(`\n❌ Function NOT VERIFIED!`);
           if (result.counterexample) {
-            console.log(`\\n🔍 Counterexample:`);
+            console.log(`\n🔍 Counterexample:`);
             for (const [key, value] of result.counterexample) {
               console.log(`   ${key} = ${value}`);
             }
           }
           if (result.error) {
-            console.log(`\\n⚠️ Error: ${result.error}`);
+            console.log(`\n⚠️ Error: ${result.error}`);
           }
         }
 
@@ -568,7 +570,7 @@ export class CLIExecutor {
         await refactor.dispose();
 
         if (result.success) {
-          console.log(`\\n✅ Refactoring COMPLETED!`);
+          console.log(`\n✅ Refactoring COMPLETED!`);
           console.log(`📦 Modules created: ${result.modules.length}`);
           if (result.modules.length > 0) {
             for (const module of result.modules) {
@@ -579,14 +581,14 @@ export class CLIExecutor {
             console.log(`💾 Backup: ${result.backupPath}`);
           }
           if (result.metrics) {
-            console.log(`\\n📊 Metrics:`);
+            console.log(`\n📊 Metrics:`);
             console.log(`   • Functions: ${result.metrics.totalFunctions}`);
             console.log(`   • Complexity: ${result.metrics.cyclomaticComplexity}`);
             console.log(`   • Verified: ${result.metrics.verifiedFunctionsCount}`);
             console.log(`   • ESLint fixes: ${result.metrics.eslintFixesCount}`);
           }
         } else {
-          console.error(`\\n❌ Refactoring FAILED: ${result.error}`);
+          console.error(`\n❌ Refactoring FAILED: ${result.error}`);
           if (result.backupPath) {
             console.log(`💾 Backup saved: ${result.backupPath}`);
           }
@@ -597,6 +599,7 @@ export class CLIExecutor {
 
   // ============================================
   // 13. COMPACT COMMAND
+  // ✅ ИСПРАВЛЕНО: обновлено под новую структуру GenerateReportResult (v6.0.0)
   // ============================================
 
   private registerCompactCommand(): void {
@@ -620,7 +623,7 @@ export class CLIExecutor {
         console.log(`📋 Preset: ${options.preset}`);
 
         const { parseFile } = await import('../core/ast-parser.js');
-        const { extractEntities } = await import('../core/entity-extractor.js');
+        const { extractEntities } = await import('../core/entity-extractor/index.js');
         const { generateCompactReport } = await import('../reporters/compact-reporter.js');
 
         const parsed = parseFile(file);
@@ -644,25 +647,42 @@ export class CLIExecutor {
           fs.mkdirSync(outputDir, { recursive: true });
         }
 
+        // ✅ ИСПРАВЛЕНО: используем новую структуру GenerateReportOptions
         const report = generateCompactReport(entitiesMap, outputPath, {
-          useBitFlags: options.bitFlags !== false,
-          useDictionaries: options.dictionaries !== false,
-          readableKeys: !options.minifyKeys,
-          useTemplates: true,
-          maxDepth: parseInt(options.maxDepth),
-          includeSelfFunctions: true, // ✅ ВКЛЮЧАЕМ SELF FUNCTIONS
+          compress: true,
+          saveFullJson: true,
+          verbose: options.verbose,
         });
 
-        console.log(`\\n✅ Report saved: ${outputPath}`);
+        // ✅ ИСПРАВЛЕНО: используем report.full.statistics вместо report.stats.tm/tf/...
+        console.log(`\n✅ Report saved: ${outputPath}`);
         console.log(`📊 Stats:`);
-        console.log(`   • Modules: ${report.stats.tm}`);
-        console.log(`   • Files: ${report.files?.length || 0}`);
-        console.log(`   • Functions: ${report.stats.tf}`);
-        console.log(`   • Self functions: ${report.stats.tsf || 0}`); // ✅ НОВОЕ
-        console.log(`   • Calls: ${report.stats.tc}`);
-        console.log(`   • Imports: ${report.stats.ti || 0}`);
-        console.log(`   • Exports: ${report.stats.tex || 0}`);
-        console.log(`   • Unresolved: ${report.stats.tun || 0}`);
+
+        const fullStats = report.full?.statistics;
+        if (fullStats) {
+          console.log(`   • Modules: ${fullStats.totalModules}`);
+          console.log(`   • Files: ${fullStats.totalFiles}`);
+          console.log(`   • Functions: ${fullStats.totalFunctions}`);
+          console.log(`   • Classes: ${fullStats.totalClasses}`);
+          console.log(`   • Constants: ${fullStats.totalConstants}`);
+          console.log(`   • Exports: ${fullStats.totalExports}`);
+          console.log(`   • Imports: ${fullStats.totalImports}`);
+          console.log(`   • Calls: ${fullStats.totalCalls}`);
+          console.log(`   • Re-exports: ${fullStats.totalReExports}`);
+        }
+
+        // ✅ ИСПРАВЛЕНО: используем report.stats для информации о сжатии
+        if (report.stats.compactSize !== undefined) {
+          console.log(`\n📦 Compression:`);
+          console.log(`   • Compact size: ${(report.stats.compactSize / 1024).toFixed(2)} KB`);
+        }
+        if (report.stats.fullSize !== undefined) {
+          console.log(`   • Full size: ${(report.stats.fullSize / 1024).toFixed(2)} KB`);
+        }
+        if (report.stats.compressionRatio !== undefined) {
+          console.log(`   • Ratio: ${report.stats.compressionRatio.toFixed(1)}%`);
+        }
+        console.log(`   • Duration: ${(report.stats.duration / 1000).toFixed(2)}s`);
       });
   }
 
@@ -699,7 +719,7 @@ export class CLIExecutor {
 
         const report = await runHybridReport(file, parseInt(options.depth), outputDir);
 
-        console.log(`\\n✅ Hybrid report complete!`);
+        console.log(`\n✅ Hybrid report complete!`);
         console.log(`📁 Output: ${outputDir}`);
         console.log(`📊 Modules: ${report.stats.totalModules}`);
         console.log(`📊 Functions: ${report.stats.totalFunctions}`);
@@ -759,7 +779,7 @@ export class CLIExecutor {
         // Создаем ESLint конфиг если нет
         const eslintConfigPath = path.resolve(process.cwd(), '.eslintrc.json');
         if (!fs.existsSync(eslintConfigPath)) {
-          console.log('\\n📝 Creating ESLint configuration...');
+          console.log('\n📝 Creating ESLint configuration...');
           const { ESLintPipeline } = await import('../ci-cd/ESLintPipeline.js');
           const eslintPipeline = new ESLintPipeline();
           await eslintPipeline.generateConfig(process.cwd());
@@ -935,7 +955,7 @@ export class CLIExecutor {
 
           try {
             const { parseFile } = await import('../core/ast-parser.js');
-            const { extractEntities } = await import('../core/entity-extractor.js');
+            const { extractEntities } = await import('../core/entity-extractor/index.js');
 
             const parsed = parseFile(filePath);
             if (!parsed) continue;
@@ -949,8 +969,8 @@ export class CLIExecutor {
             for (const func of fileFunctions) {
               if (!func.name) continue;
 
-              const calls = (func.calls || []).filter(c => c && c !== func.name);
-              const calledBy = (func.calledBy || []).filter(c => c && c !== func.name);
+              const calls = (func.calls || []).filter((c: string) => c && c !== func.name);
+              const calledBy = (func.calledBy || []).filter((c: string) => c && c !== func.name);
 
               // Проверяем, является ли функция self (изолированной)
               const hasCalls = calls.length > 0;

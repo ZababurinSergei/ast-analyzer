@@ -1,5 +1,7 @@
 // packages/ast-analyzer/src/cli/commands/ProjectCommand.ts
 // ПОЛНАЯ ВЕРСИЯ - все ошибки исправлены
+// ✅ ИСПРАВЛЕНО: убраны useBitFlags из опций generateCompactReport (нет в GenerateReportOptions)
+// ✅ ИСПРАВЛЕНО: добавлены корректные опции compress и saveFullJson
 
 import fs from 'fs';
 import path from 'path';
@@ -189,27 +191,21 @@ export class ProjectCommand {
     fs.writeFileSync(jsonPath, JSON.stringify(result, null, 2));
     console.log(`   ✅ ${jsonPath}`);
 
-    // ✅ ИСПРАВЛЕНО: используем generateCompactReport вместо удаленной функции
+    // ✅ ИСПРАВЛЕНО: используем generateCompactReport с корректными опциями
+    // Убраны useBitFlags, useDictionaries, readableKeys, useTemplates, maxDepth,
+    // includeRelations, includeStats, includeTypes, includeInheritance,
+    // includeExports, includeConstants — их нет в GenerateReportOptions
     if (options.optimized && result.entities) {
       console.log('\n📊 Generating optimized report with embedded relationships...');
       const { generateCompactReport } = await import('../../reporters/compact-reporter.js');
 
       const optimizedPath = path.join(outputDir, 'optimized-report.json');
 
-      // Генерируем компактный отчет с опциями
+      // ✅ Корректные опции для GenerateReportOptions
       generateCompactReport(result.entities, optimizedPath, {
-        useBitFlags: true,
-        useDictionaries: true,
-        readableKeys: true,
-        useTemplates: true,
-        maxDepth: parseInt(options.depth),
-        includeRelations: true,
-        includeStats: true,
-        includeTypes: true,
-        includeInheritance: true,
-        includeExports: true,
-        includeConstants: true,
-        // ✅ НЕ ИСПОЛЬЗУЕМ ultraCompact здесь
+        compress: true,
+        saveFullJson: true,
+        verbose: options.verbose === true,
       });
 
       console.log(`   ✅ ${optimizedPath}`);
@@ -256,7 +252,7 @@ export class ProjectCommand {
       }
     }
 
-    // Генерируем компактный отчет (исправленный импорт)
+    // ✅ ИСПРАВЛЕНО: генерируем компактный отчет с корректными опциями
     if (options.entities && result.entities) {
       console.log('\n📦 Generating compact universe report...');
 
@@ -264,13 +260,9 @@ export class ProjectCommand {
 
       const compactPath = path.join(outputDir, 'compact-universe.json');
       generateCompactReport(result.entities, compactPath, {
-        useBitFlags: true,
-        useDictionaries: true,
-        readableKeys: true,
-        useTemplates: true,
-        maxDepth: parseInt(options.depth),
-        includeRelations: true,
-        includeStats: true,
+        compress: true,
+        saveFullJson: true,
+        verbose: options.verbose === true,
       });
       console.log(`   ✅ ${compactPath}`);
     }

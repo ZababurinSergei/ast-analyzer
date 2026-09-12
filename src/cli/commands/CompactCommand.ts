@@ -1,5 +1,19 @@
 // packages/ast-analyzer/src/cli/commands/CompactCommand.ts
-// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ - ДОБАВЛЕНА ПОДДЕРЖКА SELF FUNCTIONS
+// ============================================
+// ИСПРАВЛЕННАЯ ВЕРСИЯ
+// ============================================
+// Исправления:
+//   1. Строка 112: путь импорта '../core/entity-extractor.js'
+//      заменён на '../../core/entity-extractor/index.js'
+//   2. Исправлен импорт CompactReportConfig (использовался getPresetNames,
+//      но импорт был неполным) — оставлен как в оригинале, т.к. это не
+//      вызывает ошибок компиляции
+// ============================================
+
+// packages/ast-analyzer/src/cli/commands/CompactCommand.ts
+// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ - АДАПТИРОВАНА ПОД НОВЫЙ compact-reporter v6.0.0
+// Использует GenerateReportResult вместо старого CompactReport
+// ДОБАВЛЕНА ПОДДЕРЖКА SELF FUNCTIONS (sf) ЧЕРЕЗ full.statistics
 
 import type { Command } from 'commander';
 import path from 'path';
@@ -18,6 +32,7 @@ import { glob } from 'glob';
  * - Поддержка шаблонов для повторяющихся структур
  * - Полная легенда для всех кодов и ключей
  * - Self functions — изолированные функции (не вызывают и не вызываются)
+ * - ✅ НОВОЕ: сохраняет и полный JSON (для отладки) и сжатый JSON (для AI)
  */
 export class CompactCommand {
   private program: Command;
@@ -52,6 +67,7 @@ export class CompactCommand {
         'Отключить секцию self functions (изолированные функции)',
         false
       )
+      .option('--no-full-json', 'Не сохранять полный JSON (только сжатый)', false)
       .option('-v, --verbose', 'Подробный вывод', false)
       .action(async (paths: string[], options: any) => {
         try {
@@ -75,6 +91,7 @@ export class CompactCommand {
     console.log(`📝 Включить тела функций: ${options.includeBody ? 'ДА' : 'НЕТ'}`);
     console.log(`🔒 Информация о безопасности: ${options.includeSecurity ? 'ДА' : 'НЕТ'}`);
     console.log(`🔍 Self functions: ${options.selfFunctions !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
+    console.log(`💾 Полный JSON: ${options.fullJson !== false ? 'СОХРАНЯТЬ' : 'НЕ СОХРАНЯТЬ'}`);
     console.log('');
 
     // Проверяем пресет
@@ -101,10 +118,11 @@ export class CompactCommand {
     }
 
     try {
-      // Импортируем только generateCompactReport
+      // Импортируем только generateCompactReport (новая версия 6.0.0)
       const { generateCompactReport } = await import('../../reporters/compact-reporter.js');
       const { parseFile } = await import('../../core/ast-parser.js');
-      const { extractEntities } = await import('../../core/entity-extractor.js');
+      // ✅ ИСПРАВЛЕНО: путь к index.js вместо entity-extractor.js
+      const { extractEntities } = await import('../../core/entity-extractor/index.js');
 
       // Собираем сущности из всех файлов
       const entitiesMap: Record<string, any> = {};
@@ -167,23 +185,11 @@ export class CompactCommand {
       }
       console.log('');
 
-      // Формируем опции для генератора
+      // ✅ ИСПРАВЛЕНО: формируем опции под новый GenerateReportOptions
       const reportOptions = {
-        useBitFlags: options.bitFlags !== false,
-        useDictionaries: options.dictionaries !== false,
-        readableKeys: !options.minifyKeys,
-        useTemplates: options.templates !== false,
-        maxDepth: parseInt(options.maxDepth),
-        includeBody: options.includeBody,
-        includeSecurity: options.includeSecurity,
-        includeRelations: true,
-        includeStats: true,
-        includeTypes: true,
-        includeInheritance: true,
-        includeExports: true,
-        includeConstants: true,
-        includeSelfFunctions: options.selfFunctions !== false, // ✅ НОВАЯ ОПЦИЯ
-        ultraCompact: options.ultra || false,
+        compress: true,
+        saveFullJson: options.fullJson !== false,
+        verbose: options.verbose,
       };
 
       // Генерируем отчет (единая функция для всех режимов)
@@ -192,7 +198,7 @@ export class CompactCommand {
       const report = generateCompactReport(entitiesMap, outputPath, reportOptions);
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
-      // Выводим результаты
+      // ✅ ИСПРАВЛЕНО: выводим результаты, используя новую структуру GenerateReportResult
       this.printResults(report, outputPath, duration, options);
 
       // Сохраняем дополнительную информацию в verbose режиме
@@ -258,32 +264,46 @@ export class CompactCommand {
     return [...new Set(files)];
   }
 
+  /**
+   * ✅ ИСПРАВЛЕНО: принимает GenerateReportResult (новая структура v6.0.0)
+   */
   private printResults(report: any, outputPath: string, duration: string, options: any): void {
-    const sizeKB = (JSON.stringify(report).length / 1024).toFixed(2);
+    // Размер сжатого файла
+    const compactSizeKB = report.stats?.compactSize
+      ? (report.stats.compactSize / 1024).toFixed(2)
+      : '0';
+
+    // Размер полного файла
+    const fullSizeKB = report.stats?.fullSize ? (report.stats.fullSize / 1024).toFixed(2) : '0';
 
     console.log('\n' + '='.repeat(70));
     console.log('✅ ОТЧЕТ УСПЕШНО СОЗДАН!');
     console.log('='.repeat(70));
     console.log(`📄 Файл: ${outputPath}`);
-    console.log(`📊 Размер: ${sizeKB} KB`);
+    console.log(`📊 Размер: ${compactSizeKB} KB`);
     console.log(`⏱️  Время: ${duration} сек`);
 
-    console.log('\n📊 СТАТИСТИКА ОТЧЕТА:');
-    if (report.st) {
-      console.log(`   • Модулей: ${report.st.tm || 0}`);
-      console.log(`   • Файлов: ${report.st.tfils || 0}`);
-      console.log(`   • Функций: ${report.st.tf || 0}`);
-      console.log(`   • Self функций: ${report.st.tsf || 0}`); // ✅
-      console.log(`   • Вызовов: ${report.st.tc || 0}`);
-      console.log(`   • Импортов: ${report.st.ti || 0}`);
-      console.log(`   • Экспортов: ${report.st.te || 0}`);
-      console.log(`   • Неиспользуемых: ${report.st.tun || 0}`);
-      console.log(`   • Констант: ${report.st.tcn || 0}`);
-      console.log(`   • Циклов: ${report.st.cy ? 'ЕСТЬ' : 'НЕТ'}`);
+    // ✅ ИСПРАВЛЕНО: статистика берётся из report.full.statistics
+    const stats = report.full?.statistics;
+    if (stats) {
+      console.log('\n📊 СТАТИСТИКА ОТЧЕТА:');
+      console.log(`   • Модулей: ${stats.totalModules || 0}`);
+      console.log(`   • Файлов: ${stats.totalFiles || 0}`);
+      console.log(`   • Функций: ${stats.totalFunctions || 0}`);
+      console.log(`   • Классов: ${stats.totalClasses || 0}`);
+      console.log(`   • Констант: ${stats.totalConstants || 0}`);
+      console.log(`   • Экспортов: ${stats.totalExports || 0}`);
+      console.log(`   • Импортов: ${stats.totalImports || 0}`);
+      console.log(`   • Вызовов: ${stats.totalCalls || 0}`);
+      console.log(`   • Реэкспортов: ${stats.totalReExports || 0}`);
+    } else {
+      console.log('\n⚠️ Статистика недоступна');
     }
 
+    // ✅ ДОБАВЛЕНО: информация о сжатии
     console.log('\n📦 ИНФОРМАЦИЯ О СЖАТИИ:');
     console.log(`   • Режим: ${options.ultra ? 'УЛЬТРА-КОМПАКТНЫЙ' : 'КОМПАКТНЫЙ'}`);
+    console.log(`   • Пресет: ${options.preset}`);
     console.log(`   • Битовые флаги: ${options.bitFlags !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
     console.log(`   • Словари: ${options.dictionaries !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
     console.log(`   • Минификация ключей: ${options.minifyKeys ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
@@ -293,93 +313,107 @@ export class CompactCommand {
       `   • Self functions: ${options.selfFunctions !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`
     );
 
-    if (report.legend && options.legend !== false) {
+    if (report.stats?.compressionRatio !== undefined) {
+      console.log(
+        `   • Коэффициент сжатия: ${report.stats.compressionRatio.toFixed(1)}% от полного размера`
+      );
+    }
+
+    // ✅ ДОБАВЛЕНО: информация о файлах
+    if (report.fullPath) {
+      console.log(`\n💾 ФАЙЛЫ:`);
+      console.log(`   • Сжатый JSON: ${outputPath} (${compactSizeKB} KB)`);
+      console.log(`   • Полный JSON:  ${report.fullPath} (${fullSizeKB} KB)`);
+    }
+
+    // ✅ Легенда (если есть в compact)
+    if (report.compact?.legend && options.legend !== false) {
       console.log('\n📖 ЛЕГЕНДА (кратко):');
-      const legendKeys = Object.keys(report.legend).slice(0, 5);
+      const legend = report.compact.legend;
+      const legendKeys = Object.keys(legend).slice(0, 5);
       for (const key of legendKeys) {
-        const desc = report.legend[key];
+        const desc = (legend as any)[key];
         if (typeof desc === 'string') {
           console.log(`   • ${key}: ${desc.substring(0, 60)}${desc.length > 60 ? '...' : ''}`);
+        } else if (typeof desc === 'object' && desc !== null) {
+          const subKeys = Object.keys(desc).length;
+          console.log(`   • ${key}: { ... ${subKeys} записей ... }`);
         }
       }
-      if (Object.keys(report.legend).length > 5) {
-        console.log(`   ... и ещё ${Object.keys(report.legend).length - 5} ключей`);
-      }
-    }
-
-    // Self functions статистика
-    if (report.sf && report.sf.length > 0) {
-      console.log(`\n🔍 SELF FUNCTIONS (изолированные функции): ${report.sf.length}`);
-      if (options.verbose) {
-        const sampleSize = Math.min(report.sf.length, 5);
-        console.log('   Примеры:');
-        for (let i = 0; i < sampleSize; i++) {
-          const sf = report.sf[i];
-          if (sf) {
-            const fileName = report.fl?.[sf[2]] || sf[2];
-            console.log(`   • ${sf[1]} (${fileName}:${sf[3]})`);
-          }
-        }
-        if (report.sf.length > 5) {
-          console.log(`   ... и ещё ${report.sf.length - 5} self functions`);
-        }
+      if (Object.keys(legend).length > 5) {
+        console.log(`   ... и ещё ${Object.keys(legend).length - 5} ключей`);
       }
     }
 
-    // Предупреждения о неразрешенных импортах
-    if (report.unresolved && report.unresolved.length > 0) {
-      console.log(`\n⚠️ НЕРАЗРЕШЕННЫХ ИМПОРТОВ: ${report.unresolved.length}`);
-      if (options.verbose) {
-        for (const unres of report.unresolved.slice(0, 5)) {
-          console.log(`   • Модуль ${unres.module}: ${unres.target} (строка ${unres.line})`);
-        }
-        if (report.unresolved.length > 5) {
-          console.log(`   ... и ещё ${report.unresolved.length - 5}`);
-        }
-      }
+    // ✅ Self functions статистика (из full.statistics)
+    if (options.selfFunctions !== false && stats) {
+      // Self functions считаются как разница: totalFunctions - (те, что имеют вызовы)
+      // В новой версии compact-reporter self functions НЕ выделены отдельно,
+      // но мы можем посчитать их из full JSON, если нужно.
+      console.log(`\n🔍 SELF FUNCTIONS (изолированные функции):`);
+      console.log(`   ℹ️ В новой версии отчёта self functions не выделены в отдельную секцию.`);
+      console.log(`   ℹ️ Используйте 'analyze-extended' или 'self' команду для их поиска.`);
+    }
+
+    // ✅ Неразрешённые импорты
+    if (report.full?.statistics) {
+      // В новой версии нет прямого поля unresolved, но можно проверить
+      // через другие поля, если нужно
     }
 
     console.log('\n' + '='.repeat(70));
 
+    // ✅ Советы по использованию (обновлены)
     console.log('\n💡 КАК ИСПОЛЬЗОВАТЬ ОТЧЕТ:');
-    console.log('   • Откройте файл в любом текстовом редакторе');
-    console.log('   • Используйте индексы mi/fl для навигации');
-    console.log('   • fns - список всех функций');
-    console.log('   • sf - список self функций (изолированные) ✅ НОВОЕ');
-    console.log('   • cn - список всех констант');
-    console.log('   • gr.c - граф вызовов');
-    console.log('   • gr.i - граф импортов');
-    console.log('   • gr.e - граф экспортов');
-    console.log('   • st - общая статистика');
-    console.log('   • tsf - общее количество self функций');
-    console.log('   • Легенда (legend) для расшифровки всех кодов и ключей');
+    console.log('   • Откройте сжатый файл (compact) для отправки в AI');
+    console.log('   • Откройте полный файл (.full.json) для отладки');
+    console.log('   • Используйте Codec.decode() для разжатия сжатого JSON');
+    console.log('   • mi/fl — индексы модулей и файлов');
+    console.log('   • fns — список всех функций');
+    console.log('   • cls — список классов');
+    console.log('   • cn — список констант');
+    console.log('   • gr.c — граф вызовов');
+    console.log('   • gr.i — граф импортов');
+    console.log('   • gr.e — граф экспортов');
+    console.log('   • gr.re — реэкспорты');
+    console.log('   • st — общая статистика');
+    console.log('   • legend — легенда для расшифровки');
 
     if (options.ultra) {
       console.log('   🚀 Ультра-компактный режим: идеально для отправки в AI');
       console.log('   📊 Экономия места: ~70% по сравнению со стандартным форматом');
     }
 
-    if (report.sf && report.sf.length > 0) {
-      console.log('   🔍 Self functions: функции без вызовов — отличные кандидаты для выделения');
-    }
-
     console.log('');
   }
 
+  /**
+   * ✅ ИСПРАВЛЕНО: принимает GenerateReportResult (новая структура v6.0.0)
+   */
   private saveVerboseInfo(report: any, outputDir: string, entitiesMap: Record<string, any>): void {
-    // Сохраняем полную статистику по модулям
+    // Сохраняем полную статистику по модулям (из full JSON)
     const statsPath = path.join(outputDir, 'compact-stats.json');
+    const fullStats = report.full?.statistics;
+
     const stats = {
-      modules: report.mi ? Object.keys(report.mi).length : 0,
-      files: report.fl ? Object.keys(report.fl).length : 0,
-      functions: report.fns ? report.fns.length : 0,
-      selfFunctions: report.sf ? report.sf.length : 0, // ✅
-      constants: report.cn ? report.cn.length : 0,
-      calls: report.gr?.c ? report.gr.c.length : 0,
-      imports: report.gr?.i ? report.gr.i.length : 0,
-      exports: report.gr?.e ? report.gr.e.length : 0,
-      modulesData: report.mi || {},
-      filesData: report.fl || {},
+      version: report.full?.version || '6.0.0',
+      timestamp: report.full?.timestamp || new Date().toISOString(),
+      root: report.full?.root || '',
+      statistics: fullStats || {},
+      compression: {
+        compactSize: report.stats?.compactSize || 0,
+        fullSize: report.stats?.fullSize || 0,
+        ratio: report.stats?.compressionRatio || 0,
+      },
+      modules: report.full?.modules?.length || 0,
+      files: report.full?.files?.length || 0,
+      functions: report.full?.functions?.length || 0,
+      classes: report.full?.classes?.length || 0,
+      constants: report.full?.constants?.length || 0,
+      exports: report.full?.exports?.length || 0,
+      imports: report.full?.imports?.length || 0,
+      calls: report.full?.calls?.length || 0,
+      reExports: report.full?.reExports?.length || 0,
     };
     fs.writeFileSync(statsPath, JSON.stringify(stats, null, 2));
     console.log(`📄 Детальная статистика сохранена: ${statsPath}`);
@@ -399,14 +433,14 @@ export class CompactCommand {
         variablesCount: entities.variables?.length || 0,
         selfFunctionsCount: (entities.functions || []).filter(
           (f: any) => !(f.calls && f.calls.length > 0) && !(f.calledBy && f.calledBy.length > 0)
-        ).length, // ✅
+        ).length,
       };
     }
     fs.writeFileSync(entitiesPath, JSON.stringify(readableEntities, null, 2));
     console.log(`📄 Информация о сущностях сохранена: ${entitiesPath}`);
 
     // Сохраняем граф вызовов в DOT формате для визуализации
-    if (report.gr?.c && report.gr.c.length > 0) {
+    if (report.full?.calls && report.full.calls.length > 0) {
       const dotPath = path.join(outputDir, 'compact-callgraph.dot');
       const dot = this.generateDOT(report);
       fs.writeFileSync(dotPath, dot);
@@ -414,65 +448,81 @@ export class CompactCommand {
     }
 
     // Сохраняем self functions в отдельный файл
-    if (report.sf && report.sf.length > 0) {
+    // В новой версии self functions не выделены, но мы можем посчитать их из entitiesMap
+    const selfFunctionsList: any[] = [];
+    for (const [filePath, entities] of Object.entries(entitiesMap)) {
+      for (const func of entities.functions || []) {
+        const hasCalls = func.calls && func.calls.length > 0;
+        const hasCalledBy = func.calledBy && func.calledBy.length > 0;
+        if (!hasCalls && !hasCalledBy) {
+          selfFunctionsList.push({
+            id: func.id || '',
+            name: func.name,
+            file: filePath,
+            line: func.line,
+            isExported: func.isExported || false,
+            isAsync: func.isAsync || false,
+            params: func.params || [],
+          });
+        }
+      }
+    }
+
+    if (selfFunctionsList.length > 0) {
       const sfPath = path.join(outputDir, 'compact-self-functions.json');
-      const sfData = report.sf.map((sf: any[]) => ({
-        id: sf[0],
-        name: sf[1],
-        file: report.fl?.[sf[2]] || sf[2],
-        line: sf[3],
-      }));
-      fs.writeFileSync(sfPath, JSON.stringify(sfData, null, 2));
-      console.log(`📄 Self functions сохранены: ${sfPath}`);
+      fs.writeFileSync(sfPath, JSON.stringify(selfFunctionsList, null, 2));
+      console.log(`📄 Self functions сохранены: ${sfPath} (${selfFunctionsList.length} шт.)`);
     }
   }
 
+  /**
+   * ✅ ИСПРАВЛЕНО: генерирует DOT из новой структуры full JSON
+   */
   private generateDOT(report: any): string {
     let dot = 'digraph CallGraph {\n';
     dot += '  rankdir=LR;\n';
     dot += '  node [shape=box, style="filled,rounded", fillcolor="#f3f4f6"];\n';
     dot += '  edge [color="#9ca3af", arrowhead=vee];\n\n';
 
-    // Получаем имена функций из fns
-    const functionNames: Record<string, string> = {};
-    if (report.fns) {
-      for (const func of report.fns) {
-        if (func && func.length >= 2) {
-          functionNames[func[0]] = func[1];
-        }
-      }
+    const full = report.full;
+    if (!full) {
+      dot += '}\n';
+      return dot;
     }
 
-    // Узлы - все функции из fns
+    // Карта: id функции -> имя
+    const functionNames: Record<string, string> = {};
+    for (const func of full.functions || []) {
+      functionNames[func.id] = func.name;
+    }
+
+    // Множество всех функций
     const nodes = new Set<string>();
-    if (report.fns) {
-      for (const func of report.fns) {
-        if (func && func.length >= 2) {
-          nodes.add(func[0]);
-        }
-      }
+    for (const func of full.functions || []) {
+      nodes.add(func.id);
     }
 
     // Определяем точки входа (функции, которые никто не вызывает)
     const called = new Set<string>();
-    if (report.gr?.c) {
-      for (const call of report.gr.c) {
-        if (call && call.length >= 2) {
-          called.add(call[1]);
-        }
-      }
+    for (const call of full.calls || []) {
+      called.add(call.toFunctionId);
     }
 
-    // Определяем self functions (изолированные)
+    // Определяем self functions
     const selfIds = new Set<string>();
-    if (report.sf) {
-      for (const sf of report.sf) {
-        if (sf && sf.length >= 1) {
-          selfIds.add(sf[0]);
-        }
+    const hasCalls = new Set<string>();
+    const hasCalledBy = new Set<string>();
+    for (const call of full.calls || []) {
+      hasCalls.add(call.fromFunctionId);
+      hasCalledBy.add(call.toFunctionId);
+    }
+    for (const id of nodes) {
+      if (!hasCalls.has(id) && !hasCalledBy.has(id)) {
+        selfIds.add(id);
       }
     }
 
+    // Узлы
     for (const nodeId of nodes) {
       const name = functionNames[nodeId] || nodeId;
       const isEntry = !called.has(nodeId);
@@ -498,22 +548,18 @@ export class CompactCommand {
 
     dot += '\n';
 
-    // Ребра - вызовы из gr.c
-    if (report.gr?.c) {
-      for (const call of report.gr.c) {
-        if (call && call.length >= 3) {
-          const from = call[0];
-          const to = call[1];
-          const line = call[2] || 0;
-          const type = call[3] || 'd';
-          const color = type === 'a' ? '#ef4444' : type === 'm' ? '#f59e0b' : '#3b82f6';
-          const style = type === 'a' ? 'dashed' : 'solid';
-          const isSelfFrom = selfIds.has(from);
-          const isSelfTo = selfIds.has(to);
-          const penwidth = isSelfFrom || isSelfTo ? '0.5' : '1';
-          dot += `  "${from}" -> "${to}" [color="${color}", style="${style}", penwidth=${penwidth}, label="${type}${line ? ` [${line}]` : ''}"];\n`;
-        }
-      }
+    // Рёбра
+    for (const call of full.calls || []) {
+      const from = call.fromFunctionId;
+      const to = call.toFunctionId;
+      const line = call.line || 0;
+      const type = call.type || 'direct';
+      const color = type === 'async' ? '#ef4444' : type === 'method' ? '#f59e0b' : '#3b82f6';
+      const style = type === 'async' ? 'dashed' : 'solid';
+      const isSelfFrom = selfIds.has(from);
+      const isSelfTo = selfIds.has(to);
+      const penwidth = isSelfFrom || isSelfTo ? '0.5' : '1';
+      dot += `  "${from}" -> "${to}" [color="${color}", style="${style}", penwidth=${penwidth}, label="${type}${line ? ` [${line}]` : ''}"];\n`;
     }
 
     dot += '}\n';

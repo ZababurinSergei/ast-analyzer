@@ -1,5 +1,4 @@
 // src/types.ts
-
 // ==========================================
 // КОНФИГУРАЦИОННЫЕ ТИПЫ
 // ==========================================
@@ -971,9 +970,13 @@ export interface AnalysisWarning {
 }
 
 // ==========================================
-// ТИПЫ ДЛЯ AST ВАЛКЕРА
+// ТИПЫ ДЛЯ AST ВАЛКЕРА (ОБЪЕДИНЕННАЯ ВЕРСИЯ)
 // ==========================================
 
+/**
+ * Базовый тип для AST-узлов с type guard
+ * Объединяет оригинальный интерфейс и улучшенные типы
+ */
 export interface ASTNode {
   type: string;
   loc?: Location | null;
@@ -1394,6 +1397,38 @@ export interface UIIndex {
   /** files — данные по каждому файлу */
   f: Record<string, UIFileData>;
 }
+
+// ==========================================
+// УЛУЧШЕННЫЕ ТИПЫ ДЛЯ СТАТИСТИКИ
+// ==========================================
+
+export interface MutableStats {
+  totalFunctions: number;
+  totalCalls: number;
+  totalModules: number;
+  totalFiles: number;
+  totalExports: number;
+  totalReExports: number;
+  totalConstExports: number;
+  totalUnused: number;
+  totalAsync: number;
+  totalConstants: number;
+  totalConstUses: number;
+  totalConstDeps: number;
+  totalInheritance: number;
+  totalTypeDeps: number;
+  totalImports: number;
+  totalSelfFunctions: number;
+  totalDynamicImports: number;
+  totalConfigRefs: number;
+  totalExternalLibs: number;
+  totalVueTemplates: number;
+  totalAsyncChains: number;
+  totalClosures: number;
+  totalReflections: number;
+}
+
+export type ReadonlyStats = Readonly<MutableStats>;
 
 // ==========================================
 // ЭКСПОРТ ПО УМОЛЧАНИЮ

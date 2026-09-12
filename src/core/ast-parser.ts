@@ -1,6 +1,6 @@
 // src/core/ast-parser.ts
 // ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ - исправлен сбор ExportSpecifier
-// ВЕРСИЯ 5.1.1 - ИСПРАВЛЕНЫ РЕЭКСПОРТЫ
+// ✅ ДОБАВЛЕНО: сохранение loc в импортах и экспортах для корректных line в отчетах
 
 import fs from 'fs';
 import path from 'path';
@@ -71,11 +71,7 @@ let tsConfigBaseDirCache: string | null = null;
 // ФУНКЦИИ ДЛЯ РАБОТЫ С ПУТЯМИ (используем path-utils)
 // ==========================================
 
-import {
-  resolveAbsolutePath,
-  validateAndResolvePath,
-  normalizePathForOS,
-} from '../utils/path-utils.js';
+import { resolveAbsolutePath, validateAndResolvePath, normalizePathForOS } from '../utils/path-utils.js';
 
 // Реэкспортируем для обратной совместимости
 export { resolveAbsolutePath, validateAndResolvePath, normalizePathForOS };
@@ -135,7 +131,13 @@ export interface ParsedFileInfo {
   /** Содержимое файла */
   content: string;
   /** Импорты из файла */
-  imports: { source: string; specifiers: string[]; isTypeOnly: boolean; line?: number }[];
+  imports: {
+    source: string;
+    specifiers: string[];
+    isTypeOnly: boolean;
+    line?: number;
+    loc?: any;
+  }[];
   /** Экспорты из файла */
   exports: {
     name: string;
@@ -144,6 +146,8 @@ export interface ParsedFileInfo {
     line?: number;
     isReExport?: boolean;
     source?: string;
+    specifiers?: string[];
+    loc?: any;
   }[];
 }
 
@@ -222,14 +226,27 @@ export function parseVueSFCFile(filePath: string): VueSFCData | null {
 }
 
 // ==========================================
-// ФУНКЦИЯ ДЛЯ СБОРА ИМПОРТОВ ИЗ AST
+// ✅ ОБНОВЛЕННАЯ ФУНКЦИЯ: СБОР ИМПОРТОВ ИЗ AST
 // ==========================================
 
-function collectImportsFromAST(
-  ast: any
-): { source: string; specifiers: string[]; isTypeOnly: boolean; line?: number }[] {
-  const imports: { source: string; specifiers: string[]; isTypeOnly: boolean; line?: number }[] =
-    [];
+/**
+ * Собирает все импорты из AST с сохранением loc
+ * ✅ ОБНОВЛЕНО: добавлено сохранение loc для корректных line в отчетах
+ */
+function collectImportsFromAST(ast: any): {
+  source: string;
+  specifiers: string[];
+  isTypeOnly: boolean;
+  line?: number;
+  loc?: any;
+}[] {
+  const imports: {
+    source: string;
+    specifiers: string[];
+    isTypeOnly: boolean;
+    line?: number;
+    loc?: any;
+  }[] = [];
 
   if (!ast || !ast.body) return imports;
 
@@ -259,6 +276,7 @@ function collectImportsFromAST(
             specifiers,
             isTypeOnly,
             line: node.loc?.start?.line,
+            loc: node.loc, // ✅ Сохраняем loc
           });
         }
       }
@@ -275,8 +293,8 @@ function collectImportsFromAST(
 /**
  * Собирает все экспорты из AST
  * ✅ ИСПРАВЛЕНО: добавлена поддержка ExportSpecifier для export { a, b }
- * ✅ ИСПРАВЛЕНО: правильная обработка реэкспортов (isReExport, source)
- * ✅ ДОБАВЛЕНО: логирование для отладки реэкспортов
+ * ✅ ИСПРАВЛЕНО: добавлена поддержка реэкспортов (export { a } from 'module')
+ * ✅ ОБНОВЛЕНО: сохранение loc для корректных line в отчетах
  */
 export function collectExportsFromAST(ast: any): {
   name: string;
@@ -286,12 +304,11 @@ export function collectExportsFromAST(ast: any): {
   isReExport?: boolean;
   source?: string;
   specifiers?: string[];
+  loc?: any;
 }[] {
   const exports: any[] = [];
 
   if (!ast || !ast.body) return exports;
-
-  let reExportCount = 0;
 
   walk(ast, {
     enter(node: any) {
@@ -308,6 +325,7 @@ export function collectExportsFromAST(ast: any): {
             isDefault: false,
             line: node.loc?.start?.line,
             isReExport: false,
+            loc: node.loc,
           });
         } else if (decl.type === 'ClassDeclaration' && decl.id) {
           exports.push({
@@ -316,6 +334,7 @@ export function collectExportsFromAST(ast: any): {
             isDefault: false,
             line: node.loc?.start?.line,
             isReExport: false,
+            loc: node.loc,
           });
         } else if (decl.type === 'VariableDeclaration') {
           for (const d of decl.declarations) {
@@ -326,6 +345,7 @@ export function collectExportsFromAST(ast: any): {
                 isDefault: false,
                 line: d.loc?.start?.line || node.loc?.start?.line,
                 isReExport: false,
+                loc: d.loc || node.loc,
               });
             }
           }
@@ -336,6 +356,7 @@ export function collectExportsFromAST(ast: any): {
             isDefault: false,
             line: node.loc?.start?.line,
             isReExport: false,
+            loc: node.loc,
           });
         } else if (decl.type === 'TSTypeAliasDeclaration' && decl.id) {
           exports.push({
@@ -344,6 +365,7 @@ export function collectExportsFromAST(ast: any): {
             isDefault: false,
             line: node.loc?.start?.line,
             isReExport: false,
+            loc: node.loc,
           });
         } else if (decl.type === 'TSEnumDeclaration' && decl.id) {
           exports.push({
@@ -352,29 +374,27 @@ export function collectExportsFromAST(ast: any): {
             isDefault: false,
             line: node.loc?.start?.line,
             isReExport: false,
+            loc: node.loc,
           });
         }
       }
 
       // ============================================
-      // 2. ✅ РЕЭКСПОРТЫ: export { a, b } from 'module'
+      // 2. ✅ РЕЭКСПОРТЫ И SPECIFIERS: export { a, b } from 'module'
       // ============================================
       if (node.type === 'ExportNamedDeclaration' && node.specifiers && node.specifiers.length > 0) {
         const isReExport = !!node.source;
         const sourceModule = node.source?.value;
 
-        if (isReExport && sourceModule) {
-          reExportCount++;
-          if (reExportCount <= 3) {
-            console.log(`   🔄 Реэкспорт найден: из '${sourceModule}'`);
-          }
-        }
-
+        // Собираем все specifiers
+        const specifierNames: string[] = [];
         for (const spec of node.specifiers) {
           if (spec.type === 'ExportSpecifier') {
             const exportedName = spec.exported?.name || spec.local?.name;
             if (exportedName) {
-              // ✅ ПРАВИЛЬНО УСТАНАВЛИВАЕМ ФЛАГИ ДЛЯ РЕЭКСПОРТА
+              specifierNames.push(exportedName);
+
+              // Добавляем каждый specifier как отдельный экспорт
               exports.push({
                 name: exportedName,
                 type: isReExport ? 're-export' : 'named',
@@ -383,9 +403,24 @@ export function collectExportsFromAST(ast: any): {
                 isReExport: isReExport,
                 source: sourceModule,
                 specifier: spec.local?.name || spec.exported?.name,
+                loc: node.loc,
               });
             }
           }
+        }
+
+        // Если это реэкспорт, добавляем также групповую информацию
+        if (isReExport && specifierNames.length > 0) {
+          exports.push({
+            name: `{ ${specifierNames.join(', ')} }`,
+            type: 're-export-group',
+            isDefault: false,
+            line: node.loc?.start?.line,
+            isReExport: true,
+            source: sourceModule,
+            specifiers: specifierNames,
+            loc: node.loc,
+          });
         }
       }
 
@@ -420,6 +455,7 @@ export function collectExportsFromAST(ast: any): {
           isDefault: true,
           line: node.loc?.start?.line,
           isReExport: false,
+          loc: node.loc,
         });
       }
 
@@ -434,28 +470,25 @@ export function collectExportsFromAST(ast: any): {
           line: node.loc?.start?.line,
           isReExport: true,
           source: node.source.value,
+          loc: node.loc,
         });
       }
 
       // ============================================
-      // 5. ExportNamedDeclaration без declaration (только specifiers)
+      // 5. ✅ ExportNamedDeclaration без declaration (только specifiers)
       // ============================================
       if (node.type === 'ExportNamedDeclaration' && !node.declaration && node.specifiers) {
         for (const spec of node.specifiers) {
           if (spec.type === 'ExportSpecifier') {
             const exportedName = spec.exported?.name || spec.local?.name;
             if (exportedName) {
-              // ✅ ПРОВЕРЯЕМ, ЕСТЬ ЛИ source (это реэкспорт)
-              const isReExport = !!node.source;
-              const sourceModule = node.source?.value;
-
               exports.push({
                 name: exportedName,
-                type: isReExport ? 're-export' : 'named',
+                type: 'named',
                 isDefault: false,
                 line: node.loc?.start?.line,
-                isReExport: isReExport,
-                source: sourceModule,
+                isReExport: false,
+                loc: node.loc,
               });
             }
           }
@@ -463,10 +496,6 @@ export function collectExportsFromAST(ast: any): {
       }
     },
   });
-
-  if (reExportCount > 0) {
-    console.log(`   ✅ Найдено реэкспортов: ${reExportCount}`);
-  }
 
   // Удаляем дубликаты (оставляем первое вхождение)
   const seen = new Set<string>();
@@ -490,10 +519,7 @@ export function collectExportsFromAST(ast: any): {
  * @param _options Опции парсинга (зарезервировано)
  * @returns ParsedFileInfo или null
  */
-export function parseFile(
-  filePath: string,
-  _options?: { extractTemplate?: boolean }
-): ParsedFileInfo | null {
+export function parseFile(filePath: string, _options?: { extractTemplate?: boolean }): ParsedFileInfo | null {
   try {
     // ✅ Нормализуем путь
     const resolvedPath = validateAndResolvePath(filePath);
@@ -506,24 +532,7 @@ export function parseFile(
     }
 
     // ✅ ПРОПУСК ДРУГИХ НЕПОДДЕРЖИВАЕМЫХ РАСШИРЕНИЙ
-    const unsupportedExtensions = [
-      '.css',
-      '.scss',
-      '.less',
-      '.html',
-      '.json',
-      '.xml',
-      '.svg',
-      '.png',
-      '.jpg',
-      '.jpeg',
-      '.gif',
-      '.ico',
-      '.woff',
-      '.woff2',
-      '.ttf',
-      '.eot',
-    ];
+    const unsupportedExtensions = ['.css', '.scss', '.less', '.html', '.json', '.xml', '.svg', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.woff', '.woff2', '.ttf', '.eot'];
     const ext = path.extname(filePath);
     if (unsupportedExtensions.includes(ext)) {
       console.log(`⏭️ Пропуск неподдерживаемого файла: ${path.basename(filePath)}`);
@@ -537,8 +546,13 @@ export function parseFile(
     let isVue = false;
     let isTypeScript = false;
     const moduleName = path.basename(path.dirname(resolvedPath));
-    let imports: { source: string; specifiers: string[]; isTypeOnly: boolean; line?: number }[] =
-      [];
+    let imports: {
+      source: string;
+      specifiers: string[];
+      isTypeOnly: boolean;
+      line?: number;
+      loc?: any;
+    }[] = [];
     let exports: {
       name: string;
       type: string;
@@ -546,6 +560,8 @@ export function parseFile(
       line?: number;
       isReExport?: boolean;
       source?: string;
+      specifiers?: string[];
+      loc?: any;
     }[] = [];
 
     if (filePath.endsWith('.vue')) {
@@ -554,9 +570,7 @@ export function parseFile(
 
       // ✅ ЕСЛИ SFC ВЕРНУЛ NULL — ПРОПУСКАЕМ ФАЙЛ
       if (!sfc) {
-        console.log(
-          `⏭️ Пропуск Vue файла (нет скрипта или пустой скрипт): ${path.basename(filePath)}`
-        );
+        console.log(`⏭️ Пропуск Vue файла (нет скрипта или пустой скрипт): ${path.basename(filePath)}`);
         return null;
       }
 
@@ -577,9 +591,7 @@ export function parseFile(
       }
 
       code = scriptContent;
-      console.log(
-        `📄 Vue файл: ${path.basename(resolvedPath)} (${scriptType}, TS: ${isTypeScript})`
-      );
+      console.log(`📄 Vue файл: ${path.basename(resolvedPath)} (${scriptType}, TS: ${isTypeScript})`);
 
       if (sfc.styles.length > 0) {
         console.log(`   🎨 Styles: ${sfc.styles.length} блоков`);
@@ -664,7 +676,7 @@ export function parseFile(
         isTypeScript,
         content: code,
         imports: [],
-        exports: [],
+        exports: []
       };
     }
 
@@ -690,18 +702,6 @@ export function parseFile(
     }
     if (exports.length > 0) {
       console.log(`   📤 Найдено экспортов: ${exports.length}`);
-
-      // ✅ ЛОГИРУЕМ РЕЭКСПОРТЫ
-      const reExports = exports.filter(e => e.isReExport);
-      if (reExports.length > 0) {
-        console.log(`      🔄 Реэкспортов: ${reExports.length}`);
-        for (const re of reExports.slice(0, 5)) {
-          console.log(`         • ${re.name} from '${re.source}'`);
-        }
-        if (reExports.length > 5) {
-          console.log(`         ... и ещё ${reExports.length - 5} реэкспортов`);
-        }
-      }
     }
 
     if (isVue && ast) {
@@ -719,8 +719,9 @@ export function parseFile(
       isTypeScript,
       content: code,
       imports,
-      exports,
+      exports
     };
+
   } catch (e) {
     if (e instanceof Error && (e as any).code === 'ENOENT') {
       console.warn(`⚠️ Файл не найден: ${filePath}`);

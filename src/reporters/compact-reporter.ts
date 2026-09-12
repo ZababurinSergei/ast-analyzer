@@ -1,1725 +1,666 @@
 // src/reporters/compact-reporter.ts
-// ПОЛНАЯ ВЕРСИЯ - С ИСПРАВЛЕННЫМИ ЭКСПОРТАМИ И ОБНОВЛЕННОЙ СТАТИСТИКОЙ
-// Версия: 5.1.0 - с поддержкой gr.e, gr.re, gr.ce
-// ✅ ИСПРАВЛЕНО: gr.e и gr.re теперь правильно собираются через глобальный индекс
+// ============================================
+// ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
+// ============================================
+// Вся логика сжатия/разжатия вынесена в ./codec/codec.ts
+//
+// Что делает этот модуль:
+//   1. Собирает FullJSON из entitiesMap (два прохода)
+//   2. Вызывает Codec.encode() для получения CompactJSON
+//   3. Сохраняет оба файла: compact.json и compact.full.json
+//
+// Обратная операция:
+//   - readAndDecode() — читает compact.json и возвращает FullJSON
+//   - decodeCompactReport() — декодирует объект в памяти
+//
+// Версия: 6.0.1
+// ============================================
 
-import type { EntitiesResult } from '../types.js';
-import path from 'path';
 import fs from 'fs';
-
-// Импортируем анализаторы из отдельного модуля
-import { analyzeContent } from '../analyzers/index.js';
-
-// ============================================
-// КОНСТАНТЫ
-// ============================================
-
-export const SHORT_KEYS = {
-    functionIndex: 'fi',
-    fileIndex: 'fl',
-    moduleIndex: 'mi',
-    functions: 'fns',
-    constants: 'cn',
-    files: 'fls',
-    modules: 'mods',
-    exports: 'exps',
-    imports: 'imps',
-    externalLibs: 'ext',
-    stats: 'st',
-    totalFunctions: 'tf',
-    totalCalls: 'tc',
-    totalModules: 'tm',
-    totalFiles: 'tfils',
-    totalImports: 'ti',
-    totalExports: 'te',
-    totalUnused: 'tun',
-    totalReExports: 'tre',
-    totalInheritance: 'tr',
-    totalTypeDeps: 'ttd',
-    totalConstants: 'tcn',
-    totalConstExports: 'tce',
-    totalConstUses: 'tuc',
-    totalConstDeps: 'tcd',
-    totalSelfFunctions: 'tsf',
-    hasCycles: 'cy',
-    timestamp: 'ts',
-    version: 'v',
-    root: 'r',
-    asyncCount: 'async',
-    avgCalls: 'avgCalls',
-    maxCalls: 'maxCalls',
-    isolated: 'isolated',
-    funcsWithCalls: 'funcsWithCalls',
-    calledFuncs: 'calledFuncs',
-    modulesWithFunctions: 'modulesWithFunctions',
-    filesWithFunctions: 'filesWithFunctions',
-    exportedWithCalls: 'exportedWithCalls',
-    defaultExports: 'defaultExports',
-    typeExports: 'typeExports',
-    typeImports: 'typeImports',
-    dynamicImports: 'di',
-    configRefs: 'cfg',
-    externalLibsCount: 'ext',
-    vueTemplates: 'vt',
-    asyncChains: 'asyncChains',
-    closures: 'closures',
-    reflections: 'reflections',
-    typeDeps: 'typeDeps',
-};
-
-export const FLAG_MAP = {
-    '1': 'a', // async
-    '2': 'e', // exported
-    '4': 'm', // method
-    '8': 'r', // arrow
-    '16': 'v', // event
-    '32': 'n', // nested
-    '64': 's', // self (изолированная функция)
-    '128': 'd', // dynamic import
-    '256': 'c', // config
-    '512': 'x', // external
-    '1024': 't', // vue template
-    '2048': 'a', // async chain
-    '4096': 'l', // closure
-    '8192': 'y', // type dependency
-};
-
-export const RELATION_TYPES = {
-    direct: 'd',
-    async: 'a',
-    method: 'm',
-    callback: 'c',
-    named: 'n',
-    default: 'df',
-    namespace: 'ns',
-    reExportImport: 'ri',
-    typeOnly: 'to',
-    sideEffect: 'se',
-    namedExport: 'ne',
-    defaultExport: 'de',
-    reExportExport: 're',
-    typeExport: 'te',
-    extends: 'ex',
-    implements: 'im',
-    abstract: 'ab',
-    parameter: 'p',
-    return: 'r',
-    annotation: 'an',
-    generic: 'g',
-    typeReference: 'tr',
-    constValue: 'val',
-    constEnum: 'enum',
-    constConfig: 'config',
-    dynamicImport: 'di',
-    configReference: 'cfg',
-    externalLib: 'ext',
-    vueTemplate: 'vt',
-    asyncChain: 'async',
-    closure: 'closures',
-    typeDependency: 'types',
-    reflection: 'reflection',
-};
+import path from 'path';
+import type { EntitiesResult } from '../types.js';
+import { Codec } from './codec/codec.js';
+import type {
+  FullJSON,
+  CompactJSON,
+  FunctionData,
+  ClassData,
+  ConstantData,
+  ExportData,
+  ImportData,
+  CallData,
+  ReExportData,
+  ModuleData,
+  FileData,
+  StatisticsData,
+} from './codec/codec-types.js';
 
 // ============================================
-// КЭШИРОВАНИЕ
+// ТИПЫ ОПЦИЙ И РЕЗУЛЬТАТА
 // ============================================
 
-interface CacheEntry {
-    data: any;
-    timestamp: number;
-    hash: string;
+export interface GenerateReportOptions {
+  /** Путь к выходному файлу (сжатый JSON) */
+  outputPath?: string;
+  /** Использовать сжатие (по умолчанию: true) */
+  compress?: boolean;
+  /** Сохранять полный JSON для отладки (по умолчанию: true) */
+  saveFullJson?: boolean;
+  /** Дополнительный суффикс для полного JSON (по умолчанию: '.full.json') */
+  fullJsonSuffix?: string;
+  /** Подробный вывод (по умолчанию: false) */
+  verbose?: boolean;
 }
 
-class ReportCache {
-    private cache = new Map<string, CacheEntry>();
-    private TTL = 5 * 60 * 1000; // 5 минут
-
-    get(key: string): any | null {
-        const entry = this.cache.get(key);
-        if (!entry) return null;
-        if (Date.now() - entry.timestamp > this.TTL) {
-            this.cache.delete(key);
-            return null;
-        }
-        return entry.data;
-    }
-
-    set(key: string, data: any): void {
-        if (this.cache.size >= 100) {
-            const oldest = Array.from(this.cache.entries())
-                .sort((a, b) => a[1].timestamp - b[1].timestamp)
-                .slice(0, 20);
-            for (const [k] of oldest) {
-                this.cache.delete(k);
-            }
-        }
-        const hash = this.generateHash(data);
-        this.cache.set(key, { data, timestamp: Date.now(), hash });
-    }
-
-    clear(): void {
-        this.cache.clear();
-    }
-
-    size(): number {
-        return this.cache.size;
-    }
-
-    getStats(): { total: number; oldest: number; newest: number } {
-        const entries = Array.from(this.cache.values());
-        if (entries.length === 0) {
-            return { total: 0, oldest: 0, newest: 0 };
-        }
-        const timestamps = entries.map(e => e.timestamp);
-        return {
-            total: entries.length,
-            oldest: Math.min(...timestamps),
-            newest: Math.max(...timestamps),
-        };
-    }
-
-    private generateHash(data: any): string {
-        const str = JSON.stringify(data);
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = (hash << 5) - hash + char;
-            hash = hash & hash;
-        }
-        return hash.toString(36);
-    }
-}
-
-export const reportCache = new ReportCache();
-
-// ============================================
-// СЖАТИЕ ДАННЫХ
-// ============================================
-
-function compressCalls(calls: any[]): any[] {
-    if (!calls || calls.length === 0) return calls;
-    return calls.map(call => {
-        const compressed = [...call];
-        if (typeof compressed[2] === 'number' && compressed[2] > 1000) {
-            compressed[2] = compressed[2] - 1000;
-        }
-        return compressed;
-    });
-}
-
-function compressPaths(data: any): any {
-    if (!data) return data;
-    if (data.fl && typeof data.fl === 'object') {
-        const compressed: Record<string, string> = {};
-        for (const [key, value] of Object.entries(data.fl)) {
-            const parts = (value as string).split('/');
-            if (parts.length > 4) {
-                const first = parts[0] || '';
-                const lastTwo = parts.slice(-2);
-                compressed[key] = first + '/.../' + lastTwo.join('/');
-            } else {
-                compressed[key] = value as string;
-            }
-        }
-        data.fl = compressed;
-    }
-    return data;
+export interface GenerateReportResult {
+  /** Полный (читаемый) JSON */
+  full: FullJSON;
+  /** Сжатый JSON (если compress: true) */
+  compact?: CompactJSON;
+  /** Путь к сохранённому сжатому файлу */
+  compactPath?: string;
+  /** Путь к сохранённому полному файлу */
+  fullPath?: string;
+  /** Статистика генерации */
+  stats: {
+    /** Длительность в миллисекундах */
+    duration: number;
+    /** Размер сжатого файла в байтах */
+    compactSize?: number;
+    /** Размер полного файла в байтах */
+    fullSize?: number;
+    /** Коэффициент сжатия (%) */
+    compressionRatio?: number;
+  };
 }
 
 // ============================================
-// МИГРАЦИЯ ДАННЫХ
+// ОСНОВНАЯ ФУНКЦИЯ ГЕНЕРАЦИИ
 // ============================================
 
-function migrateReport(data: any): any {
-    const version = data.v || '4.0.0';
-    if (version === '4.0.0' || version.startsWith('4.')) {
-        if (!data.st) data.st = {};
-        if (!data.st.tsf) data.st.tsf = 0;
-        if (!data.st.di) data.st.di = 0;
-        if (!data.st.cfg) data.st.cfg = 0;
-        if (!data.st.ext) data.st.ext = 0;
-        if (!data.st.vt) data.st.vt = 0;
-        if (!data.st.asyncChains) data.st.asyncChains = 0;
-        if (!data.st.closures) data.st.closures = 0;
-        if (!data.st.typeDeps) data.st.typeDeps = 0;
-        if (!data.gr) data.gr = {};
-        if (!data.gr.di) data.gr.di = [];
-        if (!data.gr.cfg) data.gr.cfg = [];
-        if (!data.gr.ext) data.gr.ext = [];
-        if (!data.gr.vt) data.gr.vt = [];
-        if (!data.gr.async) data.gr.async = [];
-        if (!data.gr.closures) data.gr.closures = [];
-        if (!data.gr.types) data.gr.types = [];
-        data.v = '5.1.0';
+/**
+ * Генерирует компактный отчёт из карты сущностей.
+ *
+ * @param entitiesMap — карта "путь файла → сущности"
+ * @param outputPath — путь для сохранения сжатого JSON
+ * @param options — дополнительные опции
+ * @returns Результат генерации с полным и сжатым JSON
+ */
+export function generateCompactReport(
+  entitiesMap: Record<string, EntitiesResult>,
+  outputPath?: string,
+  options: GenerateReportOptions = {}
+): GenerateReportResult {
+  const startTime = Date.now();
+  const verbose = options.verbose === true;
+  const useCompression = options.compress !== false;
+  const saveFull = options.saveFullJson !== false;
+  const fullSuffix = options.fullJsonSuffix || '.full.json';
+
+  // ============================================
+  // ШАГ 1: Сбор полного JSON
+  // ============================================
+
+  if (verbose) {
+    console.log('\n📦 [compact-reporter] Сбор полного JSON...');
+  }
+
+  const full = collectFullJSON(entitiesMap, verbose);
+
+  if (verbose) {
+    console.log(`   📊 Модулей: ${full.modules.length}`);
+    console.log(`   📄 Файлов: ${full.files.length}`);
+    console.log(`   ƒ Функций: ${full.functions.length}`);
+    console.log(`   📦 Классов: ${full.classes.length}`);
+    console.log(`   📌 Констант: ${full.constants.length}`);
+    console.log(`   📤 Экспортов: ${full.exports.length}`);
+    console.log(`   📥 Импортов: ${full.imports.length}`);
+    console.log(`   📞 Вызовов: ${full.calls.length}`);
+    console.log(`   🔄 Реэкспортов: ${full.reExports.length}`);
+  }
+
+  // ============================================
+  // ШАГ 2: Проверка round-trip (опционально, только в verbose)
+  // ============================================
+
+  if (verbose && useCompression) {
+    const verification = Codec.verifyRoundTrip(full);
+    if (!verification.ok) {
+      console.warn(`   ⚠️  Round-trip проверка не пройдена: ${verification.error}`);
+    } else {
+      console.log('   ✅ Round-trip проверка пройдена');
     }
-    // ✅ Добавляем поля для экспортов
-    if (!data.st.te) data.st.te = 0;
-    if (!data.st.tre) data.st.tre = 0;
-    if (!data.st.tce) data.st.tce = 0;
-    if (!data.gr.e) data.gr.e = [];
-    if (!data.gr.re) data.gr.re = [];
-    if (!data.gr.ce) data.gr.ce = [];
-    return data;
+  }
+
+  // ============================================
+  // ШАГ 3: Сжатие через Codec
+  // ============================================
+
+  let compact: CompactJSON | undefined;
+  if (useCompression) {
+    compact = Codec.encode(full);
+    if (verbose) {
+      console.log(`   🗜️  Сжатие применено (v${compact.v})`);
+    }
+  }
+
+  // ============================================
+  // ШАГ 4: Сохранение файлов
+  // ============================================
+
+  let compactPath: string | undefined;
+  let fullPath: string | undefined;
+  let compactSize: number | undefined;
+  let fullSize: number | undefined;
+  let compressionRatio: number | undefined;
+
+  if (outputPath) {
+    // Создаём директорию
+    const outputDir = path.dirname(outputPath);
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    // Сохраняем сжатый JSON (основной)
+    if (compact) {
+      fs.writeFileSync(outputPath, JSON.stringify(compact, null, 2), 'utf-8');
+      compactPath = outputPath;
+      compactSize = fs.statSync(outputPath).size;
+
+      if (verbose) {
+        const sizeKB = (compactSize / 1024).toFixed(2);
+        console.log(`   💾 Сжатый JSON: ${outputPath} (${sizeKB} KB)`);
+      }
+    }
+
+    // Сохраняем полный JSON (для отладки)
+    if (saveFull) {
+      const fullPathResolved = insertSuffixBeforeExtension(outputPath, fullSuffix);
+      fs.writeFileSync(fullPathResolved, JSON.stringify(full, null, 2), 'utf-8');
+      fullPath = fullPathResolved;
+      fullSize = fs.statSync(fullPathResolved).size;
+
+      if (verbose) {
+        const sizeKB = (fullSize / 1024).toFixed(2);
+        console.log(`   💾 Полный JSON: ${fullPathResolved} (${sizeKB} KB)`);
+      }
+    }
+
+    // Сравнение размеров
+    if (compactSize !== undefined && fullSize !== undefined && fullSize > 0) {
+      compressionRatio = (compactSize / fullSize) * 100;
+      if (verbose) {
+        console.log(`   📉 Сжатие: ${compressionRatio.toFixed(1)}% от полного размера`);
+      }
+    }
+  }
+
+  // ============================================
+  // ШАГ 5: Финальная статистика
+  // ============================================
+
+  const duration = Date.now() - startTime;
+
+  if (verbose) {
+    console.log(`   ⏱️  Время: ${(duration / 1000).toFixed(2)}s`);
+    console.log('✅ [compact-reporter] Готово\n');
+  }
+
+  return {
+    full,
+    compact,
+    compactPath,
+    fullPath,
+    stats: {
+      duration,
+      compactSize,
+      fullSize,
+      compressionRatio,
+    },
+  };
+}
+
+// ============================================
+// ФУНКЦИИ ДЕКОДИРОВАНИЯ
+// ============================================
+
+/**
+ * Декодирует сжатый JSON обратно в полный.
+ *
+ * @param compact — сжатый JSON
+ * @returns Полный JSON
+ */
+export function decodeCompactReport(compact: CompactJSON): FullJSON {
+  return Codec.decode(compact);
+}
+
+/**
+ * Читает сжатый JSON из файла и декодирует его.
+ *
+ * @param compactPath — путь к сжатому JSON
+ * @returns Полный JSON
+ */
+export function readAndDecode(compactPath: string): FullJSON {
+  if (!fs.existsSync(compactPath)) {
+    throw new Error(`Файл не найден: ${compactPath}`);
+  }
+
+  const content = fs.readFileSync(compactPath, 'utf-8');
+  let compact: CompactJSON;
+
+  try {
+    compact = JSON.parse(content) as CompactJSON;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Не удалось распарсить JSON: ${msg}`);
+  }
+
+  return Codec.decode(compact);
+}
+
+/**
+ * Читает полный JSON из файла.
+ *
+ * @param fullPath — путь к полному JSON
+ * @returns Полный JSON
+ */
+export function readFullJson(fullPath: string): FullJSON {
+  if (!fs.existsSync(fullPath)) {
+    throw new Error(`Файл не найден: ${fullPath}`);
+  }
+
+  const content = fs.readFileSync(fullPath, 'utf-8');
+  return JSON.parse(content) as FullJSON;
+}
+
+// ============================================
+// СБОР ПОЛНОГО JSON (ВНУТРЕННЯЯ ФУНКЦИЯ)
+// ============================================
+
+/**
+ * Собирает полный JSON из карты сущностей.
+ *
+ * Работает в два прохода:
+ *   1. Собирает модули, файлы, функции, классы, константы
+ *   2. Собирает экспорты, импорты, вызовы, реэкспорты
+ *
+ * @param entitiesMap — карта "путь файла → сущности"
+ * @param verbose — подробный вывод
+ * @returns Полный JSON
+ */
+function collectFullJSON(
+  entitiesMap: Record<string, EntitiesResult>,
+  verbose: boolean = false
+): FullJSON {
+  // ============================================
+  // Результирующие массивы
+  // ============================================
+
+  const modules: ModuleData[] = [];
+  const files: FileData[] = [];
+  const functions: FunctionData[] = [];
+  const classes: ClassData[] = [];
+  const constants: ConstantData[] = [];
+  const exports: ExportData[] = [];
+  const imports: ImportData[] = [];
+  const calls: CallData[] = [];
+  const reExports: ReExportData[] = [];
+
+  // ============================================
+  // Карты для дедупликации
+  // ============================================
+
+  const moduleMap = new Map<string, ModuleData>();
+  const fileMap = new Map<string, FileData>();
+  const functionMap = new Map<string, FunctionData>();
+
+  // ============================================
+  // Счётчики
+  // ============================================
+
+  let moduleCounter = 0;
+  let fileCounter = 0;
+  let functionCounter = 0;
+  let classCounter = 0;
+  let constantCounter = 0;
+  let exportCounter = 0;
+  let importCounter = 0;
+  let callCounter = 0;
+  let reExportCounter = 0;
+
+  // ============================================
+  // ПЕРВЫЙ ПРОХОД: модули, файлы, функции, классы, константы
+  // ============================================
+
+  for (const [filePath, entities] of Object.entries(entitiesMap)) {
+    if (!entities) continue;
+
+    // Модуль = директория файла
+    const dirName = path.basename(path.dirname(filePath)) || 'root';
+    let module = moduleMap.get(dirName);
+
+    if (!module) {
+      moduleCounter++;
+      module = {
+        id: `m${moduleCounter}`,
+        name: dirName,
+        path: dirName,
+        fileIds: [],
+      };
+      moduleMap.set(dirName, module);
+      modules.push(module);
+    }
+
+    // Файл
+    let file = fileMap.get(filePath);
+
+    if (!file) {
+      fileCounter++;
+      file = {
+        id: `f${fileCounter}`,
+        path: filePath,
+        moduleId: module.id,
+      };
+      fileMap.set(filePath, file);
+      files.push(file);
+      module.fileIds.push(file.id);
+    }
+
+    // Функции
+    const funcs = entities.functions || [];
+    for (const func of funcs) {
+      if (!func || !func.name) continue;
+
+      functionCounter++;
+      const funcData: FunctionData = {
+        id: `fn${functionCounter}`,
+        name: func.name,
+        moduleId: module.id,
+        fileId: file.id,
+        line: func.line || 0,
+        isExported: func.isExported || false,
+        isAsync: func.isAsync || false,
+        isArrow: func.isArrow || false,
+        isMethod: func.isMethod || false,
+        params: func.params || [],
+        returnType: func.returnType,
+      };
+
+      functions.push(funcData);
+      functionMap.set(func.name, funcData);
+    }
+
+    // Классы
+    const classesList = entities.classes || [];
+    for (const cls of classesList) {
+      if (!cls || !cls.name) continue;
+
+      classCounter++;
+      classes.push({
+        id: `cls${classCounter}`,
+        name: cls.name,
+        moduleId: module.id,
+        fileId: file.id,
+        line: cls.line || 0,
+        isExported: cls.isExported || false,
+        methods: cls.methods || [],
+      });
+    }
+
+    // Константы
+    const constantsList = entities.constants || [];
+    for (const cn of constantsList) {
+      if (!cn || !cn.name) continue;
+
+      constantCounter++;
+      constants.push({
+        id: `cn${constantCounter}`,
+        name: cn.name,
+        moduleId: module.id,
+        fileId: file.id,
+        line: cn.line || 0,
+        isExported: cn.isExported || false,
+        value: cn.value,
+      });
+    }
+  }
+
+  if (verbose) {
+    console.log(
+      `   ✅ Первый проход: ${modules.length} модулей, ${files.length} файлов, ${functions.length} функций`
+    );
+  }
+
+  // ============================================
+  // ВТОРОЙ ПРОХОД: экспорты, импорты, вызовы, реэкспорты
+  // ============================================
+
+  for (const [filePath, entities] of Object.entries(entitiesMap)) {
+    if (!entities) continue;
+
+    const dirName = path.basename(path.dirname(filePath)) || 'root';
+    const module = moduleMap.get(dirName);
+    const file = fileMap.get(filePath);
+
+    if (!module || !file) continue;
+
+    // --------------------------------------------
+    // Экспорты и реэкспорты
+    // --------------------------------------------
+    const exportsList = entities.exports || [];
+
+    for (const exp of exportsList) {
+      if (!exp || !exp.name) continue;
+
+      // Ищем функцию в глобальной карте
+      const funcData = functionMap.get(exp.name);
+
+      if (!funcData) {
+        if (verbose && exp.isReExport) {
+          console.log(
+            `   ⚠️  Реэкспорт '${exp.name}' не найден в functionMap (source: ${exp.source})`
+          );
+        }
+        continue;
+      }
+
+      if (exp.isReExport && exp.source) {
+        // Реэкспорт
+        reExportCounter++;
+        reExports.push({
+          id: `re${reExportCounter}`,
+          moduleId: module.id,
+          functionId: funcData.id,
+          source: exp.source,
+          exportName: exp.name,
+          // ✅ ИСПРАВЛЕНО: используем loc?.start?.line, так как у ExportInfo нет поля line
+          line: exp.loc?.start?.line || 0,
+        });
+      } else {
+        // Обычный экспорт
+        exportCounter++;
+
+        let exportType: 'named' | 'default' | 'type' = 'named';
+        if (exp.isDefault) exportType = 'default';
+        else if (exp.type === 'type') exportType = 'type';
+
+        exports.push({
+          id: `e${exportCounter}`,
+          moduleId: module.id,
+          functionId: funcData.id,
+          exportName: exp.name,
+          localName: exp.name,
+          // ✅ ИСПРАВЛЕНО: используем loc?.start?.line, так как у ExportInfo нет поля line
+          line: exp.loc?.start?.line || 0,
+          type: exportType,
+          isDefault: exp.isDefault || false,
+        });
+      }
+    }
+
+    // --------------------------------------------
+    // Импорты
+    // --------------------------------------------
+    const importsList = entities.imports || [];
+
+    for (const imp of importsList) {
+      if (!imp || !imp.source) continue;
+
+      const specifiers = imp.specifiers || [];
+
+      for (const spec of specifiers) {
+        let importedName = '';
+        let importType: 'named' | 'default' | 'namespace' | 'type' = 'named';
+
+        if (typeof spec === 'string') {
+          importedName = spec;
+        } else if (spec && typeof spec === 'object') {
+          const specObj = spec as { imported?: string; local?: string; type?: string };
+          importedName = specObj.imported || specObj.local || '';
+
+          if (specObj.type === 'ImportDefaultSpecifier') {
+            importType = 'default';
+          } else if (specObj.type === 'ImportNamespaceSpecifier') {
+            importType = 'namespace';
+          }
+        }
+
+        if (!importedName) continue;
+
+        importCounter++;
+        imports.push({
+          id: `i${importCounter}`,
+          fromFileId: file.id,
+          toFileId: null,
+          importedName,
+          localName: importedName,
+          line: imp.loc?.start?.line || 0,
+          type: importType,
+        });
+      }
+    }
+
+    // --------------------------------------------
+    // Вызовы функций
+    // --------------------------------------------
+    const funcs = entities.functions || [];
+
+    for (const func of funcs) {
+      if (!func || !func.name) continue;
+
+      const fromFunc = functionMap.get(func.name);
+      if (!fromFunc) continue;
+
+      const callsList = func.calls || [];
+
+      for (const callName of callsList) {
+        if (!callName) continue;
+
+        const toFunc = functionMap.get(callName);
+        if (!toFunc) continue;
+
+        // Пропускаем самовызовы
+        if (fromFunc.id === toFunc.id) continue;
+
+        callCounter++;
+        calls.push({
+          id: `c${callCounter}`,
+          fromFunctionId: fromFunc.id,
+          toFunctionId: toFunc.id,
+          line: func.line || 0,
+          type: func.isAsync ? 'async' : 'direct',
+        });
+      }
+    }
+  }
+
+  if (verbose) {
+    console.log(
+      `   ✅ Второй проход: ${exports.length} экспортов, ${reExports.length} реэкспортов, ${calls.length} вызовов`
+    );
+  }
+
+  // ============================================
+  // Статистика
+  // ============================================
+
+  const statistics: StatisticsData = {
+    totalModules: modules.length,
+    totalFiles: files.length,
+    totalFunctions: functions.length,
+    totalClasses: classes.length,
+    totalConstants: constants.length,
+    totalExports: exports.length,
+    totalImports: imports.length,
+    totalCalls: calls.length,
+    totalReExports: reExports.length,
+  };
+
+  // ============================================
+  // Определение корневого модуля
+  // ============================================
+
+  let root = 'm0';
+
+  // Ищем index.ts в корне src
+  for (const file of files) {
+    if (file.path.endsWith('src/index.ts') || file.path.endsWith('src\\index.ts')) {
+      const module = modules.find(m => m.id === file.moduleId);
+      if (module) {
+        root = module.id;
+        break;
+      }
+    }
+  }
+
+  // Fallback: первый модуль
+  if (root === 'm0' && modules.length > 0) {
+    const firstModule = modules[0];
+    if (firstModule) {
+      root = firstModule.id;
+    }
+  }
+
+  // ============================================
+  // Финальный объект
+  // ============================================
+
+  return {
+    version: '6.0.1',
+    timestamp: new Date().toISOString(),
+    root,
+    modules,
+    files,
+    functions,
+    classes,
+    constants,
+    exports,
+    imports,
+    calls,
+    reExports,
+    statistics,
+  };
 }
 
 // ============================================
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ============================================
 
-function encodeFlags(func: any): string {
-    let flags = 0;
-    if (func.isAsync) flags |= 1;
-    if (func.isExported) flags |= 2;
-    if (func.isMethod) flags |= 4;
-    if (func.isArrow) flags |= 8;
-    if (func.isEventHandler) flags |= 16;
-    if (func.isNested) flags |= 32;
-    if (func.isSelf) flags |= 64;
-    if (func.isDynamic) flags |= 128;
-    if (func.isConfig) flags |= 256;
-    if (func.isExternal) flags |= 512;
-    if (func.isVueTemplate) flags |= 1024;
-    if (func.isAsyncChain) flags |= 2048;
-    if (func.isClosure) flags |= 4096;
-    if (func.isTypeDep) flags |= 8192;
-    if (flags === 0) return '0';
-    let result = '';
-    for (const [bit, char] of Object.entries(FLAG_MAP)) {
-        if (flags & parseInt(bit, 10)) {
-            result += char;
-        }
-    }
-    return result || '0';
-}
-
-// ============================================
-// ✅ НОВАЯ ФУНКЦИЯ: СБОР РЕЭКСПОРТОВ (ИСПРАВЛЕНА)
-// ============================================
-
 /**
- * Собирает все реэкспорты из графа сущностей
- * Реэкспорты — это export { name } from 'module'
- * ✅ ИСПРАВЛЕНО: использует глобальный индекс функций по имени
+ * Вставляет суффикс перед расширением файла.
+ *
+ * Пример:
+ *   insertSuffixBeforeExtension('report.json', '.full')
+ *   → 'report.full.json'
+ *
+ * @param filePath — исходный путь
+ * @param suffix — суффикс (с точкой)
+ * @returns Путь с суффиксом
  */
-function collectReExports(entitiesMap: Record<string, EntitiesResult>): any[] {
-    const reExports: any[] = [];
-    const moduleMap = new Map<string, string>();
-    let moduleCounter = 0;
-
-    // 1. Строим карту модулей
-    for (const [filePath] of Object.entries(entitiesMap)) {
-        const dirName = path.basename(path.dirname(filePath)) || 'root';
-        if (!moduleMap.has(dirName)) {
-            moduleCounter++;
-            moduleMap.set(dirName, `m${moduleCounter}`);
-        }
-    }
-
-    // 2. ✅ ГЛОБАЛЬНЫЙ ИНДЕКС ФУНКЦИЙ ПО ИМЕНИ
-    const globalFuncIndex = new Map<string, { idx: number; fileId: string; isExported: boolean }>();
-    let functionCounter = 0;
-
-    for (const [filePath, entities] of Object.entries(entitiesMap)) {
-        const funcs = entities.functions || [];
-        for (const func of funcs) {
-            if (func.name) {
-                functionCounter++;
-                // Сохраняем экспортированные или первое вхождение
-                const existing = globalFuncIndex.get(func.name);
-                if (!existing || (func.isExported && !existing.isExported)) {
-                    globalFuncIndex.set(func.name, {
-                        idx: functionCounter,
-                        fileId: filePath,
-                        isExported: func.isExported || false
-                    });
-                }
-            }
-        }
-    }
-
-    // 3. Собираем реэкспорты из exports массива
-    for (const [filePath, entities] of Object.entries(entitiesMap)) {
-        const exports = entities.exports || [];
-        const dirName = path.basename(path.dirname(filePath)) || 'root';
-        const moduleId = moduleMap.get(dirName)!;
-        const moduleIdx = parseInt(moduleId.replace('m', ''), 10);
-
-        for (const exp of exports) {
-            // ✅ РЕЭКСПОРТ: есть source и isReExport = true
-            if (exp.isReExport && exp.source && exp.name) {
-                // ✅ ИЩЕМ В ГЛОБАЛЬНОМ ИНДЕКСЕ!
-                const targetEntry = globalFuncIndex.get(exp.name);
-                if (targetEntry) {
-                    const exists = reExports.some(
-                        (r: any[]) => r[0] === moduleIdx && r[1] === targetEntry.idx && r[2] === exp.source
-                    );
-                    if (!exists) {
-                        reExports.push([
-                            moduleIdx,
-                            targetEntry.idx,
-                            exp.source,
-                            exp.name,
-                            exp.loc?.start?.line || 0,
-                            're-export'
-                        ]);
-                    }
-                }
-            }
-        }
-    }
-
-    return reExports;
-}
-
-// ============================================
-// ОСНОВНАЯ ФУНКЦИЯ
-// ============================================
-
-export function generateCompactReport(
-    entitiesMap: Record<string, EntitiesResult>,
-    outputPath?: string,
-    options: {
-        useBitFlags?: boolean;
-        useDictionaries?: boolean;
-        readableKeys?: boolean;
-        useTemplates?: boolean;
-        maxDepth?: number;
-        includeRelations?: boolean;
-        includeStats?: boolean;
-        includeTypes?: boolean;
-        includeInheritance?: boolean;
-        includeExports?: boolean;
-        includeConstants?: boolean;
-        includeSelfFunctions?: boolean;
-        includeDynamicImports?: boolean;
-        includeConfigRefs?: boolean;
-        includeExternalLibs?: boolean;
-        includeVueTemplates?: boolean;
-        includeAsyncChains?: boolean;
-        includeClosures?: boolean;
-        includeTypeDeps?: boolean;
-        useCompression?: boolean;
-        useCaching?: boolean;
-    } = {}
-): any {
-    console.log('\n🚀 Генерация ОПТИМИЗИРОВАННОГО компактного отчета...');
-    const startTime = Date.now();
-
-    const {
-        includeRelations = true,
-        includeStats = true,
-        includeTypes = true,
-        includeInheritance = true,
-        includeExports = true,
-        includeConstants = true,
-        includeSelfFunctions = true,
-        includeDynamicImports = true,
-        includeConfigRefs = true,
-        includeExternalLibs = true,
-        includeVueTemplates = true,
-        includeAsyncChains = true,
-        includeClosures = true,
-        includeTypeDeps = true,
-        useCompression = true,
-        useCaching = true,
-    } = options;
-
-    // Проверяем кэш
-    const cacheKey = outputPath ? `${outputPath}:${JSON.stringify(options)}` : null;
-    if (useCaching && cacheKey) {
-        const cached = reportCache.get(cacheKey);
-        if (cached) {
-            console.log('📦 Использован кэшированный отчет');
-            return cached;
-        }
-    }
-
-    // Проверка наличия Vue файлов
-    let hasVueFiles = false;
-    let vueFilesCount = 0;
-    for (const filePath of Object.keys(entitiesMap)) {
-        if (filePath.endsWith('.vue')) {
-            hasVueFiles = true;
-            vueFilesCount++;
-        }
-    }
-
-    if (!hasVueFiles) {
-        console.log('ℹ️ Vue файлы не найдены в проекте, пропускаем анализ Vue шаблонов');
-    } else {
-        console.log(`📦 Найдено Vue файлов: ${vueFilesCount}`);
-    }
-
-    // ============================================
-    // 1. СБОР ДАННЫХ
-    // ============================================
-
-    const moduleIndex: Record<string, string> = {};
-    const fileIndex: Record<string, string> = {};
-    const functions: any[] = [];
-    const constants: any[] = [];
-    const selfFunctions: any[] = [];
-
-    // Все типы связей в одном месте
-    const relations = {
-        calls: [] as any[],
-        imports: [] as any[],
-        exports: [] as any[], // ✅ ОБЫЧНЫЕ ЭКСПОРТЫ ФУНКЦИЙ
-        reExports: [] as any[], // ✅ РЕЭКСПОРТЫ ФУНКЦИЙ
-        inheritance: [] as any[],
-        typeDeps: [] as any[],
-        constUses: [] as any[],
-        constDeps: [] as any[],
-        constExports: [] as any[], // ✅ ЭКСПОРТЫ КОНСТАНТ
-        dynamicImports: [] as any[],
-        configRefs: [] as any[],
-        externalLibs: [] as any[],
-        vueTemplates: [] as any[],
-        asyncChains: [] as any[],
-        closures: [] as any[],
-        reflections: [] as any[],
-    };
-
-    // Вспомогательные Map
-    const moduleMap = new Map<string, string>();
-    const fileMap = new Map<string, string>();
-    const funcMap = new Map<string, string>();
-    const constMap = new Map<string, string>();
-    const nameToFuncId = new Map<string, string>();
-    const nameToConstId = new Map<string, string>();
-
-    const funcDataMap = new Map<
-        string,
-        { name: string; fileId: string; line: number; calls: string[]; calledBy: string[] }
-    >();
-
-    // ✅ ГЛОБАЛЬНЫЙ ИНДЕКС ФУНКЦИЙ ПО ИМЕНИ (ДЛЯ РЕЭКСПОРТОВ)
-    const globalFuncIndex = new Map<string, { fileId: string; funcId: string; idx: number; isExported: boolean }>();
-
-    let moduleCounter = 0;
-    let fileCounter = 0;
-    let functionCounter = 0;
-    let constantCounter = 0;
-    let selfFunctionCounter = 0;
-
-    // ============================================
-    // 2. ПЕРВЫЙ ПРОХОД: ИНДЕКСЫ И ФУНКЦИИ
-    // ============================================
-
-    for (const [filePath, entities] of Object.entries(entitiesMap)) {
-        if (!entities) continue;
-
-        const dirName = path.basename(path.dirname(filePath)) || 'root';
-        let moduleId = moduleMap.get(dirName);
-        if (!moduleId) {
-            moduleCounter++;
-            moduleId = `m${moduleCounter}`;
-            moduleMap.set(dirName, moduleId);
-            moduleIndex[moduleId] = dirName;
-        }
-
-        let fileId = fileMap.get(filePath);
-        if (!fileId) {
-            fileCounter++;
-            fileId = `f${fileCounter}`;
-            fileMap.set(filePath, fileId);
-            fileIndex[fileId] = filePath;
-        }
-
-        // Функции
-        const funcs = entities.functions || [];
-        for (const func of funcs) {
-            if (!func || !func.name) continue;
-
-            const funcKey = `${moduleId}:${fileId}:${func.name}`;
-            let funcId = funcMap.get(funcKey);
-
-            if (!funcId) {
-                functionCounter++;
-                funcId = `fn${functionCounter}`;
-                funcMap.set(funcKey, funcId);
-                nameToFuncId.set(func.name, funcId);
-
-                const flags = encodeFlags(func);
-
-                functions.push([funcId, func.name, moduleId, fileId, func.line || 0, flags]);
-
-                funcDataMap.set(func.name, {
-                    name: func.name,
-                    fileId,
-                    line: func.line || 0,
-                    calls: func.calls || [],
-                    calledBy: func.calledBy || [],
-                });
-
-                // ✅ Заполняем глобальный индекс
-                const idx = functionCounter;
-                const existing = globalFuncIndex.get(func.name);
-                if (!existing || (func.isExported && !existing.isExported)) {
-                    globalFuncIndex.set(func.name, { fileId, funcId, idx, isExported: func.isExported || false });
-                }
-            }
-        }
-
-        // Константы
-        if (includeConstants) {
-            const consts = entities.constants || [];
-            for (const constItem of consts) {
-                if (!constItem || !constItem.name) continue;
-
-                const constKey = `${moduleId}:${fileId}:const:${constItem.name}`;
-                let constId = constMap.get(constKey);
-
-                if (!constId) {
-                    constantCounter++;
-                    constId = `c${constantCounter}`;
-                    constMap.set(constKey, constId);
-                    nameToConstId.set(constItem.name, constId);
-
-                    const flags = constItem.isExported ? 'e' : '';
-
-                    constants.push([
-                        constId,
-                        constItem.name,
-                        constItem.value ?? null,
-                        moduleId,
-                        fileId,
-                        constItem.line || 0,
-                        flags,
-                    ]);
-                }
-            }
-        }
-    }
-
-    // ============================================
-    // 3. ОПРЕДЕЛЕНИЕ SELF FUNCTIONS
-    // ============================================
-
-    if (includeSelfFunctions) {
-        for (const [name, data] of funcDataMap) {
-            const hasCalls = data.calls && data.calls.length > 0;
-            const hasCalledBy = data.calledBy && data.calledBy.length > 0;
-
-            if (!hasCalls && !hasCalledBy) {
-                selfFunctionCounter++;
-                const selfId = `sf${selfFunctionCounter}`;
-                selfFunctions.push([selfId, name, data.fileId, data.line]);
-            }
-        }
-    }
-
-    // ============================================
-    // 4. ВТОРОЙ ПРОХОД: ВСЕ ТИПЫ СВЯЗЕЙ
-    // ============================================
-
-    const funcNameToId = new Map<string, string>();
-    for (const func of functions) {
-        funcNameToId.set(func[1], func[0]);
-    }
-
-    const constNameToId = new Map<string, string>();
-    for (const constItem of constants) {
-        constNameToId.set(constItem[1], constItem[0]);
-    }
-
-    for (const [filePath, entities] of Object.entries(entitiesMap)) {
-        if (!entities) continue;
-
-        const dirName = path.basename(path.dirname(filePath)) || 'root';
-        const moduleId = moduleMap.get(dirName)!;
-        const fileId = fileMap.get(filePath)!;
-        const moduleIdx = parseInt(moduleId.replace('m', ''));
-
-        // 4.1 ВЫЗОВЫ (calls)
-        const funcs = entities.functions || [];
-        for (const func of funcs) {
-            if (!func || !func.name) continue;
-
-            const fromId = nameToFuncId.get(func.name);
-            if (!fromId) continue;
-
-            const fromIdx = parseInt(fromId.replace('fn', ''), 10);
-
-            const calls = func.calls || [];
-            for (const call of calls) {
-                if (!call) continue;
-                const toId = nameToFuncId.get(call);
-                if (toId) {
-                    const toIdx = parseInt(toId.replace('fn', ''), 10);
-                    let callType = 'd';
-                    if (func.isAsync) callType = 'a';
-                    if (func.isMethod) callType = 'm';
-                    if (func.isEventHandler) callType = 'c';
-
-                    relations.calls.push([fromIdx, toIdx, func.line || 0, callType]);
-                }
-            }
-        }
-
-        // 4.2 ИМПОРТЫ (imports)
-        const imports = entities.imports || [];
-        for (const imp of imports) {
-            if (!imp || !imp.source) continue;
-
-            const specifiers = imp.specifiers || [];
-            for (const spec of specifiers) {
-                if (!spec) continue;
-
-                let importedName: string;
-                if (typeof spec === 'string') {
-                    importedName = spec;
-                } else if (spec && typeof spec === 'object' && 'imported' in spec) {
-                    importedName = spec.imported || spec.local || '';
-                } else {
-                    continue;
-                }
-
-                if (!importedName) continue;
-
-                const toFuncId = nameToFuncId.get(importedName);
-                if (!toFuncId) continue;
-
-                const firstFunc = funcs[0];
-                if (!firstFunc || !firstFunc.name) continue;
-
-                const fromFuncId = nameToFuncId.get(firstFunc.name);
-                if (!fromFuncId) continue;
-
-                let importType = 'n';
-                if (typeof spec === 'string') {
-                    if (spec === 'default') importType = 'df';
-                    else if (spec === '*') importType = 'ns';
-                } else if (spec && typeof spec === 'object' && 'imported' in spec) {
-                    if (spec.imported === 'default') importType = 'df';
-                    else if (spec.imported === '*') importType = 'ns';
-                }
-                if (imp.isTypeOnly) {
-                    importType = 'to';
-                }
-
-                relations.imports.push([
-                    fromFuncId,
-                    toFuncId,
-                    importedName,
-                    importType,
-                    fileId,
-                    imp.loc?.start?.line || 0,
-                ]);
-            }
-        }
-
-        // ============================================
-        // 4.3 ЭКСПОРТЫ (ИСПРАВЛЕНО — с поддержкой глобального индекса)
-        // ============================================
-        if (includeExports) {
-            const exports = entities.exports || [];
-            for (const exp of exports) {
-                if (!exp) continue;
-
-                const expName = exp.name || 'default';
-                const isDefault = exp.isDefault || false;
-                const isReExport = exp.isReExport || false;
-                const source = exp.source || null;
-
-                // ✅ ИЩЕМ ФУНКЦИЮ В ГЛОБАЛЬНОМ ИНДЕКСЕ (по всем файлам!)
-                let funcIdx = -1;
-                const globalEntry = globalFuncIndex.get(expName);
-                if (globalEntry) {
-                    funcIdx = globalEntry.idx;
-                }
-
-                // Если не нашли по имени — ищем в текущем файле
-                if (funcIdx === -1) {
-                    const localFuncId = nameToFuncId.get(expName);
-                    if (localFuncId) {
-                        funcIdx = parseInt(localFuncId.replace('fn', ''), 10);
-                    }
-                }
-
-                // ============================================
-                // РЕЭКСПОРТЫ → gr.re
-                // ============================================
-                if (isReExport && funcIdx !== -1 && source) {
-                    // Проверяем, не добавлен ли уже этот реэкспорт
-                    const exists = relations.reExports.some(
-                        (r: any[]) => r[0] === moduleIdx && r[1] === funcIdx && r[2] === source
-                    );
-                    if (!exists) {
-                        relations.reExports.push([
-                            moduleIdx,
-                            funcIdx,
-                            source,
-                            expName,
-                            exp.loc?.start?.line || 0,
-                            're-export',
-                        ]);
-                    }
-                    continue;
-                }
-
-                // ============================================
-                // ОБЫЧНЫЕ ЭКСПОРТЫ → gr.e
-                // ============================================
-                if (funcIdx !== -1) {
-                    // Проверяем, не добавлен ли уже этот экспорт
-                    const exists = relations.exports.some((e: any) => e[1] === funcIdx && e[4] === expName);
-                    if (!exists) {
-                        let exportType = 'ne'; // named-export
-                        if (isDefault) exportType = 'de'; // default-export
-                        else if (exp.type === 'type') exportType = 'te'; // type-export
-
-                        relations.exports.push([
-                            moduleIdx,
-                            funcIdx,
-                            exp.loc?.start?.line || 0,
-                            exportType,
-                            expName,
-                            expName,
-                        ]);
-                    }
-                }
-            }
-        }
-
-        // 4.4 НАСЛЕДОВАНИЕ (inheritance)
-        if (includeInheritance) {
-            const classes = entities.classes || [];
-            for (const cls of classes) {
-                if (!cls || !cls.name) continue;
-
-                const childId = nameToFuncId.get(cls.name);
-                if (!childId) continue;
-
-                if (cls.extends) {
-                    const parentId = nameToFuncId.get(cls.extends);
-                    if (parentId) {
-                        relations.inheritance.push([childId, parentId, 'ex', fileId, cls.line || 0]);
-                    }
-                }
-
-                const implements_ = cls.implements || [];
-                for (const impl of implements_) {
-                    if (!impl) continue;
-                    const parentId = nameToFuncId.get(impl);
-                    if (parentId) {
-                        relations.inheritance.push([childId, parentId, 'im', fileId, cls.line || 0]);
-                    }
-                }
-            }
-
-            const interfaces = entities.interfaces || [];
-            for (const intf of interfaces) {
-                if (!intf || !intf.name) continue;
-
-                const childId = nameToFuncId.get(intf.name);
-                if (!childId) continue;
-
-                const extends_ = intf.extends || [];
-                for (const ext of extends_) {
-                    if (!ext) continue;
-                    const parentId = nameToFuncId.get(ext);
-                    if (parentId) {
-                        relations.inheritance.push([childId, parentId, 'ex', fileId, intf.line || 0]);
-                    }
-                }
-            }
-        }
-
-        // 4.5 ТИПОВЫЕ ЗАВИСИМОСТИ (typeDeps)
-        if (includeTypes) {
-            for (const func of funcs) {
-                if (!func || !func.name) continue;
-
-                const fromId = nameToFuncId.get(func.name);
-                if (!fromId) continue;
-
-                const params = func.params || [];
-                for (const param of params) {
-                    if (!param) continue;
-                    const toId = nameToFuncId.get(param);
-                    if (toId) {
-                        relations.typeDeps.push([fromId, toId, 'p', fileId, func.line || 0]);
-                    }
-                }
-
-                if (func.returnType) {
-                    const toId = nameToFuncId.get(func.returnType);
-                    if (toId) {
-                        relations.typeDeps.push([fromId, toId, 'r', fileId, func.line || 0]);
-                    }
-                }
-            }
-
-            const interfaces = entities.interfaces || [];
-            for (const intf of interfaces) {
-                if (!intf || !intf.name) continue;
-
-                const fromId = nameToFuncId.get(intf.name);
-                if (!fromId) continue;
-
-                const extends_ = intf.extends || [];
-                for (const ext of extends_) {
-                    if (!ext) continue;
-                    const toId = nameToFuncId.get(ext);
-                    if (toId) {
-                        relations.typeDeps.push([fromId, toId, 'tr', fileId, intf.line || 0]);
-                    }
-                }
-            }
-        }
-
-        // 4.6 ИСПОЛЬЗОВАНИЕ КОНСТАНТ (constUses)
-        if (includeConstants) {
-            for (const func of funcs) {
-                if (!func || !func.name) continue;
-
-                const fromId = nameToFuncId.get(func.name);
-                if (!fromId) continue;
-
-                const body = func.body || '';
-                const consts = entities.constants || [];
-                for (const constItem of consts) {
-                    if (!constItem || !constItem.name) continue;
-
-                    const constId = nameToConstId.get(constItem.name);
-                    if (!constId) continue;
-
-                    if (body.includes(constItem.name)) {
-                        relations.constUses.push([fromId, constId, fileId, func.line || 0]);
-                    }
-                }
-            }
-        }
-
-        // 4.7 ЗАВИСИМОСТИ КОНСТАНТ (constDeps)
-        if (includeConstants) {
-            const consts = entities.constants || [];
-            for (const constItem of consts) {
-                if (!constItem || !constItem.name) continue;
-
-                const fromId = nameToConstId.get(constItem.name);
-                if (!fromId) continue;
-
-                const value = constItem.value;
-                const strValue =
-                    typeof value === 'string'
-                        ? value
-                        : typeof value === 'number'
-                            ? String(value)
-                            : typeof value === 'boolean'
-                                ? String(value)
-                                : value !== null && value !== undefined
-                                    ? JSON.stringify(value)
-                                    : '';
-
-                for (const otherConst of consts) {
-                    if (!otherConst || otherConst.name === constItem.name || !otherConst.name) continue;
-
-                    if (strValue.includes(otherConst.name)) {
-                        const toId = nameToConstId.get(otherConst.name);
-                        if (toId) {
-                            const exists = relations.constDeps.some(dep => dep[0] === fromId && dep[1] === toId);
-                            if (!exists) {
-                                relations.constDeps.push([fromId, toId, fileId, constItem.line || 0]);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 4.8 ЭКСПОРТЫ КОНСТАНТ (constExports) — gr.ce
-        if (includeConstants) {
-            const consts = entities.constants || [];
-            for (const constItem of consts) {
-                if (!constItem || !constItem.name) continue;
-
-                // Проверяем, экспортируется ли константа
-                const isExported = constItem.isExported || false;
-                if (!isExported) continue;
-
-                const constId = nameToConstId.get(constItem.name);
-                if (!constId) continue;
-
-                // Добавляем экспорт константы
-                const constIdx = parseInt(constId.replace('c', ''), 10);
-                const exists = relations.constExports.some(
-                    (ce: any) => ce[0] === moduleIdx && ce[1] === constIdx
-                );
-                if (!exists) {
-                    relations.constExports.push([
-                        moduleIdx,
-                        constIdx,
-                        constItem.name,
-                        constItem.line || 0,
-                        'const-export',
-                    ]);
-                }
-            }
-        }
-
-        // ============================================
-        // 4.9 НОВЫЕ ТИПЫ СВЯЗЕЙ - ИНТЕГРАЦИЯ analyzeContent
-        // ============================================
-
-        // Получаем содержимое файла для анализа
-        let content = '';
-        try {
-            content = fs.readFileSync(filePath, 'utf-8');
-        } catch {
-            // Игнорируем ошибки чтения
-        }
-
-        if (content) {
-            // Используем analyzeContent для всех анализаторов
-            const analysis = analyzeContent(content, filePath, {
-                includeDynamicImports,
-                includeConfigRefs,
-                includeExternalLibs,
-                includeVueTemplates,
-                includeAsyncChains,
-                includeClosures,
-                includeTypeDeps,
-            });
-
-            // 4.9.1 ДИНАМИЧЕСКИЕ ИМПОРТЫ (dynamicImports)
-            for (const di of analysis.dynamicImports) {
-                relations.dynamicImports.push([fileId, di.line, di.path, di.type]);
-            }
-
-            // 4.9.2 КОНФИГУРАЦИИ (configRefs)
-            for (const cfg of analysis.configRefs) {
-                relations.configRefs.push([fileId, cfg.line, cfg.name, cfg.type]);
-            }
-
-            // 4.9.3 ВНЕШНИЕ БИБЛИОТЕКИ (externalLibs)
-            for (const lib of analysis.externalLibs) {
-                relations.externalLibs.push([fileId, lib.name, lib.version, lib.count, 0]);
-            }
-
-            // 4.9.4 VUE ШАБЛОНЫ (vueTemplates)
-            if (includeVueTemplates && hasVueFiles && filePath.endsWith('.vue')) {
-                for (const vt of analysis.vueTemplates) {
-                    relations.vueTemplates.push([fileId, vt.line, vt.name, vt.type]);
-                }
-            }
-
-            // 4.9.5 АСИНХРОННЫЕ ЦЕПОЧКИ (asyncChains)
-            for (const chain of analysis.asyncChains) {
-                let funcId = null;
-
-                // 1. Пытаемся найти по точному имени
-                if (chain.name && chain.name !== 'anonymous' && chain.name !== 'iife') {
-                    funcId = nameToFuncId.get(chain.name);
-                }
-
-                // 2. Если не нашли, ищем по цепочке вызовов
-                if (!funcId && chain.chain && chain.chain.length > 0) {
-                    for (const calledName of chain.chain) {
-                        const found = nameToFuncId.get(calledName);
-                        if (found) {
-                            funcId = found;
-                            break;
-                        }
-                    }
-                }
-
-                // 3. Если все еще не нашли, ищем по приблизительному совпадению
-                if (!funcId && chain.line) {
-                    for (const [funcName, id] of nameToFuncId) {
-                        if (chain.body && chain.body.includes(funcName)) {
-                            funcId = id;
-                            break;
-                        }
-                    }
-                }
-
-                if (funcId) {
-                    relations.asyncChains.push([
-                        funcId,
-                        chain.awaitCount || 0,
-                        chain.chain?.length || 0,
-                        chain.line || 0,
-                    ]);
-                }
-            }
-
-            // 4.9.6 ЗАМЫКАНИЯ (closures)
-            for (const closure of analysis.closures) {
-                let funcId = null;
-
-                // 1. Ищем по имени
-                if (closure.name && closure.name !== 'anonymous' && closure.name !== 'iife') {
-                    funcId = nameToFuncId.get(closure.name);
-                }
-
-                // 2. Если не нашли, ищем по строке
-                if (!funcId && closure.line) {
-                    for (const [funcName, id] of nameToFuncId) {
-                        // Проверяем, содержит ли тело функции переменные из замыкания
-                        const funcData = funcDataMap.get(funcName);
-                        if (funcData) {
-                            // Проверяем, есть ли совпадение по строке
-                            if (Math.abs(funcData.line - closure.line) < 10) {
-                                funcId = id;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                if (funcId) {
-                    relations.closures.push([
-                        funcId,
-                        closure.line || 0,
-                        closure.variables?.slice(0, 5) || [],
-                        closure.count || 0,
-                    ]);
-                }
-            }
-
-            // 4.9.7 ТИПОВЫЕ ЗАВИСИМОСТИ (typeDeps) - расширенный анализ
-            for (const dep of analysis.typeDeps) {
-                const fromId = nameToFuncId.get(dep.name);
-                if (fromId && dep.extends) {
-                    for (const ext of dep.extends) {
-                        const toId = nameToFuncId.get(ext);
-                        if (toId) {
-                            relations.typeDeps.push([fromId, toId, 'ex', fileId, dep.line]);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // ============================================
-    // 4.10 ✅ СБОР РЕЭКСПОРТОВ (ОТДЕЛЬНАЯ ФУНКЦИЯ - ИСПРАВЛЕНА)
-    // ============================================
-
-    const collectedReExports = collectReExports(entitiesMap);
-    relations.reExports = collectedReExports;
-
-    // ============================================
-    // 5. СТАТИСТИКА
-    // ============================================
-
-    const totalFunctions = functions.length;
-    const totalConstants = constants.length;
-    const totalSelfFunctions = selfFunctions.length;
-    const totalCalls = relations.calls.length;
-    const totalModules = moduleCounter;
-    const totalFiles = fileCounter;
-
-    // ✅ НОВЫЕ СТАТИСТИКИ ДЛЯ ЭКСПОРТОВ
-    const totalExports = relations.exports.length; // gr.e
-    const totalReExports = relations.reExports.length; // gr.re
-    const totalConstExports = relations.constExports.length; // gr.ce
-
-    const asyncFuncs = functions.filter(f => f[5] && f[5].includes('a')).length;
-
-    const funcsWithCalls = new Set<number>();
-    const calledFuncs = new Set<number>();
-    for (const call of relations.calls) {
-        funcsWithCalls.add(call[0]);
-        calledFuncs.add(call[1]);
-    }
-
-    const isolated = functions.filter((_, idx) => {
-        const funcIdx = idx + 1;
-        return !funcsWithCalls.has(funcIdx) && !calledFuncs.has(funcIdx);
-    }).length;
-
-    let avgCalls = 0;
-    let maxCalls = 0;
-    if (totalFunctions > 0) {
-        const callCounts = new Map<number, number>();
-        for (const call of relations.calls) {
-            const fromIdx = call[0];
-            callCounts.set(fromIdx, (callCounts.get(fromIdx) || 0) + 1);
-        }
-        const counts = Array.from(callCounts.values());
-        if (counts.length > 0) {
-            avgCalls = Number((counts.reduce((a, b) => a + b, 0) / totalFunctions).toFixed(2));
-            maxCalls = Math.max(...counts);
-        }
-    }
-
-    const stats = includeStats
-        ? {
-            tf: totalFunctions,
-            tc: totalCalls,
-            tm: totalModules,
-            tfils: totalFiles,
-            te: totalExports, // ✅ ОБЫЧНЫЕ ЭКСПОРТЫ ФУНКЦИЙ
-            tre: totalReExports, // ✅ РЕЭКСПОРТЫ ФУНКЦИЙ
-            tce: totalConstExports, // ✅ ЭКСПОРТЫ КОНСТАНТ
-            tun: isolated,
-            async: asyncFuncs,
-            cy: false,
-            avgCalls: avgCalls,
-            maxCalls: maxCalls,
-            tcn: totalConstants,
-            tuc: (relations.constUses || []).length,
-            tcd: (relations.constDeps || []).length,
-            tr: (relations.inheritance || []).length,
-            ttd: (relations.typeDeps || []).length,
-            ti: (relations.imports || []).length,
-            tsf: totalSelfFunctions,
-            funcsWithCalls: funcsWithCalls.size,
-            calledFuncs: calledFuncs.size,
-            modulesWithFunctions: new Set(functions.map(f => f[2])).size,
-            filesWithFunctions: new Set(functions.map(f => f[3])).size,
-            exportedWithCalls: 0,
-            defaultExports: 0,
-            typeExports: 0,
-            typeImports: 0,
-            // НОВЫЕ СТАТИСТИКИ
-            di: relations.dynamicImports.length,
-            cfg: relations.configRefs.length,
-            ext: relations.externalLibs.length,
-            vt: relations.vueTemplates.length,
-            asyncChains: relations.asyncChains.length,
-            closures: relations.closures.length,
-            reflections: relations.reflections.length,
-            typeDeps: relations.typeDeps.length,
-        }
-        : undefined;
-
-    // ============================================
-    // 6. ФОРМИРОВАНИЕ ОТЧЕТА
-    // ============================================
-
-    const report: any = {
-        v: '5.1.0-optimized',
-        ts: new Date().toISOString(),
-        r: 'm1',
-    };
-
-    report.mi = moduleIndex;
-    report.fl = fileIndex;
-    report.fns = functions;
-
-    if (includeSelfFunctions && selfFunctions.length > 0) {
-        report.sf = selfFunctions;
-    }
-
-    if (includeConstants && constants.length > 0) {
-        report.cn = constants;
-    }
-
-    if (includeRelations) {
-        report.gr = {
-            c: useCompression ? compressCalls(relations.calls || []) : relations.calls || [],
-            i: relations.imports || [],
-            e: relations.exports || [], // ✅ ОБЫЧНЫЕ ЭКСПОРТЫ ФУНКЦИЙ
-            h: relations.inheritance || [],
-            td: relations.typeDeps || [],
-            re: relations.reExports || [], // ✅ РЕЭКСПОРТЫ ФУНКЦИЙ — ТЕПЕРЬ НЕ ПУСТО!
-            uc: relations.constUses || [],
-            cd: relations.constDeps || [],
-            ce: relations.constExports || [], // ✅ ЭКСПОРТЫ КОНСТАНТ
-            // НОВЫЕ СВЯЗИ
-            di: relations.dynamicImports || [],
-            cfg: relations.configRefs || [],
-            ext: relations.externalLibs || [],
-            vt: relations.vueTemplates || [],
-            async: relations.asyncChains || [],
-            closures: relations.closures || [],
-            reflection: relations.reflections || [],
-            types: relations.typeDeps || [],
-        };
-    } else {
-        report.graph = useCompression ? compressCalls(relations.calls || []) : relations.calls || [];
-    }
-
-    if (stats) {
-        report.st = stats;
-    }
-
-    if (functions.some(f => f[5] && f[5] !== '0')) {
-        report.flg = FLAG_MAP;
-    }
-
-    if (includeRelations) {
-        report.legend = {
-            callTypes: {
-                d: 'direct',
-                a: 'async',
-                m: 'method',
-                c: 'callback',
-                di: 'dynamic-import',
-            },
-            importTypes: {
-                n: 'named',
-                df: 'default',
-                ns: 'namespace',
-                ri: 're-export',
-                to: 'type-only',
-                se: 'side-effect',
-            },
-            exportTypes: {
-                ne: 'named-export',
-                de: 'default-export',
-                re: 're-export',
-                te: 'type-export',
-                ce: 'const-export', // ✅ ДОБАВЛЕНО
-            },
-            reExportTypes: {
-                named: 'named-re-export',
-                all: 'all-re-export',
-                group: 'group-re-export',
-            },
-            inheritanceTypes: {
-                ex: 'extends',
-                im: 'implements',
-                ab: 'abstract',
-            },
-            typeDependencyTypes: {
-                p: 'parameter',
-                r: 'return',
-                an: 'annotation',
-                g: 'generic',
-                tr: 'type-reference',
-            },
-            constantTypes: {
-                val: 'value',
-                enum: 'enum',
-                config: 'config',
-            },
-            dynamicImportTypes: {
-                literal: 'literal',
-                template: 'template-literal',
-                concat: 'concatenation',
-            },
-            configTypes: {
-                env: 'environment-variable',
-                file: 'config-file',
-                variable: 'config-variable',
-            },
-            vueTemplateTypes: {
-                component: 'component',
-                directive: 'directive',
-            },
-        };
-    }
-
-    if (useCompression) {
-        compressPaths(report);
-    }
-
-    const migrated = migrateReport(report);
-
-    if (useCaching && cacheKey) {
-        reportCache.set(cacheKey, migrated);
-    }
-
-    // ============================================
-    // 7. СОХРАНЕНИЕ И ВЫВОД
-    // ============================================
-
-    if (outputPath) {
-        const json = JSON.stringify(migrated, null, 2);
-        const outputDir = path.dirname(outputPath);
-        if (!fs.existsSync(outputDir)) {
-            fs.mkdirSync(outputDir, { recursive: true });
-        }
-        fs.writeFileSync(outputPath, json);
-
-        const sizeKB = (json.length / 1024).toFixed(2);
-        const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-
-        console.log(`\n✅ Оптимизированный отчет сохранен: ${outputPath}`);
-        console.log(`📊 Размер: ${sizeKB} KB`);
-        console.log(`\n📊 СТАТИСТИКА:`);
-        console.log(`   📌 Функций: ${totalFunctions}`);
-        console.log(`   📌 Self функций: ${totalSelfFunctions}`);
-        console.log(`   📌 Констант: ${totalConstants}`);
-        console.log(`   📌 Вызовов: ${relations.calls.length}`);
-        console.log(`   📌 Импортов: ${relations.imports.length}`);
-        console.log(`   📌 Экспортов функций (gr.e): ${relations.exports.length}`); // ✅ НОВОЕ
-        console.log(`   📌 Реэкспортов (gr.re): ${relations.reExports.length}`); // ✅ НОВОЕ — ТЕПЕРЬ БУДЕТ ПОКАЗЫВАТЬ ЧИСЛО!
-        console.log(`   📌 Экспортов констант (gr.ce): ${relations.constExports.length}`); // ✅ НОВОЕ
-        console.log(`   📌 Наследований: ${relations.inheritance.length}`);
-        console.log(`   📌 Типовых зависимостей: ${relations.typeDeps.length}`);
-        console.log(`   📌 Использований констант: ${relations.constUses.length}`);
-        console.log(`   📌 Зависимостей констант: ${relations.constDeps.length}`);
-        console.log(`   📌 Модулей: ${moduleCounter}`);
-        console.log(`   📌 Файлов: ${fileCounter}`);
-
-        console.log(`\n📊 НОВЫЕ ТИПЫ СВЯЗЕЙ (интегрированы!):`);
-        console.log(`   📌 Динамических импортов: ${relations.dynamicImports.length}`);
-        console.log(`   📌 Конфигураций: ${relations.configRefs.length}`);
-        console.log(`   📌 Внешних библиотек: ${relations.externalLibs.length}`);
-        console.log(
-            `   📌 Vue шаблонов: ${relations.vueTemplates.length} ${!hasVueFiles ? '(Vue файлы не найдены)' : ''}`
-        );
-        console.log(`   📌 Асинхронных цепочек: ${relations.asyncChains.length}`);
-        console.log(`   📌 Замыканий: ${relations.closures.length}`);
-        console.log(`   📌 Типовых зависимостей: ${relations.typeDeps.length}`);
-
-        // ✅ Детали реэкспортов
-        if (relations.reExports.length > 0) {
-            console.log(`\n🔄 Детали реэкспортов (gr.re):`);
-            for (const exp of relations.reExports.slice(0, 10)) {
-                const [_moduleIdx, funcIdx, source, name, line] = exp;
-                console.log(`   • ${name} (fn${funcIdx}) — из '${source}' — строка ${line}`);
-            }
-            if (relations.reExports.length > 10) {
-                console.log(`   ... и ещё ${relations.reExports.length - 10} реэкспортов`);
-            }
-        }
-
-        // Детали асинхронных цепочек
-        if (relations.asyncChains.length > 0) {
-            console.log(`\n⚡ Детали асинхронных цепочек:`);
-            const asyncChainDetails = relations.asyncChains.slice(0, 5);
-            for (const chain of asyncChainDetails) {
-                const funcId = chain[0];
-                const awaitCount = chain[1];
-                const chainLength = chain[2];
-                const line = chain[3];
-                let funcName = 'unknown';
-                for (const [name, id] of nameToFuncId) {
-                    if (id === funcId) {
-                        funcName = name;
-                        break;
-                    }
-                }
-                console.log(
-                    `   • ${funcName} (строка ${line}): ${awaitCount} await, ${chainLength} вызовов в цепочке`
-                );
-            }
-            if (relations.asyncChains.length > 5) {
-                console.log(`   ... и ещё ${relations.asyncChains.length - 5} цепочек`);
-            }
-        }
-
-        // Детали замыканий
-        if (relations.closures.length > 0) {
-            console.log(`\n🔒 Детали замыканий:`);
-            const closureDetails = relations.closures.slice(0, 5);
-            for (const closure of closureDetails) {
-                const funcId = closure[0];
-                const line = closure[1];
-                const variables = closure[2];
-                const count = closure[3];
-                let funcName = 'unknown';
-                for (const [name, id] of nameToFuncId) {
-                    if (id === funcId) {
-                        funcName = name;
-                        break;
-                    }
-                }
-                console.log(
-                    `   • ${funcName} (строка ${line}): ${count} внешних переменных (${variables.join(', ')})`
-                );
-            }
-            if (relations.closures.length > 5) {
-                console.log(`   ... и ещё ${relations.closures.length - 5} замыканий`);
-            }
-        }
-
-        // ✅ Детали экспортов
-        if (relations.exports.length > 0) {
-            console.log(`\n📤 Детали экспортов функций (gr.e):`);
-            for (const exp of relations.exports.slice(0, 5)) {
-                const [_moduleIdx, funcIdx, line, type, name] = exp;
-                console.log(`   • ${name} (fn${funcIdx}) — ${type} — строка ${line}`);
-            }
-            if (relations.exports.length > 5) {
-                console.log(`   ... и ещё ${relations.exports.length - 5} экспортов`);
-            }
-        }
-
-        if (relations.constExports.length > 0) {
-            console.log(`\n📌 Детали экспортов констант (gr.ce):`);
-            for (const exp of relations.constExports.slice(0, 5)) {
-                const [_moduleIdx, constIdx, name, line] = exp;
-                console.log(`   • ${name} (c${constIdx}) — строка ${line}`);
-            }
-            if (relations.constExports.length > 5) {
-                console.log(`   ... и ещё ${relations.constExports.length - 5} экспортов констант`);
-            }
-        }
-
-        console.log(`   ⏱️  Время: ${duration} сек`);
-
-        console.log(`\n💡 СТРУКТУРА ОТЧЕТА (оптимизированная):`);
-        console.log(`   📌 Индексы: mi, fl`);
-        console.log(`   📌 Функции: fns (компактные массивы)`);
-        console.log(`   📌 Self функции: sf (изолированные функции) ✅ НОВОЕ`);
-        console.log(`   📌 Константы: cn`);
-        console.log(`   📌 Связи: gr {`);
-        console.log(`      • c  - вызовы (calls)`);
-        console.log(`      • i  - импорты (imports)`);
-        console.log(`      • e  - экспорты функций (exports) ✅ НОВОЕ`);
-        console.log(`      • h  - наследование (inheritance)`);
-        console.log(`      • td - типовые зависимости (typeDeps)`);
-        console.log(`      • re - реэкспорты (reExports) ✅ НОВОЕ — ТЕПЕРЬ РАБОТАЕТ!`);
-        console.log(`      • uc - использование констант (constUses)`);
-        console.log(`      • cd - зависимости констант (constDeps)`);
-        console.log(`      • ce - экспорты констант (constExports) ✅ НОВОЕ`);
-        console.log(`      • di - динамические импорты (dynamicImports) ✅ ИНТЕГРИРОВАНО!`);
-        console.log(`      • cfg - конфигурации (configRefs) ✅ ИНТЕГРИРОВАНО!`);
-        console.log(`      • ext - внешние библиотеки (externalLibs) ✅ ИНТЕГРИРОВАНО!`);
-        console.log(`      • vt - Vue шаблоны (vueTemplates) ✅ ИНТЕГРИРОВАНО!`);
-        console.log(`      • async - асинхронные цепочки (asyncChains) ✅ ИНТЕГРИРОВАНО!`);
-        console.log(`      • closures - замыкания (closures) ✅ ИНТЕГРИРОВАНО!`);
-        console.log(`      • types - типовые зависимости (typeDeps) ✅ ИНТЕГРИРОВАНО!`);
-        console.log(`   }`);
-        console.log(`   📌 Статистика: st (расширенная) ✅ НОВОЕ`);
-        console.log(`   📌 Легенда: legend (расширенная) ✅ НОВОЕ`);
-    }
-
-    return migrated;
-}
-
-// ============================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ПОИСКА
-// ============================================
-
-export function findFunctionByName(report: any, name: string): any | null {
-    if (!report.fns) return null;
-    for (const func of report.fns) {
-        if (func[1] === name) {
-            return {
-                id: func[0],
-                name: func[1],
-                module: func[2],
-                file: func[3],
-                line: func[4],
-                flags: func[5] || '0',
-            };
-        }
-    }
-    return null;
-}
-
-export function findSelfFunctionByName(report: any, name: string): any | null {
-    if (!report.sf) return null;
-    for (const sf of report.sf) {
-        if (sf[1] === name) {
-            return {
-                id: sf[0],
-                name: sf[1],
-                file: sf[2],
-                line: sf[3],
-            };
-        }
-    }
-    return null;
-}
-
-export function findConstantByName(report: any, name: string): any | null {
-    if (!report.cn) return null;
-    for (const constItem of report.cn) {
-        if (constItem[1] === name) {
-            return {
-                id: constItem[0],
-                name: constItem[1],
-                value: constItem[2],
-                module: constItem[3],
-                file: constItem[4],
-                line: constItem[5],
-                flags: constItem[6] || '',
-            };
-        }
-    }
-    return null;
-}
-
-export function getFunctionCalls(report: any, funcId: string): any[] {
-    if (!report.gr || !report.gr.c) return [];
-    const idx = parseInt(funcId.replace('fn', ''), 10);
-    return report.gr.c.filter((call: any) => call[0] === idx);
-}
-
-export function getFunctionCallers(report: any, funcId: string): any[] {
-    if (!report.gr || !report.gr.c) return [];
-    const idx = parseInt(funcId.replace('fn', ''), 10);
-    return report.gr.c.filter((call: any) => call[1] === idx);
-}
-
-export function getFileName(report: any, fileId: string): string | null {
-    return report.fl?.[fileId] || null;
-}
-
-export function getModuleName(report: any, moduleId: string): string | null {
-    return report.mi?.[moduleId] || null;
-}
-
-export function getFunctionInfo(report: any, funcId: string): any | null {
-    if (!report.fns) return null;
-    for (const func of report.fns) {
-        if (func[0] === funcId) {
-            return {
-                id: func[0],
-                name: func[1],
-                module: func[2],
-                file: func[3],
-                line: func[4],
-                flags: func[5] || '0',
-                calls: getFunctionCalls(report, funcId),
-                callers: getFunctionCallers(report, funcId),
-            };
-        }
-    }
-    return null;
-}
-
-export function getAllSelfFunctions(report: any): any[] {
-    if (!report.sf) return [];
-    return report.sf.map((sf: any) => ({
-        id: sf[0],
-        name: sf[1],
-        file: sf[2],
-        line: sf[3],
-    }));
-}
-
-export function isSelfFunction(report: any, funcName: string): boolean {
-    if (!report.sf) return false;
-    return report.sf.some((sf: any) => sf[1] === funcName);
-}
-
-export function decodeFlags(flags: string): Record<string, boolean> {
-    const result: Record<string, boolean> = {
-        isAsync: false,
-        isExported: false,
-        isMethod: false,
-        isArrow: false,
-        isEventHandler: false,
-        isNested: false,
-        isSelf: false,
-        isDynamic: false,
-        isConfig: false,
-        isExternal: false,
-        isVueTemplate: false,
-        isAsyncChain: false,
-        isClosure: false,
-        isTypeDep: false,
-    };
-
-    if (!flags || flags === '0') return result;
-
-    for (const char of flags) {
-        for (const [bit, flagChar] of Object.entries(FLAG_MAP)) {
-            if (flagChar === char) {
-                const flag = parseInt(bit, 10);
-                if (flag & 1) result.isAsync = true;
-                if (flag & 2) result.isExported = true;
-                if (flag & 4) result.isMethod = true;
-                if (flag & 8) result.isArrow = true;
-                if (flag & 16) result.isEventHandler = true;
-                if (flag & 32) result.isNested = true;
-                if (flag & 64) result.isSelf = true;
-                if (flag & 128) result.isDynamic = true;
-                if (flag & 256) result.isConfig = true;
-                if (flag & 512) result.isExternal = true;
-                if (flag & 1024) result.isVueTemplate = true;
-                if (flag & 2048) result.isAsyncChain = true;
-                if (flag & 4096) result.isClosure = true;
-                if (flag & 8192) result.isTypeDep = true;
-            }
-        }
-    }
-
-    return result;
-}
-
-// ============================================
-// ✅ ЭКСПОРТ ТИПОВ
-// ============================================
-
-export interface CompactReport {
-    version: string;
-    timestamp: string;
-    root: string;
-    legend: Record<string, string>;
-    moduleIndex: Record<string, string>;
-    fileIndex: Record<string, string>;
-    functionIndex: Record<string, { name: string; module: string; file: string }>;
-    modules: Record<string, CompactModule>;
-    reverseIndex: {
-        importedBy: Record<string, { from: string; line: number }[]>;
-    };
-    unresolved: {
-        module: string;
-        target: string;
-        line: number;
-    }[];
-    stats: {
-        totalModules: number;
-        totalFiles: number;
-        totalFunctions: number;
-        totalCalls: number;
-        totalImports: number;
-        totalExports: number; // ✅ ОБЫЧНЫЕ ЭКСПОРТЫ
-        totalReExports: number; // ✅ РЕЭКСПОРТЫ
-        totalConstExports: number; // ✅ ЭКСПОРТЫ КОНСТАНТ
-        totalUnresolved: number;
-    };
-}
-
-export interface CompactModule {
-    name: string;
-    path: string;
-    file: string;
-    imports: {
-        from: string;
-        specifiers: string[];
-        line: number;
-        type?: 'named' | 'default' | 'namespace' | 'type';
-    }[];
-    exports: {
-        function: string;
-        name: string;
-    }[];
-    functions: Record<string, CompactFunction>;
-    stats: {
-        functions: number;
-        imports: number;
-        exports: number;
-        dependencies: number;
-    };
-}
-
-export interface CompactFunction {
-    name: string;
-    line: number;
-    flags: number;
-    params: string[];
-    isAsync: boolean;
-    isExported: boolean;
-    calls: {
-        to: string;
-        line: number;
-        type: 'direct' | 'import' | 'method' | 'computed' | 'watch' | 'event';
-    }[];
-}
-
-// ============================================
-// ✅ ЭКСПОРТ ENUM
-// ============================================
-
-export enum CompactFlags {
-    NONE = 0,
-    ASYNC = 1 << 0,
-    EXPORTED = 1 << 1,
-    METHOD = 1 << 2,
-    ARROW = 1 << 3,
-    EVENT_HANDLER = 1 << 4,
-    NESTED = 1 << 5,
-    SELF = 1 << 6,
-    DYNAMIC = 1 << 7,
-    CONFIG = 1 << 8,
-    EXTERNAL = 1 << 9,
-    VUE_TEMPLATE = 1 << 10,
-    ASYNC_CHAIN = 1 << 11,
-    CLOSURE = 1 << 12,
-    TYPE_DEP = 1 << 13,
+function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
+  const ext = path.extname(filePath);
+  const base = filePath.slice(0, filePath.length - ext.length);
+  return `${base}${suffix}${ext}`;
 }
 
 // ============================================
@@ -1727,25 +668,8 @@ export enum CompactFlags {
 // ============================================
 
 export default {
-    generateCompactReport,
-    SHORT_KEYS,
-    FLAG_MAP,
-    RELATION_TYPES,
-    findFunctionByName,
-    findSelfFunctionByName,
-    findConstantByName,
-    getFunctionCalls,
-    getFunctionCallers,
-    getFileName,
-    getModuleName,
-    getFunctionInfo,
-    getAllSelfFunctions,
-    isSelfFunction,
-    decodeFlags,
-    reportCache,
-    compressPaths,
-    compressCalls,
-    migrateReport,
-    collectReExports,
-    CompactFlags,
+  generateCompactReport,
+  decodeCompactReport,
+  readAndDecode,
+  readFullJson,
 };
