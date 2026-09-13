@@ -2,24 +2,30 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Вся логика сжатия/разжатия вынесена в ./codec/codec.ts
+// Версия: 8.0.0 (Стратегия B — строгий round-trip)
 //
-// Что делает этот модуль:
-//   1. Собирает FullJSON из entitiesMap (два прохода)
-//   2. Вызывает Codec.encode() для получения CompactJSON
-//   3. Сохраняет оба файла: compact.json и compact.full.json
-//
-// Обратная операция:
-//   - readAndDecode() — читает compact.json и возвращает FullJSON
-//   - decodeCompactReport() — декодирует объект в памяти
-//
-// Версия: 6.0.1
+// ИЗМЕНЕНИЯ v8.0.0:
+//   - collectFullJSON: modules[].fileIds заполняются
+//   - collectFullJSON: files[].moduleId заполняется
+//   - collectFullJSON: functions[].params, returnType прокидываются
+//   - collectFullJSON: classes[].methods прокидываются
+//   - collectFullJSON: constants[].value прокидывается
+//   - collectFullJSON: imports line берётся из loc.start.line
+//   - collectFullJSON: imports isExternal через isExternalModule
+//   - collectFullJSON: exports line, localName, isTypeOnly
+//   - collectFullJSON: reExports отдельно от exports
+//   - collectFullJSON: reExports type: 'named'|'default'|'all'
+//   - collectFullJSON: calls external → 'external:name'
+//   - collectFullJSON: НЕ создаёт edges (восстанавливается в decode)
+//   - resolveToFileId: обработка external, unresolved, alias
+//   - detectCallType: различает direct/async/method/callback
 // ============================================
 
 import fs from 'fs';
 import path from 'path';
-import type { EntitiesResult } from '../types.js';
+import type { EntitiesResult, FunctionInfo } from '../types.js';
 import { Codec } from './codec/codec.js';
+import { isExternalModule, resolveFilePath } from '../core/ast-parser.js';
 import type {
   FullJSON,
   CompactJSON,
@@ -81,7 +87,7 @@ export interface GenerateReportResult {
 /**
  * Генерирует компактный отчёт из карты сущностей.
  *
- * @param entitiesMap — карта "путь файла → сущности"
+ * @param entitiesMap — карта «путь файла → сущности»
  * @param outputPath — путь для сохранения сжатого JSON
  * @param options — дополнительные опции
  * @returns Результат генерации с полным и сжатым JSON
@@ -110,7 +116,7 @@ export function generateCompactReport(
   if (verbose) {
     console.log(`   📊 Модулей: ${full.modules.length}`);
     console.log(`   📄 Файлов: ${full.files.length}`);
-    console.log(`   ƒ Функций: ${full.functions.length}`);
+    console.log(`   ƒ  Функций: ${full.functions.length}`);
     console.log(`   📦 Классов: ${full.classes.length}`);
     console.log(`   📌 Констант: ${full.constants.length}`);
     console.log(`   📤 Экспортов: ${full.exports.length}`);
@@ -120,7 +126,7 @@ export function generateCompactReport(
   }
 
   // ============================================
-  // ШАГ 2: Проверка round-trip (опционально, только в verbose)
+  // ШАГ 2: Проверка round-trip (только в verbose)
   // ============================================
 
   if (verbose && useCompression) {
@@ -284,7 +290,9 @@ export function readFullJson(fullPath: string): FullJSON {
  *   1. Собирает модули, файлы, функции, классы, константы
  *   2. Собирает экспорты, импорты, вызовы, реэкспорты
  *
- * @param entitiesMap — карта "путь файла → сущности"
+ * ⚠️ edges НЕ создаются здесь — они восстанавливаются при decode.
+ *
+ * @param entitiesMap — карта «путь файла → сущности»
  * @param verbose — подробный вывод
  * @returns Полный JSON
  */
@@ -313,6 +321,9 @@ function collectFullJSON(
   const moduleMap = new Map<string, ModuleData>();
   const fileMap = new Map<string, FileData>();
   const functionMap = new Map<string, FunctionData>();
+
+  // Карта «source → fileId» для быстрого разрешения импортов
+  const sourceToFileIdMap = new Map<string, string>();
 
   // ============================================
   // Счётчики
@@ -363,8 +374,16 @@ function collectFullJSON(
       };
       fileMap.set(filePath, file);
       files.push(file);
+      // ✅ ЗАПОЛНЯЕМ fileIds модуля
       module.fileIds.push(file.id);
     }
+
+    // ✅ Заполняем карту source → fileId
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    sourceToFileIdMap.set(normalizedPath, file.id);
+    sourceToFileIdMap.set(filePath, file.id);
+    sourceToFileIdMap.set(path.basename(filePath), file.id);
+    sourceToFileIdMap.set(path.basename(filePath).replace(/\.[^.]+$/, ''), file.id);
 
     // Функции
     const funcs = entities.functions || [];
@@ -382,6 +401,7 @@ function collectFullJSON(
         isAsync: func.isAsync || false,
         isArrow: func.isArrow || false,
         isMethod: func.isMethod || false,
+        // ✅ Прокидываем params и returnType
         params: func.params || [],
         returnType: func.returnType,
       };
@@ -403,6 +423,7 @@ function collectFullJSON(
         fileId: file.id,
         line: cls.line || 0,
         isExported: cls.isExported || false,
+        // ✅ Прокидываем methods
         methods: cls.methods || [],
       });
     }
@@ -420,6 +441,7 @@ function collectFullJSON(
         fileId: file.id,
         line: cn.line || 0,
         isExported: cn.isExported || false,
+        // ✅ Прокидываем value
         value: cn.value,
       });
     }
@@ -445,7 +467,7 @@ function collectFullJSON(
     if (!module || !file) continue;
 
     // --------------------------------------------
-    // Экспорты и реэкспорты
+    // ЭКСПОРТЫ и РЕЭКСПОРТЫ
     // --------------------------------------------
     const exportsList = entities.exports || [];
 
@@ -455,93 +477,206 @@ function collectFullJSON(
       // Ищем функцию в глобальной карте
       const funcData = functionMap.get(exp.name);
 
-      if (!funcData) {
-        if (verbose && exp.isReExport) {
-          console.log(
-            `   ⚠️  Реэкспорт '${exp.name}' не найден в functionMap (source: ${exp.source})`
-          );
-        }
-        continue;
-      }
+      // ✅ Реальная строка из loc, fallback на exp.line
+      const expLine = exp.loc?.start?.line ?? exp.line ?? 0;
+
+      // ✅ Локальное имя
+      const localName = exp.localName ?? exp.name;
+
+      // ✅ isTypeOnly
+      const isTypeOnly = exp.isTypeOnly ?? false;
+
+      // ✅ Флаги реэкспорта
+      const isStarReExport = exp.isStarReExport ?? false;
+      const isDefaultReExport = exp.isDefaultReExport ?? false;
 
       if (exp.isReExport && exp.source) {
-        // Реэкспорт
+        // ----- РЕЭКСПОРТ -----
+        if (!funcData) continue;
+
         reExportCounter++;
+
+        let reType: 'named' | 'default' | 'all' = 'named';
+        if (isStarReExport) reType = 'all';
+        else if (isDefaultReExport || exp.isDefault) reType = 'default';
+
         reExports.push({
           id: `re${reExportCounter}`,
           moduleId: module.id,
           functionId: funcData.id,
           source: exp.source,
           exportName: exp.name,
-          // ✅ ИСПРАВЛЕНО: используем loc?.start?.line, так как у ExportInfo нет поля line
-          line: exp.loc?.start?.line || 0,
+          line: expLine,
+          type: reType,
+          isDefault: exp.isDefault || isDefaultReExport,
+          isTypeOnly,
+          isStarReExport,
         });
-      } else {
-        // Обычный экспорт
-        exportCounter++;
 
-        let exportType: 'named' | 'default' | 'type' = 'named';
-        if (exp.isDefault) exportType = 'default';
-        else if (exp.type === 'type') exportType = 'type';
-
-        exports.push({
-          id: `e${exportCounter}`,
-          moduleId: module.id,
-          functionId: funcData.id,
-          exportName: exp.name,
-          localName: exp.name,
-          // ✅ ИСПРАВЛЕНО: используем loc?.start?.line, так как у ExportInfo нет поля line
-          line: exp.loc?.start?.line || 0,
-          type: exportType,
-          isDefault: exp.isDefault || false,
-        });
+        // ⚠️ Не создаём запись в exports — реэкспорты только здесь
+        continue;
       }
+
+      // ----- ОБЫЧНЫЙ ЭКСПОРТ -----
+      if (!funcData) continue;
+
+      exportCounter++;
+
+      let exportType: 'named' | 'default' | 'type' = 'named';
+      if (exp.isDefault) exportType = 'default';
+      else if (isTypeOnly || exp.type === 'interface' || exp.type === 'type') {
+        exportType = 'type';
+      }
+
+      exports.push({
+        id: `e${exportCounter}`,
+        moduleId: module.id,
+        fileId: file.id,
+        functionId: funcData.id,
+        exportName: exp.name,
+        localName,
+        line: expLine,
+        type: exportType,
+        isDefault: exp.isDefault || false,
+        isTypeOnly,
+        isReExport: false,
+        isStarReExport: false,
+        isDefaultReExport: false,
+        source: undefined,
+      });
     }
 
     // --------------------------------------------
-    // Импорты
+    // ИМПОРТЫ
     // --------------------------------------------
     const importsList = entities.imports || [];
 
     for (const imp of importsList) {
       if (!imp || !imp.source) continue;
 
+      const specifiersStructured = (imp as any).specifiersStructured || [];
       const specifiers = imp.specifiers || [];
 
-      for (const spec of specifiers) {
-        let importedName = '';
-        let importType: 'named' | 'default' | 'namespace' | 'type' = 'named';
+      // ✅ isExternal через ast-parser (уже исправлен)
+      const isExternal = (imp as any).isExternal ?? isExternalModule(imp.source);
 
-        if (typeof spec === 'string') {
-          importedName = spec;
-        } else if (spec && typeof spec === 'object') {
-          const specObj = spec as { imported?: string; local?: string; type?: string };
-          importedName = specObj.imported || specObj.local || '';
+      const packageName = isExternal
+        ? (imp as any).packageName ||
+          (imp.source.startsWith('@')
+            ? imp.source.split('/').slice(0, 2).join('/')
+            : imp.source.split('/')[0])
+        : undefined;
 
-          if (specObj.type === 'ImportDefaultSpecifier') {
-            importType = 'default';
-          } else if (specObj.type === 'ImportNamespaceSpecifier') {
-            importType = 'namespace';
-          }
+      // ✅ Разрешаем toFileId
+      let resolvedToFileId: string | null = null;
+
+      if (isExternal) {
+        resolvedToFileId = `external:${packageName || imp.source}`;
+      } else {
+        resolvedToFileId = resolveToFileId(imp.source, filePath, sourceToFileIdMap, fileMap);
+        if (!resolvedToFileId) {
+          resolvedToFileId = (imp as any).toFileId || `unresolved:${imp.source}`;
         }
+      }
 
-        if (!importedName) continue;
+      // ✅ Реальная строка импорта
+      const impLine = imp.loc?.start?.line ?? (imp as any).line ?? 0;
 
-        importCounter++;
-        imports.push({
-          id: `i${importCounter}`,
-          fromFileId: file.id,
-          toFileId: null,
-          importedName,
-          localName: importedName,
-          line: imp.loc?.start?.line || 0,
-          type: importType,
-        });
+      if (specifiersStructured.length > 0) {
+        // Используем структурированные specifiers
+        for (const spec of specifiersStructured) {
+          if (!spec || !spec.imported || !spec.local) continue;
+
+          importCounter++;
+
+          const importType = getImportTypeFromSpecifierType(spec.type);
+
+          imports.push({
+            id: `i${importCounter}`,
+            fromFileId: file.id,
+            toFileId: resolvedToFileId,
+            source: imp.source,
+            importedName: spec.imported,
+            localName: spec.local,
+            line: impLine,
+            type: importType,
+            isDefault: spec.type === 'ImportDefaultSpecifier',
+            isNamespace: spec.type === 'ImportNamespaceSpecifier',
+            isTypeOnly: imp.isTypeOnly || false,
+            isExternal,
+            packageName,
+          });
+        }
+      } else {
+        // Fallback: парсим строковые specifiers
+        for (const spec of specifiers as unknown[]) {
+          let importedName = '';
+          let localName = '';
+          let importType: 'named' | 'default' | 'namespace' | 'type' = 'named';
+          let isDefault = false;
+          let isNamespace = false;
+
+          if (typeof spec === 'string') {
+            const specStr = spec as string;
+            const match = specStr.match(/^(.+?)\s+as\s+(.+)$/);
+            if (match) {
+              importedName = match[1] || '';
+              localName = match[2] || '';
+            } else {
+              importedName = specStr.trim();
+              localName = specStr.trim();
+            }
+
+            if (importedName === 'default') {
+              importType = 'default';
+              isDefault = true;
+            } else if (importedName === '*') {
+              importType = 'namespace';
+              isNamespace = true;
+            }
+          } else if (spec && typeof spec === 'object') {
+            const specObj = spec as {
+              imported?: string;
+              local?: string;
+              type?: string;
+            };
+            importedName = specObj.imported || specObj.local || '';
+            localName = specObj.local || specObj.imported || '';
+
+            if (specObj.type === 'ImportDefaultSpecifier') {
+              importType = 'default';
+              isDefault = true;
+            } else if (specObj.type === 'ImportNamespaceSpecifier') {
+              importType = 'namespace';
+              isNamespace = true;
+            }
+          }
+
+          if (!importedName || !localName) continue;
+
+          importCounter++;
+
+          imports.push({
+            id: `i${importCounter}`,
+            fromFileId: file.id,
+            toFileId: resolvedToFileId,
+            source: imp.source,
+            importedName,
+            localName,
+            line: impLine,
+            type: importType,
+            isDefault,
+            isNamespace,
+            isTypeOnly: imp.isTypeOnly || false,
+            isExternal,
+            packageName,
+          });
+        }
       }
     }
 
     // --------------------------------------------
-    // Вызовы функций
+    // ВЫЗОВЫ ФУНКЦИЙ
     // --------------------------------------------
     const funcs = entities.functions || [];
 
@@ -557,7 +692,22 @@ function collectFullJSON(
         if (!callName) continue;
 
         const toFunc = functionMap.get(callName);
-        if (!toFunc) continue;
+
+        // ✅ Определяем тип вызова
+        const callType = detectCallType(func, callName);
+
+        if (!toFunc) {
+          // ✅ Внешний вызов — кодируем как 'external:name'
+          callCounter++;
+          calls.push({
+            id: `c${callCounter}`,
+            fromFunctionId: fromFunc.id,
+            toFunctionId: `external:${callName}`,
+            line: func.line || 0,
+            type: callType,
+          });
+          continue;
+        }
 
         // Пропускаем самовызовы
         if (fromFunc.id === toFunc.id) continue;
@@ -568,7 +718,7 @@ function collectFullJSON(
           fromFunctionId: fromFunc.id,
           toFunctionId: toFunc.id,
           line: func.line || 0,
-          type: func.isAsync ? 'async' : 'direct',
+          type: callType,
         });
       }
     }
@@ -576,7 +726,7 @@ function collectFullJSON(
 
   if (verbose) {
     console.log(
-      `   ✅ Второй проход: ${exports.length} экспортов, ${reExports.length} реэкспортов, ${calls.length} вызовов`
+      `   ✅ Второй проход: ${exports.length} экспортов, ${reExports.length} реэкспортов, ${calls.length} вызовов, ${imports.length} импортов`
     );
   }
 
@@ -626,7 +776,7 @@ function collectFullJSON(
   // ============================================
 
   return {
-    version: '6.0.1',
+    version: '8.0.0',
     timestamp: new Date().toISOString(),
     root,
     modules,
@@ -639,6 +789,7 @@ function collectFullJSON(
     calls,
     reExports,
     statistics,
+    // ⚠️ edges НЕ создаются — восстанавливаются в Codec.decode
   };
 }
 
@@ -661,6 +812,144 @@ function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
   const ext = path.extname(filePath);
   const base = filePath.slice(0, filePath.length - ext.length);
   return `${base}${suffix}${ext}`;
+}
+
+/**
+ * Разрешает source импорта в fileId проекта.
+ *
+ * Стратегии:
+ *   1. Алиасы проекта (@/, #/, ~/) — поиск по basename
+ *   2. Относительные пути (./, ../) — через resolveFilePath
+ *   3. Прямой поиск в sourceToFileIdMap
+ *   4. Поиск по basename
+ *   5. Внешние пакеты → external:name
+ *
+ * @param source — исходный путь импорта
+ * @param fromFilePath — путь к файлу-импортёру
+ * @param sourceToFileIdMap — карта source → fileId
+ * @param fileMap — карта filePath → FileData
+ * @returns ID файла, external:name или null
+ */
+function resolveToFileId(
+  source: string,
+  fromFilePath: string,
+  sourceToFileIdMap: Map<string, string>,
+  fileMap: Map<string, FileData>
+): string | null {
+  // ============================================
+  // 1. Алиасы проекта (@/, #/, ~/)
+  // ============================================
+  if (source.startsWith('@/') || source.startsWith('#/') || source.startsWith('~/')) {
+    const rest = source.replace(/^(@|#|~)\//, '');
+    const sourceBasename = path.basename(rest);
+    const sourceNoExt = sourceBasename.replace(/\.[^.]+$/, '');
+
+    for (const [filePath, fileData] of fileMap) {
+      const fileBasename = path.basename(filePath);
+      const fileNoExt = fileBasename.replace(/\.[^.]+$/, '');
+      if (fileBasename === sourceBasename || fileNoExt === sourceNoExt) {
+        return fileData.id;
+      }
+    }
+  }
+
+  // ============================================
+  // 2. Относительные пути (./, ../)
+  // ============================================
+  if (source.startsWith('.')) {
+    try {
+      const fromDir = path.dirname(fromFilePath);
+      const resolved = resolveFilePath(fromDir, source);
+      if (resolved) {
+        const resolvedFile = fileMap.get(resolved);
+        if (resolvedFile) return resolvedFile.id;
+
+        // Нормализуем путь для поиска
+        const normalizedResolved = resolved.replace(/\\/g, '/');
+        for (const [filePath, fileData] of fileMap) {
+          if (filePath.replace(/\\/g, '/') === normalizedResolved) {
+            return fileData.id;
+          }
+        }
+      }
+    } catch {
+      // Игнорируем ошибки разрешения
+    }
+  }
+
+  // ============================================
+  // 3. Прямой поиск в карте
+  // ============================================
+  const direct = sourceToFileIdMap.get(source);
+  if (direct) return direct;
+
+  // ============================================
+  // 4. Поиск по basename
+  // ============================================
+  const sourceBasename = path.basename(source);
+  const sourceNoExt = sourceBasename.replace(/\.[^.]+$/, '');
+
+  for (const [filePath, fileData] of fileMap) {
+    const fileBasename = path.basename(filePath);
+    const fileNoExt = fileBasename.replace(/\.[^.]+$/, '');
+
+    if (fileBasename === sourceBasename || fileNoExt === sourceNoExt) {
+      return fileData.id;
+    }
+  }
+
+  // ============================================
+  // 5. Внешний пакет
+  // ============================================
+  if (!source.startsWith('.')) {
+    const pkg = source.startsWith('@')
+      ? source.split('/').slice(0, 2).join('/')
+      : source.split('/')[0];
+    if (pkg) return `external:${pkg}`;
+  }
+
+  return null;
+}
+
+/**
+ * Определяет тип импорта по типу specifier.
+ *
+ * @param specifierType — тип specifier из AST
+ * @returns Тип импорта
+ */
+function getImportTypeFromSpecifierType(
+  specifierType: string
+): 'named' | 'default' | 'namespace' | 'type' {
+  switch (specifierType) {
+    case 'ImportDefaultSpecifier':
+      return 'default';
+    case 'ImportNamespaceSpecifier':
+      return 'namespace';
+    case 'ImportSpecifier':
+    default:
+      return 'named';
+  }
+}
+
+/**
+ * Определяет тип вызова по контексту.
+ *
+ * @param func — функция-источник
+ * @param callName — имя вызываемой функции
+ * @returns Тип вызова
+ */
+function detectCallType(
+  func: FunctionInfo,
+  callName: string
+): 'direct' | 'async' | 'method' | 'callback' {
+  if (func.isAsync) return 'async';
+  if (callName.includes('.')) return 'method';
+
+  const body = func.body || '';
+  const cbPattern = new RegExp(`${callName}\\s*\\([^)]*(?:=>|function)`, 'i');
+  if (cbPattern.test(body)) return 'callback';
+
+  return 'direct';
 }
 
 // ============================================

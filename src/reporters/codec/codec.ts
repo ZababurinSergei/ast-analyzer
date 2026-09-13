@@ -2,8 +2,20 @@
 // ============================================
 // ЕДИНЫЙ МОДУЛЬ КОДЕКОВ
 // ============================================
-// Версия: 1.0.1
-// Назначение: обратимое сжатие полного JSON в компактный формат
+// Версия: 3.0.0 (Стратегия B — строгий round-trip)
+//
+// ИЗМЕНЕНИЯ v3.0.0:
+//   - encode: словари (stringDict, paramDict, methodDict, valueDict)
+//   - encode: новые кортежи с индексами словарей
+//   - encode: mi/fl стали объектами {n,f}/{p,m}
+//   - encode: gr.c использует 'e' для external-вызовов
+//   - decode: восстановление из словарей
+//   - decode: восстановление edges из gr.*
+//   - decode: корректная обработка external:*
+//   - CALL_TYPES: добавлен 'e' → 'external'
+//   - getLegend: добавлены arraySchemas и словари
+//   - verifyRoundTrip: глубокая проверка через JSON.stringify
+//   - ESLint: все Array<T> заменены на T[]
 // ============================================
 
 import type {
@@ -18,6 +30,9 @@ import type {
   CallData,
   ReExportData,
   StatisticsData,
+  EdgeData,
+  ModuleData,
+  FileData
 } from './codec-types.js';
 
 // ============================================
@@ -26,28 +41,26 @@ import type {
 
 /**
  * Карта флагов: бит → символ
- * Каждый символ — это флаг, установленный в 1
  *
- * ВАЖНО: символы должны быть уникальными!
  * Биты:
- *   1     = async
- *   2     = exported
- *   4     = method
- *   8     = arrow
- *   16    = event handler
- *   32    = nested
- *   64    = self
- *   128   = dynamic
- *   256   = config
- *   512   = external
- *   1024  = vue template
- *   2048  = async chain
- *   4096  = closure
- *   8192  = type dep
- *   16384 = generator
- *   32768 = private
- *   65536 = protected
- *   131072= static
+ *   1      = async
+ *   2      = exported
+ *   4      = method
+ *   8      = arrow
+ *   16     = event handler
+ *   32     = nested
+ *   64     = self
+ *   128    = dynamic
+ *   256    = config
+ *   512    = external
+ *   1024   = vue template
+ *   2048   = async chain
+ *   4096   = closure
+ *   8192   = type dep
+ *   16384  = generator
+ *   32768  = private
+ *   65536  = protected
+ *   131072 = static
  */
 export const FLAG_MAP: Record<number, string> = {
   1: 'a', // async
@@ -72,7 +85,6 @@ export const FLAG_MAP: Record<number, string> = {
 
 /**
  * Обратная карта: символ → бит
- * Автоматически генерируется из FLAG_MAP
  */
 export const FLAG_CHAR_MAP: Record<string, number> = Object.fromEntries(
   Object.entries(FLAG_MAP).map(([bit, char]) => [char, parseInt(bit, 10)])
@@ -110,6 +122,7 @@ export const RELATION_TYPES: Record<string, string> = {
   a: 'async',
   m: 'method',
   c: 'callback',
+  e: 'external',
   n: 'named',
   df: 'default',
   ns: 'namespace',
@@ -118,6 +131,7 @@ export const RELATION_TYPES: Record<string, string> = {
   de: 'default-export',
   te: 'type-export',
   re: 're-export',
+  all: 'all',
 };
 
 /**
@@ -142,20 +156,29 @@ export const IMPORT_TYPES: Record<string, string> = {
 
 /**
  * Типы вызовов
+ * 'e' — external (внешний вызов, toFunctionId — 'external:name')
  */
 export const CALL_TYPES: Record<string, string> = {
   d: 'direct',
   a: 'async',
   m: 'method',
   c: 'callback',
+  e: 'external',
+};
+
+/**
+ * Типы реэкспортов
+ */
+export const RE_EXPORT_TYPES: Record<string, string> = {
+  n: 'named',
+  df: 'default',
+  all: 'all',
 };
 
 /**
  * Карта ключей: полное имя → короткое
- * Используется для сжатия ключей в JSON
  */
 export const KEY_MAP: Record<string, string> = {
-  // Верхний уровень
   version: 'v',
   timestamp: 'ts',
   root: 'r',
@@ -170,7 +193,7 @@ export const KEY_MAP: Record<string, string> = {
   reExports: 're',
   statistics: 'st',
   legend: 'legend',
-  // Функции
+  edges: 'edges',
   id: 'id',
   name: 'n',
   moduleId: 'm',
@@ -182,24 +205,23 @@ export const KEY_MAP: Record<string, string> = {
   isMethod: 'mt',
   params: 'p',
   returnType: 'rt',
-  // Классы
   methods: 'm',
-  // Константы
   value: 'val',
-  // Экспорты
   functionId: 'fn',
   exportName: 'en',
   localName: 'ln',
   type: 't',
   isDefault: 'df',
-  // Импорты
+  isTypeOnly: 'to',
+  isStarReExport: 'sr',
   fromFileId: 'ff',
   toFileId: 'tf',
   importedName: 'in',
-  // Вызовы
+  isNamespace: 'ns',
+  isExternal: 'ext',
+  packageName: 'pkg',
   fromFunctionId: 'ffn',
   toFunctionId: 'tfn',
-  // Реэкспорты
   source: 'src',
 };
 
@@ -217,7 +239,9 @@ export const KEY_REVERSE_MAP: Record<string, string> = Object.fromEntries(
 /**
  * Кодирует булевы флаги в число
  */
-export function encodeFlags(obj: Partial<FunctionData & ClassData & ConstantData>): number {
+export function encodeFlags(
+  obj: Partial<FunctionData & ClassData & ConstantData>
+): number {
   let flags = 0;
   if (obj.isAsync) flags |= 1;
   if (obj.isExported) flags |= 2;
@@ -228,10 +252,6 @@ export function encodeFlags(obj: Partial<FunctionData & ClassData & ConstantData
 
 /**
  * Кодирует число флагов в строку символов
- *
- * Пример:
- *   flags = 3 (async + exported) → 'ae'
- *   flags = 0                    → '0'
  */
 export function flagsToString(flags: number): string {
   if (flags === 0) return '0';
@@ -282,7 +302,7 @@ export interface DecodedFlags {
 }
 
 /**
- * Создаёт "пустой" объект флагов
+ * Создаёт «пустой» объект флагов
  */
 function createEmptyFlags(): DecodedFlags {
   return {
@@ -340,7 +360,6 @@ export function decodeFlagsToObject(flagStr: string): DecodedFlags {
 
 /**
  * Декодирует строку флагов в массив имён
- * (только установленные флаги)
  */
 export function decodeFlagsToNames(flagStr: string): string[] {
   const flags = flagsStringToNumber(flagStr);
@@ -356,24 +375,90 @@ export function decodeFlagsToNames(flagStr: string): string[] {
 }
 
 // ============================================
-// СТАТИСТИКА
+// ХЕЛПЕРЫ ДЛЯ СЛОВАРЕЙ
 // ============================================
 
-/**
- * Создаёт пустую статистику
- */
-function createEmptyStatistics(): StatisticsData {
+interface DictBuilder {
+  stringDict: string[];
+  stringMap: Map<string, number>;
+  paramDict: string[];
+  paramMap: Map<string, number>;
+  methodDict: string[];
+  methodMap: Map<string, number>;
+  valueDict: unknown[];
+  valueMap: Map<string, number>;
+}
+
+function createDictBuilder(): DictBuilder {
   return {
-    totalModules: 0,
-    totalFiles: 0,
-    totalFunctions: 0,
-    totalClasses: 0,
-    totalConstants: 0,
-    totalExports: 0,
-    totalImports: 0,
-    totalCalls: 0,
-    totalReExports: 0,
+    stringDict: [],
+    stringMap: new Map(),
+    paramDict: [],
+    paramMap: new Map(),
+    methodDict: [],
+    methodMap: new Map(),
+    valueDict: [],
+    valueMap: new Map(),
   };
+}
+
+/**
+ * Добавить строку в stringDict, вернуть индекс.
+ * Пустая строка, undefined или null → -1.
+ */
+function addString(dict: DictBuilder, str: string | undefined | null): number {
+  if (str === undefined || str === null || str === '') return -1;
+  const existing = dict.stringMap.get(str);
+  if (existing !== undefined) return existing;
+  const idx = dict.stringDict.length;
+  dict.stringDict.push(str);
+  dict.stringMap.set(str, idx);
+  return idx;
+}
+
+/**
+ * Добавить параметр в paramDict, вернуть индекс.
+ */
+function addParam(dict: DictBuilder, param: string): number {
+  if (!param) return -1;
+  const existing = dict.paramMap.get(param);
+  if (existing !== undefined) return existing;
+  const idx = dict.paramDict.length;
+  dict.paramDict.push(param);
+  dict.paramMap.set(param, idx);
+  return idx;
+}
+
+/**
+ * Добавить метод в methodDict, вернуть индекс.
+ */
+function addMethod(dict: DictBuilder, method: string): number {
+  if (!method) return -1;
+  const existing = dict.methodMap.get(method);
+  if (existing !== undefined) return existing;
+  const idx = dict.methodDict.length;
+  dict.methodDict.push(method);
+  dict.methodMap.set(method, idx);
+  return idx;
+}
+
+/**
+ * Добавить значение в valueDict, вернуть индекс.
+ * Для примитивов — ключ = String(value).
+ * Для объектов — ключ = JSON.stringify(value).
+ */
+function addValue(dict: DictBuilder, value: unknown): number {
+  if (value === undefined) return -1;
+  const key =
+    typeof value === 'object' && value !== null
+      ? JSON.stringify(value)
+      : String(value);
+  const existing = dict.valueMap.get(key);
+  if (existing !== undefined) return existing;
+  const idx = dict.valueDict.length;
+  dict.valueDict.push(value);
+  dict.valueMap.set(key, idx);
+  return idx;
 }
 
 // ============================================
@@ -386,29 +471,31 @@ export class Codec {
   // ============================================
 
   /**
-   * Кодирует полный JSON в сжатый
+   * Кодирует полный JSON в сжатый.
    *
    * @param payload - Полный JSON
    * @returns Сжатый JSON с легендой
    */
   static encode(payload: FullJSON): CompactJSON {
+    const dict = createDictBuilder();
+
     // ============================================
     // 1. Индексы модулей
     // ============================================
-    const moduleIndex: Record<string, string> = {};
+    const moduleIndex: Record<string, { n: string; f: string[] }> = {};
     const moduleReverse: Record<string, number> = {};
     payload.modules.forEach((mod, idx) => {
-      moduleIndex[mod.id] = mod.name;
+      moduleIndex[mod.id] = { n: mod.name, f: [...mod.fileIds] };
       moduleReverse[mod.id] = idx + 1; // m1, m2, ...
     });
 
     // ============================================
     // 2. Индексы файлов
     // ============================================
-    const fileIndex: Record<string, string> = {};
+    const fileIndex: Record<string, { p: string; m: string }> = {};
     const fileReverse: Record<string, number> = {};
     payload.files.forEach((file, idx) => {
-      fileIndex[file.id] = file.path;
+      fileIndex[file.id] = { p: file.path, m: file.moduleId };
       fileReverse[file.id] = idx + 1; // f1, f2, ...
     });
 
@@ -417,16 +504,23 @@ export class Codec {
     // ============================================
     const functionReverse: Record<string, number> = {};
     const functions: CompactJSON['fns'] = [];
+
     payload.functions.forEach((func, idx) => {
       functionReverse[func.id] = idx + 1;
+
       const flags = encodeFlags(func);
+      const paramsIdx = (func.params || []).map(p => addParam(dict, p));
+      const returnTypeIdx = addString(dict, func.returnType);
+
       functions.push([
         func.id,
         func.name,
-        `m${moduleReverse[func.moduleId] || 0}`,
-        `f${fileReverse[func.fileId] || 0}`,
+        func.moduleId,
+        func.fileId,
         func.line,
         flagsToString(flags),
+        paramsIdx,
+        returnTypeIdx,
       ]);
     });
 
@@ -435,13 +529,16 @@ export class Codec {
     // ============================================
     const classes: CompactJSON['cls'] = payload.classes.map(cls => {
       const flags = encodeFlags(cls);
+      const methodsIdx = (cls.methods || []).map(m => addMethod(dict, m));
+
       return [
         cls.id,
         cls.name,
-        `m${moduleReverse[cls.moduleId] || 0}`,
-        `f${fileReverse[cls.fileId] || 0}`,
+        cls.moduleId,
+        cls.fileId,
         cls.line,
         flagsToString(flags),
+        methodsIdx,
       ];
     });
 
@@ -450,13 +547,16 @@ export class Codec {
     // ============================================
     const constants: CompactJSON['cn'] = payload.constants.map(cn => {
       const flags = encodeFlags(cn);
+      const valueIdx = addValue(dict, cn.value);
+
       return [
         cn.id,
         cn.name,
-        `m${moduleReverse[cn.moduleId] || 0}`,
-        `f${fileReverse[cn.fileId] || 0}`,
+        cn.moduleId,
+        cn.fileId,
         cn.line,
         flagsToString(flags),
+        valueIdx,
       ];
     });
 
@@ -465,30 +565,81 @@ export class Codec {
     // ============================================
     const exports: CompactJSON['gr']['e'] = payload.exports.map(exp => {
       const moduleIdx = moduleReverse[exp.moduleId] || 0;
+      const fileIdx = fileReverse[exp.fileId] || 0;
       const funcIdx = functionReverse[exp.functionId] || 0;
-      const typeCode = exp.isDefault ? 'de' : exp.type === 'type' ? 'te' : 'ne';
-      return [moduleIdx, funcIdx, exp.line, typeCode, exp.exportName, exp.localName];
+
+      let typeCode = 'ne';
+      if (exp.isDefault) typeCode = 'de';
+      else if (exp.isTypeOnly || exp.type === 'type') typeCode = 'te';
+
+      const exportNameIdx = addString(dict, exp.exportName);
+      const localNameIdx = addString(dict, exp.localName);
+      const sourceIdx = addString(dict, exp.source);
+
+      return [
+        moduleIdx,
+        fileIdx,
+        funcIdx,
+        exp.line,
+        typeCode,
+        exportNameIdx,
+        localNameIdx,
+        exp.isTypeOnly ? 1 : 0,
+        exp.isReExport ? 1 : 0,
+        sourceIdx,
+      ];
     });
 
     // ============================================
     // 7. Импорты (gr.i)
     // ============================================
-    const imports: CompactJSON['gr']['i'] = payload.imports.map(imp => [
-      imp.fromFileId,
-      imp.toFileId || '',
-      imp.importedName,
-      imp.type,
-      imp.fromFileId,
-      imp.line,
-    ]);
+    const imports: CompactJSON['gr']['i'] = payload.imports.map(imp => {
+      const fromFileIdx = fileReverse[imp.fromFileId] || 0;
+
+      // toFileId может быть:
+      //   'f5' | 'external:vue' | 'unresolved:./foo' | null
+      const toFileIdIdx = addString(dict, imp.toFileId ?? '');
+
+      const sourceIdx = addString(dict, imp.source);
+      const importedNameIdx = addString(dict, imp.importedName);
+      const localNameIdx = addString(dict, imp.localName);
+
+      let typeCode = 'n';
+      if (imp.isDefault) typeCode = 'df';
+      else if (imp.isNamespace) typeCode = 'ns';
+      else if (imp.isTypeOnly) typeCode = 'to';
+
+      return [
+        fromFileIdx,
+        toFileIdIdx,
+        sourceIdx,
+        importedNameIdx,
+        localNameIdx,
+        imp.line,
+        typeCode,
+        imp.isExternal ? 1 : 0,
+      ];
+    });
 
     // ============================================
     // 8. Вызовы (gr.c)
     // ============================================
     const calls: CompactJSON['gr']['c'] = payload.calls.map(call => {
       const fromIdx = functionReverse[call.fromFunctionId] || 0;
-      const toIdx = functionReverse[call.toFunctionId] || 0;
-      return [fromIdx, toIdx, call.line, call.type.charAt(0)];
+
+      let toIdxOrExternalIdx: number;
+      let typeCode: string;
+
+      if (call.toFunctionId.startsWith('external:')) {
+        // Внешний вызов — кодируем через stringDict + 'e'
+        toIdxOrExternalIdx = addString(dict, call.toFunctionId);
+        typeCode = 'e';
+      } else {
+        toIdxOrExternalIdx = functionReverse[call.toFunctionId] || 0;
+        typeCode = call.type.charAt(0);
+      }
+
+      return [fromIdx, toIdxOrExternalIdx, call.line, typeCode];
     });
 
     // ============================================
@@ -497,11 +648,77 @@ export class Codec {
     const reExports: CompactJSON['gr']['re'] = payload.reExports.map(re => {
       const moduleIdx = moduleReverse[re.moduleId] || 0;
       const funcIdx = functionReverse[re.functionId] || 0;
-      return [moduleIdx, funcIdx, re.source, re.exportName, re.line];
+
+      let typeCode = 'n';
+      if (re.isStarReExport) typeCode = 'all';
+      else if (re.isDefault) typeCode = 'df';
+
+      const sourceIdx = addString(dict, re.source);
+      const exportNameIdx = addString(dict, re.exportName);
+
+      return [
+        moduleIdx,
+        funcIdx,
+        sourceIdx,
+        exportNameIdx,
+        re.line,
+        typeCode,
+        re.isTypeOnly ? 1 : 0,
+      ];
     });
 
     // ============================================
-    // 10. Сборка результата
+    // 10. Сборка легенды с словарями
+    // ============================================
+    const legend: CodecLegend = {
+      flagMap: Object.fromEntries(
+        Object.entries(FLAG_MAP).map(([bit, char]) => [char, bit])
+      ),
+      flagCharMap: { ...FLAG_CHAR_MAP },
+      relationTypes: { ...RELATION_TYPES },
+      exportTypes: { ...EXPORT_TYPES },
+      importTypes: { ...IMPORT_TYPES },
+      callTypes: { ...CALL_TYPES },
+      reExportTypes: { ...RE_EXPORT_TYPES },
+
+      arraySchemas: {
+        fns: [
+          'id', 'name', 'moduleId', 'fileId',
+          'line', 'flags', 'paramsIdx', 'returnTypeIdx',
+        ],
+        cls: [
+          'id', 'name', 'moduleId', 'fileId',
+          'line', 'flags', 'methodsIdx',
+        ],
+        cn: [
+          'id', 'name', 'moduleId', 'fileId',
+          'line', 'flags', 'valueIdx',
+        ],
+        'gr.e': [
+          'moduleIdx', 'fileIdx', 'funcIdx', 'line', 'typeCode',
+          'exportNameIdx', 'localNameIdx', 'isTypeOnly',
+          'isReExport', 'sourceIdx',
+        ],
+        'gr.i': [
+          'fromFileIdx', 'toFileIdIdx', 'sourceIdx',
+          'importedNameIdx', 'localNameIdx', 'line',
+          'typeCode', 'isExternal',
+        ],
+        'gr.c': ['fromIdx', 'toIdxOrExternalIdx', 'line', 'typeCode'],
+        'gr.re': [
+          'moduleIdx', 'funcIdx', 'sourceIdx', 'exportNameIdx',
+          'line', 'typeCode', 'isTypeOnly',
+        ],
+      },
+
+      stringDict: dict.stringDict,
+      paramDict: dict.paramDict,
+      methodDict: dict.methodDict,
+      valueDict: dict.valueDict,
+    };
+
+    // ============================================
+    // 11. Сборка результата
     // ============================================
     return {
       v: payload.version,
@@ -512,16 +729,9 @@ export class Codec {
       fns: functions,
       cls: classes,
       cn: constants,
-      gr: {
-        e: exports,
-        i: imports,
-        c: calls,
-        re: reExports,
-      },
-      // ✅ ИСПРАВЛЕНО: убираем приведение к Record<string, number>,
-      // так как CompactJSON.st ожидает StatisticsData
+      gr: { e: exports, i: imports, c: calls, re: reExports },
       st: payload.statistics,
-      legend: Codec.getLegend(),
+      legend,
     };
   }
 
@@ -530,36 +740,69 @@ export class Codec {
   // ============================================
 
   /**
-   * Декодирует сжатый JSON обратно в полный
+   * Декодирует сжатый JSON обратно в полный.
    *
    * @param compact - Сжатый JSON с легендой
    * @returns Полный JSON
    */
   static decode(compact: CompactJSON): FullJSON {
-    // ============================================
-    // 1. Восстанавливаем модули
-    // ============================================
-    const modules: FullJSON['modules'] = Object.entries(compact.mi).map(([id, name]) => ({
-      id,
-      name,
-      path: name,
-      fileIds: [],
-    }));
+    const legend = compact.legend;
 
     // ============================================
-    // 2. Восстанавливаем файлы
+    // Хелперы для чтения словарей
     // ============================================
-    const files: FullJSON['files'] = Object.entries(compact.fl).map(([id, path]) => ({
-      id,
-      path,
-      moduleId: '',
-    }));
+    const readString = (idx: number): string | undefined =>
+      idx < 0 ? undefined : legend.stringDict[idx];
+
+    const readStringOrEmpty = (idx: number): string =>
+      idx < 0 ? '' : (legend.stringDict[idx] ?? '');
+
+    const readParam = (idx: number): string =>
+      idx < 0 ? '' : (legend.paramDict[idx] ?? '');
+
+    const readMethod = (idx: number): string =>
+      idx < 0 ? '' : (legend.methodDict[idx] ?? '');
+
+    const readValue = (idx: number): unknown =>
+      idx < 0 ? undefined : legend.valueDict[idx];
 
     // ============================================
-    // 3. Восстанавливаем функции
+    // 1. Модули
+    // ============================================
+    const modules: ModuleData[] = Object.entries(compact.mi).map(
+      ([id, data]) => ({
+        id,
+        name: data.n,
+        path: data.n,
+        fileIds: [...data.f],
+      })
+    );
+
+    // ============================================
+    // 2. Файлы
+    // ============================================
+    const files: FileData[] = Object.entries(compact.fl).map(
+      ([id, data]) => ({
+        id,
+        path: data.p,
+        moduleId: data.m,
+      })
+    );
+
+    // ============================================
+    // 3. Функции
     // ============================================
     const functions: FunctionData[] = (compact.fns || []).map(
-      ([id, name, moduleId, fileId, line, flagsStr]) => {
+      ([
+         id,
+         name,
+         moduleId,
+         fileId,
+         line,
+         flagsStr,
+         paramsIdx,
+         returnTypeIdx,
+       ]) => {
         const flags = decodeFlagsToObject(flagsStr);
         return {
           id,
@@ -571,16 +814,17 @@ export class Codec {
           isAsync: flags.isAsync,
           isArrow: flags.isArrow,
           isMethod: flags.isMethod,
-          params: [],
+          params: (paramsIdx || []).map(readParam),
+          returnType: readString(returnTypeIdx),
         };
       }
     );
 
     // ============================================
-    // 4. Восстанавливаем классы
+    // 4. Классы
     // ============================================
     const classes: ClassData[] = (compact.cls || []).map(
-      ([id, name, moduleId, fileId, line, flagsStr]) => {
+      ([id, name, moduleId, fileId, line, flagsStr, methodsIdx]) => {
         const flags = decodeFlagsToObject(flagsStr);
         return {
           id,
@@ -589,16 +833,16 @@ export class Codec {
           fileId,
           line,
           isExported: flags.isExported,
-          methods: [],
+          methods: (methodsIdx || []).map(readMethod),
         };
       }
     );
 
     // ============================================
-    // 5. Восстанавливаем константы
+    // 5. Константы
     // ============================================
     const constants: ConstantData[] = (compact.cn || []).map(
-      ([id, name, moduleId, fileId, line, flagsStr]) => {
+      ([id, name, moduleId, fileId, line, flagsStr, valueIdx]) => {
         const flags = decodeFlagsToObject(flagsStr);
         return {
           id,
@@ -607,77 +851,201 @@ export class Codec {
           fileId,
           line,
           isExported: flags.isExported,
+          value: readValue(valueIdx),
         };
       }
     );
 
     // ============================================
-    // 6. Восстанавливаем экспорты
+    // 6. Экспорты
     // ============================================
     const exports: ExportData[] = (compact.gr?.e || []).map(
-      ([moduleIdx, funcIdx, line, typeCode, exportName, localName]) => ({
-        id: `e${moduleIdx}_${funcIdx}`,
+      (
+        [
+          moduleIdx,
+          fileIdx,
+          funcIdx,
+          line,
+          typeCode,
+          exportNameIdx,
+          localNameIdx,
+          isTypeOnly,
+          isReExport,
+          sourceIdx,
+        ],
+        idx
+      ) => ({
+        id: `e${idx + 1}`,
         moduleId: `m${moduleIdx}`,
+        fileId: `f${fileIdx}`,
         functionId: `fn${funcIdx}`,
-        exportName,
-        localName,
+        exportName: readStringOrEmpty(exportNameIdx),
+        localName: readStringOrEmpty(localNameIdx),
         line,
         type: (EXPORT_TYPES[typeCode] || 'named') as ExportData['type'],
         isDefault: typeCode === 'de',
+        isTypeOnly: isTypeOnly === 1,
+        isReExport: isReExport === 1,
+        isStarReExport: false,
+        isDefaultReExport: false,
+        source: readString(sourceIdx),
       })
     );
 
     // ============================================
-    // 7. Восстанавливаем импорты
+    // 7. Импорты
     // ============================================
     const imports: ImportData[] = (compact.gr?.i || []).map(
-      ([fromFileId, toFileId, importedName, type, , line], idx) => ({
-        id: `i${idx}`,
-        fromFileId,
-        toFileId: toFileId || null,
-        importedName,
-        localName: importedName,
-        line,
-        type: (IMPORT_TYPES[type] || 'named') as ImportData['type'],
-      })
+      (
+        [
+          fromFileIdx,
+          toFileIdIdx,
+          sourceIdx,
+          importedNameIdx,
+          localNameIdx,
+          line,
+          typeCode,
+          isExternal,
+        ],
+        idx
+      ) => {
+        const source = readStringOrEmpty(sourceIdx);
+        const toFileId = readString(toFileIdIdx) ?? null;
+
+        return {
+          id: `i${idx + 1}`,
+          fromFileId: `f${fromFileIdx}`,
+          toFileId,
+          source,
+          importedName: readStringOrEmpty(importedNameIdx),
+          localName: readStringOrEmpty(localNameIdx),
+          line,
+          type: (IMPORT_TYPES[typeCode] || 'named') as ImportData['type'],
+          isDefault: typeCode === 'df',
+          isNamespace: typeCode === 'ns',
+          isTypeOnly: typeCode === 'to',
+          isExternal: isExternal === 1,
+          packageName:
+            isExternal === 1
+              ? source.startsWith('@')
+                ? source.split('/').slice(0, 2).join('/')
+                : source.split('/')[0]
+              : undefined,
+        };
+      }
     );
 
     // ============================================
-    // 8. Восстанавливаем вызовы
+    // 8. Вызовы
     // ============================================
     const calls: CallData[] = (compact.gr?.c || []).map(
-      ([fromIdx, toIdx, line, typeChar], idx) => ({
-        id: `c${idx}`,
-        fromFunctionId: `fn${fromIdx}`,
-        toFunctionId: `fn${toIdx}`,
-        line,
-        type: (CALL_TYPES[typeChar] || 'direct') as CallData['type'],
-      })
+      ([fromIdx, toIdxOrExternalIdx, line, typeChar], idx) => {
+        let toFunctionId: string;
+        let callType: CallData['type'];
+
+        if (typeChar === 'e') {
+          // Внешний вызов — toIdxOrExternalIdx — индекс в stringDict
+          toFunctionId = readStringOrEmpty(toIdxOrExternalIdx);
+          callType = 'direct';
+        } else {
+          toFunctionId = `fn${toIdxOrExternalIdx}`;
+          callType = (CALL_TYPES[typeChar] || 'direct') as CallData['type'];
+        }
+
+        return {
+          id: `c${idx + 1}`,
+          fromFunctionId: `fn${fromIdx}`,
+          toFunctionId,
+          line,
+          type: callType,
+        };
+      }
     );
 
     // ============================================
-    // 9. Восстанавливаем реэкспорты
+    // 9. Реэкспорты
     // ============================================
     const reExports: ReExportData[] = (compact.gr?.re || []).map(
-      ([moduleIdx, funcIdx, source, exportName, line]) => ({
-        id: `re${moduleIdx}_${funcIdx}`,
+      (
+        [
+          moduleIdx,
+          funcIdx,
+          sourceIdx,
+          exportNameIdx,
+          line,
+          typeCode,
+          isTypeOnly,
+        ],
+        idx
+      ) => ({
+        id: `re${idx + 1}`,
         moduleId: `m${moduleIdx}`,
         functionId: `fn${funcIdx}`,
-        source,
-        exportName,
+        source: readStringOrEmpty(sourceIdx),
+        exportName: readStringOrEmpty(exportNameIdx),
         line,
+        type: (RE_EXPORT_TYPES[typeCode] || 'named') as ReExportData['type'],
+        isDefault: typeCode === 'df',
+        isTypeOnly: isTypeOnly === 1,
+        isStarReExport: typeCode === 'all',
       })
     );
 
     // ============================================
-    // 10. Восстанавливаем статистику
+    // 10. Статистика
     // ============================================
-    const statistics: StatisticsData = compact.st
-      ? (compact.st as StatisticsData)
-      : createEmptyStatistics();
+    const statistics: StatisticsData = compact.st;
 
     // ============================================
-    // 11. Сборка результата
+    // 11. Восстановление edges из gr.*
+    // ============================================
+    const edges: EdgeData[] = [];
+
+    // Импорты → edges
+    for (const imp of imports) {
+      edges.push({
+        from: imp.fromFileId,
+        to: imp.toFileId || 'unknown',
+        type: 'import',
+        symbol: imp.importedName,
+        line: imp.line,
+      });
+    }
+
+    // Экспорты → edges
+    for (const exp of exports) {
+      edges.push({
+        from: exp.fileId,
+        to: exp.functionId,
+        type: 'export',
+        symbol: exp.exportName,
+        line: exp.line,
+      });
+    }
+
+    // Вызовы → edges
+    for (const call of calls) {
+      edges.push({
+        from: call.fromFunctionId,
+        to: call.toFunctionId,
+        type: 'call',
+        line: call.line,
+      });
+    }
+
+    // Реэкспорты → edges
+    for (const re of reExports) {
+      edges.push({
+        from: re.moduleId,
+        to: re.functionId,
+        type: 're-export',
+        symbol: re.exportName,
+        line: re.line,
+      });
+    }
+
+    // ============================================
+    // 12. Сборка результата
     // ============================================
     return {
       version: compact.v,
@@ -693,6 +1061,7 @@ export class Codec {
       calls,
       reExports,
       statistics,
+      edges: edges.length > 0 ? edges : undefined,
     };
   }
 
@@ -701,17 +1070,55 @@ export class Codec {
   // ============================================
 
   /**
-   * Возвращает легенду для декодирования
+   * Возвращает легенду для декодирования.
+   * ВНИМАНИЕ: словари пустые — используйте encode() для получения словарей.
    */
   static getLegend(): CodecLegend {
     return {
-      flagMap: Object.fromEntries(Object.entries(FLAG_MAP).map(([bit, char]) => [char, bit])),
+      flagMap: Object.fromEntries(
+        Object.entries(FLAG_MAP).map(([bit, char]) => [char, bit])
+      ),
       flagCharMap: { ...FLAG_CHAR_MAP },
       relationTypes: { ...RELATION_TYPES },
       exportTypes: { ...EXPORT_TYPES },
       importTypes: { ...IMPORT_TYPES },
       callTypes: { ...CALL_TYPES },
-      keyMap: { ...KEY_MAP },
+      reExportTypes: { ...RE_EXPORT_TYPES },
+
+      arraySchemas: {
+        fns: [
+          'id', 'name', 'moduleId', 'fileId',
+          'line', 'flags', 'paramsIdx', 'returnTypeIdx',
+        ],
+        cls: [
+          'id', 'name', 'moduleId', 'fileId',
+          'line', 'flags', 'methodsIdx',
+        ],
+        cn: [
+          'id', 'name', 'moduleId', 'fileId',
+          'line', 'flags', 'valueIdx',
+        ],
+        'gr.e': [
+          'moduleIdx', 'fileIdx', 'funcIdx', 'line', 'typeCode',
+          'exportNameIdx', 'localNameIdx', 'isTypeOnly',
+          'isReExport', 'sourceIdx',
+        ],
+        'gr.i': [
+          'fromFileIdx', 'toFileIdIdx', 'sourceIdx',
+          'importedNameIdx', 'localNameIdx', 'line',
+          'typeCode', 'isExternal',
+        ],
+        'gr.c': ['fromIdx', 'toIdxOrExternalIdx', 'line', 'typeCode'],
+        'gr.re': [
+          'moduleIdx', 'funcIdx', 'sourceIdx', 'exportNameIdx',
+          'line', 'typeCode', 'isTypeOnly',
+        ],
+      },
+
+      stringDict: [],
+      paramDict: [],
+      methodDict: [],
+      valueDict: [],
     };
   }
 
@@ -720,7 +1127,7 @@ export class Codec {
   // ============================================
 
   /**
-   * Проверяет, что encode → decode возвращает тот же результат
+   * Проверяет, что encode → decode возвращает идентичный результат.
    *
    * @param payload - Полный JSON
    * @returns Результат проверки
@@ -728,21 +1135,21 @@ export class Codec {
   static verifyRoundTrip(payload: FullJSON): {
     ok: boolean;
     error?: string;
-    details?: {
-      functions: { original: number; decoded: number };
-      classes: { original: number; decoded: number };
-      constants: { original: number; decoded: number };
-      exports: { original: number; decoded: number };
-      imports: { original: number; decoded: number };
-      calls: { original: number; decoded: number };
-      reExports: { original: number; decoded: number };
-    };
+    details?: Record<string, { original: number; decoded: number }>;
   } {
     try {
       const compact = Codec.encode(payload);
       const decoded = Codec.decode(compact);
 
-      const details = {
+      const details: Record<string, { original: number; decoded: number }> = {
+        modules: {
+          original: payload.modules.length,
+          decoded: decoded.modules.length,
+        },
+        files: {
+          original: payload.files.length,
+          decoded: decoded.files.length,
+        },
         functions: {
           original: payload.functions.length,
           decoded: decoded.functions.length,
@@ -776,20 +1183,38 @@ export class Codec {
       const errors: string[] = [];
       for (const [key, value] of Object.entries(details)) {
         if (value.original !== value.decoded) {
-          errors.push(
-            `${key}: ${value.original} → ${value.decoded} (потеряно ${value.original - value.decoded})`
-          );
+          errors.push(`${key}: ${value.original} → ${value.decoded}`);
         }
       }
 
-      if (errors.length > 0) {
-        return {
-          ok: false,
-          error: errors.join('; '),
-          details,
-        };
+      // Глубокая проверка: сравнение JSON-строк
+      const origStr = JSON.stringify(payload, null, 0);
+      const decStr = JSON.stringify(decoded, null, 0);
+
+      if (origStr !== decStr) {
+        const minLen = Math.min(origStr.length, decStr.length);
+        let diffPos = minLen;
+        for (let i = 0; i < minLen; i++) {
+          if (origStr[i] !== decStr[i]) {
+            diffPos = i;
+            break;
+          }
+        }
+        const ctx = 80;
+        const start = Math.max(0, diffPos - ctx);
+        const end = Math.min(minLen, diffPos + ctx);
+        errors.push(
+          `JSON mismatch at pos ${diffPos}: ` +
+          `...${origStr.substring(start, end)}... ≠ ...${decStr.substring(
+            start,
+            end
+          )}...`
+        );
       }
 
+      if (errors.length > 0) {
+        return { ok: false, error: errors.join('; '), details };
+      }
       return { ok: true, details };
     } catch (err) {
       return {
@@ -804,21 +1229,21 @@ export class Codec {
   // ============================================
 
   /**
-   * Возвращает размер сжатого JSON в байтах
+   * Возвращает размер сжатого JSON в байтах.
    */
   static getCompactSize(compact: CompactJSON): number {
     return JSON.stringify(compact).length;
   }
 
   /**
-   * Возвращает размер полного JSON в байтах
+   * Возвращает размер полного JSON в байтах.
    */
   static getFullSize(payload: FullJSON): number {
     return JSON.stringify(payload).length;
   }
 
   /**
-   * Возвращает коэффициент сжатия
+   * Возвращает коэффициент сжатия.
    */
   static getCompressionRatio(payload: FullJSON): number {
     const compact = Codec.encode(payload);
@@ -829,17 +1254,86 @@ export class Codec {
   }
 
   /**
-   * Сериализует компактный JSON в строку
+   * Сериализует компактный JSON в строку.
    */
   static stringify(compact: CompactJSON, pretty: boolean = false): string {
-    return pretty ? JSON.stringify(compact, null, 2) : JSON.stringify(compact);
+    return pretty
+      ? JSON.stringify(compact, null, 2)
+      : JSON.stringify(compact);
   }
 
   /**
-   * Парсит компактный JSON из строки
+   * Парсит компактный JSON из строки.
    */
   static parse(json: string): CompactJSON {
     return JSON.parse(json) as CompactJSON;
+  }
+
+  // ============================================
+  // УТИЛИТЫ ДЛЯ РАБОТЫ С ИМПОРТАМИ
+  // ============================================
+
+  /**
+   * Извлекает все импорты для указанного файла.
+   */
+  static getImportsForFile(
+    compact: CompactJSON,
+    fileId: string
+  ): ImportData[] {
+    const full = Codec.decode(compact);
+    return full.imports.filter(imp => imp.fromFileId === fileId);
+  }
+
+  /**
+   * Извлекает все файлы, которые импортируют указанный файл.
+   */
+  static getImportersOfFile(
+    compact: CompactJSON,
+    toFileId: string
+  ): ImportData[] {
+    const full = Codec.decode(compact);
+    return full.imports.filter(imp => imp.toFileId === toFileId);
+  }
+
+  /**
+   * Проверяет, что все импорты имеют разрешённый toFileId.
+   */
+  static verifyImportsResolved(compact: CompactJSON): {
+    ok: boolean;
+    total: number;
+    resolved: number;
+    external: number;
+    unresolved: number;
+    nullCount: number;
+  } {
+    const full = Codec.decode(compact);
+    let resolved = 0;
+    let external = 0;
+    let unresolved = 0;
+    let nullCount = 0;
+
+    for (const imp of full.imports) {
+      if (imp.isExternal) {
+        external++;
+      } else if (!imp.toFileId) {
+        nullCount++;
+      } else if (imp.toFileId.startsWith('unresolved:')) {
+        unresolved++;
+      } else if (imp.toFileId.startsWith('external:')) {
+        external++;
+      } else {
+        resolved++;
+      }
+    }
+
+    return {
+      ok: nullCount === 0,
+      total: full.imports.length,
+      resolved,
+      external,
+      unresolved,
+      nullCount,
+    };
   }
 }
 

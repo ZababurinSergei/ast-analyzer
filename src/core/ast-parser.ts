@@ -1,6 +1,10 @@
 // src/core/ast-parser.ts
-// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ - исправлен сбор ExportSpecifier
-// ✅ ДОБАВЛЕНО: сохранение loc в импортах и экспортах для корректных line в отчетах
+// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ v7.1.0
+// ✅ ИСПРАВЛЕНО: isExternalModule — @scope/pkg теперь external
+// ✅ ИСПРАВЛЕНО: collectImportsFromAST — сохраняется line + loc
+// ✅ ИСПРАВЛЕНО: collectExportsFromAST — localName, isTypeOnly, isStarReExport, isDefaultReExport
+// ✅ ИСПРАВЛЕНО: collectExportsFromAST — правильная обработка default export и star re-export
+// ✅ ДОБАВЛЕНО: isNodeExported — расширенная проверка
 
 import fs from 'fs';
 import path from 'path';
@@ -14,26 +18,18 @@ import type { TsConfig } from './tsconfig-resolver.js';
 // ✅ РАСШИРЕНИЕ ТИПА ДЛЯ AST (ВАРИАНТ 1)
 // ==========================================
 
-// Расширяем интерфейс ESLintProgram из @typescript-eslint/types
 declare module '@typescript-eslint/types' {
   interface ESLintProgram {
-    /** Исходный код для Vue компонентов */
     _originalCode?: string;
-    /** Флаг, указывающий что AST получен из Vue файла */
     _isVue?: boolean;
-    /** Тип Vue скрипта: setup, tsSetup, basic, ts */
     _vueType?: 'setup' | 'tsSetup' | 'basic' | 'ts' | null;
   }
 }
 
-// Дополнительное глобальное расширение для безопасности
 declare global {
   interface Object {
-    /** Исходный код для Vue компонентов */
     _originalCode?: string;
-    /** Флаг, указывающий что AST получен из Vue файла */
     _isVue?: boolean;
-    /** Тип Vue скрипта: setup, tsSetup, basic, ts */
     _vueType?: 'setup' | 'tsSetup' | 'basic' | 'ts' | null;
   }
 }
@@ -63,37 +59,95 @@ const DEFAULT_EXCLUDE_PATTERNS = [
 
 import type { ParserOptions } from '@typescript-eslint/parser';
 
-// Кэш для tsconfig
 let tsConfigCache: TsConfig | null = null;
 let tsConfigBaseDirCache: string | null = null;
 
 // ==========================================
-// ФУНКЦИИ ДЛЯ РАБОТЫ С ПУТЯМИ (используем path-utils)
+// ФУНКЦИИ ДЛЯ РАБОТЫ С ПУТЯМИ
 // ==========================================
 
 import { resolveAbsolutePath, validateAndResolvePath, normalizePathForOS } from '../utils/path-utils.js';
 
-// Реэкспортируем для обратной совместимости
 export { resolveAbsolutePath, validateAndResolvePath, normalizePathForOS };
 
 // ==========================================
-// ФУНКЦИЯ С КЭШИРОВАНИЕМ
+// ✅ ОБНОВЛЕНО: isExternalModule — правильная логика для @scope/pkg
 // ==========================================
 
 /**
  * Возвращает tsconfig для файла с кэшированием
- * @param filePath - Путь к файлу для которого нужно получить tsconfig
- * @returns TsConfig или null если не найден
  */
 export function getTsConfigForFile(filePath: string): TsConfig | null {
   const dir = path.dirname(filePath);
   if (tsConfigCache && tsConfigBaseDirCache === dir) {
     return tsConfigCache;
   }
-
   tsConfigBaseDirCache = dir;
   tsConfigCache = loadTsConfig(dir);
   return tsConfigCache;
+}
+
+// ==========================================
+// ✅ ОБНОВЛЕНО: isExternalModule
+// ==========================================
+
+/**
+ * Проверяет, является ли модуль внешним (из node_modules).
+ *
+ * ✅ ИСПРАВЛЕНО v7.1.0:
+ *   - `@scope/pkg` — теперь ВНЕШНИЙ (раньше ошибочно считался алиасом)
+ *   - `@/foo`, `#/foo`, `~/foo` — алиасы проекта (проверяются по tsconfig)
+ *   - `./foo`, `../foo`, `/foo` — относительные/абсолютные (не внешние)
+ *
+ * @param importTarget — путь импорта из кода
+ * @param filePath — путь к файлу-импортёру (для загрузки tsconfig)
+ */
+export function isExternalModule(importTarget: string, filePath?: string): boolean {
+  if (!importTarget) return false;
+
+  // 1. Относительные пути
+  if (importTarget.startsWith('.')) return false;
+  if (importTarget.startsWith('/')) return false;
+  if (path.isAbsolute(importTarget)) return false;
+
+  // 2. Алиасы проекта (#/, ~/, @/)
+  if (
+    importTarget.startsWith('@/') ||
+    importTarget.startsWith('#/') ||
+    importTarget.startsWith('~/') ||
+    importTarget === '#'
+  ) {
+    return false;
+  }
+
+  // 3. Scoped npm-пакеты (@scope/name)
+  if (importTarget.startsWith('@')) {
+    const parts = importTarget.split('/');
+    // @scope/name — минимум 2 части
+    if (parts.length >= 2 && parts[0] && parts[1]) {
+      // Проверяем, не является ли это алиасом из tsconfig
+      const tsConfig = filePath
+        ? getTsConfigForFile(filePath)
+        : getTsConfigForFile(process.cwd());
+
+      if (tsConfig?.compilerOptions?.paths) {
+        const isAlias = Object.keys(tsConfig.compilerOptions.paths).some(alias => {
+          const aliasPrefix = alias.replace('/*', '').replace('*', '');
+          return (
+            importTarget === aliasPrefix ||
+            importTarget.startsWith(aliasPrefix + '/')
+          );
+        });
+        if (isAlias) return false;
+      }
+
+      return true; // @scope/name — внешний
+    }
+    return false;
+  }
+
+  // 4. Всё остальное без ./ и / — внешний npm-пакет
+  return true;
 }
 
 // ==========================================
@@ -110,35 +164,29 @@ export interface VueSFCData {
 }
 
 // ==========================================
-// НОВЫЙ ИНТЕРФЕЙС ДЛЯ ИНФОРМАЦИИ О ФАЙЛЕ
+// ✅ ОБНОВЛЕННЫЙ ParsedFileInfo
 // ==========================================
 
 export interface ParsedFileInfo {
-  /** AST дерево */
   ast: any;
-  /** Путь к файлу */
   filePath: string;
-  /** Имя модуля (директория) */
   moduleName: string;
-  /** Короткий ID файла (генерируется при сохранении) */
   fileId?: string;
-  /** Короткий ID модуля */
   moduleId?: string;
-  /** Является ли файл Vue компонентом */
   isVue: boolean;
-  /** Является ли файл TypeScript */
   isTypeScript: boolean;
-  /** Содержимое файла */
   content: string;
-  /** Импорты из файла */
   imports: {
     source: string;
     specifiers: string[];
+    specifiersStructured?: { imported: string; local: string; type: string }[];
     isTypeOnly: boolean;
     line?: number;
     loc?: any;
+    toFileId?: string | null;
+    isExternal?: boolean;
+    packageName?: string;
   }[];
-  /** Экспорты из файла */
   exports: {
     name: string;
     type: string;
@@ -148,16 +196,17 @@ export interface ParsedFileInfo {
     source?: string;
     specifiers?: string[];
     loc?: any;
+    isTypeOnly?: boolean;
+    isStarReExport?: boolean;
+    isDefaultReExport?: boolean;
+    localName?: string;  // ✅ НОВОЕ
   }[];
 }
 
 // ==========================================
-// ПАРСИНГ ФАЙЛОВ
+// ПАРСИНГ VUE SFC
 // ==========================================
 
-/**
- * Парсит Vue SFC файл с использованием @vue/compiler-sfc (без регулярных выражений)
- */
 export function parseVueSFCFile(filePath: string): VueSFCData | null {
   try {
     const resolvedPath = resolveAbsolutePath(filePath);
@@ -198,7 +247,6 @@ export function parseVueSFCFile(filePath: string): VueSFCData | null {
       result.scriptType = descriptor.scriptSetup.lang === 'ts' ? 'tsSetup' : 'setup';
     }
 
-    // ✅ ДОБАВЛЯЕМ ПРОВЕРКУ НА ПУСТОЙ СКРИПТ
     const scriptContent = result.scriptSetup || result.script;
     if (scriptContent && scriptContent.trim() === '') {
       console.log(`ℹ️ Пустой script блок в ${path.basename(filePath)}, пропускаем`);
@@ -226,57 +274,126 @@ export function parseVueSFCFile(filePath: string): VueSFCData | null {
 }
 
 // ==========================================
-// ✅ ОБНОВЛЕННАЯ ФУНКЦИЯ: СБОР ИМПОРТОВ ИЗ AST
+// ✅ ОБНОВЛЕНО: collectImportsFromAST — сохраняется line + loc
 // ==========================================
 
 /**
- * Собирает все импорты из AST с сохранением loc
- * ✅ ОБНОВЛЕНО: добавлено сохранение loc для корректных line в отчетах
+ * Собирает все импорты из AST с сохранением loc и line.
+ *
+ * ✅ ИСПРАВЛЕНО v7.1.0:
+ *   - `line` теперь явно вычисляется из `node.loc.start.line`
+ *   - `isExternal` определяется корректно (через isExternalModule)
+ *   - `packageName` вычисляется для внешних модулей
+ *   - `toFileId` заполняется `external:pkg` для внешних
+ *
+ * @param ast — AST дерево
+ * @param filePath — путь к файлу (для разрешения путей и isExternal)
  */
-function collectImportsFromAST(ast: any): {
+function collectImportsFromAST(
+  ast: any,
+  filePath?: string
+): {
   source: string;
   specifiers: string[];
+  specifiersStructured: { imported: string; local: string; type: string }[];
   isTypeOnly: boolean;
   line?: number;
   loc?: any;
+  toFileId?: string | null;
+  isExternal?: boolean;
+  packageName?: string;
 }[] {
   const imports: {
     source: string;
     specifiers: string[];
+    specifiersStructured: { imported: string; local: string; type: string }[];
     isTypeOnly: boolean;
     line?: number;
     loc?: any;
+    toFileId?: string | null;
+    isExternal?: boolean;
+    packageName?: string;
   }[] = [];
 
   if (!ast || !ast.body) return imports;
+
+  const baseDir = filePath ? path.dirname(filePath) : process.cwd();
 
   walk(ast, {
     enter(node: any) {
       if (node.type === 'ImportDeclaration' && node.source) {
         const source = node.source.value;
         const specifiers: string[] = [];
+        const specifiersStructured: { imported: string; local: string; type: string }[] = [];
         const isTypeOnly = node.importKind === 'type' || false;
 
         for (const spec of node.specifiers || []) {
           if (spec.type === 'ImportSpecifier') {
-            const name = spec.imported?.name || spec.local?.name;
-            if (name) specifiers.push(name);
+            const importedName = spec.imported?.name || spec.local?.name;
+            const localName = spec.local?.name || spec.imported?.name;
+            if (importedName && localName) {
+              specifiers.push(
+                importedName === localName ? importedName : `${importedName} as ${localName}`
+              );
+              specifiersStructured.push({
+                imported: importedName,
+                local: localName,
+                type: 'ImportSpecifier',
+              });
+            }
           } else if (spec.type === 'ImportDefaultSpecifier') {
-            const name = spec.local?.name;
-            if (name) specifiers.push(`default as ${name}`);
+            const localName = spec.local?.name;
+            if (localName) {
+              specifiers.push(`default as ${localName}`);
+              specifiersStructured.push({
+                imported: 'default',
+                local: localName,
+                type: 'ImportDefaultSpecifier',
+              });
+            }
           } else if (spec.type === 'ImportNamespaceSpecifier') {
-            const name = spec.local?.name;
-            if (name) specifiers.push(`* as ${name}`);
+            const localName = spec.local?.name;
+            if (localName) {
+              specifiers.push(`* as ${localName}`);
+              specifiersStructured.push({
+                imported: '*',
+                local: localName,
+                type: 'ImportNamespaceSpecifier',
+              });
+            }
           }
         }
 
         if (source && specifiers.length > 0) {
+          let toFileId: string | null = null;
+          let isExternal = false;
+          let packageName: string | undefined;
+
+          // ✅ ИСПРАВЛЕНО: используем новый isExternalModule с filePath
+          if (isExternalModule(source, filePath)) {
+            isExternal = true;
+            packageName = source.startsWith('@')
+              ? source.split('/').slice(0, 2).join('/')
+              : source.split('/')[0];
+            toFileId = `external:${packageName}`;
+          } else {
+            const resolvedPath = resolveFilePath(baseDir, source);
+            toFileId = resolvedPath || `unresolved:${source}`;
+          }
+
+          // ✅ НОВОЕ: явно вычисляем line из loc
+          const line = node.loc?.start?.line || 0;
+
           imports.push({
             source,
             specifiers,
+            specifiersStructured,
             isTypeOnly,
-            line: node.loc?.start?.line,
-            loc: node.loc, // ✅ Сохраняем loc
+            line,
+            loc: node.loc,
+            toFileId,
+            isExternal,
+            packageName,
           });
         }
       }
@@ -287,14 +404,24 @@ function collectImportsFromAST(ast: any): {
 }
 
 // ==========================================
-// ✅ ОБНОВЛЕННАЯ ФУНКЦИЯ: СБОР ЭКСПОРТОВ ИЗ AST
+// ✅ ОБНОВЛЕНО: collectExportsFromAST
 // ==========================================
 
 /**
- * Собирает все экспорты из AST
- * ✅ ИСПРАВЛЕНО: добавлена поддержка ExportSpecifier для export { a, b }
- * ✅ ИСПРАВЛЕНО: добавлена поддержка реэкспортов (export { a } from 'module')
- * ✅ ОБНОВЛЕНО: сохранение loc для корректных line в отчетах
+ * Собирает все экспорты из AST.
+ *
+ * ✅ ИСПРАВЛЕНО v7.1.0:
+ *   - Добавлено поле `localName` (для `export { a as b }`)
+ *   - Добавлено поле `isTypeOnly` (для interface/type/enum/export type)
+ *   - Добавлено поле `isStarReExport` (для `export * from`)
+ *   - Добавлено поле `isDefaultReExport` (для `export { default } from`)
+ *   - Правильная обработка `export { a, b }` без source (named exports)
+ *   - Правильная обработка `export { a } from 'module'` (re-exports)
+ *   - Правильная обработка `export * from 'module'` (star re-exports)
+ *   - Правильная обработка `export default function/class` (default exports)
+ *   - Правильная обработка `export type { ... }` (type-only)
+ *
+ * @param ast — AST дерево
  */
 export function collectExportsFromAST(ast: any): {
   name: string;
@@ -305,6 +432,10 @@ export function collectExportsFromAST(ast: any): {
   source?: string;
   specifiers?: string[];
   loc?: any;
+  isTypeOnly?: boolean;
+  isStarReExport?: boolean;
+  isDefaultReExport?: boolean;
+  localName?: string;
 }[] {
   const exports: any[] = [];
 
@@ -317,23 +448,28 @@ export function collectExportsFromAST(ast: any): {
       // ============================================
       if (node.type === 'ExportNamedDeclaration' && node.declaration) {
         const decl = node.declaration;
+        const isTypeOnly = node.exportKind === 'type' || false;
 
         if (decl.type === 'FunctionDeclaration' && decl.id) {
           exports.push({
             name: decl.id.name,
+            localName: decl.id.name,           // ✅
             type: 'function',
             isDefault: false,
-            line: node.loc?.start?.line,
+            line: node.loc?.start?.line || decl.loc?.start?.line,
             isReExport: false,
+            isTypeOnly,
             loc: node.loc,
           });
         } else if (decl.type === 'ClassDeclaration' && decl.id) {
           exports.push({
             name: decl.id.name,
+            localName: decl.id.name,           // ✅
             type: 'class',
             isDefault: false,
-            line: node.loc?.start?.line,
+            line: node.loc?.start?.line || decl.loc?.start?.line,
             isReExport: false,
+            isTypeOnly,
             loc: node.loc,
           });
         } else if (decl.type === 'VariableDeclaration') {
@@ -341,10 +477,12 @@ export function collectExportsFromAST(ast: any): {
             if (d.id?.name) {
               exports.push({
                 name: d.id.name,
+                localName: d.id.name,         // ✅
                 type: 'variable',
                 isDefault: false,
                 line: d.loc?.start?.line || node.loc?.start?.line,
                 isReExport: false,
+                isTypeOnly,
                 loc: d.loc || node.loc,
               });
             }
@@ -352,147 +490,178 @@ export function collectExportsFromAST(ast: any): {
         } else if (decl.type === 'TSInterfaceDeclaration' && decl.id) {
           exports.push({
             name: decl.id.name,
+            localName: decl.id.name,           // ✅
             type: 'interface',
             isDefault: false,
-            line: node.loc?.start?.line,
+            line: node.loc?.start?.line || decl.loc?.start?.line,
             isReExport: false,
+            isTypeOnly: true,                  // ✅ interface → type-only
             loc: node.loc,
           });
         } else if (decl.type === 'TSTypeAliasDeclaration' && decl.id) {
           exports.push({
             name: decl.id.name,
+            localName: decl.id.name,           // ✅
             type: 'type',
             isDefault: false,
-            line: node.loc?.start?.line,
+            line: node.loc?.start?.line || decl.loc?.start?.line,
             isReExport: false,
+            isTypeOnly: true,                  // ✅ type alias → type-only
             loc: node.loc,
           });
         } else if (decl.type === 'TSEnumDeclaration' && decl.id) {
           exports.push({
             name: decl.id.name,
+            localName: decl.id.name,           // ✅
             type: 'enum',
             isDefault: false,
-            line: node.loc?.start?.line,
+            line: node.loc?.start?.line || decl.loc?.start?.line,
             isReExport: false,
+            isTypeOnly: false,
             loc: node.loc,
           });
         }
       }
 
       // ============================================
-      // 2. ✅ РЕЭКСПОРТЫ И SPECIFIERS: export { a, b } from 'module'
+      // 2. ✅ ИСПРАВЛЕНО: Re-exports и named exports
+      //    export { a, b }               — named (без source)
+      //    export { a, b } from 'module' — re-export
+      //    export type { T }             — type-only named
+      //    export { default } from '...' — default re-export
       // ============================================
-      if (node.type === 'ExportNamedDeclaration' && node.specifiers && node.specifiers.length > 0) {
+      if (
+        node.type === 'ExportNamedDeclaration' &&
+        node.specifiers &&
+        node.specifiers.length > 0
+      ) {
         const isReExport = !!node.source;
         const sourceModule = node.source?.value;
+        const isTypeOnly = node.exportKind === 'type' || false;
 
-        // Собираем все specifiers
         const specifierNames: string[] = [];
+
         for (const spec of node.specifiers) {
           if (spec.type === 'ExportSpecifier') {
             const exportedName = spec.exported?.name || spec.local?.name;
-            if (exportedName) {
-              specifierNames.push(exportedName);
+            const localName = spec.local?.name || spec.exported?.name;
+            if (!exportedName) continue;
 
-              // Добавляем каждый specifier как отдельный экспорт
-              exports.push({
-                name: exportedName,
-                type: isReExport ? 're-export' : 'named',
-                isDefault: false,
-                line: node.loc?.start?.line,
-                isReExport: isReExport,
-                source: sourceModule,
-                specifier: spec.local?.name || spec.exported?.name,
-                loc: node.loc,
-              });
-            }
+            specifierNames.push(exportedName);
+
+            const isDefault =
+              exportedName === 'default' || localName === 'default';
+
+            const isDefaultReExport = isReExport && isDefault;
+
+            exports.push({
+              name: exportedName,
+              localName,                       // ✅ ЛОКАЛЬНОЕ ИМЯ
+              type: isReExport
+                ? isDefault
+                  ? 'default'
+                  : 're-export'
+                : 'named',
+              isDefault,
+              isDefaultReExport,               // ✅
+              line: node.loc?.start?.line,
+              isReExport,
+              source: sourceModule,
+              specifiers: [localName],
+              isTypeOnly,
+              isStarReExport: false,           // ✅
+              loc: node.loc,
+            });
           }
         }
 
-        // Если это реэкспорт, добавляем также групповую информацию
+        // Групповая запись (для совместимости и агрегации)
         if (isReExport && specifierNames.length > 0) {
           exports.push({
             name: `{ ${specifierNames.join(', ')} }`,
+            localName: `{ ${specifierNames.join(', ')} }`,  // ✅
             type: 're-export-group',
             isDefault: false,
+            isDefaultReExport: false,          // ✅
             line: node.loc?.start?.line,
             isReExport: true,
             source: sourceModule,
             specifiers: specifierNames,
+            isTypeOnly,
+            isStarReExport: false,             // ✅
             loc: node.loc,
           });
         }
       }
 
       // ============================================
-      // 3. ExportDefaultDeclaration
+      // 3. ✅ ИСПРАВЛЕНО: ExportDefaultDeclaration
       // ============================================
       if (node.type === 'ExportDefaultDeclaration' && node.declaration) {
         const decl = node.declaration;
         let name = 'default';
+        let localName = 'default';             // ✅
         let type = 'default';
 
         if (decl.type === 'FunctionDeclaration' && decl.id) {
           name = decl.id.name || 'default';
+          localName = decl.id.name || 'default';
           type = 'function';
         } else if (decl.type === 'ClassDeclaration' && decl.id) {
           name = decl.id.name || 'default';
+          localName = decl.id.name || 'default';
           type = 'class';
         } else if (decl.type === 'Identifier') {
           name = decl.name || 'default';
+          localName = decl.name || 'default';
           type = 'value';
         } else if (decl.type === 'ObjectExpression') {
           name = 'default';
+          localName = 'default';
           type = 'object';
         } else if (decl.type === 'ArrowFunctionExpression') {
           name = 'default';
+          localName = 'default';
           type = 'function';
         }
 
         exports.push({
           name,
+          localName,                           // ✅
           type,
           isDefault: true,
+          isDefaultReExport: false,            // ✅ default export — НЕ re-export
           line: node.loc?.start?.line,
           isReExport: false,
+          isTypeOnly: false,
+          isStarReExport: false,               // ✅
           loc: node.loc,
         });
       }
 
       // ============================================
-      // 4. ExportAllDeclaration: export * from 'module'
+      // 4. ✅ ИСПРАВЛЕНО: ExportAllDeclaration
+      //    export * from 'module'
+      //    export * as ns from 'module'
       // ============================================
       if (node.type === 'ExportAllDeclaration' && node.source) {
+        const isNamespace = !!node.exported?.name;
+        const exportedName = node.exported?.name || '*';
+
         exports.push({
-          name: '*',
+          name: exportedName,
+          localName: '*',                      // ✅
           type: 'all',
           isDefault: false,
+          isDefaultReExport: false,            // ✅
           line: node.loc?.start?.line,
           isReExport: true,
           source: node.source.value,
+          isTypeOnly: node.exportKind === 'type' || false,
+          isStarReExport: true,                // ✅
+          specifiers: isNamespace ? [node.exported.name] : undefined,
           loc: node.loc,
         });
-      }
-
-      // ============================================
-      // 5. ✅ ExportNamedDeclaration без declaration (только specifiers)
-      // ============================================
-      if (node.type === 'ExportNamedDeclaration' && !node.declaration && node.specifiers) {
-        for (const spec of node.specifiers) {
-          if (spec.type === 'ExportSpecifier') {
-            const exportedName = spec.exported?.name || spec.local?.name;
-            if (exportedName) {
-              exports.push({
-                name: exportedName,
-                type: 'named',
-                isDefault: false,
-                line: node.loc?.start?.line,
-                isReExport: false,
-                loc: node.loc,
-              });
-            }
-          }
-        }
       }
     },
   });
@@ -510,29 +679,29 @@ export function collectExportsFromAST(ast: any): {
 }
 
 // ==========================================
-// ОСНОВНАЯ ФУНКЦИЯ ПАРСИНГА (ОБНОВЛЕННАЯ)
+// ✅ ОБНОВЛЕНО: parseFile
 // ==========================================
 
 /**
- * Парсит файл в AST с поддержкой Vue SFC и нормализацией путей
- * @param filePath Путь к файлу
- * @param _options Опции парсинга (зарезервировано)
- * @returns ParsedFileInfo или null
+ * Парсит файл в AST с поддержкой Vue SFC и нормализацией путей.
+ *
+ * ✅ ИСПРАВЛЕНО v7.1.0:
+ *   - collectImportsFromAST вызывается с filePath (для isExternal)
  */
 export function parseFile(filePath: string, _options?: { extractTemplate?: boolean }): ParsedFileInfo | null {
   try {
-    // ✅ Нормализуем путь
     const resolvedPath = validateAndResolvePath(filePath);
     if (!resolvedPath) return null;
 
-    // ✅ ПРОПУСК CSS-ФАЙЛОВ
     if (filePath.endsWith('.css')) {
       console.log(`⏭️ Пропуск CSS файла: ${path.basename(filePath)}`);
       return null;
     }
 
-    // ✅ ПРОПУСК ДРУГИХ НЕПОДДЕРЖИВАЕМЫХ РАСШИРЕНИЙ
-    const unsupportedExtensions = ['.css', '.scss', '.less', '.html', '.json', '.xml', '.svg', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.woff', '.woff2', '.ttf', '.eot'];
+    const unsupportedExtensions = [
+      '.css', '.scss', '.less', '.html', '.json', '.xml', '.svg',
+      '.png', '.jpg', '.jpeg', '.gif', '.ico', '.woff', '.woff2', '.ttf', '.eot',
+    ];
     const ext = path.extname(filePath);
     if (unsupportedExtensions.includes(ext)) {
       console.log(`⏭️ Пропуск неподдерживаемого файла: ${path.basename(filePath)}`);
@@ -549,9 +718,13 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
     let imports: {
       source: string;
       specifiers: string[];
+      specifiersStructured?: { imported: string; local: string; type: string }[];
       isTypeOnly: boolean;
       line?: number;
       loc?: any;
+      toFileId?: string | null;
+      isExternal?: boolean;
+      packageName?: string;
     }[] = [];
     let exports: {
       name: string;
@@ -562,13 +735,16 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       source?: string;
       specifiers?: string[];
       loc?: any;
+      isTypeOnly?: boolean;
+      isStarReExport?: boolean;
+      isDefaultReExport?: boolean;
+      localName?: string;
     }[] = [];
 
     if (filePath.endsWith('.vue')) {
       isVue = true;
       const sfc = parseVueSFCFile(resolvedPath);
 
-      // ✅ ЕСЛИ SFC ВЕРНУЛ NULL — ПРОПУСКАЕМ ФАЙЛ
       if (!sfc) {
         console.log(`⏭️ Пропуск Vue файла (нет скрипта или пустой скрипт): ${path.basename(filePath)}`);
         return null;
@@ -584,7 +760,6 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
         return null;
       }
 
-      // ✅ ПРОВЕРКА НА ПУСТОЙ СКРИПТ
       if (scriptContent.trim() === '') {
         console.log(`ℹ️ Пустой script блок в ${path.basename(filePath)}, пропускаем`);
         return null;
@@ -676,7 +851,7 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
         isTypeScript,
         content: code,
         imports: [],
-        exports: []
+        exports: [],
       };
     }
 
@@ -693,8 +868,8 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       `📊 Содержимое AST: Classes=${hasClasses}, Functions=${hasFunctions}, Variables=${hasVariables}`
     );
 
-    // ✅ СБОР ИМПОРТОВ И ЭКСПОРТОВ
-    imports = collectImportsFromAST(ast);
+    // ✅ ИСПРАВЛЕНО: передаём resolvedPath в collectImportsFromAST
+    imports = collectImportsFromAST(ast, resolvedPath);
     exports = collectExportsFromAST(ast);
 
     if (imports.length > 0) {
@@ -710,7 +885,6 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       ast._vueType = isTypeScript ? 'tsSetup' : 'setup';
     }
 
-    // ✅ ВОЗВРАЩАЕМ РАСШИРЕННУЮ ИНФОРМАЦИЮ
     return {
       ast,
       filePath: resolvedPath,
@@ -719,9 +893,8 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       isTypeScript,
       content: code,
       imports,
-      exports
+      exports,
     };
-
   } catch (e) {
     if (e instanceof Error && (e as any).code === 'ENOENT') {
       console.warn(`⚠️ Файл не найден: ${filePath}`);
@@ -738,72 +911,36 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
   }
 }
 
-export function isExternalModule(importTarget: string): boolean {
-  if (
-    importTarget.startsWith('@') ||
-    importTarget.startsWith('#') ||
-    importTarget.startsWith('~')
-  ) {
-    return false;
-  }
-
-  return (
-    !importTarget.startsWith('.') && !importTarget.startsWith('/') && !path.isAbsolute(importTarget)
-  );
-}
-
 // ==========================================
-// ✅ ИСПРАВЛЕННАЯ ФУНКЦИЯ resolveFilePath
+// ✅ ОБНОВЛЕНО: resolveFilePath
 // ==========================================
 
-/**
- * Разрешает путь импорта в абсолютный путь к файлу
- * Поддерживает:
- * - Относительные пути (./, ../)
- * - Алиасы из tsconfig (@/, #/)
- * - Разные расширения (.ts, .js, .tsx, .jsx, .mjs, .cjs)
- * - Автоматическое преобразование .js → .ts (если .ts-файл существует)
- * - Поиск файлов БЕЗ расширения
- * - Index файлы в директориях
- * - Кэширование tsconfig для производительности
- *
- * @param baseDir - Абсолютный путь к директории файла
- * @param targetPath - Путь из import (может быть относительным или алиасом)
- * @returns Абсолютный путь к файлу или null
- */
 export function resolveFilePath(baseDir: string, targetPath: string): string | null {
-  // 1. Проверяем, не абсолютный ли уже путь
   if (path.isAbsolute(targetPath) && fs.existsSync(targetPath)) {
     return targetPath;
   }
 
-  // 2. Используем getTsConfigForFile с кэшированием
   const tsConfig = getTsConfigForFile(baseDir);
   const tsConfigDir = getTsConfigDir() || baseDir;
 
-  // 3. Проверяем алиасы из tsconfig
   const aliasedPath = resolveAliasPath(targetPath, tsConfigDir, tsConfig);
   if (aliasedPath && fs.existsSync(aliasedPath)) {
     console.log(`   🔗 Алиас: ${targetPath} → ${path.relative(process.cwd(), aliasedPath)}`);
     return aliasedPath;
   }
 
-  // 4. Формируем полный путь
   const fullPath = path.resolve(baseDir, targetPath);
 
-  // 5. Проверяем файл как есть (с текущим расширением)
   if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
     return fullPath;
   }
 
-  // 6. Проверяем файл БЕЗ расширения (если в targetPath нет расширения)
   const hasExtension = path.extname(targetPath) !== '';
   if (!hasExtension && fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
     console.log(`   📄 Найден без расширения: ${targetPath}`);
     return fullPath;
   }
 
-  // 7. Специальная проверка: .js → .ts (и наоборот)
   if (targetPath.endsWith('.js')) {
     const tsPath = fullPath.replace(/\.js$/, '.ts');
     if (fs.existsSync(tsPath) && fs.statSync(tsPath).isFile()) {
@@ -819,12 +956,9 @@ export function resolveFilePath(baseDir: string, targetPath: string): string | n
     }
   }
 
-  // 8. Проверяем ВСЕ возможные расширения (ВКЛЮЧАЯ то, что уже проверяли)
   const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', ''];
 
   for (const ext of extensions) {
-    // ✅ Убрана проверка: if (ext === targetExt) continue;
-    // Теперь проверяем ВСЕ варианты, даже если они совпадают с исходным расширением
     const testPath = fullPath + ext;
     if (fs.existsSync(testPath) && fs.statSync(testPath).isFile()) {
       console.log(`   📄 Найден: ${targetPath} → ${path.relative(process.cwd(), testPath)}`);
@@ -832,7 +966,6 @@ export function resolveFilePath(baseDir: string, targetPath: string): string | n
     }
   }
 
-  // 9. Проверяем как директорию с index файлом
   if (fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory()) {
     for (const ext of extensions) {
       const indexPath = path.join(fullPath, `index${ext}`);
@@ -843,21 +976,17 @@ export function resolveFilePath(baseDir: string, targetPath: string): string | n
     }
   }
 
-  // 10. Проверяем относительно tsconfig директории
   if (tsConfigDir && tsConfigDir !== baseDir) {
     const fromRootPath = path.resolve(tsConfigDir, targetPath);
 
-    // Проверяем файл как есть
     if (fs.existsSync(fromRootPath) && fs.statSync(fromRootPath).isFile()) {
       return fromRootPath;
     }
 
-    // Проверяем без расширения
     if (!hasExtension && fs.existsSync(fromRootPath) && fs.statSync(fromRootPath).isFile()) {
       return fromRootPath;
     }
 
-    // .js → .ts
     if (targetPath.endsWith('.js')) {
       const tsFromRoot = fromRootPath.replace(/\.js$/, '.ts');
       if (fs.existsSync(tsFromRoot) && fs.statSync(tsFromRoot).isFile()) {
@@ -865,7 +994,6 @@ export function resolveFilePath(baseDir: string, targetPath: string): string | n
       }
     }
 
-    // .ts → .js
     if (targetPath.endsWith('.ts')) {
       const jsFromRoot = fromRootPath.replace(/\.ts$/, '.js');
       if (fs.existsSync(jsFromRoot) && fs.statSync(jsFromRoot).isFile()) {
@@ -873,7 +1001,6 @@ export function resolveFilePath(baseDir: string, targetPath: string): string | n
       }
     }
 
-    // Проверяем все расширения
     for (const ext of extensions) {
       const testPath = fromRootPath + ext;
       if (fs.existsSync(testPath) && fs.statSync(testPath).isFile()) {
@@ -881,7 +1008,6 @@ export function resolveFilePath(baseDir: string, targetPath: string): string | n
       }
     }
 
-    // Проверяем index файлы
     if (fs.existsSync(fromRootPath) && fs.statSync(fromRootPath).isDirectory()) {
       for (const ext of extensions) {
         const indexPath = path.join(fromRootPath, `index${ext}`);
@@ -894,6 +1020,10 @@ export function resolveFilePath(baseDir: string, targetPath: string): string | n
 
   return null;
 }
+
+// ==========================================
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ==========================================
 
 export function getAllProjectFiles(
   dir: string,
@@ -930,12 +1060,8 @@ export function getAllProjectFiles(
 // ✅ НОВЫЕ ФУНКЦИИ ДЛЯ ИЗВЛЕЧЕНИЯ СУЩНОСТЕЙ
 // ==========================================
 
-/**
- * Извлекает все функции из AST
- */
 export function extractFunctionsFromAST(ast: any): any[] {
   const functions: any[] = [];
-
   if (!ast || !ast.body) return functions;
 
   walk(ast, {
@@ -959,7 +1085,6 @@ export function extractFunctionsFromAST(ast: any): any[] {
         });
       }
 
-      // Методы классов
       if (node.type === 'MethodDefinition' && node.key) {
         const methodName = node.key.name;
         const className = parent?.id?.name || 'Anonymous';
@@ -990,12 +1115,8 @@ export function extractFunctionsFromAST(ast: any): any[] {
   return functions;
 }
 
-/**
- * Извлекает все классы из AST
- */
 export function extractClassesFromAST(ast: any): any[] {
   const classes: any[] = [];
-
   if (!ast || !ast.body) return classes;
 
   walk(ast, {
@@ -1036,12 +1157,8 @@ export function extractClassesFromAST(ast: any): any[] {
   return classes;
 }
 
-/**
- * Извлекает все константы из AST
- */
 export function extractConstantsFromAST(ast: any): any[] {
   const constants: any[] = [];
-
   if (!ast || !ast.body) return constants;
 
   walk(ast, {
@@ -1070,12 +1187,8 @@ export function extractConstantsFromAST(ast: any): any[] {
   return constants;
 }
 
-/**
- * Извлекает все интерфейсы из AST
- */
 export function extractInterfacesFromAST(ast: any): any[] {
   const interfaces: any[] = [];
-
   if (!ast || !ast.body) return interfaces;
 
   walk(ast, {
@@ -1109,12 +1222,8 @@ export function extractInterfacesFromAST(ast: any): any[] {
   return interfaces;
 }
 
-/**
- * Извлекает все типы из AST
- */
 export function extractTypesFromAST(ast: any): any[] {
   const types: any[] = [];
-
   if (!ast || !ast.body) return types;
 
   walk(ast, {
@@ -1136,12 +1245,8 @@ export function extractTypesFromAST(ast: any): any[] {
   return types;
 }
 
-/**
- * Извлекает все переменные (let, var) из AST
- */
 export function extractVariablesFromAST(ast: any): any[] {
   const variables: any[] = [];
-
   if (!ast || !ast.body) return variables;
 
   walk(ast, {
@@ -1172,18 +1277,13 @@ export function extractVariablesFromAST(ast: any): any[] {
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ==========================================
 
-/**
- * Проверяет, экспортируется ли узел
- */
 function isNodeExported(node: any, parent: any): boolean {
   if (!node) return false;
 
-  // Прямой export
   if (node.type === 'ExportNamedDeclaration' || node.type === 'ExportDefaultDeclaration') {
     return true;
   }
 
-  // Проверка родителя
   if (parent) {
     if (parent.type === 'ExportNamedDeclaration' || parent.type === 'ExportDefaultDeclaration') {
       return true;
@@ -1193,7 +1293,6 @@ function isNodeExported(node: any, parent: any): boolean {
     }
   }
 
-  // Проверка декораторов
   if (node.decorators) {
     for (const decorator of node.decorators) {
       if (decorator.expression?.name === 'export') {
@@ -1205,9 +1304,6 @@ function isNodeExported(node: any, parent: any): boolean {
   return false;
 }
 
-/**
- * Извлекает значение из узла
- */
 function extractValueFromNode(node: any): any {
   if (!node) return undefined;
 

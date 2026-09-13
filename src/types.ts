@@ -36,6 +36,22 @@ export interface ImportInfo {
   specifiers: ImportSpecifier[];
   loc: Location | null;
   isTypeOnly?: boolean;
+
+  // ✅ НОВЫЕ ПОЛЯ для полного графа импортов/экспортов
+  /** Номер строки импорта (из loc.start.line) */
+  line?: number;
+  /** ID файла-цели (или `external:xxx`, `unresolved:xxx`) */
+  toFileId?: string | null;
+  /** Является ли модуль внешним (node_modules) */
+  isExternal?: boolean;
+  /** Имя пакета (для внешних модулей) */
+  packageName?: string;
+  /** Структурированные specifiers (для точного графа) */
+  specifiersStructured?: {
+    imported: string;
+    local: string;
+    type: string;
+  }[];
 }
 
 export interface ExportInfo {
@@ -63,6 +79,16 @@ export interface ExportInfo {
   source?: string;
   isTypeOnly?: boolean;
   specifiers?: string[];
+
+  // ✅ НОВЫЕ ПОЛЯ для полного графа импортов/экспортов и round-trip
+  /** Номер строки (из loc.start.line) */
+  line?: number;
+  /** Локальное имя (при `export { a as b }` → `a`) */
+  localName?: string;
+  /** Является ли `export * from '...'` */
+  isStarReExport?: boolean;
+  /** Является ли `export { default } from '...'` */
+  isDefaultReExport?: boolean;
 }
 
 // ==========================================

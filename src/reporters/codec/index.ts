@@ -2,8 +2,19 @@
 // ============================================
 // ЕДИНАЯ ТОЧКА ВХОДА ДЛЯ КОДЕКА
 // ============================================
-// Экспортирует всё необходимое для кодирования/декодирования
-// компактных JSON-отчётов.
+// Версия: 3.0.0 (Стратегия B — строгий round-trip)
+//
+// ИЗМЕНЕНИЯ v3.0.0:
+//   - Добавлен экспорт RE_EXPORT_TYPES
+//   - Добавлен экспорт arraySchemas (через CodecLegend)
+//   - Добавлены экспорты словарей (stringDict, paramDict, methodDict, valueDict)
+//   - Обновлены типы: CompactJSON, CodecLegend, ExportData, ImportData
+//   - Добавлен экспорт типа EdgeData
+//   - CODEC_MODULE_VERSION обновлён до 3.0.0
+//
+// ИЗМЕНЕНИЯ v2.0.1:
+//   - DecodedFlags теперь реэкспортируется из './codec.js'
+//     (был ошибочно указан './codec-types.js', где его нет)
 // ============================================
 
 // ============================================
@@ -17,22 +28,26 @@ export { Codec } from './codec.js';
 // ============================================
 
 export {
-    /** Карта флагов: бит → символ */
-        FLAG_MAP,
-    /** Обратная карта: символ → бит */
-        FLAG_CHAR_MAP,
-    /** Типы связей (direct, async, method, ...) */
-        RELATION_TYPES,
-    /** Типы экспортов (named, default, type, re-export) */
-        EXPORT_TYPES,
-    /** Типы импортов (named, default, namespace, type-only) */
-        IMPORT_TYPES,
-    /** Типы вызовов (direct, async, method, callback) */
-        CALL_TYPES,
-    /** Карта ключей: полное имя → короткое */
-        KEY_MAP,
-    /** Обратная карта: короткое → полное */
-        KEY_REVERSE_MAP,
+  /** Карта флагов: бит → символ */
+  FLAG_MAP,
+  /** Обратная карта: символ → бит */
+  FLAG_CHAR_MAP,
+  /** Имена флагов: бит → имя */
+  FLAG_NAMES,
+  /** Типы связей (direct, async, method, callback, external, ...) */
+  RELATION_TYPES,
+  /** Типы экспортов (named, default, type, re-export) */
+  EXPORT_TYPES,
+  /** Типы импортов (named, default, namespace, type-only) */
+  IMPORT_TYPES,
+  /** Типы вызовов (direct, async, method, callback, external) */
+  CALL_TYPES,
+  /** ✅ НОВОЕ: Типы реэкспортов (named, default, all) */
+  RE_EXPORT_TYPES,
+  /** Карта ключей: полное имя → короткое */
+  KEY_MAP,
+  /** Обратная карта: короткое → полное */
+  KEY_REVERSE_MAP,
 } from './codec.js';
 
 // ============================================
@@ -40,52 +55,108 @@ export {
 // ============================================
 
 export {
-    /** Кодирует булевы флаги в число */
-        encodeFlags,
-    /** Кодирует число флагов в строку символов */
-        flagsToString,
-    /** Декодирует строку символов в объект с булевыми полями */
-        decodeFlagsToObject,
+  /** Кодирует булевы флаги в число */
+  encodeFlags,
+  /** Кодирует число флагов в строку символов */
+  flagsToString,
+  /** Декодирует строку символов в число флагов */
+  flagsStringToNumber,
+  /** Декодирует строку символов в объект с булевыми полями */
+  decodeFlagsToObject,
+  /** Декодирует строку флагов в массив имён установленных флагов */
+  decodeFlagsToNames,
 } from './codec.js';
 
 // ============================================
-// ТИПЫ
+// ТИПЫ ИЗ codec-types.ts
 // ============================================
 
 export type {
-    /** Полный (читаемый) JSON */
-        FullJSON,
-    /** Сжатый JSON (короткие ключи, массивы вместо объектов) */
-        CompactJSON,
-    /** Легенда — словари для декодирования */
-        CodecLegend,
-    /** Данные модуля */
-        ModuleData,
-    /** Данные файла */
-        FileData,
-    /** Данные функции */
-        FunctionData,
-    /** Данные класса */
-        ClassData,
-    /** Данные константы */
-        ConstantData,
-    /** Данные экспорта */
-        ExportData,
-    /** Данные импорта */
-        ImportData,
-    /** Данные вызова */
-        CallData,
-    /** Данные реэкспорта */
-        ReExportData,
-    /** Статистика */
-        StatisticsData,
+  // ============================================
+  // ВЕРХНИЙ УРОВЕНЬ
+  // ============================================
+
+  /** Полный (читаемый) JSON */
+  FullJSON,
+  /** Сжатый JSON (короткие ключи, массивы вместо объектов) */
+  CompactJSON,
+  /** Легенда — словари для декодирования */
+  CodecLegend,
+
+  // ============================================
+  // СУЩНОСТИ
+  // ============================================
+
+  /** Данные модуля */
+  ModuleData,
+  /** Данные файла */
+  FileData,
+  /** Данные функции */
+  FunctionData,
+  /** Данные класса */
+  ClassData,
+  /** Данные константы */
+  ConstantData,
+
+  // ============================================
+  // СВЯЗИ
+  // ============================================
+
+  /** Данные экспорта */
+  ExportData,
+  /** Данные импорта */
+  ImportData,
+  /** Данные вызова */
+  CallData,
+  /** Данные реэкспорта */
+  ReExportData,
+
+  // ============================================
+  // МЕТАДАННЫЕ
+  // ============================================
+
+  /** Статистика */
+  StatisticsData,
+  /** Данные единого ребра графа */
+  EdgeData,
+
+  // ============================================
+  // ОПЦИИ И РЕЗУЛЬТАТЫ
+  // ============================================
+
+  /** Опции генерации отчёта */
+  GenerateReportOptions,
+  /** Результат генерации отчёта */
+  GenerateReportResult,
+  /** Результат проверки обратимости */
+  RoundTripResult,
+
+  // ============================================
+  // ВНУТРЕННИЕ (для отладки)
+  // ============================================
+
+  /** Расширенная информация о функции */
+  ExtendedFunctionData,
+  /** Расширенная информация об экспорте */
+  ExtendedExportData,
+  /** Расширенная информация об импорте */
+  ExtendedImportData,
 } from './codec-types.js';
+
+// ============================================
+// ТИПЫ ИЗ codec.ts
+// ============================================
+
+export type {
+  /** Результат декодирования битовых флагов */
+  DecodedFlags,
+} from './codec.js';
 
 // ============================================
 // ВЕРСИЯ МОДУЛЯ
 // ============================================
 
-export const CODEC_MODULE_VERSION = '1.0.0';
+export const CODEC_MODULE_VERSION = '3.0.0';
 export const CODEC_MODULE_NAME = '@newkind/ast-analyzer/reporters/codec';
 
 // ============================================
@@ -94,39 +165,55 @@ export const CODEC_MODULE_NAME = '@newkind/ast-analyzer/reporters/codec';
 
 import { Codec } from './codec.js';
 import {
-    FLAG_MAP,
-    FLAG_CHAR_MAP,
-    RELATION_TYPES,
-    EXPORT_TYPES,
-    IMPORT_TYPES,
-    CALL_TYPES,
-    KEY_MAP,
-    KEY_REVERSE_MAP,
-    encodeFlags,
-    flagsToString,
-    decodeFlagsToObject,
+  FLAG_MAP,
+  FLAG_CHAR_MAP,
+  FLAG_NAMES,
+  RELATION_TYPES,
+  EXPORT_TYPES,
+  IMPORT_TYPES,
+  CALL_TYPES,
+  RE_EXPORT_TYPES,
+  KEY_MAP,
+  KEY_REVERSE_MAP,
+  encodeFlags,
+  flagsToString,
+  flagsStringToNumber,
+  decodeFlagsToObject,
+  decodeFlagsToNames,
 } from './codec.js';
 
 export default {
-    // Основной класс
-    Codec,
+  // ============================================
+  // Основной класс
+  // ============================================
+  Codec,
 
-    // Словари
-    FLAG_MAP,
-    FLAG_CHAR_MAP,
-    RELATION_TYPES,
-    EXPORT_TYPES,
-    IMPORT_TYPES,
-    CALL_TYPES,
-    KEY_MAP,
-    KEY_REVERSE_MAP,
+  // ============================================
+  // Словари
+  // ============================================
+  FLAG_MAP,
+  FLAG_CHAR_MAP,
+  FLAG_NAMES,
+  RELATION_TYPES,
+  EXPORT_TYPES,
+  IMPORT_TYPES,
+  CALL_TYPES,
+  RE_EXPORT_TYPES,
+  KEY_MAP,
+  KEY_REVERSE_MAP,
 
-    // Функции
-    encodeFlags,
-    flagsToString,
-    decodeFlagsToObject,
+  // ============================================
+  // Функции флагов
+  // ============================================
+  encodeFlags,
+  flagsToString,
+  flagsStringToNumber,
+  decodeFlagsToObject,
+  decodeFlagsToNames,
 
-    // Константы
-    CODEC_MODULE_VERSION,
-    CODEC_MODULE_NAME,
+  // ============================================
+  // Константы
+  // ============================================
+  CODEC_MODULE_VERSION,
+  CODEC_MODULE_NAME,
 };
