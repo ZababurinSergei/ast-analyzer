@@ -1,10 +1,13 @@
 // src/core/ast-parser.ts
-// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ v7.1.0
+// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ v7.2.0
 // ✅ ИСПРАВЛЕНО: isExternalModule — @scope/pkg теперь external
 // ✅ ИСПРАВЛЕНО: collectImportsFromAST — сохраняется line + loc
 // ✅ ИСПРАВЛЕНО: collectExportsFromAST — localName, isTypeOnly, isStarReExport, isDefaultReExport
 // ✅ ИСПРАВЛЕНО: collectExportsFromAST — правильная обработка default export и star re-export
 // ✅ ДОБАВЛЕНО: isNodeExported — расширенная проверка
+// ✅ ОБНОВЛЕНО v7.2.0: логирование Vue без <script> понижено до console.debug
+// ✅ ОБНОВЛЕНО v7.2.0: логирование алиасов понижено до console.debug (флаг AST_DEBUG_PATHS)
+// ✅ ОБНОВЛЕНО v7.2.0: логирование парсинга понижено до console.debug (флаг AST_DEBUG_PARSE)
 
 import fs from 'fs';
 import path from 'path';
@@ -13,6 +16,43 @@ import { walk } from 'estree-walker';
 import { parse as parseVueSFC } from '@vue/compiler-sfc';
 import { loadTsConfig, resolveAliasPath, getTsConfigDir } from './tsconfig-resolver.js';
 import type { TsConfig } from './tsconfig-resolver.js';
+
+// ==========================================
+// ФЛАГИ ОТЛАДКИ (v7.2.0)
+// ==========================================
+// Все логи чтения/парсинга/алиасов выводятся только при включённых флагах.
+// Это убирает шум из консоли при обычном запуске.
+
+const DEBUG_PARSE = process.env.AST_DEBUG_PARSE === 'true';
+const DEBUG_PATHS = process.env.AST_DEBUG_PATHS === 'true';
+const DEBUG_VUE = process.env.AST_DEBUG_VUE === 'true';
+
+/**
+ * Условное логирование парсинга
+ */
+function logParse(message: string): void {
+  if (DEBUG_PARSE) {
+    console.debug(message);
+  }
+}
+
+/**
+ * Условное логирование путей / алиасов
+ */
+function logPath(message: string): void {
+  if (DEBUG_PATHS) {
+    console.debug(message);
+  }
+}
+
+/**
+ * Условное логирование Vue
+ */
+function logVue(message: string): void {
+  if (DEBUG_VUE) {
+    console.debug(message);
+  }
+}
 
 // ==========================================
 // ✅ РАСШИРЕНИЕ ТИПА ДЛЯ AST (ВАРИАНТ 1)
@@ -199,7 +239,7 @@ export interface ParsedFileInfo {
     isTypeOnly?: boolean;
     isStarReExport?: boolean;
     isDefaultReExport?: boolean;
-    localName?: string;  // ✅ НОВОЕ
+    localName?: string;
   }[];
 }
 
@@ -249,7 +289,8 @@ export function parseVueSFCFile(filePath: string): VueSFCData | null {
 
     const scriptContent = result.scriptSetup || result.script;
     if (scriptContent && scriptContent.trim() === '') {
-      console.log(`ℹ️ Пустой script блок в ${path.basename(filePath)}, пропускаем`);
+      // ✅ ИСПРАВЛЕНО v7.2.0: понижено до debug — пустой script это норма
+      logVue(`ℹ️ Пустой script блок в ${path.basename(filePath)}, пропускаем`);
       return null;
     }
 
@@ -687,6 +728,10 @@ export function collectExportsFromAST(ast: any): {
  *
  * ✅ ИСПРАВЛЕНО v7.1.0:
  *   - collectImportsFromAST вызывается с filePath (для isExternal)
+ *
+ * ✅ ОБНОВЛЕНО v7.2.0:
+ *   - Все console.log чтения/парсинга понижены до logParse (флаг AST_DEBUG_PARSE)
+ *   - Предупреждение "не найден script блок" понижено до logVue (флаг AST_DEBUG_VUE)
  */
 export function parseFile(filePath: string, _options?: { extractTemplate?: boolean }): ParsedFileInfo | null {
   try {
@@ -694,7 +739,7 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
     if (!resolvedPath) return null;
 
     if (filePath.endsWith('.css')) {
-      console.log(`⏭️ Пропуск CSS файла: ${path.basename(filePath)}`);
+      logParse(`⏭️ Пропуск CSS файла: ${path.basename(filePath)}`);
       return null;
     }
 
@@ -704,13 +749,13 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
     ];
     const ext = path.extname(filePath);
     if (unsupportedExtensions.includes(ext)) {
-      console.log(`⏭️ Пропуск неподдерживаемого файла: ${path.basename(filePath)}`);
+      logParse(`⏭️ Пропуск неподдерживаемого файла: ${path.basename(filePath)}`);
       return null;
     }
 
-    console.log(`📖 Чтение файла: ${resolvedPath}`);
+    logParse(`📖 Чтение файла: ${resolvedPath}`);
     let code = fs.readFileSync(resolvedPath, 'utf-8');
-    console.log(`📏 Размер файла: ${code.length} символов`);
+    logParse(`📏 Размер файла: ${code.length} символов`);
 
     let isVue = false;
     let isTypeScript = false;
@@ -746,7 +791,8 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       const sfc = parseVueSFCFile(resolvedPath);
 
       if (!sfc) {
-        console.log(`⏭️ Пропуск Vue файла (нет скрипта или пустой скрипт): ${path.basename(filePath)}`);
+        // ✅ ИСПРАВЛЕНО v7.2.0: понижено до debug — иконки без script это норма
+        logVue(`⏭️ Пропуск Vue файла (нет скрипта или пустой скрипт): ${path.basename(filePath)}`);
         return null;
       }
 
@@ -756,20 +802,21 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       const scriptContent = sfc.scriptSetup || sfc.script;
 
       if (!scriptContent) {
-        console.warn(`⚠️ В Vue файле ${resolvedPath} не найден script блок`);
+        // ✅ ИСПРАВЛЕНО v7.2.0: warn → debug
+        logVue(`ℹ️ В Vue файле ${resolvedPath} не найден script блок`);
         return null;
       }
 
       if (scriptContent.trim() === '') {
-        console.log(`ℹ️ Пустой script блок в ${path.basename(filePath)}, пропускаем`);
+        logVue(`ℹ️ Пустой script блок в ${path.basename(filePath)}, пропускаем`);
         return null;
       }
 
       code = scriptContent;
-      console.log(`📄 Vue файл: ${path.basename(resolvedPath)} (${scriptType}, TS: ${isTypeScript})`);
+      logParse(`📄 Vue файл: ${path.basename(resolvedPath)} (${scriptType}, TS: ${isTypeScript})`);
 
       if (sfc.styles.length > 0) {
-        console.log(`   🎨 Styles: ${sfc.styles.length} блоков`);
+        logParse(`   🎨 Styles: ${sfc.styles.length} блоков`);
       }
     } else {
       isTypeScript = filePath.endsWith('.ts') || filePath.endsWith('.tsx');
@@ -803,7 +850,7 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       };
     }
 
-    console.log(
+    logParse(
       `🔧 Парсинг с опциями: sourceType=${parserOptions.sourceType}, ecmaVersion=${parserOptions.ecmaVersion}`
     );
 
@@ -824,9 +871,9 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       }
 
       try {
-        console.log('🔄 Повторная попытка с упрощенными настройками...');
+        logParse('🔄 Повторная попытка с упрощенными настройками...');
         ast = parser.parse(code, fallbackOptions);
-        console.log('✅ Fallback парсинг успешен');
+        logParse('✅ Fallback парсинг успешен');
       } catch (fallbackError: any) {
         console.error(`❌ Fallback парсинг также не удался: ${fallbackError.message}`);
         if (fallbackError.stack) {
@@ -855,16 +902,16 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
       };
     }
 
-    console.log(`✅ AST успешно построен, узлов верхнего уровня: ${ast.body.length}`);
+    logParse(`✅ AST успешно построен, узлов верхнего уровня: ${ast.body.length}`);
 
     const nodeTypes = ast.body.slice(0, 5).map((n: any) => n?.type || 'unknown');
-    console.log(`📋 Типы первых узлов: ${nodeTypes.join(', ')}`);
+    logParse(`📋 Типы первых узлов: ${nodeTypes.join(', ')}`);
 
     const hasClasses = ast.body.some((n: any) => n?.type === 'ClassDeclaration');
     const hasFunctions = ast.body.some((n: any) => n?.type === 'FunctionDeclaration');
     const hasVariables = ast.body.some((n: any) => n?.type === 'VariableDeclaration');
 
-    console.log(
+    logParse(
       `📊 Содержимое AST: Classes=${hasClasses}, Functions=${hasFunctions}, Variables=${hasVariables}`
     );
 
@@ -873,10 +920,10 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
     exports = collectExportsFromAST(ast);
 
     if (imports.length > 0) {
-      console.log(`   📥 Найдено импортов: ${imports.length}`);
+      logParse(`   📥 Найдено импортов: ${imports.length}`);
     }
     if (exports.length > 0) {
-      console.log(`   📤 Найдено экспортов: ${exports.length}`);
+      logParse(`   📤 Найдено экспортов: ${exports.length}`);
     }
 
     if (isVue && ast) {
@@ -925,7 +972,8 @@ export function resolveFilePath(baseDir: string, targetPath: string): string | n
 
   const aliasedPath = resolveAliasPath(targetPath, tsConfigDir, tsConfig);
   if (aliasedPath && fs.existsSync(aliasedPath)) {
-    console.log(`   🔗 Алиас: ${targetPath} → ${path.relative(process.cwd(), aliasedPath)}`);
+    // ✅ ИСПРАВЛЕНО v7.2.0: понижено до debug — логировалось дважды
+    logPath(`   🔗 Алиас: ${targetPath} → ${path.relative(process.cwd(), aliasedPath)}`);
     return aliasedPath;
   }
 
@@ -937,21 +985,21 @@ export function resolveFilePath(baseDir: string, targetPath: string): string | n
 
   const hasExtension = path.extname(targetPath) !== '';
   if (!hasExtension && fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
-    console.log(`   📄 Найден без расширения: ${targetPath}`);
+    logPath(`   📄 Найден без расширения: ${targetPath}`);
     return fullPath;
   }
 
   if (targetPath.endsWith('.js')) {
     const tsPath = fullPath.replace(/\.js$/, '.ts');
     if (fs.existsSync(tsPath) && fs.statSync(tsPath).isFile()) {
-      console.log(`   🔄 .js → .ts: ${targetPath} → ${path.relative(process.cwd(), tsPath)}`);
+      logPath(`   🔄 .js → .ts: ${targetPath} → ${path.relative(process.cwd(), tsPath)}`);
       return tsPath;
     }
   }
   if (targetPath.endsWith('.ts')) {
     const jsPath = fullPath.replace(/\.ts$/, '.js');
     if (fs.existsSync(jsPath) && fs.statSync(jsPath).isFile()) {
-      console.log(`   🔄 .ts → .js: ${targetPath} → ${path.relative(process.cwd(), jsPath)}`);
+      logPath(`   🔄 .ts → .js: ${targetPath} → ${path.relative(process.cwd(), jsPath)}`);
       return jsPath;
     }
   }
@@ -961,7 +1009,7 @@ export function resolveFilePath(baseDir: string, targetPath: string): string | n
   for (const ext of extensions) {
     const testPath = fullPath + ext;
     if (fs.existsSync(testPath) && fs.statSync(testPath).isFile()) {
-      console.log(`   📄 Найден: ${targetPath} → ${path.relative(process.cwd(), testPath)}`);
+      logPath(`   📄 Найден: ${targetPath} → ${path.relative(process.cwd(), testPath)}`);
       return testPath;
     }
   }
@@ -970,7 +1018,7 @@ export function resolveFilePath(baseDir: string, targetPath: string): string | n
     for (const ext of extensions) {
       const indexPath = path.join(fullPath, `index${ext}`);
       if (fs.existsSync(indexPath) && fs.statSync(indexPath).isFile()) {
-        console.log(`   📁 Директория → index${ext}: ${targetPath}`);
+        logPath(`   📁 Директория → index${ext}: ${targetPath}`);
         return indexPath;
       }
     }

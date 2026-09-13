@@ -2,7 +2,11 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Версия: 8.1.1 (Стратегия B — строгий round-trip + DecodeOptions + fix regex)
+// Версия: 8.2.0 (Стратегия B — строгий round-trip + DecodeOptions + fix regex + fix full.json suffix)
+//
+// ИЗМЕНЕНИЯ v8.2.0:
+//   - ✅ ИСПРАВЛЕНО: insertSuffixBeforeExtension — устранено дублирование
+//     суффикса `.full.json` (было `index.full.json.json`, стало `index.full.json`)
 //
 // ИЗМЕНЕНИЯ v8.1.1:
 //   - ✅ ИСПРАВЛЕНО: detectCallType — экранирование callName перед new RegExp
@@ -813,18 +817,33 @@ function collectFullJSON(
 /**
  * Вставляет суффикс перед расширением файла.
  *
- * Пример:
- *   insertSuffixBeforeExtension('report.json', '.full')
- *   → 'report.full.json'
+ * ✅ ИСПРАВЛЕНО v8.2.0:
+ *   Защита от дублирования суффикса. Ранее `index.json` + `.full.json`
+ *   давало `index.full.json.json`. Теперь:
+ *     - `index.json`          → `index.full.json`
+ *     - `index.full.json`     → `index.full.json` (без изменений)
  *
  * @param filePath — исходный путь
- * @param suffix — суффикс (с точкой)
+ * @param suffix — суффикс (с точкой, например `.full.json`)
  * @returns Путь с суффиксом
  */
 function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
-  const ext = path.extname(filePath);
-  const base = filePath.slice(0, filePath.length - ext.length);
-  return `${base}${suffix}${ext}`;
+  const ext = path.extname(filePath); // '.json'
+  const base = filePath.slice(0, filePath.length - ext.length); // 'index'
+
+  // Нормализуем суффикс: убираем ведущую точку и расширение
+  // '.full.json' → 'full'
+  const suffixWithoutExt = suffix.replace(/\.json$/i, '').replace(/^\./, ''); // 'full'
+
+  // Если base уже заканчивается на `.full` — не дублируем
+  if (suffixWithoutExt && base.endsWith(`.${suffixWithoutExt}`)) {
+    return filePath;
+  }
+
+  // Гарантируем, что суффикс начинается с точки
+  const normalizedSuffix = suffix.startsWith('.') ? suffix : `.${suffix}`;
+
+  return `${base}${normalizedSuffix}${ext}`;
 }
 
 /**

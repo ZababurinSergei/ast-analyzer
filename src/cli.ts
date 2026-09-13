@@ -11,17 +11,25 @@
  *   npx ast-analyzer project ./src/index.ts --entities
  *   npx ast-analyzer compact ./src/file.ts --ultra
  *   npx ast-analyzer help
+ *
+ * ⚠️ ВАЖНО: ESM-импорты поднимаются (hoisting) до выполнения кода,
+ * поэтому статические `import` для CLIExecutor использовать нельзя —
+ * фильтр шума от ts-morph должен быть установлен ДО загрузки CLIExecutor.
+ * Используем динамический `import()` после установки фильтра.
  */
 
-import { isMainModule } from './utils/is-main.js';
-import { CLIExecutor } from './cli/CLIExecutor.js';
+// ============================================
+// ФИЛЬТР ШУМА ОТ ts-morph (должен быть установлен ПЕРВЫМ)
+// ============================================
+import { silenceTsMorphNoise } from './utils/silence-ts-morph.js';
+silenceTsMorphNoise();
 
 // ============================================
 // ГЛОБАЛЬНЫЕ ОБРАБОТЧИКИ ОШИБОК
 // ============================================
 
 // Перехват необработанных исключений
-process.on('uncaughtException', (error) => {
+process.on('uncaughtException', error => {
   console.error('❌ Uncaught exception:');
   console.error(error);
   if (error instanceof Error && error.stack) {
@@ -32,7 +40,7 @@ process.on('uncaughtException', (error) => {
 });
 
 // Перехват необработанных rejected промисов
-process.on('unhandledRejection', (reason) => {
+process.on('unhandledRejection', reason => {
   console.error('❌ Unhandled rejection:');
   console.error(reason);
   if (reason instanceof Error && reason.stack) {
@@ -53,6 +61,19 @@ process.on('SIGTERM', () => {
   console.log('\n\n👋 Terminating...');
   process.exit(0);
 });
+
+// ============================================
+// ДИНАМИЧЕСКИЕ ИМПОРТЫ (после установки фильтра)
+// ============================================
+
+/**
+ * Динамически загружаем модули ПОСЛЕ установки фильтра stderr.
+ * Это критично, потому что ts-morph начинает писать в stderr
+ * при первой же попытке построить Type, а это происходит внутри
+ * CLIExecutor.
+ */
+const { CLIExecutor } = await import('./cli/CLIExecutor.js');
+const { isMainModule } = await import('./utils/is-main.js');
 
 // ============================================
 // ЗАПУСК CLI
@@ -110,20 +131,27 @@ export { isMainModule } from './utils/is-main.js';
 // ДОПОЛНИТЕЛЬНЫЕ ЭКСПОРТЫ ДЛЯ КОМАНД
 // ============================================
 
-// Экспортируем все команды для возможности их использования отдельно
-export * from './cli/commands/ProjectCommand.js';
-export * from './cli/commands/FileCommand.js';
-export * from './cli/commands/MinifyCommand.js';
-export * from './cli/commands/SplitModuleCommand.js';
-export * from './cli/commands/VueAnalyzeCommand.js';
-export * from './cli/commands/SemanticCommand.js';
-export * from './cli/commands/VerifyCommand.js';
-export * from './cli/commands/RefactorCommand.js';
-export * from './cli/commands/CompactCommand.js';
-export * from './cli/commands/HybridReportCommand.js';
-export * from './cli/commands/InitCommand.js';
-export * from './cli/commands/StatusCommand.js';
-export * from './cli/commands/ImpactCommand.js';
-export * from './cli/commands/DeadCodeCommand.js';
-export * from './cli/commands/PromptPackCommand.js';
-export * from './cli/commands/MinifyFolderCommand.js';
+// Экспортируем все команды для возможности их использования отдельно.
+// ⚠️ Используем динамические реэкспорты — они выполнятся уже после
+// установки фильтра stderr, что предотвратит шум при загрузке модулей.
+export const ProjectCommand = (await import('./cli/commands/ProjectCommand.js')).ProjectCommand;
+export const FileCommand = (await import('./cli/commands/FileCommand.js')).FileCommand;
+export const MinifyCommand = (await import('./cli/commands/MinifyCommand.js')).MinifyCommand;
+export const SplitModuleCommand = (await import('./cli/commands/SplitModuleCommand.js'))
+  .SplitModuleCommand;
+export const VueAnalyzeCommand = (await import('./cli/commands/VueAnalyzeCommand.js'))
+  .VueAnalyzeCommand;
+export const SemanticCommand = (await import('./cli/commands/SemanticCommand.js')).SemanticCommand;
+export const VerifyCommand = (await import('./cli/commands/VerifyCommand.js')).VerifyCommand;
+export const RefactorCommand = (await import('./cli/commands/RefactorCommand.js')).RefactorCommand;
+export const CompactCommand = (await import('./cli/commands/CompactCommand.js')).CompactCommand;
+export const HybridReportCommand = (await import('./cli/commands/HybridReportCommand.js'))
+  .HybridReportCommand;
+export const InitCommand = (await import('./cli/commands/InitCommand.js')).InitCommand;
+export const StatusCommand = (await import('./cli/commands/StatusCommand.js')).StatusCommand;
+export const ImpactCommand = (await import('./cli/commands/ImpactCommand.js')).ImpactCommand;
+export const DeadCodeCommand = (await import('./cli/commands/DeadCodeCommand.js')).DeadCodeCommand;
+export const PromptPackCommand = (await import('./cli/commands/PromptPackCommand.js'))
+  .PromptPackCommand;
+export const MinifyFolderCommand = (await import('./cli/commands/MinifyFolderCommand.js'))
+  .MinifyFolderCommand;

@@ -4,6 +4,9 @@
 // ✅ ДОБАВЛЕНА ПОДДЕРЖКА ЭКСПОРТОВ
 // ✅ УЛУЧШЕНА ОБРАБОТКА ОШИБОК в extractEntitiesFromFile
 // ✅ v2: Все вызовы ts-morph обёрнуты в try/catch для устойчивости к ошибкам 'escapedName' и 'flags'
+// ✅ v3 (ПАТЧ 1.1): safeGetType/safeGetReturnType получили фильтр canHaveType,
+//                  console.warn заменён на console.debug,
+//                  предварительный прогрев чекера через node.getType()
 
 import fs from 'fs';
 import path from 'path';
@@ -109,49 +112,110 @@ import {
 } from '../analyzers/index.js';
 
 // ============================================================
-// БЕЗОПАСНЫЕ ОБЁРТКИ ДЛЯ ts-morph
+// ✅ ПАТЧ 1.1: БЕЗОПАСНЫЕ ОБЁРТКИ ДЛЯ ts-morph
 // ============================================================
 // Эти хелперы защищают от внутренних ошибок TypeScript,
 // таких как "Cannot read properties of undefined (reading 'escapedName')"
 // и "Cannot read properties of undefined (reading 'flags')",
-// которые возникают при анализе сложных .vue файлов.
+// которые возникают при анализе сложных .vue файлов
+// (defineProps/defineEmits без явной типизации, деструктуризация ref/computed).
 
 /**
- * Безопасно получает тип возврата из узла.
- * Возвращает 'any' при любой ошибке.
+ * ✅ ПАТЧ: Проверяет, может ли узел иметь тип.
+ * Отсеивает узлы, на которых ts-morph/TS падает с escapedName/flags:
+ *  - PropertyAssignment / ShorthandPropertyAssignment / SpreadAssignment
+ *  - VariableDeclaration без initializer
+ *  - узлы без валидного SourceFile или Project
+ */
+function canHaveType(node: any): boolean {
+  if (!node || typeof node.getKind !== 'function') return false;
+
+  try {
+    const kind = node.getKind();
+
+    // Отсеиваем явно проблемные узлы
+    const SKIP_KINDS = new Set<number>([
+      261, // PropertyAssignment
+      262, // ShorthandPropertyAssignment
+      263, // SpreadAssignment
+      264, // MethodDeclaration в object literal
+      257, // VariableDeclaration (проверим отдельно ниже)
+    ]);
+    if (SKIP_KINDS.has(kind)) {
+      // Для VariableDeclaration разрешаем только если есть инициализатор
+      if (kind === 257 && typeof node.getInitializer === 'function') {
+        const init = node.getInitializer();
+        if (!init) return false;
+        return true;
+      }
+      return false;
+    }
+
+    // Проверяем, что узел принадлежит валидному SourceFile
+    const sf = node.getSourceFile?.();
+    if (!sf) return false;
+
+    // Проверяем, что TypeChecker жив (есть Project)
+    const project = sf.getProject?.();
+    if (!project) return false;
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * ✅ ПАТЧ: Безопасно получает тип возврата из узла.
+ * Возвращает 'any' при любой ошибке — БЕЗ шума в консоли.
+ * Шум выводится только если AST_DEBUG_TYPES=true.
  */
 function safeGetReturnType(node: any, context: string): string {
+  if (!canHaveType(node)) return 'any';
+
   try {
+    // Прогрев чекера: если TS сломан — упадёт здесь, внутри try
+    node.getType();
+
     const returnType = node.getReturnType();
     if (!returnType) return 'any';
     const text = returnType.getText();
     return text || 'any';
   } catch (error) {
-    console.warn(
-      `   ⚠️ [safeGetReturnType] Ошибка при получении типа возврата (${context}): ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
+    // Понижаем до debug — это ожидаемое поведение для .vue файлов
+    if (process.env.AST_DEBUG_TYPES === 'true') {
+      console.debug(
+        `   [safeGetReturnType] ${context}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
     return 'any';
   }
 }
 
 /**
- * Безопасно получает тип узла.
- * Возвращает 'any' при любой ошибке.
+ * ✅ ПАТЧ: Безопасно получает тип узла.
+ * Возвращает 'any' при любой ошибке — БЕЗ шума в консоли.
+ * Шум выводится только если AST_DEBUG_TYPES=true.
  */
 function safeGetType(node: any, context: string): string {
+  if (!canHaveType(node)) return 'any';
+
   try {
+    node.getType(); // прогрев чекера
     const type = node.getType();
     if (!type) return 'any';
     const text = type.getText();
     return text || 'any';
   } catch (error) {
-    console.warn(
-      `   ⚠️ [safeGetType] Ошибка при получении типа (${context}): ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
+    if (process.env.AST_DEBUG_TYPES === 'true') {
+      console.debug(
+        `   [safeGetType] ${context}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
     return 'any';
   }
 }
@@ -173,11 +237,13 @@ function safeGetParameters(node: any, context: string): string[] {
       })
       .filter((n: string) => n && n !== 'unknown');
   } catch (error) {
-    console.warn(
-      `   ⚠️ [safeGetParameters] Ошибка при получении параметров (${context}): ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
+    if (process.env.AST_DEBUG_TYPES === 'true') {
+      console.debug(
+        `   [safeGetParameters] Ошибка при получении параметров (${context}): ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
     return [];
   }
 }
@@ -191,11 +257,13 @@ function safeGetBodyText(node: any, context: string): string {
     if (!body) return '';
     return body.getText() || '';
   } catch (error) {
-    console.warn(
-      `   ⚠️ [safeGetBodyText] Ошибка при получении тела (${context}): ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
+    if (process.env.AST_DEBUG_TYPES === 'true') {
+      console.debug(
+        `   [safeGetBodyText] Ошибка при получении тела (${context}): ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
     return '';
   }
 }
@@ -207,11 +275,13 @@ function safeIsAsync(node: any, context: string): boolean {
   try {
     return node.isAsync() || false;
   } catch (error) {
-    console.warn(
-      `   ⚠️ [safeIsAsync] Ошибка при определении async (${context}): ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
+    if (process.env.AST_DEBUG_TYPES === 'true') {
+      console.debug(
+        `   [safeIsAsync] Ошибка при определении async (${context}): ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
     return false;
   }
 }
@@ -223,11 +293,13 @@ function safeIsExported(node: any, context: string): boolean {
   try {
     return node.isExported() || false;
   } catch (error) {
-    console.warn(
-      `   ⚠️ [safeIsExported] Ошибка при определении экспорта (${context}): ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
+    if (process.env.AST_DEBUG_TYPES === 'true') {
+      console.debug(
+        `   [safeIsExported] Ошибка при определении экспорта (${context}): ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
     return false;
   }
 }

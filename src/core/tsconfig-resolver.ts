@@ -1,4 +1,20 @@
 // core/tsconfig-resolver.ts
+// ============================================
+// РЕЗОЛВЕР tsconfig.json С ПОДДЕРЖКОЙ АЛИАСОВ
+// ============================================
+// Версия: 2.1.0
+//
+// ИЗМЕНЕНИЯ v2.1.0:
+//   - ✅ УБРАНО дублирующее логирование алиасов из resolveAliasPath
+//     (раньше один и тот же алиас печатался дважды: из ast-parser.ts
+//      и из tsconfig-resolver.ts → теперь логирует только ast-parser.ts)
+//
+// ИЗМЕНЕНИЯ v2.0.0:
+//   - Поддержка кэширования tsconfig
+//   - Поддержка явного пути через setTsConfigPath
+//   - Поддержка кроссплатформенных путей через normalizePathForOS
+// ============================================
+
 import fs from 'fs';
 import path from 'path';
 import { normalizePathForOS } from '../utils/path-utils.js';
@@ -19,15 +35,25 @@ let explicitTsConfigPath: string | null = null;
 let cachedTsConfig: TsConfig | null = null;
 let cachedTsConfigDir: string | null = null;
 
-export function setTsConfigPath(configPath: string) {
+/**
+ * Устанавливает явный путь к tsconfig.json.
+ * После вызова кэш сбрасывается, и следующий loadTsConfig
+ * будет использовать именно этот путь.
+ */
+export function setTsConfigPath(configPath: string): void {
   explicitTsConfigPath = configPath;
   cachedTsConfig = null;
   cachedTsConfigDir = null;
 }
 
 /**
- * Загружает tsconfig с поддержкой кэширования и Windows
- * @param startDir - Директория для поиска tsconfig.json
+ * Загружает tsconfig с поддержкой кэширования и Windows.
+ *
+ * Порядок:
+ *   1. Если задан explicitTsConfigPath — используем его
+ *   2. Иначе ищем tsconfig.json вверх по иерархии от startDir
+ *
+ * @param startDir — Директория для поиска tsconfig.json
  * @returns TsConfig или null если не найден
  */
 export function loadTsConfig(startDir: string = process.cwd()): TsConfig | null {
@@ -39,7 +65,7 @@ export function loadTsConfig(startDir: string = process.cwd()): TsConfig | null 
     if (fs.existsSync(normalizedPath)) {
       try {
         const content = fs.readFileSync(normalizedPath, 'utf-8');
-        console.log(`📄 Загружен tsconfig: ${normalizedPath}`);
+        // ✅ Убрано дублирующее логирование — ast-parser.ts уже логирует
         cachedTsConfig = JSON.parse(content) as TsConfig;
         cachedTsConfigDir = path.dirname(normalizedPath);
         return cachedTsConfig;
@@ -64,7 +90,7 @@ export function loadTsConfig(startDir: string = process.cwd()): TsConfig | null 
         const content = fs.readFileSync(normalizedTsConfigPath, 'utf-8');
         cachedTsConfig = JSON.parse(content) as TsConfig;
         cachedTsConfigDir = path.dirname(normalizedTsConfigPath);
-        console.log(`📄 Автоматически загружен tsconfig: ${normalizedTsConfigPath}`);
+        // ✅ Убрано дублирующее логирование — ast-parser.ts уже логирует
         return cachedTsConfig;
       } catch (error) {
         console.warn(`⚠️ Ошибка парсинга ${normalizedTsConfigPath}:`, error);
@@ -77,21 +103,21 @@ export function loadTsConfig(startDir: string = process.cwd()): TsConfig | null 
 }
 
 /**
- * Получить директорию, в которой находится tsconfig.json
+ * Возвращает директорию, в которой находится tsconfig.json.
  */
 export function getTsConfigDir(): string | null {
   return cachedTsConfigDir;
 }
 
 /**
- * Получить закэшированный tsconfig
+ * Возвращает закэшированный tsconfig.
  */
 export function getCachedTsConfig(): TsConfig | null {
   return cachedTsConfig;
 }
 
 /**
- * Очистить кэш tsconfig
+ * Очищает кэш tsconfig.
  */
 export function clearTsConfigCache(): void {
   cachedTsConfig = null;
@@ -100,10 +126,16 @@ export function clearTsConfigCache(): void {
 }
 
 /**
- * Резолвит путь с учётом алиасов из tsconfig
- * @param importPath - путь из import (например, '@/components/Button')
- * @param baseDir - директория для резолвинга baseUrl (обычно директория tsconfig)
- * @param tsConfig - загруженный tsconfig
+ * Резолвит путь с учётом алиасов из tsconfig.
+ *
+ * ✅ ИСПРАВЛЕНО v2.1.0:
+ *   Убрано логирование `🔗 Алиас: ...`. Ранее один и тот же алиас
+ *   печатался дважды: из ast-parser.ts::resolveFilePath и отсюда.
+ *   Теперь логирует только ast-parser.ts.
+ *
+ * @param importPath — путь из import (например, '@/components/Button')
+ * @param baseDir — директория для резолвинга baseUrl (обычно директория tsconfig)
+ * @param tsConfig — загруженный tsconfig
  * @returns Абсолютный путь к файлу или null
  */
 export function resolveAliasPath(
@@ -149,6 +181,7 @@ export function resolveAliasPath(
       for (const ext of extensions) {
         const testPath = normalizedResolvedPath + ext;
         if (fs.existsSync(testPath) && fs.statSync(testPath).isFile()) {
+          // ✅ Логирование убрано — ast-parser.ts::resolveFilePath уже это делает
           return testPath;
         }
         // Проверка на index файл
@@ -166,7 +199,7 @@ export function resolveAliasPath(
 }
 
 /**
- * Проверяет, есть ли алиасы в tsconfig
+ * Проверяет, есть ли алиасы в tsconfig.
  */
 export function hasAliases(tsConfig: TsConfig | null): boolean {
   if (!tsConfig?.compilerOptions?.paths) {
@@ -176,7 +209,7 @@ export function hasAliases(tsConfig: TsConfig | null): boolean {
 }
 
 /**
- * Получить все алиасы из tsconfig
+ * Возвращает все алиасы из tsconfig.
  */
 export function getAliases(tsConfig: TsConfig | null): AliasMapping {
   if (!tsConfig?.compilerOptions?.paths) {
@@ -186,7 +219,7 @@ export function getAliases(tsConfig: TsConfig | null): AliasMapping {
 }
 
 /**
- * Получить baseUrl из tsconfig
+ * Возвращает baseUrl из tsconfig.
  */
 export function getBaseUrl(tsConfig: TsConfig | null): string | null {
   if (!tsConfig?.compilerOptions?.baseUrl) {
@@ -196,7 +229,7 @@ export function getBaseUrl(tsConfig: TsConfig | null): string | null {
 }
 
 /**
- * Проверяет, является ли путь алиасом
+ * Проверяет, является ли путь алиасом.
  */
 export function isAliasPath(importPath: string, tsConfig: TsConfig | null): boolean {
   if (!tsConfig?.compilerOptions?.paths) {
@@ -217,7 +250,7 @@ export function isAliasPath(importPath: string, tsConfig: TsConfig | null): bool
 
 /**
  * Резолвит путь алиаса без проверки существования файла
- * (только преобразование паттерна)
+ * (только преобразование паттерна).
  */
 export function resolveAliasPattern(
   importPath: string,
@@ -258,7 +291,7 @@ export function resolveAliasPattern(
 }
 
 /**
- * Добавляет алиас в tsconfig (в память, не сохраняет на диск)
+ * Добавляет алиас в tsconfig (в память, не сохраняет на диск).
  */
 export function addAlias(
   tsConfig: TsConfig | null,
@@ -282,7 +315,7 @@ export function addAlias(
 }
 
 /**
- * Удаляет алиас из tsconfig (в памяти)
+ * Удаляет алиас из tsconfig (в памяти).
  */
 export function removeAlias(tsConfig: TsConfig | null, alias: string): TsConfig | null {
   if (!tsConfig?.compilerOptions?.paths) {

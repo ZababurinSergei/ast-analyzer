@@ -3,6 +3,9 @@
 // ДОБАВЛЕНА ПОДДЕРЖКА СЕКЦИИ SELF FUNCTIONS (sf) С ВОЗМОЖНОСТЬЮ ОТКЛЮЧЕНИЯ
 // ДОБАВЛЕНА ПОДДЕРЖКА ГИБКОГО КОНФИГА С ПРЕСЕТАМИ
 // ✅ ОБНОВЛЕНО: адаптация под новую структуру GenerateReportResult (compact-reporter v6.0.0)
+// ✅ ОБНОВЛЕНО v2: добавлен .default(false) для --include-body/--include-security/--include-vscode
+// ✅ ОБНОВЛЕНО v3: строгая проверка options.includeBody === true при применении опций
+// ✅ ОБНОВЛЕНО v4: добавлена поддержка --include-vscode (проброс в configBuilder)
 
 import type { Command } from 'commander';
 import path from 'path';
@@ -76,11 +79,14 @@ export class CompactRecursiveCommand {
       .option('--no-extended-stats', 'Отключить расширенную статистику')
 
       // === МЕТАДАННЫЕ ===
+      // ✅ ИСПРАВЛЕНО v2: добавлен .default(false) для boolean-флагов
       .option('--no-flags', 'Отключить битовые флаги (flg)')
       .option('--no-types', 'Отключить типы (types)')
       .option('--no-legend', 'Отключить легенду (legend)')
-      .option('--include-body', 'Включить тела функций (увеличивает размер)')
-      .option('--include-security', 'Включить информацию о безопасности')
+      .option('--include-body', 'Включить тела функций (увеличивает размер)', false)
+      .option('--include-security', 'Включить информацию о безопасности', false)
+      // ✅ ИСПРАВЛЕНО v4: добавлена опция --include-vscode
+      .option('--include-vscode', 'Включить VSCode ссылки для функций', false)
 
       // === ФОРМАТИРОВАНИЕ ===
       .option('--minify-keys', 'Минифицировать ключи (более короткие имена)')
@@ -88,7 +94,6 @@ export class CompactRecursiveCommand {
       .option('--no-dictionaries', 'Отключить словари для параметров и типов')
       .option('--no-templates', 'Отключить использование шаблонов')
       .option('--readable-keys', 'Использовать читаемые ключи (вместо сокращений)')
-      .option('--include-vscode', 'Включить VSCode ссылки для функций')
 
       .option('-v, --verbose', 'Подробный вывод', false)
       .action(async (entry: string, options: any) => {
@@ -136,7 +141,8 @@ export class CompactRecursiveCommand {
     );
     console.log(`   • Статистика: ${options.stats !== false ? '✅' : '❌'}`);
     console.log(`   • Расширенный анализ: ${options.extendedStats !== false ? '✅' : '❌'}`);
-    console.log(`   • Тела функций: ${options.includeBody ? '✅' : '❌'}`);
+    // ✅ ИСПРАВЛЕНО v2: показываем состояние includeBody в логе
+    console.log(`   • Тела функций: ${options.includeBody === true ? '✅' : '❌'}`);
     console.log('');
 
     if (!fs.existsSync(entryPath)) {
@@ -230,7 +236,13 @@ export class CompactRecursiveCommand {
     // Создаем конфиг из опций
     const configBuilder = createCompactConfig(options.preset || 'standard');
 
-    // Применяем опции из командной строки
+    // ============================================
+    // ✅ ИСПРАВЛЕНО v3: строгая проверка === true
+    // ============================================
+    // Commander без .default() возвращает undefined для boolean-флагов,
+    // поэтому `if (undefined)` НЕ срабатывает. Используем строгое сравнение.
+    // ============================================
+
     // Форматирование
     if (options.ultra)
       configBuilder.setMinifyKeys(true).setUseBitFlags(true).setUseDictionaries(true);
@@ -239,9 +251,12 @@ export class CompactRecursiveCommand {
     if (options.dictionaries === false) configBuilder.setUseDictionaries(false);
     if (options.templates === false) configBuilder.setUseTemplates(false);
     if (options.readableKeys) configBuilder.setReadableKeys(true);
-    if (options.includeBody) configBuilder.setIncludeBody(true);
-    if (options.includeSecurity) configBuilder.setIncludeSecurity(true);
-    if (options.includeVSCode) configBuilder.setIncludeVSCode(true);
+
+    // ✅ ИСПРАВЛЕНО: строгая проверка === true
+    if (options.includeBody === true) configBuilder.setIncludeBody(true);
+    if (options.includeSecurity === true) configBuilder.setIncludeSecurity(true);
+    if (options.includeVSCode === true) configBuilder.setIncludeVSCode(true);
+
     if (options.depth) configBuilder.setMaxDepth(parseInt(options.depth, 10));
 
     // Сущности
@@ -298,6 +313,7 @@ export class CompactRecursiveCommand {
     const config = configBuilder.build();
     const genOptions = configBuilder.toGeneratorOptions();
 
+    // ✅ ИСПРАВЛЕНО v2: показываем реальное состояние includeBody
     console.log('\n📋 ИТОГОВАЯ КОНФИГУРАЦИЯ:');
     console.log(`   • Пресет: ${options.preset}`);
     console.log(`   • Функции: ${config.functions ? '✅' : '❌'}`);
