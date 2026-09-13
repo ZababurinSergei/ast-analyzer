@@ -1,0 +1,2170 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🔍 AST Analyzer — Полный инспектор связей v8</title>
+  <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      :root {
+          --bg: #0d1117;
+          --bg-panel: #161b22;
+          --bg-elev: #1c2128;
+          --bg-input: #0d1117;
+          --border: #30363d;
+          --border-hover: #484f58;
+          --text: #e6edf3;
+          --text-dim: #8b949e;
+          --text-faint: #6e7681;
+          --accent: #58a6ff;
+          --accent-hover: #79c0ff;
+          --green: #3fb950;
+          --yellow: #d29922;
+          --orange: #db6d28;
+          --red: #f85149;
+          --purple: #a371f7;
+          --cyan: #39d353;
+          --pink: #f778ba;
+      }
+
+      body.light {
+          --bg: #ffffff; --bg-panel: #f6f8fa; --bg-elev: #ffffff;
+          --bg-input: #ffffff; --border: #d0d7de; --border-hover: #8c959f;
+          --text: #1f2328; --text-dim: #57606a; --text-faint: #8c959f;
+          --accent: #0969da; --accent-hover: #0550ae;
+      }
+
+      body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          background: var(--bg); color: var(--text); font-size: 14px;
+          line-height: 1.5; min-height: 100vh;
+      }
+
+      .app { max-width: 1800px; margin: 0 auto; padding: 16px; }
+
+      /* HEADER */
+      header {
+          display: flex; justify-content: space-between; align-items: center;
+          margin-bottom: 16px; flex-wrap: wrap; gap: 12px;
+      }
+      h1 { font-size: 22px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+      h1 .ver {
+          font-size: 11px; padding: 2px 8px; background: var(--accent);
+          color: var(--bg); border-radius: 10px; font-weight: 600;
+      }
+      .header-actions { display: flex; gap: 8px; align-items: center; }
+
+      .btn {
+          padding: 6px 14px; border: 1px solid var(--border); background: var(--bg-panel);
+          color: var(--text); border-radius: 6px; cursor: pointer; font-size: 13px;
+          font-weight: 500; display: inline-flex; align-items: center; gap: 6px;
+          transition: all 0.15s;
+      }
+      .btn:hover { border-color: var(--border-hover); background: var(--bg-elev); }
+      .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+      .btn.primary:hover { background: var(--accent-hover); }
+      .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+      .btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+      /* UPLOAD */
+      .upload {
+          border: 2px dashed var(--border); border-radius: 10px; padding: 32px;
+          text-align: center; margin-bottom: 16px; background: var(--bg-panel);
+          cursor: pointer; transition: all 0.2s;
+      }
+      .upload:hover, .upload.drag { border-color: var(--accent); background: var(--bg-elev); }
+      .upload input { display: none; }
+      .upload .icon { font-size: 42px; margin-bottom: 8px; }
+      .upload .title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+      .upload .subtitle { color: var(--text-dim); font-size: 13px; }
+      .upload .loaded { margin-top: 8px; color: var(--green); font-weight: 600; font-size: 13px; }
+
+      /* CONTROLS */
+      .controls {
+          display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;
+          align-items: center; background: var(--bg-panel); padding: 10px 14px;
+          border-radius: 8px; border: 1px solid var(--border);
+      }
+      .search-box { flex: 1; min-width: 200px; position: relative; }
+      .search-box input {
+          width: 100%; padding: 8px 14px 8px 34px; background: var(--bg-input);
+          border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+          font-size: 13px; outline: none;
+      }
+      .search-box input:focus { border-color: var(--accent); }
+      .search-box::before {
+          content: '🔍'; position: absolute; left: 10px; top: 50%;
+          transform: translateY(-50%); font-size: 14px; opacity: 0.5;
+      }
+      .stats {
+          margin-left: auto; font-size: 12px; color: var(--text-dim);
+          display: flex; gap: 14px; flex-wrap: wrap;
+      }
+      .stats b { color: var(--text); }
+
+      /* LAYOUT */
+      .layout {
+          display: grid; grid-template-columns: 300px 1fr 380px; gap: 16px; align-items: start;
+      }
+      @media (max-width: 1400px) {
+          .layout { grid-template-columns: 260px 1fr; }
+          .active-node-panel { grid-column: 1 / -1; position: static !important; max-height: none !important; }
+      }
+      @media (max-width: 1024px) {
+          .layout { grid-template-columns: 1fr; }
+      }
+
+      /* SIDEBAR */
+      .sidebar {
+          background: var(--bg-panel); border: 1px solid var(--border);
+          border-radius: 10px; overflow: hidden; position: sticky; top: 16px;
+          max-height: calc(100vh - 32px); display: flex; flex-direction: column;
+      }
+      .sidebar-header {
+          padding: 10px 14px; border-bottom: 1px solid var(--border);
+          font-size: 12px; font-weight: 700; text-transform: uppercase;
+          letter-spacing: 0.5px; color: var(--text-dim);
+          display: flex; justify-content: space-between; align-items: center;
+      }
+      .sidebar-header .count {
+          background: var(--bg-elev); padding: 2px 8px; border-radius: 10px;
+          font-size: 11px; color: var(--text);
+      }
+      .file-list { list-style: none; overflow-y: auto; flex: 1; padding: 6px; }
+      .file-list::-webkit-scrollbar { width: 6px; }
+      .file-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+      .file-item {
+          padding: 6px 10px; border-radius: 6px; cursor: pointer;
+          font-size: 12px; font-family: 'Consolas', monospace; color: var(--text-dim);
+          display: flex; align-items: center; gap: 6px; transition: all 0.1s;
+          border-left: 2px solid transparent; word-break: break-all;
+      }
+      .file-item:hover { background: var(--bg-elev); color: var(--text); border-left-color: var(--border-hover); }
+      .file-item.active { background: var(--bg-elev); color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+      .file-item .mod-badge {
+          font-size: 9px; padding: 1px 6px; border-radius: 8px;
+          background: var(--bg-elev); color: var(--text-faint);
+          text-transform: uppercase; flex-shrink: 0;
+      }
+      .file-item.active .mod-badge { background: var(--accent); color: #fff; }
+
+      /* MAIN */
+      .main {
+          background: var(--bg-panel); border: 1px solid var(--border);
+          border-radius: 10px; min-height: 600px; overflow: hidden;
+      }
+      .empty { padding: 80px 20px; text-align: center; color: var(--text-dim); }
+      .empty .icon { font-size: 56px; margin-bottom: 12px; opacity: 0.5; }
+
+      /* TABS */
+      .tabs {
+          display: flex; border-bottom: 1px solid var(--border);
+          background: var(--bg-elev); padding: 0 8px; overflow-x: auto;
+      }
+      .tab {
+          padding: 10px 16px; border: none; background: none; color: var(--text-dim);
+          font-size: 13px; font-weight: 600; cursor: pointer;
+          border-bottom: 2px solid transparent; white-space: nowrap;
+          display: inline-flex; align-items: center; gap: 6px;
+      }
+      .tab:hover { color: var(--text); }
+      .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+      .tab .badge {
+          font-size: 10px; padding: 1px 6px; background: var(--bg);
+          border-radius: 8px; color: var(--text-faint); font-weight: 500;
+      }
+      .tab.active .badge { background: var(--accent); color: #fff; }
+
+      .tab-content { display: none; padding: 16px; }
+      .tab-content.active { display: block; }
+
+      /* FILE INFO */
+      .file-info {
+          display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 16px;
+          background: var(--bg-elev); border-bottom: 1px solid var(--border);
+          font-size: 12px; align-items: center;
+      }
+      .file-path {
+          font-family: 'Consolas', monospace; color: var(--text);
+          font-weight: 600; flex: 1; word-break: break-all;
+      }
+      .chip {
+          padding: 3px 10px; border-radius: 10px; font-size: 11px;
+          font-weight: 600; background: var(--bg); border: 1px solid var(--border);
+          color: var(--text-dim); display: inline-flex; align-items: center; gap: 4px;
+      }
+      .chip.blue { background: rgba(88,166,255,0.15); border-color: var(--accent); color: var(--accent); }
+      .chip.green { background: rgba(63,185,80,0.15); border-color: var(--green); color: var(--green); }
+      .chip.yellow { background: rgba(210,153,34,0.15); border-color: var(--yellow); color: var(--yellow); }
+      .chip.purple { background: rgba(163,113,247,0.15); border-color: var(--purple); color: var(--purple); }
+      .chip.orange { background: rgba(219,109,40,0.15); border-color: var(--orange); color: var(--orange); }
+      .chip.red { background: rgba(248,81,73,0.15); border-color: var(--red); color: var(--red); }
+
+      /* PANEL */
+      .panel {
+          background: var(--bg-elev); border: 1px solid var(--border);
+          border-radius: 8px; overflow: hidden;
+      }
+      .panel-header {
+          padding: 10px 14px; border-bottom: 1px solid var(--border);
+          font-size: 12px; font-weight: 700; text-transform: uppercase;
+          letter-spacing: 0.5px; color: var(--text-dim);
+          display: flex; justify-content: space-between; align-items: center;
+          gap: 8px;
+      }
+      .panel-body { padding: 8px; max-height: 500px; overflow-y: auto; }
+      .panel-body::-webkit-scrollbar { width: 6px; }
+      .panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+      /* GRID */
+      .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; }
+
+      /* ROW */
+      .row {
+          display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+          border-radius: 6px; font-size: 12px; font-family: 'Consolas', monospace;
+          color: var(--text); cursor: pointer; transition: background 0.1s;
+          word-break: break-all;
+      }
+      .row:hover { background: var(--bg-panel); }
+      .row.static { cursor: default; }
+      .row.static:hover { background: transparent; }
+      .row .name { flex: 1; min-width: 0; }
+      .row .line-ref {
+          color: var(--text-faint); font-size: 11px; flex-shrink: 0;
+      }
+      .row .type-tag {
+          font-size: 9px; padding: 1px 7px; border-radius: 8px;
+          font-weight: 700; text-transform: uppercase; flex-shrink: 0;
+      }
+      .tag-fn { background: rgba(163,113,247,0.2); color: var(--purple); }
+      .tag-class { background: rgba(219,109,40,0.2); color: var(--orange); }
+      .tag-const { background: rgba(63,185,80,0.2); color: var(--green); }
+      .tag-export { background: rgba(210,153,34,0.2); color: var(--yellow); }
+      .tag-import { background: rgba(88,166,255,0.2); color: var(--accent); }
+      .tag-external { background: rgba(248,81,73,0.2); color: var(--red); }
+      .tag-default { background: rgba(247,120,186,0.2); color: var(--pink); }
+      .tag-type { background: rgba(57,211,83,0.2); color: var(--cyan); }
+      .tag-call { background: rgba(88,166,255,0.2); color: var(--accent); }
+      .tag-async { background: rgba(163,113,247,0.2); color: var(--purple); }
+
+      .empty-msg {
+          padding: 24px; text-align: center; color: var(--text-faint);
+          font-size: 12px; font-style: italic;
+      }
+
+      /* STATS GRID */
+      .stat-grid {
+          display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px;
+      }
+      .stat-card {
+          background: var(--bg-elev); border: 1px solid var(--border);
+          border-radius: 8px; padding: 12px; text-align: center;
+      }
+      .stat-card .num { font-size: 24px; font-weight: 800; color: var(--accent); line-height: 1.2; }
+      .stat-card .lbl { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+      .stat-card.green .num { color: var(--green); }
+      .stat-card.yellow .num { color: var(--yellow); }
+      .stat-card.purple .num { color: var(--purple); }
+      .stat-card.orange .num { color: var(--orange); }
+
+      /* FILTERS */
+      .filters {
+          display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;
+          padding: 8px; background: var(--bg-elev); border-radius: 8px;
+          border: 1px solid var(--border);
+      }
+      .filter-btn {
+          padding: 4px 10px; border: 1px solid var(--border); background: var(--bg);
+          color: var(--text-dim); border-radius: 6px; cursor: pointer;
+          font-size: 11px; font-weight: 600;
+      }
+      .filter-btn:hover { color: var(--text); border-color: var(--border-hover); }
+      .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+      /* FN CARD */
+      .fn-card {
+          background: var(--bg-elev); border: 1px solid var(--border);
+          border-radius: 8px; margin-bottom: 10px; overflow: hidden;
+      }
+      .fn-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+      .fn-card-header {
+          padding: 10px 14px; background: var(--bg-panel);
+          border-bottom: 1px solid var(--border);
+          display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+          cursor: pointer;
+      }
+      .fn-card-header:hover { background: var(--bg-elev); }
+      .fn-card-header .fn-name {
+          font-family: 'Consolas', monospace; font-weight: 700;
+          color: var(--text); font-size: 13px; flex: 1; min-width: 0;
+      }
+      .fn-card-header .fn-name .kw { color: var(--purple); font-weight: 700; }
+      .fn-card-header .fn-name .fn-real { color: var(--accent); }
+      .fn-card-header .fn-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+      .fn-card-body {
+          padding: 12px 14px; display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;
+      }
+      .fn-card-body.collapsed { display: none; }
+
+      .fn-section {
+          background: var(--bg); border: 1px solid var(--border);
+          border-radius: 6px; padding: 8px 10px;
+      }
+      .fn-section h5 {
+          font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+          color: var(--text-faint); margin-bottom: 8px; font-weight: 700;
+          display: flex; align-items: center; gap: 6px;
+      }
+      .fn-section h5 .count {
+          background: var(--bg-elev); padding: 0 6px; border-radius: 8px;
+          color: var(--text-dim); font-size: 10px; font-weight: 500;
+      }
+
+      .fn-signature {
+          background: var(--bg); border: 1px solid var(--border);
+          border-radius: 6px; padding: 10px 12px;
+          font-family: 'Consolas', monospace; font-size: 12px;
+          margin-bottom: 12px; overflow-x: auto;
+          white-space: pre-wrap; word-break: break-all;
+      }
+      .fn-signature .kw { color: var(--purple); font-weight: 700; }
+      .fn-signature .fn { color: var(--accent); font-weight: 700; }
+      .fn-signature .p { color: var(--yellow); }
+      .fn-signature .t { color: var(--green); }
+      .fn-signature .c { color: var(--text-faint); font-style: italic; }
+
+      /* ACTIVE NODE PANEL */
+      .active-node-panel {
+          background: var(--bg-panel); border: 2px solid var(--accent);
+          border-radius: 10px; position: sticky; top: 16px;
+          max-height: calc(100vh - 32px); display: flex; flex-direction: column;
+          overflow: hidden;
+          box-shadow: 0 0 20px rgba(88,166,255,0.15);
+      }
+      .active-node-panel.empty-state {
+          border-color: var(--border); box-shadow: none;
+      }
+      .anp-header {
+          padding: 12px 16px; background: linear-gradient(135deg, rgba(88,166,255,0.15), rgba(163,113,247,0.15));
+          border-bottom: 1px solid var(--border);
+          display: flex; justify-content: space-between; align-items: center;
+      }
+      .anp-header h3 {
+          font-size: 13px; font-weight: 700; display: flex; align-items: center;
+          gap: 8px; text-transform: uppercase; letter-spacing: 0.5px;
+      }
+      .anp-close {
+          background: none; border: none; color: var(--text-dim); font-size: 20px;
+          cursor: pointer; padding: 0 4px; line-height: 1;
+      }
+      .anp-close:hover { color: var(--text); }
+      .anp-body { padding: 12px; overflow-y: auto; flex: 1; }
+      .anp-body::-webkit-scrollbar { width: 6px; }
+      .anp-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+      .anp-node {
+          background: var(--bg-elev); border: 1px solid var(--border);
+          border-radius: 8px; padding: 12px; margin-bottom: 12px;
+          border-left: 3px solid var(--accent);
+      }
+      .anp-node.fn { border-left-color: var(--purple); }
+      .anp-node.class { border-left-color: var(--orange); }
+      .anp-node.file { border-left-color: var(--green); }
+      .anp-node.external { border-left-color: var(--red); }
+
+      .anp-node-title {
+          font-family: 'Consolas', monospace; font-weight: 700;
+          font-size: 14px; margin-bottom: 6px; color: var(--text);
+          display: flex; align-items: center; gap: 6px; word-break: break-all;
+      }
+      .anp-node-subtitle {
+          font-size: 11px; color: var(--text-dim); margin-bottom: 8px;
+          font-family: 'Consolas', monospace; word-break: break-all;
+      }
+      .anp-node-badges { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
+
+      .anp-node-signature {
+          background: var(--bg); border: 1px solid var(--border);
+          border-radius: 6px; padding: 8px 10px;
+          font-family: 'Consolas', monospace; font-size: 11px;
+          white-space: pre-wrap; word-break: break-all; margin-bottom: 10px;
+          line-height: 1.5;
+      }
+      .anp-node-signature .kw { color: var(--purple); font-weight: 700; }
+      .anp-node-signature .fn { color: var(--accent); font-weight: 700; }
+      .anp-node-signature .p { color: var(--yellow); }
+      .anp-node-signature .t { color: var(--green); }
+
+      .anp-section {
+          background: var(--bg); border: 1px solid var(--border);
+          border-radius: 8px; margin-bottom: 10px; overflow: hidden;
+      }
+      .anp-section-header {
+          padding: 8px 12px; background: var(--bg-elev);
+          font-size: 11px; font-weight: 700; text-transform: uppercase;
+          letter-spacing: 0.5px; color: var(--text-dim);
+          display: flex; justify-content: space-between; align-items: center;
+          cursor: pointer; user-select: none;
+          border-bottom: 1px solid var(--border);
+      }
+      .anp-section-header:hover { color: var(--text); }
+      .anp-section-header .cnt {
+          background: var(--bg); padding: 1px 8px; border-radius: 10px;
+          font-size: 10px; color: var(--text-dim);
+      }
+      .anp-section-body { padding: 6px; }
+      .anp-section-body.collapsed { display: none; }
+
+      .anp-link {
+          display: flex; align-items: center; gap: 8px;
+          padding: 6px 8px; border-radius: 6px;
+          font-family: 'Consolas', monospace; font-size: 11px;
+          cursor: pointer; transition: background 0.1s;
+          border-left: 2px solid transparent;
+          word-break: break-all;
+      }
+      .anp-link:hover { background: var(--bg-elev); border-left-color: var(--accent); }
+      .anp-link .link-name {
+          flex: 1; min-width: 0; font-weight: 600;
+      }
+      .anp-link .link-meta {
+          font-size: 10px; color: var(--text-faint); flex-shrink: 0;
+      }
+      .anp-link .link-tag {
+          font-size: 9px; padding: 1px 6px; border-radius: 8px;
+          font-weight: 700; text-transform: uppercase; flex-shrink: 0;
+      }
+
+      .anp-chain {
+          display: flex; align-items: center; gap: 4px;
+          flex-wrap: wrap; padding: 8px 10px;
+          background: var(--bg); border: 1px solid var(--border);
+          border-radius: 6px; margin-bottom: 10px;
+          font-size: 10px; font-family: 'Consolas', monospace;
+      }
+      .anp-chain-node {
+          padding: 2px 8px; border-radius: 8px;
+          background: var(--bg-elev); border: 1px solid var(--border);
+          cursor: pointer; white-space: nowrap;
+          max-width: 130px; overflow: hidden; text-overflow: ellipsis;
+      }
+      .anp-chain-node:hover { border-color: var(--accent); color: var(--accent); }
+      .anp-chain-node.current {
+          background: var(--accent); color: #fff; border-color: var(--accent);
+          font-weight: 700;
+      }
+      .anp-chain-arrow { color: var(--text-faint); font-size: 12px; }
+
+      .anp-empty {
+          padding: 60px 20px; text-align: center; color: var(--text-dim);
+      }
+      .anp-empty .icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
+      .anp-empty p { font-size: 13px; line-height: 1.6; }
+
+      /* MODAL */
+      .modal-overlay {
+          position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+          display: none; align-items: center; justify-content: center;
+          z-index: 1000; backdrop-filter: blur(4px); padding: 20px;
+      }
+      .modal-overlay.show { display: flex; }
+      .modal {
+          background: var(--bg-panel); border: 1px solid var(--border);
+          border-radius: 12px; padding: 0; max-width: 1100px; width: 100%;
+          max-height: 88vh; overflow: hidden;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+          display: flex; flex-direction: column;
+      }
+      .modal-header {
+          padding: 16px 20px; border-bottom: 1px solid var(--border);
+          display: flex; align-items: center; justify-content: space-between;
+          background: var(--bg-elev);
+      }
+      .modal-header h3 { font-size: 16px; display: flex; align-items: center; gap: 10px; }
+      .modal-close {
+          background: none; border: none; color: var(--text-dim);
+          font-size: 28px; cursor: pointer; line-height: 1; padding: 0 8px;
+      }
+      .modal-close:hover { color: var(--text); }
+      .modal-body { padding: 20px; overflow-y: auto; }
+      .modal-body::-webkit-scrollbar { width: 8px; }
+      .modal-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+      /* CHAIN */
+      .chain {
+          display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+          padding: 10px 14px; background: var(--bg-elev);
+          border: 1px solid var(--border); border-radius: 8px;
+          margin-bottom: 12px; font-size: 12px;
+      }
+      .chain-node {
+          padding: 3px 10px; background: var(--bg); border: 1px solid var(--border);
+          border-radius: 8px; font-family: 'Consolas', monospace;
+          display: inline-flex; align-items: center; gap: 4px;
+          cursor: pointer;
+      }
+      .chain-node:hover { border-color: var(--accent); color: var(--accent); }
+      .chain-node.current { background: var(--accent); color: #fff; border-color: var(--accent); }
+      .chain-arrow { color: var(--text-faint); font-weight: 700; }
+
+      /* TOAST */
+      .toast {
+          position: fixed; bottom: 20px; left: 50%;
+          transform: translateX(-50%) translateY(100px);
+          background: var(--bg-elev); color: var(--text);
+          padding: 10px 20px; border-radius: 8px; border: 1px solid var(--border);
+          font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+          transition: transform 0.3s; z-index: 9999;
+      }
+      .toast.show { transform: translateX(-50%) translateY(0); }
+      .toast.error { border-color: var(--red); color: var(--red); }
+      .toast.success { border-color: var(--green); color: var(--green); }
+
+      .kbd {
+          display: inline-block; padding: 1px 5px; background: var(--bg);
+          border: 1px solid var(--border); border-radius: 4px;
+          font-size: 10px; font-family: monospace; color: var(--text-dim);
+      }
+
+      .caret {
+          display: inline-block; transition: transform 0.2s;
+          color: var(--text-dim); font-size: 10px;
+      }
+      .caret.open { transform: rotate(90deg); }
+
+      /* IMPORT NAMES PREVIEW */
+      .import-names {
+          display: flex; flex-wrap: wrap; gap: 3px; margin-left: 6px;
+          justify-content: flex-end; max-width: 55%;
+      }
+      .import-names .imp-name {
+          font-size: 10px; padding: 1px 6px; border-radius: 6px;
+          background: rgba(210,153,34,0.15); color: var(--yellow);
+          font-family: 'Consolas', monospace; white-space: nowrap;
+      }
+      .import-names .imp-more {
+          font-size: 10px; padding: 1px 6px; border-radius: 6px;
+          background: var(--bg-panel); color: var(--text-faint);
+          font-family: 'Consolas', monospace;
+      }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <h1>🔍 AST Analyzer <span class="ver" id="verTag">v8.0.0</span></h1>
+    <div class="header-actions">
+      <button class="btn" id="themeBtn">🌙 Тема</button>
+      <button class="btn" id="exportBtn" disabled>📥 Экспорт</button>
+      <button class="btn" id="helpBtn">⌨️ Горячие</button>
+    </div>
+  </header>
+
+  <div class="upload" id="upload">
+    <input type="file" id="fileInput" accept=".json,application/json">
+    <div class="icon">📦</div>
+    <div class="title">Перетащите JSON-файл графа сюда</div>
+    <div class="subtitle">или нажмите для выбора · Структура v8.0.0</div>
+    <div class="loaded" id="fileName"></div>
+  </div>
+
+  <div class="controls">
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="Поиск файла по пути... (Ctrl+K)">
+    </div>
+    <button class="btn" id="expandAllBtn">↕️ Все функции</button>
+    <button class="btn" id="depsOnlyBtn">🔗 Только с зависимостями</button>
+    <div class="stats">
+      <span>📁 <b id="totalFiles">0</b></span>
+      <span>📦 <b id="totalModules">0</b></span>
+      <span>⚙️ <b id="totalFunctions">0</b></span>
+      <span>📞 <b id="totalCalls">0</b></span>
+      <span>📤 <b id="totalExports">0</b></span>
+      <span>📥 <b id="totalImports">0</b></span>
+    </div>
+  </div>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span>📁 Файлы</span>
+        <span class="count" id="sidebarCount">0</span>
+      </div>
+      <ul class="file-list" id="fileList"></ul>
+    </aside>
+
+    <main class="main" id="mainArea">
+      <div class="empty" id="emptyState">
+        <div class="icon">📊</div>
+        <div>Загрузите JSON-файл для анализа</div>
+        <div style="margin-top:8px; font-size:12px; color:var(--text-faint)">
+          Клик по функции → детальная информация справа →
+        </div>
+      </div>
+
+      <div id="analysisView" style="display:none;">
+        <div class="file-info" id="fileInfo"></div>
+        <div class="tabs" id="tabs">
+          <button class="tab active" data-tab="overview">📊 Обзор</button>
+          <button class="tab" data-tab="functions">⚙️ Функции <span class="badge" id="fnBadge">0</span></button>
+          <button class="tab" data-tab="classes">🏛️ Классы <span class="badge" id="clsBadge">0</span></button>
+          <button class="tab" data-tab="deps">🔗 Зависимости <span class="badge" id="depBadge">0</span></button>
+          <button class="tab" data-tab="calls">📞 Вызовы <span class="badge" id="callBadge">0</span></button>
+          <button class="tab" data-tab="constants">📌 Константы <span class="badge" id="constBadge">0</span></button>
+        </div>
+
+        <div class="tab-content active" id="tab-overview"></div>
+        <div class="tab-content" id="tab-functions"></div>
+        <div class="tab-content" id="tab-classes"></div>
+        <div class="tab-content" id="tab-deps"></div>
+        <div class="tab-content" id="tab-calls"></div>
+        <div class="tab-content" id="tab-constants"></div>
+      </div>
+    </main>
+
+    <aside class="active-node-panel empty-state" id="activeNodePanel">
+      <div class="anp-header">
+        <h3>🎯 Активный узел</h3>
+        <button class="anp-close" id="anpClose" style="display:none;" title="Сбросить">×</button>
+      </div>
+      <div class="anp-body" id="anpBody">
+        <div class="anp-empty">
+          <div class="icon">🎯</div>
+          <p>
+            Выберите <b>функцию</b>, <b>класс</b> или <b>импорт</b>,<br>
+            чтобы увидеть её связи здесь.
+          </p>
+          <p style="margin-top:12px; font-size:11px; color:var(--text-faint);">
+            💡 Клик по имени функции в карточке →<br>
+            все её вызовы, импорты и экспорты
+          </p>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="modal-overlay" id="fnModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="fnModalTitle">Детали</h3>
+      <button class="modal-close" onclick="closeFnModal()">×</button>
+    </div>
+    <div class="modal-body" id="fnModalBody"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="helpModal">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-header">
+      <h3>⌨️ Горячие клавиши</h3>
+      <button class="modal-close" onclick="document.getElementById('helpModal').classList.remove('show')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:grid; grid-template-columns: auto 1fr; gap: 10px 24px; font-size:13px;">
+        <div><span class="kbd">Ctrl</span>+<span class="kbd">K</span></div><div>Фокус на поиск</div>
+        <div><span class="kbd">Ctrl</span>+<span class="kbd">E</span></div><div>Экспорт</div>
+        <div><span class="kbd">↑</span> / <span class="kbd">↓</span></div><div>Навигация по файлам</div>
+        <div><span class="kbd">Esc</span></div><div>Закрыть / сбросить</div>
+        <div><span class="kbd">Клик по функции</span></div><div>Активный узел справа →</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ============================================================================
+  // СОСТОЯНИЕ
+  // ============================================================================
+  const state = {
+    data: null,
+    modules: {}, files: {}, functions: {}, classes: {}, constants: {},
+    exports: [], imports: [], calls: [], reExports: [],
+    fileExports: {}, fileImports: {}, fileFunctions: {},
+    fileClasses: {}, fileConstants: {}, moduleFiles: {},
+    fnById: {}, fnCalls: {}, fnCallers: {}, fnExports: {},
+    fileDependents: {}, fileDependencies: {},
+    fnExportSources: {}, fnImportTargets: {},
+    fnDetailedCallers: {}, fnDetailedCalls: {},
+    fnByName: {}, externalCallers: {},
+    statistics: {}, version: '?', timestamp: '',
+
+    selectedFileId: null,
+    activeNode: null,
+    searchQuery: '',
+    depsOnly: false,
+    expandAllFns: false,
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  // ============================================================================
+  // УТИЛИТЫ
+  // ============================================================================
+  function toast(msg, type = '') {
+    const el = $('toast');
+    el.textContent = msg;
+    el.className = 'toast show ' + type;
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.className = 'toast', 2500);
+  }
+
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  function getModuleName(id) { return state.modules[id]?.name || id; }
+  function getFilePath(id) { return state.files[id]?.path || id; }
+  function shortPath(p, max = 40) {
+    if (!p) return '';
+    if (p.length <= max) return p;
+    return '…' + p.slice(-(max - 1));
+  }
+
+  // ============================================================================
+  // ПРЕДОБРАБОТКА
+  // ============================================================================
+  function preprocess(rawData) {
+    const d = {
+      modules: {}, files: {}, functions: {}, classes: {}, constants: {},
+      exports: [], imports: [], calls: [], reExports: [],
+      fileExports: {}, fileImports: {}, fileFunctions: {}, fileClasses: {},
+      fileConstants: {}, moduleFiles: {},
+      fnById: {}, fnCalls: {}, fnCallers: {}, fnExports: {},
+      fileDependents: {}, fileDependencies: {},
+      fnExportSources: {}, fnImportTargets: {},
+      fnDetailedCallers: {}, fnDetailedCalls: {},
+      fnByName: {}, externalCallers: {},
+      statistics: rawData.statistics || {},
+      version: rawData.version || '?',
+      timestamp: rawData.timestamp || '',
+    };
+
+    for (const m of (rawData.modules || [])) {
+      d.modules[m.id] = m;
+      d.moduleFiles[m.id] = m.fileIds || [];
+    }
+
+    for (const f of (rawData.files || [])) {
+      d.files[f.id] = f;
+      d.fileExports[f.id] = [];
+      d.fileImports[f.id] = [];
+      d.fileFunctions[f.id] = [];
+      d.fileClasses[f.id] = [];
+      d.fileConstants[f.id] = [];
+      d.fileDependents[f.id] = [];
+      d.fileDependencies[f.id] = [];
+    }
+
+    for (const fn of (rawData.functions || [])) {
+      d.functions[fn.id] = fn;
+      d.fnById[fn.id] = fn;
+      d.fnCalls[fn.id] = [];
+      d.fnCallers[fn.id] = [];
+      d.fnExports[fn.id] = [];
+      d.fnExportSources[fn.id] = [];
+      d.fnImportTargets[fn.id] = [];
+      d.fnDetailedCallers[fn.id] = [];
+      d.fnDetailedCalls[fn.id] = [];
+      if (d.fileFunctions[fn.fileId]) d.fileFunctions[fn.fileId].push(fn);
+      if (!d.fnByName[fn.name]) d.fnByName[fn.name] = [];
+      d.fnByName[fn.name].push(fn.id);
+    }
+
+    for (const c of (rawData.classes || [])) {
+      d.classes[c.id] = c;
+      if (d.fileClasses[c.fileId]) d.fileClasses[c.fileId].push(c);
+    }
+
+    for (const cn of (rawData.constants || [])) {
+      d.constants[cn.id] = cn;
+      if (d.fileConstants[cn.fileId]) d.fileConstants[cn.fileId].push(cn);
+    }
+
+    // Экспорты
+    for (const e of (rawData.exports || [])) {
+      d.exports.push(e);
+      if (d.fileExports[e.fileId]) d.fileExports[e.fileId].push(e);
+      if (e.functionId && d.fnExports[e.functionId]) d.fnExports[e.functionId].push(e);
+    }
+
+    // Импорты
+    for (const i of (rawData.imports || [])) {
+      d.imports.push(i);
+      if (d.fileImports[i.fromFileId]) d.fileImports[i.fromFileId].push(i);
+
+      if (i.toFileId && !i.isExternal) {
+        d.fileDependencies[i.fromFileId].push(i.toFileId);
+        d.fileDependents[i.toFileId].push(i.fromFileId);
+
+        const targetExports = d.fileExports[i.toFileId] || [];
+        const importName = i.importedName;
+
+        const matchedExport = targetExports.find(e =>
+          e.exportName === importName ||
+          e.localName === importName ||
+          (importName === 'default' && e.isDefault) ||
+          (i.isNamespace && e.isExported)
+        );
+
+        if (matchedExport && matchedExport.functionId) {
+          d.fnImportTargets[matchedExport.functionId].push({
+            toFileId: i.fromFileId,
+            toFilePath: d.files[i.fromFileId]?.path || '?',
+            toModuleName: d.modules[d.files[i.fromFileId]?.moduleId]?.name || '?',
+            importName: i.localName || importName,
+            originalName: importName,
+            source: i.source,
+            line: i.line,
+            isDefault: i.isDefault,
+            isNamespace: i.isNamespace,
+            isTypeOnly: i.isTypeOnly,
+            importId: i.id,
+          });
+        }
+      }
+    }
+
+    // Вызовы
+    for (const c of (rawData.calls || [])) {
+      d.calls.push(c);
+      if (d.fnCalls[c.fromFunctionId]) d.fnCalls[c.fromFunctionId].push(c);
+      if (d.fnCallers[c.toFunctionId]) d.fnCallers[c.toFunctionId].push(c);
+
+      const fromFn = d.fnById[c.fromFunctionId];
+      const toFn = d.fnById[c.toFunctionId];
+      const fromFilePath = fromFn ? (d.files[fromFn.fileId]?.path || '?') : '?';
+      const fromFnName = fromFn ? fromFn.name : c.fromFunctionId;
+      const toFnName = toFn ? toFn.name : c.toFunctionId;
+
+      if (fromFn) {
+        d.fnDetailedCalls[c.fromFunctionId].push({
+          toFnId: c.toFunctionId,
+          toFnName: toFnName,
+          toFilePath: toFn ? (d.files[toFn.fileId]?.path || '?') : (c.toFunctionId.startsWith('external:') ? '🌐 external' : '?'),
+          toModuleName: toFn ? (d.modules[d.files[toFn.fileId]?.moduleId]?.name || '?') : 'external',
+          callLine: c.line,
+          callType: c.type || 'direct',
+          isExternal: c.toFunctionId.startsWith('external:'),
+        });
+      }
+
+      if (toFn) {
+        d.fnDetailedCallers[c.toFunctionId].push({
+          fromFnId: c.fromFunctionId,
+          fromFnName: fromFnName,
+          fromFilePath: fromFilePath,
+          fromModuleName: fromFn ? (d.modules[d.files[fromFn.fileId]?.moduleId]?.name || '?') : '?',
+          callLine: c.line,
+          callType: c.type || 'direct',
+        });
+      } else if (c.toFunctionId.startsWith('external:')) {
+        const extName = c.toFunctionId.replace('external:', '');
+        if (!d.externalCallers[extName]) d.externalCallers[extName] = [];
+        d.externalCallers[extName].push({
+          fromFnId: c.fromFunctionId,
+          fromFnName: fromFnName,
+          fromFilePath: fromFilePath,
+          fromModuleName: fromFn ? (d.modules[d.files[fromFn.fileId]?.moduleId]?.name || '?') : '?',
+          callLine: c.line,
+          callType: c.type || 'direct',
+        });
+      }
+    }
+
+    for (const r of (rawData.reExports || [])) {
+      d.reExports.push(r);
+    }
+
+    return d;
+  }
+
+  function getFnFullInfo(fnId) {
+    const fn = state.fnById[fnId];
+    if (!fn) return null;
+    const file = state.files[fn.fileId];
+    const module = file ? state.modules[file.moduleId] : null;
+    return {
+      fn, file, module,
+      exports: state.fnExports[fnId] || [],
+      imports: state.fnImportTargets[fnId] || [],
+      calls: state.fnDetailedCalls[fnId] || [],
+      callers: state.fnDetailedCallers[fnId] || [],
+    };
+  }
+
+  // ============================================================================
+  // ПОЛУЧЕНИЕ ИМЁН ИМПОРТОВ ДЛЯ ФАЙЛА
+  // Возвращает массив уникальных имён, которые файл `importerId` импортирует
+  // из файла `targetId`
+  // ============================================================================
+  function getImportedNames(importerId, targetId) {
+    const list = (state.fileImports[importerId] || []).filter(i => i.toFileId === targetId);
+    const names = [];
+    for (const i of list) {
+      if (i.isNamespace) {
+        names.push('*');
+      } else if (i.isDefault) {
+        names.push('default');
+      } else if (i.importedName) {
+        names.push(i.importedName);
+      }
+    }
+    return [...new Set(names)];
+  }
+
+  // ============================================================================
+  // ЗАГРУЗКА
+  // ============================================================================
+  function loadData(json) {
+    try {
+      if (!json.files || !json.modules) {
+        toast('Неверный формат JSON', 'error');
+        return;
+      }
+      state.data = json;
+      Object.assign(state, preprocess(json));
+
+      $('verTag').textContent = 'v' + state.version;
+      $('fileName').textContent = `✓ ${Object.keys(state.files).length} файлов · ${Object.keys(state.functions).length} функций · ${state.calls.length} вызовов`;
+      $('totalFiles').textContent = Object.keys(state.files).length;
+      $('totalModules').textContent = Object.keys(state.modules).length;
+      $('totalFunctions').textContent = Object.keys(state.functions).length;
+      $('totalCalls').textContent = state.calls.length;
+      $('totalExports').textContent = state.exports.length;
+      $('totalImports').textContent = state.imports.length;
+      $('exportBtn').disabled = false;
+
+      renderFileList();
+      toast(`✓ Загружено`, 'success');
+
+      const first = Object.keys(state.files)[0];
+      if (first) selectFile(first);
+    } catch (e) {
+      console.error(e);
+      toast('Ошибка: ' + e.message, 'error');
+    }
+  }
+
+  // ============================================================================
+  // СПИСОК ФАЙЛОВ
+  // ============================================================================
+  function renderFileList() {
+    const list = $('fileList');
+    const q = state.searchQuery.toLowerCase();
+    list.innerHTML = '';
+    let count = 0;
+
+    for (const [id, f] of Object.entries(state.files)) {
+      if (q && !f.path.toLowerCase().includes(q)) continue;
+      const deps = state.fileDependents[id]?.length || 0;
+      const imps = state.fileImports[id]?.length || 0;
+      if (state.depsOnly && !(deps > 0 || imps > 0)) continue;
+
+      count++;
+      const li = document.createElement('li');
+      li.className = 'file-item' + (id === state.selectedFileId ? ' active' : '');
+      li.dataset.fileId = id;
+      li.title = f.path;
+      const modName = getModuleName(f.moduleId);
+      li.innerHTML = `<span style="flex:1;">${escapeHtml(f.path)}</span><span class="mod-badge">${escapeHtml(modName)}</span>`;
+      li.addEventListener('click', () => selectFile(id));
+      list.appendChild(li);
+    }
+
+    $('sidebarCount').textContent = count;
+    if (count === 0) list.innerHTML = '<div class="empty-msg">Ничего не найдено</div>';
+  }
+
+  // ============================================================================
+  // ВЫБОР ФАЙЛА
+  // ============================================================================
+  function selectFile(fileId) {
+    state.selectedFileId = fileId;
+    renderFileList();
+    $('emptyState').style.display = 'none';
+    $('analysisView').style.display = 'block';
+    renderAnalysis();
+    if (!state.activeNode) setActiveNode('file', fileId);
+  }
+
+  // ============================================================================
+  // АКТИВНЫЙ УЗЕЛ
+  // ============================================================================
+  function setActiveNode(type, id) {
+    state.activeNode = { type, id };
+    $('activeNodePanel').classList.remove('empty-state');
+    $('anpClose').style.display = 'block';
+    renderActiveNode();
+    if (type === 'fn') {
+      document.querySelectorAll('.fn-card').forEach(c => c.classList.remove('active'));
+      const card = document.getElementById('fn-card-' + id);
+      if (card) card.classList.add('active');
+    }
+  }
+
+  function clearActiveNode() {
+    state.activeNode = null;
+    $('activeNodePanel').classList.add('empty-state');
+    $('anpClose').style.display = 'none';
+    $('anpBody').innerHTML = `
+    <div class="anp-empty">
+      <div class="icon">🎯</div>
+      <p>Выберите <b>функцию</b>, <b>класс</b> или <b>импорт</b>,<br>чтобы увидеть её связи здесь.</p>
+    </div>
+  `;
+    document.querySelectorAll('.fn-card').forEach(c => c.classList.remove('active'));
+  }
+
+  $('anpClose').addEventListener('click', clearActiveNode);
+
+  // ============================================================================
+  // РЕНДЕР АКТИВНОГО УЗЛА
+  // ============================================================================
+  function renderActiveNode() {
+    const { type, id } = state.activeNode || {};
+    if (!type) return;
+    const body = $('anpBody');
+
+    if (type === 'fn') renderActiveFn(id, body);
+    else if (type === 'class') renderActiveClass(id, body);
+    else if (type === 'file') renderActiveFile(id, body);
+    else if (type === 'external') renderActiveExternal(id, body);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Активная функция
+  // ---------------------------------------------------------------------------
+  function renderActiveFn(fnId, body) {
+    const info = getFnFullInfo(fnId);
+    if (!info) { body.innerHTML = '<div class="anp-empty">Функция не найдена</div>'; return; }
+
+    const { fn, file, module, exports, imports, calls, callers } = info;
+
+    const kw = [];
+    if (fn.isAsync) kw.push('async');
+    if (fn.isArrow) kw.push('arrow');
+    if (fn.isMethod) kw.push('method');
+
+    const params = fn.params || [];
+    const ret = fn.returnType || '';
+
+    const importsByModule = {};
+    for (const i of imports) {
+      const key = i.toModuleName || '?';
+      if (!importsByModule[key]) importsByModule[key] = [];
+      importsByModule[key].push(i);
+    }
+
+    body.innerHTML = `
+    <div class="anp-node fn">
+      <div class="anp-node-title">⚙️ ${escapeHtml(fn.name)}</div>
+      <div class="anp-node-subtitle">📄 ${escapeHtml(file?.path || '?')}:${fn.line}</div>
+      <div class="anp-node-badges">
+        ${fn.isExported ? '<span class="chip yellow">exported</span>' : ''}
+        ${fn.isAsync ? '<span class="chip purple">async</span>' : ''}
+        ${fn.isArrow ? '<span class="chip blue">arrow</span>' : ''}
+        ${fn.isMethod ? '<span class="chip orange">method</span>' : ''}
+        ${!fn.isExported ? '<span class="chip">internal</span>' : ''}
+      </div>
+      <div class="anp-node-signature">
+        ${kw.length ? `<span class="kw">${kw.join(' ')}</span> ` : ''}<span class="fn">${escapeHtml(fn.name)}</span><span style="color:var(--text-faint);">(</span>${params.map(p => `<span class="p">${escapeHtml(p)}</span>`).join('<span style="color:var(--text-faint);">, </span>')}<span style="color:var(--text-faint);">)</span>${ret ? `<span style="color:var(--text-faint);">:</span> <span class="t">${escapeHtml(ret.split('.').pop())}</span>` : ''}
+      </div>
+      <div style="display:flex; gap:6px;">
+        <button class="btn" style="flex:1; font-size:11px;" onclick="openFnModal('${fn.id}')">🔍 Полная карточка</button>
+        <button class="btn" style="font-size:11px;" onclick="selectFile('${fn.fileId}')">📄 Файл</button>
+      </div>
+    </div>
+
+    <div class="anp-section">
+      <div class="anp-section-header" onclick="toggleAnpSection(this)">
+        <span>📤 Экспортируется как</span>
+        <span class="cnt">${exports.length}</span>
+      </div>
+      <div class="anp-section-body">
+        ${exports.length === 0 ? '<div class="empty-msg" style="padding:12px;">Не экспортируется</div>' :
+      exports.map(e => `
+            <div class="anp-link">
+              <span class="link-name" style="color:var(--yellow);">${escapeHtml(e.exportName || e.localName || '?')}</span>
+              <span class="link-tag tag-export">${escapeHtml(e.type || 'named')}</span>
+              <span class="link-meta">L${e.line}</span>
+            </div>
+          `).join('')}
+      </div>
+    </div>
+
+    <div class="anp-section">
+      <div class="anp-section-header" onclick="toggleAnpSection(this)">
+        <span>📥 Импортируется в файлах</span>
+        <span class="cnt">${imports.length}</span>
+      </div>
+      <div class="anp-section-body">
+        ${imports.length === 0 ? '<div class="empty-msg" style="padding:12px;">Никто не импортирует</div>' :
+      Object.entries(importsByModule).map(([modName, list]) => `
+            <div style="padding:4px 8px; font-size:10px; text-transform:uppercase; color:var(--text-faint); letter-spacing:0.5px; margin-top:4px;">
+              📦 ${escapeHtml(modName)} (${list.length})
+            </div>
+            ${list.map(i => `
+              <div class="anp-link" onclick="selectFile('${i.toFileId}')">
+                <span class="link-name" title="${escapeHtml(i.toFilePath)}">${escapeHtml(shortPath(i.toFilePath, 32))}</span>
+                <span style="color:var(--text-faint); font-size:10px;">as "${escapeHtml(i.importName)}"</span>
+                ${i.isDefault ? '<span class="link-tag tag-default">def</span>' : ''}
+                ${i.isNamespace ? '<span class="link-tag tag-type">ns</span>' : ''}
+                ${i.isTypeOnly ? '<span class="link-tag tag-type">type</span>' : ''}
+                <span class="link-meta">L${i.line}</span>
+              </div>
+            `).join('')}
+          `).join('')}
+      </div>
+    </div>
+
+    <div class="anp-section">
+      <div class="anp-section-header" onclick="toggleAnpSection(this)">
+        <span>📞 Кто вызывает</span>
+        <span class="cnt">${callers.length}</span>
+      </div>
+      <div class="anp-section-body">
+        ${callers.length === 0 ? '<div class="empty-msg" style="padding:12px;">Никто не вызывает</div>' :
+      callers.map(c => `
+            <div class="anp-link" onclick="jumpToFn('${c.fromFnId}')">
+              <span class="link-name" style="color:var(--purple);">${escapeHtml(c.fromFnName)}</span>
+              <span style="color:var(--text-faint); font-size:10px;" title="${escapeHtml(c.fromFilePath)}">${escapeHtml(shortPath(c.fromFilePath, 22))}</span>
+              <span class="link-tag tag-call">${escapeHtml(c.callType)}</span>
+              <span class="link-meta">L${c.callLine}</span>
+            </div>
+          `).join('')}
+      </div>
+    </div>
+
+    <div class="anp-section">
+      <div class="anp-section-header" onclick="toggleAnpSection(this)">
+        <span>→ Вызывает</span>
+        <span class="cnt">${calls.length}</span>
+      </div>
+      <div class="anp-section-body">
+        ${calls.length === 0 ? '<div class="empty-msg" style="padding:12px;">Ничего не вызывает</div>' :
+      calls.map(c => `
+            <div class="anp-link" ${c.isExternal ? `onclick="setActiveNode('external','${escapeHtml(c.toFnName)}')"` : `onclick="jumpToFn('${c.toFnId}')"`}>
+              <span class="link-name" style="color:${c.isExternal ? 'var(--red)' : 'var(--accent)'};">
+                ${c.isExternal ? '🌐 ' : ''}${escapeHtml(c.toFnName)}
+              </span>
+              ${!c.isExternal ? `<span style="color:var(--text-faint); font-size:10px;" title="${escapeHtml(c.toFilePath)}">${escapeHtml(shortPath(c.toFilePath, 22))}</span>` : ''}
+              <span class="link-tag tag-call">${escapeHtml(c.callType)}</span>
+              <span class="link-meta">L${c.callLine}</span>
+            </div>
+          `).join('')}
+      </div>
+    </div>
+
+    <div class="anp-section">
+      <div class="anp-section-header">
+        <span>📄 Родительский файл</span>
+      </div>
+      <div class="anp-section-body">
+        <div class="anp-link" onclick="selectFile('${fn.fileId}')">
+          <span class="link-name" style="color:var(--green);" title="${escapeHtml(file?.path)}">${escapeHtml(shortPath(file?.path, 36))}</span>
+          <span class="link-tag" style="background:rgba(63,185,80,0.15); color:var(--green);">file</span>
+        </div>
+      </div>
+    </div>
+  `;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Активный класс
+  // ---------------------------------------------------------------------------
+  function renderActiveClass(clsId, body) {
+    const c = state.classes[clsId];
+    if (!c) { body.innerHTML = '<div class="anp-empty">Класс не найден</div>'; return; }
+    const file = state.files[c.fileId];
+    const methods = c.methods || [];
+    const fileFns = state.fileFunctions[c.fileId] || [];
+    const methodFns = fileFns.filter(f => methods.includes(f.name));
+
+    body.innerHTML = `
+    <div class="anp-node class">
+      <div class="anp-node-title">🏛️ ${escapeHtml(c.name)}</div>
+      <div class="anp-node-subtitle">📄 ${escapeHtml(file?.path || '?')}:${c.line}</div>
+      <div class="anp-node-badges">
+        ${c.isExported ? '<span class="chip yellow">exported</span>' : '<span class="chip">internal</span>'}
+        <span class="chip orange">${methods.length} методов</span>
+      </div>
+    </div>
+
+    <div class="anp-section">
+      <div class="anp-section-header" onclick="toggleAnpSection(this)">
+        <span>🔧 Методы</span>
+        <span class="cnt">${methods.length}</span>
+      </div>
+      <div class="anp-section-body">
+        ${methods.map(m => {
+      const matchedFn = methodFns.find(f => f.name === m);
+      return `
+            <div class="anp-link" ${matchedFn ? `onclick="jumpToFn('${matchedFn.id}')"` : ''}>
+              <span class="link-name" style="color:var(--purple);">${escapeHtml(m)}</span>
+              ${matchedFn ? `<span class="link-meta">L${matchedFn.line}</span>` : '<span class="link-meta">—</span>'}
+            </div>
+          `;
+    }).join('')}
+      </div>
+    </div>
+  `;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Активный файл — ИСПРАВЛЕННАЯ ВЕРСИЯ
+  // ---------------------------------------------------------------------------
+  function renderActiveFile(fileId, body) {
+    const f = state.files[fileId];
+    if (!f) { body.innerHTML = '<div class="anp-empty">Файл не найден</div>'; return; }
+    const modName = getModuleName(f.moduleId);
+    const fns = state.fileFunctions[fileId] || [];
+    const exps = state.fileExports[fileId] || [];
+    const imps = state.fileImports[fileId] || [];
+    const deps = [...new Set(state.fileDependents[fileId] || [])];
+    const depsOut = [...new Set(state.fileDependencies[fileId] || [])];
+    const exportedFns = fns.filter(x => x.isExported);
+
+    // Импорты из этого файла — группировка по source
+    const impsBySource = {};
+    for (const i of imps) {
+      const key = i.isExternal ? `🌐 ${i.source}` : (i.source || '(без source)');
+      if (!impsBySource[key]) impsBySource[key] = [];
+      impsBySource[key].push(i);
+    }
+
+    body.innerHTML = `
+    <div class="anp-node file">
+      <div class="anp-node-title">📄 ${escapeHtml(f.path.split('/').pop())}</div>
+      <div class="anp-node-subtitle">${escapeHtml(f.path)}</div>
+      <div class="anp-node-badges">
+        <span class="chip blue">📦 ${escapeHtml(modName)}</span>
+        <span class="chip green">⚙️ ${fns.length}</span>
+        <span class="chip yellow">📤 ${exportedFns.length}</span>
+        <span class="chip">📥 ${imps.length}</span>
+      </div>
+    </div>
+
+    <div class="anp-section">
+      <div class="anp-section-header" onclick="toggleAnpSection(this)">
+        <span>📤 Экспортированные функции</span>
+        <span class="cnt">${exportedFns.length}</span>
+      </div>
+      <div class="anp-section-body">
+        ${exportedFns.length === 0 ? '<div class="empty-msg" style="padding:12px;">Нет экспортированных функций</div>' :
+      exportedFns.map(fn => {
+        const importers = state.fnImportTargets[fn.id]?.length || 0;
+        return `
+              <div class="anp-link" onclick="setActiveNode('fn','${fn.id}')">
+                <span class="link-name" style="color:var(--accent);">${escapeHtml(fn.name)}</span>
+                ${importers > 0 ? `<span style="color:var(--text-faint); font-size:10px;">←${importers}</span>` : ''}
+                <span class="link-meta">L${fn.line}</span>
+              </div>
+            `;
+      }).join('')}
+      </div>
+    </div>
+
+    <div class="anp-section">
+      <div class="anp-section-header" onclick="toggleAnpSection(this)">
+        <span>📥 Импортируют этот файл</span>
+        <span class="cnt">${deps.length}</span>
+      </div>
+      <div class="anp-section-body">
+        ${deps.length === 0 ? '<div class="empty-msg" style="padding:12px;">Никто не импортирует</div>' :
+      deps.map(id => {
+        const names = getImportedNames(id, fileId);
+        const preview = names.slice(0, 3);
+        return `
+              <div class="anp-link" onclick="selectFile('${id}')" style="flex-direction:column; align-items:flex-start; gap:4px; padding:8px;">
+                <div style="display:flex; width:100%; gap:6px; align-items:center;">
+                  <span class="link-name" style="color:var(--accent); flex:1;" title="${escapeHtml(getFilePath(id))}">
+                    ${escapeHtml(shortPath(getFilePath(id), 34))}
+                  </span>
+                  <span class="link-tag tag-import">←</span>
+                </div>
+                ${preview.length ? `
+                  <div class="import-names" style="justify-content:flex-start; max-width:100%; margin-left:0;">
+                    ${preview.map(n => `<span class="imp-name">${escapeHtml(n)}</span>`).join('')}
+                    ${names.length > 3 ? `<span class="imp-more">+${names.length - 3}</span>` : ''}
+                  </div>
+                ` : ''}
+              </div>
+            `;
+      }).join('')}
+      </div>
+    </div>
+
+    <div class="anp-section">
+      <div class="anp-section-header" onclick="toggleAnpSection(this)">
+        <span>📤 Импорты этого файла (по источникам)</span>
+        <span class="cnt">${imps.length}</span>
+      </div>
+      <div class="anp-section-body">
+        ${imps.length === 0 ? '<div class="empty-msg" style="padding:12px;">Нет импортов</div>' :
+      Object.entries(impsBySource).map(([src, list]) => `
+            <div style="padding:6px 8px 2px; font-size:10px; color:var(--text-faint); font-family:Consolas,monospace; text-transform:none; letter-spacing:0;">
+              ${escapeHtml(src)}
+            </div>
+            ${list.map(i => {
+        const target = i.isExternal ? i.source : getFilePath(i.toFileId);
+        return `<div class="anp-link" ${!i.isExternal ? `onclick="selectFile('${i.toFileId}')"` : ''}>
+                <span class="link-name" style="color:${i.isExternal ? 'var(--red)' : 'var(--accent)'};" title="${escapeHtml(target)}">${escapeHtml(shortPath(target, 32))}</span>
+                <span style="color:var(--yellow); font-size:10px;">${escapeHtml(i.importedName || i.localName || '?')}</span>
+                <span class="link-tag ${i.isExternal ? 'tag-external' : 'tag-import'}">${escapeHtml(i.type || 'named')}</span>
+                <span class="link-meta">L${i.line}</span>
+              </div>`;
+      }).join('')}
+          `).join('')}
+      </div>
+    </div>
+
+    <div class="anp-section">
+      <div class="anp-section-header" onclick="toggleAnpSection(this)">
+        <span>🔗 Импортирует из</span>
+        <span class="cnt">${depsOut.length}</span>
+      </div>
+      <div class="anp-section-body">
+        ${depsOut.length === 0 ? '<div class="empty-msg" style="padding:12px;">Нет исходящих</div>' :
+      depsOut.map(id => `
+            <div class="anp-link" onclick="selectFile('${id}')">
+              <span class="link-name" title="${escapeHtml(getFilePath(id))}">${escapeHtml(shortPath(getFilePath(id), 34))}</span>
+              <span class="link-tag tag-export">→</span>
+            </div>
+          `).join('')}
+      </div>
+    </div>
+
+    <div class="anp-section">
+      <div class="anp-section-header" onclick="toggleAnpSection(this)">
+        <span>📋 Все экспорты</span>
+        <span class="cnt">${exps.length}</span>
+      </div>
+      <div class="anp-section-body">
+        ${exps.length === 0 ? '<div class="empty-msg" style="padding:12px;">Нет</div>' :
+      exps.map(e => {
+        const fn = e.functionId ? state.fnById[e.functionId] : null;
+        const importers = fn ? (state.fnImportTargets[fn.id]?.length || 0) : 0;
+        return `
+              <div class="anp-link" ${fn ? `onclick="setActiveNode('fn','${fn.id}')"` : ''}>
+                <span class="link-name" style="color:var(--yellow);">${escapeHtml(e.exportName || e.localName || '?')}</span>
+                ${importers > 0 ? `<span style="color:var(--text-faint); font-size:10px;">←${importers}</span>` : ''}
+                <span class="link-tag ${e.isDefault ? 'tag-default' : e.isTypeOnly ? 'tag-type' : 'tag-export'}">${escapeHtml(e.type || 'named')}</span>
+              </div>
+            `;
+      }).join('')}
+      </div>
+    </div>
+  `;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Активная внешняя функция
+  // ---------------------------------------------------------------------------
+  function renderActiveExternal(extName, body) {
+    const callers = state.externalCallers[extName] || [];
+    body.innerHTML = `
+    <div class="anp-node external">
+      <div class="anp-node-title">🌐 ${escapeHtml(extName)}</div>
+      <div class="anp-node-subtitle">Внешняя функция / библиотека</div>
+      <div class="anp-node-badges">
+        <span class="chip red">external</span>
+        <span class="chip">${callers.length} вызовов</span>
+      </div>
+    </div>
+
+    <div class="anp-section">
+      <div class="anp-section-header" onclick="toggleAnpSection(this)">
+        <span>📞 Вызывается из</span>
+        <span class="cnt">${callers.length}</span>
+      </div>
+      <div class="anp-section-body">
+        ${callers.length === 0 ? '<div class="empty-msg" style="padding:12px;">Нет вызовов</div>' :
+      callers.map(c => `
+            <div class="anp-link" onclick="jumpToFn('${c.fromFnId}')">
+              <span class="link-name" style="color:var(--purple);">${escapeHtml(c.fromFnName)}</span>
+              <span style="color:var(--text-faint); font-size:10px;">${escapeHtml(shortPath(c.fromFilePath, 26))}</span>
+              <span class="link-tag tag-call">${escapeHtml(c.callType)}</span>
+              <span class="link-meta">L${c.callLine}</span>
+            </div>
+          `).join('')}
+      </div>
+    </div>
+  `;
+  }
+
+  function toggleAnpSection(header) {
+    const body = header.nextElementSibling;
+    if (body) body.classList.toggle('collapsed');
+  }
+
+  // ============================================================================
+  // РЕНДЕР АНАЛИЗА
+  // ============================================================================
+  function renderAnalysis() {
+    const fileId = state.selectedFileId;
+    if (!fileId) return;
+
+    const f = state.files[fileId];
+    const modName = getModuleName(f.moduleId);
+
+    const fns = state.fileFunctions[fileId] || [];
+    const cls = state.fileClasses[fileId] || [];
+    const consts = state.fileConstants[fileId] || [];
+    const exps = state.fileExports[fileId] || [];
+    const imps = state.fileImports[fileId] || [];
+    const deps = [...new Set(state.fileDependents[fileId] || [])];
+    const depsOut = [...new Set(state.fileDependencies[fileId] || [])];
+
+    const fnIds = new Set(fns.map(x => x.id));
+    const outgoingCalls = state.calls.filter(c => fnIds.has(c.fromFunctionId)).length;
+    const incomingCalls = state.calls.filter(c => {
+      const toFn = state.fnById[c.toFunctionId];
+      return toFn && toFn.fileId === fileId;
+    }).length;
+
+    $('fileInfo').innerHTML = `
+    <span class="file-path">📄 ${escapeHtml(f.path)}</span>
+    <span class="chip blue">📦 ${escapeHtml(modName)}</span>
+    <span class="chip green">⚙️ ${fns.length}</span>
+    <span class="chip purple">🏛️ ${cls.length}</span>
+    <span class="chip yellow">📌 ${consts.length}</span>
+    <span class="chip orange">📤 ${exps.length}</span>
+    <span class="chip">📥 ${imps.length}</span>
+    <span class="chip">📞 ${outgoingCalls}/${incomingCalls}</span>
+  `;
+
+    $('fnBadge').textContent = fns.length;
+    $('clsBadge').textContent = cls.length;
+    $('depBadge').textContent = deps.length + depsOut.length;
+    $('callBadge').textContent = outgoingCalls + incomingCalls;
+    $('constBadge').textContent = consts.length;
+
+    renderOverview(f, fns, cls, consts, exps, imps, deps, depsOut, outgoingCalls, incomingCalls);
+    renderFunctions(fns, exps);
+    renderClasses(cls);
+    renderDeps(imps, deps, depsOut);
+    renderCalls(fns, outgoingCalls, incomingCalls);
+    renderConstants(consts);
+  }
+
+  // ============================================================================
+  // ВКЛАДКА: ОБЗОР — ИСПРАВЛЕНО
+  // ============================================================================
+  function renderOverview(f, fns, cls, consts, exps, imps, deps, depsOut, outCalls, inCalls) {
+    const el = $('tab-overview');
+    const exportedFns = fns.filter(x => x.isExported);
+    const asyncFns = fns.filter(x => x.isAsync);
+
+    el.innerHTML = `
+    <div class="stat-grid" style="margin-bottom:16px;">
+      <div class="stat-card"><div class="num">${fns.length}</div><div class="lbl">Функций</div></div>
+      <div class="stat-card green"><div class="num">${exportedFns.length}</div><div class="lbl">Экспорт</div></div>
+      <div class="stat-card purple"><div class="num">${asyncFns.length}</div><div class="lbl">Async</div></div>
+      <div class="stat-card"><div class="num">${cls.length}</div><div class="lbl">Классов</div></div>
+      <div class="stat-card yellow"><div class="num">${consts.length}</div><div class="lbl">Констант</div></div>
+      <div class="stat-card orange"><div class="num">${outCalls}</div><div class="lbl">Вызовов</div></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-header"><span>📤 Экспортированные функции</span></div>
+        <div class="panel-body">
+          ${exportedFns.length === 0 ? '<div class="empty-msg">Нет</div>' :
+      exportedFns.map(fn => {
+        const importers = state.fnImportTargets[fn.id]?.length || 0;
+        return `<div class="row" onclick="setActiveNode('fn','${fn.id}')">
+                <span class="name" style="color:var(--accent);">${escapeHtml(fn.name)}</span>
+                ${importers > 0 ? `<span style="color:var(--accent); font-size:10px;">📥 ${importers}</span>` : ''}
+                <span class="type-tag tag-export">→</span>
+              </div>`;
+      }).join('')}
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span>📥 Импортируют этот файл</span></div>
+        <div class="panel-body">
+          ${deps.length === 0 ? '<div class="empty-msg">Никто не импортирует</div>' :
+      deps.map(id => {
+        const names = getImportedNames(id, f.id);
+        const preview = names.slice(0, 3);
+        return `<div class="row" onclick="selectFile('${id}')">
+                <span class="name">${escapeHtml(getFilePath(id))}</span>
+                ${preview.length ? `
+                  <span class="import-names">
+                    ${preview.map(n => `<span class="imp-name">${escapeHtml(n)}</span>`).join('')}
+                    ${names.length > 3 ? `<span class="imp-more">+${names.length - 3}</span>` : ''}
+                  </span>
+                ` : ''}
+                <span class="type-tag tag-import">←</span>
+              </div>`;
+      }).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+  }
+
+  // ============================================================================
+  // ВКЛАДКА: ФУНКЦИИ
+  // ============================================================================
+  function renderFunctions(fns, exps) {
+    const el = $('tab-functions');
+    if (fns.length === 0) {
+      el.innerHTML = '<div class="empty-msg">В этом файле нет функций</div>';
+      return;
+    }
+
+    const filters = [
+      { id: 'all', label: 'Все', test: () => true },
+      { id: 'exported', label: '📤 Экспортированные', test: f => f.isExported },
+      { id: 'async', label: '⚡ Async', test: f => f.isAsync },
+      { id: 'imported', label: '📥 Импортируемые', test: f => (state.fnImportTargets[f.id] || []).length > 0 },
+      { id: 'called', label: '📞 Вызываемые', test: f => (state.fnDetailedCallers[f.id] || []).length > 0 },
+    ];
+
+    el.innerHTML = `
+    <div class="filters" id="fnFilters">
+      ${filters.map((f, i) => `<button class="filter-btn ${i === 0 ? 'active' : ''}" data-filter="${f.id}">${f.label}</button>`).join('')}
+    </div>
+    <div id="fnList"></div>
+  `;
+
+    function renderList(filterId) {
+      const filter = filters.find(x => x.id === filterId) || filters[0];
+      const list = fns.filter(filter.test);
+      const listEl = document.getElementById('fnList');
+      if (list.length === 0) {
+        listEl.innerHTML = '<div class="empty-msg">Нет функций</div>';
+        return;
+      }
+      listEl.innerHTML = list.map(fn => renderFnCard(fn)).join('');
+    }
+
+    renderList('all');
+
+    document.getElementById('fnFilters').addEventListener('click', (e) => {
+      const btn = e.target.closest('.filter-btn');
+      if (!btn) return;
+      document.querySelectorAll('#fnFilters .filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderList(btn.dataset.filter);
+    });
+  }
+
+  // ============================================================================
+  // КАРТОЧКА ФУНКЦИИ
+  // ============================================================================
+  function renderFnCard(fn) {
+    const info = getFnFullInfo(fn.id);
+    const exported = info.exports.length > 0;
+    const importersCount = info.imports.length;
+    const callersCount = info.callers.length;
+    const callsCount = info.calls.length;
+
+    const kw = [];
+    if (fn.isAsync) kw.push('async');
+    if (fn.isArrow) kw.push('arrow');
+    if (fn.isMethod) kw.push('method');
+
+    const params = (fn.params || []).join(', ');
+    const isActive = state.activeNode?.type === 'fn' && state.activeNode?.id === fn.id;
+
+    return `
+    <div class="fn-card ${isActive ? 'active' : ''}" id="fn-card-${fn.id}">
+      <div class="fn-card-header" onclick="setActiveNode('fn','${fn.id}')">
+        <span class="caret" id="caret-${fn.id}" onclick="event.stopPropagation(); toggleFnCard('${fn.id}')">▶</span>
+        <span class="fn-name">
+          ${kw.length ? `<span class="kw">${kw.join(' ')} </span>` : ''}
+          <span class="fn-real">${escapeHtml(fn.name)}</span><span style="color:var(--text-faint);">(</span><span style="color:var(--yellow);">${escapeHtml(params)}</span><span style="color:var(--text-faint);">)</span>
+        </span>
+        <span class="fn-meta">
+          ${exported ? `<span class="chip yellow">📤</span>` : ''}
+          ${importersCount > 0 ? `<span class="chip blue">📥 ${importersCount}</span>` : ''}
+          ${callersCount > 0 ? `<span class="chip purple">📞 ${callersCount}</span>` : ''}
+          ${callsCount > 0 ? `<span class="chip">→ ${callsCount}</span>` : ''}
+          <span class="chip" style="font-size:10px;">L${fn.line}</span>
+        </span>
+      </div>
+      <div class="fn-card-body collapsed" id="fn-body-${fn.id}">
+        <div style="grid-column: 1/-1;">
+          <div class="fn-signature">
+            ${kw.length ? `<span class="kw">${kw.join(' ')}</span> ` : ''}<span class="fn">${escapeHtml(fn.name)}</span><span class="c">(</span>${(fn.params || []).map(p => `<span class="p">${escapeHtml(p)}</span>`).join('<span class="c">, </span>')}<span class="c">)</span>${fn.returnType ? `<span class="c">:</span> <span class="t">${escapeHtml(fn.returnType.split('.').pop())}</span>` : ''}
+            <div class="c" style="margin-top:6px; font-size:11px;">📍 ${escapeHtml(getFilePath(fn.fileId))}:${fn.line}</div>
+          </div>
+        </div>
+        <div class="fn-section">
+          <h5>📤 Экспортируется как <span class="count">${info.exports.length}</span></h5>
+          ${info.exports.length === 0 ? '<div class="empty-msg" style="padding:8px;">Нет</div>' :
+      info.exports.map(e => `<div class="row static" style="padding:4px 6px;">
+              <span class="name" style="color:var(--yellow);">${escapeHtml(e.exportName || '?')}</span>
+              <span class="type-tag tag-export">${escapeHtml(e.type || 'named')}</span>
+            </div>`).join('')}
+        </div>
+        <div class="fn-section">
+          <h5>📥 Импортируется в <span class="count">${info.imports.length}</span></h5>
+          ${info.imports.length === 0 ? '<div class="empty-msg" style="padding:8px;">Никто</div>' :
+      info.imports.slice(0, 5).map(i => `<div class="row" style="padding:4px 6px;" onclick="event.stopPropagation(); selectFile('${i.toFileId}')">
+              <span class="name" style="font-size:11px;">${escapeHtml(shortPath(i.toFilePath, 32))}</span>
+              <span class="line-ref">L${i.line}</span>
+            </div>`).join('')
+    }
+          ${info.imports.length > 5 ? `<div style="text-align:center; padding:4px; font-size:10px; color:var(--text-faint);">…+${info.imports.length - 5}</div>` : ''}
+        </div>
+        <div class="fn-section">
+          <h5>📞 Кто вызывает <span class="count">${info.callers.length}</span></h5>
+          ${info.callers.length === 0 ? '<div class="empty-msg" style="padding:8px;">Никто</div>' :
+      info.callers.slice(0, 5).map(c => `<div class="row" style="padding:4px 6px;" onclick="event.stopPropagation(); jumpToFn('${c.fromFnId}')">
+              <span class="name" style="font-size:11px;color:var(--purple);">${escapeHtml(c.fromFnName)}</span>
+              <span class="line-ref">L${c.callLine}</span>
+            </div>`).join('')
+    }
+          ${info.callers.length > 5 ? `<div style="text-align:center; padding:4px; font-size:10px; color:var(--text-faint);">…+${info.callers.length - 5}</div>` : ''}
+        </div>
+        <div class="fn-section">
+          <h5>→ Вызывает <span class="count">${info.calls.length}</span></h5>
+          ${info.calls.length === 0 ? '<div class="empty-msg" style="padding:8px;">Ничего</div>' :
+      info.calls.slice(0, 5).map(c => `<div class="row" style="padding:4px 6px;" ${!c.isExternal ? `onclick="event.stopPropagation(); jumpToFn('${c.toFnId}')"` : ''}>
+              <span class="name" style="font-size:11px;color:${c.isExternal ? 'var(--red)' : 'var(--accent)'};">
+                ${c.isExternal ? '🌐 ' : ''}${escapeHtml(c.toFnName)}
+              </span>
+              <span class="line-ref">L${c.callLine}</span>
+            </div>`).join('')
+    }
+          ${info.calls.length > 5 ? `<div style="text-align:center; padding:4px; font-size:10px; color:var(--text-faint);">…+${info.calls.length - 5}</div>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+  }
+
+  function toggleFnCard(fnId) {
+    const body = document.getElementById('fn-body-' + fnId);
+    const caret = document.getElementById('caret-' + fnId);
+    if (!body) return;
+    body.classList.toggle('collapsed');
+    caret.classList.toggle('open', !body.classList.contains('collapsed'));
+  }
+
+  // ============================================================================
+  // ПЕРЕХОД К ФУНКЦИИ
+  // ============================================================================
+  function jumpToFn(fnId) {
+    const fn = state.fnById[fnId];
+    if (!fn) return;
+    setActiveNode('fn', fnId);
+    if (fn.fileId !== state.selectedFileId) {
+      selectFile(fn.fileId);
+      setTimeout(() => {
+        const card = document.getElementById('fn-card-' + fnId);
+        if (card) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          const body = document.getElementById('fn-body-' + fnId);
+          if (body && body.classList.contains('collapsed')) toggleFnCard(fnId);
+        }
+      }, 100);
+    } else {
+      const card = document.getElementById('fn-card-' + fnId);
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const body = document.getElementById('fn-body-' + fnId);
+        if (body && body.classList.contains('collapsed')) toggleFnCard(fnId);
+      }
+    }
+  }
+
+  // ============================================================================
+  // МОДАЛКА
+  // ============================================================================
+  function openFnModal(fnId) {
+    const info = getFnFullInfo(fnId);
+    if (!info) return;
+    const { fn, file, module, exports, imports, calls, callers } = info;
+
+    $('fnModalTitle').innerHTML = `⚙️ <span style="color:var(--accent); font-family:Consolas,monospace;">${escapeHtml(fn.name)}</span>`;
+
+    const kw = [];
+    if (fn.isAsync) kw.push('async');
+    if (fn.isArrow) kw.push('arrow');
+    if (fn.isMethod) kw.push('method');
+
+    const params = fn.params || [];
+    const ret = fn.returnType || '';
+
+    const importsByModule = {};
+    for (const i of imports) {
+      const key = i.toModuleName || '?';
+      if (!importsByModule[key]) importsByModule[key] = [];
+      importsByModule[key].push(i);
+    }
+
+    const fileImporters = [...new Set(state.fileDependents[fn.fileId] || [])];
+
+    $('fnModalBody').innerHTML = `
+    <div class="chain">
+      <span class="chain-node" onclick="closeFnModal(); selectFile('${fn.fileId}')">
+        📄 ${escapeHtml(shortPath(file?.path || '?', 30))}
+      </span>
+      <span class="chain-arrow">→</span>
+      <span class="chain-node current">⚙️ ${escapeHtml(fn.name)}</span>
+      ${exports.length ? `
+        <span class="chain-arrow">→</span>
+        <span class="chain-node" style="border-color:var(--yellow); color:var(--yellow);">
+          📤 ${escapeHtml(exports[0].exportName || '?')}
+        </span>
+      ` : ''}
+      ${imports.length ? `
+        <span class="chain-arrow">→</span>
+        <span class="chain-node" style="border-color:var(--accent); color:var(--accent);">
+          📥 ${imports.length} импорт.
+        </span>
+      ` : ''}
+    </div>
+
+    <div class="fn-signature" style="font-size:13px;">
+      ${kw.length ? `<span class="kw">${kw.join(' ')}</span> ` : ''}<span class="fn">${escapeHtml(fn.name)}</span>
+      <span class="c">(</span>${params.map(p => `<span class="p">${escapeHtml(p)}</span>`).join('<span class="c">, </span>')}<span class="c">)</span>
+      ${ret ? `<span class="c">:</span> <span class="t">${escapeHtml(ret)}</span>` : ''}
+    </div>
+
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:10px; margin-bottom:16px;">
+      <div class="fn-section">
+        <h5>📍 Расположение</h5>
+        <div style="font-family:Consolas,monospace; font-size:11px; line-height:1.6;">
+          <div><span style="color:var(--text-faint);">Файл:</span> ${escapeHtml(file?.path || '?')}</div>
+          <div><span style="color:var(--text-faint);">Модуль:</span> ${escapeHtml(module?.name || '?')}</div>
+          <div><span style="color:var(--text-faint);">Строка:</span> ${fn.line}</div>
+        </div>
+      </div>
+      <div class="fn-section">
+        <h5>📊 Связи</h5>
+        <div style="font-family:Consolas,monospace; font-size:11px; line-height:1.6;">
+          <div>📤 экспортов: <b style="color:var(--yellow);">${exports.length}</b></div>
+          <div>📥 импортируется: <b style="color:var(--accent);">${imports.length}</b></div>
+          <div>📞 вызывается: <b style="color:var(--purple);">${callers.length}</b></div>
+          <div>→ вызывает: <b style="color:var(--green);">${calls.length}</b></div>
+        </div>
+      </div>
+    </div>
+
+    <h4 style="font-size:12px; text-transform:uppercase; color:var(--text-dim); margin:16px 0 8px;">📤 Экспортируется как (${exports.length})</h4>
+    ${exports.length === 0 ? '<div class="empty-msg">Нет</div>' :
+      `<div class="panel"><div class="panel-body">
+        ${exports.map(e => `<div class="row static">
+          <span class="name" style="color:var(--yellow);">${escapeHtml(e.exportName || '?')}</span>
+          <span class="type-tag tag-export">${escapeHtml(e.type || 'named')}</span>
+          <span class="line-ref">L${e.line}</span>
+        </div>`).join('')}
+      </div></div>`}
+
+    <h4 style="font-size:12px; text-transform:uppercase; color:var(--text-dim); margin:16px 0 8px;">📥 Импортируется в (${imports.length})</h4>
+    ${imports.length === 0 ? '<div class="empty-msg">Никто не импортирует</div>' :
+      Object.entries(importsByModule).map(([modName, list]) => `
+        <div class="panel" style="margin-bottom:8px;">
+          <div class="panel-header" style="text-transform:none;">
+            <span>📦 <b style="color:var(--accent);">${escapeHtml(modName)}</b></span>
+            <span class="chip">${list.length}</span>
+          </div>
+          <div class="panel-body">
+            ${list.map(i => `<div class="row" onclick="closeFnModal(); selectFile('${i.toFileId}');">
+              <span class="name" style="font-size:11px;">${escapeHtml(i.toFilePath)}</span>
+              <span style="color:var(--text-faint); font-size:10px;">as "${escapeHtml(i.importName)}"</span>
+              ${i.isDefault ? '<span class="type-tag tag-default">default</span>' : ''}
+              <span class="line-ref">L${i.line}</span>
+            </div>`).join('')}
+          </div>
+        </div>
+      `).join('')}
+
+    <h4 style="font-size:12px; text-transform:uppercase; color:var(--text-dim); margin:16px 0 8px;">📞 Кто вызывает (${callers.length})</h4>
+    ${callers.length === 0 ? '<div class="empty-msg">Никто</div>' :
+      `<div class="panel"><div class="panel-body">
+        ${callers.map(c => `<div class="row" onclick="closeFnModal(); jumpToFn('${c.fromFnId}');">
+          <span class="name" style="color:var(--purple); font-weight:600;">${escapeHtml(c.fromFnName)}</span>
+          <span style="color:var(--text-faint); font-size:10px;">из ${escapeHtml(shortPath(c.fromFilePath, 30))}</span>
+          <span class="type-tag tag-call">${escapeHtml(c.callType)}</span>
+          <span class="line-ref">L${c.callLine}</span>
+        </div>`).join('')}
+      </div></div>`}
+
+    <h4 style="font-size:12px; text-transform:uppercase; color:var(--text-dim); margin:16px 0 8px;">→ Вызывает (${calls.length})</h4>
+    ${calls.length === 0 ? '<div class="empty-msg">Ничего</div>' :
+      `<div class="panel"><div class="panel-body">
+        ${calls.map(c => `<div class="row" ${!c.isExternal ? `onclick="closeFnModal(); jumpToFn('${c.toFnId}');"` : ''}>
+          <span class="name" style="color:${c.isExternal ? 'var(--red)' : 'var(--accent)'}; font-weight:600;">
+            ${c.isExternal ? '🌐 ' : ''}${escapeHtml(c.toFnName)}
+          </span>
+          <span style="color:var(--text-faint); font-size:10px;">${escapeHtml(c.isExternal ? 'внешняя' : shortPath(c.toFilePath, 30))}</span>
+          <span class="type-tag tag-call">${escapeHtml(c.callType)}</span>
+          <span class="line-ref">L${c.callLine}</span>
+        </div>`).join('')}
+      </div></div>`}
+
+    ${fileImporters.length > 0 ? `
+      <h4 style="font-size:12px; text-transform:uppercase; color:var(--text-dim); margin:16px 0 8px;">🔗 Файлы, импортирующие этот модуль (${fileImporters.length})</h4>
+      <div class="panel"><div class="panel-body">
+        ${fileImporters.map(id => `<div class="row" onclick="closeFnModal(); selectFile('${id}');">
+          <span class="name">${escapeHtml(getFilePath(id))}</span>
+          <span class="type-tag tag-import">←</span>
+        </div>`).join('')}
+      </div></div>
+    ` : ''}
+  `;
+
+    $('fnModal').classList.add('show');
+  }
+
+  function closeFnModal() { $('fnModal').classList.remove('show'); }
+
+  // ============================================================================
+  // КЛАССЫ
+  // ============================================================================
+  function renderClasses(cls) {
+    const el = $('tab-classes');
+    if (cls.length === 0) {
+      el.innerHTML = '<div class="empty-msg">В этом файле нет классов</div>';
+      return;
+    }
+
+    el.innerHTML = cls.map(c => `
+    <div class="panel" style="margin-bottom:12px;">
+      <div class="panel-header" style="text-transform:none; letter-spacing:0; cursor:pointer;" onclick="setActiveNode('class','${c.id}')">
+        <span style="font-family:Consolas,monospace; color:var(--orange); font-weight:700;">🏛️ ${escapeHtml(c.name)}</span>
+        <span style="display:flex; gap:6px;">
+          ${c.isExported ? '<span class="type-tag tag-export">export</span>' : ''}
+          <span class="chip">L${c.line}</span>
+        </span>
+      </div>
+      <div class="panel-body">
+        <div style="color:var(--text-dim); font-size:11px; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">
+          Методы (${(c.methods || []).length}):
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:4px;">
+          ${(c.methods || []).map(m => `<span class="chip" style="font-family:Consolas,monospace; font-size:11px;">${escapeHtml(m)}</span>`).join('')}
+        </div>
+      </div>
+    </div>
+  `).join('');
+  }
+
+  // ============================================================================
+  // ЗАВИСИМОСТИ — ИСПРАВЛЕНО
+  // ============================================================================
+  function renderDeps(imps, deps, depsOut) {
+    const el = $('tab-deps');
+    const impsByModule = {};
+    for (const i of imps) {
+      const modName = i.isExternal ? '🌐 External' : getModuleName(state.files[i.toFileId]?.moduleId);
+      if (!impsByModule[modName]) impsByModule[modName] = [];
+      impsByModule[modName].push(i);
+    }
+
+    el.innerHTML = `
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="panel-header"><span>📥 Импорты (${imps.length})</span></div>
+      <div class="panel-body">
+        ${imps.length === 0 ? '<div class="empty-msg">Нет</div>' :
+      Object.entries(impsByModule).map(([modName, list]) => `
+            <div style="margin-bottom:8px;">
+              <div style="font-size:11px; color:var(--text-faint); text-transform:uppercase; padding:6px 4px; border-bottom:1px solid var(--border);">
+                ${escapeHtml(modName)} (${list.length})
+              </div>
+              ${list.map(i => {
+        const target = i.isExternal ? i.source : getFilePath(i.toFileId);
+        return `<div class="row" ${!i.isExternal ? `onclick="selectFile('${i.toFileId}')"` : ''}>
+                  <span class="name">${escapeHtml(target)}</span>
+                  ${i.importedName ? `<span style="color:var(--yellow); font-size:10px;">→ ${escapeHtml(i.importedName)}</span>` : ''}
+                  <span class="type-tag ${i.isExternal ? 'tag-external' : 'tag-import'}">${escapeHtml(i.type || 'named')}</span>
+                  <span class="line-ref">L${i.line}</span>
+                </div>`;
+      }).join('')}
+            </div>
+          `).join('')}
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-header"><span>📤 Импортируют файл (${deps.length})</span></div>
+        <div class="panel-body">
+          ${deps.length === 0 ? '<div class="empty-msg">Никто</div>' :
+      deps.map(id => {
+        const names = getImportedNames(id, state.selectedFileId);
+        const preview = names.slice(0, 3);
+        return `<div class="row" onclick="selectFile('${id}')">
+                <span class="name">${escapeHtml(getFilePath(id))}</span>
+                ${preview.length ? `
+                  <span class="import-names">
+                    ${preview.map(n => `<span class="imp-name">${escapeHtml(n)}</span>`).join('')}
+                    ${names.length > 3 ? `<span class="imp-more">+${names.length - 3}</span>` : ''}
+                  </span>
+                ` : ''}
+                <span class="type-tag tag-import">←</span>
+              </div>`;
+      }).join('')}
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><span>📤 Импортирует из (${depsOut.length})</span></div>
+        <div class="panel-body">
+          ${depsOut.length === 0 ? '<div class="empty-msg">Нет</div>' :
+      depsOut.map(id => `<div class="row" onclick="selectFile('${id}')">
+              <span class="name">${escapeHtml(getFilePath(id))}</span>
+              <span class="type-tag tag-export">→</span>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+  }
+
+  // ============================================================================
+  // ВЫЗОВЫ
+  // ============================================================================
+  function renderCalls(fns, outCalls, inCalls) {
+    const el = $('tab-calls');
+    const fnIds = new Set(fns.map(x => x.id));
+    const outgoing = state.calls.filter(c => fnIds.has(c.fromFunctionId));
+    const incoming = state.calls.filter(c => {
+      const toFn = state.fnById[c.toFunctionId];
+      return toFn && toFn.fileId === state.selectedFileId;
+    });
+
+    el.innerHTML = `
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-header"><span>📞 Исходящие (${outgoing.length})</span></div>
+        <div class="panel-body">
+          ${outgoing.length === 0 ? '<div class="empty-msg">Нет</div>' :
+      outgoing.map(c => {
+        const fromFn = state.fnById[c.fromFunctionId];
+        const toFn = state.fnById[c.toFunctionId];
+        const isExt = c.toFunctionId.startsWith('external:');
+        return `<div class="row">
+                <span class="name" style="color:var(--purple);">${escapeHtml(fromFn?.name || '?')}</span>
+                <span style="color:var(--text-faint);">→</span>
+                <span class="name" style="color:${isExt ? 'var(--red)' : 'var(--accent)'};">
+                  ${isExt ? '🌐 ' : ''}${escapeHtml(isExt ? c.toFunctionId.replace('external:', '') : (toFn?.name || c.toFunctionId))}
+                </span>
+                <span class="type-tag tag-call">${escapeHtml(c.type || 'direct')}</span>
+              </div>`;
+      }).join('')}
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><span>📥 Входящие (${incoming.length})</span></div>
+        <div class="panel-body">
+          ${incoming.length === 0 ? '<div class="empty-msg">Нет</div>' :
+      incoming.map(c => {
+        const fromFn = state.fnById[c.fromFunctionId];
+        const toFn = state.fnById[c.toFunctionId];
+        return `<div class="row">
+                <span class="name" style="color:var(--accent);">${escapeHtml(fromFn?.name || '?')}</span>
+                <span style="color:var(--text-faint);">→</span>
+                <span class="name" style="color:var(--purple);">${escapeHtml(toFn?.name || '?')}</span>
+                <span class="type-tag tag-call">${escapeHtml(c.type || 'direct')}</span>
+              </div>`;
+      }).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+  }
+
+  // ============================================================================
+  // КОНСТАНТЫ
+  // ============================================================================
+  function renderConstants(consts) {
+    const el = $('tab-constants');
+    if (consts.length === 0) {
+      el.innerHTML = '<div class="empty-msg">В этом файле нет констант</div>';
+      return;
+    }
+
+    el.innerHTML = consts.map(c => {
+      let valueStr = '';
+      if (c.value !== undefined) {
+        valueStr = typeof c.value === 'object' ? JSON.stringify(c.value, null, 2) : String(c.value);
+      } else {
+        valueStr = '(не извлечено)';
+      }
+      const truncated = valueStr.length > 400 ? valueStr.slice(0, 400) + '…' : valueStr;
+
+      return `
+      <div class="panel" style="margin-bottom:8px;">
+        <div class="panel-header" style="text-transform:none;">
+          <span style="font-family:Consolas,monospace; color:var(--green); font-weight:700;">📌 ${escapeHtml(c.name)}</span>
+          <span style="display:flex; gap:6px;">
+            ${c.isExported ? '<span class="type-tag tag-export">export</span>' : ''}
+            <span class="chip">L${c.line}</span>
+          </span>
+        </div>
+        <div class="panel-body" style="padding:10px 14px;">
+          <div class="code-preview" style="background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:10px; font-family:Consolas,monospace; font-size:11px; color:var(--text-dim); white-space:pre-wrap; word-break:break-all; max-height:200px; overflow-y:auto;">${escapeHtml(truncated)}</div>
+        </div>
+      </div>
+    `;
+    }).join('');
+  }
+
+  // ============================================================================
+  // ВКЛАДКИ / ПОИСК / ТЕМА
+  // ============================================================================
+  document.getElementById('tabs').addEventListener('click', (e) => {
+    const tab = e.target.closest('.tab');
+    if (!tab) return;
+    switchTab(tab.dataset.tab);
+  });
+
+  function switchTab(tabId) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + tabId));
+  }
+
+  $('searchInput').addEventListener('input', (e) => {
+    state.searchQuery = e.target.value;
+    renderFileList();
+  });
+
+  $('depsOnlyBtn').addEventListener('click', () => {
+    state.depsOnly = !state.depsOnly;
+    $('depsOnlyBtn').classList.toggle('active', state.depsOnly);
+    renderFileList();
+  });
+
+  $('expandAllBtn').addEventListener('click', () => {
+    state.expandAllFns = !state.expandAllFns;
+    $('expandAllBtn').classList.toggle('active', state.expandAllFns);
+    document.querySelectorAll('.fn-card-body').forEach(b => {
+      b.classList.toggle('collapsed', !state.expandAllFns);
+    });
+    document.querySelectorAll('.caret').forEach(c => {
+      c.classList.toggle('open', state.expandAllFns);
+    });
+  });
+
+  $('themeBtn').addEventListener('click', () => {
+    document.body.classList.toggle('light');
+    $('themeBtn').textContent = document.body.classList.contains('light') ? '☀️ Тема' : '🌙 Тема';
+  });
+
+  // ============================================================================
+  // ЭКСПОРТ
+  // ============================================================================
+  $('exportBtn').addEventListener('click', () => {
+    if (!state.selectedFileId) return;
+    const f = state.files[state.selectedFileId];
+    const data = {
+      file: f,
+      module: state.modules[f.moduleId],
+      functions: (state.fileFunctions[state.selectedFileId] || []).map(fn => {
+        const info = getFnFullInfo(fn.id);
+        return { ...fn, exports: info.exports, importedBy: info.imports, calledBy: info.callers, calls: info.calls };
+      }),
+      classes: state.fileClasses[state.selectedFileId],
+      constants: state.fileConstants[state.selectedFileId],
+      exports: state.fileExports[state.selectedFileId],
+      imports: state.fileImports[state.selectedFileId],
+      dependents: [...new Set(state.fileDependents[state.selectedFileId] || [])],
+      dependencies: [...new Set(state.fileDependencies[state.selectedFileId] || [])],
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = f.path.replace(/\//g, '_') + '.analysis.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Экспортировано', 'success');
+  });
+
+  // ============================================================================
+  // ГОРЯЧИЕ КЛАВИШИ
+  // ============================================================================
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'k') { e.preventDefault(); $('searchInput').focus(); return; }
+    if (e.ctrlKey && e.key === 'e') { e.preventDefault(); $('exportBtn').click(); return; }
+    if (e.key === 'Escape') {
+      if ($('fnModal').classList.contains('show')) closeFnModal();
+      else if ($('helpModal').classList.contains('show')) $('helpModal').classList.remove('show');
+      else clearActiveNode();
+      return;
+    }
+    if (/^[1-6]$/.test(e.key) && document.activeElement.tagName !== 'INPUT') {
+      switchTab(['overview', 'functions', 'classes', 'deps', 'calls', 'constants'][parseInt(e.key) - 1]);
+      return;
+    }
+    if (document.activeElement.tagName === 'INPUT') return;
+    const items = document.querySelectorAll('.file-item');
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const current = Array.from(items).findIndex(x => x.classList.contains('active'));
+      let next = e.key === 'ArrowDown' ? current + 1 : current - 1;
+      if (next < 0) next = items.length - 1;
+      if (next >= items.length) next = 0;
+      const item = items[next];
+      if (item) { item.scrollIntoView({ block: 'nearest' }); selectFile(item.dataset.fileId); }
+    }
+  });
+
+  // ============================================================================
+  // ЗАГРУЗКА
+  // ============================================================================
+  const upload = $('upload');
+  const fileInput = $('fileInput');
+  upload.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try { loadData(JSON.parse(ev.target.result)); }
+      catch (err) { toast('Ошибка: ' + err.message, 'error'); }
+    };
+    reader.readAsText(file);
+  });
+
+  upload.addEventListener('dragover', (e) => { e.preventDefault(); upload.classList.add('drag'); });
+  upload.addEventListener('dragleave', () => upload.classList.remove('drag'));
+  upload.addEventListener('drop', (e) => {
+    e.preventDefault();
+    upload.classList.remove('drag');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try { loadData(JSON.parse(ev.target.result)); }
+      catch (err) { toast('Ошибка: ' + err.message, 'error'); }
+    };
+    reader.readAsText(file);
+  });
+
+  $('helpBtn').addEventListener('click', () => $('helpModal').classList.add('show'));
+  $('fnModal').addEventListener('click', (e) => { if (e.target.id === 'fnModal') closeFnModal(); });
+  $('helpModal').addEventListener('click', (e) => { if (e.target.id === 'helpModal') $('helpModal').classList.remove('show'); });
+
+  // Глобальные для onclick
+  window.selectFile = selectFile;
+  window.toggleFnCard = toggleFnCard;
+  window.openFnModal = openFnModal;
+  window.closeFnModal = closeFnModal;
+  window.jumpToFn = jumpToFn;
+  window.switchTab = switchTab;
+  window.setActiveNode = setActiveNode;
+  window.clearActiveNode = clearActiveNode;
+  window.toggleAnpSection = toggleAnpSection;
+
+  console.log('%c🔍 AST Analyzer v8 — исправленные импорты','font-size:16px; font-weight:bold; color:#58a6ff;');
+</script>
+</body>
+</html>

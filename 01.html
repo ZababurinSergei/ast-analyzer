@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Галактика графа проекта</title>
+  <style>
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body { background:#02030a; color:#dbe4ff; font-family:'Segoe UI',system-ui,sans-serif; overflow:hidden; }
+      #app { position:fixed; inset:0; }
+      #topbar{ position:fixed; top:0; left:0; right:0; z-index:20; display:flex; gap:10px; align-items:center;
+          padding:10px 14px; background:linear-gradient(180deg,rgba(5,7,20,.92),rgba(5,7,20,.5)); backdrop-filter:blur(6px);}
+      #topbar h1{ font-size:15px; font-weight:600; color:#ffd479; white-space:nowrap; text-shadow:0 0 12px #ffb84d55;}
+      .btn{ background:#1b2152; border:1px solid #3a449c; color:#cfe0ff; padding:7px 14px; border-radius:8px;
+          cursor:pointer; font-size:13px; transition:.2s; }
+      .btn:hover{ background:#2a337c; }
+      #fileName{ font-size:12px; color:#7f92c0; max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+      #searchBox{ position:relative; margin-left:auto; }
+      #search{ width:250px; padding:7px 12px; border-radius:8px; border:1px solid #3a449c; background:#0d1030; color:#dbe4ff; font-size:13px;}
+      #searchList{ position:absolute; top:38px; right:0; width:310px; max-height:280px; overflow:auto; background:#0d1030f0;
+          border:1px solid #3a449c; border-radius:8px; display:none; z-index:30;}
+      #searchList div{ padding:7px 12px; font-size:12px; cursor:pointer; border-bottom:1px solid #1a2048;}
+      #searchList div:hover{ background:#1b2152; }
+      #sidebar{ position:fixed; top:58px; left:12px; z-index:15; width:238px; background:#0a0d26cc; border:1px solid #2a305f;
+          border-radius:12px; padding:14px; font-size:12px; backdrop-filter:blur(6px);}
+      #sidebar h3{ font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#8f9fd0; margin:12px 0 6px;}
+      #sidebar h3:first-child{ margin-top:0; }
+      .chk{ display:flex; align-items:center; gap:8px; padding:3px 0; cursor:pointer; user-select:none;}
+      .dot{ width:10px; height:10px; border-radius:50%; display:inline-block; flex:none;}
+      .bar{ width:14px; height:3px; border-radius:2px; display:inline-block; flex:none;}
+      #stats{ color:#9fb2dd; line-height:1.7; } #stats b{ color:#e6eeff; }
+      input[type=range]{ width:100%; accent-color:#ffd479; }
+      #info{ position:fixed; top:58px; right:12px; z-index:15; width:340px; max-height:calc(100vh - 90px); overflow:auto;
+          background:#0a0d26ee; border:1px solid #2a305f; border-radius:12px; padding:16px; display:none; backdrop-filter:blur(8px);}
+      #info h2{ font-size:15px; color:#ffd479; margin-bottom:4px; word-break:break-all;}
+      #info .kind{ display:inline-block; font-size:11px; padding:2px 10px; border-radius:20px; background:#1b2152; color:#9fc1ff; margin-bottom:10px;}
+      #info pre{ font-size:11px; color:#a9bce6; white-space:pre-wrap; word-break:break-all; background:#06081a;
+          border-radius:8px; padding:10px; max-height:340px; overflow:auto;}
+      #infoClose{ float:right; cursor:pointer; color:#7f92c0; font-size:16px; } #infoClose:hover{ color:#fff; }
+      #tip{ position:fixed; z-index:40; pointer-events:none; background:#101538f0; border:1px solid #4b5aa8; color:#e6eeff;
+          padding:6px 10px; border-radius:8px; font-size:12px; display:none; max-width:340px; line-height:1.45;}
+      #tip small{ color:#8fa3d4; }
+      #hint{ position:fixed; bottom:12px; left:50%; transform:translateX(-50%); font-size:11px; color:#5d6f9e; z-index:10; white-space:nowrap;}
+      #drop{ position:fixed; inset:0; z-index:60; background:#060a20dd; display:none; align-items:center; justify-content:center;
+          font-size:22px; color:#ffd479; border:3px dashed #3a449c; pointer-events:none;}
+  </style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="topbar">
+  <h1>🌌 Галактика графа</h1>
+  <button class="btn" onclick="document.getElementById('fileInput').click()">📂 Загрузить JSON</button>
+  <input type="file" id="fileInput" accept=".json,application/json" style="display:none">
+  <span id="fileName">файл не загружен</span>
+  <div id="searchBox">
+    <input id="search" placeholder="🔍 поиск объекта…" autocomplete="off">
+    <div id="searchList"></div>
+  </div>
+</div>
+
+<div id="sidebar">
+  <h3>Гиперлинии</h3>
+  <label class="chk"><input type="checkbox" data-edge="import" checked><span class="bar" style="background:#38bdf8"></span> импорты</label>
+  <label class="chk"><input type="checkbox" data-edge="call" checked><span class="bar" style="background:#fb923c"></span> вызовы</label>
+  <label class="chk"><input type="checkbox" data-edge="export" checked><span class="bar" style="background:#a3e635"></span> экспорты</label>
+  <label class="chk"><input type="checkbox" data-edge="re-export" checked><span class="bar" style="background:#c084fc"></span> реэкспорты</label>
+  <h3>Пространство</h3>
+  <label class="chk"><input type="checkbox" id="chkExternal" checked><span class="dot" style="background:#cfd8dc"></span> далёкие звёзды (external)</label>
+  <label class="chk"><input type="checkbox" id="chkLabels" checked><span class="dot" style="background:#ffd479"></span> названия звёздных систем</label>
+  <label class="chk"><input type="checkbox" id="chkRotate"><span class="dot" style="background:#fff"></span> облёт галактики</label>
+  <label class="chk"><input type="checkbox" id="chkPause">⏸ пауза орбит</label>
+  <div style="margin:6px 0 2px; color:#8f9fd0;">Скорость времени</div>
+  <input type="range" id="speed" min="0" max="3" step="0.05" value="1">
+  <h3>Космография</h3>
+  <label class="chk"><span class="dot" style="background:#ffd479;box-shadow:0 0 8px #ffb84d"></span> звезда = модуль</label>
+  <label class="chk"><span class="dot" style="background:#7fb2ff"></span> планета = файл</label>
+  <label class="chk"><span class="dot" style="background:#9fd8ff"></span> луна = функция</label>
+  <label class="chk"><span class="dot" style="background:#ffb74d"></span> планета с кольцами = класс</label>
+  <label class="chk"><span class="dot" style="background:#aed58b;border-radius:2px"></span> астероид = константа</label>
+  <h3>Статистика</h3>
+  <div id="stats">—</div>
+</div>
+
+<div id="info">
+  <span id="infoClose">✕</span>
+  <h2 id="infoName"></h2>
+  <span class="kind" id="infoKind"></span>
+  <pre id="infoJson"></pre>
+</div>
+
+<div id="tip"></div>
+<div id="hint">ЛКМ — выбрать объект · колесо — зум · ПКМ — панорама · перетащите JSON в окно</div>
+<div id="drop">Отпустите файл, чтобы построить галактику</div>
+
+<script type="importmap">
+  { "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }}
+</script>
+<script type="module">
+  import * as THREE from 'three';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+  /* ================= СЦЕНА ================= */
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x02030a);
+  const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, .1, 4000);
+  camera.position.set(0, 130, 270);
+  const renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  document.getElementById('app').appendChild(renderer.domElement);
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true; controls.dampingFactor = .06;
+  controls.maxDistance = 1200; controls.minDistance = 5;
+
+  scene.add(new THREE.AmbientLight(0x334, 1.4));
+  const sunLight = new THREE.PointLight(0xffe6b0, 900, 600, 1.6); scene.add(sunLight);
+  const dir = new THREE.DirectionalLight(0x8fa8ff, .5); dir.position.set(1,1,1); scene.add(dir);
+
+  /* --- фоновые звёзды --- */
+  {
+    const n = 7000, p = new Float32Array(n*3), c = new Float32Array(n*3);
+    for (let i=0;i<n;i++){
+      const r = 500 + Math.random()*900, th = Math.random()*Math.PI*2, ph = Math.acos(2*Math.random()-1);
+      p[i*3]=r*Math.sin(ph)*Math.cos(th); p[i*3+1]=r*Math.cos(ph); p[i*3+2]=r*Math.sin(ph)*Math.sin(th);
+      const t = Math.random(); c[i*3]=.7+t*.3; c[i*3+1]=.7+t*.25; c[i*3+2]=.9+t*.1;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(p,3));
+    g.setAttribute('color', new THREE.BufferAttribute(c,3));
+    scene.add(new THREE.Points(g, new THREE.PointsMaterial({size:1.4, vertexColors:true, transparent:true, opacity:.9, sizeAttenuation:true})));
+  }
+  /* --- туманности --- */
+  function radialTexture(inner, outer){
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const x = c.getContext('2d'), g = x.createRadialGradient(128,128,0,128,128,128);
+    g.addColorStop(0, inner); g.addColorStop(.5, outer); g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g; x.fillRect(0,0,256,256);
+    return new THREE.CanvasTexture(c);
+  }
+  const glowTex = radialTexture('rgba(255,255,255,1)','rgba(255,200,120,.35)');
+  const nebTex  = radialTexture('rgba(255,255,255,.35)','rgba(255,255,255,.06)');
+  [['#5b3ba8','#2a1b5f',300,380],['#2b6fa8','#123a66',-340,300],['#a83b7b','#5f1b3f',260,-400],['#2fa88f','#125f4f',-300,-320],['#7a5bff','#332288',60,460]]
+    .forEach(([c1,c2,x,z])=>{
+      const t = radialTexture(c1+'55', c2+'22');
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({map:t, transparent:true, opacity:.16, blending:THREE.AdditiveBlending, depthWrite:false}));
+      s.scale.setScalar(520); s.position.set(x, (Math.random()-.5)*160, z); scene.add(s);
+    });
+
+  /* ================= СОСТОЯНИЕ ================= */
+  let world = null;                 // группа системы
+  let nodes = new Map();            // id -> node
+  let orbiting = [];                // узлы с орбитами (планеты, луны) — родители раньше детей
+  let nodeMeshes = [];
+  let edges = [];
+  let edgeStore = {};               // type -> {list, line, attr}
+  let hlList = [], hlLine = null, hlAttr = null;
+  let labelGroup = null, externalGroup = null;
+  let selected = null, halo = null;
+  let flyNode = null, flyOffset = null;
+  let timeScale = 1, paused = false, simTime = 0;
+
+  const EDGE_COLORS = { 'import':0x38bdf8, 'call':0xfb923c, 'export':0xa3e635, 're-export':0xc084fc };
+  const EDGE_OPACITY = { 'import':.16, 'call':.42, 'export':.13, 're-export':.28 };
+  const KIND_NAME = { star:'звезда · модуль', planet:'планета · файл', moon:'луна · функция',
+    ringed:'планета с кольцами · класс', asteroid:'астероид · константа', distant:'далёкая звезда · external' };
+
+  /* ================= ЗАГРУЗКА ================= */
+  const fileInput = document.getElementById('fileInput');
+  fileInput.addEventListener('change', e => e.target.files[0] && loadFile(e.target.files[0]));
+  addEventListener('dragover', e => { e.preventDefault(); document.getElementById('drop').style.display='flex'; });
+  addEventListener('dragleave', e => { if(!e.relatedTarget) document.getElementById('drop').style.display='none'; });
+  addEventListener('drop', e => { e.preventDefault(); document.getElementById('drop').style.display='none';
+    const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+  function loadFile(file){
+    const r = new FileReader();
+    r.onload = () => { try { buildGalaxy(JSON.parse(r.result), file.name); }
+    catch(err){ alert('Ошибка JSON: ' + err.message); } };
+    r.readAsText(file);
+  }
+
+  /* ================= ПОСТРОЕНИЕ ГАЛАКТИКИ ================= */
+  function buildGalaxy(data, name){
+    if (world){ scene.remove(world); dispose(world); }
+    world = new THREE.Group(); scene.add(world);
+    nodes = new Map(); orbiting = []; nodeMeshes = []; edges = []; edgeStore = {};
+    hlList = []; hlLine = null; selected = null; flyNode = null; hideInfo();
+    simTime = 0;
+
+    const modules = data.modules || [];
+    const sat = modules.filter(m => m.id !== data.root);
+
+    /* --- звёзды: корень в центре, остальные по спиральным рукавам --- */
+    modules.forEach((m) => {
+      const isRoot = m.id === data.root;
+      let pos;
+      if (isRoot) pos = new THREE.Vector3(0,0,0);
+      else {
+        const i = sat.indexOf(m), N = sat.length || 1;
+        const arm = i % 2, t = Math.floor(i/2) / Math.ceil(N/2);
+        const ang = arm*Math.PI + t*3.4, rad = 42 + t*118;
+        pos = new THREE.Vector3(Math.cos(ang)*rad, (Math.random()-.5)*7, Math.sin(ang)*rad);
+      }
+      const color = isRoot ? new THREE.Color(0xfff2c0)
+        : new THREE.Color().setHSL((.06 + Math.random()*.12 + (modules.indexOf(m)/modules.length)*.7) % 1, .8, .62);
+      const R = isRoot ? 5.5 : 2.6 + Math.random()*1.2;
+
+      const star = new THREE.Mesh(new THREE.SphereGeometry(R, 28, 28),
+        new THREE.MeshBasicMaterial({ color }));
+      star.position.copy(pos);
+      star.userData = { id:m.id, kind:'star', raw:m };
+      world.add(star); nodeMeshes.push(star);
+
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map:glowTex, color,
+        transparent:true, opacity:.85, blending:THREE.AdditiveBlending, depthWrite:false }));
+      glow.scale.setScalar(R * (isRoot ? 9 : 7));
+      star.add(glow);
+
+      const node = { id:m.id, kind:'star', name:m.name, raw:m, pos, mesh:star, glow, R,
+        pulse: Math.random()*Math.PI*2, color };
+      nodes.set(m.id, node);
+      if (isRoot) sunLight.position.copy(pos);
+    });
+
+    /* --- планеты (файлы) на орбитах звёзд --- */
+    const filesByModule = {};
+    (data.files||[]).forEach(f => (filesByModule[f.moduleId] ||= []).push(f));
+    (data.files||[]).forEach(f => {
+      const star = nodes.get(f.moduleId); if (!star) return;
+      const list = filesByModule[f.moduleId], j = list.indexOf(f), M = list.length;
+      const r = 9 + j*1.55 + Math.random()*.6;
+      const col = star.color.clone().lerp(new THREE.Color(0x9fc6ff), .55 + Math.random()*.2);
+      const R = .85 + (j % 4)*.18;
+      const planet = new THREE.Mesh(new THREE.SphereGeometry(R, 18, 18),
+        new THREE.MeshStandardMaterial({ color:col, emissive:col, emissiveIntensity:.18, roughness:.55, metalness:.15 }));
+      planet.userData = { id:f.id, kind:'planet', raw:f };
+      world.add(planet); nodeMeshes.push(planet);
+      const node = { id:f.id, kind:'planet', name:(f.path||'').split('/').pop(), raw:f,
+        pos:new THREE.Vector3(), mesh:planet, R, color:col,
+        orbit:{ parent:star, r, speed:.09/Math.sqrt(r/9), phase:j/M*Math.PI*2 + Math.random(), inc:(Math.random()-.5)*.55, yOff:0 } };
+      nodes.set(f.id, node); orbiting.push(node);
+    });
+
+    /* --- луны/кольцевые планеты/астероиды (сущности файлов) --- */
+    const children = {};
+    const push = (fileId, o, kind) => (children[fileId] ||= []).push({...o, _kind:kind});
+    (data.functions||[]).forEach(x => push(x.fileId, x, 'moon'));
+    (data.classes||[]).forEach(x => push(x.fileId, x, 'ringed'));
+    (data.constants||[]).forEach(x => push(x.fileId, x, 'asteroid'));
+
+    const moonG = new THREE.SphereGeometry(.32, 10, 10);
+    const astG  = new THREE.DodecahedronGeometry(.42, 0);
+    const ringG = new THREE.RingGeometry(1.35, 2.15, 40);
+    const moonM = new THREE.MeshStandardMaterial({ color:0x9fd8ff, emissive:0x2a6f9f, emissiveIntensity:.5, roughness:.4 });
+    const astM  = new THREE.MeshStandardMaterial({ color:0xaed58b, emissive:0x3a5f28, emissiveIntensity:.45, roughness:.8, flatShading:true });
+    const clsM  = new THREE.MeshStandardMaterial({ color:0xffb74d, emissive:0x8a4f14, emissiveIntensity:.5, roughness:.45 });
+    const ringM = new THREE.MeshBasicMaterial({ color:0xffd9a0, side:THREE.DoubleSide, transparent:true, opacity:.55, blending:THREE.AdditiveBlending, depthWrite:false });
+
+    for (const [fileId, arr] of Object.entries(children)){
+      const planet = nodes.get(fileId); if (!planet) continue;
+      arr.forEach((obj, k) => {
+        let mesh;
+        if (obj._kind === 'moon'){ mesh = new THREE.Mesh(moonG, moonM); }
+        else if (obj._kind === 'asteroid'){ mesh = new THREE.Mesh(astG, astM); }
+        else {
+          mesh = new THREE.Mesh(new THREE.SphereGeometry(.75, 14, 14), clsM);
+          const ring = new THREE.Mesh(ringG, ringM);
+          ring.rotation.x = Math.PI/2.4; mesh.add(ring);
+        }
+        mesh.userData = { id:obj.id, kind:obj._kind, raw:obj };
+        world.add(mesh); nodeMeshes.push(mesh);
+        const shell = k % 3;
+        const node = { id:obj.id, kind:obj._kind, name:obj.name, raw:obj, pos:new THREE.Vector3(), mesh,
+          R: obj._kind==='ringed' ? 1.9 : .5,
+          orbit:{ parent:planet, r: 1.9 + shell*.85, speed:.3 + (k%7)*.07,
+            phase:k*2.399 + Math.random(), inc:(Math.random()-.5)*.9, yOff:0 } };
+        nodes.set(obj.id, node); orbiting.push(node);
+      });
+    }
+
+    /* --- далёкие звёзды: external --- */
+    externalGroup = new THREE.Group(); world.add(externalGroup);
+    const extIds = new Set();
+    (data.edges||[]).forEach(e => [e.from,e.to].forEach(x => String(x).startsWith('external:') && extIds.add(x)));
+    const ext = [...extIds], E = ext.length || 1;
+    ext.forEach((id, i) => {
+      const y = 1 - (i/(E-1||1))*2, rr = Math.sqrt(Math.max(0,1-y*y)), th = i*2.399;
+      const R2 = 250 + (i%5)*18;
+      const pos = new THREE.Vector3(Math.cos(th)*rr*R2, y*R2*.55, Math.sin(th)*rr*R2);
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(.9, 10, 10),
+        new THREE.MeshBasicMaterial({ color:0xcfd8dc }));
+      mesh.position.copy(pos);
+      const g = new THREE.Sprite(new THREE.SpriteMaterial({ map:glowTex, color:0xbfd4e8, transparent:true,
+        opacity:.5, blending:THREE.AdditiveBlending, depthWrite:false }));
+      g.scale.setScalar(7); mesh.add(g);
+      mesh.userData = { id, kind:'distant', raw:{ id, name:id.replace('external:','') } };
+      externalGroup.add(mesh); nodeMeshes.push(mesh);
+      nodes.set(id, { id, kind:'distant', name:id.replace('external:',''), raw:mesh.userData.raw, pos, mesh, R:1 });
+    });
+
+    /* --- подписи звёздных систем --- */
+    labelGroup = new THREE.Group(); world.add(labelGroup);
+    modules.forEach(m => {
+      const n = nodes.get(m.id); if (!n) return;
+      const s = makeLabel(m.name, m.id===data.root ? '#fff2c0' : '#'+n.color.getHexString());
+      s.position.copy(n.pos).add(new THREE.Vector3(0, n.R + 4.5, 0));
+      labelGroup.add(s);
+    });
+
+    /* --- гиперлинии --- */
+    edges = data.edges?.length ? data.edges.map(e => ({from:e.from,to:e.to,type:e.type})) : deriveEdges(data);
+    rebuildEdges();
+
+    const st = data.statistics || {};
+    document.getElementById('stats').innerHTML =
+      `звёздных систем: <b>${modules.length}</b><br>планет: <b>${(data.files||[]).length}</b><br>` +
+      `лун (функций): <b>${st.totalFunctions ?? (data.functions||[]).length}</b><br>` +
+      `кольцевых (классов): <b>${(data.classes||[]).length}</b><br>` +
+      `астероидов (констант): <b>${(data.constants||[]).length}</b><br>` +
+      `гиперлиний: <b>${edges.length}</b><br>далёких звёзд: <b>${ext.length}</b>`;
+    document.getElementById('fileName').textContent = name;
+
+    camera.position.set(0, 140, 290); controls.target.set(0,0,0);
+    updateOrbits(0); updateEdgePositions();
+  }
+
+  function deriveEdges(d){
+    const out = [];
+    (d.imports||[]).forEach(i => out.push({from:i.fromFileId,to:i.toFileId,type:'import'}));
+    (d.exports||[]).forEach(e => out.push({from:e.fileId,to:e.functionId,type:'export'}));
+    (d.calls||[]).forEach(c => out.push({from:c.fromFunctionId,to:c.toFunctionId,type:'call'}));
+    (d.reExports||[]).forEach(r => out.push({from:r.moduleId,to:r.functionId,type:'re-export'}));
+    return out;
+  }
+
+  /* ================= ОРБИТЫ ================= */
+  function updateOrbits(t){
+    for (const n of orbiting){
+      const o = n.orbit, p = o.parent.pos, a = o.phase + t*o.speed;
+      const x = Math.cos(a)*o.r, z0 = Math.sin(a)*o.r;
+      n.pos.set(p.x + x, p.y + z0*Math.sin(o.inc) + o.yOff, p.z + z0*Math.cos(o.inc));
+      n.mesh.position.copy(n.pos);
+      n.mesh.rotation.y = a;
+    }
+    for (const [id,n] of nodes){ if (n.kind==='star'){
+      const s = 1 + .05*Math.sin(t*1.6 + n.pulse);
+      n.mesh.scale.setScalar(s); if (n.glow) n.glow.material.opacity = .7 + .2*Math.sin(t*2 + n.pulse);
+    }}
+  }
+
+  /* ================= ГИПЕРЛИНИИ ================= */
+  function rebuildEdges(){
+    Object.values(edgeStore).forEach(s => world.remove(s.line));
+    edgeStore = {};
+    const showExt = document.getElementById('chkExternal').checked;
+    const enabled = {};
+    document.querySelectorAll('[data-edge]').forEach(c => enabled[c.dataset.edge] = c.checked);
+    for (const type of Object.keys(EDGE_COLORS)){
+      if (!enabled[type]) continue;
+      const list = [];
+      for (const e of edges){
+        if (e.type !== type) continue;
+        const a = nodes.get(e.from), b = nodes.get(e.to);
+        if (!a || !b) continue;
+        if (!showExt && (String(e.from).startsWith('external:') || String(e.to).startsWith('external:'))) continue;
+        list.push({a,b});
+      }
+      if (!list.length) continue;
+      const pos = new Float32Array(list.length*6);
+      const g = new THREE.BufferGeometry();
+      const attr = new THREE.BufferAttribute(pos,3); attr.setUsage(THREE.DynamicDrawUsage);
+      g.setAttribute('position', attr);
+      const line = new THREE.LineSegments(g, new THREE.LineBasicMaterial({
+        color:EDGE_COLORS[type], transparent:true, opacity:EDGE_OPACITY[type], blending:THREE.AdditiveBlending, depthWrite:false }));
+      world.add(line);
+      edgeStore[type] = { list, line, attr };
+    }
+  }
+  function updateEdgePositions(){
+    for (const {list, attr} of Object.values(edgeStore)){
+      const arr = attr.array;
+      for (let i=0;i<list.length;i++){
+        const a = list[i].a.pos, b = list[i].b.pos, o = i*6;
+        arr[o]=a.x; arr[o+1]=a.y; arr[o+2]=a.z; arr[o+3]=b.x; arr[o+4]=b.y; arr[o+5]=b.z;
+      }
+      attr.needsUpdate = true;
+    }
+  }
+  function rebuildHighlight(){
+    if (hlLine){ world.remove(hlLine); hlLine = null; }
+    hlList = [];
+    if (!selected) return;
+    for (const e of edges){
+      if (e.from !== selected && e.to !== selected) continue;
+      const a = nodes.get(e.from), b = nodes.get(e.to);
+      if (a && b) hlList.push({a,b});
+    }
+    if (!hlList.length) return;
+    const g = new THREE.BufferGeometry();
+    hlAttr = new THREE.BufferAttribute(new Float32Array(hlList.length*6),3); hlAttr.setUsage(THREE.DynamicDrawUsage);
+    g.setAttribute('position', hlAttr);
+    hlLine = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color:0xffffff, transparent:true,
+      opacity:.8, blending:THREE.AdditiveBlending, depthWrite:false }));
+    world.add(hlLine);
+  }
+  function updateHighlight(){
+    if (!hlLine) return;
+    const arr = hlAttr.array;
+    for (let i=0;i<hlList.length;i++){
+      const a = hlList[i].a.pos, b = hlList[i].b.pos, o = i*6;
+      arr[o]=a.x; arr[o+1]=a.y; arr[o+2]=a.z; arr[o+3]=b.x; arr[o+4]=b.y; arr[o+5]=b.z;
+    }
+    hlAttr.needsUpdate = true;
+  }
+
+  /* ================= ПОДПИСИ ================= */
+  function makeLabel(text, color='#fff'){
+    const c = document.createElement('canvas'), x = c.getContext('2d');
+    const fs = 44; x.font = `bold ${fs}px Segoe UI, Arial`;
+    c.width = Math.ceil(x.measureText(text).width) + 30; c.height = fs + 22;
+    x.font = `bold ${fs}px Segoe UI, Arial`;
+    x.fillStyle = 'rgba(3,5,15,.5)'; x.beginPath(); x.roundRect(0,0,c.width,c.height,14); x.fill();
+    x.fillStyle = color; x.shadowColor = color; x.shadowBlur = 12; x.fillText(text, 15, fs);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map:new THREE.CanvasTexture(c), transparent:true, depthTest:false }));
+    spr.scale.set(c.width/26, c.height/26, 1);
+    return spr;
+  }
+
+  /* ================= ВЫБОР / ИНФО ================= */
+  function ensureHalo(){
+    if (halo) return halo;
+    halo = new THREE.Sprite(new THREE.SpriteMaterial({ map:radialTexture('rgba(255,255,255,.9)','rgba(140,180,255,.25)'),
+      transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, depthTest:false }));
+    halo.visible = false; scene.add(halo); return halo;
+  }
+  function selectNode(mesh){
+    const ud = mesh.userData; selected = ud.id;
+    const n = nodes.get(ud.id);
+    const h = ensureHalo(); h.visible = true; h.scale.setScalar(Math.max(6, (n?.R||1)*6));
+    rebuildHighlight();
+    document.getElementById('infoName').textContent = n?.name || ud.id;
+    document.getElementById('infoKind').textContent = KIND_NAME[ud.kind] + ' · ' + ud.id;
+    document.getElementById('infoJson').textContent = JSON.stringify(ud.raw, null, 2).slice(0, 6000);
+    document.getElementById('info').style.display = 'block';
+    const nd = nodes.get(ud.id);
+    if (nd){ flyNode = nd; flyOffset = new THREE.Vector3(Math.max(10, nd.R*5), Math.max(6, nd.R*3), Math.max(10, nd.R*5)); }
+  }
+  function hideInfo(){ document.getElementById('info').style.display = 'none'; }
+  document.getElementById('infoClose').onclick = () => {
+    hideInfo(); selected = null; flyNode = null;
+    if (halo) halo.visible = false; rebuildHighlight();
+  };
+
+  /* ================= МЫШЬ ================= */
+  const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
+  const tip = document.getElementById('tip');
+  let hovered = null, downXY = null;
+  renderer.domElement.addEventListener('pointermove', e => {
+    mouse.set(e.clientX/innerWidth*2-1, -(e.clientY/innerHeight)*2+1);
+    ray.setFromCamera(mouse, camera);
+    const hits = ray.intersectObjects(nodeMeshes, false);
+    const hit = hits.find(h => h.object.visible && h.object.parent?.visible !== false);
+    if (hit){
+      hovered = hit.object;
+      const n = nodes.get(hovered.userData.id);
+      const extra = hovered.userData.raw?.path || hovered.userData.raw?.fileId || '';
+      tip.innerHTML = `<b>${n?.name || hovered.userData.id}</b><br><small>${KIND_NAME[hovered.userData.kind]||''}${extra?' · '+extra:''}</small>`;
+      tip.style.display = 'block';
+      tip.style.left = (e.clientX+14)+'px'; tip.style.top = (e.clientY+14)+'px';
+      document.body.style.cursor = 'pointer';
+    } else { hovered = null; tip.style.display='none'; document.body.style.cursor='default'; }
+  });
+  renderer.domElement.addEventListener('pointerdown', e => { downXY = [e.clientX, e.clientY]; flyNode = null; });
+  renderer.domElement.addEventListener('pointerup', e => {
+    if (!downXY) return;
+    const moved = Math.hypot(e.clientX-downXY[0], e.clientY-downXY[1]); downXY = null;
+    if (moved < 5 && hovered) selectNode(hovered);
+  });
+
+  /* ================= ПОИСК ================= */
+  const sInp = document.getElementById('search'), sList = document.getElementById('searchList');
+  sInp.addEventListener('input', () => {
+    const q = sInp.value.trim().toLowerCase(); sList.innerHTML = '';
+    if (q.length < 2){ sList.style.display='none'; return; }
+    const found = [...nodes.values()].filter(n => n.name?.toLowerCase().includes(q)).slice(0, 14);
+    if (!found.length){ sList.style.display='none'; return; }
+    found.forEach(n => {
+      const d = document.createElement('div');
+      d.innerHTML = `<b>${n.name}</b> <small style="color:#7f92c0">· ${KIND_NAME[n.kind]||n.kind}</small>`;
+      d.onclick = () => { sList.style.display='none'; sInp.value = n.name; selectNode(n.mesh); };
+      sList.appendChild(d);
+    });
+    sList.style.display = 'block';
+  });
+  addEventListener('click', e => { if (!e.target.closest('#searchBox')) sList.style.display='none'; });
+
+  /* ================= ПАНЕЛЬ ================= */
+  document.querySelectorAll('[data-edge]').forEach(c => c.addEventListener('change', () => world && rebuildEdges()));
+  document.getElementById('chkExternal').addEventListener('change', e => {
+    if (externalGroup) externalGroup.visible = e.target.checked;
+    if (world) rebuildEdges();
+  });
+  document.getElementById('chkLabels').addEventListener('change', e => { if (labelGroup) labelGroup.visible = e.target.checked; });
+  document.getElementById('chkRotate').addEventListener('change', e => controls.autoRotate = e.target.checked);
+  document.getElementById('chkPause').addEventListener('change', e => paused = e.target.checked);
+  document.getElementById('speed').addEventListener('input', e => timeScale = +e.target.value);
+
+  function dispose(g){ g.traverse(o => { o.geometry?.dispose?.(); const m=o.material;
+    if (m) (Array.isArray(m)?m:[m]).forEach(x=>{ x.map?.dispose?.(); x.dispose?.(); }); }); }
+  addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight); });
+
+  /* ================= ЦИКЛ ================= */
+  const clock = new THREE.Clock();
+  (function animate(){
+    requestAnimationFrame(animate);
+    const dt = Math.min(clock.getDelta(), .05);
+    if (!paused) simTime += dt * timeScale;
+    if (nodes.size){
+      updateOrbits(simTime);
+      updateEdgePositions();
+      updateHighlight();
+      if (selected && halo){ const n = nodes.get(selected); if (n) halo.position.copy(n.pos); }
+    }
+    if (flyNode){
+      const target = flyNode.pos;
+      controls.target.lerp(target, .08);
+      const desired = target.clone().add(flyOffset);
+      camera.position.lerp(desired, .08);
+      if (camera.position.distanceTo(desired) < .6) flyNode = null;
+    }
+    controls.update();
+    renderer.render(scene, camera);
+  })();
+</script>
+</body>
+</html>

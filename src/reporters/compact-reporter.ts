@@ -2,7 +2,12 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Версия: 8.0.0 (Стратегия B — строгий round-trip)
+// Версия: 8.1.0 (Стратегия B — строгий round-trip + DecodeOptions)
+//
+// ИЗМЕНЕНИЯ v8.1.0:
+//   - readAndDecode(path, options?: DecodeOptions) — прокидывает опции в Codec.decode
+//   - decodeCompactReport(compact, options?: DecodeOptions) — прокидывает опции
+//   - Поддержка includeEdges / includeEmptyArrays / includeStatistics
 //
 // ИЗМЕНЕНИЯ v8.0.0:
 //   - collectFullJSON: modules[].fileIds заполняются
@@ -39,6 +44,7 @@ import type {
   ModuleData,
   FileData,
   StatisticsData,
+  DecodeOptions,
 } from './codec/codec-types.js';
 
 // ============================================
@@ -108,7 +114,7 @@ export function generateCompactReport(
   // ============================================
 
   if (verbose) {
-    console.log('\n📦 [compact-reporter] Сбор полного JSON...');
+    console.log('\\n📦 [compact-reporter] Сбор полного JSON...');
   }
 
   const full = collectFullJSON(entitiesMap, verbose);
@@ -209,7 +215,7 @@ export function generateCompactReport(
 
   if (verbose) {
     console.log(`   ⏱️  Время: ${(duration / 1000).toFixed(2)}s`);
-    console.log('✅ [compact-reporter] Готово\n');
+    console.log('✅ [compact-reporter] Готово\\n');
   }
 
   return {
@@ -234,19 +240,27 @@ export function generateCompactReport(
  * Декодирует сжатый JSON обратно в полный.
  *
  * @param compact — сжатый JSON
+ * @param options — опции декодирования (includeEdges, includeEmptyArrays, includeStatistics)
  * @returns Полный JSON
  */
-export function decodeCompactReport(compact: CompactJSON): FullJSON {
-  return Codec.decode(compact);
+export function decodeCompactReport(
+  compact: CompactJSON,
+  options: DecodeOptions = {}
+): FullJSON {
+  return Codec.decode(compact, options);
 }
 
 /**
  * Читает сжатый JSON из файла и декодирует его.
  *
  * @param compactPath — путь к сжатому JSON
+ * @param options — опции декодирования (includeEdges, includeEmptyArrays, includeStatistics)
  * @returns Полный JSON
  */
-export function readAndDecode(compactPath: string): FullJSON {
+export function readAndDecode(
+  compactPath: string,
+  options: DecodeOptions = {}
+): FullJSON {
   if (!fs.existsSync(compactPath)) {
     throw new Error(`Файл не найден: ${compactPath}`);
   }
@@ -261,7 +275,7 @@ export function readAndDecode(compactPath: string): FullJSON {
     throw new Error(`Не удалось распарсить JSON: ${msg}`);
   }
 
-  return Codec.decode(compact);
+  return Codec.decode(compact, options);
 }
 
 /**
@@ -379,11 +393,11 @@ function collectFullJSON(
     }
 
     // ✅ Заполняем карту source → fileId
-    const normalizedPath = filePath.replace(/\\/g, '/');
+    const normalizedPath = filePath.replace(/\\\\/g, '/');
     sourceToFileIdMap.set(normalizedPath, file.id);
     sourceToFileIdMap.set(filePath, file.id);
     sourceToFileIdMap.set(path.basename(filePath), file.id);
-    sourceToFileIdMap.set(path.basename(filePath).replace(/\.[^.]+$/, ''), file.id);
+    sourceToFileIdMap.set(path.basename(filePath).replace(/\\.[^.]+$/, ''), file.id);
 
     // Функции
     const funcs = entities.functions || [];
@@ -562,9 +576,9 @@ function collectFullJSON(
 
       const packageName = isExternal
         ? (imp as any).packageName ||
-          (imp.source.startsWith('@')
-            ? imp.source.split('/').slice(0, 2).join('/')
-            : imp.source.split('/')[0])
+        (imp.source.startsWith('@')
+          ? imp.source.split('/').slice(0, 2).join('/')
+          : imp.source.split('/')[0])
         : undefined;
 
       // ✅ Разрешаем toFileId
@@ -618,7 +632,7 @@ function collectFullJSON(
 
           if (typeof spec === 'string') {
             const specStr = spec as string;
-            const match = specStr.match(/^(.+?)\s+as\s+(.+)$/);
+            const match = specStr.match(/^(.+?)\\s+as\\s+(.+)$/);
             if (match) {
               importedName = match[1] || '';
               localName = match[2] || '';
@@ -754,7 +768,7 @@ function collectFullJSON(
 
   // Ищем index.ts в корне src
   for (const file of files) {
-    if (file.path.endsWith('src/index.ts') || file.path.endsWith('src\\index.ts')) {
+    if (file.path.endsWith('src/index.ts') || file.path.endsWith('src\\\\index.ts')) {
       const module = modules.find(m => m.id === file.moduleId);
       if (module) {
         root = module.id;
@@ -840,7 +854,7 @@ function resolveToFileId(
   // 1. Алиасы проекта (@/, #/, ~/)
   // ============================================
   if (source.startsWith('@/') || source.startsWith('#/') || source.startsWith('~/')) {
-    const rest = source.replace(/^(@|#|~)\//, '');
+    const rest = source.replace(/^(@|#|~)\//, ''); // ← один обратный слэш
     const sourceBasename = path.basename(rest);
     const sourceNoExt = sourceBasename.replace(/\.[^.]+$/, '');
 
@@ -865,9 +879,9 @@ function resolveToFileId(
         if (resolvedFile) return resolvedFile.id;
 
         // Нормализуем путь для поиска
-        const normalizedResolved = resolved.replace(/\\/g, '/');
+        const normalizedResolved = resolved.replace(/\\\\/g, '/');
         for (const [filePath, fileData] of fileMap) {
-          if (filePath.replace(/\\/g, '/') === normalizedResolved) {
+          if (filePath.replace(/\\\\/g, '/') === normalizedResolved) {
             return fileData.id;
           }
         }
@@ -887,11 +901,11 @@ function resolveToFileId(
   // 4. Поиск по basename
   // ============================================
   const sourceBasename = path.basename(source);
-  const sourceNoExt = sourceBasename.replace(/\.[^.]+$/, '');
+  const sourceNoExt = sourceBasename.replace(/\\.[^.]+$/, '');
 
   for (const [filePath, fileData] of fileMap) {
     const fileBasename = path.basename(filePath);
-    const fileNoExt = fileBasename.replace(/\.[^.]+$/, '');
+    const fileNoExt = fileBasename.replace(/\\.[^.]+$/, '');
 
     if (fileBasename === sourceBasename || fileNoExt === sourceNoExt) {
       return fileData.id;
@@ -946,7 +960,7 @@ function detectCallType(
   if (callName.includes('.')) return 'method';
 
   const body = func.body || '';
-  const cbPattern = new RegExp(`${callName}\\s*\\([^)]*(?:=>|function)`, 'i');
+  const cbPattern = new RegExp(`${callName}\\\\s*\\\\([^)]*(?:=>|function)`, 'i');
   if (cbPattern.test(body)) return 'callback';
 
   return 'direct';

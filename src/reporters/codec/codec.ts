@@ -2,7 +2,14 @@
 // ============================================
 // ЕДИНЫЙ МОДУЛЬ КОДЕКОВ
 // ============================================
-// Версия: 3.0.0 (Стратегия B — строгий round-trip)
+// Версия: 3.1.0 (Стратегия B — строгий round-trip + опции декодирования)
+//
+// ИЗМЕНЕНИЯ v3.1.0:
+//   - decode() принимает DecodeOptions:
+//       * includeEdges      — собирать ли агрегированный массив edges
+//       * includeEmptyArrays — включать ли пустые секции в результат
+//       * includeStatistics — включать ли statistics
+//   - Обратная совместимость: decode(compact) без опций работает как раньше
 //
 // ИЗМЕНЕНИЯ v3.0.0:
 //   - encode: словари (stringDict, paramDict, methodDict, valueDict)
@@ -32,7 +39,8 @@ import type {
   StatisticsData,
   EdgeData,
   ModuleData,
-  FileData
+  FileData,
+  DecodeOptions,
 } from './codec-types.js';
 
 // ============================================
@@ -743,9 +751,27 @@ export class Codec {
    * Декодирует сжатый JSON обратно в полный.
    *
    * @param compact - Сжатый JSON с легендой
+   * @param options - Опции декодирования (см. DecodeOptions)
    * @returns Полный JSON
+   *
+   * @example
+   * // Полный результат (по умолчанию) — с edges и всеми секциями
+   * const full = Codec.decode(compact);
+   *
+   * @example
+   * // Без агрегированного графа edges и без пустых секций
+   * const full = Codec.decode(compact, {
+   *   includeEdges: false,
+   *   includeEmptyArrays: false,
+   * });
    */
-  static decode(compact: CompactJSON): FullJSON {
+  static decode(compact: CompactJSON, options: DecodeOptions = {}): FullJSON {
+    const {
+      includeEdges = true,
+      includeEmptyArrays = true,
+      includeStatistics = true,
+    } = options;
+
     const legend = compact.legend;
 
     // ============================================
@@ -997,57 +1023,59 @@ export class Codec {
     const statistics: StatisticsData = compact.st;
 
     // ============================================
-    // 11. Восстановление edges из gr.*
+    // 11. Восстановление edges из gr.* (опционально)
     // ============================================
     const edges: EdgeData[] = [];
 
-    // Импорты → edges
-    for (const imp of imports) {
-      edges.push({
-        from: imp.fromFileId,
-        to: imp.toFileId || 'unknown',
-        type: 'import',
-        symbol: imp.importedName,
-        line: imp.line,
-      });
-    }
+    if (includeEdges) {
+      // Импорты → edges
+      for (const imp of imports) {
+        edges.push({
+          from: imp.fromFileId,
+          to: imp.toFileId || 'unknown',
+          type: 'import',
+          symbol: imp.importedName,
+          line: imp.line,
+        });
+      }
 
-    // Экспорты → edges
-    for (const exp of exports) {
-      edges.push({
-        from: exp.fileId,
-        to: exp.functionId,
-        type: 'export',
-        symbol: exp.exportName,
-        line: exp.line,
-      });
-    }
+      // Экспорты → edges
+      for (const exp of exports) {
+        edges.push({
+          from: exp.fileId,
+          to: exp.functionId,
+          type: 'export',
+          symbol: exp.exportName,
+          line: exp.line,
+        });
+      }
 
-    // Вызовы → edges
-    for (const call of calls) {
-      edges.push({
-        from: call.fromFunctionId,
-        to: call.toFunctionId,
-        type: 'call',
-        line: call.line,
-      });
-    }
+      // Вызовы → edges
+      for (const call of calls) {
+        edges.push({
+          from: call.fromFunctionId,
+          to: call.toFunctionId,
+          type: 'call',
+          line: call.line,
+        });
+      }
 
-    // Реэкспорты → edges
-    for (const re of reExports) {
-      edges.push({
-        from: re.moduleId,
-        to: re.functionId,
-        type: 're-export',
-        symbol: re.exportName,
-        line: re.line,
-      });
+      // Реэкспорты → edges
+      for (const re of reExports) {
+        edges.push({
+          from: re.moduleId,
+          to: re.functionId,
+          type: 're-export',
+          symbol: re.exportName,
+          line: re.line,
+        });
+      }
     }
 
     // ============================================
-    // 12. Сборка результата
+    // 12. Сборка результата (с учётом опций)
     // ============================================
-    return {
+    const result: FullJSON = {
       version: compact.v,
       timestamp: compact.ts,
       root: compact.r,
@@ -1060,9 +1088,28 @@ export class Codec {
       imports,
       calls,
       reExports,
-      statistics,
-      edges: edges.length > 0 ? edges : undefined,
+      statistics: includeStatistics ? statistics : ({} as StatisticsData),
     };
+
+    // Убираем пустые массивы, если попросили
+    if (!includeEmptyArrays) {
+      if (modules.length === 0) delete (result as any).modules;
+      if (files.length === 0) delete (result as any).files;
+      if (functions.length === 0) delete (result as any).functions;
+      if (classes.length === 0) delete (result as any).classes;
+      if (constants.length === 0) delete (result as any).constants;
+      if (exports.length === 0) delete (result as any).exports;
+      if (imports.length === 0) delete (result as any).imports;
+      if (calls.length === 0) delete (result as any).calls;
+      if (reExports.length === 0) delete (result as any).reExports;
+    }
+
+    // Добавляем edges только если попросили и они непустые
+    if (includeEdges && edges.length > 0) {
+      result.edges = edges;
+    }
+
+    return result;
   }
 
   // ============================================
@@ -1130,16 +1177,20 @@ export class Codec {
    * Проверяет, что encode → decode возвращает идентичный результат.
    *
    * @param payload - Полный JSON
+   * @param options - Опции декодирования (по умолчанию все включены)
    * @returns Результат проверки
    */
-  static verifyRoundTrip(payload: FullJSON): {
+  static verifyRoundTrip(
+    payload: FullJSON,
+    options: DecodeOptions = {}
+  ): {
     ok: boolean;
     error?: string;
     details?: Record<string, { original: number; decoded: number }>;
   } {
     try {
       const compact = Codec.encode(payload);
-      const decoded = Codec.decode(compact);
+      const decoded = Codec.decode(compact, options);
 
       const details: Record<string, { original: number; decoded: number }> = {
         modules: {

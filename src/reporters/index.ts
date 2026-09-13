@@ -2,9 +2,12 @@
 // ============================================================
 // ЕДИНАЯ ТОЧКА ВХОДА ДЛЯ ВСЕХ РЕПОРТЕРОВ
 // ============================================================
-// Версия: 6.0.1
+// Версия: 6.0.2
 //
-// ИСПРАВЛЕНО:
+// ИЗМЕНЕНИЯ v6.0.2:
+//   - Добавлен экспорт типа DecodeOptions (для опций Codec.decode)
+//
+// ИЗМЕНЕНИЯ v6.0.1:
 //   - Удалены несуществующие экспорты из './compact-reporter.js'
 //     (findFunctionByName, getFunctionCalls, getFunctionCallers,
 //      getFileName, getModuleName, getFunctionInfo, decodeFlags,
@@ -20,7 +23,7 @@ export { generateFullReport } from './full-reporter.js';
 export type { FullReport } from './full-reporter.js';
 
 // ============================================================
-// 2. КОМПАКТНЫЙ ОТЧЁТ (v6.0.1)
+// 2. КОМПАКТНЫЙ ОТЧЁТ (v6.0.2)
 // ============================================================
 
 export {
@@ -75,6 +78,8 @@ export type {
   ReExportData,
   /** Статистика */
   StatisticsData,
+  /** ✅ НОВОЕ: Опции декодирования CompactJSON → FullJSON */
+  DecodeOptions,
 } from './codec/codec-types.js';
 
 // ============================================================
@@ -88,7 +93,7 @@ export { generateInteractiveHTML } from './interactive-reporter.js';
 // 5. КОНСТАНТЫ МОДУЛЯ
 // ============================================================
 
-export const REPORTERS_VERSION = '6.0.1';
+export const REPORTERS_VERSION = '6.0.2';
 export const REPORTERS_NAME = '@newkind/ast-analyzer/reporters';
 
 // ============================================================

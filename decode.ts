@@ -29,14 +29,24 @@
 // fs.writeFileSync('./index.full.2.json', JSON.stringify(full, null, 2));
 
 // ==============================================================================================
-import { Codec } from './src/index.js';
+// import { Codec } from './src/index.js';
+// import fs from 'fs';
+//
+// const compact = JSON.parse(fs.readFileSync('./src/process/index.json', 'utf-8'));
+// const full = Codec.decode(compact);
+//
+// // Проверяем round-trip: полный → сжатый → полный
+// const reEncoded = Codec.encode(full);
+// const reDecoded = Codec.decode(reEncoded);
+//
+// console.log('Round-trip OK:', JSON.stringify(full) === JSON.stringify(reDecoded));
+// ==============================================================================================
+
 import fs from 'fs';
+import { Codec } from './src/index.js';
 
-const compact = JSON.parse(fs.readFileSync('./src/process/index.json', 'utf-8'));
-const full = Codec.decode(compact);
+const raw = JSON.parse(fs.readFileSync('./src/process/index.json', 'utf-8'));
+const full = Codec.decode(raw, { includeEdges: true });
 
-// Проверяем round-trip: полный → сжатый → полный
-const reEncoded = Codec.encode(full);
-const reDecoded = Codec.decode(reEncoded);
+fs.writeFileSync('./index.full.3.json', JSON.stringify(full, null, 2));
 
-console.log('Round-trip OK:', JSON.stringify(full) === JSON.stringify(reDecoded));

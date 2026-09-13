@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>3D Project Graph Visualizer</title>
+  <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+          font-family: 'Segoe UI', system-ui, sans-serif;
+          background: #000;
+          color: #e0e0e0;
+          overflow: hidden;
+      }
+      #canvas-container { position: fixed; inset: 0; }
+
+      #ui-panel {
+          position: fixed;
+          top: 16px;
+          left: 16px;
+          background: rgba(15, 20, 30, 0.85);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(100, 150, 255, 0.3);
+          border-radius: 12px;
+          padding: 16px;
+          width: 320px;
+          max-height: calc(100vh - 32px);
+          overflow-y: auto;
+          z-index: 10;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      }
+
+      #ui-panel h1 {
+          font-size: 16px;
+          margin-bottom: 12px;
+          color: #7cb9ff;
+          border-bottom: 1px solid rgba(100, 150, 255, 0.2);
+          padding-bottom: 8px;
+      }
+
+      .upload-zone {
+          border: 2px dashed rgba(100, 150, 255, 0.4);
+          border-radius: 8px;
+          padding: 20px;
+          text-align: center;
+          cursor: pointer;
+          transition: all 0.3s;
+          margin-bottom: 12px;
+      }
+      .upload-zone:hover {
+          border-color: #7cb9ff;
+          background: rgba(100, 150, 255, 0.1);
+      }
+      .upload-zone input { display: none; }
+
+      .legend {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 6px;
+          margin: 12px 0;
+          font-size: 12px;
+      }
+      .legend-item {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+      }
+      .legend-color {
+          width: 14px;
+          height: 14px;
+          border-radius: 3px;
+          border: 1px solid rgba(255,255,255,0.2);
+      }
+
+      .filters {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin: 8px 0;
+      }
+      .filter-btn {
+          background: rgba(60, 80, 120, 0.4);
+          border: 1px solid rgba(100, 150, 255, 0.3);
+          color: #c0d0e0;
+          padding: 4px 10px;
+          border-radius: 14px;
+          font-size: 11px;
+          cursor: pointer;
+          transition: all 0.2s;
+      }
+      .filter-btn.active {
+          background: rgba(100, 150, 255, 0.5);
+          color: #fff;
+      }
+      .filter-btn:hover { background: rgba(100, 150, 255, 0.3); }
+
+      .selection-info {
+          background: rgba(100, 150, 255, 0.1);
+          border: 1px solid rgba(100, 150, 255, 0.3);
+          border-radius: 8px;
+          padding: 8px;
+          margin: 8px 0;
+          font-size: 11px;
+      }
+      .selection-info h3 {
+          color: #7cb9ff;
+          font-size: 12px;
+          margin-bottom: 4px;
+      }
+      .selection-info .clear-btn {
+          background: rgba(255, 100, 100, 0.3);
+          border: 1px solid rgba(255, 100, 100, 0.5);
+          color: #fff;
+          padding: 3px 8px;
+          border-radius: 4px;
+          font-size: 10px;
+          cursor: pointer;
+          margin-top: 4px;
+      }
+
+      #info-panel {
+          position: fixed;
+          top: 16px;
+          right: 16px;
+          background: rgba(15, 20, 30, 0.9);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(100, 150, 255, 0.3);
+          border-radius: 12px;
+          padding: 16px;
+          width: 340px;
+          max-height: calc(100vh - 32px);
+          overflow-y: auto;
+          z-index: 10;
+          display: none;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      }
+      #info-panel h2 {
+          font-size: 15px;
+          color: #7cb9ff;
+          margin-bottom: 8px;
+          word-break: break-all;
+      }
+      #info-panel .badge {
+          display: inline-block;
+          padding: 2px 8px;
+          border-radius: 10px;
+          font-size: 10px;
+          margin-right: 4px;
+          margin-bottom: 4px;
+          background: rgba(100, 150, 255, 0.3);
+      }
+      #info-panel .row {
+          display: flex;
+          justify-content: space-between;
+          padding: 4px 0;
+          font-size: 12px;
+          border-bottom: 1px solid rgba(100, 150, 255, 0.1);
+      }
+      #info-panel .row .label { color: #8899aa; }
+      #info-panel .row .value { color: #e0e8f0; font-family: monospace; }
+      #info-panel .close {
+          position: absolute;
+          top: 8px;
+          right: 12px;
+          cursor: pointer;
+          color: #8899aa;
+          font-size: 18px;
+      }
+      #info-panel .connections {
+          margin-top: 8px;
+          font-size: 11px;
+      }
+      #info-panel .connections h3 {
+          font-size: 12px;
+          color: #7cb9ff;
+          margin: 8px 0 4px;
+      }
+      #info-panel .conn-item {
+          padding: 3px 6px;
+          background: rgba(60, 80, 120, 0.3);
+          border-radius: 4px;
+          margin: 2px 0;
+          cursor: pointer;
+          transition: background 0.2s;
+      }
+      #info-panel .conn-item:hover { background: rgba(100, 150, 255, 0.3); }
+
+      #stats {
+          position: fixed;
+          bottom: 16px;
+          left: 16px;
+          background: rgba(15, 20, 30, 0.85);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(100, 150, 255, 0.3);
+          border-radius: 8px;
+          padding: 10px 14px;
+          font-size: 11px;
+          z-index: 10;
+          font-family: monospace;
+      }
+      #stats span { color: #7cb9ff; }
+
+      .hint {
+          position: fixed;
+          bottom: 16px;
+          right: 16px;
+          background: rgba(15, 20, 30, 0.85);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(100, 150, 255, 0.3);
+          border-radius: 8px;
+          padding: 10px 14px;
+          font-size: 11px;
+          z-index: 10;
+          color: #8899aa;
+      }
+      .hint kbd {
+          background: rgba(100, 150, 255, 0.2);
+          padding: 1px 6px;
+          border-radius: 3px;
+          color: #c0d0e0;
+      }
+
+      .loading {
+          position: fixed;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(0, 0, 0, 0.8);
+          z-index: 100;
+          color: #7cb9ff;
+          font-size: 18px;
+      }
+      .spinner {
+          width: 40px;
+          height: 40px;
+          border: 3px solid rgba(100, 150, 255, 0.2);
+          border-top-color: #7cb9ff;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+          margin-right: 12px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+      ::-webkit-scrollbar-thumb { background: rgba(100, 150, 255, 0.4); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div id="ui-panel">
+  <h1>🌌 3D Project Graph</h1>
+
+  <label class="upload-zone" for="file-input">
+    <div>📁 Загрузить JSON-файл</div>
+    <div style="font-size: 11px; color: #8899aa; margin-top: 4px;">
+      или перетащите файл сюда
+    </div>
+    <input type="file" id="file-input" accept=".json">
+  </label>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-color" style="background:#ff6b9d"></div>Модуль</div>
+    <div class="legend-item"><div class="legend-color" style="background:#4ecdc4"></div>Файл</div>
+    <div class="legend-item"><div class="legend-color" style="background:#ffe66d"></div>Функция</div>
+    <div class="legend-item"><div class="legend-color" style="background:#a78bfa"></div>Класс</div>
+    <div class="legend-item"><div class="legend-color" style="background:#f97316"></div>Константа</div>
+    <div class="legend-item"><div class="legend-color" style="background:#60a5fa"></div>Связь</div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-color" style="background:#4ade80"></div>Import</div>
+    <div class="legend-item"><div class="legend-color" style="background:#fbbf24"></div>Call</div>
+    <div class="legend-item"><div class="legend-color" style="background:#f87171"></div>Export</div>
+    <div class="legend-item"><div class="legend-color" style="background:#a78bfa"></div>Re-Export</div>
+    <div class="legend-item"><div class="legend-color" style="background:#64748b"></div>Иерархия</div>
+  </div>
+
+  <div class="filters">
+    <button class="filter-btn active" data-filter="all">Все</button>
+    <button class="filter-btn" data-filter="modules">Модули</button>
+    <button class="filter-btn" data-filter="files">Файлы</button>
+    <button class="filter-btn" data-filter="functions">Функции</button>
+    <button class="filter-btn" data-filter="classes">Классы</button>
+    <button class="filter-btn" data-filter="constants">Константы</button>
+  </div>
+
+  <div class="filters">
+    <button class="filter-btn active" data-edge="all">Все связи</button>
+    <button class="filter-btn" data-edge="import">Импорты</button>
+    <button class="filter-btn" data-edge="call">Вызовы</button>
+    <button class="filter-btn" data-edge="export">Экспорты</button>
+    <button class="filter-btn" data-edge="re-export">Ре-экспорты</button>
+  </div>
+
+  <div id="selection-info" class="selection-info" style="display:none;">
+    <h3>Выбрано: <span id="selection-count">0</span></h3>
+    <div id="selection-list"></div>
+    <button class="clear-btn" onclick="clearSelection()">Очистить выбор</button>
+  </div>
+</div>
+
+<div id="info-panel">
+  <span class="close" onclick="closeInfo()">×</span>
+  <div id="info-content"></div>
+</div>
+
+<div id="stats">
+  Загружено: <span id="stat-count">0</span> объектов · Связей: <span id="stat-edges">0</span>
+</div>
+
+<div class="hint">
+  <kbd>ЛКМ</kbd> вращение · <kbd>ПКМ</kbd> перемещение · <kbd>Колесо</kbd> зум<br>
+  <kbd>Клик</kbd> — выбрать · <kbd>Shift+Клик</kbd> — добавить к выбору
+</div>
+
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+</script>
+
+<script type="module">
+  import * as THREE from 'three';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+  const container = document.getElementById('canvas-container');
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x050810);
+  scene.fog = new THREE.Fog(0x050810, 150, 500);
+
+  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+  camera.position.set(100, 80, 100);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(renderer.domElement);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.05;
+  controls.minDistance = 10;
+  controls.maxDistance = 500;
+
+  scene.add(new THREE.AmbientLight(0x404060, 0.6));
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  dirLight.position.set(100, 150, 100);
+  scene.add(dirLight);
+  const pointLight = new THREE.PointLight(0x7cb9ff, 1, 300);
+  pointLight.position.set(0, 50, 0);
+  scene.add(pointLight);
+
+  const starsGeo = new THREE.BufferGeometry();
+  const starPositions = [];
+  for (let i = 0; i < 5000; i++) {
+    starPositions.push(
+      (Math.random() - 0.5) * 1000,
+      (Math.random() - 0.5) * 1000,
+      (Math.random() - 0.5) * 1000
+    );
+  }
+  starsGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
+  scene.add(new THREE.Points(starsGeo, new THREE.PointsMaterial({ color: 0x88aaff, size: 0.5, transparent: true, opacity: 0.6 })));
+
+  const grid = new THREE.GridHelper(400, 80, 0x223355, 0x112233);
+  grid.position.y = -40;
+  scene.add(grid);
+
+  let graphData = null;
+  const nodeObjects = new Map();
+  const edgeObjects = []; // { line, type, from, to, isHierarchy }
+  const nodePositions = new Map();
+  let currentFilter = 'all';
+  let currentEdgeFilter = 'all';
+  let selectedNodes = new Set();
+
+  // Индексы для быстрого поиска связей
+  const edgesByNode = new Map(); // nodeId -> [edgeObj]
+  const childrenOf = new Map(); // parentId -> [childId] (иерархия)
+  const parentOf = new Map(); // childId -> parentId
+
+  const COLORS = {
+    module: 0xff6b9d,
+    file: 0x4ecdc4,
+    function: 0xffe66d,
+    class: 0xa78bfa,
+    constant: 0xf97316,
+    edge: {
+      import: 0x4ade80,
+      call: 0xfbbf24,
+      export: 0xf87171,
+      're-export': 0xa78bfa,
+      hierarchy: 0x64748b
+    }
+  };
+
+  function createNodeMesh(type, size = 1) {
+    let geo, mat;
+    switch (type) {
+      case 'module':
+        geo = new THREE.BoxGeometry(size * 3, size * 3, size * 3);
+        mat = new THREE.MeshPhongMaterial({
+          color: COLORS.module, emissive: COLORS.module, emissiveIntensity: 0.4,
+          transparent: true, opacity: 0.9, shininess: 100
+        });
+        break;
+      case 'file':
+        geo = new THREE.BoxGeometry(size * 1.5, size * 2, size * 1.5);
+        mat = new THREE.MeshPhongMaterial({
+          color: COLORS.file, emissive: COLORS.file, emissiveIntensity: 0.3,
+          transparent: true, opacity: 0.85
+        });
+        break;
+      case 'function':
+        geo = new THREE.SphereGeometry(size * 0.6, 16, 16);
+        mat = new THREE.MeshPhongMaterial({
+          color: COLORS.function, emissive: COLORS.function, emissiveIntensity: 0.5
+        });
+        break;
+      case 'class':
+        geo = new THREE.OctahedronGeometry(size * 1);
+        mat = new THREE.MeshPhongMaterial({
+          color: COLORS.class, emissive: COLORS.class, emissiveIntensity: 0.4, shininess: 120
+        });
+        break;
+      case 'constant':
+        geo = new THREE.TetrahedronGeometry(size * 0.8);
+        mat = new THREE.MeshPhongMaterial({
+          color: COLORS.constant, emissive: COLORS.constant, emissiveIntensity: 0.4
+        });
+        break;
+    }
+    return new THREE.Mesh(geo, mat);
+  }
+
+  function layoutGraph(data) {
+    nodePositions.clear();
+
+    const modules = data.modules || [];
+    const moduleRadius = 50;
+    modules.forEach((m, i) => {
+      const angle = (i / modules.length) * Math.PI * 2;
+      nodePositions.set(m.id, new THREE.Vector3(
+        Math.cos(angle) * moduleRadius, 0, Math.sin(angle) * moduleRadius
+      ));
+    });
+
+    const files = data.files || [];
+    const filesByModule = {};
+    files.forEach(f => {
+      if (!filesByModule[f.moduleId]) filesByModule[f.moduleId] = [];
+      filesByModule[f.moduleId].push(f);
+    });
+
+    Object.entries(filesByModule).forEach(([modId, modFiles]) => {
+      const modPos = nodePositions.get(modId);
+      if (!modPos) return;
+      const fileRadius = 12;
+      modFiles.forEach((f, i) => {
+        const angle = (i / modFiles.length) * Math.PI * 2;
+        nodePositions.set(f.id, new THREE.Vector3(
+          modPos.x + Math.cos(angle) * fileRadius,
+          (Math.random() - 0.5) * 4,
+          modPos.z + Math.sin(angle) * fileRadius
+        ));
+      });
+    });
+
+    const functions = data.functions || [];
+    const fnsByFile = {};
+    functions.forEach(fn => {
+      if (!fnsByFile[fn.fileId]) fnsByFile[fn.fileId] = [];
+      fnsByFile[fn.fileId].push(fn);
+    });
+
+    Object.entries(fnsByFile).forEach(([fileId, fileFns]) => {
+      const filePos = nodePositions.get(fileId);
+      if (!filePos) return;
+      const fnRadius = 3 + Math.min(fileFns.length * 0.15, 4);
+      const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+      fileFns.forEach((fn, i) => {
+        const y = 1 - (i / (fileFns.length - 1 || 1)) * 2;
+        const radiusAtY = Math.sqrt(1 - y * y);
+        const theta = goldenAngle * i;
+        nodePositions.set(fn.id, new THREE.Vector3(
+          filePos.x + Math.cos(theta) * radiusAtY * fnRadius,
+          filePos.y + y * fnRadius,
+          filePos.z + Math.sin(theta) * radiusAtY * fnRadius
+        ));
+      });
+    });
+
+    (data.classes || []).forEach((cls, i) => {
+      const filePos = nodePositions.get(cls.fileId);
+      if (!filePos) return;
+      const angle = (i * 2.399) + Math.random();
+      nodePositions.set(cls.id, new THREE.Vector3(
+        filePos.x + Math.cos(angle) * 2.5,
+        filePos.y + (Math.random() - 0.5) * 2,
+        filePos.z + Math.sin(angle) * 2.5
+      ));
+    });
+
+    (data.constants || []).forEach((cn, i) => {
+      const filePos = nodePositions.get(cn.fileId);
+      if (!filePos) return;
+      const angle = (i * 1.618) * Math.PI;
+      nodePositions.set(cn.id, new THREE.Vector3(
+        filePos.x + Math.cos(angle) * 2,
+        filePos.y + 1 + Math.sin(angle * 0.5),
+        filePos.z + Math.sin(angle) * 2
+      ));
+    });
+  }
+
+  function addEdgeToIndex(edgeObj) {
+    if (!edgesByNode.has(edgeObj.from)) edgesByNode.set(edgeObj.from, []);
+    if (!edgesByNode.has(edgeObj.to)) edgesByNode.set(edgeObj.to, []);
+    edgesByNode.get(edgeObj.from).push(edgeObj);
+    edgesByNode.get(edgeObj.to).push(edgeObj);
+  }
+
+  function buildScene(data) {
+    nodeObjects.forEach(n => scene.remove(n.mesh));
+    nodeObjects.clear();
+    edgeObjects.forEach(e => scene.remove(e.line));
+    edgeObjects.length = 0;
+    edgesByNode.clear();
+    childrenOf.clear();
+    parentOf.clear();
+
+    layoutGraph(data);
+
+    // Создаём ноды
+    (data.modules || []).forEach(m => {
+      const mesh = createNodeMesh('module');
+      mesh.position.copy(nodePositions.get(m.id));
+      mesh.userData = { id: m.id, type: 'module', data: m };
+      scene.add(mesh);
+      nodeObjects.set(m.id, { mesh, data: m, type: 'module' });
+    });
+
+    (data.files || []).forEach(f => {
+      const mesh = createNodeMesh('file');
+      mesh.position.copy(nodePositions.get(f.id));
+      mesh.userData = { id: f.id, type: 'file', data: f };
+      scene.add(mesh);
+      nodeObjects.set(f.id, { mesh, data: f, type: 'file' });
+    });
+
+    (data.functions || []).forEach(fn => {
+      const mesh = createNodeMesh('function');
+      mesh.position.copy(nodePositions.get(fn.id));
+      mesh.userData = { id: fn.id, type: 'function', data: fn };
+      scene.add(mesh);
+      nodeObjects.set(fn.id, { mesh, data: fn, type: 'function' });
+    });
+
+    (data.classes || []).forEach(cls => {
+      const mesh = createNodeMesh('class');
+      mesh.position.copy(nodePositions.get(cls.id));
+      mesh.userData = { id: cls.id, type: 'class', data: cls };
+      scene.add(mesh);
+      nodeObjects.set(cls.id, { mesh, data: cls, type: 'class' });
+    });
+
+    (data.constants || []).forEach(cn => {
+      const mesh = createNodeMesh('constant');
+      mesh.position.copy(nodePositions.get(cn.id));
+      mesh.userData = { id: cn.id, type: 'constant', data: cn };
+      scene.add(mesh);
+      nodeObjects.set(cn.id, { mesh, data: cn, type: 'constant' });
+    });
+
+    // Создаём иерархические связи (module -> file -> function/class/constant)
+    (data.files || []).forEach(f => {
+      if (f.moduleId && nodePositions.has(f.moduleId)) {
+        createEdgeLine(f.moduleId, f.id, 'hierarchy', true);
+        if (!childrenOf.has(f.moduleId)) childrenOf.set(f.moduleId, []);
+        childrenOf.get(f.moduleId).push(f.id);
+        parentOf.set(f.id, f.moduleId);
+      }
+    });
+
+    (data.functions || []).forEach(fn => {
+      if (fn.fileId && nodePositions.has(fn.fileId)) {
+        createEdgeLine(fn.fileId, fn.id, 'hierarchy', true);
+        if (!childrenOf.has(fn.fileId)) childrenOf.set(fn.fileId, []);
+        childrenOf.get(fn.fileId).push(fn.id);
+        parentOf.set(fn.id, fn.fileId);
+      }
+    });
+
+    (data.classes || []).forEach(cls => {
+      if (cls.fileId && nodePositions.has(cls.fileId)) {
+        createEdgeLine(cls.fileId, cls.id, 'hierarchy', true);
+        if (!childrenOf.has(cls.fileId)) childrenOf.set(cls.fileId, []);
+        childrenOf.get(cls.fileId).push(cls.id);
+        parentOf.set(cls.id, cls.fileId);
+      }
+    });
+
+    (data.constants || []).forEach(cn => {
+      if (cn.fileId && nodePositions.has(cn.fileId)) {
+        createEdgeLine(cn.fileId, cn.id, 'hierarchy', true);
+        if (!childrenOf.has(cn.fileId)) childrenOf.set(cn.fileId, []);
+        childrenOf.get(cn.fileId).push(cn.id);
+        parentOf.set(cn.id, cn.fileId);
+      }
+    });
+
+    // Создаём связи из edges
+    (data.edges || []).forEach(edge => {
+      // Пропускаем связи с внешними пакетами (у них нет нод)
+      if (!nodePositions.has(edge.from) || !nodePositions.has(edge.to)) return;
+      createEdgeLine(edge.from, edge.to, edge.type, false);
+    });
+
+    updateStats();
+    applyFilters();
+  }
+
+  function createEdgeLine(fromId, toId, type, isHierarchy) {
+    const fromPos = nodePositions.get(fromId);
+    const toPos = nodePositions.get(toId);
+    if (!fromPos || !toPos) return null;
+
+    const color = COLORS.edge[type] || 0x60a5fa;
+
+    let geo, mat;
+    if (isHierarchy) {
+      // Иерархические связи — тонкие серые линии
+      geo = new THREE.BufferGeometry().setFromPoints([fromPos, toPos]);
+      mat = new THREE.LineBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.15,
+        linewidth: 1
+      });
+    } else {
+      // Обычные связи — изогнутые цветные линии
+      const mid = new THREE.Vector3().lerpVectors(fromPos, toPos, 0.5);
+      mid.y += 2;
+      const curve = new THREE.QuadraticBezierCurve3(fromPos, mid, toPos);
+      const points = curve.getPoints(20);
+      geo = new THREE.BufferGeometry().setFromPoints(points);
+
+      if (type === 'call') {
+        mat = new THREE.LineDashedMaterial({
+          color: color, transparent: true, opacity: 0.5,
+          dashSize: 1, gapSize: 0.5
+        });
+      } else if (type === 're-export') {
+        mat = new THREE.LineDashedMaterial({
+          color: color, transparent: true, opacity: 0.4,
+          dashSize: 2, gapSize: 1
+        });
+      } else {
+        mat = new THREE.LineBasicMaterial({
+          color: color, transparent: true, opacity: 0.6
+        });
+      }
+    }
+
+    const line = new THREE.Line(geo, mat);
+    if (type === 'call' || type === 're-export') {
+      line.computeLineDistances();
+    }
+
+    const edgeObj = { line, type, from: fromId, to: toId, isHierarchy };
+    line.userData = edgeObj;
+    scene.add(line);
+    edgeObjects.push(edgeObj);
+    addEdgeToIndex(edgeObj);
+    return edgeObj;
+  }
+
+  // Получить всех соседей ноды (включая иерархию)
+  function getNeighbors(nodeId) {
+    const neighbors = new Set();
+    const edges = edgesByNode.get(nodeId) || [];
+    edges.forEach(e => {
+      neighbors.add(e.from === nodeId ? e.to : e.from);
+    });
+    return neighbors;
+  }
+
+  // Получить все ноды, которые должны быть видимы при выборе
+  function getVisibleNodesForSelection() {
+    if (selectedNodes.size === 0) return null;
+
+    const visible = new Set();
+    selectedNodes.forEach(id => visible.add(id));
+
+    // Добавляем всех соседей
+    selectedNodes.forEach(id => {
+      getNeighbors(id).forEach(n => visible.add(n));
+    });
+
+    return visible;
+  }
+
+  function applyFilters() {
+    const visibleForSelection = getVisibleNodesForSelection();
+    const hasSelection = visibleForSelection !== null;
+
+    // Применяем фильтр по типу
+    nodeObjects.forEach(n => {
+      const typeMatch = currentFilter === 'all' ||
+        (currentFilter === 'modules' && n.type === 'module') ||
+        (currentFilter === 'files' && n.type === 'file') ||
+        (currentFilter === 'functions' && n.type === 'function') ||
+        (currentFilter === 'classes' && n.type === 'class') ||
+        (currentFilter === 'constants' && n.type === 'constant');
+
+      if (hasSelection) {
+        // При выборе показываем ноду если она в списке видимых ИЛИ если она проходит фильтр по типу
+        const inSelection = visibleForSelection.has(n.data.id);
+        // НО: если выбран модуль, его файлы должны быть видны независимо от фильтра
+        n.mesh.visible = inSelection;
+
+        if (selectedNodes.has(n.data.id)) {
+          n.mesh.material.emissiveIntensity = 1;
+          n.mesh.scale.set(1.2, 1.2, 1.2);
+        } else {
+          n.mesh.material.emissiveIntensity = n.mesh.userData._origEmissive || 0.3;
+          n.mesh.scale.set(1, 1, 1);
+        }
+      } else {
+        n.mesh.visible = typeMatch;
+      }
+    });
+
+    // Фильтруем связи
+    edgeObjects.forEach(e => {
+      const fromVisible = nodeObjects.get(e.from)?.mesh.visible;
+      const toVisible = nodeObjects.get(e.to)?.mesh.visible;
+
+      if (hasSelection) {
+        // Показываем связь если оба конца видны И связь связана с выбранным
+        const fromSelected = selectedNodes.has(e.from);
+        const toSelected = selectedNodes.has(e.to);
+        const related = fromSelected || toSelected;
+
+        if (e.isHierarchy) {
+          // Иерархические связи показываем только между выбранным и его непосредственными детьми/родителями
+          e.line.visible = related && fromVisible && toVisible;
+          e.line.material.opacity = 0.4;
+        } else {
+          // Обычные связи - фильтр по типу + связь с выбранным
+          const typeMatch = currentEdgeFilter === 'all' || e.type === currentEdgeFilter;
+          e.line.visible = typeMatch && related && fromVisible && toVisible;
+          if (fromSelected && toSelected) {
+            e.line.material.opacity = 1;
+          } else {
+            e.line.material.opacity = 0.7;
+          }
+        }
+      } else {
+        if (e.isHierarchy) {
+          e.line.visible = fromVisible && toVisible;
+          e.line.material.opacity = 0.15;
+        } else {
+          const typeMatch = currentEdgeFilter === 'all' || e.type === currentEdgeFilter;
+          e.line.visible = typeMatch && fromVisible && toVisible;
+          // Восстанавливаем оригинальную прозрачность
+          if (e.type === 'call') e.line.material.opacity = 0.5;
+          else if (e.type === 're-export') e.line.material.opacity = 0.4;
+          else e.line.material.opacity = 0.6;
+        }
+      }
+    });
+  }
+
+  document.querySelectorAll('.filter-btn[data-filter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn[data-filter]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = btn.dataset.filter;
+      applyFilters();
+    });
+  });
+
+  document.querySelectorAll('.filter-btn[data-edge]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn[data-edge]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentEdgeFilter = btn.dataset.edge;
+      applyFilters();
+    });
+  });
+
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  let hoveredObj = null;
+
+  renderer.domElement.addEventListener('mousemove', (e) => {
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const meshes = Array.from(nodeObjects.values()).map(n => n.mesh).filter(m => m.visible);
+    const intersects = raycaster.intersectObjects(meshes);
+
+    if (hoveredObj && !selectedNodes.has(hoveredObj.userData.id)) {
+      hoveredObj.material.emissiveIntensity = hoveredObj.userData._origEmissive || 0.3;
+      hoveredObj.scale.set(1, 1, 1);
+    }
+
+    if (intersects.length > 0) {
+      hoveredObj = intersects[0].object;
+      if (!hoveredObj.userData._origEmissive) {
+        hoveredObj.userData._origEmissive = hoveredObj.material.emissiveIntensity;
+      }
+      if (!selectedNodes.has(hoveredObj.userData.id)) {
+        hoveredObj.material.emissiveIntensity = 1;
+        hoveredObj.scale.set(1.2, 1.2, 1.2);
+      }
+      renderer.domElement.style.cursor = 'pointer';
+    } else {
+      hoveredObj = null;
+      renderer.domElement.style.cursor = 'grab';
+    }
+  });
+
+  renderer.domElement.addEventListener('click', (e) => {
+    if (!hoveredObj) {
+      if (!e.shiftKey) clearSelection();
+      return;
+    }
+
+    const nodeId = hoveredObj.userData.id;
+
+    if (e.shiftKey) {
+      if (selectedNodes.has(nodeId)) selectedNodes.delete(nodeId);
+      else selectedNodes.add(nodeId);
+    } else {
+      selectedNodes.clear();
+      selectedNodes.add(nodeId);
+      showInfo(hoveredObj.userData);
+    }
+
+    updateSelectionUI();
+    applyFilters();
+  });
+
+  function updateSelectionUI() {
+    const infoDiv = document.getElementById('selection-info');
+    const countSpan = document.getElementById('selection-count');
+    const listDiv = document.getElementById('selection-list');
+
+    if (selectedNodes.size === 0) {
+      infoDiv.style.display = 'none';
+      return;
+    }
+
+    infoDiv.style.display = 'block';
+    countSpan.textContent = selectedNodes.size;
+
+    listDiv.innerHTML = '';
+    selectedNodes.forEach(id => {
+      const obj = nodeObjects.get(id);
+      if (obj) {
+        const item = document.createElement('div');
+        item.style.padding = '2px 4px';
+        item.style.fontSize = '10px';
+        item.textContent = `${obj.type}: ${getDisplayName(obj.data, obj.type)}`;
+        listDiv.appendChild(item);
+      }
+    });
+  }
+
+  window.clearSelection = function() {
+    selectedNodes.clear();
+    updateSelectionUI();
+    applyFilters();
+    closeInfo();
+  };
+
+  function showInfo(userData) {
+    const panel = document.getElementById('info-panel');
+    const content = document.getElementById('info-content');
+    const { type, data, id } = userData;
+
+    let html = `<h2>${getDisplayName(data, type)}</h2>`;
+    html += `<span class="badge" style="background:${getTypeColor(type)}">${type}</span>`;
+
+    if (type === 'module') {
+      html += `<div class="row"><span class="label">ID</span><span class="value">${data.id}</span></div>`;
+      html += `<div class="row"><span class="label">Имя</span><span class="value">${data.name}</span></div>`;
+      html += `<div class="row"><span class="label">Путь</span><span class="value">${data.path}</span></div>`;
+      html += `<div class="row"><span class="label">Файлов</span><span class="value">${(data.fileIds || []).length}</span></div>`;
+    } else if (type === 'file') {
+      html += `<div class="row"><span class="label">ID</span><span class="value">${data.id}</span></div>`;
+      html += `<div class="row"><span class="label">Путь</span><span class="value">${data.path}</span></div>`;
+      const mod = graphData.modules.find(m => m.id === data.moduleId);
+      if (mod) html += `<div class="row"><span class="label">Модуль</span><span class="value">${mod.name}</span></div>`;
+    } else if (type === 'function') {
+      html += `<div class="row"><span class="label">ID</span><span class="value">${data.id}</span></div>`;
+      html += `<div class="row"><span class="label">Имя</span><span class="value">${data.name}</span></div>`;
+      html += `<div class="row"><span class="label">Строка</span><span class="value">${data.line}</span></div>`;
+      html += `<div class="row"><span class="label">Экспортируемая</span><span class="value">${data.isExported ? '✓' : '✗'}</span></div>`;
+      html += `<div class="row"><span class="label">Async</span><span class="value">${data.isAsync ? '✓' : '✗'}</span></div>`;
+      html += `<div class="row"><span class="label">Параметры</span><span class="value">${(data.params || []).join(', ') || '—'}</span></div>`;
+    } else if (type === 'class') {
+      html += `<div class="row"><span class="label">ID</span><span class="value">${data.id}</span></div>`;
+      html += `<div class="row"><span class="label">Имя</span><span class="value">${data.name}</span></div>`;
+      html += `<div class="row"><span class="label">Методов</span><span class="value">${(data.methods || []).length}</span></div>`;
+    } else if (type === 'constant') {
+      html += `<div class="row"><span class="label">ID</span><span class="value">${data.id}</span></div>`;
+      html += `<div class="row"><span class="label">Имя</span><span class="value">${data.name}</span></div>`;
+    }
+
+    // Связи — группируем по типу
+    const edges = edgesByNode.get(id) || [];
+    const outgoing = edges.filter(e => e.from === id);
+    const incoming = edges.filter(e => e.to === id);
+
+    const groupByType = (arr) => {
+      const groups = {};
+      arr.forEach(e => {
+        if (!groups[e.type]) groups[e.type] = [];
+        groups[e.type].push(e);
+      });
+      return groups;
+    };
+
+    const outGroups = groupByType(outgoing);
+    const inGroups = groupByType(incoming);
+
+    html += `<div class="connections">`;
+
+    const renderGroup = (label, groups, getOther) => {
+      const total = Object.values(groups).reduce((s, arr) => s + arr.length, 0);
+      if (total === 0) return '';
+      let h = `<h3>${label} (${total})</h3>`;
+      Object.entries(groups).forEach(([edgeType, arr]) => {
+        const color = '#' + COLORS.edge[edgeType].toString(16).padStart(6, '0');
+        h += `<div style="color:${color};font-size:10px;margin-top:4px;">● ${edgeType} (${arr.length})</div>`;
+        arr.slice(0, 15).forEach(e => {
+          const otherId = getOther(e);
+          const obj = nodeObjects.get(otherId);
+          const name = obj ? getDisplayName(obj.data, obj.type) : otherId;
+          h += `<div class="conn-item" data-id="${otherId}" style="border-left: 3px solid ${color}">${name}</div>`;
+        });
+        if (arr.length > 15) h += `<div style="color:#8899aa;font-size:10px">...и ещё ${arr.length - 15}</div>`;
+      });
+      return h;
+    };
+
+    html += renderGroup('→ Исходящие', outGroups, e => e.to);
+    html += renderGroup('← Входящие', inGroups, e => e.from);
+    html += `</div>`;
+
+    content.innerHTML = html;
+    panel.style.display = 'block';
+
+    content.querySelectorAll('.conn-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const targetId = item.dataset.id;
+        const obj = nodeObjects.get(targetId);
+        if (obj) {
+          focusOnObject(obj.mesh);
+          selectedNodes.clear();
+          selectedNodes.add(targetId);
+          updateSelectionUI();
+          applyFilters();
+          showInfo(obj.mesh.userData);
+        }
+      });
+    });
+  }
+
+  function focusOnObject(mesh) {
+    const target = mesh.position.clone();
+    const offset = new THREE.Vector3(15, 10, 15);
+    const newPos = target.clone().add(offset);
+    const startPos = camera.position.clone();
+    const startTarget = controls.target.clone();
+    const duration = 800;
+    const startTime = Date.now();
+
+    function animateCamera() {
+      const elapsed = Date.now() - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      camera.position.lerpVectors(startPos, newPos, eased);
+      controls.target.lerpVectors(startTarget, target, eased);
+      controls.update();
+      if (t < 1) requestAnimationFrame(animateCamera);
+    }
+    animateCamera();
+  }
+
+  function getDisplayName(data, type) {
+    if (type === 'module') return data.name;
+    if (type === 'file') return data.path.split('/').pop();
+    if (type === 'function') return data.name;
+    if (type === 'class') return data.name;
+    if (type === 'constant') return data.name;
+    return data.id;
+  }
+
+  function getTypeColor(type) {
+    const map = { module: '#ff6b9d', file: '#4ecdc4', function: '#ffe66d', class: '#a78bfa', constant: '#f97316' };
+    return map[type] || '#666';
+  }
+
+  window.closeInfo = function() {
+    document.getElementById('info-panel').style.display = 'none';
+  };
+
+  const fileInput = document.getElementById('file-input');
+  fileInput.addEventListener('change', handleFile);
+
+  document.body.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    document.querySelector('.upload-zone').style.borderColor = '#7cb9ff';
+  });
+  document.body.addEventListener('dragleave', () => {
+    document.querySelector('.upload-zone').style.borderColor = '';
+  });
+  document.body.addEventListener('drop', (e) => {
+    e.preventDefault();
+    document.querySelector('.upload-zone').style.borderColor = '';
+    if (e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
+  });
+
+  function handleFile(e) {
+    if (e.target.files.length) loadFile(e.target.files[0]);
+  }
+
+  function loadFile(file) {
+    showLoading(true);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        graphData = JSON.parse(e.target.result);
+        buildScene(graphData);
+        showLoading(false);
+      } catch (err) {
+        alert('Ошибка парсинга JSON: ' + err.message);
+        showLoading(false);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function showLoading(show) {
+    let loader = document.getElementById('loading');
+    if (show) {
+      if (!loader) {
+        loader = document.createElement('div');
+        loader.id = 'loading';
+        loader.className = 'loading';
+        loader.innerHTML = '<div class="spinner"></div><div>Построение графа...</div>';
+        document.body.appendChild(loader);
+      }
+    } else if (loader) {
+      loader.remove();
+    }
+  }
+
+  function updateStats() {
+    document.getElementById('stat-count').textContent = nodeObjects.size;
+    document.getElementById('stat-edges').textContent = edgeObjects.length;
+  }
+
+  const clock = new THREE.Clock();
+  function animate() {
+    requestAnimationFrame(animate);
+    const time = clock.getElapsedTime();
+
+    nodeObjects.forEach(n => {
+      if (n.type === 'module' && n.mesh.visible) n.mesh.rotation.y = time * 0.2;
+      else if (n.type === 'class' && n.mesh.visible) {
+        n.mesh.rotation.y = time * 0.5;
+        n.mesh.rotation.x = time * 0.3;
+      } else if (n.type === 'constant' && n.mesh.visible) n.mesh.rotation.y = time * 0.4;
+    });
+
+    pointLight.intensity = 1 + Math.sin(time * 2) * 0.3;
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+</script>
+</body>
+</html>

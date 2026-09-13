@@ -2,7 +2,11 @@
 // ============================================
 // ЕДИНАЯ ТОЧКА ВХОДА ДЛЯ КОДЕКА
 // ============================================
-// Версия: 3.0.0 (Стратегия B — строгий round-trip)
+// Версия: 3.1.0 (Стратегия B — строгий round-trip)
+//
+// ИЗМЕНЕНИЯ v3.1.0:
+//   - Добавлен экспорт типа DecodeOptions
+//   - CODEC_MODULE_VERSION обновлён до 3.1.0
 //
 // ИЗМЕНЕНИЯ v3.0.0:
 //   - Добавлен экспорт RE_EXPORT_TYPES
@@ -130,6 +134,8 @@ export type {
   GenerateReportResult,
   /** Результат проверки обратимости */
   RoundTripResult,
+  /** ✅ НОВОЕ: Опции декодирования CompactJSON → FullJSON */
+  DecodeOptions,
 
   // ============================================
   // ВНУТРЕННИЕ (для отладки)
@@ -156,7 +162,7 @@ export type {
 // ВЕРСИЯ МОДУЛЯ
 // ============================================
 
-export const CODEC_MODULE_VERSION = '3.0.0';
+export const CODEC_MODULE_VERSION = '3.1.0';
 export const CODEC_MODULE_NAME = '@newkind/ast-analyzer/reporters/codec';
 
 // ============================================
