@@ -2,6 +2,8 @@
 // ОБНОВЛЕННАЯ ВЕРСИЯ - использует analyzers модуль
 // Полностью очищена от дублирующихся анализаторов
 // ✅ ДОБАВЛЕНА ПОДДЕРЖКА ЭКСПОРТОВ
+// ✅ УЛУЧШЕНА ОБРАБОТКА ОШИБОК в extractEntitiesFromFile
+// ✅ v2: Все вызовы ts-morph обёрнуты в try/catch для устойчивости к ошибкам 'escapedName' и 'flags'
 
 import fs from 'fs';
 import path from 'path';
@@ -105,6 +107,152 @@ import {
   extractTypeDeps,
   analyzeContent,
 } from '../analyzers/index.js';
+
+// ============================================================
+// БЕЗОПАСНЫЕ ОБЁРТКИ ДЛЯ ts-morph
+// ============================================================
+// Эти хелперы защищают от внутренних ошибок TypeScript,
+// таких как "Cannot read properties of undefined (reading 'escapedName')"
+// и "Cannot read properties of undefined (reading 'flags')",
+// которые возникают при анализе сложных .vue файлов.
+
+/**
+ * Безопасно получает тип возврата из узла.
+ * Возвращает 'any' при любой ошибке.
+ */
+function safeGetReturnType(node: any, context: string): string {
+  try {
+    const returnType = node.getReturnType();
+    if (!returnType) return 'any';
+    const text = returnType.getText();
+    return text || 'any';
+  } catch (error) {
+    console.warn(
+      `   ⚠️ [safeGetReturnType] Ошибка при получении типа возврата (${context}): ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return 'any';
+  }
+}
+
+/**
+ * Безопасно получает тип узла.
+ * Возвращает 'any' при любой ошибке.
+ */
+function safeGetType(node: any, context: string): string {
+  try {
+    const type = node.getType();
+    if (!type) return 'any';
+    const text = type.getText();
+    return text || 'any';
+  } catch (error) {
+    console.warn(
+      `   ⚠️ [safeGetType] Ошибка при получении типа (${context}): ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return 'any';
+  }
+}
+
+/**
+ * Безопасно получает имена параметров.
+ */
+function safeGetParameters(node: any, context: string): string[] {
+  try {
+    const params = node.getParameters();
+    if (!Array.isArray(params)) return [];
+    return params
+      .map((p: any) => {
+        try {
+          return p.getName();
+        } catch {
+          return 'unknown';
+        }
+      })
+      .filter((n: string) => n && n !== 'unknown');
+  } catch (error) {
+    console.warn(
+      `   ⚠️ [safeGetParameters] Ошибка при получении параметров (${context}): ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return [];
+  }
+}
+
+/**
+ * Безопасно получает текст тела.
+ */
+function safeGetBodyText(node: any, context: string): string {
+  try {
+    const body = node.getBody();
+    if (!body) return '';
+    return body.getText() || '';
+  } catch (error) {
+    console.warn(
+      `   ⚠️ [safeGetBodyText] Ошибка при получении тела (${context}): ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return '';
+  }
+}
+
+/**
+ * Безопасно вызывает isAsync().
+ */
+function safeIsAsync(node: any, context: string): boolean {
+  try {
+    return node.isAsync() || false;
+  } catch (error) {
+    console.warn(
+      `   ⚠️ [safeIsAsync] Ошибка при определении async (${context}): ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return false;
+  }
+}
+
+/**
+ * Безопасно вызывает isExported().
+ */
+function safeIsExported(node: any, context: string): boolean {
+  try {
+    return node.isExported() || false;
+  } catch (error) {
+    console.warn(
+      `   ⚠️ [safeIsExported] Ошибка при определении экспорта (${context}): ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return false;
+  }
+}
+
+/**
+ * Безопасно получает номер строки.
+ */
+function safeGetStartLine(node: any): number {
+  try {
+    return node.getStartLineNumber() || 1;
+  } catch {
+    return 1;
+  }
+}
+
+/**
+ * Безопасно получает конечную строку.
+ */
+function safeGetEndLine(node: any): number {
+  try {
+    return node.getEndLineNumber() || 1;
+  } catch {
+    return 1;
+  }
+}
 
 // ============================================================
 // КЭШИРОВАНИЕ РЕЗУЛЬТАТОВ
@@ -389,7 +537,7 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
     types: [],
     classes: [],
     imports: [],
-    exports: [], // ✅ ДОБАВЛЕНО ПОЛЕ ДЛЯ ЭКСПОРТОВ
+    exports: [],
   };
 
   const absolutePath = filePath;
@@ -437,31 +585,24 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       includeTypeDeps: true,
     });
 
-    // Добавляем результаты анализа в entities
     if (analysis.dynamicImports.length > 0) {
       (entities as any).dynamicImports = analysis.dynamicImports;
     }
-
     if (analysis.configRefs.length > 0) {
       (entities as any).configRefs = analysis.configRefs;
     }
-
     if (analysis.externalLibs.length > 0) {
       (entities as any).externalLibs = analysis.externalLibs;
     }
-
     if (analysis.vueTemplates.length > 0) {
       (entities as any).vueTemplates = analysis.vueTemplates;
     }
-
     if (analysis.asyncChains.length > 0) {
       (entities as any).asyncChains = analysis.asyncChains;
     }
-
     if (analysis.closures.length > 0) {
       (entities as any).closures = analysis.closures;
     }
-
     if (analysis.typeDeps.length > 0) {
       (entities as any).typeDeps = analysis.typeDeps;
     }
@@ -510,7 +651,7 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
     }
 
     // ============================================================
-    // ИЗВЛЕЧЕНИЕ ФУНКЦИЙ
+    // ИЗВЛЕЧЕНИЕ ФУНКЦИЙ (БЕЗОПАСНО)
     // ============================================================
 
     const functions = sourceFile.getFunctions();
@@ -518,23 +659,27 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       const name = functionDecl.getName();
       if (!name) continue;
 
-      const params = functionDecl.getParameters().map((p: any) => p.getName());
-      const returnType = functionDecl.getReturnType().getText();
-      const isAsync = functionDecl.isAsync();
-      const isExported = functionDecl.isExported();
+      const params = safeGetParameters(functionDecl, `function ${name}`);
+      const returnType = safeGetReturnType(functionDecl, `function ${name}`);
+      const isAsync = safeIsAsync(functionDecl, `function ${name}`);
+      const isExported = safeIsExported(functionDecl, `function ${name}`);
 
       const calls: string[] = [];
-      functionDecl.forEachDescendant((node: any) => {
-        if (Node.isCallExpression(node)) {
-          const expr = node.getExpression();
-          if (Node.isIdentifier(expr)) {
-            const calledName = expr.getText();
-            if (calledName && calledName !== name && !importedNames.has(calledName)) {
-              calls.push(calledName);
+      try {
+        functionDecl.forEachDescendant((node: any) => {
+          if (Node.isCallExpression(node)) {
+            const expr = node.getExpression();
+            if (Node.isIdentifier(expr)) {
+              const calledName = expr.getText();
+              if (calledName && calledName !== name && !importedNames.has(calledName)) {
+                calls.push(calledName);
+              }
             }
           }
-        }
-      });
+        });
+      } catch (error) {
+        console.warn(`⚠️ Ошибка при извлечении вызовов функции ${name}`);
+      }
 
       let complexity = 1;
       try {
@@ -548,7 +693,7 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         complexity = 1;
       }
 
-      const bodyText = functionDecl.getBody()?.getText() || '';
+      const bodyText = safeGetBodyText(functionDecl, `function ${name}`);
       const security = {
         hasEval: bodyText.includes('eval(') || bodyText.includes('eval ('),
         hasProcessEnv: bodyText.includes('process.env'),
@@ -560,18 +705,32 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       };
 
       const moduleName = path.basename(path.dirname(absolutePath));
-
       const hasCalls = calls.length > 0;
       const hasCalledBy = false;
       const isSelf = !hasCalls && !hasCalledBy;
+      const startLine = safeGetStartLine(functionDecl);
+      const endLine = safeGetEndLine(functionDecl);
+
+      let funcId = '';
+      try {
+        funcId = idManager.generateCompactId({
+          filePath: absolutePath,
+          funcName: name,
+          line: startLine,
+          parentFunction: undefined,
+          depth: 0,
+        });
+      } catch {
+        funcId = `f_${name}_${startLine}`;
+      }
 
       entities.functions.push({
         name,
         params,
         paramTypes: params.map(() => 'any'),
-        line: functionDecl.getStartLineNumber(),
-        startLine: functionDecl.getStartLineNumber(),
-        endLine: functionDecl.getEndLineNumber(),
+        line: startLine,
+        startLine,
+        endLine,
         isAsync,
         isExported,
         isMethod: false,
@@ -588,55 +747,58 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         depth: 0,
         complexity,
         security,
-        vscode: `vscode://file/${absolutePath}:${functionDecl.getStartLineNumber()}`,
+        vscode: `vscode://file/${absolutePath}:${startLine}`,
         signature: '',
         _safeInfo: null,
         filePath: absolutePath,
-        moduleName: moduleName,
+        moduleName,
         _modulePath: path.dirname(absolutePath),
-        id: idManager.generateCompactId({
-          filePath: absolutePath,
-          funcName: name,
-          line: functionDecl.getStartLineNumber(),
-          parentFunction: undefined,
-          depth: 0,
-        }),
-        isSelf: isSelf,
+        id: funcId,
+        isSelf,
         _isSelf: isSelf,
       });
     }
 
     // ============================================================
-    // ИЗВЛЕЧЕНИЕ СТРЕЛОЧНЫХ ФУНКЦИЙ
+    // ИЗВЛЕЧЕНИЕ СТРЕЛОЧНЫХ ФУНКЦИЙ (БЕЗОПАСНО)
     // ============================================================
 
     const variableDeclarations = sourceFile.getVariableDeclarations();
     for (const decl of variableDeclarations) {
       const name = decl.getName();
-      const initializer = decl.getInitializer();
+      let initializer: any = null;
+      try {
+        initializer = decl.getInitializer();
+      } catch {
+        continue;
+      }
 
       if (initializer && Node.isArrowFunction(initializer)) {
-        const isExported = decl.isExported();
-        const params = initializer.getParameters().map((p: any) => p.getName());
-        const returnType = initializer.getReturnType().getText();
-        const isAsync = initializer.isAsync();
+        const isExported = safeIsExported(decl, `arrow ${name}`);
+        const params = safeGetParameters(initializer, `arrow ${name}`);
+        const returnType = safeGetReturnType(initializer, `arrow ${name}`);
+        const isAsync = safeIsAsync(initializer, `arrow ${name}`);
 
         const existing = entities.functions.find((f: any) => f.name === name);
         if (!existing) {
           const calls: string[] = [];
-          initializer.forEachDescendant((node: any) => {
-            if (Node.isCallExpression(node)) {
-              const expr = node.getExpression();
-              if (Node.isIdentifier(expr)) {
-                const calledName = expr.getText();
-                if (calledName && calledName !== name && !importedNames.has(calledName)) {
-                  calls.push(calledName);
+          try {
+            initializer.forEachDescendant((node: any) => {
+              if (Node.isCallExpression(node)) {
+                const expr = node.getExpression();
+                if (Node.isIdentifier(expr)) {
+                  const calledName = expr.getText();
+                  if (calledName && calledName !== name && !importedNames.has(calledName)) {
+                    calls.push(calledName);
+                  }
                 }
               }
-            }
-          });
+            });
+          } catch (error) {
+            console.warn(`⚠️ Ошибка при извлечении вызовов стрелочной функции ${name}`);
+          }
 
-          const bodyText = initializer.getBody()?.getText() || '';
+          const bodyText = safeGetBodyText(initializer, `arrow ${name}`);
           const security = {
             hasEval: bodyText.includes('eval(') || bodyText.includes('eval ('),
             hasProcessEnv: bodyText.includes('process.env'),
@@ -660,17 +822,31 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
           }
 
           const moduleName = path.basename(path.dirname(absolutePath));
-
           const hasCalls = calls.length > 0;
           const isSelf = !hasCalls;
+          const startLine = safeGetStartLine(decl);
+          const endLine = safeGetEndLine(initializer);
+
+          let funcId = '';
+          try {
+            funcId = idManager.generateCompactId({
+              filePath: absolutePath,
+              funcName: name,
+              line: startLine,
+              parentFunction: undefined,
+              depth: 0,
+            });
+          } catch {
+            funcId = `f_${name}_${startLine}`;
+          }
 
           entities.functions.push({
             name,
             params,
             paramTypes: params.map(() => 'any'),
-            line: decl.getStartLineNumber(),
-            startLine: decl.getStartLineNumber(),
-            endLine: initializer.getEndLineNumber(),
+            line: startLine,
+            startLine,
+            endLine,
             isAsync,
             isExported,
             isMethod: false,
@@ -687,20 +863,14 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
             depth: 0,
             complexity,
             security,
-            vscode: `vscode://file/${absolutePath}:${decl.getStartLineNumber()}`,
+            vscode: `vscode://file/${absolutePath}:${startLine}`,
             signature: '',
             _safeInfo: null,
             filePath: absolutePath,
-            moduleName: moduleName,
+            moduleName,
             _modulePath: path.dirname(absolutePath),
-            id: idManager.generateCompactId({
-              filePath: absolutePath,
-              funcName: name,
-              line: decl.getStartLineNumber(),
-              parentFunction: undefined,
-              depth: 0,
-            }),
-            isSelf: isSelf,
+            id: funcId,
+            isSelf,
             _isSelf: isSelf,
           });
 
@@ -713,23 +883,37 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
     }
 
     // ============================================================
-    // ИЗВЛЕЧЕНИЕ КОНСТАНТ И ПЕРЕМЕННЫХ
+    // ИЗВЛЕЧЕНИЕ КОНСТАНТ И ПЕРЕМЕННЫХ (БЕЗОПАСНО)
     // ============================================================
 
     for (const decl of variableDeclarations) {
       const name = decl.getName();
-      const initializer = decl.getInitializer();
+      let initializer: any = null;
+      try {
+        initializer = decl.getInitializer();
+      } catch {
+        continue;
+      }
 
       const isArrowFunction = initializer && Node.isArrowFunction(initializer);
       if (isArrowFunction) continue;
 
-      const isConst = decl.getVariableStatement()?.getDeclarationKind() === 'const';
+      let isConst = false;
+      try {
+        isConst = decl.getVariableStatement()?.getDeclarationKind() === 'const';
+      } catch {
+        isConst = false;
+      }
+
+      const varType = initializer
+        ? safeGetType(initializer, `variable ${name}`)
+        : 'any';
 
       const info = {
         name,
-        line: decl.getStartLineNumber(),
-        isExported: decl.isExported(),
-        type: initializer ? initializer.getType().getText() : 'any',
+        line: safeGetStartLine(decl),
+        isExported: safeIsExported(decl, `variable ${name}`),
+        type: varType,
         value: initializer ? extractValueFromNode(initializer) : undefined,
         _safeInfo: null,
       };
@@ -753,30 +937,53 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       const methods: string[] = [];
       const properties: string[] = [];
 
-      for (const method of cls.getMethods()) {
-        const methodName = method.getName();
-        if (methodName) {
-          methods.push(methodName);
+      try {
+        for (const method of cls.getMethods()) {
+          const methodName = method.getName();
+          if (methodName) methods.push(methodName);
         }
+      } catch {
+        // Игнорируем
       }
 
-      for (const prop of cls.getProperties()) {
-        const propName = prop.getName();
-        if (propName) {
-          properties.push(propName);
+      try {
+        for (const prop of cls.getProperties()) {
+          const propName = prop.getName();
+          if (propName) properties.push(propName);
         }
+      } catch {
+        // Игнорируем
+      }
+
+      let extendsText: string | undefined;
+      let implementsList: string[] = [];
+      try {
+        extendsText = cls.getExtends()?.getText();
+      } catch {
+        extendsText = undefined;
+      }
+      try {
+        implementsList = cls.getImplements().map((i: any) => {
+          try {
+            return i.getText();
+          } catch {
+            return '';
+          }
+        }).filter(Boolean);
+      } catch {
+        implementsList = [];
       }
 
       entities.classes.push({
         name,
         methods,
         properties,
-        line: cls.getStartLineNumber(),
-        startLine: cls.getStartLineNumber(),
-        endLine: cls.getEndLineNumber(),
-        isExported: cls.isExported(),
-        extends: cls.getExtends()?.getText(),
-        implements: cls.getImplements().map((i: any) => i.getText()),
+        line: safeGetStartLine(cls),
+        startLine: safeGetStartLine(cls),
+        endLine: safeGetEndLine(cls),
+        isExported: safeIsExported(cls, `class ${name}`),
+        extends: extendsText,
+        implements: implementsList,
         _safeInfo: null,
       });
     }
@@ -791,18 +998,35 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       if (!name) continue;
 
       const properties: string[] = [];
-      for (const prop of intf.getProperties()) {
-        properties.push(prop.getName());
+      try {
+        for (const prop of intf.getProperties()) {
+          properties.push(prop.getName());
+        }
+      } catch {
+        // Игнорируем
+      }
+
+      let extendsList: string[] = [];
+      try {
+        extendsList = intf.getExtends().map((e: any) => {
+          try {
+            return e.getText();
+          } catch {
+            return '';
+          }
+        }).filter(Boolean);
+      } catch {
+        extendsList = [];
       }
 
       entities.interfaces.push({
         name,
         properties,
-        line: intf.getStartLineNumber(),
-        startLine: intf.getStartLineNumber(),
-        endLine: intf.getEndLineNumber(),
-        isExported: intf.isExported(),
-        extends: intf.getExtends().map((e: any) => e.getText()),
+        line: safeGetStartLine(intf),
+        startLine: safeGetStartLine(intf),
+        endLine: safeGetEndLine(intf),
+        isExported: safeIsExported(intf, `interface ${name}`),
+        extends: extendsList,
         _safeInfo: null,
       });
     }
@@ -816,20 +1040,26 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       const name = typeAlias.getName();
       if (!name) continue;
 
+      let definition = 'unknown';
+      try {
+        definition = typeAlias.getType().getText();
+      } catch {
+        definition = 'unknown';
+      }
+
       entities.types.push({
         name,
-        definition: typeAlias.getType().getText(),
-        line: typeAlias.getStartLineNumber(),
-        isExported: typeAlias.isExported(),
+        definition,
+        line: safeGetStartLine(typeAlias),
+        isExported: safeIsExported(typeAlias, `type ${name}`),
         _safeInfo: null,
       });
     }
 
     // ============================================================
-    // ✅ ИЗВЛЕЧЕНИЕ ЭКСПОРТОВ (НОВОЕ)
+    // ИЗВЛЕЧЕНИЕ ЭКСПОРТОВ
     // ============================================================
 
-    // Используем parseFile для получения экспортов из AST
     const parsed = parseFile(absolutePath);
 
     if (parsed && parsed.exports && parsed.exports.length > 0) {
@@ -842,7 +1072,6 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         source: exp.source || undefined,
       }));
 
-      // ✅ ЛОГИРУЕМ НАЙДЕННЫЕ ЭКСПОРТЫ
       const reExports = entities.exports.filter(e => e.isReExport);
       if (reExports.length > 0) {
         console.log(`   📤 Реэкспортов: ${reExports.length}`);
@@ -868,9 +1097,8 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
     console.log(`   Типов: ${entities.types.length}`);
     console.log(`   Переменных: ${entities.variables.length}`);
     console.log(`   Импортов: ${entities.imports?.length || 0}`);
-    console.log(`   📤 Экспортов: ${entities.exports?.length || 0}`);  // ✅ ДОБАВЛЕНО
+    console.log(`   📤 Экспортов: ${entities.exports?.length || 0}`);
 
-    // Статистика по новым анализаторам
     const diCount = (entities as any).dynamicImports?.length || 0;
     const cfgCount = (entities as any).configRefs?.length || 0;
     const extCount = (entities as any).externalLibs?.length || 0;
@@ -890,7 +1118,6 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       if (typeCount) console.log(`      Типовых зависимостей: ${typeCount}`);
     }
 
-    // ✅ ЛОГИРУЕМ РЕЭКСПОРТЫ ОТДЕЛЬНО
     const reExportsCount = entities.exports?.filter(e => e.isReExport).length || 0;
     if (reExportsCount > 0) {
       console.log(`   🔄 Реэкспортов: ${reExportsCount}`);
@@ -901,10 +1128,16 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
 
     return entities;
   } catch (error: any) {
+    // ✅ УЛУЧШЕНИЕ: Более детальное логирование ошибки
     console.error(
       `❌ Ошибка при извлечении сущностей из ${absolutePath}:`,
       error?.message || String(error)
     );
+    if (error instanceof Error && error.stack) {
+      console.error('📚 Стек ошибки:');
+      console.error(error.stack);
+    }
+    // Возвращаем пустую структуру, чтобы не прерывать анализ
     return entities;
   }
 }

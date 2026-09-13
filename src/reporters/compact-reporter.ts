@@ -2,7 +2,12 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Версия: 8.1.0 (Стратегия B — строгий round-trip + DecodeOptions)
+// Версия: 8.1.1 (Стратегия B — строгий round-trip + DecodeOptions + fix regex)
+//
+// ИЗМЕНЕНИЯ v8.1.1:
+//   - ✅ ИСПРАВЛЕНО: detectCallType — экранирование callName перед new RegExp
+//     (устранён SyntaxError: Invalid regular expression: Unterminated group)
+//   - ✅ ИСПРАВЛЕНО: detectCallType — добавлена проверка на пустое body
 //
 // ИЗМЕНЕНИЯ v8.1.0:
 //   - readAndDecode(path, options?: DecodeOptions) — прокидывает опции в Codec.decode
@@ -243,10 +248,7 @@ export function generateCompactReport(
  * @param options — опции декодирования (includeEdges, includeEmptyArrays, includeStatistics)
  * @returns Полный JSON
  */
-export function decodeCompactReport(
-  compact: CompactJSON,
-  options: DecodeOptions = {}
-): FullJSON {
+export function decodeCompactReport(compact: CompactJSON, options: DecodeOptions = {}): FullJSON {
   return Codec.decode(compact, options);
 }
 
@@ -257,10 +259,7 @@ export function decodeCompactReport(
  * @param options — опции декодирования (includeEdges, includeEmptyArrays, includeStatistics)
  * @returns Полный JSON
  */
-export function readAndDecode(
-  compactPath: string,
-  options: DecodeOptions = {}
-): FullJSON {
+export function readAndDecode(compactPath: string, options: DecodeOptions = {}): FullJSON {
   if (!fs.existsSync(compactPath)) {
     throw new Error(`Файл не найден: ${compactPath}`);
   }
@@ -393,11 +392,11 @@ function collectFullJSON(
     }
 
     // ✅ Заполняем карту source → fileId
-    const normalizedPath = filePath.replace(/\\\\/g, '/');
+    const normalizedPath = filePath.replace(/\\/g, '/');
     sourceToFileIdMap.set(normalizedPath, file.id);
     sourceToFileIdMap.set(filePath, file.id);
     sourceToFileIdMap.set(path.basename(filePath), file.id);
-    sourceToFileIdMap.set(path.basename(filePath).replace(/\\.[^.]+$/, ''), file.id);
+    sourceToFileIdMap.set(path.basename(filePath).replace(/\.[^.]+$/, ''), file.id);
 
     // Функции
     const funcs = entities.functions || [];
@@ -576,9 +575,9 @@ function collectFullJSON(
 
       const packageName = isExternal
         ? (imp as any).packageName ||
-        (imp.source.startsWith('@')
-          ? imp.source.split('/').slice(0, 2).join('/')
-          : imp.source.split('/')[0])
+          (imp.source.startsWith('@')
+            ? imp.source.split('/').slice(0, 2).join('/')
+            : imp.source.split('/')[0])
         : undefined;
 
       // ✅ Разрешаем toFileId
@@ -632,7 +631,7 @@ function collectFullJSON(
 
           if (typeof spec === 'string') {
             const specStr = spec as string;
-            const match = specStr.match(/^(.+?)\\s+as\\s+(.+)$/);
+            const match = specStr.match(/^(.+?)\s+as\s+(.+)$/);
             if (match) {
               importedName = match[1] || '';
               localName = match[2] || '';
@@ -768,7 +767,7 @@ function collectFullJSON(
 
   // Ищем index.ts в корне src
   for (const file of files) {
-    if (file.path.endsWith('src/index.ts') || file.path.endsWith('src\\\\index.ts')) {
+    if (file.path.endsWith('src/index.ts') || file.path.endsWith('src\\index.ts')) {
       const module = modules.find(m => m.id === file.moduleId);
       if (module) {
         root = module.id;
@@ -854,7 +853,7 @@ function resolveToFileId(
   // 1. Алиасы проекта (@/, #/, ~/)
   // ============================================
   if (source.startsWith('@/') || source.startsWith('#/') || source.startsWith('~/')) {
-    const rest = source.replace(/^(@|#|~)\//, ''); // ← один обратный слэш
+    const rest = source.replace(/^(@|#|~)\//, '');
     const sourceBasename = path.basename(rest);
     const sourceNoExt = sourceBasename.replace(/\.[^.]+$/, '');
 
@@ -879,9 +878,9 @@ function resolveToFileId(
         if (resolvedFile) return resolvedFile.id;
 
         // Нормализуем путь для поиска
-        const normalizedResolved = resolved.replace(/\\\\/g, '/');
+        const normalizedResolved = resolved.replace(/\\/g, '/');
         for (const [filePath, fileData] of fileMap) {
-          if (filePath.replace(/\\\\/g, '/') === normalizedResolved) {
+          if (filePath.replace(/\\/g, '/') === normalizedResolved) {
             return fileData.id;
           }
         }
@@ -901,11 +900,11 @@ function resolveToFileId(
   // 4. Поиск по basename
   // ============================================
   const sourceBasename = path.basename(source);
-  const sourceNoExt = sourceBasename.replace(/\\.[^.]+$/, '');
+  const sourceNoExt = sourceBasename.replace(/\.[^.]+$/, '');
 
   for (const [filePath, fileData] of fileMap) {
     const fileBasename = path.basename(filePath);
-    const fileNoExt = fileBasename.replace(/\\.[^.]+$/, '');
+    const fileNoExt = fileBasename.replace(/\.[^.]+$/, '');
 
     if (fileBasename === sourceBasename || fileNoExt === sourceNoExt) {
       return fileData.id;
@@ -948,6 +947,11 @@ function getImportTypeFromSpecifierType(
 /**
  * Определяет тип вызова по контексту.
  *
+ * ✅ ИСПРАВЛЕНО v8.1.1:
+ *   - Экранируем callName перед передачей в new RegExp
+ *     (устранён SyntaxError: Invalid regular expression: Unterminated group)
+ *   - Добавлена проверка на пустое body
+ *
  * @param func — функция-источник
  * @param callName — имя вызываемой функции
  * @returns Тип вызова
@@ -959,9 +963,14 @@ function detectCallType(
   if (func.isAsync) return 'async';
   if (callName.includes('.')) return 'method';
 
+  // ✅ ИСПРАВЛЕНИЕ: проверяем body на существование и непустоту
   const body = func.body || '';
-  const cbPattern = new RegExp(`${callName}\\\\s*\\\\([^)]*(?:=>|function)`, 'i');
-  if (cbPattern.test(body)) return 'callback';
+  if (body) {
+    // ✅ ИСПРАВЛЕНИЕ: экранируем специальные символы регулярного выражения
+    const escapedCallName = callName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const cbPattern = new RegExp(`${escapedCallName}\\s*\\([^)]*(?:=>|function)`, 'i');
+    if (cbPattern.test(body)) return 'callback';
+  }
 
   return 'direct';
 }
