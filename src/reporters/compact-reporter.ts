@@ -814,36 +814,26 @@ function collectFullJSON(
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ============================================
 
-/**
- * Вставляет суффикс перед расширением файла.
- *
- * ✅ ИСПРАВЛЕНО v8.2.0:
- *   Защита от дублирования суффикса. Ранее `index.json` + `.full.json`
- *   давало `index.full.json.json`. Теперь:
- *     - `index.json`          → `index.full.json`
- *     - `index.full.json`     → `index.full.json` (без изменений)
- *
- * @param filePath — исходный путь
- * @param suffix — суффикс (с точкой, например `.full.json`)
- * @returns Путь с суффиксом
- */
 function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
-  const ext = path.extname(filePath); // '.json'
-  const base = filePath.slice(0, filePath.length - ext.length); // 'index'
+  const ext = path.extname(filePath);                          // '.json'
+  const base = filePath.slice(0, filePath.length - ext.length); // './infoenergo-ui/index'
 
-  // Нормализуем суффикс: убираем ведущую точку и расширение
-  // '.full.json' → 'full'
-  const suffixWithoutExt = suffix.replace(/\.json$/i, '').replace(/^\./, ''); // 'full'
+  // Нормализуем суффикс: '.full.json' → 'full.json' (без ведущей точки)
+  const normalizedSuffix = suffix.replace(/^\./, '');
+  if (!normalizedSuffix) return filePath;
 
-  // Если base уже заканчивается на `.full` — не дублируем
-  if (suffixWithoutExt && base.endsWith(`.${suffixWithoutExt}`)) {
-    return filePath;
+  // Полное имя файла без расширения, например 'index'
+  const baseName = path.basename(base);                        // 'index'
+
+  // Если baseName уже заканчивается на что-то из суффикса — не дублируем
+  // Например, baseName = 'index.full', suffix = 'full.json' → начинается с 'full'
+  const suffixParts = normalizedSuffix.split('.');
+  const firstSuffixPart = suffixParts[0];                      // 'full'
+  if (firstSuffixPart && baseName.endsWith(`.${firstSuffixPart}`)) {
+    return filePath;                                           // уже есть суффикс
   }
 
-  // Гарантируем, что суффикс начинается с точки
-  const normalizedSuffix = suffix.startsWith('.') ? suffix : `.${suffix}`;
-
-  return `${base}${normalizedSuffix}${ext}`;
+  return `${base}.${normalizedSuffix}${ext}`;
 }
 
 /**

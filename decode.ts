@@ -29,24 +29,23 @@
 // fs.writeFileSync('./index.full.2.json', JSON.stringify(full, null, 2));
 
 // ==============================================================================================
-// import { Codec } from './src/index.js';
-// import fs from 'fs';
-//
-// const compact = JSON.parse(fs.readFileSync('./src/process/index.json', 'utf-8'));
-// const full = Codec.decode(compact);
-//
-// // Проверяем round-trip: полный → сжатый → полный
-// const reEncoded = Codec.encode(full);
-// const reDecoded = Codec.decode(reEncoded);
-//
-// console.log('Round-trip OK:', JSON.stringify(full) === JSON.stringify(reDecoded));
+import { Codec } from './src/index.js';
+import fs from 'fs';
+
+const compact = JSON.parse(fs.readFileSync('./infoenergo-ui/index.json', 'utf-8'));
+const full = Codec.decode(compact);
+
+const reEncoded = Codec.encode(full);
+const reDecoded = Codec.decode(reEncoded);
+
+console.log('Round-trip OK:', JSON.stringify(full) === JSON.stringify(reDecoded));
 // ==============================================================================================
 
-import fs from 'fs';
-import { Codec } from './src/index.js';
+// import fs from 'fs';
+// import { Codec } from './src/index.js';
 
-const raw = JSON.parse(fs.readFileSync('./src/process/index.json', 'utf-8'));
-const full = Codec.decode(raw, { includeEdges: true });
+// const raw = JSON.parse(fs.readFileSync('./src/process/index.json', 'utf-8'));
+// const full = Codec.decode(raw, { includeEdges: true });
 
-fs.writeFileSync('./index.full.3.json', JSON.stringify(full, null, 2));
+// fs.writeFileSync('./index.full.3.json', JSON.stringify(full, null, 2));
 

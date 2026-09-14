@@ -1,0 +1,1885 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔍 AST Analyzer — Полный инспектор v9</title>
+    <style>
+        :root {
+            --bg: #0d1117; --bg-panel: #161b22; --bg-elev: #1c2128; --bg-input: #0d1117;
+            --border: #30363d; --border-hover: #484f58;
+            --text: #e6edf3; --text-dim: #8b949e; --text-faint: #6e7681;
+            --accent: #58a6ff; --accent-hover: #79c0ff;
+            --green: #3fb950; --yellow: #d29922; --orange: #db6d28;
+            --red: #f85149; --purple: #a371f7; --cyan: #39d353; --pink: #f778ba;
+            --c-fn: var(--purple); --c-class: var(--orange); --c-const: var(--green);
+            --c-file: var(--green); --c-module: var(--accent); --c-external: var(--red);
+            --c-text: var(--text);
+        }
+        body.light {
+            --bg: #fff; --bg-panel: #f6f8fa; --bg-elev: #fff; --bg-input: #fff;
+            --border: #d0d7de; --border-hover: #8c959f;
+            --text: #1f2328; --text-dim: #57606a; --text-faint: #8c959f;
+            --accent: #0969da; --accent-hover: #0550ae;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5;
+            min-height: 100vh;
+        }
+        .app { max-width: 1900px; margin: 0 auto; padding: 16px; }
+
+        /* HEADER */
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
+        h1 { font-size: 22px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+        h1 .ver { font-size: 11px; padding: 2px 8px; background: var(--accent); color: #fff; border-radius: 10px; font-weight: 600; }
+        .header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+        .btn {
+            padding: 6px 14px; border: 1px solid var(--border); background: var(--bg-panel);
+            color: var(--text); border-radius: 6px; cursor: pointer; font-size: 13px;
+            font-weight: 500; display: inline-flex; align-items: center; gap: 6px;
+            transition: all 0.15s; font-family: inherit;
+        }
+        .btn:hover { border-color: var(--border-hover); background: var(--bg-elev); }
+        .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .btn.primary:hover { background: var(--accent-hover); }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+        /* UPLOAD */
+        .upload {
+            border: 2px dashed var(--border); border-radius: 10px; padding: 32px;
+            text-align: center; margin-bottom: 16px; background: var(--bg-panel);
+            cursor: pointer; transition: all 0.2s;
+        }
+        .upload:hover, .upload.drag { border-color: var(--accent); background: var(--bg-elev); }
+        .upload input { display: none; }
+        .upload .icon { font-size: 42px; margin-bottom: 8px; }
+        .upload .title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+        .upload .subtitle { color: var(--text-dim); font-size: 13px; }
+        .upload .loaded { margin-top: 8px; color: var(--green); font-weight: 600; font-size: 13px; }
+
+        /* CONTROLS */
+        .controls {
+            display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;
+            align-items: center; background: var(--bg-panel); padding: 10px 14px;
+            border-radius: 8px; border: 1px solid var(--border);
+        }
+        .search-box { flex: 1; min-width: 200px; position: relative; }
+        .search-box input {
+            width: 100%; padding: 8px 14px 8px 34px; background: var(--bg-input);
+            border: 1px solid var(--border); border-radius: 6px; color: var(--text);
+            font-size: 13px; outline: none; font-family: inherit;
+        }
+        .search-box input:focus { border-color: var(--accent); }
+        .search-box::before { content: '🔍'; position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 14px; opacity: 0.5; }
+        .stats { margin-left: auto; font-size: 12px; color: var(--text-dim); display: flex; gap: 14px; flex-wrap: wrap; }
+        .stats b { color: var(--text); }
+
+        /* LAYOUT */
+        .layout { display: grid; grid-template-columns: 300px 1fr 400px; gap: 16px; align-items: start; }
+        @media (max-width: 1500px) { .layout { grid-template-columns: 260px 1fr; } .active-node-panel { grid-column: 1 / -1; position: static !important; max-height: none !important; } }
+        @media (max-width: 1024px) { .layout { grid-template-columns: 1fr; } }
+
+        /* SIDEBAR */
+        .sidebar {
+            background: var(--bg-panel); border: 1px solid var(--border);
+            border-radius: 10px; overflow: hidden; position: sticky; top: 16px;
+            max-height: calc(100vh - 32px); display: flex; flex-direction: column;
+        }
+        .sidebar-header {
+            padding: 10px 14px; border-bottom: 1px solid var(--border);
+            font-size: 12px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px; color: var(--text-dim);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .sidebar-header .count { background: var(--bg-elev); padding: 2px 8px; border-radius: 10px; font-size: 11px; color: var(--text); }
+        .file-list { list-style: none; overflow-y: auto; flex: 1; padding: 6px; }
+        .file-list::-webkit-scrollbar { width: 6px; }
+        .file-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        .file-item {
+            padding: 6px 10px; border-radius: 6px; cursor: pointer;
+            font-size: 12px; font-family: 'Consolas', monospace; color: var(--text-dim);
+            display: flex; align-items: center; gap: 6px; transition: all 0.1s;
+            border-left: 2px solid transparent; word-break: break-all;
+        }
+        .file-item:hover { background: var(--bg-elev); color: var(--text); border-left-color: var(--border-hover); }
+        .file-item.active { background: var(--bg-elev); color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+        .file-item .file-path { flex: 1; min-width: 0; }
+        .file-item .mod-badge { font-size: 9px; padding: 1px 6px; border-radius: 8px; background: var(--bg-elev); color: var(--text-faint); text-transform: uppercase; flex-shrink: 0; }
+        .file-item.active .mod-badge { background: var(--accent); color: #fff; }
+
+        /* MAIN */
+        .main { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; min-height: 600px; overflow: hidden; }
+        .empty { padding: 80px 20px; text-align: center; color: var(--text-dim); }
+        .empty .icon { font-size: 56px; margin-bottom: 12px; opacity: 0.5; }
+
+        /* TABS */
+        .tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg-elev); padding: 0 8px; overflow-x: auto; }
+        .tab {
+            padding: 10px 16px; border: none; background: none; color: var(--text-dim);
+            font-size: 13px; font-weight: 600; cursor: pointer;
+            border-bottom: 2px solid transparent; white-space: nowrap;
+            display: inline-flex; align-items: center; gap: 6px; font-family: inherit;
+        }
+        .tab:hover { color: var(--text); }
+        .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .tab .badge { font-size: 10px; padding: 1px 6px; background: var(--bg); border-radius: 8px; color: var(--text-faint); font-weight: 500; }
+        .tab.active .badge { background: var(--accent); color: #fff; }
+        .tab-content { display: none; padding: 16px; }
+        .tab-content.active { display: block; }
+
+        /* FILE INFO */
+        .file-info {
+            display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 16px;
+            background: var(--bg-elev); border-bottom: 1px solid var(--border);
+            font-size: 12px; align-items: center;
+        }
+        .file-path { font-family: 'Consolas', monospace; color: var(--text); font-weight: 600; flex: 1; word-break: break-all; }
+        .chip {
+            padding: 3px 10px; border-radius: 10px; font-size: 11px;
+            font-weight: 600; background: var(--bg); border: 1px solid var(--border);
+            color: var(--text-dim); display: inline-flex; align-items: center; gap: 4px;
+        }
+        .chip.blue { background: rgba(88,166,255,0.15); border-color: var(--accent); color: var(--accent); }
+        .chip.green { background: rgba(63,185,80,0.15); border-color: var(--green); color: var(--green); }
+        .chip.yellow { background: rgba(210,153,34,0.15); border-color: var(--yellow); color: var(--yellow); }
+        .chip.purple { background: rgba(163,113,247,0.15); border-color: var(--purple); color: var(--purple); }
+        .chip.orange { background: rgba(219,109,40,0.15); border-color: var(--orange); color: var(--orange); }
+        .chip.red { background: rgba(248,81,73,0.15); border-color: var(--red); color: var(--red); }
+
+        /* PANEL */
+        .panel { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+        .panel-header {
+            padding: 10px 14px; border-bottom: 1px solid var(--border);
+            font-size: 12px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px; color: var(--text-dim);
+            display: flex; justify-content: space-between; align-items: center; gap: 8px;
+        }
+        .panel-body { padding: 8px; max-height: 500px; overflow-y: auto; }
+        .panel-body::-webkit-scrollbar { width: 6px; }
+        .panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+        .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; }
+        .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+
+        /* ROW */
+        .row {
+            display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+            border-radius: 6px; font-size: 12px; font-family: 'Consolas', monospace;
+            color: var(--text); cursor: pointer; transition: background 0.1s;
+            word-break: break-all;
+        }
+        .row:hover { background: var(--bg-panel); }
+        .row.static { cursor: default; }
+        .row.static:hover { background: transparent; }
+        .row .name { flex: 1; min-width: 0; }
+        .row .name.blue { color: var(--accent); }
+        .row .name.purple { color: var(--purple); }
+        .row .name.green { color: var(--green); }
+        .row .name.yellow { color: var(--yellow); }
+        .row .name.red { color: var(--red); }
+        .row .line-ref { color: var(--text-faint); font-size: 11px; flex-shrink: 0; }
+
+        .type-tag {
+            font-size: 9px; padding: 1px 7px; border-radius: 8px;
+            font-weight: 700; text-transform: uppercase; flex-shrink: 0;
+        }
+        .tag-fn { background: rgba(163,113,247,0.2); color: var(--purple); }
+        .tag-class { background: rgba(219,109,40,0.2); color: var(--orange); }
+        .tag-const { background: rgba(63,185,80,0.2); color: var(--green); }
+        .tag-export { background: rgba(210,153,34,0.2); color: var(--yellow); }
+        .tag-import { background: rgba(88,166,255,0.2); color: var(--accent); }
+        .tag-external { background: rgba(248,81,73,0.2); color: var(--red); }
+        .tag-default { background: rgba(247,120,186,0.2); color: var(--pink); }
+        .tag-type { background: rgba(57,211,83,0.2); color: var(--cyan); }
+        .tag-named { background: rgba(210,153,34,0.2); color: var(--yellow); }
+        .tag-async { background: rgba(163,113,247,0.2); color: var(--purple); }
+        .tag-direct { background: rgba(88,166,255,0.2); color: var(--accent); }
+
+        .empty-msg { padding: 24px; text-align: center; color: var(--text-faint); font-size: 12px; font-style: italic; }
+
+        /* STATS GRID */
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+        .stat-card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center; }
+        .stat-card .num { font-size: 24px; font-weight: 800; color: var(--accent); line-height: 1.2; }
+        .stat-card .lbl { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+        .stat-card.green .num { color: var(--green); }
+        .stat-card.yellow .num { color: var(--yellow); }
+        .stat-card.purple .num { color: var(--purple); }
+        .stat-card.orange .num { color: var(--orange); }
+        .stat-card.red .num { color: var(--red); }
+        .stat-card.blue .num { color: var(--accent); }
+
+        /* FILTERS */
+        .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; padding: 8px; background: var(--bg-elev); border-radius: 8px; border: 1px solid var(--border); }
+        .filter-btn {
+            padding: 4px 10px; border: 1px solid var(--border); background: var(--bg);
+            color: var(--text-dim); border-radius: 6px; cursor: pointer;
+            font-size: 11px; font-weight: 600; font-family: inherit;
+        }
+        .filter-btn:hover { color: var(--text); border-color: var(--border-hover); }
+        .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+        /* FN CARD */
+        .fn-card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+        .fn-card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+        .fn-card-header {
+            padding: 10px 14px; background: var(--bg-panel); border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap; cursor: pointer;
+        }
+        .fn-card-header:hover { background: var(--bg-elev); }
+        .fn-card-header .fn-name {
+            font-family: 'Consolas', monospace; font-weight: 700;
+            color: var(--text); font-size: 13px; flex: 1; min-width: 0;
+        }
+        .fn-card-header .fn-name .kw { color: var(--purple); font-weight: 700; }
+        .fn-card-header .fn-name .fn-real { color: var(--accent); }
+        .fn-card-header .fn-name .params { color: var(--yellow); }
+        .fn-card-header .fn-name .dim { color: var(--text-faint); }
+        .fn-card-header .fn-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+        .fn-card-body { padding: 12px 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+        .fn-card-body.collapsed { display: none; }
+
+        .fn-section { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+        .fn-section h5 {
+            font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+            color: var(--text-faint); margin-bottom: 8px; font-weight: 700;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .fn-section h5 .count { background: var(--bg-elev); padding: 0 6px; border-radius: 8px; color: var(--text-dim); font-size: 10px; font-weight: 500; }
+        .fn-section .more { text-align: center; padding: 4px; font-size: 10px; color: var(--text-faint); }
+
+        .fn-signature {
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: 6px; padding: 10px 12px;
+            font-family: 'Consolas', monospace; font-size: 12px;
+            grid-column: 1 / -1; overflow-x: auto;
+            white-space: pre-wrap; word-break: break-all;
+        }
+        .fn-signature .kw { color: var(--purple); font-weight: 700; }
+        .fn-signature .fn { color: var(--accent); font-weight: 700; }
+        .fn-signature .params { color: var(--yellow); }
+        .fn-signature .t { color: var(--green); }
+        .fn-signature .dim { color: var(--text-faint); }
+
+        /* ACTIVE NODE PANEL */
+        .active-node-panel {
+            background: var(--bg-panel); border: 2px solid var(--accent);
+            border-radius: 10px; position: sticky; top: 16px;
+            max-height: calc(100vh - 32px); display: flex; flex-direction: column;
+            overflow: hidden; box-shadow: 0 0 20px rgba(88,166,255,0.15);
+        }
+        .active-node-panel.empty-state { border-color: var(--border); box-shadow: none; }
+        .anp-header {
+            padding: 12px 16px; background: linear-gradient(135deg, rgba(88,166,255,0.15), rgba(163,113,247,0.15));
+            border-bottom: 1px solid var(--border);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .anp-header h3 { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .anp-close { background: none; border: none; color: var(--text-dim); font-size: 20px; cursor: pointer; padding: 0 4px; line-height: 1; }
+        .anp-close:hover { color: var(--text); }
+        .anp-body { padding: 12px; overflow-y: auto; flex: 1; }
+        .anp-body::-webkit-scrollbar { width: 6px; }
+        .anp-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        .anp-empty { padding: 60px 20px; text-align: center; color: var(--text-dim); }
+        .anp-empty .icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
+        .anp-empty p { font-size: 13px; line-height: 1.6; }
+
+        .anp-node { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 12px; border-left: 3px solid var(--accent); }
+        .anp-node.fn { border-left-color: var(--purple); }
+        .anp-node.class { border-left-color: var(--orange); }
+        .anp-node.file { border-left-color: var(--green); }
+        .anp-node.external { border-left-color: var(--red); }
+        .anp-node.module { border-left-color: var(--accent); }
+        .anp-node-title { font-family: 'Consolas', monospace; font-weight: 700; font-size: 14px; margin-bottom: 6px; color: var(--text); display: flex; align-items: center; gap: 6px; word-break: break-all; }
+        .anp-node-subtitle { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; font-family: 'Consolas', monospace; word-break: break-all; }
+        .anp-node-badges { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
+
+        .anp-section { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+        .anp-section-header {
+            padding: 8px 12px; background: var(--bg-elev);
+            font-size: 11px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px; color: var(--text-dim);
+            display: flex; justify-content: space-between; align-items: center;
+            cursor: pointer; user-select: none; border-bottom: 1px solid var(--border);
+        }
+        .anp-section-header:hover { color: var(--text); }
+        .anp-section-header .cnt { background: var(--bg); padding: 1px 8px; border-radius: 10px; font-size: 10px; color: var(--text-dim); }
+        .anp-section-body { padding: 6px; }
+        .anp-section-body.collapsed { display: none; }
+
+        .anp-link {
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px 8px; border-radius: 6px;
+            font-family: 'Consolas', monospace; font-size: 11px;
+            cursor: pointer; transition: background 0.1s;
+            border-left: 2px solid transparent; word-break: break-all;
+        }
+        .anp-link:hover { background: var(--bg-elev); border-left-color: var(--accent); }
+        .anp-link .link-name { flex: 1; min-width: 0; font-weight: 600; }
+        .anp-link .link-name.blue { color: var(--accent); }
+        .anp-link .link-name.purple { color: var(--purple); }
+        .anp-link .link-name.green { color: var(--green); }
+        .anp-link .link-name.yellow { color: var(--yellow); }
+        .anp-link .link-name.red { color: var(--red); }
+        .anp-link .link-meta { font-size: 10px; color: var(--text-faint); flex-shrink: 0; }
+        .anp-link .link-tag { font-size: 9px; padding: 1px 6px; border-radius: 8px; font-weight: 700; text-transform: uppercase; flex-shrink: 0; }
+        .anp-link .link-line { font-size: 10px; color: var(--text-faint); flex-shrink: 0; }
+
+        /* MODAL */
+        .modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+            display: none; align-items: center; justify-content: center;
+            z-index: 1000; backdrop-filter: blur(4px); padding: 20px;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: var(--bg-panel); border: 1px solid var(--border);
+            border-radius: 12px; padding: 0; max-width: 1100px; width: 100%;
+            max-height: 88vh; overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+            display: flex; flex-direction: column;
+        }
+        .modal-header {
+            padding: 16px 20px; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+            background: var(--bg-elev);
+        }
+        .modal-header h3 { font-size: 16px; display: flex; align-items: center; gap: 10px; }
+        .modal-close { background: none; border: none; color: var(--text-dim); font-size: 28px; cursor: pointer; line-height: 1; padding: 0 8px; }
+        .modal-close:hover { color: var(--text); }
+        .modal-body { padding: 20px; overflow-y: auto; }
+        .modal-body::-webkit-scrollbar { width: 8px; }
+        .modal-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        /* CHAIN */
+        .chain {
+            display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+            padding: 10px 14px; background: var(--bg-elev);
+            border: 1px solid var(--border); border-radius: 8px;
+            margin-bottom: 12px; font-size: 12px;
+        }
+        .chain-node {
+            padding: 3px 10px; background: var(--bg); border: 1px solid var(--border);
+            border-radius: 8px; font-family: 'Consolas', monospace;
+            display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+        }
+        .chain-node:hover { border-color: var(--accent); color: var(--accent); }
+        .chain-node.current { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .chain-arrow { color: var(--text-faint); font-weight: 700; }
+
+        /* TOAST */
+        .toast {
+            position: fixed; bottom: 20px; left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--bg-elev); color: var(--text);
+            padding: 10px 20px; border-radius: 8px; border: 1px solid var(--border);
+            font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transition: transform 0.3s; z-index: 9999;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        .toast.error { border-color: var(--red); color: var(--red); }
+        .toast.success { border-color: var(--green); color: var(--green); }
+
+        .kbd { display: inline-block; padding: 1px 5px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; font-size: 10px; font-family: monospace; color: var(--text-dim); }
+        .caret { display: inline-block; transition: transform 0.2s; color: var(--text-dim); font-size: 10px; }
+        .caret.open { transform: rotate(90deg); }
+
+        /* TABLE */
+        .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .data-table th { text-align: left; padding: 8px 10px; background: var(--bg-elev); border-bottom: 1px solid var(--border); font-weight: 700; color: var(--text-dim); text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; cursor: pointer; user-select: none; }
+        .data-table th:hover { color: var(--text); }
+        .data-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); }
+        .data-table tr:hover td { background: var(--bg-elev); }
+        .data-table .num { text-align: right; font-family: 'Consolas', monospace; }
+
+        /* TREE */
+        .tree { font-size: 12px; font-family: 'Consolas', monospace; }
+        .tree-node { padding: 3px 6px; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+        .tree-node:hover { background: var(--bg-elev); }
+        .tree-children.collapsed { display: none; }
+        .tree-icon { width: 16px; text-align: center; }
+        .tree-label.clickable:hover { color: var(--accent); }
+        .tree-meta { margin-left: auto; font-size: 10px; color: var(--text-faint); }
+        .caret-placeholder { display: inline-block; width: 10px; }
+
+        /* BREADCRUMBS */
+        .breadcrumbs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; font-size: 12px; }
+        .bc-item { padding: 3px 10px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 14px; cursor: pointer; }
+        .bc-item:hover { border-color: var(--accent); color: var(--accent); }
+        .bc-item.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .bc-sep { color: var(--text-faint); }
+
+        /* GRAPH */
+        .graph-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; overflow: auto; }
+        .graph-svg { width: 100%; height: auto; display: block; min-height: 240px; }
+        .graph-node-rect { fill: var(--bg-elev); stroke: var(--border); stroke-width: 1.5; }
+        .graph-node.center .graph-node-rect { fill: rgba(88,166,255,0.1); stroke: var(--accent); stroke-width: 2; }
+        .graph-node.caller .graph-node-rect { fill: rgba(163,113,247,0.1); stroke: var(--purple); }
+        .graph-node.callee .graph-node-rect { fill: rgba(88,166,255,0.1); stroke: var(--accent); }
+        .graph-node.module-rect { fill: rgba(63,185,80,0.1); stroke: var(--green); }
+        .graph-node-label { font-family: 'Consolas', monospace; font-size: 12px; font-weight: 700; fill: var(--text); }
+        .graph-node-sub { font-family: 'Consolas', monospace; font-size: 10px; fill: var(--text-dim); }
+        .graph-edge { fill: none; stroke-width: 1.5; opacity: 0.7; }
+        .graph-edge.edge-in { stroke: var(--purple); }
+        .graph-edge.edge-out { stroke: var(--accent); }
+        .graph-node:hover .graph-node-rect { stroke-width: 2.5; filter: brightness(1.2); }
+
+        /* HEATMAP */
+        .heatmap { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 4px; }
+        .heat-cell { padding: 8px 10px; border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 6px; border: 1px solid transparent; transition: all 0.15s; font-family: 'Consolas', monospace; font-size: 11px; }
+        .heat-cell:hover { border-color: var(--accent); transform: translateY(-1px); }
+        .heat-cell-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .heat-cell-count { font-weight: 700; color: var(--text); }
+
+        /* CODE PREVIEW */
+        .code-preview { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-family: 'Consolas', monospace; font-size: 11px; color: var(--text-dim); white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; margin: 0; }
+
+        /* SEARCH RESULTS */
+        .search-results { display: flex; flex-direction: column; gap: 4px; }
+        .search-group { margin-bottom: 12px; }
+        .search-group-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-faint); font-weight: 700; margin-bottom: 6px; padding: 4px 8px; background: var(--bg-elev); border-radius: 6px; }
+
+        .mono { font-family: 'Consolas', monospace; }
+        .blue-bold { color: var(--accent); font-weight: 700; }
+        .green-bold { color: var(--green); font-weight: 700; }
+        .dim { color: var(--text-faint); }
+    </style>
+</head>
+<body>
+<div class="app">
+    <header>
+        <h1>🔍 AST Analyzer <span class="ver" id="verTag">v9</span></h1>
+        <div class="header-actions">
+            <button class="btn" id="themeBtn">🌙 Тема</button>
+            <button class="btn" id="exportAllBtn" disabled>📥 Экспорт всего</button>
+            <button class="btn" id="helpBtn">⌨️ Горячие</button>
+        </div>
+    </header>
+
+    <div class="upload" id="upload">
+        <input type="file" id="fileInput" accept=".json,application/json">
+        <div class="icon">📦</div>
+        <div class="title">Перетащите index.full.json.json сюда</div>
+        <div class="subtitle">или нажмите для выбора · Формат ast-analyzer v8.0.0</div>
+        <div class="loaded" id="fileName"></div>
+    </div>
+
+    <div class="controls">
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Поиск файла по пути... (Ctrl+K)">
+        </div>
+        <button class="btn" id="depsOnlyBtn">🔗 Только с зависимостями</button>
+        <div class="stats">
+            <span>📁 <b id="totalFiles">0</b></span>
+            <span>📦 <b id="totalModules">0</b></span>
+            <span>⚙️ <b id="totalFunctions">0</b></span>
+            <span>📞 <b id="totalCalls">0</b></span>
+            <span>📤 <b id="totalExports">0</b></span>
+            <span>📥 <b id="totalImports">0</b></span>
+            <span>💀 <b id="totalDead">0</b></span>
+            <span>🔄 <b id="totalCycles">0</b></span>
+        </div>
+    </div>
+
+    <div class="layout">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <span>📁 Файлы</span>
+                <span class="count" id="sidebarCount">0</span>
+            </div>
+            <ul class="file-list" id="fileList"></ul>
+        </aside>
+
+        <main class="main" id="mainArea">
+            <div class="empty" id="emptyState">
+                <div class="icon">📊</div>
+                <div>Загрузите JSON-файл для анализа</div>
+                <div style="margin-top:8px; font-size:12px; color:var(--text-faint)">
+                    Клик по функции → детальная информация справа →
+                </div>
+            </div>
+
+            <div id="analysisView" style="display:none;">
+                <div class="file-info" id="fileInfo"></div>
+                <div class="tabs" id="tabs">
+                    <button class="tab active" data-tab="overview">📊 Обзор</button>
+                    <button class="tab" data-tab="project">🌐 Проект</button>
+                    <button class="tab" data-tab="functions">⚙️ Функции <span class="badge" id="fnBadge">0</span></button>
+                    <button class="tab" data-tab="constants">📌 Константы <span class="badge" id="constBadge">0</span></button>
+                    <button class="tab" data-tab="deps">🔗 Зависимости <span class="badge" id="depBadge">0</span></button>
+                    <button class="tab" data-tab="calls">📞 Вызовы <span class="badge" id="callBadge">0</span></button>
+                    <button class="tab" data-tab="graph">📈 Граф</button>
+                    <button class="tab" data-tab="search">🔎 Поиск</button>
+                    <button class="tab" data-tab="dead">💀 Мёртвый код</button>
+                    <button class="tab" data-tab="cycles">🔄 Циклы</button>
+                    <button class="tab" data-tab="reexports">📤 Реэкспорты</button>
+                </div>
+
+                <div class="tab-content active" id="tab-overview"></div>
+                <div class="tab-content" id="tab-project"></div>
+                <div class="tab-content" id="tab-functions"></div>
+                <div class="tab-content" id="tab-constants"></div>
+                <div class="tab-content" id="tab-deps"></div>
+                <div class="tab-content" id="tab-calls"></div>
+                <div class="tab-content" id="tab-graph"></div>
+                <div class="tab-content" id="tab-search"></div>
+                <div class="tab-content" id="tab-dead"></div>
+                <div class="tab-content" id="tab-cycles"></div>
+                <div class="tab-content" id="tab-reexports"></div>
+            </div>
+        </main>
+
+        <aside class="active-node-panel empty-state" id="activeNodePanel">
+            <div class="anp-header">
+                <h3>🎯 Активный узел</h3>
+                <button class="anp-close" id="anpClose" style="display:none;" title="Сбросить">×</button>
+            </div>
+            <div class="anp-body" id="anpBody">
+                <div class="anp-empty">
+                    <div class="icon">🎯</div>
+                    <p>Выберите <b>функцию</b>, <b>файл</b> или <b>модуль</b>,<br>чтобы увидеть её связи здесь.</p>
+                </div>
+            </div>
+        </aside>
+    </div>
+</div>
+
+<div class="modal-overlay" id="fnModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="fnModalTitle">Детали</h3>
+            <button class="modal-close" data-action="close-modal">×</button>
+        </div>
+        <div class="modal-body" id="fnModalBody"></div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="helpModal">
+    <div class="modal" style="max-width:600px;">
+        <div class="modal-header">
+            <h3>⌨️ Горячие клавиши</h3>
+            <button class="modal-close" data-action="close-modal">×</button>
+        </div>
+        <div class="modal-body">
+            <div style="display:grid; grid-template-columns: auto 1fr; gap: 10px 24px; font-size:13px;">
+                <div><span class="kbd">Ctrl</span>+<span class="kbd">K</span></div><div>Фокус на поиск файлов</div>
+                <div><span class="kbd">Ctrl</span>+<span class="kbd">Shift</span>+<span class="kbd">F</span></div><div>Глобальный поиск</div>
+                <div><span class="kbd">Ctrl</span>+<span class="kbd">E</span></div><div>Экспорт всего</div>
+                <div><span class="kbd">↑</span> / <span class="kbd">↓</span></div><div>Навигация по файлам</div>
+                <div><span class="kbd">Esc</span></div><div>Закрыть / сбросить</div>
+                <div><span class="kbd">1</span>…<span class="kbd">0</span></div><div>Переключение вкладок</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+  import * as Core from './ast-analyzer-core.js';
+  import * as UI from './ast-analyzer-ui.js';
+  import * as Graph from './ast-analyzer-graph.js';
+
+  const $ = id => document.getElementById(id);
+  const state = Core.state;
+
+  // ---------------------------------------------------------------------------
+  // ЗАГРУЗКА
+  // ---------------------------------------------------------------------------
+  const upload = $('upload');
+  const fileInput = $('fileInput');
+
+  upload.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+  upload.addEventListener('dragover', e => { e.preventDefault(); upload.classList.add('drag'); });
+  upload.addEventListener('dragleave', () => upload.classList.remove('drag'));
+  upload.addEventListener('drop', e => {
+    e.preventDefault(); upload.classList.remove('drag');
+    handleFile(e.dataTransfer.files[0]);
+  });
+
+  function handleFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        Core.loadData(JSON.parse(ev.target.result));
+        onLoaded(file.name);
+      } catch (err) {
+        console.error(err);
+        UI.toast('Ошибка: ' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function onLoaded(name) {
+    $('verTag').textContent = 'v' + state.version;
+    $('fileName').textContent = `✓ ${name} — ${Object.keys(state.files).length} файлов · ${Object.keys(state.functions).length} функций · ${state.calls.length} вызовов`;
+    $('exportAllBtn').disabled = false;
+
+    const stats = Core.getProjectStats();
+    $('totalFiles').textContent = stats.totalFiles;
+    $('totalModules').textContent = stats.totalModules;
+    $('totalFunctions').textContent = stats.totalFunctions;
+    $('totalCalls').textContent = stats.totalCalls;
+    $('totalExports').textContent = stats.totalExports;
+    $('totalImports').textContent = stats.totalImports;
+    $('totalDead').textContent = stats.deadExports + stats.deadFunctions;
+    $('totalCycles').textContent = stats.cyclicDeps;
+
+    renderFileList();
+    UI.toast('✓ Загружено', 'success');
+
+    const first = Object.keys(state.files)[0];
+    if (first) selectFile(first);
+  }
+
+  // ---------------------------------------------------------------------------
+  // СПИСОК ФАЙЛОВ
+  // ---------------------------------------------------------------------------
+  function renderFileList() {
+    const html = UI.renderFileList({
+      query: state.searchQuery,
+      depsOnly: state.depsOnly,
+      selectedId: state.selectedFileId,
+    });
+    $('fileList').innerHTML = html;
+    $('sidebarCount').textContent = $('fileList').querySelectorAll('.file-item').length;
+  }
+
+  // ---------------------------------------------------------------------------
+  // ВЫБОР ФАЙЛА
+  // ---------------------------------------------------------------------------
+  function selectFile(fileId) {
+    state.selectedFileId = fileId;
+    renderFileList();
+    $('emptyState').style.display = 'none';
+    $('analysisView').style.display = 'block';
+    renderAnalysis();
+    if (!state.activeNode) setActiveNode('file', fileId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // АКТИВНЫЙ УЗЕЛ
+  // ---------------------------------------------------------------------------
+  function setActiveNode(type, id) {
+    state.activeNode = { type, id };
+    $('activeNodePanel').classList.remove('empty-state');
+    $('anpClose').style.display = 'block';
+    renderActiveNode();
+    if (type === 'fn') {
+      document.querySelectorAll('.fn-card').forEach(c => c.classList.remove('active'));
+      const card = $('fn-card-' + id);
+      if (card) card.classList.add('active');
+    }
+  }
+
+  function clearActiveNode() {
+    state.activeNode = null;
+    $('activeNodePanel').classList.add('empty-state');
+    $('anpClose').style.display = 'none';
+    $('anpBody').innerHTML = UI.renderEmpty('🎯', 'Выберите <b>функцию</b>, <b>файл</b> или <b>модуль</b>,<br>чтобы увидеть её связи здесь.');
+    document.querySelectorAll('.fn-card').forEach(c => c.classList.remove('active'));
+  }
+
+  function renderActiveNode() {
+    const { type, id } = state.activeNode || {};
+    if (!type) return;
+    const body = $('anpBody');
+
+    if (type === 'fn') renderActiveFn(id, body);
+    else if (type === 'file') renderActiveFile(id, body);
+    else if (type === 'module') renderActiveModule(id, body);
+    else if (type === 'external') renderActiveExternal(id, body);
+    else if (type === 'const') renderActiveConst(id, body);
+  }
+
+  function renderActiveFn(fnId, body) {
+    const info = Core.getFnFullInfo(fnId);
+    if (!info) { body.innerHTML = UI.renderEmpty('⚠️', 'Функция не найдена'); return; }
+    const { fn, file, module, exports, imports, calls, callers } = info;
+
+    const kw = [];
+    if (fn.isAsync) kw.push('async');
+    if (fn.isArrow) kw.push('arrow');
+    if (fn.isMethod) kw.push('method');
+
+    const params = fn.params || [];
+    const ret = fn.returnType || '';
+
+    const importsByModule = {};
+    for (const i of imports) {
+      const key = i.toModuleName || '?';
+      if (!importsByModule[key]) importsByModule[key] = [];
+      importsByModule[key].push(i);
+    }
+
+    body.innerHTML = `
+    <div class="anp-node fn">
+      <div class="anp-node-title">⚙️ ${Core.escapeHtml(fn.name)}</div>
+      <div class="anp-node-subtitle">📄 ${Core.escapeHtml(file?.path || '?')}:${fn.line}</div>
+      <div class="anp-node-badges">
+        ${fn.isExported ? UI.chip('exported', 'yellow') : ''}
+        ${fn.isAsync ? UI.chip('async', 'purple') : ''}
+        ${fn.isArrow ? UI.chip('arrow', 'blue') : ''}
+        ${fn.isMethod ? UI.chip('method', 'orange') : ''}
+        ${!fn.isExported ? UI.chip('internal', '') : ''}
+      </div>
+      <div class="fn-signature" style="margin-bottom:10px;">
+        ${kw.length ? `<span class="kw">${kw.join(' ')}</span> ` : ''}<span class="fn">${Core.escapeHtml(fn.name)}</span><span class="dim">(</span>${params.map(p => `<span class="params">${Core.escapeHtml(p)}</span>`).join('<span class="dim">, </span>')}<span class="dim">)</span>${ret ? `<span class="dim">: </span><span class="t">${Core.escapeHtml(Core.formatType(ret))}</span>` : ''}
+      </div>
+      <div style="display:flex; gap:6px;">
+        <button class="btn" style="flex:1; font-size:11px;" data-action="open-fn-modal" data-id="${fn.id}">🔍 Полная карточка</button>
+        <button class="btn" style="font-size:11px;" data-action="select-file" data-id="${fn.fileId}">📄 Файл</button>
+      </div>
+    </div>
+
+    ${UI.renderSection('📤 Экспортируется как', exports.length,
+      exports.length === 0
+        ? '<div class="empty-msg" style="padding:12px;">Не экспортируется</div>'
+        : exports.map(e => UI.renderLinkRow({
+          icon: '📤', name: e.exportName || e.localName || '?',
+          nameClass: 'yellow', tag: e.type || 'named', tagClass: 'tag-export', line: e.line
+        })).join('')
+    )}
+
+    ${UI.renderSection('📥 Импортируется в', imports.length,
+      imports.length === 0
+        ? '<div class="empty-msg" style="padding:12px;">Никто не импортирует</div>'
+        : Object.entries(importsByModule).map(([modName, list]) => `
+            <div class="search-group-title">📦 ${Core.escapeHtml(modName)} (${list.length})</div>
+            ${list.map(i => UI.renderLinkRow({
+          icon: '📥', name: Core.shortPath(i.toFilePath, 32),
+          nameClass: 'blue', meta: 'as "' + i.importName + '"',
+          tag: i.isDefault ? 'def' : i.isNamespace ? 'ns' : i.isTypeOnly ? 'type' : '',
+          tagClass: i.isDefault ? 'tag-default' : 'tag-type',
+          line: i.line, action: 'select-file', id: i.toFileId, title: i.toFilePath
+        })).join('')}
+          `).join('')
+    )}
+
+    ${UI.renderSection('📞 Кто вызывает', callers.length,
+      callers.length === 0
+        ? '<div class="empty-msg" style="padding:12px;">Никто не вызывает</div>'
+        : callers.map(c => UI.renderLinkRow({
+          icon: '📞', name: c.fromFnName, nameClass: 'purple',
+          meta: Core.shortPath(c.fromFilePath, 22),
+          tag: c.callType, tagClass: 'tag-' + c.callType,
+          line: c.callLine, action: 'jump-fn', id: c.fromFnId, title: c.fromFilePath
+        })).join('')
+    )}
+
+    ${UI.renderSection('→ Вызывает', calls.length,
+      calls.length === 0
+        ? '<div class="empty-msg" style="padding:12px;">Ничего не вызывает</div>'
+        : calls.map(c => UI.renderLinkRow({
+          icon: c.isExternal ? '🌐' : '→',
+          name: c.toFnName, nameClass: c.isExternal ? 'red' : 'blue',
+          meta: c.isExternal ? '' : Core.shortPath(c.toFilePath, 22),
+          tag: c.callType, tagClass: 'tag-' + c.callType,
+          line: c.callLine,
+          action: c.isExternal ? 'set-active-external' : 'jump-fn',
+          id: c.isExternal ? c.toFnName : c.toFnId,
+        })).join('')
+    )}
+
+    ${UI.renderSection('📄 Родительский файл', 1,
+      UI.renderLinkRow({ icon: '📄', name: Core.shortPath(file?.path, 36), nameClass: 'green', tag: 'file', tagClass: 'tag-export', action: 'select-file', id: fn.fileId, title: file?.path })
+    )}
+  `;
+  }
+
+  function renderActiveFile(fileId, body) {
+    const f = state.files[fileId];
+    if (!f) { body.innerHTML = UI.renderEmpty('⚠️', 'Файл не найден'); return; }
+    const modName = Core.getModuleName(f.moduleId);
+    const fns = state.fileFunctions[fileId] || [];
+    const exps = state.fileExports[fileId] || [];
+    const imps = state.fileImports[fileId] || [];
+    const deps = [...new Set(state.fileDependents[fileId] || [])];
+    const depsOut = [...new Set(state.fileDependencies[fileId] || [])];
+    const exportedFns = fns.filter(x => x.isExported);
+
+    const impsBySource = {};
+    for (const i of imps) {
+      const key = i.isExternal ? `🌐 ${i.source}` : (i.source || '(без source)');
+      if (!impsBySource[key]) impsBySource[key] = [];
+      impsBySource[key].push(i);
+    }
+
+    body.innerHTML = `
+    <div class="anp-node file">
+      <div class="anp-node-title">📄 ${Core.escapeHtml(f.path.split('/').pop())}</div>
+      <div class="anp-node-subtitle">${Core.escapeHtml(f.path)}</div>
+      <div class="anp-node-badges">
+        ${UI.chip('📦 ' + modName, 'blue')}
+        ${UI.chip('⚙️ ' + fns.length, 'green')}
+        ${UI.chip('📤 ' + exportedFns.length, 'yellow')}
+        ${UI.chip('📥 ' + imps.length, '')}
+      </div>
+    </div>
+
+    ${UI.renderSection('📤 Экспортированные функции', exportedFns.length,
+      exportedFns.length === 0
+        ? '<div class="empty-msg" style="padding:12px;">Нет экспортированных функций</div>'
+        : exportedFns.map(fn => {
+          const importers = state.fnImportTargets[fn.id]?.length || 0;
+          return UI.renderLinkRow({
+            icon: 'ƒ', name: fn.name, nameClass: 'blue',
+            meta: importers > 0 ? '←' + importers : '',
+            line: fn.line, action: 'set-active-fn', id: fn.id
+          });
+        }).join('')
+    )}
+
+    ${UI.renderSection('📥 Импортируют этот файл', deps.length,
+      deps.length === 0
+        ? '<div class="empty-msg" style="padding:12px;">Никто не импортирует</div>'
+        : deps.map(id => {
+          const names = Core.getImportedNames(id, fileId);
+          const preview = names.slice(0, 3);
+          return `<div class="anp-link" data-action="select-file" data-id="${id}" style="flex-direction:column; align-items:flex-start; gap:4px; padding:8px;">
+              <div style="display:flex; width:100%; gap:6px; align-items:center;">
+                <span class="link-name blue" style="flex:1;">${Core.escapeHtml(Core.shortPath(Core.getFilePath(id), 34))}</span>
+                <span class="link-tag tag-import">←</span>
+              </div>
+              ${preview.length ? `<div style="display:flex; gap:3px; flex-wrap:wrap;">${preview.map(n => `<span class="chip yellow" style="font-size:10px;">${Core.escapeHtml(n)}</span>`).join('')}${names.length > 3 ? `<span class="chip">+${names.length - 3}</span>` : ''}</div>` : ''}
+            </div>`;
+        }).join('')
+    )}
+
+    ${UI.renderSection('📥 Импорты этого файла', imps.length,
+      imps.length === 0
+        ? '<div class="empty-msg" style="padding:12px;">Нет импортов</div>'
+        : Object.entries(impsBySource).map(([src, list]) => `
+            <div class="search-group-title">${Core.escapeHtml(src)}</div>
+            ${list.map(i => UI.renderLinkRow({
+          icon: i.isExternal ? '🌐' : '📥',
+          name: i.isExternal ? i.source : Core.getFilePath(i.toFileId),
+          nameClass: i.isExternal ? 'red' : 'blue',
+          meta: i.importedName || i.localName || '?',
+          tag: i.type || 'named', tagClass: i.isExternal ? 'tag-external' : 'tag-import',
+          line: i.line,
+          action: i.isExternal ? '' : 'select-file', id: i.toFileId,
+        })).join('')}
+          `).join('')
+    )}
+
+    ${UI.renderSection('🔗 Импортирует из', depsOut.length,
+      depsOut.length === 0
+        ? '<div class="empty-msg" style="padding:12px;">Нет исходящих</div>'
+        : depsOut.map(id => UI.renderLinkRow({
+          icon: '🔗', name: Core.shortPath(Core.getFilePath(id), 34), nameClass: 'blue',
+          tag: '→', tagClass: 'tag-export',
+          action: 'select-file', id, title: Core.getFilePath(id)
+        })).join('')
+    )}
+
+    ${UI.renderSection('📋 Все экспорты', exps.length,
+      exps.length === 0
+        ? '<div class="empty-msg" style="padding:12px;">Нет</div>'
+        : exps.map(e => {
+          const fn = e.functionId ? state.fnById[e.functionId] : null;
+          const importers = fn ? (state.fnImportTargets[fn.id]?.length || 0) : 0;
+          return UI.renderLinkRow({
+            icon: '📤', name: e.exportName || e.localName || '?',
+            nameClass: 'yellow',
+            meta: importers > 0 ? '←' + importers : '',
+            tag: e.type || 'named',
+            tagClass: e.isDefault ? 'tag-default' : e.isTypeOnly ? 'tag-type' : 'tag-export',
+            action: fn ? 'set-active-fn' : '', id: fn?.id
+          });
+        }).join('')
+    )}
+  `;
+  }
+
+  function renderActiveModule(moduleId, body) {
+    const m = state.modules[moduleId];
+    if (!m) { body.innerHTML = UI.renderEmpty('⚠️', 'Модуль не найден'); return; }
+    const stats = Core.getModuleStats(moduleId);
+    const fileIds = state.moduleFiles[moduleId] || [];
+
+    body.innerHTML = `
+    <div class="anp-node module">
+      <div class="anp-node-title">📦 ${Core.escapeHtml(m.name)}</div>
+      <div class="anp-node-subtitle">${Core.escapeHtml(m.path || '')}</div>
+      <div class="anp-node-badges">
+        ${UI.chip('📁 ' + stats.fileCount, 'blue')}
+        ${UI.chip('⚙️ ' + stats.fnCount, 'purple')}
+        ${UI.chip('📌 ' + stats.constCount, 'yellow')}
+        ${UI.chip('📤 ' + stats.exportCount, 'green')}
+        ${UI.chip('📥 ' + stats.importCount, '')}
+      </div>
+    </div>
+
+    ${UI.renderSection('📁 Файлы модуля', fileIds.length,
+      fileIds.map(fid => {
+        const f = state.files[fid];
+        const fnCount = (state.fileFunctions[fid] || []).length;
+        return UI.renderLinkRow({
+          icon: '📄', name: f?.path.split('/').pop() || fid,
+          nameClass: 'blue', meta: fnCount > 0 ? fnCount + ' ƒ' : '—',
+          action: 'select-file', id: fid, title: f?.path
+        });
+      }).join('')
+    )}
+  `;
+  }
+
+  function renderActiveConst(constId, body) {
+    const c = state.constById[constId];
+    if (!c) { body.innerHTML = UI.renderEmpty('⚠️', 'Константа не найдена'); return; }
+    body.innerHTML = `
+    <div class="anp-node class">
+      <div class="anp-node-title">📌 ${Core.escapeHtml(c.name)}</div>
+      <div class="anp-node-subtitle">📄 ${Core.escapeHtml(Core.getFilePath(c.fileId))}:${c.line}</div>
+      <div class="anp-node-badges">
+        ${c.isExported ? UI.chip('exported', 'yellow') : UI.chip('internal', '')}
+        ${UI.chip('📦 ' + Core.getModuleName(c.moduleId), 'blue')}
+      </div>
+    </div>
+    ${UI.renderSection('💾 Значение', 1, `<pre class="code-preview">${Core.escapeHtml(JSON.stringify(c.value, null, 2) || '(не извлечено)')}</pre>`)}
+  `;
+  }
+
+  function renderActiveExternal(extName, body) {
+    const callers = state.externalCallers[extName] || [];
+    body.innerHTML = `
+    <div class="anp-node external">
+      <div class="anp-node-title">🌐 ${Core.escapeHtml(extName)}</div>
+      <div class="anp-node-subtitle">Внешняя функция / библиотека</div>
+      <div class="anp-node-badges">
+        ${UI.chip('external', 'red')}
+        ${UI.chip(callers.length + ' вызовов', '')}
+      </div>
+    </div>
+    ${UI.renderSection('📞 Вызывается из', callers.length,
+      callers.length === 0
+        ? '<div class="empty-msg" style="padding:12px;">Нет вызовов</div>'
+        : callers.map(c => UI.renderLinkRow({
+          icon: '📞', name: c.fromFnName, nameClass: 'purple',
+          meta: Core.shortPath(c.fromFilePath, 26),
+          tag: c.callType, tagClass: 'tag-' + c.callType,
+          line: c.callLine, action: 'jump-fn', id: c.fromFnId
+        })).join('')
+    )}
+  `;
+  }
+
+  // ---------------------------------------------------------------------------
+  // АНАЛИЗ ФАЙЛА (вкладки)
+  // ---------------------------------------------------------------------------
+  function renderAnalysis() {
+    const fileId = state.selectedFileId;
+    if (!fileId) return;
+    const f = state.files[fileId];
+    const modName = Core.getModuleName(f.moduleId);
+
+    const fns = state.fileFunctions[fileId] || [];
+    const consts = state.fileConstants[fileId] || [];
+    const exps = state.fileExports[fileId] || [];
+    const imps = state.fileImports[fileId] || [];
+    const deps = [...new Set(state.fileDependents[fileId] || [])];
+    const depsOut = [...new Set(state.fileDependencies[fileId] || [])];
+
+    const fnIds = new Set(fns.map(x => x.id));
+    const outgoingCalls = state.calls.filter(c => fnIds.has(c.fromFunctionId)).length;
+    const incomingCalls = state.calls.filter(c => {
+      const toFn = state.fnById[c.toFunctionId];
+      return toFn && toFn.fileId === fileId;
+    }).length;
+
+    $('fileInfo').innerHTML = `
+    <span class="file-path">📄 ${Core.escapeHtml(f.path)}</span>
+    ${UI.chip('📦 ' + modName, 'blue')}
+    ${UI.chip('⚙️ ' + fns.length, 'green')}
+    ${UI.chip('📌 ' + consts.length, 'yellow')}
+    ${UI.chip('📤 ' + exps.length, 'orange')}
+    ${UI.chip('📥 ' + imps.length, '')}
+    ${UI.chip('📞 ' + outgoingCalls + '/' + incomingCalls, 'purple')}
+  `;
+
+    $('fnBadge').textContent = fns.length;
+    $('constBadge').textContent = consts.length;
+    $('depBadge').textContent = deps.length + depsOut.length;
+    $('callBadge').textContent = outgoingCalls + incomingCalls;
+
+    renderOverview(f, fns, consts, exps, imps, deps, depsOut, outgoingCalls, incomingCalls);
+    renderProject();
+    renderFunctions(fns, exps);
+    renderConstants(consts);
+    renderDeps(imps, deps, depsOut);
+    renderCalls(fns, outgoingCalls, incomingCalls);
+    renderGraph();
+    renderSearch();
+    renderDead();
+    renderCycles();
+    renderReexports();
+  }
+
+  function renderOverview(f, fns, consts, exps, imps, deps, depsOut, outCalls, inCalls) {
+    const exportedFns = fns.filter(x => x.isExported);
+    const asyncFns = fns.filter(x => x.isAsync);
+
+    $('tab-overview').innerHTML = `
+    <div class="stat-grid" style="margin-bottom:16px;">
+      <div class="stat-card"><div class="num">${fns.length}</div><div class="lbl">Функций</div></div>
+      <div class="stat-card green"><div class="num">${exportedFns.length}</div><div class="lbl">Экспорт</div></div>
+      <div class="stat-card purple"><div class="num">${asyncFns.length}</div><div class="lbl">Async</div></div>
+      <div class="stat-card yellow"><div class="num">${consts.length}</div><div class="lbl">Констант</div></div>
+      <div class="stat-card orange"><div class="num">${outCalls}</div><div class="lbl">Исходящих</div></div>
+      <div class="stat-card blue"><div class="num">${inCalls}</div><div class="lbl">Входящих</div></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-header"><span>📤 Экспортированные функции</span></div>
+        <div class="panel-body">
+          ${exportedFns.length === 0 ? '<div class="empty-msg">Нет</div>' :
+      exportedFns.map(fn => {
+        const importers = state.fnImportTargets[fn.id]?.length || 0;
+        return `<div class="row" data-action="set-active-fn" data-id="${fn.id}">
+                <span class="name blue">${Core.escapeHtml(fn.name)}</span>
+                ${importers > 0 ? `<span class="chip blue">📥 ${importers}</span>` : ''}
+                <span class="type-tag tag-export">→</span>
+              </div>`;
+      }).join('')
+    }
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span>📥 Импортируют этот файл</span></div>
+        <div class="panel-body">
+          ${deps.length === 0 ? '<div class="empty-msg">Никто не импортирует</div>' :
+      deps.map(id => {
+        const names = Core.getImportedNames(id, f.id);
+        const preview = names.slice(0, 3);
+        return `<div class="row" data-action="select-file" data-id="${id}">
+                <span class="name">${Core.escapeHtml(Core.getFilePath(id))}</span>
+                ${preview.length ? `<span style="display:flex; gap:3px;">${preview.map(n => `<span class="chip yellow" style="font-size:10px;">${Core.escapeHtml(n)}</span>`).join('')}${names.length > 3 ? `<span class="chip">+${names.length - 3}</span>` : ''}</span>` : ''}
+                <span class="type-tag tag-import">←</span>
+              </div>`;
+      }).join('')
+    }
+        </div>
+      </div>
+    </div>
+  `;
+  }
+
+  function renderProject() {
+    const stats = Core.getProjectStats();
+    $('tab-project').innerHTML = `
+    <h3 style="margin-bottom:12px; font-size:14px;">🌐 Статистика проекта</h3>
+    ${UI.renderStatsGrid(stats)}
+
+    <div class="grid-2" style="margin-top:16px;">
+      <div class="panel">
+        <div class="panel-header"><span>🔥 Топ-15 файлов по связям</span></div>
+        <div class="panel-body">
+          ${UI.renderTable(
+      state.hotFiles.slice(0, 15).map(h => ({
+        ...h, path: Core.getFilePath(h.id), module: Core.getModuleName(state.files[h.id]?.moduleId)
+      })),
+      [
+        { key: 'path', label: 'Файл', render: r => `<span class="mono blue">${Core.escapeHtml(Core.shortPath(r.path, 50))}</span>` },
+        { key: 'out', label: '→', render: r => `<span class="num">${r.out}</span>` },
+        { key: 'inc', label: '←', render: r => `<span class="num">${r.inc}</span>` },
+        { key: 'total', label: 'Σ', render: r => `<span class="num"><b>${r.total}</b></span>` },
+      ]
+    )}
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span>🔥 Топ-15 функций по связям</span></div>
+        <div class="panel-body">
+          ${UI.renderTable(
+      state.hotFunctions.slice(0, 15).map(h => ({
+        ...h, fn: state.fnById[h.id], name: state.fnById[h.id]?.name || h.id
+      })),
+      [
+        { key: 'name', label: 'Функция', render: r => `<span class="mono purple">${Core.escapeHtml(r.name)}</span>` },
+        { key: 'callers', label: '📞', render: r => `<span class="num">${r.callers}</span>` },
+        { key: 'calls', label: '→', render: r => `<span class="num">${r.calls}</span>` },
+        { key: 'total', label: 'Σ', render: r => `<span class="num"><b>${r.total}</b></span>` },
+      ]
+    )}
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top:16px;">
+      <div class="panel">
+        <div class="panel-header"><span>📦 Модули</span></div>
+        <div class="panel-body">
+          ${Object.values(state.modules).map(m => {
+      const s = Core.getModuleStats(m.id);
+      return `<div class="row" data-action="set-active-module" data-id="${m.id}">
+              <span class="name blue">${Core.escapeHtml(m.name)}</span>
+              <span class="chip">${s.fileCount} 📁</span>
+              <span class="chip purple">${s.fnCount} ƒ</span>
+              <span class="chip yellow">${s.exportCount} 📤</span>
+            </div>`;
+    }).join('')}
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span>🌐 Внешние пакеты (${stats.externalPackages.length})</span></div>
+        <div class="panel-body">
+          ${stats.externalPackages.map(pkg => {
+      const count = state.imports.filter(i => i.packageName === pkg).length;
+      return `<div class="row static">
+              <span class="name red">🌐 ${Core.escapeHtml(pkg)}</span>
+              <span class="chip">${count} импортов</span>
+            </div>`;
+    }).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+  }
+
+  function renderFunctions(fns, exps) {
+    const el = $('tab-functions');
+    if (fns.length === 0) {
+      el.innerHTML = '<div class="empty-msg">В этом файле нет функций</div>';
+      return;
+    }
+
+    const filters = [
+      { id: 'all', label: 'Все', test: () => true },
+      { id: 'exported', label: '📤 Экспортированные', test: f => f.isExported },
+      { id: 'async', label: '⚡ Async', test: f => f.isAsync },
+      { id: 'imported', label: '📥 Импортируемые', test: f => (state.fnImportTargets[f.id] || []).length > 0 },
+      { id: 'called', label: '📞 Вызываемые', test: f => (state.fnDetailedCallers[f.id] || []).length > 0 },
+    ];
+
+    el.innerHTML = `
+    <div class="filters" id="fnFilters">
+      ${filters.map((f, i) => `<button class="filter-btn ${i === 0 ? 'active' : ''}" data-filter="${f.id}">${f.label}</button>`).join('')}
+    </div>
+    <div id="fnList"></div>
+  `;
+
+    function renderList(filterId) {
+      const filter = filters.find(x => x.id === filterId) || filters[0];
+      const list = fns.filter(filter.test);
+      const listEl = $('fnList');
+      if (list.length === 0) {
+        listEl.innerHTML = '<div class="empty-msg">Нет функций</div>';
+        return;
+      }
+      listEl.innerHTML = list.map(fn => UI.renderFnCard(fn)).join('');
+    }
+
+    renderList('all');
+
+    $('fnFilters').addEventListener('click', e => {
+      const btn = e.target.closest('.filter-btn');
+      if (!btn) return;
+      $('fnFilters').querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderList(btn.dataset.filter);
+    });
+  }
+
+  function renderConstants(consts) {
+    const el = $('tab-constants');
+    if (consts.length === 0) {
+      el.innerHTML = '<div class="empty-msg">В этом файле нет констант</div>';
+      return;
+    }
+    el.innerHTML = consts.map(c => UI.renderConstCard(c)).join('');
+  }
+
+  function renderDeps(imps, deps, depsOut) {
+    const el = $('tab-deps');
+    const impsByModule = {};
+    for (const i of imps) {
+      const modName = i.isExternal ? '🌐 External' : Core.getModuleName(state.files[i.toFileId]?.moduleId);
+      if (!impsByModule[modName]) impsByModule[modName] = [];
+      impsByModule[modName].push(i);
+    }
+
+    el.innerHTML = `
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="panel-header"><span>📥 Импорты (${imps.length})</span></div>
+      <div class="panel-body">
+        ${imps.length === 0 ? '<div class="empty-msg">Нет</div>' :
+      Object.entries(impsByModule).map(([modName, list]) => `
+            <div class="search-group-title">${Core.escapeHtml(modName)} (${list.length})</div>
+            ${list.map(i => {
+        const target = i.isExternal ? i.source : Core.getFilePath(i.toFileId);
+        return `<div class="row" ${!i.isExternal ? `data-action="select-file" data-id="${i.toFileId}"` : ''}>
+                <span class="name">${Core.escapeHtml(target)}</span>
+                ${i.importedName ? `<span class="chip yellow" style="font-size:10px;">→ ${Core.escapeHtml(i.importedName)}</span>` : ''}
+                <span class="type-tag ${i.isExternal ? 'tag-external' : 'tag-import'}">${Core.escapeHtml(i.type || 'named')}</span>
+                <span class="line-ref">L${i.line}</span>
+              </div>`;
+      }).join('')}
+          `).join('')
+    }
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-header"><span>📤 Импортируют файл (${deps.length})</span></div>
+        <div class="panel-body">
+          ${deps.length === 0 ? '<div class="empty-msg">Никто</div>' :
+      deps.map(id => {
+        const names = Core.getImportedNames(id, state.selectedFileId);
+        const preview = names.slice(0, 3);
+        return `<div class="row" data-action="select-file" data-id="${id}">
+                <span class="name">${Core.escapeHtml(Core.getFilePath(id))}</span>
+                ${preview.length ? `<span style="display:flex; gap:3px;">${preview.map(n => `<span class="chip yellow" style="font-size:10px;">${Core.escapeHtml(n)}</span>`).join('')}${names.length > 3 ? `<span class="chip">+${names.length - 3}</span>` : ''}</span>` : ''}
+                <span class="type-tag tag-import">←</span>
+              </div>`;
+      }).join('')
+    }
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><span>📤 Импортирует из (${depsOut.length})</span></div>
+        <div class="panel-body">
+          ${depsOut.length === 0 ? '<div class="empty-msg">Нет</div>' :
+      depsOut.map(id => `<div class="row" data-action="select-file" data-id="${id}">
+              <span class="name">${Core.escapeHtml(Core.getFilePath(id))}</span>
+              <span class="type-tag tag-export">→</span>
+            </div>`).join('')
+    }
+        </div>
+      </div>
+    </div>
+  `;
+  }
+
+  function renderCalls(fns, outCalls, inCalls) {
+    const el = $('tab-calls');
+    const fnIds = new Set(fns.map(x => x.id));
+    const outgoing = state.calls.filter(c => fnIds.has(c.fromFunctionId));
+    const incoming = state.calls.filter(c => {
+      const toFn = state.fnById[c.toFunctionId];
+      return toFn && toFn.fileId === state.selectedFileId;
+    });
+
+    el.innerHTML = `
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-header"><span>📞 Исходящие (${outgoing.length})</span></div>
+        <div class="panel-body">
+          ${outgoing.length === 0 ? '<div class="empty-msg">Нет</div>' :
+      outgoing.map(c => {
+        const fromFn = state.fnById[c.fromFunctionId];
+        const toFn = state.fnById[c.toFunctionId];
+        const isExt = c.toFunctionId.startsWith('external:');
+        return `<div class="row">
+                <span class="name purple">${Core.escapeHtml(fromFn?.name || '?')}</span>
+                <span class="dim">→</span>
+                <span class="name ${isExt ? 'red' : 'blue'}">${isExt ? '🌐 ' : ''}${Core.escapeHtml(isExt ? c.toFunctionId.replace('external:', '') : (toFn?.name || c.toFunctionId))}</span>
+                <span class="type-tag tag-${c.type || 'direct'}">${Core.escapeHtml(c.type || 'direct')}</span>
+              </div>`;
+      }).join('')
+    }
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><span>📥 Входящие (${incoming.length})</span></div>
+        <div class="panel-body">
+          ${incoming.length === 0 ? '<div class="empty-msg">Нет</div>' :
+      incoming.map(c => {
+        const fromFn = state.fnById[c.fromFunctionId];
+        const toFn = state.fnById[c.toFunctionId];
+        return `<div class="row">
+                <span class="name blue">${Core.escapeHtml(fromFn?.name || '?')}</span>
+                <span class="dim">→</span>
+                <span class="name purple">${Core.escapeHtml(toFn?.name || '?')}</span>
+                <span class="type-tag tag-${c.type || 'direct'}">${Core.escapeHtml(c.type || 'direct')}</span>
+              </div>`;
+      }).join('')
+    }
+        </div>
+      </div>
+    </div>
+  `;
+  }
+
+  function renderGraph() {
+    const el = $('tab-graph');
+    const fileId = state.selectedFileId;
+    if (!fileId) { el.innerHTML = '<div class="empty-msg">Выберите файл</div>'; return; }
+
+    const fns = state.fileFunctions[fileId] || [];
+    const firstFn = fns.find(fn => (state.fnDetailedCallers[fn.id] || []).length > 0 || (state.fnDetailedCalls[fn.id] || []).length > 0);
+
+    el.innerHTML = `
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="panel-header"><span>🗺️ Граф модулей</span></div>
+      <div class="panel-body" id="moduleGraphBody"></div>
+    </div>
+
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="panel-header"><span>🔗 Граф зависимостей файла</span></div>
+      <div class="panel-body" id="fileDepGraphBody"></div>
+    </div>
+
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="panel-header">
+        <span>📞 Граф вызовов</span>
+        ${fns.length > 1 ? `<select id="callGraphFnSelect" style="background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 8px; font-family:inherit; font-size:12px;">
+          ${fns.map(fn => `<option value="${fn.id}" ${fn === firstFn ? 'selected' : ''}>${Core.escapeHtml(fn.name)}</option>`).join('')}
+        </select>` : ''}
+      </div>
+      <div class="panel-body" id="callGraphBody"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header"><span>🔥 Heatmap файлов</span></div>
+      <div class="panel-body" id="heatmapBody"></div>
+    </div>
+  `;
+
+    // Граф модулей
+    const moduleGraphEl = Graph.renderModuleGraph({
+      onNodeClick: (id, type) => setActiveNode(type, id),
+    });
+    $('moduleGraphBody').appendChild(moduleGraphEl);
+
+    // Граф зависимостей файла
+    const fileDepGraphEl = Graph.renderFileDepGraph(fileId, {
+      onNodeClick: (id, type) => selectFile(id),
+    });
+    $('fileDepGraphBody').appendChild(fileDepGraphEl);
+
+    // Граф вызовов
+    if (firstFn) {
+      const renderCallGraphForFn = (fnId) => {
+        $('callGraphBody').innerHTML = '';
+        const graphEl = Graph.renderCallGraph(fnId, {
+          onNodeClick: (id, type) => {
+            if (type === 'fn') { setActiveNode('fn', id); jumpToFn(id); }
+          },
+        });
+        $('callGraphBody').appendChild(graphEl);
+      };
+      renderCallGraphForFn(firstFn.id);
+      const select = $('callGraphFnSelect');
+      if (select) select.addEventListener('change', e => renderCallGraphForFn(e.target.value));
+    } else {
+      $('callGraphBody').innerHTML = '<div class="empty-msg">Нет функций с вызовами в этом файле</div>';
+    }
+
+    // Heatmap
+    $('heatmapBody').innerHTML = Graph.renderHeatmap();
+  }
+
+  function renderSearch() {
+    const el = $('tab-search');
+    el.innerHTML = `
+    <div class="filters" style="margin-bottom:14px;">
+      <input type="text" id="globalSearchInput" placeholder="Глобальный поиск по функциям, константам, файлам, модулям..." style="flex:1; padding:8px 12px; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; font-size:13px;">
+    </div>
+    <div id="searchResults"><div class="empty-msg">Введите запрос для поиска</div></div>
+  `;
+
+    const input = $('globalSearchInput');
+    input.focus();
+    input.addEventListener('input', Core.debounce(() => {
+      const q = input.value.trim();
+      if (!q) { $('searchResults').innerHTML = '<div class="empty-msg">Введите запрос для поиска</div>'; return; }
+      const fns = Core.findFunctions(q).slice(0, 30);
+      const consts = Core.findConstants(q).slice(0, 30);
+      const files = Core.findFiles(q).slice(0, 30);
+      const mods = Core.findModules(q).slice(0, 30);
+
+      const total = fns.length + consts.length + files.length + mods.length;
+      if (total === 0) { $('searchResults').innerHTML = '<div class="empty-msg">Ничего не найдено</div>'; return; }
+
+      $('searchResults').innerHTML = `
+      ${fns.length ? `<div class="search-group">
+        <div class="search-group-title">⚙️ Функции (${fns.length})</div>
+        ${fns.map(fn => `<div class="row" data-action="set-active-fn" data-id="${fn.id}">
+          <span class="name purple">${Core.escapeHtml(fn.name)}</span>
+          <span class="dim">${Core.escapeHtml(Core.shortPath(Core.getFilePath(fn.fileId), 40))}</span>
+          <span class="line-ref">L${fn.line}</span>
+        </div>`).join('')}
+      </div>` : ''}
+      ${consts.length ? `<div class="search-group">
+        <div class="search-group-title">📌 Константы (${consts.length})</div>
+        ${consts.map(c => `<div class="row" data-action="set-active-const" data-id="${c.id}">
+          <span class="name green">${Core.escapeHtml(c.name)}</span>
+          <span class="dim">${Core.escapeHtml(Core.shortPath(Core.getFilePath(c.fileId), 40))}</span>
+          <span class="line-ref">L${c.line}</span>
+        </div>`).join('')}
+      </div>` : ''}
+      ${files.length ? `<div class="search-group">
+        <div class="search-group-title">📄 Файлы (${files.length})</div>
+        ${files.map(f => `<div class="row" data-action="select-file" data-id="${f.id}">
+          <span class="name blue">${Core.escapeHtml(f.path)}</span>
+          <span class="chip">${Core.escapeHtml(Core.getModuleName(f.moduleId))}</span>
+        </div>`).join('')}
+      </div>` : ''}
+      ${mods.length ? `<div class="search-group">
+        <div class="search-group-title">📦 Модули (${mods.length})</div>
+        ${mods.map(m => `<div class="row" data-action="set-active-module" data-id="${m.id}">
+          <span class="name blue">${Core.escapeHtml(m.name)}</span>
+          <span class="dim">${Core.escapeHtml(m.path || '')}</span>
+        </div>`).join('')}
+      </div>` : ''}
+    `;
+    }, 200));
+  }
+
+  function renderDead() {
+    const el = $('tab-dead');
+    const deadExports = state.deadExports;
+    const deadFunctions = state.deadFunctions;
+
+    el.innerHTML = `
+    <div class="stat-grid" style="margin-bottom:16px;">
+      <div class="stat-card red"><div class="num">${deadExports.length}</div><div class="lbl">Мёртвых экспортов</div></div>
+      <div class="stat-card red"><div class="num">${deadFunctions.length}</div><div class="lbl">Мёртвых функций</div></div>
+    </div>
+
+    <div class="panel" style="margin-bottom:14px;">
+      <div class="panel-header">
+        <span>💀 Экспорты без импортов (${deadExports.length})</span>
+        <button class="btn" style="font-size:11px; padding:4px 10px;" data-action="export-dead-exports">📥 CSV</button>
+      </div>
+      <div class="panel-body">
+        ${deadExports.length === 0 ? '<div class="empty-msg">Нет мёртвых экспортов 🎉</div>' :
+      UI.renderTable(
+        deadExports.map(e => ({
+          ...e,
+          filePath: Core.getFilePath(e.fileId),
+          moduleName: Core.getModuleName(state.files[e.fileId]?.moduleId),
+        })),
+        [
+          { key: 'exportName', label: 'Экспорт', render: r => `<span class="mono yellow">${Core.escapeHtml(r.exportName || r.localName || '?')}</span>` },
+          { key: 'type', label: 'Тип' },
+          { key: 'filePath', label: 'Файл', render: r => `<span class="mono dim">${Core.escapeHtml(Core.shortPath(r.filePath, 60))}</span>` },
+          { key: 'line', label: 'L', render: r => `<span class="num">${r.line}</span>` },
+        ]
+      )
+    }
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <span>💀 Функции без вызовов и экспорта (${deadFunctions.length})</span>
+        <button class="btn" style="font-size:11px; padding:4px 10px;" data-action="export-dead-fns">📥 CSV</button>
+      </div>
+      <div class="panel-body">
+        ${deadFunctions.length === 0 ? '<div class="empty-msg">Нет мёртвых функций 🎉</div>' :
+      UI.renderTable(
+        deadFunctions.map(fn => ({
+          ...fn,
+          filePath: Core.getFilePath(fn.fileId),
+        })),
+        [
+          { key: 'name', label: 'Функция', render: r => `<span class="mono purple">${Core.escapeHtml(r.name)}</span>` },
+          { key: 'filePath', label: 'Файл', render: r => `<span class="mono dim">${Core.escapeHtml(Core.shortPath(r.filePath, 60))}</span>` },
+          { key: 'line', label: 'L', render: r => `<span class="num">${r.line}</span>` },
+          { key: 'params', label: 'Параметры', render: r => `<span class="dim">${Core.escapeHtml((r.params || []).join(', '))}</span>` },
+        ]
+      )
+    }
+      </div>
+    </div>
+  `;
+  }
+
+  function renderCycles() {
+    const el = $('tab-cycles');
+    el.innerHTML = `
+    <div class="stat-grid" style="margin-bottom:16px;">
+      <div class="stat-card ${state.cyclicDeps.length > 0 ? 'red' : 'green'}"><div class="num">${state.cyclicDeps.length}</div><div class="lbl">Циклических зависимостей</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><span>🔄 Найденные циклы</span></div>
+      <div class="panel-body">
+        ${state.cyclicDeps.length === 0 ? '<div class="empty-msg">Циклов не найдено 🎉</div>' :
+      state.cyclicDeps.map((cycle, i) => `
+            <div style="margin-bottom:10px; padding:10px; background:var(--bg); border:1px solid var(--border); border-radius:6px;">
+              <div class="dim" style="font-size:10px; margin-bottom:6px;">Цикл #${i + 1} (${cycle.length} узлов)</div>
+              <div style="display:flex; flex-wrap:wrap; align-items:center; gap:4px;">
+                ${cycle.map((fid, j) => {
+        const f = state.files[fid];
+        return `<span class="chain-node" data-action="select-file" data-id="${fid}" title="${Core.escapeHtml(f?.path || fid)}">${Core.escapeHtml(f?.path.split('/').pop() || fid)}</span>${j < cycle.length - 1 ? '<span class="chain-arrow">→</span>' : ''}`;
+      }).join('')}
+              </div>
+            </div>
+          `).join('')
+    }
+      </div>
+    </div>
+  `;
+  }
+
+  function renderReexports() {
+    const el = $('tab-reexports');
+    const reExports = state.reExports;
+    el.innerHTML = `
+    <div class="stat-grid" style="margin-bottom:16px;">
+      <div class="stat-card purple"><div class="num">${reExports.length}</div><div class="lbl">Реэкспортов</div></div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><span>📤 Все реэкспорты</span></div>
+      <div class="panel-body">
+        ${reExports.length === 0 ? '<div class="empty-msg">Нет реэкспортов</div>' :
+      reExports.map(re => {
+        const mod = state.modules[re.moduleId];
+        const fn = re.functionId ? state.fnById[re.functionId] : null;
+        return `<div class="row" ${fn ? `data-action="set-active-fn" data-id="${fn.id}"` : ''}>
+              <span class="name yellow">${Core.escapeHtml(re.exportName)}</span>
+              <span class="dim">${Core.escapeHtml(re.source)}</span>
+              <span class="chip blue">${Core.escapeHtml(mod?.name || '?')}</span>
+              ${re.isStarReExport ? '<span class="type-tag tag-type">*</span>' : ''}
+            </div>`;
+      }).join('')
+    }
+      </div>
+    </div>
+  `;
+  }
+
+  // ---------------------------------------------------------------------------
+  // ПЕРЕХОД К ФУНКЦИИ
+  // ---------------------------------------------------------------------------
+  function jumpToFn(fnId) {
+    const fn = state.fnById[fnId];
+    if (!fn) return;
+    setActiveNode('fn', fnId);
+    if (fn.fileId !== state.selectedFileId) {
+      selectFile(fn.fileId);
+      switchTab('functions');
+      setTimeout(() => {
+        const card = $('fn-card-' + fnId);
+        if (card) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          const body = $('fn-body-' + fnId);
+          if (body && body.classList.contains('collapsed')) toggleFnCard(fnId);
+        }
+      }, 100);
+    } else {
+      const card = $('fn-card-' + fnId);
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const body = $('fn-body-' + fnId);
+        if (body && body.classList.contains('collapsed')) toggleFnCard(fnId);
+      }
+    }
+  }
+
+  function toggleFnCard(fnId) {
+    const body = $('fn-body-' + fnId);
+    const caret = document.querySelector(`#fn-card-${fnId} .caret`);
+    if (!body) return;
+    body.classList.toggle('collapsed');
+    if (caret) caret.classList.toggle('open', !body.classList.contains('collapsed'));
+  }
+
+  // ---------------------------------------------------------------------------
+  // ВКЛАДКИ
+  // ---------------------------------------------------------------------------
+  function switchTab(tabId) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + tabId));
+    state.currentTab = tabId;
+  }
+
+  $('tabs').addEventListener('click', e => {
+    const tab = e.target.closest('.tab');
+    if (!tab) return;
+    switchTab(tab.dataset.tab);
+  });
+
+  // ---------------------------------------------------------------------------
+  // ДЕЛЕГИРОВАНИЕ СОБЫТИЙ
+  // ---------------------------------------------------------------------------
+  document.addEventListener('click', e => {
+    const target = e.target.closest('[data-action]');
+    if (!target) return;
+    const action = target.dataset.action;
+    const id = target.dataset.id;
+    const type = target.dataset.type;
+
+    if (action === 'select-file') { selectFile(id); }
+    else if (action === 'set-active-fn') { setActiveNode('fn', id); }
+    else if (action === 'set-active-module') { setActiveNode('module', id); }
+    else if (action === 'set-active-const') { setActiveNode('const', id); }
+    else if (action === 'set-active-external') { setActiveNode('external', id); }
+    else if (action === 'set-active') { setActiveNode(type, id); }
+    else if (action === 'jump-fn') { jumpToFn(id); }
+    else if (action === 'toggle-card') {
+      e.stopPropagation();
+      toggleFnCard(id);
+    }
+    else if (action === 'toggle-section') {
+      const body = target.nextElementSibling;
+      if (body) body.classList.toggle('collapsed');
+    }
+    else if (action === 'toggle-tree') {
+      e.stopPropagation();
+      const caret = target;
+      const children = target.parentElement.nextElementSibling;
+      caret.classList.toggle('open');
+      if (children && children.classList.contains('tree-children')) children.classList.toggle('collapsed');
+    }
+    else if (action === 'close-modal') {
+      target.closest('.modal-overlay').classList.remove('show');
+    }
+    else if (action === 'open-fn-modal') {
+      openFnModal(id);
+    }
+    else if (action === 'export-dead-exports') {
+      Core.downloadCSV(
+        state.deadExports.map(e => ({ ...e, filePath: Core.getFilePath(e.fileId) })),
+        [
+          { key: 'exportName', label: 'Экспорт' },
+          { key: 'localName', label: 'Локальное имя' },
+          { key: 'type', label: 'Тип' },
+          { key: 'filePath', label: 'Файл' },
+          { key: 'line', label: 'Строка' },
+        ],
+        'dead-exports.csv'
+      );
+      UI.toast('CSV экспортирован', 'success');
+    }
+    else if (action === 'export-dead-fns') {
+      Core.downloadCSV(
+        state.deadFunctions.map(fn => ({ ...fn, filePath: Core.getFilePath(fn.fileId) })),
+        [
+          { key: 'name', label: 'Функция' },
+          { key: 'filePath', label: 'Файл' },
+          { key: 'line', label: 'Строка' },
+          { key: 'params', label: 'Параметры', value: r => (r.params || []).join('; ') },
+        ],
+        'dead-functions.csv'
+      );
+      UI.toast('CSV экспортирован', 'success');
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // МОДАЛКА ФУНКЦИИ
+  // ---------------------------------------------------------------------------
+  function openFnModal(fnId) {
+    const info = Core.getFnFullInfo(fnId);
+    if (!info) return;
+    const { fn, file, module, exports, imports, calls, callers } = info;
+
+    $('fnModalTitle').innerHTML = `⚙️ <span class="mono blue-bold">${Core.escapeHtml(fn.name)}</span>`;
+
+    const kw = [];
+    if (fn.isAsync) kw.push('async');
+    if (fn.isArrow) kw.push('arrow');
+    if (fn.isMethod) kw.push('method');
+
+    const params = fn.params || [];
+    const ret = fn.returnType || '';
+
+    const transitiveCallers = Core.getTransitiveCallers(fnId, 3);
+    const transitiveCallees = Core.getTransitiveCallees(fnId, 3);
+
+    $('fnModalBody').innerHTML = `
+    <div class="chain">
+      <span class="chain-node" data-action="select-file" data-id="${fn.fileId}">📄 ${Core.escapeHtml(Core.shortPath(file?.path || '?', 30))}</span>
+      <span class="chain-arrow">→</span>
+      <span class="chain-node current">⚙️ ${Core.escapeHtml(fn.name)}</span>
+      ${exports.length ? `<span class="chain-arrow">→</span><span class="chain-node" style="border-color:var(--yellow); color:var(--yellow);">📤 ${Core.escapeHtml(exports[0].exportName || '?')}</span>` : ''}
+    </div>
+
+    <div class="fn-signature" style="font-size:13px;">
+      ${kw.length ? `<span class="kw">${kw.join(' ')}</span> ` : ''}<span class="fn">${Core.escapeHtml(fn.name)}</span><span class="dim">(</span>${params.map(p => `<span class="params">${Core.escapeHtml(p)}</span>`).join('<span class="dim">, </span>')}<span class="dim">)</span>${ret ? `<span class="dim">: </span><span class="t">${Core.escapeHtml(Core.formatType(ret))}</span>` : ''}
+    </div>
+
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:10px; margin-bottom:16px;">
+      <div class="fn-section">
+        <h5>📍 Расположение</h5>
+        <div class="mono" style="font-size:11px; line-height:1.6;">
+          <div><span class="dim">Файл:</span> ${Core.escapeHtml(file?.path || '?')}</div>
+          <div><span class="dim">Модуль:</span> ${Core.escapeHtml(module?.name || '?')}</div>
+          <div><span class="dim">Строка:</span> ${fn.line}</div>
+        </div>
+      </div>
+      <div class="fn-section">
+        <h5>📊 Связи</h5>
+        <div class="mono" style="font-size:11px; line-height:1.6;">
+          <div>📤 экспортов: <b style="color:var(--yellow);">${exports.length}</b></div>
+          <div>📥 импортируется: <b style="color:var(--accent);">${imports.length}</b></div>
+          <div>📞 вызывается: <b style="color:var(--purple);">${callers.length}</b></div>
+          <div>→ вызывает: <b style="color:var(--green);">${calls.length}</b></div>
+        </div>
+      </div>
+    </div>
+
+    ${transitiveCallers.length ? `
+      <h4 class="dim" style="font-size:12px; text-transform:uppercase; margin:16px 0 8px;">🔮 Транзитивные вызывающие (глубина 3) — ${transitiveCallers.length}</h4>
+      <div class="panel"><div class="panel-body">
+        ${transitiveCallers.slice(0, 20).map(f => `
+          <div class="row" data-action="jump-fn" data-id="${f.id}">
+            <span class="name purple">${Core.escapeHtml(f.name)}</span>
+            <span class="dim">${Core.escapeHtml(Core.shortPath(Core.getFilePath(f.fileId), 40))}</span>
+          </div>
+        `).join('')}
+      </div></div>
+    ` : ''}
+
+    ${transitiveCallees.length ? `
+      <h4 class="dim" style="font-size:12px; text-transform:uppercase; margin:16px 0 8px;">🔮 Транзитивные вызываемые (глубина 3) — ${transitiveCallees.length}</h4>
+      <div class="panel"><div class="panel-body">
+        ${transitiveCallees.slice(0, 20).map(f => `
+          <div class="row" data-action="jump-fn" data-id="${f.id}">
+            <span class="name blue">${Core.escapeHtml(f.name)}</span>
+            <span class="dim">${Core.escapeHtml(Core.shortPath(Core.getFilePath(f.fileId), 40))}</span>
+          </div>
+        `).join('')}
+      </div></div>
+    ` : ''}
+
+    ${exports.length ? `
+      <h4 class="dim" style="font-size:12px; text-transform:uppercase; margin:16px 0 8px;">📤 Экспортируется как (${exports.length})</h4>
+      <div class="panel"><div class="panel-body">
+        ${exports.map(e => `
+          <div class="row static">
+            <span class="name yellow">${Core.escapeHtml(e.exportName || '?')}</span>
+            <span class="type-tag tag-export">${Core.escapeHtml(e.type || 'named')}</span>
+            <span class="line-ref">L${e.line}</span>
+          </div>
+        `).join('')}
+      </div></div>
+    ` : ''}
+
+    ${callers.length ? `
+      <h4 class="dim" style="font-size:12px; text-transform:uppercase; margin:16px 0 8px;">📞 Кто вызывает (${callers.length})</h4>
+      <div class="panel"><div class="panel-body">
+        ${callers.map(c => `
+          <div class="row" data-action="jump-fn" data-id="${c.fromFnId}">
+            <span class="name purple">${Core.escapeHtml(c.fromFnName)}</span>
+            <span class="dim">${Core.escapeHtml(Core.shortPath(c.fromFilePath, 40))}</span>
+            <span class="type-tag tag-${c.callType}">${Core.escapeHtml(c.callType)}</span>
+            <span class="line-ref">L${c.callLine}</span>
+          </div>
+        `).join('')}
+      </div></div>
+    ` : ''}
+
+    ${calls.length ? `
+      <h4 class="dim" style="font-size:12px; text-transform:uppercase; margin:16px 0 8px;">→ Вызывает (${calls.length})</h4>
+      <div class="panel"><div class="panel-body">
+        ${calls.map(c => `
+          <div class="row" ${!c.isExternal ? `data-action="jump-fn" data-id="${c.toFnId}"` : ''}>
+            <span class="name ${c.isExternal ? 'red' : 'blue'}">${c.isExternal ? '🌐 ' : ''}${Core.escapeHtml(c.toFnName)}</span>
+            <span class="dim">${Core.escapeHtml(c.isExternal ? 'внешняя' : Core.shortPath(c.toFilePath, 40))}</span>
+            <span class="type-tag tag-${c.callType}">${Core.escapeHtml(c.callType)}</span>
+            <span class="line-ref">L${c.callLine}</span>
+          </div>
+        `).join('')}
+      </div></div>
+    ` : ''}
+  `;
+
+    $('fnModal').classList.add('show');
+  }
+
+  // ---------------------------------------------------------------------------
+  // ПОИСК ПО ФАЙЛАМ (сайдбар)
+  // ---------------------------------------------------------------------------
+  $('searchInput').addEventListener('input', e => {
+    state.searchQuery = e.target.value;
+    renderFileList();
+  });
+
+  $('depsOnlyBtn').addEventListener('click', () => {
+    state.depsOnly = !state.depsOnly;
+    $('depsOnlyBtn').classList.toggle('active', state.depsOnly);
+    renderFileList();
+  });
+
+  // ---------------------------------------------------------------------------
+  // ТЕМА
+  // ---------------------------------------------------------------------------
+  $('themeBtn').addEventListener('click', () => {
+    document.body.classList.toggle('light');
+    $('themeBtn').textContent = document.body.classList.contains('light') ? '☀️ Тема' : '🌙 Тема';
+  });
+
+  // ---------------------------------------------------------------------------
+  // ЭКСПОРТ ВСЕГО
+  // ---------------------------------------------------------------------------
+  $('exportAllBtn').addEventListener('click', () => {
+    if (!state.raw) return;
+    Core.downloadJSON(Core.exportAll(), 'ast-analyzer-full-export.json');
+    UI.toast('Экспортировано', 'success');
+  });
+
+  // ---------------------------------------------------------------------------
+  // ПАНЕЛЬ АКТИВНОГО УЗЛА — ЗАКРЫТИЕ
+  // ---------------------------------------------------------------------------
+  $('anpClose').addEventListener('click', clearActiveNode);
+
+  // ---------------------------------------------------------------------------
+  // МОДАЛКИ — ЗАКРЫТИЕ ПО ФОНУ
+  // ---------------------------------------------------------------------------
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) overlay.classList.remove('show');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // ПОМОЩЬ
+  // ---------------------------------------------------------------------------
+  $('helpBtn').addEventListener('click', () => $('helpModal').classList.add('show'));
+
+  // ---------------------------------------------------------------------------
+  // ГОРЯЧИЕ КЛАВИШИ
+  // ---------------------------------------------------------------------------
+  document.addEventListener('keydown', e => {
+    const activeEl = document.activeElement;
+    const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
+
+    if (e.ctrlKey && e.key === 'k') { e.preventDefault(); $('searchInput').focus(); return; }
+    if (e.ctrlKey && e.shiftKey && e.key === 'F') { e.preventDefault(); switchTab('search'); setTimeout(() => $('globalSearchInput')?.focus(), 50); return; }
+    if (e.ctrlKey && e.key === 'e') { e.preventDefault(); $('exportAllBtn').click(); return; }
+    if (e.key === 'Escape') {
+      if ($('fnModal').classList.contains('show')) $('fnModal').classList.remove('show');
+      else if ($('helpModal').classList.contains('show')) $('helpModal').classList.remove('show');
+      else clearActiveNode();
+      return;
+    }
+    if (isInput) return;
+    if (/^[1-9]$/.test(e.key) || e.key === '0') {
+      const tabs = ['overview', 'project', 'functions', 'constants', 'deps', 'calls', 'graph', 'search', 'dead', 'cycles', 'reexports'];
+      const idx = e.key === '0' ? 9 : parseInt(e.key) - 1;
+      if (tabs[idx]) { switchTab(tabs[idx]); return; }
+    }
+    const items = document.querySelectorAll('.file-item');
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const current = Array.from(items).findIndex(x => x.classList.contains('active'));
+      let next = e.key === 'ArrowDown' ? current + 1 : current - 1;
+      if (next < 0) next = items.length - 1;
+      if (next >= items.length) next = 0;
+      const item = items[next];
+      if (item) { item.scrollIntoView({ block: 'nearest' }); selectFile(item.dataset.id); }
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // СТАРТ
+  // ---------------------------------------------------------------------------
+  console.log('%c🔍 AST Analyzer v9 — модульная версия', 'font-size:16px; font-weight:bold; color:#58a6ff;');
+  console.log('Модули: ast-analyzer-core.js, ast-analyzer-ui.js, ast-analyzer-graph.js');
+</script>
+</body>
+</html>
