@@ -3,9 +3,13 @@
 // Удалены неиспользуемые функции: buildEntitiesMap, buildReport,
 // findPathBetweenFunctions, buildRelationshipGraph
 // Функции встроены в buildProjectGraph для улучшения читаемости
+// ✅ v2: добавлена интеграция enrichWithReExports для разворачивания re-exports
+// ✅ v3: enrichWithReExports вызывается ДО collectFullJSON и пробрасывает
+//        обогащённый entitiesMap во все последующие шаги
 
 import path from 'path';
 import fs from 'fs';
+import { Project } from 'ts-morph';
 import {
   ProjectGraphBuilder,
   type GraphData,
@@ -14,6 +18,7 @@ import {
 import { ReportBuilder } from '../reporters/core/ReportBuilder.js';
 import type { EntitiesResult } from '../types.js';
 import { extractEntitiesFromFile } from '../reporters/json-reporter.js';
+import { enrichWithReExports } from '../core/entity-extractor/enrich-with-re-exports.js';
 
 // ============================================
 // ЭКСПОРТ ТИПОВ ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ
@@ -33,6 +38,11 @@ export interface ProjectGraphResult {
   relationshipGraph?: Record<string, RelationshipNode>;
   stats?: GraphStats;
   levels?: Record<string, number>;
+  reExportStats?: {
+    expandedChains: number;
+    filesWithReExports: number;
+    maxDepth: number;
+  };
 }
 
 export interface CallGraphPathResult {
@@ -111,7 +121,7 @@ export function buildProjectGraph(
     console.log('\n📦 Extracting entities...');
 
     // ✅ ВСТРОЕННАЯ ЛОГИКА ВМЕСТО buildEntitiesMap
-    const entitiesMap: Record<string, EntitiesResult> = {};
+    let entitiesMap: Record<string, EntitiesResult> = {};
     for (const filePath of Object.keys(graphData.graph)) {
       try {
         const absPath = path.resolve(filePath);
@@ -126,7 +136,75 @@ export function buildProjectGraph(
       }
     }
 
+    // ============================================
+    // 🆕 ОБОГАЩЕНИЕ RE-EXPORTS (Подход A)
+    // ============================================
+    // ВАЖНО: должно выполняться ДО формирования packageLockReport,
+    // чтобы все связи (gr.re, gr.e) содержали развёрнутые данные.
+    // ============================================
+    if (Object.keys(entitiesMap).length > 0) {
+      console.log('\n🔄 Разворачивание re-exports...');
+
+      try {
+        const tsProject = new Project({
+          compilerOptions: {
+            target: 99, // ESNext
+            module: 99, // ESNext
+            allowJs: true,
+            checkJs: false,
+            skipLibCheck: true,
+            jsx: 2, // React JSX
+          },
+          useInMemoryFileSystem: false,
+        });
+
+        // Добавляем все файлы в проект ts-morph
+        let addedFiles = 0;
+        for (const filePath of Object.keys(entitiesMap)) {
+          try {
+            const absPath = path.resolve(filePath);
+            if (fs.existsSync(absPath)) {
+              tsProject.addSourceFileAtPath(absPath);
+              addedFiles++;
+            }
+          } catch {
+            // Игнорируем ошибки отдельных файлов
+          }
+        }
+
+        console.log(`   📁 Файлов добавлено в ts-morph: ${addedFiles}`);
+
+        // Разворачиваем re-exports
+        const enrichResult = enrichWithReExports(tsProject, entitiesMap, {
+          maxDepth: 10,
+          projectRoot: process.cwd(),
+          debug: false,
+        });
+
+        // ✅ Заменяем entitiesMap на обогащённый
+        entitiesMap = enrichResult.enrichedEntities as Record<string, EntitiesResult>;
+
+        console.log(`   ✅ Развёрнуто связей: ${enrichResult.stats.expandedChains}`);
+        console.log(`   📁 Файлов с re-exports: ${enrichResult.stats.filesWithReExports}`);
+        console.log(`   📏 Макс. глубина цепочки: ${enrichResult.stats.maxDepth}`);
+
+        // Сохраняем статистику в результат
+        result.reExportStats = {
+          expandedChains: enrichResult.stats.expandedChains,
+          filesWithReExports: enrichResult.stats.filesWithReExports,
+          maxDepth: enrichResult.stats.maxDepth,
+        };
+      } catch (error) {
+        console.warn(
+          `   ⚠️ Не удалось развернуть re-exports: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+    }
+
     // ✅ ВСТРОЕННАЯ ЛОГИКА ВМЕСТО buildReport
+    // ВАЖНО: используем ОБОГАЩЁННЫЙ entitiesMap
     const reportBuilder = new ReportBuilder();
     const report = reportBuilder.build(graphData, entitiesMap);
     const packageLockReport = {

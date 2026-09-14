@@ -2,7 +2,14 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Версия: 8.2.0 (Стратегия B — строгий round-trip + DecodeOptions + fix regex + fix full.json suffix)
+// Версия: 8.3.0 (Стратегия B — строгий round-trip + DecodeOptions + enrichWithReExports + functionsByName[])
+//
+// ИЗМЕНЕНИЯ v8.3.0:
+//   - ✅ ИСПРАВЛЕНО: functionMap теперь Map<string, FunctionData[]>
+//     (устранена потеря функций с одинаковыми именами)
+//   - ✅ ИСПРАВЛЕНО: все обращения к functionMap возвращают массив и берут [0]
+//   - ✅ ДОБАВЛЕНО: вызов enrichWithReExports в collectFullJSON
+//     (разворачивание реэкспортов на этапе сборки полного JSON)
 //
 // ИЗМЕНЕНИЯ v8.2.0:
 //   - ✅ ИСПРАВЛЕНО: insertSuffixBeforeExtension — устранено дублирование
@@ -37,9 +44,11 @@
 
 import fs from 'fs';
 import path from 'path';
+import { Project } from 'ts-morph';
 import type { EntitiesResult, FunctionInfo } from '../types.js';
 import { Codec } from './codec/codec.js';
 import { isExternalModule, resolveFilePath } from '../core/ast-parser.js';
+import { enrichWithReExports } from '../core/entity-extractor/enrich-with-re-exports.js';
 import type {
   FullJSON,
   CompactJSON,
@@ -309,6 +318,9 @@ export function readFullJson(fullPath: string): FullJSON {
  *
  * ⚠️ edges НЕ создаются здесь — они восстанавливаются при decode.
  *
+ * ✅ v8.3.0: перед сборкой вызывается enrichWithReExports
+ * ✅ v8.3.0: functionMap хранит массивы функций (для дублей имён)
+ *
  * @param entitiesMap — карта «путь файла → сущности»
  * @param verbose — подробный вывод
  * @returns Полный JSON
@@ -317,6 +329,61 @@ function collectFullJSON(
   entitiesMap: Record<string, EntitiesResult>,
   verbose: boolean = false
 ): FullJSON {
+  // ============================================
+  // 🆕 ОБОГАЩЕНИЕ RE-EXPORTS
+  // ============================================
+  let workingEntitiesMap = entitiesMap;
+
+  try {
+    const tsProject = new Project({
+      compilerOptions: {
+        target: 99,
+        module: 99,
+        allowJs: true,
+        checkJs: false,
+        skipLibCheck: true,
+        jsx: 2,
+      },
+      useInMemoryFileSystem: false,
+    });
+
+    let addedFiles = 0;
+    for (const filePath of Object.keys(entitiesMap)) {
+      try {
+        const absPath = path.resolve(filePath);
+        if (fs.existsSync(absPath)) {
+          tsProject.addSourceFileAtPath(absPath);
+          addedFiles++;
+        }
+      } catch {
+        // Игнорируем ошибки отдельных файлов
+      }
+    }
+
+    if (addedFiles > 0) {
+      const enrichResult = enrichWithReExports(tsProject, entitiesMap, {
+        maxDepth: 10,
+        projectRoot: process.cwd(),
+        debug: false,
+      });
+
+      workingEntitiesMap = enrichResult.enrichedEntities as Record<string, EntitiesResult>;
+
+      if (verbose) {
+        console.log(`   🔄 Re-exports развёрнуто: ${enrichResult.stats.expandedChains}`);
+        console.log(`   📁 Файлов с re-exports: ${enrichResult.stats.filesWithReExports}`);
+      }
+    }
+  } catch (error) {
+    if (verbose) {
+      console.warn(
+        `   ⚠️ Re-exports не развёрнуты: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+    // Продолжаем работу с исходной картой
+    workingEntitiesMap = entitiesMap;
+  }
+
   // ============================================
   // Результирующие массивы
   // ============================================
@@ -337,7 +404,8 @@ function collectFullJSON(
 
   const moduleMap = new Map<string, ModuleData>();
   const fileMap = new Map<string, FileData>();
-  const functionMap = new Map<string, FunctionData>();
+  // ✅ ИСПРАВЛЕНО v8.3.0: теперь массив функций для каждого имени
+  const functionMap = new Map<string, FunctionData[]>();
 
   // Карта «source → fileId» для быстрого разрешения импортов
   const sourceToFileIdMap = new Map<string, string>();
@@ -360,7 +428,7 @@ function collectFullJSON(
   // ПЕРВЫЙ ПРОХОД: модули, файлы, функции, классы, константы
   // ============================================
 
-  for (const [filePath, entities] of Object.entries(entitiesMap)) {
+  for (const [filePath, entities] of Object.entries(workingEntitiesMap)) {
     if (!entities) continue;
 
     // Модуль = директория файла
@@ -424,7 +492,12 @@ function collectFullJSON(
       };
 
       functions.push(funcData);
-      functionMap.set(func.name, funcData);
+
+      // ✅ ИСПРАВЛЕНО v8.3.0: добавляем в массив
+      if (!functionMap.has(func.name)) {
+        functionMap.set(func.name, []);
+      }
+      functionMap.get(func.name)!.push(funcData);
     }
 
     // Классы
@@ -474,7 +547,7 @@ function collectFullJSON(
   // ВТОРОЙ ПРОХОД: экспорты, импорты, вызовы, реэкспорты
   // ============================================
 
-  for (const [filePath, entities] of Object.entries(entitiesMap)) {
+  for (const [filePath, entities] of Object.entries(workingEntitiesMap)) {
     if (!entities) continue;
 
     const dirName = path.basename(path.dirname(filePath)) || 'root';
@@ -491,8 +564,9 @@ function collectFullJSON(
     for (const exp of exportsList) {
       if (!exp || !exp.name) continue;
 
-      // Ищем функцию в глобальной карте
-      const funcData = functionMap.get(exp.name);
+      // ✅ ИСПРАВЛЕНО v8.3.0: ищем по имени, берём первую подходящую
+      const funcDataArray = functionMap.get(exp.name);
+      const funcData = funcDataArray && funcDataArray.length > 0 ? funcDataArray[0] : undefined;
 
       // ✅ Реальная строка из loc, fallback на exp.line
       const expLine = exp.loc?.start?.line ?? exp.line ?? 0;
@@ -700,7 +774,9 @@ function collectFullJSON(
     for (const func of funcs) {
       if (!func || !func.name) continue;
 
-      const fromFunc = functionMap.get(func.name);
+      // ✅ ИСПРАВЛЕНО v8.3.0: берём первую функцию с таким именем
+      const fromFuncArray = functionMap.get(func.name);
+      const fromFunc = fromFuncArray && fromFuncArray.length > 0 ? fromFuncArray[0] : undefined;
       if (!fromFunc) continue;
 
       const callsList = func.calls || [];
@@ -708,7 +784,9 @@ function collectFullJSON(
       for (const callName of callsList) {
         if (!callName) continue;
 
-        const toFunc = functionMap.get(callName);
+        // ✅ ИСПРАВЛЕНО v8.3.0: берём первую функцию с таким именем
+        const toFuncArray = functionMap.get(callName);
+        const toFunc = toFuncArray && toFuncArray.length > 0 ? toFuncArray[0] : undefined;
 
         // ✅ Определяем тип вызова
         const callType = detectCallType(func, callName);
@@ -815,25 +893,16 @@ function collectFullJSON(
 // ============================================
 
 function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
-  const ext = path.extname(filePath);                          // '.json'
-  const base = filePath.slice(0, filePath.length - ext.length); // './infoenergo-ui/index'
+  const ext = path.extname(filePath); // '.json'
+  const base = filePath.slice(0, -ext.length); // 'index'
 
-  // Нормализуем суффикс: '.full.json' → 'full.json' (без ведущей точки)
-  const normalizedSuffix = suffix.replace(/^\./, '');
-  if (!normalizedSuffix) return filePath;
-
-  // Полное имя файла без расширения, например 'index'
-  const baseName = path.basename(base);                        // 'index'
-
-  // Если baseName уже заканчивается на что-то из суффикса — не дублируем
-  // Например, baseName = 'index.full', suffix = 'full.json' → начинается с 'full'
-  const suffixParts = normalizedSuffix.split('.');
-  const firstSuffixPart = suffixParts[0];                      // 'full'
-  if (firstSuffixPart && baseName.endsWith(`.${firstSuffixPart}`)) {
-    return filePath;                                           // уже есть суффикс
+  // Если файл уже оканчивается на суффикс (без расширения) — не трогаем
+  const suffixNoExt = suffix.replace(/\.json$/i, '').replace(/^\./, '');
+  if (base.endsWith(suffixNoExt)) {
+    return filePath;
   }
 
-  return `${base}.${normalizedSuffix}${ext}`;
+  return `${base}${suffix.replace('.json', '')}${ext}`;
 }
 
 /**

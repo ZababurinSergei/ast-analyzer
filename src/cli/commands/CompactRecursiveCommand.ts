@@ -6,6 +6,8 @@
 // ✅ ОБНОВЛЕНО v2: добавлен .default(false) для --include-body/--include-security/--include-vscode
 // ✅ ОБНОВЛЕНО v3: строгая проверка options.includeBody === true при применении опций
 // ✅ ОБНОВЛЕНО v4: добавлена поддержка --include-vscode (проброс в configBuilder)
+// ✅ ОБНОВЛЕНО v5: строгая проверка options.includeVSCode === true при применении опций
+// ✅ ОБНОВЛЕНО v6: добавлена поддержка self functions через full.statistics (совместимость)
 
 import type { Command } from 'commander';
 import path from 'path';
@@ -143,6 +145,8 @@ export class CompactRecursiveCommand {
     console.log(`   • Расширенный анализ: ${options.extendedStats !== false ? '✅' : '❌'}`);
     // ✅ ИСПРАВЛЕНО v2: показываем состояние includeBody в логе
     console.log(`   • Тела функций: ${options.includeBody === true ? '✅' : '❌'}`);
+    // ✅ ИСПРАВЛЕНО v5: показываем состояние includeVSCode в логе
+    console.log(`   • VSCode ссылки: ${options.includeVSCode === true ? '✅' : '❌'}`);
     console.log('');
 
     if (!fs.existsSync(entryPath)) {
@@ -255,6 +259,7 @@ export class CompactRecursiveCommand {
     // ✅ ИСПРАВЛЕНО: строгая проверка === true
     if (options.includeBody === true) configBuilder.setIncludeBody(true);
     if (options.includeSecurity === true) configBuilder.setIncludeSecurity(true);
+    // ✅ ИСПРАВЛЕНО v5: строгая проверка === true для includeVSCode
     if (options.includeVSCode === true) configBuilder.setIncludeVSCode(true);
 
     if (options.depth) configBuilder.setMaxDepth(parseInt(options.depth, 10));
@@ -314,6 +319,7 @@ export class CompactRecursiveCommand {
     const genOptions = configBuilder.toGeneratorOptions();
 
     // ✅ ИСПРАВЛЕНО v2: показываем реальное состояние includeBody
+    // ✅ ИСПРАВЛЕНО v5: показываем реальное состояние includeVSCode
     console.log('\n📋 ИТОГОВАЯ КОНФИГУРАЦИЯ:');
     console.log(`   • Пресет: ${options.preset}`);
     console.log(`   • Функции: ${config.functions ? '✅' : '❌'}`);
@@ -397,6 +403,8 @@ export class CompactRecursiveCommand {
     console.log(`   • Легенда: ${config.legend ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
     console.log(`   • Self functions: ${config.selfFunctions ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
     console.log(`   • Тела функций: ${config.includeBody ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
+    // ✅ ИСПРАВЛЕНО v5: показываем реальное состояние includeVSCode
+    console.log(`   • VSCode ссылки: ${config.includeVSCode ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
 
     // Размеры файлов
     if (report.stats.compactSize !== undefined) {
@@ -455,6 +463,11 @@ export class CompactRecursiveCommand {
     console.log('   # С телами функций');
     console.log(
       '   npx ast-analyzer compact-recursive ./src/index.ts --preset full --include-body'
+    );
+    console.log('');
+    console.log('   # С VSCode ссылками');
+    console.log(
+      '   npx ast-analyzer compact-recursive ./src/index.ts --preset full --include-vscode'
     );
     console.log('');
     console.log('   # Без импортов и экспортов (только вызовы)');

@@ -7,6 +7,8 @@
 //      (на 3 уровня выше до src/, на 2 уровня выше до core/)
 //   2. Добавлены явные типы для параметров (устранены TS7006)
 //   3. Импортированы недостающие типы (ConstantInfo)
+//   4. ✅ НОВОЕ v2: проброс reactivityDeps из VueComponentAnalysis.template
+//      в EntitiesResult (как templateReactivityDeps)
 // ============================================
 
 import path from 'path';
@@ -25,6 +27,16 @@ export function convertVueAnalysisToEntities(
 ): EntitiesResult {
   const result = createEmptyEntitiesResult(filePath);
   const componentName = vueAnalysis.componentName || path.basename(filePath, '.vue');
+
+  // ==========================================
+  // 0. ✅ НОВОЕ: проброс reactivityDeps из template
+  // ==========================================
+  // Сохраняем root-идентификаторы (reactivityDeps) в метаданные EntitiesResult,
+  // чтобы они были доступны дальше в pipeline (compact-reporter, full-reporter).
+  // Поле не входит в стандартный интерфейс EntitiesResult, поэтому приводим
+  // через `as any` — для обратной совместимости.
+  const templateReactivityDeps: string[] = vueAnalysis.template?.reactivityDeps || [];
+  (result as any).templateReactivityDeps = templateReactivityDeps;
 
   // ==========================================
   // 1. PROPS → ИНТЕРФЕЙСЫ + ТИПЫ
@@ -253,6 +265,15 @@ export function convertVueAnalysisToEntities(
   console.log(
     `   🎯 Vue-анализ: ${result.functions.length} функций, ${result.constants.length} констант, ${result.imports.length} импортов`
   );
+
+  // ✅ НОВОЕ: логируем reactivityDeps, если они есть
+  if (templateReactivityDeps.length > 0) {
+    console.log(
+      `   ⚡ Reactivity deps (${templateReactivityDeps.length}): ${templateReactivityDeps.slice(0, 5).join(', ')}${
+        templateReactivityDeps.length > 5 ? '...' : ''
+      }`
+    );
+  }
 
   return result;
 }

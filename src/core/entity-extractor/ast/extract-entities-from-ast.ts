@@ -92,21 +92,22 @@ export function extractEntitiesFromAST(
     const namedExports = exportsFromAST.filter((e: ASTExport) => !e.isReExport && !e.isDefault);
     const defaultExports = exportsFromAST.filter((e: ASTExport) => e.isDefault);
 
-    console.log(`📤 Найдено экспортов в ${filePath || 'unknown'}: ${exportsFromAST.length}`);
+    // ✅ ИСПРАВЛЕНО: console.log → console.debug
+    console.debug(`📤 Найдено экспортов в ${filePath || 'unknown'}: ${exportsFromAST.length}`);
     if (reExports.length > 0) {
-      console.log(`   🔄 Реэкспортов: ${reExports.length}`);
+      console.debug(`   🔄 Реэкспортов: ${reExports.length}`);
       for (const re of reExports.slice(0, 3)) {
-        console.log(`      • ${re.name} из '${re.source}'`);
+        console.debug(`      • ${re.name} из '${re.source}'`);
       }
       if (reExports.length > 3) {
-        console.log(`      ... и ещё ${reExports.length - 3}`);
+        console.debug(`      ... и ещё ${reExports.length - 3}`);
       }
     }
     if (namedExports.length > 0) {
-      console.log(`   📤 Обычных экспортов: ${namedExports.length}`);
+      console.debug(`   📤 Обычных экспортов: ${namedExports.length}`);
     }
     if (defaultExports.length > 0) {
-      console.log(`   📤 Default экспортов: ${defaultExports.length}`);
+      console.debug(`   📤 Default экспортов: ${defaultExports.length}`);
     }
   }
 
@@ -738,14 +739,15 @@ export function extractEntitiesFromAST(
   // ЛОГИРОВАНИЕ\\
   // ==========================================\\
 
-  console.log(`📤 Экспортов собрано: ${exports.length}`);
+  // ✅ ИСПРАВЛЕНО: console.log → console.debug
+  console.debug(`📤 Экспортов собрано: ${exports.length}`);
   if (exports.length > 0) {
     const reExports = exports.filter(e => e.isReExport);
     const namedExports = exports.filter(e => !e.isReExport && !e.isDefault);
     const defaultExports = exports.filter(e => e.isDefault);
-    console.log(`   • Обычных экспортов: ${namedExports.length}`);
-    console.log(`   • Реэкспортов: ${reExports.length}`);
-    console.log(`   • Default экспортов: ${defaultExports.length}`);
+    console.debug(`   • Обычных экспортов: ${namedExports.length}`);
+    console.debug(`   • Реэкспортов: ${reExports.length}`);
+    console.debug(`   • Default экспортов: ${defaultExports.length}`);
   }
 
   return result;

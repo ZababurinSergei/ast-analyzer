@@ -57,18 +57,18 @@ export interface ImportInfo {
 export interface ExportInfo {
   name: string;
   type:
-    | 'function'
-    | 'class'
-    | 'constant'
-    | 'value'
-    | 'default'
-    | 'interface'
-    | 'type'
-    | 'enum'
-    | 'object'
-    | 'all'
-    | 're-export'
-    | 'named';
+      | 'function'
+      | 'class'
+      | 'constant'
+      | 'value'
+      | 'default'
+      | 'interface'
+      | 'type'
+      | 'enum'
+      | 'object'
+      | 'all'
+      | 're-export'
+      | 'named';
   isDefault: boolean;
   loc: Location | null;
   params?: string[];
@@ -89,6 +89,12 @@ export interface ExportInfo {
   isStarReExport?: boolean;
   /** Является ли `export { default } from '...'` */
   isDefaultReExport?: boolean;
+
+  // ✅ НОВОЕ: Метаданные разворачивания re-exports
+  /** Промежуточные файлы в цепочке re-export */
+  _resolvedFrom?: string[];
+  /** Глубина разворачивания (1 = прямая связь) */
+  _depth?: number;
 }
 
 // ==========================================
@@ -168,7 +174,7 @@ export interface CallInfo {
   targetVscode: string;
   callLine: number;
   callType:
-    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
+      'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
 }
 
 export interface CalledByInfo {
@@ -179,7 +185,7 @@ export interface CalledByInfo {
   callerVscode: string;
   callLine: number;
   callType:
-    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
+      'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
 }
 
 export interface ImportedByInfo {
@@ -241,6 +247,9 @@ export interface FunctionInfo {
   fileId?: string;
   _uniqueKey?: string;
   _fullPath?: string;
+
+  // ✅ НОВОЕ: функция экспонируется через defineExpose (Vue)
+  isExposed?: boolean;
 }
 
 // ==========================================
@@ -529,20 +538,20 @@ export interface EntityGraphEdge {
   from: string;
   to: string;
   type:
-    | 'function_call'
-    | 'constant_reference'
-    | 'class_extends'
-    | 'class_implements'
-    | 'interface_extends'
-    | 'type_reference'
-    | 'method_call'
-    | 'property_access'
-    | 'import_binding'
-    | 'export_binding'
-    | 'parameter_type'
-    | 'return_type'
-    | 'variable_reference'
-    | 'enum_member';
+      | 'function_call'
+      | 'constant_reference'
+      | 'class_extends'
+      | 'class_implements'
+      | 'interface_extends'
+      | 'type_reference'
+      | 'method_call'
+      | 'property_access'
+      | 'import_binding'
+      | 'export_binding'
+      | 'parameter_type'
+      | 'return_type'
+      | 'variable_reference'
+      | 'enum_member';
   line?: number;
   count?: number;
 }
@@ -790,24 +799,24 @@ export interface HTMLReportOptions {
 // ==========================================
 
 export type CLIMode =
-  | 'project'
-  | 'file'
-  | 'minify'
-  | 'minify-folder'
-  | 'prompt-pack'
-  | 'split-module'
-  | 'split'
-  | 'impact'
-  | 'dead-code'
-  | 'hybrid-report'
-  | 'hybrid'
-  | 'semantic'
-  | 'verify'
-  | 'refactor'
-  | 'analyze'
-  | 'vue-analyze'
-  | 'vue'
-  | 'compact';
+    | 'project'
+    | 'file'
+    | 'minify'
+    | 'minify-folder'
+    | 'prompt-pack'
+    | 'split-module'
+    | 'split'
+    | 'impact'
+    | 'dead-code'
+    | 'hybrid-report'
+    | 'hybrid'
+    | 'semantic'
+    | 'verify'
+    | 'refactor'
+    | 'analyze'
+    | 'vue-analyze'
+    | 'vue'
+    | 'compact';
 
 export interface ProjectCLIArgs {
   mode: 'project';
@@ -941,22 +950,22 @@ export interface CompactCLIArgs {
 }
 
 export type CLIArgs =
-  | ProjectCLIArgs
-  | FileCLIArgs
-  | MinifyCLIArgs
-  | MinifyFolderCLIArgs
-  | PromptPackCLIArgs
-  | SplitModuleCLIArgs
-  | ImpactCLIArgs
-  | DeadCodeCLIArgs
-  | HybridReportCLIArgs
-  | SemanticCLIArgs
-  | VerifyCLIArgs
-  | RefactorCLIArgs
-  | AnalyzeCLIArgs
-  | VueAnalyzeCLIArgs
-  | CompactCLIArgs
-  | null;
+    | ProjectCLIArgs
+    | FileCLIArgs
+    | MinifyCLIArgs
+    | MinifyFolderCLIArgs
+    | PromptPackCLIArgs
+    | SplitModuleCLIArgs
+    | ImpactCLIArgs
+    | DeadCodeCLIArgs
+    | HybridReportCLIArgs
+    | SemanticCLIArgs
+    | VerifyCLIArgs
+    | RefactorCLIArgs
+    | AnalyzeCLIArgs
+    | VueAnalyzeCLIArgs
+    | CompactCLIArgs
+    | null;
 
 // ==========================================
 // ТИПЫ ДЛЯ ВНУТРЕННЕГО ИСПОЛЬЗОВАНИЯ
@@ -1222,24 +1231,24 @@ export interface EnhancedPackageLockReport {
   };
   importExportFlow: {
     imports: Record<
-      string,
-      {
-        importsFrom: {
-          module: string;
-          type: 'named' | 'default' | 'namespace';
-          imports: string[];
-        }[];
-      }
+        string,
+        {
+          importsFrom: {
+            module: string;
+            type: 'named' | 'default' | 'namespace';
+            imports: string[];
+          }[];
+        }
     >;
     exports: Record<
-      string,
-      {
-        exportsTo: {
-          module: string;
-          type: 'named' | 'default';
-          exports: string[];
-        }[];
-      }
+        string,
+        {
+          exportsTo: {
+            module: string;
+            type: 'named' | 'default';
+            exports: string[];
+          }[];
+        }
     >;
   };
   callGraph?: {
