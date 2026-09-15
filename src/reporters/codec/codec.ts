@@ -2,7 +2,18 @@
 // ============================================
 // ЕДИНЫЙ МОДУЛЬ КОДЕКОВ
 // ============================================
-// Версия: 3.1.0 (Стратегия B — строгий round-trip + опции декодирования)
+// Версия: 3.2.0 (Стратегия B — строгий round-trip + опции декодирования + Vue templates)
+//
+// ИЗМЕНЕНИЯ v3.2.0:
+//   - ✅ ДОБАВЛЕНО: секция vt (Vue templates) в CompactJSON
+//     vt — ОТДЕЛЬНАЯ СУЩНОСТЬ (шаблон Vue-файла), хранит ССЫЛКИ (индексы),
+//     а не дубликаты объектов.
+//   - ✅ encode: сбор vt из payload.templates
+//   - ✅ decode: восстановление templates из vt
+//   - ✅ decode: includeEmptyArrays удаляет пустой templates
+//   - ✅ arraySchemas: добавлены схемы vt, vt.eventHandlers,
+//     vt.dynamicComponents, vt.templateRefs, vt.cssVariables, vt.deepSelectors
+//   - ✅ Импорт TemplateData из './codec-types.js'
 //
 // ИЗМЕНЕНИЯ v3.1.0:
 //   - decode() принимает DecodeOptions:
@@ -40,6 +51,7 @@ import type {
   EdgeData,
   ModuleData,
   FileData,
+  TemplateData,
   DecodeOptions,
 } from './codec-types.js';
 
@@ -199,6 +211,7 @@ export const KEY_MAP: Record<string, string> = {
   imports: 'i',
   calls: 'c',
   reExports: 're',
+  templates: 'vt', // ✅ НОВОЕ v3.2.0
   statistics: 'st',
   legend: 'legend',
   edges: 'edges',
@@ -676,6 +689,91 @@ export class Codec {
     });
 
     // ============================================
+    // 9.5. Vue templates (vt) — ОТДЕЛЬНЫЕ СУЩНОСТИ
+    // ============================================
+    // vt хранит ССЫЛКИ (индексы в stringDict), а не дубликаты объектов.
+    // Связи event → handler и templateRef → expose живут в calls (gr.c),
+    // здесь — только описание самого шаблона.
+    // ============================================
+    const vueTemplates: NonNullable<CompactJSON['vt']> = [];
+
+    for (const template of payload.templates || []) {
+      const fileIdx = fileReverse[template.fileId] || 0;
+      const moduleIdx = moduleReverse[template.moduleId] || 0;
+
+      const reactivityDepsIdx = (template.reactivityDeps || []).map((d: string) =>
+        addString(dict, d)
+      );
+
+      const eventHandlers: [
+        number,
+        number,
+        number,
+        number,
+        number[],
+        number,
+      ][] = (template.eventHandlers || []).map((h: any) => [
+        addString(dict, h.eventName),
+        addString(dict, h.handlerName),
+        addString(dict, h.tag),
+        h.line || 0,
+        (h.modifiers || []).map((m: string) => addString(dict, m)),
+        h.isExternal ? 1 : 0,
+      ]);
+
+      const dynamicComponents: [number, number][] = (
+        template.dynamicComponents || []
+      ).map((d: any) => [addString(dict, d.isExpression), d.line || 0]);
+
+      const directivesIdx = (template.directives || []).map((d: string) =>
+        addString(dict, d)
+      );
+
+      const usedComponentsIdx = (template.usedComponents || []).map((c: string) =>
+        addString(dict, c)
+      );
+
+      const templateRefs: [number, number, number, number[]][] = (
+        template.templateRefs || []
+      ).map((r: any) => [
+        addString(dict, r.refValue),
+        addString(dict, r.tag),
+        r.line || 0,
+        (r.exposedMethods || []).map((m: string) => addString(dict, m)),
+      ]);
+
+      const cssVariables: [number, number, number, number][] = (
+        template.cssVariables || []
+      ).map((v: any) => [
+        addString(dict, v.name),
+        addString(dict, v.value),
+        v.line || 0,
+        v.isMultiline ? 1 : 0,
+      ]);
+
+      const deepSelectors: [number, number][] = (template.deepSelectors || []).map(
+        (s: any) => [addString(dict, s.selector), s.line || 0]
+      );
+
+      const slotsIdx = (template.slots || []).map((s: string) => addString(dict, s));
+
+      vueTemplates.push([
+        fileIdx,
+        moduleIdx,
+        template.complexity || 0,
+        reactivityDepsIdx,
+        eventHandlers,
+        dynamicComponents,
+        directivesIdx,
+        usedComponentsIdx,
+        templateRefs,
+        cssVariables,
+        deepSelectors,
+        slotsIdx,
+      ]);
+    }
+
+    // ============================================
     // 10. Сборка легенды с словарями
     // ============================================
     const legend: CodecLegend = {
@@ -717,6 +815,23 @@ export class Codec {
           'moduleIdx', 'funcIdx', 'sourceIdx', 'exportNameIdx',
           'line', 'typeCode', 'isTypeOnly',
         ],
+        // ✅ НОВОЕ v3.2.0: схемы для vt
+        vt: [
+          'fileIdx', 'moduleIdx', 'complexity',
+          'reactivityDepsIdx', 'eventHandlers', 'dynamicComponents',
+          'directivesIdx', 'usedComponentsIdx', 'templateRefs',
+          'cssVariables', 'deepSelectors', 'slotsIdx',
+        ],
+        'vt.eventHandlers': [
+          'eventNameIdx', 'handlerNameIdx', 'tagIdx',
+          'line', 'modifiersIdx', 'isExternal',
+        ],
+        'vt.dynamicComponents': ['isExpressionIdx', 'line'],
+        'vt.templateRefs': [
+          'refValueIdx', 'tagIdx', 'line', 'exposedMethodsIdx',
+        ],
+        'vt.cssVariables': ['nameIdx', 'valueIdx', 'line', 'isMultiline'],
+        'vt.deepSelectors': ['selectorIdx', 'line'],
       },
 
       stringDict: dict.stringDict,
@@ -738,6 +853,7 @@ export class Codec {
       cls: classes,
       cn: constants,
       gr: { e: exports, i: imports, c: calls, re: reExports },
+      vt: vueTemplates.length > 0 ? vueTemplates : undefined,
       st: payload.statistics,
       legend,
     };
@@ -1018,6 +1134,77 @@ export class Codec {
     );
 
     // ============================================
+    // 9.5. Vue templates (vt) — восстановление
+    // ============================================
+    const templates: TemplateData[] = (compact.vt || []).map(
+      ([
+         fileIdx,
+         moduleIdx,
+         complexity,
+         reactivityDepsIdx,
+         eventHandlers,
+         dynamicComponents,
+         directivesIdx,
+         usedComponentsIdx,
+         templateRefs,
+         cssVariables,
+         deepSelectors,
+         slotsIdx,
+       ]) => ({
+        fileId: `f${fileIdx}`,
+        moduleId: `m${moduleIdx}`,
+        complexity,
+        reactivityDeps: (reactivityDepsIdx || []).map(readStringOrEmpty),
+        eventHandlers: (eventHandlers || []).map(
+          ([
+             eventNameIdx,
+             handlerNameIdx,
+             tagIdx,
+             line,
+             modifiersIdx,
+             isExternal,
+           ]) => ({
+            eventName: readStringOrEmpty(eventNameIdx),
+            handlerName: readStringOrEmpty(handlerNameIdx),
+            tag: readStringOrEmpty(tagIdx),
+            line,
+            modifiers: (modifiersIdx || []).map(readStringOrEmpty),
+            isExternal: isExternal === 1,
+          })
+        ),
+        dynamicComponents: (dynamicComponents || []).map(
+          ([isExpressionIdx, line]) => ({
+            isExpression: readStringOrEmpty(isExpressionIdx),
+            line,
+          })
+        ),
+        directives: (directivesIdx || []).map(readStringOrEmpty),
+        usedComponents: (usedComponentsIdx || []).map(readStringOrEmpty),
+        templateRefs: (templateRefs || []).map(
+          ([refValueIdx, tagIdx, line, exposedMethodsIdx]) => ({
+            refValue: readStringOrEmpty(refValueIdx),
+            tag: readStringOrEmpty(tagIdx),
+            line,
+            exposedMethods: (exposedMethodsIdx || []).map(readStringOrEmpty),
+          })
+        ),
+        cssVariables: (cssVariables || []).map(
+          ([nameIdx, valueIdx, line, isMultiline]) => ({
+            name: readStringOrEmpty(nameIdx),
+            value: valueIdx >= 0 ? readStringOrEmpty(valueIdx) : undefined,
+            line,
+            isMultiline: isMultiline === 1,
+          })
+        ),
+        deepSelectors: (deepSelectors || []).map(([selectorIdx, line]) => ({
+          selector: readStringOrEmpty(selectorIdx),
+          line,
+        })),
+        slots: (slotsIdx || []).map(readStringOrEmpty),
+      })
+    );
+
+    // ============================================
     // 10. Статистика
     // ============================================
     const statistics: StatisticsData = compact.st;
@@ -1088,6 +1275,7 @@ export class Codec {
       imports,
       calls,
       reExports,
+      templates: templates.length > 0 ? templates : undefined,
       statistics: includeStatistics ? statistics : ({} as StatisticsData),
     };
 
@@ -1102,6 +1290,7 @@ export class Codec {
       if (imports.length === 0) delete (result as any).imports;
       if (calls.length === 0) delete (result as any).calls;
       if (reExports.length === 0) delete (result as any).reExports;
+      if (templates.length === 0) delete (result as any).templates;
     }
 
     // Добавляем edges только если попросили и они непустые
@@ -1160,6 +1349,23 @@ export class Codec {
           'moduleIdx', 'funcIdx', 'sourceIdx', 'exportNameIdx',
           'line', 'typeCode', 'isTypeOnly',
         ],
+        // ✅ НОВОЕ v3.2.0: схемы для vt
+        vt: [
+          'fileIdx', 'moduleIdx', 'complexity',
+          'reactivityDepsIdx', 'eventHandlers', 'dynamicComponents',
+          'directivesIdx', 'usedComponentsIdx', 'templateRefs',
+          'cssVariables', 'deepSelectors', 'slotsIdx',
+        ],
+        'vt.eventHandlers': [
+          'eventNameIdx', 'handlerNameIdx', 'tagIdx',
+          'line', 'modifiersIdx', 'isExternal',
+        ],
+        'vt.dynamicComponents': ['isExpressionIdx', 'line'],
+        'vt.templateRefs': [
+          'refValueIdx', 'tagIdx', 'line', 'exposedMethodsIdx',
+        ],
+        'vt.cssVariables': ['nameIdx', 'valueIdx', 'line', 'isMultiline'],
+        'vt.deepSelectors': ['selectorIdx', 'line'],
       },
 
       stringDict: [],
@@ -1228,6 +1434,11 @@ export class Codec {
         reExports: {
           original: payload.reExports.length,
           decoded: decoded.reExports.length,
+        },
+        // ✅ НОВОЕ v3.2.0
+        templates: {
+          original: payload.templates?.length || 0,
+          decoded: decoded.templates?.length || 0,
         },
       };
 

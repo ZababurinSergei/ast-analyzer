@@ -57,18 +57,18 @@ export interface ImportInfo {
 export interface ExportInfo {
   name: string;
   type:
-      | 'function'
-      | 'class'
-      | 'constant'
-      | 'value'
-      | 'default'
-      | 'interface'
-      | 'type'
-      | 'enum'
-      | 'object'
-      | 'all'
-      | 're-export'
-      | 'named';
+    | 'function'
+    | 'class'
+    | 'constant'
+    | 'value'
+    | 'default'
+    | 'interface'
+    | 'type'
+    | 'enum'
+    | 'object'
+    | 'all'
+    | 're-export'
+    | 'named';
   isDefault: boolean;
   loc: Location | null;
   params?: string[];
@@ -174,7 +174,14 @@ export interface CallInfo {
   targetVscode: string;
   callLine: number;
   callType:
-      'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
+    | 'direct'
+    | 'import'
+    | 'computed'
+    | 'watch'
+    | 'event'
+    | 'lifecycle'
+    | 'method'
+    | 'constructor';
 }
 
 export interface CalledByInfo {
@@ -185,7 +192,14 @@ export interface CalledByInfo {
   callerVscode: string;
   callLine: number;
   callType:
-      'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
+    | 'direct'
+    | 'import'
+    | 'computed'
+    | 'watch'
+    | 'event'
+    | 'lifecycle'
+    | 'method'
+    | 'constructor';
 }
 
 export interface ImportedByInfo {
@@ -290,6 +304,57 @@ export interface EntitiesResult {
   callGraph: Record<string, string[]>;
   moduleName: string;
   filePath: string;
+
+  // ==========================================
+  // ✅ НОВОЕ v4.1.0: template-поля Vue
+  // Хранят ТОЛЬКО ссылки (имена/примитивы),
+  // без дубликатов объектов.
+  // ==========================================
+
+  /** root-идентификаторы шаблона (user, items, isLoading) */
+  templateReactivityDeps?: string[];
+
+  /** Обработчики событий @click → handlerName */
+  templateEventHandlers?: {
+    eventName: string;
+    handlerName: string;
+    tag: string;
+    line: number;
+    modifiers: string[];
+    isExternal?: boolean;
+  }[];
+
+  /** <component :is="..."> и v-bind:is */
+  templateDynamicComponents?: {
+    isExpression: string;
+    line: number;
+  }[];
+
+  /** CSS-переменные из <style> */
+  templateCssVariables?: {
+    name: string;
+    value?: string;
+    line: number;
+    isMultiline?: boolean;
+  }[];
+
+  /** :deep() селекторы */
+  templateDeepSelectors?: {
+    selector: string;
+    line: number;
+  }[];
+
+  /** Директивы (v-html, v-text, v-pre, v-once, v-memo, v-model, ...) */
+  templateDirectives?: string[];
+
+  /** Использованные компоненты (PascalCase + kebab-case) */
+  templateUsedComponents?: string[];
+
+  /** Слоты (из <slot name="..."> и defineSlots<T>()) */
+  templateSlots?: string[];
+
+  /** Сложность шаблона */
+  templateComplexity?: number;
 }
 
 // ==========================================
@@ -538,20 +603,20 @@ export interface EntityGraphEdge {
   from: string;
   to: string;
   type:
-      | 'function_call'
-      | 'constant_reference'
-      | 'class_extends'
-      | 'class_implements'
-      | 'interface_extends'
-      | 'type_reference'
-      | 'method_call'
-      | 'property_access'
-      | 'import_binding'
-      | 'export_binding'
-      | 'parameter_type'
-      | 'return_type'
-      | 'variable_reference'
-      | 'enum_member';
+    | 'function_call'
+    | 'constant_reference'
+    | 'class_extends'
+    | 'class_implements'
+    | 'interface_extends'
+    | 'type_reference'
+    | 'method_call'
+    | 'property_access'
+    | 'import_binding'
+    | 'export_binding'
+    | 'parameter_type'
+    | 'return_type'
+    | 'variable_reference'
+    | 'enum_member';
   line?: number;
   count?: number;
 }
@@ -799,24 +864,24 @@ export interface HTMLReportOptions {
 // ==========================================
 
 export type CLIMode =
-    | 'project'
-    | 'file'
-    | 'minify'
-    | 'minify-folder'
-    | 'prompt-pack'
-    | 'split-module'
-    | 'split'
-    | 'impact'
-    | 'dead-code'
-    | 'hybrid-report'
-    | 'hybrid'
-    | 'semantic'
-    | 'verify'
-    | 'refactor'
-    | 'analyze'
-    | 'vue-analyze'
-    | 'vue'
-    | 'compact';
+  | 'project'
+  | 'file'
+  | 'minify'
+  | 'minify-folder'
+  | 'prompt-pack'
+  | 'split-module'
+  | 'split'
+  | 'impact'
+  | 'dead-code'
+  | 'hybrid-report'
+  | 'hybrid'
+  | 'semantic'
+  | 'verify'
+  | 'refactor'
+  | 'analyze'
+  | 'vue-analyze'
+  | 'vue'
+  | 'compact';
 
 export interface ProjectCLIArgs {
   mode: 'project';
@@ -950,22 +1015,22 @@ export interface CompactCLIArgs {
 }
 
 export type CLIArgs =
-    | ProjectCLIArgs
-    | FileCLIArgs
-    | MinifyCLIArgs
-    | MinifyFolderCLIArgs
-    | PromptPackCLIArgs
-    | SplitModuleCLIArgs
-    | ImpactCLIArgs
-    | DeadCodeCLIArgs
-    | HybridReportCLIArgs
-    | SemanticCLIArgs
-    | VerifyCLIArgs
-    | RefactorCLIArgs
-    | AnalyzeCLIArgs
-    | VueAnalyzeCLIArgs
-    | CompactCLIArgs
-    | null;
+  | ProjectCLIArgs
+  | FileCLIArgs
+  | MinifyCLIArgs
+  | MinifyFolderCLIArgs
+  | PromptPackCLIArgs
+  | SplitModuleCLIArgs
+  | ImpactCLIArgs
+  | DeadCodeCLIArgs
+  | HybridReportCLIArgs
+  | SemanticCLIArgs
+  | VerifyCLIArgs
+  | RefactorCLIArgs
+  | AnalyzeCLIArgs
+  | VueAnalyzeCLIArgs
+  | CompactCLIArgs
+  | null;
 
 // ==========================================
 // ТИПЫ ДЛЯ ВНУТРЕННЕГО ИСПОЛЬЗОВАНИЯ
@@ -1231,24 +1296,24 @@ export interface EnhancedPackageLockReport {
   };
   importExportFlow: {
     imports: Record<
-        string,
-        {
-          importsFrom: {
-            module: string;
-            type: 'named' | 'default' | 'namespace';
-            imports: string[];
-          }[];
-        }
+      string,
+      {
+        importsFrom: {
+          module: string;
+          type: 'named' | 'default' | 'namespace';
+          imports: string[];
+        }[];
+      }
     >;
     exports: Record<
-        string,
-        {
-          exportsTo: {
-            module: string;
-            type: 'named' | 'default';
-            exports: string[];
-          }[];
-        }
+      string,
+      {
+        exportsTo: {
+          module: string;
+          type: 'named' | 'default';
+          exports: string[];
+        }[];
+      }
     >;
   };
   callGraph?: {
@@ -1301,11 +1366,69 @@ export interface EnhancedEntityInfo {
   interfaces: EnhancedInterfaceInfo[];
   types: EnhancedTypeInfo[];
   classes: EnhancedClassInfo[];
-  imports?: {
-    source: string;
-    specifiers: string[];
-    isTypeOnly: boolean;
+
+  /**
+   * ✅ ИСПРАВЛЕНО: используем ImportInfo[] вместо устаревшего
+   * `{ source: string; specifiers: string[]; isTypeOnly: boolean }[]`.
+   *
+   * Причина: `ImportInfo.specifiers` — это `ImportSpecifier[]`
+   * (объекты `{ local, imported, type }`), а не `string[]`.
+   * Прежнее определение давало TS2322 при присваивании
+   * `enhanced.imports = entities.imports.map(...)`.
+   */
+  imports?: ImportInfo[];
+
+  // ==========================================
+  // ✅ НОВОЕ: template-поля Vue.
+  // Добавлены, чтобы `json-reporter.ts` мог обращаться к
+  // `result.templateEventHandlers` и `result.templateReactivityDeps`
+  // без ошибок TS2339.
+  // ==========================================
+
+  /** root-идентификаторы шаблона (user, items, isLoading) */
+  templateReactivityDeps?: string[];
+
+  /** Обработчики событий @click → handlerName */
+  templateEventHandlers?: {
+    eventName: string;
+    handlerName: string;
+    tag: string;
+    line: number;
+    modifiers: string[];
+    isExternal?: boolean;
   }[];
+
+  /** <component :is="..."> и v-bind:is */
+  templateDynamicComponents?: {
+    isExpression: string;
+    line: number;
+  }[];
+
+  /** CSS-переменные из <style> */
+  templateCssVariables?: {
+    name: string;
+    value?: string;
+    line: number;
+    isMultiline?: boolean;
+  }[];
+
+  /** :deep() селекторы */
+  templateDeepSelectors?: {
+    selector: string;
+    line: number;
+  }[];
+
+  /** Директивы (v-html, v-text, v-pre, v-once, v-memo, v-model, ...) */
+  templateDirectives?: string[];
+
+  /** Использованные компоненты (PascalCase + kebab-case) */
+  templateUsedComponents?: string[];
+
+  /** Слоты (из <slot name="..."> и defineSlots<T>()) */
+  templateSlots?: string[];
+
+  /** Сложность шаблона */
+  templateComplexity?: number;
 }
 
 // ==========================================

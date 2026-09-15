@@ -2,7 +2,11 @@
 // ============================================================
 // ЕДИНАЯ ТОЧКА ВХОДА ДЛЯ ВСЕХ РЕПОРТЕРОВ
 // ============================================================
-// Версия: 6.0.2
+// Версия: 6.1.0
+//
+// ИЗМЕНЕНИЯ v6.1.0:
+//   - ✅ ДОБАВЛЕН экспорт типов Vue template (TemplateData и вложенные)
+//   - Обновлена версия REPORTERS_VERSION до 6.1.0
 //
 // ИЗМЕНЕНИЯ v6.0.2:
 //   - Добавлен экспорт типа DecodeOptions (для опций Codec.decode)
@@ -23,7 +27,7 @@ export { generateFullReport } from './full-reporter.js';
 export type { FullReport } from './full-reporter.js';
 
 // ============================================================
-// 2. КОМПАКТНЫЙ ОТЧЁТ (v6.0.2)
+// 2. КОМПАКТНЫЙ ОТЧЁТ (v6.1.0)
 // ============================================================
 
 export {
@@ -76,6 +80,18 @@ export type {
   CallData,
   /** Данные реэкспорта */
   ReExportData,
+  /** ✅ НОВОЕ v6.1.0: Vue template (отдельная сущность) */
+  TemplateData,
+  /** ✅ НОВОЕ v6.1.0: Обработчик события шаблона */
+  TemplateEventHandler,
+  /** ✅ НОВОЕ v6.1.0: Динамический компонент (<component :is>) */
+  TemplateDynamicComponent,
+  /** ✅ НОВОЕ v6.1.0: Template ref с exposedMethods */
+  TemplateRefUsage,
+  /** ✅ НОВОЕ v6.1.0: CSS-переменная из <style> */
+  TemplateCssVariable,
+  /** ✅ НОВОЕ v6.1.0: :deep() селектор */
+  TemplateDeepSelector,
   /** Статистика */
   StatisticsData,
   /** ✅ НОВОЕ: Опции декодирования CompactJSON → FullJSON */
@@ -93,7 +109,7 @@ export { generateInteractiveHTML } from './interactive-reporter.js';
 // 5. КОНСТАНТЫ МОДУЛЯ
 // ============================================================
 
-export const REPORTERS_VERSION = '6.0.2';
+export const REPORTERS_VERSION = '6.1.0';
 export const REPORTERS_NAME = '@newkind/ast-analyzer/reporters';
 
 // ============================================================

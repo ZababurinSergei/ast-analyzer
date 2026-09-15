@@ -2,7 +2,19 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Версия: 8.3.0 (Стратегия B — строгий round-trip + DecodeOptions + enrichWithReExports + functionsByName[])
+// Версия: 8.4.1 (Стратегия B — строгий round-trip + DecodeOptions + enrichWithReExports + functionsByName[] + templates)
+//
+// ИЗМЕНЕНИЯ v8.4.1:
+//   - ✅ ИСПРАВЛЕНО: hasTemplate теперь учитывает templateSlots,
+//     templateDirectives и templateComplexity
+//     (раньше Vue-файлы без eventHandlers/reactivityDeps, но со слотами
+//      или директивами, не попадали в секцию vt)
+//
+// ИЗМЕНЕНИЯ v8.4.0:
+//   - ✅ НОВОЕ: секция templates[] в FullJSON (Vue-шаблоны как отдельные сущности)
+//   - ✅ НОВОЕ: создание рёбер event → handler и templateRef → expose в calls[]
+//   - ✅ НОВОЕ: totalTemplates в StatisticsData
+//   - ✅ ИСПРАВЛЕНО: detectCallType — regex через String.raw (устранён SyntaxError: Unterminated group)
 //
 // ИЗМЕНЕНИЯ v8.3.0:
 //   - ✅ ИСПРАВЛЕНО: functionMap теперь Map<string, FunctionData[]>
@@ -62,6 +74,7 @@ import type {
   ModuleData,
   FileData,
   StatisticsData,
+  TemplateData,
   DecodeOptions,
 } from './codec/codec-types.js';
 
@@ -147,6 +160,7 @@ export function generateCompactReport(
     console.log(`   📥 Импортов: ${full.imports.length}`);
     console.log(`   📞 Вызовов: ${full.calls.length}`);
     console.log(`   🔄 Реэкспортов: ${full.reExports.length}`);
+    console.log(`   🎨 Vue-шаблонов: ${full.templates?.length || 0}`);
   }
 
   // ============================================
@@ -320,6 +334,10 @@ export function readFullJson(fullPath: string): FullJSON {
  *
  * ✅ v8.3.0: перед сборкой вызывается enrichWithReExports
  * ✅ v8.3.0: functionMap хранит массивы функций (для дублей имён)
+ * ✅ v8.4.0: собираются Vue-шаблоны (templates[]) как отдельные сущности
+ * ✅ v8.4.0: рёбра event → handler и templateRef → expose создаются в calls[]
+ * ✅ v8.4.1: hasTemplate учитывает templateSlots, templateDirectives,
+ *            templateComplexity
  *
  * @param entitiesMap — карта «путь файла → сущности»
  * @param verbose — подробный вывод
@@ -397,6 +415,7 @@ function collectFullJSON(
   const imports: ImportData[] = [];
   const calls: CallData[] = [];
   const reExports: ReExportData[] = [];
+  const templates: TemplateData[] = [];
 
   // ============================================
   // Карты для дедупликации
@@ -544,6 +563,63 @@ function collectFullJSON(
   }
 
   // ============================================
+  // ✅ НОВОЕ v8.4.0: сбор Vue-шаблонов (отдельные сущности)
+  // vt хранит ССЫЛКИ (имена/индексы), а не дубликаты объектов.
+  //
+  // ✅ ИСПРАВЛЕНО v8.4.1: hasTemplate теперь учитывает
+  //    templateSlots, templateDirectives, templateComplexity.
+  //    Это позволяет Vue-файлам без @click / v-for / :is, но
+  //    со слотами, директивами или сложным шаблоном, попасть
+  //    в секцию vt.
+  // ============================================
+  for (const [filePath, entities] of Object.entries(workingEntitiesMap)) {
+    if (!entities) continue;
+    if (!filePath.endsWith('.vue')) continue;
+
+    const dirName = path.basename(path.dirname(filePath)) || 'root';
+    const module = moduleMap.get(dirName);
+    const file = fileMap.get(filePath);
+    if (!module || !file) continue;
+
+    const e = entities as any;
+
+    // ✅ ИСПРАВЛЕНО v8.4.1: добавлены templateSlots, templateDirectives,
+    //    templateComplexity в условие.
+    const hasTemplate =
+      (e.templateReactivityDeps?.length || 0) +
+      (e.templateEventHandlers?.length || 0) +
+      (e.templateDynamicComponents?.length || 0) +
+      (e.templateCssVariables?.length || 0) +
+      (e.templateDeepSelectors?.length || 0) +
+      (e.templateUsedComponents?.length || 0) +
+      (e.templateSlots?.length || 0) +
+      (e.templateDirectives?.length || 0) +
+      (e.templateComplexity || 0) >
+      0;
+
+    if (!hasTemplate) continue;
+
+    templates.push({
+      fileId: file.id,
+      moduleId: module.id,
+      reactivityDeps: e.templateReactivityDeps || [],
+      eventHandlers: e.templateEventHandlers || [],
+      dynamicComponents: e.templateDynamicComponents || [],
+      directives: e.templateDirectives || [],
+      usedComponents: e.templateUsedComponents || [],
+      templateRefs: e.templateRefs || [],
+      cssVariables: e.templateCssVariables || [],
+      deepSelectors: e.templateDeepSelectors || [],
+      slots: e.templateSlots || [],
+      complexity: e.templateComplexity || 0,
+    });
+  }
+
+  if (verbose && templates.length > 0) {
+    console.log(`   🎨 Vue-шаблонов: ${templates.length}`);
+  }
+
+  // ============================================
   // ВТОРОЙ ПРОХОД: экспорты, импорты, вызовы, реэкспорты
   // ============================================
 
@@ -653,9 +729,9 @@ function collectFullJSON(
 
       const packageName = isExternal
         ? (imp as any).packageName ||
-          (imp.source.startsWith('@')
-            ? imp.source.split('/').slice(0, 2).join('/')
-            : imp.source.split('/')[0])
+        (imp.source.startsWith('@')
+          ? imp.source.split('/').slice(0, 2).join('/')
+          : imp.source.split('/')[0])
         : undefined;
 
       // ✅ Разрешаем toFileId
@@ -826,6 +902,49 @@ function collectFullJSON(
   }
 
   // ============================================
+  // ✅ НОВОЕ v8.4.0: рёбра event → handler
+  // (из шаблона Vue в граф вызовов; ссылка по имени, без дубликатов)
+  // ============================================
+  for (const template of templates) {
+    for (const handler of template.eventHandlers) {
+      if (handler.isExternal) continue;
+
+      const handlerFuncArray = functionMap.get(handler.handlerName);
+      const handlerFunc = handlerFuncArray?.[0];
+      if (!handlerFunc) continue;
+
+      callCounter++;
+      calls.push({
+        id: `c${callCounter}`,
+        fromFunctionId: template.fileId, // символически: шаблон как источник
+        toFunctionId: handlerFunc.id,
+        line: handler.line,
+        type: 'callback',
+      });
+    }
+
+    // templateRef → expose (ссылка на методы дочернего компонента)
+    for (const ref of template.templateRefs) {
+      if (!ref.exposedMethods || ref.exposedMethods.length === 0) continue;
+
+      for (const methodName of ref.exposedMethods) {
+        const methodFuncArray = functionMap.get(methodName);
+        const methodFunc = methodFuncArray?.[0];
+        if (!methodFunc) continue;
+
+        callCounter++;
+        calls.push({
+          id: `c${callCounter}`,
+          fromFunctionId: template.fileId,
+          toFunctionId: methodFunc.id,
+          line: ref.line,
+          type: 'method',
+        });
+      }
+    }
+  }
+
+  // ============================================
   // Статистика
   // ============================================
 
@@ -839,6 +958,7 @@ function collectFullJSON(
     totalImports: imports.length,
     totalCalls: calls.length,
     totalReExports: reExports.length,
+    totalTemplates: templates.length,
   };
 
   // ============================================
@@ -871,7 +991,7 @@ function collectFullJSON(
   // ============================================
 
   return {
-    version: '8.0.0',
+    version: '8.4.1',
     timestamp: new Date().toISOString(),
     root,
     modules,
@@ -883,6 +1003,7 @@ function collectFullJSON(
     imports,
     calls,
     reExports,
+    templates: templates.length > 0 ? templates : undefined,
     statistics,
     // ⚠️ edges НЕ создаются — восстанавливаются в Codec.decode
   };
@@ -1025,10 +1146,13 @@ function getImportTypeFromSpecifierType(
 /**
  * Определяет тип вызова по контексту.
  *
- * ✅ ИСПРАВЛЕНО v8.1.1:
- *   - Экранируем callName перед передачей в new RegExp
- *     (устранён SyntaxError: Invalid regular expression: Unterminated group)
- *   - Добавлена проверка на пустое body
+ * ✅ ИСПРАВЛЕНО v8.4.0:
+ *   - Паттерн регулярного выражения построен через String.raw,
+ *     что устраняет SyntaxError: Unterminated group
+ *     (было: new RegExp(`${escapedCallName}\\s*\\([^)]*(?:=>|function)`, 'i')
+ *      — из-за недостаточного экранирования regex получался сломанным)
+ *   - Сохранена проверка на пустое body
+ *   - Сохранено экранирование callName
  *
  * @param func — функция-источник
  * @param callName — имя вызываемой функции
@@ -1041,13 +1165,23 @@ function detectCallType(
   if (func.isAsync) return 'async';
   if (callName.includes('.')) return 'method';
 
-  // ✅ ИСПРАВЛЕНИЕ: проверяем body на существование и непустоту
+  // ✅ Проверяем body на существование и непустоту
   const body = func.body || '';
   if (body) {
-    // ✅ ИСПРАВЛЕНИЕ: экранируем специальные символы регулярного выражения
+    // ✅ Экранируем специальные символы регулярного выражения в callName
     const escapedCallName = callName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const cbPattern = new RegExp(`${escapedCallName}\\s*\\([^)]*(?:=>|function)`, 'i');
-    if (cbPattern.test(body)) return 'callback';
+
+    // ✅ ИСПРАВЛЕНО v8.4.0: используем String.raw для сохранения
+    // всех бэкслешей в паттерне. Без String.raw строка
+    // '\\s*\\([^)]*(?:=>|function)' превращается в 's*(^)]*(?:=>|function)',
+    // что даёт SyntaxError: Unterminated group.
+    try {
+      const cbPattern = new RegExp(String.raw`${escapedCallName}\s*\([^)]*(?:=>|function)`, 'i');
+      if (cbPattern.test(body)) return 'callback';
+    } catch {
+      // На случай экзотических имён — не падаем, возвращаем 'direct'
+      return 'direct';
+    }
   }
 
   return 'direct';

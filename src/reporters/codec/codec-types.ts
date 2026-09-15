@@ -2,7 +2,16 @@
 // ============================================
 // ТИПЫ ДЛЯ КОДЕКА (Стратегия B — строгий round-trip)
 // ============================================
-// Версия: 3.1.0
+// Версия: 4.1.0
+//
+// ИЗМЕНЕНИЯ v4.1.0:
+//   - ✅ НОВОЕ: TemplateData + вложенные типы
+//     (TemplateEventHandler, TemplateDynamicComponent,
+//      TemplateRefUsage, TemplateCssVariable, TemplateDeepSelector)
+//   - ✅ НОВОЕ: templates?: TemplateData[] в FullJSON
+//   - ✅ НОВОЕ: totalTemplates?: number в StatisticsData
+//   - ✅ НОВОЕ: vt?: [...] в CompactJSON (Vue-шаблоны)
+//   - ✅ НОВОЕ: схемы vt.* в CodecLegend.arraySchemas
 //
 // ИЗМЕНЕНИЯ v3.1.0:
 //   - Добавлен интерфейс DecodeOptions для Codec.decode()
@@ -63,6 +72,15 @@ export interface FullJSON {
   calls: CallData[];
   /** Список реэкспортов */
   reExports: ReExportData[];
+  /**
+   * ✅ НОВОЕ v4.1.0: Vue-шаблоны (отдельные сущности).
+   *
+   * Каждый элемент — отдельный шаблон Vue-файла.
+   * Хранит ССЫЛКИ (имена), а не дубликаты объектов.
+   * Рёбра (event→handler, templateRef→expose) создаются
+   * в `calls[]`, а не дублируются здесь.
+   */
+  templates?: TemplateData[];
   /** Статистика */
   statistics: StatisticsData;
   /**
@@ -343,6 +361,103 @@ export interface ReExportData {
 }
 
 // ============================================
+// VUE TEMPLATE (v4.1.0)
+// ============================================
+//
+// vt — это ОТДЕЛЬНАЯ СУЩНОСТЬ (шаблон Vue-файла),
+// а не агрегатор связей. Хранит ССЫЛКИ (имена),
+// а не дубликаты объектов.
+//
+// Рёбра (event→handler, templateRef→expose) создаются
+// в CallData[], а не дублируются внутри TemplateData.
+// ============================================
+
+export interface TemplateEventHandler {
+  /** Имя события (click, update:value, ...) */
+  eventName: string;
+  /** Имя обработчика (onClick, handleUpdate, ...) */
+  handlerName: string;
+  /** Тег (<button>, <AiButton>, ...) */
+  tag: string;
+  /** Строка */
+  line: number;
+  /** Модификаторы (.stop, .prevent, ...) */
+  modifiers: string[];
+  /** Внешний обработчик (emit/console/Math и т.п.) */
+  isExternal: boolean;
+}
+
+export interface TemplateDynamicComponent {
+  /** Выражение из :is / v-bind:is */
+  isExpression: string;
+  /** Строка */
+  line: number;
+}
+
+export interface TemplateRefUsage {
+  /** Значение ref="dataTable" */
+  refValue: string;
+  /** Тег */
+  tag: string;
+  /** Строка */
+  line: number;
+  /** Методы из defineExpose дочернего компонента */
+  exposedMethods?: string[];
+}
+
+export interface TemplateCssVariable {
+  /** Имя переменной: --blue-700 */
+  name: string;
+  /** Значение: #1a5fb4 (если есть) */
+  value?: string;
+  /** Строка */
+  line: number;
+  /** Многострочное значение */
+  isMultiline?: boolean;
+}
+
+export interface TemplateDeepSelector {
+  /** Селектор: .n-data-table-td */
+  selector: string;
+  /** Строка */
+  line: number;
+}
+
+/**
+ * Шаблон Vue-файла — отдельная сущность.
+ *
+ * Хранит ТОЛЬКО ссылки (имена), без дубликатов объектов.
+ * Связи шаблона с функциями (event→handler, ref→expose)
+ * восстанавливаются из CallData[] по именам.
+ */
+export interface TemplateData {
+  /** ID файла (f1, f2, ...) */
+  fileId: string;
+  /** ID модуля (m1, m2, ...) */
+  moduleId: string;
+  /** root-идентификаторы шаблона (user, items, isLoading) */
+  reactivityDeps: string[];
+  /** Обработчики @click → handlerName */
+  eventHandlers: TemplateEventHandler[];
+  /** <component :is="..."> и v-bind:is */
+  dynamicComponents: TemplateDynamicComponent[];
+  /** Директивы (v-html, v-text, v-pre, v-once, v-memo, v-model, ...) */
+  directives: string[];
+  /** Использованные компоненты (PascalCase + kebab-case) */
+  usedComponents: string[];
+  /** Template refs */
+  templateRefs: TemplateRefUsage[];
+  /** CSS-переменные из <style> */
+  cssVariables: TemplateCssVariable[];
+  /** :deep() селекторы */
+  deepSelectors: TemplateDeepSelector[];
+  /** Слоты (из <slot name> и defineSlots<T>) */
+  slots: string[];
+  /** Сложность шаблона */
+  complexity: number;
+}
+
+// ============================================
 // СТАТИСТИКА
 // ============================================
 
@@ -368,6 +483,8 @@ export interface StatisticsData {
   totalCalls: number;
   /** Общее количество реэкспортов */
   totalReExports: number;
+  /** ✅ НОВОЕ v4.1.0: количество Vue-шаблонов */
+  totalTemplates?: number;
 }
 
 // ============================================
@@ -414,6 +531,18 @@ export interface EdgeData {
  *   gr.c:  [fromIdx, toIdxOrExternalIdx, line, typeCode]
  *   gr.re: [moduleIdx, funcIdx, sourceIdx, exportNameIdx,
  *           line, typeCode, isTypeOnly]
+ *
+ *   vt:    [fileIdx, moduleIdx, complexity,
+ *           reactivityDepsIdx[],
+ *           eventHandlers: [eventNameIdx, handlerNameIdx, tagIdx, line,
+ *                           modifiersIdx[], isExternal][],
+ *           dynamicComponents: [isExpressionIdx, line][],
+ *           directivesIdx[],
+ *           usedComponentsIdx[],
+ *           templateRefs: [refValueIdx, tagIdx, line, exposedMethodsIdx[]][],
+ *           cssVariables: [nameIdx, valueIdx, line, isMultiline][],
+ *           deepSelectors: [selectorIdx, line][],
+ *           slotsIdx[]]
  *
  * Все *Idx — индексы в legend.stringDict (кроме paramsIdx/methodsIdx/valueIdx).
  *   -1 означает undefined/null.
@@ -581,6 +710,55 @@ export interface CompactJSON {
     ][];
   };
 
+  /**
+   * ✅ НОВОЕ v4.1.0: Vue templates.
+   *
+   * Каждый элемент — отдельный шаблон Vue-файла.
+   * Хранит ССЫЛКИ (индексы в stringDict), а не дубликаты объектов.
+   * Рёбра (event→handler, templateRef→expose) восстанавливаются
+   * из `gr.c` по именам.
+   *
+   * Формат:
+   * [
+   *   fileIdx,                              // f1, f2, ...
+   *   moduleIdx,                            // m1, m2, ...
+   *   complexity,                           // число
+   *   reactivityDepsIdx[],                  // индексы в stringDict
+   *   eventHandlers: [                      // массив кортежей
+   *     eventNameIdx, handlerNameIdx, tagIdx, line, modifiersIdx[], isExternal
+   *   ][],
+   *   dynamicComponents: [                  // массив кортежей
+   *     isExpressionIdx, line
+   *   ][],
+   *   directivesIdx[],                      // индексы в stringDict
+   *   usedComponentsIdx[],                  // индексы в stringDict
+   *   templateRefs: [                       // массив кортежей
+   *     refValueIdx, tagIdx, line, exposedMethodsIdx[]
+   *   ][],
+   *   cssVariables: [                       // массив кортежей
+   *     nameIdx, valueIdx, line, isMultiline
+   *   ][],
+   *   deepSelectors: [                      // массив кортежей
+   *     selectorIdx, line
+   *   ][],
+   *   slotsIdx[]                            // индексы в stringDict
+   * ]
+   */
+  vt?: [
+    number, // fileIdx
+    number, // moduleIdx
+    number, // complexity
+    number[], // reactivityDepsIdx[]
+    [number, number, number, number, number[], number][], // eventHandlers
+    [number, number][], // dynamicComponents
+    number[], // directivesIdx[]
+    number[], // usedComponentsIdx[]
+    [number, number, number, number[]][], // templateRefs
+    [number, number, number, number][], // cssVariables
+    [number, number][], // deepSelectors
+    number[], // slotsIdx[]
+  ][];
+
   /** Statistics */
   st: StatisticsData;
 
@@ -646,6 +824,18 @@ export interface CodecLegend {
     'gr.c': string[];
     /** gr.re: 7 полей */
     'gr.re': string[];
+    /** ✅ НОВОЕ v4.1.0: vt — 12 полей */
+    vt: string[];
+    /** ✅ НОВОЕ v4.1.0: vt.eventHandlers — 6 полей */
+    'vt.eventHandlers': string[];
+    /** ✅ НОВОЕ v4.1.0: vt.dynamicComponents — 2 поля */
+    'vt.dynamicComponents': string[];
+    /** ✅ НОВОЕ v4.1.0: vt.templateRefs — 4 поля */
+    'vt.templateRefs': string[];
+    /** ✅ НОВОЕ v4.1.0: vt.cssVariables — 4 поля */
+    'vt.cssVariables': string[];
+    /** ✅ НОВОЕ v4.1.0: vt.deepSelectors — 2 поля */
+    'vt.deepSelectors': string[];
   };
 
   // ============================================
@@ -660,6 +850,10 @@ export interface CodecLegend {
    *   - toFileId, source, importedName, localName (imports)
    *   - external:* (calls)
    *   - source, exportName (reExports)
+   *   - reactivityDeps, eventName, handlerName, tag,
+   *     isExpression, directives, usedComponents,
+   *     refValue, exposedMethods, cssVariable name/value,
+   *     deepSelector, slots (templates)
    */
   stringDict: string[];
 
@@ -808,6 +1002,8 @@ export interface RoundTripResult {
     reExportsDiff?: number;
     /** Расхождение в количестве вызовов */
     callsDiff?: number;
+    /** ✅ НОВОЕ v4.1.0: расхождение в количестве шаблонов */
+    templatesDiff?: number;
   };
 }
 

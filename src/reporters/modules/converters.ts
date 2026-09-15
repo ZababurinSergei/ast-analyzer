@@ -16,6 +16,7 @@ import type {
   TypeInfo,
   VariableInfo,
   ImportInfo,
+  ImportSpecifier, // ✅ ДОБАВЛЕНО: явный импорт ImportSpecifier
 } from '../../types.js';
 
 // ============================================================
@@ -79,14 +80,25 @@ export function convertEntitiesToEnhanced(entities: EntitiesResult): EnhancedEnt
     enhanced.classes.push(convertClassToEnhanced(cls));
   }
 
-  // Конвертируем импорты
+  // ============================================================
+  // ✅ ИСПРАВЛЕНО: импорты конвертируются в ImportSpecifier[]
+  // ============================================================
+  // Было: specifiers возвращались как string[], что давало TS2322
+  //       (string[] несовместим с ImportSpecifier[] из ImportInfo).
+  // Стало: specifiers возвращаются как массив объектов
+  //        { local, imported, type } — точно по контракту ImportInfo.
+  // ============================================================
   if (entities.imports) {
     enhanced.imports = entities.imports.map((imp: ImportInfo) => ({
       source: imp.source,
-      specifiers: imp.specifiers.map(s =>
-        typeof s === 'string' ? s : s.imported || s.local || ''
-      ),
+      specifiers: imp.specifiers.map((s: ImportSpecifier) => ({
+        local: s.local ?? '',
+        imported: s.imported ?? s.local ?? '',
+        type: s.type ?? 'ImportSpecifier',
+      })),
       isTypeOnly: imp.isTypeOnly || false,
+      // ✅ ДОБАВЛЕНО: сохраняем loc при конвертации
+      loc: imp.loc || null,
     }));
   }
 
@@ -253,16 +265,22 @@ export function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): Entitie
     entities.variables.push(convertEnhancedVariableToVariable(varItem));
   }
 
-  // Конвертируем импорты
+  // ============================================================
+  // ✅ ИСПРАВЛЕНО: явная типизация `s: ImportSpecifier` + сохранение loc
+  // ============================================================
+  // Было: `loc: null` жёстко, что теряло исходный loc.
+  // Стало: `loc: imp.loc ?? null` — сохраняем исходное значение.
+  // ============================================================
   if (enhanced.imports) {
     entities.imports = enhanced.imports.map(imp => ({
       source: imp.source,
-      specifiers: imp.specifiers.map(s => ({
-        local: s,
-        imported: s,
-        type: 'ImportSpecifier',
+      specifiers: imp.specifiers.map((s: ImportSpecifier) => ({
+        local: s.local ?? '',
+        imported: s.imported ?? s.local ?? '',
+        type: s.type ?? 'ImportSpecifier',
       })),
-      loc: null,
+      // ✅ ИСПРАВЛЕНО: сохраняем loc вместо жёсткого null
+      loc: imp.loc ?? null,
       isTypeOnly: imp.isTypeOnly || false,
     }));
   }

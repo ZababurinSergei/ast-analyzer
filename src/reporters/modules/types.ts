@@ -1,5 +1,7 @@
 // src/reporters/modules/types.ts
-// ОБНОВЛЕННАЯ ВЕРСИЯ - добавлено поле exports в EnhancedEntityInfo
+// ОБНОВЛЕННАЯ ВЕРСИЯ - добавлено поле imports типа ImportInfo[] и template-поля Vue
+
+import type { ImportInfo } from '../../types.js';
 
 // ============================================================
 // ТИПЫ ДЛЯ ENHANCED PACKAGE LOCK REPORT
@@ -140,7 +142,7 @@ export interface EnhancedClassInfo {
 }
 
 // ============================================================
-// ✅ ОБНОВЛЕННЫЙ ТИП С ПОЛЕМ exports
+// ✅ ОБНОВЛЕННЫЙ ТИП С ПОЛЕМ imports: ImportInfo[] И TEMPLATE-ПОЛЯМИ
 // ============================================================
 
 export interface EnhancedEntityInfo {
@@ -150,12 +152,18 @@ export interface EnhancedEntityInfo {
   interfaces: EnhancedInterfaceInfo[];
   types: EnhancedTypeInfo[];
   classes: EnhancedClassInfo[];
-  imports?: {
-    source: string;
-    specifiers: string[];
-    isTypeOnly: boolean;
-    loc?: any;
-  }[];
+
+  /**
+   * ✅ ИСПРАВЛЕНО: тип `ImportInfo[]` вместо устаревшего
+   * `{ source: string; specifiers: string[]; isTypeOnly: boolean }[]`.
+   *
+   * Причина: в v7.1.0 структура import specifiers изменилась —
+   * теперь это `ImportSpecifier[]` (массив объектов `{ local, imported, type }`),
+   * а не `string[]`. Присваивание `entities.imports` (тип `ImportInfo[]`)
+   * в `EnhancedEntityInfo` давало TS2322.
+   */
+  imports?: ImportInfo[];
+
   /** ✅ ДОБАВЛЕНО: экспорты из файла */
   exports?: {
     name: string;
@@ -167,6 +175,57 @@ export interface EnhancedEntityInfo {
     loc?: any;
     specifier?: string;
   }[];
+
+  // ==========================================
+  // ✅ НОВОЕ: template-поля Vue
+  // Хранят ТОЛЬКО ссылки (имена/примитивы),
+  // без дубликатов объектов.
+  // ==========================================
+
+  /** root-идентификаторы шаблона (user, items, isLoading) */
+  templateReactivityDeps?: string[];
+
+  /** Обработчики событий @click → handlerName */
+  templateEventHandlers?: {
+    eventName: string;
+    handlerName: string;
+    tag: string;
+    line: number;
+    modifiers: string[];
+    isExternal?: boolean;
+  }[];
+
+  /** <component :is="..."> и v-bind:is */
+  templateDynamicComponents?: {
+    isExpression: string;
+    line: number;
+  }[];
+
+  /** CSS-переменные из <style> */
+  templateCssVariables?: {
+    name: string;
+    value?: string;
+    line: number;
+    isMultiline?: boolean;
+  }[];
+
+  /** :deep() селекторы */
+  templateDeepSelectors?: {
+    selector: string;
+    line: number;
+  }[];
+
+  /** Директивы (v-html, v-text, v-pre, v-once, v-memo, v-model, ...) */
+  templateDirectives?: string[];
+
+  /** Использованные компоненты (PascalCase + kebab-case) */
+  templateUsedComponents?: string[];
+
+  /** Слоты (из <slot name="..."> и defineSlots<T>()) */
+  templateSlots?: string[];
+
+  /** Сложность шаблона */
+  templateComplexity?: number;
 }
 
 // ============================================================

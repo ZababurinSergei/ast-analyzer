@@ -2,7 +2,13 @@
 // ============================================
 // ЕДИНАЯ ТОЧКА ВХОДА ДЛЯ КОДЕКА
 // ============================================
-// Версия: 3.1.0 (Стратегия B — строгий round-trip)
+// Версия: 3.2.0 (Стратегия B — строгий round-trip + Vue templates)
+//
+// ИЗМЕНЕНИЯ v3.2.0:
+//   - ✅ ДОБАВЛЕНЫ экспорты типов Vue-шаблонов:
+//       TemplateData, TemplateEventHandler, TemplateDynamicComponent,
+//       TemplateRefUsage, TemplateCssVariable, TemplateDeepSelector
+//   - ✅ CODEC_MODULE_VERSION обновлён до 3.2.0
 //
 // ИЗМЕНЕНИЯ v3.1.0:
 //   - Добавлен экспорт типа DecodeOptions
@@ -46,7 +52,7 @@ export {
   IMPORT_TYPES,
   /** Типы вызовов (direct, async, method, callback, external) */
   CALL_TYPES,
-  /** ✅ НОВОЕ: Типы реэкспортов (named, default, all) */
+  /** ✅ НОВОЕ v3.0.0: Типы реэкспортов (named, default, all) */
   RE_EXPORT_TYPES,
   /** Карта ключей: полное имя → короткое */
   KEY_MAP,
@@ -116,6 +122,26 @@ export type {
   ReExportData,
 
   // ============================================
+  // ✅ НОВОЕ v3.2.0: VUE TEMPLATES
+  // ============================================
+
+  /**
+   * Шаблон Vue-файла — отдельная сущность.
+   * Хранит ТОЛЬКО ссылки (имена, индексы), без дубликатов объектов.
+   */
+  TemplateData,
+  /** Обработчик события из шаблона (@click → handlerName) */
+  TemplateEventHandler,
+  /** Динамический компонент (<component :is="...">) */
+  TemplateDynamicComponent,
+  /** Template ref (ref="dataTable" → exposedMethods) */
+  TemplateRefUsage,
+  /** CSS-переменная из <style> */
+  TemplateCssVariable,
+  /** :deep() селектор */
+  TemplateDeepSelector,
+
+  // ============================================
   // МЕТАДАННЫЕ
   // ============================================
 
@@ -134,7 +160,7 @@ export type {
   GenerateReportResult,
   /** Результат проверки обратимости */
   RoundTripResult,
-  /** ✅ НОВОЕ: Опции декодирования CompactJSON → FullJSON */
+  /** ✅ v3.1.0: Опции декодирования CompactJSON → FullJSON */
   DecodeOptions,
 
   // ============================================
@@ -162,7 +188,7 @@ export type {
 // ВЕРСИЯ МОДУЛЯ
 // ============================================
 
-export const CODEC_MODULE_VERSION = '3.1.0';
+export const CODEC_MODULE_VERSION = '3.2.0';
 export const CODEC_MODULE_NAME = '@newkind/ast-analyzer/reporters/codec';
 
 // ============================================

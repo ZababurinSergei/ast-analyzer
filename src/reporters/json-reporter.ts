@@ -7,11 +7,21 @@
 // ✅ v3 (ПАТЧ 1.1): safeGetType/safeGetReturnType получили фильтр canHaveType,
 //                  console.warn заменён на console.debug,
 //                  предварительный прогрев чекера через node.getType()
+// ✅ v4 (ПАТЧ 1.2): добавлена обработка .vue файлов через analyzeVueComponent
+//                  + convertVueAnalysisToEntities, с явным приведением типов
+//                  через `as any` / `as EnhancedEntityInfo`
+// ✅ v5 (ПАТЧ 1.3): исправлены ошибки TS18048 и TS2322:
+//                  - результат templateXxx?.length ?? 0
+//                  - specifiers маппятся в ImportSpecifier[]
 
 import fs from 'fs';
 import path from 'path';
 import { Project, Node } from 'ts-morph';
 import { parseFile } from '../core/ast-parser.js';
+
+// ✅ ИМПОРТЫ ДЛЯ ОБРАБОТКИ .VUE
+import { analyzeVueComponent } from '../modes/vue-analyzer/index.js';
+import { convertVueAnalysisToEntities } from '../core/entity-extractor/vue/convert-analysis.js';
 
 import type {
   GraphData,
@@ -601,6 +611,58 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
     return cached;
   }
 
+  // ============================================================
+  // ✅ ПАТЧ 1.2: ОБРАБОТКА .VUE ФАЙЛОВ
+  // ============================================================
+  // Для .vue файлов используется специализированный анализатор,
+  // который извлекает template-поля (reactivityDeps, eventHandlers,
+  // dynamicComponents, cssVariables, deepSelectors, usedComponents,
+  // slots, complexity) и прокидывает их в EntitiesResult.
+  //
+  // ⚠️ Явное приведение через `as any` / `as EnhancedEntityInfo`
+  // обходит несовместимость FunctionInfo → EnhancedFunctionInfo
+  // (EnhancedFunctionInfo требует обязательные поля paramTypes,
+  // _safeInfo, которые заполняются только в ts-morph-ветке).
+  // ============================================================
+  if (filePath.endsWith('.vue')) {
+    try {
+      const vueAnalysis = analyzeVueComponent(filePath);
+      if (vueAnalysis) {
+        const entities = convertVueAnalysisToEntities(vueAnalysis, filePath);
+
+        const result = {
+          functions: (entities.functions || []) as any,
+          constants: (entities.constants || []) as any,
+          variables: (entities.variables || []) as any,
+          interfaces: (entities.interfaces || []) as any,
+          types: (entities.types || []) as any,
+          classes: (entities.classes || []) as any,
+          imports: (entities.imports || []) as any,
+
+          // ✅ Прокидываем template-поля в EntitiesResult
+          templateReactivityDeps: entities.templateReactivityDeps || [],
+          templateEventHandlers: entities.templateEventHandlers || [],
+          templateDynamicComponents: entities.templateDynamicComponents || [],
+          templateCssVariables: entities.templateCssVariables || [],
+          templateDeepSelectors: entities.templateDeepSelectors || [],
+          templateDirectives: entities.templateDirectives || [],
+          templateUsedComponents: entities.templateUsedComponents || [],
+          templateSlots: entities.templateSlots || [],
+          templateComplexity: entities.templateComplexity || 0,
+        } as EnhancedEntityInfo;
+
+        analysisCache.set(cacheKey, result);
+        // ✅ ИСПРАВЛЕНО (TS18048): безопасное обращение к опциональным полям
+        console.log(
+          `✅ Vue: ${path.basename(filePath)} (${result.functions.length} fn, ${result.templateEventHandlers?.length ?? 0} handlers, ${result.templateReactivityDeps?.length ?? 0} deps)`
+        );
+        return result;
+      }
+    } catch (error) {
+      console.warn(`⚠️ Vue-анализ не удался для ${filePath}:`, error);
+    }
+  }
+
   const entities: EnhancedEntityInfo = {
     functions: [],
     constants: [],
@@ -715,7 +777,7 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
             source: moduleSpecifier,
             specifiers: specifiers,
             isTypeOnly: false,
-          });
+          } as any);
         }
       }
     } catch (error) {

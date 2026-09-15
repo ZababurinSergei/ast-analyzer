@@ -8,6 +8,7 @@
 // ✅ ОБНОВЛЕНО v4: добавлена поддержка --include-vscode (проброс в configBuilder)
 // ✅ ОБНОВЛЕНО v5: строгая проверка options.includeVSCode === true при применении опций
 // ✅ ОБНОВЛЕНО v6: добавлена поддержка self functions через full.statistics (совместимость)
+// ✅ ОБНОВЛЕНО v7: добавлена строка "VSCode ссылки" в блок "ВКЛЮЧЕННЫЕ КОМПОНЕНТЫ"
 
 import type { Command } from 'commander';
 import path from 'path';
@@ -145,7 +146,7 @@ export class CompactRecursiveCommand {
     console.log(`   • Расширенный анализ: ${options.extendedStats !== false ? '✅' : '❌'}`);
     // ✅ ИСПРАВЛЕНО v2: показываем состояние includeBody в логе
     console.log(`   • Тела функций: ${options.includeBody === true ? '✅' : '❌'}`);
-    // ✅ ИСПРАВЛЕНО v5: показываем состояние includeVSCode в логе
+    // ✅ НОВОЕ v7: показываем состояние includeVSCode в логе "ВКЛЮЧЕННЫЕ КОМПОНЕНТЫ"
     console.log(`   • VSCode ссылки: ${options.includeVSCode === true ? '✅' : '❌'}`);
     console.log('');
 
