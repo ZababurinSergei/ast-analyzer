@@ -1,20 +1,4 @@
 // packages/ast-analyzer/src/core/entity-extractor/vue/convert-analysis.ts
-// ============================================
-// ИСПРАВЛЕННАЯ ВЕРСИЯ
-// ============================================
-// Исправления:
-//   1. Пути импортов приведены к правильным относительным путям
-//      (на 3 уровня выше до src/, на 2 уровня выше до core/)
-//   2. Добавлены явные типы для параметров (устранены TS7006)
-//   3. Импортированы недостающие типы (ConstantInfo)
-//   4. ✅ НОВОЕ v2: проброс reactivityDeps из VueComponentAnalysis.template
-//      в EntitiesResult (как templateReactivityDeps)
-//   5. ✅ НОВОЕ v3.1.0: проброс ВСЕХ template-полей в EntitiesResult
-//      (eventHandlers, dynamicComponents, cssVariables, deepSelectors,
-//       directives, usedComponents, slots, complexity)
-//      Ключевое правило: vt — отдельная сущность (шаблон),
-//      хранит ССЫЛКИ (имена/примитивы), без дубликатов объектов.
-// ============================================
 
 import path from 'path';
 import type { VueComponentAnalysis } from '../../../modes/vue-analyzer.js';
@@ -25,6 +9,10 @@ import { convertVueImportsToImportInfo } from './convert-imports.js';
 
 /**
  * Конвертер: VueAnalysis → EntitiesResult
+ *
+ * Преобразует результат анализа Vue-компонента в унифицированный
+ * результат сущностей, пригодный для дальнейшей обработки в
+ * compact-reporter и Codec.
  */
 export function convertVueAnalysisToEntities(
   vueAnalysis: VueComponentAnalysis,
@@ -34,7 +22,7 @@ export function convertVueAnalysisToEntities(
   const componentName = vueAnalysis.componentName || path.basename(filePath, '.vue');
 
   // ==========================================
-  // 0. ✅ НОВОЕ v3.1.0: проброс ВСЕХ template-полей
+  // 0. ✅ ПРОБРОС ВСЕХ TEMPLATE-ПОЛЕЙ (v3.1.0 + v9.0.0 + v9.0.1)
   // ==========================================
   // Сохраняем root-идентификаторы (reactivityDeps), обработчики событий,
   // динамические компоненты, CSS-переменные, :deep() селекторы, слоты,
@@ -55,6 +43,13 @@ export function convertVueAnalysisToEntities(
 
   (result as any).templateEventHandlers = template?.eventHandlers || [];
   (result as any).templateDynamicComponents = template?.dynamicComponents || [];
+
+  // ✅ ИСПРАВЛЕНО v9.0.1: templateRefs пробрасывается в EntitiesResult.
+  // Без этого Codec.encode получает undefined на позиции 9 vt[] и
+  // JSON.stringify обрезает массив до 9 элементов вместо 12.
+  // Это критично для round-trip (Codec.verifyRoundTrip).
+  (result as any).templateRefs = template?.templateRefs || [];
+
   (result as any).templateCssVariables = template?.cssVariables || [];
   (result as any).templateDeepSelectors = template?.deepSelectors || [];
   (result as any).templateDirectives = template?.directives || [];
@@ -62,6 +57,39 @@ export function convertVueAnalysisToEntities(
     template?.usedComponents?.map((c: { name: string }) => c.name) || [];
   (result as any).templateSlots = template?.slots || [];
   (result as any).templateComplexity = template?.complexity || 0;
+
+  // ==========================================
+  // 0.1 ✅ НОВОЕ v9.0.0: УСЛОВНЫЙ РЕНДЕРИНГ
+  // ==========================================
+  // Пробрасываем conditionals (v-if / v-else-if / v-else) из шаблона.
+  // Это ССЫЛКИ (directive, line, conditionExpression, renderedComponent),
+  // без дубликатов объектов.
+  (result as any).templateConditionals = template?.conditionals || [];
+
+  // ==========================================
+  // 0.2 ✅ НОВОЕ v9.0.0: РАСШИРЕННЫЕ СЕКЦИИ
+  // ==========================================
+  // Пробрасываем lifecycle, effects, injections, reactivity
+  // из VueComponentAnalysis в EntitiesResult.
+  //
+  // Источник данных:
+  //   - vueAnalysis.lifecycle     → extractLifecycle(content)
+  //   - vueAnalysis.effects       → extractEffects(content)
+  //   - vueAnalysis.injections    → extractInjections(content)
+  //   - vueAnalysis.reactivity    → extractReactivity(content)
+  //
+  // Эти поля заполняются в analyzeVueComponent (vue-analyzer/index.ts).
+  //
+  // compact-reporter.ts читает их как:
+  //   - e.templateLifecycle   → gr.lc (lifecycle секция)
+  //   - e.templateEffects     → gr.ef (effects секция)
+  //   - e.templateInjections  → gr.inj (injections секция)
+  //   - e.templateReactivity  → gr.rx (reactivity секция)
+  // ==========================================
+  (result as any).templateLifecycle = vueAnalysis.lifecycle || [];
+  (result as any).templateEffects = vueAnalysis.effects || [];
+  (result as any).templateInjections = vueAnalysis.injections || [];
+  (result as any).templateReactivity = vueAnalysis.reactivity || [];
 
   // ==========================================
   // 1. PROPS → ИНТЕРФЕЙСЫ + ТИПЫ
@@ -212,7 +240,7 @@ export function convertVueAnalysisToEntities(
         let innerMatch;
         while (
           (innerMatch = innerPattern.exec(scriptContent.substring(callMatch.index))) !== null
-          ) {
+        ) {
           const called = innerMatch[1];
           if (called && called !== caller && !calls.includes(called)) {
             calls.push(called);
@@ -291,7 +319,7 @@ export function convertVueAnalysisToEntities(
     `   🎯 Vue-анализ: ${result.functions.length} функций, ${result.constants.length} констант, ${result.imports.length} импортов`
   );
 
-  // ✅ НОВОЕ: логируем reactivityDeps, если они есть
+  // ✅ Логируем reactivityDeps, если они есть
   if (templateReactivityDeps.length > 0) {
     console.log(
       `   ⚡ Reactivity deps (${templateReactivityDeps.length}): ${templateReactivityDeps.slice(0, 5).join(', ')}${
@@ -300,7 +328,7 @@ export function convertVueAnalysisToEntities(
     );
   }
 
-  // ✅ НОВОЕ v3.1.0: логируем остальные template-секции
+  // ✅ Логируем остальные template-секции
   const eventHandlersCount = template?.eventHandlers?.length || 0;
   const dynamicComponentsCount = template?.dynamicComponents?.length || 0;
   const cssVariablesCount = template?.cssVariables?.length || 0;
@@ -310,11 +338,11 @@ export function convertVueAnalysisToEntities(
 
   if (
     eventHandlersCount +
-    dynamicComponentsCount +
-    cssVariablesCount +
-    deepSelectorsCount +
-    usedComponentsCount +
-    templateRefsCount >
+      dynamicComponentsCount +
+      cssVariablesCount +
+      deepSelectorsCount +
+      usedComponentsCount +
+      templateRefsCount >
     0
   ) {
     console.log(`   🎨 Template-секции Vue:`);
@@ -324,6 +352,24 @@ export function convertVueAnalysisToEntities(
     if (deepSelectorsCount) console.log(`      • deepSelectors: ${deepSelectorsCount}`);
     if (usedComponentsCount) console.log(`      • usedComponents: ${usedComponentsCount}`);
     if (templateRefsCount) console.log(`      • templateRefs: ${templateRefsCount}`);
+  }
+
+  // ==========================================
+  // 10.1 ✅ НОВОЕ v9.0.0: ЛОГИРОВАНИЕ РАСШИРЕННЫХ СЕКЦИЙ
+  // ==========================================
+  const lifecycleCount = vueAnalysis.lifecycle?.length || 0;
+  const effectsCount = vueAnalysis.effects?.length || 0;
+  const injectionsCount = vueAnalysis.injections?.length || 0;
+  const reactivityCount = vueAnalysis.reactivity?.length || 0;
+  const conditionalsCount = template?.conditionals?.length || 0;
+
+  if (lifecycleCount + effectsCount + injectionsCount + reactivityCount + conditionalsCount > 0) {
+    console.log(`   🔬 Расширенные секции Vue (v9.0.0):`);
+    if (lifecycleCount) console.log(`      • lifecycle: ${lifecycleCount}`);
+    if (effectsCount) console.log(`      • effects: ${effectsCount}`);
+    if (injectionsCount) console.log(`      • injections: ${injectionsCount}`);
+    if (reactivityCount) console.log(`      • reactivity: ${reactivityCount}`);
+    if (conditionalsCount) console.log(`      • conditionals: ${conditionalsCount}`);
   }
 
   return result;

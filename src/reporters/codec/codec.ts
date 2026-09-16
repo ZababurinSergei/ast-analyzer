@@ -2,25 +2,43 @@
 // ============================================
 // ЕДИНЫЙ МОДУЛЬ КОДЕКОВ
 // ============================================
-// Версия: 3.2.0 (Стратегия B — строгий round-trip + опции декодирования + Vue templates)
+// Версия: 9.0.2 (Стратегия B — строгий round-trip + Vue templates + lifecycle + effects + injections + reactivity + conditionals + types)
 //
-// ИЗМЕНЕНИЯ v3.2.0:
-//   - ✅ ДОБАВЛЕНО: секция vt (Vue templates) в CompactJSON
-//     vt — ОТДЕЛЬНАЯ СУЩНОСТЬ (шаблон Vue-файла), хранит ССЫЛКИ (индексы),
-//     а не дубликаты объектов.
-//   - ✅ encode: сбор vt из payload.templates
-//   - ✅ decode: восстановление templates из vt
-//   - ✅ decode: includeEmptyArrays удаляет пустой templates
-//   - ✅ arraySchemas: добавлены схемы vt, vt.eventHandlers,
-//     vt.dynamicComponents, vt.templateRefs, vt.cssVariables, vt.deepSelectors
-//   - ✅ Импорт TemplateData из './codec-types.js'
+// ИЗМЕНЕНИЯ v9.0.2 (ДИАГНОСТИКА):
+//   - ✅ ДОБАВЛЕНО: подробное логирование входных данных в Codec.encode
+//   - ✅ ДОБАВЛЕНО: проверка Array.isArray для всех секций
+//   - ✅ ДОБАВЛЕНО: проверка на undefined-элементы в массивах
+//   - ✅ ДОБАВЛЕНО: детальный вывод templates (все 12 полей)
+//   - ✅ ДОБАВЛЕНО: try/catch вокруг цикла обработки templates
+//   - ✅ ДОБАВЛЕНО: защита Array.isArray в vt-секции
+//
+// ИЗМЕНЕНИЯ v9.0.1:
+//   - ✅ ИСПРАВЛЕНО: в encode для lc/ef/rx заменено `|| 0` на `?? -1`.
+//     Ранее отсутствие функции-владельца превращалось в 0, который
+//     выглядел как валидный индекс fn1. Теперь отсутствие = -1.
+//   - ✅ ИСПРАВЛЕНО: в decode для lc/ef/rx корректно обрабатывается -1:
+//     `fn${funcIdx}` → `funcIdx >= 0 ? 'fn${funcIdx}' : ''`.
+//   - ✅ ДОБАВЛЕНО: диагностика vt.length !== 12 при AST_DEBUG_CODEC=true.
+//
+// ИЗМЕНЕНИЯ v9.0.0:
+//   - ✅ ДОБАВЛЕНО: секции lc, ef, inj, rx, cd, ty, tr в CompactJSON
+//   - ✅ ДОБАВЛЕНО: словари LIFECYCLE_TYPES, EFFECT_TYPES, INJECTION_TYPES,
+//     REACTIVITY_TYPES, CONDITIONAL_TYPES, TYPE_KINDS, TYPE_USAGE_KINDS
+//   - ✅ ДОБАВЛЕНО: vt.dynamicComponents расширен до 3 элементов
+//     (isExpressionIdx, line, resolvedComponentsIdx[])
+//   - ✅ ДОБАВЛЕНО: хелпер reverseLookup для типобезопасного маппинга
+//   - ✅ ДОБАВЛЕНО: Codec.deepEqual с нормализацией (порядок ключей, undefined)
+//   - ✅ ИСПРАВЛЕНО: verifyRoundTrip использует deepEqual вместо JSON.stringify
+//   - ✅ ИСПРАВЛЕНО: пустые секции → undefined (не [])
+//
+// ИЗМЕНЕНИЯ v8.5.0:
+//   - encode: сбор vt из payload.templates
+//   - decode: восстановление templates из vt
+//   - decode: includeEmptyArrays удаляет пустой templates
+//   - arraySchemas: добавлены схемы vt.*
 //
 // ИЗМЕНЕНИЯ v3.1.0:
-//   - decode() принимает DecodeOptions:
-//       * includeEdges      — собирать ли агрегированный массив edges
-//       * includeEmptyArrays — включать ли пустые секции в результат
-//       * includeStatistics — включать ли statistics
-//   - Обратная совместимость: decode(compact) без опций работает как раньше
+//   - decode() принимает DecodeOptions (includeEdges, includeEmptyArrays, includeStatistics)
 //
 // ИЗМЕНЕНИЯ v3.0.0:
 //   - encode: словари (stringDict, paramDict, methodDict, valueDict)
@@ -29,10 +47,8 @@
 //   - encode: gr.c использует 'e' для external-вызовов
 //   - decode: восстановление из словарей
 //   - decode: восстановление edges из gr.*
-//   - decode: корректная обработка external:*
 //   - CALL_TYPES: добавлен 'e' → 'external'
 //   - getLegend: добавлены arraySchemas и словари
-//   - verifyRoundTrip: глубокая проверка через JSON.stringify
 //   - ESLint: все Array<T> заменены на T[]
 // ============================================
 
@@ -53,6 +69,14 @@ import type {
   FileData,
   TemplateData,
   DecodeOptions,
+  // ✅ НОВОЕ v9.0.0
+  LifecycleHook,
+  EffectEdge,
+  InjectionEdge,
+  ReactivityEdge,
+  TemplateConditional,
+  TypeNodeData,
+  TypeRefData,
 } from './codec-types.js';
 
 // ============================================
@@ -195,6 +219,115 @@ export const RE_EXPORT_TYPES: Record<string, string> = {
   all: 'all',
 };
 
+// ============================================
+// v9.0.0: СЛОВАРИ ТИПОВ
+// ============================================
+
+/**
+ * Хуки жизненного цикла Vue
+ */
+export const LIFECYCLE_TYPES: Record<string, string> = {
+  m: 'onMounted',
+  u: 'onUnmounted',
+  s: 'onScopeDispose',
+  a: 'onActivated',
+  d: 'onDeactivated',
+  w: 'watch',
+  W: 'watchEffect',
+  e: 'onErrorCaptured',
+};
+
+export const LIFECYCLE_REVERSE: Record<string, string> = Object.fromEntries(
+  Object.entries(LIFECYCLE_TYPES).map(([code, name]) => [name, code])
+);
+
+/**
+ * Типы side-эффектов
+ */
+export const EFFECT_TYPES: Record<string, string> = {
+  t: 'timer',        // setTimeout / setInterval
+  c: 'cleanup',      // clearTimeout / AbortController.abort
+  p: 'promise',      // then / catch / finally
+  e: 'event',        // addEventListener
+  s: 'subscription', // .subscribe / .unsubscribe
+};
+
+export const EFFECT_REVERSE: Record<string, string> = Object.fromEntries(
+  Object.entries(EFFECT_TYPES).map(([code, name]) => [name, code])
+);
+
+/**
+ * Типы provide/inject
+ */
+export const INJECTION_TYPES: Record<string, string> = {
+  p: 'provide',
+  i: 'inject',
+};
+
+export const INJECTION_REVERSE: Record<string, string> = Object.fromEntries(
+  Object.entries(INJECTION_TYPES).map(([code, name]) => [name, code])
+);
+
+/**
+ * Типы реактивности Vue
+ */
+export const REACTIVITY_TYPES: Record<string, string> = {
+  c: 'computed',
+  w: 'watch',
+  W: 'watchEffect',
+  r: 'ref',
+  R: 'reactive',
+  S: 'shallowRef',
+  o: 'readonly',
+};
+
+export const REACTIVITY_REVERSE: Record<string, string> = Object.fromEntries(
+  Object.entries(REACTIVITY_TYPES).map(([code, name]) => [name, code])
+);
+
+/**
+ * Типы условных директив
+ */
+export const CONDITIONAL_TYPES: Record<string, string> = {
+  i: 'v-if',
+  e: 'v-else-if',
+  E: 'v-else',
+};
+
+export const CONDITIONAL_REVERSE: Record<string, string> = Object.fromEntries(
+  Object.entries(CONDITIONAL_TYPES).map(([code, name]) => [name, code])
+);
+
+/**
+ * Виды type-узлов
+ */
+export const TYPE_KINDS: Record<string, string> = {
+  i: 'interface',
+  t: 'type-alias',
+  e: 'enum',
+  c: 'class',
+};
+
+export const TYPE_KINDS_REVERSE: Record<string, string> = Object.fromEntries(
+  Object.entries(TYPE_KINDS).map(([code, name]) => [name, code])
+);
+
+/**
+ * Виды использования типов
+ */
+export const TYPE_USAGE_KINDS: Record<string, string> = {
+  p: 'param',
+  r: 'return',
+  f: 'field',
+  g: 'generic',
+  u: 'union',
+  x: 'extends',
+};
+
+export const TYPE_USAGE_KINDS_REVERSE: Record<string, string> = Object.fromEntries(
+  Object.entries(TYPE_USAGE_KINDS).map(([code, name]) => [name, code])
+);
+
 /**
  * Карта ключей: полное имя → короткое
  */
@@ -211,7 +344,7 @@ export const KEY_MAP: Record<string, string> = {
   imports: 'i',
   calls: 'c',
   reExports: 're',
-  templates: 'vt', // ✅ НОВОЕ v3.2.0
+  templates: 'vt',
   statistics: 'st',
   legend: 'legend',
   edges: 'edges',
@@ -482,6 +615,176 @@ function addValue(dict: DictBuilder, value: unknown): number {
   return idx;
 }
 
+/**
+ * ✅ v9.0.0: типобезопасный reverse lookup.
+ * Возвращает код по имени. Если имени нет — первый код словаря
+ * (гарантирует round-trip: undefined → код → имя из словаря).
+ */
+function reverseLookup(dict: Record<string, string>, name: string | undefined): string {
+  if (!name) return Object.keys(dict)[0] ?? '?';
+  const reverse = Object.fromEntries(Object.entries(dict).map(([c, n]) => [n, c]));
+  return reverse[name] ?? Object.keys(dict)[0] ?? '?';
+}
+
+// ============================================
+// ДИАГНОСТИЧЕСКИЕ ХЕЛПЕРЫ
+// ============================================
+
+/**
+ * Проверяет, является ли значение массивом, и возвращает его
+ * (или пустой массив, если нет).
+ */
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+/**
+ * Логирует состояние входных данных для Codec.encode
+ */
+function logEncodeInput(payload: FullJSON): void {
+  console.log('\n🔍 [Codec.encode] ВХОДНЫЕ ДАННЫЕ:');
+  console.log('   version:', payload?.version);
+  console.log('   root:', payload?.root);
+  console.log(
+    '   modules:',
+    Array.isArray(payload?.modules) ? payload.modules.length : 'NOT ARRAY'
+  );
+  console.log(
+    '   files:',
+    Array.isArray(payload?.files) ? payload.files.length : 'NOT ARRAY'
+  );
+  console.log(
+    '   functions:',
+    Array.isArray(payload?.functions) ? payload.functions.length : 'NOT ARRAY'
+  );
+  console.log(
+    '   classes:',
+    Array.isArray(payload?.classes) ? payload.classes.length : 'NOT ARRAY'
+  );
+  console.log(
+    '   constants:',
+    Array.isArray(payload?.constants) ? payload.constants.length : 'NOT ARRAY'
+  );
+  console.log(
+    '   exports:',
+    Array.isArray(payload?.exports) ? payload.exports.length : 'NOT ARRAY'
+  );
+  console.log(
+    '   imports:',
+    Array.isArray(payload?.imports) ? payload.imports.length : 'NOT ARRAY'
+  );
+  console.log(
+    '   calls:',
+    Array.isArray(payload?.calls) ? payload.calls.length : 'NOT ARRAY'
+  );
+  console.log(
+    '   reExports:',
+    Array.isArray(payload?.reExports) ? payload.reExports.length : 'NOT ARRAY'
+  );
+  console.log(
+    '   templates:',
+    Array.isArray(payload?.templates) ? payload.templates.length : 'NOT ARRAY'
+  );
+  console.log(
+    '   lifecycle:',
+    Array.isArray(payload?.lifecycle) ? payload.lifecycle.length : 'NOT ARRAY'
+  );
+  console.log(
+    '   effects:',
+    Array.isArray(payload?.effects) ? payload.effects.length : 'NOT ARRAY'
+  );
+  console.log(
+    '   injections:',
+    Array.isArray(payload?.injections) ? payload.injections.length : 'NOT ARRAY'
+  );
+  console.log(
+    '   reactivity:',
+    Array.isArray(payload?.reactivity) ? payload.reactivity.length : 'NOT ARRAY'
+  );
+  console.log(
+    '   conditionals:',
+    Array.isArray(payload?.conditionals) ? payload.conditionals.length : 'NOT ARRAY'
+  );
+  console.log(
+    '   types:',
+    Array.isArray(payload?.types) ? payload.types.length : 'NOT ARRAY'
+  );
+  console.log(
+    '   typeRefs:',
+    Array.isArray(payload?.typeRefs) ? payload.typeRefs.length : 'NOT ARRAY'
+  );
+
+  // Проверка на undefined-элементы
+  const checkArray = (name: string, arr: unknown) => {
+    if (!Array.isArray(arr)) return;
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i] === undefined || arr[i] === null) {
+        console.error(`   ❌ ${name}[${i}] === ${arr[i]}`);
+      }
+    }
+  };
+  checkArray('templates', payload?.templates);
+  checkArray('lifecycle', payload?.lifecycle);
+  checkArray('effects', payload?.effects);
+  checkArray('injections', payload?.injections);
+  checkArray('reactivity', payload?.reactivity);
+  checkArray('conditionals', payload?.conditionals);
+  checkArray('types', payload?.types);
+  checkArray('typeRefs', payload?.typeRefs);
+  checkArray('functions', payload?.functions);
+  checkArray('classes', payload?.classes);
+  checkArray('constants', payload?.constants);
+  checkArray('exports', payload?.exports);
+  checkArray('imports', payload?.imports);
+  checkArray('calls', payload?.calls);
+  checkArray('reExports', payload?.reExports);
+
+  // Детальная проверка templates
+  if (Array.isArray(payload?.templates)) {
+    console.log('\n🔍 [Codec.encode] ДЕТАЛИ templates:');
+    payload.templates.forEach((t: any, i: number) => {
+      if (!t) {
+        console.error(`   ❌ templates[${i}] === ${t}`);
+        return;
+      }
+      console.log(`   templates[${i}]:`);
+      console.log(`      fileId: ${t.fileId}`);
+      console.log(`      moduleId: ${t.moduleId}`);
+      console.log(
+        `      reactivityDeps: ${Array.isArray(t.reactivityDeps) ? `[${t.reactivityDeps.length}]` : typeof t.reactivityDeps} (${t.reactivityDeps === undefined ? 'UNDEFINED' : 'ok'})`
+      );
+      console.log(
+        `      eventHandlers: ${Array.isArray(t.eventHandlers) ? `[${t.eventHandlers.length}]` : typeof t.eventHandlers} (${t.eventHandlers === undefined ? 'UNDEFINED' : 'ok'})`
+      );
+      console.log(
+        `      dynamicComponents: ${Array.isArray(t.dynamicComponents) ? `[${t.dynamicComponents.length}]` : typeof t.dynamicComponents} (${t.dynamicComponents === undefined ? 'UNDEFINED' : 'ok'})`
+      );
+      console.log(
+        `      directives: ${Array.isArray(t.directives) ? `[${t.directives.length}]` : typeof t.directives} (${t.directives === undefined ? 'UNDEFINED' : 'ok'})`
+      );
+      console.log(
+        `      usedComponents: ${Array.isArray(t.usedComponents) ? `[${t.usedComponents.length}]` : typeof t.usedComponents} (${t.usedComponents === undefined ? 'UNDEFINED' : 'ok'})`
+      );
+      console.log(
+        `      templateRefs: ${Array.isArray(t.templateRefs) ? `[${t.templateRefs.length}]` : typeof t.templateRefs} (${t.templateRefs === undefined ? 'UNDEFINED' : 'ok'})`
+      );
+      console.log(
+        `      cssVariables: ${Array.isArray(t.cssVariables) ? `[${t.cssVariables.length}]` : typeof t.cssVariables} (${t.cssVariables === undefined ? 'UNDEFINED' : 'ok'})`
+      );
+      console.log(
+        `      deepSelectors: ${Array.isArray(t.deepSelectors) ? `[${t.deepSelectors.length}]` : typeof t.deepSelectors} (${t.deepSelectors === undefined ? 'UNDEFINED' : 'ok'})`
+      );
+      console.log(
+        `      slots: ${Array.isArray(t.slots) ? `[${t.slots.length}]` : typeof t.slots} (${t.slots === undefined ? 'UNDEFINED' : 'ok'})`
+      );
+      console.log(`      complexity: ${t.complexity}`);
+      console.log(
+        `      conditionals: ${Array.isArray(t.conditionals) ? `[${t.conditionals.length}]` : typeof t.conditionals} (${t.conditionals === undefined ? 'UNDEFINED' : 'ok'})`
+      );
+    });
+  }
+}
+
 // ============================================
 // ОСНОВНОЙ КОДЕК
 // ============================================
@@ -498,6 +801,14 @@ export class Codec {
    * @returns Сжатый JSON с легендой
    */
   static encode(payload: FullJSON): CompactJSON {
+    // ============================================
+    // 🔍 ДИАГНОСТИКА (v9.0.2)
+    // ============================================
+    if (process.env.AST_DEBUG_CODEC === 'true' || true) {
+      // Всегда логируем для отладки проблемы с .map()
+      logEncodeInput(payload);
+    }
+
     const dict = createDictBuilder();
 
     // ============================================
@@ -505,9 +816,10 @@ export class Codec {
     // ============================================
     const moduleIndex: Record<string, { n: string; f: string[] }> = {};
     const moduleReverse: Record<string, number> = {};
-    payload.modules.forEach((mod, idx) => {
-      moduleIndex[mod.id] = { n: mod.name, f: [...mod.fileIds] };
-      moduleReverse[mod.id] = idx + 1; // m1, m2, ...
+    asArray<ModuleData>(payload.modules).forEach((mod, idx) => {
+      if (!mod) return;
+      moduleIndex[mod.id] = { n: mod.name, f: asArray<string>(mod.fileIds) };
+      moduleReverse[mod.id] = idx + 1;
     });
 
     // ============================================
@@ -515,9 +827,10 @@ export class Codec {
     // ============================================
     const fileIndex: Record<string, { p: string; m: string }> = {};
     const fileReverse: Record<string, number> = {};
-    payload.files.forEach((file, idx) => {
+    asArray<FileData>(payload.files).forEach((file, idx) => {
+      if (!file) return;
       fileIndex[file.id] = { p: file.path, m: file.moduleId };
-      fileReverse[file.id] = idx + 1; // f1, f2, ...
+      fileReverse[file.id] = idx + 1;
     });
 
     // ============================================
@@ -526,11 +839,12 @@ export class Codec {
     const functionReverse: Record<string, number> = {};
     const functions: CompactJSON['fns'] = [];
 
-    payload.functions.forEach((func, idx) => {
+    asArray<FunctionData>(payload.functions).forEach((func, idx) => {
+      if (!func) return;
       functionReverse[func.id] = idx + 1;
 
       const flags = encodeFlags(func);
-      const paramsIdx = (func.params || []).map(p => addParam(dict, p));
+      const paramsIdx = asArray<string>(func.params).map(p => addParam(dict, p));
       const returnTypeIdx = addString(dict, func.returnType);
 
       functions.push([
@@ -548,9 +862,9 @@ export class Codec {
     // ============================================
     // 4. Индексы классов
     // ============================================
-    const classes: CompactJSON['cls'] = payload.classes.map(cls => {
+    const classes: CompactJSON['cls'] = asArray<ClassData>(payload.classes).map(cls => {
       const flags = encodeFlags(cls);
-      const methodsIdx = (cls.methods || []).map(m => addMethod(dict, m));
+      const methodsIdx = asArray<string>(cls.methods).map(m => addMethod(dict, m));
 
       return [
         cls.id,
@@ -566,7 +880,7 @@ export class Codec {
     // ============================================
     // 5. Индексы констант
     // ============================================
-    const constants: CompactJSON['cn'] = payload.constants.map(cn => {
+    const constants: CompactJSON['cn'] = asArray<ConstantData>(payload.constants).map(cn => {
       const flags = encodeFlags(cn);
       const valueIdx = addValue(dict, cn.value);
 
@@ -584,7 +898,7 @@ export class Codec {
     // ============================================
     // 6. Экспорты (gr.e)
     // ============================================
-    const exports: CompactJSON['gr']['e'] = payload.exports.map(exp => {
+    const exports: CompactJSON['gr']['e'] = asArray<ExportData>(payload.exports).map(exp => {
       const moduleIdx = moduleReverse[exp.moduleId] || 0;
       const fileIdx = fileReverse[exp.fileId] || 0;
       const funcIdx = functionReverse[exp.functionId] || 0;
@@ -614,13 +928,9 @@ export class Codec {
     // ============================================
     // 7. Импорты (gr.i)
     // ============================================
-    const imports: CompactJSON['gr']['i'] = payload.imports.map(imp => {
+    const imports: CompactJSON['gr']['i'] = asArray<ImportData>(payload.imports).map(imp => {
       const fromFileIdx = fileReverse[imp.fromFileId] || 0;
-
-      // toFileId может быть:
-      //   'f5' | 'external:vue' | 'unresolved:./foo' | null
       const toFileIdIdx = addString(dict, imp.toFileId ?? '');
-
       const sourceIdx = addString(dict, imp.source);
       const importedNameIdx = addString(dict, imp.importedName);
       const localNameIdx = addString(dict, imp.localName);
@@ -645,14 +955,13 @@ export class Codec {
     // ============================================
     // 8. Вызовы (gr.c)
     // ============================================
-    const calls: CompactJSON['gr']['c'] = payload.calls.map(call => {
+    const calls: CompactJSON['gr']['c'] = asArray<CallData>(payload.calls).map(call => {
       const fromIdx = functionReverse[call.fromFunctionId] || 0;
 
       let toIdxOrExternalIdx: number;
       let typeCode: string;
 
       if (call.toFunctionId.startsWith('external:')) {
-        // Внешний вызов — кодируем через stringDict + 'e'
         toIdxOrExternalIdx = addString(dict, call.toFunctionId);
         typeCode = 'e';
       } else {
@@ -666,7 +975,7 @@ export class Codec {
     // ============================================
     // 9. Реэкспорты (gr.re)
     // ============================================
-    const reExports: CompactJSON['gr']['re'] = payload.reExports.map(re => {
+    const reExports: CompactJSON['gr']['re'] = asArray<ReExportData>(payload.reExports).map(re => {
       const moduleIdx = moduleReverse[re.moduleId] || 0;
       const funcIdx = functionReverse[re.functionId] || 0;
 
@@ -691,86 +1000,287 @@ export class Codec {
     // ============================================
     // 9.5. Vue templates (vt) — ОТДЕЛЬНЫЕ СУЩНОСТИ
     // ============================================
-    // vt хранит ССЫЛКИ (индексы в stringDict), а не дубликаты объектов.
-    // Связи event → handler и templateRef → expose живут в calls (gr.c),
-    // здесь — только описание самого шаблона.
-    // ============================================
     const vueTemplates: NonNullable<CompactJSON['vt']> = [];
 
-    for (const template of payload.templates || []) {
-      const fileIdx = fileReverse[template.fileId] || 0;
-      const moduleIdx = moduleReverse[template.moduleId] || 0;
+    for (const template of asArray<TemplateData>(payload.templates)) {
+      // 🔍 ДИАГНОСТИКА: проверка template
+      if (!template) {
+        console.error('❌ [Codec.encode] template === undefined, skip');
+        continue;
+      }
 
-      const reactivityDepsIdx = (template.reactivityDeps || []).map((d: string) =>
-        addString(dict, d)
+      if (process.env.AST_DEBUG_CODEC === 'true' || true) {
+        console.log(`\n🔍 [Codec.encode] Обработка template: ${template.fileId || 'unknown'}`);
+        console.log('   reactivityDeps is array?', Array.isArray(template.reactivityDeps));
+        console.log('   eventHandlers is array?', Array.isArray(template.eventHandlers));
+        console.log('   dynamicComponents is array?', Array.isArray(template.dynamicComponents));
+        console.log('   directives is array?', Array.isArray(template.directives));
+        console.log('   usedComponents is array?', Array.isArray(template.usedComponents));
+        console.log('   templateRefs is array?', Array.isArray(template.templateRefs));
+        console.log('   cssVariables is array?', Array.isArray(template.cssVariables));
+        console.log('   deepSelectors is array?', Array.isArray(template.deepSelectors));
+        console.log('   slots is array?', Array.isArray(template.slots));
+        console.log('   conditionals is array?', Array.isArray(template.conditionals));
+      }
+
+      try {
+        const fileIdx = fileReverse[template.fileId] || 0;
+        const moduleIdx = moduleReverse[template.moduleId] || 0;
+
+        // ✅ v9.0.2: используем asArray вместо || []
+        const reactivityDepsIdx = asArray<string>(template.reactivityDeps).map((d: string) =>
+          addString(dict, d)
+        );
+
+        // ✅ v9.0.2: защита от undefined-элементов в eventHandlers
+        const eventHandlersRaw = asArray<any>(template.eventHandlers);
+        console.log(`   → eventHandlers длина: ${eventHandlersRaw.length}`);
+
+        const eventHandlers: [
+          number,
+          number,
+          number,
+          number,
+          number[],
+          number,
+        ][] = eventHandlersRaw.map((h: any) => {
+          if (!h) {
+            console.error('   ❌ eventHandler === undefined');
+            return [0, 0, 0, 0, [], 0];
+          }
+          return [
+            addString(dict, h.eventName),
+            addString(dict, h.handlerName),
+            addString(dict, h.tag),
+            h.line || 0,
+            asArray<string>(h.modifiers).map((m: string) => addString(dict, m)),
+            h.isExternal ? 1 : 0,
+          ];
+        });
+
+        // ✅ v9.0.2: защита от undefined-элементов в dynamicComponents
+        const dynamicComponentsRaw = asArray<any>(template.dynamicComponents);
+        console.log(`   → dynamicComponents длина: ${dynamicComponentsRaw.length}`);
+
+        const dynamicComponents: [number, number, number[]][] = dynamicComponentsRaw.map(
+          (d: any) => {
+            if (!d) {
+              console.error('   ❌ dynamicComponent === undefined');
+              return [0, 0, []];
+            }
+            return [
+              addString(dict, d.isExpression),
+              d.line || 0,
+              asArray<string>(d.resolvedComponents).map((c: string) => addString(dict, c)),
+            ];
+          }
+        );
+
+        const directivesIdx = asArray<string>(template.directives).map((d: string) =>
+          addString(dict, d)
+        );
+
+        const usedComponentsIdx = asArray<string>(template.usedComponents).map((c: string) =>
+          addString(dict, c)
+        );
+
+        // ✅ v9.0.2: защита от undefined-элементов в templateRefs
+        const templateRefsRaw = asArray<any>(template.templateRefs);
+        console.log(`   → templateRefs длина: ${templateRefsRaw.length}`);
+
+        const templateRefs: [number, number, number, number[]][] = templateRefsRaw.map(
+          (r: any) => {
+            if (!r) {
+              console.error('   ❌ templateRef === undefined');
+              return [0, 0, 0, []];
+            }
+            return [
+              addString(dict, r.refValue),
+              addString(dict, r.tag),
+              r.line || 0,
+              asArray<string>(r.exposedMethods).map((m: string) => addString(dict, m)),
+            ];
+          }
+        );
+
+        // ✅ v9.0.2: защита от undefined-элементов в cssVariables
+        const cssVariablesRaw = asArray<any>(template.cssVariables);
+        console.log(`   → cssVariables длина: ${cssVariablesRaw.length}`);
+
+        const cssVariables: [number, number, number, number][] = cssVariablesRaw.map(
+          (v: any) => {
+            if (!v) {
+              console.error('   ❌ cssVariable === undefined');
+              return [0, -1, 0, 0];
+            }
+            return [
+              addString(dict, v.name),
+              addString(dict, v.value),
+              v.line || 0,
+              v.isMultiline ? 1 : 0,
+            ];
+          }
+        );
+
+        // ✅ v9.0.2: защита от undefined-элементов в deepSelectors
+        const deepSelectorsRaw = asArray<any>(template.deepSelectors);
+        console.log(`   → deepSelectors длина: ${deepSelectorsRaw.length}`);
+
+        const deepSelectors: [number, number][] = deepSelectorsRaw.map((s: any) => {
+          if (!s) {
+            console.error('   ❌ deepSelector === undefined');
+            return [0, 0];
+          }
+          return [addString(dict, s.selector), s.line || 0];
+        });
+
+        const slotsIdx = asArray<string>(template.slots).map((s: string) => addString(dict, s));
+
+        vueTemplates.push([
+          fileIdx,
+          moduleIdx,
+          template.complexity || 0,
+          reactivityDepsIdx,
+          eventHandlers,
+          dynamicComponents,
+          directivesIdx,
+          usedComponentsIdx,
+          templateRefs,
+          cssVariables,
+          deepSelectors,
+          slotsIdx,
+        ]);
+      } catch (err) {
+        console.error('❌ [Codec.encode] Ошибка в template:', template?.fileId, err);
+        console.error(
+          '   template =',
+          JSON.stringify(template, null, 2).substring(0, 2000)
+        );
+      }
+    }
+
+    // ✅ v9.0.1: диагностика vt.length !== 12
+    if (process.env.AST_DEBUG_CODEC === 'true') {
+      for (let i = 0; i < vueTemplates.length; i++) {
+        const vt = vueTemplates[i];
+        if (vt && vt.length !== 12) {
+          console.warn(
+            `⚠️ [Codec.encode] vt[${i}] содержит ${vt.length} полей вместо 12. ` +
+            `Поля 9-12 (templateRefs, cssVariables, deepSelectors, slotsIdx) ` +
+            `отсутствуют в TemplateData. Проверьте compact-reporter.ts::collectFullJSON ` +
+            `и json-reporter.ts::extractEntitiesFromFile (.vue ветка).`
+          );
+        }
+      }
+    }
+
+    // ============================================
+    // 9.6. v9.0.0: LIFECYCLE (lc)
+    // ============================================
+    const lifecycle: NonNullable<CompactJSON['lc']> = [];
+    for (const lc of asArray<LifecycleHook>(payload.lifecycle)) {
+      if (!lc) continue;
+      const funcIdx = functionReverse[lc.functionId] ?? -1;
+      const callbackFnIdx = lc.callbackFunctionId
+        ? (functionReverse[lc.callbackFunctionId] ?? -1)
+        : -1;
+      const hookCode = reverseLookup(LIFECYCLE_TYPES, lc.hookName);
+      const flags = lc.isSetupContext ? 's' : '0';
+      lifecycle.push([hookCode, funcIdx, lc.line, callbackFnIdx, flags]);
+    }
+
+    // ============================================
+    // 9.7. v9.0.0: EFFECTS (ef)
+    // ============================================
+    const effects: NonNullable<CompactJSON['ef']> = [];
+    for (const ef of asArray<EffectEdge>(payload.effects)) {
+      if (!ef) continue;
+      const funcIdx = functionReverse[ef.functionId] ?? -1;
+      const targetIdx = addString(dict, ef.targetName);
+      const metaIdx = addString(dict, ef.metaValue);
+      const effectCode = reverseLookup(EFFECT_TYPES, ef.effectType);
+      effects.push([effectCode, funcIdx, ef.line, targetIdx, metaIdx]);
+    }
+
+    // ============================================
+    // 9.8. v9.0.0: INJECTIONS (inj)
+    // ============================================
+    const injections: NonNullable<CompactJSON['inj']> = [];
+    for (const inj of asArray<InjectionEdge>(payload.injections)) {
+      if (!inj) continue;
+      const fileIdx = fileReverse[inj.fileId] || 0;
+      const keyIdx = addString(dict, inj.key);
+      const kindCode = reverseLookup(INJECTION_TYPES, inj.kind);
+      let flags = 0;
+      if (inj.isSymbolKey) flags |= 1;
+      if (inj.hasDefault) flags |= 2;
+      injections.push([kindCode, fileIdx, inj.line, keyIdx, flags]);
+    }
+
+    // ============================================
+    // 9.9. v9.0.0: REACTIVITY (rx)
+    // ============================================
+    const reactivity: NonNullable<CompactJSON['rx']> = [];
+    for (const rx of asArray<ReactivityEdge>(payload.reactivity)) {
+      if (!rx) continue;
+      const funcIdx = functionReverse[rx.functionId] ?? -1;
+      const readsIdx = asArray<string>(rx.reads).map((r: string) => addString(dict, r));
+      const writesIdx = asArray<string>(rx.writes).map((w: string) => addString(dict, w));
+      const kindCode = reverseLookup(REACTIVITY_TYPES, rx.kind);
+      const flags = rx.isWriteable ? 1 : 0;
+      reactivity.push([kindCode, funcIdx, rx.line, readsIdx, writesIdx, flags]);
+    }
+
+    // ============================================
+    // 9.10. v9.0.0: CONDITIONALS (cd)
+    // ============================================
+    const conditionals: NonNullable<CompactJSON['cd']> = [];
+    for (const cd of asArray<TemplateConditional>(payload.conditionals)) {
+      if (!cd) continue;
+      const fileIdx = fileReverse[cd.fileId] || 0;
+      const condIdx = addString(dict, cd.conditionExpression);
+      const compIdx = addString(dict, cd.renderedComponent);
+      const directiveCode = reverseLookup(CONDITIONAL_TYPES, cd.directive);
+      const flags = 0;
+      conditionals.push([directiveCode, fileIdx, cd.line, condIdx, compIdx, flags]);
+    }
+
+    // ============================================
+    // 9.11. v9.0.0: TYPES (ty)
+    // ============================================
+    const types: NonNullable<CompactJSON['ty']> = [];
+    for (const ty of asArray<TypeNodeData>(payload.types)) {
+      if (!ty) continue;
+      const moduleIdx = moduleReverse[ty.moduleId] || 0;
+      const fileIdx = fileReverse[ty.fileId] || 0;
+      const nameIdx = addString(dict, ty.name);
+      const membersIdx = asArray<string>(ty.members).map((m: string) => addString(dict, m));
+      const extendsIdx = asArray<string>(ty.extendsTypes).map((e: string) =>
+        addString(dict, e)
       );
-
-      const eventHandlers: [
-        number,
-        number,
-        number,
-        number,
-        number[],
-        number,
-      ][] = (template.eventHandlers || []).map((h: any) => [
-        addString(dict, h.eventName),
-        addString(dict, h.handlerName),
-        addString(dict, h.tag),
-        h.line || 0,
-        (h.modifiers || []).map((m: string) => addString(dict, m)),
-        h.isExternal ? 1 : 0,
-      ]);
-
-      const dynamicComponents: [number, number][] = (
-        template.dynamicComponents || []
-      ).map((d: any) => [addString(dict, d.isExpression), d.line || 0]);
-
-      const directivesIdx = (template.directives || []).map((d: string) =>
-        addString(dict, d)
-      );
-
-      const usedComponentsIdx = (template.usedComponents || []).map((c: string) =>
-        addString(dict, c)
-      );
-
-      const templateRefs: [number, number, number, number[]][] = (
-        template.templateRefs || []
-      ).map((r: any) => [
-        addString(dict, r.refValue),
-        addString(dict, r.tag),
-        r.line || 0,
-        (r.exposedMethods || []).map((m: string) => addString(dict, m)),
-      ]);
-
-      const cssVariables: [number, number, number, number][] = (
-        template.cssVariables || []
-      ).map((v: any) => [
-        addString(dict, v.name),
-        addString(dict, v.value),
-        v.line || 0,
-        v.isMultiline ? 1 : 0,
-      ]);
-
-      const deepSelectors: [number, number][] = (template.deepSelectors || []).map(
-        (s: any) => [addString(dict, s.selector), s.line || 0]
-      );
-
-      const slotsIdx = (template.slots || []).map((s: string) => addString(dict, s));
-
-      vueTemplates.push([
-        fileIdx,
+      const kindCode = reverseLookup(TYPE_KINDS, ty.kind);
+      types.push([
+        kindCode,
+        nameIdx,
         moduleIdx,
-        template.complexity || 0,
-        reactivityDepsIdx,
-        eventHandlers,
-        dynamicComponents,
-        directivesIdx,
-        usedComponentsIdx,
-        templateRefs,
-        cssVariables,
-        deepSelectors,
-        slotsIdx,
+        fileIdx,
+        ty.line,
+        membersIdx,
+        extendsIdx,
       ]);
+    }
+
+    // ============================================
+    // 9.12. v9.0.0: TYPE REFS (tr)
+    // ============================================
+    const typeRefs: NonNullable<CompactJSON['tr']> = [];
+    for (const tr of asArray<TypeRefData>(payload.typeRefs)) {
+      if (!tr) continue;
+      const moduleIdx = moduleReverse[tr.moduleId] || 0;
+      const fileIdx = fileReverse[tr.fileId] || 0;
+      const typeNameIdx = addString(dict, tr.typeName);
+      const usageCode = reverseLookup(TYPE_USAGE_KINDS, tr.usageKind);
+      typeRefs.push([typeNameIdx, moduleIdx, fileIdx, tr.line, usageCode]);
     }
 
     // ============================================
@@ -786,6 +1296,14 @@ export class Codec {
       importTypes: { ...IMPORT_TYPES },
       callTypes: { ...CALL_TYPES },
       reExportTypes: { ...RE_EXPORT_TYPES },
+      // ✅ v9.0.0
+      lifecycleTypes: { ...LIFECYCLE_TYPES },
+      effectTypes: { ...EFFECT_TYPES },
+      injectionTypes: { ...INJECTION_TYPES },
+      reactivityTypes: { ...REACTIVITY_TYPES },
+      conditionalTypes: { ...CONDITIONAL_TYPES },
+      typeKinds: { ...TYPE_KINDS },
+      typeUsageKinds: { ...TYPE_USAGE_KINDS },
 
       arraySchemas: {
         fns: [
@@ -815,7 +1333,6 @@ export class Codec {
           'moduleIdx', 'funcIdx', 'sourceIdx', 'exportNameIdx',
           'line', 'typeCode', 'isTypeOnly',
         ],
-        // ✅ НОВОЕ v3.2.0: схемы для vt
         vt: [
           'fileIdx', 'moduleIdx', 'complexity',
           'reactivityDepsIdx', 'eventHandlers', 'dynamicComponents',
@@ -826,12 +1343,24 @@ export class Codec {
           'eventNameIdx', 'handlerNameIdx', 'tagIdx',
           'line', 'modifiersIdx', 'isExternal',
         ],
-        'vt.dynamicComponents': ['isExpressionIdx', 'line'],
+        // ✅ v9.0.0: расширено до 3 полей
+        'vt.dynamicComponents': ['isExpressionIdx', 'line', 'resolvedComponentsIdx'],
         'vt.templateRefs': [
           'refValueIdx', 'tagIdx', 'line', 'exposedMethodsIdx',
         ],
         'vt.cssVariables': ['nameIdx', 'valueIdx', 'line', 'isMultiline'],
         'vt.deepSelectors': ['selectorIdx', 'line'],
+        // ✅ v9.0.0
+        lc: ['hookCode', 'funcIdx', 'line', 'callbackFnIdx', 'flags'],
+        ef: ['effectCode', 'funcIdx', 'line', 'targetIdx', 'metaIdx'],
+        inj: ['kindCode', 'fileIdx', 'line', 'keyIdx', 'flags'],
+        rx: ['kindCode', 'funcIdx', 'line', 'readsIdx', 'writesIdx', 'flags'],
+        cd: ['directiveCode', 'fileIdx', 'line', 'condIdx', 'compIdx', 'flags'],
+        ty: [
+          'kindCode', 'nameIdx', 'moduleIdx', 'fileIdx',
+          'line', 'membersIdx', 'extendsIdx',
+        ],
+        tr: ['typeNameIdx', 'moduleIdx', 'fileIdx', 'line', 'usageCode'],
       },
 
       stringDict: dict.stringDict,
@@ -843,7 +1372,7 @@ export class Codec {
     // ============================================
     // 11. Сборка результата
     // ============================================
-    return {
+    const compact: CompactJSON = {
       v: payload.version,
       ts: payload.timestamp,
       r: payload.root,
@@ -856,7 +1385,35 @@ export class Codec {
       vt: vueTemplates.length > 0 ? vueTemplates : undefined,
       st: payload.statistics,
       legend,
+      lc: lifecycle.length > 0 ? lifecycle : undefined,
+      ef: effects.length > 0 ? effects : undefined,
+      inj: injections.length > 0 ? injections : undefined,
+      rx: reactivity.length > 0 ? reactivity : undefined,
+      cd: conditionals.length > 0 ? conditionals : undefined,
+      ty: types.length > 0 ? types : undefined,
+      tr: typeRefs.length > 0 ? typeRefs : undefined,
     };
+
+    // ✅ v9.0.0: удаляем пустые секции (кроме gr)
+    for (const key of Object.keys(compact) as (keyof CompactJSON)[]) {
+      if (key === 'gr') continue;
+      const v = compact[key];
+      if (Array.isArray(v) && v.length === 0) {
+        delete (compact as any)[key];
+      }
+    }
+
+    console.log('\n🔍 [Codec.encode] ГОТОВО:');
+    console.log('   vt:', compact.vt?.length ?? 0);
+    console.log('   lc:', compact.lc?.length ?? 0);
+    console.log('   ef:', compact.ef?.length ?? 0);
+    console.log('   inj:', compact.inj?.length ?? 0);
+    console.log('   rx:', compact.rx?.length ?? 0);
+    console.log('   cd:', compact.cd?.length ?? 0);
+    console.log('   ty:', compact.ty?.length ?? 0);
+    console.log('   tr:', compact.tr?.length ?? 0);
+
+    return compact;
   }
 
   // ============================================
@@ -869,17 +1426,6 @@ export class Codec {
    * @param compact - Сжатый JSON с легендой
    * @param options - Опции декодирования (см. DecodeOptions)
    * @returns Полный JSON
-   *
-   * @example
-   * // Полный результат (по умолчанию) — с edges и всеми секциями
-   * const full = Codec.decode(compact);
-   *
-   * @example
-   * // Без агрегированного графа edges и без пустых секций
-   * const full = Codec.decode(compact, {
-   *   includeEdges: false,
-   *   includeEmptyArrays: false,
-   * });
    */
   static decode(compact: CompactJSON, options: DecodeOptions = {}): FullJSON {
     const {
@@ -1086,7 +1632,6 @@ export class Codec {
         let callType: CallData['type'];
 
         if (typeChar === 'e') {
-          // Внешний вызов — toIdxOrExternalIdx — индекс в stringDict
           toFunctionId = readStringOrEmpty(toIdxOrExternalIdx);
           callType = 'direct';
         } else {
@@ -1134,7 +1679,22 @@ export class Codec {
     );
 
     // ============================================
-    // 9.5. Vue templates (vt) — восстановление
+    // 9.5. v9.0.0: CONDITIONALS (cd) — восстановление
+    // ============================================
+    const conditionals: TemplateConditional[] | undefined = compact.cd
+      ? compact.cd.map(([directiveCode, fileIdx, line, condIdx, compIdx], idx) => ({
+        id: `cd${idx + 1}`,
+        directive: (CONDITIONAL_TYPES[directiveCode] ||
+          'v-if') as TemplateConditional['directive'],
+        fileId: `f${fileIdx}`,
+        line,
+        conditionExpression: condIdx >= 0 ? readString(condIdx) : undefined,
+        renderedComponent: compIdx >= 0 ? readString(compIdx) : undefined,
+      }))
+      : undefined;
+
+    // ============================================
+    // 9.6. Vue templates (vt) — восстановление
     // ============================================
     const templates: TemplateData[] = (compact.vt || []).map(
       ([
@@ -1150,59 +1710,185 @@ export class Codec {
          cssVariables,
          deepSelectors,
          slotsIdx,
-       ]) => ({
-        fileId: `f${fileIdx}`,
-        moduleId: `m${moduleIdx}`,
-        complexity,
-        reactivityDeps: (reactivityDepsIdx || []).map(readStringOrEmpty),
-        eventHandlers: (eventHandlers || []).map(
-          ([
-             eventNameIdx,
-             handlerNameIdx,
-             tagIdx,
-             line,
-             modifiersIdx,
-             isExternal,
-           ]) => ({
-            eventName: readStringOrEmpty(eventNameIdx),
-            handlerName: readStringOrEmpty(handlerNameIdx),
-            tag: readStringOrEmpty(tagIdx),
+       ]) => {
+        const fileId = `f${fileIdx}`;
+        return {
+          fileId,
+          moduleId: `m${moduleIdx}`,
+          complexity,
+          reactivityDeps: (reactivityDepsIdx || []).map(readStringOrEmpty),
+          eventHandlers: (eventHandlers || []).map(
+            ([
+               eventNameIdx,
+               handlerNameIdx,
+               tagIdx,
+               line,
+               modifiersIdx,
+               isExternal,
+             ]) => ({
+              eventName: readStringOrEmpty(eventNameIdx),
+              handlerName: readStringOrEmpty(handlerNameIdx),
+              tag: readStringOrEmpty(tagIdx),
+              line,
+              modifiers: (modifiersIdx || []).map(readStringOrEmpty),
+              isExternal: isExternal === 1,
+            })
+          ),
+          // ✅ v9.0.0: восстановление resolvedComponents
+          dynamicComponents: (dynamicComponents || []).map(
+            ([isExpressionIdx, line, resolvedComponentsIdx]) => ({
+              isExpression: readStringOrEmpty(isExpressionIdx),
+              line,
+              resolvedComponents: (resolvedComponentsIdx || [])
+                .map(readStringOrEmpty)
+                .filter((s: string) => s !== ''),
+            })
+          ),
+          directives: (directivesIdx || []).map(readStringOrEmpty),
+          usedComponents: (usedComponentsIdx || []).map(readStringOrEmpty),
+          templateRefs: (templateRefs || []).map(
+            ([refValueIdx, tagIdx, line, exposedMethodsIdx]) => ({
+              refValue: readStringOrEmpty(refValueIdx),
+              tag: readStringOrEmpty(tagIdx),
+              line,
+              exposedMethods: (exposedMethodsIdx || []).map(readStringOrEmpty),
+            })
+          ),
+          cssVariables: (cssVariables || []).map(
+            ([nameIdx, valueIdx, line, isMultiline]) => ({
+              name: readStringOrEmpty(nameIdx),
+              value: valueIdx >= 0 ? readStringOrEmpty(valueIdx) : undefined,
+              line,
+              isMultiline: isMultiline === 1,
+            })
+          ),
+          deepSelectors: (deepSelectors || []).map(([selectorIdx, line]) => ({
+            selector: readStringOrEmpty(selectorIdx),
             line,
-            modifiers: (modifiersIdx || []).map(readStringOrEmpty),
-            isExternal: isExternal === 1,
-          })
-        ),
-        dynamicComponents: (dynamicComponents || []).map(
-          ([isExpressionIdx, line]) => ({
-            isExpression: readStringOrEmpty(isExpressionIdx),
-            line,
-          })
-        ),
-        directives: (directivesIdx || []).map(readStringOrEmpty),
-        usedComponents: (usedComponentsIdx || []).map(readStringOrEmpty),
-        templateRefs: (templateRefs || []).map(
-          ([refValueIdx, tagIdx, line, exposedMethodsIdx]) => ({
-            refValue: readStringOrEmpty(refValueIdx),
-            tag: readStringOrEmpty(tagIdx),
-            line,
-            exposedMethods: (exposedMethodsIdx || []).map(readStringOrEmpty),
-          })
-        ),
-        cssVariables: (cssVariables || []).map(
-          ([nameIdx, valueIdx, line, isMultiline]) => ({
-            name: readStringOrEmpty(nameIdx),
-            value: valueIdx >= 0 ? readStringOrEmpty(valueIdx) : undefined,
-            line,
-            isMultiline: isMultiline === 1,
-          })
-        ),
-        deepSelectors: (deepSelectors || []).map(([selectorIdx, line]) => ({
-          selector: readStringOrEmpty(selectorIdx),
-          line,
-        })),
-        slots: (slotsIdx || []).map(readStringOrEmpty),
-      })
+          })),
+          slots: (slotsIdx || []).map(readStringOrEmpty),
+          // ✅ v9.0.0: условный рендеринг — фильтруем по этому файлу
+          conditionals: conditionals
+            ? conditionals
+              .filter(c => c.fileId === fileId)
+              .map(c => ({
+                id: c.id,
+                directive: c.directive,
+                fileId: c.fileId,
+                line: c.line,
+                conditionExpression: c.conditionExpression,
+                renderedComponent: c.renderedComponent,
+              }))
+            : undefined,
+        };
+      }
     );
+
+    // ============================================
+    // 9.7. v9.0.0: LIFECYCLE (lc) — восстановление
+    // ============================================
+    const lifecycle: LifecycleHook[] | undefined = compact.lc
+      ? compact.lc.map(([hookCode, funcIdx, line, callbackFnIdx, flagsStr], idx) => ({
+        id: `lc${idx + 1}`,
+        hookName: (LIFECYCLE_TYPES[hookCode] ||
+          'onMounted') as LifecycleHook['hookName'],
+        functionId: funcIdx >= 0 ? `fn${funcIdx}` : '',
+        line,
+        callbackFunctionId: callbackFnIdx >= 0 ? `fn${callbackFnIdx}` : undefined,
+        isSetupContext: flagsStr === 's',
+      }))
+      : undefined;
+
+    // ============================================
+    // 9.8. v9.0.0: EFFECTS (ef) — восстановление
+    // ============================================
+    const effects: EffectEdge[] | undefined = compact.ef
+      ? compact.ef.map(([effectCode, funcIdx, line, targetIdx, metaIdx], idx) => ({
+        id: `ef${idx + 1}`,
+        effectType: (EFFECT_TYPES[effectCode] || 'timer') as EffectEdge['effectType'],
+        functionId: funcIdx >= 0 ? `fn${funcIdx}` : '',
+        line,
+        targetName: readStringOrEmpty(targetIdx),
+        metaValue: metaIdx >= 0 ? readStringOrEmpty(metaIdx) : undefined,
+      }))
+      : undefined;
+
+    // ============================================
+    // 9.9. v9.0.0: INJECTIONS (inj) — восстановление
+    // ============================================
+    const injections: InjectionEdge[] | undefined = compact.inj
+      ? compact.inj.map(([kindCode, fileIdx, line, keyIdx, flags], idx) => ({
+        id: `in${idx + 1}`,
+        kind: (INJECTION_TYPES[kindCode] || 'provide') as InjectionEdge['kind'],
+        fileId: `f${fileIdx}`,
+        line,
+        key: readStringOrEmpty(keyIdx),
+        isSymbolKey: (flags & 1) !== 0,
+        hasDefault: (flags & 2) !== 0,
+      }))
+      : undefined;
+
+    // ============================================
+    // 9.10. v9.0.0: REACTIVITY (rx) — восстановление
+    // ============================================
+    const reactivity: ReactivityEdge[] | undefined = compact.rx
+      ? compact.rx.map(
+        ([kindCode, funcIdx, line, readsIdx, writesIdx, flags], idx) => ({
+          id: `rx${idx + 1}`,
+          kind: (REACTIVITY_TYPES[kindCode] ||
+            'computed') as ReactivityEdge['kind'],
+          functionId: funcIdx >= 0 ? `fn${funcIdx}` : '',
+          line,
+          reads: (readsIdx || []).map(readStringOrEmpty),
+          writes: (writesIdx || []).map(readStringOrEmpty),
+          isWriteable: flags === 1,
+        })
+      )
+      : undefined;
+
+    // ============================================
+    // 9.11. v9.0.0: TYPES (ty) — восстановление
+    // ============================================
+    const types: TypeNodeData[] | undefined = compact.ty
+      ? compact.ty.map(
+        (
+          [
+            kindCode,
+            nameIdx,
+            moduleIdx,
+            fileIdx,
+            line,
+            membersIdx,
+            extendsIdx,
+          ],
+          idx
+        ) => ({
+          id: `t${idx + 1}`,
+          kind: (TYPE_KINDS[kindCode] || 'interface') as TypeNodeData['kind'],
+          name: readStringOrEmpty(nameIdx),
+          moduleId: `m${moduleIdx}`,
+          fileId: `f${fileIdx}`,
+          line,
+          members: (membersIdx || []).map(readStringOrEmpty),
+          extendsTypes: (extendsIdx || []).map(readStringOrEmpty),
+        })
+      )
+      : undefined;
+
+    // ============================================
+    // 9.12. v9.0.0: TYPE REFS (tr) — восстановление
+    // ============================================
+    const typeRefs: TypeRefData[] | undefined = compact.tr
+      ? compact.tr.map(([typeNameIdx, moduleIdx, fileIdx, line, usageCode], idx) => ({
+        id: `tr${idx + 1}`,
+        typeName: readStringOrEmpty(typeNameIdx),
+        moduleId: `m${moduleIdx}`,
+        fileId: `f${fileIdx}`,
+        line,
+        usageKind: (TYPE_USAGE_KINDS[usageCode] ||
+          'param') as TypeRefData['usageKind'],
+      }))
+      : undefined;
 
     // ============================================
     // 10. Статистика
@@ -1215,7 +1901,6 @@ export class Codec {
     const edges: EdgeData[] = [];
 
     if (includeEdges) {
-      // Импорты → edges
       for (const imp of imports) {
         edges.push({
           from: imp.fromFileId,
@@ -1226,7 +1911,6 @@ export class Codec {
         });
       }
 
-      // Экспорты → edges
       for (const exp of exports) {
         edges.push({
           from: exp.fileId,
@@ -1237,7 +1921,6 @@ export class Codec {
         });
       }
 
-      // Вызовы → edges
       for (const call of calls) {
         edges.push({
           from: call.fromFunctionId,
@@ -1247,7 +1930,6 @@ export class Codec {
         });
       }
 
-      // Реэкспорты → edges
       for (const re of reExports) {
         edges.push({
           from: re.moduleId,
@@ -1277,9 +1959,16 @@ export class Codec {
       reExports,
       templates: templates.length > 0 ? templates : undefined,
       statistics: includeStatistics ? statistics : ({} as StatisticsData),
+      // ✅ v9.0.0
+      lifecycle,
+      effects,
+      injections,
+      reactivity,
+      conditionals,
+      types,
+      typeRefs,
     };
 
-    // Убираем пустые массивы, если попросили
     if (!includeEmptyArrays) {
       if (modules.length === 0) delete (result as any).modules;
       if (files.length === 0) delete (result as any).files;
@@ -1291,9 +1980,16 @@ export class Codec {
       if (calls.length === 0) delete (result as any).calls;
       if (reExports.length === 0) delete (result as any).reExports;
       if (templates.length === 0) delete (result as any).templates;
+      // ✅ v9.0.0
+      if (!lifecycle) delete (result as any).lifecycle;
+      if (!effects) delete (result as any).effects;
+      if (!injections) delete (result as any).injections;
+      if (!reactivity) delete (result as any).reactivity;
+      if (!conditionals) delete (result as any).conditionals;
+      if (!types) delete (result as any).types;
+      if (!typeRefs) delete (result as any).typeRefs;
     }
 
-    // Добавляем edges только если попросили и они непустые
     if (includeEdges && edges.length > 0) {
       result.edges = edges;
     }
@@ -1320,6 +2016,14 @@ export class Codec {
       importTypes: { ...IMPORT_TYPES },
       callTypes: { ...CALL_TYPES },
       reExportTypes: { ...RE_EXPORT_TYPES },
+      // ✅ v9.0.0
+      lifecycleTypes: { ...LIFECYCLE_TYPES },
+      effectTypes: { ...EFFECT_TYPES },
+      injectionTypes: { ...INJECTION_TYPES },
+      reactivityTypes: { ...REACTIVITY_TYPES },
+      conditionalTypes: { ...CONDITIONAL_TYPES },
+      typeKinds: { ...TYPE_KINDS },
+      typeUsageKinds: { ...TYPE_USAGE_KINDS },
 
       arraySchemas: {
         fns: [
@@ -1349,7 +2053,6 @@ export class Codec {
           'moduleIdx', 'funcIdx', 'sourceIdx', 'exportNameIdx',
           'line', 'typeCode', 'isTypeOnly',
         ],
-        // ✅ НОВОЕ v3.2.0: схемы для vt
         vt: [
           'fileIdx', 'moduleIdx', 'complexity',
           'reactivityDepsIdx', 'eventHandlers', 'dynamicComponents',
@@ -1360,12 +2063,24 @@ export class Codec {
           'eventNameIdx', 'handlerNameIdx', 'tagIdx',
           'line', 'modifiersIdx', 'isExternal',
         ],
-        'vt.dynamicComponents': ['isExpressionIdx', 'line'],
+        // ✅ v9.0.0
+        'vt.dynamicComponents': ['isExpressionIdx', 'line', 'resolvedComponentsIdx'],
         'vt.templateRefs': [
           'refValueIdx', 'tagIdx', 'line', 'exposedMethodsIdx',
         ],
         'vt.cssVariables': ['nameIdx', 'valueIdx', 'line', 'isMultiline'],
         'vt.deepSelectors': ['selectorIdx', 'line'],
+        // ✅ v9.0.0
+        lc: ['hookCode', 'funcIdx', 'line', 'callbackFnIdx', 'flags'],
+        ef: ['effectCode', 'funcIdx', 'line', 'targetIdx', 'metaIdx'],
+        inj: ['kindCode', 'fileIdx', 'line', 'keyIdx', 'flags'],
+        rx: ['kindCode', 'funcIdx', 'line', 'readsIdx', 'writesIdx', 'flags'],
+        cd: ['directiveCode', 'fileIdx', 'line', 'condIdx', 'compIdx', 'flags'],
+        ty: [
+          'kindCode', 'nameIdx', 'moduleIdx', 'fileIdx',
+          'line', 'membersIdx', 'extendsIdx',
+        ],
+        tr: ['typeNameIdx', 'moduleIdx', 'fileIdx', 'line', 'usageCode'],
       },
 
       stringDict: [],
@@ -1376,15 +2091,53 @@ export class Codec {
   }
 
   // ============================================
-  // VERIFY ROUND TRIP
+  // DEEP EQUAL + VERIFY ROUND TRIP
   // ============================================
 
   /**
+   * ✅ v9.0.0: Глубокое сравнение с нормализацией.
+   */
+  private static deepEqual(a: any, b: any): boolean {
+    const norm = (x: any): any => {
+      if (x === undefined) return undefined;
+      if (x === null) return null;
+      if (Array.isArray(x)) return x.map(norm);
+      if (typeof x === 'object') {
+        const out: any = {};
+        for (const key of Object.keys(x).sort()) {
+          const v = norm(x[key]);
+          if (v !== undefined) out[key] = v;
+        }
+        return out;
+      }
+      return x;
+    };
+    return JSON.stringify(norm(a)) === JSON.stringify(norm(b));
+  }
+
+  /**
+   * ✅ v9.0.0: Нормализация для диагностики расхождений.
+   */
+  private static normalizeForDiff(x: any): string {
+    const norm = (v: any): any => {
+      if (v === undefined) return undefined;
+      if (v === null) return null;
+      if (Array.isArray(v)) return v.map(norm);
+      if (typeof v === 'object') {
+        const out: any = {};
+        for (const key of Object.keys(v).sort()) {
+          const nv = norm(v[key]);
+          if (nv !== undefined) out[key] = nv;
+        }
+        return out;
+      }
+      return v;
+    };
+    return JSON.stringify(norm(x));
+  }
+
+  /**
    * Проверяет, что encode → decode возвращает идентичный результат.
-   *
-   * @param payload - Полный JSON
-   * @param options - Опции декодирования (по умолчанию все включены)
-   * @returns Результат проверки
    */
   static verifyRoundTrip(
     payload: FullJSON,
@@ -1435,10 +2188,38 @@ export class Codec {
           original: payload.reExports.length,
           decoded: decoded.reExports.length,
         },
-        // ✅ НОВОЕ v3.2.0
         templates: {
           original: payload.templates?.length || 0,
           decoded: decoded.templates?.length || 0,
+        },
+        // ✅ v9.0.0
+        lifecycle: {
+          original: payload.lifecycle?.length || 0,
+          decoded: decoded.lifecycle?.length || 0,
+        },
+        effects: {
+          original: payload.effects?.length || 0,
+          decoded: decoded.effects?.length || 0,
+        },
+        injections: {
+          original: payload.injections?.length || 0,
+          decoded: decoded.injections?.length || 0,
+        },
+        reactivity: {
+          original: payload.reactivity?.length || 0,
+          decoded: decoded.reactivity?.length || 0,
+        },
+        conditionals: {
+          original: payload.conditionals?.length || 0,
+          decoded: decoded.conditionals?.length || 0,
+        },
+        types: {
+          original: payload.types?.length || 0,
+          decoded: decoded.types?.length || 0,
+        },
+        typeRefs: {
+          original: payload.typeRefs?.length || 0,
+          decoded: decoded.typeRefs?.length || 0,
         },
       };
 
@@ -1449,15 +2230,13 @@ export class Codec {
         }
       }
 
-      // Глубокая проверка: сравнение JSON-строк
-      const origStr = JSON.stringify(payload, null, 0);
-      const decStr = JSON.stringify(decoded, null, 0);
-
-      if (origStr !== decStr) {
-        const minLen = Math.min(origStr.length, decStr.length);
+      if (!Codec.deepEqual(payload, decoded)) {
+        const normOrig = Codec.normalizeForDiff(payload);
+        const normDec = Codec.normalizeForDiff(decoded);
+        const minLen = Math.min(normOrig.length, normDec.length);
         let diffPos = minLen;
         for (let i = 0; i < minLen; i++) {
-          if (origStr[i] !== decStr[i]) {
+          if (normOrig[i] !== normDec[i]) {
             diffPos = i;
             break;
           }
@@ -1467,10 +2246,7 @@ export class Codec {
         const end = Math.min(minLen, diffPos + ctx);
         errors.push(
           `JSON mismatch at pos ${diffPos}: ` +
-          `...${origStr.substring(start, end)}... ≠ ...${decStr.substring(
-            start,
-            end
-          )}...`
+          `...${normOrig.substring(start, end)}... ≠ ...${normDec.substring(start, end)}...`
         );
       }
 
@@ -1490,23 +2266,14 @@ export class Codec {
   // ДОПОЛНИТЕЛЬНЫЕ УТИЛИТЫ
   // ============================================
 
-  /**
-   * Возвращает размер сжатого JSON в байтах.
-   */
   static getCompactSize(compact: CompactJSON): number {
     return JSON.stringify(compact).length;
   }
 
-  /**
-   * Возвращает размер полного JSON в байтах.
-   */
   static getFullSize(payload: FullJSON): number {
     return JSON.stringify(payload).length;
   }
 
-  /**
-   * Возвращает коэффициент сжатия.
-   */
   static getCompressionRatio(payload: FullJSON): number {
     const compact = Codec.encode(payload);
     const fullSize = Codec.getFullSize(payload);
@@ -1515,18 +2282,10 @@ export class Codec {
     return compactSize / fullSize;
   }
 
-  /**
-   * Сериализует компактный JSON в строку.
-   */
   static stringify(compact: CompactJSON, pretty: boolean = false): string {
-    return pretty
-      ? JSON.stringify(compact, null, 2)
-      : JSON.stringify(compact);
+    return pretty ? JSON.stringify(compact, null, 2) : JSON.stringify(compact);
   }
 
-  /**
-   * Парсит компактный JSON из строки.
-   */
   static parse(json: string): CompactJSON {
     return JSON.parse(json) as CompactJSON;
   }
@@ -1535,31 +2294,16 @@ export class Codec {
   // УТИЛИТЫ ДЛЯ РАБОТЫ С ИМПОРТАМИ
   // ============================================
 
-  /**
-   * Извлекает все импорты для указанного файла.
-   */
-  static getImportsForFile(
-    compact: CompactJSON,
-    fileId: string
-  ): ImportData[] {
+  static getImportsForFile(compact: CompactJSON, fileId: string): ImportData[] {
     const full = Codec.decode(compact);
     return full.imports.filter(imp => imp.fromFileId === fileId);
   }
 
-  /**
-   * Извлекает все файлы, которые импортируют указанный файл.
-   */
-  static getImportersOfFile(
-    compact: CompactJSON,
-    toFileId: string
-  ): ImportData[] {
+  static getImportersOfFile(compact: CompactJSON, toFileId: string): ImportData[] {
     const full = Codec.decode(compact);
     return full.imports.filter(imp => imp.toFileId === toFileId);
   }
 
-  /**
-   * Проверяет, что все импорты имеют разрешённый toFileId.
-   */
   static verifyImportsResolved(compact: CompactJSON): {
     ok: boolean;
     total: number;

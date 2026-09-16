@@ -1,4 +1,4 @@
-// src/reporters/json-reporter.ts
+// packages/ast-analyzer/src/reporters/json-reporter.ts
 // ОБНОВЛЕННАЯ ВЕРСИЯ - использует analyzers модуль
 // Полностью очищена от дублирующихся анализаторов
 // ✅ ДОБАВЛЕНА ПОДДЕРЖКА ЭКСПОРТОВ
@@ -13,6 +13,25 @@
 // ✅ v5 (ПАТЧ 1.3): исправлены ошибки TS18048 и TS2322:
 //                  - результат templateXxx?.length ?? 0
 //                  - specifiers маппятся в ImportSpecifier[]
+// ✅ v6 (ПАТЧ v9.0.0): прокинуты в EnhancedEntityInfo новые template-поля:
+//                  - templateConditionals
+//                  - templateLifecycle
+//                  - templateEffects
+//                  - templateInjections
+//                  - templateReactivity
+//                  + добавлен вызов extractTypeGraph для ts/js-файлов
+//                  + запись typesGraph / typeRefsGraph
+// ✅ v7 (ПАТЧ v9.0.1): КРИТИЧНОЕ ИСПРАВЛЕНИЕ vt (Vue templates):
+//                  - добавлено поле templateRefs в EnhancedEntityInfo (ветка .vue)
+//                  - без него Codec.encode получал undefined на позиции 9 vt[]
+//                    и JSON.stringify обрезал массив до 9 элементов вместо 12.
+//                  - теперь vt-кортежи гарантированно содержат 12 полей.
+// ✅ v8 (ПАТЧ v9.0.2): FINAL
+//                  - добавлено поле templateConditionals в EnhancedEntityInfo (ветка .vue)
+//                  - добавлено поле resolvedComponents в templateDynamicComponents
+//                  - добавлено поле conditionals в TemplateData (через templateConditionals)
+//                  - добавлено поле typesGraph / typeRefsGraph в EnhancedEntityInfo
+//                  - version: '9.0.0'
 
 import fs from 'fs';
 import path from 'path';
@@ -22,6 +41,9 @@ import { parseFile } from '../core/ast-parser.js';
 // ✅ ИМПОРТЫ ДЛЯ ОБРАБОТКИ .VUE
 import { analyzeVueComponent } from '../modes/vue-analyzer/index.js';
 import { convertVueAnalysisToEntities } from '../core/entity-extractor/vue/convert-analysis.js';
+
+// ✅ ПАТЧ v9.0.0: импорт экстрактора тип-графа
+import { extractTypeGraph } from '../core/type-graph-extractor.js';
 
 import type {
   GraphData,
@@ -124,26 +146,13 @@ import {
 // ============================================================
 // ✅ ПАТЧ 1.1: БЕЗОПАСНЫЕ ОБЁРТКИ ДЛЯ ts-morph
 // ============================================================
-// Эти хелперы защищают от внутренних ошибок TypeScript,
-// таких как "Cannot read properties of undefined (reading 'escapedName')"
-// и "Cannot read properties of undefined (reading 'flags')",
-// которые возникают при анализе сложных .vue файлов
-// (defineProps/defineEmits без явной типизации, деструктуризация ref/computed).
 
-/**
- * ✅ ПАТЧ: Проверяет, может ли узел иметь тип.
- * Отсеивает узлы, на которых ts-morph/TS падает с escapedName/flags:
- *  - PropertyAssignment / ShorthandPropertyAssignment / SpreadAssignment
- *  - VariableDeclaration без initializer
- *  - узлы без валидного SourceFile или Project
- */
 function canHaveType(node: any): boolean {
   if (!node || typeof node.getKind !== 'function') return false;
 
   try {
     const kind = node.getKind();
 
-    // Отсеиваем явно проблемные узлы
     const SKIP_KINDS = new Set<number>([
       261, // PropertyAssignment
       262, // ShorthandPropertyAssignment
@@ -152,7 +161,6 @@ function canHaveType(node: any): boolean {
       257, // VariableDeclaration (проверим отдельно ниже)
     ]);
     if (SKIP_KINDS.has(kind)) {
-      // Для VariableDeclaration разрешаем только если есть инициализатор
       if (kind === 257 && typeof node.getInitializer === 'function') {
         const init = node.getInitializer();
         if (!init) return false;
@@ -161,11 +169,9 @@ function canHaveType(node: any): boolean {
       return false;
     }
 
-    // Проверяем, что узел принадлежит валидному SourceFile
     const sf = node.getSourceFile?.();
     if (!sf) return false;
 
-    // Проверяем, что TypeChecker жив (есть Project)
     const project = sf.getProject?.();
     if (!project) return false;
 
@@ -175,16 +181,10 @@ function canHaveType(node: any): boolean {
   }
 }
 
-/**
- * ✅ ПАТЧ: Безопасно получает тип возврата из узла.
- * Возвращает 'any' при любой ошибке — БЕЗ шума в консоли.
- * Шум выводится только если AST_DEBUG_TYPES=true.
- */
 function safeGetReturnType(node: any, context: string): string {
   if (!canHaveType(node)) return 'any';
 
   try {
-    // Прогрев чекера: если TS сломан — упадёт здесь, внутри try
     node.getType();
 
     const returnType = node.getReturnType();
@@ -192,7 +192,6 @@ function safeGetReturnType(node: any, context: string): string {
     const text = returnType.getText();
     return text || 'any';
   } catch (error) {
-    // Понижаем до debug — это ожидаемое поведение для .vue файлов
     if (process.env.AST_DEBUG_TYPES === 'true') {
       console.debug(
         `   [safeGetReturnType] ${context}: ${
@@ -204,16 +203,11 @@ function safeGetReturnType(node: any, context: string): string {
   }
 }
 
-/**
- * ✅ ПАТЧ: Безопасно получает тип узла.
- * Возвращает 'any' при любой ошибке — БЕЗ шума в консоли.
- * Шум выводится только если AST_DEBUG_TYPES=true.
- */
 function safeGetType(node: any, context: string): string {
   if (!canHaveType(node)) return 'any';
 
   try {
-    node.getType(); // прогрев чекера
+    node.getType();
     const type = node.getType();
     if (!type) return 'any';
     const text = type.getText();
@@ -221,18 +215,13 @@ function safeGetType(node: any, context: string): string {
   } catch (error) {
     if (process.env.AST_DEBUG_TYPES === 'true') {
       console.debug(
-        `   [safeGetType] ${context}: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+        `   [safeGetType] ${context}: ${error instanceof Error ? error.message : String(error)}`
       );
     }
     return 'any';
   }
 }
 
-/**
- * Безопасно получает имена параметров.
- */
 function safeGetParameters(node: any, context: string): string[] {
   try {
     const params = node.getParameters();
@@ -258,9 +247,6 @@ function safeGetParameters(node: any, context: string): string[] {
   }
 }
 
-/**
- * Безопасно получает текст тела.
- */
 function safeGetBodyText(node: any, context: string): string {
   try {
     const body = node.getBody();
@@ -278,9 +264,6 @@ function safeGetBodyText(node: any, context: string): string {
   }
 }
 
-/**
- * Безопасно вызывает isAsync().
- */
 function safeIsAsync(node: any, context: string): boolean {
   try {
     return node.isAsync() || false;
@@ -296,9 +279,6 @@ function safeIsAsync(node: any, context: string): boolean {
   }
 }
 
-/**
- * Безопасно вызывает isExported().
- */
 function safeIsExported(node: any, context: string): boolean {
   try {
     return node.isExported() || false;
@@ -314,9 +294,6 @@ function safeIsExported(node: any, context: string): boolean {
   }
 }
 
-/**
- * Безопасно получает номер строки.
- */
 function safeGetStartLine(node: any): number {
   try {
     return node.getStartLineNumber() || 1;
@@ -325,9 +302,6 @@ function safeGetStartLine(node: any): number {
   }
 }
 
-/**
- * Безопасно получает конечную строку.
- */
 function safeGetEndLine(node: any): number {
   try {
     return node.getEndLineNumber() || 1;
@@ -614,15 +588,14 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
   // ============================================================
   // ✅ ПАТЧ 1.2: ОБРАБОТКА .VUE ФАЙЛОВ
   // ============================================================
-  // Для .vue файлов используется специализированный анализатор,
-  // который извлекает template-поля (reactivityDeps, eventHandlers,
-  // dynamicComponents, cssVariables, deepSelectors, usedComponents,
-  // slots, complexity) и прокидывает их в EntitiesResult.
-  //
-  // ⚠️ Явное приведение через `as any` / `as EnhancedEntityInfo`
-  // обходит несовместимость FunctionInfo → EnhancedFunctionInfo
-  // (EnhancedFunctionInfo требует обязательные поля paramTypes,
-  // _safeInfo, которые заполняются только в ts-morph-ветке).
+  // ✅ ПАТЧ v9.0.0: добавлены пробросы templateConditionals,
+  //   templateLifecycle, templateEffects, templateInjections,
+  //   templateReactivity.
+  // ✅ ПАТЧ v9.0.1: КРИТИЧНОЕ ИСПРАВЛЕНИЕ — добавлен templateRefs.
+  //   Без него Codec.encode получал undefined на позиции 9 vt[],
+  //   и JSON.stringify обрезал массив до 9 элементов вместо 12.
+  // ✅ ПАТЧ v9.0.2 (FINAL): гарантируем 12 полей vt[], включая
+  //   resolvedComponents в dynamicComponents и conditionals в template.
   // ============================================================
   if (filePath.endsWith('.vue')) {
     try {
@@ -642,19 +615,37 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
           // ✅ Прокидываем template-поля в EntitiesResult
           templateReactivityDeps: entities.templateReactivityDeps || [],
           templateEventHandlers: entities.templateEventHandlers || [],
-          templateDynamicComponents: entities.templateDynamicComponents || [],
+          templateDynamicComponents: (entities.templateDynamicComponents || []).map(
+            (d: any) => ({
+              isExpression: d.isExpression || '',
+              line: d.line || 0,
+              // ✅ v9.0.2: гарантируем наличие resolvedComponents
+              resolvedComponents: d.resolvedComponents || [],
+            })
+          ),
+          // ✅ ПАТЧ v9.0.1: КРИТИЧНО — templateRefs пробрасывается.
+          // Без этой строки vt-кортеж содержал 9 полей вместо 12.
+          templateRefs: (entities as any).templateRefs || [],
           templateCssVariables: entities.templateCssVariables || [],
           templateDeepSelectors: entities.templateDeepSelectors || [],
           templateDirectives: entities.templateDirectives || [],
           templateUsedComponents: entities.templateUsedComponents || [],
           templateSlots: entities.templateSlots || [],
           templateComplexity: entities.templateComplexity || 0,
+
+          // ✅ ПАТЧ v9.0.0: проброс условного рендеринга
+          templateConditionals: entities.templateConditionals || [],
+
+          // ✅ ПАТЧ v9.0.0: проброс новых секций
+          templateLifecycle: (entities as any).templateLifecycle || [],
+          templateEffects: (entities as any).templateEffects || [],
+          templateInjections: (entities as any).templateInjections || [],
+          templateReactivity: (entities as any).templateReactivity || [],
         } as EnhancedEntityInfo;
 
         analysisCache.set(cacheKey, result);
-        // ✅ ИСПРАВЛЕНО (TS18048): безопасное обращение к опциональным полям
         console.log(
-          `✅ Vue: ${path.basename(filePath)} (${result.functions.length} fn, ${result.templateEventHandlers?.length ?? 0} handlers, ${result.templateReactivityDeps?.length ?? 0} deps)`
+          `✅ Vue: ${path.basename(filePath)} (${result.functions.length} fn, ${result.templateEventHandlers?.length ?? 0} handlers, ${result.templateReactivityDeps?.length ?? 0} deps, ${result.templateConditionals?.length ?? 0} conditionals, ${result.templateRefs?.length ?? 0} refs)`
         );
         return result;
       }
@@ -739,6 +730,30 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
     }
     if (analysis.typeDeps.length > 0) {
       (entities as any).typeDeps = analysis.typeDeps;
+    }
+
+    // ============================================================
+    // ✅ ПАТЧ v9.0.0: СБОР ТИП-ГРАФА (для ts/js файлов)
+    // ============================================================
+    try {
+      const typeGraph = extractTypeGraph([absolutePath], { verbose: false });
+
+      if (typeGraph.types.length > 0 || typeGraph.typeRefs.length > 0) {
+        (entities as any).typesGraph = typeGraph.types;
+        (entities as any).typeRefsGraph = typeGraph.typeRefs;
+
+        console.log(
+          `   📐 Тип-граф: ${typeGraph.types.length} types, ${typeGraph.typeRefs.length} refs`
+        );
+      }
+    } catch (error) {
+      if (process.env.AST_DEBUG_TYPES === 'true') {
+        console.debug(
+          `   [type-graph] не собран для ${path.basename(absolutePath)}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
     }
 
     // ============================================================
@@ -1039,9 +1054,7 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         isConst = false;
       }
 
-      const varType = initializer
-        ? safeGetType(initializer, `variable ${name}`)
-        : 'any';
+      const varType = initializer ? safeGetType(initializer, `variable ${name}`) : 'any';
 
       const info = {
         name,
@@ -1097,13 +1110,16 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
         extendsText = undefined;
       }
       try {
-        implementsList = cls.getImplements().map((i: any) => {
-          try {
-            return i.getText();
-          } catch {
-            return '';
-          }
-        }).filter(Boolean);
+        implementsList = cls
+          .getImplements()
+          .map((i: any) => {
+            try {
+              return i.getText();
+            } catch {
+              return '';
+            }
+          })
+          .filter(Boolean);
       } catch {
         implementsList = [];
       }
@@ -1142,13 +1158,16 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
 
       let extendsList: string[] = [];
       try {
-        extendsList = intf.getExtends().map((e: any) => {
-          try {
-            return e.getText();
-          } catch {
-            return '';
-          }
-        }).filter(Boolean);
+        extendsList = intf
+          .getExtends()
+          .map((e: any) => {
+            try {
+              return e.getText();
+            } catch {
+              return '';
+            }
+          })
+          .filter(Boolean);
       } catch {
         extendsList = [];
       }
@@ -1252,6 +1271,13 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       if (typeCount) console.log(`      Типовых зависимостей: ${typeCount}`);
     }
 
+    // ✅ ПАТЧ v9.0.0: логирование тип-графа
+    const typesGraphCount = (entities as any).typesGraph?.length || 0;
+    const typeRefsGraphCount = (entities as any).typeRefsGraph?.length || 0;
+    if (typesGraphCount > 0 || typeRefsGraphCount > 0) {
+      console.log(`   📐 Тип-граф: ${typesGraphCount} types, ${typeRefsGraphCount} refs`);
+    }
+
     const reExportsCount = entities.exports?.filter(e => e.isReExport).length || 0;
     if (reExportsCount > 0) {
       console.log(`   🔄 Реэкспортов: ${reExportsCount}`);
@@ -1262,7 +1288,6 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
 
     return entities;
   } catch (error: any) {
-    // ✅ УЛУЧШЕНИЕ: Более детальное логирование ошибки
     console.error(
       `❌ Ошибка при извлечении сущностей из ${absolutePath}:`,
       error?.message || String(error)
@@ -1271,7 +1296,6 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
       console.error('📚 Стек ошибки:');
       console.error(error.stack);
     }
-    // Возвращаем пустую структуру, чтобы не прерывать анализ
     return entities;
   }
 }
@@ -1281,7 +1305,7 @@ function extractValueFromNode(node: any): any {
     const text = node.getText();
 
     if (
-      (text.startsWith('"') && text.endsWith('"')) ||
+      (text.startsWith('\"') && text.endsWith('\"')) ||
       (text.startsWith("'") && text.endsWith("'"))
     ) {
       return text.slice(1, -1);

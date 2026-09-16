@@ -2,56 +2,40 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Версия: 8.4.1 (Стратегия B — строгий round-trip + DecodeOptions + enrichWithReExports + functionsByName[] + templates)
+// Версия: 9.0.2 (Исправления vt: 12 полей, funcIdx: -1, пустые секции, conditionals, resolvedComponents)
 //
-// ИЗМЕНЕНИЯ v8.4.1:
-//   - ✅ ИСПРАВЛЕНО: hasTemplate теперь учитывает templateSlots,
-//     templateDirectives и templateComplexity
-//     (раньше Vue-файлы без eventHandlers/reactivityDeps, но со слотами
-//      или директивами, не попадали в секцию vt)
+// ИЗМЕНЕНИЯ v9.0.2:
+//   - ✅ ИСПРАВЛЕНО: version = '9.0.0' (было '9.0.1')
+//   - ✅ ИСПРАВЛЕНО: templates.push({...}) — ровно 12 полей TemplateData
+//   - ✅ ИСПРАВЛЕНО: dynamicComponents — 3 поля (isExpression, line, resolvedComponents)
+//   - ✅ ИСПРАВЛЕНО: conditionals пробрасываются в templates[] и в отдельную секцию
+//   - ✅ ИСПРАВЛЕНО: lifecycle/effects/reactivity functionId = '' (не undefined),
+//     чтобы Codec.encode превратил его в -1 через ?? -1
+//   - ✅ ИСПРАВЛЕНО: пустые секции (cls, cn, templates, conditionals, lifecycle,
+//     effects, injections, reactivity, types, typeRefs) → undefined, а не []
+//     (это критично для чек-листа v9.0.0)
+//   - ✅ ДОБАВЛЕНО: диагностика vt.length !== 12 при AST_DEBUG_CODEC=true
+//
+// ИЗМЕНЕНИЯ v9.0.0:
+//   - ✅ УДАЛЕНЫ локальные определения GenerateReportOptions и
+//        GenerateReportResult (TS2300). Импортируются из './codec/codec-types.js'.
+//   - ✅ ДОБАВЛЕН проброс templateConditionals в templates[].
+//   - ✅ ДОБАВЛЕНА отдельная секция conditionals[] в FullJSON.
+//   - ✅ hasTemplate учитывает templateConditionals.
+//   - ✅ ДОБАВЛЕН сбор секций lifecycle, effects, injections,
+//        reactivity, types, typeRefs в collectFullJSON.
+//
+// ИЗМЕНЕНИЯ v8.5.0:
+//   - ✅ resolveToFileId использует resolveAliasPath из tsconfig-resolver.
+//   - ✅ tsconfig инициализируется один раз в collectFullJSON.
+//   - ✅ sourceToFileIdMap расширен абсолютными путями.
+//
+// ИЗМЕНЕНИЯ v8.4.2:
+//   - ✅ functionMap теперь Map<string, FunctionData[]>
 //
 // ИЗМЕНЕНИЯ v8.4.0:
-//   - ✅ НОВОЕ: секция templates[] в FullJSON (Vue-шаблоны как отдельные сущности)
-//   - ✅ НОВОЕ: создание рёбер event → handler и templateRef → expose в calls[]
-//   - ✅ НОВОЕ: totalTemplates в StatisticsData
-//   - ✅ ИСПРАВЛЕНО: detectCallType — regex через String.raw (устранён SyntaxError: Unterminated group)
-//
-// ИЗМЕНЕНИЯ v8.3.0:
-//   - ✅ ИСПРАВЛЕНО: functionMap теперь Map<string, FunctionData[]>
-//     (устранена потеря функций с одинаковыми именами)
-//   - ✅ ИСПРАВЛЕНО: все обращения к functionMap возвращают массив и берут [0]
-//   - ✅ ДОБАВЛЕНО: вызов enrichWithReExports в collectFullJSON
-//     (разворачивание реэкспортов на этапе сборки полного JSON)
-//
-// ИЗМЕНЕНИЯ v8.2.0:
-//   - ✅ ИСПРАВЛЕНО: insertSuffixBeforeExtension — устранено дублирование
-//     суффикса `.full.json` (было `index.full.json.json`, стало `index.full.json`)
-//
-// ИЗМЕНЕНИЯ v8.1.1:
-//   - ✅ ИСПРАВЛЕНО: detectCallType — экранирование callName перед new RegExp
-//     (устранён SyntaxError: Invalid regular expression: Unterminated group)
-//   - ✅ ИСПРАВЛЕНО: detectCallType — добавлена проверка на пустое body
-//
-// ИЗМЕНЕНИЯ v8.1.0:
-//   - readAndDecode(path, options?: DecodeOptions) — прокидывает опции в Codec.decode
-//   - decodeCompactReport(compact, options?: DecodeOptions) — прокидывает опции
-//   - Поддержка includeEdges / includeEmptyArrays / includeStatistics
-//
-// ИЗМЕНЕНИЯ v8.0.0:
-//   - collectFullJSON: modules[].fileIds заполняются
-//   - collectFullJSON: files[].moduleId заполняется
-//   - collectFullJSON: functions[].params, returnType прокидываются
-//   - collectFullJSON: classes[].methods прокидываются
-//   - collectFullJSON: constants[].value прокидывается
-//   - collectFullJSON: imports line берётся из loc.start.line
-//   - collectFullJSON: imports isExternal через isExternalModule
-//   - collectFullJSON: exports line, localName, isTypeOnly
-//   - collectFullJSON: reExports отдельно от exports
-//   - collectFullJSON: reExports type: 'named'|'default'|'all'
-//   - collectFullJSON: calls external → 'external:name'
-//   - collectFullJSON: НЕ создаёт edges (восстанавливается в decode)
-//   - resolveToFileId: обработка external, unresolved, alias
-//   - detectCallType: различает direct/async/method/callback
+//   - ✅ Секция templates[] в FullJSON (Vue-шаблоны).
+//   - ✅ Рёбра event → handler и templateRef → expose в calls[].
 // ============================================
 
 import fs from 'fs';
@@ -60,7 +44,20 @@ import { Project } from 'ts-morph';
 import type { EntitiesResult, FunctionInfo } from '../types.js';
 import { Codec } from './codec/codec.js';
 import { isExternalModule, resolveFilePath } from '../core/ast-parser.js';
+import {
+  loadTsConfig,
+  resolveAliasPath,
+  getTsConfigDir,
+  clearTsConfigCache,
+} from '../core/tsconfig-resolver.js';
 import { enrichWithReExports } from '../core/entity-extractor/enrich-with-re-exports.js';
+
+// ============================================
+// ✅ v9.0.0: ИМПОРТ ТИПОВ ИЗ codec-types.js
+// ============================================
+// ВАЖНО: GenerateReportOptions и GenerateReportResult импортируются,
+// а НЕ определяются локально (устранён TS2300).
+// ============================================
 import type {
   FullJSON,
   CompactJSON,
@@ -75,47 +72,22 @@ import type {
   FileData,
   StatisticsData,
   TemplateData,
+  TemplateConditional,
+  LifecycleHook,
+  EffectEdge,
+  InjectionEdge,
+  ReactivityEdge,
+  TypeNodeData,
+  TypeRefData,
   DecodeOptions,
+  GenerateReportOptions,
+  GenerateReportResult,
 } from './codec/codec-types.js';
 
 // ============================================
-// ТИПЫ ОПЦИЙ И РЕЗУЛЬТАТА
+// ✅ v9.0.0: РЕЭКСПОРТ ТИПОВ (для обратной совместимости)
 // ============================================
-
-export interface GenerateReportOptions {
-  /** Путь к выходному файлу (сжатый JSON) */
-  outputPath?: string;
-  /** Использовать сжатие (по умолчанию: true) */
-  compress?: boolean;
-  /** Сохранять полный JSON для отладки (по умолчанию: true) */
-  saveFullJson?: boolean;
-  /** Дополнительный суффикс для полного JSON (по умолчанию: '.full.json') */
-  fullJsonSuffix?: string;
-  /** Подробный вывод (по умолчанию: false) */
-  verbose?: boolean;
-}
-
-export interface GenerateReportResult {
-  /** Полный (читаемый) JSON */
-  full: FullJSON;
-  /** Сжатый JSON (если compress: true) */
-  compact?: CompactJSON;
-  /** Путь к сохранённому сжатому файлу */
-  compactPath?: string;
-  /** Путь к сохранённому полному файлу */
-  fullPath?: string;
-  /** Статистика генерации */
-  stats: {
-    /** Длительность в миллисекундах */
-    duration: number;
-    /** Размер сжатого файла в байтах */
-    compactSize?: number;
-    /** Размер полного файла в байтах */
-    fullSize?: number;
-    /** Коэффициент сжатия (%) */
-    compressionRatio?: number;
-  };
-}
+export type { GenerateReportOptions, GenerateReportResult } from './codec/codec-types.js';
 
 // ============================================
 // ОСНОВНАЯ ФУНКЦИЯ ГЕНЕРАЦИИ
@@ -137,15 +109,14 @@ export function generateCompactReport(
   const startTime = Date.now();
   const verbose = options.verbose === true;
   const useCompression = options.compress !== false;
-  const saveFull = options.saveFullJson !== false;
+  const saveFull = options.saveFullJson !== false && options.saveFull !== false;
   const fullSuffix = options.fullJsonSuffix || '.full.json';
 
   // ============================================
   // ШАГ 1: Сбор полного JSON
   // ============================================
-
   if (verbose) {
-    console.log('\\n📦 [compact-reporter] Сбор полного JSON...');
+    console.log('\n📦 [compact-reporter] Сбор полного JSON...');
   }
 
   const full = collectFullJSON(entitiesMap, verbose);
@@ -161,12 +132,34 @@ export function generateCompactReport(
     console.log(`   📞 Вызовов: ${full.calls.length}`);
     console.log(`   🔄 Реэкспортов: ${full.reExports.length}`);
     console.log(`   🎨 Vue-шаблонов: ${full.templates?.length || 0}`);
+    console.log(`   🎯 Conditionals: ${full.conditionals?.length || 0}`);
+    console.log(`   🧬 Lifecycle: ${full.lifecycle?.length || 0}`);
+    console.log(`   ⚡ Effects: ${full.effects?.length || 0}`);
+    console.log(`   💉 Injections: ${full.injections?.length || 0}`);
+    console.log(`   🔄 Reactivity: ${full.reactivity?.length || 0}`);
+    console.log(`   📐 Types: ${full.types?.length || 0}`);
+    console.log(`   🔗 TypeRefs: ${full.typeRefs?.length || 0}`);
+
+    // ✅ v8.5.0: диагностика неразрешённых импортов
+    const unresolvedImports = full.imports.filter(
+      imp => !imp.isExternal && imp.toFileId?.startsWith('unresolved:')
+    );
+    if (unresolvedImports.length > 0) {
+      console.log(`   ⚠️  Неразрешённых импортов: ${unresolvedImports.length}`);
+      for (const imp of unresolvedImports.slice(0, 5)) {
+        console.log(`      • ${path.basename(imp.fromFileId)} → '${imp.source}'`);
+      }
+      if (unresolvedImports.length > 5) {
+        console.log(`      ... и ещё ${unresolvedImports.length - 5}`);
+      }
+    } else {
+      console.log(`   ✅ Все импорты разрешены`);
+    }
   }
 
   // ============================================
   // ШАГ 2: Проверка round-trip (только в verbose)
   // ============================================
-
   if (verbose && useCompression) {
     const verification = Codec.verifyRoundTrip(full);
     if (!verification.ok) {
@@ -179,19 +172,27 @@ export function generateCompactReport(
   // ============================================
   // ШАГ 3: Сжатие через Codec
   // ============================================
-
   let compact: CompactJSON | undefined;
   if (useCompression) {
     compact = Codec.encode(full);
     if (verbose) {
       console.log(`   🗜️  Сжатие применено (v${compact.v})`);
+
+      // ✅ v9.0.2: диагностика vt-секции
+      if (process.env.AST_DEBUG_CODEC === 'true' && compact.vt) {
+        for (let i = 0; i < compact.vt.length; i++) {
+          const vt = compact.vt[i];
+          if (vt && vt.length !== 12) {
+            console.warn(`   ⚠️ vt[${i}] содержит ${vt.length} полей вместо 12`);
+          }
+        }
+      }
     }
   }
 
   // ============================================
   // ШАГ 4: Сохранение файлов
   // ============================================
-
   let compactPath: string | undefined;
   let fullPath: string | undefined;
   let compactSize: number | undefined;
@@ -242,12 +243,11 @@ export function generateCompactReport(
   // ============================================
   // ШАГ 5: Финальная статистика
   // ============================================
-
   const duration = Date.now() - startTime;
 
   if (verbose) {
     console.log(`   ⏱️  Время: ${(duration / 1000).toFixed(2)}s`);
-    console.log('✅ [compact-reporter] Готово\\n');
+    console.log('✅ [compact-reporter] Готово\n');
   }
 
   return {
@@ -270,10 +270,6 @@ export function generateCompactReport(
 
 /**
  * Декодирует сжатый JSON обратно в полный.
- *
- * @param compact — сжатый JSON
- * @param options — опции декодирования (includeEdges, includeEmptyArrays, includeStatistics)
- * @returns Полный JSON
  */
 export function decodeCompactReport(compact: CompactJSON, options: DecodeOptions = {}): FullJSON {
   return Codec.decode(compact, options);
@@ -281,10 +277,6 @@ export function decodeCompactReport(compact: CompactJSON, options: DecodeOptions
 
 /**
  * Читает сжатый JSON из файла и декодирует его.
- *
- * @param compactPath — путь к сжатому JSON
- * @param options — опции декодирования (includeEdges, includeEmptyArrays, includeStatistics)
- * @returns Полный JSON
  */
 export function readAndDecode(compactPath: string, options: DecodeOptions = {}): FullJSON {
   if (!fs.existsSync(compactPath)) {
@@ -306,9 +298,6 @@ export function readAndDecode(compactPath: string, options: DecodeOptions = {}):
 
 /**
  * Читает полный JSON из файла.
- *
- * @param fullPath — путь к полному JSON
- * @returns Полный JSON
  */
 export function readFullJson(fullPath: string): FullJSON {
   if (!fs.existsSync(fullPath)) {
@@ -332,21 +321,37 @@ export function readFullJson(fullPath: string): FullJSON {
  *
  * ⚠️ edges НЕ создаются здесь — они восстанавливаются при decode.
  *
- * ✅ v8.3.0: перед сборкой вызывается enrichWithReExports
- * ✅ v8.3.0: functionMap хранит массивы функций (для дублей имён)
- * ✅ v8.4.0: собираются Vue-шаблоны (templates[]) как отдельные сущности
- * ✅ v8.4.0: рёбра event → handler и templateRef → expose создаются в calls[]
- * ✅ v8.4.1: hasTemplate учитывает templateSlots, templateDirectives,
- *            templateComplexity
- *
- * @param entitiesMap — карта «путь файла → сущности»
- * @param verbose — подробный вывод
- * @returns Полный JSON
+ * ✅ v9.0.2: templates.push содержит ВСЕ 12 полей TemplateData.
+ * ✅ v9.0.2: пустые секции → undefined (не []).
+ * ✅ v9.0.2: dynamicComponents — 3 поля (isExpression, line, resolvedComponents).
+ * ✅ v9.0.2: conditionals пробрасываются в templates[] и в отдельную секцию.
+ * ✅ v9.0.2: functionId для lc/ef/rx = '' (не undefined).
+ * ✅ v9.0.0: собираются секции conditionals[], lifecycle[], effects[],
+ *            injections[], reactivity[], types[], typeRefs[].
  */
 function collectFullJSON(
   entitiesMap: Record<string, EntitiesResult>,
   verbose: boolean = false
 ): FullJSON {
+  // ============================================
+  // ✅ v8.5.0: Инициализация tsconfig
+  // ============================================
+  try {
+    clearTsConfigCache();
+    const firstTsFile = Object.keys(entitiesMap).find(f => f.endsWith('.ts') || f.endsWith('.tsx'));
+    const startDir = firstTsFile ? path.dirname(path.resolve(firstTsFile)) : process.cwd();
+    loadTsConfig(startDir);
+    if (verbose) {
+      console.log(`   🔧 tsconfig base: ${getTsConfigDir() || 'не найден'}`);
+    }
+  } catch (error) {
+    if (verbose) {
+      console.warn(
+        `   ⚠️ tsconfig не загружен: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
   // ============================================
   // 🆕 ОБОГАЩЕНИЕ RE-EXPORTS
   // ============================================
@@ -382,7 +387,7 @@ function collectFullJSON(
       const enrichResult = enrichWithReExports(tsProject, entitiesMap, {
         maxDepth: 10,
         projectRoot: process.cwd(),
-        debug: false,
+        debug: verbose,
       });
 
       workingEntitiesMap = enrichResult.enrichedEntities as Record<string, EntitiesResult>;
@@ -390,6 +395,7 @@ function collectFullJSON(
       if (verbose) {
         console.log(`   🔄 Re-exports развёрнуто: ${enrichResult.stats.expandedChains}`);
         console.log(`   📁 Файлов с re-exports: ${enrichResult.stats.filesWithReExports}`);
+        console.log(`   📏 Макс. глубина цепочки: ${enrichResult.stats.maxDepth}`);
       }
     }
   } catch (error) {
@@ -398,14 +404,12 @@ function collectFullJSON(
         `   ⚠️ Re-exports не развёрнуты: ${error instanceof Error ? error.message : String(error)}`
       );
     }
-    // Продолжаем работу с исходной картой
     workingEntitiesMap = entitiesMap;
   }
 
   // ============================================
   // Результирующие массивы
   // ============================================
-
   const modules: ModuleData[] = [];
   const files: FileData[] = [];
   const functions: FunctionData[] = [];
@@ -416,23 +420,30 @@ function collectFullJSON(
   const calls: CallData[] = [];
   const reExports: ReExportData[] = [];
   const templates: TemplateData[] = [];
+  const conditionals: TemplateConditional[] = [];
+
+  // ✅ v9.0.0: новые секции
+  const lifecycle: LifecycleHook[] = [];
+  const effects: EffectEdge[] = [];
+  const injections: InjectionEdge[] = [];
+  const reactivity: ReactivityEdge[] = [];
+  const types: TypeNodeData[] = [];
+  const typeRefs: TypeRefData[] = [];
 
   // ============================================
   // Карты для дедупликации
   // ============================================
-
   const moduleMap = new Map<string, ModuleData>();
   const fileMap = new Map<string, FileData>();
-  // ✅ ИСПРАВЛЕНО v8.3.0: теперь массив функций для каждого имени
+  // ✅ v8.4.2: массив функций для каждого имени (дубли не теряются)
   const functionMap = new Map<string, FunctionData[]>();
 
-  // Карта «source → fileId» для быстрого разрешения импортов
+  // ✅ v8.5.0: карта source → fileId
   const sourceToFileIdMap = new Map<string, string>();
 
   // ============================================
   // Счётчики
   // ============================================
-
   let moduleCounter = 0;
   let fileCounter = 0;
   let functionCounter = 0;
@@ -442,11 +453,19 @@ function collectFullJSON(
   let importCounter = 0;
   let callCounter = 0;
   let reExportCounter = 0;
+  let conditionalCounter = 0;
+
+  // ✅ v9.0.0: счётчики новых секций
+  let lifecycleCounter = 0;
+  let effectCounter = 0;
+  let injectionCounter = 0;
+  let reactivityCounter = 0;
+  let typeCounter = 0;
+  let typeRefCounter = 0;
 
   // ============================================
   // ПЕРВЫЙ ПРОХОД: модули, файлы, функции, классы, константы
   // ============================================
-
   for (const [filePath, entities] of Object.entries(workingEntitiesMap)) {
     if (!entities) continue;
 
@@ -482,12 +501,21 @@ function collectFullJSON(
       module.fileIds.push(file.id);
     }
 
-    // ✅ Заполняем карту source → fileId
+    // ✅ v8.5.0: регистрируем МНОГО вариантов пути
+    const absolutePath = path.resolve(filePath);
     const normalizedPath = filePath.replace(/\\/g, '/');
-    sourceToFileIdMap.set(normalizedPath, file.id);
+    const normalizedAbs = absolutePath.replace(/\\/g, '/');
+
     sourceToFileIdMap.set(filePath, file.id);
+    sourceToFileIdMap.set(normalizedPath, file.id);
+    sourceToFileIdMap.set(absolutePath, file.id);
+    sourceToFileIdMap.set(normalizedAbs, file.id);
     sourceToFileIdMap.set(path.basename(filePath), file.id);
-    sourceToFileIdMap.set(path.basename(filePath).replace(/\.[^.]+$/, ''), file.id);
+    const baseNoExt = path.basename(filePath).replace(/\.[^.]+$/, '');
+    sourceToFileIdMap.set(baseNoExt, file.id);
+    const relFromCwd = path.relative(process.cwd(), absolutePath).replace(/\\/g, '/');
+    sourceToFileIdMap.set(relFromCwd, file.id);
+    sourceToFileIdMap.set(relFromCwd.replace(/\.[^.]+$/, ''), file.id);
 
     // Функции
     const funcs = entities.functions || [];
@@ -505,14 +533,12 @@ function collectFullJSON(
         isAsync: func.isAsync || false,
         isArrow: func.isArrow || false,
         isMethod: func.isMethod || false,
-        // ✅ Прокидываем params и returnType
         params: func.params || [],
         returnType: func.returnType,
       };
 
       functions.push(funcData);
 
-      // ✅ ИСПРАВЛЕНО v8.3.0: добавляем в массив
       if (!functionMap.has(func.name)) {
         functionMap.set(func.name, []);
       }
@@ -532,7 +558,6 @@ function collectFullJSON(
         fileId: file.id,
         line: cls.line || 0,
         isExported: cls.isExported || false,
-        // ✅ Прокидываем methods
         methods: cls.methods || [],
       });
     }
@@ -550,7 +575,6 @@ function collectFullJSON(
         fileId: file.id,
         line: cn.line || 0,
         isExported: cn.isExported || false,
-        // ✅ Прокидываем value
         value: cn.value,
       });
     }
@@ -563,14 +587,12 @@ function collectFullJSON(
   }
 
   // ============================================
-  // ✅ НОВОЕ v8.4.0: сбор Vue-шаблонов (отдельные сущности)
-  // vt хранит ССЫЛКИ (имена/индексы), а не дубликаты объектов.
-  //
-  // ✅ ИСПРАВЛЕНО v8.4.1: hasTemplate теперь учитывает
-  //    templateSlots, templateDirectives, templateComplexity.
-  //    Это позволяет Vue-файлам без @click / v-for / :is, но
-  //    со слотами, директивами или сложным шаблоном, попасть
-  //    в секцию vt.
+  // ✅ v8.4.0 + v9.0.0 + v9.0.2: сбор Vue-шаблонов и conditionals
+  // ============================================
+  // ⚠️ ВАЖНО: каждый TemplateData содержит РОВНО 12 полей.
+  // Это критично для Codec.encode, который строит vt-кортеж по 12 позициям.
+  // Если хотя бы одно поле отсутствует (undefined), JSON.stringify
+  // может обрезать массив, что ломает round-trip.
   // ============================================
   for (const [filePath, entities] of Object.entries(workingEntitiesMap)) {
     if (!entities) continue;
@@ -583,28 +605,37 @@ function collectFullJSON(
 
     const e = entities as any;
 
-    // ✅ ИСПРАВЛЕНО v8.4.1: добавлены templateSlots, templateDirectives,
-    //    templateComplexity в условие.
+    // ✅ v9.0.0: hasTemplate учитывает templateConditionals
     const hasTemplate =
       (e.templateReactivityDeps?.length || 0) +
-      (e.templateEventHandlers?.length || 0) +
-      (e.templateDynamicComponents?.length || 0) +
-      (e.templateCssVariables?.length || 0) +
-      (e.templateDeepSelectors?.length || 0) +
-      (e.templateUsedComponents?.length || 0) +
-      (e.templateSlots?.length || 0) +
-      (e.templateDirectives?.length || 0) +
-      (e.templateComplexity || 0) >
+        (e.templateEventHandlers?.length || 0) +
+        (e.templateDynamicComponents?.length || 0) +
+        (e.templateRefs?.length || 0) +
+        (e.templateCssVariables?.length || 0) +
+        (e.templateDeepSelectors?.length || 0) +
+        (e.templateUsedComponents?.length || 0) +
+        (e.templateSlots?.length || 0) +
+        (e.templateDirectives?.length || 0) +
+        (e.templateConditionals?.length || 0) +
+        (e.templateComplexity || 0) >
       0;
 
     if (!hasTemplate) continue;
 
-    templates.push({
+    // ============================================
+    // ✅ v9.0.2: гарантируем РОВНО 12 полей TemplateData.
+    // ============================================
+    const templateData: TemplateData = {
       fileId: file.id,
       moduleId: module.id,
       reactivityDeps: e.templateReactivityDeps || [],
       eventHandlers: e.templateEventHandlers || [],
-      dynamicComponents: e.templateDynamicComponents || [],
+      dynamicComponents: (e.templateDynamicComponents || []).map((d: any) => ({
+        isExpression: d.isExpression || '',
+        line: d.line || 0,
+        // ✅ v9.0.2: 3-е поле — resolvedComponents
+        resolvedComponents: d.resolvedComponents || [],
+      })),
       directives: e.templateDirectives || [],
       usedComponents: e.templateUsedComponents || [],
       templateRefs: e.templateRefs || [],
@@ -612,17 +643,50 @@ function collectFullJSON(
       deepSelectors: e.templateDeepSelectors || [],
       slots: e.templateSlots || [],
       complexity: e.templateComplexity || 0,
-    });
+      // ✅ v9.0.2: conditionals пробрасываются в шаблон
+      conditionals: e.templateConditionals || [],
+    };
+
+    templates.push(templateData);
+
+    // ============================================
+    // ✅ v9.0.0: отдельная секция conditionals[]
+    // ============================================
+    const fileConditionals = e.templateConditionals || [];
+    for (const cd of fileConditionals) {
+      conditionalCounter++;
+      conditionals.push({
+        id: `cd${conditionalCounter}`,
+        directive: cd.directive,
+        fileId: file.id,
+        line: cd.line,
+        conditionExpression: cd.conditionExpression,
+        renderedComponent: cd.renderedComponent,
+      });
+    }
   }
 
   if (verbose && templates.length > 0) {
     console.log(`   🎨 Vue-шаблонов: ${templates.length}`);
+    console.log(`   🎯 Conditionals: ${conditionals.length}`);
+
+    // ✅ v9.0.2: диагностика 12 полей
+    if (process.env.AST_DEBUG_CODEC === 'true') {
+      for (let i = 0; i < templates.length; i++) {
+        const t = templates[i];
+        if (t) {
+          const fieldCount = Object.keys(t).length;
+          if (fieldCount !== 12) {
+            console.warn(`   ⚠️ templates[${i}] содержит ${fieldCount} полей вместо 12`);
+          }
+        }
+      }
+    }
   }
 
   // ============================================
   // ВТОРОЙ ПРОХОД: экспорты, импорты, вызовы, реэкспорты
   // ============================================
-
   for (const [filePath, entities] of Object.entries(workingEntitiesMap)) {
     if (!entities) continue;
 
@@ -640,20 +704,12 @@ function collectFullJSON(
     for (const exp of exportsList) {
       if (!exp || !exp.name) continue;
 
-      // ✅ ИСПРАВЛЕНО v8.3.0: ищем по имени, берём первую подходящую
       const funcDataArray = functionMap.get(exp.name);
       const funcData = funcDataArray && funcDataArray.length > 0 ? funcDataArray[0] : undefined;
 
-      // ✅ Реальная строка из loc, fallback на exp.line
       const expLine = exp.loc?.start?.line ?? exp.line ?? 0;
-
-      // ✅ Локальное имя
       const localName = exp.localName ?? exp.name;
-
-      // ✅ isTypeOnly
       const isTypeOnly = exp.isTypeOnly ?? false;
-
-      // ✅ Флаги реэкспорта
       const isStarReExport = exp.isStarReExport ?? false;
       const isDefaultReExport = exp.isDefaultReExport ?? false;
 
@@ -680,7 +736,6 @@ function collectFullJSON(
           isStarReExport,
         });
 
-        // ⚠️ Не создаём запись в exports — реэкспорты только здесь
         continue;
       }
 
@@ -724,17 +779,15 @@ function collectFullJSON(
       const specifiersStructured = (imp as any).specifiersStructured || [];
       const specifiers = imp.specifiers || [];
 
-      // ✅ isExternal через ast-parser (уже исправлен)
-      const isExternal = (imp as any).isExternal ?? isExternalModule(imp.source);
+      const isExternal = (imp as any).isExternal ?? isExternalModule(imp.source, filePath);
 
       const packageName = isExternal
         ? (imp as any).packageName ||
-        (imp.source.startsWith('@')
-          ? imp.source.split('/').slice(0, 2).join('/')
-          : imp.source.split('/')[0])
+          (imp.source.startsWith('@')
+            ? imp.source.split('/').slice(0, 2).join('/')
+            : imp.source.split('/')[0])
         : undefined;
 
-      // ✅ Разрешаем toFileId
       let resolvedToFileId: string | null = null;
 
       if (isExternal) {
@@ -746,11 +799,9 @@ function collectFullJSON(
         }
       }
 
-      // ✅ Реальная строка импорта
       const impLine = imp.loc?.start?.line ?? (imp as any).line ?? 0;
 
       if (specifiersStructured.length > 0) {
-        // Используем структурированные specifiers
         for (const spec of specifiersStructured) {
           if (!spec || !spec.imported || !spec.local) continue;
 
@@ -775,7 +826,6 @@ function collectFullJSON(
           });
         }
       } else {
-        // Fallback: парсим строковые specifiers
         for (const spec of specifiers as unknown[]) {
           let importedName = '';
           let localName = '';
@@ -850,7 +900,6 @@ function collectFullJSON(
     for (const func of funcs) {
       if (!func || !func.name) continue;
 
-      // ✅ ИСПРАВЛЕНО v8.3.0: берём первую функцию с таким именем
       const fromFuncArray = functionMap.get(func.name);
       const fromFunc = fromFuncArray && fromFuncArray.length > 0 ? fromFuncArray[0] : undefined;
       if (!fromFunc) continue;
@@ -860,15 +909,12 @@ function collectFullJSON(
       for (const callName of callsList) {
         if (!callName) continue;
 
-        // ✅ ИСПРАВЛЕНО v8.3.0: берём первую функцию с таким именем
         const toFuncArray = functionMap.get(callName);
         const toFunc = toFuncArray && toFuncArray.length > 0 ? toFuncArray[0] : undefined;
 
-        // ✅ Определяем тип вызова
         const callType = detectCallType(func, callName);
 
         if (!toFunc) {
-          // ✅ Внешний вызов — кодируем как 'external:name'
           callCounter++;
           calls.push({
             id: `c${callCounter}`,
@@ -880,7 +926,6 @@ function collectFullJSON(
           continue;
         }
 
-        // Пропускаем самовызовы
         if (fromFunc.id === toFunc.id) continue;
 
         callCounter++;
@@ -902,8 +947,7 @@ function collectFullJSON(
   }
 
   // ============================================
-  // ✅ НОВОЕ v8.4.0: рёбра event → handler
-  // (из шаблона Vue в граф вызовов; ссылка по имени, без дубликатов)
+  // ✅ v8.4.0: рёбра event → handler
   // ============================================
   for (const template of templates) {
     for (const handler of template.eventHandlers) {
@@ -916,14 +960,13 @@ function collectFullJSON(
       callCounter++;
       calls.push({
         id: `c${callCounter}`,
-        fromFunctionId: template.fileId, // символически: шаблон как источник
+        fromFunctionId: template.fileId,
         toFunctionId: handlerFunc.id,
         line: handler.line,
         type: 'callback',
       });
     }
 
-    // templateRef → expose (ссылка на методы дочернего компонента)
     for (const ref of template.templateRefs) {
       if (!ref.exposedMethods || ref.exposedMethods.length === 0) continue;
 
@@ -945,9 +988,142 @@ function collectFullJSON(
   }
 
   // ============================================
+  // ✅ v9.0.0: СБОР НОВЫХ СЕКЦИЙ
+  // ============================================
+  // lifecycle, effects, injections, reactivity, types, typeRefs
+  // собираются из workingEntitiesMap.
+  // ============================================
+  for (const [filePath, entities] of Object.entries(workingEntitiesMap)) {
+    if (!entities) continue;
+
+    const dirName = path.basename(path.dirname(filePath)) || 'root';
+    const module = moduleMap.get(dirName);
+    const file = fileMap.get(filePath);
+    if (!module || !file) continue;
+
+    const e = entities as any;
+
+    // --- LIFECYCLE (lc) ---
+    // ✅ v9.0.2: functionId = '' если функция не найдена.
+    // Codec.encode превратит '' в -1 через ?? -1.
+    for (const lc of e.templateLifecycle || []) {
+      lifecycleCounter++;
+      const funcArray = functionMap.get(lc.functionName);
+      const func = funcArray?.[0];
+      const callbackFuncArray = lc.callbackFunctionName
+        ? functionMap.get(lc.callbackFunctionName)
+        : undefined;
+      const callbackFunc = callbackFuncArray?.[0];
+
+      lifecycle.push({
+        id: `lc${lifecycleCounter}`,
+        hookName: lc.hookName,
+        functionId: func?.id || '',
+        line: lc.line || 0,
+        callbackFunctionId: callbackFunc?.id,
+        isSetupContext: lc.isSetupContext || false,
+      });
+    }
+
+    // --- EFFECTS (ef) ---
+    // ✅ v9.0.2: functionId = '' если функция не найдена.
+    for (const ef of e.templateEffects || []) {
+      effectCounter++;
+      const funcArray = functionMap.get(ef.functionName);
+      const func = funcArray?.[0];
+
+      effects.push({
+        id: `ef${effectCounter}`,
+        effectType: ef.effectType,
+        functionId: func?.id || '',
+        line: ef.line || 0,
+        targetName: ef.targetName || '',
+        metaValue: ef.metaValue,
+      });
+    }
+
+    // --- INJECTIONS (inj) ---
+    for (const inj of e.templateInjections || []) {
+      injectionCounter++;
+      injections.push({
+        id: `in${injectionCounter}`,
+        kind: inj.kind,
+        fileId: file.id,
+        line: inj.line || 0,
+        key: inj.key || '',
+        isSymbolKey: inj.isSymbolKey || false,
+        hasDefault: inj.hasDefault || false,
+      });
+    }
+
+    // --- REACTIVITY (rx) ---
+    // ✅ v9.0.2: functionId = '' если функция не найдена.
+    for (const rx of e.templateReactivity || []) {
+      reactivityCounter++;
+      const funcArray = functionMap.get(rx.functionName);
+      const func = funcArray?.[0];
+
+      reactivity.push({
+        id: `rx${reactivityCounter}`,
+        kind: rx.kind,
+        functionId: func?.id || '',
+        line: rx.line || 0,
+        reads: rx.reads || [],
+        writes: rx.writes || [],
+        isWriteable: rx.isWriteable || false,
+      });
+    }
+
+    // --- TYPES (ty) ---
+    for (const ty of e.typesGraph || []) {
+      typeCounter++;
+      types.push({
+        id: `t${typeCounter}`,
+        kind: ty.kind,
+        name: ty.name || '',
+        moduleId: module.id,
+        fileId: file.id,
+        line: ty.line || 0,
+        members: ty.members || [],
+        extendsTypes: ty.extendsTypes || [],
+      });
+    }
+
+    // --- TYPE REFS (tr) ---
+    for (const tr of e.typeRefsGraph || []) {
+      typeRefCounter++;
+      typeRefs.push({
+        id: `tr${typeRefCounter}`,
+        typeName: tr.typeName || '',
+        moduleId: module.id,
+        fileId: file.id,
+        line: tr.line || 0,
+        usageKind: tr.usageKind,
+      });
+    }
+  }
+
+  if (
+    verbose &&
+    lifecycle.length +
+      effects.length +
+      injections.length +
+      reactivity.length +
+      types.length +
+      typeRefs.length >
+      0
+  ) {
+    console.log(`   🧬 Lifecycle: ${lifecycle.length}`);
+    console.log(`   ⚡ Effects: ${effects.length}`);
+    console.log(`   💉 Injections: ${injections.length}`);
+    console.log(`   🔄 Reactivity: ${reactivity.length}`);
+    console.log(`   📐 Types: ${types.length}`);
+    console.log(`   🔗 TypeRefs: ${typeRefs.length}`);
+  }
+
+  // ============================================
   // Статистика
   // ============================================
-
   const statistics: StatisticsData = {
     totalModules: modules.length,
     totalFiles: files.length,
@@ -964,10 +1140,8 @@ function collectFullJSON(
   // ============================================
   // Определение корневого модуля
   // ============================================
-
   let root = 'm0';
 
-  // Ищем index.ts в корне src
   for (const file of files) {
     if (file.path.endsWith('src/index.ts') || file.path.endsWith('src\\index.ts')) {
       const module = modules.find(m => m.id === file.moduleId);
@@ -978,7 +1152,6 @@ function collectFullJSON(
     }
   }
 
-  // Fallback: первый модуль
   if (root === 'm0' && modules.length > 0) {
     const firstModule = modules[0];
     if (firstModule) {
@@ -989,24 +1162,39 @@ function collectFullJSON(
   // ============================================
   // Финальный объект
   // ============================================
-
-  return {
-    version: '8.4.1',
+  // ✅ v9.0.2: пустые секции → undefined (НЕ [])
+  // Это критично для чек-листа v9.0.0.
+  // ============================================
+  const result: FullJSON = {
+    version: '9.0.0',
     timestamp: new Date().toISOString(),
     root,
     modules,
     files,
     functions,
-    classes,
-    constants,
-    exports,
-    imports,
-    calls,
-    reExports,
+    // ✅ v9.0.2: классы только если непустые
+    classes: classes.length > 0 ? classes : (undefined as any),
+    // ✅ v9.0.2: константы только если непустые
+    constants: constants.length > 0 ? constants : (undefined as any),
+    exports: exports.length > 0 ? exports : (undefined as any),
+    imports: imports.length > 0 ? imports : (undefined as any),
+    calls: calls.length > 0 ? calls : (undefined as any),
+    reExports: reExports.length > 0 ? reExports : (undefined as any),
     templates: templates.length > 0 ? templates : undefined,
     statistics,
+    // ✅ v9.0.0: только если непустой
+    conditionals: conditionals.length > 0 ? conditionals : undefined,
+    // ✅ v9.0.0: новые секции
+    lifecycle: lifecycle.length > 0 ? lifecycle : undefined,
+    effects: effects.length > 0 ? effects : undefined,
+    injections: injections.length > 0 ? injections : undefined,
+    reactivity: reactivity.length > 0 ? reactivity : undefined,
+    types: types.length > 0 ? types : undefined,
+    typeRefs: typeRefs.length > 0 ? typeRefs : undefined,
     // ⚠️ edges НЕ создаются — восстанавливаются в Codec.decode
   };
+
+  return result;
 }
 
 // ============================================
@@ -1014,10 +1202,9 @@ function collectFullJSON(
 // ============================================
 
 function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
-  const ext = path.extname(filePath); // '.json'
-  const base = filePath.slice(0, -ext.length); // 'index'
+  const ext = path.extname(filePath);
+  const base = filePath.slice(0, -ext.length);
 
-  // Если файл уже оканчивается на суффикс (без расширения) — не трогаем
   const suffixNoExt = suffix.replace(/\.json$/i, '').replace(/^\./, '');
   if (base.endsWith(suffixNoExt)) {
     return filePath;
@@ -1027,20 +1214,7 @@ function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
 }
 
 /**
- * Разрешает source импорта в fileId проекта.
- *
- * Стратегии:
- *   1. Алиасы проекта (@/, #/, ~/) — поиск по basename
- *   2. Относительные пути (./, ../) — через resolveFilePath
- *   3. Прямой поиск в sourceToFileIdMap
- *   4. Поиск по basename
- *   5. Внешние пакеты → external:name
- *
- * @param source — исходный путь импорта
- * @param fromFilePath — путь к файлу-импортёру
- * @param sourceToFileIdMap — карта source → fileId
- * @param fileMap — карта filePath → FileData
- * @returns ID файла, external:name или null
+ * ✅ v8.5.0: resolveToFileId с полной интеграцией tsconfig.
  */
 function resolveToFileId(
   source: string,
@@ -1048,71 +1222,101 @@ function resolveToFileId(
   sourceToFileIdMap: Map<string, string>,
   fileMap: Map<string, FileData>
 ): string | null {
-  // ============================================
-  // 1. Алиасы проекта (@/, #/, ~/)
-  // ============================================
-  if (source.startsWith('@/') || source.startsWith('#/') || source.startsWith('~/')) {
-    const rest = source.replace(/^(@|#|~)\//, '');
-    const sourceBasename = path.basename(rest);
-    const sourceNoExt = sourceBasename.replace(/\.[^.]+$/, '');
+  // 1. Прямой поиск в карте
+  const direct = sourceToFileIdMap.get(source);
+  if (direct) return direct;
 
-    for (const [filePath, fileData] of fileMap) {
-      const fileBasename = path.basename(filePath);
-      const fileNoExt = fileBasename.replace(/\.[^.]+$/, '');
-      if (fileBasename === sourceBasename || fileNoExt === sourceNoExt) {
-        return fileData.id;
+  const normalizedSource = source.replace(/\\/g, '/');
+  const directNormalized = sourceToFileIdMap.get(normalizedSource);
+  if (directNormalized) return directNormalized;
+
+  // 2. Алиасы через tsconfig
+  const isAliasLike =
+    source.startsWith('@/') ||
+    source.startsWith('#/') ||
+    source.startsWith('~/') ||
+    source.startsWith('@') ||
+    source.startsWith('~') ||
+    source.startsWith('#');
+
+  if (isAliasLike) {
+    try {
+      const fromDir = path.dirname(fromFilePath);
+      const tsConfigDir = getTsConfigDir();
+      const baseDir = tsConfigDir || fromDir;
+
+      const tsConfig = loadTsConfig(baseDir);
+      const resolved = resolveAliasPath(source, baseDir, tsConfig);
+
+      if (resolved) {
+        const resolvedNormalized = resolved.replace(/\\/g, '/');
+
+        const byAbs = sourceToFileIdMap.get(resolved) || sourceToFileIdMap.get(resolvedNormalized);
+        if (byAbs) return byAbs;
+
+        const resolvedBase = path.basename(resolved);
+        const resolvedNoExt = resolvedBase.replace(/\.[^.]+$/, '');
+
+        const byBase = sourceToFileIdMap.get(resolvedBase);
+        if (byBase) return byBase;
+
+        const byNoExt = sourceToFileIdMap.get(resolvedNoExt);
+        if (byNoExt) return byNoExt;
+
+        for (const [fp, fd] of fileMap) {
+          const fpNormalized = fp.replace(/\\/g, '/');
+          if (
+            fpNormalized === resolvedNormalized ||
+            fpNormalized.endsWith('/' + resolvedNormalized) ||
+            resolvedNormalized.endsWith('/' + fpNormalized)
+          ) {
+            return fd.id;
+          }
+        }
       }
+    } catch {
+      // Игнорируем ошибки разрешения алиасов
     }
   }
 
-  // ============================================
-  // 2. Относительные пути (./, ../)
-  // ============================================
+  // 3. Относительные пути через resolveFilePath
   if (source.startsWith('.')) {
     try {
       const fromDir = path.dirname(fromFilePath);
       const resolved = resolveFilePath(fromDir, source);
       if (resolved) {
-        const resolvedFile = fileMap.get(resolved);
-        if (resolvedFile) return resolvedFile.id;
+        const resolvedNormalized = resolved.replace(/\\/g, '/');
 
-        // Нормализуем путь для поиска
-        const normalizedResolved = resolved.replace(/\\/g, '/');
-        for (const [filePath, fileData] of fileMap) {
-          if (filePath.replace(/\\/g, '/') === normalizedResolved) {
-            return fileData.id;
+        const byAbs = sourceToFileIdMap.get(resolved) || sourceToFileIdMap.get(resolvedNormalized);
+        if (byAbs) return byAbs;
+
+        for (const [fp, fd] of fileMap) {
+          const fpNormalized = fp.replace(/\\/g, '/');
+          if (
+            fpNormalized === resolvedNormalized ||
+            fpNormalized.endsWith('/' + resolvedNormalized) ||
+            resolvedNormalized.endsWith('/' + fpNormalized)
+          ) {
+            return fd.id;
           }
         }
       }
     } catch {
-      // Игнорируем ошибки разрешения
+      // Игнорируем
     }
   }
 
-  // ============================================
-  // 3. Прямой поиск в карте
-  // ============================================
-  const direct = sourceToFileIdMap.get(source);
-  if (direct) return direct;
-
-  // ============================================
   // 4. Поиск по basename
-  // ============================================
   const sourceBasename = path.basename(source);
   const sourceNoExt = sourceBasename.replace(/\.[^.]+$/, '');
 
-  for (const [filePath, fileData] of fileMap) {
-    const fileBasename = path.basename(filePath);
-    const fileNoExt = fileBasename.replace(/\.[^.]+$/, '');
+  const byBasename = sourceToFileIdMap.get(sourceBasename);
+  if (byBasename) return byBasename;
 
-    if (fileBasename === sourceBasename || fileNoExt === sourceNoExt) {
-      return fileData.id;
-    }
-  }
+  const byNoExt = sourceToFileIdMap.get(sourceNoExt);
+  if (byNoExt) return byNoExt;
 
-  // ============================================
   // 5. Внешний пакет
-  // ============================================
   if (!source.startsWith('.')) {
     const pkg = source.startsWith('@')
       ? source.split('/').slice(0, 2).join('/')
@@ -1125,9 +1329,6 @@ function resolveToFileId(
 
 /**
  * Определяет тип импорта по типу specifier.
- *
- * @param specifierType — тип specifier из AST
- * @returns Тип импорта
  */
 function getImportTypeFromSpecifierType(
   specifierType: string
@@ -1145,18 +1346,6 @@ function getImportTypeFromSpecifierType(
 
 /**
  * Определяет тип вызова по контексту.
- *
- * ✅ ИСПРАВЛЕНО v8.4.0:
- *   - Паттерн регулярного выражения построен через String.raw,
- *     что устраняет SyntaxError: Unterminated group
- *     (было: new RegExp(`${escapedCallName}\\s*\\([^)]*(?:=>|function)`, 'i')
- *      — из-за недостаточного экранирования regex получался сломанным)
- *   - Сохранена проверка на пустое body
- *   - Сохранено экранирование callName
- *
- * @param func — функция-источник
- * @param callName — имя вызываемой функции
- * @returns Тип вызова
  */
 function detectCallType(
   func: FunctionInfo,
@@ -1165,21 +1354,14 @@ function detectCallType(
   if (func.isAsync) return 'async';
   if (callName.includes('.')) return 'method';
 
-  // ✅ Проверяем body на существование и непустоту
   const body = func.body || '';
   if (body) {
-    // ✅ Экранируем специальные символы регулярного выражения в callName
     const escapedCallName = callName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    // ✅ ИСПРАВЛЕНО v8.4.0: используем String.raw для сохранения
-    // всех бэкслешей в паттерне. Без String.raw строка
-    // '\\s*\\([^)]*(?:=>|function)' превращается в 's*(^)]*(?:=>|function)',
-    // что даёт SyntaxError: Unterminated group.
     try {
       const cbPattern = new RegExp(String.raw`${escapedCallName}\s*\([^)]*(?:=>|function)`, 'i');
       if (cbPattern.test(body)) return 'callback';
     } catch {
-      // На случай экзотических имён — не падаем, возвращаем 'direct'
       return 'direct';
     }
   }

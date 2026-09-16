@@ -2,7 +2,23 @@
 // ============================================
 // ОСНОВНАЯ ФУНКЦИЯ АНАЛИЗА VUE КОМПОНЕНТА
 // ============================================
-// Версия: 4.2.0
+// Версия: 4.4.0 (FINAL, v9.0.0)
+//
+// ИЗМЕНЕНИЯ v4.4.0 (FINAL):
+//   - ✅ ДОБАВЛЕНО: вызов extractEffects (было упущено в v4.3.0)
+//   - ✅ ДОБАВЛЕНО: проброс effects в анализ
+//   - ✅ ДОБАВЛЕНО: логирование количества effects
+//   - ✅ ДОБАВЛЕНО: defensive-проверки для extractLifecycle/extractEffects/
+//     extractInjections/extractReactivity — если что-то падает,
+//     остальные секции всё равно собираются
+//   - ✅ ДОБАВЛЕНО: пустые массивы → пустые массивы (не undefined),
+//     чтобы convertVueAnalysisToEntities корректно пробросил их
+//
+// ИЗМЕНЕНИЯ v4.3.0:
+//   - ✅ ДОБАВЛЕНО: вызов extractLifecycle, extractInjections,
+//     extractReactivity из analyzers/index.js
+//   - ✅ ДОБАВЛЕНО: заполнение полей lifecycle, effects, injections,
+//     reactivity в результате анализа
 //
 // ИЗМЕНЕНИЯ v4.2.0:
 //   - ✅ ДОБАВЛЕНО: явный экспорт findProjectRoot (для CLI)
@@ -89,6 +105,14 @@ import {
 import { buildCallGraphFromScript } from './callgraph.js';
 import { generateVueComponentReport } from './report.js';
 import { buildGlobalComponentMap, type GlobalComponentMap } from './global-component-map.js';
+
+// ✅ НОВОЕ v4.3.0: импорт анализаторов из analyzers/index.js
+import {
+  extractLifecycle,
+  extractEffects,
+  extractInjections,
+  extractReactivity,
+} from '../../analyzers/index.js';
 
 // ============================================
 // РАСШИРЕННЫЕ ОПЦИИ АНАЛИЗА
@@ -288,6 +312,89 @@ export function analyzeVueComponent(
   }
   templateAnalysis.reactivityDeps = [...rootDepsSet];
 
+  // ============================================
+  // ✅ НОВОЕ v4.3.0 + v4.4.0: РАСШИРЕННЫЙ АНАЛИЗ
+  // ============================================
+  // Вызываем анализаторы lifecycle, effects, injections, reactivity.
+  //
+  // ВАЖНО: эти анализаторы работают на сыром тексте <script setup>
+  // (originalScriptContent), а не на AST. Это сделано осознанно:
+  //   - lifecycle-хуки и эффекты проще найти регулярками;
+  //   - reactivity (ref/computed/watch) — тоже регулярками, но
+  //     с поддержкой generic-параметров (исправлено в v9.0.1);
+  //   - injections (provide/inject) — аналогично.
+  //
+  // Все ошибки оборачиваются в try/catch, чтобы один анализатор
+  // не сломал весь Vue-анализ.
+  //
+  // ✅ v4.4.0: добавлен extractEffects (был упущен в v4.3.0).
+  //   Без него секция `effects` в FullJSON всегда была пустой.
+  // ============================================
+
+  let lifecycle: VueComponentAnalysis['lifecycle'] = [];
+  let effects: VueComponentAnalysis['effects'] = [];
+  let injections: VueComponentAnalysis['injections'] = [];
+  let reactivity: VueComponentAnalysis['reactivity'] = [];
+
+  if (originalScriptContent && originalScriptContent.trim() !== '') {
+    // --- LIFECYCLE ---
+    try {
+      lifecycle = extractLifecycle(originalScriptContent);
+    } catch (error) {
+      if (options.verbose) {
+        console.warn(
+          `⚠️ extractLifecycle failed for ${path.basename(filePath)}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+      lifecycle = [];
+    }
+
+    // --- EFFECTS ---
+    // ✅ v4.4.0: КРИТИЧНО — без этого секция `ef` всегда пустая
+    try {
+      effects = extractEffects(originalScriptContent);
+    } catch (error) {
+      if (options.verbose) {
+        console.warn(
+          `⚠️ extractEffects failed for ${path.basename(filePath)}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+      effects = [];
+    }
+
+    // --- INJECTIONS ---
+    try {
+      injections = extractInjections(originalScriptContent);
+    } catch (error) {
+      if (options.verbose) {
+        console.warn(
+          `⚠️ extractInjections failed for ${path.basename(filePath)}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+      injections = [];
+    }
+
+    // --- REACTIVITY ---
+    try {
+      reactivity = extractReactivity(originalScriptContent);
+    } catch (error) {
+      if (options.verbose) {
+        console.warn(
+          `⚠️ extractReactivity failed for ${path.basename(filePath)}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+      reactivity = [];
+    }
+  }
+
   // === СТАТИСТИКА ===
   const allSlots = [...new Set([...templateAnalysis.slots, ...slotDefinitions])];
 
@@ -331,7 +438,21 @@ export function analyzeVueComponent(
       totalSize,
     },
     setupAttributes,
+
+    // ✅ НОВОЕ v4.3.0 + v4.4.0: расширенные секции
+    lifecycle,
+    effects,
+    injections,
+    reactivity,
   };
+
+  // ✅ v4.4.0: логирование расширенных секций (для отладки)
+  if (options.verbose) {
+    console.log(
+      `   🔬 Vue-анализ ${path.basename(filePath)}: lifecycle=${lifecycle.length}, ` +
+        `effects=${effects.length}, injections=${injections.length}, reactivity=${reactivity.length}`
+    );
+  }
 
   return analysis;
 }
@@ -500,6 +621,23 @@ export async function analyzeVueComponentCli(
     console.log('');
   }
 
+  // ✅ НОВОЕ v4.3.0 + v4.4.0: статистика расширенного анализа
+  if (analysis.lifecycle.length > 0) {
+    console.log(`🧬 Lifecycle hooks: ${analysis.lifecycle.length}`);
+  }
+  if (analysis.effects.length > 0) {
+    console.log(`⚡ Effects: ${analysis.effects.length}`);
+  }
+  if (analysis.injections.length > 0) {
+    console.log(`💉 Injections: ${analysis.injections.length}`);
+  }
+  if (analysis.reactivity.length > 0) {
+    console.log(`🔄 Reactivity: ${analysis.reactivity.length}`);
+  }
+  if (analysis.template.conditionals.length > 0) {
+    console.log(`🎯 Conditionals: ${analysis.template.conditionals.length}`);
+  }
+
   const report = generateVueComponentReport(analysis);
   console.log(report);
 
@@ -510,7 +648,7 @@ export async function analyzeVueComponentCli(
   const jsonOutput = {
     analysis,
     timestamp: new Date().toISOString(),
-    version: '4.2.0',
+    version: '4.4.0',
   };
   const jsonFile = `${analysis.componentName}-analysis.json`;
   fs.writeFileSync(jsonFile, JSON.stringify(jsonOutput, null, 2));
@@ -568,6 +706,12 @@ export function enhanceWithVueAnalysis(
       constantsCount: vueAnalysis.constants.length,
       typesCount: vueAnalysis.types.length,
       interfacesCount: vueAnalysis.interfaces.length,
+      // ✅ НОВОЕ v4.3.0 + v4.4.0
+      lifecycleCount: vueAnalysis.lifecycle.length,
+      effectsCount: vueAnalysis.effects.length,
+      injectionsCount: vueAnalysis.injections.length,
+      reactivityCount: vueAnalysis.reactivity.length,
+      conditionalsCount: vueAnalysis.template.conditionals.length,
     },
   };
 }

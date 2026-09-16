@@ -2,39 +2,48 @@
 // ============================================
 // ТИПЫ ДЛЯ КОДЕКА (Стратегия B — строгий round-trip)
 // ============================================
-// Версия: 4.1.0
+// Версия: 9.0.0
+//
+// ИЗМЕНЕНИЯ v9.0.0:
+//   - ✅ ДОБАВЛЕНЫ: LifecycleHook, LifecycleHookName
+//   - ✅ ДОБАВЛЕНЫ: EffectEdge, EffectType
+//   - ✅ ДОБАВЛЕНЫ: InjectionEdge, InjectionKind
+//   - ✅ ДОБАВЛЕНЫ: ReactivityEdge, ReactivityKind
+//   - ✅ ДОБАВЛЕНЫ: TemplateConditional, ConditionalDirective
+//   - ✅ ДОБАВЛЕНЫ: TypeNodeData, TypeKind, TypeRefData, TypeUsageKind
+//   - ✅ РАСШИРЕН: TemplateDynamicComponent (resolvedComponents?)
+//   - ✅ РАСШИРЕН: TemplateData (conditionals?)
+//   - ✅ РАСШИРЕН: FullJSON (7 новых опциональных секций)
+//   - ✅ РАСШИРЕН: CompactJSON (lc, ef, inj, rx, cd, ty, tr;
+//                              vt.dynamicComponents → 3 элемента)
+//   - ✅ РАСШИРЕН: CodecLegend (7 новых словарей + 7 новых схем)
+//   - ✅ УНИФИЦИРОВАНЫ: GenerateReportOptions, GenerateReportResult
+//                       (устранён TS2300: Duplicate identifier)
 //
 // ИЗМЕНЕНИЯ v4.1.0:
 //   - ✅ НОВОЕ: TemplateData + вложенные типы
-//     (TemplateEventHandler, TemplateDynamicComponent,
-//      TemplateRefUsage, TemplateCssVariable, TemplateDeepSelector)
 //   - ✅ НОВОЕ: templates?: TemplateData[] в FullJSON
 //   - ✅ НОВОЕ: totalTemplates?: number в StatisticsData
-//   - ✅ НОВОЕ: vt?: [...] в CompactJSON (Vue-шаблоны)
+//   - ✅ НОВОЕ: vt?: [...] в CompactJSON
 //   - ✅ НОВОЕ: схемы vt.* в CodecLegend.arraySchemas
 //
 // ИЗМЕНЕНИЯ v3.1.0:
 //   - Добавлен интерфейс DecodeOptions для Codec.decode()
-//     (управление восстановлением edges, пустых массивов и статистики)
 //
 // ИЗМЕНЕНИЯ v3.0.0:
 //   - CompactJSON: новые кортежи с индексами словарей
 //   - CodecLegend: +stringDict, +paramDict, +methodDict, +valueDict
 //   - CodecLegend: +arraySchemas (позиционные схемы массивов)
 //   - ExportData: +isReExport, +isStarReExport, +isDefaultReExport, +source
-//   - ImportData: line, isExternal, packageName (актуализировано)
 //   - CompactJSON.mi: { n, f } вместо просто строки
 //   - CompactJSON.fl: { p, m } вместо просто строки
-//   - CompactJSON.fns: +paramsIdx[], +returnTypeIdx
-//   - CompactJSON.cls: +methodsIdx[]
-//   - CompactJSON.cn: +valueIdx
 //   - CompactJSON.gr.e: 10 элементов
-//   - CompactJSON.gr.i: 8 элементов (toFileIdIdx — индекс)
+//   - CompactJSON.gr.i: 8 элементов
 //   - CompactJSON.gr.c: toIdxOrExternalIdx + typeCode 'e'
-//   - CompactJSON.gr.re: 7 элементов (sourceIdx, exportNameIdx)
+//   - CompactJSON.gr.re: 7 элементов
 //   - Убран CompactJSON.edges (восстанавливается из gr.*)
 //
-// ✅ ESLint: все Array<T> заменены на T[] (правило @typescript-eslint/array-type)
+// ✅ ESLint: все Array<T> заменены на T[]
 // ============================================
 
 // ============================================
@@ -73,7 +82,7 @@ export interface FullJSON {
   /** Список реэкспортов */
   reExports: ReExportData[];
   /**
-   * ✅ НОВОЕ v4.1.0: Vue-шаблоны (отдельные сущности).
+   * Vue-шаблоны (отдельные сущности).
    *
    * Каждый элемент — отдельный шаблон Vue-файла.
    * Хранит ССЫЛКИ (имена), а не дубликаты объектов.
@@ -88,6 +97,25 @@ export interface FullJSON {
    * ⚠️ В compact.json НЕ хранится — восстанавливается из gr.*
    */
   edges?: EdgeData[];
+
+  // ==========================================
+  // ✅ НОВОЕ v9.0.0
+  // ==========================================
+
+  /** Хуки жизненного цикла (onMounted, onUnmounted, ...) */
+  lifecycle?: LifecycleHook[];
+  /** Side-effects (timer, cleanup, promise, event, subscription) */
+  effects?: EffectEdge[];
+  /** Provide/Inject рёбра */
+  injections?: InjectionEdge[];
+  /** Реактивные связи (computed/watch/ref/...) */
+  reactivity?: ReactivityEdge[];
+  /** Условный рендеринг (v-if / v-else-if / v-else) */
+  conditionals?: TemplateConditional[];
+  /** Узлы тип-графа (interface / type-alias / enum / class) */
+  types?: TypeNodeData[];
+  /** Рёбра использования типов (param / return / field / ...) */
+  typeRefs?: TypeRefData[];
 }
 
 // ============================================
@@ -361,7 +389,7 @@ export interface ReExportData {
 }
 
 // ============================================
-// VUE TEMPLATE (v4.1.0)
+// VUE TEMPLATE
 // ============================================
 //
 // vt — это ОТДЕЛЬНАЯ СУЩНОСТЬ (шаблон Vue-файла),
@@ -387,11 +415,19 @@ export interface TemplateEventHandler {
   isExternal: boolean;
 }
 
+/**
+ * Динамический компонент (<component :is="...">).
+ *
+ * ✅ v9.0.0: добавлено поле `resolvedComponents` —
+ * возможные значения expression (если удалось статически разрешить).
+ */
 export interface TemplateDynamicComponent {
   /** Выражение из :is / v-bind:is */
   isExpression: string;
   /** Строка */
   line: number;
+  /** ✅ НОВОЕ v9.0.0: возможные значения expression (если удалось разрешить) */
+  resolvedComponents?: string[];
 }
 
 export interface TemplateRefUsage {
@@ -421,6 +457,30 @@ export interface TemplateDeepSelector {
   selector: string;
   /** Строка */
   line: number;
+}
+
+// ============================================
+// ✅ НОВОЕ v9.0.0: CONDITIONALS
+// ============================================
+
+export type ConditionalDirective = 'v-if' | 'v-else-if' | 'v-else';
+
+/**
+ * Условный рендеринг в шаблоне Vue.
+ */
+export interface TemplateConditional {
+  /** Уникальный ID (cd1, cd2, ...) */
+  id: string;
+  /** Директива условного рендеринга */
+  directive: ConditionalDirective;
+  /** ID файла */
+  fileId: string;
+  /** Номер строки */
+  line: number;
+  /** Условие (для v-if / v-else-if) */
+  conditionExpression?: string;
+  /** Компонент внутри ветки */
+  renderedComponent?: string;
 }
 
 /**
@@ -455,6 +515,171 @@ export interface TemplateData {
   slots: string[];
   /** Сложность шаблона */
   complexity: number;
+  /** ✅ НОВОЕ v9.0.0: условный рендеринг */
+  conditionals?: TemplateConditional[];
+}
+
+// ============================================
+// ✅ НОВОЕ v9.0.0: LIFECYCLE
+// ============================================
+
+export type LifecycleHookName =
+  | 'onMounted'
+  | 'onUnmounted'
+  | 'onScopeDispose'
+  | 'onActivated'
+  | 'onDeactivated'
+  | 'watch'
+  | 'watchEffect'
+  | 'onErrorCaptured';
+
+/**
+ * Хук жизненного цикла Vue.
+ */
+export interface LifecycleHook {
+  /** Уникальный ID (lc1, lc2, ...) */
+  id: string;
+  /** Имя хука */
+  hookName: LifecycleHookName;
+  /** ID функции, в которой вызван hook */
+  functionId: string;
+  /** Номер строки */
+  line: number;
+  /** ID функции-callback (если есть) */
+  callbackFunctionId?: string;
+  /** Контекст: setup / options-api */
+  isSetupContext: boolean;
+}
+
+// ============================================
+// ✅ НОВОЕ v9.0.0: EFFECTS
+// ============================================
+
+export type EffectType = 'timer' | 'cleanup' | 'promise' | 'event' | 'subscription';
+
+/**
+ * Ребро side-effect (setTimeout, clearTimeout, addEventListener, ...).
+ */
+export interface EffectEdge {
+  /** Уникальный ID (ef1, ef2, ...) */
+  id: string;
+  /** Тип side-effect */
+  effectType: EffectType;
+  /** ID функции, в которой вызван эффект */
+  functionId: string;
+  /** Номер строки */
+  line: number;
+  /** Имя вызываемой функции (setTimeout / clearTimeout / addEventListener / ...) */
+  targetName: string;
+  /** Дополнительное значение (например, '1000' для debounce) */
+  metaValue?: string;
+}
+
+// ============================================
+// ✅ НОВОЕ v9.0.0: INJECTIONS
+// ============================================
+
+export type InjectionKind = 'provide' | 'inject';
+
+/**
+ * Ребро provide/inject.
+ */
+export interface InjectionEdge {
+  /** Уникальный ID (in1, in2, ...) */
+  id: string;
+  /** Тип ребра */
+  kind: InjectionKind;
+  /** ID файла */
+  fileId: string;
+  /** Номер строки */
+  line: number;
+  /** Нормализованное имя ключа */
+  key: string;
+  /** Является ли ключ символьным (InjectionKey<T>) */
+  isSymbolKey: boolean;
+  /** Есть ли значение по умолчанию (для inject) */
+  hasDefault: boolean;
+}
+
+// ============================================
+// ✅ НОВОЕ v9.0.0: REACTIVITY
+// ============================================
+
+export type ReactivityKind =
+  | 'computed'
+  | 'watch'
+  | 'watchEffect'
+  | 'ref'
+  | 'reactive'
+  | 'shallowRef'
+  | 'readonly';
+
+/**
+ * Ребро реактивной связи (computed/watch/ref/...).
+ */
+export interface ReactivityEdge {
+  /** Уникальный ID (rx1, rx2, ...) */
+  id: string;
+  /** Тип реактивной связи */
+  kind: ReactivityKind;
+  /** ID функции */
+  functionId: string;
+  /** Номер строки */
+  line: number;
+  /** Имена реактивных полей, которые читаются */
+  reads: string[];
+  /** Имена реактивных полей, которые пишутся */
+  writes: string[];
+  /** Является ли writeable (для computed({get,set})) */
+  isWriteable: boolean;
+}
+
+// ============================================
+// ✅ НОВОЕ v9.0.0: TYPES
+// ============================================
+
+export type TypeKind = 'interface' | 'type-alias' | 'enum' | 'class';
+
+/**
+ * Узел тип-графа.
+ */
+export interface TypeNodeData {
+  /** Уникальный ID (t1, t2, ...) */
+  id: string;
+  /** Вид типа */
+  kind: TypeKind;
+  /** Имя типа */
+  name: string;
+  /** ID модуля */
+  moduleId: string;
+  /** ID файла */
+  fileId: string;
+  /** Номер строки */
+  line: number;
+  /** Члены типа (для интерфейсов/классов) */
+  members: string[];
+  /** Расширяемые типы (extends) */
+  extendsTypes: string[];
+}
+
+export type TypeUsageKind = 'param' | 'return' | 'field' | 'generic' | 'union' | 'extends';
+
+/**
+ * Ребро использования типа.
+ */
+export interface TypeRefData {
+  /** Уникальный ID (tr1, tr2, ...) */
+  id: string;
+  /** Имя используемого типа */
+  typeName: string;
+  /** ID модуля */
+  moduleId: string;
+  /** ID файла */
+  fileId: string;
+  /** Номер строки */
+  line: number;
+  /** Вид использования */
+  usageKind: TypeUsageKind;
 }
 
 // ============================================
@@ -483,7 +708,7 @@ export interface StatisticsData {
   totalCalls: number;
   /** Общее количество реэкспортов */
   totalReExports: number;
-  /** ✅ НОВОЕ v4.1.0: количество Vue-шаблонов */
+  /** Количество Vue-шаблонов */
   totalTemplates?: number;
 }
 
@@ -536,13 +761,21 @@ export interface EdgeData {
  *           reactivityDepsIdx[],
  *           eventHandlers: [eventNameIdx, handlerNameIdx, tagIdx, line,
  *                           modifiersIdx[], isExternal][],
- *           dynamicComponents: [isExpressionIdx, line][],
+ *           dynamicComponents: [isExpressionIdx, line, resolvedComponentsIdx[]][],
  *           directivesIdx[],
  *           usedComponentsIdx[],
  *           templateRefs: [refValueIdx, tagIdx, line, exposedMethodsIdx[]][],
  *           cssVariables: [nameIdx, valueIdx, line, isMultiline][],
  *           deepSelectors: [selectorIdx, line][],
  *           slotsIdx[]]
+ *
+ *   lc:    [hookCode, funcIdx, line, callbackFnIdx, flags]
+ *   ef:    [effectCode, funcIdx, line, targetIdx, metaIdx]
+ *   inj:   [kindCode, fileIdx, line, keyIdx, flags]
+ *   rx:    [kindCode, funcIdx, line, readsIdx[], writesIdx[], flags]
+ *   cd:    [directiveCode, fileIdx, line, condIdx, compIdx, flags]
+ *   ty:    [kindCode, nameIdx, moduleIdx, fileIdx, line, membersIdx[], extendsIdx[]]
+ *   tr:    [typeNameIdx, moduleIdx, fileIdx, line, usageCode]
  *
  * Все *Idx — индексы в legend.stringDict (кроме paramsIdx/methodsIdx/valueIdx).
  *   -1 означает undefined/null.
@@ -572,14 +805,14 @@ export interface CompactJSON {
    * [id, name, moduleId, fileId, line, flags, paramsIdx[], returnTypeIdx]
    */
   fns: [
-    string, // id
-    string, // name
-    string, // moduleId
-    string, // fileId
-    number, // line
-    string, // flags
-    number[], // paramsIdx[]
-    number, // returnTypeIdx (-1 = undefined)
+    string,
+    string,
+    string,
+    string,
+    number,
+    string,
+    number[],
+    number,
   ][];
 
   /**
@@ -587,13 +820,13 @@ export interface CompactJSON {
    * [id, name, moduleId, fileId, line, flags, methodsIdx[]]
    */
   cls: [
-    string, // id
-    string, // name
-    string, // moduleId
-    string, // fileId
-    number, // line
-    string, // flags
-    number[], // methodsIdx[]
+    string,
+    string,
+    string,
+    string,
+    number,
+    string,
+    number[],
   ][];
 
   /**
@@ -601,13 +834,13 @@ export interface CompactJSON {
    * [id, name, moduleId, fileId, line, flags, valueIdx]
    */
   cn: [
-    string, // id
-    string, // name
-    string, // moduleId
-    string, // fileId
-    number, // line
-    string, // flags
-    number, // valueIdx (-1 = undefined)
+    string,
+    string,
+    string,
+    string,
+    number,
+    string,
+    number,
   ][];
 
   /** Graph — все связи в одном месте */
@@ -617,29 +850,18 @@ export interface CompactJSON {
      * [moduleIdx, fileIdx, funcIdx, line, typeCode,
      *  exportNameIdx, localNameIdx, isTypeOnly,
      *  isReExport, sourceIdx]
-     *
-     * - moduleIdx      : number — индекс модуля (1-based)
-     * - fileIdx        : number — индекс файла (1-based)
-     * - funcIdx        : number — индекс функции (1-based)
-     * - line           : number — номер строки
-     * - typeCode       : string — 'ne' | 'de' | 'te'
-     * - exportNameIdx  : number — индекс в stringDict
-     * - localNameIdx   : number — индекс в stringDict
-     * - isTypeOnly     : number — 0 | 1
-     * - isReExport     : number — 0 | 1
-     * - sourceIdx      : number — индекс в stringDict (-1 = undefined)
      */
     e: [
-      number, // moduleIdx
-      number, // fileIdx
-      number, // funcIdx
-      number, // line
-      string, // typeCode
-      number, // exportNameIdx
-      number, // localNameIdx
-      number, // isTypeOnly
-      number, // isReExport
-      number, // sourceIdx
+      number,
+      number,
+      number,
+      number,
+      string,
+      number,
+      number,
+      number,
+      number,
+      number,
     ][];
 
     /**
@@ -647,116 +869,64 @@ export interface CompactJSON {
      * [fromFileIdx, toFileIdIdx, sourceIdx,
      *  importedNameIdx, localNameIdx, line,
      *  typeCode, isExternal]
-     *
-     * - fromFileIdx     : number — индекс файла-импортёра
-     * - toFileIdIdx     : number — индекс toFileId в stringDict (-1 = null)
-     * - sourceIdx       : number — индекс source в stringDict
-     * - importedNameIdx : number — индекс importedName в stringDict
-     * - localNameIdx    : number — индекс localName в stringDict
-     * - line            : number — номер строки
-     * - typeCode        : string — 'n' | 'df' | 'ns' | 'to'
-     * - isExternal      : number — 0 | 1
      */
     i: [
-      number, // fromFileIdx
-      number, // toFileIdIdx
-      number, // sourceIdx
-      number, // importedNameIdx
-      number, // localNameIdx
-      number, // line
-      string, // typeCode
-      number, // isExternal
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+      string,
+      number,
     ][];
 
     /**
      * Calls:
      * [fromIdx, toIdxOrExternalIdx, line, typeCode]
-     *
-     * - fromIdx              : number — индекс вызывающей функции
-     * - toIdxOrExternalIdx   : number
-     *     • если typeCode !== 'e' → индекс в functionReverse (fnN)
-     *     • если typeCode === 'e' → индекс в stringDict (external:...)
-     * - line                 : number — номер строки
-     * - typeCode             : string — 'd' | 'a' | 'm' | 'c' | 'e'
      */
     c: [
-      number, // fromIdx
-      number, // toIdxOrExternalIdx
-      number, // line
-      string, // typeCode
+      number,
+      number,
+      number,
+      string,
     ][];
 
     /**
      * Re-exports:
      * [moduleIdx, funcIdx, sourceIdx, exportNameIdx,
      *  line, typeCode, isTypeOnly]
-     *
-     * - moduleIdx      : number — индекс модуля
-     * - funcIdx        : number — индекс функции
-     * - sourceIdx      : number — индекс source в stringDict
-     * - exportNameIdx  : number — индекс exportName в stringDict
-     * - line           : number — номер строки
-     * - typeCode       : string — 'n' | 'df' | 'all'
-     * - isTypeOnly     : number — 0 | 1
      */
     re: [
-      number, // moduleIdx
-      number, // funcIdx
-      number, // sourceIdx
-      number, // exportNameIdx
-      number, // line
-      string, // typeCode
-      number, // isTypeOnly
+      number,
+      number,
+      number,
+      number,
+      number,
+      string,
+      number,
     ][];
   };
 
   /**
-   * ✅ НОВОЕ v4.1.0: Vue templates.
+   * Vue templates.
    *
-   * Каждый элемент — отдельный шаблон Vue-файла.
-   * Хранит ССЫЛКИ (индексы в stringDict), а не дубликаты объектов.
-   * Рёбра (event→handler, templateRef→expose) восстанавливаются
-   * из `gr.c` по именам.
-   *
-   * Формат:
-   * [
-   *   fileIdx,                              // f1, f2, ...
-   *   moduleIdx,                            // m1, m2, ...
-   *   complexity,                           // число
-   *   reactivityDepsIdx[],                  // индексы в stringDict
-   *   eventHandlers: [                      // массив кортежей
-   *     eventNameIdx, handlerNameIdx, tagIdx, line, modifiersIdx[], isExternal
-   *   ][],
-   *   dynamicComponents: [                  // массив кортежей
-   *     isExpressionIdx, line
-   *   ][],
-   *   directivesIdx[],                      // индексы в stringDict
-   *   usedComponentsIdx[],                  // индексы в stringDict
-   *   templateRefs: [                       // массив кортежей
-   *     refValueIdx, tagIdx, line, exposedMethodsIdx[]
-   *   ][],
-   *   cssVariables: [                       // массив кортежей
-   *     nameIdx, valueIdx, line, isMultiline
-   *   ][],
-   *   deepSelectors: [                      // массив кортежей
-   *     selectorIdx, line
-   *   ][],
-   *   slotsIdx[]                            // индексы в stringDict
-   * ]
+   * ✅ v9.0.0: dynamicComponents теперь 3-элементный:
+   * [isExpressionIdx, line, resolvedComponentsIdx[]]
    */
   vt?: [
-    number, // fileIdx
-    number, // moduleIdx
-    number, // complexity
-    number[], // reactivityDepsIdx[]
-    [number, number, number, number, number[], number][], // eventHandlers
-    [number, number][], // dynamicComponents
-    number[], // directivesIdx[]
-    number[], // usedComponentsIdx[]
-    [number, number, number, number[]][], // templateRefs
-    [number, number, number, number][], // cssVariables
-    [number, number][], // deepSelectors
-    number[], // slotsIdx[]
+    number,
+    number,
+    number,
+    number[],
+    [number, number, number, number, number[], number][],
+    [number, number, number[]][],
+    number[],
+    number[],
+    [number, number, number, number[]][],
+    [number, number, number, number][],
+    [number, number][],
+    number[],
   ][];
 
   /** Statistics */
@@ -764,6 +934,52 @@ export interface CompactJSON {
 
   /** Legend (dictionaries + schemas) */
   legend: CodecLegend;
+
+  // ==========================================
+  // ✅ НОВОЕ v9.0.0
+  // ==========================================
+
+  /**
+   * Lifecycle:
+   * [hookCode, funcIdx, line, callbackFnIdx, flags]
+   */
+  lc?: [string, number, number, number, string][];
+
+  /**
+   * Effects:
+   * [effectCode, funcIdx, line, targetIdx, metaIdx]
+   */
+  ef?: [string, number, number, number, number][];
+
+  /**
+   * Injections:
+   * [kindCode, fileIdx, line, keyIdx, flags]
+   */
+  inj?: [string, number, number, number, number][];
+
+  /**
+   * Reactivity:
+   * [kindCode, funcIdx, line, readsIdx[], writesIdx[], flags]
+   */
+  rx?: [string, number, number, number[], number[], number][];
+
+  /**
+   * Conditionals:
+   * [directiveCode, fileIdx, line, condIdx, compIdx, flags]
+   */
+  cd?: [string, number, number, number, number, number][];
+
+  /**
+   * Types:
+   * [kindCode, nameIdx, moduleIdx, fileIdx, line, membersIdx[], extendsIdx[]]
+   */
+  ty?: [string, number, number, number, number, number[], number[]][];
+
+  /**
+   * Type refs:
+   * [typeNameIdx, moduleIdx, fileIdx, line, usageCode]
+   */
+  tr?: [number, number, number, number, string][];
 
   // ⚠️ НЕТ поля `edges` — восстанавливается при decode из gr.*
 }
@@ -802,6 +1018,25 @@ export interface CodecLegend {
   reExportTypes: Record<string, string>;
 
   // ============================================
+  // ✅ НОВОЕ v9.0.0: СЛОВАРИ ТИПОВ
+  // ============================================
+
+  /** Типы lifecycle-хуков */
+  lifecycleTypes: Record<string, string>;
+  /** Типы side-effects */
+  effectTypes: Record<string, string>;
+  /** Типы provide/inject */
+  injectionTypes: Record<string, string>;
+  /** Типы реактивных связей */
+  reactivityTypes: Record<string, string>;
+  /** Типы условного рендеринга */
+  conditionalTypes: Record<string, string>;
+  /** Виды типов */
+  typeKinds: Record<string, string>;
+  /** Виды использования типов */
+  typeUsageKinds: Record<string, string>;
+
+  // ============================================
   // ПОЗИЦИОННЫЕ СХЕМЫ МАССИВОВ
   // ============================================
 
@@ -824,18 +1059,37 @@ export interface CodecLegend {
     'gr.c': string[];
     /** gr.re: 7 полей */
     'gr.re': string[];
-    /** ✅ НОВОЕ v4.1.0: vt — 12 полей */
+    /** vt — 12 полей */
     vt: string[];
-    /** ✅ НОВОЕ v4.1.0: vt.eventHandlers — 6 полей */
+    /** vt.eventHandlers — 6 полей */
     'vt.eventHandlers': string[];
-    /** ✅ НОВОЕ v4.1.0: vt.dynamicComponents — 2 поля */
+    /** ✅ v9.0.0: vt.dynamicComponents — 3 поля */
     'vt.dynamicComponents': string[];
-    /** ✅ НОВОЕ v4.1.0: vt.templateRefs — 4 поля */
+    /** vt.templateRefs — 4 поля */
     'vt.templateRefs': string[];
-    /** ✅ НОВОЕ v4.1.0: vt.cssVariables — 4 поля */
+    /** vt.cssVariables — 4 поля */
     'vt.cssVariables': string[];
-    /** ✅ НОВОЕ v4.1.0: vt.deepSelectors — 2 поля */
+    /** vt.deepSelectors — 2 поля */
     'vt.deepSelectors': string[];
+
+    // ============================================
+    // ✅ НОВОЕ v9.0.0: СХЕМЫ
+    // ============================================
+
+    /** lc: 5 полей */
+    lc: string[];
+    /** ef: 5 полей */
+    ef: string[];
+    /** inj: 5 полей */
+    inj: string[];
+    /** rx: 6 полей */
+    rx: string[];
+    /** cd: 6 полей */
+    cd: string[];
+    /** ty: 7 полей */
+    ty: string[];
+    /** tr: 5 полей */
+    tr: string[];
   };
 
   // ============================================
@@ -851,9 +1105,15 @@ export interface CodecLegend {
    *   - external:* (calls)
    *   - source, exportName (reExports)
    *   - reactivityDeps, eventName, handlerName, tag,
-   *     isExpression, directives, usedComponents,
+   *     isExpression, resolvedComponents, directives, usedComponents,
    *     refValue, exposedMethods, cssVariable name/value,
    *     deepSelector, slots (templates)
+   *   - targetName, metaValue (effects)
+   *   - key (injections)
+   *   - reads, writes (reactivity)
+   *   - conditionExpression, renderedComponent (conditionals)
+   *   - name, members, extendsTypes (types)
+   *   - typeName (typeRefs)
    */
   stringDict: string[];
 
@@ -878,31 +1138,43 @@ export interface CodecLegend {
 }
 
 // ============================================
-// ОПЦИИ ГЕНЕРАЦИИ ОТЧЁТА
+// ОПЦИИ ГЕНЕРАЦИИ ОТЧЁТА (унифицированы в v9.0.0)
 // ============================================
 
 /**
  * Опции для генерации отчёта.
+ *
+ * ✅ УНИФИЦИРОВАНО v9.0.0: объединены поля из
+ *    compact-reporter.ts и codec-types.ts (устранён TS2300).
  */
 export interface GenerateReportOptions {
   /** Путь к выходному файлу (сжатый JSON) */
   outputPath?: string;
-  /** Использовать сжатие (по умолчанию true) */
+  /** Использовать сжатие (по умолчанию: true) */
   compress?: boolean;
-  /** Сохранять ли полный JSON рядом со сжатым (по умолчанию true) */
+  /** Сохранять полный JSON для отладки (по умолчанию: true) */
+  saveFullJson?: boolean;
+  /** @deprecated используйте saveFullJson */
   saveFull?: boolean;
-  /** Использовать ли битовые флаги (по умолчанию true) */
+  /** Дополнительный суффикс для полного JSON (по умолчанию: '.full.json') */
+  fullJsonSuffix?: string;
+  /** Подробный вывод (по умолчанию: false) */
+  verbose?: boolean;
+  /** Использовать ли битовые флаги (по умолчанию: true) */
   useBitFlags?: boolean;
-  /** Использовать ли словари (по умолчанию true) */
+  /** Использовать ли словари (по умолчанию: true) */
   useDictionaries?: boolean;
 }
 
 // ============================================
-// РЕЗУЛЬТАТ ГЕНЕРАЦИИ ОТЧЁТА
+// РЕЗУЛЬТАТ ГЕНЕРАЦИИ ОТЧЁТА (унифицирован v9.0.0)
 // ============================================
 
 /**
  * Результат генерации отчёта.
+ *
+ * ✅ УНИФИЦИРОВАНО v9.0.0: объединены поля из
+ *    compact-reporter.ts и codec-types.ts (устранён TS2300).
  */
 export interface GenerateReportResult {
   /** Полный (читаемый) JSON */
@@ -913,15 +1185,22 @@ export interface GenerateReportResult {
   compactPath?: string;
   /** Путь к сохранённому полному файлу */
   fullPath?: string;
-  /** Метрики сжатия */
+  /** Статистика генерации */
+  stats: {
+    /** Длительность в миллисекундах */
+    duration: number;
+    /** Размер сжатого файла в байтах */
+    compactSize?: number;
+    /** Размер полного файла в байтах */
+    fullSize?: number;
+    /** Коэффициент сжатия (%) */
+    compressionRatio?: number;
+  };
+  /** @deprecated используйте stats */
   compressionStats?: {
-    /** Размер полного JSON в байтах */
     fullSize: number;
-    /** Размер сжатого JSON в байтах */
     compactSize: number;
-    /** Коэффициент сжатия (compactSize / fullSize) */
     ratio: number;
-    /** Экономия в процентах */
     savedPercent: number;
   };
 }
@@ -935,11 +1214,6 @@ export interface GenerateReportResult {
  *
  * Позволяют управлять тем, какие производные поля
  * восстанавливаются при декодировании CompactJSON → FullJSON.
- *
- * Само поле `edges` в CompactJSON НЕ хранится —
- * оно всегда собирается из gr.i + gr.e + gr.c + gr.re.
- * Эти опции позволяют отключить его сборку,
- * если потребителю нужны только сами связи.
  *
  * @example
  * ```ts
@@ -1002,8 +1276,22 @@ export interface RoundTripResult {
     reExportsDiff?: number;
     /** Расхождение в количестве вызовов */
     callsDiff?: number;
-    /** ✅ НОВОЕ v4.1.0: расхождение в количестве шаблонов */
+    /** Расхождение в количестве шаблонов */
     templatesDiff?: number;
+    /** ✅ v9.0.0: расхождение в lifecycle */
+    lifecycleDiff?: number;
+    /** ✅ v9.0.0: расхождение в effects */
+    effectsDiff?: number;
+    /** ✅ v9.0.0: расхождение в injections */
+    injectionsDiff?: number;
+    /** ✅ v9.0.0: расхождение в reactivity */
+    reactivityDiff?: number;
+    /** ✅ v9.0.0: расхождение в conditionals */
+    conditionalsDiff?: number;
+    /** ✅ v9.0.0: расхождение в types */
+    typesDiff?: number;
+    /** ✅ v9.0.0: расхождение в typeRefs */
+    typeRefsDiff?: number;
   };
 }
 

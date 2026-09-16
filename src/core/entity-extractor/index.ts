@@ -2,7 +2,21 @@
 // ==========================================
 // ЕДИНАЯ ТОЧКА ВХОДА ДЛЯ ENTITY EXTRACTOR
 // ==========================================
-// Версия: 5.2.1
+// Версия: 5.3.0
+//
+// ИЗМЕНЕНИЯ v5.3.0:
+//   - ✅ ДОБАВЛЕНО: экспорт типа `TemplateConditional` (реэкспорт из vue-analyzer/types.js)
+//   - ✅ ДОБАВЛЕНО: экспорт типа `DynamicComponentUsage` (с resolvedComponents)
+//   - ✅ Обновлены комментарии для соответствия v9.0.0
+//
+// ИЗМЕНЕНИЯ v5.2.1:
+//   - ✅ ИСПРАВЛЕНО: путь к типам изменён с '../types.js' на '../../types.js',
+//     так как файл находится в src/core/entity-extractor/index.ts,
+//     а типы — в src/types.ts (на 2 уровня выше).
+//
+// ИЗМЕНЕНИЯ v5.2.0:
+//   - ✅ ДОБАВЛЕНО: экспорт helpers и AST-утилит
+//   - ✅ ДОБАВЛЕНО: экспорт call-collector
 //
 // Этот модуль реэкспортирует всё публичное API entity-extractor,
 // сохраняя обратную совместимость с прежним API из entity-extractor.ts.
@@ -11,10 +25,6 @@
 //   import { extractEntities } from '../core/entity-extractor.js';
 // продолжают работать без изменений:
 //   import { extractEntities } from '../core/entity-extractor/index.js';
-//
-// ИСПРАВЛЕНО: путь к типам изменён с '../types.js' на '../../types.js',
-// так как файл находится в src/core/entity-extractor/index.ts,
-// а типы — в src/types.ts (на 2 уровня выше).
 // ==========================================
 
 // ==========================================
@@ -115,6 +125,42 @@ export {
 // ==========================================
 
 export type { EntitiesResult } from '../../types.js';
+
+// ==========================================
+// ✅ НОВОЕ v5.3.0: РЕЭКСПОРТ ТИПОВ VUE TEMPLATE
+// ==========================================
+// Публичное API для работы с шаблонами Vue:
+//   - TemplateConditional — условный рендеринг (v-if/v-else-if/v-else)
+//   - DynamicComponentUsage — динамические компоненты с resolvedComponents
+//
+// Эти типы используются в:
+//   - VueComponentAnalysis.template.conditionals
+//   - VueComponentAnalysis.template.dynamicComponents
+//   - EntitiesResult.templateConditionals (через convert-analysis.ts)
+// ==========================================
+
+export type {
+  /** Условный рендеринг: v-if / v-else-if / v-else */
+  TemplateConditional,
+  /** Динамический компонент: <component :is="..."> */
+  DynamicComponentUsage,
+  /** Использование компонента в <template> */
+  TemplateComponentUsage,
+  /** Template ref: ref="dataTable" */
+  TemplateRefUsage,
+  /** Event handler: @click="handleClick" */
+  EventHandlerUsage,
+  /** Template expression: {{ displayText }} */
+  TemplateExpressionUsage,
+  /** CSS-переменная из <style> */
+  CssVariableUsage,
+  /** :deep() селектор */
+  DeepSelectorUsage,
+  /** Определение слота из defineSlots<T>() */
+  SlotDefinition,
+  /** Атрибуты <script setup> */
+  SFCSetupAttributes,
+} from '../../modes/vue-analyzer/types.js';
 
 // ==========================================
 // ЭКСПОРТ ПО УМОЛЧАНИЮ

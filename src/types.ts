@@ -174,14 +174,7 @@ export interface CallInfo {
   targetVscode: string;
   callLine: number;
   callType:
-    | 'direct'
-    | 'import'
-    | 'computed'
-    | 'watch'
-    | 'event'
-    | 'lifecycle'
-    | 'method'
-    | 'constructor';
+    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
 }
 
 export interface CalledByInfo {
@@ -192,14 +185,7 @@ export interface CalledByInfo {
   callerVscode: string;
   callLine: number;
   callType:
-    | 'direct'
-    | 'import'
-    | 'computed'
-    | 'watch'
-    | 'event'
-    | 'lifecycle'
-    | 'method'
-    | 'constructor';
+    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
 }
 
 export interface ImportedByInfo {
@@ -289,6 +275,219 @@ export interface ExtendedFunctionInfo {
 }
 
 // ==========================================
+// ✅ НОВОЕ v9.0.0: TEMPLATE-ПОЛЯ VUE
+// ==========================================
+// Эти типы используются в EntitiesResult.templateXxx
+// и в EnhancedEntityInfo.templateXxx.
+// Хранят ТОЛЬКО ссылки (имена/примитивы), без дубликатов объектов.
+// ==========================================
+
+/**
+ * Обработчик события из шаблона Vue.
+ */
+export interface TemplateEventHandler {
+  /** Имя события (click, update:value, ...) */
+  eventName: string;
+  /** Имя обработчика (onClick, handleUpdate, ...) */
+  handlerName: string;
+  /** Тег (<button>, <AiButton>, ...) */
+  tag: string;
+  /** Строка */
+  line: number;
+  /** Модификаторы (.stop, .prevent, ...) */
+  modifiers: string[];
+  /** Внешний обработчик (emit/console/Math и т.п.) */
+  isExternal?: boolean;
+}
+
+/**
+ * Динамический компонент (<component :is="...">).
+ */
+export interface TemplateDynamicComponent {
+  /** Выражение из :is / v-bind:is */
+  isExpression: string;
+  /** Строка */
+  line: number;
+  /** ✅ v9.0.0: возможные значения expression (если удалось разрешить) */
+  resolvedComponents?: string[];
+}
+
+/**
+ * Template ref (ref="dataTable").
+ *
+ * ✅ НОВОЕ: используется в EntitiesResult.templateRefs
+ * и пробрасывается в TemplateData.templateRefs для Codec.encode.
+ */
+export interface TemplateRefUsage {
+  /** Значение ref="dataTable" */
+  refValue: string;
+  /** Тег элемента/компонента */
+  tag: string;
+  /** Строка в template */
+  line: number;
+  /** ✅ Методы, экспонированные через defineExpose целевого компонента */
+  exposedMethods?: string[];
+}
+
+/**
+ * CSS-переменная из <style>.
+ */
+export interface TemplateCssVariable {
+  /** Имя переменной: --blue-700 */
+  name: string;
+  /** Значение: #1a5fb4 (если есть) */
+  value?: string;
+  /** Строка */
+  line: number;
+  /** Многострочное значение */
+  isMultiline?: boolean;
+}
+
+/**
+ * :deep() селектор из <style scoped>.
+ */
+export interface TemplateDeepSelector {
+  /** Селектор: .n-data-table-td */
+  selector: string;
+  /** Строка */
+  line: number;
+}
+
+/**
+ * ✅ НОВОЕ v9.0.0: Условный рендеринг (v-if / v-else-if / v-else).
+ */
+export interface TemplateConditional {
+  /** Директива */
+  directive: 'v-if' | 'v-else-if' | 'v-else';
+  /** Строка */
+  line: number;
+  /** Выражение условия (для v-if / v-else-if) */
+  conditionExpression?: string;
+  /** Компонент внутри ветки */
+  renderedComponent?: string;
+}
+
+// ==========================================
+// ✅ НОВОЕ v9.0.0: ТИПЫ ДЛЯ LIFECYCLE / EFFECTS / INJECTIONS / REACTIVITY
+// ==========================================
+
+/**
+ * Хук жизненного цикла Vue (собранный из кода).
+ */
+export interface TemplateLifecycle {
+  /** Имя хука */
+  hookName:
+    | 'onMounted'
+    | 'onUnmounted'
+    | 'onScopeDispose'
+    | 'onActivated'
+    | 'onDeactivated'
+    | 'watch'
+    | 'watchEffect'
+    | 'onErrorCaptured';
+  /** Имя функции, в которой вызван хук */
+  functionName: string;
+  /** Номер строки */
+  line: number;
+  /** Имя callback-функции (если есть) */
+  callbackFunctionName?: string;
+  /** Контекст: setup / options-api */
+  isSetupContext: boolean;
+}
+
+/**
+ * Side-effect (setTimeout, clearTimeout, addEventListener, ...).
+ */
+export interface TemplateEffect {
+  /** Тип эффекта */
+  effectType: 'timer' | 'cleanup' | 'promise' | 'event' | 'subscription';
+  /** Имя функции, в которой вызван эффект */
+  functionName: string;
+  /** Номер строки */
+  line: number;
+  /** Имя вызываемой функции (setTimeout / clearTimeout / ...) */
+  targetName: string;
+  /** Дополнительное значение (например, '1000' для debounce) */
+  metaValue?: string;
+}
+
+/**
+ * Ребро provide/inject.
+ */
+export interface TemplateInjection {
+  /** Тип: provide | inject */
+  kind: 'provide' | 'inject';
+  /** Путь к файлу */
+  filePath: string;
+  /** Номер строки */
+  line: number;
+  /** Нормализованное имя ключа */
+  key: string;
+  /** Используется ли Symbol (InjectionKey<T>) */
+  isSymbolKey: boolean;
+  /** Есть ли значение по умолчанию (для inject) */
+  hasDefault: boolean;
+}
+
+/**
+ * Реактивная связь: computed/watch/watchEffect/ref/reactive.
+ */
+export interface TemplateReactivity {
+  /** Тип реактивности */
+  kind: 'computed' | 'watch' | 'watchEffect' | 'ref' | 'reactive' | 'shallowRef' | 'readonly';
+  /** Имя функции/composable, в которой объявлена реактивность */
+  functionName: string;
+  /** Номер строки */
+  line: number;
+  /** Имена реактивных полей, которые читаются */
+  reads: string[];
+  /** Имена реактивных полей, которые пишутся */
+  writes: string[];
+  /** Является ли computed writeable ({ get, set }) */
+  isWriteable: boolean;
+}
+
+// ==========================================
+// ✅ НОВОЕ v9.0.0: ТИПЫ ДЛЯ ТИП-ГРАФА
+// ==========================================
+
+/**
+ * Узел тип-графа (interface / type-alias / enum / class).
+ */
+export interface TypeNode {
+  /** Вид типа */
+  kind: 'interface' | 'type-alias' | 'enum' | 'class';
+  /** Имя типа */
+  name: string;
+  /** ID модуля */
+  moduleId: string;
+  /** ID файла */
+  fileId: string;
+  /** Номер строки */
+  line: number;
+  /** Члены типа (для интерфейсов/классов) */
+  members: string[];
+  /** Расширяемые типы (extends) */
+  extendsTypes: string[];
+}
+
+/**
+ * Ребро использования типа.
+ */
+export interface TypeRef {
+  /** Имя используемого типа */
+  typeName: string;
+  /** ID модуля */
+  moduleId: string;
+  /** ID файла */
+  fileId: string;
+  /** Номер строки */
+  line: number;
+  /** Вид использования */
+  usageKind: 'param' | 'return' | 'field' | 'generic' | 'union' | 'extends';
+}
+
+// ==========================================
 // ОСНОВНОЙ ИНТЕРФЕЙС EntitiesResult
 // ==========================================
 
@@ -315,34 +514,25 @@ export interface EntitiesResult {
   templateReactivityDeps?: string[];
 
   /** Обработчики событий @click → handlerName */
-  templateEventHandlers?: {
-    eventName: string;
-    handlerName: string;
-    tag: string;
-    line: number;
-    modifiers: string[];
-    isExternal?: boolean;
-  }[];
+  templateEventHandlers?: TemplateEventHandler[];
 
   /** <component :is="..."> и v-bind:is */
-  templateDynamicComponents?: {
-    isExpression: string;
-    line: number;
-  }[];
+  templateDynamicComponents?: TemplateDynamicComponent[];
+
+  /**
+   * ✅ ИСПРАВЛЕНО: template refs (ref="dataTable" → exposedMethods).
+   *
+   * ⚠️ КРИТИЧНО: без этого поля Codec.encode получает undefined
+   * на позиции 9 vt[] и JSON.stringify обрезает массив до 9 элементов
+   * вместо ожидаемых 12. Это ломает round-trip.
+   */
+  templateRefs?: TemplateRefUsage[];
 
   /** CSS-переменные из <style> */
-  templateCssVariables?: {
-    name: string;
-    value?: string;
-    line: number;
-    isMultiline?: boolean;
-  }[];
+  templateCssVariables?: TemplateCssVariable[];
 
   /** :deep() селекторы */
-  templateDeepSelectors?: {
-    selector: string;
-    line: number;
-  }[];
+  templateDeepSelectors?: TemplateDeepSelector[];
 
   /** Директивы (v-html, v-text, v-pre, v-once, v-memo, v-model, ...) */
   templateDirectives?: string[];
@@ -355,6 +545,39 @@ export interface EntitiesResult {
 
   /** Сложность шаблона */
   templateComplexity?: number;
+
+  // ==========================================
+  // ✅ НОВОЕ v9.0.0: условный рендеринг
+  // ==========================================
+
+  /** Условный рендеринг (v-if / v-else-if / v-else) */
+  templateConditionals?: TemplateConditional[];
+
+  // ==========================================
+  // ✅ НОВОЕ v9.0.0: lifecycle / effects / injections / reactivity
+  // ==========================================
+
+  /** Хуки жизненного цикла (onMounted, onUnmounted, ...) */
+  templateLifecycle?: TemplateLifecycle[];
+
+  /** Side-effects (setTimeout, clearTimeout, AbortController, ...) */
+  templateEffects?: TemplateEffect[];
+
+  /** Ребра provide / inject */
+  templateInjections?: TemplateInjection[];
+
+  /** Реактивные связи (computed, watch, ref, reactive, ...) */
+  templateReactivity?: TemplateReactivity[];
+
+  // ==========================================
+  // ✅ НОВОЕ v9.0.0: тип-граф
+  // ==========================================
+
+  /** Узлы тип-графа (interface / type-alias / enum / class) */
+  typesGraph?: TypeNode[];
+
+  /** Ребра использования типов */
+  typeRefsGraph?: TypeRef[];
 }
 
 // ==========================================
@@ -1379,7 +1602,7 @@ export interface EnhancedEntityInfo {
   imports?: ImportInfo[];
 
   // ==========================================
-  // ✅ НОВОЕ: template-поля Vue.
+  // ✅ НОВОЕ v4.1.0: template-поля Vue.
   // Добавлены, чтобы `json-reporter.ts` мог обращаться к
   // `result.templateEventHandlers` и `result.templateReactivityDeps`
   // без ошибок TS2339.
@@ -1389,34 +1612,25 @@ export interface EnhancedEntityInfo {
   templateReactivityDeps?: string[];
 
   /** Обработчики событий @click → handlerName */
-  templateEventHandlers?: {
-    eventName: string;
-    handlerName: string;
-    tag: string;
-    line: number;
-    modifiers: string[];
-    isExternal?: boolean;
-  }[];
+  templateEventHandlers?: TemplateEventHandler[];
 
   /** <component :is="..."> и v-bind:is */
-  templateDynamicComponents?: {
-    isExpression: string;
-    line: number;
-  }[];
+  templateDynamicComponents?: TemplateDynamicComponent[];
+
+  /**
+   * ✅ ИСПРАВЛЕНО: template refs (ref="dataTable" → exposedMethods).
+   *
+   * ⚠️ КРИТИЧНО: без этого поля Codec.encode получает undefined
+   * на позиции 9 vt[] и JSON.stringify обрезает массив до 9 элементов
+   * вместо ожидаемых 12. Это ломает round-trip.
+   */
+  templateRefs?: TemplateRefUsage[];
 
   /** CSS-переменные из <style> */
-  templateCssVariables?: {
-    name: string;
-    value?: string;
-    line: number;
-    isMultiline?: boolean;
-  }[];
+  templateCssVariables?: TemplateCssVariable[];
 
   /** :deep() селекторы */
-  templateDeepSelectors?: {
-    selector: string;
-    line: number;
-  }[];
+  templateDeepSelectors?: TemplateDeepSelector[];
 
   /** Директивы (v-html, v-text, v-pre, v-once, v-memo, v-model, ...) */
   templateDirectives?: string[];
@@ -1429,6 +1643,39 @@ export interface EnhancedEntityInfo {
 
   /** Сложность шаблона */
   templateComplexity?: number;
+
+  // ==========================================
+  // ✅ НОВОЕ v9.0.0: условный рендеринг
+  // ==========================================
+
+  /** Условный рендеринг (v-if / v-else-if / v-else) */
+  templateConditionals?: TemplateConditional[];
+
+  // ==========================================
+  // ✅ НОВОЕ v9.0.0: lifecycle / effects / injections / reactivity
+  // ==========================================
+
+  /** Хуки жизненного цикла (onMounted, onUnmounted, ...) */
+  templateLifecycle?: TemplateLifecycle[];
+
+  /** Side-effects (setTimeout, clearTimeout, AbortController, ...) */
+  templateEffects?: TemplateEffect[];
+
+  /** Ребра provide / inject */
+  templateInjections?: TemplateInjection[];
+
+  /** Реактивные связи (computed, watch, ref, reactive, ...) */
+  templateReactivity?: TemplateReactivity[];
+
+  // ==========================================
+  // ✅ НОВОЕ v9.0.0: тип-граф
+  // ==========================================
+
+  /** Узлы тип-графа (interface / type-alias / enum / class) */
+  typesGraph?: TypeNode[];
+
+  /** Ребра использования типов */
+  typeRefsGraph?: TypeRef[];
 }
 
 // ==========================================

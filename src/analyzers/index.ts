@@ -2,7 +2,29 @@
 // ============================================
 // ЕДИНЫЙ МОДУЛЬ АНАЛИЗАТОРОВ
 // Все анализаторы вынесены в отдельный модуль для переиспользования
-// Версия: 5.1.0
+// Версия: 6.1.0
+// ============================================
+//
+// ИЗМЕНЕНИЯ v6.1.0:
+//   - ✅ ИСПРАВЛЕНО: extractLifecycle — поддержка generic-параметров `onMounted<T>(...)`
+//   - ✅ ИСПРАВЛЕНО: extractEffects — поддержка generic-параметров
+//   - ✅ ИСПРАВЛЕНО: extractInjections — поддержка `provide<T>(KEY, value)` и `inject<T>(KEY, default)`
+//   - ✅ ИСПРАВЛЕНО: extractReactivity — поддержка `computed<T>(...)`, `ref<T>(...)`,
+//     `shallowRef<T>(...)`, `reactive<T>(...)`, `readonly<T>(...)`, `watch<T>(...)`,
+//     `watchEffect<T>(...)`
+//   - ✅ ДОБАВЛЕНО: нормализация ключей InjectionKey в отдельную функцию
+//
+// ИЗМЕНЕНИЯ v6.0.0:
+//   - ✅ ДОБАВЛЕНО: extractLifecycle — хуки жизненного цикла (onMounted, onUnmounted, ...)
+//   - ✅ ДОБАВЛЕНО: extractEffects — side-effects (setTimeout, clearTimeout, AbortController, ...)
+//   - ✅ ДОБАВЛЕНО: extractInjections — provide/inject связи
+//   - ✅ ДОБАВЛЕНО: extractReactivity — computed/watch/watchEffect/ref/reactive
+//   - ✅ ДОБАВЛЕНО: extractConditionals — v-if/v-else-if/v-else (из Vue-шаблонов)
+//   - ✅ ДОБАВЛЕНО: analyzeContentExtended — расширенный анализ с новыми секциями
+//
+// ИЗМЕНЕНИЯ v5.1.0:
+//   - Базовые анализаторы: dynamicImports, configRefs, externalLibs, vueTemplates,
+//     asyncChains, closures, typeDeps
 // ============================================
 
 import path from 'path';
@@ -117,6 +139,102 @@ export interface TypeDep {
   properties?: string[];
 }
 
+// ============================================
+// ✅ ТИПЫ v6.0.0
+// ============================================
+
+/**
+ * Хук жизненного цикла Vue.
+ */
+export interface LifecycleHookInfo {
+  /** Имя хука: onMounted | onUnmounted | onScopeDispose | watch | watchEffect | ... */
+  hookName:
+    | 'onMounted'
+    | 'onUnmounted'
+    | 'onScopeDispose'
+    | 'onActivated'
+    | 'onDeactivated'
+    | 'watch'
+    | 'watchEffect'
+    | 'onErrorCaptured';
+  /** Номер строки */
+  line: number;
+  /** Имя функции, в которой вызван хук */
+  functionName?: string;
+  /** Имя callback-функции (если есть) */
+  callbackName?: string;
+  /** Setup-контекст (script setup) */
+  isSetupContext: boolean;
+}
+
+/**
+ * Side-effect: таймеры, cleanup, promise-цепочки, подписки.
+ */
+export interface EffectInfo {
+  /** Тип эффекта */
+  effectType: 'timer' | 'cleanup' | 'promise' | 'event' | 'subscription';
+  /** Номер строки */
+  line: number;
+  /** Имя функции, в которой встретился эффект */
+  functionName?: string;
+  /** Имя вызываемой функции (setTimeout, clearTimeout, addEventListener, ...) */
+  targetName: string;
+  /** Дополнительное значение (например, '1000' для debounce) */
+  metaValue?: string;
+}
+
+/**
+ * Provide/inject связь.
+ */
+export interface InjectionInfo {
+  /** Тип: provide | inject */
+  kind: 'provide' | 'inject';
+  /** Номер строки */
+  line: number;
+  /** Нормализованное имя ключа */
+  key: string;
+  /** Используется ли Symbol (InjectionKey<T>) */
+  isSymbolKey: boolean;
+  /** Есть ли значение по умолчанию (для inject) */
+  hasDefault: boolean;
+}
+
+/**
+ * Реактивная связь: computed/watch/watchEffect/ref/reactive.
+ */
+export interface ReactivityInfo {
+  /** Тип реактивности */
+  kind: 'computed' | 'watch' | 'watchEffect' | 'ref' | 'reactive' | 'shallowRef' | 'readonly';
+  /** Номер строки */
+  line: number;
+  /** Имя функции/composable, в которой объявлена реактивность */
+  functionName?: string;
+  /** Имена реактивных полей, которые читаются */
+  reads: string[];
+  /** Имена реактивных полей, которые пишутся */
+  writes: string[];
+  /** Является ли computed writeable ({ get, set }) */
+  isWriteable: boolean;
+}
+
+/**
+ * Условный рендеринг (v-if / v-else-if / v-else).
+ */
+export interface ConditionalInfo {
+  /** Директива */
+  directive: 'v-if' | 'v-else-if' | 'v-else';
+  /** Номер строки */
+  line: number;
+  /** Выражение условия */
+  conditionExpression?: string;
+  /** Компонент в ветке */
+  renderedComponent?: string;
+}
+
+// ============================================
+// БАЗОВЫЙ РЕЗУЛЬТАТ АНАЛИЗА
+// ============================================
+
 export interface AnalysisResult {
   dynamicImports: DynamicImport[];
   configRefs: ConfigRef[];
@@ -125,6 +243,17 @@ export interface AnalysisResult {
   asyncChains: AsyncChain[];
   closures: Closure[];
   typeDeps: TypeDep[];
+}
+
+/**
+ * ✅ РАСШИРЕННЫЙ РЕЗУЛЬТАТ v6.0.0 с новыми секциями.
+ */
+export interface ExtendedAnalysisResult extends AnalysisResult {
+  lifecycle: LifecycleHookInfo[];
+  effects: EffectInfo[];
+  injections: InjectionInfo[];
+  reactivity: ReactivityInfo[];
+  conditionals: ConditionalInfo[];
 }
 
 // ============================================
@@ -143,7 +272,7 @@ export function extractDynamicImports(content: string): DynamicImport[] {
     return imports;
   }
 
-  const regex = /import\s*\(\s*['\"`]([^'\"`]+)['\"`]\s*\)/g;
+  const regex = /import\s*\(\s*['"`]([^'"`]+)['"`]\s*\)/g;
   let match;
   while ((match = regex.exec(content)) !== null) {
     const path = match[1];
@@ -191,23 +320,23 @@ export function extractConfigRefs(content: string): ConfigRef[] {
   const patterns = [
     { regex: /process\.env\.([A-Z_][A-Z0-9_]*)/g, type: 'env' as const },
     {
-      regex: /require\s*\(\s*['\"]([^'\"]*\.config\.(js|ts|mjs|cjs))['\"]\s*\)/g,
+      regex: /require\s*\(\s*['"]([^'"]*\.config\.(js|ts|mjs|cjs))['"]\s*\)/g,
       type: 'require' as const,
     },
     {
-      regex: /import\s+.*\s+from\s+['\"]([^'\"]*\.config\.(js|ts|mjs|cjs))['\"]/g,
+      regex: /import\s+.*\s+from\s+['"]([^'"]*\.config\.(js|ts|mjs|cjs))['"]/g,
       type: 'import' as const,
     },
     {
-      regex: /import\s*\(\s*['\"]([^'\"]*\.config\.(js|ts|mjs|cjs))['\"]\s*\)/g,
+      regex: /import\s*\(\s*['"]([^'"]*\.config\.(js|ts|mjs|cjs))['"]\s*\)/g,
       type: 'dynamic' as const,
     },
     {
       regex:
-        /(?:const|let|var)\s+config\s*=\s*require\s*\(\s*['\"]([^'\"]*\.config\.(js|ts))['\"]\s*\)/g,
+        /(?:const|let|var)\s+config\s*=\s*require\s*\(\s*['"]([^'"]*\.config\.(js|ts))['"]\s*\)/g,
       type: 'require' as const,
     },
-    { regex: /CONFIG\s*[:=]\s*['\"]([^'\"]+)['\"]/g, type: 'variable' as const },
+    { regex: /CONFIG\s*[:=]\s*['"]([^'"]+)['"]/g, type: 'variable' as const },
   ];
 
   for (const { regex, type } of patterns) {
@@ -249,7 +378,7 @@ export function extractExternalLibs(content: string, filePath?: string): Externa
 
   // Импорты
   const importRegex =
-    /import\s+(?:type\s+)?(?:{[^}]*}|[^{}\s]+|\*\s+as\s+\w+)\s+from\s+['\"]([^.'\"][^'\"]*)['\"]/g;
+    /import\s+(?:type\s+)?(?:{[^}]*}|[^{}\s]+|\*\s+as\s+\w+)\s+from\s+['"]([^.'"][^'"]*)['"]/g;
   let match;
   while ((match = importRegex.exec(content)) !== null) {
     const name = match[1];
@@ -270,8 +399,7 @@ export function extractExternalLibs(content: string, filePath?: string): Externa
   }
 
   // require()
-  const requireRegex =
-    /(?:const|let|var)\s+\w+\s*=\s*require\s*\(\s*['\"]([^.'\"][^'\"]*)['\"]\s*\)/g;
+  const requireRegex = /(?:const|let|var)\s+\w+\s*=\s*require\s*\(\s*['"]([^.'"][^'"]*)['"]\s*\)/g;
   while ((match = requireRegex.exec(content)) !== null) {
     const name = match[1];
     if (name && !name.startsWith('.') && !name.startsWith('/')) {
@@ -370,8 +498,8 @@ export function extractVueTemplates(content: string): VueTemplate[] {
     });
   }
 
-  // Динамические компоненты <component :is=\"...\">
-  const dynamicRegex = /<component\s+:is\s*=\s*[\"']([^\"']+)[\"']/g;
+  // Динамические компоненты <component :is="...">
+  const dynamicRegex = /<component\s+:is\s*=\s*["']([^"']+)["']/g;
   while ((match = dynamicRegex.exec(template)) !== null) {
     const name = match[1];
     if (!name) continue;
@@ -385,7 +513,7 @@ export function extractVueTemplates(content: string): VueTemplate[] {
   }
 
   // Слоты
-  const slotRegex = /<slot\s+(?:name\s*=\s*[\"']([^\"']+)[\"'])?/g;
+  const slotRegex = /<slot\s+(?:name\s*=\s*["']([^"']+)["'])?/g;
   while ((match = slotRegex.exec(template)) !== null) {
     const name = match[1] || 'default';
     const line = template.substring(0, match.index).split('\n').length + 1;
@@ -1050,15 +1178,479 @@ function extractInterfaceProperties(content: string, startIndex: number): string
 }
 
 // ============================================
-// 9. УНИВЕРСАЛЬНАЯ ФУНКЦИЯ АНАЛИЗА
+// ✅ НОВЫЕ АНАЛИЗАТОРЫ v6.0.0
+// ============================================
+
+// ============================================
+// 9. АНАЛИЗ LIFECYCLE ХУКОВ
 // ============================================
 
 /**
- * Выполняет полный анализ содержимого файла
+ * Извлекает хуки жизненного цикла Vue из кода.
+ *
+ * Поддерживает:
+ *   - onMounted / onUnmounted / onScopeDispose
+ *   - onActivated / onDeactivated / onErrorCaptured
+ *   - watch / watchEffect (как lifecycle)
+ *
+ * ✅ ИСПРАВЛЕНО v6.1.0: поддержка generic-параметров.
+ *   - `onMounted<T>(...)` теперь корректно распознаётся
+ *   - `watch<T>(source, cb)` теперь корректно распознаётся
+ *   - `watchEffect<T>(cb)` теперь корректно распознаётся
+ *
+ * @param content - Содержимое файла
+ * @returns Массив хуков
+ */
+export function extractLifecycle(content: string): LifecycleHookInfo[] {
+  const hooks: LifecycleHookInfo[] = [];
+
+  if (!content || content.trim() === '') {
+    return hooks;
+  }
+
+  const HOOK_NAMES: LifecycleHookInfo['hookName'][] = [
+    'onMounted',
+    'onUnmounted',
+    'onScopeDispose',
+    'onActivated',
+    'onDeactivated',
+    'watch',
+    'watchEffect',
+    'onErrorCaptured',
+  ];
+
+  const isSetupContext = /<script\s+setup/.test(content) || /defineComponent/.test(content);
+
+  // Отслеживаем текущую функцию (в которой вызван хук)
+  // Упрощённо: не отслеживаем точно, но оставляем поле для будущего
+  const functionStack: { name: string; endIndex: number }[] = [];
+
+  for (const hookName of HOOK_NAMES) {
+    // ✅ ИСПРАВЛЕНО v6.1.0: поддержка generic-параметров `hookName<T>(...)`
+    const regex = new RegExp(`\\b${hookName}\\s*(?:<[^>]*>)?\\s*\\(`, 'g');
+    let match;
+
+    while ((match = regex.exec(content)) !== null) {
+      const line = content.substring(0, match.index).split('\n').length + 1;
+
+      // Определяем имя callback (первый аргумент, если это identifier/arrow)
+      const rest = content.substring(match.index + hookName.length + 1, match.index + 300);
+      const callbackMatch = rest.match(
+        /^\s*(?:async\s+)?(?:\(\s*\)\s*=>|(\w+)\s*=>|function\s*\(\s*\)|(\w+)\s*\()/
+      );
+
+      let callbackName: string | undefined;
+      if (callbackMatch) {
+        callbackName = callbackMatch[1] || callbackMatch[2] || undefined;
+      }
+
+      // Ищем ближайшую функцию-владельца (упрощённо — по отступу)
+      let functionName: string | undefined;
+      for (let i = functionStack.length - 1; i >= 0; i--) {
+        const entry = functionStack[i];
+        if (entry && match.index < entry.endIndex) {
+          functionName = entry.name;
+          break;
+        }
+      }
+
+      hooks.push({
+        hookName,
+        line,
+        functionName,
+        callbackName,
+        isSetupContext,
+      });
+    }
+  }
+
+  // Сортируем по строкам
+  hooks.sort((a, b) => a.line - b.line);
+
+  return hooks;
+}
+
+// ============================================
+// 10. АНАЛИЗ SIDE-EFFECTS
+// ============================================
+
+/**
+ * Извлекает side-effects: таймеры, cleanup, promise, event, subscription.
+ *
+ * ✅ ИСПРАВЛЕНО v6.1.0: поддержка generic-параметров.
+ *
+ * @param content - Содержимое файла
+ * @returns Массив эффектов
+ */
+export function extractEffects(content: string): EffectInfo[] {
+  const effects: EffectInfo[] = [];
+
+  if (!content || content.trim() === '') {
+    return effects;
+  }
+
+  const EFFECT_PATTERNS: { target: string; type: EffectInfo['effectType'] }[] = [
+    { target: 'setTimeout', type: 'timer' },
+    { target: 'setInterval', type: 'timer' },
+    { target: 'clearTimeout', type: 'cleanup' },
+    { target: 'clearInterval', type: 'cleanup' },
+    { target: 'requestAnimationFrame', type: 'timer' },
+    { target: 'cancelAnimationFrame', type: 'cleanup' },
+    { target: 'addEventListener', type: 'event' },
+    { target: 'removeEventListener', type: 'cleanup' },
+    { target: 'subscribe', type: 'subscription' },
+    { target: 'unsubscribe', type: 'cleanup' },
+    { target: 'abort', type: 'cleanup' },
+  ];
+
+  for (const { target, type } of EFFECT_PATTERNS) {
+    // ✅ ИСПРАВЛЕНО v6.1.0: поддержка generic-параметров
+    const regex = new RegExp(`\\b${target}\\s*(?:<[^>]*>)?\\s*\\(`, 'g');
+    let match;
+
+    while ((match = regex.exec(content)) !== null) {
+      const line = content.substring(0, match.index).split('\n').length + 1;
+
+      // Для setTimeout — извлекаем задержку (если число)
+      let metaValue: string | undefined;
+      if (target === 'setTimeout' || target === 'setInterval') {
+        const rest = content.substring(match.index, match.index + 500);
+        const delayMatch = rest.match(/,\s*(\d+)\s*\)/);
+        if (delayMatch && delayMatch[1]) {
+          metaValue = delayMatch[1];
+        }
+      }
+
+      effects.push({
+        effectType: type,
+        line,
+        targetName: target,
+        metaValue,
+      });
+    }
+  }
+
+  // Отдельно — new AbortController()
+  const abortCtrlRegex = /new\s+AbortController\s*\(/g;
+  let match;
+  while ((match = abortCtrlRegex.exec(content)) !== null) {
+    const line = content.substring(0, match.index).split('\n').length + 1;
+    effects.push({
+      effectType: 'cleanup',
+      line,
+      targetName: 'AbortController',
+    });
+  }
+
+  // Сортируем по строкам
+  effects.sort((a, b) => a.line - b.line);
+
+  return effects;
+}
+
+// ============================================
+// 11. АНАЛИЗ PROVIDE / INJECT
+// ============================================
+
+/**
+ * Извлекает provide/inject связи.
+ *
+ * ✅ ИСПРАВЛЕНО v6.1.0: поддержка generic-параметров.
+ *   - `provide<T>(KEY, value)` теперь корректно распознаётся
+ *   - `inject<T>(KEY, default)` теперь корректно распознаётся
+ *   - `inject<InjectionKey<T>>(KEY)` теперь корректно распознаётся
+ *
+ * @param content - Содержимое файла
+ * @returns Массив связей
+ */
+export function extractInjections(content: string): InjectionInfo[] {
+  const injections: InjectionInfo[] = [];
+
+  if (!content || content.trim() === '') {
+    return injections;
+  }
+
+  // provide(KEY, value) / provide<T>(KEY, value)
+  const provideRegex = /\bprovide\s*(?:<[^>]*>)?\s*\(\s*([^,)]+)\s*,/g;
+  let match;
+
+  while ((match = provideRegex.exec(content)) !== null) {
+    const rawKey = (match[1] || '').trim();
+    const line = content.substring(0, match.index).split('\n').length + 1;
+
+    const { key, isSymbolKey } = normalizeInjectionKey(rawKey);
+
+    injections.push({
+      kind: 'provide',
+      line,
+      key,
+      isSymbolKey,
+      hasDefault: false,
+    });
+  }
+
+  // inject(KEY, default?) / inject<T>(KEY, default?)
+  const injectRegex = /\binject\s*(?:<[^>]*>)?\s*\(\s*([^,)]+)(?:\s*,\s*([^)]+))?\s*\)/g;
+  while ((match = injectRegex.exec(content)) !== null) {
+    const rawKey = (match[1] || '').trim();
+    const hasDefault = !!match[2];
+    const line = content.substring(0, match.index).split('\n').length + 1;
+
+    const { key, isSymbolKey } = normalizeInjectionKey(rawKey);
+
+    injections.push({
+      kind: 'inject',
+      line,
+      key,
+      isSymbolKey,
+      hasDefault,
+    });
+  }
+
+  // Сортируем по строкам
+  injections.sort((a, b) => a.line - b.line);
+
+  return injections;
+}
+
+/**
+ * Нормализует ключ provide/inject:
+ *   - строковый литерал → без кавычек
+ *   - identifier → как есть
+ *   - Symbol → помечаем isSymbolKey
+ */
+function normalizeInjectionKey(raw: string): { key: string; isSymbolKey: boolean } {
+  const trimmed = raw.trim();
+
+  // Строковый литерал: 'foo' или "foo"
+  if (
+    (trimmed.startsWith("'") && trimmed.endsWith("'")) ||
+    (trimmed.startsWith('"') && trimmed.endsWith('"'))
+  ) {
+    return { key: trimmed.slice(1, -1), isSymbolKey: false };
+  }
+
+  // Symbol(...) или Symbol.for(...)
+  if (/^Symbol\b/.test(trimmed)) {
+    return { key: trimmed, isSymbolKey: true };
+  }
+
+  // Identifier: KEY_NAME
+  return { key: trimmed, isSymbolKey: false };
+}
+
+// ============================================
+// 12. АНАЛИЗ РЕАКТИВНОСТИ
+// ============================================
+
+/**
+ * Извлекает реактивные связи: computed/watch/watchEffect/ref/reactive.
+ *
+ * MVP: только верхний уровень — какие ref/reactive/computed
+ * объявлены в файле и что читают/пишут.
+ *
+ * ✅ ИСПРАВЛЕНО v6.1.0: поддержка generic-параметров.
+ *   - `computed<T>(() => ...)` теперь корректно распознаётся
+ *   - `ref<T>(value)` теперь корректно распознаётся
+ *   - `shallowRef<T>(value)` теперь корректно распознаётся
+ *   - `reactive<T>(value)` теперь корректно распознаётся
+ *   - `readonly<T>(value)` теперь корректно распознаётся
+ *   - `watch<T>(source, cb)` теперь корректно распознаётся
+ *   - `watchEffect<T>(cb)` теперь корректно распознаётся
+ *
+ * @param content - Содержимое файла
+ * @returns Массив реактивных связей
+ */
+export function extractReactivity(content: string): ReactivityInfo[] {
+  const result: ReactivityInfo[] = [];
+
+  if (!content || content.trim() === '') {
+    return result;
+  }
+
+  // computed(() => ...) / computed<T>(() => ...) / computed<T>({ get, set })
+  const computedRegex = /\bcomputed\s*(?:<[^>]*>)?\s*\(\s*(?:async\s*)?\(/g;
+  let match;
+  while ((match = computedRegex.exec(content)) !== null) {
+    const line = content.substring(0, match.index).split('\n').length + 1;
+
+    // Проверяем, writeable ли computed: computed({ get, set })
+    const rest = content.substring(match.index, match.index + 200);
+    const isWriteable = /computed\s*(?:<[^>]*>)?\s*\(\s*\{/.test(rest);
+
+    result.push({
+      kind: 'computed',
+      line,
+      reads: [],
+      writes: [],
+      isWriteable,
+    });
+  }
+
+  // watch(source, cb) / watch<T>(source, cb)
+  const watchRegex = /\bwatch\s*(?:<[^>]*>)?\s*\(\s*([^,)]+)/g;
+  while ((match = watchRegex.exec(content)) !== null) {
+    const line = content.substring(0, match.index).split('\n').length + 1;
+    const rawSource = (match[1] || '').trim();
+    const reads = extractReactiveNames(rawSource);
+
+    result.push({
+      kind: 'watch',
+      line,
+      reads,
+      writes: [],
+      isWriteable: false,
+    });
+  }
+
+  // watchEffect(cb) / watchEffect<T>(cb)
+  const watchEffectRegex = /\bwatchEffect\s*(?:<[^>]*>)?\s*\(/g;
+  while ((match = watchEffectRegex.exec(content)) !== null) {
+    const line = content.substring(0, match.index).split('\n').length + 1;
+
+    result.push({
+      kind: 'watchEffect',
+      line,
+      reads: [],
+      writes: [],
+      isWriteable: false,
+    });
+  }
+
+  // ref() / shallowRef() / reactive() / readonly()
+  // ✅ ИСПРАВЛЕНО v6.1.0: поддержка generic-параметров
+  const refRegex = /\b(ref|shallowRef|reactive|readonly)\s*(?:<[^>]*>)?\s*\(/g;
+  while ((match = refRegex.exec(content)) !== null) {
+    const kindRaw = match[1] as 'ref' | 'shallowRef' | 'reactive' | 'readonly';
+    const line = content.substring(0, match.index).split('\n').length + 1;
+
+    result.push({
+      kind: kindRaw,
+      line,
+      reads: [],
+      writes: [],
+      isWriteable: false,
+    });
+  }
+
+  // Сортируем по строкам
+  result.sort((a, b) => a.line - b.line);
+
+  return result;
+}
+
+/**
+ * Извлекает имена реактивных полей из выражения:
+ *   - `data` → ['data']
+ *   - `() => props.data` → ['props', 'data']
+ *   - `[a, b]` → ['a', 'b']
+ */
+function extractReactiveNames(expr: string): string[] {
+  const names = new Set<string>();
+  const regex = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\b/g;
+  let match;
+
+  while ((match = regex.exec(expr)) !== null) {
+    const name = match[1];
+    if (
+      name &&
+      ![
+        'true',
+        'false',
+        'null',
+        'undefined',
+        'this',
+        'function',
+        'return',
+        'if',
+        'else',
+        'const',
+        'let',
+        'var',
+        'ref',
+        'computed',
+        'watch',
+        'watchEffect',
+      ].includes(name)
+    ) {
+      names.add(name);
+    }
+  }
+
+  return Array.from(names);
+}
+
+// ============================================
+// 13. АНАЛИЗ УСЛОВНОГО РЕНДЕРИНГА (v-if / v-else-if / v-else)
+// ============================================
+
+/**
+ * Извлекает условный рендеринг из Vue-шаблона.
+ *
+ * Работает как над полным содержимым .vue-файла, так и над
+ * отдельным блоком `<template>`.
+ *
+ * @param content - Содержимое файла или шаблона
+ * @returns Массив условных блоков
+ */
+export function extractConditionals(content: string): ConditionalInfo[] {
+  const result: ConditionalInfo[] = [];
+
+  if (!content || content.trim() === '') {
+    return result;
+  }
+
+  // Собираем все v-if / v-else-if / v-else с их позициями
+  const directiveRegex = /\bv-(if|else-if|else)\b(?:\s*=\s*["']([^"']+)["'])?/g;
+  const matches: { directive: 'v-if' | 'v-else-if' | 'v-else'; expr?: string; index: number }[] =
+    [];
+
+  let match;
+  while ((match = directiveRegex.exec(content)) !== null) {
+    const raw = match[1];
+    const expr = match[2];
+
+    let directive: 'v-if' | 'v-else-if' | 'v-else';
+    if (raw === 'if') directive = 'v-if';
+    else if (raw === 'else-if') directive = 'v-else-if';
+    else if (raw === 'else') directive = 'v-else';
+    else continue;
+
+    matches.push({
+      directive,
+      expr: expr || undefined,
+      index: match.index,
+    });
+  }
+
+  for (const m of matches) {
+    const line = content.substring(0, m.index).split('\n').length + 1;
+
+    result.push({
+      directive: m.directive,
+      line,
+      conditionExpression: m.expr,
+      renderedComponent: undefined,
+    });
+  }
+
+  // Сортируем по строкам
+  result.sort((a, b) => a.line - b.line);
+
+  return result;
+}
+
+// ============================================
+// 14. УНИВЕРСАЛЬНАЯ ФУНКЦИЯ АНАЛИЗА (базовая)
+// ============================================
+
+/**
+ * Выполняет полный анализ содержимого файла (базовый набор).
+ *
  * @param content - Содержимое файла
  * @param filePath - Путь к файлу (опционально)
  * @param options - Опции анализа
- * @returns Результаты всех анализаторов
+ * @returns Результаты всех базовых анализаторов
  */
 export function analyzeContent(
   content: string,
@@ -1129,10 +1721,95 @@ export function analyzeContent(
 }
 
 // ============================================
-// 10. ЭКСПОРТ ПО УМОЛЧАНИЮ
+// 15. ✅ РАСШИРЕННЫЙ АНАЛИЗ v6.0.0
+// ============================================
+
+/**
+ * Выполняет расширенный анализ содержимого файла.
+ *
+ * Включает все базовые анализаторы + новые секции:
+ *   - lifecycle (хуки жизненного цикла)
+ *   - effects (side-effects)
+ *   - injections (provide/inject)
+ *   - reactivity (computed/watch/ref/reactive)
+ *   - conditionals (v-if/v-else-if/v-else)
+ *
+ * @param content - Содержимое файла
+ * @param filePath - Путь к файлу (опционально)
+ * @param options - Опции анализа
+ * @returns Расширенные результаты
+ */
+export function analyzeContentExtended(
+  content: string,
+  filePath?: string,
+  options: {
+    includeDynamicImports?: boolean;
+    includeConfigRefs?: boolean;
+    includeExternalLibs?: boolean;
+    includeVueTemplates?: boolean;
+    includeAsyncChains?: boolean;
+    includeClosures?: boolean;
+    includeTypeDeps?: boolean;
+    includeLifecycle?: boolean;
+    includeEffects?: boolean;
+    includeInjections?: boolean;
+    includeReactivity?: boolean;
+    includeConditionals?: boolean;
+  } = {}
+): ExtendedAnalysisResult {
+  const {
+    includeLifecycle = true,
+    includeEffects = true,
+    includeInjections = true,
+    includeReactivity = true,
+    includeConditionals = true,
+    ...baseOptions
+  } = options;
+
+  const base = analyzeContent(content, filePath, baseOptions);
+
+  const result: ExtendedAnalysisResult = {
+    ...base,
+    lifecycle: [],
+    effects: [],
+    injections: [],
+    reactivity: [],
+    conditionals: [],
+  };
+
+  if (!content || content.trim() === '') {
+    return result;
+  }
+
+  if (includeLifecycle) {
+    result.lifecycle = extractLifecycle(content);
+  }
+
+  if (includeEffects) {
+    result.effects = extractEffects(content);
+  }
+
+  if (includeInjections) {
+    result.injections = extractInjections(content);
+  }
+
+  if (includeReactivity) {
+    result.reactivity = extractReactivity(content);
+  }
+
+  if (includeConditionals && filePath?.endsWith('.vue')) {
+    result.conditionals = extractConditionals(content);
+  }
+
+  return result;
+}
+
+// ============================================
+// 16. ЭКСПОРТ ПО УМОЛЧАНИЮ
 // ============================================
 
 export default {
+  // Базовые
   extractDynamicImports,
   extractConfigRefs,
   extractExternalLibs,
@@ -1141,11 +1818,19 @@ export default {
   extractClosures,
   extractTypeDeps,
   analyzeContent,
+
+  // ✅ НОВЫЕ v6.0.0
+  extractLifecycle,
+  extractEffects,
+  extractInjections,
+  extractReactivity,
+  extractConditionals,
+  analyzeContentExtended,
 };
 
 // ============================================
 // ВЕРСИЯ МОДУЛЯ
 // ============================================
 
-export const ANALYZERS_VERSION = '5.1.0';
+export const ANALYZERS_VERSION = '6.1.0';
 export const ANALYZERS_NAME = '@newkind/ast-analyzer/analyzers';

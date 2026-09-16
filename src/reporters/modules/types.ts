@@ -1,5 +1,7 @@
 // src/reporters/modules/types.ts
-// ОБНОВЛЕННАЯ ВЕРСИЯ - добавлено поле imports типа ImportInfo[] и template-поля Vue
+// ============================================
+// ТИПЫ ДЛЯ МОДУЛЕЙ РЕПОРТЕРОВ
+// ============================================
 
 import type { ImportInfo } from '../../types.js';
 
@@ -12,6 +14,10 @@ export interface PackageLockImportInfo {
   type: 'named' | 'default' | 'namespace' | 'type';
   imports: string[];
 }
+
+// ============================================================
+// ✅ ENHANCED FUNCTION INFO
+// ============================================================
 
 export interface EnhancedFunctionInfo {
   name: string;
@@ -76,6 +82,10 @@ export interface EnhancedFunctionInfo {
   _fullPath?: string;
 }
 
+// ============================================================
+// ✅ ENHANCED CONSTANT INFO
+// ============================================================
+
 export interface EnhancedConstantInfo {
   name: string;
   line: number;
@@ -88,6 +98,10 @@ export interface EnhancedConstantInfo {
   _modulePath?: string;
 }
 
+// ============================================================
+// ✅ ENHANCED VARIABLE INFO
+// ============================================================
+
 export interface EnhancedVariableInfo {
   name: string;
   line: number;
@@ -99,6 +113,10 @@ export interface EnhancedVariableInfo {
   filePath?: string;
   _modulePath?: string;
 }
+
+// ============================================================
+// ✅ ENHANCED INTERFACE INFO
+// ============================================================
 
 export interface EnhancedInterfaceInfo {
   name: string;
@@ -114,6 +132,10 @@ export interface EnhancedInterfaceInfo {
   _modulePath?: string;
 }
 
+// ============================================================
+// ✅ ENHANCED TYPE INFO
+// ============================================================
+
 export interface EnhancedTypeInfo {
   name: string;
   definition: string;
@@ -124,6 +146,10 @@ export interface EnhancedTypeInfo {
   filePath?: string;
   _modulePath?: string;
 }
+
+// ============================================================
+// ✅ ENHANCED CLASS INFO
+// ============================================================
 
 export interface EnhancedClassInfo {
   name: string;
@@ -142,7 +168,125 @@ export interface EnhancedClassInfo {
 }
 
 // ============================================================
-// ✅ ОБНОВЛЕННЫЙ ТИП С ПОЛЕМ imports: ImportInfo[] И TEMPLATE-ПОЛЯМИ
+// ✅ НОВОЕ v9.0.0: ТИПЫ ДЛЯ TEMPLATE-СЕКЦИЙ VUE
+// ============================================================
+
+/**
+ * Обработчик события из шаблона (@click="handleClick").
+ */
+export interface TemplateEventHandlerInfo {
+  eventName: string;
+  handlerName: string;
+  tag: string;
+  line: number;
+  modifiers: string[];
+  isExternal?: boolean;
+}
+
+/**
+ * Динамический компонент (<component :is="..." />).
+ */
+export interface TemplateDynamicComponentInfo {
+  isExpression: string;
+  line: number;
+  /** ✅ НОВОЕ v9.0.0: возможные значения expression */
+  resolvedComponents?: string[];
+}
+
+/**
+ * Условный рендеринг (v-if / v-else-if / v-else).
+ */
+export interface TemplateConditionalInfo {
+  directive: 'v-if' | 'v-else-if' | 'v-else';
+  line: number;
+  conditionExpression?: string;
+  renderedComponent?: string;
+}
+
+/**
+ * Реактивная связь (computed / watch / watchEffect / ref / reactive).
+ */
+export interface TemplateReactivityInfo {
+  kind: 'computed' | 'watch' | 'watchEffect' | 'ref' | 'reactive' | 'shallowRef' | 'readonly';
+  functionName: string;
+  line: number;
+  reads: string[];
+  writes: string[];
+  isWriteable: boolean;
+}
+
+/**
+ * Хук жизненного цикла Vue.
+ */
+export interface TemplateLifecycleInfo {
+  hookName:
+    | 'onMounted'
+    | 'onUnmounted'
+    | 'onScopeDispose'
+    | 'onActivated'
+    | 'onDeactivated'
+    | 'watch'
+    | 'watchEffect'
+    | 'onErrorCaptured';
+  functionName: string;
+  line: number;
+  callbackFunctionName?: string;
+  isSetupContext: boolean;
+}
+
+/**
+ * Side-effect (таймер, cleanup, promise, event, subscription).
+ */
+export interface TemplateEffectInfo {
+  effectType: 'timer' | 'cleanup' | 'promise' | 'event' | 'subscription';
+  functionName: string;
+  line: number;
+  targetName: string;
+  metaValue?: string;
+}
+
+/**
+ * Ребро provide / inject.
+ */
+export interface TemplateInjectionInfo {
+  kind: 'provide' | 'inject';
+  filePath: string;
+  line: number;
+  key: string;
+  isSymbolKey: boolean;
+  hasDefault: boolean;
+}
+
+// ============================================================
+// ✅ НОВОЕ v9.0.0: ТИПЫ ДЛЯ ТИП-ГРАФА
+// ============================================================
+
+/**
+ * Узел тип-графа.
+ */
+export interface TypeNodeInfo {
+  kind: 'interface' | 'type-alias' | 'enum' | 'class';
+  name: string;
+  moduleId: string;
+  fileId: string;
+  line: number;
+  members: string[];
+  extendsTypes: string[];
+}
+
+/**
+ * Ребро использования типа.
+ */
+export interface TypeRefInfo {
+  typeName: string;
+  moduleId: string;
+  fileId: string;
+  line: number;
+  usageKind: 'param' | 'return' | 'field' | 'generic' | 'union' | 'extends';
+}
+
+// ============================================================
+// ✅ ОБНОВЛЕННЫЙ EnhancedEntityInfo
 // ============================================================
 
 export interface EnhancedEntityInfo {
@@ -154,7 +298,7 @@ export interface EnhancedEntityInfo {
   classes: EnhancedClassInfo[];
 
   /**
-   * ✅ ИСПРАВЛЕНО: тип `ImportInfo[]` вместо устаревшего
+   * ✅ ИСПРАВЛЕНО (v8.4.2): тип `ImportInfo[]` вместо устаревшего
    * `{ source: string; specifiers: string[]; isTypeOnly: boolean }[]`.
    *
    * Причина: в v7.1.0 структура import specifiers изменилась —
@@ -186,19 +330,35 @@ export interface EnhancedEntityInfo {
   templateReactivityDeps?: string[];
 
   /** Обработчики событий @click → handlerName */
-  templateEventHandlers?: {
-    eventName: string;
-    handlerName: string;
-    tag: string;
-    line: number;
-    modifiers: string[];
-    isExternal?: boolean;
-  }[];
+  templateEventHandlers?: TemplateEventHandlerInfo[];
 
   /** <component :is="..."> и v-bind:is */
-  templateDynamicComponents?: {
-    isExpression: string;
+  templateDynamicComponents?: TemplateDynamicComponentInfo[];
+
+  /**
+   * ✅ ИСПРАВЛЕНО (v9.0.0): template refs.
+   *
+   * Без этого поля:
+   *   1. `json-reporter.ts` не может обратиться к `result.templateRefs`
+   *      (TS2339: Property 'templateRefs' does not exist on type
+   *       'EnhancedEntityInfo').
+   *   2. `compact-reporter.ts` не может собрать 9-е поле vt[]
+   *      (templateRefs) — из-за этого в `index.json` массив vt
+   *      содержал 9 полей вместо 12, что ломает round-trip.
+   *
+   * Формат — массив объектов, каждый из которых описывает один
+   * `ref="..."` в шаблоне:
+   *   - refValue       — значение атрибута ref (например, "dataTable")
+   *   - tag            — тег элемента/компонента (например, "DataTable")
+   *   - line           — строка в шаблоне
+   *   - exposedMethods — методы из defineExpose дочернего компонента
+   *                      (заполняется при двухпроходном анализе)
+   */
+  templateRefs?: {
+    refValue: string;
+    tag: string;
     line: number;
+    exposedMethods?: string[];
   }[];
 
   /** CSS-переменные из <style> */
@@ -226,10 +386,41 @@ export interface EnhancedEntityInfo {
 
   /** Сложность шаблона */
   templateComplexity?: number;
+
+  // ==========================================
+  // ✅ НОВОЕ v9.0.0: расширенные template-секции
+  // ==========================================
+
+  /** Условный рендеринг (v-if / v-else-if / v-else) */
+  templateConditionals?: TemplateConditionalInfo[];
+
+  /** Хуки жизненного цикла (onMounted, onUnmounted, ...) */
+  templateLifecycle?: TemplateLifecycleInfo[];
+
+  /** Side-effects (setTimeout, clearTimeout, AbortController, ...) */
+  templateEffects?: TemplateEffectInfo[];
+
+  /** Реактивные связи (computed, watch, ref, reactive, ...) */
+  templateReactivity?: TemplateReactivityInfo[];
+
+  /** Ребра provide / inject */
+  templateInjections?: TemplateInjectionInfo[];
+
+  /** Узлы тип-графа (interface / type-alias / enum / class) */
+  typesGraph?: TypeNodeInfo[];
+
+  /** Ребра использования типов */
+  typeRefsGraph?: TypeRefInfo[];
+
+  /** ID файла для conditional/lifecycle/effect/injection секций */
+  fileId?: string;
+
+  /** ID модуля */
+  moduleId?: string;
 }
 
 // ============================================================
-// ТИПЫ ДЛЯ ENHANCED PACKAGE LOCK REPORT
+// ✅ ENHANCED PACKAGE INFO
 // ============================================================
 
 export interface EnhancedPackageInfo {
@@ -268,6 +459,10 @@ export interface EnhancedPackageInfo {
   vscode?: string;
   sourceCode?: string;
 }
+
+// ============================================================
+// ✅ ENHANCED PACKAGE LOCK REPORT
+// ============================================================
 
 export interface EnhancedPackageLockReport {
   name: string;
@@ -335,19 +530,49 @@ export interface EnhancedPackageLockReport {
     }[];
   };
   entityStats: {
+    // ==========================================
+    // Базовые поля (уже существовали)
+    // ==========================================
     totalFunctions: number;
     totalConstants: number;
     totalVariables: number;
     totalInterfaces: number;
+    /**
+     * Общее количество типов TypeScript (interface / type-alias / enum).
+     * ⚠️ Это поле УЖЕ существовало как обязательное `number`.
+     * НЕ добавлять дубликат `totalTypes?: number` в блок v9.0.0 —
+     * это даёт TS2300/TS2687/TS2717.
+     */
     totalTypes: number;
     totalClasses: number;
     totalCalls: number;
     totalExportedFunctions: number;
     totalAsyncFunctions: number;
-    /** ✅ ДОБАВЛЕНО: общее количество экспортов */
+
+    /** ✅ ДОБАВЛЕНО (v6.x): общее количество экспортов */
     totalExports?: number;
-    /** ✅ ДОБАВЛЕНО: общее количество реэкспортов */
+    /** ✅ ДОБАВЛЕНО (v6.x): общее количество реэкспортов */
     totalReExports?: number;
+
+    // ==========================================
+    // ✅ НОВОЕ v9.0.0
+    // ==========================================
+    /** Общее количество Vue-шаблонов */
+    totalTemplates?: number;
+    /** Общее количество условных рендеров (v-if / v-else-if / v-else) */
+    totalConditionals?: number;
+    /** Общее количество хуков жизненного цикла */
+    totalLifecycle?: number;
+    /** Общее количество side-effects */
+    totalEffects?: number;
+    /** Общее количество provide/inject ребер */
+    totalInjections?: number;
+    /** Общее количество реактивных связей */
+    totalReactivity?: number;
+    /** Общее количество ребер использования типов */
+    totalTypeRefs?: number;
+
+    // ⚠️ totalTypes НЕ дублируется — см. выше (базовые поля).
   };
   fileStats: {
     totalFiles: number;

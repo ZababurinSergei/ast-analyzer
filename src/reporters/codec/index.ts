@@ -2,29 +2,44 @@
 // ============================================
 // ЕДИНАЯ ТОЧКА ВХОДА ДЛЯ КОДЕКА
 // ============================================
-// Версия: 3.2.0 (Стратегия B — строгий round-trip + Vue templates)
+// Версия: 9.0.0 (Стратегия B — строгий round-trip + v9-секции)
+//
+// ИЗМЕНЕНИЯ v9.0.0:
+//   - ✅ ДОБАВЛЕНЫ экспорты словарей типов v9:
+//       LIFECYCLE_TYPES, LIFECYCLE_REVERSE,
+//       EFFECT_TYPES, EFFECT_REVERSE,
+//       INJECTION_TYPES, INJECTION_REVERSE,
+//       REACTIVITY_TYPES, REACTIVITY_REVERSE,
+//       CONDITIONAL_TYPES, CONDITIONAL_REVERSE,
+//       TYPE_KINDS, TYPE_KINDS_REVERSE,
+//       TYPE_USAGE_KINDS, TYPE_USAGE_KINDS_REVERSE
+//   - ✅ ДОБАВЛЕНЫ экспорты типов v9:
+//       LifecycleHook, LifecycleHookName,
+//       EffectEdge, EffectType,
+//       InjectionEdge, InjectionKind,
+//       ReactivityEdge, ReactivityKind,
+//       TemplateConditional, ConditionalDirective,
+//       TypeNodeData, TypeKind,
+//       TypeRefData, TypeUsageKind
+//   - ✅ CODEC_MODULE_VERSION обновлён до 9.0.0
+//   - ✅ CODEC_MODULE_NAME обновлён
 //
 // ИЗМЕНЕНИЯ v3.2.0:
 //   - ✅ ДОБАВЛЕНЫ экспорты типов Vue-шаблонов:
 //       TemplateData, TemplateEventHandler, TemplateDynamicComponent,
 //       TemplateRefUsage, TemplateCssVariable, TemplateDeepSelector
-//   - ✅ CODEC_MODULE_VERSION обновлён до 3.2.0
 //
 // ИЗМЕНЕНИЯ v3.1.0:
 //   - Добавлен экспорт типа DecodeOptions
-//   - CODEC_MODULE_VERSION обновлён до 3.1.0
 //
 // ИЗМЕНЕНИЯ v3.0.0:
 //   - Добавлен экспорт RE_EXPORT_TYPES
 //   - Добавлен экспорт arraySchemas (через CodecLegend)
 //   - Добавлены экспорты словарей (stringDict, paramDict, methodDict, valueDict)
-//   - Обновлены типы: CompactJSON, CodecLegend, ExportData, ImportData
 //   - Добавлен экспорт типа EdgeData
-//   - CODEC_MODULE_VERSION обновлён до 3.0.0
 //
 // ИЗМЕНЕНИЯ v2.0.1:
-//   - DecodedFlags теперь реэкспортируется из './codec.js'
-//     (был ошибочно указан './codec-types.js', где его нет)
+//   - DecodedFlags реэкспортируется из './codec.js'
 // ============================================
 
 // ============================================
@@ -52,12 +67,45 @@ export {
   IMPORT_TYPES,
   /** Типы вызовов (direct, async, method, callback, external) */
   CALL_TYPES,
-  /** ✅ НОВОЕ v3.0.0: Типы реэкспортов (named, default, all) */
+  /** Типы реэкспортов (named, default, all) */
   RE_EXPORT_TYPES,
   /** Карта ключей: полное имя → короткое */
   KEY_MAP,
   /** Обратная карта: короткое → полное */
   KEY_REVERSE_MAP,
+
+  // ============================================
+  // ✅ НОВОЕ v9.0.0: СЛОВАРИ ТИПОВ
+  // ============================================
+
+  /** Типы lifecycle-хуков (onMounted, onUnmounted, ...) */
+  LIFECYCLE_TYPES,
+  /** Обратная карта lifecycle: имя → код */
+  LIFECYCLE_REVERSE,
+  /** Типы эффектов (timer, cleanup, promise, event, subscription) */
+  EFFECT_TYPES,
+  /** Обратная карта эффектов: имя → код */
+  EFFECT_REVERSE,
+  /** Типы injections (provide, inject) */
+  INJECTION_TYPES,
+  /** Обратная карта injections: имя → код */
+  INJECTION_REVERSE,
+  /** Типы реактивности (computed, watch, ref, reactive, ...) */
+  REACTIVITY_TYPES,
+  /** Обратная карта реактивности: имя → код */
+  REACTIVITY_REVERSE,
+  /** Типы условного рендеринга (v-if, v-else-if, v-else) */
+  CONDITIONAL_TYPES,
+  /** Обратная карта условного рендеринга: имя → код */
+  CONDITIONAL_REVERSE,
+  /** Типы TS-сущностей (interface, type-alias, enum, class) */
+  TYPE_KINDS,
+  /** Обратная карта TS-сущностей: имя → код */
+  TYPE_KINDS_REVERSE,
+  /** Способы использования типов (param, return, field, ...) */
+  TYPE_USAGE_KINDS,
+  /** Обратная карта использования типов: имя → код */
+  TYPE_USAGE_KINDS_REVERSE,
 } from './codec.js';
 
 // ============================================
@@ -122,7 +170,7 @@ export type {
   ReExportData,
 
   // ============================================
-  // ✅ НОВОЕ v3.2.0: VUE TEMPLATES
+  // VUE TEMPLATES (v3.2.0)
   // ============================================
 
   /**
@@ -140,6 +188,64 @@ export type {
   TemplateCssVariable,
   /** :deep() селектор */
   TemplateDeepSelector,
+
+  // ============================================
+  // ✅ НОВОЕ v9.0.0: LIFECYCLE
+  // ============================================
+
+  /** Имя lifecycle-хука */
+  LifecycleHookName,
+  /** Ребро lifecycle-хука */
+  LifecycleHook,
+
+  // ============================================
+  // ✅ НОВОЕ v9.0.0: EFFECTS
+  // ============================================
+
+  /** Тип эффекта */
+  EffectType,
+  /** Ребро эффекта */
+  EffectEdge,
+
+  // ============================================
+  // ✅ НОВОЕ v9.0.0: INJECTIONS
+  // ============================================
+
+  /** Тип injection (provide / inject) */
+  InjectionKind,
+  /** Ребро injection */
+  InjectionEdge,
+
+  // ============================================
+  // ✅ НОВОЕ v9.0.0: REACTIVITY
+  // ============================================
+
+  /** Тип реактивности */
+  ReactivityKind,
+  /** Ребро реактивности */
+  ReactivityEdge,
+
+  // ============================================
+  // ✅ НОВОЕ v9.0.0: CONDITIONALS
+  // ============================================
+
+  /** Тип условной директивы */
+  ConditionalDirective,
+  /** Ребро условного рендеринга */
+  TemplateConditional,
+
+  // ============================================
+  // ✅ НОВОЕ v9.0.0: TYPES
+  // ============================================
+
+  /** Тип TS-сущности */
+  TypeKind,
+  /** Узел типа */
+  TypeNodeData,
+  /** Способ использования типа */
+  TypeUsageKind,
+  /** Ссылка на тип */
+  TypeRefData,
 
   // ============================================
   // МЕТАДАННЫЕ
@@ -160,7 +266,7 @@ export type {
   GenerateReportResult,
   /** Результат проверки обратимости */
   RoundTripResult,
-  /** ✅ v3.1.0: Опции декодирования CompactJSON → FullJSON */
+  /** Опции декодирования CompactJSON → FullJSON */
   DecodeOptions,
 
   // ============================================
@@ -188,7 +294,7 @@ export type {
 // ВЕРСИЯ МОДУЛЯ
 // ============================================
 
-export const CODEC_MODULE_VERSION = '3.2.0';
+export const CODEC_MODULE_VERSION = '9.0.0';
 export const CODEC_MODULE_NAME = '@newkind/ast-analyzer/reporters/codec';
 
 // ============================================
@@ -212,6 +318,21 @@ import {
   flagsStringToNumber,
   decodeFlagsToObject,
   decodeFlagsToNames,
+  // ✅ v9.0.0
+  LIFECYCLE_TYPES,
+  LIFECYCLE_REVERSE,
+  EFFECT_TYPES,
+  EFFECT_REVERSE,
+  INJECTION_TYPES,
+  INJECTION_REVERSE,
+  REACTIVITY_TYPES,
+  REACTIVITY_REVERSE,
+  CONDITIONAL_TYPES,
+  CONDITIONAL_REVERSE,
+  TYPE_KINDS,
+  TYPE_KINDS_REVERSE,
+  TYPE_USAGE_KINDS,
+  TYPE_USAGE_KINDS_REVERSE,
 } from './codec.js';
 
 export default {
@@ -233,6 +354,22 @@ export default {
   RE_EXPORT_TYPES,
   KEY_MAP,
   KEY_REVERSE_MAP,
+
+  // ✅ v9.0.0
+  LIFECYCLE_TYPES,
+  LIFECYCLE_REVERSE,
+  EFFECT_TYPES,
+  EFFECT_REVERSE,
+  INJECTION_TYPES,
+  INJECTION_REVERSE,
+  REACTIVITY_TYPES,
+  REACTIVITY_REVERSE,
+  CONDITIONAL_TYPES,
+  CONDITIONAL_REVERSE,
+  TYPE_KINDS,
+  TYPE_KINDS_REVERSE,
+  TYPE_USAGE_KINDS,
+  TYPE_USAGE_KINDS_REVERSE,
 
   // ============================================
   // Функции флагов
