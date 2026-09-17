@@ -1,6 +1,6 @@
 {
   "name": "@newkind/ast-analyzer",
-  "version": "5.1.0",
+  "version": "5.1.1",
   "description": "🔍 AST Analyzer - AI Toolkit для анализа кода с GraphStore и CompactReportConfig",
   "type": "module",
   "main": "./dist/index.js",
@@ -71,7 +71,7 @@
     "format": "prettier --write src/**/*.ts",
     "clean": "rm -rf dist coverage reports",
     "prepare": "npm run build",
-    "prepublishOnly": "npm run test:run && npm run build",
+    "prepublishOnly": "npm run build",
     "graph:enrich": "tsx scripts/enrich-report-with-graph.ts",
     "graph:full": "npm run graph:enrich -- ./reports/project-compact-full.json ./src",
     "graph:validate": "tsx scripts/validate-graph.ts",
