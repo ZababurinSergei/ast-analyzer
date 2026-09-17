@@ -1,6 +1,7 @@
 // ============================================================================
-// AST ANALYZER — GRAPH v9
+// AST ANALYZER — GRAPH v9.1
 // Визуализация графов на чистом SVG.
+//
 // Модуль предоставляет:
 //   - renderCallGraph(fnId, opts)      — граф вызовов вокруг функции
 //   - renderFileDepGraph(fileId, opts) — граф зависимостей файла
@@ -8,15 +9,36 @@
 //   - renderHeatmap()                  — heatmap файлов по числу связей
 //   - renderCallChain(fnId, opts)      — цепочка вызовов (линейная)
 //   - renderMiniMap()                  — мини-карта всего проекта
+//   - exportGraphSVG(container, name)  — экспорт SVG
+//   - exportGraphPNG(container, name)  — экспорт PNG
+//   - getGraphStats(fnId)              — статистика графа вокруг функции
+//
+// Обновления v9.1:
+//   - Защита от undefined при работе с ID файлов/функций после декодирования
+//   - Поддержка внешних функций с fallback-меткой
+//   - Улучшенные тултипы для узлов
+//   - Фильтрация "мусорных" рёбер (self-loops, дубликатов)
+//   - Стабильный layout при пустых данных
 // ============================================================================
 
-import { state, escapeHtml, shortPath, getModuleName, getFilePath } from './ast-analyzer-core.js';
+import {
+  state,
+  escapeHtml,
+  shortPath,
+  getModuleName,
+  getFilePath,
+  getFnById,
+} from './ast-analyzer-core.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // SVG-УТИЛИТЫ
-// ---------------------------------------------------------------------------
+// ============================================================================
+
+/**
+ * Создаёт SVG-элемент с атрибутами.
+ */
 function svg(tag, attrs = {}) {
   const e = document.createElementNS(NS, tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -25,6 +47,9 @@ function svg(tag, attrs = {}) {
   return e;
 }
 
+/**
+ * Возвращает строку с defs для маркеров-стрелок.
+ */
 function arrowDefs(id, color) {
   return `
     <defs>
@@ -36,19 +61,50 @@ function arrowDefs(id, color) {
   `;
 }
 
+/**
+ * Обрезает строку до max символов с многоточием.
+ */
 function truncate(s, max) {
   if (!s) return '';
   return s.length > max ? s.slice(0, max - 1) + '…' : s;
 }
 
-// ---------------------------------------------------------------------------
+/**
+ * Безопасное получение имени функции.
+ */
+function safeFnName(fnId) {
+  const fn = getFnById(fnId);
+  return fn?.name || (fnId || '?').replace('external:', '🌐 ');
+}
+
+/**
+ * Безопасное получение пути файла.
+ */
+function safeFilePath(fileId) {
+  if (!fileId) return '?';
+  const path = getFilePath(fileId);
+  return path || fileId;
+}
+
+/**
+ * Проверка: является ли ID внешней функцией.
+ */
+function isExternalId(id) {
+  return typeof id === 'string' && id.startsWith('external:');
+}
+
+// ============================================================================
 // БАЗОВЫЙ РЕНДЕР УЗЛА
-// ---------------------------------------------------------------------------
+// ============================================================================
+
+/**
+ * Рисует узел графа (прямоугольник + иконка + метка + подпись).
+ */
 function drawNode(s, x, y, w, h, label, sub, cls, id, type, onNodeClick) {
   const g = svg('g', {
     class: 'graph-node ' + cls,
-    'data-id': id,
-    'data-type': type,
+    'data-id': id || '',
+    'data-type': type || '',
   });
 
   g.appendChild(svg('rect', {
@@ -95,26 +151,32 @@ function drawNode(s, x, y, w, h, label, sub, cls, id, type, onNodeClick) {
   }
 
   // Интерактив
-  if (onNodeClick) {
+  if (onNodeClick && id && !isExternalId(id)) {
     g.style.cursor = 'pointer';
     g.addEventListener('click', (e) => {
       e.stopPropagation();
       onNodeClick(id, type);
     });
+  } else if (isExternalId(id)) {
+    g.style.cursor = 'help';
   }
 
   // Тултип
   const title = svg('title');
-  title.textContent = label + (sub ? '\n' + sub : '');
+  const titleParts = [label];
+  if (sub) titleParts.push(sub);
+  if (isExternalId(id)) titleParts.push('(внешняя функция)');
+  title.textContent = titleParts.join('\n');
   g.appendChild(title);
 
   s.appendChild(g);
   return g;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // РЕНДЕР РЕБРА (кривая Безье)
-// ---------------------------------------------------------------------------
+// ============================================================================
+
 function drawEdge(s, x1, y1, x2, y2, cls, markerId, label) {
   const cx1 = x1 + (x2 - x1) * 0.5;
   const cx2 = x1 + (x2 - x1) * 0.5;
@@ -139,14 +201,29 @@ function drawEdge(s, x1, y1, x2, y2, cls, markerId, label) {
   return path;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // ГРАФ ВЫЗОВОВ ВОКРУГ ФУНКЦИИ
-// ---------------------------------------------------------------------------
-export function renderCallGraph(fnId, { maxNodes = 8, onNodeClick = null, showExternal = true } = {}) {
-  const fn = state.fnById[fnId];
+// ============================================================================
+
+/**
+ * Рисует граф вызовов вокруг функции.
+ *
+ * @param {string} fnId
+ * @param {object} [opts]
+ * @param {number} [opts.maxNodes=8]
+ * @param {Function} [opts.onNodeClick]
+ * @param {boolean} [opts.showExternal=true]
+ * @returns {HTMLElement}
+ */
+export function renderCallGraph(fnId, {
+  maxNodes = 8,
+  onNodeClick = null,
+  showExternal = true,
+} = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'graph-wrap';
 
+  const fn = getFnById(fnId);
   if (!fn) {
     wrap.innerHTML = '<div class="empty-msg">Функция не найдена</div>';
     return wrap;
@@ -158,7 +235,17 @@ export function renderCallGraph(fnId, { maxNodes = 8, onNodeClick = null, showEx
   // Выходы: кого вызывает (внутренние + внешние)
   let calleesRaw = (state.fnDetailedCalls[fnId] || []);
   if (!showExternal) calleesRaw = calleesRaw.filter(c => !c.isExternal);
-  const callees = calleesRaw.slice(0, maxNodes);
+
+  // Убираем self-loops и дубликаты
+  const seenCallees = new Set();
+  const callees = [];
+  for (const c of calleesRaw) {
+    if (c.toFnId === fnId) continue;
+    if (seenCallees.has(c.toFnId)) continue;
+    seenCallees.add(c.toFnId);
+    callees.push(c);
+    if (callees.length >= maxNodes) break;
+  }
 
   const nodeW = 220, nodeH = 48;
   const gapX = 100, gapY = 16;
@@ -184,7 +271,7 @@ export function renderCallGraph(fnId, { maxNodes = 8, onNodeClick = null, showEx
   `;
 
   // Центральный узел
-  const centerFile = shortPath(getFilePath(fn.fileId), 30);
+  const centerFile = shortPath(safeFilePath(fn.fileId), 30);
   const centerXPos = centerX - nodeW / 2;
   const centerYPos = centerY - nodeH / 2;
   drawNode(s, centerXPos, centerYPos, nodeW, nodeH, fn.name, centerFile, 'center', fnId, 'fn', onNodeClick);
@@ -194,7 +281,13 @@ export function renderCallGraph(fnId, { maxNodes = 8, onNodeClick = null, showEx
     const total = callers.length;
     const x = padX;
     const y = centerY - (total * (nodeH + gapY)) / 2 + i * (nodeH + gapY);
-    drawNode(s, x, y, nodeW, nodeH, c.fromFnName, shortPath(c.fromFilePath, 30), 'caller', c.fromFnId, 'fn', onNodeClick);
+    drawNode(
+      s, x, y, nodeW, nodeH,
+      c.fromFnName || '?',
+      shortPath(c.fromFilePath || '?', 30),
+      'caller',
+      c.fromFnId, 'fn', onNodeClick
+    );
     drawEdge(
       s,
       x + nodeW, y + nodeH / 2,
@@ -211,7 +304,8 @@ export function renderCallGraph(fnId, { maxNodes = 8, onNodeClick = null, showEx
     const y = centerY - (total * (nodeH + gapY)) / 2 + i * (nodeH + gapY);
     const cls = c.isExternal ? 'callee external' : 'callee';
     const type = c.isExternal ? 'external' : 'fn';
-    drawNode(s, x, y, nodeW, nodeH, c.toFnName, c.isExternal ? '🌐 external' : shortPath(c.toFilePath, 30), cls, c.toFnId, type, onNodeClick);
+    const sub = c.isExternal ? '🌐 external' : shortPath(c.toFilePath || '?', 30);
+    drawNode(s, x, y, nodeW, nodeH, c.toFnName || '?', sub, cls, c.toFnId, type, onNodeClick);
     drawEdge(
       s,
       centerXPos + nodeW, centerY,
@@ -222,7 +316,7 @@ export function renderCallGraph(fnId, { maxNodes = 8, onNodeClick = null, showEx
     );
   });
 
-  // Заголовок с легендой
+  // Заглушка при отсутствии связей
   if (callers.length === 0 && callees.length === 0) {
     const empty = svg('text', {
       x: width / 2, y: height - 10,
@@ -237,14 +331,29 @@ export function renderCallGraph(fnId, { maxNodes = 8, onNodeClick = null, showEx
   return wrap;
 }
 
-// ---------------------------------------------------------------------------
-// ЦЕПОЧКА ВЫЗОВОВ (линейная, для модалки)
-// ---------------------------------------------------------------------------
-export function renderCallChain(fnId, { direction = 'both', depth = 3, onNodeClick = null } = {}) {
+// ============================================================================
+// ЦЕПОЧКА ВЫЗОВОВ (линейная)
+// ============================================================================
+
+/**
+ * Линейная цепочка вызовов вокруг функции.
+ *
+ * @param {string} fnId
+ * @param {object} [opts]
+ * @param {'both'|'callers'|'callees'} [opts.direction='both']
+ * @param {number} [opts.depth=3]
+ * @param {Function} [opts.onNodeClick]
+ * @returns {HTMLElement}
+ */
+export function renderCallChain(fnId, {
+  direction = 'both',
+  depth = 3,
+  onNodeClick = null,
+} = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'graph-chain';
 
-  const fn = state.fnById[fnId];
+  const fn = getFnById(fnId);
   if (!fn) {
     wrap.innerHTML = '<div class="empty-msg">Функция не найдена</div>';
     return wrap;
@@ -253,22 +362,34 @@ export function renderCallChain(fnId, { direction = 'both', depth = 3, onNodeCli
   const chainEl = document.createElement('div');
   chainEl.className = 'chain';
 
-  const callers = direction === 'both' || direction === 'callers'
+  const callers = (direction === 'both' || direction === 'callers')
     ? (state.fnDetailedCallers[fnId] || []).slice(0, depth)
     : [];
-  const callees = direction === 'both' || direction === 'callees'
-    ? (state.fnDetailedCalls[fnId] || []).filter(c => !c.isExternal).slice(0, depth)
+  const callees = (direction === 'both' || direction === 'callees')
+    ? (state.fnDetailedCalls[fnId] || [])
+      .filter(c => !c.isExternal && c.toFnId !== fnId)
+      .slice(0, depth)
     : [];
 
   const parts = [];
-  callers.forEach((c, i) => {
-    parts.push(`<span class="chain-node" data-action="jump-fn" data-id="${c.fromFnId}">${escapeHtml(c.fromFnName)}</span>`);
+
+  // Вызывающие
+  callers.forEach((c) => {
+    parts.push(
+      `<span class="chain-node" data-action="jump-fn" data-id="${escapeHtml(c.fromFnId)}">${escapeHtml(c.fromFnName || '?')}</span>`
+    );
     parts.push('<span class="chain-arrow">→</span>');
   });
+
+  // Центральный узел
   parts.push(`<span class="chain-node current">${escapeHtml(fn.name)}</span>`);
+
+  // Вызываемые
   callees.forEach((c) => {
     parts.push('<span class="chain-arrow">→</span>');
-    parts.push(`<span class="chain-node" data-action="jump-fn" data-id="${c.toFnId}">${escapeHtml(c.toFnName)}</span>`);
+    parts.push(
+      `<span class="chain-node" data-action="jump-fn" data-id="${escapeHtml(c.toFnId)}">${escapeHtml(c.toFnName || '?')}</span>`
+    );
   });
 
   chainEl.innerHTML = parts.join('');
@@ -281,10 +402,23 @@ export function renderCallChain(fnId, { direction = 'both', depth = 3, onNodeCli
   return wrap;
 }
 
-// ---------------------------------------------------------------------------
-// ГРАФ ЗАВИСИМОСТЕЙ ФАЙЛОВ (вокруг выбранного)
-// ---------------------------------------------------------------------------
-export function renderFileDepGraph(fileId, { maxNodes = 10, onNodeClick = null } = {}) {
+// ============================================================================
+// ГРАФ ЗАВИСИМОСТЕЙ ФАЙЛОВ
+// ============================================================================
+
+/**
+ * Граф зависимостей файла: слева — куда импортирует, справа — кто импортирует.
+ *
+ * @param {string} fileId
+ * @param {object} [opts]
+ * @param {number} [opts.maxNodes=10]
+ * @param {Function} [opts.onNodeClick]
+ * @returns {HTMLElement}
+ */
+export function renderFileDepGraph(fileId, {
+  maxNodes = 10,
+  onNodeClick = null,
+} = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'graph-wrap';
 
@@ -294,8 +428,12 @@ export function renderFileDepGraph(fileId, { maxNodes = 10, onNodeClick = null }
     return wrap;
   }
 
-  const deps = [...new Set(state.fileDependencies[fileId] || [])].slice(0, maxNodes);
-  const dependents = [...new Set(state.fileDependents[fileId] || [])].slice(0, maxNodes);
+  const deps = [...new Set(state.fileDependencies[fileId] || [])]
+    .filter(id => id && state.files[id])
+    .slice(0, maxNodes);
+  const dependents = [...new Set(state.fileDependents[fileId] || [])]
+    .filter(id => id && state.files[id])
+    .slice(0, maxNodes);
 
   const nodeW = 240, nodeH = 48;
   const gapX = 110, gapY = 14;
@@ -325,7 +463,7 @@ export function renderFileDepGraph(fileId, { maxNodes = 10, onNodeClick = null }
   // Центр
   drawNode(
     s, centerXPos, centerYPos, nodeW, nodeH,
-    f.path.split('/').pop(),
+    (f.path || '?').split('/').pop(),
     getModuleName(f.moduleId),
     'center', fileId, 'file', onNodeClick
   );
@@ -337,7 +475,12 @@ export function renderFileDepGraph(fileId, { maxNodes = 10, onNodeClick = null }
     const total = deps.length;
     const x = padX;
     const y = centerY - (total * (nodeH + gapY)) / 2 + i * (nodeH + gapY);
-    drawNode(s, x, y, nodeW, nodeH, file.path.split('/').pop(), getModuleName(file.moduleId), 'caller', id, 'file', onNodeClick);
+    drawNode(
+      s, x, y, nodeW, nodeH,
+      (file.path || '?').split('/').pop(),
+      getModuleName(file.moduleId),
+      'caller', id, 'file', onNodeClick
+    );
     drawEdge(
       s,
       centerXPos, centerY,
@@ -353,7 +496,12 @@ export function renderFileDepGraph(fileId, { maxNodes = 10, onNodeClick = null }
     const total = dependents.length;
     const x = width - nodeW - padX;
     const y = centerY - (total * (nodeH + gapY)) / 2 + i * (nodeH + gapY);
-    drawNode(s, x, y, nodeW, nodeH, file.path.split('/').pop(), getModuleName(file.moduleId), 'callee', id, 'file', onNodeClick);
+    drawNode(
+      s, x, y, nodeW, nodeH,
+      (file.path || '?').split('/').pop(),
+      getModuleName(file.moduleId),
+      'callee', id, 'file', onNodeClick
+    );
     drawEdge(
       s,
       centerXPos + nodeW, centerY,
@@ -362,7 +510,6 @@ export function renderFileDepGraph(fileId, { maxNodes = 10, onNodeClick = null }
     );
   });
 
-  // Подпись осей
   if (deps.length === 0 && dependents.length === 0) {
     const empty = svg('text', {
       x: width / 2, y: height - 10,
@@ -377,9 +524,17 @@ export function renderFileDepGraph(fileId, { maxNodes = 10, onNodeClick = null }
   return wrap;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // ГРАФ МОДУЛЕЙ
-// ---------------------------------------------------------------------------
+// ============================================================================
+
+/**
+ * Сетка модулей проекта.
+ *
+ * @param {object} [opts]
+ * @param {Function} [opts.onNodeClick]
+ * @returns {HTMLElement}
+ */
 export function renderModuleGraph({ onNodeClick = null } = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'graph-wrap';
@@ -463,9 +618,17 @@ export function renderModuleGraph({ onNodeClick = null } = {}) {
   return wrap;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // HEATMAP ФАЙЛОВ
-// ---------------------------------------------------------------------------
+// ============================================================================
+
+/**
+ * Heatmap файлов по числу связей (входящие + исходящие).
+ *
+ * @param {object} [opts]
+ * @param {number} [opts.max=60]
+ * @returns {string} — HTML-строка
+ */
 export function renderHeatmap({ max = 60 } = {}) {
   const files = Object.values(state.files);
   if (!files.length) return '<div class="empty-msg">Нет файлов</div>';
@@ -485,10 +648,11 @@ export function renderHeatmap({ max = 60 } = {}) {
     const g = Math.round(185 + (81 - 185) * t);
     const b = Math.round(80 + (73 - 80) * t);
     const bg = `rgba(${r},${g},${b},${0.15 + t * 0.6})`;
-    return `<div class="heat-cell" data-action="select-file" data-id="${id}"
+    const fileName = (file.path || '?').split('/').pop();
+    return `<div class="heat-cell" data-action="select-file" data-id="${escapeHtml(id)}"
               title="${escapeHtml(file.path)}\n→ ${out} · ← ${inc}"
               style="background: ${bg};">
-      <span class="heat-cell-label">${escapeHtml(file.path.split('/').pop())}</span>
+      <span class="heat-cell-label">${escapeHtml(fileName)}</span>
       <span class="heat-cell-count">${total}</span>
     </div>`;
   }).join('');
@@ -496,9 +660,17 @@ export function renderHeatmap({ max = 60 } = {}) {
   return `<div class="heatmap">${cells}</div>`;
 }
 
-// ---------------------------------------------------------------------------
-// МИНИ-КАРТА ПРОЕКТА (все модули + их связи)
-// ---------------------------------------------------------------------------
+// ============================================================================
+// МИНИ-КАРТА ПРОЕКТА
+// ============================================================================
+
+/**
+ * Мини-карта всех модулей проекта с рёбрами по импортам.
+ *
+ * @param {object} [opts]
+ * @param {Function} [opts.onNodeClick]
+ * @returns {HTMLElement}
+ */
 export function renderMiniMap({ onNodeClick = null } = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'graph-wrap';
@@ -523,6 +695,7 @@ export function renderMiniMap({ onNodeClick = null } = {}) {
     preserveAspectRatio: 'xMidYMid meet',
   });
 
+  // Позиции
   const pos = {};
   modules.forEach((m, i) => {
     const col = i % cols;
@@ -532,7 +705,7 @@ export function renderMiniMap({ onNodeClick = null } = {}) {
     pos[m.id] = { x, y, cx: x + nodeW / 2, cy: y + nodeH / 2 };
   });
 
-  // Связи между модулями (по импортам файлов)
+  // Связи между модулями по импортам файлов
   const moduleLinks = {};
   for (const imp of state.imports) {
     if (imp.isExternal) continue;
@@ -541,7 +714,7 @@ export function renderMiniMap({ onNodeClick = null } = {}) {
     if (!fromFile || !toFile) continue;
     const fromMod = fromFile.moduleId;
     const toMod = toFile.moduleId;
-    if (fromMod === toMod) continue;
+    if (!fromMod || !toMod || fromMod === toMod) continue;
     const key = fromMod + '→' + toMod;
     moduleLinks[key] = (moduleLinks[key] || 0) + 1;
   }
@@ -600,9 +773,17 @@ export function renderMiniMap({ onNodeClick = null } = {}) {
   return wrap;
 }
 
-// ---------------------------------------------------------------------------
-// ЭКСПОРТ SVG (для скачивания)
-// ---------------------------------------------------------------------------
+// ============================================================================
+// ЭКСПОРТ SVG
+// ============================================================================
+
+/**
+ * Скачивает граф как SVG с внедрёнными стилями.
+ *
+ * @param {HTMLElement} container
+ * @param {string} [filename='graph.svg']
+ * @returns {boolean}
+ */
 export function exportGraphSVG(container, filename) {
   const svgEl = container.querySelector('svg');
   if (!svgEl) return false;
@@ -644,9 +825,18 @@ export function exportGraphSVG(container, filename) {
   return true;
 }
 
-// ---------------------------------------------------------------------------
-// ЭКСПОРТ PNG (через canvas)
-// ---------------------------------------------------------------------------
+// ============================================================================
+// ЭКСПОРТ PNG
+// ============================================================================
+
+/**
+ * Скачивает граф как PNG через canvas.
+ *
+ * @param {HTMLElement} container
+ * @param {string} [filename='graph.png']
+ * @param {number} [scale=2]
+ * @returns {Promise<boolean>}
+ */
 export function exportGraphPNG(container, filename, scale = 2) {
   return new Promise((resolve) => {
     const svgEl = container.querySelector('svg');
@@ -714,12 +904,20 @@ export function exportGraphPNG(container, filename, scale = 2) {
   });
 }
 
-// ---------------------------------------------------------------------------
-// ПОДСЧЁТ СТАТИСТИКИ ГРАФА (для отображения в легенде)
-// ---------------------------------------------------------------------------
+// ============================================================================
+// СТАТИСТИКА ГРАФА
+// ============================================================================
+
+/**
+ * Статистика графа вокруг функции.
+ *
+ * @param {string} fnId
+ * @returns {object|null}
+ */
 export function getGraphStats(fnId) {
-  const fn = state.fnById[fnId];
+  const fn = getFnById(fnId);
   if (!fn) return null;
+
   const callers = state.fnDetailedCallers[fnId] || [];
   const callees = state.fnDetailedCalls[fnId] || [];
   const internalCallees = callees.filter(c => !c.isExternal);
@@ -730,7 +928,7 @@ export function getGraphStats(fnId) {
     calleesCount: callees.length,
     internalCalleesCount: internalCallees.length,
     externalCalleesCount: externalCallees.length,
-    transitiveCallersCount: state.fnTransitiveCallers[fnId]?.length || 0,
-    transitiveCalleesCount: state.fnTransitiveCallees[fnId]?.length || 0,
+    transitiveCallersCount: state.fnTransitiveCallers?.[fnId]?.length || 0,
+    transitiveCalleesCount: state.fnTransitiveCallees?.[fnId]?.length || 0,
   };
 }

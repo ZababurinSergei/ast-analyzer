@@ -1,6 +1,6 @@
 {
   "version": "9.0.0",
-  "timestamp": "2026-09-15T22:26:11.611Z",
+  "timestamp": "2026-09-16T23:18:11.844Z",
   "root": "m1",
   "modules": [
     {
@@ -2004,7 +2004,7 @@
       "name": "analyzeVueComponent",
       "moduleId": "m4",
       "fileId": "f16",
-      "line": 132,
+      "line": 141,
       "isExported": true,
       "isAsync": false,
       "isArrow": false,
@@ -2020,7 +2020,7 @@
       "name": "linkTemplateRefsToExpose",
       "moduleId": "m4",
       "fileId": "f16",
-      "line": 449,
+      "line": 478,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -2037,7 +2037,7 @@
       "name": "toPascalCase",
       "moduleId": "m4",
       "fileId": "f16",
-      "line": 496,
+      "line": 525,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -2052,7 +2052,7 @@
       "name": "extractSetupAttributes",
       "moduleId": "m4",
       "fileId": "f16",
-      "line": 507,
+      "line": 536,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -2067,7 +2067,7 @@
       "name": "analyzeVueComponentCli",
       "moduleId": "m4",
       "fileId": "f16",
-      "line": 540,
+      "line": 569,
       "isExported": true,
       "isAsync": true,
       "isArrow": false,
@@ -2083,7 +2083,7 @@
       "name": "findProjectRoot",
       "moduleId": "m4",
       "fileId": "f16",
-      "line": 635,
+      "line": 664,
       "isExported": true,
       "isAsync": false,
       "isArrow": false,
@@ -2098,7 +2098,7 @@
       "name": "enhanceWithVueAnalysis",
       "moduleId": "m4",
       "fileId": "f16",
-      "line": 655,
+      "line": 684,
       "isExported": true,
       "isAsync": false,
       "isArrow": false,
@@ -2994,7 +2994,7 @@
       "name": "canHaveType",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 144,
+      "line": 150,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -3009,7 +3009,7 @@
       "name": "safeGetReturnType",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 178,
+      "line": 184,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -3025,7 +3025,7 @@
       "name": "safeGetType",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 200,
+      "line": 206,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -3041,7 +3041,7 @@
       "name": "safeGetParameters",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 219,
+      "line": 225,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -3057,7 +3057,7 @@
       "name": "safeGetBodyText",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 244,
+      "line": 250,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -3073,7 +3073,7 @@
       "name": "safeIsAsync",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 261,
+      "line": 267,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -3089,7 +3089,7 @@
       "name": "safeIsExported",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 276,
+      "line": 282,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -3105,7 +3105,7 @@
       "name": "safeGetStartLine",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 291,
+      "line": 297,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -3120,7 +3120,7 @@
       "name": "safeGetEndLine",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 299,
+      "line": 305,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -3135,7 +3135,7 @@
       "name": "extractEntitiesFromFile",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 573,
+      "line": 579,
       "isExported": true,
       "isAsync": false,
       "isArrow": false,
@@ -3150,7 +3150,7 @@
       "name": "extractValueFromNode",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 1288,
+      "line": 1303,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -4774,7 +4774,7 @@
       "name": "encodeFlags",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 389,
+      "line": 396,
       "isExported": true,
       "isAsync": false,
       "isArrow": false,
@@ -4789,7 +4789,7 @@
       "name": "flagsToString",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 403,
+      "line": 410,
       "isExported": true,
       "isAsync": false,
       "isArrow": false,
@@ -4804,7 +4804,7 @@
       "name": "flagsStringToNumber",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 417,
+      "line": 424,
       "isExported": true,
       "isAsync": false,
       "isArrow": false,
@@ -4819,7 +4819,7 @@
       "name": "createEmptyFlags",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 454,
+      "line": 461,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -4832,7 +4832,7 @@
       "name": "decodeFlagsToObject",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 480,
+      "line": 487,
       "isExported": true,
       "isAsync": false,
       "isArrow": false,
@@ -4847,7 +4847,7 @@
       "name": "decodeFlagsToNames",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 511,
+      "line": 518,
       "isExported": true,
       "isAsync": false,
       "isArrow": false,
@@ -4862,7 +4862,7 @@
       "name": "createDictBuilder",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 539,
+      "line": 546,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -4875,7 +4875,7 @@
       "name": "addString",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 556,
+      "line": 563,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -4891,7 +4891,7 @@
       "name": "addParam",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 569,
+      "line": 576,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -4907,7 +4907,7 @@
       "name": "addMethod",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 582,
+      "line": 589,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -4923,7 +4923,7 @@
       "name": "addValue",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 597,
+      "line": 604,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -4939,7 +4939,7 @@
       "name": "reverseLookup",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 616,
+      "line": 623,
       "isExported": false,
       "isAsync": false,
       "isArrow": false,
@@ -4952,6 +4952,36 @@
     },
     {
       "id": "fn248",
+      "name": "asArray",
+      "moduleId": "m17",
+      "fileId": "f68",
+      "line": 637,
+      "isExported": false,
+      "isAsync": false,
+      "isArrow": false,
+      "isMethod": false,
+      "params": [
+        "value"
+      ],
+      "returnType": "any"
+    },
+    {
+      "id": "fn249",
+      "name": "logEncodeInput",
+      "moduleId": "m17",
+      "fileId": "f68",
+      "line": 644,
+      "isExported": false,
+      "isAsync": false,
+      "isArrow": false,
+      "isMethod": false,
+      "params": [
+        "payload"
+      ],
+      "returnType": "any"
+    },
+    {
+      "id": "fn250",
       "name": "escapeHtml",
       "moduleId": "m9",
       "fileId": "f70",
@@ -4966,7 +4996,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn249",
+      "id": "fn251",
       "name": "generateHTMLReport",
       "moduleId": "m9",
       "fileId": "f70",
@@ -4985,7 +5015,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn250",
+      "id": "fn252",
       "name": "generateInteractiveHTML",
       "moduleId": "m9",
       "fileId": "f71",
@@ -5003,7 +5033,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn251",
+      "id": "fn253",
       "name": "copyDirectory",
       "moduleId": "m9",
       "fileId": "f71",
@@ -5019,7 +5049,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn252",
+      "id": "fn254",
       "name": "hasCyclicDependencies",
       "moduleId": "m20",
       "fileId": "f75",
@@ -5034,7 +5064,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn253",
+      "id": "fn255",
       "name": "getModulesByLevel",
       "moduleId": "m20",
       "fileId": "f75",
@@ -5050,7 +5080,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn254",
+      "id": "fn256",
       "name": "getAllFunctions",
       "moduleId": "m20",
       "fileId": "f75",
@@ -5065,7 +5095,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn255",
+      "id": "fn257",
       "name": "getFunctionsByExportSource",
       "moduleId": "m20",
       "fileId": "f75",
@@ -5081,7 +5111,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn256",
+      "id": "fn258",
       "name": "getFunctionsStats",
       "moduleId": "m20",
       "fileId": "f75",
@@ -5096,7 +5126,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn257",
+      "id": "fn259",
       "name": "askQuestion",
       "moduleId": "m12",
       "fileId": "f76",
@@ -5111,7 +5141,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn258",
+      "id": "fn260",
       "name": "askYesNo",
       "moduleId": "m12",
       "fileId": "f76",
@@ -5127,7 +5157,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn259",
+      "id": "fn261",
       "name": "askChoice",
       "moduleId": "m12",
       "fileId": "f76",
@@ -5143,7 +5173,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn260",
+      "id": "fn262",
       "name": "silenceTsMorphNoise",
       "moduleId": "m12",
       "fileId": "f78",
@@ -5156,7 +5186,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn261",
+      "id": "fn263",
       "name": "isNoisyMessage",
       "moduleId": "m12",
       "fileId": "f78",
@@ -5171,7 +5201,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn262",
+      "id": "fn264",
       "name": "unsilenceTsMorphNoise",
       "moduleId": "m12",
       "fileId": "f78",
@@ -5184,7 +5214,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn263",
+      "id": "fn265",
       "name": "isSilenceInstalled",
       "moduleId": "m12",
       "fileId": "f78",
@@ -5197,7 +5227,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn264",
+      "id": "fn266",
       "name": "isMainModule",
       "moduleId": "m12",
       "fileId": "f79",
@@ -5212,7 +5242,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn265",
+      "id": "fn267",
       "name": "createFileCommand",
       "moduleId": "m19",
       "fileId": "f81",
@@ -5227,7 +5257,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn266",
+      "id": "fn268",
       "name": "runSplitModule",
       "moduleId": "m19",
       "fileId": "f83",
@@ -5243,7 +5273,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn267",
+      "id": "fn269",
       "name": "extractAllFunctions",
       "moduleId": "m19",
       "fileId": "f89",
@@ -5258,7 +5288,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn268",
+      "id": "fn270",
       "name": "findFunctionByName",
       "moduleId": "m19",
       "fileId": "f89",
@@ -5274,7 +5304,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn269",
+      "id": "fn271",
       "name": "getFunctionsByLevel",
       "moduleId": "m19",
       "fileId": "f89",
@@ -5290,7 +5320,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn270",
+      "id": "fn272",
       "name": "getExportedFunctions",
       "moduleId": "m19",
       "fileId": "f89",
@@ -5305,7 +5335,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn271",
+      "id": "fn273",
       "name": "getAsyncFunctions",
       "moduleId": "m19",
       "fileId": "f89",
@@ -5320,7 +5350,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn272",
+      "id": "fn274",
       "name": "getFunctionStats",
       "moduleId": "m19",
       "fileId": "f89",
@@ -5335,7 +5365,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn273",
+      "id": "fn275",
       "name": "createInitCommand",
       "moduleId": "m19",
       "fileId": "f90",
@@ -5348,7 +5378,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn274",
+      "id": "fn276",
       "name": "minifyFolder",
       "moduleId": "m19",
       "fileId": "f95",
@@ -5364,7 +5394,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn275",
+      "id": "fn277",
       "name": "minifyFolderSync",
       "moduleId": "m19",
       "fileId": "f95",
@@ -5380,7 +5410,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn276",
+      "id": "fn278",
       "name": "encodeFlags",
       "moduleId": "m12",
       "fileId": "f97",
@@ -5395,7 +5425,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn277",
+      "id": "fn279",
       "name": "decodeFlags",
       "moduleId": "m12",
       "fileId": "f97",
@@ -5410,7 +5440,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn278",
+      "id": "fn280",
       "name": "getFlagsList",
       "moduleId": "m12",
       "fileId": "f97",
@@ -5425,7 +5455,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn279",
+      "id": "fn281",
       "name": "hasFlag",
       "moduleId": "m12",
       "fileId": "f97",
@@ -5441,7 +5471,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn280",
+      "id": "fn282",
       "name": "hasAllFlags",
       "moduleId": "m12",
       "fileId": "f97",
@@ -5457,7 +5487,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn281",
+      "id": "fn283",
       "name": "hasAnyFlag",
       "moduleId": "m12",
       "fileId": "f97",
@@ -5473,7 +5503,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn282",
+      "id": "fn284",
       "name": "setFlag",
       "moduleId": "m12",
       "fileId": "f97",
@@ -5489,7 +5519,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn283",
+      "id": "fn285",
       "name": "clearFlag",
       "moduleId": "m12",
       "fileId": "f97",
@@ -5505,7 +5535,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn284",
+      "id": "fn286",
       "name": "toggleFlag",
       "moduleId": "m12",
       "fileId": "f97",
@@ -5521,7 +5551,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn285",
+      "id": "fn287",
       "name": "flagsToString",
       "moduleId": "m12",
       "fileId": "f97",
@@ -5537,7 +5567,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn286",
+      "id": "fn288",
       "name": "countFlags",
       "moduleId": "m12",
       "fileId": "f97",
@@ -5552,7 +5582,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn287",
+      "id": "fn289",
       "name": "clearCache",
       "moduleId": "m12",
       "fileId": "f97",
@@ -5565,7 +5595,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn288",
+      "id": "fn290",
       "name": "getCacheStats",
       "moduleId": "m12",
       "fileId": "f97",
@@ -5578,7 +5608,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn289",
+      "id": "fn291",
       "name": "encodeFlagsAdvanced",
       "moduleId": "m12",
       "fileId": "f97",
@@ -5594,7 +5624,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn290",
+      "id": "fn292",
       "name": "decodeFlagsAdvanced",
       "moduleId": "m12",
       "fileId": "f97",
@@ -5610,7 +5640,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn291",
+      "id": "fn293",
       "name": "decodeFlagsPrefixed",
       "moduleId": "m12",
       "fileId": "f97",
@@ -5626,7 +5656,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn292",
+      "id": "fn294",
       "name": "convertVueAnalysisToEntities",
       "moduleId": "m22",
       "fileId": "f98",
@@ -5642,7 +5672,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn293",
+      "id": "fn295",
       "name": "extractTypeGraph",
       "moduleId": "m2",
       "fileId": "f99",
@@ -5658,7 +5688,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn294",
+      "id": "fn296",
       "name": "isSimpleIdentifier",
       "moduleId": "m2",
       "fileId": "f99",
@@ -5673,7 +5703,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn295",
+      "id": "fn297",
       "name": "isTypeScriptFile",
       "moduleId": "m2",
       "fileId": "f99",
@@ -5688,7 +5718,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn296",
+      "id": "fn298",
       "name": "ensureArray",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5703,7 +5733,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn297",
+      "id": "fn299",
       "name": "safeString",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5718,7 +5748,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn298",
+      "id": "fn300",
       "name": "safeNumber",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5734,7 +5764,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn299",
+      "id": "fn301",
       "name": "safeBoolean",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5750,7 +5780,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn300",
+      "id": "fn302",
       "name": "isRealObject",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5765,7 +5795,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn301",
+      "id": "fn303",
       "name": "filterRealObjects",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5780,7 +5810,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn302",
+      "id": "fn304",
       "name": "sanitizeEntities",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5795,7 +5825,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn303",
+      "id": "fn305",
       "name": "sanitize",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5810,7 +5840,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn304",
+      "id": "fn306",
       "name": "safeTraverseAST",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5825,7 +5855,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn305",
+      "id": "fn307",
       "name": "findProjectRoot",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5840,7 +5870,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn306",
+      "id": "fn308",
       "name": "findFileInProject",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5857,7 +5887,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn307",
+      "id": "fn309",
       "name": "findModuleForEntity",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5873,7 +5903,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn308",
+      "id": "fn310",
       "name": "generateFunctionId",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5890,7 +5920,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn309",
+      "id": "fn311",
       "name": "generateFileId",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5905,7 +5935,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn310",
+      "id": "fn312",
       "name": "generateModuleId",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5920,7 +5950,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn311",
+      "id": "fn313",
       "name": "normalizePathForDisplay",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5936,7 +5966,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn312",
+      "id": "fn314",
       "name": "getFileName",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5951,7 +5981,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn313",
+      "id": "fn315",
       "name": "getFileExtension",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5966,7 +5996,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn314",
+      "id": "fn316",
       "name": "getFileDirectory",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5981,7 +6011,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn315",
+      "id": "fn317",
       "name": "isTypeScriptFile",
       "moduleId": "m23",
       "fileId": "f101",
@@ -5996,7 +6026,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn316",
+      "id": "fn318",
       "name": "isJavaScriptFile",
       "moduleId": "m23",
       "fileId": "f101",
@@ -6011,7 +6041,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn317",
+      "id": "fn319",
       "name": "isVueFile",
       "moduleId": "m23",
       "fileId": "f101",
@@ -6026,7 +6056,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn318",
+      "id": "fn320",
       "name": "isJsxFile",
       "moduleId": "m23",
       "fileId": "f101",
@@ -6041,7 +6071,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn319",
+      "id": "fn321",
       "name": "detectLanguage",
       "moduleId": "m23",
       "fileId": "f101",
@@ -6056,7 +6086,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn320",
+      "id": "fn322",
       "name": "shortenPath",
       "moduleId": "m23",
       "fileId": "f101",
@@ -6072,7 +6102,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn321",
+      "id": "fn323",
       "name": "generateVscodeLink",
       "moduleId": "m23",
       "fileId": "f101",
@@ -6089,7 +6119,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn322",
+      "id": "fn324",
       "name": "isAbsolutePath",
       "moduleId": "m23",
       "fileId": "f101",
@@ -6104,7 +6134,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn323",
+      "id": "fn325",
       "name": "getRelativePath",
       "moduleId": "m23",
       "fileId": "f101",
@@ -6120,7 +6150,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn324",
+      "id": "fn326",
       "name": "createMetadata",
       "moduleId": "m23",
       "fileId": "f102",
@@ -6133,7 +6163,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn325",
+      "id": "fn327",
       "name": "getReportName",
       "moduleId": "m23",
       "fileId": "f102",
@@ -6146,7 +6176,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn326",
+      "id": "fn328",
       "name": "getReportVersion",
       "moduleId": "m23",
       "fileId": "f102",
@@ -6159,7 +6189,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn327",
+      "id": "fn329",
       "name": "getLockfileVersion",
       "moduleId": "m23",
       "fileId": "f102",
@@ -6172,7 +6202,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn328",
+      "id": "fn330",
       "name": "getDefaultTimestamp",
       "moduleId": "m23",
       "fileId": "f102",
@@ -6185,7 +6215,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn329",
+      "id": "fn331",
       "name": "formatTimestamp",
       "moduleId": "m23",
       "fileId": "f102",
@@ -6200,7 +6230,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn330",
+      "id": "fn332",
       "name": "getReportMetadata",
       "moduleId": "m23",
       "fileId": "f102",
@@ -6217,7 +6247,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn331",
+      "id": "fn333",
       "name": "calculateEntityStats",
       "moduleId": "m23",
       "fileId": "f103",
@@ -6233,7 +6263,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn332",
+      "id": "fn334",
       "name": "calculateFileStats",
       "moduleId": "m23",
       "fileId": "f103",
@@ -6248,7 +6278,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn333",
+      "id": "fn335",
       "name": "buildDependencyGraph",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6263,7 +6293,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn334",
+      "id": "fn336",
       "name": "findCycles",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6278,7 +6308,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn335",
+      "id": "fn337",
       "name": "getMaxDepth",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6293,7 +6323,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn336",
+      "id": "fn338",
       "name": "getModulesByLevel",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6309,7 +6339,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn337",
+      "id": "fn339",
       "name": "hasCycles",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6324,7 +6354,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn338",
+      "id": "fn340",
       "name": "findAllPaths",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6342,7 +6372,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn339",
+      "id": "fn341",
       "name": "findShortestPath",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6359,7 +6389,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn340",
+      "id": "fn342",
       "name": "findReachableNodes",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6375,7 +6405,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn341",
+      "id": "fn343",
       "name": "findSCC",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6390,7 +6420,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn342",
+      "id": "fn344",
       "name": "getNeighborsSafe",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6406,7 +6436,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn343",
+      "id": "fn345",
       "name": "isAcyclic",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6421,7 +6451,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn344",
+      "id": "fn346",
       "name": "topologicalSort",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6436,7 +6466,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn345",
+      "id": "fn347",
       "name": "getNodeDegree",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6452,7 +6482,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn346",
+      "id": "fn348",
       "name": "findHubs",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6468,7 +6498,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn347",
+      "id": "fn349",
       "name": "findIsolatedNodes",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6483,7 +6513,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn348",
+      "id": "fn350",
       "name": "getGraphDensity",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6498,7 +6528,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn349",
+      "id": "fn351",
       "name": "isConnected",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6514,7 +6544,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn350",
+      "id": "fn352",
       "name": "findConnectedComponents",
       "moduleId": "m23",
       "fileId": "f104",
@@ -6529,7 +6559,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn351",
+      "id": "fn353",
       "name": "buildExecutionGraph",
       "moduleId": "m23",
       "fileId": "f105",
@@ -6547,7 +6577,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn352",
+      "id": "fn354",
       "name": "buildImportExportFlow",
       "moduleId": "m23",
       "fileId": "f105",
@@ -6565,7 +6595,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn353",
+      "id": "fn355",
       "name": "findCallPath",
       "moduleId": "m23",
       "fileId": "f105",
@@ -6582,7 +6612,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn354",
+      "id": "fn356",
       "name": "findDependents",
       "moduleId": "m23",
       "fileId": "f105",
@@ -6598,7 +6628,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn355",
+      "id": "fn357",
       "name": "findDependencies",
       "moduleId": "m23",
       "fileId": "f105",
@@ -6614,7 +6644,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn356",
+      "id": "fn358",
       "name": "findCallCycles",
       "moduleId": "m23",
       "fileId": "f105",
@@ -6629,7 +6659,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn357",
+      "id": "fn359",
       "name": "getCallGraphStats",
       "moduleId": "m23",
       "fileId": "f105",
@@ -6644,7 +6674,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn358",
+      "id": "fn360",
       "name": "buildCallGraphFromEntities",
       "moduleId": "m23",
       "fileId": "f105",
@@ -6659,7 +6689,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn359",
+      "id": "fn361",
       "name": "buildArchitectureMetrics",
       "moduleId": "m23",
       "fileId": "f106",
@@ -6676,7 +6706,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn360",
+      "id": "fn362",
       "name": "exportArchitectureMetrics",
       "moduleId": "m23",
       "fileId": "f106",
@@ -6691,7 +6721,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn361",
+      "id": "fn363",
       "name": "generateArchitectureReport",
       "moduleId": "m23",
       "fileId": "f106",
@@ -6706,7 +6736,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn362",
+      "id": "fn364",
       "name": "checkArchitectureHealth",
       "moduleId": "m23",
       "fileId": "f106",
@@ -6721,7 +6751,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn363",
+      "id": "fn365",
       "name": "buildSummary",
       "moduleId": "m23",
       "fileId": "f107",
@@ -6736,7 +6766,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn364",
+      "id": "fn366",
       "name": "buildQuickSummary",
       "moduleId": "m23",
       "fileId": "f107",
@@ -6751,7 +6781,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn365",
+      "id": "fn367",
       "name": "hasCriticalIssues",
       "moduleId": "m23",
       "fileId": "f107",
@@ -6766,7 +6796,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn366",
+      "id": "fn368",
       "name": "requiresAttention",
       "moduleId": "m23",
       "fileId": "f107",
@@ -6781,7 +6811,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn367",
+      "id": "fn369",
       "name": "getRecommendations",
       "moduleId": "m23",
       "fileId": "f107",
@@ -6796,7 +6826,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn368",
+      "id": "fn370",
       "name": "generateProjectSummaryReport",
       "moduleId": "m23",
       "fileId": "f107",
@@ -6811,7 +6841,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn369",
+      "id": "fn371",
       "name": "safeCopy",
       "moduleId": "m23",
       "fileId": "f108",
@@ -6826,7 +6856,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn370",
+      "id": "fn372",
       "name": "buildPackages",
       "moduleId": "m23",
       "fileId": "f108",
@@ -6845,7 +6875,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn371",
+      "id": "fn373",
       "name": "resolveCoreReExports",
       "moduleId": "m2",
       "fileId": "f109",
@@ -6862,7 +6892,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn372",
+      "id": "fn374",
       "name": "extractPropsFromSource",
       "moduleId": "m14",
       "fileId": "f110",
@@ -6877,7 +6907,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn373",
+      "id": "fn375",
       "name": "extractPropsFromCompiledScript",
       "moduleId": "m14",
       "fileId": "f110",
@@ -6892,7 +6922,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn374",
+      "id": "fn376",
       "name": "extractPropsFromAST",
       "moduleId": "m14",
       "fileId": "f110",
@@ -6907,7 +6937,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn375",
+      "id": "fn377",
       "name": "extractEmitsFromSource",
       "moduleId": "m14",
       "fileId": "f111",
@@ -6922,7 +6952,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn376",
+      "id": "fn378",
       "name": "extractEmitsFromCompiledScript",
       "moduleId": "m14",
       "fileId": "f111",
@@ -6937,7 +6967,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn377",
+      "id": "fn379",
       "name": "extractEmitsFromAST",
       "moduleId": "m14",
       "fileId": "f111",
@@ -6952,7 +6982,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn378",
+      "id": "fn380",
       "name": "extractExposeFromCompiledScript",
       "moduleId": "m14",
       "fileId": "f112",
@@ -6967,7 +6997,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn379",
+      "id": "fn381",
       "name": "extractExposeFromAST",
       "moduleId": "m14",
       "fileId": "f112",
@@ -6982,7 +7012,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn380",
+      "id": "fn382",
       "name": "extractImportsFromAST",
       "moduleId": "m14",
       "fileId": "f113",
@@ -6997,7 +7027,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn381",
+      "id": "fn383",
       "name": "extractImportsFromSource",
       "moduleId": "m14",
       "fileId": "f113",
@@ -7012,7 +7042,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn382",
+      "id": "fn384",
       "name": "extractImportsWithDetails",
       "moduleId": "m14",
       "fileId": "f113",
@@ -7027,7 +7057,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn383",
+      "id": "fn385",
       "name": "groupImportsByType",
       "moduleId": "m14",
       "fileId": "f113",
@@ -7042,7 +7072,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn384",
+      "id": "fn386",
       "name": "isImportUsed",
       "moduleId": "m14",
       "fileId": "f113",
@@ -7058,7 +7088,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn385",
+      "id": "fn387",
       "name": "filterUnusedImports",
       "moduleId": "m14",
       "fileId": "f113",
@@ -7074,7 +7104,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn386",
+      "id": "fn388",
       "name": "extractComposablesFromAST",
       "moduleId": "m14",
       "fileId": "f114",
@@ -7089,7 +7119,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn387",
+      "id": "fn389",
       "name": "extractComposablesFromSource",
       "moduleId": "m14",
       "fileId": "f114",
@@ -7104,7 +7134,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn388",
+      "id": "fn390",
       "name": "extractFunctionsFromScript",
       "moduleId": "m14",
       "fileId": "f115",
@@ -7120,7 +7150,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn389",
+      "id": "fn391",
       "name": "extractFunctionsFromScriptFallback",
       "moduleId": "m14",
       "fileId": "f115",
@@ -7135,7 +7165,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn390",
+      "id": "fn392",
       "name": "isNodeExported",
       "moduleId": "m14",
       "fileId": "f115",
@@ -7151,7 +7181,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn391",
+      "id": "fn393",
       "name": "getParamName",
       "moduleId": "m14",
       "fileId": "f115",
@@ -7166,7 +7196,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn392",
+      "id": "fn394",
       "name": "extractBodyText",
       "moduleId": "m14",
       "fileId": "f115",
@@ -7181,7 +7211,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn393",
+      "id": "fn395",
       "name": "getReturnType",
       "moduleId": "m14",
       "fileId": "f115",
@@ -7196,7 +7226,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn394",
+      "id": "fn396",
       "name": "extractConstantsFromAST",
       "moduleId": "m14",
       "fileId": "f116",
@@ -7211,7 +7241,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn395",
+      "id": "fn397",
       "name": "isNodeExported",
       "moduleId": "m14",
       "fileId": "f116",
@@ -7226,7 +7256,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn396",
+      "id": "fn398",
       "name": "extractConstantsFromScript",
       "moduleId": "m14",
       "fileId": "f116",
@@ -7242,7 +7272,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn397",
+      "id": "fn399",
       "name": "extractConstantsFromSource",
       "moduleId": "m14",
       "fileId": "f116",
@@ -7257,7 +7287,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn398",
+      "id": "fn400",
       "name": "isCatchClause",
       "moduleId": "m14",
       "fileId": "f117",
@@ -7272,7 +7302,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn399",
+      "id": "fn401",
       "name": "extractVariablesFromAST",
       "moduleId": "m14",
       "fileId": "f117",
@@ -7287,7 +7317,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn400",
+      "id": "fn402",
       "name": "isNodeExported",
       "moduleId": "m14",
       "fileId": "f117",
@@ -7302,7 +7332,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn401",
+      "id": "fn403",
       "name": "extractVariablesFromScript",
       "moduleId": "m14",
       "fileId": "f117",
@@ -7318,7 +7348,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn402",
+      "id": "fn404",
       "name": "extractVariablesFromSource",
       "moduleId": "m14",
       "fileId": "f117",
@@ -7333,7 +7363,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn403",
+      "id": "fn405",
       "name": "extractTypesFromAST",
       "moduleId": "m14",
       "fileId": "f118",
@@ -7348,7 +7378,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn404",
+      "id": "fn406",
       "name": "getTypeDefinition",
       "moduleId": "m14",
       "fileId": "f118",
@@ -7363,7 +7393,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn405",
+      "id": "fn407",
       "name": "isNodeExported",
       "moduleId": "m14",
       "fileId": "f118",
@@ -7378,7 +7408,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn406",
+      "id": "fn408",
       "name": "extractTypesFromScript",
       "moduleId": "m14",
       "fileId": "f118",
@@ -7394,7 +7424,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn407",
+      "id": "fn409",
       "name": "extractTypesFromSource",
       "moduleId": "m14",
       "fileId": "f118",
@@ -7409,7 +7439,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn408",
+      "id": "fn410",
       "name": "isTSInterfaceDeclaration",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7424,7 +7454,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn409",
+      "id": "fn411",
       "name": "isTSTypeAliasDeclaration",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7439,7 +7469,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn410",
+      "id": "fn412",
       "name": "isTSTypeLiteral",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7454,7 +7484,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn411",
+      "id": "fn413",
       "name": "isTSPropertySignature",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7469,7 +7499,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn412",
+      "id": "fn414",
       "name": "isTSIndexSignature",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7484,7 +7514,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn413",
+      "id": "fn415",
       "name": "isTSMethodSignature",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7499,7 +7529,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn414",
+      "id": "fn416",
       "name": "isExportNamedDeclaration",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7514,7 +7544,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn415",
+      "id": "fn417",
       "name": "isIdentifier",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7529,7 +7559,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn416",
+      "id": "fn418",
       "name": "isTSQualifiedName",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7544,7 +7574,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn417",
+      "id": "fn419",
       "name": "isExportSpecifier",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7559,7 +7589,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn418",
+      "id": "fn420",
       "name": "isLiteral",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7574,7 +7604,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn419",
+      "id": "fn421",
       "name": "isTSExpressionWithTypeArguments",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7589,7 +7619,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn420",
+      "id": "fn422",
       "name": "isExportDefaultDeclaration",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7604,7 +7634,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn421",
+      "id": "fn423",
       "name": "getNodeKey",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7619,7 +7649,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn422",
+      "id": "fn424",
       "name": "getNodeName",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7634,7 +7664,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn423",
+      "id": "fn425",
       "name": "getNodeParent",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7649,7 +7679,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn424",
+      "id": "fn426",
       "name": "extractInterfacesFromAST",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7664,7 +7694,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn425",
+      "id": "fn427",
       "name": "isNodeExported",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7679,7 +7709,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn426",
+      "id": "fn428",
       "name": "extractInterfacesFromScript",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7695,7 +7725,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn427",
+      "id": "fn429",
       "name": "extractInterfacesFromSource",
       "moduleId": "m14",
       "fileId": "f119",
@@ -7710,7 +7740,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn428",
+      "id": "fn430",
       "name": "extractSlotsFromAST",
       "moduleId": "m14",
       "fileId": "f120",
@@ -7725,7 +7755,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn429",
+      "id": "fn431",
       "name": "extractSlotsFromSource",
       "moduleId": "m14",
       "fileId": "f120",
@@ -7740,7 +7770,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn430",
+      "id": "fn432",
       "name": "visitASTForSlots",
       "moduleId": "m14",
       "fileId": "f120",
@@ -7756,7 +7786,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn431",
+      "id": "fn433",
       "name": "processDefineSlotsCall",
       "moduleId": "m14",
       "fileId": "f120",
@@ -7772,7 +7802,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn432",
+      "id": "fn434",
       "name": "processTypeLiteralMember",
       "moduleId": "m14",
       "fileId": "f120",
@@ -7788,7 +7818,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn433",
+      "id": "fn435",
       "name": "extractPropsFromTypeAnnotation",
       "moduleId": "m14",
       "fileId": "f120",
@@ -7803,7 +7833,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn434",
+      "id": "fn436",
       "name": "extractTypeText",
       "moduleId": "m14",
       "fileId": "f120",
@@ -7818,7 +7848,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn435",
+      "id": "fn437",
       "name": "extractTypedSlotsFromSource",
       "moduleId": "m14",
       "fileId": "f120",
@@ -7834,7 +7864,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn436",
+      "id": "fn438",
       "name": "extractDefineSlotsBody",
       "moduleId": "m14",
       "fileId": "f120",
@@ -7849,7 +7879,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn437",
+      "id": "fn439",
       "name": "parseBalancedProperties",
       "moduleId": "m14",
       "fileId": "f120",
@@ -7864,7 +7894,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn438",
+      "id": "fn440",
       "name": "extractArraySlotsFromSource",
       "moduleId": "m14",
       "fileId": "f120",
@@ -7880,7 +7910,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn439",
+      "id": "fn441",
       "name": "isEquivalent",
       "moduleId": "m15",
       "fileId": "f121",
@@ -7895,7 +7925,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn440",
+      "id": "fn442",
       "name": "needsReview",
       "moduleId": "m15",
       "fileId": "f121",
@@ -7910,7 +7940,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn441",
+      "id": "fn443",
       "name": "confidenceLevel",
       "moduleId": "m15",
       "fileId": "f121",
@@ -7925,7 +7955,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn442",
+      "id": "fn444",
       "name": "isSignatureCompatible",
       "moduleId": "m2",
       "fileId": "f123",
@@ -7941,7 +7971,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn443",
+      "id": "fn445",
       "name": "compareSignatures",
       "moduleId": "m2",
       "fileId": "f123",
@@ -7957,7 +7987,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn444",
+      "id": "fn446",
       "name": "findFunctionByName",
       "moduleId": "m2",
       "fileId": "f123",
@@ -7973,7 +8003,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn445",
+      "id": "fn447",
       "name": "findFunctionBySignature",
       "moduleId": "m2",
       "fileId": "f123",
@@ -7989,7 +8019,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn446",
+      "id": "fn448",
       "name": "createEmptyCallGraph",
       "moduleId": "m2",
       "fileId": "f124",
@@ -8002,7 +8032,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn447",
+      "id": "fn449",
       "name": "mergeCallGraphs",
       "moduleId": "m2",
       "fileId": "f124",
@@ -8017,7 +8047,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn448",
+      "id": "fn450",
       "name": "ensureArray",
       "moduleId": "m9",
       "fileId": "f125",
@@ -8032,7 +8062,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn449",
+      "id": "fn451",
       "name": "getRootPath",
       "moduleId": "m9",
       "fileId": "f126",
@@ -8048,7 +8078,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn450",
+      "id": "fn452",
       "name": "getPathSymbol",
       "moduleId": "m9",
       "fileId": "f126",
@@ -8061,7 +8091,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn451",
+      "id": "fn453",
       "name": "createCompactConfig",
       "moduleId": "m9",
       "fileId": "f127",
@@ -8076,7 +8106,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn452",
+      "id": "fn454",
       "name": "getPresetNames",
       "moduleId": "m9",
       "fileId": "f127",
@@ -8089,7 +8119,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn453",
+      "id": "fn455",
       "name": "getPresetDescription",
       "moduleId": "m9",
       "fileId": "f127",
@@ -8104,7 +8134,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn454",
+      "id": "fn456",
       "name": "extractEntities",
       "moduleId": "m13",
       "fileId": "f128",
@@ -8120,7 +8150,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn455",
+      "id": "fn457",
       "name": "extractCallGraph",
       "moduleId": "m13",
       "fileId": "f129",
@@ -8135,7 +8165,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn456",
+      "id": "fn458",
       "name": "extractEntitiesFromAST",
       "moduleId": "m24",
       "fileId": "f130",
@@ -8152,7 +8182,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn457",
+      "id": "fn459",
       "name": "convertVueImportsToImportInfo",
       "moduleId": "m22",
       "fileId": "f131",
@@ -8167,7 +8197,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn458",
+      "id": "fn460",
       "name": "findFunctionNode",
       "moduleId": "m24",
       "fileId": "f133",
@@ -8183,7 +8213,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn459",
+      "id": "fn461",
       "name": "collectAllCallsRecursive",
       "moduleId": "m24",
       "fileId": "f134",
@@ -8199,7 +8229,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn460",
+      "id": "fn462",
       "name": "processExports",
       "moduleId": "m24",
       "fileId": "f135",
@@ -8214,7 +8244,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn461",
+      "id": "fn463",
       "name": "runHybridReport",
       "moduleId": "m20",
       "fileId": "f137",
@@ -8231,7 +8261,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn462",
+      "id": "fn464",
       "name": "buildHybridReport",
       "moduleId": "m20",
       "fileId": "f138",
@@ -8247,7 +8277,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn463",
+      "id": "fn465",
       "name": "analyzeModule",
       "moduleId": "m20",
       "fileId": "f139",
@@ -8263,7 +8293,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn464",
+      "id": "fn466",
       "name": "generateHybridDOT",
       "moduleId": "m26",
       "fileId": "f140",
@@ -8278,7 +8308,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn465",
+      "id": "fn467",
       "name": "generateHybridHTML",
       "moduleId": "m26",
       "fileId": "f141",
@@ -8294,7 +8324,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn466",
+      "id": "fn468",
       "name": "generateHybridMarkdown",
       "moduleId": "m26",
       "fileId": "f142",
@@ -8309,7 +8339,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn467",
+      "id": "fn469",
       "name": "createEmptyEntitiesResult",
       "moduleId": "m25",
       "fileId": "f144",
@@ -8324,7 +8354,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn468",
+      "id": "fn470",
       "name": "isNodeExported",
       "moduleId": "m25",
       "fileId": "f146",
@@ -8340,7 +8370,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn469",
+      "id": "fn471",
       "name": "isEventHandler",
       "moduleId": "m25",
       "fileId": "f147",
@@ -8355,7 +8385,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn470",
+      "id": "fn472",
       "name": "extractEventType",
       "moduleId": "m25",
       "fileId": "f148",
@@ -8370,7 +8400,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn471",
+      "id": "fn473",
       "name": "extractBodyText",
       "moduleId": "m25",
       "fileId": "f149",
@@ -8385,7 +8415,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn472",
+      "id": "fn474",
       "name": "extractValue",
       "moduleId": "m25",
       "fileId": "f150",
@@ -8400,7 +8430,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn473",
+      "id": "fn475",
       "name": "calculateComplexity",
       "moduleId": "m25",
       "fileId": "f151",
@@ -8415,7 +8445,7 @@
       "returnType": "any"
     },
     {
-      "id": "fn474",
+      "id": "fn476",
       "name": "analyzeSecurity",
       "moduleId": "m25",
       "fileId": "f152",
@@ -8755,7 +8785,7 @@
       "name": "AnalysisCache",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 317,
+      "line": 323,
       "isExported": true,
       "methods": [
         "get",
@@ -8771,7 +8801,7 @@
       "name": "DataMigrator",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 385,
+      "line": 391,
       "isExported": true,
       "methods": [
         "migrate",
@@ -9303,7 +9333,7 @@
       "name": "Codec",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 626,
+      "line": 792,
       "isExported": true,
       "methods": [
         "encode",
@@ -10776,7 +10806,7 @@
       "name": "analysisCache",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 379,
+      "line": 385,
       "isExported": true
     },
     {
@@ -10784,7 +10814,7 @@
       "name": "migrator",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 458,
+      "line": 464,
       "isExported": true
     },
     {
@@ -10973,7 +11003,7 @@
       "name": "FLAG_MAP",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 102,
+      "line": 109,
       "isExported": true,
       "value": {
         "1": "a",
@@ -11001,7 +11031,7 @@
       "name": "FLAG_CHAR_MAP",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 126,
+      "line": 133,
       "isExported": true
     },
     {
@@ -11009,7 +11039,7 @@
       "name": "FLAG_NAMES",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 133,
+      "line": 140,
       "isExported": true,
       "value": {
         "1": "isAsync",
@@ -11037,7 +11067,7 @@
       "name": "RELATION_TYPES",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 157,
+      "line": 164,
       "isExported": true,
       "value": {
         "d": "direct",
@@ -11061,7 +11091,7 @@
       "name": "EXPORT_TYPES",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 177,
+      "line": 184,
       "isExported": true,
       "value": {
         "ne": "named",
@@ -11075,7 +11105,7 @@
       "name": "IMPORT_TYPES",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 187,
+      "line": 194,
       "isExported": true,
       "value": {
         "n": "named",
@@ -11089,7 +11119,7 @@
       "name": "CALL_TYPES",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 198,
+      "line": 205,
       "isExported": true,
       "value": {
         "d": "direct",
@@ -11104,7 +11134,7 @@
       "name": "RE_EXPORT_TYPES",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 209,
+      "line": 216,
       "isExported": true,
       "value": {
         "n": "named",
@@ -11117,7 +11147,7 @@
       "name": "LIFECYCLE_TYPES",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 222,
+      "line": 229,
       "isExported": true,
       "value": {
         "m": "onMounted",
@@ -11135,7 +11165,7 @@
       "name": "LIFECYCLE_REVERSE",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 233,
+      "line": 240,
       "isExported": true
     },
     {
@@ -11143,7 +11173,7 @@
       "name": "EFFECT_TYPES",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 240,
+      "line": 247,
       "isExported": true,
       "value": {
         "t": "timer",
@@ -11158,7 +11188,7 @@
       "name": "EFFECT_REVERSE",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 248,
+      "line": 255,
       "isExported": true
     },
     {
@@ -11166,7 +11196,7 @@
       "name": "INJECTION_TYPES",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 255,
+      "line": 262,
       "isExported": true,
       "value": {
         "p": "provide",
@@ -11178,7 +11208,7 @@
       "name": "INJECTION_REVERSE",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 260,
+      "line": 267,
       "isExported": true
     },
     {
@@ -11186,7 +11216,7 @@
       "name": "REACTIVITY_TYPES",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 267,
+      "line": 274,
       "isExported": true,
       "value": {
         "c": "computed",
@@ -11203,7 +11233,7 @@
       "name": "REACTIVITY_REVERSE",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 277,
+      "line": 284,
       "isExported": true
     },
     {
@@ -11211,7 +11241,7 @@
       "name": "CONDITIONAL_TYPES",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 284,
+      "line": 291,
       "isExported": true,
       "value": {
         "i": "v-if",
@@ -11224,7 +11254,7 @@
       "name": "CONDITIONAL_REVERSE",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 290,
+      "line": 297,
       "isExported": true
     },
     {
@@ -11232,7 +11262,7 @@
       "name": "TYPE_KINDS",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 297,
+      "line": 304,
       "isExported": true,
       "value": {
         "i": "interface",
@@ -11246,7 +11276,7 @@
       "name": "TYPE_KINDS_REVERSE",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 304,
+      "line": 311,
       "isExported": true
     },
     {
@@ -11254,7 +11284,7 @@
       "name": "TYPE_USAGE_KINDS",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 311,
+      "line": 318,
       "isExported": true,
       "value": {
         "p": "param",
@@ -11270,7 +11300,7 @@
       "name": "TYPE_USAGE_KINDS_REVERSE",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 320,
+      "line": 327,
       "isExported": true
     },
     {
@@ -11278,7 +11308,7 @@
       "name": "KEY_MAP",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 327,
+      "line": 334,
       "isExported": true,
       "value": {
         "version": "v",
@@ -11333,7 +11363,7 @@
       "name": "KEY_REVERSE_MAP",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 378,
+      "line": 385,
       "isExported": true
     },
     {
@@ -12679,7 +12709,7 @@
       "functionId": "fn59",
       "exportName": "analyzeVueComponent",
       "localName": "analyzeVueComponent",
-      "line": 132,
+      "line": 141,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -12694,7 +12724,7 @@
       "functionId": "fn63",
       "exportName": "analyzeVueComponentCli",
       "localName": "analyzeVueComponentCli",
-      "line": 540,
+      "line": 569,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -12709,7 +12739,7 @@
       "functionId": "fn64",
       "exportName": "findProjectRoot",
       "localName": "findProjectRoot",
-      "line": 635,
+      "line": 664,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -12724,7 +12754,7 @@
       "functionId": "fn65",
       "exportName": "enhanceWithVueAnalysis",
       "localName": "enhanceWithVueAnalysis",
-      "line": 655,
+      "line": 684,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -13534,7 +13564,7 @@
       "functionId": "fn132",
       "exportName": "extractEntitiesFromFile",
       "localName": "extractEntitiesFromFile",
-      "line": 573,
+      "line": 579,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -14719,7 +14749,7 @@
       "functionId": "fn236",
       "exportName": "encodeFlags",
       "localName": "encodeFlags",
-      "line": 389,
+      "line": 396,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -14734,7 +14764,7 @@
       "functionId": "fn237",
       "exportName": "flagsToString",
       "localName": "flagsToString",
-      "line": 403,
+      "line": 410,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -14749,7 +14779,7 @@
       "functionId": "fn238",
       "exportName": "flagsStringToNumber",
       "localName": "flagsStringToNumber",
-      "line": 417,
+      "line": 424,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -14764,7 +14794,7 @@
       "functionId": "fn240",
       "exportName": "decodeFlagsToObject",
       "localName": "decodeFlagsToObject",
-      "line": 480,
+      "line": 487,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -14779,7 +14809,7 @@
       "functionId": "fn241",
       "exportName": "decodeFlagsToNames",
       "localName": "decodeFlagsToNames",
-      "line": 511,
+      "line": 518,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -14806,7 +14836,7 @@
       "id": "e194",
       "moduleId": "m9",
       "fileId": "f70",
-      "functionId": "fn249",
+      "functionId": "fn251",
       "exportName": "generateHTMLReport",
       "localName": "generateHTMLReport",
       "line": 27,
@@ -14821,7 +14851,7 @@
       "id": "e195",
       "moduleId": "m9",
       "fileId": "f71",
-      "functionId": "fn250",
+      "functionId": "fn252",
       "exportName": "generateInteractiveHTML",
       "localName": "generateInteractiveHTML",
       "line": 28,
@@ -14836,7 +14866,7 @@
       "id": "e196",
       "moduleId": "m20",
       "fileId": "f75",
-      "functionId": "fn252",
+      "functionId": "fn254",
       "exportName": "hasCyclicDependencies",
       "localName": "hasCyclicDependencies",
       "line": 245,
@@ -14851,7 +14881,7 @@
       "id": "e197",
       "moduleId": "m20",
       "fileId": "f75",
-      "functionId": "fn253",
+      "functionId": "fn255",
       "exportName": "getModulesByLevel",
       "localName": "getModulesByLevel",
       "line": 252,
@@ -14866,7 +14896,7 @@
       "id": "e198",
       "moduleId": "m20",
       "fileId": "f75",
-      "functionId": "fn254",
+      "functionId": "fn256",
       "exportName": "getAllFunctions",
       "localName": "getAllFunctions",
       "line": 259,
@@ -14881,7 +14911,7 @@
       "id": "e199",
       "moduleId": "m20",
       "fileId": "f75",
-      "functionId": "fn255",
+      "functionId": "fn257",
       "exportName": "getFunctionsByExportSource",
       "localName": "getFunctionsByExportSource",
       "line": 270,
@@ -14896,7 +14926,7 @@
       "id": "e200",
       "moduleId": "m20",
       "fileId": "f75",
-      "functionId": "fn256",
+      "functionId": "fn258",
       "exportName": "getFunctionsStats",
       "localName": "getFunctionsStats",
       "line": 288,
@@ -14911,7 +14941,7 @@
       "id": "e201",
       "moduleId": "m12",
       "fileId": "f76",
-      "functionId": "fn257",
+      "functionId": "fn259",
       "exportName": "askQuestion",
       "localName": "askQuestion",
       "line": 11,
@@ -14926,7 +14956,7 @@
       "id": "e202",
       "moduleId": "m12",
       "fileId": "f76",
-      "functionId": "fn258",
+      "functionId": "fn260",
       "exportName": "askYesNo",
       "localName": "askYesNo",
       "line": 31,
@@ -14941,7 +14971,7 @@
       "id": "e203",
       "moduleId": "m12",
       "fileId": "f76",
-      "functionId": "fn259",
+      "functionId": "fn261",
       "exportName": "askChoice",
       "localName": "askChoice",
       "line": 52,
@@ -14956,7 +14986,7 @@
       "id": "e204",
       "moduleId": "m12",
       "fileId": "f78",
-      "functionId": "fn260",
+      "functionId": "fn262",
       "exportName": "silenceTsMorphNoise",
       "localName": "silenceTsMorphNoise",
       "line": 77,
@@ -14971,7 +15001,7 @@
       "id": "e205",
       "moduleId": "m12",
       "fileId": "f78",
-      "functionId": "fn262",
+      "functionId": "fn264",
       "exportName": "unsilenceTsMorphNoise",
       "localName": "unsilenceTsMorphNoise",
       "line": 156,
@@ -14986,7 +15016,7 @@
       "id": "e206",
       "moduleId": "m12",
       "fileId": "f78",
-      "functionId": "fn263",
+      "functionId": "fn265",
       "exportName": "isSilenceInstalled",
       "localName": "isSilenceInstalled",
       "line": 177,
@@ -15001,7 +15031,7 @@
       "id": "e207",
       "moduleId": "m12",
       "fileId": "f79",
-      "functionId": "fn264",
+      "functionId": "fn266",
       "exportName": "isMainModule",
       "localName": "isMainModule",
       "line": 9,
@@ -15016,7 +15046,7 @@
       "id": "e208",
       "moduleId": "m19",
       "fileId": "f81",
-      "functionId": "fn265",
+      "functionId": "fn267",
       "exportName": "createFileCommand",
       "localName": "createFileCommand",
       "line": 381,
@@ -15031,7 +15061,7 @@
       "id": "e209",
       "moduleId": "m19",
       "fileId": "f83",
-      "functionId": "fn266",
+      "functionId": "fn268",
       "exportName": "runSplitModule",
       "localName": "runSplitModule",
       "line": 321,
@@ -15046,7 +15076,7 @@
       "id": "e210",
       "moduleId": "m19",
       "fileId": "f89",
-      "functionId": "fn267",
+      "functionId": "fn269",
       "exportName": "extractAllFunctions",
       "localName": "extractAllFunctions",
       "line": 277,
@@ -15061,7 +15091,7 @@
       "id": "e211",
       "moduleId": "m19",
       "fileId": "f89",
-      "functionId": "fn268",
+      "functionId": "fn270",
       "exportName": "findFunctionByName",
       "localName": "findFunctionByName",
       "line": 295,
@@ -15076,7 +15106,7 @@
       "id": "e212",
       "moduleId": "m19",
       "fileId": "f89",
-      "functionId": "fn269",
+      "functionId": "fn271",
       "exportName": "getFunctionsByLevel",
       "localName": "getFunctionsByLevel",
       "line": 314,
@@ -15091,7 +15121,7 @@
       "id": "e213",
       "moduleId": "m19",
       "fileId": "f89",
-      "functionId": "fn270",
+      "functionId": "fn272",
       "exportName": "getExportedFunctions",
       "localName": "getExportedFunctions",
       "line": 334,
@@ -15106,7 +15136,7 @@
       "id": "e214",
       "moduleId": "m19",
       "fileId": "f89",
-      "functionId": "fn271",
+      "functionId": "fn273",
       "exportName": "getAsyncFunctions",
       "localName": "getAsyncFunctions",
       "line": 354,
@@ -15121,7 +15151,7 @@
       "id": "e215",
       "moduleId": "m19",
       "fileId": "f89",
-      "functionId": "fn272",
+      "functionId": "fn274",
       "exportName": "getFunctionStats",
       "localName": "getFunctionStats",
       "line": 374,
@@ -15136,7 +15166,7 @@
       "id": "e216",
       "moduleId": "m19",
       "fileId": "f90",
-      "functionId": "fn273",
+      "functionId": "fn275",
       "exportName": "createInitCommand",
       "localName": "createInitCommand",
       "line": 715,
@@ -15166,7 +15196,7 @@
       "id": "e218",
       "moduleId": "m19",
       "fileId": "f95",
-      "functionId": "fn275",
+      "functionId": "fn277",
       "exportName": "minifyFolderSync",
       "localName": "minifyFolderSync",
       "line": 434,
@@ -15196,7 +15226,7 @@
       "id": "e220",
       "moduleId": "m12",
       "fileId": "f97",
-      "functionId": "fn277",
+      "functionId": "fn279",
       "exportName": "decodeFlags",
       "localName": "decodeFlags",
       "line": 21,
@@ -15211,7 +15241,7 @@
       "id": "e221",
       "moduleId": "m12",
       "fileId": "f97",
-      "functionId": "fn278",
+      "functionId": "fn280",
       "exportName": "getFlagsList",
       "localName": "getFlagsList",
       "line": 25,
@@ -15226,7 +15256,7 @@
       "id": "e222",
       "moduleId": "m12",
       "fileId": "f97",
-      "functionId": "fn279",
+      "functionId": "fn281",
       "exportName": "hasFlag",
       "localName": "hasFlag",
       "line": 29,
@@ -15241,7 +15271,7 @@
       "id": "e223",
       "moduleId": "m12",
       "fileId": "f97",
-      "functionId": "fn280",
+      "functionId": "fn282",
       "exportName": "hasAllFlags",
       "localName": "hasAllFlags",
       "line": 33,
@@ -15256,7 +15286,7 @@
       "id": "e224",
       "moduleId": "m12",
       "fileId": "f97",
-      "functionId": "fn281",
+      "functionId": "fn283",
       "exportName": "hasAnyFlag",
       "localName": "hasAnyFlag",
       "line": 37,
@@ -15271,7 +15301,7 @@
       "id": "e225",
       "moduleId": "m12",
       "fileId": "f97",
-      "functionId": "fn282",
+      "functionId": "fn284",
       "exportName": "setFlag",
       "localName": "setFlag",
       "line": 41,
@@ -15286,7 +15316,7 @@
       "id": "e226",
       "moduleId": "m12",
       "fileId": "f97",
-      "functionId": "fn283",
+      "functionId": "fn285",
       "exportName": "clearFlag",
       "localName": "clearFlag",
       "line": 45,
@@ -15301,7 +15331,7 @@
       "id": "e227",
       "moduleId": "m12",
       "fileId": "f97",
-      "functionId": "fn284",
+      "functionId": "fn286",
       "exportName": "toggleFlag",
       "localName": "toggleFlag",
       "line": 49,
@@ -15331,7 +15361,7 @@
       "id": "e229",
       "moduleId": "m12",
       "fileId": "f97",
-      "functionId": "fn286",
+      "functionId": "fn288",
       "exportName": "countFlags",
       "localName": "countFlags",
       "line": 57,
@@ -15346,7 +15376,7 @@
       "id": "e230",
       "moduleId": "m12",
       "fileId": "f97",
-      "functionId": "fn287",
+      "functionId": "fn289",
       "exportName": "clearCache",
       "localName": "clearCache",
       "line": 61,
@@ -15361,7 +15391,7 @@
       "id": "e231",
       "moduleId": "m12",
       "fileId": "f97",
-      "functionId": "fn288",
+      "functionId": "fn290",
       "exportName": "getCacheStats",
       "localName": "getCacheStats",
       "line": 65,
@@ -15376,7 +15406,7 @@
       "id": "e232",
       "moduleId": "m12",
       "fileId": "f97",
-      "functionId": "fn289",
+      "functionId": "fn291",
       "exportName": "encodeFlagsAdvanced",
       "localName": "encodeFlagsAdvanced",
       "line": 73,
@@ -15391,7 +15421,7 @@
       "id": "e233",
       "moduleId": "m12",
       "fileId": "f97",
-      "functionId": "fn290",
+      "functionId": "fn292",
       "exportName": "decodeFlagsAdvanced",
       "localName": "decodeFlagsAdvanced",
       "line": 88,
@@ -15406,7 +15436,7 @@
       "id": "e234",
       "moduleId": "m12",
       "fileId": "f97",
-      "functionId": "fn291",
+      "functionId": "fn293",
       "exportName": "decodeFlagsPrefixed",
       "localName": "decodeFlagsPrefixed",
       "line": 101,
@@ -15421,7 +15451,7 @@
       "id": "e235",
       "moduleId": "m22",
       "fileId": "f98",
-      "functionId": "fn292",
+      "functionId": "fn294",
       "exportName": "convertVueAnalysisToEntities",
       "localName": "convertVueAnalysisToEntities",
       "line": 17,
@@ -15436,7 +15466,7 @@
       "id": "e236",
       "moduleId": "m2",
       "fileId": "f99",
-      "functionId": "fn293",
+      "functionId": "fn295",
       "exportName": "extractTypeGraph",
       "localName": "extractTypeGraph",
       "line": 115,
@@ -15451,7 +15481,7 @@
       "id": "e237",
       "moduleId": "m2",
       "fileId": "f99",
-      "functionId": "fn295",
+      "functionId": "fn297",
       "exportName": "isTypeScriptFile",
       "localName": "isTypeScriptFile",
       "line": 586,
@@ -15466,7 +15496,7 @@
       "id": "e238",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn296",
+      "functionId": "fn298",
       "exportName": "ensureArray",
       "localName": "ensureArray",
       "line": 15,
@@ -15496,7 +15526,7 @@
       "id": "e240",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn298",
+      "functionId": "fn300",
       "exportName": "safeNumber",
       "localName": "safeNumber",
       "line": 49,
@@ -15511,7 +15541,7 @@
       "id": "e241",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn299",
+      "functionId": "fn301",
       "exportName": "safeBoolean",
       "localName": "safeBoolean",
       "line": 62,
@@ -15526,7 +15556,7 @@
       "id": "e242",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn300",
+      "functionId": "fn302",
       "exportName": "isRealObject",
       "localName": "isRealObject",
       "line": 77,
@@ -15541,7 +15571,7 @@
       "id": "e243",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn301",
+      "functionId": "fn303",
       "exportName": "filterRealObjects",
       "localName": "filterRealObjects",
       "line": 84,
@@ -15556,7 +15586,7 @@
       "id": "e244",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn302",
+      "functionId": "fn304",
       "exportName": "sanitizeEntities",
       "localName": "sanitizeEntities",
       "line": 92,
@@ -15571,7 +15601,7 @@
       "id": "e245",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn304",
+      "functionId": "fn306",
       "exportName": "safeTraverseAST",
       "localName": "safeTraverseAST",
       "line": 124,
@@ -15601,7 +15631,7 @@
       "id": "e247",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn306",
+      "functionId": "fn308",
       "exportName": "findFileInProject",
       "localName": "findFileInProject",
       "line": 181,
@@ -15616,7 +15646,7 @@
       "id": "e248",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn307",
+      "functionId": "fn309",
       "exportName": "findModuleForEntity",
       "localName": "findModuleForEntity",
       "line": 224,
@@ -15631,7 +15661,7 @@
       "id": "e249",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn308",
+      "functionId": "fn310",
       "exportName": "generateFunctionId",
       "localName": "generateFunctionId",
       "line": 255,
@@ -15646,7 +15676,7 @@
       "id": "e250",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn309",
+      "functionId": "fn311",
       "exportName": "generateFileId",
       "localName": "generateFileId",
       "line": 265,
@@ -15661,7 +15691,7 @@
       "id": "e251",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn310",
+      "functionId": "fn312",
       "exportName": "generateModuleId",
       "localName": "generateModuleId",
       "line": 275,
@@ -15691,7 +15721,7 @@
       "id": "e253",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn312",
+      "functionId": "fn314",
       "exportName": "getFileName",
       "localName": "getFileName",
       "line": 321,
@@ -15706,7 +15736,7 @@
       "id": "e254",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn313",
+      "functionId": "fn315",
       "exportName": "getFileExtension",
       "localName": "getFileExtension",
       "line": 328,
@@ -15721,7 +15751,7 @@
       "id": "e255",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn314",
+      "functionId": "fn316",
       "exportName": "getFileDirectory",
       "localName": "getFileDirectory",
       "line": 335,
@@ -15736,7 +15766,7 @@
       "id": "e256",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn295",
+      "functionId": "fn297",
       "exportName": "isTypeScriptFile",
       "localName": "isTypeScriptFile",
       "line": 342,
@@ -15751,7 +15781,7 @@
       "id": "e257",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn316",
+      "functionId": "fn318",
       "exportName": "isJavaScriptFile",
       "localName": "isJavaScriptFile",
       "line": 350,
@@ -15766,7 +15796,7 @@
       "id": "e258",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn317",
+      "functionId": "fn319",
       "exportName": "isVueFile",
       "localName": "isVueFile",
       "line": 358,
@@ -15781,7 +15811,7 @@
       "id": "e259",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn318",
+      "functionId": "fn320",
       "exportName": "isJsxFile",
       "localName": "isJsxFile",
       "line": 365,
@@ -15796,7 +15826,7 @@
       "id": "e260",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn319",
+      "functionId": "fn321",
       "exportName": "detectLanguage",
       "localName": "detectLanguage",
       "line": 372,
@@ -15811,7 +15841,7 @@
       "id": "e261",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn320",
+      "functionId": "fn322",
       "exportName": "shortenPath",
       "localName": "shortenPath",
       "line": 385,
@@ -15826,7 +15856,7 @@
       "id": "e262",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn321",
+      "functionId": "fn323",
       "exportName": "generateVscodeLink",
       "localName": "generateVscodeLink",
       "line": 421,
@@ -15841,7 +15871,7 @@
       "id": "e263",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn322",
+      "functionId": "fn324",
       "exportName": "isAbsolutePath",
       "localName": "isAbsolutePath",
       "line": 435,
@@ -15856,7 +15886,7 @@
       "id": "e264",
       "moduleId": "m23",
       "fileId": "f101",
-      "functionId": "fn323",
+      "functionId": "fn325",
       "exportName": "getRelativePath",
       "localName": "getRelativePath",
       "line": 442,
@@ -15871,7 +15901,7 @@
       "id": "e265",
       "moduleId": "m23",
       "fileId": "f102",
-      "functionId": "fn324",
+      "functionId": "fn326",
       "exportName": "createMetadata",
       "localName": "createMetadata",
       "line": 11,
@@ -15886,7 +15916,7 @@
       "id": "e266",
       "moduleId": "m23",
       "fileId": "f102",
-      "functionId": "fn325",
+      "functionId": "fn327",
       "exportName": "getReportName",
       "localName": "getReportName",
       "line": 20,
@@ -15901,7 +15931,7 @@
       "id": "e267",
       "moduleId": "m23",
       "fileId": "f102",
-      "functionId": "fn326",
+      "functionId": "fn328",
       "exportName": "getReportVersion",
       "localName": "getReportVersion",
       "line": 24,
@@ -15916,7 +15946,7 @@
       "id": "e268",
       "moduleId": "m23",
       "fileId": "f102",
-      "functionId": "fn327",
+      "functionId": "fn329",
       "exportName": "getLockfileVersion",
       "localName": "getLockfileVersion",
       "line": 28,
@@ -15931,7 +15961,7 @@
       "id": "e269",
       "moduleId": "m23",
       "fileId": "f102",
-      "functionId": "fn328",
+      "functionId": "fn330",
       "exportName": "getDefaultTimestamp",
       "localName": "getDefaultTimestamp",
       "line": 32,
@@ -15946,7 +15976,7 @@
       "id": "e270",
       "moduleId": "m23",
       "fileId": "f102",
-      "functionId": "fn329",
+      "functionId": "fn331",
       "exportName": "formatTimestamp",
       "localName": "formatTimestamp",
       "line": 36,
@@ -15961,7 +15991,7 @@
       "id": "e271",
       "moduleId": "m23",
       "fileId": "f102",
-      "functionId": "fn330",
+      "functionId": "fn332",
       "exportName": "getReportMetadata",
       "localName": "getReportMetadata",
       "line": 40,
@@ -15976,7 +16006,7 @@
       "id": "e272",
       "moduleId": "m23",
       "fileId": "f103",
-      "functionId": "fn331",
+      "functionId": "fn333",
       "exportName": "calculateEntityStats",
       "localName": "calculateEntityStats",
       "line": 8,
@@ -15991,7 +16021,7 @@
       "id": "e273",
       "moduleId": "m23",
       "fileId": "f103",
-      "functionId": "fn332",
+      "functionId": "fn334",
       "exportName": "calculateFileStats",
       "localName": "calculateFileStats",
       "line": 83,
@@ -16006,7 +16036,7 @@
       "id": "e274",
       "moduleId": "m23",
       "fileId": "f104",
-      "functionId": "fn333",
+      "functionId": "fn335",
       "exportName": "buildDependencyGraph",
       "localName": "buildDependencyGraph",
       "line": 8,
@@ -16036,7 +16066,7 @@
       "id": "e276",
       "moduleId": "m23",
       "fileId": "f104",
-      "functionId": "fn335",
+      "functionId": "fn337",
       "exportName": "getMaxDepth",
       "localName": "getMaxDepth",
       "line": 99,
@@ -16051,7 +16081,7 @@
       "id": "e277",
       "moduleId": "m23",
       "fileId": "f104",
-      "functionId": "fn253",
+      "functionId": "fn255",
       "exportName": "getModulesByLevel",
       "localName": "getModulesByLevel",
       "line": 130,
@@ -16066,7 +16096,7 @@
       "id": "e278",
       "moduleId": "m23",
       "fileId": "f104",
-      "functionId": "fn337",
+      "functionId": "fn339",
       "exportName": "hasCycles",
       "localName": "hasCycles",
       "line": 171,
@@ -16081,7 +16111,7 @@
       "id": "e279",
       "moduleId": "m23",
       "fileId": "f104",
-      "functionId": "fn338",
+      "functionId": "fn340",
       "exportName": "findAllPaths",
       "localName": "findAllPaths",
       "line": 180,
@@ -16096,7 +16126,7 @@
       "id": "e280",
       "moduleId": "m23",
       "fileId": "f104",
-      "functionId": "fn339",
+      "functionId": "fn341",
       "exportName": "findShortestPath",
       "localName": "findShortestPath",
       "line": 220,
@@ -16111,7 +16141,7 @@
       "id": "e281",
       "moduleId": "m23",
       "fileId": "f104",
-      "functionId": "fn340",
+      "functionId": "fn342",
       "exportName": "findReachableNodes",
       "localName": "findReachableNodes",
       "line": 255,
@@ -16126,7 +16156,7 @@
       "id": "e282",
       "moduleId": "m23",
       "fileId": "f104",
-      "functionId": "fn341",
+      "functionId": "fn343",
       "exportName": "findSCC",
       "localName": "findSCC",
       "line": 281,
@@ -16141,7 +16171,7 @@
       "id": "e283",
       "moduleId": "m23",
       "fileId": "f104",
-      "functionId": "fn343",
+      "functionId": "fn345",
       "exportName": "isAcyclic",
       "localName": "isAcyclic",
       "line": 396,
@@ -16156,7 +16186,7 @@
       "id": "e284",
       "moduleId": "m23",
       "fileId": "f104",
-      "functionId": "fn344",
+      "functionId": "fn346",
       "exportName": "topologicalSort",
       "localName": "topologicalSort",
       "line": 403,
@@ -16171,7 +16201,7 @@
       "id": "e285",
       "moduleId": "m23",
       "fileId": "f104",
-      "functionId": "fn345",
+      "functionId": "fn347",
       "exportName": "getNodeDegree",
       "localName": "getNodeDegree",
       "line": 435,
@@ -16186,7 +16216,7 @@
       "id": "e286",
       "moduleId": "m23",
       "fileId": "f104",
-      "functionId": "fn346",
+      "functionId": "fn348",
       "exportName": "findHubs",
       "localName": "findHubs",
       "line": 455,
@@ -16201,7 +16231,7 @@
       "id": "e287",
       "moduleId": "m23",
       "fileId": "f104",
-      "functionId": "fn347",
+      "functionId": "fn349",
       "exportName": "findIsolatedNodes",
       "localName": "findIsolatedNodes",
       "line": 473,
@@ -16216,7 +16246,7 @@
       "id": "e288",
       "moduleId": "m23",
       "fileId": "f104",
-      "functionId": "fn348",
+      "functionId": "fn350",
       "exportName": "getGraphDensity",
       "localName": "getGraphDensity",
       "line": 489,
@@ -16231,7 +16261,7 @@
       "id": "e289",
       "moduleId": "m23",
       "fileId": "f104",
-      "functionId": "fn349",
+      "functionId": "fn351",
       "exportName": "isConnected",
       "localName": "isConnected",
       "line": 507,
@@ -16246,7 +16276,7 @@
       "id": "e290",
       "moduleId": "m23",
       "fileId": "f104",
-      "functionId": "fn350",
+      "functionId": "fn352",
       "exportName": "findConnectedComponents",
       "localName": "findConnectedComponents",
       "line": 515,
@@ -16261,7 +16291,7 @@
       "id": "e291",
       "moduleId": "m23",
       "fileId": "f105",
-      "functionId": "fn351",
+      "functionId": "fn353",
       "exportName": "buildExecutionGraph",
       "localName": "buildExecutionGraph",
       "line": 8,
@@ -16276,7 +16306,7 @@
       "id": "e292",
       "moduleId": "m23",
       "fileId": "f105",
-      "functionId": "fn352",
+      "functionId": "fn354",
       "exportName": "buildImportExportFlow",
       "localName": "buildImportExportFlow",
       "line": 105,
@@ -16291,7 +16321,7 @@
       "id": "e293",
       "moduleId": "m23",
       "fileId": "f105",
-      "functionId": "fn353",
+      "functionId": "fn355",
       "exportName": "findCallPath",
       "localName": "findCallPath",
       "line": 314,
@@ -16306,7 +16336,7 @@
       "id": "e294",
       "moduleId": "m23",
       "fileId": "f105",
-      "functionId": "fn354",
+      "functionId": "fn356",
       "exportName": "findDependents",
       "localName": "findDependents",
       "line": 370,
@@ -16321,7 +16351,7 @@
       "id": "e295",
       "moduleId": "m23",
       "fileId": "f105",
-      "functionId": "fn355",
+      "functionId": "fn357",
       "exportName": "findDependencies",
       "localName": "findDependencies",
       "line": 396,
@@ -16336,7 +16366,7 @@
       "id": "e296",
       "moduleId": "m23",
       "fileId": "f105",
-      "functionId": "fn356",
+      "functionId": "fn358",
       "exportName": "findCallCycles",
       "localName": "findCallCycles",
       "line": 423,
@@ -16351,7 +16381,7 @@
       "id": "e297",
       "moduleId": "m23",
       "fileId": "f105",
-      "functionId": "fn357",
+      "functionId": "fn359",
       "exportName": "getCallGraphStats",
       "localName": "getCallGraphStats",
       "line": 465,
@@ -16366,7 +16396,7 @@
       "id": "e298",
       "moduleId": "m23",
       "fileId": "f105",
-      "functionId": "fn358",
+      "functionId": "fn360",
       "exportName": "buildCallGraphFromEntities",
       "localName": "buildCallGraphFromEntities",
       "line": 512,
@@ -16381,7 +16411,7 @@
       "id": "e299",
       "moduleId": "m23",
       "fileId": "f106",
-      "functionId": "fn359",
+      "functionId": "fn361",
       "exportName": "buildArchitectureMetrics",
       "localName": "buildArchitectureMetrics",
       "line": 12,
@@ -16396,7 +16426,7 @@
       "id": "e300",
       "moduleId": "m23",
       "fileId": "f106",
-      "functionId": "fn360",
+      "functionId": "fn362",
       "exportName": "exportArchitectureMetrics",
       "localName": "exportArchitectureMetrics",
       "line": 151,
@@ -16411,7 +16441,7 @@
       "id": "e301",
       "moduleId": "m23",
       "fileId": "f106",
-      "functionId": "fn361",
+      "functionId": "fn363",
       "exportName": "generateArchitectureReport",
       "localName": "generateArchitectureReport",
       "line": 158,
@@ -16426,7 +16456,7 @@
       "id": "e302",
       "moduleId": "m23",
       "fileId": "f106",
-      "functionId": "fn362",
+      "functionId": "fn364",
       "exportName": "checkArchitectureHealth",
       "localName": "checkArchitectureHealth",
       "line": 215,
@@ -16441,7 +16471,7 @@
       "id": "e303",
       "moduleId": "m23",
       "fileId": "f107",
-      "functionId": "fn363",
+      "functionId": "fn365",
       "exportName": "buildSummary",
       "localName": "buildSummary",
       "line": 8,
@@ -16456,7 +16486,7 @@
       "id": "e304",
       "moduleId": "m23",
       "fileId": "f107",
-      "functionId": "fn364",
+      "functionId": "fn366",
       "exportName": "buildQuickSummary",
       "localName": "buildQuickSummary",
       "line": 156,
@@ -16486,7 +16516,7 @@
       "id": "e306",
       "moduleId": "m23",
       "fileId": "f107",
-      "functionId": "fn366",
+      "functionId": "fn368",
       "exportName": "requiresAttention",
       "localName": "requiresAttention",
       "line": 183,
@@ -16501,7 +16531,7 @@
       "id": "e307",
       "moduleId": "m23",
       "fileId": "f107",
-      "functionId": "fn367",
+      "functionId": "fn369",
       "exportName": "getRecommendations",
       "localName": "getRecommendations",
       "line": 190,
@@ -16516,7 +16546,7 @@
       "id": "e308",
       "moduleId": "m23",
       "fileId": "f107",
-      "functionId": "fn368",
+      "functionId": "fn370",
       "exportName": "generateProjectSummaryReport",
       "localName": "generateProjectSummaryReport",
       "line": 228,
@@ -16531,7 +16561,7 @@
       "id": "e309",
       "moduleId": "m23",
       "fileId": "f108",
-      "functionId": "fn370",
+      "functionId": "fn372",
       "exportName": "buildPackages",
       "localName": "buildPackages",
       "line": 48,
@@ -16546,7 +16576,7 @@
       "id": "e310",
       "moduleId": "m2",
       "fileId": "f109",
-      "functionId": "fn371",
+      "functionId": "fn373",
       "exportName": "resolveCoreReExports",
       "localName": "resolveCoreReExports",
       "line": 620,
@@ -16561,7 +16591,7 @@
       "id": "e311",
       "moduleId": "m14",
       "fileId": "f110",
-      "functionId": "fn372",
+      "functionId": "fn374",
       "exportName": "extractPropsFromSource",
       "localName": "extractPropsFromSource",
       "line": 11,
@@ -16576,7 +16606,7 @@
       "id": "e312",
       "moduleId": "m14",
       "fileId": "f110",
-      "functionId": "fn373",
+      "functionId": "fn375",
       "exportName": "extractPropsFromCompiledScript",
       "localName": "extractPropsFromCompiledScript",
       "line": 244,
@@ -16591,7 +16621,7 @@
       "id": "e313",
       "moduleId": "m14",
       "fileId": "f110",
-      "functionId": "fn374",
+      "functionId": "fn376",
       "exportName": "extractPropsFromAST",
       "localName": "extractPropsFromAST",
       "line": 312,
@@ -16606,7 +16636,7 @@
       "id": "e314",
       "moduleId": "m14",
       "fileId": "f111",
-      "functionId": "fn375",
+      "functionId": "fn377",
       "exportName": "extractEmitsFromSource",
       "localName": "extractEmitsFromSource",
       "line": 11,
@@ -16621,7 +16651,7 @@
       "id": "e315",
       "moduleId": "m14",
       "fileId": "f111",
-      "functionId": "fn376",
+      "functionId": "fn378",
       "exportName": "extractEmitsFromCompiledScript",
       "localName": "extractEmitsFromCompiledScript",
       "line": 57,
@@ -16636,7 +16666,7 @@
       "id": "e316",
       "moduleId": "m14",
       "fileId": "f111",
-      "functionId": "fn377",
+      "functionId": "fn379",
       "exportName": "extractEmitsFromAST",
       "localName": "extractEmitsFromAST",
       "line": 104,
@@ -16651,7 +16681,7 @@
       "id": "e317",
       "moduleId": "m14",
       "fileId": "f112",
-      "functionId": "fn378",
+      "functionId": "fn380",
       "exportName": "extractExposeFromCompiledScript",
       "localName": "extractExposeFromCompiledScript",
       "line": 9,
@@ -16666,7 +16696,7 @@
       "id": "e318",
       "moduleId": "m14",
       "fileId": "f112",
-      "functionId": "fn379",
+      "functionId": "fn381",
       "exportName": "extractExposeFromAST",
       "localName": "extractExposeFromAST",
       "line": 22,
@@ -16681,7 +16711,7 @@
       "id": "e319",
       "moduleId": "m14",
       "fileId": "f113",
-      "functionId": "fn380",
+      "functionId": "fn382",
       "exportName": "extractImportsFromAST",
       "localName": "extractImportsFromAST",
       "line": 9,
@@ -16696,7 +16726,7 @@
       "id": "e320",
       "moduleId": "m14",
       "fileId": "f113",
-      "functionId": "fn381",
+      "functionId": "fn383",
       "exportName": "extractImportsFromSource",
       "localName": "extractImportsFromSource",
       "line": 63,
@@ -16711,7 +16741,7 @@
       "id": "e321",
       "moduleId": "m14",
       "fileId": "f113",
-      "functionId": "fn382",
+      "functionId": "fn384",
       "exportName": "extractImportsWithDetails",
       "localName": "extractImportsWithDetails",
       "line": 188,
@@ -16726,7 +16756,7 @@
       "id": "e322",
       "moduleId": "m14",
       "fileId": "f113",
-      "functionId": "fn383",
+      "functionId": "fn385",
       "exportName": "groupImportsByType",
       "localName": "groupImportsByType",
       "line": 275,
@@ -16741,7 +16771,7 @@
       "id": "e323",
       "moduleId": "m14",
       "fileId": "f113",
-      "functionId": "fn384",
+      "functionId": "fn386",
       "exportName": "isImportUsed",
       "localName": "isImportUsed",
       "line": 325,
@@ -16756,7 +16786,7 @@
       "id": "e324",
       "moduleId": "m14",
       "fileId": "f113",
-      "functionId": "fn385",
+      "functionId": "fn387",
       "exportName": "filterUnusedImports",
       "localName": "filterUnusedImports",
       "line": 358,
@@ -16771,7 +16801,7 @@
       "id": "e325",
       "moduleId": "m14",
       "fileId": "f114",
-      "functionId": "fn386",
+      "functionId": "fn388",
       "exportName": "extractComposablesFromAST",
       "localName": "extractComposablesFromAST",
       "line": 9,
@@ -16786,7 +16816,7 @@
       "id": "e326",
       "moduleId": "m14",
       "fileId": "f114",
-      "functionId": "fn387",
+      "functionId": "fn389",
       "exportName": "extractComposablesFromSource",
       "localName": "extractComposablesFromSource",
       "line": 77,
@@ -16801,7 +16831,7 @@
       "id": "e327",
       "moduleId": "m14",
       "fileId": "f115",
-      "functionId": "fn388",
+      "functionId": "fn390",
       "exportName": "extractFunctionsFromScript",
       "localName": "extractFunctionsFromScript",
       "line": 10,
@@ -16831,7 +16861,7 @@
       "id": "e329",
       "moduleId": "m14",
       "fileId": "f116",
-      "functionId": "fn396",
+      "functionId": "fn398",
       "exportName": "extractConstantsFromScript",
       "localName": "extractConstantsFromScript",
       "line": 186,
@@ -16861,7 +16891,7 @@
       "id": "e331",
       "moduleId": "m14",
       "fileId": "f117",
-      "functionId": "fn401",
+      "functionId": "fn403",
       "exportName": "extractVariablesFromScript",
       "localName": "extractVariablesFromScript",
       "line": 321,
@@ -16891,7 +16921,7 @@
       "id": "e333",
       "moduleId": "m14",
       "fileId": "f118",
-      "functionId": "fn406",
+      "functionId": "fn408",
       "exportName": "extractTypesFromScript",
       "localName": "extractTypesFromScript",
       "line": 276,
@@ -16921,7 +16951,7 @@
       "id": "e335",
       "moduleId": "m14",
       "fileId": "f119",
-      "functionId": "fn426",
+      "functionId": "fn428",
       "exportName": "extractInterfacesFromScript",
       "localName": "extractInterfacesFromScript",
       "line": 317,
@@ -16936,7 +16966,7 @@
       "id": "e336",
       "moduleId": "m14",
       "fileId": "f120",
-      "functionId": "fn428",
+      "functionId": "fn430",
       "exportName": "extractSlotsFromAST",
       "localName": "extractSlotsFromAST",
       "line": 47,
@@ -16951,7 +16981,7 @@
       "id": "e337",
       "moduleId": "m14",
       "fileId": "f120",
-      "functionId": "fn429",
+      "functionId": "fn431",
       "exportName": "extractSlotsFromSource",
       "localName": "extractSlotsFromSource",
       "line": 73,
@@ -16966,7 +16996,7 @@
       "id": "e338",
       "moduleId": "m15",
       "fileId": "f121",
-      "functionId": "fn439",
+      "functionId": "fn441",
       "exportName": "isEquivalent",
       "localName": "isEquivalent",
       "line": 1559,
@@ -16981,7 +17011,7 @@
       "id": "e339",
       "moduleId": "m15",
       "fileId": "f121",
-      "functionId": "fn440",
+      "functionId": "fn442",
       "exportName": "needsReview",
       "localName": "needsReview",
       "line": 1564,
@@ -16996,7 +17026,7 @@
       "id": "e340",
       "moduleId": "m15",
       "fileId": "f121",
-      "functionId": "fn441",
+      "functionId": "fn443",
       "exportName": "confidenceLevel",
       "localName": "confidenceLevel",
       "line": 1572,
@@ -17011,7 +17041,7 @@
       "id": "e341",
       "moduleId": "m2",
       "fileId": "f123",
-      "functionId": "fn442",
+      "functionId": "fn444",
       "exportName": "isSignatureCompatible",
       "localName": "isSignatureCompatible",
       "line": 781,
@@ -17026,7 +17056,7 @@
       "id": "e342",
       "moduleId": "m2",
       "fileId": "f123",
-      "functionId": "fn443",
+      "functionId": "fn445",
       "exportName": "compareSignatures",
       "localName": "compareSignatures",
       "line": 786,
@@ -17041,7 +17071,7 @@
       "id": "e343",
       "moduleId": "m2",
       "fileId": "f123",
-      "functionId": "fn268",
+      "functionId": "fn270",
       "exportName": "findFunctionByName",
       "localName": "findFunctionByName",
       "line": 794,
@@ -17056,7 +17086,7 @@
       "id": "e344",
       "moduleId": "m2",
       "fileId": "f123",
-      "functionId": "fn445",
+      "functionId": "fn447",
       "exportName": "findFunctionBySignature",
       "localName": "findFunctionBySignature",
       "line": 801,
@@ -17071,7 +17101,7 @@
       "id": "e345",
       "moduleId": "m2",
       "fileId": "f124",
-      "functionId": "fn446",
+      "functionId": "fn448",
       "exportName": "createEmptyCallGraph",
       "localName": "createEmptyCallGraph",
       "line": 655,
@@ -17086,7 +17116,7 @@
       "id": "e346",
       "moduleId": "m2",
       "fileId": "f124",
-      "functionId": "fn447",
+      "functionId": "fn449",
       "exportName": "mergeCallGraphs",
       "localName": "mergeCallGraphs",
       "line": 663,
@@ -17101,7 +17131,7 @@
       "id": "e347",
       "moduleId": "m9",
       "fileId": "f126",
-      "functionId": "fn449",
+      "functionId": "fn451",
       "exportName": "getRootPath",
       "localName": "getRootPath",
       "line": 16,
@@ -17116,7 +17146,7 @@
       "id": "e348",
       "moduleId": "m9",
       "fileId": "f126",
-      "functionId": "fn450",
+      "functionId": "fn452",
       "exportName": "getPathSymbol",
       "localName": "getPathSymbol",
       "line": 38,
@@ -17131,7 +17161,7 @@
       "id": "e349",
       "moduleId": "m9",
       "fileId": "f127",
-      "functionId": "fn451",
+      "functionId": "fn453",
       "exportName": "createCompactConfig",
       "localName": "createCompactConfig",
       "line": 708,
@@ -17146,7 +17176,7 @@
       "id": "e350",
       "moduleId": "m9",
       "fileId": "f127",
-      "functionId": "fn452",
+      "functionId": "fn454",
       "exportName": "getPresetNames",
       "localName": "getPresetNames",
       "line": 714,
@@ -17161,7 +17191,7 @@
       "id": "e351",
       "moduleId": "m9",
       "fileId": "f127",
-      "functionId": "fn453",
+      "functionId": "fn455",
       "exportName": "getPresetDescription",
       "localName": "getPresetDescription",
       "line": 718,
@@ -17176,7 +17206,7 @@
       "id": "e352",
       "moduleId": "m13",
       "fileId": "f128",
-      "functionId": "fn454",
+      "functionId": "fn456",
       "exportName": "extractEntities",
       "localName": "extractEntities",
       "line": 28,
@@ -17191,7 +17221,7 @@
       "id": "e353",
       "moduleId": "m13",
       "fileId": "f129",
-      "functionId": "fn455",
+      "functionId": "fn457",
       "exportName": "extractCallGraph",
       "localName": "extractCallGraph",
       "line": 7,
@@ -17206,7 +17236,7 @@
       "id": "e354",
       "moduleId": "m24",
       "fileId": "f130",
-      "functionId": "fn456",
+      "functionId": "fn458",
       "exportName": "extractEntitiesFromAST",
       "localName": "extractEntitiesFromAST",
       "line": 57,
@@ -17221,7 +17251,7 @@
       "id": "e355",
       "moduleId": "m22",
       "fileId": "f131",
-      "functionId": "fn457",
+      "functionId": "fn459",
       "exportName": "convertVueImportsToImportInfo",
       "localName": "convertVueImportsToImportInfo",
       "line": 15,
@@ -17236,7 +17266,7 @@
       "id": "e356",
       "moduleId": "m24",
       "fileId": "f133",
-      "functionId": "fn458",
+      "functionId": "fn460",
       "exportName": "findFunctionNode",
       "localName": "findFunctionNode",
       "line": 6,
@@ -17251,7 +17281,7 @@
       "id": "e357",
       "moduleId": "m24",
       "fileId": "f134",
-      "functionId": "fn459",
+      "functionId": "fn461",
       "exportName": "collectAllCallsRecursive",
       "localName": "collectAllCallsRecursive",
       "line": 6,
@@ -17266,7 +17296,7 @@
       "id": "e358",
       "moduleId": "m24",
       "fileId": "f135",
-      "functionId": "fn460",
+      "functionId": "fn462",
       "exportName": "processExports",
       "localName": "processExports",
       "line": 16,
@@ -17281,7 +17311,7 @@
       "id": "e359",
       "moduleId": "m20",
       "fileId": "f137",
-      "functionId": "fn461",
+      "functionId": "fn463",
       "exportName": "runHybridReport",
       "localName": "runHybridReport",
       "line": 20,
@@ -17296,7 +17326,7 @@
       "id": "e360",
       "moduleId": "m20",
       "fileId": "f138",
-      "functionId": "fn462",
+      "functionId": "fn464",
       "exportName": "buildHybridReport",
       "localName": "buildHybridReport",
       "line": 16,
@@ -17311,7 +17341,7 @@
       "id": "e361",
       "moduleId": "m20",
       "fileId": "f139",
-      "functionId": "fn463",
+      "functionId": "fn465",
       "exportName": "analyzeModule",
       "localName": "analyzeModule",
       "line": 19,
@@ -17326,7 +17356,7 @@
       "id": "e362",
       "moduleId": "m26",
       "fileId": "f140",
-      "functionId": "fn464",
+      "functionId": "fn466",
       "exportName": "generateHybridDOT",
       "localName": "generateHybridDOT",
       "line": 10,
@@ -17341,7 +17371,7 @@
       "id": "e363",
       "moduleId": "m26",
       "fileId": "f141",
-      "functionId": "fn465",
+      "functionId": "fn467",
       "exportName": "generateHybridHTML",
       "localName": "generateHybridHTML",
       "line": 13,
@@ -17356,7 +17386,7 @@
       "id": "e364",
       "moduleId": "m26",
       "fileId": "f142",
-      "functionId": "fn466",
+      "functionId": "fn468",
       "exportName": "generateHybridMarkdown",
       "localName": "generateHybridMarkdown",
       "line": 10,
@@ -17371,7 +17401,7 @@
       "id": "e365",
       "moduleId": "m25",
       "fileId": "f144",
-      "functionId": "fn467",
+      "functionId": "fn469",
       "exportName": "createEmptyEntitiesResult",
       "localName": "createEmptyEntitiesResult",
       "line": 8,
@@ -17401,7 +17431,7 @@
       "id": "e367",
       "moduleId": "m25",
       "fileId": "f147",
-      "functionId": "fn469",
+      "functionId": "fn471",
       "exportName": "isEventHandler",
       "localName": "isEventHandler",
       "line": 6,
@@ -17416,7 +17446,7 @@
       "id": "e368",
       "moduleId": "m25",
       "fileId": "f148",
-      "functionId": "fn470",
+      "functionId": "fn472",
       "exportName": "extractEventType",
       "localName": "extractEventType",
       "line": 6,
@@ -17431,7 +17461,7 @@
       "id": "e369",
       "moduleId": "m25",
       "fileId": "f149",
-      "functionId": "fn392",
+      "functionId": "fn394",
       "exportName": "extractBodyText",
       "localName": "extractBodyText",
       "line": 6,
@@ -17446,7 +17476,7 @@
       "id": "e370",
       "moduleId": "m25",
       "fileId": "f150",
-      "functionId": "fn472",
+      "functionId": "fn474",
       "exportName": "extractValue",
       "localName": "extractValue",
       "line": 6,
@@ -17461,7 +17491,7 @@
       "id": "e371",
       "moduleId": "m25",
       "fileId": "f151",
-      "functionId": "fn473",
+      "functionId": "fn475",
       "exportName": "calculateComplexity",
       "localName": "calculateComplexity",
       "line": 6,
@@ -17476,7 +17506,7 @@
       "id": "e372",
       "moduleId": "m25",
       "fileId": "f152",
-      "functionId": "fn474",
+      "functionId": "fn476",
       "exportName": "analyzeSecurity",
       "localName": "analyzeSecurity",
       "line": 7,
@@ -30279,56 +30309,56 @@
       "id": "c40",
       "fromFunctionId": "fn59",
       "toFunctionId": "external:parseTS",
-      "line": 132,
+      "line": 141,
       "type": "direct"
     },
     {
       "id": "c41",
       "fromFunctionId": "fn59",
       "toFunctionId": "fn60",
-      "line": 132,
+      "line": 141,
       "type": "callback"
     },
     {
       "id": "c42",
       "fromFunctionId": "fn59",
       "toFunctionId": "external:String",
-      "line": 132,
+      "line": 141,
       "type": "direct"
     },
     {
       "id": "c43",
       "fromFunctionId": "fn59",
       "toFunctionId": "fn62",
-      "line": 132,
+      "line": 141,
       "type": "direct"
     },
     {
       "id": "c44",
       "fromFunctionId": "fn60",
       "toFunctionId": "fn61",
-      "line": 449,
+      "line": 478,
       "type": "direct"
     },
     {
       "id": "c45",
       "fromFunctionId": "fn63",
       "toFunctionId": "fn64",
-      "line": 540,
+      "line": 569,
       "type": "async"
     },
     {
       "id": "c46",
       "fromFunctionId": "fn63",
       "toFunctionId": "fn59",
-      "line": 540,
+      "line": 569,
       "type": "async"
     },
     {
       "id": "c47",
       "fromFunctionId": "fn65",
       "toFunctionId": "fn59",
-      "line": 655,
+      "line": 684,
       "type": "direct"
     },
     {
@@ -30475,140 +30505,140 @@
       "id": "c68",
       "fromFunctionId": "fn124",
       "toFunctionId": "fn123",
-      "line": 178,
+      "line": 184,
       "type": "direct"
     },
     {
       "id": "c69",
       "fromFunctionId": "fn124",
       "toFunctionId": "external:String",
-      "line": 178,
+      "line": 184,
       "type": "direct"
     },
     {
       "id": "c70",
       "fromFunctionId": "fn125",
       "toFunctionId": "fn123",
-      "line": 200,
+      "line": 206,
       "type": "direct"
     },
     {
       "id": "c71",
       "fromFunctionId": "fn125",
       "toFunctionId": "external:String",
-      "line": 200,
+      "line": 206,
       "type": "direct"
     },
     {
       "id": "c72",
       "fromFunctionId": "fn126",
       "toFunctionId": "external:String",
-      "line": 219,
+      "line": 225,
       "type": "direct"
     },
     {
       "id": "c73",
       "fromFunctionId": "fn127",
       "toFunctionId": "external:String",
-      "line": 244,
+      "line": 250,
       "type": "direct"
     },
     {
       "id": "c74",
       "fromFunctionId": "fn128",
       "toFunctionId": "external:String",
-      "line": 261,
+      "line": 267,
       "type": "direct"
     },
     {
       "id": "c75",
       "fromFunctionId": "fn129",
       "toFunctionId": "external:String",
-      "line": 276,
+      "line": 282,
       "type": "direct"
     },
     {
       "id": "c76",
       "fromFunctionId": "fn132",
       "toFunctionId": "external:String",
-      "line": 573,
+      "line": 579,
       "type": "direct"
     },
     {
       "id": "c77",
       "fromFunctionId": "fn132",
       "toFunctionId": "fn126",
-      "line": 573,
+      "line": 579,
       "type": "callback"
     },
     {
       "id": "c78",
       "fromFunctionId": "fn132",
       "toFunctionId": "fn124",
-      "line": 573,
+      "line": 579,
       "type": "callback"
     },
     {
       "id": "c79",
       "fromFunctionId": "fn132",
       "toFunctionId": "fn128",
-      "line": 573,
+      "line": 579,
       "type": "callback"
     },
     {
       "id": "c80",
       "fromFunctionId": "fn132",
       "toFunctionId": "fn129",
-      "line": 573,
+      "line": 579,
       "type": "callback"
     },
     {
       "id": "c81",
       "fromFunctionId": "fn132",
       "toFunctionId": "fn127",
-      "line": 573,
+      "line": 579,
       "type": "callback"
     },
     {
       "id": "c82",
       "fromFunctionId": "fn132",
       "toFunctionId": "fn130",
-      "line": 573,
+      "line": 579,
       "type": "callback"
     },
     {
       "id": "c83",
       "fromFunctionId": "fn132",
       "toFunctionId": "fn131",
-      "line": 573,
+      "line": 579,
       "type": "callback"
     },
     {
       "id": "c84",
       "fromFunctionId": "fn132",
       "toFunctionId": "fn125",
-      "line": 573,
+      "line": 579,
       "type": "direct"
     },
     {
       "id": "c85",
       "fromFunctionId": "fn132",
       "toFunctionId": "fn19",
-      "line": 573,
+      "line": 579,
       "type": "direct"
     },
     {
       "id": "c86",
       "fromFunctionId": "fn19",
       "toFunctionId": "external:isNaN",
-      "line": 1288,
+      "line": 1303,
       "type": "direct"
     },
     {
       "id": "c87",
       "fromFunctionId": "fn19",
       "toFunctionId": "external:Number",
-      "line": 1288,
+      "line": 1303,
       "type": "direct"
     },
     {
@@ -30754,7 +30784,7 @@
     {
       "id": "c108",
       "fromFunctionId": "fn147",
-      "toFunctionId": "fn458",
+      "toFunctionId": "fn460",
       "line": 529,
       "type": "direct"
     },
@@ -31063,1174 +31093,1181 @@
       "id": "c152",
       "fromFunctionId": "fn237",
       "toFunctionId": "external:parseInt",
-      "line": 403,
+      "line": 410,
       "type": "direct"
     },
     {
       "id": "c153",
       "fromFunctionId": "fn240",
       "toFunctionId": "fn239",
-      "line": 480,
+      "line": 487,
       "type": "direct"
     },
     {
       "id": "c154",
       "fromFunctionId": "fn240",
       "toFunctionId": "fn238",
-      "line": 480,
+      "line": 487,
       "type": "direct"
     },
     {
       "id": "c155",
       "fromFunctionId": "fn241",
       "toFunctionId": "fn238",
-      "line": 511,
+      "line": 518,
       "type": "direct"
     },
     {
       "id": "c156",
       "fromFunctionId": "fn241",
       "toFunctionId": "external:parseInt",
-      "line": 511,
+      "line": 518,
       "type": "direct"
     },
     {
       "id": "c157",
       "fromFunctionId": "fn246",
       "toFunctionId": "external:String",
-      "line": 597,
+      "line": 604,
       "type": "direct"
     },
     {
       "id": "c158",
       "fromFunctionId": "fn249",
+      "toFunctionId": "external:checkArray",
+      "line": 644,
+      "type": "callback"
+    },
+    {
+      "id": "c159",
+      "fromFunctionId": "fn251",
       "toFunctionId": "fn99",
       "line": 27,
       "type": "direct"
     },
     {
-      "id": "c159",
-      "fromFunctionId": "fn250",
-      "toFunctionId": "fn251",
-      "line": 28,
-      "type": "async"
-    },
-    {
       "id": "c160",
-      "fromFunctionId": "fn250",
-      "toFunctionId": "external:String",
+      "fromFunctionId": "fn252",
+      "toFunctionId": "fn253",
       "line": 28,
       "type": "async"
     },
     {
       "id": "c161",
-      "fromFunctionId": "fn256",
-      "toFunctionId": "fn254",
+      "fromFunctionId": "fn252",
+      "toFunctionId": "external:String",
+      "line": 28,
+      "type": "async"
+    },
+    {
+      "id": "c162",
+      "fromFunctionId": "fn258",
+      "toFunctionId": "fn256",
       "line": 288,
       "type": "direct"
     },
     {
-      "id": "c162",
-      "fromFunctionId": "fn257",
+      "id": "c163",
+      "fromFunctionId": "fn259",
       "toFunctionId": "external:resolve",
       "line": 11,
       "type": "direct"
     },
     {
-      "id": "c163",
-      "fromFunctionId": "fn258",
-      "toFunctionId": "fn257",
+      "id": "c164",
+      "fromFunctionId": "fn260",
+      "toFunctionId": "fn259",
       "line": 31,
       "type": "async"
     },
     {
-      "id": "c164",
-      "fromFunctionId": "fn259",
-      "toFunctionId": "fn257",
-      "line": 52,
-      "type": "async"
-    },
-    {
       "id": "c165",
-      "fromFunctionId": "fn259",
-      "toFunctionId": "external:parseInt",
+      "fromFunctionId": "fn261",
+      "toFunctionId": "fn259",
       "line": 52,
       "type": "async"
     },
     {
       "id": "c166",
-      "fromFunctionId": "fn259",
-      "toFunctionId": "external:isNaN",
+      "fromFunctionId": "fn261",
+      "toFunctionId": "external:parseInt",
       "line": 52,
       "type": "async"
     },
     {
       "id": "c167",
-      "fromFunctionId": "fn260",
-      "toFunctionId": "external:String",
-      "line": 77,
-      "type": "direct"
+      "fromFunctionId": "fn261",
+      "toFunctionId": "external:isNaN",
+      "line": 52,
+      "type": "async"
     },
     {
       "id": "c168",
-      "fromFunctionId": "fn260",
-      "toFunctionId": "fn261",
+      "fromFunctionId": "fn262",
+      "toFunctionId": "external:String",
       "line": 77,
       "type": "direct"
     },
     {
       "id": "c169",
-      "fromFunctionId": "fn260",
-      "toFunctionId": "external:encoding",
+      "fromFunctionId": "fn262",
+      "toFunctionId": "fn263",
       "line": 77,
       "type": "direct"
     },
     {
       "id": "c170",
-      "fromFunctionId": "fn260",
-      "toFunctionId": "external:callback",
+      "fromFunctionId": "fn262",
+      "toFunctionId": "external:encoding",
       "line": 77,
       "type": "direct"
     },
     {
       "id": "c171",
-      "fromFunctionId": "fn260",
-      "toFunctionId": "external:originalWrite",
+      "fromFunctionId": "fn262",
+      "toFunctionId": "external:callback",
       "line": 77,
       "type": "direct"
     },
     {
       "id": "c172",
-      "fromFunctionId": "fn266",
+      "fromFunctionId": "fn262",
+      "toFunctionId": "external:originalWrite",
+      "line": 77,
+      "type": "direct"
+    },
+    {
+      "id": "c173",
+      "fromFunctionId": "fn268",
       "toFunctionId": "fn56",
       "line": 321,
       "type": "async"
     },
     {
-      "id": "c173",
-      "fromFunctionId": "fn289",
+      "id": "c174",
+      "fromFunctionId": "fn291",
       "toFunctionId": "fn236",
       "line": 73,
       "type": "direct"
     },
     {
-      "id": "c174",
-      "fromFunctionId": "fn290",
-      "toFunctionId": "fn277",
-      "line": 88,
-      "type": "direct"
-    },
-    {
       "id": "c175",
-      "fromFunctionId": "fn291",
-      "toFunctionId": "fn277",
-      "line": 101,
+      "fromFunctionId": "fn292",
+      "toFunctionId": "fn279",
+      "line": 88,
       "type": "direct"
     },
     {
       "id": "c176",
       "fromFunctionId": "fn293",
+      "toFunctionId": "fn279",
+      "line": 101,
+      "type": "direct"
+    },
+    {
+      "id": "c177",
+      "fromFunctionId": "fn295",
       "toFunctionId": "external:String",
       "line": 115,
       "type": "direct"
     },
     {
-      "id": "c177",
-      "fromFunctionId": "fn293",
-      "toFunctionId": "fn294",
+      "id": "c178",
+      "fromFunctionId": "fn295",
+      "toFunctionId": "fn296",
       "line": 115,
       "type": "direct"
     },
     {
-      "id": "c178",
+      "id": "c179",
       "fromFunctionId": "fn166",
       "toFunctionId": "external:String",
       "line": 31,
       "type": "direct"
     },
     {
-      "id": "c179",
-      "fromFunctionId": "fn298",
+      "id": "c180",
+      "fromFunctionId": "fn300",
       "toFunctionId": "external:parseFloat",
       "line": 49,
       "type": "direct"
     },
     {
-      "id": "c180",
-      "fromFunctionId": "fn298",
+      "id": "c181",
+      "fromFunctionId": "fn300",
       "toFunctionId": "external:isNaN",
       "line": 49,
       "type": "direct"
     },
     {
-      "id": "c181",
-      "fromFunctionId": "fn301",
-      "toFunctionId": "fn300",
+      "id": "c182",
+      "fromFunctionId": "fn303",
+      "toFunctionId": "fn302",
       "line": 84,
       "type": "direct"
     },
     {
-      "id": "c182",
-      "fromFunctionId": "fn302",
-      "toFunctionId": "fn303",
+      "id": "c183",
+      "fromFunctionId": "fn304",
+      "toFunctionId": "fn305",
       "line": 92,
       "type": "direct"
     },
     {
-      "id": "c183",
-      "fromFunctionId": "fn306",
+      "id": "c184",
+      "fromFunctionId": "fn308",
       "toFunctionId": "external:walk",
       "line": 181,
       "type": "direct"
     },
     {
-      "id": "c184",
-      "fromFunctionId": "fn319",
-      "toFunctionId": "fn317",
-      "line": 372,
-      "type": "direct"
-    },
-    {
       "id": "c185",
-      "fromFunctionId": "fn319",
-      "toFunctionId": "fn318",
+      "fromFunctionId": "fn321",
+      "toFunctionId": "fn319",
       "line": 372,
       "type": "direct"
     },
     {
       "id": "c186",
-      "fromFunctionId": "fn319",
-      "toFunctionId": "fn295",
+      "fromFunctionId": "fn321",
+      "toFunctionId": "fn320",
       "line": 372,
       "type": "direct"
     },
     {
       "id": "c187",
-      "fromFunctionId": "fn319",
-      "toFunctionId": "fn316",
+      "fromFunctionId": "fn321",
+      "toFunctionId": "fn297",
       "line": 372,
       "type": "direct"
     },
     {
       "id": "c188",
-      "fromFunctionId": "fn320",
+      "fromFunctionId": "fn321",
+      "toFunctionId": "fn318",
+      "line": 372,
+      "type": "direct"
+    },
+    {
+      "id": "c189",
+      "fromFunctionId": "fn322",
       "toFunctionId": "fn106",
       "line": 385,
       "type": "direct"
     },
     {
-      "id": "c189",
-      "fromFunctionId": "fn330",
-      "toFunctionId": "fn325",
-      "line": 40,
-      "type": "direct"
-    },
-    {
       "id": "c190",
-      "fromFunctionId": "fn330",
-      "toFunctionId": "fn326",
-      "line": 40,
-      "type": "direct"
-    },
-    {
-      "id": "c191",
-      "fromFunctionId": "fn330",
+      "fromFunctionId": "fn332",
       "toFunctionId": "fn327",
       "line": 40,
       "type": "direct"
     },
     {
-      "id": "c192",
-      "fromFunctionId": "fn330",
+      "id": "c191",
+      "fromFunctionId": "fn332",
       "toFunctionId": "fn328",
       "line": 40,
       "type": "direct"
     },
     {
+      "id": "c192",
+      "fromFunctionId": "fn332",
+      "toFunctionId": "fn329",
+      "line": 40,
+      "type": "direct"
+    },
+    {
       "id": "c193",
-      "fromFunctionId": "fn226",
-      "toFunctionId": "fn342",
-      "line": 53,
+      "fromFunctionId": "fn332",
+      "toFunctionId": "fn330",
+      "line": 40,
       "type": "direct"
     },
     {
       "id": "c194",
       "fromFunctionId": "fn226",
-      "toFunctionId": "external:dfs",
+      "toFunctionId": "fn344",
       "line": 53,
       "type": "direct"
     },
     {
       "id": "c195",
-      "fromFunctionId": "fn335",
-      "toFunctionId": "fn342",
-      "line": 99,
+      "fromFunctionId": "fn226",
+      "toFunctionId": "external:dfs",
+      "line": 53,
       "type": "direct"
     },
     {
       "id": "c196",
-      "fromFunctionId": "fn335",
-      "toFunctionId": "external:dfs",
+      "fromFunctionId": "fn337",
+      "toFunctionId": "fn344",
       "line": 99,
       "type": "direct"
     },
     {
       "id": "c197",
-      "fromFunctionId": "fn253",
-      "toFunctionId": "fn342",
-      "line": 130,
+      "fromFunctionId": "fn337",
+      "toFunctionId": "external:dfs",
+      "line": 99,
       "type": "direct"
     },
     {
       "id": "c198",
-      "fromFunctionId": "fn337",
+      "fromFunctionId": "fn255",
+      "toFunctionId": "fn344",
+      "line": 130,
+      "type": "direct"
+    },
+    {
+      "id": "c199",
+      "fromFunctionId": "fn339",
       "toFunctionId": "fn226",
       "line": 171,
       "type": "direct"
     },
     {
-      "id": "c199",
-      "fromFunctionId": "fn338",
-      "toFunctionId": "fn342",
-      "line": 180,
-      "type": "direct"
-    },
-    {
       "id": "c200",
-      "fromFunctionId": "fn338",
-      "toFunctionId": "external:dfs",
+      "fromFunctionId": "fn340",
+      "toFunctionId": "fn344",
       "line": 180,
       "type": "direct"
     },
     {
       "id": "c201",
-      "fromFunctionId": "fn339",
-      "toFunctionId": "fn342",
-      "line": 220,
+      "fromFunctionId": "fn340",
+      "toFunctionId": "external:dfs",
+      "line": 180,
       "type": "direct"
     },
     {
       "id": "c202",
-      "fromFunctionId": "fn340",
-      "toFunctionId": "fn342",
-      "line": 255,
+      "fromFunctionId": "fn341",
+      "toFunctionId": "fn344",
+      "line": 220,
       "type": "direct"
     },
     {
       "id": "c203",
-      "fromFunctionId": "fn341",
-      "toFunctionId": "fn342",
-      "line": 281,
+      "fromFunctionId": "fn342",
+      "toFunctionId": "fn344",
+      "line": 255,
       "type": "direct"
     },
     {
       "id": "c204",
-      "fromFunctionId": "fn341",
-      "toFunctionId": "external:strongConnect",
+      "fromFunctionId": "fn343",
+      "toFunctionId": "fn344",
       "line": 281,
       "type": "direct"
     },
     {
       "id": "c205",
       "fromFunctionId": "fn343",
-      "toFunctionId": "fn337",
-      "line": 396,
+      "toFunctionId": "external:strongConnect",
+      "line": 281,
       "type": "direct"
     },
     {
       "id": "c206",
-      "fromFunctionId": "fn344",
-      "toFunctionId": "fn337",
-      "line": 403,
+      "fromFunctionId": "fn345",
+      "toFunctionId": "fn339",
+      "line": 396,
       "type": "direct"
     },
     {
       "id": "c207",
-      "fromFunctionId": "fn344",
-      "toFunctionId": "fn342",
+      "fromFunctionId": "fn346",
+      "toFunctionId": "fn339",
       "line": 403,
       "type": "direct"
     },
     {
       "id": "c208",
-      "fromFunctionId": "fn344",
-      "toFunctionId": "external:dfs",
+      "fromFunctionId": "fn346",
+      "toFunctionId": "fn344",
       "line": 403,
       "type": "direct"
     },
     {
       "id": "c209",
-      "fromFunctionId": "fn345",
-      "toFunctionId": "fn342",
-      "line": 435,
+      "fromFunctionId": "fn346",
+      "toFunctionId": "external:dfs",
+      "line": 403,
       "type": "direct"
     },
     {
       "id": "c210",
-      "fromFunctionId": "fn346",
-      "toFunctionId": "fn345",
-      "line": 455,
+      "fromFunctionId": "fn347",
+      "toFunctionId": "fn344",
+      "line": 435,
       "type": "direct"
     },
     {
       "id": "c211",
-      "fromFunctionId": "fn347",
-      "toFunctionId": "fn345",
-      "line": 473,
+      "fromFunctionId": "fn348",
+      "toFunctionId": "fn347",
+      "line": 455,
       "type": "direct"
     },
     {
       "id": "c212",
       "fromFunctionId": "fn349",
-      "toFunctionId": "fn340",
-      "line": 507,
+      "toFunctionId": "fn347",
+      "line": 473,
       "type": "direct"
     },
     {
       "id": "c213",
-      "fromFunctionId": "fn350",
+      "fromFunctionId": "fn351",
       "toFunctionId": "fn342",
-      "line": 515,
+      "line": 507,
       "type": "direct"
     },
     {
       "id": "c214",
-      "fromFunctionId": "fn354",
+      "fromFunctionId": "fn352",
+      "toFunctionId": "fn344",
+      "line": 515,
+      "type": "direct"
+    },
+    {
+      "id": "c215",
+      "fromFunctionId": "fn356",
       "toFunctionId": "external:find",
       "line": 370,
       "type": "callback"
     },
     {
-      "id": "c215",
-      "fromFunctionId": "fn355",
+      "id": "c216",
+      "fromFunctionId": "fn357",
       "toFunctionId": "external:find",
       "line": 396,
       "type": "callback"
     },
     {
-      "id": "c216",
-      "fromFunctionId": "fn356",
+      "id": "c217",
+      "fromFunctionId": "fn358",
       "toFunctionId": "external:dfs",
       "line": 423,
       "type": "direct"
     },
     {
-      "id": "c217",
-      "fromFunctionId": "fn357",
-      "toFunctionId": "fn356",
+      "id": "c218",
+      "fromFunctionId": "fn359",
+      "toFunctionId": "fn358",
       "line": 465,
       "type": "direct"
     },
     {
-      "id": "c218",
-      "fromFunctionId": "fn363",
+      "id": "c219",
+      "fromFunctionId": "fn365",
       "toFunctionId": "external:dfs",
       "line": 8,
       "type": "direct"
     },
     {
-      "id": "c219",
-      "fromFunctionId": "fn364",
-      "toFunctionId": "fn363",
+      "id": "c220",
+      "fromFunctionId": "fn366",
+      "toFunctionId": "fn365",
       "line": 156,
       "type": "direct"
     },
     {
-      "id": "c220",
-      "fromFunctionId": "fn368",
-      "toFunctionId": "fn363",
-      "line": 228,
-      "type": "direct"
-    },
-    {
       "id": "c221",
-      "fromFunctionId": "fn368",
-      "toFunctionId": "fn367",
+      "fromFunctionId": "fn370",
+      "toFunctionId": "fn365",
       "line": 228,
       "type": "direct"
     },
     {
       "id": "c222",
       "fromFunctionId": "fn370",
-      "toFunctionId": "fn319",
-      "line": 48,
+      "toFunctionId": "fn369",
+      "line": 228,
       "type": "direct"
     },
     {
       "id": "c223",
-      "fromFunctionId": "fn370",
-      "toFunctionId": "external:getFileStats",
+      "fromFunctionId": "fn372",
+      "toFunctionId": "fn321",
       "line": 48,
       "type": "direct"
     },
     {
       "id": "c224",
-      "fromFunctionId": "fn370",
-      "toFunctionId": "fn369",
+      "fromFunctionId": "fn372",
+      "toFunctionId": "external:getFileStats",
       "line": 48,
       "type": "direct"
     },
     {
       "id": "c225",
       "fromFunctionId": "fn372",
+      "toFunctionId": "fn371",
+      "line": 48,
+      "type": "direct"
+    },
+    {
+      "id": "c226",
+      "fromFunctionId": "fn374",
       "toFunctionId": "external:String",
       "line": 11,
       "type": "direct"
     },
     {
-      "id": "c226",
-      "fromFunctionId": "fn372",
-      "toFunctionId": "external:isNaN",
-      "line": 11,
-      "type": "direct"
-    },
-    {
       "id": "c227",
-      "fromFunctionId": "fn372",
-      "toFunctionId": "external:Number",
+      "fromFunctionId": "fn374",
+      "toFunctionId": "external:isNaN",
       "line": 11,
       "type": "direct"
     },
     {
       "id": "c228",
       "fromFunctionId": "fn374",
+      "toFunctionId": "external:Number",
+      "line": 11,
+      "type": "direct"
+    },
+    {
+      "id": "c229",
+      "fromFunctionId": "fn376",
       "toFunctionId": "external:collectTypes",
       "line": 312,
       "type": "direct"
     },
     {
-      "id": "c229",
-      "fromFunctionId": "fn374",
+      "id": "c230",
+      "fromFunctionId": "fn376",
       "toFunctionId": "external:findDefineProps",
       "line": 312,
       "type": "direct"
     },
     {
-      "id": "c230",
-      "fromFunctionId": "fn374",
+      "id": "c231",
+      "fromFunctionId": "fn376",
       "toFunctionId": "external:findWithDefaults",
       "line": 312,
       "type": "direct"
     },
     {
-      "id": "c231",
-      "fromFunctionId": "fn374",
+      "id": "c232",
+      "fromFunctionId": "fn376",
       "toFunctionId": "external:extractPropsFromTypeNode",
       "line": 312,
       "type": "direct"
     },
     {
-      "id": "c232",
-      "fromFunctionId": "fn377",
+      "id": "c233",
+      "fromFunctionId": "fn379",
       "toFunctionId": "external:findDefineEmits",
       "line": 104,
       "type": "direct"
     },
     {
-      "id": "c233",
-      "fromFunctionId": "fn377",
+      "id": "c234",
+      "fromFunctionId": "fn379",
       "toFunctionId": "external:String",
       "line": 104,
       "type": "direct"
     },
     {
-      "id": "c234",
-      "fromFunctionId": "fn378",
+      "id": "c235",
+      "fromFunctionId": "fn380",
       "toFunctionId": "external:String",
       "line": 9,
       "type": "direct"
     },
     {
-      "id": "c235",
-      "fromFunctionId": "fn379",
+      "id": "c236",
+      "fromFunctionId": "fn381",
       "toFunctionId": "external:findDefineExpose",
       "line": 22,
       "type": "direct"
     },
     {
-      "id": "c236",
-      "fromFunctionId": "fn385",
-      "toFunctionId": "fn384",
+      "id": "c237",
+      "fromFunctionId": "fn387",
+      "toFunctionId": "fn386",
       "line": 358,
       "type": "direct"
     },
     {
-      "id": "c237",
-      "fromFunctionId": "fn386",
-      "toFunctionId": "external:String",
-      "line": 9,
-      "type": "direct"
-    },
-    {
       "id": "c238",
-      "fromFunctionId": "fn386",
-      "toFunctionId": "external:visitNode",
+      "fromFunctionId": "fn388",
+      "toFunctionId": "external:String",
       "line": 9,
       "type": "direct"
     },
     {
       "id": "c239",
       "fromFunctionId": "fn388",
+      "toFunctionId": "external:visitNode",
+      "line": 9,
+      "type": "direct"
+    },
+    {
+      "id": "c240",
+      "fromFunctionId": "fn390",
       "toFunctionId": "external:parseTS",
       "line": 10,
       "type": "direct"
     },
     {
-      "id": "c240",
-      "fromFunctionId": "fn388",
-      "toFunctionId": "fn389",
-      "line": 10,
-      "type": "direct"
-    },
-    {
       "id": "c241",
-      "fromFunctionId": "fn388",
-      "toFunctionId": "fn18",
-      "line": 10,
-      "type": "direct"
-    },
-    {
-      "id": "c242",
-      "fromFunctionId": "fn388",
+      "fromFunctionId": "fn390",
       "toFunctionId": "fn391",
       "line": 10,
       "type": "direct"
     },
     {
-      "id": "c243",
-      "fromFunctionId": "fn388",
-      "toFunctionId": "fn392",
+      "id": "c242",
+      "fromFunctionId": "fn390",
+      "toFunctionId": "fn18",
       "line": 10,
       "type": "direct"
     },
     {
-      "id": "c244",
-      "fromFunctionId": "fn388",
+      "id": "c243",
+      "fromFunctionId": "fn390",
       "toFunctionId": "fn393",
       "line": 10,
       "type": "direct"
     },
     {
+      "id": "c244",
+      "fromFunctionId": "fn390",
+      "toFunctionId": "fn394",
+      "line": 10,
+      "type": "direct"
+    },
+    {
       "id": "c245",
-      "fromFunctionId": "fn388",
-      "toFunctionId": "external:String",
+      "fromFunctionId": "fn390",
+      "toFunctionId": "fn395",
       "line": 10,
       "type": "direct"
     },
     {
       "id": "c246",
-      "fromFunctionId": "fn388",
-      "toFunctionId": "external:visitNode",
+      "fromFunctionId": "fn390",
+      "toFunctionId": "external:String",
       "line": 10,
       "type": "direct"
     },
     {
       "id": "c247",
-      "fromFunctionId": "fn392",
+      "fromFunctionId": "fn390",
+      "toFunctionId": "external:visitNode",
+      "line": 10,
+      "type": "direct"
+    },
+    {
+      "id": "c248",
+      "fromFunctionId": "fn394",
       "toFunctionId": "external:String",
       "line": 752,
       "type": "direct"
     },
     {
-      "id": "c248",
-      "fromFunctionId": "fn393",
-      "toFunctionId": "fn392",
-      "line": 795,
-      "type": "direct"
-    },
-    {
       "id": "c249",
-      "fromFunctionId": "fn393",
-      "toFunctionId": "external:isNaN",
+      "fromFunctionId": "fn395",
+      "toFunctionId": "fn394",
       "line": 795,
       "type": "direct"
     },
     {
       "id": "c250",
-      "fromFunctionId": "fn393",
-      "toFunctionId": "external:Number",
+      "fromFunctionId": "fn395",
+      "toFunctionId": "external:isNaN",
       "line": 795,
       "type": "direct"
     },
     {
       "id": "c251",
-      "fromFunctionId": "fn14",
-      "toFunctionId": "fn18",
-      "line": 10,
+      "fromFunctionId": "fn395",
+      "toFunctionId": "external:Number",
+      "line": 795,
       "type": "direct"
     },
     {
       "id": "c252",
       "fromFunctionId": "fn14",
-      "toFunctionId": "external:String",
+      "toFunctionId": "fn18",
       "line": 10,
       "type": "direct"
     },
     {
       "id": "c253",
-      "fromFunctionId": "fn396",
+      "fromFunctionId": "fn14",
+      "toFunctionId": "external:String",
+      "line": 10,
+      "type": "direct"
+    },
+    {
+      "id": "c254",
+      "fromFunctionId": "fn398",
       "toFunctionId": "fn14",
       "line": 186,
       "type": "direct"
     },
     {
-      "id": "c254",
-      "fromFunctionId": "fn396",
-      "toFunctionId": "fn397",
-      "line": 186,
-      "type": "direct"
-    },
-    {
       "id": "c255",
-      "fromFunctionId": "fn17",
-      "toFunctionId": "fn18",
-      "line": 18,
+      "fromFunctionId": "fn398",
+      "toFunctionId": "fn399",
+      "line": 186,
       "type": "direct"
     },
     {
       "id": "c256",
       "fromFunctionId": "fn17",
-      "toFunctionId": "external:String",
+      "toFunctionId": "fn18",
       "line": 18,
       "type": "direct"
     },
     {
       "id": "c257",
       "fromFunctionId": "fn17",
-      "toFunctionId": "fn398",
+      "toFunctionId": "external:String",
       "line": 18,
       "type": "direct"
     },
     {
       "id": "c258",
-      "fromFunctionId": "fn401",
+      "fromFunctionId": "fn17",
+      "toFunctionId": "fn400",
+      "line": 18,
+      "type": "direct"
+    },
+    {
+      "id": "c259",
+      "fromFunctionId": "fn403",
       "toFunctionId": "fn17",
       "line": 321,
       "type": "direct"
     },
     {
-      "id": "c259",
-      "fromFunctionId": "fn401",
-      "toFunctionId": "fn402",
-      "line": 321,
-      "type": "direct"
-    },
-    {
       "id": "c260",
-      "fromFunctionId": "fn16",
-      "toFunctionId": "fn18",
-      "line": 9,
+      "fromFunctionId": "fn403",
+      "toFunctionId": "fn404",
+      "line": 321,
       "type": "direct"
     },
     {
       "id": "c261",
       "fromFunctionId": "fn16",
-      "toFunctionId": "fn404",
+      "toFunctionId": "fn18",
       "line": 9,
       "type": "direct"
     },
     {
       "id": "c262",
-      "fromFunctionId": "fn404",
-      "toFunctionId": "external:String",
-      "line": 88,
+      "fromFunctionId": "fn16",
+      "toFunctionId": "fn406",
+      "line": 9,
       "type": "direct"
     },
     {
       "id": "c263",
       "fromFunctionId": "fn406",
+      "toFunctionId": "external:String",
+      "line": 88,
+      "type": "direct"
+    },
+    {
+      "id": "c264",
+      "fromFunctionId": "fn408",
       "toFunctionId": "fn16",
       "line": 276,
       "type": "direct"
     },
     {
-      "id": "c264",
-      "fromFunctionId": "fn406",
-      "toFunctionId": "fn407",
+      "id": "c265",
+      "fromFunctionId": "fn408",
+      "toFunctionId": "fn409",
       "line": 276,
       "type": "direct"
     },
     {
-      "id": "c265",
-      "fromFunctionId": "fn15",
-      "toFunctionId": "fn408",
-      "line": 137,
-      "type": "direct"
-    },
-    {
       "id": "c266",
-      "fromFunctionId": "fn15",
-      "toFunctionId": "fn18",
-      "line": 137,
-      "type": "direct"
-    },
-    {
-      "id": "c267",
-      "fromFunctionId": "fn15",
-      "toFunctionId": "fn419",
-      "line": 137,
-      "type": "direct"
-    },
-    {
-      "id": "c268",
-      "fromFunctionId": "fn15",
-      "toFunctionId": "fn415",
-      "line": 137,
-      "type": "direct"
-    },
-    {
-      "id": "c269",
-      "fromFunctionId": "fn15",
-      "toFunctionId": "fn416",
-      "line": 137,
-      "type": "direct"
-    },
-    {
-      "id": "c270",
-      "fromFunctionId": "fn15",
-      "toFunctionId": "fn411",
-      "line": 137,
-      "type": "direct"
-    },
-    {
-      "id": "c271",
-      "fromFunctionId": "fn15",
-      "toFunctionId": "fn421",
-      "line": 137,
-      "type": "direct"
-    },
-    {
-      "id": "c272",
-      "fromFunctionId": "fn15",
-      "toFunctionId": "fn418",
-      "line": 137,
-      "type": "direct"
-    },
-    {
-      "id": "c273",
-      "fromFunctionId": "fn15",
-      "toFunctionId": "external:String",
-      "line": 137,
-      "type": "direct"
-    },
-    {
-      "id": "c274",
-      "fromFunctionId": "fn15",
-      "toFunctionId": "fn412",
-      "line": 137,
-      "type": "direct"
-    },
-    {
-      "id": "c275",
-      "fromFunctionId": "fn15",
-      "toFunctionId": "fn413",
-      "line": 137,
-      "type": "direct"
-    },
-    {
-      "id": "c276",
-      "fromFunctionId": "fn15",
-      "toFunctionId": "fn409",
-      "line": 137,
-      "type": "direct"
-    },
-    {
-      "id": "c277",
       "fromFunctionId": "fn15",
       "toFunctionId": "fn410",
       "line": 137,
       "type": "direct"
     },
     {
-      "id": "c278",
+      "id": "c267",
       "fromFunctionId": "fn15",
-      "toFunctionId": "fn414",
+      "toFunctionId": "fn18",
       "line": 137,
       "type": "direct"
     },
     {
-      "id": "c279",
+      "id": "c268",
+      "fromFunctionId": "fn15",
+      "toFunctionId": "fn421",
+      "line": 137,
+      "type": "direct"
+    },
+    {
+      "id": "c269",
       "fromFunctionId": "fn15",
       "toFunctionId": "fn417",
       "line": 137,
       "type": "direct"
     },
     {
+      "id": "c270",
+      "fromFunctionId": "fn15",
+      "toFunctionId": "fn418",
+      "line": 137,
+      "type": "direct"
+    },
+    {
+      "id": "c271",
+      "fromFunctionId": "fn15",
+      "toFunctionId": "fn413",
+      "line": 137,
+      "type": "direct"
+    },
+    {
+      "id": "c272",
+      "fromFunctionId": "fn15",
+      "toFunctionId": "fn423",
+      "line": 137,
+      "type": "direct"
+    },
+    {
+      "id": "c273",
+      "fromFunctionId": "fn15",
+      "toFunctionId": "fn420",
+      "line": 137,
+      "type": "direct"
+    },
+    {
+      "id": "c274",
+      "fromFunctionId": "fn15",
+      "toFunctionId": "external:String",
+      "line": 137,
+      "type": "direct"
+    },
+    {
+      "id": "c275",
+      "fromFunctionId": "fn15",
+      "toFunctionId": "fn414",
+      "line": 137,
+      "type": "direct"
+    },
+    {
+      "id": "c276",
+      "fromFunctionId": "fn15",
+      "toFunctionId": "fn415",
+      "line": 137,
+      "type": "direct"
+    },
+    {
+      "id": "c277",
+      "fromFunctionId": "fn15",
+      "toFunctionId": "fn411",
+      "line": 137,
+      "type": "direct"
+    },
+    {
+      "id": "c278",
+      "fromFunctionId": "fn15",
+      "toFunctionId": "fn412",
+      "line": 137,
+      "type": "direct"
+    },
+    {
+      "id": "c279",
+      "fromFunctionId": "fn15",
+      "toFunctionId": "fn416",
+      "line": 137,
+      "type": "direct"
+    },
+    {
       "id": "c280",
       "fromFunctionId": "fn15",
-      "toFunctionId": "fn422",
+      "toFunctionId": "fn419",
       "line": 137,
       "type": "direct"
     },
     {
       "id": "c281",
-      "fromFunctionId": "fn18",
-      "toFunctionId": "fn414",
-      "line": 293,
+      "fromFunctionId": "fn15",
+      "toFunctionId": "fn424",
+      "line": 137,
       "type": "direct"
     },
     {
       "id": "c282",
       "fromFunctionId": "fn18",
-      "toFunctionId": "fn420",
+      "toFunctionId": "fn416",
       "line": 293,
       "type": "direct"
     },
     {
       "id": "c283",
       "fromFunctionId": "fn18",
-      "toFunctionId": "fn423",
+      "toFunctionId": "fn422",
       "line": 293,
       "type": "direct"
     },
     {
       "id": "c284",
-      "fromFunctionId": "fn426",
-      "toFunctionId": "fn15",
-      "line": 317,
+      "fromFunctionId": "fn18",
+      "toFunctionId": "fn425",
+      "line": 293,
       "type": "direct"
     },
     {
       "id": "c285",
-      "fromFunctionId": "fn426",
-      "toFunctionId": "fn427",
+      "fromFunctionId": "fn428",
+      "toFunctionId": "fn15",
       "line": 317,
       "type": "direct"
     },
     {
       "id": "c286",
       "fromFunctionId": "fn428",
-      "toFunctionId": "fn430",
-      "line": 47,
+      "toFunctionId": "fn429",
+      "line": 317,
       "type": "direct"
     },
     {
       "id": "c287",
-      "fromFunctionId": "fn429",
-      "toFunctionId": "fn435",
-      "line": 73,
+      "fromFunctionId": "fn430",
+      "toFunctionId": "fn432",
+      "line": 47,
       "type": "direct"
     },
     {
       "id": "c288",
-      "fromFunctionId": "fn429",
-      "toFunctionId": "fn438",
+      "fromFunctionId": "fn431",
+      "toFunctionId": "fn437",
       "line": 73,
       "type": "direct"
     },
     {
       "id": "c289",
-      "fromFunctionId": "fn430",
-      "toFunctionId": "fn431",
-      "line": 96,
+      "fromFunctionId": "fn431",
+      "toFunctionId": "fn440",
+      "line": 73,
       "type": "direct"
     },
     {
       "id": "c290",
-      "fromFunctionId": "fn431",
-      "toFunctionId": "fn432",
-      "line": 128,
+      "fromFunctionId": "fn432",
+      "toFunctionId": "fn433",
+      "line": 96,
       "type": "direct"
     },
     {
       "id": "c291",
-      "fromFunctionId": "fn432",
-      "toFunctionId": "fn433",
-      "line": 180,
+      "fromFunctionId": "fn433",
+      "toFunctionId": "fn434",
+      "line": 128,
       "type": "direct"
     },
     {
       "id": "c292",
-      "fromFunctionId": "fn432",
-      "toFunctionId": "external:String",
+      "fromFunctionId": "fn434",
+      "toFunctionId": "fn435",
       "line": 180,
       "type": "direct"
     },
     {
       "id": "c293",
-      "fromFunctionId": "fn432",
-      "toFunctionId": "fn434",
+      "fromFunctionId": "fn434",
+      "toFunctionId": "external:String",
       "line": 180,
       "type": "direct"
     },
     {
       "id": "c294",
-      "fromFunctionId": "fn433",
-      "toFunctionId": "external:String",
-      "line": 257,
+      "fromFunctionId": "fn434",
+      "toFunctionId": "fn436",
+      "line": 180,
       "type": "direct"
     },
     {
       "id": "c295",
-      "fromFunctionId": "fn433",
-      "toFunctionId": "fn434",
+      "fromFunctionId": "fn435",
+      "toFunctionId": "external:String",
       "line": 257,
       "type": "direct"
     },
     {
       "id": "c296",
-      "fromFunctionId": "fn434",
+      "fromFunctionId": "fn435",
+      "toFunctionId": "fn436",
+      "line": 257,
+      "type": "direct"
+    },
+    {
+      "id": "c297",
+      "fromFunctionId": "fn436",
       "toFunctionId": "external:String",
       "line": 295,
       "type": "direct"
     },
     {
-      "id": "c297",
-      "fromFunctionId": "fn435",
-      "toFunctionId": "fn436",
-      "line": 396,
-      "type": "direct"
-    },
-    {
       "id": "c298",
-      "fromFunctionId": "fn435",
-      "toFunctionId": "fn437",
+      "fromFunctionId": "fn437",
+      "toFunctionId": "fn438",
       "line": 396,
       "type": "direct"
     },
     {
       "id": "c299",
-      "fromFunctionId": "fn454",
-      "toFunctionId": "external:String",
-      "line": 28,
+      "fromFunctionId": "fn437",
+      "toFunctionId": "fn439",
+      "line": 396,
       "type": "direct"
     },
     {
       "id": "c300",
       "fromFunctionId": "fn456",
+      "toFunctionId": "external:String",
+      "line": 28,
+      "type": "direct"
+    },
+    {
+      "id": "c301",
+      "fromFunctionId": "fn458",
       "toFunctionId": "external:extractParamNames",
       "line": 57,
       "type": "direct"
     },
     {
-      "id": "c301",
-      "fromFunctionId": "fn456",
+      "id": "c302",
+      "fromFunctionId": "fn458",
       "toFunctionId": "external:handleNode",
       "line": 57,
       "type": "direct"
     },
     {
-      "id": "c302",
-      "fromFunctionId": "fn456",
+      "id": "c303",
+      "fromFunctionId": "fn458",
       "toFunctionId": "external:traverse",
       "line": 57,
       "type": "direct"
     },
     {
-      "id": "c303",
-      "fromFunctionId": "fn456",
+      "id": "c304",
+      "fromFunctionId": "fn458",
       "toFunctionId": "external:handleImportDeclaration",
       "line": 57,
       "type": "direct"
     },
     {
-      "id": "c304",
-      "fromFunctionId": "fn456",
+      "id": "c305",
+      "fromFunctionId": "fn458",
       "toFunctionId": "external:handleFunction",
       "line": 57,
       "type": "direct"
     },
     {
-      "id": "c305",
-      "fromFunctionId": "fn456",
+      "id": "c306",
+      "fromFunctionId": "fn458",
       "toFunctionId": "external:handleArrowFunction",
       "line": 57,
       "type": "direct"
     },
     {
-      "id": "c306",
-      "fromFunctionId": "fn456",
+      "id": "c307",
+      "fromFunctionId": "fn458",
       "toFunctionId": "external:handleMethodDefinition",
       "line": 57,
       "type": "direct"
     },
     {
-      "id": "c307",
-      "fromFunctionId": "fn456",
+      "id": "c308",
+      "fromFunctionId": "fn458",
       "toFunctionId": "external:handleClassDeclaration",
       "line": 57,
       "type": "direct"
     },
     {
-      "id": "c308",
-      "fromFunctionId": "fn456",
+      "id": "c309",
+      "fromFunctionId": "fn458",
       "toFunctionId": "external:handleVariableDeclaration",
       "line": 57,
       "type": "direct"
     },
     {
-      "id": "c309",
-      "fromFunctionId": "fn456",
+      "id": "c310",
+      "fromFunctionId": "fn458",
       "toFunctionId": "external:handleInterfaceDeclaration",
       "line": 57,
       "type": "direct"
     },
     {
-      "id": "c310",
-      "fromFunctionId": "fn456",
+      "id": "c311",
+      "fromFunctionId": "fn458",
       "toFunctionId": "external:handleTypeAliasDeclaration",
       "line": 57,
       "type": "direct"
     },
     {
-      "id": "c311",
-      "fromFunctionId": "fn456",
-      "toFunctionId": "external:collectParentFunctions",
-      "line": 57,
-      "type": "direct"
-    },
-    {
       "id": "c312",
-      "fromFunctionId": "fn456",
-      "toFunctionId": "external:registerFunction",
+      "fromFunctionId": "fn458",
+      "toFunctionId": "external:collectParentFunctions",
       "line": 57,
       "type": "direct"
     },
     {
       "id": "c313",
       "fromFunctionId": "fn458",
+      "toFunctionId": "external:registerFunction",
+      "line": 57,
+      "type": "direct"
+    },
+    {
+      "id": "c314",
+      "fromFunctionId": "fn460",
       "toFunctionId": "external:search",
       "line": 6,
       "type": "direct"
     },
     {
-      "id": "c314",
-      "fromFunctionId": "fn461",
+      "id": "c315",
+      "fromFunctionId": "fn463",
       "toFunctionId": "external:String",
       "line": 20,
       "type": "async"
     },
     {
-      "id": "c315",
-      "fromFunctionId": "fn464",
-      "toFunctionId": "external:parseInt",
-      "line": 10,
-      "type": "direct"
-    },
-    {
       "id": "c316",
-      "fromFunctionId": "fn465",
-      "toFunctionId": "external:parseInt",
-      "line": 13,
-      "type": "async"
-    },
-    {
-      "id": "c317",
       "fromFunctionId": "fn466",
       "toFunctionId": "external:parseInt",
       "line": 10,
       "type": "direct"
     },
     {
+      "id": "c317",
+      "fromFunctionId": "fn467",
+      "toFunctionId": "external:parseInt",
+      "line": 13,
+      "type": "async"
+    },
+    {
       "id": "c318",
-      "fromFunctionId": "fn392",
+      "fromFunctionId": "fn468",
+      "toFunctionId": "external:parseInt",
+      "line": 10,
+      "type": "direct"
+    },
+    {
+      "id": "c319",
+      "fromFunctionId": "fn394",
       "toFunctionId": "external:String",
       "line": 6,
       "type": "direct"
     },
     {
-      "id": "c319",
-      "fromFunctionId": "fn473",
+      "id": "c320",
+      "fromFunctionId": "fn475",
       "toFunctionId": "external:traverse",
       "line": 6,
       "type": "direct"
@@ -33224,7 +33261,7 @@
     {
       "id": "re83",
       "moduleId": "m1",
-      "functionId": "fn249",
+      "functionId": "fn251",
       "source": "./reporters/index.js",
       "exportName": "generateHTMLReport",
       "line": 223,
@@ -33248,7 +33285,7 @@
     {
       "id": "re85",
       "moduleId": "m1",
-      "functionId": "fn250",
+      "functionId": "fn252",
       "source": "./reporters/index.js",
       "exportName": "generateInteractiveHTML",
       "line": 223,
@@ -33419,7 +33456,7 @@
       "functionId": "fn149",
       "source": "./parser.js",
       "exportName": "parseVueFile",
-      "line": 38,
+      "line": 47,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33431,7 +33468,7 @@
       "functionId": "fn151",
       "source": "./parser.js",
       "exportName": "compileScriptBlock",
-      "line": 38,
+      "line": 47,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33440,10 +33477,10 @@
     {
       "id": "re101",
       "moduleId": "m4",
-      "functionId": "fn372",
+      "functionId": "fn374",
       "source": "./extractors/index.js",
       "exportName": "extractPropsFromSource",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33452,10 +33489,10 @@
     {
       "id": "re102",
       "moduleId": "m4",
-      "functionId": "fn373",
+      "functionId": "fn375",
       "source": "./extractors/index.js",
       "exportName": "extractPropsFromCompiledScript",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33464,10 +33501,10 @@
     {
       "id": "re103",
       "moduleId": "m4",
-      "functionId": "fn374",
+      "functionId": "fn376",
       "source": "./extractors/index.js",
       "exportName": "extractPropsFromAST",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33476,10 +33513,10 @@
     {
       "id": "re104",
       "moduleId": "m4",
-      "functionId": "fn375",
+      "functionId": "fn377",
       "source": "./extractors/index.js",
       "exportName": "extractEmitsFromSource",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33488,10 +33525,10 @@
     {
       "id": "re105",
       "moduleId": "m4",
-      "functionId": "fn376",
+      "functionId": "fn378",
       "source": "./extractors/index.js",
       "exportName": "extractEmitsFromCompiledScript",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33500,10 +33537,10 @@
     {
       "id": "re106",
       "moduleId": "m4",
-      "functionId": "fn377",
+      "functionId": "fn379",
       "source": "./extractors/index.js",
       "exportName": "extractEmitsFromAST",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33512,10 +33549,10 @@
     {
       "id": "re107",
       "moduleId": "m4",
-      "functionId": "fn378",
+      "functionId": "fn380",
       "source": "./extractors/index.js",
       "exportName": "extractExposeFromCompiledScript",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33524,10 +33561,10 @@
     {
       "id": "re108",
       "moduleId": "m4",
-      "functionId": "fn379",
+      "functionId": "fn381",
       "source": "./extractors/index.js",
       "exportName": "extractExposeFromAST",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33536,10 +33573,10 @@
     {
       "id": "re109",
       "moduleId": "m4",
-      "functionId": "fn380",
+      "functionId": "fn382",
       "source": "./extractors/index.js",
       "exportName": "extractImportsFromAST",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33548,10 +33585,10 @@
     {
       "id": "re110",
       "moduleId": "m4",
-      "functionId": "fn381",
+      "functionId": "fn383",
       "source": "./extractors/index.js",
       "exportName": "extractImportsFromSource",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33560,10 +33597,10 @@
     {
       "id": "re111",
       "moduleId": "m4",
-      "functionId": "fn386",
+      "functionId": "fn388",
       "source": "./extractors/index.js",
       "exportName": "extractComposablesFromAST",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33572,10 +33609,10 @@
     {
       "id": "re112",
       "moduleId": "m4",
-      "functionId": "fn387",
+      "functionId": "fn389",
       "source": "./extractors/index.js",
       "exportName": "extractComposablesFromSource",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33584,10 +33621,10 @@
     {
       "id": "re113",
       "moduleId": "m4",
-      "functionId": "fn388",
+      "functionId": "fn390",
       "source": "./extractors/index.js",
       "exportName": "extractFunctionsFromScript",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33596,10 +33633,10 @@
     {
       "id": "re114",
       "moduleId": "m4",
-      "functionId": "fn396",
+      "functionId": "fn398",
       "source": "./extractors/index.js",
       "exportName": "extractConstantsFromScript",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33608,10 +33645,10 @@
     {
       "id": "re115",
       "moduleId": "m4",
-      "functionId": "fn401",
+      "functionId": "fn403",
       "source": "./extractors/index.js",
       "exportName": "extractVariablesFromScript",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33620,10 +33657,10 @@
     {
       "id": "re116",
       "moduleId": "m4",
-      "functionId": "fn406",
+      "functionId": "fn408",
       "source": "./extractors/index.js",
       "exportName": "extractTypesFromScript",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33632,10 +33669,10 @@
     {
       "id": "re117",
       "moduleId": "m4",
-      "functionId": "fn426",
+      "functionId": "fn428",
       "source": "./extractors/index.js",
       "exportName": "extractInterfacesFromScript",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33644,10 +33681,10 @@
     {
       "id": "re118",
       "moduleId": "m4",
-      "functionId": "fn428",
+      "functionId": "fn430",
       "source": "./extractors/index.js",
       "exportName": "extractSlotsFromAST",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33656,10 +33693,10 @@
     {
       "id": "re119",
       "moduleId": "m4",
-      "functionId": "fn429",
+      "functionId": "fn431",
       "source": "./extractors/index.js",
       "exportName": "extractSlotsFromSource",
-      "line": 39,
+      "line": 48,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33671,7 +33708,7 @@
       "functionId": "fn152",
       "source": "./template.js",
       "exportName": "analyzeTemplate",
-      "line": 60,
+      "line": 69,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33683,7 +33720,7 @@
       "functionId": "fn163",
       "source": "./callgraph.js",
       "exportName": "buildCallGraphFromScript",
-      "line": 61,
+      "line": 70,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33695,7 +33732,7 @@
       "functionId": "fn164",
       "source": "./report.js",
       "exportName": "generateVueComponentReport",
-      "line": 62,
+      "line": 71,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33707,7 +33744,7 @@
       "functionId": "fn165",
       "source": "./utils.js",
       "exportName": "getNodeValue",
-      "line": 63,
+      "line": 72,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -33719,7 +33756,7 @@
       "functionId": "fn167",
       "source": "./global-component-map.js",
       "exportName": "buildGlobalComponentMap",
-      "line": 65,
+      "line": 74,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34244,7 +34281,7 @@
     {
       "id": "re168",
       "moduleId": "m9",
-      "functionId": "fn249",
+      "functionId": "fn251",
       "source": "./html-reporter.js",
       "exportName": "generateHTMLReport",
       "line": 228,
@@ -34268,7 +34305,7 @@
     {
       "id": "re170",
       "moduleId": "m9",
-      "functionId": "fn250",
+      "functionId": "fn252",
       "source": "./interactive-reporter.js",
       "exportName": "generateInteractiveHTML",
       "line": 229,
@@ -34280,7 +34317,7 @@
     {
       "id": "re171",
       "moduleId": "m1",
-      "functionId": "fn264",
+      "functionId": "fn266",
       "source": "./utils/is-main.js",
       "exportName": "isMainModule",
       "line": 128,
@@ -34292,10 +34329,10 @@
     {
       "id": "re172",
       "moduleId": "m9",
-      "functionId": "fn296",
+      "functionId": "fn298",
       "source": "./modules/utils.js",
       "exportName": "ensureArray",
-      "line": 508,
+      "line": 514,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34307,7 +34344,7 @@
       "functionId": "fn166",
       "source": "./modules/utils.js",
       "exportName": "safeString",
-      "line": 508,
+      "line": 514,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34316,10 +34353,10 @@
     {
       "id": "re174",
       "moduleId": "m9",
-      "functionId": "fn298",
+      "functionId": "fn300",
       "source": "./modules/utils.js",
       "exportName": "safeNumber",
-      "line": 508,
+      "line": 514,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34328,10 +34365,10 @@
     {
       "id": "re175",
       "moduleId": "m9",
-      "functionId": "fn299",
+      "functionId": "fn301",
       "source": "./modules/utils.js",
       "exportName": "safeBoolean",
-      "line": 508,
+      "line": 514,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34340,10 +34377,10 @@
     {
       "id": "re176",
       "moduleId": "m9",
-      "functionId": "fn300",
+      "functionId": "fn302",
       "source": "./modules/utils.js",
       "exportName": "isRealObject",
-      "line": 508,
+      "line": 514,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34352,10 +34389,10 @@
     {
       "id": "re177",
       "moduleId": "m9",
-      "functionId": "fn301",
+      "functionId": "fn303",
       "source": "./modules/utils.js",
       "exportName": "filterRealObjects",
-      "line": 508,
+      "line": 514,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34364,10 +34401,10 @@
     {
       "id": "re178",
       "moduleId": "m9",
-      "functionId": "fn302",
+      "functionId": "fn304",
       "source": "./modules/utils.js",
       "exportName": "sanitizeEntities",
-      "line": 508,
+      "line": 514,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34376,10 +34413,10 @@
     {
       "id": "re179",
       "moduleId": "m9",
-      "functionId": "fn304",
+      "functionId": "fn306",
       "source": "./modules/utils.js",
       "exportName": "safeTraverseAST",
-      "line": 508,
+      "line": 514,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34391,7 +34428,7 @@
       "functionId": "fn64",
       "source": "./modules/utils.js",
       "exportName": "findProjectRoot",
-      "line": 508,
+      "line": 514,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34400,10 +34437,10 @@
     {
       "id": "re181",
       "moduleId": "m9",
-      "functionId": "fn306",
+      "functionId": "fn308",
       "source": "./modules/utils.js",
       "exportName": "findFileInProject",
-      "line": 508,
+      "line": 514,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34412,10 +34449,10 @@
     {
       "id": "re182",
       "moduleId": "m9",
-      "functionId": "fn307",
+      "functionId": "fn309",
       "source": "./modules/utils.js",
       "exportName": "findModuleForEntity",
-      "line": 508,
+      "line": 514,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34424,10 +34461,10 @@
     {
       "id": "re183",
       "moduleId": "m9",
-      "functionId": "fn324",
+      "functionId": "fn326",
       "source": "./modules/metadata.js",
       "exportName": "createMetadata",
-      "line": 522,
+      "line": 528,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34436,10 +34473,10 @@
     {
       "id": "re184",
       "moduleId": "m9",
-      "functionId": "fn325",
+      "functionId": "fn327",
       "source": "./modules/metadata.js",
       "exportName": "getReportName",
-      "line": 522,
+      "line": 528,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34448,10 +34485,10 @@
     {
       "id": "re185",
       "moduleId": "m9",
-      "functionId": "fn326",
+      "functionId": "fn328",
       "source": "./modules/metadata.js",
       "exportName": "getReportVersion",
-      "line": 522,
+      "line": 528,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34460,10 +34497,10 @@
     {
       "id": "re186",
       "moduleId": "m9",
-      "functionId": "fn327",
+      "functionId": "fn329",
       "source": "./modules/metadata.js",
       "exportName": "getLockfileVersion",
-      "line": 522,
+      "line": 528,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34472,10 +34509,10 @@
     {
       "id": "re187",
       "moduleId": "m9",
-      "functionId": "fn331",
+      "functionId": "fn333",
       "source": "./modules/statistics.js",
       "exportName": "calculateEntityStats",
-      "line": 529,
+      "line": 535,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34484,10 +34521,10 @@
     {
       "id": "re188",
       "moduleId": "m9",
-      "functionId": "fn332",
+      "functionId": "fn334",
       "source": "./modules/statistics.js",
       "exportName": "calculateFileStats",
-      "line": 529,
+      "line": 535,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34496,10 +34533,10 @@
     {
       "id": "re189",
       "moduleId": "m9",
-      "functionId": "fn333",
+      "functionId": "fn335",
       "source": "./modules/graphs.js",
       "exportName": "buildDependencyGraph",
-      "line": 531,
+      "line": 537,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34511,7 +34548,7 @@
       "functionId": "fn226",
       "source": "./modules/graphs.js",
       "exportName": "findCycles",
-      "line": 531,
+      "line": 537,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34520,10 +34557,10 @@
     {
       "id": "re191",
       "moduleId": "m9",
-      "functionId": "fn335",
+      "functionId": "fn337",
       "source": "./modules/graphs.js",
       "exportName": "getMaxDepth",
-      "line": 531,
+      "line": 537,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34532,10 +34569,10 @@
     {
       "id": "re192",
       "moduleId": "m9",
-      "functionId": "fn253",
+      "functionId": "fn255",
       "source": "./modules/graphs.js",
       "exportName": "getModulesByLevel",
-      "line": 531,
+      "line": 537,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34544,10 +34581,10 @@
     {
       "id": "re193",
       "moduleId": "m9",
-      "functionId": "fn351",
+      "functionId": "fn353",
       "source": "./modules/flows.js",
       "exportName": "buildExecutionGraph",
-      "line": 538,
+      "line": 544,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34556,10 +34593,10 @@
     {
       "id": "re194",
       "moduleId": "m9",
-      "functionId": "fn352",
+      "functionId": "fn354",
       "source": "./modules/flows.js",
       "exportName": "buildImportExportFlow",
-      "line": 538,
+      "line": 544,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34568,10 +34605,10 @@
     {
       "id": "re195",
       "moduleId": "m9",
-      "functionId": "fn359",
+      "functionId": "fn361",
       "source": "./modules/architecture.js",
       "exportName": "buildArchitectureMetrics",
-      "line": 540,
+      "line": 546,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34580,10 +34617,10 @@
     {
       "id": "re196",
       "moduleId": "m9",
-      "functionId": "fn363",
+      "functionId": "fn365",
       "source": "./modules/summary.js",
       "exportName": "buildSummary",
-      "line": 542,
+      "line": 548,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34592,10 +34629,10 @@
     {
       "id": "re197",
       "moduleId": "m9",
-      "functionId": "fn370",
+      "functionId": "fn372",
       "source": "./modules/packages.js",
       "exportName": "buildPackages",
-      "line": 544,
+      "line": 550,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34607,7 +34644,7 @@
       "functionId": "fn82",
       "source": "../analyzers/index.js",
       "exportName": "extractDynamicImports",
-      "line": 550,
+      "line": 556,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34619,7 +34656,7 @@
       "functionId": "fn83",
       "source": "../analyzers/index.js",
       "exportName": "extractConfigRefs",
-      "line": 550,
+      "line": 556,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34631,7 +34668,7 @@
       "functionId": "fn84",
       "source": "../analyzers/index.js",
       "exportName": "extractExternalLibs",
-      "line": 550,
+      "line": 556,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34643,7 +34680,7 @@
       "functionId": "fn85",
       "source": "../analyzers/index.js",
       "exportName": "extractVueTemplates",
-      "line": 550,
+      "line": 556,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34655,7 +34692,7 @@
       "functionId": "fn86",
       "source": "../analyzers/index.js",
       "exportName": "extractAsyncChains",
-      "line": 550,
+      "line": 556,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34667,7 +34704,7 @@
       "functionId": "fn87",
       "source": "../analyzers/index.js",
       "exportName": "extractClosures",
-      "line": 550,
+      "line": 556,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34679,7 +34716,7 @@
       "functionId": "fn88",
       "source": "../analyzers/index.js",
       "exportName": "extractTypeDeps",
-      "line": 550,
+      "line": 556,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34691,7 +34728,7 @@
       "functionId": "fn97",
       "source": "../analyzers/index.js",
       "exportName": "analyzeContent",
-      "line": 550,
+      "line": 556,
       "type": "named",
       "isDefault": false,
       "isTypeOnly": false,
@@ -34808,7 +34845,7 @@
     {
       "id": "re215",
       "moduleId": "m3",
-      "functionId": "fn372",
+      "functionId": "fn374",
       "source": "./vue-analyzer/extractors/index.js",
       "exportName": "extractPropsFromSource",
       "line": 32,
@@ -34820,7 +34857,7 @@
     {
       "id": "re216",
       "moduleId": "m3",
-      "functionId": "fn373",
+      "functionId": "fn375",
       "source": "./vue-analyzer/extractors/index.js",
       "exportName": "extractPropsFromCompiledScript",
       "line": 32,
@@ -34832,7 +34869,7 @@
     {
       "id": "re217",
       "moduleId": "m3",
-      "functionId": "fn374",
+      "functionId": "fn376",
       "source": "./vue-analyzer/extractors/index.js",
       "exportName": "extractPropsFromAST",
       "line": 32,
@@ -34844,7 +34881,7 @@
     {
       "id": "re218",
       "moduleId": "m3",
-      "functionId": "fn375",
+      "functionId": "fn377",
       "source": "./vue-analyzer/extractors/index.js",
       "exportName": "extractEmitsFromSource",
       "line": 32,
@@ -34856,7 +34893,7 @@
     {
       "id": "re219",
       "moduleId": "m3",
-      "functionId": "fn376",
+      "functionId": "fn378",
       "source": "./vue-analyzer/extractors/index.js",
       "exportName": "extractEmitsFromCompiledScript",
       "line": 32,
@@ -34868,7 +34905,7 @@
     {
       "id": "re220",
       "moduleId": "m3",
-      "functionId": "fn377",
+      "functionId": "fn379",
       "source": "./vue-analyzer/extractors/index.js",
       "exportName": "extractEmitsFromAST",
       "line": 32,
@@ -34880,7 +34917,7 @@
     {
       "id": "re221",
       "moduleId": "m3",
-      "functionId": "fn378",
+      "functionId": "fn380",
       "source": "./vue-analyzer/extractors/index.js",
       "exportName": "extractExposeFromCompiledScript",
       "line": 32,
@@ -34892,7 +34929,7 @@
     {
       "id": "re222",
       "moduleId": "m3",
-      "functionId": "fn379",
+      "functionId": "fn381",
       "source": "./vue-analyzer/extractors/index.js",
       "exportName": "extractExposeFromAST",
       "line": 32,
@@ -34904,7 +34941,7 @@
     {
       "id": "re223",
       "moduleId": "m3",
-      "functionId": "fn380",
+      "functionId": "fn382",
       "source": "./vue-analyzer/extractors/index.js",
       "exportName": "extractImportsFromAST",
       "line": 32,
@@ -34916,7 +34953,7 @@
     {
       "id": "re224",
       "moduleId": "m3",
-      "functionId": "fn381",
+      "functionId": "fn383",
       "source": "./vue-analyzer/extractors/index.js",
       "exportName": "extractImportsFromSource",
       "line": 32,
@@ -34928,7 +34965,7 @@
     {
       "id": "re225",
       "moduleId": "m3",
-      "functionId": "fn386",
+      "functionId": "fn388",
       "source": "./vue-analyzer/extractors/index.js",
       "exportName": "extractComposablesFromAST",
       "line": 32,
@@ -34940,7 +34977,7 @@
     {
       "id": "re226",
       "moduleId": "m3",
-      "functionId": "fn387",
+      "functionId": "fn389",
       "source": "./vue-analyzer/extractors/index.js",
       "exportName": "extractComposablesFromSource",
       "line": 32,
@@ -34952,7 +34989,7 @@
     {
       "id": "re227",
       "moduleId": "m3",
-      "functionId": "fn388",
+      "functionId": "fn390",
       "source": "./vue-analyzer/extractors/index.js",
       "exportName": "extractFunctionsFromScript",
       "line": 32,
@@ -34964,7 +35001,7 @@
     {
       "id": "re228",
       "moduleId": "m3",
-      "functionId": "fn396",
+      "functionId": "fn398",
       "source": "./vue-analyzer/extractors/index.js",
       "exportName": "extractConstantsFromScript",
       "line": 32,
@@ -34976,7 +35013,7 @@
     {
       "id": "re229",
       "moduleId": "m3",
-      "functionId": "fn401",
+      "functionId": "fn403",
       "source": "./vue-analyzer/extractors/index.js",
       "exportName": "extractVariablesFromScript",
       "line": 32,
@@ -34988,7 +35025,7 @@
     {
       "id": "re230",
       "moduleId": "m3",
-      "functionId": "fn406",
+      "functionId": "fn408",
       "source": "./vue-analyzer/extractors/index.js",
       "exportName": "extractTypesFromScript",
       "line": 32,
@@ -35000,7 +35037,7 @@
     {
       "id": "re231",
       "moduleId": "m3",
-      "functionId": "fn426",
+      "functionId": "fn428",
       "source": "./vue-analyzer/extractors/index.js",
       "exportName": "extractInterfacesFromScript",
       "line": 32,
@@ -35012,7 +35049,7 @@
     {
       "id": "re232",
       "moduleId": "m13",
-      "functionId": "fn454",
+      "functionId": "fn456",
       "source": "./extract-entities.js",
       "exportName": "extractEntities",
       "line": 35,
@@ -35024,7 +35061,7 @@
     {
       "id": "re233",
       "moduleId": "m13",
-      "functionId": "fn455",
+      "functionId": "fn457",
       "source": "./extract-call-graph.js",
       "exportName": "extractCallGraph",
       "line": 38,
@@ -35036,7 +35073,7 @@
     {
       "id": "re234",
       "moduleId": "m13",
-      "functionId": "fn456",
+      "functionId": "fn458",
       "source": "./ast/extract-entities-from-ast.js",
       "exportName": "extractEntitiesFromAST",
       "line": 41,
@@ -35048,7 +35085,7 @@
     {
       "id": "re235",
       "moduleId": "m13",
-      "functionId": "fn292",
+      "functionId": "fn294",
       "source": "./vue/convert-analysis.js",
       "exportName": "convertVueAnalysisToEntities",
       "line": 55,
@@ -35060,7 +35097,7 @@
     {
       "id": "re236",
       "moduleId": "m13",
-      "functionId": "fn457",
+      "functionId": "fn459",
       "source": "./vue/convert-imports.js",
       "exportName": "convertVueImportsToImportInfo",
       "line": 58,
@@ -35072,7 +35109,7 @@
     {
       "id": "re237",
       "moduleId": "m13",
-      "functionId": "fn469",
+      "functionId": "fn471",
       "source": "./helpers/index.js",
       "exportName": "isEventHandler",
       "line": 64,
@@ -35084,7 +35121,7 @@
     {
       "id": "re238",
       "moduleId": "m13",
-      "functionId": "fn470",
+      "functionId": "fn472",
       "source": "./helpers/index.js",
       "exportName": "extractEventType",
       "line": 64,
@@ -35096,7 +35133,7 @@
     {
       "id": "re239",
       "moduleId": "m13",
-      "functionId": "fn473",
+      "functionId": "fn475",
       "source": "./helpers/index.js",
       "exportName": "calculateComplexity",
       "line": 64,
@@ -35108,7 +35145,7 @@
     {
       "id": "re240",
       "moduleId": "m13",
-      "functionId": "fn474",
+      "functionId": "fn476",
       "source": "./helpers/index.js",
       "exportName": "analyzeSecurity",
       "line": 64,
@@ -35132,7 +35169,7 @@
     {
       "id": "re242",
       "moduleId": "m13",
-      "functionId": "fn392",
+      "functionId": "fn394",
       "source": "./helpers/index.js",
       "exportName": "extractBodyText",
       "line": 64,
@@ -35144,7 +35181,7 @@
     {
       "id": "re243",
       "moduleId": "m13",
-      "functionId": "fn472",
+      "functionId": "fn474",
       "source": "./helpers/index.js",
       "exportName": "extractValue",
       "line": 64,
@@ -35156,7 +35193,7 @@
     {
       "id": "re244",
       "moduleId": "m13",
-      "functionId": "fn467",
+      "functionId": "fn469",
       "source": "./helpers/index.js",
       "exportName": "createEmptyEntitiesResult",
       "line": 64,
@@ -35168,7 +35205,7 @@
     {
       "id": "re245",
       "moduleId": "m13",
-      "functionId": "fn458",
+      "functionId": "fn460",
       "source": "./ast/find-function-node.js",
       "exportName": "findFunctionNode",
       "line": 88,
@@ -35180,7 +35217,7 @@
     {
       "id": "re246",
       "moduleId": "m13",
-      "functionId": "fn459",
+      "functionId": "fn461",
       "source": "./ast/collect-all-calls-recursive.js",
       "exportName": "collectAllCallsRecursive",
       "line": 91,
@@ -35192,7 +35229,7 @@
     {
       "id": "re247",
       "moduleId": "m13",
-      "functionId": "fn460",
+      "functionId": "fn462",
       "source": "./ast/process-exports.js",
       "exportName": "processExports",
       "line": 94,
@@ -35276,7 +35313,7 @@
     {
       "id": "re254",
       "moduleId": "m20",
-      "functionId": "fn461",
+      "functionId": "fn463",
       "source": "./cli.js",
       "exportName": "runHybridReport",
       "line": 39,
@@ -35288,7 +35325,7 @@
     {
       "id": "re255",
       "moduleId": "m20",
-      "functionId": "fn462",
+      "functionId": "fn464",
       "source": "./builder.js",
       "exportName": "buildHybridReport",
       "line": 47,
@@ -35300,7 +35337,7 @@
     {
       "id": "re256",
       "moduleId": "m20",
-      "functionId": "fn463",
+      "functionId": "fn465",
       "source": "./analyzer.js",
       "exportName": "analyzeModule",
       "line": 55,
@@ -35312,7 +35349,7 @@
     {
       "id": "re257",
       "moduleId": "m20",
-      "functionId": "fn464",
+      "functionId": "fn466",
       "source": "./generators/dot.js",
       "exportName": "generateHybridDOT",
       "line": 66,
@@ -35324,7 +35361,7 @@
     {
       "id": "re258",
       "moduleId": "m20",
-      "functionId": "fn465",
+      "functionId": "fn467",
       "source": "./generators/html.js",
       "exportName": "generateHybridHTML",
       "line": 74,
@@ -35336,7 +35373,7 @@
     {
       "id": "re259",
       "moduleId": "m20",
-      "functionId": "fn466",
+      "functionId": "fn468",
       "source": "./generators/markdown.js",
       "exportName": "generateHybridMarkdown",
       "line": 81,
@@ -35348,7 +35385,7 @@
     {
       "id": "re260",
       "moduleId": "m25",
-      "functionId": "fn469",
+      "functionId": "fn471",
       "source": "./is-event-handler.js",
       "exportName": "isEventHandler",
       "line": 2,
@@ -35360,7 +35397,7 @@
     {
       "id": "re261",
       "moduleId": "m25",
-      "functionId": "fn470",
+      "functionId": "fn472",
       "source": "./extract-event-type.js",
       "exportName": "extractEventType",
       "line": 3,
@@ -35372,7 +35409,7 @@
     {
       "id": "re262",
       "moduleId": "m25",
-      "functionId": "fn473",
+      "functionId": "fn475",
       "source": "./calculate-complexity.js",
       "exportName": "calculateComplexity",
       "line": 4,
@@ -35384,7 +35421,7 @@
     {
       "id": "re263",
       "moduleId": "m25",
-      "functionId": "fn474",
+      "functionId": "fn476",
       "source": "./analyze-security.js",
       "exportName": "analyzeSecurity",
       "line": 5,
@@ -35408,7 +35445,7 @@
     {
       "id": "re265",
       "moduleId": "m25",
-      "functionId": "fn392",
+      "functionId": "fn394",
       "source": "./extract-body-text.js",
       "exportName": "extractBodyText",
       "line": 7,
@@ -35420,7 +35457,7 @@
     {
       "id": "re266",
       "moduleId": "m25",
-      "functionId": "fn472",
+      "functionId": "fn474",
       "source": "./extract-value.js",
       "exportName": "extractValue",
       "line": 8,
@@ -35432,7 +35469,7 @@
     {
       "id": "re267",
       "moduleId": "m25",
-      "functionId": "fn467",
+      "functionId": "fn469",
       "source": "./create-empty-result.js",
       "exportName": "createEmptyEntitiesResult",
       "line": 9,
@@ -35445,12 +35482,12 @@
   "statistics": {
     "totalModules": 26,
     "totalFiles": 152,
-    "totalFunctions": 474,
+    "totalFunctions": 476,
     "totalClasses": 57,
     "totalConstants": 121,
     "totalExports": 372,
     "totalImports": 873,
-    "totalCalls": 319,
+    "totalCalls": 320,
     "totalReExports": 267,
     "totalTemplates": 0
   },
@@ -35805,7 +35842,7 @@
       "name": "AnalyzeVueOptions",
       "moduleId": "m4",
       "fileId": "f16",
-      "line": 118,
+      "line": 127,
       "members": [
         "globalMap",
         "verbose"
@@ -39037,7 +39074,7 @@
       "name": "CacheEntry",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 311,
+      "line": 317,
       "members": [
         "data",
         "timestamp",
@@ -39051,7 +39088,7 @@
       "name": "AnalysisCache",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 317,
+      "line": 323,
       "members": [
         "cache",
         "TTL",
@@ -39071,7 +39108,7 @@
       "name": "DataMigrator",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 385,
+      "line": 391,
       "members": [
         "migrations",
         "migrate",
@@ -40730,7 +40767,7 @@
       "name": "DecodedFlags",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 430,
+      "line": 437,
       "members": [
         "isAsync",
         "isExported",
@@ -40759,7 +40796,7 @@
       "name": "DictBuilder",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 528,
+      "line": 535,
       "members": [
         "stringDict",
         "stringMap",
@@ -40778,7 +40815,7 @@
       "name": "Codec",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 626,
+      "line": 792,
       "members": [
         "encode",
         "decode",
@@ -43727,7 +43764,7 @@
       "typeName": "AnalysisOptions",
       "moduleId": "m4",
       "fileId": "f16",
-      "line": 118,
+      "line": 127,
       "usageKind": "extends"
     },
     {
@@ -43735,7 +43772,7 @@
       "typeName": "AnalyzeVueOptions",
       "moduleId": "m4",
       "fileId": "f16",
-      "line": 134,
+      "line": 143,
       "usageKind": "param"
     },
     {
@@ -43743,7 +43780,7 @@
       "typeName": "GlobalComponentMap",
       "moduleId": "m4",
       "fileId": "f16",
-      "line": 452,
+      "line": 481,
       "usageKind": "param"
     },
     {
@@ -43751,7 +43788,7 @@
       "typeName": "AnalyzeVueOptions",
       "moduleId": "m4",
       "fileId": "f16",
-      "line": 542,
+      "line": 571,
       "usageKind": "param"
     },
     {
@@ -43759,7 +43796,7 @@
       "typeName": "AnalyzeVueOptions",
       "moduleId": "m4",
       "fileId": "f16",
-      "line": 658,
+      "line": 687,
       "usageKind": "param"
     },
     {
@@ -44183,7 +44220,7 @@
       "typeName": "EnhancedEntityInfo",
       "moduleId": "m9",
       "fileId": "f33",
-      "line": 573,
+      "line": 579,
       "usageKind": "return"
     },
     {
@@ -44687,7 +44724,7 @@
       "typeName": "DecodedFlags",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 454,
+      "line": 461,
       "usageKind": "return"
     },
     {
@@ -44695,7 +44732,7 @@
       "typeName": "DecodedFlags",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 480,
+      "line": 487,
       "usageKind": "return"
     },
     {
@@ -44703,7 +44740,7 @@
       "typeName": "DictBuilder",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 539,
+      "line": 546,
       "usageKind": "return"
     },
     {
@@ -44711,7 +44748,7 @@
       "typeName": "DictBuilder",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 556,
+      "line": 563,
       "usageKind": "param"
     },
     {
@@ -44719,7 +44756,7 @@
       "typeName": "DictBuilder",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 569,
+      "line": 576,
       "usageKind": "param"
     },
     {
@@ -44727,7 +44764,7 @@
       "typeName": "DictBuilder",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 582,
+      "line": 589,
       "usageKind": "param"
     },
     {
@@ -44735,11 +44772,19 @@
       "typeName": "DictBuilder",
       "moduleId": "m17",
       "fileId": "f68",
-      "line": 597,
+      "line": 604,
       "usageKind": "param"
     },
     {
       "id": "tr132",
+      "typeName": "FullJSON",
+      "moduleId": "m17",
+      "fileId": "f68",
+      "line": 644,
+      "usageKind": "param"
+    },
+    {
+      "id": "tr133",
       "typeName": "FunctionData",
       "moduleId": "m17",
       "fileId": "f69",
@@ -44747,7 +44792,7 @@
       "usageKind": "extends"
     },
     {
-      "id": "tr133",
+      "id": "tr134",
       "typeName": "ExportData",
       "moduleId": "m17",
       "fileId": "f69",
@@ -44755,7 +44800,7 @@
       "usageKind": "extends"
     },
     {
-      "id": "tr134",
+      "id": "tr135",
       "typeName": "ImportData",
       "moduleId": "m17",
       "fileId": "f69",
@@ -44763,7 +44808,7 @@
       "usageKind": "extends"
     },
     {
-      "id": "tr135",
+      "id": "tr136",
       "typeName": "FullAnalysis",
       "moduleId": "m9",
       "fileId": "f71",
@@ -44771,7 +44816,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr136",
+      "id": "tr137",
       "typeName": "InteractiveReporterOptions",
       "moduleId": "m9",
       "fileId": "f71",
@@ -44779,7 +44824,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr137",
+      "id": "tr138",
       "typeName": "HybridReport",
       "moduleId": "m20",
       "fileId": "f75",
@@ -44787,7 +44832,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr138",
+      "id": "tr139",
       "typeName": "HybridReport",
       "moduleId": "m20",
       "fileId": "f75",
@@ -44795,7 +44840,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr139",
+      "id": "tr140",
       "typeName": "HybridReport",
       "moduleId": "m20",
       "fileId": "f75",
@@ -44803,7 +44848,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr140",
+      "id": "tr141",
       "typeName": "HybridReport",
       "moduleId": "m20",
       "fileId": "f75",
@@ -44811,7 +44856,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr141",
+      "id": "tr142",
       "typeName": "HybridReport",
       "moduleId": "m20",
       "fileId": "f75",
@@ -44819,7 +44864,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr142",
+      "id": "tr143",
       "typeName": "Command",
       "moduleId": "m19",
       "fileId": "f81",
@@ -44827,7 +44872,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr143",
+      "id": "tr144",
       "typeName": "FileCommand",
       "moduleId": "m19",
       "fileId": "f81",
@@ -44835,7 +44880,7 @@
       "usageKind": "return"
     },
     {
-      "id": "tr144",
+      "id": "tr145",
       "typeName": "SplitModuleCommandOptions",
       "moduleId": "m19",
       "fileId": "f83",
@@ -44843,7 +44888,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr145",
+      "id": "tr146",
       "typeName": "Command",
       "moduleId": "m19",
       "fileId": "f90",
@@ -44851,7 +44896,7 @@
       "usageKind": "return"
     },
     {
-      "id": "tr146",
+      "id": "tr147",
       "typeName": "MinifyFolderCommandOptions",
       "moduleId": "m19",
       "fileId": "f95",
@@ -44859,7 +44904,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr147",
+      "id": "tr148",
       "typeName": "MinifyFolderCommandOptions",
       "moduleId": "m19",
       "fileId": "f95",
@@ -44867,7 +44912,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr148",
+      "id": "tr149",
       "typeName": "FunctionFlags",
       "moduleId": "m12",
       "fileId": "f97",
@@ -44875,7 +44920,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr149",
+      "id": "tr150",
       "typeName": "FunctionFlags",
       "moduleId": "m12",
       "fileId": "f97",
@@ -44883,7 +44928,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr150",
+      "id": "tr151",
       "typeName": "FunctionFlags",
       "moduleId": "m12",
       "fileId": "f97",
@@ -44891,7 +44936,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr151",
+      "id": "tr152",
       "typeName": "FunctionFlags",
       "moduleId": "m12",
       "fileId": "f97",
@@ -44899,7 +44944,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr152",
+      "id": "tr153",
       "typeName": "FunctionFlags",
       "moduleId": "m12",
       "fileId": "f97",
@@ -44907,7 +44952,7 @@
       "usageKind": "generic"
     },
     {
-      "id": "tr153",
+      "id": "tr154",
       "typeName": "FunctionFlags",
       "moduleId": "m12",
       "fileId": "f97",
@@ -44915,7 +44960,7 @@
       "usageKind": "generic"
     },
     {
-      "id": "tr154",
+      "id": "tr155",
       "typeName": "VueComponentAnalysis",
       "moduleId": "m22",
       "fileId": "f98",
@@ -44923,7 +44968,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr155",
+      "id": "tr156",
       "typeName": "EntitiesResult",
       "moduleId": "m22",
       "fileId": "f98",
@@ -44931,7 +44976,7 @@
       "usageKind": "return"
     },
     {
-      "id": "tr156",
+      "id": "tr157",
       "typeName": "TypeGraphOptions",
       "moduleId": "m2",
       "fileId": "f99",
@@ -44939,7 +44984,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr157",
+      "id": "tr158",
       "typeName": "TypeGraphResult",
       "moduleId": "m2",
       "fileId": "f99",
@@ -44947,7 +44992,7 @@
       "usageKind": "return"
     },
     {
-      "id": "tr158",
+      "id": "tr159",
       "typeName": "ReportMetadata",
       "moduleId": "m23",
       "fileId": "f102",
@@ -44955,7 +45000,7 @@
       "usageKind": "return"
     },
     {
-      "id": "tr159",
+      "id": "tr160",
       "typeName": "ReportMetadata",
       "moduleId": "m23",
       "fileId": "f102",
@@ -44963,7 +45008,7 @@
       "usageKind": "return"
     },
     {
-      "id": "tr160",
+      "id": "tr161",
       "typeName": "EnhancedPackageInfo",
       "moduleId": "m23",
       "fileId": "f103",
@@ -44971,7 +45016,7 @@
       "usageKind": "generic"
     },
     {
-      "id": "tr161",
+      "id": "tr162",
       "typeName": "EnhancedPackageInfo",
       "moduleId": "m23",
       "fileId": "f103",
@@ -44979,7 +45024,7 @@
       "usageKind": "generic"
     },
     {
-      "id": "tr162",
+      "id": "tr163",
       "typeName": "EntitiesResult",
       "moduleId": "m23",
       "fileId": "f105",
@@ -44987,7 +45032,7 @@
       "usageKind": "generic"
     },
     {
-      "id": "tr163",
+      "id": "tr164",
       "typeName": "GraphData",
       "moduleId": "m23",
       "fileId": "f105",
@@ -44995,7 +45040,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr164",
+      "id": "tr165",
       "typeName": "EnhancedPackageInfo",
       "moduleId": "m23",
       "fileId": "f105",
@@ -45003,7 +45048,7 @@
       "usageKind": "generic"
     },
     {
-      "id": "tr165",
+      "id": "tr166",
       "typeName": "EntitiesResult",
       "moduleId": "m23",
       "fileId": "f105",
@@ -45011,7 +45056,7 @@
       "usageKind": "generic"
     },
     {
-      "id": "tr166",
+      "id": "tr167",
       "typeName": "GraphData",
       "moduleId": "m23",
       "fileId": "f105",
@@ -45019,7 +45064,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr167",
+      "id": "tr168",
       "typeName": "EnhancedPackageInfo",
       "moduleId": "m23",
       "fileId": "f105",
@@ -45027,7 +45072,7 @@
       "usageKind": "generic"
     },
     {
-      "id": "tr168",
+      "id": "tr169",
       "typeName": "EntitiesResult",
       "moduleId": "m23",
       "fileId": "f105",
@@ -45035,7 +45080,7 @@
       "usageKind": "generic"
     },
     {
-      "id": "tr169",
+      "id": "tr170",
       "typeName": "EnhancedPackageInfo",
       "moduleId": "m23",
       "fileId": "f106",
@@ -45043,7 +45088,7 @@
       "usageKind": "generic"
     },
     {
-      "id": "tr170",
+      "id": "tr171",
       "typeName": "ArchitectureMetrics",
       "moduleId": "m23",
       "fileId": "f106",
@@ -45051,7 +45096,7 @@
       "usageKind": "return"
     },
     {
-      "id": "tr171",
+      "id": "tr172",
       "typeName": "ArchitectureMetrics",
       "moduleId": "m23",
       "fileId": "f106",
@@ -45059,7 +45104,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr172",
+      "id": "tr173",
       "typeName": "ArchitectureMetrics",
       "moduleId": "m23",
       "fileId": "f106",
@@ -45067,7 +45112,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr173",
+      "id": "tr174",
       "typeName": "ArchitectureMetrics",
       "moduleId": "m23",
       "fileId": "f106",
@@ -45075,7 +45120,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr174",
+      "id": "tr175",
       "typeName": "EnhancedPackageLockReport",
       "moduleId": "m23",
       "fileId": "f107",
@@ -45083,7 +45128,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr175",
+      "id": "tr176",
       "typeName": "ProjectSummary",
       "moduleId": "m23",
       "fileId": "f107",
@@ -45091,7 +45136,7 @@
       "usageKind": "return"
     },
     {
-      "id": "tr176",
+      "id": "tr177",
       "typeName": "EnhancedPackageLockReport",
       "moduleId": "m23",
       "fileId": "f107",
@@ -45099,7 +45144,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr177",
+      "id": "tr178",
       "typeName": "ProjectSummary",
       "moduleId": "m23",
       "fileId": "f107",
@@ -45107,7 +45152,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr178",
+      "id": "tr179",
       "typeName": "ProjectSummary",
       "moduleId": "m23",
       "fileId": "f107",
@@ -45115,7 +45160,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr179",
+      "id": "tr180",
       "typeName": "ProjectSummary",
       "moduleId": "m23",
       "fileId": "f107",
@@ -45123,7 +45168,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr180",
+      "id": "tr181",
       "typeName": "EnhancedPackageLockReport",
       "moduleId": "m23",
       "fileId": "f107",
@@ -45131,7 +45176,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr181",
+      "id": "tr182",
       "typeName": "EnhancedEntityInfo",
       "moduleId": "m23",
       "fileId": "f108",
@@ -45139,7 +45184,7 @@
       "usageKind": "generic"
     },
     {
-      "id": "tr182",
+      "id": "tr183",
       "typeName": "EnhancedPackageInfo",
       "moduleId": "m23",
       "fileId": "f108",
@@ -45147,7 +45192,7 @@
       "usageKind": "generic"
     },
     {
-      "id": "tr183",
+      "id": "tr184",
       "typeName": "Project",
       "moduleId": "m2",
       "fileId": "f109",
@@ -45155,7 +45200,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr184",
+      "id": "tr185",
       "typeName": "ResolverOptions",
       "moduleId": "m2",
       "fileId": "f109",
@@ -45163,7 +45208,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr185",
+      "id": "tr186",
       "typeName": "ResolveResult",
       "moduleId": "m2",
       "fileId": "f109",
@@ -45171,7 +45216,7 @@
       "usageKind": "return"
     },
     {
-      "id": "tr186",
+      "id": "tr187",
       "typeName": "Program",
       "moduleId": "m14",
       "fileId": "f110",
@@ -45179,7 +45224,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr187",
+      "id": "tr188",
       "typeName": "Program",
       "moduleId": "m14",
       "fileId": "f111",
@@ -45187,7 +45232,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr188",
+      "id": "tr189",
       "typeName": "Program",
       "moduleId": "m14",
       "fileId": "f112",
@@ -45195,7 +45240,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr189",
+      "id": "tr190",
       "typeName": "Program",
       "moduleId": "m14",
       "fileId": "f113",
@@ -45203,7 +45248,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr190",
+      "id": "tr191",
       "typeName": "Program",
       "moduleId": "m14",
       "fileId": "f114",
@@ -45211,7 +45256,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr191",
+      "id": "tr192",
       "typeName": "Program",
       "moduleId": "m14",
       "fileId": "f116",
@@ -45219,7 +45264,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr192",
+      "id": "tr193",
       "typeName": "Program",
       "moduleId": "m14",
       "fileId": "f117",
@@ -45227,7 +45272,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr193",
+      "id": "tr194",
       "typeName": "Program",
       "moduleId": "m14",
       "fileId": "f118",
@@ -45235,7 +45280,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr194",
+      "id": "tr195",
       "typeName": "Program",
       "moduleId": "m14",
       "fileId": "f119",
@@ -45243,7 +45288,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr195",
+      "id": "tr196",
       "typeName": "Program",
       "moduleId": "m14",
       "fileId": "f120",
@@ -45251,7 +45296,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr196",
+      "id": "tr197",
       "typeName": "EquivalenceResult",
       "moduleId": "m15",
       "fileId": "f121",
@@ -45259,7 +45304,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr197",
+      "id": "tr198",
       "typeName": "EquivalenceResult",
       "moduleId": "m15",
       "fileId": "f121",
@@ -45267,19 +45312,11 @@
       "usageKind": "param"
     },
     {
-      "id": "tr198",
+      "id": "tr199",
       "typeName": "EquivalenceResult",
       "moduleId": "m15",
       "fileId": "f121",
       "line": 1572,
-      "usageKind": "param"
-    },
-    {
-      "id": "tr199",
-      "typeName": "FunctionSignature",
-      "moduleId": "m2",
-      "fileId": "f123",
-      "line": 781,
       "usageKind": "param"
     },
     {
@@ -45295,7 +45332,7 @@
       "typeName": "FunctionSignature",
       "moduleId": "m2",
       "fileId": "f123",
-      "line": 787,
+      "line": 781,
       "usageKind": "param"
     },
     {
@@ -45303,7 +45340,7 @@
       "typeName": "FunctionSignature",
       "moduleId": "m2",
       "fileId": "f123",
-      "line": 788,
+      "line": 787,
       "usageKind": "param"
     },
     {
@@ -45311,15 +45348,15 @@
       "typeName": "FunctionSignature",
       "moduleId": "m2",
       "fileId": "f123",
-      "line": 795,
-      "usageKind": "generic"
+      "line": 788,
+      "usageKind": "param"
     },
     {
       "id": "tr204",
       "typeName": "FunctionSignature",
       "moduleId": "m2",
       "fileId": "f123",
-      "line": 802,
+      "line": 795,
       "usageKind": "generic"
     },
     {
@@ -45327,11 +45364,19 @@
       "typeName": "FunctionSignature",
       "moduleId": "m2",
       "fileId": "f123",
-      "line": 803,
+      "line": 802,
       "usageKind": "generic"
     },
     {
       "id": "tr206",
+      "typeName": "FunctionSignature",
+      "moduleId": "m2",
+      "fileId": "f123",
+      "line": 803,
+      "usageKind": "generic"
+    },
+    {
+      "id": "tr207",
       "typeName": "CallGraph",
       "moduleId": "m2",
       "fileId": "f124",
@@ -45339,7 +45384,7 @@
       "usageKind": "return"
     },
     {
-      "id": "tr207",
+      "id": "tr208",
       "typeName": "CallGraph",
       "moduleId": "m2",
       "fileId": "f124",
@@ -45347,7 +45392,7 @@
       "usageKind": "return"
     },
     {
-      "id": "tr208",
+      "id": "tr209",
       "typeName": "EnvPreset",
       "moduleId": "m9",
       "fileId": "f126",
@@ -45355,7 +45400,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr209",
+      "id": "tr210",
       "typeName": "CompactReportConfigBuilder",
       "moduleId": "m9",
       "fileId": "f127",
@@ -45363,7 +45408,7 @@
       "usageKind": "return"
     },
     {
-      "id": "tr210",
+      "id": "tr211",
       "typeName": "EntitiesResult",
       "moduleId": "m13",
       "fileId": "f128",
@@ -45371,7 +45416,7 @@
       "usageKind": "return"
     },
     {
-      "id": "tr211",
+      "id": "tr212",
       "typeName": "TraverseOptions",
       "moduleId": "m24",
       "fileId": "f130",
@@ -45379,7 +45424,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr212",
+      "id": "tr213",
       "typeName": "EntitiesResult",
       "moduleId": "m24",
       "fileId": "f130",
@@ -45387,7 +45432,7 @@
       "usageKind": "return"
     },
     {
-      "id": "tr213",
+      "id": "tr214",
       "typeName": "HybridReport",
       "moduleId": "m20",
       "fileId": "f137",
@@ -45395,7 +45440,7 @@
       "usageKind": "generic"
     },
     {
-      "id": "tr214",
+      "id": "tr215",
       "typeName": "HybridReport",
       "moduleId": "m20",
       "fileId": "f138",
@@ -45403,7 +45448,7 @@
       "usageKind": "return"
     },
     {
-      "id": "tr215",
+      "id": "tr216",
       "typeName": "HybridReport",
       "moduleId": "m26",
       "fileId": "f140",
@@ -45411,7 +45456,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr216",
+      "id": "tr217",
       "typeName": "HybridReport",
       "moduleId": "m26",
       "fileId": "f141",
@@ -45419,7 +45464,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr217",
+      "id": "tr218",
       "typeName": "HybridReport",
       "moduleId": "m26",
       "fileId": "f142",
@@ -45427,7 +45472,7 @@
       "usageKind": "param"
     },
     {
-      "id": "tr218",
+      "id": "tr219",
       "typeName": "EntitiesResult",
       "moduleId": "m25",
       "fileId": "f144",

@@ -1,20 +1,37 @@
 // ============================================================================
-// AST ANALYZER — UI COMPONENTS v9
+// AST ANALYZER — UI COMPONENTS v9.1
 // Переиспользуемые UI-компоненты: карточки, таблицы, дерево, тосты.
+//
+// Обновления v9.1:
+//   - Поддержка компактного формата (через ast-analyzer-core)
+//   - Безопасная работа с undefined-полями после декодирования
+//   - Индикатор формата в UI
+//   - Кнопки round-trip проверок
+//   - Улучшенный file picker как fallback
 // ============================================================================
 
 import {
   state, escapeHtml, shortPath, formatNumber, formatType,
   getModuleName, getFilePath, getFnFullInfo, getImportedNames,
+  // Новое из core v9.1
+  detectFormat,
+  getRootCacheInfo,
+  clearRootCache,
 } from './ast-analyzer-core.js';
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // ТОСТ
-// ---------------------------------------------------------------------------
+// ============================================================================
 let toastEl = null;
 let toastTimer = null;
 
-export function toast(msg, type = '') {
+/**
+ * Показывает всплывающее уведомление.
+ * @param {string} msg
+ * @param {''|'success'|'error'|'info'|'warn'} [type='']
+ * @param {number} [duration=2500]
+ */
+export function toast(msg, type = '', duration = 2500) {
   if (!toastEl) {
     toastEl = document.createElement('div');
     toastEl.className = 'toast';
@@ -23,12 +40,12 @@ export function toast(msg, type = '') {
   toastEl.textContent = msg;
   toastEl.className = 'toast show ' + type;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toastEl.className = 'toast'; }, 2500);
+  toastTimer = setTimeout(() => { toastEl.className = 'toast'; }, duration);
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // ОБЩИЕ ХЕЛПЕРЫ
-// ---------------------------------------------------------------------------
+// ============================================================================
 export function el(tag, attrs = {}, children = []) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -53,12 +70,13 @@ export function chip(text, cls = '') {
 }
 
 export function typeTag(type, label = null) {
-  return `<span class="type-tag tag-${type}">${escapeHtml(label || type)}</span>`;
+  const safeType = String(type || 'unknown').replace(/[^a-z0-9-]/gi, '-');
+  return `<span class="type-tag tag-${safeType}">${escapeHtml(label || type || '')}</span>`;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // СТАТИСТИКА
-// ---------------------------------------------------------------------------
+// ============================================================================
 export function renderStatsGrid(stats) {
   const cards = [
     { n: stats.totalModules, l: 'Модулей', c: '' },
@@ -82,11 +100,44 @@ export function renderStatsGrid(stats) {
   ).join('')}</div>`;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
+// ИНДИКАТОР ФОРМАТА (новое)
+// ============================================================================
+/**
+ * Показывает текущий формат загруженного JSON.
+ */
+export function renderFormatBadge() {
+  const fmt = state.originalFormat || '?';
+  const map = {
+    compact: { label: '📦 compact', cls: 'chip green' },
+    full: { label: '📄 full', cls: 'chip blue' },
+    '?': { label: '❓ не загружено', cls: 'chip' },
+  };
+  const m = map[fmt] || map['?'];
+  return `<span class="${m.cls}" title="Формат исходного JSON">${m.label}</span>`;
+}
+
+/**
+ * Показывает информацию о кэше (если есть).
+ */
+export function renderCacheBadge() {
+  const info = getRootCacheInfo();
+  if (!info) {
+    return `<span class="chip" title="Кэш пуст">💾 нет кэша</span>`;
+  }
+  return `<span class="chip blue" title="Кэш от ${escapeHtml(info.url)}">
+    💾 ${escapeHtml(info.ageHuman)}
+  </span>`;
+}
+
+// ============================================================================
 // КАРТОЧКА ФУНКЦИИ
-// ---------------------------------------------------------------------------
+// ============================================================================
 export function renderFnCard(fn, { compact = false, active = false, showCaret = true } = {}) {
+  if (!fn) return '';
   const info = getFnFullInfo(fn.id);
+  if (!info) return '';
+
   const exported = info.exports.length > 0;
   const importersCount = info.imports.length;
   const callersCount = info.callers.length;
@@ -172,13 +223,16 @@ function renderFnSection(title, items, rowFn, limit = Infinity) {
   `;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // КАРТОЧКА КОНСТАНТЫ
-// ---------------------------------------------------------------------------
+// ============================================================================
 export function renderConstCard(c) {
+  if (!c) return '';
   let valueStr = '';
   if (c.value !== undefined) {
-    valueStr = typeof c.value === 'object' ? JSON.stringify(c.value, null, 2) : String(c.value);
+    valueStr = typeof c.value === 'object'
+      ? JSON.stringify(c.value, null, 2)
+      : String(c.value);
   } else {
     valueStr = '(не извлечено)';
   }
@@ -200,10 +254,11 @@ export function renderConstCard(c) {
   `;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // КАРТОЧКА МОДУЛЯ
-// ---------------------------------------------------------------------------
+// ============================================================================
 export function renderModuleCard(m, stats) {
+  if (!m) return '';
   return `
     <div class="panel" style="margin-bottom:10px;">
       <div class="panel-header" style="text-transform:none;">
@@ -221,12 +276,12 @@ export function renderModuleCard(m, stats) {
   `;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // ТАБЛИЦА
-// ---------------------------------------------------------------------------
+// ============================================================================
 export function renderTable(rows, columns, { sortable = true, emptyMsg = 'Нет данных' } = {}) {
-  if (!rows.length) return `<div class="empty-msg">${escapeHtml(emptyMsg)}</div>`;
-  const thead = columns.map(c => `<th data-key="${c.key}">${escapeHtml(c.label)}</th>`).join('');
+  if (!rows || !rows.length) return `<div class="empty-msg">${escapeHtml(emptyMsg)}</div>`;
+  const thead = columns.map(c => `<th data-key="${escapeHtml(c.key)}">${escapeHtml(c.label)}</th>`).join('');
   const tbody = rows.map((r, i) => `
     <tr data-idx="${i}">
       ${columns.map(c => `<td>${c.render ? c.render(r) : escapeHtml(r[c.key] ?? '')}</td>`).join('')}
@@ -240,15 +295,16 @@ export function renderTable(rows, columns, { sortable = true, emptyMsg = 'Нет
   `;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // ДЕРЕВО
-// ---------------------------------------------------------------------------
+// ============================================================================
 export function renderTree(nodes, opts = {}) {
+  if (!nodes || !nodes.length) return '';
   const { expandable = true, selectable = true } = opts;
   function renderNode(node, depth = 0) {
     const hasChildren = node.children && node.children.length > 0;
     return `
-      <div class="tree-node" data-id="${node.id}" data-type="${node.type || ''}" style="padding-left:${depth * 14}px;">
+      <div class="tree-node" data-id="${escapeHtml(node.id)}" data-type="${escapeHtml(node.type || '')}" style="padding-left:${depth * 14}px;">
         ${hasChildren && expandable
       ? `<span class="caret" data-action="toggle-tree">▶</span>`
       : `<span class="caret-placeholder"></span>`}
@@ -262,21 +318,21 @@ export function renderTree(nodes, opts = {}) {
   return `<div class="tree">${nodes.map(n => renderNode(n)).join('')}</div>`;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // ХЛЕБНЫЕ КРОШКИ
-// ---------------------------------------------------------------------------
+// ============================================================================
 export function renderBreadcrumbs(items) {
   return `<div class="breadcrumbs">${items.map((it, i) => {
     const sep = i < items.length - 1 ? '<span class="bc-sep">→</span>' : '';
     const cls = it.active ? 'bc-item active' : 'bc-item';
-    const action = it.action ? `data-action="${it.action}" data-id="${it.id || ''}"` : '';
+    const action = it.action ? `data-action="${escapeHtml(it.action)}" data-id="${escapeHtml(it.id || '')}"` : '';
     return `<span class="${cls}" ${action}>${it.icon ? it.icon + ' ' : ''}${escapeHtml(it.label)}</span>${sep}`;
   }).join('')}</div>`;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // СЕКЦИЯ (аккордеон)
-// ---------------------------------------------------------------------------
+// ============================================================================
 export function renderSection(title, count, bodyHtml, { open = true, icon = '' } = {}) {
   return `
     <div class="anp-section">
@@ -289,13 +345,13 @@ export function renderSection(title, count, bodyHtml, { open = true, icon = '' }
   `;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // СТРОКИ
-// ---------------------------------------------------------------------------
+// ============================================================================
 export function renderLinkRow({ icon, name, nameClass = '', meta, tag, tagClass = '', line, action, id, title }) {
   const attrs = [
-    action ? `data-action="${action}"` : '',
-    id ? `data-id="${id}"` : '',
+    action ? `data-action="${escapeHtml(action)}"` : '',
+    id ? `data-id="${escapeHtml(id)}"` : '',
     title ? `title="${escapeHtml(title)}"` : '',
   ].filter(Boolean).join(' ');
   return `
@@ -309,9 +365,9 @@ export function renderLinkRow({ icon, name, nameClass = '', meta, tag, tagClass 
   `;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // ПУСТОЕ СОСТОЯНИЕ
-// ---------------------------------------------------------------------------
+// ============================================================================
 export function renderEmpty(icon, text, hint = '') {
   return `
     <div class="anp-empty">
@@ -322,12 +378,12 @@ export function renderEmpty(icon, text, hint = '') {
   `;
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // СПИСОК ФАЙЛОВ (для сайдбара)
-// ---------------------------------------------------------------------------
+// ============================================================================
 export function renderFileList(filter = {}) {
   const { query = '', depsOnly = false, selectedId = null } = filter;
-  const q = query.toLowerCase();
+  const q = (query || '').toLowerCase();
   const items = [];
   for (const [id, f] of Object.entries(state.files)) {
     if (q && !f.path.toLowerCase().includes(q)) continue;
@@ -337,19 +393,19 @@ export function renderFileList(filter = {}) {
     items.push({ id, f, deps, imps });
   }
   if (!items.length) return `<div class="empty-msg">Ничего не найдено</div>`;
-  return items.map(({ id, f, deps, imps }) => {
+  return items.map(({ id, f }) => {
     const modName = getModuleName(f.moduleId);
     const active = id === selectedId ? ' active' : '';
-    return `<div class="file-item${active}" data-action="select-file" data-id="${id}" title="${escapeHtml(f.path)}">
+    return `<div class="file-item${active}" data-action="select-file" data-id="${escapeHtml(id)}" title="${escapeHtml(f.path)}">
       <span class="file-path">${escapeHtml(f.path)}</span>
       <span class="mod-badge">${escapeHtml(modName)}</span>
     </div>`;
   }).join('');
 }
 
-// ---------------------------------------------------------------------------
+// ============================================================================
 // ХЕЛПЕР: цвет по числу
-// ---------------------------------------------------------------------------
+// ============================================================================
 export function heatColor(v, max) {
   if (!max) return 'transparent';
   const t = Math.min(1, v / max);
@@ -357,4 +413,233 @@ export function heatColor(v, max) {
   const g = Math.round(185 + (81 - 185) * t);
   const b = Math.round(80 + (73 - 80) * t);
   return `rgba(${r},${g},${b},${0.15 + t * 0.5})`;
+}
+
+// ============================================================================
+// ПАНЕЛЬ ИНФОРМАЦИИ О ФОРМАТЕ И КЭШЕ (новое)
+// ============================================================================
+/**
+ * Возвращает HTML-блок с информацией о текущем файле: формат, кэш, версия.
+ */
+export function renderLoadInfo() {
+  const fmt = state.originalFormat || '?';
+  const info = getRootCacheInfo();
+  const cacheInfo = info
+    ? `<span class="chip blue" title="Источник: ${escapeHtml(info.url)}">💾 ${escapeHtml(info.ageHuman)}</span>`
+    : `<span class="chip" title="Кэш пуст">💾 нет кэша</span>`;
+
+  const fmtLabel = fmt === 'compact' ? '📦 compact (index.json)'
+    : fmt === 'full' ? '📄 full (index.full.json)'
+      : '❓ не загружено';
+
+  return `
+    <div class="load-info" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+      <span class="chip">${escapeHtml(fmtLabel)}</span>
+      ${cacheInfo}
+      <span class="chip">v${escapeHtml(state.version)}</span>
+      <span class="chip">${escapeHtml(state.timestamp || '?')}</span>
+    </div>
+  `;
+}
+
+// ============================================================================
+// КНОПКИ ЭКСПОРТА (новое)
+// ============================================================================
+/**
+ * Возвращает HTML с кнопками экспорта и round-trip.
+ * Требует наличия обработчиков в основном приложении (data-action).
+ */
+export function renderExportControls() {
+  return `
+    <div class="export-controls" style="display:flex; gap:6px; flex-wrap:wrap;">
+      <button class="btn" data-action="export-full" title="Скачать полный JSON">📄 Full</button>
+      <button class="btn" data-action="export-compact" title="Скачать компактный JSON (пересборка словарей)">📦 Compact</button>
+      <button class="btn" data-action="export-compact-symmetric" title="Скачать компактный JSON (симметричные словари)">📦 Compact (симметрия)</button>
+      <button class="btn" data-action="verify-roundtrip-l1" title="Проверка семантической эквивалентности">🔍 L1</button>
+      <button class="btn" data-action="verify-roundtrip-l3" title="Проверка байт-в-байт">🔍 L3</button>
+      <button class="btn" data-action="clear-cache" title="Очистить localStorage-кэш">🗑 Кэш</button>
+    </div>
+  `;
+}
+
+// ============================================================================
+// ПАНЕЛЬ РЕЗУЛЬТАТОВ ROUND-TRIP (новое)
+// ============================================================================
+/**
+ * Отображает результат round-trip проверки.
+ * @param {object} result — { ok, diff, reason? }
+ * @param {string} label — заголовок (L1, L3, ...)
+ */
+export function renderRoundTripResult(result, label = 'Round-trip') {
+  if (!result) {
+    return `<div class="empty-msg">Нет результата</div>`;
+  }
+  if (result.reason) {
+    return `<div class="empty-msg">${escapeHtml(result.reason)}</div>`;
+  }
+  if (result.ok) {
+    return `
+      <div class="panel" style="border-color: var(--green);">
+        <div class="panel-header" style="text-transform:none;">
+          <span class="green-bold">✓ ${escapeHtml(label)}: OK</span>
+        </div>
+        <div class="panel-body" style="padding:10px 14px;">
+          <div class="dim">Симметрия сохранена — данные не изменились после цикла.</div>
+        </div>
+      </div>
+    `;
+  }
+  const diffs = result.diff || [];
+  return `
+    <div class="panel" style="border-color: var(--red);">
+      <div class="panel-header" style="text-transform:none;">
+        <span class="red-bold" style="color:var(--red);">✗ ${escapeHtml(label)}: расхождения (${diffs.length})</span>
+      </div>
+      <div class="panel-body" style="padding:10px 14px;">
+        ${diffs.length === 0 ? '<div class="dim">Без деталей</div>' : `
+          <table class="data-table">
+            <thead><tr><th>Путь</th><th>Ожидалось</th><th>Получено</th></tr></thead>
+            <tbody>
+              ${diffs.slice(0, 20).map(d => `
+                <tr>
+                  <td class="mono" style="font-size:10px;">${escapeHtml(d.path)}</td>
+                  <td class="mono" style="font-size:10px;">${escapeHtml(stringifyShort(d.a))}</td>
+                  <td class="mono" style="font-size:10px;">${escapeHtml(stringifyShort(d.b))}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `}
+      </div>
+    </div>
+  `;
+}
+
+function stringifyShort(v) {
+  if (v === undefined) return 'undefined';
+  if (v === null) return 'null';
+  if (typeof v === 'object') return JSON.stringify(v).slice(0, 60);
+  return String(v).slice(0, 60);
+}
+
+// ============================================================================
+// МОДАЛКА ИНФОРМАЦИИ О ФАЙЛЕ (новое)
+// ============================================================================
+/**
+ * Открывает модалку с информацией о текущем загруженном файле.
+ * Использует существующий fnModal или создаёт свой.
+ */
+export function showLoadInfoModal() {
+  const info = getRootCacheInfo();
+  const fmt = state.originalFormat || '?';
+
+  const rows = [
+    ['Формат', fmt === 'compact' ? '📦 compact (index.json)' : fmt === 'full' ? '📄 full (index.full.json)' : '❓ неизвестно'],
+    ['Версия', state.version || '?'],
+    ['Timestamp', state.timestamp || '?'],
+    ['Модулей', Object.keys(state.modules || {}).length],
+    ['Файлов', Object.keys(state.files || {}).length],
+    ['Функций', Object.keys(state.functions || {}).length],
+    ['Констант', Object.keys(state.constants || {}).length],
+    ['Экспортов', state.exports.length],
+    ['Импортов', state.imports.length],
+    ['Вызовов', state.calls.length],
+    ['Источник', info ? info.url : '(manual)'],
+    ['Возраст кэша', info ? info.ageHuman : '—'],
+  ];
+
+  const html = `
+    <table class="data-table">
+      <tbody>
+        ${rows.map(([k, v]) => `
+          <tr>
+            <td class="dim" style="width:40%;">${escapeHtml(k)}</td>
+            <td class="mono">${escapeHtml(String(v))}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <div style="margin-top:14px; display:flex; gap:6px; flex-wrap:wrap;">
+      ${renderExportControls()}
+    </div>
+  `;
+
+  // Используем существующую модалку или создаём временную
+  const modalId = 'loadInfoModal';
+  let modal = document.getElementById(modalId);
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.id = modalId;
+    modal.innerHTML = `
+      <div class="modal" style="max-width:700px;">
+        <div class="modal-header">
+          <h3>ℹ️ Информация о загрузке</h3>
+          <button class="modal-close" data-action="close-modal">×</button>
+        </div>
+        <div class="modal-body" id="${modalId}Body"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  }
+  document.getElementById(modalId + 'Body').innerHTML = html;
+  modal.classList.add('show');
+}
+
+// ============================================================================
+// ПРОГРЕСС ЗАГРУЗКИ (новое)
+// ============================================================================
+/**
+ * Простой прогресс-бар для длительных операций (декодирование больших JSON).
+ */
+export function showProgress(message = 'Загрузка…') {
+  let bar = document.getElementById('astProgressBar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'astProgressBar';
+    bar.style.cssText = `
+      position: fixed; top: 0; left: 0; right: 0; height: 3px;
+      background: var(--accent, #58a6ff); z-index: 99999;
+      transform-origin: left; transform: scaleX(0);
+      transition: transform 0.3s ease;
+      pointer-events: none;
+    `;
+    document.body.appendChild(bar);
+
+    const label = document.createElement('div');
+    label.id = 'astProgressLabel';
+    label.style.cssText = `
+      position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+      background: var(--bg-elev, #1c2128); color: var(--text, #e6edf3);
+      padding: 6px 14px; border-radius: 6px; font-size: 12px;
+      border: 1px solid var(--border, #30363d); z-index: 99999;
+      pointer-events: none; opacity: 0; transition: opacity 0.2s;
+    `;
+    label.textContent = message;
+    document.body.appendChild(label);
+    setTimeout(() => { label.style.opacity = '1'; }, 10);
+  } else {
+    const label = document.getElementById('astProgressLabel');
+    if (label) label.textContent = message;
+  }
+  bar.style.transform = 'scaleX(0.1)';
+  setTimeout(() => { bar.style.transform = 'scaleX(0.5)'; }, 100);
+  setTimeout(() => { bar.style.transform = 'scaleX(0.8)'; }, 300);
+}
+
+/**
+ * Скрывает прогресс-бар.
+ */
+export function hideProgress() {
+  const bar = document.getElementById('astProgressBar');
+  const label = document.getElementById('astProgressLabel');
+  if (bar) {
+    bar.style.transform = 'scaleX(1)';
+    setTimeout(() => {
+      bar.remove();
+      if (label) label.remove();
+    }, 300);
+  } else if (label) {
+    label.remove();
+  }
 }

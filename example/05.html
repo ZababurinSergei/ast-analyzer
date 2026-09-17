@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🔍 AST Analyzer — Полный инспектор v9</title>
+    <title>🔍 AST Analyzer — Полный инспектор v9.1</title>
     <style>
         :root {
             --bg: #0d1117; --bg-panel: #161b22; --bg-elev: #1c2128; --bg-input: #0d1117;
@@ -47,6 +47,20 @@
         .btn.primary:hover { background: var(--accent-hover); }
         .btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .btn.small { padding: 4px 10px; font-size: 11px; }
+
+        /* STATUS BAR */
+        .status-bar {
+            background: var(--bg-elev); border: 1px solid var(--border);
+            border-radius: 6px; padding: 6px 12px; margin-bottom: 12px;
+            font-size: 11px; display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
+            font-family: 'Consolas', monospace;
+        }
+        .status-bar .item { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); }
+        .status-bar .item b { color: var(--text); }
+        .status-bar .item.ok { color: var(--green); }
+        .status-bar .item.warn { color: var(--yellow); }
+        .status-bar .item.err { color: var(--red); }
 
         /* UPLOAD */
         .upload {
@@ -60,6 +74,7 @@
         .upload .title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
         .upload .subtitle { color: var(--text-dim); font-size: 13px; }
         .upload .loaded { margin-top: 8px; color: var(--green); font-weight: 600; font-size: 13px; }
+        .upload.compact { padding: 16px; }
 
         /* CONTROLS */
         .controls {
@@ -378,11 +393,13 @@
             background: var(--bg-elev); color: var(--text);
             padding: 10px 20px; border-radius: 8px; border: 1px solid var(--border);
             font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            transition: transform 0.3s; z-index: 9999;
+            transition: transform 0.3s; z-index: 9999; max-width: 90vw;
+            white-space: normal; text-align: center;
         }
         .toast.show { transform: translateX(-50%) translateY(0); }
         .toast.error { border-color: var(--red); color: var(--red); }
         .toast.success { border-color: var(--green); color: var(--green); }
+        .toast.info { border-color: var(--accent); color: var(--accent); }
 
         .kbd { display: inline-block; padding: 1px 5px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; font-size: 10px; font-family: monospace; color: var(--text-dim); }
         .caret { display: inline-block; transition: transform 0.2s; color: var(--text-dim); font-size: 10px; }
@@ -446,25 +463,39 @@
         .mono { font-family: 'Consolas', monospace; }
         .blue-bold { color: var(--accent); font-weight: 700; }
         .green-bold { color: var(--green); font-weight: 700; }
+        .red-bold { color: var(--red); font-weight: 700; }
         .dim { color: var(--text-faint); }
     </style>
 </head>
 <body>
 <div class="app">
     <header>
-        <h1>🔍 AST Analyzer <span class="ver" id="verTag">v9</span></h1>
+        <h1>🔍 AST Analyzer <span class="ver" id="verTag">v9.1</span></h1>
         <div class="header-actions">
+            <button class="btn" id="loadRootBtn" title="Загрузить index.json из корня проекта">📂 Из корня</button>
             <button class="btn" id="themeBtn">🌙 Тема</button>
-            <button class="btn" id="exportAllBtn" disabled>📥 Экспорт всего</button>
+            <button class="btn" id="exportAllBtn" disabled>📥 Экспорт (full)</button>
+            <button class="btn" id="exportCompactBtn" disabled>📦 Экспорт (compact)</button>
+            <button class="btn" id="verifyRoundTripBtn" disabled title="Проверить симметрию decode/encode">🔁 Round-trip</button>
             <button class="btn" id="helpBtn">⌨️ Горячие</button>
         </div>
     </header>
 
+    <div class="status-bar" id="statusBar">
+        <span class="item">Формат: <b id="stFormat">—</b></span>
+        <span class="item">Версия: <b id="stVersion">—</b></span>
+        <span class="item">Время: <b id="stTimestamp">—</b></span>
+        <span class="item">Кэш: <b id="stCache">—</b></span>
+        <span class="item">Codec: <b id="stCodec">—</b></span>
+    </div>
+
     <div class="upload" id="upload">
-        <input type="file" id="fileInput" accept=".json,application/json">
+        <input type="file" id="fileInput" accept=".json,application/json" multiple>
         <div class="icon">📦</div>
-        <div class="title">Перетащите index.full.json.json сюда</div>
-        <div class="subtitle">или нажмите для выбора · Формат ast-analyzer v8.0.0</div>
+        <div class="title">Перетащите index.json и index.full.json сюда</div>
+        <div class="subtitle">
+            можно выбрать <b>оба файла</b> для комплексной проверки · или один для обычного анализа
+        </div>
         <div class="loaded" id="fileName"></div>
     </div>
 
@@ -568,7 +599,8 @@
             <div style="display:grid; grid-template-columns: auto 1fr; gap: 10px 24px; font-size:13px;">
                 <div><span class="kbd">Ctrl</span>+<span class="kbd">K</span></div><div>Фокус на поиск файлов</div>
                 <div><span class="kbd">Ctrl</span>+<span class="kbd">Shift</span>+<span class="kbd">F</span></div><div>Глобальный поиск</div>
-                <div><span class="kbd">Ctrl</span>+<span class="kbd">E</span></div><div>Экспорт всего</div>
+                <div><span class="kbd">Ctrl</span>+<span class="kbd">E</span></div><div>Экспорт всего (full)</div>
+                <div><span class="kbd">Ctrl</span>+<span class="kbd">Shift</span>+<span class="kbd">E</span></div><div>Экспорт (compact)</div>
                 <div><span class="kbd">↑</span> / <span class="kbd">↓</span></div><div>Навигация по файлам</div>
                 <div><span class="kbd">Esc</span></div><div>Закрыть / сбросить</div>
                 <div><span class="kbd">1</span>…<span class="kbd">0</span></div><div>Переключение вкладок</div>
@@ -578,146 +610,266 @@
 </div>
 
 <script type="module">
-  import * as Core from './ast-analyzer-core.js';
-  import * as UI from './ast-analyzer-ui.js';
-  import * as Graph from './ast-analyzer-graph.js';
+    import * as Codec from './ast-analyzer-codec.js';
+    import * as Core from './ast-analyzer-core.js';
+    import * as UI from './ast-analyzer-ui.js';
+    import * as Graph from './ast-analyzer-graph.js';
 
-  const $ = id => document.getElementById(id);
-  const state = Core.state;
+    const $ = id => document.getElementById(id);
+    const state = Core.state;
 
-  // ---------------------------------------------------------------------------
-  // ЗАГРУЗКА
-  // ---------------------------------------------------------------------------
-  const upload = $('upload');
-  const fileInput = $('fileInput');
+    // ---------------------------------------------------------------------------
+    // СТАТУС-БАР
+    // ---------------------------------------------------------------------------
+    function refreshStatusBar() {
+        // ИЗМЕНЕНО: показываем какие форматы загружены
+        const fmtTag = [];
+        if (state.rawCompact) fmtTag.push('compact');
+        if (state.rawFull) fmtTag.push('full');
+        $('stFormat').textContent = fmtTag.join(' + ') || state.originalFormat || '—';
+        $('stVersion').textContent = state.version || '—';
+        $('stTimestamp').textContent = state.timestamp || '—';
 
-  upload.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
-  upload.addEventListener('dragover', e => { e.preventDefault(); upload.classList.add('drag'); });
-  upload.addEventListener('dragleave', () => upload.classList.remove('drag'));
-  upload.addEventListener('drop', e => {
-    e.preventDefault(); upload.classList.remove('drag');
-    handleFile(e.dataTransfer.files[0]);
-  });
+        const cacheInfo = Core.getRootCacheInfo?.();
+        const cacheEl = $('stCache');
+        if (cacheInfo) {
+            cacheEl.textContent = `${cacheInfo.ageHuman} · ${cacheInfo.url}`;
+            cacheEl.parentElement.className = 'item ok';
+        } else {
+            cacheEl.textContent = 'пусто';
+            cacheEl.parentElement.className = 'item';
+        }
 
-  function handleFile(file) {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      try {
-        Core.loadData(JSON.parse(ev.target.result));
-        onLoaded(file.name);
-      } catch (err) {
-        console.error(err);
-        UI.toast('Ошибка: ' + err.message, 'error');
-      }
-    };
-    reader.readAsText(file);
-  }
+        const codecEl = $('stCodec');
+        if (state.__codec) {
+            const s = state.__codec.stringDict?.length || 0;
+            const p = state.__codec.paramDict?.length || 0;
+            const v = state.__codec.valueDict?.length || 0;
+            codecEl.textContent = `S=${s} P=${p} V=${v}`;
+            codecEl.parentElement.className = 'item ok';
+        } else {
+            codecEl.textContent = 'нет';
+            codecEl.parentElement.className = 'item';
+        }
+    }
 
-  function onLoaded(name) {
-    $('verTag').textContent = 'v' + state.version;
-    $('fileName').textContent = `✓ ${name} — ${Object.keys(state.files).length} файлов · ${Object.keys(state.functions).length} функций · ${state.calls.length} вызовов`;
-    $('exportAllBtn').disabled = false;
+    // ---------------------------------------------------------------------------
+    // ЗАГРУЗКА
+    // ---------------------------------------------------------------------------
+    const upload = $('upload');
+    const fileInput = $('fileInput');
 
-    const stats = Core.getProjectStats();
-    $('totalFiles').textContent = stats.totalFiles;
-    $('totalModules').textContent = stats.totalModules;
-    $('totalFunctions').textContent = stats.totalFunctions;
-    $('totalCalls').textContent = stats.totalCalls;
-    $('totalExports').textContent = stats.totalExports;
-    $('totalImports').textContent = stats.totalImports;
-    $('totalDead').textContent = stats.deadExports + stats.deadFunctions;
-    $('totalCycles').textContent = stats.cyclicDeps;
-
-    renderFileList();
-    UI.toast('✓ Загружено', 'success');
-
-    const first = Object.keys(state.files)[0];
-    if (first) selectFile(first);
-  }
-
-  // ---------------------------------------------------------------------------
-  // СПИСОК ФАЙЛОВ
-  // ---------------------------------------------------------------------------
-  function renderFileList() {
-    const html = UI.renderFileList({
-      query: state.searchQuery,
-      depsOnly: state.depsOnly,
-      selectedId: state.selectedFileId,
+    upload.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', e => handleFiles(e.target.files));
+    upload.addEventListener('dragover', e => { e.preventDefault(); upload.classList.add('drag'); });
+    upload.addEventListener('dragleave', () => upload.classList.remove('drag'));
+    upload.addEventListener('drop', e => {
+        e.preventDefault(); upload.classList.remove('drag');
+        handleFiles(e.dataTransfer.files);
     });
-    $('fileList').innerHTML = html;
-    $('sidebarCount').textContent = $('fileList').querySelectorAll('.file-item').length;
-  }
 
-  // ---------------------------------------------------------------------------
-  // ВЫБОР ФАЙЛА
-  // ---------------------------------------------------------------------------
-  function selectFile(fileId) {
-    state.selectedFileId = fileId;
-    renderFileList();
-    $('emptyState').style.display = 'none';
-    $('analysisView').style.display = 'block';
-    renderAnalysis();
-    if (!state.activeNode) setActiveNode('file', fileId);
-  }
+    // ИЗМЕНЕНО: поддержка загрузки нескольких файлов (compact + full)
+    let pendingFiles = [];
 
-  // ---------------------------------------------------------------------------
-  // АКТИВНЫЙ УЗЕЛ
-  // ---------------------------------------------------------------------------
-  function setActiveNode(type, id) {
-    state.activeNode = { type, id };
-    $('activeNodePanel').classList.remove('empty-state');
-    $('anpClose').style.display = 'block';
-    renderActiveNode();
-    if (type === 'fn') {
-      document.querySelectorAll('.fn-card').forEach(c => c.classList.remove('active'));
-      const card = $('fn-card-' + id);
-      if (card) card.classList.add('active');
-    }
-  }
-
-  function clearActiveNode() {
-    state.activeNode = null;
-    $('activeNodePanel').classList.add('empty-state');
-    $('anpClose').style.display = 'none';
-    $('anpBody').innerHTML = UI.renderEmpty('🎯', 'Выберите <b>функцию</b>, <b>файл</b> или <b>модуль</b>,<br>чтобы увидеть её связи здесь.');
-    document.querySelectorAll('.fn-card').forEach(c => c.classList.remove('active'));
-  }
-
-  function renderActiveNode() {
-    const { type, id } = state.activeNode || {};
-    if (!type) return;
-    const body = $('anpBody');
-
-    if (type === 'fn') renderActiveFn(id, body);
-    else if (type === 'file') renderActiveFile(id, body);
-    else if (type === 'module') renderActiveModule(id, body);
-    else if (type === 'external') renderActiveExternal(id, body);
-    else if (type === 'const') renderActiveConst(id, body);
-  }
-
-  function renderActiveFn(fnId, body) {
-    const info = Core.getFnFullInfo(fnId);
-    if (!info) { body.innerHTML = UI.renderEmpty('⚠️', 'Функция не найдена'); return; }
-    const { fn, file, module, exports, imports, calls, callers } = info;
-
-    const kw = [];
-    if (fn.isAsync) kw.push('async');
-    if (fn.isArrow) kw.push('arrow');
-    if (fn.isMethod) kw.push('method');
-
-    const params = fn.params || [];
-    const ret = fn.returnType || '';
-
-    const importsByModule = {};
-    for (const i of imports) {
-      const key = i.toModuleName || '?';
-      if (!importsByModule[key]) importsByModule[key] = [];
-      importsByModule[key].push(i);
+    function handleFiles(files) {
+        if (!files || files.length === 0) return;
+        pendingFiles = Array.from(files);
+        processNext();
     }
 
-    body.innerHTML = `
+    function processNext() {
+        if (pendingFiles.length === 0) {
+            // Все файлы обработаны — обновляем UI
+            onLoaded('(files)');
+            return;
+        }
+        const file = pendingFiles.shift();
+        const reader = new FileReader();
+        reader.onload = ev => {
+            try {
+                const json = JSON.parse(ev.target.result);
+                const fmt = Core.detectFormat(json);
+
+                if (pendingFiles.length > 0 || Core.state.raw) {
+                    // Загружаем как второй файл — сохраняем оба
+                    Core.loadBothFormats(json, fmt, file.name);
+                    UI.toast(`✓ Загружен ${fmt}: ${file.name}`, 'info', 1200);
+                } else {
+                    // Первый файл — обычная загрузка
+                    Core.loadData(json);
+                    // Дополнительно сохраняем исходный в буферы
+                    if (fmt === 'compact') Core.state.rawCompact = json;
+                    if (fmt === 'full') Core.state.rawFull = json;
+                }
+                processNext();
+            } catch (err) {
+                console.error(err);
+                UI.toast('Ошибка чтения ' + file.name + ': ' + err.message, 'error');
+                processNext();
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    // Обратная совместимость: одиночный файл
+    function handleFile(file) {
+        if (!file) return;
+        handleFiles([file]);
+    }
+
+    function onLoaded(name) {
+        $('verTag').textContent = 'v' + state.version;
+
+        // ИЗМЕНЕНО: показываем какие форматы загружены
+        const fmtTag = [];
+        if (state.rawCompact) fmtTag.push('📦 compact');
+        if (state.rawFull) fmtTag.push('📄 full');
+
+        $('fileName').textContent =
+          `✓ ${name} — ${Object.keys(state.files).length} файлов · ` +
+          `${Object.keys(state.functions).length} функций · ` +
+          `${state.calls.length} вызовов · ` +
+          `форматы: ${fmtTag.join(' + ') || '—'}`;
+
+        $('exportAllBtn').disabled = false;
+        $('exportCompactBtn').disabled = false;
+        // ИЗМЕНЕНО: кнопка Round-trip ВСЕГДА активна — проверка состояния внутри обработчика
+        $('verifyRoundTripBtn').disabled = false;
+
+        const stats = Core.getProjectStats();
+        $('totalFiles').textContent = stats.totalFiles;
+        $('totalModules').textContent = stats.totalModules;
+        $('totalFunctions').textContent = stats.totalFunctions;
+        $('totalCalls').textContent = stats.totalCalls;
+        $('totalExports').textContent = stats.totalExports;
+        $('totalImports').textContent = stats.totalImports;
+        $('totalDead').textContent = stats.deadExports + stats.deadFunctions;
+        $('totalCycles').textContent = stats.cyclicDeps;
+
+        refreshStatusBar();
+        renderFileList();
+
+        const first = Object.keys(state.files)[0];
+        if (first) selectFile(first);
+
+        // Тост о загрузке
+        if (state.rawCompact && state.rawFull) {
+            UI.toast('✓ Загружены оба формата — доступна комплексная проверка', 'success');
+        } else {
+            UI.toast('✓ Загружено', 'success');
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // КНОПКА «ИЗ КОРНЯ»
+    // ---------------------------------------------------------------------------
+    $('loadRootBtn').addEventListener('click', async () => {
+        try {
+            UI.toast('Загрузка из корня…');
+            await Core.loadFromRoot({
+                basePath: '',
+                candidates: ['index.json', 'index.full.json'],
+                useCache: true,
+                cacheTTL: 3600_000,
+                fallbackToFilePicker: true,
+                scanDir: true,
+                silent: false,
+            });
+            // После автозагрузки заполняем буферы форматов
+            if (Core.state.originalFormat === 'compact' && Core.state.originalCompact) {
+                Core.state.rawCompact = Core.state.originalCompact;
+            } else if (Core.state.raw) {
+                Core.state.rawFull = Core.state.raw;
+            }
+            onLoaded('(auto)');
+        } catch (e) {
+            console.error(e);
+            UI.toast('Не удалось загрузить: ' + e.message, 'error');
+        }
+    });
+
+    // ---------------------------------------------------------------------------
+    // СПИСОК ФАЙЛОВ
+    // ---------------------------------------------------------------------------
+    function renderFileList() {
+        const html = UI.renderFileList({
+            query: state.searchQuery,
+            depsOnly: state.depsOnly,
+            selectedId: state.selectedFileId,
+        });
+        $('fileList').innerHTML = html;
+        $('sidebarCount').textContent = $('fileList').querySelectorAll('.file-item').length;
+    }
+
+    // ---------------------------------------------------------------------------
+    // ВЫБОР ФАЙЛА
+    // ---------------------------------------------------------------------------
+    function selectFile(fileId) {
+        state.selectedFileId = fileId;
+        renderFileList();
+        $('emptyState').style.display = 'none';
+        $('analysisView').style.display = 'block';
+        renderAnalysis();
+        if (!state.activeNode) setActiveNode('file', fileId);
+    }
+
+    // ---------------------------------------------------------------------------
+    // АКТИВНЫЙ УЗЕЛ
+    // ---------------------------------------------------------------------------
+    function setActiveNode(type, id) {
+        state.activeNode = { type, id };
+        $('activeNodePanel').classList.remove('empty-state');
+        $('anpClose').style.display = 'block';
+        renderActiveNode();
+        if (type === 'fn') {
+            document.querySelectorAll('.fn-card').forEach(c => c.classList.remove('active'));
+            const card = $('fn-card-' + id);
+            if (card) card.classList.add('active');
+        }
+    }
+
+    function clearActiveNode() {
+        state.activeNode = null;
+        $('activeNodePanel').classList.add('empty-state');
+        $('anpClose').style.display = 'none';
+        $('anpBody').innerHTML = UI.renderEmpty('🎯',
+          'Выберите <b>функцию</b>, <b>файл</b> или <b>модуль</b>,<br>чтобы увидеть её связи здесь.');
+        document.querySelectorAll('.fn-card').forEach(c => c.classList.remove('active'));
+    }
+
+    function renderActiveNode() {
+        const { type, id } = state.activeNode || {};
+        if (!type) return;
+        const body = $('anpBody');
+
+        if (type === 'fn') renderActiveFn(id, body);
+        else if (type === 'file') renderActiveFile(id, body);
+        else if (type === 'module') renderActiveModule(id, body);
+        else if (type === 'external') renderActiveExternal(id, body);
+        else if (type === 'const') renderActiveConst(id, body);
+    }
+
+    function renderActiveFn(fnId, body) {
+        const info = Core.getFnFullInfo(fnId);
+        if (!info) { body.innerHTML = UI.renderEmpty('⚠️', 'Функция не найдена'); return; }
+        const { fn, file, module, exports, imports, calls, callers } = info;
+
+        const kw = [];
+        if (fn.isAsync) kw.push('async');
+        if (fn.isArrow) kw.push('arrow');
+        if (fn.isMethod) kw.push('method');
+
+        const params = fn.params || [];
+        const ret = fn.returnType || '';
+
+        const importsByModule = {};
+        for (const i of imports) {
+            const key = i.toModuleName || '?';
+            if (!importsByModule[key]) importsByModule[key] = [];
+            importsByModule[key].push(i);
+        }
+
+        body.innerHTML = `
     <div class="anp-node fn">
       <div class="anp-node-title">⚙️ ${Core.escapeHtml(fn.name)}</div>
       <div class="anp-node-subtitle">📄 ${Core.escapeHtml(file?.path || '?')}:${fn.line}</div>
@@ -738,79 +890,79 @@
     </div>
 
     ${UI.renderSection('📤 Экспортируется как', exports.length,
-      exports.length === 0
-        ? '<div class="empty-msg" style="padding:12px;">Не экспортируется</div>'
-        : exports.map(e => UI.renderLinkRow({
-          icon: '📤', name: e.exportName || e.localName || '?',
-          nameClass: 'yellow', tag: e.type || 'named', tagClass: 'tag-export', line: e.line
-        })).join('')
-    )}
+          exports.length === 0
+            ? '<div class="empty-msg" style="padding:12px;">Не экспортируется</div>'
+            : exports.map(e => UI.renderLinkRow({
+                icon: '📤', name: e.exportName || e.localName || '?',
+                nameClass: 'yellow', tag: e.type || 'named', tagClass: 'tag-export', line: e.line
+            })).join('')
+        )}
 
     ${UI.renderSection('📥 Импортируется в', imports.length,
-      imports.length === 0
-        ? '<div class="empty-msg" style="padding:12px;">Никто не импортирует</div>'
-        : Object.entries(importsByModule).map(([modName, list]) => `
+          imports.length === 0
+            ? '<div class="empty-msg" style="padding:12px;">Никто не импортирует</div>'
+            : Object.entries(importsByModule).map(([modName, list]) => `
             <div class="search-group-title">📦 ${Core.escapeHtml(modName)} (${list.length})</div>
             ${list.map(i => UI.renderLinkRow({
-          icon: '📥', name: Core.shortPath(i.toFilePath, 32),
-          nameClass: 'blue', meta: 'as "' + i.importName + '"',
-          tag: i.isDefault ? 'def' : i.isNamespace ? 'ns' : i.isTypeOnly ? 'type' : '',
-          tagClass: i.isDefault ? 'tag-default' : 'tag-type',
-          line: i.line, action: 'select-file', id: i.toFileId, title: i.toFilePath
-        })).join('')}
+                icon: '📥', name: Core.shortPath(i.toFilePath, 32),
+                nameClass: 'blue', meta: 'as "' + i.importName + '"',
+                tag: i.isDefault ? 'def' : i.isNamespace ? 'ns' : i.isTypeOnly ? 'type' : '',
+                tagClass: i.isDefault ? 'tag-default' : 'tag-type',
+                line: i.line, action: 'select-file', id: i.toFileId, title: i.toFilePath
+            })).join('')}
           `).join('')
-    )}
+        )}
 
     ${UI.renderSection('📞 Кто вызывает', callers.length,
-      callers.length === 0
-        ? '<div class="empty-msg" style="padding:12px;">Никто не вызывает</div>'
-        : callers.map(c => UI.renderLinkRow({
-          icon: '📞', name: c.fromFnName, nameClass: 'purple',
-          meta: Core.shortPath(c.fromFilePath, 22),
-          tag: c.callType, tagClass: 'tag-' + c.callType,
-          line: c.callLine, action: 'jump-fn', id: c.fromFnId, title: c.fromFilePath
-        })).join('')
-    )}
+          callers.length === 0
+            ? '<div class="empty-msg" style="padding:12px;">Никто не вызывает</div>'
+            : callers.map(c => UI.renderLinkRow({
+                icon: '📞', name: c.fromFnName, nameClass: 'purple',
+                meta: Core.shortPath(c.fromFilePath, 22),
+                tag: c.callType, tagClass: 'tag-' + c.callType,
+                line: c.callLine, action: 'jump-fn', id: c.fromFnId, title: c.fromFilePath
+            })).join('')
+        )}
 
     ${UI.renderSection('→ Вызывает', calls.length,
-      calls.length === 0
-        ? '<div class="empty-msg" style="padding:12px;">Ничего не вызывает</div>'
-        : calls.map(c => UI.renderLinkRow({
-          icon: c.isExternal ? '🌐' : '→',
-          name: c.toFnName, nameClass: c.isExternal ? 'red' : 'blue',
-          meta: c.isExternal ? '' : Core.shortPath(c.toFilePath, 22),
-          tag: c.callType, tagClass: 'tag-' + c.callType,
-          line: c.callLine,
-          action: c.isExternal ? 'set-active-external' : 'jump-fn',
-          id: c.isExternal ? c.toFnName : c.toFnId,
-        })).join('')
-    )}
+          calls.length === 0
+            ? '<div class="empty-msg" style="padding:12px;">Ничего не вызывает</div>'
+            : calls.map(c => UI.renderLinkRow({
+                icon: c.isExternal ? '🌐' : '→',
+                name: c.toFnName, nameClass: c.isExternal ? 'red' : 'blue',
+                meta: c.isExternal ? '' : Core.shortPath(c.toFilePath, 22),
+                tag: c.callType, tagClass: 'tag-' + c.callType,
+                line: c.callLine,
+                action: c.isExternal ? 'set-active-external' : 'jump-fn',
+                id: c.isExternal ? c.toFnName : c.toFnId,
+            })).join('')
+        )}
 
     ${UI.renderSection('📄 Родительский файл', 1,
-      UI.renderLinkRow({ icon: '📄', name: Core.shortPath(file?.path, 36), nameClass: 'green', tag: 'file', tagClass: 'tag-export', action: 'select-file', id: fn.fileId, title: file?.path })
-    )}
+          UI.renderLinkRow({ icon: '📄', name: Core.shortPath(file?.path, 36), nameClass: 'green', tag: 'file', tagClass: 'tag-export', action: 'select-file', id: fn.fileId, title: file?.path })
+        )}
   `;
-  }
-
-  function renderActiveFile(fileId, body) {
-    const f = state.files[fileId];
-    if (!f) { body.innerHTML = UI.renderEmpty('⚠️', 'Файл не найден'); return; }
-    const modName = Core.getModuleName(f.moduleId);
-    const fns = state.fileFunctions[fileId] || [];
-    const exps = state.fileExports[fileId] || [];
-    const imps = state.fileImports[fileId] || [];
-    const deps = [...new Set(state.fileDependents[fileId] || [])];
-    const depsOut = [...new Set(state.fileDependencies[fileId] || [])];
-    const exportedFns = fns.filter(x => x.isExported);
-
-    const impsBySource = {};
-    for (const i of imps) {
-      const key = i.isExternal ? `🌐 ${i.source}` : (i.source || '(без source)');
-      if (!impsBySource[key]) impsBySource[key] = [];
-      impsBySource[key].push(i);
     }
 
-    body.innerHTML = `
+    function renderActiveFile(fileId, body) {
+        const f = state.files[fileId];
+        if (!f) { body.innerHTML = UI.renderEmpty('⚠️', 'Файл не найден'); return; }
+        const modName = Core.getModuleName(f.moduleId);
+        const fns = state.fileFunctions[fileId] || [];
+        const exps = state.fileExports[fileId] || [];
+        const imps = state.fileImports[fileId] || [];
+        const deps = [...new Set(state.fileDependents[fileId] || [])];
+        const depsOut = [...new Set(state.fileDependencies[fileId] || [])];
+        const exportedFns = fns.filter(x => x.isExported);
+
+        const impsBySource = {};
+        for (const i of imps) {
+            const key = i.isExternal ? `🌐 ${i.source}` : (i.source || '(без source)');
+            if (!impsBySource[key]) impsBySource[key] = [];
+            impsBySource[key].push(i);
+        }
+
+        body.innerHTML = `
     <div class="anp-node file">
       <div class="anp-node-title">📄 ${Core.escapeHtml(f.path.split('/').pop())}</div>
       <div class="anp-node-subtitle">${Core.escapeHtml(f.path)}</div>
@@ -823,87 +975,87 @@
     </div>
 
     ${UI.renderSection('📤 Экспортированные функции', exportedFns.length,
-      exportedFns.length === 0
-        ? '<div class="empty-msg" style="padding:12px;">Нет экспортированных функций</div>'
-        : exportedFns.map(fn => {
-          const importers = state.fnImportTargets[fn.id]?.length || 0;
-          return UI.renderLinkRow({
-            icon: 'ƒ', name: fn.name, nameClass: 'blue',
-            meta: importers > 0 ? '←' + importers : '',
-            line: fn.line, action: 'set-active-fn', id: fn.id
-          });
-        }).join('')
-    )}
+          exportedFns.length === 0
+            ? '<div class="empty-msg" style="padding:12px;">Нет экспортированных функций</div>'
+            : exportedFns.map(fn => {
+                const importers = state.fnImportTargets[fn.id]?.length || 0;
+                return UI.renderLinkRow({
+                    icon: 'ƒ', name: fn.name, nameClass: 'blue',
+                    meta: importers > 0 ? '←' + importers : '',
+                    line: fn.line, action: 'set-active-fn', id: fn.id
+                });
+            }).join('')
+        )}
 
     ${UI.renderSection('📥 Импортируют этот файл', deps.length,
-      deps.length === 0
-        ? '<div class="empty-msg" style="padding:12px;">Никто не импортирует</div>'
-        : deps.map(id => {
-          const names = Core.getImportedNames(id, fileId);
-          const preview = names.slice(0, 3);
-          return `<div class="anp-link" data-action="select-file" data-id="${id}" style="flex-direction:column; align-items:flex-start; gap:4px; padding:8px;">
+          deps.length === 0
+            ? '<div class="empty-msg" style="padding:12px;">Никто не импортирует</div>'
+            : deps.map(id => {
+                const names = Core.getImportedNames(id, fileId);
+                const preview = names.slice(0, 3);
+                return `<div class="anp-link" data-action="select-file" data-id="${id}" style="flex-direction:column; align-items:flex-start; gap:4px; padding:8px;">
               <div style="display:flex; width:100%; gap:6px; align-items:center;">
                 <span class="link-name blue" style="flex:1;">${Core.escapeHtml(Core.shortPath(Core.getFilePath(id), 34))}</span>
                 <span class="link-tag tag-import">←</span>
               </div>
               ${preview.length ? `<div style="display:flex; gap:3px; flex-wrap:wrap;">${preview.map(n => `<span class="chip yellow" style="font-size:10px;">${Core.escapeHtml(n)}</span>`).join('')}${names.length > 3 ? `<span class="chip">+${names.length - 3}</span>` : ''}</div>` : ''}
             </div>`;
-        }).join('')
-    )}
+            }).join('')
+        )}
 
     ${UI.renderSection('📥 Импорты этого файла', imps.length,
-      imps.length === 0
-        ? '<div class="empty-msg" style="padding:12px;">Нет импортов</div>'
-        : Object.entries(impsBySource).map(([src, list]) => `
+          imps.length === 0
+            ? '<div class="empty-msg" style="padding:12px;">Нет импортов</div>'
+            : Object.entries(impsBySource).map(([src, list]) => `
             <div class="search-group-title">${Core.escapeHtml(src)}</div>
             ${list.map(i => UI.renderLinkRow({
-          icon: i.isExternal ? '🌐' : '📥',
-          name: i.isExternal ? i.source : Core.getFilePath(i.toFileId),
-          nameClass: i.isExternal ? 'red' : 'blue',
-          meta: i.importedName || i.localName || '?',
-          tag: i.type || 'named', tagClass: i.isExternal ? 'tag-external' : 'tag-import',
-          line: i.line,
-          action: i.isExternal ? '' : 'select-file', id: i.toFileId,
-        })).join('')}
+                icon: i.isExternal ? '🌐' : '📥',
+                name: i.isExternal ? i.source : Core.getFilePath(i.toFileId),
+                nameClass: i.isExternal ? 'red' : 'blue',
+                meta: i.importedName || i.localName || '?',
+                tag: i.type || 'named', tagClass: i.isExternal ? 'tag-external' : 'tag-import',
+                line: i.line,
+                action: i.isExternal ? '' : 'select-file', id: i.toFileId,
+            })).join('')}
           `).join('')
-    )}
+        )}
 
     ${UI.renderSection('🔗 Импортирует из', depsOut.length,
-      depsOut.length === 0
-        ? '<div class="empty-msg" style="padding:12px;">Нет исходящих</div>'
-        : depsOut.map(id => UI.renderLinkRow({
-          icon: '🔗', name: Core.shortPath(Core.getFilePath(id), 34), nameClass: 'blue',
-          tag: '→', tagClass: 'tag-export',
-          action: 'select-file', id, title: Core.getFilePath(id)
-        })).join('')
-    )}
+          depsOut.length === 0
+            ? '<div class="empty-msg" style="padding:12px;">Нет исходящих</div>'
+            : depsOut.map(id => UI.renderLinkRow({
+                icon: '🔗', name: Core.shortPath(Core.getFilePath(id), 34), nameClass: 'blue',
+                tag: '→', tagClass: 'tag-export',
+                action: 'select-file', id, title: Core.getFilePath(id)
+            })).join('')
+        )}
 
     ${UI.renderSection('📋 Все экспорты', exps.length,
-      exps.length === 0
-        ? '<div class="empty-msg" style="padding:12px;">Нет</div>'
-        : exps.map(e => {
-          const fn = e.functionId ? state.fnById[e.functionId] : null;
-          const importers = fn ? (state.fnImportTargets[fn.id]?.length || 0) : 0;
-          return UI.renderLinkRow({
-            icon: '📤', name: e.exportName || e.localName || '?',
-            nameClass: 'yellow',
-            meta: importers > 0 ? '←' + importers : '',
-            tag: e.type || 'named',
-            tagClass: e.isDefault ? 'tag-default' : e.isTypeOnly ? 'tag-type' : 'tag-export',
-            action: fn ? 'set-active-fn' : '', id: fn?.id
-          });
-        }).join('')
-    )}
+          exps.length === 0
+            ? '<div class="empty-msg" style="padding:12px;">Нет</div>'
+            : exps.map(e => {
+                const fn = e.functionId ? state.fnById[e.functionId] : null;
+                const importers = fn ? (state.fnImportTargets[fn.id]?.length || 0) : 0;
+                return UI.renderLinkRow({
+                    icon: '📤', name: e.exportName || e.localName || '?',
+                    nameClass: 'yellow',
+                    meta: importers > 0 ? '←' + importers : '',
+                    tag: e.type || 'named',
+                    tagClass: e.isDefault ? 'tag-default' : e.isTypeOnly ? 'tag-type' : 'tag-export',
+                    action: fn ? 'set-active-fn' : '', id: fn?.id
+                });
+            }).join('')
+        )}
   `;
-  }
+    }
 
-  function renderActiveModule(moduleId, body) {
-    const m = state.modules[moduleId];
-    if (!m) { body.innerHTML = UI.renderEmpty('⚠️', 'Модуль не найден'); return; }
-    const stats = Core.getModuleStats(moduleId);
-    const fileIds = state.moduleFiles[moduleId] || [];
+    function renderActiveModule(moduleId, body) {
+        const m = state.modules[moduleId];
+        if (!m) { body.innerHTML = UI.renderEmpty('⚠️', 'Модуль не найден'); return; }
+        const stats = Core.getModuleStats(moduleId);
+        const fileIds = state.moduleFiles[moduleId] || [];
 
-    body.innerHTML = `
+        body.innerHTML = `
     <div class="anp-node module">
       <div class="anp-node-title">📦 ${Core.escapeHtml(m.name)}</div>
       <div class="anp-node-subtitle">${Core.escapeHtml(m.path || '')}</div>
@@ -917,23 +1069,23 @@
     </div>
 
     ${UI.renderSection('📁 Файлы модуля', fileIds.length,
-      fileIds.map(fid => {
-        const f = state.files[fid];
-        const fnCount = (state.fileFunctions[fid] || []).length;
-        return UI.renderLinkRow({
-          icon: '📄', name: f?.path.split('/').pop() || fid,
-          nameClass: 'blue', meta: fnCount > 0 ? fnCount + ' ƒ' : '—',
-          action: 'select-file', id: fid, title: f?.path
-        });
-      }).join('')
-    )}
+          fileIds.map(fid => {
+              const f = state.files[fid];
+              const fnCount = (state.fileFunctions[fid] || []).length;
+              return UI.renderLinkRow({
+                  icon: '📄', name: f?.path.split('/').pop() || fid,
+                  nameClass: 'blue', meta: fnCount > 0 ? fnCount + ' ƒ' : '—',
+                  action: 'select-file', id: fid, title: f?.path
+              });
+          }).join('')
+        )}
   `;
-  }
+    }
 
-  function renderActiveConst(constId, body) {
-    const c = state.constById[constId];
-    if (!c) { body.innerHTML = UI.renderEmpty('⚠️', 'Константа не найдена'); return; }
-    body.innerHTML = `
+    function renderActiveConst(constId, body) {
+        const c = state.constById[constId];
+        if (!c) { body.innerHTML = UI.renderEmpty('⚠️', 'Константа не найдена'); return; }
+        body.innerHTML = `
     <div class="anp-node class">
       <div class="anp-node-title">📌 ${Core.escapeHtml(c.name)}</div>
       <div class="anp-node-subtitle">📄 ${Core.escapeHtml(Core.getFilePath(c.fileId))}:${c.line}</div>
@@ -944,11 +1096,11 @@
     </div>
     ${UI.renderSection('💾 Значение', 1, `<pre class="code-preview">${Core.escapeHtml(JSON.stringify(c.value, null, 2) || '(не извлечено)')}</pre>`)}
   `;
-  }
+    }
 
-  function renderActiveExternal(extName, body) {
-    const callers = state.externalCallers[extName] || [];
-    body.innerHTML = `
+    function renderActiveExternal(extName, body) {
+        const callers = state.externalCallers[extName] || [];
+        body.innerHTML = `
     <div class="anp-node external">
       <div class="anp-node-title">🌐 ${Core.escapeHtml(extName)}</div>
       <div class="anp-node-subtitle">Внешняя функция / библиотека</div>
@@ -958,42 +1110,42 @@
       </div>
     </div>
     ${UI.renderSection('📞 Вызывается из', callers.length,
-      callers.length === 0
-        ? '<div class="empty-msg" style="padding:12px;">Нет вызовов</div>'
-        : callers.map(c => UI.renderLinkRow({
-          icon: '📞', name: c.fromFnName, nameClass: 'purple',
-          meta: Core.shortPath(c.fromFilePath, 26),
-          tag: c.callType, tagClass: 'tag-' + c.callType,
-          line: c.callLine, action: 'jump-fn', id: c.fromFnId
-        })).join('')
-    )}
+          callers.length === 0
+            ? '<div class="empty-msg" style="padding:12px;">Нет вызовов</div>'
+            : callers.map(c => UI.renderLinkRow({
+                icon: '📞', name: c.fromFnName, nameClass: 'purple',
+                meta: Core.shortPath(c.fromFilePath, 26),
+                tag: c.callType, tagClass: 'tag-' + c.callType,
+                line: c.callLine, action: 'jump-fn', id: c.fromFnId
+            })).join('')
+        )}
   `;
-  }
+    }
 
-  // ---------------------------------------------------------------------------
-  // АНАЛИЗ ФАЙЛА (вкладки)
-  // ---------------------------------------------------------------------------
-  function renderAnalysis() {
-    const fileId = state.selectedFileId;
-    if (!fileId) return;
-    const f = state.files[fileId];
-    const modName = Core.getModuleName(f.moduleId);
+    // ---------------------------------------------------------------------------
+    // АНАЛИЗ ФАЙЛА (вкладки)
+    // ---------------------------------------------------------------------------
+    function renderAnalysis() {
+        const fileId = state.selectedFileId;
+        if (!fileId) return;
+        const f = state.files[fileId];
+        const modName = Core.getModuleName(f.moduleId);
 
-    const fns = state.fileFunctions[fileId] || [];
-    const consts = state.fileConstants[fileId] || [];
-    const exps = state.fileExports[fileId] || [];
-    const imps = state.fileImports[fileId] || [];
-    const deps = [...new Set(state.fileDependents[fileId] || [])];
-    const depsOut = [...new Set(state.fileDependencies[fileId] || [])];
+        const fns = state.fileFunctions[fileId] || [];
+        const consts = state.fileConstants[fileId] || [];
+        const exps = state.fileExports[fileId] || [];
+        const imps = state.fileImports[fileId] || [];
+        const deps = [...new Set(state.fileDependents[fileId] || [])];
+        const depsOut = [...new Set(state.fileDependencies[fileId] || [])];
 
-    const fnIds = new Set(fns.map(x => x.id));
-    const outgoingCalls = state.calls.filter(c => fnIds.has(c.fromFunctionId)).length;
-    const incomingCalls = state.calls.filter(c => {
-      const toFn = state.fnById[c.toFunctionId];
-      return toFn && toFn.fileId === fileId;
-    }).length;
+        const fnIds = new Set(fns.map(x => x.id));
+        const outgoingCalls = state.calls.filter(c => fnIds.has(c.fromFunctionId)).length;
+        const incomingCalls = state.calls.filter(c => {
+            const toFn = state.fnById[c.toFunctionId];
+            return toFn && toFn.fileId === fileId;
+        }).length;
 
-    $('fileInfo').innerHTML = `
+        $('fileInfo').innerHTML = `
     <span class="file-path">📄 ${Core.escapeHtml(f.path)}</span>
     ${UI.chip('📦 ' + modName, 'blue')}
     ${UI.chip('⚙️ ' + fns.length, 'green')}
@@ -1003,29 +1155,29 @@
     ${UI.chip('📞 ' + outgoingCalls + '/' + incomingCalls, 'purple')}
   `;
 
-    $('fnBadge').textContent = fns.length;
-    $('constBadge').textContent = consts.length;
-    $('depBadge').textContent = deps.length + depsOut.length;
-    $('callBadge').textContent = outgoingCalls + incomingCalls;
+        $('fnBadge').textContent = fns.length;
+        $('constBadge').textContent = consts.length;
+        $('depBadge').textContent = deps.length + depsOut.length;
+        $('callBadge').textContent = outgoingCalls + incomingCalls;
 
-    renderOverview(f, fns, consts, exps, imps, deps, depsOut, outgoingCalls, incomingCalls);
-    renderProject();
-    renderFunctions(fns, exps);
-    renderConstants(consts);
-    renderDeps(imps, deps, depsOut);
-    renderCalls(fns, outgoingCalls, incomingCalls);
-    renderGraph();
-    renderSearch();
-    renderDead();
-    renderCycles();
-    renderReexports();
-  }
+        renderOverview(f, fns, consts, exps, imps, deps, depsOut, outgoingCalls, incomingCalls);
+        renderProject();
+        renderFunctions(fns, exps);
+        renderConstants(consts);
+        renderDeps(imps, deps, depsOut);
+        renderCalls(fns, outgoingCalls, incomingCalls);
+        renderGraph();
+        renderSearch();
+        renderDead();
+        renderCycles();
+        renderReexports();
+    }
 
-  function renderOverview(f, fns, consts, exps, imps, deps, depsOut, outCalls, inCalls) {
-    const exportedFns = fns.filter(x => x.isExported);
-    const asyncFns = fns.filter(x => x.isAsync);
+    function renderOverview(f, fns, consts, exps, imps, deps, depsOut, outCalls, inCalls) {
+        const exportedFns = fns.filter(x => x.isExported);
+        const asyncFns = fns.filter(x => x.isAsync);
 
-    $('tab-overview').innerHTML = `
+        $('tab-overview').innerHTML = `
     <div class="stat-grid" style="margin-bottom:16px;">
       <div class="stat-card"><div class="num">${fns.length}</div><div class="lbl">Функций</div></div>
       <div class="stat-card green"><div class="num">${exportedFns.length}</div><div class="lbl">Экспорт</div></div>
@@ -1040,15 +1192,15 @@
         <div class="panel-header"><span>📤 Экспортированные функции</span></div>
         <div class="panel-body">
           ${exportedFns.length === 0 ? '<div class="empty-msg">Нет</div>' :
-      exportedFns.map(fn => {
-        const importers = state.fnImportTargets[fn.id]?.length || 0;
-        return `<div class="row" data-action="set-active-fn" data-id="${fn.id}">
+          exportedFns.map(fn => {
+              const importers = state.fnImportTargets[fn.id]?.length || 0;
+              return `<div class="row" data-action="set-active-fn" data-id="${fn.id}">
                 <span class="name blue">${Core.escapeHtml(fn.name)}</span>
                 ${importers > 0 ? `<span class="chip blue">📥 ${importers}</span>` : ''}
                 <span class="type-tag tag-export">→</span>
               </div>`;
-      }).join('')
-    }
+          }).join('')
+        }
         </div>
       </div>
 
@@ -1056,25 +1208,25 @@
         <div class="panel-header"><span>📥 Импортируют этот файл</span></div>
         <div class="panel-body">
           ${deps.length === 0 ? '<div class="empty-msg">Никто не импортирует</div>' :
-      deps.map(id => {
-        const names = Core.getImportedNames(id, f.id);
-        const preview = names.slice(0, 3);
-        return `<div class="row" data-action="select-file" data-id="${id}">
+          deps.map(id => {
+              const names = Core.getImportedNames(id, f.id);
+              const preview = names.slice(0, 3);
+              return `<div class="row" data-action="select-file" data-id="${id}">
                 <span class="name">${Core.escapeHtml(Core.getFilePath(id))}</span>
                 ${preview.length ? `<span style="display:flex; gap:3px;">${preview.map(n => `<span class="chip yellow" style="font-size:10px;">${Core.escapeHtml(n)}</span>`).join('')}${names.length > 3 ? `<span class="chip">+${names.length - 3}</span>` : ''}</span>` : ''}
                 <span class="type-tag tag-import">←</span>
               </div>`;
-      }).join('')
-    }
+          }).join('')
+        }
         </div>
       </div>
     </div>
   `;
-  }
+    }
 
-  function renderProject() {
-    const stats = Core.getProjectStats();
-    $('tab-project').innerHTML = `
+    function renderProject() {
+        const stats = Core.getProjectStats();
+        $('tab-project').innerHTML = `
     <h3 style="margin-bottom:12px; font-size:14px;">🌐 Статистика проекта</h3>
     ${UI.renderStatsGrid(stats)}
 
@@ -1083,16 +1235,16 @@
         <div class="panel-header"><span>🔥 Топ-15 файлов по связям</span></div>
         <div class="panel-body">
           ${UI.renderTable(
-      state.hotFiles.slice(0, 15).map(h => ({
-        ...h, path: Core.getFilePath(h.id), module: Core.getModuleName(state.files[h.id]?.moduleId)
-      })),
-      [
-        { key: 'path', label: 'Файл', render: r => `<span class="mono blue">${Core.escapeHtml(Core.shortPath(r.path, 50))}</span>` },
-        { key: 'out', label: '→', render: r => `<span class="num">${r.out}</span>` },
-        { key: 'inc', label: '←', render: r => `<span class="num">${r.inc}</span>` },
-        { key: 'total', label: 'Σ', render: r => `<span class="num"><b>${r.total}</b></span>` },
-      ]
-    )}
+          state.hotFiles.slice(0, 15).map(h => ({
+              ...h, path: Core.getFilePath(h.id), module: Core.getModuleName(state.files[h.id]?.moduleId)
+          })),
+          [
+              { key: 'path', label: 'Файл', render: r => `<span class="mono blue">${Core.escapeHtml(Core.shortPath(r.path, 50))}</span>` },
+              { key: 'out', label: '→', render: r => `<span class="num">${r.out}</span>` },
+              { key: 'inc', label: '←', render: r => `<span class="num">${r.inc}</span>` },
+              { key: 'total', label: 'Σ', render: r => `<span class="num"><b>${r.total}</b></span>` },
+          ]
+        )}
         </div>
       </div>
 
@@ -1100,16 +1252,16 @@
         <div class="panel-header"><span>🔥 Топ-15 функций по связям</span></div>
         <div class="panel-body">
           ${UI.renderTable(
-      state.hotFunctions.slice(0, 15).map(h => ({
-        ...h, fn: state.fnById[h.id], name: state.fnById[h.id]?.name || h.id
-      })),
-      [
-        { key: 'name', label: 'Функция', render: r => `<span class="mono purple">${Core.escapeHtml(r.name)}</span>` },
-        { key: 'callers', label: '📞', render: r => `<span class="num">${r.callers}</span>` },
-        { key: 'calls', label: '→', render: r => `<span class="num">${r.calls}</span>` },
-        { key: 'total', label: 'Σ', render: r => `<span class="num"><b>${r.total}</b></span>` },
-      ]
-    )}
+          state.hotFunctions.slice(0, 15).map(h => ({
+              ...h, fn: state.fnById[h.id], name: state.fnById[h.id]?.name || h.id
+          })),
+          [
+              { key: 'name', label: 'Функция', render: r => `<span class="mono purple">${Core.escapeHtml(r.name)}</span>` },
+              { key: 'callers', label: '📞', render: r => `<span class="num">${r.callers}</span>` },
+              { key: 'calls', label: '→', render: r => `<span class="num">${r.calls}</span>` },
+              { key: 'total', label: 'Σ', render: r => `<span class="num"><b>${r.total}</b></span>` },
+          ]
+        )}
         </div>
       </div>
     </div>
@@ -1119,14 +1271,14 @@
         <div class="panel-header"><span>📦 Модули</span></div>
         <div class="panel-body">
           ${Object.values(state.modules).map(m => {
-      const s = Core.getModuleStats(m.id);
-      return `<div class="row" data-action="set-active-module" data-id="${m.id}">
+            const s = Core.getModuleStats(m.id);
+            return `<div class="row" data-action="set-active-module" data-id="${m.id}">
               <span class="name blue">${Core.escapeHtml(m.name)}</span>
               <span class="chip">${s.fileCount} 📁</span>
               <span class="chip purple">${s.fnCount} ƒ</span>
               <span class="chip yellow">${s.exportCount} 📤</span>
             </div>`;
-    }).join('')}
+        }).join('')}
         </div>
       </div>
 
@@ -1134,98 +1286,98 @@
         <div class="panel-header"><span>🌐 Внешние пакеты (${stats.externalPackages.length})</span></div>
         <div class="panel-body">
           ${stats.externalPackages.map(pkg => {
-      const count = state.imports.filter(i => i.packageName === pkg).length;
-      return `<div class="row static">
+            const count = state.imports.filter(i => i.packageName === pkg).length;
+            return `<div class="row static">
               <span class="name red">🌐 ${Core.escapeHtml(pkg)}</span>
               <span class="chip">${count} импортов</span>
             </div>`;
-    }).join('')}
+        }).join('')}
         </div>
       </div>
     </div>
   `;
-  }
-
-  function renderFunctions(fns, exps) {
-    const el = $('tab-functions');
-    if (fns.length === 0) {
-      el.innerHTML = '<div class="empty-msg">В этом файле нет функций</div>';
-      return;
     }
 
-    const filters = [
-      { id: 'all', label: 'Все', test: () => true },
-      { id: 'exported', label: '📤 Экспортированные', test: f => f.isExported },
-      { id: 'async', label: '⚡ Async', test: f => f.isAsync },
-      { id: 'imported', label: '📥 Импортируемые', test: f => (state.fnImportTargets[f.id] || []).length > 0 },
-      { id: 'called', label: '📞 Вызываемые', test: f => (state.fnDetailedCallers[f.id] || []).length > 0 },
-    ];
+    function renderFunctions(fns, exps) {
+        const el = $('tab-functions');
+        if (fns.length === 0) {
+            el.innerHTML = '<div class="empty-msg">В этом файле нет функций</div>';
+            return;
+        }
 
-    el.innerHTML = `
+        const filters = [
+            { id: 'all', label: 'Все', test: () => true },
+            { id: 'exported', label: '📤 Экспортированные', test: f => f.isExported },
+            { id: 'async', label: '⚡ Async', test: f => f.isAsync },
+            { id: 'imported', label: '📥 Импортируемые', test: f => (state.fnImportTargets[f.id] || []).length > 0 },
+            { id: 'called', label: '📞 Вызываемые', test: f => (state.fnDetailedCallers[f.id] || []).length > 0 },
+        ];
+
+        el.innerHTML = `
     <div class="filters" id="fnFilters">
       ${filters.map((f, i) => `<button class="filter-btn ${i === 0 ? 'active' : ''}" data-filter="${f.id}">${f.label}</button>`).join('')}
     </div>
     <div id="fnList"></div>
   `;
 
-    function renderList(filterId) {
-      const filter = filters.find(x => x.id === filterId) || filters[0];
-      const list = fns.filter(filter.test);
-      const listEl = $('fnList');
-      if (list.length === 0) {
-        listEl.innerHTML = '<div class="empty-msg">Нет функций</div>';
-        return;
-      }
-      listEl.innerHTML = list.map(fn => UI.renderFnCard(fn)).join('');
+        function renderList(filterId) {
+            const filter = filters.find(x => x.id === filterId) || filters[0];
+            const list = fns.filter(filter.test);
+            const listEl = $('fnList');
+            if (list.length === 0) {
+                listEl.innerHTML = '<div class="empty-msg">Нет функций</div>';
+                return;
+            }
+            listEl.innerHTML = list.map(fn => UI.renderFnCard(fn)).join('');
+        }
+
+        renderList('all');
+
+        $('fnFilters').addEventListener('click', e => {
+            const btn = e.target.closest('.filter-btn');
+            if (!btn) return;
+            $('fnFilters').querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderList(btn.dataset.filter);
+        });
     }
 
-    renderList('all');
-
-    $('fnFilters').addEventListener('click', e => {
-      const btn = e.target.closest('.filter-btn');
-      if (!btn) return;
-      $('fnFilters').querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      renderList(btn.dataset.filter);
-    });
-  }
-
-  function renderConstants(consts) {
-    const el = $('tab-constants');
-    if (consts.length === 0) {
-      el.innerHTML = '<div class="empty-msg">В этом файле нет констант</div>';
-      return;
-    }
-    el.innerHTML = consts.map(c => UI.renderConstCard(c)).join('');
-  }
-
-  function renderDeps(imps, deps, depsOut) {
-    const el = $('tab-deps');
-    const impsByModule = {};
-    for (const i of imps) {
-      const modName = i.isExternal ? '🌐 External' : Core.getModuleName(state.files[i.toFileId]?.moduleId);
-      if (!impsByModule[modName]) impsByModule[modName] = [];
-      impsByModule[modName].push(i);
+    function renderConstants(consts) {
+        const el = $('tab-constants');
+        if (consts.length === 0) {
+            el.innerHTML = '<div class="empty-msg">В этом файле нет констант</div>';
+            return;
+        }
+        el.innerHTML = consts.map(c => UI.renderConstCard(c)).join('');
     }
 
-    el.innerHTML = `
+    function renderDeps(imps, deps, depsOut) {
+        const el = $('tab-deps');
+        const impsByModule = {};
+        for (const i of imps) {
+            const modName = i.isExternal ? '🌐 External' : Core.getModuleName(state.files[i.toFileId]?.moduleId);
+            if (!impsByModule[modName]) impsByModule[modName] = [];
+            impsByModule[modName].push(i);
+        }
+
+        el.innerHTML = `
     <div class="panel" style="margin-bottom:14px;">
       <div class="panel-header"><span>📥 Импорты (${imps.length})</span></div>
       <div class="panel-body">
         ${imps.length === 0 ? '<div class="empty-msg">Нет</div>' :
-      Object.entries(impsByModule).map(([modName, list]) => `
+          Object.entries(impsByModule).map(([modName, list]) => `
             <div class="search-group-title">${Core.escapeHtml(modName)} (${list.length})</div>
             ${list.map(i => {
-        const target = i.isExternal ? i.source : Core.getFilePath(i.toFileId);
-        return `<div class="row" ${!i.isExternal ? `data-action="select-file" data-id="${i.toFileId}"` : ''}>
+              const target = i.isExternal ? i.source : Core.getFilePath(i.toFileId);
+              return `<div class="row" ${!i.isExternal ? `data-action="select-file" data-id="${i.toFileId}"` : ''}>
                 <span class="name">${Core.escapeHtml(target)}</span>
                 ${i.importedName ? `<span class="chip yellow" style="font-size:10px;">→ ${Core.escapeHtml(i.importedName)}</span>` : ''}
                 <span class="type-tag ${i.isExternal ? 'tag-external' : 'tag-import'}">${Core.escapeHtml(i.type || 'named')}</span>
                 <span class="line-ref">L${i.line}</span>
               </div>`;
-      }).join('')}
+          }).join('')}
           `).join('')
-    }
+        }
       </div>
     </div>
 
@@ -1234,92 +1386,92 @@
         <div class="panel-header"><span>📤 Импортируют файл (${deps.length})</span></div>
         <div class="panel-body">
           ${deps.length === 0 ? '<div class="empty-msg">Никто</div>' :
-      deps.map(id => {
-        const names = Core.getImportedNames(id, state.selectedFileId);
-        const preview = names.slice(0, 3);
-        return `<div class="row" data-action="select-file" data-id="${id}">
+          deps.map(id => {
+              const names = Core.getImportedNames(id, state.selectedFileId);
+              const preview = names.slice(0, 3);
+              return `<div class="row" data-action="select-file" data-id="${id}">
                 <span class="name">${Core.escapeHtml(Core.getFilePath(id))}</span>
                 ${preview.length ? `<span style="display:flex; gap:3px;">${preview.map(n => `<span class="chip yellow" style="font-size:10px;">${Core.escapeHtml(n)}</span>`).join('')}${names.length > 3 ? `<span class="chip">+${names.length - 3}</span>` : ''}</span>` : ''}
                 <span class="type-tag tag-import">←</span>
               </div>`;
-      }).join('')
-    }
+          }).join('')
+        }
         </div>
       </div>
       <div class="panel">
         <div class="panel-header"><span>📤 Импортирует из (${depsOut.length})</span></div>
         <div class="panel-body">
           ${depsOut.length === 0 ? '<div class="empty-msg">Нет</div>' :
-      depsOut.map(id => `<div class="row" data-action="select-file" data-id="${id}">
+          depsOut.map(id => `<div class="row" data-action="select-file" data-id="${id}">
               <span class="name">${Core.escapeHtml(Core.getFilePath(id))}</span>
               <span class="type-tag tag-export">→</span>
             </div>`).join('')
-    }
+        }
         </div>
       </div>
     </div>
   `;
-  }
+    }
 
-  function renderCalls(fns, outCalls, inCalls) {
-    const el = $('tab-calls');
-    const fnIds = new Set(fns.map(x => x.id));
-    const outgoing = state.calls.filter(c => fnIds.has(c.fromFunctionId));
-    const incoming = state.calls.filter(c => {
-      const toFn = state.fnById[c.toFunctionId];
-      return toFn && toFn.fileId === state.selectedFileId;
-    });
+    function renderCalls(fns, outCalls, inCalls) {
+        const el = $('tab-calls');
+        const fnIds = new Set(fns.map(x => x.id));
+        const outgoing = state.calls.filter(c => fnIds.has(c.fromFunctionId));
+        const incoming = state.calls.filter(c => {
+            const toFn = state.fnById[c.toFunctionId];
+            return toFn && toFn.fileId === state.selectedFileId;
+        });
 
-    el.innerHTML = `
+        el.innerHTML = `
     <div class="grid-2">
       <div class="panel">
         <div class="panel-header"><span>📞 Исходящие (${outgoing.length})</span></div>
         <div class="panel-body">
           ${outgoing.length === 0 ? '<div class="empty-msg">Нет</div>' :
-      outgoing.map(c => {
-        const fromFn = state.fnById[c.fromFunctionId];
-        const toFn = state.fnById[c.toFunctionId];
-        const isExt = c.toFunctionId.startsWith('external:');
-        return `<div class="row">
+          outgoing.map(c => {
+              const fromFn = state.fnById[c.fromFunctionId];
+              const toFn = state.fnById[c.toFunctionId];
+              const isExt = c.toFunctionId.startsWith('external:');
+              return `<div class="row">
                 <span class="name purple">${Core.escapeHtml(fromFn?.name || '?')}</span>
                 <span class="dim">→</span>
                 <span class="name ${isExt ? 'red' : 'blue'}">${isExt ? '🌐 ' : ''}${Core.escapeHtml(isExt ? c.toFunctionId.replace('external:', '') : (toFn?.name || c.toFunctionId))}</span>
                 <span class="type-tag tag-${c.type || 'direct'}">${Core.escapeHtml(c.type || 'direct')}</span>
               </div>`;
-      }).join('')
-    }
+          }).join('')
+        }
         </div>
       </div>
       <div class="panel">
         <div class="panel-header"><span>📥 Входящие (${incoming.length})</span></div>
         <div class="panel-body">
           ${incoming.length === 0 ? '<div class="empty-msg">Нет</div>' :
-      incoming.map(c => {
-        const fromFn = state.fnById[c.fromFunctionId];
-        const toFn = state.fnById[c.toFunctionId];
-        return `<div class="row">
+          incoming.map(c => {
+              const fromFn = state.fnById[c.fromFunctionId];
+              const toFn = state.fnById[c.toFunctionId];
+              return `<div class="row">
                 <span class="name blue">${Core.escapeHtml(fromFn?.name || '?')}</span>
                 <span class="dim">→</span>
                 <span class="name purple">${Core.escapeHtml(toFn?.name || '?')}</span>
                 <span class="type-tag tag-${c.type || 'direct'}">${Core.escapeHtml(c.type || 'direct')}</span>
               </div>`;
-      }).join('')
-    }
+          }).join('')
+        }
         </div>
       </div>
     </div>
   `;
-  }
+    }
 
-  function renderGraph() {
-    const el = $('tab-graph');
-    const fileId = state.selectedFileId;
-    if (!fileId) { el.innerHTML = '<div class="empty-msg">Выберите файл</div>'; return; }
+    function renderGraph() {
+        const el = $('tab-graph');
+        const fileId = state.selectedFileId;
+        if (!fileId) { el.innerHTML = '<div class="empty-msg">Выберите файл</div>'; return; }
 
-    const fns = state.fileFunctions[fileId] || [];
-    const firstFn = fns.find(fn => (state.fnDetailedCallers[fn.id] || []).length > 0 || (state.fnDetailedCalls[fn.id] || []).length > 0);
+        const fns = state.fileFunctions[fileId] || [];
+        const firstFn = fns.find(fn => (state.fnDetailedCallers[fn.id] || []).length > 0 || (state.fnDetailedCalls[fn.id] || []).length > 0);
 
-    el.innerHTML = `
+        el.innerHTML = `
     <div class="panel" style="margin-bottom:14px;">
       <div class="panel-header"><span>🗺️ Граф модулей</span></div>
       <div class="panel-body" id="moduleGraphBody"></div>
@@ -1346,63 +1498,59 @@
     </div>
   `;
 
-    // Граф модулей
-    const moduleGraphEl = Graph.renderModuleGraph({
-      onNodeClick: (id, type) => setActiveNode(type, id),
-    });
-    $('moduleGraphBody').appendChild(moduleGraphEl);
-
-    // Граф зависимостей файла
-    const fileDepGraphEl = Graph.renderFileDepGraph(fileId, {
-      onNodeClick: (id, type) => selectFile(id),
-    });
-    $('fileDepGraphBody').appendChild(fileDepGraphEl);
-
-    // Граф вызовов
-    if (firstFn) {
-      const renderCallGraphForFn = (fnId) => {
-        $('callGraphBody').innerHTML = '';
-        const graphEl = Graph.renderCallGraph(fnId, {
-          onNodeClick: (id, type) => {
-            if (type === 'fn') { setActiveNode('fn', id); jumpToFn(id); }
-          },
+        const moduleGraphEl = Graph.renderModuleGraph({
+            onNodeClick: (id, type) => setActiveNode(type, id),
         });
-        $('callGraphBody').appendChild(graphEl);
-      };
-      renderCallGraphForFn(firstFn.id);
-      const select = $('callGraphFnSelect');
-      if (select) select.addEventListener('change', e => renderCallGraphForFn(e.target.value));
-    } else {
-      $('callGraphBody').innerHTML = '<div class="empty-msg">Нет функций с вызовами в этом файле</div>';
+        $('moduleGraphBody').appendChild(moduleGraphEl);
+
+        const fileDepGraphEl = Graph.renderFileDepGraph(fileId, {
+            onNodeClick: (id, type) => selectFile(id),
+        });
+        $('fileDepGraphBody').appendChild(fileDepGraphEl);
+
+        if (firstFn) {
+            const renderCallGraphForFn = (fnId) => {
+                $('callGraphBody').innerHTML = '';
+                const graphEl = Graph.renderCallGraph(fnId, {
+                    onNodeClick: (id, type) => {
+                        if (type === 'fn') { setActiveNode('fn', id); jumpToFn(id); }
+                    },
+                });
+                $('callGraphBody').appendChild(graphEl);
+            };
+            renderCallGraphForFn(firstFn.id);
+            const select = $('callGraphFnSelect');
+            if (select) select.addEventListener('change', e => renderCallGraphForFn(e.target.value));
+        } else {
+            $('callGraphBody').innerHTML = '<div class="empty-msg">Нет функций с вызовами в этом файле</div>';
+        }
+
+        $('heatmapBody').innerHTML = Graph.renderHeatmap();
     }
 
-    // Heatmap
-    $('heatmapBody').innerHTML = Graph.renderHeatmap();
-  }
-
-  function renderSearch() {
-    const el = $('tab-search');
-    el.innerHTML = `
+    function renderSearch() {
+        const el = $('tab-search');
+        el.innerHTML = `
     <div class="filters" style="margin-bottom:14px;">
       <input type="text" id="globalSearchInput" placeholder="Глобальный поиск по функциям, константам, файлам, модулям..." style="flex:1; padding:8px 12px; background:var(--bg-input); border:1px solid var(--border); border-radius:6px; color:var(--text); font-family:inherit; font-size:13px;">
     </div>
     <div id="searchResults"><div class="empty-msg">Введите запрос для поиска</div></div>
   `;
 
-    const input = $('globalSearchInput');
-    input.focus();
-    input.addEventListener('input', Core.debounce(() => {
-      const q = input.value.trim();
-      if (!q) { $('searchResults').innerHTML = '<div class="empty-msg">Введите запрос для поиска</div>'; return; }
-      const fns = Core.findFunctions(q).slice(0, 30);
-      const consts = Core.findConstants(q).slice(0, 30);
-      const files = Core.findFiles(q).slice(0, 30);
-      const mods = Core.findModules(q).slice(0, 30);
+        const input = $('globalSearchInput');
+        input.focus();
+        input.addEventListener('input', Core.debounce(() => {
+            const q = input.value.trim();
+            if (!q) { $('searchResults').innerHTML = '<div class="empty-msg">Введите запрос для поиска</div>'; return; }
+            const fns = Core.findFunctions(q).slice(0, 30);
+            const consts = Core.findConstants(q).slice(0, 30);
+            const files = Core.findFiles(q).slice(0, 30);
+            const mods = Core.findModules(q).slice(0, 30);
 
-      const total = fns.length + consts.length + files.length + mods.length;
-      if (total === 0) { $('searchResults').innerHTML = '<div class="empty-msg">Ничего не найдено</div>'; return; }
+            const total = fns.length + consts.length + files.length + mods.length;
+            if (total === 0) { $('searchResults').innerHTML = '<div class="empty-msg">Ничего не найдено</div>'; return; }
 
-      $('searchResults').innerHTML = `
+            $('searchResults').innerHTML = `
       ${fns.length ? `<div class="search-group">
         <div class="search-group-title">⚙️ Функции (${fns.length})</div>
         ${fns.map(fn => `<div class="row" data-action="set-active-fn" data-id="${fn.id}">
@@ -1434,15 +1582,15 @@
         </div>`).join('')}
       </div>` : ''}
     `;
-    }, 200));
-  }
+        }, 200));
+    }
 
-  function renderDead() {
-    const el = $('tab-dead');
-    const deadExports = state.deadExports;
-    const deadFunctions = state.deadFunctions;
+    function renderDead() {
+        const el = $('tab-dead');
+        const deadExports = state.deadExports;
+        const deadFunctions = state.deadFunctions;
 
-    el.innerHTML = `
+        el.innerHTML = `
     <div class="stat-grid" style="margin-bottom:16px;">
       <div class="stat-card red"><div class="num">${deadExports.length}</div><div class="lbl">Мёртвых экспортов</div></div>
       <div class="stat-card red"><div class="num">${deadFunctions.length}</div><div class="lbl">Мёртвых функций</div></div>
@@ -1451,55 +1599,55 @@
     <div class="panel" style="margin-bottom:14px;">
       <div class="panel-header">
         <span>💀 Экспорты без импортов (${deadExports.length})</span>
-        <button class="btn" style="font-size:11px; padding:4px 10px;" data-action="export-dead-exports">📥 CSV</button>
+        <button class="btn small" data-action="export-dead-exports">📥 CSV</button>
       </div>
       <div class="panel-body">
         ${deadExports.length === 0 ? '<div class="empty-msg">Нет мёртвых экспортов 🎉</div>' :
-      UI.renderTable(
-        deadExports.map(e => ({
-          ...e,
-          filePath: Core.getFilePath(e.fileId),
-          moduleName: Core.getModuleName(state.files[e.fileId]?.moduleId),
-        })),
-        [
-          { key: 'exportName', label: 'Экспорт', render: r => `<span class="mono yellow">${Core.escapeHtml(r.exportName || r.localName || '?')}</span>` },
-          { key: 'type', label: 'Тип' },
-          { key: 'filePath', label: 'Файл', render: r => `<span class="mono dim">${Core.escapeHtml(Core.shortPath(r.filePath, 60))}</span>` },
-          { key: 'line', label: 'L', render: r => `<span class="num">${r.line}</span>` },
-        ]
-      )
-    }
+          UI.renderTable(
+            deadExports.map(e => ({
+                ...e,
+                filePath: Core.getFilePath(e.fileId),
+                moduleName: Core.getModuleName(state.files[e.fileId]?.moduleId),
+            })),
+            [
+                { key: 'exportName', label: 'Экспорт', render: r => `<span class="mono yellow">${Core.escapeHtml(r.exportName || r.localName || '?')}</span>` },
+                { key: 'type', label: 'Тип' },
+                { key: 'filePath', label: 'Файл', render: r => `<span class="mono dim">${Core.escapeHtml(Core.shortPath(r.filePath, 60))}</span>` },
+                { key: 'line', label: 'L', render: r => `<span class="num">${r.line}</span>` },
+            ]
+          )
+        }
       </div>
     </div>
 
     <div class="panel">
       <div class="panel-header">
         <span>💀 Функции без вызовов и экспорта (${deadFunctions.length})</span>
-        <button class="btn" style="font-size:11px; padding:4px 10px;" data-action="export-dead-fns">📥 CSV</button>
+        <button class="btn small" data-action="export-dead-fns">📥 CSV</button>
       </div>
       <div class="panel-body">
         ${deadFunctions.length === 0 ? '<div class="empty-msg">Нет мёртвых функций 🎉</div>' :
-      UI.renderTable(
-        deadFunctions.map(fn => ({
-          ...fn,
-          filePath: Core.getFilePath(fn.fileId),
-        })),
-        [
-          { key: 'name', label: 'Функция', render: r => `<span class="mono purple">${Core.escapeHtml(r.name)}</span>` },
-          { key: 'filePath', label: 'Файл', render: r => `<span class="mono dim">${Core.escapeHtml(Core.shortPath(r.filePath, 60))}</span>` },
-          { key: 'line', label: 'L', render: r => `<span class="num">${r.line}</span>` },
-          { key: 'params', label: 'Параметры', render: r => `<span class="dim">${Core.escapeHtml((r.params || []).join(', '))}</span>` },
-        ]
-      )
-    }
+          UI.renderTable(
+            deadFunctions.map(fn => ({
+                ...fn,
+                filePath: Core.getFilePath(fn.fileId),
+            })),
+            [
+                { key: 'name', label: 'Функция', render: r => `<span class="mono purple">${Core.escapeHtml(r.name)}</span>` },
+                { key: 'filePath', label: 'Файл', render: r => `<span class="mono dim">${Core.escapeHtml(Core.shortPath(r.filePath, 60))}</span>` },
+                { key: 'line', label: 'L', render: r => `<span class="num">${r.line}</span>` },
+                { key: 'params', label: 'Параметры', render: r => `<span class="dim">${Core.escapeHtml((r.params || []).join(', '))}</span>` },
+            ]
+          )
+        }
       </div>
     </div>
   `;
-  }
+    }
 
-  function renderCycles() {
-    const el = $('tab-cycles');
-    el.innerHTML = `
+    function renderCycles() {
+        const el = $('tab-cycles');
+        el.innerHTML = `
     <div class="stat-grid" style="margin-bottom:16px;">
       <div class="stat-card ${state.cyclicDeps.length > 0 ? 'red' : 'green'}"><div class="num">${state.cyclicDeps.length}</div><div class="lbl">Циклических зависимостей</div></div>
     </div>
@@ -1507,27 +1655,27 @@
       <div class="panel-header"><span>🔄 Найденные циклы</span></div>
       <div class="panel-body">
         ${state.cyclicDeps.length === 0 ? '<div class="empty-msg">Циклов не найдено 🎉</div>' :
-      state.cyclicDeps.map((cycle, i) => `
+          state.cyclicDeps.map((cycle, i) => `
             <div style="margin-bottom:10px; padding:10px; background:var(--bg); border:1px solid var(--border); border-radius:6px;">
               <div class="dim" style="font-size:10px; margin-bottom:6px;">Цикл #${i + 1} (${cycle.length} узлов)</div>
               <div style="display:flex; flex-wrap:wrap; align-items:center; gap:4px;">
                 ${cycle.map((fid, j) => {
-        const f = state.files[fid];
-        return `<span class="chain-node" data-action="select-file" data-id="${fid}" title="${Core.escapeHtml(f?.path || fid)}">${Core.escapeHtml(f?.path.split('/').pop() || fid)}</span>${j < cycle.length - 1 ? '<span class="chain-arrow">→</span>' : ''}`;
-      }).join('')}
+              const f = state.files[fid];
+              return `<span class="chain-node" data-action="select-file" data-id="${fid}" title="${Core.escapeHtml(f?.path || fid)}">${Core.escapeHtml(f?.path.split('/').pop() || fid)}</span>${j < cycle.length - 1 ? '<span class="chain-arrow">→</span>' : ''}`;
+          }).join('')}
               </div>
             </div>
           `).join('')
-    }
+        }
       </div>
     </div>
   `;
-  }
+    }
 
-  function renderReexports() {
-    const el = $('tab-reexports');
-    const reExports = state.reExports;
-    el.innerHTML = `
+    function renderReexports() {
+        const el = $('tab-reexports');
+        const reExports = state.reExports;
+        el.innerHTML = `
     <div class="stat-grid" style="margin-bottom:16px;">
       <div class="stat-card purple"><div class="num">${reExports.length}</div><div class="lbl">Реэкспортов</div></div>
     </div>
@@ -1535,162 +1683,162 @@
       <div class="panel-header"><span>📤 Все реэкспорты</span></div>
       <div class="panel-body">
         ${reExports.length === 0 ? '<div class="empty-msg">Нет реэкспортов</div>' :
-      reExports.map(re => {
-        const mod = state.modules[re.moduleId];
-        const fn = re.functionId ? state.fnById[re.functionId] : null;
-        return `<div class="row" ${fn ? `data-action="set-active-fn" data-id="${fn.id}"` : ''}>
+          reExports.map(re => {
+              const mod = state.modules[re.moduleId];
+              const fn = re.functionId ? state.fnById[re.functionId] : null;
+              return `<div class="row" ${fn ? `data-action="set-active-fn" data-id="${fn.id}"` : ''}>
               <span class="name yellow">${Core.escapeHtml(re.exportName)}</span>
               <span class="dim">${Core.escapeHtml(re.source)}</span>
               <span class="chip blue">${Core.escapeHtml(mod?.name || '?')}</span>
               ${re.isStarReExport ? '<span class="type-tag tag-type">*</span>' : ''}
             </div>`;
-      }).join('')
-    }
+          }).join('')
+        }
       </div>
     </div>
   `;
-  }
+    }
 
-  // ---------------------------------------------------------------------------
-  // ПЕРЕХОД К ФУНКЦИИ
-  // ---------------------------------------------------------------------------
-  function jumpToFn(fnId) {
-    const fn = state.fnById[fnId];
-    if (!fn) return;
-    setActiveNode('fn', fnId);
-    if (fn.fileId !== state.selectedFileId) {
-      selectFile(fn.fileId);
-      switchTab('functions');
-      setTimeout(() => {
-        const card = $('fn-card-' + fnId);
-        if (card) {
-          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          const body = $('fn-body-' + fnId);
-          if (body && body.classList.contains('collapsed')) toggleFnCard(fnId);
+    // ---------------------------------------------------------------------------
+    // ПЕРЕХОД К ФУНКЦИИ
+    // ---------------------------------------------------------------------------
+    function jumpToFn(fnId) {
+        const fn = state.fnById[fnId];
+        if (!fn) return;
+        setActiveNode('fn', fnId);
+        if (fn.fileId !== state.selectedFileId) {
+            selectFile(fn.fileId);
+            switchTab('functions');
+            setTimeout(() => {
+                const card = $('fn-card-' + fnId);
+                if (card) {
+                    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    const body = $('fn-body-' + fnId);
+                    if (body && body.classList.contains('collapsed')) toggleFnCard(fnId);
+                }
+            }, 100);
+        } else {
+            const card = $('fn-card-' + fnId);
+            if (card) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                const body = $('fn-body-' + fnId);
+                if (body && body.classList.contains('collapsed')) toggleFnCard(fnId);
+            }
         }
-      }, 100);
-    } else {
-      const card = $('fn-card-' + fnId);
-      if (card) {
-        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function toggleFnCard(fnId) {
         const body = $('fn-body-' + fnId);
-        if (body && body.classList.contains('collapsed')) toggleFnCard(fnId);
-      }
+        const caret = document.querySelector(`#fn-card-${fnId} .caret`);
+        if (!body) return;
+        body.classList.toggle('collapsed');
+        if (caret) caret.classList.toggle('open', !body.classList.contains('collapsed'));
     }
-  }
 
-  function toggleFnCard(fnId) {
-    const body = $('fn-body-' + fnId);
-    const caret = document.querySelector(`#fn-card-${fnId} .caret`);
-    if (!body) return;
-    body.classList.toggle('collapsed');
-    if (caret) caret.classList.toggle('open', !body.classList.contains('collapsed'));
-  }
-
-  // ---------------------------------------------------------------------------
-  // ВКЛАДКИ
-  // ---------------------------------------------------------------------------
-  function switchTab(tabId) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + tabId));
-    state.currentTab = tabId;
-  }
-
-  $('tabs').addEventListener('click', e => {
-    const tab = e.target.closest('.tab');
-    if (!tab) return;
-    switchTab(tab.dataset.tab);
-  });
-
-  // ---------------------------------------------------------------------------
-  // ДЕЛЕГИРОВАНИЕ СОБЫТИЙ
-  // ---------------------------------------------------------------------------
-  document.addEventListener('click', e => {
-    const target = e.target.closest('[data-action]');
-    if (!target) return;
-    const action = target.dataset.action;
-    const id = target.dataset.id;
-    const type = target.dataset.type;
-
-    if (action === 'select-file') { selectFile(id); }
-    else if (action === 'set-active-fn') { setActiveNode('fn', id); }
-    else if (action === 'set-active-module') { setActiveNode('module', id); }
-    else if (action === 'set-active-const') { setActiveNode('const', id); }
-    else if (action === 'set-active-external') { setActiveNode('external', id); }
-    else if (action === 'set-active') { setActiveNode(type, id); }
-    else if (action === 'jump-fn') { jumpToFn(id); }
-    else if (action === 'toggle-card') {
-      e.stopPropagation();
-      toggleFnCard(id);
+    // ---------------------------------------------------------------------------
+    // ВКЛАДКИ
+    // ---------------------------------------------------------------------------
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + tabId));
+        state.currentTab = tabId;
     }
-    else if (action === 'toggle-section') {
-      const body = target.nextElementSibling;
-      if (body) body.classList.toggle('collapsed');
-    }
-    else if (action === 'toggle-tree') {
-      e.stopPropagation();
-      const caret = target;
-      const children = target.parentElement.nextElementSibling;
-      caret.classList.toggle('open');
-      if (children && children.classList.contains('tree-children')) children.classList.toggle('collapsed');
-    }
-    else if (action === 'close-modal') {
-      target.closest('.modal-overlay').classList.remove('show');
-    }
-    else if (action === 'open-fn-modal') {
-      openFnModal(id);
-    }
-    else if (action === 'export-dead-exports') {
-      Core.downloadCSV(
-        state.deadExports.map(e => ({ ...e, filePath: Core.getFilePath(e.fileId) })),
-        [
-          { key: 'exportName', label: 'Экспорт' },
-          { key: 'localName', label: 'Локальное имя' },
-          { key: 'type', label: 'Тип' },
-          { key: 'filePath', label: 'Файл' },
-          { key: 'line', label: 'Строка' },
-        ],
-        'dead-exports.csv'
-      );
-      UI.toast('CSV экспортирован', 'success');
-    }
-    else if (action === 'export-dead-fns') {
-      Core.downloadCSV(
-        state.deadFunctions.map(fn => ({ ...fn, filePath: Core.getFilePath(fn.fileId) })),
-        [
-          { key: 'name', label: 'Функция' },
-          { key: 'filePath', label: 'Файл' },
-          { key: 'line', label: 'Строка' },
-          { key: 'params', label: 'Параметры', value: r => (r.params || []).join('; ') },
-        ],
-        'dead-functions.csv'
-      );
-      UI.toast('CSV экспортирован', 'success');
-    }
-  });
 
-  // ---------------------------------------------------------------------------
-  // МОДАЛКА ФУНКЦИИ
-  // ---------------------------------------------------------------------------
-  function openFnModal(fnId) {
-    const info = Core.getFnFullInfo(fnId);
-    if (!info) return;
-    const { fn, file, module, exports, imports, calls, callers } = info;
+    $('tabs').addEventListener('click', e => {
+        const tab = e.target.closest('.tab');
+        if (!tab) return;
+        switchTab(tab.dataset.tab);
+    });
 
-    $('fnModalTitle').innerHTML = `⚙️ <span class="mono blue-bold">${Core.escapeHtml(fn.name)}</span>`;
+    // ---------------------------------------------------------------------------
+    // ДЕЛЕГИРОВАНИЕ СОБЫТИЙ
+    // ---------------------------------------------------------------------------
+    document.addEventListener('click', e => {
+        const target = e.target.closest('[data-action]');
+        if (!target) return;
+        const action = target.dataset.action;
+        const id = target.dataset.id;
+        const type = target.dataset.type;
 
-    const kw = [];
-    if (fn.isAsync) kw.push('async');
-    if (fn.isArrow) kw.push('arrow');
-    if (fn.isMethod) kw.push('method');
+        if (action === 'select-file') { selectFile(id); }
+        else if (action === 'set-active-fn') { setActiveNode('fn', id); }
+        else if (action === 'set-active-module') { setActiveNode('module', id); }
+        else if (action === 'set-active-const') { setActiveNode('const', id); }
+        else if (action === 'set-active-external') { setActiveNode('external', id); }
+        else if (action === 'set-active') { setActiveNode(type, id); }
+        else if (action === 'jump-fn') { jumpToFn(id); }
+        else if (action === 'toggle-card') {
+            e.stopPropagation();
+            toggleFnCard(id);
+        }
+        else if (action === 'toggle-section') {
+            const body = target.nextElementSibling;
+            if (body) body.classList.toggle('collapsed');
+        }
+        else if (action === 'toggle-tree') {
+            e.stopPropagation();
+            const caret = target;
+            const children = target.parentElement.nextElementSibling;
+            caret.classList.toggle('open');
+            if (children && children.classList.contains('tree-children')) children.classList.toggle('collapsed');
+        }
+        else if (action === 'close-modal') {
+            target.closest('.modal-overlay').classList.remove('show');
+        }
+        else if (action === 'open-fn-modal') {
+            openFnModal(id);
+        }
+        else if (action === 'export-dead-exports') {
+            Core.downloadCSV(
+              state.deadExports.map(e => ({ ...e, filePath: Core.getFilePath(e.fileId) })),
+              [
+                  { key: 'exportName', label: 'Экспорт' },
+                  { key: 'localName', label: 'Локальное имя' },
+                  { key: 'type', label: 'Тип' },
+                  { key: 'filePath', label: 'Файл' },
+                  { key: 'line', label: 'Строка' },
+              ],
+              'dead-exports.csv'
+            );
+            UI.toast('CSV экспортирован', 'success');
+        }
+        else if (action === 'export-dead-fns') {
+            Core.downloadCSV(
+              state.deadFunctions.map(fn => ({ ...fn, filePath: Core.getFilePath(fn.fileId) })),
+              [
+                  { key: 'name', label: 'Функция' },
+                  { key: 'filePath', label: 'Файл' },
+                  { key: 'line', label: 'Строка' },
+                  { key: 'params', label: 'Параметры', value: r => (r.params || []).join('; ') },
+              ],
+              'dead-functions.csv'
+            );
+            UI.toast('CSV экспортирован', 'success');
+        }
+    });
 
-    const params = fn.params || [];
-    const ret = fn.returnType || '';
+    // ---------------------------------------------------------------------------
+    // МОДАЛКА ФУНКЦИИ
+    // ---------------------------------------------------------------------------
+    function openFnModal(fnId) {
+        const info = Core.getFnFullInfo(fnId);
+        if (!info) return;
+        const { fn, file, module, exports, imports, calls, callers } = info;
 
-    const transitiveCallers = Core.getTransitiveCallers(fnId, 3);
-    const transitiveCallees = Core.getTransitiveCallees(fnId, 3);
+        $('fnModalTitle').innerHTML = `⚙️ <span class="mono blue-bold">${Core.escapeHtml(fn.name)}</span>`;
 
-    $('fnModalBody').innerHTML = `
+        const kw = [];
+        if (fn.isAsync) kw.push('async');
+        if (fn.isArrow) kw.push('arrow');
+        if (fn.isMethod) kw.push('method');
+
+        const params = fn.params || [];
+        const ret = fn.returnType || '';
+
+        const transitiveCallers = Core.getTransitiveCallers(fnId, 3);
+        const transitiveCallees = Core.getTransitiveCallees(fnId, 3);
+
+        $('fnModalBody').innerHTML = `
     <div class="chain">
       <span class="chain-node" data-action="select-file" data-id="${fn.fileId}">📄 ${Core.escapeHtml(Core.shortPath(file?.path || '?', 30))}</span>
       <span class="chain-arrow">→</span>
@@ -1788,98 +1936,204 @@
     ` : ''}
   `;
 
-    $('fnModal').classList.add('show');
-  }
+        $('fnModal').classList.add('show');
+    }
 
-  // ---------------------------------------------------------------------------
-  // ПОИСК ПО ФАЙЛАМ (сайдбар)
-  // ---------------------------------------------------------------------------
-  $('searchInput').addEventListener('input', e => {
-    state.searchQuery = e.target.value;
-    renderFileList();
-  });
-
-  $('depsOnlyBtn').addEventListener('click', () => {
-    state.depsOnly = !state.depsOnly;
-    $('depsOnlyBtn').classList.toggle('active', state.depsOnly);
-    renderFileList();
-  });
-
-  // ---------------------------------------------------------------------------
-  // ТЕМА
-  // ---------------------------------------------------------------------------
-  $('themeBtn').addEventListener('click', () => {
-    document.body.classList.toggle('light');
-    $('themeBtn').textContent = document.body.classList.contains('light') ? '☀️ Тема' : '🌙 Тема';
-  });
-
-  // ---------------------------------------------------------------------------
-  // ЭКСПОРТ ВСЕГО
-  // ---------------------------------------------------------------------------
-  $('exportAllBtn').addEventListener('click', () => {
-    if (!state.raw) return;
-    Core.downloadJSON(Core.exportAll(), 'ast-analyzer-full-export.json');
-    UI.toast('Экспортировано', 'success');
-  });
-
-  // ---------------------------------------------------------------------------
-  // ПАНЕЛЬ АКТИВНОГО УЗЛА — ЗАКРЫТИЕ
-  // ---------------------------------------------------------------------------
-  $('anpClose').addEventListener('click', clearActiveNode);
-
-  // ---------------------------------------------------------------------------
-  // МОДАЛКИ — ЗАКРЫТИЕ ПО ФОНУ
-  // ---------------------------------------------------------------------------
-  document.querySelectorAll('.modal-overlay').forEach(overlay => {
-    overlay.addEventListener('click', e => {
-      if (e.target === overlay) overlay.classList.remove('show');
+    // ---------------------------------------------------------------------------
+    // ПОИСК ПО ФАЙЛАМ (сайдбар)
+    // ---------------------------------------------------------------------------
+    $('searchInput').addEventListener('input', e => {
+        state.searchQuery = e.target.value;
+        renderFileList();
     });
-  });
 
-  // ---------------------------------------------------------------------------
-  // ПОМОЩЬ
-  // ---------------------------------------------------------------------------
-  $('helpBtn').addEventListener('click', () => $('helpModal').classList.add('show'));
+    $('depsOnlyBtn').addEventListener('click', () => {
+        state.depsOnly = !state.depsOnly;
+        $('depsOnlyBtn').classList.toggle('active', state.depsOnly);
+        renderFileList();
+    });
 
-  // ---------------------------------------------------------------------------
-  // ГОРЯЧИЕ КЛАВИШИ
-  // ---------------------------------------------------------------------------
-  document.addEventListener('keydown', e => {
-    const activeEl = document.activeElement;
-    const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
+    // ---------------------------------------------------------------------------
+    // ТЕМА
+    // ---------------------------------------------------------------------------
+    $('themeBtn').addEventListener('click', () => {
+        document.body.classList.toggle('light');
+        $('themeBtn').textContent = document.body.classList.contains('light') ? '☀️ Тема' : '🌙 Тема';
+    });
 
-    if (e.ctrlKey && e.key === 'k') { e.preventDefault(); $('searchInput').focus(); return; }
-    if (e.ctrlKey && e.shiftKey && e.key === 'F') { e.preventDefault(); switchTab('search'); setTimeout(() => $('globalSearchInput')?.focus(), 50); return; }
-    if (e.ctrlKey && e.key === 'e') { e.preventDefault(); $('exportAllBtn').click(); return; }
-    if (e.key === 'Escape') {
-      if ($('fnModal').classList.contains('show')) $('fnModal').classList.remove('show');
-      else if ($('helpModal').classList.contains('show')) $('helpModal').classList.remove('show');
-      else clearActiveNode();
-      return;
-    }
-    if (isInput) return;
-    if (/^[1-9]$/.test(e.key) || e.key === '0') {
-      const tabs = ['overview', 'project', 'functions', 'constants', 'deps', 'calls', 'graph', 'search', 'dead', 'cycles', 'reexports'];
-      const idx = e.key === '0' ? 9 : parseInt(e.key) - 1;
-      if (tabs[idx]) { switchTab(tabs[idx]); return; }
-    }
-    const items = document.querySelectorAll('.file-item');
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const current = Array.from(items).findIndex(x => x.classList.contains('active'));
-      let next = e.key === 'ArrowDown' ? current + 1 : current - 1;
-      if (next < 0) next = items.length - 1;
-      if (next >= items.length) next = 0;
-      const item = items[next];
-      if (item) { item.scrollIntoView({ block: 'nearest' }); selectFile(item.dataset.id); }
-    }
-  });
+    // ---------------------------------------------------------------------------
+    // ЭКСПОРТ (FULL)
+    // ---------------------------------------------------------------------------
+    $('exportAllBtn').addEventListener('click', () => {
+        if (!state.raw) return;
+        Core.downloadJSON(Core.exportAll(), 'ast-analyzer-full-export.json');
+        UI.toast('Экспортировано (full)', 'success');
+    });
 
-  // ---------------------------------------------------------------------------
-  // СТАРТ
-  // ---------------------------------------------------------------------------
-  console.log('%c🔍 AST Analyzer v9 — модульная версия', 'font-size:16px; font-weight:bold; color:#58a6ff;');
-  console.log('Модули: ast-analyzer-core.js, ast-analyzer-ui.js, ast-analyzer-graph.js');
+    // ---------------------------------------------------------------------------
+    // ЭКСПОРТ (COMPACT) — новое
+    // ---------------------------------------------------------------------------
+    $('exportCompactBtn').addEventListener('click', () => {
+        if (!state.raw) return;
+        try {
+            const compact = Core.exportCompact({
+                reuseDicts: true,   // сохранить исходные словари
+                strict: false,      // новые значения допишутся в конец
+            });
+            Core.downloadJSON(compact, 'index.compact.json');
+            UI.toast('Экспортировано (compact)', 'success');
+        } catch (e) {
+            UI.toast('Ошибка экспорта: ' + e.message, 'error');
+        }
+    });
+
+    // ---------------------------------------------------------------------------
+    // ROUND-TRIP ПРОВЕРКА — новое
+    // ИЗМЕНЕНО: комплексная проверка L0+L1+L2+L3+RE при наличии обоих форматов
+    // ---------------------------------------------------------------------------
+    $('verifyRoundTripBtn').addEventListener('click', () => {
+        const hasCompact = !!state.rawCompact;
+        const hasFull = !!state.rawFull;
+        const hasBoth = hasCompact && hasFull;
+
+        if (!hasCompact && !hasFull) {
+            UI.toast('Сначала загрузите index.json или index.full.json', 'error');
+            return;
+        }
+
+        try {
+            let result;
+            let lines = [];
+
+            if (hasBoth) {
+                // Комплексная проверка — все уровни
+                result = Core.verifyRoundTripBothFormats();
+
+                lines = [
+                    `L0 (encode(full)≈compact): ${result.L0 ? (result.L0.ok ? '✅' : '❌') : '⏭'}`,
+                    `L1 (семантика compact):    ${result.L1 ? (result.L1.ok ? '✅' : '❌') : '⏭'}`,
+                    `L2 (decode(compact)≈full): ${result.L2 ? (result.L2.ok ? '✅' : '❌') : '⏭'}`,
+                    `L3 (байт-в-байт compact):  ${result.L3 ? (result.L3.ok ? '✅' : '❌') : '⏭'}`,
+                    `RE (идемпотентность):      ${result.RE ? (result.RE.ok ? '✅' : '❌') : '⏭'}`,
+                ];
+
+                console.group('[Round-trip: COMPLEX — оба формата]');
+                console.log('L0:', result.L0);
+                console.log('L1:', result.L1);
+                console.log('L2:', result.L2);
+                console.log('L3:', result.L3);
+                console.log('RE:', result.RE);
+                console.groupEnd();
+
+                for (const k of ['L0', 'L1', 'L2', 'L3', 'RE']) {
+                    if (result[k]?.diff) console.warn(`${k} diff:`, result[k].diff);
+                }
+            } else if (hasCompact) {
+                // Только компактный формат
+                const r1 = Core.verifyRoundTripSemantic();
+                const r3 = Core.verifyRoundTripByteExact();
+                const rE = Core.verifyRoundTripEncode();
+                result = { ok: r1.ok && r3.ok && rE.ok, L1: r1, L3: r3, RE: rE };
+                lines = [
+                    `L1: ${r1.ok ? '✅' : '❌'}`,
+                    `L3: ${r3.ok ? '✅' : '❌'}`,
+                    `RE: ${rE.ok ? '✅' : '❌'}`,
+                ];
+                console.group('[Round-trip: только compact]');
+                console.log('L1:', r1); console.log('L3:', r3); console.log('RE:', rE);
+                console.groupEnd();
+                if (r1.diff) console.warn('L1 diff:', r1.diff);
+                if (r3.diff) console.warn('L3 diff:', r3.diff);
+                if (rE.diff) console.warn('RE diff:', rE.diff);
+            } else {
+                // Только full — можно проверить только идемпотентность кодирования
+                const rE = Core.verifyRoundTripEncode();
+                result = { ok: rE.ok, RE: rE };
+                lines = [`RE (идемпотентность): ${rE.ok ? '✅' : '❌'}`];
+                console.group('[Round-trip: только full]');
+                console.log('RE:', rE);
+                console.groupEnd();
+                if (rE.diff) console.warn('RE diff:', rE.diff);
+            }
+
+            UI.toast(lines.join(' · '), result.ok ? 'success' : 'error', 5000);
+        } catch (e) {
+            console.error(e);
+            UI.toast('Round-trip ошибка: ' + e.message, 'error');
+        }
+    });
+
+    // ---------------------------------------------------------------------------
+    // ПАНЕЛЬ АКТИВНОГО УЗЛА — ЗАКРЫТИЕ
+    // ---------------------------------------------------------------------------
+    $('anpClose').addEventListener('click', clearActiveNode);
+
+    // ---------------------------------------------------------------------------
+    // МОДАЛКИ — ЗАКРЫТИЕ ПО ФОНУ
+    // ---------------------------------------------------------------------------
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', e => {
+            if (e.target === overlay) overlay.classList.remove('show');
+        });
+    });
+
+    // ---------------------------------------------------------------------------
+    // ПОМОЩЬ
+    // ---------------------------------------------------------------------------
+    $('helpBtn').addEventListener('click', () => $('helpModal').classList.add('show'));
+
+    // ---------------------------------------------------------------------------
+    // ГОРЯЧИЕ КЛАВИШИ
+    // ---------------------------------------------------------------------------
+    document.addEventListener('keydown', e => {
+        const activeEl = document.activeElement;
+        const isInput = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
+
+        if (e.ctrlKey && e.key === 'k') { e.preventDefault(); $('searchInput').focus(); return; }
+        if (e.ctrlKey && e.shiftKey && e.key === 'F') { e.preventDefault(); switchTab('search'); setTimeout(() => $('globalSearchInput')?.focus(), 50); return; }
+        if (e.ctrlKey && e.key === 'e') { e.preventDefault(); $('exportAllBtn').click(); return; }
+        if (e.ctrlKey && e.shiftKey && e.key === 'E') { e.preventDefault(); $('exportCompactBtn').click(); return; }
+        if (e.key === 'Escape') {
+            if ($('fnModal').classList.contains('show')) $('fnModal').classList.remove('show');
+            else if ($('helpModal').classList.contains('show')) $('helpModal').classList.remove('show');
+            else clearActiveNode();
+            return;
+        }
+        if (isInput) return;
+        if (/^[1-9]$/.test(e.key) || e.key === '0') {
+            const tabs = ['overview', 'project', 'functions', 'constants', 'deps', 'calls', 'graph', 'search', 'dead', 'cycles', 'reexports'];
+            const idx = e.key === '0' ? 9 : parseInt(e.key) - 1;
+            if (tabs[idx]) { switchTab(tabs[idx]); return; }
+        }
+        const items = document.querySelectorAll('.file-item');
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const current = Array.from(items).findIndex(x => x.classList.contains('active'));
+            let next = e.key === 'ArrowDown' ? current + 1 : current - 1;
+            if (next < 0) next = items.length - 1;
+            if (next >= items.length) next = 0;
+            const item = items[next];
+            if (item) { item.scrollIntoView({ block: 'nearest' }); selectFile(item.dataset.id); }
+        }
+    });
+
+    // ---------------------------------------------------------------------------
+    // СТАРТ
+    // ---------------------------------------------------------------------------
+    console.log('%c🔍 AST Analyzer v9.1 — модульная версия', 'font-size:16px; font-weight:bold; color:#58a6ff;');
+    console.log('Модули: ast-analyzer-codec.js, ast-analyzer-core.js, ast-analyzer-ui.js, ast-analyzer-graph.js');
+    console.log('Новое: поддержка compact-формата, round-trip проверки, комплексная проверка (оба формата)');
+
+    // Автопопытка загрузки из корня (опционально)
+    // Раскомментируйте, если нужно автозагружать index.json при старте:
+    // (async () => {
+    //   try {
+    //     await Core.loadFromRoot({ useCache: true, fallbackToFilePicker: false, silent: true });
+    //     onLoaded('(auto)');
+    //   } catch (e) {
+    //     console.log('[AST] Автозагрузка не удалась:', e.message);
+    //   }
+    // })();
 </script>
 </body>
 </html>
