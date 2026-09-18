@@ -1,6 +1,6 @@
 {
   "name": "@newkind/ast-analyzer",
-  "version": "5.1.1",
+  "version": "5.1.2",
   "description": "🔍 AST Analyzer - AI Toolkit для анализа кода с GraphStore и CompactReportConfig",
   "type": "module",
   "main": "./dist/index.js",
