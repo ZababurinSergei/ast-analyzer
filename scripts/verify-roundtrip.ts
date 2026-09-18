@@ -48,8 +48,8 @@ interface ScriptOptions {
 }
 
 const DEFAULT_OPTIONS: ScriptOptions = {
-  compactPath: './index.json',
-  fullPath: './index.full.json',
+  compactPath: './example/index.json',
+  fullPath: './example/index.full.json',
   verbose: false,
   maxDiffs: 10,
   jsonReportPath: null,

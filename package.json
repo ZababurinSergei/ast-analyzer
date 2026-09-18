@@ -53,7 +53,7 @@
   "scripts": {
     "check": "npx tsc --noEmit --skipLibCheck --excludeDirectories ./src/process",
     "build:infoenergo": "tsx ./src/cli.ts compact-recursive ./infoenergo-ui/src/index.ts --preset full --depth 1000 -o ./infoenergo-ui/index.json",
-    "build:graph": "tsx ./src/cli.ts compact-recursive ./src/index.ts --preset full --depth 1000 -o ./index.json",
+    "build:graph": "tsx ./src/cli.ts compact-recursive ./src/index.ts --preset full --depth 1000 -o ./example/index.json",
     "check:graph": "npx tsx scripts/verify-roundtrip.ts -v --max-diffs 20",
     "build:decode:roundTrip": "tsx ./decode.ts",
     "build": "tsc -p tsconfig.json",
