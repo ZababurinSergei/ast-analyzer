@@ -8,6 +8,8 @@
 //   2. Исправлен импорт CompactReportConfig (использовался getPresetNames,
 //      но импорт был неполным) — оставлен как в оригинале, т.к. это не
 //      вызывает ошибок компиляции
+//   3. ✅ v9.0.4: добавлены флаги --edges и --edges-suffix
+//      для сохранения агрегированного массива edges в отдельный файл
 // ============================================
 
 // packages/ast-analyzer/src/cli/commands/CompactCommand.ts
@@ -33,6 +35,7 @@ import { glob } from 'glob';
  * - Полная легенда для всех кодов и ключей
  * - Self functions — изолированные функции (не вызывают и не вызываются)
  * - ✅ НОВОЕ: сохраняет и полный JSON (для отладки) и сжатый JSON (для AI)
+ * - ✅ v9.0.4: опциональное сохранение edges в отдельный файл (*.edges.json)
  */
 export class CompactCommand {
   private program: Command;
@@ -68,6 +71,17 @@ export class CompactCommand {
         false
       )
       .option('--no-full-json', 'Не сохранять полный JSON (только сжатый)', false)
+      // ✅ v9.0.4: edges в отдельный файл (по умолчанию выключено)
+      .option(
+        '--edges',
+        'Сохранять агрегированный массив edges в отдельный файл (по умолчанию: выключено)',
+        false
+      )
+      .option(
+        '--edges-suffix <suffix>',
+        'Суффикс для файла edges (по умолчанию: .edges.json)',
+        '.edges.json'
+      )
       .option('-v, --verbose', 'Подробный вывод', false)
       .action(async (paths: string[], options: any) => {
         try {
@@ -92,6 +106,11 @@ export class CompactCommand {
     console.log(`🔒 Информация о безопасности: ${options.includeSecurity ? 'ДА' : 'НЕТ'}`);
     console.log(`🔍 Self functions: ${options.selfFunctions !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
     console.log(`💾 Полный JSON: ${options.fullJson !== false ? 'СОХРАНЯТЬ' : 'НЕ СОХРАНЯТЬ'}`);
+    // ✅ v9.0.4: информация про edges
+    console.log(`🔗 Edges в отдельный файл: ${options.edges === true ? 'ДА' : 'НЕТ'}`);
+    if (options.edges === true) {
+      console.log(`   Суффикс: ${options.edgesSuffix || '.edges.json'}`);
+    }
     console.log('');
 
     // Проверяем пресет
@@ -190,6 +209,9 @@ export class CompactCommand {
         compress: true,
         saveFullJson: options.fullJson !== false,
         verbose: options.verbose,
+        // ✅ v9.0.4: edges — только если явно запрошено
+        saveEdges: options.edges === true,
+        edgesJsonSuffix: options.edgesSuffix || '.edges.json',
       };
 
       // Генерируем отчет (единая функция для всех режимов)
@@ -276,6 +298,9 @@ export class CompactCommand {
     // Размер полного файла
     const fullSizeKB = report.stats?.fullSize ? (report.stats.fullSize / 1024).toFixed(2) : '0';
 
+    // ✅ v9.0.4: размер файла edges
+    const edgesSizeKB = report.stats?.edgesSize ? (report.stats.edgesSize / 1024).toFixed(2) : '0';
+
     console.log('\n' + '='.repeat(70));
     console.log('✅ ОТЧЕТ УСПЕШНО СОЗДАН!');
     console.log('='.repeat(70));
@@ -312,6 +337,8 @@ export class CompactCommand {
     console.log(
       `   • Self functions: ${options.selfFunctions !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`
     );
+    // ✅ v9.0.4: строка про edges
+    console.log(`   • Edges в отдельный файл: ${options.edges === true ? 'ДА' : 'НЕТ'}`);
 
     if (report.stats?.compressionRatio !== undefined) {
       console.log(
@@ -324,6 +351,10 @@ export class CompactCommand {
       console.log(`\n💾 ФАЙЛЫ:`);
       console.log(`   • Сжатый JSON: ${outputPath} (${compactSizeKB} KB)`);
       console.log(`   • Полный JSON:  ${report.fullPath} (${fullSizeKB} KB)`);
+      // ✅ v9.0.4: файл edges
+      if (report.edgesPath) {
+        console.log(`   • Edges JSON:   ${report.edgesPath} (${edgesSizeKB} KB)`);
+      }
     }
 
     // ✅ Легенда (если есть в compact)
@@ -378,6 +409,12 @@ export class CompactCommand {
     console.log('   • gr.re — реэкспорты');
     console.log('   • st — общая статистика');
     console.log('   • legend — легенда для расшифровки');
+    // ✅ v9.0.4: совет про edges
+    if (report.edgesPath) {
+      console.log(
+        '   • *.edges.json — агрегированный граф всех связей (imports/exports/calls/re-exports)'
+      );
+    }
 
     if (options.ultra) {
       console.log('   🚀 Ультра-компактный режим: идеально для отправки в AI');
@@ -403,6 +440,7 @@ export class CompactCommand {
       compression: {
         compactSize: report.stats?.compactSize || 0,
         fullSize: report.stats?.fullSize || 0,
+        edgesSize: report.stats?.edgesSize || 0, // ✅ v9.0.4
         ratio: report.stats?.compressionRatio || 0,
       },
       modules: report.full?.modules?.length || 0,
@@ -414,6 +452,8 @@ export class CompactCommand {
       imports: report.full?.imports?.length || 0,
       calls: report.full?.calls?.length || 0,
       reExports: report.full?.reExports?.length || 0,
+      // ✅ v9.0.4: путь к edges
+      edgesPath: report.edgesPath || null,
     };
     fs.writeFileSync(statsPath, JSON.stringify(stats, null, 2));
     console.log(`📄 Детальная статистика сохранена: ${statsPath}`);

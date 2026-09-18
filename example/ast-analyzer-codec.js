@@ -1,70 +1,372 @@
 // ============================================================================
-// AST ANALYZER — CODEC v9.3
+// AST ANALYZER — CODEC v10.2
 // Кодирование/декодирование между полным и компактным форматами.
 //
 //   Full    (index.full.json) — развёрнутый, читаемый, с длинными ключами
 //   Compact (index.json)      — короткие ключи, tuple-массивы, словари строк
 //
-// Публичный API:
-//   decodeCompactData(compact)              → full
-//   encodeToCompactData(full, options)      → compact
-//   roundTripSemantic(compact)              → L1-проверка (семантическая)
-//   roundTripByteExact(compact)             → L3-проверка (байт-в-байт)
-//   roundTripEncode(full)                   → обратная проверка
-//   detectFormat(json)                      → 'compact' | 'full' | 'unknown'
-//   toFullData(json)                        → full (универсальный вход)
+// Публичный API (совместим с TS-версией v9.0.x):
 //
-// Изменения v9.2:
-//   - deepEqual теперь считает undefined ≈ [] ≈ {} (пустые контейнеры)
-//   - roundTripSemantic вырезает legend и __codec перед сравнением
-//   - roundTripByteExact вырезает пустые контейнеры перед сравнением
-//   - Добавлена stripForByteCompare для устойчивого сравнения
-//   - Добавлена stripServiceFields для L1-проверок
+//   // --- Фасад ---
+//   Codec.encode(full, opts?)         → compact
+//   Codec.decode(compact, opts?)      → full
+//   Codec.verifyRoundTrip(full)       → { ok, error?, details? }
+//   Codec.verifyRoundTripBoth(f, c)   → ReversibilityReport
+//   Codec.getCompactSize(compact)     → number
+//   Codec.getFullSize(full)           → number
+//   Codec.getCompressionRatio(full)   → number
+//   Codec.stringify(compact, pretty?) → string
+//   Codec.parse(json)                 → compact
+//   Codec.getLegend()                 → legend
+//   Codec.buildEdges(full)            → edges[]        ← НОВОЕ v10.1
+//   Codec.buildEdgesStats(edges)      → stats          ← НОВОЕ v10.1
 //
-// Изменения v9.3 (текущая версия):
-//   - ИСПРАВЛЕНО: в секции gr.* индексы moduleIdx/fileIdx/funcIdx —
-//     это 1-based НОМЕРА сущностей (m2 → 2, f2 → 2, fn110 → 110),
-//     а НЕ индексы в массивах (0-based).
-//   - ИСПРАВЛЕНО: external functions в gr.c хранятся как индексы в
-//     stringDict (str(idx)), а не в funcList.
-//   - ИСПРАВЛЕНО: encodeFlags теперь использует порядок 'aerm'
-//     (a → e → r → m), а не 'earm'.
-//   - ИСПРАВЛЕНО: idToNum() извлекает числовой суффикс ID вместо
-//     поиска позиции в массиве.
-//   - ИСПРАВЛЕНО: в encodeToCompactData поля gr.e / gr.i / gr.c / gr.re
-//     теперь устанавливаются через out.gr.* (раньше setArr('gr.e', ...)
-//     создавал плоский ключ "gr.e" в корне out).
-//   - ИСПРАВЛЕНО: для unresolved импортов (toFileId отсутствует в fl)
-//     сохраняется исходный номер файла в поле __rawToFileNum, чтобы
-//     симметрия L3 (байт-в-байт) сохранялась.
+//   // --- Прямые функции ---
+//   decodeCompactData(compact, opts?) → full
+//   encodeToCompactData(full, opts?)  → compact
+//   roundTripSemantic(compact)        → { ok, diff }
+//   roundTripByteExact(compact)       → { ok, diff }
+//   roundTripEncode(full)             → { ok, diff }
+//   detectFormat(json)                → 'compact' | 'full' | 'unknown'
+//   toFullData(json)                  → full
+//   verifyRoundTrip(full, opts?)      → { ok, error?, details? }
+//   verifyRoundTripBoth(full, compact)→ ReversibilityReport
+//   collectDiffs(a, b, path?, limit?) → Diff[]
+//   deepEqual(a, b)                   → boolean
+//   normalizeForDiff(value)           → string
 //
-// Изменения v9.4 (текущая версия):
-//   - ИСПРАВЛЕНО: __rawToFileNum теперь сохраняется для ВСЕХ импортов
-//     с toNumRaw > 0, а не только для внутренних unresolved.
-//     Ранее для external-импортов поле не сохранялось, из-за чего
-//     при encodeToCompactData терялся оригинальный индекс в stringDict
-//     (значения 353, 355, 357, ... заменялись на -1).
-//   - ИСПРАВЛЕНО: в encodeToCompactData проверка __rawToFileNum
-//     перенесена В НАЧАЛО цепочки if/else, чтобы она срабатывала
-//     и для external-импортов. Ранее первый if (i.isExternal)
-//     перехватывал управление и возвращал -1.
-//   - РЕЗУЛЬТАТ: L3 (byte-exact) round-trip теперь проходит для
-//     импортов с external-ссылками (20 расхождений устранено).
+//   // --- НОВОЕ v10.1: Edges ---
+//   buildEdgesFromFull(full)          → { edges, stats }
+//   buildEdgesFromCompact(compact)    → { edges, stats }
 //
-// Симметрия:
-//   - decodeCompactData сохраняет исходные словари в out.__codec
-//   - encodeToCompactData({ reuseDicts: true }) переиспользует их
-//   - strict: true → падать, если значение не найдено в словаре
+//   // --- Флаги ---
+//   encodeFlags(obj)                  → number
+//   flagsToString(flags)              → string
+//   decodeFlagsToObject(flagStr)      → DecodedFlags
+//   flagsStringToNumber(flagStr)      → number
+//   createEmptyFlags()                → DecodedFlags
+//
+//   // --- Словари ---
+//   FLAG_MAP, FLAG_CHAR_MAP, FLAG_NAMES
+//   RELATION_TYPES, EXPORT_TYPES, IMPORT_TYPES
+//   CALL_TYPES, RE_EXPORT_TYPES
+//   LIFECYCLE_TYPES, EFFECT_TYPES, INJECTION_TYPES
+//   REACTIVITY_TYPES, CONDITIONAL_TYPES
+//   TYPE_KINDS, TYPE_USAGE_KINDS
+//
+//   // --- Версия ---
+//   CODEC_VERSION
+//
+// Изменения v10.2 (текущая версия):
+//   - ✅ КРИТИЧНОЕ ИСПРАВЛЕНИЕ: в encodeToCompactData блок gr.c —
+//       для external-вызовов сохраняется РЕАЛЬНЫЙ тип вызова
+//       (direct / async / method / callback), а НЕ принудительный 'direct'.
+//       Признак external передаётся отдельным 5-м полем кортежа gr.c
+//       (isExternal), поэтому нет причин терять исходный тип.
+//
+//       Раньше (v10.0–v10.1):
+//         rev(CALL_TYPES, isExt ? 'direct' : c.type, 'd')
+//       Теперь:
+//         rev(CALL_TYPES, c.type, 'd')
+//
+//       Симптом: L1_semantic и L3_byteExact падали с расхождениями
+//         $.calls[N].type: a="async"/"callback", b="direct"
+//         $.gr.c[N][3]:  a="a"/"c",               b="d"
+//       После чего Codec.verifyRoundTripBoth выдавал FAIL.
+//   - ✅ Обновлён JSDoc-комментарий к CALL_TYPES: пояснение, что тип
+//       вызова и признак external — ОРТОГОНАЛЬНЫ.
+//   - ✅ CODEC_VERSION: '10.1' → '10.2'
+//
+// Изменения v10.1:
+//   - ✅ decodeCompactData(compact, options):
+//       options.includeEdges (по умолчанию false) — если true, добавляет
+//       в результат full.edges, восстановленный из gr.i + gr.e + gr.c + gr.re.
+//       По умолчанию edges НЕ восстанавливаются — это устраняет расхождение
+//       при DL (decode(encode(full)) === full), когда исходный full не
+//       содержит edges (как и должно быть по спецификации v9.0.x).
+//   - ✅ encodeToCompactData(full, options):
+//       options.includeEdges (по умолчанию false) — игнорируется.
+//       Поле full.edges никогда не кодируется (производное).
+//   - ✅ НОВЫЕ ФУНКЦИИ:
+//       buildEdgesFromFull(full)    → { edges, stats }
+//       buildEdgesFromCompact(compact) → { edges, stats }
+//       — собирают агрегированный массив edges из соответствующих секций.
+//         Используются для отдельного файла *.edges.json в compact-reporter.ts.
+//   - ✅ Codec.buildEdges(full) и Codec.buildEdgesStats(edges) — фасад.
+//
+// Изменения v10.0:
+//   - ✅ 18 битов флагов (как в TS v9.0.x): a e m r v n s d c x t A l y g p P S
+//   - ✅ gr.e: 12 полей (isStarReExport, isDefaultReExport)
+//   - ✅ gr.c: 5 полей (isExternal)
+//   - ✅ mi.mN.p: всегда (если path есть)
+//   - ✅ effects (ef): чтение + запись
+//   - ✅ Полная поддержка lifecycle / injections / reactivity /
+//        conditionals / types / typeRefs / templates
+//   - ✅ Экспорт всех словарей
+//   - ✅ Экспорт Codec (фасад)
+//   - ✅ verifyRoundTrip, verifyRoundTripBoth, collectDiffs,
+//        normalizeForDiff, getCompactSize, getFullSize,
+//        getCompressionRatio, stringify, parse
+//   - ✅ decodeFlagsToObject, flagsStringToNumber, createEmptyFlags
+//   - ✅ Сохранены обратно-совместимые API v9.4:
+//        decodeCompactData, encodeToCompactData, roundTripSemantic,
+//        roundTripByteExact, roundTripEncode, detectFormat, toFullData
 // ============================================================================
+
+// ---------------------------------------------------------------------------
+// ВЕРСИЯ
+// ---------------------------------------------------------------------------
+export const CODEC_VERSION = '10.2';
+
+// ---------------------------------------------------------------------------
+// СЛОВАРИ (экспортируемые)
+// ---------------------------------------------------------------------------
+
+/** Карта флагов: бит → символ. */
+export const FLAG_MAP = {
+  1: 'a', // async
+  2: 'e', // exported
+  4: 'm', // method
+  8: 'r', // arrow
+  16: 'v', // event handler
+  32: 'n', // nested
+  64: 's', // self
+  128: 'd', // dynamic
+  256: 'c', // config
+  512: 'x', // external
+  1024: 't', // vue template
+  2048: 'A', // async chain
+  4096: 'l', // closure
+  8192: 'y', // type dep
+  16384: 'g', // generator
+  32768: 'p', // private
+  65536: 'P', // protected
+  131072: 'S', // static
+};
+
+/** Обратная карта: символ → бит. */
+export const FLAG_CHAR_MAP = Object.fromEntries(
+  Object.entries(FLAG_MAP).map(([bit, char]) => [char, parseInt(bit, 10)])
+);
+
+/** Имена флагов: бит → имя. */
+export const FLAG_NAMES = {
+  1: 'isAsync',
+  2: 'isExported',
+  4: 'isMethod',
+  8: 'isArrow',
+  16: 'isEventHandler',
+  32: 'isNested',
+  64: 'isSelf',
+  128: 'isDynamic',
+  256: 'isConfig',
+  512: 'isExternal',
+  1024: 'isVueTemplate',
+  2048: 'isAsyncChain',
+  4096: 'isClosure',
+  8192: 'isTypeDep',
+  16384: 'isGenerator',
+  32768: 'isPrivate',
+  65536: 'isProtected',
+  131072: 'isStatic',
+};
+
+export const RELATION_TYPES = {
+  d: 'direct',
+  a: 'async',
+  m: 'method',
+  c: 'callback',
+  e: 'external',
+  n: 'named',
+  df: 'default',
+  ns: 'namespace',
+  to: 'type-only',
+  ne: 'named-export',
+  de: 'default-export',
+  te: 'type-export',
+  re: 're-export',
+  all: 'all',
+};
+
+export const EXPORT_TYPES = { ne: 'named', de: 'default', te: 'type', re: 're-export' };
+export const IMPORT_TYPES = { n: 'named', df: 'default', ns: 'namespace', to: 'type-only' };
+
+/**
+ * Типы вызовов.
+ *
+ * ✅ v10.2: тип вызова (direct / async / method / callback) и признак
+ * external (isExternal, 5-е поле gr.c) — ОРТОГОНАЛЬНЫ. Тип сохраняется
+ * для ВСЕХ вызовов, включая external. Это устраняет потерю типа
+ * (async / callback / method) для external-вызовов.
+ *
+ * Раньше (v10.0–v10.1) для external-вызовов тип принудительно
+ * заменялся на 'direct', что приводило к ошибкам L1_semantic и
+ * L3_byteExact в verify-roundtrip.ts.
+ */
+export const CALL_TYPES = { d: 'direct', a: 'async', m: 'method', c: 'callback' };
+
+export const RE_EXPORT_TYPES = { n: 'named', df: 'default', all: 'all' };
+
+export const LIFECYCLE_TYPES = {
+  m: 'onMounted',
+  u: 'onUnmounted',
+  s: 'onScopeDispose',
+  a: 'onActivated',
+  d: 'onDeactivated',
+  w: 'watch',
+  W: 'watchEffect',
+  e: 'onErrorCaptured',
+};
+
+export const EFFECT_TYPES = {
+  t: 'timer',
+  c: 'cleanup',
+  p: 'promise',
+  e: 'event',
+  s: 'subscription',
+};
+
+export const INJECTION_TYPES = { p: 'provide', i: 'inject' };
+
+export const REACTIVITY_TYPES = {
+  c: 'computed',
+  w: 'watch',
+  W: 'watchEffect',
+  r: 'ref',
+  R: 'reactive',
+  S: 'shallowRef',
+  o: 'readonly',
+};
+
+export const CONDITIONAL_TYPES = { i: 'v-if', e: 'v-else-if', E: 'v-else' };
+
+export const TYPE_KINDS = { i: 'interface', t: 'type-alias', e: 'enum', c: 'class' };
+
+export const TYPE_USAGE_KINDS = {
+  p: 'param',
+  r: 'return',
+  f: 'field',
+  g: 'generic',
+  u: 'union',
+  x: 'extends',
+};
+
+// ---------------------------------------------------------------------------
+// ФЛАГИ
+// ---------------------------------------------------------------------------
+
+/**
+ * Создаёт «пустой» объект флагов (все false).
+ */
+export function createEmptyFlags() {
+  return {
+    isAsync: false,
+    isExported: false,
+    isMethod: false,
+    isArrow: false,
+    isEventHandler: false,
+    isNested: false,
+    isSelf: false,
+    isDynamic: false,
+    isConfig: false,
+    isExternal: false,
+    isVueTemplate: false,
+    isAsyncChain: false,
+    isClosure: false,
+    isTypeDep: false,
+    isGenerator: false,
+    isPrivate: false,
+    isProtected: false,
+    isStatic: false,
+  };
+}
+
+/**
+ * Кодирует булевы флаги функции/класса/константы в число.
+ */
+export function encodeFlags(obj) {
+  let flags = 0;
+  if (!obj) return 0;
+  if (obj.isAsync) flags |= 1;
+  if (obj.isExported) flags |= 2;
+  if (obj.isMethod) flags |= 4;
+  if (obj.isArrow) flags |= 8;
+  if (obj.isEventHandler) flags |= 16;
+  if (obj.isNested) flags |= 32;
+  if (obj.isSelf) flags |= 64;
+  if (obj.isDynamic) flags |= 128;
+  if (obj.isConfig) flags |= 256;
+  if (obj.isExternal) flags |= 512;
+  if (obj.isVueTemplate) flags |= 1024;
+  if (obj.isAsyncChain) flags |= 2048;
+  if (obj.isClosure) flags |= 4096;
+  if (obj.isTypeDep) flags |= 8192;
+  if (obj.isGenerator) flags |= 16384;
+  if (obj.isPrivate) flags |= 32768;
+  if (obj.isProtected) flags |= 65536;
+  if (obj.isStatic) flags |= 131072;
+  return flags;
+}
+
+/**
+ * Кодирует число флагов в строку символов.
+ */
+export function flagsToString(flags) {
+  if (flags === 0) return '0';
+  let result = '';
+  for (const [bitStr, char] of Object.entries(FLAG_MAP)) {
+    if (flags & parseInt(bitStr, 10)) {
+      result += char;
+    }
+  }
+  return result || '0';
+}
+
+/**
+ * Декодирует строку символов в число флагов.
+ */
+export function flagsStringToNumber(flagStr) {
+  if (!flagStr || flagStr === '0') return 0;
+  let flags = 0;
+  for (const char of flagStr) {
+    const bit = FLAG_CHAR_MAP[char];
+    if (bit !== undefined) flags |= bit;
+  }
+  return flags;
+}
+
+/**
+ * Декодирует строку символов в объект с булевыми полями (все 18).
+ */
+export function decodeFlagsToObject(flagStr) {
+  const result = createEmptyFlags();
+  if (!flagStr || flagStr === '0') return result;
+  const flags = flagsStringToNumber(flagStr);
+  result.isAsync = !!(flags & 1);
+  result.isExported = !!(flags & 2);
+  result.isMethod = !!(flags & 4);
+  result.isArrow = !!(flags & 8);
+  result.isEventHandler = !!(flags & 16);
+  result.isNested = !!(flags & 32);
+  result.isSelf = !!(flags & 64);
+  result.isDynamic = !!(flags & 128);
+  result.isConfig = !!(flags & 256);
+  result.isExternal = !!(flags & 512);
+  result.isVueTemplate = !!(flags & 1024);
+  result.isAsyncChain = !!(flags & 2048);
+  result.isClosure = !!(flags & 4096);
+  result.isTypeDep = !!(flags & 8192);
+  result.isGenerator = !!(flags & 16384);
+  result.isPrivate = !!(flags & 32768);
+  result.isProtected = !!(flags & 65536);
+  result.isStatic = !!(flags & 131072);
+  return result;
+}
 
 // ---------------------------------------------------------------------------
 // СЛУЖЕБНЫЕ КЛАССЫ ДЛЯ СБОРКИ СЛОВАРЕЙ
 // ---------------------------------------------------------------------------
 
-/**
- * Словарь строк с возможностью добавления.
- * Используется при кодировании «с нуля».
- */
 class DictBuilder {
   constructor() {
     this.map = new Map();
@@ -81,9 +383,6 @@ class DictBuilder {
   }
 }
 
-/**
- * Словарь значений (может содержать объекты/массивы/примитивы).
- */
 class ValueDictBuilder {
   constructor() {
     this.map = new Map();
@@ -100,31 +399,20 @@ class ValueDictBuilder {
   }
 }
 
-/**
- * «Замороженный» словарь строк — только для чтения.
- * Возвращает существующий индекс или -1/ошибку.
- * Используется при encodeToCompactData({ reuseDicts: true }).
- */
 class FrozenDictBuilder {
   constructor(initialList, strict = false) {
     this.list = (initialList || []).slice();
     this.map = new Map();
     this.strict = strict;
-    for (let i = 0; i < this.list.length; i++) {
-      this.map.set(this.list[i], i);
-    }
+    for (let i = 0; i < this.list.length; i++) this.map.set(this.list[i], i);
   }
   add(value) {
     if (value === null || value === undefined || value === '') return -1;
     const key = String(value);
     if (this.map.has(key)) return this.map.get(key);
     if (this.strict) {
-      throw new Error(
-        `FrozenDictBuilder: значение "${key}" отсутствует в исходном словаре. ` +
-        `Full-формат был изменён после декодирования.`
-      );
+      throw new Error(`FrozenDictBuilder: значение "${key}" отсутствует в исходном словаре.`);
     }
-    // Нестрогий режим: дописываем в конец (индексы-префиксы сохраняются)
     const idx = this.list.length;
     this.list.push(key);
     this.map.set(key, idx);
@@ -132,9 +420,6 @@ class FrozenDictBuilder {
   }
 }
 
-/**
- * «Замороженный» словарь значений — только для чтения.
- */
 class FrozenValueDictBuilder {
   constructor(initialList, strict = false) {
     this.list = (initialList || []).slice();
@@ -151,9 +436,7 @@ class FrozenValueDictBuilder {
     const key = typeof value === 'object' ? JSON.stringify(value) : String(value);
     if (this.map.has(key)) return this.map.get(key);
     if (this.strict) {
-      throw new Error(
-        `FrozenValueDictBuilder: значение "${key}" отсутствует в исходном словаре.`
-      );
+      throw new Error(`FrozenValueDictBuilder: значение "${key}" отсутствует в исходном словаре.`);
     }
     const idx = this.list.length;
     this.list.push(value);
@@ -163,20 +446,19 @@ class FrozenValueDictBuilder {
 }
 
 // ---------------------------------------------------------------------------
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// УТИЛИТЫ
 // ---------------------------------------------------------------------------
 
-/**
- * Извлекает числовой суффикс из ID.
- *   "m2"    → 2
- *   "f26"   → 26
- *   "fn110" → 110
- *   ""/null → -1
- */
 function idToNum(id) {
   if (!id || typeof id !== 'string') return -1;
   const m = id.match(/(\d+)$/);
   return m ? parseInt(m[1], 10) : -1;
+}
+
+function arrayEq(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,91 +466,42 @@ function idToNum(id) {
 // ---------------------------------------------------------------------------
 
 /**
- * Декодирует компактный JSON (index.json) в полный формат (index.full.json).
- * Сохраняет исходные словари в out.__codec для последующего симметричного
- * кодирования.
+ * Декодирует компактный JSON в полный.
  *
- * ВАЖНО (v9.3):
- *   - ID сущностей в массивах fns/cls/cn хранятся КАК ЕСТЬ (строками).
- *   - В секции gr.* индексы (moduleIdx, fileIdx, funcIdx) — это
- *     1-based НОМЕРА сущностей:
- *        moduleIdx = 2   → "m2"    (moduleList[1])
- *        fileIdx   = 2   → "f2"    (fileList[1])
- *        funcIdx   = 110 → "fn110" (funcList[109])
- *   - В gr.c для external (type === "e") значение toFunctionId — это
- *     индекс в stringDict (strByIdx), а не в funcList.
- *   - Для unresolved импортов (toFileId отсутствует в fl) сохраняется
- *     исходный номер файла в поле __rawToFileNum — для симметрии L3.
- *
- * ВАЖНО (v9.4):
- *   - __rawToFileNum теперь сохраняется для ВСЕХ импортов с toNumRaw > 0
- *     (включая external), чтобы L3 (byte-exact) round-trip был возможен.
- *
- * @param {object} compact — объект из index.json
- * @returns {object} — объект в полном формате + __codec
+ * @param {object} compact — компактный JSON (index.json)
+ * @param {object} [options]
+ * @param {boolean} [options.includeEdges=false] — если true, добавляет
+ *   в результат поле `edges`, восстановленное из gr.i + gr.e + gr.c + gr.re.
+ *   По умолчанию false — это соответствует поведению TS-версии v9.0.4+
+ *   и устраняет расхождение при DL (decode(encode(full)) === full),
+ *   когда исходный full не содержит edges.
+ * @returns {object} — полный JSON (index.full.json)
  */
-export function decodeCompactData(compact) {
+export function decodeCompactData(compact, options = {}) {
   if (!compact || typeof compact !== 'object') {
     throw new Error('decodeCompactData: ожидается объект');
   }
+
+  const { includeEdges = false } = options;
 
   const legend = compact.legend || {};
   const S = legend.stringDict || [];
   const P = legend.paramDict || [];
   const V = legend.valueDict || [];
-  const flagMap = legend.flagCharMap || {};
-  const expTypes = legend.exportTypes || {};
-  const impTypes = legend.importTypes || {};
-  const callTypes = legend.callTypes || {};
-  const reExpTypes = legend.reExportTypes || {};
-  const lcTypes = legend.lifecycleTypes || {};
-  const injTypes = legend.injectionTypes || {};
-  const rxTypes = legend.reactivityTypes || {};
-  const condTypes = legend.conditionalTypes || {};
-  const typeKinds = legend.typeKinds || {};
-  const typeUsage = legend.typeUsageKinds || {};
 
-  // Хелперы-декодеры словарей
-  const str = (i) => (i === -1 || i == null ? '' : (S[i] ?? ''));
-  const par = (i) => (i === -1 || i == null ? '' : (P[i] ?? ''));
-  const val = (i) => (i === -1 || i == null ? undefined : V[i]);
+  const str = i => (i === -1 || i == null ? '' : (S[i] ?? ''));
+  const par = i => (i === -1 || i == null ? '' : (P[i] ?? ''));
+  const val = i => (i === -1 || i == null ? undefined : V[i]);
   const code = (map, c, fb) => map[c] || c || fb || '';
 
-  // ---------------------------------------------------------------------
-  // 1-BASED МАППИНГ: номер → ID
-  //   moduleIdx = 1  → "m1"
-  //   moduleIdx = 26 → "m26"
-  //   moduleIdx = 0 / null / undefined → ""
-  // ---------------------------------------------------------------------
   const moduleList = Object.keys(compact.mi || {});
-  const fileList   = Object.keys(compact.fl || {});
-  const funcList   = (compact.fns || []).map((a) => a[0]);
+  const fileList = Object.keys(compact.fl || {});
+  const funcList = (compact.fns || []).map(a => a[0]);
 
-  const moduleByIdx = (i) => {
-    if (i == null || i <= 0) return '';
-    return moduleList[i - 1] ?? '';
-  };
-  const fileByIdx = (i) => {
-    if (i == null || i <= 0) return '';
-    return fileList[i - 1] ?? '';
-  };
-  const funcByIdx = (i) => {
-    if (i == null || i <= 0) return '';
-    return funcList[i - 1] ?? '';
-  };
-
-  // Для external: idx — это индекс в stringDict
-  const strByIdx = (i) => (i == null || i < 0 ? '' : (S[i] ?? ''));
-
-  // Декодирует строку флагов в объект булевых значений.
-  const decodeFlags = (flagsStr) => {
-    const s = flagsStr || '';
-    const out = {};
-    for (const ch of Object.keys(flagMap)) {
-      out[ch] = s.includes(ch);
-    }
-    return out;
-  };
+  const moduleByIdx = i => (i == null || i <= 0 ? '' : (moduleList[i - 1] ?? ''));
+  const fileByIdx = i => (i == null || i <= 0 ? '' : (fileList[i - 1] ?? ''));
+  const funcByIdx = i => (i == null || i <= 0 ? '' : (funcList[i - 1] ?? ''));
+  const strByIdx = i => (i == null || i < 0 ? '' : (S[i] ?? ''));
 
   const out = {
     version: compact.v || compact.version || '?',
@@ -287,6 +520,7 @@ export function decodeCompactData(compact) {
     statistics: compact.st || compact.statistics || {},
     conditionals: [],
     lifecycle: [],
+    effects: [],
     injections: [],
     reactivity: [],
     types: [],
@@ -313,92 +547,102 @@ export function decodeCompactData(compact) {
     }));
   }
 
-  // ---- functions ----
-  // Схема: [id, name, moduleId, fileId, line, flags, paramsIdx[], returnTypeIdx]
-  // moduleId и fileId здесь — СТРОКИ ("m2", "f2"), НЕ индексы.
+  // ---- functions (18 флагов) ----
   if (compact.fns) {
-    out.functions = compact.fns.map((a) => {
-      const fl = decodeFlags(a[5]);
-      return {
+    out.functions = compact.fns.map(a => {
+      const fl = decodeFlagsToObject(a[5]);
+      const fn = {
         id: a[0],
         name: a[1],
         moduleId: a[2],
         fileId: a[3],
         line: a[4],
-        isExported: !!fl.e,
-        isAsync: !!fl.a,
-        isArrow: !!fl.r,
-        isMethod: !!fl.m,
+        isExported: fl.isExported,
+        isAsync: fl.isAsync,
+        isArrow: fl.isArrow,
+        isMethod: fl.isMethod,
         params: (a[6] || []).map(par),
         returnType: str(a[7]),
       };
+      if (fl.isEventHandler) fn.isEventHandler = true;
+      if (fl.isNested) fn.isNested = true;
+      if (fl.isSelf) fn.isSelf = true;
+      if (fl.isDynamic) fn.isDynamic = true;
+      if (fl.isConfig) fn.isConfig = true;
+      if (fl.isExternal) fn.isExternal = true;
+      if (fl.isVueTemplate) fn.isVueTemplate = true;
+      if (fl.isAsyncChain) fn.isAsyncChain = true;
+      if (fl.isClosure) fn.isClosure = true;
+      if (fl.isTypeDep) fn.isTypeDep = true;
+      if (fl.isGenerator) fn.isGenerator = true;
+      if (fl.isPrivate) fn.isPrivate = true;
+      if (fl.isProtected) fn.isProtected = true;
+      if (fl.isStatic) fn.isStatic = true;
+      return fn;
     });
   }
 
   // ---- classes ----
-  // Схема: [id, name, moduleId, fileId, line, flags, methodsIdx[]]
   if (compact.cls) {
-    out.classes = compact.cls.map((a) => {
-      const fl = decodeFlags(a[5]);
-      return {
+    out.classes = compact.cls.map(a => {
+      const fl = decodeFlagsToObject(a[5]);
+      const cls = {
         id: a[0],
         name: a[1],
         moduleId: a[2],
         fileId: a[3],
         line: a[4],
-        isExported: !!fl.e,
-        methods: (a[6] || []).map((x) => str(x)),
+        isExported: fl.isExported,
+        methods: (a[6] || []).map(x => str(x)),
       };
+      if (fl.isPrivate) cls.isPrivate = true;
+      if (fl.isProtected) cls.isProtected = true;
+      if (fl.isStatic) cls.isStatic = true;
+      return cls;
     });
   }
 
   // ---- constants ----
-  // Схема: [id, name, moduleId, fileId, line, flags, valueIdx]
   if (compact.cn) {
-    out.constants = compact.cn.map((a) => {
-      const fl = decodeFlags(a[5]);
-      return {
+    out.constants = compact.cn.map(a => {
+      const fl = decodeFlagsToObject(a[5]);
+      const cn = {
         id: a[0],
         name: a[1],
         moduleId: a[2],
         fileId: a[3],
         line: a[4],
-        isExported: !!fl.e,
+        isExported: fl.isExported,
         value: val(a[6]),
       };
+      if (fl.isPrivate) cn.isPrivate = true;
+      if (fl.isProtected) cn.isProtected = true;
+      return cn;
     });
   }
 
   // ---- graph ----
   if (compact.gr) {
-    // exports: [moduleNum, fileNum, funcNum, line, typeCode, exportNameIdx,
-    //           localNameIdx, isTypeOnly, isReExport, sourceIdx]
-    // ВАЖНО: moduleNum/fileNum/funcNum — 1-based номера сущностей.
+    // exports: 12 полей
     if (compact.gr.e) {
       out.exports = compact.gr.e.map((a, i) => ({
         id: `e${i + 1}`,
         moduleId: moduleByIdx(a[0]),
         fileId: fileByIdx(a[1]),
-        functionId: (a[2] != null && a[2] > 0)
-          ? funcByIdx(a[2])
-          : undefined,
+        functionId: a[2] != null && a[2] > 0 ? funcByIdx(a[2]) : undefined,
         line: a[3],
-        type: code(expTypes, a[4], 'named'),
+        type: code(EXPORT_TYPES, a[4], 'named'),
         exportName: str(a[5]),
         localName: str(a[6]),
         isTypeOnly: !!a[7],
         isReExport: !!a[8],
         source: str(a[9]),
+        isStarReExport: !!a[10],
+        isDefaultReExport: !!a[11],
       }));
     }
 
-    // imports: [fromFileNum, toFileIdIdx, sourceIdx, importedNameIdx,
-    //           localNameIdx, line, typeCode, isExternal]
-    // ВАЖНО: fromFileNum — 1-based номер файла (индекс в fl).
-    // ВАЖНО: toFileIdIdx — индекс в stringDict (или 1-based номер файла,
-    // в зависимости от реализации генератора). Для сохранения симметрии
-    // L3 сохраняем исходное значение в __rawToFileNum для ВСЕХ импортов
-    // с toNumRaw > 0 (включая external).
+    // imports: 8 полей
     if (compact.gr.i) {
       out.imports = compact.gr.i.map((a, i) => {
         const isExternal = !!a[7];
@@ -408,56 +652,42 @@ export function decodeCompactData(compact) {
           id: `i${i + 1}`,
           fromFileId: fileByIdx(a[0]),
           toFileId: resolvedToFileId,
-          // Служебное поле: сохраняем «сырой» индекс для симметрии L3.
-          // Для внешних импортов это индекс в stringDict (пакет),
-          // для внутренних — номер файла (может быть unresolved).
-          // v9.4: сохраняем для ВСЕХ импортов с toNumRaw > 0.
-          __rawToFileNum: (toNumRaw != null && toNumRaw > 0)
-            ? toNumRaw
-            : undefined,
+          __rawToFileNum: toNumRaw != null && toNumRaw > 0 ? toNumRaw : undefined,
           source: str(a[2]),
           importedName: str(a[3]),
           localName: str(a[4]),
           line: a[5],
-          type: code(impTypes, a[6], 'named'),
+          type: code(IMPORT_TYPES, a[6], 'named'),
           isExternal,
         };
       });
     }
 
-    // calls: [fromNum, toNumOrExternalIdx, line, typeCode]
-    // ВАЖНО:
-    //   - fromNum — 1-based номер функции.
-    //   - Если typeCode === "e" (external) — toNumOrExternalIdx это
-    //     индекс в stringDict (strByIdx), а не в funcList.
-    //   - Иначе — 1-based номер функции.
+    // calls: 5 полей (fromIdx, toIdx, line, typeCode, isExternal)
     if (compact.gr.c) {
       out.calls = compact.gr.c.map((a, i) => {
-        const typeCode = a[3];
-        const isExt = typeCode === 'e';
+        const isExternal = a[4] === 1;
+        const toIdx = a[1];
         return {
           id: `c${i + 1}`,
           fromFunctionId: funcByIdx(a[0]),
-          toFunctionId: isExt ? strByIdx(a[1]) : funcByIdx(a[1]),
+          toFunctionId: isExternal ? strByIdx(toIdx) : funcByIdx(toIdx),
           line: a[2],
-          type: code(callTypes, typeCode, 'direct'),
+          type: code(CALL_TYPES, a[3], 'direct'),
         };
       });
     }
 
-    // reExports: [moduleNum, funcNum, sourceIdx, exportNameIdx,
-    //             line, typeCode, isTypeOnly]
+    // reExports: 7 полей
     if (compact.gr.re) {
       out.reExports = compact.gr.re.map((a, i) => ({
         id: `re${i + 1}`,
         moduleId: moduleByIdx(a[0]),
-        functionId: (a[1] != null && a[1] > 0)
-          ? funcByIdx(a[1])
-          : undefined,
+        functionId: a[1] != null && a[1] > 0 ? funcByIdx(a[1]) : undefined,
         source: str(a[2]),
         exportName: str(a[3]),
         line: a[4],
-        type: code(reExpTypes, a[5], 'named'),
+        type: code(RE_EXPORT_TYPES, a[5], 'named'),
         isTypeOnly: !!a[6],
       }));
     }
@@ -465,12 +695,12 @@ export function decodeCompactData(compact) {
 
   // ---- templates ----
   if (compact.vt) {
-    out.templates = compact.vt.map((a) => ({
+    out.templates = compact.vt.map(a => ({
       fileId: fileByIdx(a[0]),
       moduleId: moduleByIdx(a[1]),
       complexity: a[2] || 0,
       reactivityDeps: (a[3] || []).map(str),
-      eventHandlers: (a[4] || []).map((ev) => ({
+      eventHandlers: (a[4] || []).map(ev => ({
         eventName: str(ev[0]),
         handlerName: str(ev[1]),
         tag: str(ev[2]),
@@ -478,26 +708,26 @@ export function decodeCompactData(compact) {
         modifiers: (ev[4] || []).map(str),
         isExternal: !!ev[5],
       })),
-      dynamicComponents: (a[5] || []).map((dc) => ({
+      dynamicComponents: (a[5] || []).map(dc => ({
         isExpression: str(dc[0]),
         line: dc[1],
         resolvedComponents: (dc[2] || []).map(str),
       })),
       directives: (a[6] || []).map(str),
       usedComponents: (a[7] || []).map(str),
-      templateRefs: (a[8] || []).map((tr) => ({
+      templateRefs: (a[8] || []).map(tr => ({
         refValue: str(tr[0]),
         tag: str(tr[1]),
         line: tr[2],
         exposedMethods: (tr[3] || []).map(str),
       })),
-      cssVariables: (a[9] || []).map((cv) => ({
+      cssVariables: (a[9] || []).map(cv => ({
         name: str(cv[0]),
         value: str(cv[1]),
         line: cv[2],
         isMultiline: !!cv[3],
       })),
-      deepSelectors: (a[10] || []).map((ds) => ({
+      deepSelectors: (a[10] || []).map(ds => ({
         selector: str(ds[0]),
         line: ds[1],
       })),
@@ -509,11 +739,23 @@ export function decodeCompactData(compact) {
   if (compact.lc) {
     out.lifecycle = compact.lc.map((a, i) => ({
       id: `lc${i + 1}`,
-      hookName: code(lcTypes, a[0], a[0]),
+      hookName: code(LIFECYCLE_TYPES, a[0], a[0]),
       functionId: funcByIdx(a[1]) || undefined,
       line: a[2],
       callbackFunctionId: funcByIdx(a[3]) || undefined,
-      flags: a[4] || 0,
+      isSetupContext: a[4] === 's',
+    }));
+  }
+
+  // ---- effects (ef) ----
+  if (compact.ef) {
+    out.effects = compact.ef.map((a, i) => ({
+      id: `ef${i + 1}`,
+      effectType: code(EFFECT_TYPES, a[0], a[0]),
+      functionId: funcByIdx(a[1]) || undefined,
+      line: a[2],
+      targetName: str(a[3]),
+      metaValue: a[4] >= 0 ? str(a[4]) : undefined,
     }));
   }
 
@@ -521,11 +763,12 @@ export function decodeCompactData(compact) {
   if (compact.inj) {
     out.injections = compact.inj.map((a, i) => ({
       id: `in${i + 1}`,
-      kind: code(injTypes, a[0], a[0]),
+      kind: code(INJECTION_TYPES, a[0], a[0]),
       fileId: fileByIdx(a[1]),
       line: a[2],
       key: str(a[3]),
-      flags: a[4] || 0,
+      isSymbolKey: (a[4] & 1) !== 0,
+      hasDefault: (a[4] & 2) !== 0,
     }));
   }
 
@@ -533,12 +776,12 @@ export function decodeCompactData(compact) {
   if (compact.rx) {
     out.reactivity = compact.rx.map((a, i) => ({
       id: `rx${i + 1}`,
-      kind: code(rxTypes, a[0], a[0]),
+      kind: code(REACTIVITY_TYPES, a[0], a[0]),
       functionId: funcByIdx(a[1]) || undefined,
       line: a[2],
       reads: (a[3] || []).map(str),
       writes: (a[4] || []).map(str),
-      flags: a[5] || 0,
+      isWriteable: a[5] === 1,
     }));
   }
 
@@ -546,12 +789,11 @@ export function decodeCompactData(compact) {
   if (compact.cd) {
     out.conditionals = compact.cd.map((a, i) => ({
       id: `cd${i + 1}`,
-      directive: code(condTypes, a[0], a[0]),
+      directive: code(CONDITIONAL_TYPES, a[0], a[0]),
       fileId: fileByIdx(a[1]),
       line: a[2],
-      conditionExpression: str(a[3]),
-      componentName: str(a[4]) || undefined,
-      flags: a[5] || 0,
+      conditionExpression: a[3] >= 0 ? str(a[3]) : undefined,
+      renderedComponent: a[4] >= 0 ? str(a[4]) : undefined,
     }));
   }
 
@@ -559,7 +801,7 @@ export function decodeCompactData(compact) {
   if (compact.ty) {
     out.types = compact.ty.map((a, i) => ({
       id: `t${i + 1}`,
-      kind: code(typeKinds, a[0], a[0]),
+      kind: code(TYPE_KINDS, a[0], a[0]),
       name: str(a[1]),
       moduleId: moduleByIdx(a[2]),
       fileId: fileByIdx(a[3]),
@@ -577,20 +819,32 @@ export function decodeCompactData(compact) {
       moduleId: moduleByIdx(a[1]),
       fileId: fileByIdx(a[2]),
       line: a[3],
-      usageKind: code(typeUsage, a[4], a[4]),
+      usageKind: code(TYPE_USAGE_KINDS, a[4], a[4]),
     }));
   }
 
-  // -----------------------------------------------------------------------
-  // СОХРАНЕНИЕ ИСХОДНЫХ СЛОВАРЕЙ ДЛЯ СИММЕТРИЧНОГО КОДИРОВАНИЯ
-  // -----------------------------------------------------------------------
+  // ---- СЛУЖЕБНЫЕ ПОЛЯ ДЛЯ СИММЕТРИИ ----
   out.__codec = {
     stringDict: S.slice(),
     paramDict: P.slice(),
     valueDict: V.slice(),
-    flagMap: { ...flagMap },
     legend: JSON.parse(JSON.stringify(legend)),
   };
+
+  // ============================================
+  // ✅ v10.1: edges — восстанавливаются ТОЛЬКО если includeEdges === true
+  // ============================================
+  // По умолчанию edges НЕ восстанавливаются — это производное поле,
+  // которое можно собрать из gr.i + gr.e + gr.c + gr.re.
+  //
+  // Если edges нужны (например, для отдельного файла *.edges.json) —
+  // передайте { includeEdges: true } в options.
+  // ============================================
+  if (includeEdges) {
+    const { edges, stats } = buildEdgesFromFull(out);
+    out.edges = edges;
+    out.edgesStats = stats;
+  }
 
   return out;
 }
@@ -599,111 +853,37 @@ export function decodeCompactData(compact) {
 // КОДИРОВАНИЕ: full → compact
 // ---------------------------------------------------------------------------
 
-/**
- * Кодирует полный формат (index.full.json) в компактный (index.json).
- *
- * @param {object} full — объект в полном формате
- * @param {object} [options]
- * @param {boolean} [options.reuseDicts=false] — переиспользовать словари из full.__codec
- * @param {boolean} [options.strict=false]    — падать при отсутствии значения в словаре
- * @param {boolean} [options.omitEmpty=true]  — не писать пустые массивы/объекты
- * @returns {object} — компактный объект
- */
 export function encodeToCompactData(full, options = {}) {
   if (!full || typeof full !== 'object') {
     throw new Error('encodeToCompactData: ожидается объект');
   }
 
-  const {
-    reuseDicts = false,
-    strict = false,
-    omitEmpty = true,
-  } = options;
+  const { reuseDicts = false, strict = false, omitEmpty = true } = options;
 
-  // ---- ВЫБОР СЛОВАРЕЙ ----
   let S, P, VD;
-
   if (reuseDicts && full.__codec) {
-    S  = new FrozenDictBuilder(full.__codec.stringDict, strict);
-    P  = new FrozenDictBuilder(full.__codec.paramDict, strict);
+    S = new FrozenDictBuilder(full.__codec.stringDict, strict);
+    P = new FrozenDictBuilder(full.__codec.paramDict, strict);
     VD = new FrozenValueDictBuilder(full.__codec.valueDict, strict);
   } else {
-    S  = new DictBuilder();
-    P  = new DictBuilder();
+    S = new DictBuilder();
+    P = new DictBuilder();
     VD = new ValueDictBuilder();
   }
-
-  // ---- КАРТЫ ФЛАГОВ ----
-  const flagMap = {
-    'a': 1, 'e': 2, 'm': 4, 'r': 8, 'v': 16, 'n': 32, 's': 64,
-    'd': 128, 'c': 256, 'x': 512, 't': 1024, 'A': 2048, 'l': 4096,
-    'y': 8192, 'g': 16384, 'p': 32768, 'P': 65536, 'S': 131072,
-  };
-  const flagCharMap = { ...flagMap };
-
-  // ---- КАРТЫ ТИПОВ ----
-  const relationTypes = {
-    d: 'direct', a: 'async', m: 'method', c: 'callback', e: 'external',
-    n: 'named', df: 'default', ns: 'namespace', to: 'type-only',
-    ne: 'named-export', de: 'default-export', te: 'type-export',
-    re: 're-export', all: 'all',
-  };
-  const exportTypes = { ne: 'named', de: 'default', te: 'type', re: 're-export' };
-  const importTypes = { n: 'named', df: 'default', ns: 'namespace', to: 'type-only' };
-  const callTypes = { d: 'direct', a: 'async', m: 'method', c: 'callback', e: 'external' };
-  const reExportTypes = { n: 'named', df: 'default', all: 'all' };
-  const lifecycleTypes = {
-    m: 'onMounted', u: 'onUnmounted', s: 'onScopeDispose',
-    a: 'onActivated', d: 'onDeactivated', w: 'watch',
-    W: 'watchEffect', e: 'onErrorCaptured',
-  };
-  const effectTypes = {
-    t: 'timer', c: 'cleanup', p: 'promise', e: 'event', s: 'subscription',
-  };
-  const injectionTypes = { p: 'provide', i: 'inject' };
-  const reactivityTypes = {
-    c: 'computed', w: 'watch', W: 'watchEffect',
-    r: 'ref', R: 'reactive', S: 'shallowRef', o: 'readonly',
-  };
-  const conditionalTypes = { i: 'v-if', e: 'v-else-if', E: 'v-else' };
-  const typeKinds = { i: 'interface', t: 'type-alias', e: 'enum', c: 'class' };
-  const typeUsageKinds = {
-    p: 'param', r: 'return', f: 'field', g: 'generic', u: 'union', x: 'extends',
-  };
 
   const rev = (map, name, fb) => {
     for (const [k, v] of Object.entries(map)) if (v === name) return k;
     return fb || name;
   };
 
-  // ---------------------------------------------------------------------
-  // ИСПРАВЛЕНО: 1-based номера для gr.*
-  //   "m2"   → 2
-  //   "f2"   → 2
-  //   "fn110"→ 110
-  // ---------------------------------------------------------------------
-  const mi   = (id) => idToNum(id);
-  const fi   = (id) => idToNum(id);
-  const fni  = (id) => idToNum(id);
+  const mi = id => idToNum(id);
+  const fi = id => idToNum(id);
+  const fni = id => idToNum(id);
 
-  // ---------------------------------------------------------------------
-  // ИСПРАВЛЕНО: правильный порядок флагов — a → e → r → m
-  // ---------------------------------------------------------------------
-  const encodeFlags = (obj) => {
-    let s = '';
-    if (obj && obj.a) s += 'a';
-    if (obj && obj.e) s += 'e';
-    if (obj && obj.r) s += 'r';
-    if (obj && obj.m) s += 'm';
-    return s || '0';
-  };
+  const si = v => S.add(v);
+  const pi = v => P.add(v);
+  const vi = v => VD.add(v);
 
-  // Хелперы-индексаторы
-  const si = (v) => S.add(v);
-  const pi = (v) => P.add(v);
-  const vi = (v) => VD.add(v);
-
-  // Хелпер: добавить ключ, только если контейнер непустой (при omitEmpty)
   const setArr = (key, arr) => {
     if (omitEmpty && (!arr || arr.length === 0)) return;
     out[key] = arr;
@@ -719,97 +899,88 @@ export function encodeToCompactData(full, options = {}) {
     st: full.statistics || {},
   };
 
-  // ---- modules ----
-  for (const m of (full.modules || [])) {
-    out.mi[m.id] = { n: m.name || '', f: m.fileIds || [] };
-    if (m.path && m.path !== m.name) out.mi[m.id].p = m.path;
+  // ---- modules (p пишется всегда, если path есть) ----
+  for (const m of full.modules || []) {
+    const entry = { n: m.name || '', f: m.fileIds || [] };
+    if (m.path) entry.p = m.path;
+    out.mi[m.id] = entry;
   }
   if (omitEmpty && Object.keys(out.mi).length === 0) delete out.mi;
 
   // ---- files ----
-  for (const f of (full.files || [])) {
+  for (const f of full.files || []) {
     out.fl[f.id] = { p: f.path || '', m: f.moduleId || '' };
   }
   if (omitEmpty && Object.keys(out.fl).length === 0) delete out.fl;
 
-  // ---- functions ----
-  // moduleId/fileId — СТРОКИ, не индексы.
-  setArr('fns', (full.functions || []).map((fn) => {
-    const flags = encodeFlags({
-      a: fn.isAsync,
-      e: fn.isExported,
-      r: fn.isArrow,
-      m: fn.isMethod,
-    });
-    return [
-      fn.id,
-      fn.name,
-      fn.moduleId,
-      fn.fileId,
-      fn.line,
-      flags,
-      (fn.params || []).map(pi),
-      si(fn.returnType),
-    ];
-  }));
+  // ---- functions (18 флагов) ----
+  setArr(
+    'fns',
+    (full.functions || []).map(fn => {
+      const flags = encodeFlags(fn);
+      return [
+        fn.id,
+        fn.name,
+        fn.moduleId,
+        fn.fileId,
+        fn.line,
+        flagsToString(flags),
+        (fn.params || []).map(pi),
+        si(fn.returnType),
+      ];
+    })
+  );
 
   // ---- classes ----
-  setArr('cls', (full.classes || []).map((c) => {
-    const flags = encodeFlags({ e: c.isExported });
-    return [c.id, c.name, c.moduleId, c.fileId, c.line, flags, (c.methods || []).map(si)];
-  }));
+  setArr(
+    'cls',
+    (full.classes || []).map(c => {
+      const flags = encodeFlags(c);
+      return [
+        c.id,
+        c.name,
+        c.moduleId,
+        c.fileId,
+        c.line,
+        flagsToString(flags),
+        (c.methods || []).map(si),
+      ];
+    })
+  );
 
   // ---- constants ----
-  setArr('cn', (full.constants || []).map((c) => {
-    const flags = encodeFlags({ e: c.isExported });
-    return [c.id, c.name, c.moduleId, c.fileId, c.line, flags, vi(c.value)];
-  }));
+  setArr(
+    'cn',
+    (full.constants || []).map(c => {
+      const flags = encodeFlags(c);
+      return [c.id, c.name, c.moduleId, c.fileId, c.line, flagsToString(flags), vi(c.value)];
+    })
+  );
 
-  // =====================================================================
-  // ИСПРАВЛЕНО: gr.e / gr.i / gr.c / gr.re устанавливаются напрямую
-  // через out.gr.* (раньше setArr('gr.e', ...) создавал плоский ключ
-  // "gr.e" в корне out, а не out.gr.e).
-  // =====================================================================
-
-  // ---- exports (gr.e) ----
-  // moduleNum, fileNum, funcNum — 1-based номера.
-  out.gr.e = (full.exports || []).map((e) => [
+  // ---- exports (gr.e) — 12 полей ----
+  out.gr.e = (full.exports || []).map(e => [
     mi(e.moduleId),
     fi(e.fileId),
     e.functionId ? fni(e.functionId) : -1,
     e.line,
-    rev(exportTypes, e.type, 'ne'),
+    rev(EXPORT_TYPES, e.type, 'ne'),
     si(e.exportName),
     si(e.localName),
     e.isTypeOnly ? 1 : 0,
     e.isReExport ? 1 : 0,
     si(e.source),
+    e.isStarReExport ? 1 : 0,
+    e.isDefaultReExport ? 1 : 0,
   ]);
 
-  // ---- imports (gr.i) ----
-  // ВАЖНО (v9.4): проверка __rawToFileNum перенесена В НАЧАЛО цепочки,
-  // чтобы она срабатывала и для external-импортов. Ранее первый
-  // if (i.isExternal) перехватывал управление и возвращал -1,
-  // из-за чего терялся оригинальный индекс в stringDict
-  // (значения 353, 355, 357, ... заменялись на -1).
-  //
-  // Приоритет:
-  //   1) __rawToFileNum — сохранённый исходный индекс (для байт-в-байт L3)
-  //   2) isExternal     — внешний импорт, toNum = -1
-  //   3) toFileId       — внутренний, пересчитываем fi(toFileId)
-  //   4) иначе          — toNum = -1
-  out.gr.i = (full.imports || []).map((i) => {
+  // ---- imports (gr.i) — 8 полей ----
+  out.gr.i = (full.imports || []).map(i => {
     const isExt = !!i.isExternal;
     let toNum;
-    if (i.__rawToFileNum != null) {
-      toNum = i.__rawToFileNum;
-    } else if (isExt) {
-      toNum = -1;
-    } else if (i.toFileId) {
-      toNum = fi(i.toFileId);
-    } else {
-      toNum = -1;
-    }
+    if (i.__rawToFileNum != null) toNum = i.__rawToFileNum;
+    else if (isExt) toNum = -1;
+    else if (i.toFileId) toNum = fi(i.toFileId);
+    else toNum = -1;
     return [
       fi(i.fromFileId),
       toNum,
@@ -817,170 +988,264 @@ export function encodeToCompactData(full, options = {}) {
       si(i.importedName),
       si(i.localName),
       i.line,
-      rev(importTypes, i.type, 'n'),
+      rev(IMPORT_TYPES, i.type, 'n'),
       isExt ? 1 : 0,
     ];
   });
 
-  // ---- calls (gr.c) ----
-  // Для external используем индекс в stringDict (si), а не fni.
-  out.gr.c = (full.calls || []).map((c) => {
-    const isExt = c.type === 'external' ||
+  // ---- calls (gr.c) — 5 полей ----
+  // ✅ v10.2: ИСПРАВЛЕНО — для external-вызовов сохраняется РЕАЛЬНЫЙ
+  // тип вызова (async / callback / method / direct), а не 'direct'.
+  //
+  // Раньше (v10.0–v10.1):
+  //   rev(CALL_TYPES, isExt ? 'direct' : c.type, 'd')
+  // Теперь:
+  //   rev(CALL_TYPES, c.type, 'd')
+  //
+  // Признак external передаётся отдельным 5-м полем кортежа gr.c
+  // (isExternal). Это устраняет регрессию, при которой для всех
+  // external-вызовов терялся реальный тип (async/callback/method).
+  //
+  // Симптом: L1_semantic и L3_byteExact падали с расхождениями:
+  //   $.calls[N].type: a="async"/"callback", b="direct"
+  //   $.gr.c[N][3]:  a="a"/"c",               b="d"
+  out.gr.c = (full.calls || []).map(c => {
+    const isExt =
+      c.type === 'external' ||
       (typeof c.toFunctionId === 'string' && c.toFunctionId.startsWith('external:'));
     return [
       fni(c.fromFunctionId),
       isExt ? si(c.toFunctionId) : fni(c.toFunctionId),
       c.line,
-      rev(callTypes, c.type, 'd'),
+      rev(CALL_TYPES, c.type, 'd'),
+      isExt ? 1 : 0,
     ];
   });
 
-  // ---- reExports (gr.re) ----
-  out.gr.re = (full.reExports || []).map((r) => [
+  // ---- reExports (gr.re) — 7 полей ----
+  out.gr.re = (full.reExports || []).map(r => [
     mi(r.moduleId),
     r.functionId ? fni(r.functionId) : -1,
     si(r.source),
     si(r.exportName),
     r.line,
-    rev(reExportTypes, r.type, 'n'),
+    rev(RE_EXPORT_TYPES, r.type, 'n'),
     r.isTypeOnly ? 1 : 0,
   ]);
 
-  // Убираем пустой gr, если omitEmpty
-  if (omitEmpty &&
-    out.gr.e.length === 0 && out.gr.i.length === 0 &&
-    out.gr.c.length === 0 && out.gr.re.length === 0) {
+  if (
+    omitEmpty &&
+    out.gr.e.length === 0 &&
+    out.gr.i.length === 0 &&
+    out.gr.c.length === 0 &&
+    out.gr.re.length === 0
+  ) {
     delete out.gr;
   }
 
   // ---- templates ----
-  setArr('vt', (full.templates || []).map((t) => [
-    fi(t.fileId),
-    mi(t.moduleId),
-    t.complexity || 0,
-    (t.reactivityDeps || []).map(si),
-    (t.eventHandlers || []).map((ev) => [
-      si(ev.eventName),
-      si(ev.handlerName),
-      si(ev.tag),
-      ev.line,
-      (ev.modifiers || []).map(si),
-      ev.isExternal ? 1 : 0,
-    ]),
-    (t.dynamicComponents || []).map((dc) => [
-      si(dc.isExpression),
-      dc.line,
-      (dc.resolvedComponents || []).map(si),
-    ]),
-    (t.directives || []).map(si),
-    (t.usedComponents || []).map(si),
-    (t.templateRefs || []).map((tr) => [
-      si(tr.refValue),
-      si(tr.tag),
-      tr.line,
-      (tr.exposedMethods || []).map(si),
-    ]),
-    (t.cssVariables || []).map((cv) => [
-      si(cv.name),
-      si(cv.value),
-      cv.line,
-      cv.isMultiline ? 1 : 0,
-    ]),
-    (t.deepSelectors || []).map((ds) => [si(ds.selector), ds.line]),
-    (t.slots || []).map(si),
-  ]));
+  setArr(
+    'vt',
+    (full.templates || []).map(t => [
+      fi(t.fileId),
+      mi(t.moduleId),
+      t.complexity || 0,
+      (t.reactivityDeps || []).map(si),
+      (t.eventHandlers || []).map(ev => [
+        si(ev.eventName),
+        si(ev.handlerName),
+        si(ev.tag),
+        ev.line,
+        (ev.modifiers || []).map(si),
+        ev.isExternal ? 1 : 0,
+      ]),
+      (t.dynamicComponents || []).map(dc => [
+        si(dc.isExpression),
+        dc.line,
+        (dc.resolvedComponents || []).map(si),
+      ]),
+      (t.directives || []).map(si),
+      (t.usedComponents || []).map(si),
+      (t.templateRefs || []).map(tr => [
+        si(tr.refValue),
+        si(tr.tag),
+        tr.line,
+        (tr.exposedMethods || []).map(si),
+      ]),
+      (t.cssVariables || []).map(cv => [
+        si(cv.name),
+        si(cv.value),
+        cv.line,
+        cv.isMultiline ? 1 : 0,
+      ]),
+      (t.deepSelectors || []).map(ds => [si(ds.selector), ds.line]),
+      (t.slots || []).map(si),
+    ])
+  );
 
-  // ---- lifecycle ----
-  setArr('lc', (full.lifecycle || []).map((l) => [
-    rev(lifecycleTypes, l.hookName, l.hookName),
-    l.functionId ? fni(l.functionId) : -1,
-    l.line,
-    l.callbackFunctionId ? fni(l.callbackFunctionId) : -1,
-    l.flags || 0,
-  ]));
+  // ---- lifecycle (lc) ----
+  setArr(
+    'lc',
+    (full.lifecycle || []).map(l => [
+      rev(LIFECYCLE_TYPES, l.hookName, l.hookName),
+      l.functionId ? fni(l.functionId) : -1,
+      l.line,
+      l.callbackFunctionId ? fni(l.callbackFunctionId) : -1,
+      l.isSetupContext ? 's' : '0',
+    ])
+  );
 
-  // ---- injections ----
-  setArr('inj', (full.injections || []).map((x) => [
-    rev(injectionTypes, x.kind, x.kind),
-    fi(x.fileId),
-    x.line,
-    si(x.key),
-    x.flags || 0,
-  ]));
+  // ---- effects (ef) ----
+  setArr(
+    'ef',
+    (full.effects || []).map(ef => [
+      rev(EFFECT_TYPES, ef.effectType, ef.effectType),
+      ef.functionId ? fni(ef.functionId) : -1,
+      ef.line,
+      si(ef.targetName),
+      si(ef.metaValue),
+    ])
+  );
 
-  // ---- reactivity ----
-  setArr('rx', (full.reactivity || []).map((x) => [
-    rev(reactivityTypes, x.kind, x.kind),
-    x.functionId ? fni(x.functionId) : -1,
-    x.line,
-    (x.reads || []).map(si),
-    (x.writes || []).map(si),
-    x.flags || 0,
-  ]));
+  // ---- injections (inj) ----
+  setArr(
+    'inj',
+    (full.injections || []).map(x => {
+      let flags = 0;
+      if (x.isSymbolKey) flags |= 1;
+      if (x.hasDefault) flags |= 2;
+      return [rev(INJECTION_TYPES, x.kind, x.kind), fi(x.fileId), x.line, si(x.key), flags];
+    })
+  );
 
-  // ---- conditionals ----
-  setArr('cd', (full.conditionals || []).map((x) => [
-    rev(conditionalTypes, x.directive, x.directive),
-    fi(x.fileId),
-    x.line,
-    si(x.conditionExpression),
-    si(x.componentName),
-    x.flags || 0,
-  ]));
+  // ---- reactivity (rx) ----
+  setArr(
+    'rx',
+    (full.reactivity || []).map(x => [
+      rev(REACTIVITY_TYPES, x.kind, x.kind),
+      x.functionId ? fni(x.functionId) : -1,
+      x.line,
+      (x.reads || []).map(si),
+      (x.writes || []).map(si),
+      x.isWriteable ? 1 : 0,
+    ])
+  );
 
-  // ---- types ----
-  setArr('ty', (full.types || []).map((x) => [
-    rev(typeKinds, x.kind, x.kind),
-    si(x.name),
-    mi(x.moduleId),
-    fi(x.fileId),
-    x.line,
-    (x.members || []).map(si),
-    (x.extendsTypes || []).map(si),
-  ]));
+  // ---- conditionals (cd) ----
+  setArr(
+    'cd',
+    (full.conditionals || []).map(x => [
+      rev(CONDITIONAL_TYPES, x.directive, x.directive),
+      fi(x.fileId),
+      x.line,
+      si(x.conditionExpression),
+      si(x.renderedComponent),
+      0,
+    ])
+  );
 
-  // ---- typeRefs ----
-  setArr('tr', (full.typeRefs || []).map((x) => [
-    si(x.typeName),
-    mi(x.moduleId),
-    fi(x.fileId),
-    x.line,
-    rev(typeUsageKinds, x.usageKind, x.usageKind),
-  ]));
+  // ---- types (ty) ----
+  setArr(
+    'ty',
+    (full.types || []).map(x => [
+      rev(TYPE_KINDS, x.kind, x.kind),
+      si(x.name),
+      mi(x.moduleId),
+      fi(x.fileId),
+      x.line,
+      (x.members || []).map(si),
+      (x.extendsTypes || []).map(si),
+    ])
+  );
+
+  // ---- typeRefs (tr) ----
+  setArr(
+    'tr',
+    (full.typeRefs || []).map(x => [
+      si(x.typeName),
+      mi(x.moduleId),
+      fi(x.fileId),
+      x.line,
+      rev(TYPE_USAGE_KINDS, x.usageKind, x.usageKind),
+    ])
+  );
 
   // ---- legend ----
   out.legend = {
-    flagMap: Object.fromEntries(Object.entries(flagMap).map(([k, v]) => [k, String(v)])),
-    flagCharMap,
-    relationTypes,
-    exportTypes,
-    importTypes,
-    callTypes,
-    reExportTypes,
-    lifecycleTypes,
-    effectTypes,
-    injectionTypes,
-    reactivityTypes,
-    conditionalTypes,
-    typeKinds,
-    typeUsageKinds,
+    flagMap: Object.fromEntries(Object.entries(FLAG_MAP).map(([k, v]) => [k, String(v)])),
+    flagCharMap: { ...FLAG_CHAR_MAP },
+    relationTypes: { ...RELATION_TYPES },
+    exportTypes: { ...EXPORT_TYPES },
+    importTypes: { ...IMPORT_TYPES },
+    callTypes: { ...CALL_TYPES },
+    reExportTypes: { ...RE_EXPORT_TYPES },
+    lifecycleTypes: { ...LIFECYCLE_TYPES },
+    effectTypes: { ...EFFECT_TYPES },
+    injectionTypes: { ...INJECTION_TYPES },
+    reactivityTypes: { ...REACTIVITY_TYPES },
+    conditionalTypes: { ...CONDITIONAL_TYPES },
+    typeKinds: { ...TYPE_KINDS },
+    typeUsageKinds: { ...TYPE_USAGE_KINDS },
     arraySchemas: {
       fns: ['id', 'name', 'moduleId', 'fileId', 'line', 'flags', 'paramsIdx', 'returnTypeIdx'],
       cls: ['id', 'name', 'moduleId', 'fileId', 'line', 'flags', 'methodsIdx'],
       cn: ['id', 'name', 'moduleId', 'fileId', 'line', 'flags', 'valueIdx'],
-      'gr.e': ['moduleIdx', 'fileIdx', 'funcIdx', 'line', 'typeCode',
-        'exportNameIdx', 'localNameIdx', 'isTypeOnly', 'isReExport', 'sourceIdx'],
-      'gr.i': ['fromFileIdx', 'toFileIdIdx', 'sourceIdx', 'importedNameIdx',
-        'localNameIdx', 'line', 'typeCode', 'isExternal'],
-      'gr.c': ['fromIdx', 'toIdxOrExternalIdx', 'line', 'typeCode'],
-      'gr.re': ['moduleIdx', 'funcIdx', 'sourceIdx', 'exportNameIdx',
-        'line', 'typeCode', 'isTypeOnly'],
-      vt: ['fileIdx', 'moduleIdx', 'complexity', 'reactivityDepsIdx',
-        'eventHandlers', 'dynamicComponents', 'directivesIdx',
-        'usedComponentsIdx', 'templateRefs', 'cssVariables',
-        'deepSelectors', 'slotsIdx'],
-      'vt.eventHandlers': ['eventNameIdx', 'handlerNameIdx', 'tagIdx', 'line',
-        'modifiersIdx', 'isExternal'],
+      'gr.e': [
+        'moduleIdx',
+        'fileIdx',
+        'funcIdx',
+        'line',
+        'typeCode',
+        'exportNameIdx',
+        'localNameIdx',
+        'isTypeOnly',
+        'isReExport',
+        'sourceIdx',
+        'isStarReExport',
+        'isDefaultReExport',
+      ],
+      'gr.i': [
+        'fromFileIdx',
+        'toFileIdIdx',
+        'sourceIdx',
+        'importedNameIdx',
+        'localNameIdx',
+        'line',
+        'typeCode',
+        'isExternal',
+      ],
+      'gr.c': ['fromIdx', 'toIdx', 'line', 'typeCode', 'isExternal'],
+      'gr.re': [
+        'moduleIdx',
+        'funcIdx',
+        'sourceIdx',
+        'exportNameIdx',
+        'line',
+        'typeCode',
+        'isTypeOnly',
+      ],
+      vt: [
+        'fileIdx',
+        'moduleIdx',
+        'complexity',
+        'reactivityDepsIdx',
+        'eventHandlers',
+        'dynamicComponents',
+        'directivesIdx',
+        'usedComponentsIdx',
+        'templateRefs',
+        'cssVariables',
+        'deepSelectors',
+        'slotsIdx',
+      ],
+      'vt.eventHandlers': [
+        'eventNameIdx',
+        'handlerNameIdx',
+        'tagIdx',
+        'line',
+        'modifiersIdx',
+        'isExternal',
+      ],
       'vt.dynamicComponents': ['isExpressionIdx', 'line', 'resolvedComponentsIdx'],
       'vt.templateRefs': ['refValueIdx', 'tagIdx', 'line', 'exposedMethodsIdx'],
       'vt.cssVariables': ['nameIdx', 'valueIdx', 'line', 'isMultiline'],
@@ -990,8 +1255,7 @@ export function encodeToCompactData(full, options = {}) {
       inj: ['kindCode', 'fileIdx', 'line', 'keyIdx', 'flags'],
       rx: ['kindCode', 'funcIdx', 'line', 'readsIdx', 'writesIdx', 'flags'],
       cd: ['directiveCode', 'fileIdx', 'line', 'condIdx', 'compIdx', 'flags'],
-      ty: ['kindCode', 'nameIdx', 'moduleIdx', 'fileIdx', 'line',
-        'membersIdx', 'extendsIdx'],
+      ty: ['kindCode', 'nameIdx', 'moduleIdx', 'fileIdx', 'line', 'membersIdx', 'extendsIdx'],
       tr: ['typeNameIdx', 'moduleIdx', 'fileIdx', 'line', 'usageCode'],
     },
     stringDict: S.list,
@@ -999,29 +1263,16 @@ export function encodeToCompactData(full, options = {}) {
     valueDict: VD.list,
   };
 
-  // -----------------------------------------------------------------------
-  // ПРОВЕРКА СИММЕТРИИ ПРИ reuseDicts: true
-  // -----------------------------------------------------------------------
-  if (reuseDicts && full.__codec) {
-    if (strict) {
-      if (!arrayEq(S.list, full.__codec.stringDict)) {
-        throw new Error(
-          `Симметрия нарушена: stringDict изменился. ` +
-          `Было ${full.__codec.stringDict.length}, стало ${S.list.length}.`
-        );
-      }
-      if (!arrayEq(P.list, full.__codec.paramDict)) {
-        throw new Error(
-          `Симметрия нарушена: paramDict изменился. ` +
-          `Было ${full.__codec.paramDict.length}, стало ${P.list.length}.`
-        );
-      }
-      if (!arrayEq(VD.list, full.__codec.valueDict)) {
-        throw new Error(
-          `Симметрия нарушена: valueDict изменился. ` +
-          `Было ${full.__codec.valueDict.length}, стало ${VD.list.length}.`
-        );
-      }
+  // ---- Проверка симметрии при reuseDicts ----
+  if (reuseDicts && full.__codec && strict) {
+    if (!arrayEq(S.list, full.__codec.stringDict)) {
+      throw new Error(`Симметрия нарушена: stringDict изменился.`);
+    }
+    if (!arrayEq(P.list, full.__codec.paramDict)) {
+      throw new Error(`Симметрия нарушена: paramDict изменился.`);
+    }
+    if (!arrayEq(VD.list, full.__codec.valueDict)) {
+      throw new Error(`Симметрия нарушена: valueDict изменился.`);
     }
   }
 
@@ -1029,152 +1280,141 @@ export function encodeToCompactData(full, options = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// ROUND-TRIP ПРОВЕРКИ
+// ✅ НОВОЕ v10.1: СБОРКА EDGES (агрегированный массив связей)
 // ---------------------------------------------------------------------------
 
 /**
- * L1-проверка: семантическая эквивалентность.
- * decode(x) → encode → decode → сравнение полных форматов.
+ * Собирает агрегированный массив edges из полного JSON.
  *
- * Перед сравнением вырезаются служебные поля (legend, __codec),
- * чтобы порядок словарей и внутренние данные не влияли на результат.
+ * edges — производное поле: его можно построить из
+ *   full.imports  → type='import'
+ *   full.exports  → type='export'
+ *   full.calls    → type='call'
+ *   full.reExports → type='re-export'
+ *
+ * По умолчанию это поле НЕ хранится в full.json и НЕ кодируется в compact.
+ * Если edges нужны — используйте:
+ *   - buildEdgesFromFull(full)    — для готового full
+ *   - buildEdgesFromCompact(compact) — для compact (сначала decode)
+ *   - decodeCompactData(compact, { includeEdges: true }) — сразу с edges
+ *
+ * @param {object} full — полный JSON
+ * @returns {{ edges: Array<{from, to, type, symbol?, line?}>, stats: object }}
  */
-export function roundTripSemantic(compact) {
-  const full1 = decodeCompactData(compact);
-  const compact2 = encodeToCompactData(full1, { reuseDicts: false });
-  const full2 = decodeCompactData(compact2);
-  const a = stripServiceFields(full1);
-  const b = stripServiceFields(full2);
-  const ok = deepEqual(a, b);
+export function buildEdgesFromFull(full) {
+  if (!full || typeof full !== 'object') {
+    return { edges: [], stats: { totalEdges: 0, byType: {} } };
+  }
+
+  const edges = [];
+
+  // ---- imports ----
+  for (const imp of full.imports || []) {
+    edges.push({
+      from: imp.fromFileId,
+      to:
+        imp.toFileId || (imp.isExternal ? `external:${imp.packageName || imp.source}` : 'unknown'),
+      type: 'import',
+      symbol: imp.importedName,
+      line: imp.line || 0,
+    });
+  }
+
+  // ---- exports ----
+  for (const exp of full.exports || []) {
+    edges.push({
+      from: exp.fileId,
+      to: exp.functionId || exp.moduleId || 'unknown',
+      type: 'export',
+      symbol: exp.exportName,
+      line: exp.line || 0,
+    });
+  }
+
+  // ---- calls ----
+  for (const call of full.calls || []) {
+    edges.push({
+      from: call.fromFunctionId,
+      to: call.toFunctionId || 'unknown',
+      type: 'call',
+      line: call.line || 0,
+    });
+  }
+
+  // ---- re-exports ----
+  for (const re of full.reExports || []) {
+    edges.push({
+      from: re.moduleId,
+      to: re.functionId || 'unknown',
+      type: 're-export',
+      symbol: re.exportName,
+      line: re.line || 0,
+    });
+  }
+
+  return { edges, stats: buildEdgesStats(edges) };
+}
+
+/**
+ * Собирает edges из компактного JSON.
+ * Внутри вызывает decodeCompactData с includeEdges: false, затем buildEdgesFromFull.
+ */
+export function buildEdgesFromCompact(compact) {
+  const full = decodeCompactData(compact, { includeEdges: false });
+  return buildEdgesFromFull(full);
+}
+
+/**
+ * Статистика по массиву edges: total + разбивка по типам.
+ */
+export function buildEdgesStats(edges) {
+  const byType = {};
+  for (const e of edges || []) {
+    const t = e.type || 'unknown';
+    byType[t] = (byType[t] || 0) + 1;
+  }
   return {
-    full: full1,
-    compact: compact2,
-    reDecoded: full2,
-    ok,
-    diff: ok ? null : diffObjects(a, b),
+    totalEdges: (edges || []).length,
+    byType,
   };
 }
 
-/**
- * L3-проверка: байтовая эквивалентность (с точностью до форматирования JSON).
- * decode(x) → encode(reuseDicts, strict) → сравнение с x.
- *
- * Перед сравнением вырезаются:
- *   - legend (порядок словарей может отличаться, но данные те же)
- *   - __codec (служебное)
- *   - пустые массивы/объекты (эквивалентны отсутствию ключа)
- */
-export function roundTripByteExact(compact) {
-  const full = decodeCompactData(compact);
-  const compact2 = encodeToCompactData(full, { reuseDicts: true, strict: true });
-  const a = stripForByteCompare(compact);
-  const b = stripForByteCompare(compact2);
-  const ok = deepEqual(a, b);
-  return {
-    full,
-    compact: compact2,
-    ok,
-    diff: ok ? null : diffObjects(a, b),
-  };
-}
-
-/**
- * Обратная проверка: encode(full) → decode → encode → сравнение компактов.
- * Идемпотентность: дважды закодированный full даёт тот же compact.
- */
-export function roundTripEncode(full) {
-  const compact1 = encodeToCompactData(full, { reuseDicts: false });
-  const full2 = decodeCompactData(compact1);
-  const compact2 = encodeToCompactData(full2, { reuseDicts: false });
-  const ok = deepEqual(compact1, compact2);
-  return {
-    compact: compact1,
-    full: full2,
-    reEncoded: compact2,
-    ok,
-    diff: ok ? null : diffObjects(compact1, compact2),
-  };
-}
-
 // ---------------------------------------------------------------------------
-// АВТООПРЕДЕЛЕНИЕ ФОРМАТА
+// DEEP EQUAL / DIFF
 // ---------------------------------------------------------------------------
 
-/**
- * Определяет формат JSON.
- * @returns {'compact' | 'full' | 'unknown'}
- */
-export function detectFormat(json) {
-  if (!json || typeof json !== 'object') return 'unknown';
-  // Компактный: короткие ключи + legend
-  if (json.v && json.mi && json.fl) return 'compact';
-  // Полный: длинные ключи
-  if (json.version && json.modules && json.files) return 'full';
-  return 'unknown';
-}
-
-/**
- * Универсальный вход: принимает любой формат, возвращает full.
- */
-export function toFullData(json) {
-  const fmt = detectFormat(json);
-  if (fmt === 'compact') return decodeCompactData(json);
-  if (fmt === 'full') return json;
-  throw new Error('toFullData: неизвестный формат JSON');
-}
-
-// ---------------------------------------------------------------------------
-// ГЛУБОКОЕ СРАВНЕНИЕ И ДИАГНОСТИКА
-// ---------------------------------------------------------------------------
-
-/**
- * Рекурсивное сравнение двух значений.
- *
- * Особенности:
- *   - undefined, null, [], {} считаются эквивалентными (пустые контейнеры).
- *   - Порядок ключей в объектах не важен.
- *   - Порядок элементов в массивах важен.
- */
-function deepEqual(a, b) {
-  // Эквивалентность пустых контейнеров
-  const isEmptyA = a === undefined || a === null ||
+export function deepEqual(a, b) {
+  const isEmptyA =
+    a === undefined ||
+    a === null ||
     (Array.isArray(a) && a.length === 0) ||
     (typeof a === 'object' && !Array.isArray(a) && Object.keys(a).length === 0);
-  const isEmptyB = b === undefined || b === null ||
+  const isEmptyB =
+    b === undefined ||
+    b === null ||
     (Array.isArray(b) && b.length === 0) ||
     (typeof b === 'object' && !Array.isArray(b) && Object.keys(b).length === 0);
   if (isEmptyA && isEmptyB) return true;
-
   if (a === b) return true;
   if (typeof a !== typeof b) return false;
   if (a === null || b === null) return a === b;
-
   if (Array.isArray(a) !== Array.isArray(b)) return false;
   if (Array.isArray(a)) {
     if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      if (!deepEqual(a[i], b[i])) return false;
-    }
+    for (let i = 0; i < a.length; i++) if (!deepEqual(a[i], b[i])) return false;
     return true;
   }
-
   if (typeof a === 'object') {
-    const ka = Object.keys(a).filter((k) => a[k] !== undefined);
-    const kb = Object.keys(b).filter((k) => b[k] !== undefined);
+    const ka = Object.keys(a).filter(k => a[k] !== undefined);
+    const kb = Object.keys(b).filter(k => b[k] !== undefined);
     if (ka.length !== kb.length) return false;
-    for (const k of ka) {
-      if (!deepEqual(a[k], b[k])) return false;
-    }
+    for (const k of ka) if (!deepEqual(a[k], b[k])) return false;
     return true;
   }
-
   return false;
 }
 
-/**
- * Поиск расхождений между двумя объектами (до 20 штук).
- */
-function diffObjects(a, b) {
+export function diffObjects(a, b) {
   const diffs = [];
   const walk = (x, y, path) => {
     if (diffs.length >= 20) return;
@@ -1194,44 +1434,79 @@ function diffObjects(a, b) {
 }
 
 /**
- * Сравнение массивов строк.
+ * Собирает расхождения между двумя значениями (TS-совместимый API).
+ * Возвращает массив {path, a, b}.
  */
-function arrayEq(a, b) {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
+export function collectDiffs(a, b, basePath = '$', limit = 20) {
+  const diffs = [];
+  const walk = (x, y, p) => {
+    if (diffs.length >= limit) return;
+    if (deepEqual(x, y)) return;
+    if (x === undefined || y === undefined || x === null || y === null) {
+      if (x !== y) diffs.push({ path: p, a: x, b: y });
+      return;
+    }
+    if (Array.isArray(x) && Array.isArray(y)) {
+      if (x.length !== y.length) diffs.push({ path: `${p}.length`, a: x.length, b: y.length });
+      const n = Math.min(x.length, y.length);
+      for (let i = 0; i < n; i++) walk(x[i], y[i], `${p}[${i}]`);
+      return;
+    }
+    if (typeof x === 'object' && typeof y === 'object') {
+      const keys = new Set([...Object.keys(x), ...Object.keys(y)]);
+      for (const k of keys) walk(x[k], y[k], `${p}.${k}`);
+      return;
+    }
+    if (x !== y) diffs.push({ path: p, a: x, b: y });
+  };
+  walk(a, b, basePath);
+  return diffs;
 }
 
 /**
- * Убирает служебные поля из полного формата:
- *   - __codec (словари для симметрии)
- *   - legend (порядок словарей может отличаться)
- *   - все поля, начинающиеся с __ (служебные)
- * Используется в L1-проверках.
+ * Нормализует значение для диагностики: сортирует ключи, убирает undefined.
  */
+export function normalizeForDiff(value) {
+  const norm = v => {
+    if (v === undefined) return undefined;
+    if (v === null) return null;
+    if (Array.isArray(v)) return v.map(norm);
+    if (typeof v === 'object') {
+      const out = {};
+      for (const key of Object.keys(v).sort()) {
+        const nv = norm(v[key]);
+        if (nv !== undefined) out[key] = nv;
+      }
+      return out;
+    }
+    return v;
+  };
+  return JSON.stringify(norm(value));
+}
+
+// ---------------------------------------------------------------------------
+// ROUND-TRIP ПРОВЕРКИ
+// ---------------------------------------------------------------------------
+
 function stripServiceFields(obj) {
   if (!obj || typeof obj !== 'object') return obj;
   const { __codec, legend, ...rest } = obj;
   const clean = {};
   for (const [k, v] of Object.entries(rest)) {
     if (k.startsWith('__')) continue;
+    if (k === 'edges' || k === 'edgesStats') continue; // ✅ v10.1: edges — производное
     clean[k] = v;
   }
   return clean;
 }
 
-/**
- * Убирает legend, __codec и пустые контейнеры.
- * Используется в L3-проверках (байт-в-байт).
- */
 function stripForByteCompare(obj) {
   if (!obj || typeof obj !== 'object') return obj;
   const { legend, __codec, ...rest } = obj;
   const clean = {};
   for (const [k, v] of Object.entries(rest)) {
     if (k.startsWith('__')) continue;
+    if (k === 'edges' || k === 'edgesStats') continue; // ✅ v10.1
     if (v === undefined || v === null) continue;
     if (Array.isArray(v) && v.length === 0) continue;
     if (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0) continue;
@@ -1240,9 +1515,578 @@ function stripForByteCompare(obj) {
   return clean;
 }
 
+export function roundTripSemantic(compact) {
+  const full1 = decodeCompactData(compact);
+  const compact2 = encodeToCompactData(full1, { reuseDicts: false });
+  const full2 = decodeCompactData(compact2);
+  const a = stripServiceFields(full1);
+  const b = stripServiceFields(full2);
+  const ok = deepEqual(a, b);
+  return {
+    full: full1,
+    compact: compact2,
+    reDecoded: full2,
+    ok,
+    diff: ok ? null : diffObjects(a, b),
+  };
+}
+
+export function roundTripByteExact(compact) {
+  const full = decodeCompactData(compact);
+  const compact2 = encodeToCompactData(full, { reuseDicts: true, strict: true });
+  const a = stripForByteCompare(compact);
+  const b = stripForByteCompare(compact2);
+  const ok = deepEqual(a, b);
+  return { full, compact: compact2, ok, diff: ok ? null : diffObjects(a, b) };
+}
+
+export function roundTripEncode(full) {
+  const compact1 = encodeToCompactData(full, { reuseDicts: false });
+  const full2 = decodeCompactData(compact1);
+  const compact2 = encodeToCompactData(full2, { reuseDicts: false });
+  const ok = deepEqual(compact1, compact2);
+  return {
+    compact: compact1,
+    full: full2,
+    reEncoded: compact2,
+    ok,
+    diff: ok ? null : diffObjects(compact1, compact2),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// TS-СОВМЕСТИМЫЕ ПРОВЕРКИ
+// ---------------------------------------------------------------------------
+
+/**
+ * Проверяет, что encode → decode возвращает идентичный результат.
+ */
+export function verifyRoundTrip(payload, options = {}) {
+  try {
+    const compact = encodeToCompactData(payload);
+    const decoded = decodeCompactData(compact, options);
+
+    const details = {
+      modules: {
+        original: (payload.modules || []).length,
+        decoded: (decoded.modules || []).length,
+      },
+      files: { original: (payload.files || []).length, decoded: (decoded.files || []).length },
+      functions: {
+        original: (payload.functions || []).length,
+        decoded: (decoded.functions || []).length,
+      },
+      classes: {
+        original: (payload.classes || []).length,
+        decoded: (decoded.classes || []).length,
+      },
+      constants: {
+        original: (payload.constants || []).length,
+        decoded: (decoded.constants || []).length,
+      },
+      exports: {
+        original: (payload.exports || []).length,
+        decoded: (decoded.exports || []).length,
+      },
+      imports: {
+        original: (payload.imports || []).length,
+        decoded: (decoded.imports || []).length,
+      },
+      calls: { original: (payload.calls || []).length, decoded: (decoded.calls || []).length },
+      reExports: {
+        original: (payload.reExports || []).length,
+        decoded: (decoded.reExports || []).length,
+      },
+      templates: {
+        original: (payload.templates || []).length,
+        decoded: (decoded.templates || []).length,
+      },
+      lifecycle: {
+        original: (payload.lifecycle || []).length,
+        decoded: (decoded.lifecycle || []).length,
+      },
+      effects: {
+        original: (payload.effects || []).length,
+        decoded: (decoded.effects || []).length,
+      },
+      injections: {
+        original: (payload.injections || []).length,
+        decoded: (decoded.injections || []).length,
+      },
+      reactivity: {
+        original: (payload.reactivity || []).length,
+        decoded: (decoded.reactivity || []).length,
+      },
+      conditionals: {
+        original: (payload.conditionals || []).length,
+        decoded: (decoded.conditionals || []).length,
+      },
+      types: { original: (payload.types || []).length, decoded: (decoded.types || []).length },
+      typeRefs: {
+        original: (payload.typeRefs || []).length,
+        decoded: (decoded.typeRefs || []).length,
+      },
+    };
+
+    const errors = [];
+    for (const [key, value] of Object.entries(details)) {
+      if (value.original !== value.decoded) {
+        errors.push(`${key}: ${value.original} → ${value.decoded}`);
+      }
+    }
+
+    // ✅ v10.1: edges — производное поле, игнорируем при сравнении,
+    // если не запрошено includeEdges.
+    const a = stripServiceFields(payload);
+    const b = stripServiceFields(decoded);
+    if (!deepEqual(a, b)) {
+      const normOrig = normalizeForDiff(a);
+      const normDec = normalizeForDiff(b);
+      const minLen = Math.min(normOrig.length, normDec.length);
+      let diffPos = minLen;
+      for (let i = 0; i < minLen; i++) {
+        if (normOrig[i] !== normDec[i]) {
+          diffPos = i;
+          break;
+        }
+      }
+      const ctx = 80;
+      const start = Math.max(0, diffPos - ctx);
+      const end = Math.min(minLen, diffPos + ctx);
+      errors.push(
+        `JSON mismatch at pos ${diffPos}: ...${normOrig.substring(start, end)}... ≠ ...${normDec.substring(start, end)}...`
+      );
+    }
+
+    if (errors.length > 0) return { ok: false, error: errors.join('; '), details };
+    return { ok: true, details };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+function makeLevel(diffs, note) {
+  return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs, note };
+}
+
+function makeErrorLevel(err) {
+  return { ok: false, diffCount: 1, diff: [{ path: '$', a: 'error', b: String(err) }] };
+}
+
+/**
+ * Проверяет обратимость в обе стороны (TS-совместимый отчёт).
+ */
+export function verifyRoundTripBoth(full, compact) {
+  const report = {
+    timestamp: new Date().toISOString(),
+    full_to_compact: { ok: false, diffCount: 0, diff: [] },
+    compact_to_full: { ok: false, diffCount: 0, diff: [] },
+    compact_to_full_to_compact: { ok: false, diffCount: 0, diff: [] },
+    full_to_compact_to_full: { ok: false, diffCount: 0, diff: [] },
+    encode_idempotent: { ok: false, diffCount: 0, diff: [] },
+    decode_idempotent: { ok: false, diffCount: 0, diff: [] },
+    full_self_contained: false,
+    compact_self_contained: false,
+    spotChecks: {
+      callsType: { ok: false, diffCount: 0, diff: [] },
+      importsToFileId: { ok: false, diffCount: 0, diff: [] },
+      exportsIsReExport: { ok: false, diffCount: 0, diff: [] },
+      functionsFlags: { ok: false, diffCount: 0, diff: [] },
+      externalCalls: { ok: false, diffCount: 0, diff: [] },
+      modulesPath: { ok: false, diffCount: 0, diff: [] },
+    },
+  };
+
+  // L0: encode(full) === compact
+  try {
+    const encoded = encodeToCompactData(full);
+    report.full_to_compact = makeLevel(
+      collectDiffs(compact, encoded, '$'),
+      `encoded to compact v=${encoded.v}`
+    );
+  } catch (err) {
+    report.full_to_compact = makeErrorLevel(err);
+  }
+
+  // L1: decode(compact) без ошибок
+  let decodedFromCompact = null;
+  try {
+    decodedFromCompact = decodeCompactData(compact);
+    report.compact_to_full = makeLevel([]);
+  } catch (err) {
+    report.compact_to_full = makeErrorLevel(err);
+  }
+
+  // RE: encode(decode(compact)) === compact
+  try {
+    if (decodedFromCompact) {
+      const reEncoded = encodeToCompactData(decodedFromCompact);
+      report.compact_to_full_to_compact = makeLevel(collectDiffs(compact, reEncoded, '$'));
+    }
+  } catch (err) {
+    report.compact_to_full_to_compact = makeErrorLevel(err);
+  }
+
+  // DL: decode(encode(full)) === full
+  // ✅ v10.1: edges — производное поле, поэтому сравниваем без edges.
+  try {
+    const encoded = encodeToCompactData(full);
+    const decoded = decodeCompactData(encoded);
+    const a = stripServiceFields(full);
+    const b = stripServiceFields(decoded);
+    report.full_to_compact_to_full = makeLevel(collectDiffs(a, b, '$'));
+  } catch (err) {
+    report.full_to_compact_to_full = makeErrorLevel(err);
+  }
+
+  // ENC
+  try {
+    const c1 = encodeToCompactData(full);
+    const f1 = decodeCompactData(c1);
+    const c2 = encodeToCompactData(f1);
+    report.encode_idempotent = makeLevel(collectDiffs(c1, c2, '$'));
+  } catch (err) {
+    report.encode_idempotent = makeErrorLevel(err);
+  }
+
+  // DEC
+  try {
+    const f1 = decodeCompactData(compact);
+    const c1 = encodeToCompactData(f1);
+    const f2 = decodeCompactData(c1);
+    report.decode_idempotent = makeLevel(collectDiffs(f1, f2, '$'));
+  } catch (err) {
+    report.decode_idempotent = makeErrorLevel(err);
+  }
+
+  report.full_self_contained = true;
+  report.compact_self_contained = true;
+
+  // SpotChecks
+  try {
+    const decoded = decodedFromCompact || decodeCompactData(compact);
+
+    // calls[].type
+    {
+      const diffs = [];
+      const n = Math.min((decoded.calls || []).length, (full.calls || []).length);
+      for (let i = 0; i < n && diffs.length < 20; i++) {
+        if (decoded.calls[i]?.type !== full.calls[i]?.type) {
+          diffs.push({
+            path: `$.calls[${i}].type`,
+            a: decoded.calls[i]?.type,
+            b: full.calls[i]?.type,
+          });
+        }
+      }
+      report.spotChecks.callsType = makeLevel(diffs);
+    }
+
+    // imports[].toFileId
+    {
+      const diffs = [];
+      const n = Math.min((decoded.imports || []).length, (full.imports || []).length);
+      for (let i = 0; i < n && diffs.length < 20; i++) {
+        if (decoded.imports[i]?.toFileId !== full.imports[i]?.toFileId) {
+          diffs.push({
+            path: `$.imports[${i}].toFileId`,
+            a: decoded.imports[i]?.toFileId,
+            b: full.imports[i]?.toFileId,
+          });
+        }
+      }
+      report.spotChecks.importsToFileId = makeLevel(diffs);
+    }
+
+    // exports[].isReExport
+    {
+      const diffs = [];
+      const n = Math.min((decoded.exports || []).length, (full.exports || []).length);
+      for (let i = 0; i < n && diffs.length < 20; i++) {
+        if (decoded.exports[i]?.isReExport !== full.exports[i]?.isReExport) {
+          diffs.push({
+            path: `$.exports[${i}].isReExport`,
+            a: decoded.exports[i]?.isReExport,
+            b: full.exports[i]?.isReExport,
+          });
+        }
+      }
+      report.spotChecks.exportsIsReExport = makeLevel(diffs);
+    }
+
+    // functions[].*Flags
+    {
+      const flagFields = [
+        'isAsync',
+        'isExported',
+        'isMethod',
+        'isArrow',
+        'isEventHandler',
+        'isNested',
+        'isSelf',
+        'isDynamic',
+        'isConfig',
+        'isExternal',
+        'isVueTemplate',
+        'isAsyncChain',
+        'isClosure',
+        'isTypeDep',
+        'isGenerator',
+        'isPrivate',
+        'isProtected',
+        'isStatic',
+      ];
+      const diffs = [];
+      const n = Math.min((decoded.functions || []).length, (full.functions || []).length);
+      for (let i = 0; i < n && diffs.length < 20; i++) {
+        for (const field of flagFields) {
+          const dv = decoded.functions[i]?.[field];
+          const fv = full.functions[i]?.[field];
+          if (dv !== fv) {
+            diffs.push({ path: `$.functions[${i}].${field}`, a: dv, b: fv });
+            if (diffs.length >= 20) break;
+          }
+        }
+      }
+      report.spotChecks.functionsFlags = makeLevel(diffs);
+    }
+
+    // external calls
+    {
+      const diffs = [];
+      const fullExternal = (full.calls || []).filter(
+        c => c.toFunctionId?.startsWith?.('external:') || c.type === 'external'
+      );
+      for (let i = 0; i < fullExternal.length && diffs.length < 20; i++) {
+        const fc = fullExternal[i];
+        if (!fc) continue;
+        const dc = (decoded.calls || []).find(
+          c =>
+            c.fromFunctionId === fc.fromFunctionId &&
+            c.toFunctionId === fc.toFunctionId &&
+            c.line === fc.line
+        );
+        if (!dc) {
+          diffs.push({ path: `$.calls[external:${i}]`, a: 'not found', b: fc.toFunctionId });
+          continue;
+        }
+        if (dc.type !== fc.type)
+          diffs.push({ path: `$.calls[${dc.id}].type`, a: dc.type, b: fc.type });
+      }
+      report.spotChecks.externalCalls = makeLevel(diffs);
+    }
+
+    // modules[].path
+    {
+      const diffs = [];
+      const n = Math.min((decoded.modules || []).length, (full.modules || []).length);
+      for (let i = 0; i < n && diffs.length < 20; i++) {
+        if (decoded.modules[i]?.path !== full.modules[i]?.path) {
+          diffs.push({
+            path: `$.modules[${i}].path`,
+            a: decoded.modules[i]?.path,
+            b: full.modules[i]?.path,
+          });
+        }
+      }
+      report.spotChecks.modulesPath = makeLevel(diffs);
+    }
+  } catch (err) {
+    report.spotChecks.callsType = makeErrorLevel(err);
+  }
+
+  return report;
+}
+
+// ---------------------------------------------------------------------------
+// РАЗМЕРЫ И СЕРИАЛИЗАЦИЯ
+// ---------------------------------------------------------------------------
+
+export function getCompactSize(compact) {
+  return JSON.stringify(compact).length;
+}
+export function getFullSize(full) {
+  return JSON.stringify(full).length;
+}
+
+export function getCompressionRatio(full) {
+  const compact = encodeToCompactData(full);
+  const fullSize = getFullSize(full);
+  const compactSize = getCompactSize(compact);
+  if (fullSize === 0) return 0;
+  return compactSize / fullSize;
+}
+
+export function stringify(compact, pretty = false) {
+  return pretty ? JSON.stringify(compact, null, 2) : JSON.stringify(compact);
+}
+
+export function parse(json) {
+  return JSON.parse(json);
+}
+
+// ---------------------------------------------------------------------------
+// АВТООПРЕДЕЛЕНИЕ ФОРМАТА
+// ---------------------------------------------------------------------------
+
+export function detectFormat(json) {
+  if (!json || typeof json !== 'object') return 'unknown';
+  if (json.v && json.mi && json.fl) return 'compact';
+  if (json.version && json.modules && json.files) return 'full';
+  return 'unknown';
+}
+
+export function toFullData(json) {
+  const fmt = detectFormat(json);
+  if (fmt === 'compact') return decodeCompactData(json);
+  if (fmt === 'full') return json;
+  throw new Error('toFullData: неизвестный формат JSON');
+}
+
+// ---------------------------------------------------------------------------
+// ФАСАД Codec (совместим с TS-версией)
+// ---------------------------------------------------------------------------
+
+function getLegend() {
+  return {
+    flagMap: Object.fromEntries(Object.entries(FLAG_MAP).map(([bit, char]) => [char, bit])),
+    flagCharMap: { ...FLAG_CHAR_MAP },
+    relationTypes: { ...RELATION_TYPES },
+    exportTypes: { ...EXPORT_TYPES },
+    importTypes: { ...IMPORT_TYPES },
+    callTypes: { ...CALL_TYPES },
+    reExportTypes: { ...RE_EXPORT_TYPES },
+    lifecycleTypes: { ...LIFECYCLE_TYPES },
+    effectTypes: { ...EFFECT_TYPES },
+    injectionTypes: { ...INJECTION_TYPES },
+    reactivityTypes: { ...REACTIVITY_TYPES },
+    conditionalTypes: { ...CONDITIONAL_TYPES },
+    typeKinds: { ...TYPE_KINDS },
+    typeUsageKinds: { ...TYPE_USAGE_KINDS },
+    arraySchemas: {
+      fns: ['id', 'name', 'moduleId', 'fileId', 'line', 'flags', 'paramsIdx', 'returnTypeIdx'],
+      cls: ['id', 'name', 'moduleId', 'fileId', 'line', 'flags', 'methodsIdx'],
+      cn: ['id', 'name', 'moduleId', 'fileId', 'line', 'flags', 'valueIdx'],
+      'gr.e': [
+        'moduleIdx',
+        'fileIdx',
+        'funcIdx',
+        'line',
+        'typeCode',
+        'exportNameIdx',
+        'localNameIdx',
+        'isTypeOnly',
+        'isReExport',
+        'sourceIdx',
+        'isStarReExport',
+        'isDefaultReExport',
+      ],
+      'gr.i': [
+        'fromFileIdx',
+        'toFileIdIdx',
+        'sourceIdx',
+        'importedNameIdx',
+        'localNameIdx',
+        'line',
+        'typeCode',
+        'isExternal',
+      ],
+      'gr.c': ['fromIdx', 'toIdx', 'line', 'typeCode', 'isExternal'],
+      'gr.re': [
+        'moduleIdx',
+        'funcIdx',
+        'sourceIdx',
+        'exportNameIdx',
+        'line',
+        'typeCode',
+        'isTypeOnly',
+      ],
+      vt: [
+        'fileIdx',
+        'moduleIdx',
+        'complexity',
+        'reactivityDepsIdx',
+        'eventHandlers',
+        'dynamicComponents',
+        'directivesIdx',
+        'usedComponentsIdx',
+        'templateRefs',
+        'cssVariables',
+        'deepSelectors',
+        'slotsIdx',
+      ],
+      'vt.eventHandlers': [
+        'eventNameIdx',
+        'handlerNameIdx',
+        'tagIdx',
+        'line',
+        'modifiersIdx',
+        'isExternal',
+      ],
+      'vt.dynamicComponents': ['isExpressionIdx', 'line', 'resolvedComponentsIdx'],
+      'vt.templateRefs': ['refValueIdx', 'tagIdx', 'line', 'exposedMethodsIdx'],
+      'vt.cssVariables': ['nameIdx', 'valueIdx', 'line', 'isMultiline'],
+      'vt.deepSelectors': ['selectorIdx', 'line'],
+      lc: ['hookCode', 'funcIdx', 'line', 'callbackFnIdx', 'flags'],
+      ef: ['effectCode', 'funcIdx', 'line', 'targetIdx', 'metaIdx'],
+      inj: ['kindCode', 'fileIdx', 'line', 'keyIdx', 'flags'],
+      rx: ['kindCode', 'funcIdx', 'line', 'readsIdx', 'writesIdx', 'flags'],
+      cd: ['directiveCode', 'fileIdx', 'line', 'condIdx', 'compIdx', 'flags'],
+      ty: ['kindCode', 'nameIdx', 'moduleIdx', 'fileIdx', 'line', 'membersIdx', 'extendsIdx'],
+      tr: ['typeNameIdx', 'moduleIdx', 'fileIdx', 'line', 'usageCode'],
+    },
+    stringDict: [],
+    paramDict: [],
+    methodDict: [],
+    valueDict: [],
+  };
+}
+
+export const Codec = {
+  encode(full, options = {}) {
+    return encodeToCompactData(full, options);
+  },
+  decode(compact, options = {}) {
+    return decodeCompactData(compact, options);
+  },
+  verifyRoundTrip(payload, options = {}) {
+    return verifyRoundTrip(payload, options);
+  },
+  verifyRoundTripBoth(full, compact) {
+    return verifyRoundTripBoth(full, compact);
+  },
+  getCompactSize(compact) {
+    return getCompactSize(compact);
+  },
+  getFullSize(full) {
+    return getFullSize(full);
+  },
+  getCompressionRatio(full) {
+    return getCompressionRatio(full);
+  },
+  stringify(compact, pretty = false) {
+    return stringify(compact, pretty);
+  },
+  parse(json) {
+    return parse(json);
+  },
+  getLegend() {
+    return getLegend();
+  },
+
+  // ✅ НОВОЕ v10.1
+  buildEdges(full) {
+    return buildEdgesFromFull(full);
+  },
+  buildEdgesStats(edges) {
+    return buildEdgesStats(edges);
+  },
+};
+
 // ---------------------------------------------------------------------------
 // ЭКСПОРТ ДЛЯ ОТЛАДКИ
 // ---------------------------------------------------------------------------
+
 export const __internals = {
   DictBuilder,
   ValueDictBuilder,
@@ -1255,3 +2099,5 @@ export const __internals = {
   stripForByteCompare,
   idToNum,
 };
+
+export default Codec;

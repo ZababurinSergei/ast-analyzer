@@ -9,6 +9,8 @@
 // ✅ ОБНОВЛЕНО v5: строгая проверка options.includeVSCode === true при применении опций
 // ✅ ОБНОВЛЕНО v6: добавлена поддержка self functions через full.statistics (совместимость)
 // ✅ ОБНОВЛЕНО v7: добавлена строка "VSCode ссылки" в блок "ВКЛЮЧЕННЫЕ КОМПОНЕНТЫ"
+// ✅ ОБНОВЛЕНО v8: добавлены флаги --edges и --edges-suffix для сохранения edges в отдельный файл
+// ✅ ОБНОВЛЕНО v9: проброс saveEdges / edgesJsonSuffix в generateCompactReport
 
 import type { Command } from 'commander';
 import path from 'path';
@@ -28,6 +30,7 @@ import { getPresetNames, createCompactConfig } from '../../reporters/CompactRepo
  * - SELF FUNCTIONS: изолированные функции с индексами sf1, sf2, ...
  * - ГИБКИЙ КОНФИГ: 5 пресетов + 30+ опций для тонкой настройки
  * - ВСЕ ОШИБКИ TypeScript И ESLint ИСПРАВЛЕНЫ
+ * - ✅ EDGES: опционально, по умолчанию выключено, сохраняется в отдельный файл
  */
 export class CompactRecursiveCommand {
   private program: Command;
@@ -81,6 +84,18 @@ export class CompactRecursiveCommand {
       .option('--no-stats', 'Отключить статистику (st)')
       .option('--no-extended-stats', 'Отключить расширенную статистику')
 
+      // === ✅ v8: EDGES (отдельный файл, по умолчанию выключено) ===
+      .option(
+        '--edges',
+        'Сохранять агрегированный массив edges в отдельный файл (по умолчанию: выключено)',
+        false
+      )
+      .option(
+        '--edges-suffix <suffix>',
+        'Суффикс для файла edges (по умолчанию: .edges.json)',
+        '.edges.json'
+      )
+
       // === МЕТАДАННЫЕ ===
       // ✅ ИСПРАВЛЕНО v2: добавлен .default(false) для boolean-флагов
       .option('--no-flags', 'Отключить битовые флаги (flg)')
@@ -121,6 +136,7 @@ export class CompactRecursiveCommand {
     console.log(`📋 Пресет: ${options.preset}`);
     console.log(`📁 Выходной файл: ${options.output}`);
     console.log(`🚀 Ультра-компактный: ${options.ultra ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}`);
+    console.log(`🔗 Edges в отдельный файл: ${options.edges === true ? 'ВКЛЮЧЕНО' : 'ВЫКЛЮЧЕНО'}`);
 
     // Показываем что включено
     console.log('\n📊 ВКЛЮЧЕННЫЕ КОМПОНЕНТЫ:');
@@ -148,6 +164,8 @@ export class CompactRecursiveCommand {
     console.log(`   • Тела функций: ${options.includeBody === true ? '✅' : '❌'}`);
     // ✅ НОВОЕ v7: показываем состояние includeVSCode в логе "ВКЛЮЧЕННЫЕ КОМПОНЕНТЫ"
     console.log(`   • VSCode ссылки: ${options.includeVSCode === true ? '✅' : '❌'}`);
+    // ✅ НОВОЕ v8: показываем состояние edges в логе "ВКЛЮЧЕННЫЕ КОМПОНЕНТЫ"
+    console.log(`   • Edges в отдельный файл: ${options.edges === true ? '✅' : '❌'}`);
     console.log('');
 
     if (!fs.existsSync(entryPath)) {
@@ -348,10 +366,16 @@ export class CompactRecursiveCommand {
     console.log(`   • Шаблоны: ${config.useTemplates ? '✅' : '❌'}`);
     console.log(`   • Тела функций: ${config.includeBody ? '✅' : '❌'}`);
     console.log(`   • VSCode ссылки: ${config.includeVSCode ? '✅' : '❌'}`);
+    // ✅ НОВОЕ v8: строка про edges в итоговой конфигурации
+    console.log(`   • Edges в отдельный файл: ${options.edges === true ? '✅' : '❌'}`);
+    if (options.edges === true) {
+      console.log(`   • Суффикс edges: ${options.edgesSuffix || '.edges.json'}`);
+    }
     console.log('');
 
     // ============================================
     // ✅ ИСПРАВЛЕНО: используем новую структуру GenerateReportResult
+    // ✅ v8: пробрасываем saveEdges и edgesJsonSuffix
     // ============================================
     const report = generateCompactReport(entitiesMap, outputPath, {
       ...genOptions,
@@ -360,6 +384,9 @@ export class CompactRecursiveCommand {
       verbose: options.verbose,
       compress: true,
       saveFullJson: true,
+      // ✅ v8: edges — только если явно запрошено
+      saveEdges: options.edges === true,
+      edgesJsonSuffix: options.edgesSuffix || '.edges.json',
     });
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -428,6 +455,11 @@ export class CompactRecursiveCommand {
     if (report.fullPath) {
       console.log(`   • Полный JSON: ${report.fullPath}`);
     }
+    // ✅ НОВОЕ v8: информация о файле edges
+    if (report.edgesPath) {
+      const edgesSizeKB = report.stats.edgesSize ? (report.stats.edgesSize / 1024).toFixed(2) : '0';
+      console.log(`   • Edges JSON: ${report.edgesPath} (${edgesSizeKB} KB)`);
+    }
 
     console.log('\n💡 ПРИНЦИП "ЕДИНЫЙ ИСТОЧНИК ИСТИНЫ":');
     console.log('   ✅ Каждый тип данных хранится в одном месте');
@@ -435,6 +467,7 @@ export class CompactRecursiveCommand {
     console.log('   ✅ Все связи в едином графе');
     console.log('   ✅ Добавлены новые типы связей (без дублей)');
     console.log('   ✅ Self functions с индексами sf1, sf2, ...');
+    console.log('   ✅ Edges восстанавливаются из gr.* только по запросу (--edges)');
 
     console.log('\n💡 КАК ИСПОЛЬЗОВАТЬ ОТЧЕТ:');
     console.log('   • mi/fl/fi - для навигации по индексам');
@@ -473,6 +506,15 @@ export class CompactRecursiveCommand {
     console.log('');
     console.log('   # Без импортов и экспортов (только вызовы)');
     console.log('   npx ast-analyzer compact-recursive ./src/index.ts --no-imports --no-exports');
+    console.log('');
+    // ✅ НОВОЕ v8: примеры с --edges
+    console.log('   # С edges в отдельном файле');
+    console.log('   npx ast-analyzer compact-recursive ./src/index.ts --preset full --edges');
+    console.log('');
+    console.log('   # С кастомным суффиксом для edges');
+    console.log(
+      '   npx ast-analyzer compact-recursive ./src/index.ts --edges --edges-suffix .graph.json'
+    );
     console.log('');
 
     console.log('='.repeat(70) + '\n');

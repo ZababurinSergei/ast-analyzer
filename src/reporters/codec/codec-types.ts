@@ -2,7 +2,28 @@
 // ============================================
 // ТИПЫ ДЛЯ КОДЕКА (Стратегия B — строгий round-trip)
 // ============================================
-// Версия: 9.0.0
+// Версия: 9.0.5
+//
+// ИЗМЕНЕНИЯ v9.0.5:
+//   - ✅ ДОБАВЛЕНО: DecodeOptions.includeEdges по умолчанию false.
+//     Раньше edges добавлялись в результат decode безусловно, что
+//     приводило к расхождению DL, если исходный full не содержал edges.
+//   - ✅ ДОБАВЛЕНО: GenerateReportOptions.saveEdges и edgesJsonSuffix.
+//     Позволяет сохранять агрегированный массив edges в отдельный
+//     файл `*.edges.json` (не раздувает основной full.json).
+//   - ✅ ДОБАВЛЕНО: GenerateReportResult.edgesPath и stats.edgesSize.
+//   - ✅ ОБНОВЛЕНО: комментарии к DecodeOptions и GenerateReportOptions.
+//
+// ИЗМЕНЕНИЯ v9.0.3:
+//   - ✅ ИСПРАВЛЕНО: CompactJSON.gr.c расширен с 4 до 5 полей.
+//     Добавлено поле `isExternal: 0 | 1`, которое однозначно
+//     разделяет два случая:
+//       isExternal === 0 → toIdx это индекс функции (functionReverse)
+//       isExternal === 1 → toIdx это индекс строки в stringDict
+//                          (значение начинается с 'external:')
+//     Это устраняет коллизию индексов, из-за которой DL
+//     (decode(encode(full)) === full) падал на 3 calls.
+//   - ✅ Обновлён комментарий-схема в шапке CompactJSON.
 //
 // ИЗМЕНЕНИЯ v9.0.0:
 //   - ✅ ДОБАВЛЕНЫ: LifecycleHook, LifecycleHookName
@@ -35,11 +56,11 @@
 //   - CodecLegend: +stringDict, +paramDict, +methodDict, +valueDict
 //   - CodecLegend: +arraySchemas (позиционные схемы массивов)
 //   - ExportData: +isReExport, +isStarReExport, +isDefaultReExport, +source
-//   - CompactJSON.mi: { n, f } вместо просто строки
+//   - CompactJSON.mi: { n, p, f } вместо { n, f }
 //   - CompactJSON.fl: { p, m } вместо просто строки
-//   - CompactJSON.gr.e: 10 элементов
+//   - CompactJSON.gr.e: 12 элементов
 //   - CompactJSON.gr.i: 8 элементов
-//   - CompactJSON.gr.c: toIdxOrExternalIdx + typeCode 'e'
+//   - CompactJSON.gr.c: 5 элементов (isExternal)
 //   - CompactJSON.gr.re: 7 элементов
 //   - Убран CompactJSON.edges (восстанавливается из gr.*)
 //
@@ -94,7 +115,16 @@ export interface FullJSON {
   statistics: StatisticsData;
   /**
    * Единый массив рёбер для сводного графа.
-   * ⚠️ В compact.json НЕ хранится — восстанавливается из gr.*
+   *
+   * ✅ v9.0.5: НЕ хранится в compact.json и НЕ восстанавливается
+   *   по умолчанию при decode. Если нужен — передайте
+   *   `{ includeEdges: true }` в DecodeOptions или используйте
+   *   `saveEdges: true` в GenerateReportOptions (сохраняется
+   *   в отдельный файл `*.edges.json`).
+   *
+   * ⚠️ По спецификации v9.0.x это ПОЛЕ ПРОИЗВОДНОЕ —
+   *   оно собирается из gr.i + gr.e + gr.c + gr.re и не должно
+   *   храниться в full.json (иначе DL падает).
    */
   edges?: EdgeData[];
 
@@ -340,6 +370,10 @@ export interface ImportData {
 /**
  * Вызов — `funcName(...)` внутри другой функции.
  * Позволяет строить граф вызовов.
+ *
+ * ✅ v9.0.4: тип вызова сохраняется для ВСЕХ вызовов,
+ *   включая external. Признак external передаётся отдельным
+ *   полем в CompactJSON.gr.c (isExternal).
  */
 export interface CallData {
   /** Уникальный ID вызова (c1, c2, ...) */
@@ -353,7 +387,13 @@ export interface CallData {
   toFunctionId: string;
   /** Номер строки вызова */
   line: number;
-  /** Тип вызова */
+  /**
+   * Тип вызова.
+   *
+   * ✅ v9.0.4: тип вызова ортогонален признаку external —
+   *   external-вызов может быть 'direct' | 'async' | 'method' | 'callback'.
+   *   Признак external хранится отдельно (в compact — 5-е поле gr.c).
+   */
   type: 'direct' | 'async' | 'method' | 'callback';
 }
 
@@ -606,13 +646,7 @@ export interface InjectionEdge {
 // ============================================
 
 export type ReactivityKind =
-  | 'computed'
-  | 'watch'
-  | 'watchEffect'
-  | 'ref'
-  | 'reactive'
-  | 'shallowRef'
-  | 'readonly';
+  'computed' | 'watch' | 'watchEffect' | 'ref' | 'reactive' | 'shallowRef' | 'readonly';
 
 /**
  * Ребро реактивной связи (computed/watch/ref/...).
@@ -720,6 +754,8 @@ export interface StatisticsData {
  * Единое ребро графа.
  * Позволяет строить любой граф фильтрацией по типу.
  * ⚠️ В compact.json НЕ хранится — восстанавливается из gr.*
+ * ⚠️ ✅ v9.0.5: НЕ добавляется в full.json по умолчанию —
+ *    только если передан `{ includeEdges: true }` в DecodeOptions.
  */
 export interface EdgeData {
   /** Откуда (ID источника) */
@@ -749,11 +785,13 @@ export interface EdgeData {
  *
  *   gr.e:  [moduleIdx, fileIdx, funcIdx, line, typeCode,
  *           exportNameIdx, localNameIdx, isTypeOnly,
- *           isReExport, sourceIdx]
+ *           isReExport, sourceIdx, isStarReExport, isDefaultReExport]
  *   gr.i:  [fromFileIdx, toFileIdIdx, sourceIdx,
  *           importedNameIdx, localNameIdx, line,
  *           typeCode, isExternal]
- *   gr.c:  [fromIdx, toIdxOrExternalIdx, line, typeCode]
+ *   gr.c:  [fromIdx, toIdx, line, typeCode, isExternal]
+ *          isExternal: 0 — toIdx это functionIdx
+ *                      1 — toIdx это stringDictIdx (external:...)
  *   gr.re: [moduleIdx, funcIdx, sourceIdx, exportNameIdx,
  *           line, typeCode, isTypeOnly]
  *
@@ -780,7 +818,8 @@ export interface EdgeData {
  * Все *Idx — индексы в legend.stringDict (кроме paramsIdx/methodsIdx/valueIdx).
  *   -1 означает undefined/null.
  *
- * ⚠️ edges НЕ хранятся — восстанавливаются из gr.i + gr.e + gr.c + gr.re.
+ * ⚠️ edges НЕ хранятся — восстанавливаются из gr.i + gr.e + gr.c + gr.re
+ *    (и только если includeEdges: true при decode).
  */
 export interface CompactJSON {
   /** Version */
@@ -791,9 +830,9 @@ export interface CompactJSON {
   r: string;
 
   /**
-   * Module index: id → { n: name, f: [fileIds] }
+   * Module index: id → { n: name, p: path, f: [fileIds] }
    */
-  mi: Record<string, { n: string; f: string[] }>;
+  mi: Record<string, { n: string; p: string; f: string[] }>;
 
   /**
    * File index: id → { p: path, m: moduleId }
@@ -804,44 +843,19 @@ export interface CompactJSON {
    * Functions:
    * [id, name, moduleId, fileId, line, flags, paramsIdx[], returnTypeIdx]
    */
-  fns: [
-    string,
-    string,
-    string,
-    string,
-    number,
-    string,
-    number[],
-    number,
-  ][];
+  fns: [string, string, string, string, number, string, number[], number][];
 
   /**
    * Classes:
    * [id, name, moduleId, fileId, line, flags, methodsIdx[]]
    */
-  cls: [
-    string,
-    string,
-    string,
-    string,
-    number,
-    string,
-    number[],
-  ][];
+  cls: [string, string, string, string, number, string, number[]][];
 
   /**
    * Constants:
    * [id, name, moduleId, fileId, line, flags, valueIdx]
    */
-  cn: [
-    string,
-    string,
-    string,
-    string,
-    number,
-    string,
-    number,
-  ][];
+  cn: [string, string, string, string, number, string, number][];
 
   /** Graph — все связи в одном месте */
   gr: {
@@ -849,7 +863,7 @@ export interface CompactJSON {
      * Exports:
      * [moduleIdx, fileIdx, funcIdx, line, typeCode,
      *  exportNameIdx, localNameIdx, isTypeOnly,
-     *  isReExport, sourceIdx]
+     *  isReExport, sourceIdx, isStarReExport, isDefaultReExport]
      */
     e: [
       number,
@@ -862,6 +876,8 @@ export interface CompactJSON {
       number,
       number,
       number,
+      number, // isStarReExport
+      number, // isDefaultReExport
     ][];
 
     /**
@@ -870,26 +886,26 @@ export interface CompactJSON {
      *  importedNameIdx, localNameIdx, line,
      *  typeCode, isExternal]
      */
-    i: [
-      number,
-      number,
-      number,
-      number,
-      number,
-      number,
-      string,
-      number,
-    ][];
+    i: [number, number, number, number, number, number, string, number][];
 
     /**
      * Calls:
-     * [fromIdx, toIdxOrExternalIdx, line, typeCode]
+     * [fromIdx, toIdx, line, typeCode, isExternal]
+     *
+     *   isExternal === 0 → toIdx это индекс функции (functionReverse)
+     *   isExternal === 1 → toIdx это индекс строки в stringDict
+     *                      (значение начинается с 'external:')
+     *
+     * ✅ v9.0.4: typeCode (4-е поле) — РЕАЛЬНЫЙ тип вызова, включая
+     *   external-вызовы. Он НЕ принудительно 'd'. Признак external —
+     *   отдельное поле isExternal (5-е).
      */
     c: [
-      number,
-      number,
-      number,
-      string,
+      number, // fromIdx
+      number, // toIdx (functionIdx ИЛИ stringDictIdx)
+      number, // line
+      string, // typeCode
+      number, // isExternal (0 | 1)
     ][];
 
     /**
@@ -897,15 +913,7 @@ export interface CompactJSON {
      * [moduleIdx, funcIdx, sourceIdx, exportNameIdx,
      *  line, typeCode, isTypeOnly]
      */
-    re: [
-      number,
-      number,
-      number,
-      number,
-      number,
-      string,
-      number,
-    ][];
+    re: [number, number, number, number, number, string, number][];
   };
 
   /**
@@ -1012,7 +1020,7 @@ export interface CodecLegend {
   exportTypes: Record<string, string>;
   /** Типы импортов: 'n' | 'df' | 'ns' | 'to' */
   importTypes: Record<string, string>;
-  /** Типы вызовов: 'd' | 'a' | 'm' | 'c' | 'e' */
+  /** Типы вызовов: 'd' | 'a' | 'm' | 'c' */
   callTypes: Record<string, string>;
   /** Типы реэкспортов: 'n' | 'df' | 'all' */
   reExportTypes: Record<string, string>;
@@ -1051,11 +1059,11 @@ export interface CodecLegend {
     cls: string[];
     /** cn: [id, name, moduleId, fileId, line, flags, valueIdx] */
     cn: string[];
-    /** gr.e: 10 полей */
+    /** gr.e: 12 полей */
     'gr.e': string[];
     /** gr.i: 8 полей */
     'gr.i': string[];
-    /** gr.c: 4 поля */
+    /** gr.c: 5 полей (isExternal) */
     'gr.c': string[];
     /** gr.re: 7 полей */
     'gr.re': string[];
@@ -1146,6 +1154,8 @@ export interface CodecLegend {
  *
  * ✅ УНИФИЦИРОВАНО v9.0.0: объединены поля из
  *    compact-reporter.ts и codec-types.ts (устранён TS2300).
+ *
+ * ✅ v9.0.5: добавлены saveEdges и edgesJsonSuffix.
  */
 export interface GenerateReportOptions {
   /** Путь к выходному файлу (сжатый JSON) */
@@ -1164,6 +1174,33 @@ export interface GenerateReportOptions {
   useBitFlags?: boolean;
   /** Использовать ли словари (по умолчанию: true) */
   useDictionaries?: boolean;
+
+  // ==========================================
+  // ✅ v9.0.5: edges — в отдельный файл, по умолчанию выключено
+  // ==========================================
+
+  /**
+   * Сохранять ли агрегированный массив edges в отдельный файл.
+   *
+   * - `false` (по умолчанию) — edges НЕ сохраняются.
+   *   Это соответствует спецификации v9.0.x: edges — производное поле,
+   *   его можно собрать из gr.i + gr.e + gr.c + gr.re при необходимости.
+   * - `true` — edges восстанавливаются через
+   *   `Codec.decode(compact, { includeEdges: true })` и сохраняются
+   *   в файл с суффиксом edgesJsonSuffix.
+   *
+   * @default false
+   */
+  saveEdges?: boolean;
+
+  /**
+   * Суффикс для файла с edges (по умолчанию: '.edges.json').
+   *
+   * Пример: для outputPath='index.json' edges будут в 'index.edges.json'.
+   *
+   * @default '.edges.json'
+   */
+  edgesJsonSuffix?: string;
 }
 
 // ============================================
@@ -1175,6 +1212,8 @@ export interface GenerateReportOptions {
  *
  * ✅ УНИФИЦИРОВАНО v9.0.0: объединены поля из
  *    compact-reporter.ts и codec-types.ts (устранён TS2300).
+ *
+ * ✅ v9.0.5: добавлено edgesPath и stats.edgesSize.
  */
 export interface GenerateReportResult {
   /** Полный (читаемый) JSON */
@@ -1185,6 +1224,8 @@ export interface GenerateReportResult {
   compactPath?: string;
   /** Путь к сохранённому полному файлу */
   fullPath?: string;
+  /** ✅ v9.0.5: путь к сохранённому файлу edges (если saveEdges: true) */
+  edgesPath?: string;
   /** Статистика генерации */
   stats: {
     /** Длительность в миллисекундах */
@@ -1193,6 +1234,8 @@ export interface GenerateReportResult {
     compactSize?: number;
     /** Размер полного файла в байтах */
     fullSize?: number;
+    /** ✅ v9.0.5: размер файла edges в байтах */
+    edgesSize?: number;
     /** Коэффициент сжатия (%) */
     compressionRatio?: number;
   };
@@ -1206,7 +1249,7 @@ export interface GenerateReportResult {
 }
 
 // ============================================
-// ОПЦИИ ДЕКОДИРОВАНИЯ (v3.1.0)
+// ОПЦИИ ДЕКОДИРОВАНИЯ (v3.1.0 → v9.0.5)
 // ============================================
 
 /**
@@ -1215,21 +1258,32 @@ export interface GenerateReportResult {
  * Позволяют управлять тем, какие производные поля
  * восстанавливаются при декодировании CompactJSON → FullJSON.
  *
+ * ✅ v9.0.5: includeEdges по умолчанию false.
+ *    Поле edges — производное (восстанавливается из gr.i + gr.e + gr.c + gr.re),
+ *    поэтому по умолчанию НЕ добавляется в результат.
+ *    Это устраняет расхождение при DL (decode(encode(full)) === full),
+ *    когда исходный full не содержит edges (как и должно быть).
+ *
  * @example
  * ```ts
- * // Декодировать без агрегированного графа edges
- * const full = Codec.decode(compact, { includeEdges: false });
+ * // Декодировать без агрегированного графа edges (по умолчанию)
+ * const full = Codec.decode(compact);
+ *
+ * // Декодировать с edges (для отдельного файла *.edges.json)
+ * const fullWithEdges = Codec.decode(compact, { includeEdges: true });
  * ```
  */
 export interface DecodeOptions {
   /**
    * Включать ли агрегированный массив `edges` в результат.
    *
-   * - `true` (по умолчанию) — `edges` собирается из `gr.*`
-   * - `false` — `edges` будет `undefined`, что экономит память
-   *   и время при работе с большими отчётами
+   * - `false` (по умолчанию) — `edges` НЕ добавляется.
+   *   Это соответствует поведению `collectFullJSON` в compact-reporter,
+   *   который тоже не создаёт edges (по спецификации v9.0.x).
+   * - `true` — `edges` собирается из `gr.*` и добавляется в результат.
+   *   Используется, например, для сохранения edges в отдельный файл.
    *
-   * @default true
+   * @default false
    */
   includeEdges?: boolean;
 

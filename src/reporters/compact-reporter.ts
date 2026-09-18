@@ -2,7 +2,19 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Версия: 9.0.2 (Исправления vt: 12 полей, funcIdx: -1, пустые секции, conditionals, resolvedComponents)
+// Версия: 9.0.4
+//
+// ИЗМЕНЕНИЯ v9.0.4:
+//   - ✅ ДОБАВЛЕНО: опция `saveEdges` (по умолчанию false).
+//     Если true — edges восстанавливаются через
+//     `Codec.decode(compact, { includeEdges: true })` и сохраняются
+//     в отдельный файл `<output>.edges.json` (суффикс настраивается
+//     через `edgesJsonSuffix`).
+//   - ✅ ДОБАВЛЕНО: в `GenerateReportResult` — `edgesPath` и
+//     `stats.edgesSize`.
+//   - ✅ Это устраняет расхождение DL (decode(encode(full)) === full),
+//     когда исходный full не содержит edges (по спецификации v9.0.4+
+//     edges — производное поле, не хранится в full.json).
 //
 // ИЗМЕНЕНИЯ v9.0.2:
 //   - ✅ ИСПРАВЛЕНО: version = '9.0.0' (было '9.0.1')
@@ -112,6 +124,10 @@ export function generateCompactReport(
   const saveFull = options.saveFullJson !== false && options.saveFull !== false;
   const fullSuffix = options.fullJsonSuffix || '.full.json';
 
+  // ✅ v9.0.4: edges — по умолчанию НЕ сохраняются в отдельный файл.
+  const saveEdges = options.saveEdges === true;
+  const edgesSuffix = options.edgesJsonSuffix || '.edges.json';
+
   // ============================================
   // ШАГ 1: Сбор полного JSON
   // ============================================
@@ -125,12 +141,12 @@ export function generateCompactReport(
     console.log(`   📊 Модулей: ${full.modules.length}`);
     console.log(`   📄 Файлов: ${full.files.length}`);
     console.log(`   ƒ  Функций: ${full.functions.length}`);
-    console.log(`   📦 Классов: ${full.classes.length}`);
-    console.log(`   📌 Констант: ${full.constants.length}`);
-    console.log(`   📤 Экспортов: ${full.exports.length}`);
-    console.log(`   📥 Импортов: ${full.imports.length}`);
-    console.log(`   📞 Вызовов: ${full.calls.length}`);
-    console.log(`   🔄 Реэкспортов: ${full.reExports.length}`);
+    console.log(`   📦 Классов: ${full.classes?.length || 0}`);
+    console.log(`   📌 Констант: ${full.constants?.length || 0}`);
+    console.log(`   📤 Экспортов: ${full.exports?.length || 0}`);
+    console.log(`   📥 Импортов: ${full.imports?.length || 0}`);
+    console.log(`   📞 Вызовов: ${full.calls?.length || 0}`);
+    console.log(`   🔄 Реэкспортов: ${full.reExports?.length || 0}`);
     console.log(`   🎨 Vue-шаблонов: ${full.templates?.length || 0}`);
     console.log(`   🎯 Conditionals: ${full.conditionals?.length || 0}`);
     console.log(`   🧬 Lifecycle: ${full.lifecycle?.length || 0}`);
@@ -141,7 +157,7 @@ export function generateCompactReport(
     console.log(`   🔗 TypeRefs: ${full.typeRefs?.length || 0}`);
 
     // ✅ v8.5.0: диагностика неразрешённых импортов
-    const unresolvedImports = full.imports.filter(
+    const unresolvedImports = (full.imports || []).filter(
       imp => !imp.isExternal && imp.toFileId?.startsWith('unresolved:')
     );
     if (unresolvedImports.length > 0) {
@@ -195,8 +211,10 @@ export function generateCompactReport(
   // ============================================
   let compactPath: string | undefined;
   let fullPath: string | undefined;
+  let edgesPath: string | undefined;
   let compactSize: number | undefined;
   let fullSize: number | undefined;
+  let edgesSize: number | undefined;
   let compressionRatio: number | undefined;
 
   if (outputPath) {
@@ -231,6 +249,47 @@ export function generateCompactReport(
       }
     }
 
+    // ✅ v9.0.4: сохраняем edges в отдельный файл (только если saveEdges: true)
+    if (saveEdges && compact) {
+      const edgesPathResolved = insertSuffixBeforeExtension(outputPath, edgesSuffix);
+
+      // Декодируем compact с includeEdges: true
+      const fullWithEdges = Codec.decode(compact, { includeEdges: true });
+      const edges = fullWithEdges.edges || [];
+
+      fs.writeFileSync(
+        edgesPathResolved,
+        JSON.stringify(
+          {
+            version: fullWithEdges.version,
+            timestamp: fullWithEdges.timestamp,
+            root: fullWithEdges.root,
+            edges,
+            stats: {
+              totalEdges: edges.length,
+              byType: edges.reduce((acc: Record<string, number>, e) => {
+                acc[e.type] = (acc[e.type] || 0) + 1;
+                return acc;
+              }, {}),
+            },
+          },
+          null,
+          2
+        ),
+        'utf-8'
+      );
+
+      edgesPath = edgesPathResolved;
+      edgesSize = fs.statSync(edgesPathResolved).size;
+
+      if (verbose) {
+        const sizeKB = (edgesSize / 1024).toFixed(2);
+        console.log(
+          `   💾 Edges JSON: ${edgesPathResolved} (${sizeKB} KB, ${edges.length} edges)`
+        );
+      }
+    }
+
     // Сравнение размеров
     if (compactSize !== undefined && fullSize !== undefined && fullSize > 0) {
       compressionRatio = (compactSize / fullSize) * 100;
@@ -255,10 +314,12 @@ export function generateCompactReport(
     compact,
     compactPath,
     fullPath,
+    edgesPath, // ✅ v9.0.4
     stats: {
       duration,
       compactSize,
       fullSize,
+      edgesSize, // ✅ v9.0.4
       compressionRatio,
     },
   };
@@ -319,7 +380,8 @@ export function readFullJson(fullPath: string): FullJSON {
  *   1. Собирает модули, файлы, функции, классы, константы
  *   2. Собирает экспорты, импорты, вызовы, реэкспорты
  *
- * ⚠️ edges НЕ создаются здесь — они восстанавливаются при decode.
+ * ⚠️ edges НЕ создаются здесь — они восстанавливаются при decode
+ *    (производное поле, не хранится в full.json по спецификации v9.0.4+).
  *
  * ✅ v9.0.2: templates.push содержит ВСЕ 12 полей TemplateData.
  * ✅ v9.0.2: пустые секции → undefined (не []).
@@ -608,16 +670,16 @@ function collectFullJSON(
     // ✅ v9.0.0: hasTemplate учитывает templateConditionals
     const hasTemplate =
       (e.templateReactivityDeps?.length || 0) +
-        (e.templateEventHandlers?.length || 0) +
-        (e.templateDynamicComponents?.length || 0) +
-        (e.templateRefs?.length || 0) +
-        (e.templateCssVariables?.length || 0) +
-        (e.templateDeepSelectors?.length || 0) +
-        (e.templateUsedComponents?.length || 0) +
-        (e.templateSlots?.length || 0) +
-        (e.templateDirectives?.length || 0) +
-        (e.templateConditionals?.length || 0) +
-        (e.templateComplexity || 0) >
+      (e.templateEventHandlers?.length || 0) +
+      (e.templateDynamicComponents?.length || 0) +
+      (e.templateRefs?.length || 0) +
+      (e.templateCssVariables?.length || 0) +
+      (e.templateDeepSelectors?.length || 0) +
+      (e.templateUsedComponents?.length || 0) +
+      (e.templateSlots?.length || 0) +
+      (e.templateDirectives?.length || 0) +
+      (e.templateConditionals?.length || 0) +
+      (e.templateComplexity || 0) >
       0;
 
     if (!hasTemplate) continue;
@@ -783,9 +845,9 @@ function collectFullJSON(
 
       const packageName = isExternal
         ? (imp as any).packageName ||
-          (imp.source.startsWith('@')
-            ? imp.source.split('/').slice(0, 2).join('/')
-            : imp.source.split('/')[0])
+        (imp.source.startsWith('@')
+          ? imp.source.split('/').slice(0, 2).join('/')
+          : imp.source.split('/')[0])
         : undefined;
 
       let resolvedToFileId: string | null = null;
@@ -1106,12 +1168,12 @@ function collectFullJSON(
   if (
     verbose &&
     lifecycle.length +
-      effects.length +
-      injections.length +
-      reactivity.length +
-      types.length +
-      typeRefs.length >
-      0
+    effects.length +
+    injections.length +
+    reactivity.length +
+    types.length +
+    typeRefs.length >
+    0
   ) {
     console.log(`   🧬 Lifecycle: ${lifecycle.length}`);
     console.log(`   ⚡ Effects: ${effects.length}`);
@@ -1164,6 +1226,8 @@ function collectFullJSON(
   // ============================================
   // ✅ v9.0.2: пустые секции → undefined (НЕ [])
   // Это критично для чек-листа v9.0.0.
+  // ✅ v9.0.4: edges НЕ создаются — восстанавливаются в Codec.decode
+  //            через includeEdges: true (по запросу).
   // ============================================
   const result: FullJSON = {
     version: '9.0.0',
