@@ -1,5 +1,5 @@
 // ============================================================================
-// AST ANALYZER — CODEC v10.2
+// AST ANALYZER — CODEC v10.3
 // Кодирование/декодирование между полным и компактным форматами.
 //
 //   Full    (index.full.json) — развёрнутый, читаемый, с длинными ключами
@@ -18,8 +18,8 @@
 //   Codec.stringify(compact, pretty?) → string
 //   Codec.parse(json)                 → compact
 //   Codec.getLegend()                 → legend
-//   Codec.buildEdges(full)            → edges[]        ← НОВОЕ v10.1
-//   Codec.buildEdgesStats(edges)      → stats          ← НОВОЕ v10.1
+//   Codec.buildEdges(full)            → edges[]
+//   Codec.buildEdgesStats(edges)      → stats
 //
 //   // --- Прямые функции ---
 //   decodeCompactData(compact, opts?) → full
@@ -35,7 +35,7 @@
 //   deepEqual(a, b)                   → boolean
 //   normalizeForDiff(value)           → string
 //
-//   // --- НОВОЕ v10.1: Edges ---
+//   // --- Edges ---
 //   buildEdgesFromFull(full)          → { edges, stats }
 //   buildEdgesFromCompact(compact)    → { edges, stats }
 //
@@ -57,7 +57,46 @@
 //   // --- Версия ---
 //   CODEC_VERSION
 //
-// Изменения v10.2 (текущая версия):
+// Изменения v10.3 (текущая версия):
+//   - ✅ КРИТИЧНОЕ ИСПРАВЛЕНИЕ: симметрия для type-only импортов.
+//
+//       В encodeToCompactData (gr.i): код типа импорта теперь вычисляется
+//       через i.isTypeOnly (приоритет) → 'to', иначе rev(IMPORT_TYPES, i.type).
+//       Раньше при i.type='named' + i.isTypeOnly=true encoder терял флаг
+//       isTypeOnly, и decode восстанавливал type='named' вместо 'type-only'.
+//
+//       Раньше:
+//         rev(IMPORT_TYPES, i.type, 'n')
+//       Теперь:
+//         i.isTypeOnly ? 'to' : rev(IMPORT_TYPES, i.type, 'n')
+//
+//       В decodeCompactData (gr.i): isTypeOnly восстанавливается из кода 'to'.
+//
+//       Симптом: L1/L2/DL падали с расхождениями:
+//         $.imports[N].type: a="type-only", b="named"
+//       на 26 импортах.
+//
+//   - ✅ КРИТИЧНОЕ ИСПРАВЛЕНИЕ: пустые секции в decodeCompactData.
+//
+//       Раньше decodeCompactData всегда создавал в out все секции
+//       (classes: [], constants: [], exports: [], imports: [], ...),
+//       даже если в compact их не было. Это приводило к расхождению
+//       с full.json, где collectFullJSON (compact-reporter.ts) пустые
+//       секции записывает как undefined.
+//
+//       Симптом: L1/L2/DL падали с расхождением:
+//         $.classes: a=[], b=undefined
+//
+//       Теперь в конце decodeCompactData удаляются те секции,
+//       которых нет в compact: cls → classes, cn → constants,
+//       gr.e → exports, gr.i → imports, gr.c → calls, gr.re → reExports,
+//       vt → templates, cd → conditionals, lc → lifecycle,
+//       ef → effects, inj → injections, rx → reactivity,
+//       ty → types, tr → typeRefs.
+//
+//   - ✅ CODEC_VERSION: '10.2' → '10.3'
+//
+// Изменения v10.2:
 //   - ✅ КРИТИЧНОЕ ИСПРАВЛЕНИЕ: в encodeToCompactData блок gr.c —
 //       для external-вызовов сохраняется РЕАЛЬНЫЙ тип вызова
 //       (direct / async / method / callback), а НЕ принудительный 'direct'.
@@ -72,7 +111,6 @@
 //       Симптом: L1_semantic и L3_byteExact падали с расхождениями
 //         $.calls[N].type: a="async"/"callback", b="direct"
 //         $.gr.c[N][3]:  a="a"/"c",               b="d"
-//       После чего Codec.verifyRoundTripBoth выдавал FAIL.
 //   - ✅ Обновлён JSDoc-комментарий к CALL_TYPES: пояснение, что тип
 //       вызова и признак external — ОРТОГОНАЛЬНЫ.
 //   - ✅ CODEC_VERSION: '10.1' → '10.2'
@@ -116,7 +154,7 @@
 // ---------------------------------------------------------------------------
 // ВЕРСИЯ
 // ---------------------------------------------------------------------------
-export const CODEC_VERSION = '10.2';
+export const CODEC_VERSION = '10.3';
 
 // ---------------------------------------------------------------------------
 // СЛОВАРИ (экспортируемые)
@@ -643,11 +681,14 @@ export function decodeCompactData(compact, options = {}) {
     }
 
     // imports: 8 полей
+    // ✅ v10.3: isTypeOnly восстанавливается из кода 'to'.
     if (compact.gr.i) {
       out.imports = compact.gr.i.map((a, i) => {
         const isExternal = !!a[7];
         const toNumRaw = a[1];
         const resolvedToFileId = isExternal ? '' : fileByIdx(toNumRaw);
+        const importTypeCode = a[6];
+        const isTypeOnly = importTypeCode === 'to';
         return {
           id: `i${i + 1}`,
           fromFileId: fileByIdx(a[0]),
@@ -657,7 +698,8 @@ export function decodeCompactData(compact, options = {}) {
           importedName: str(a[3]),
           localName: str(a[4]),
           line: a[5],
-          type: code(IMPORT_TYPES, a[6], 'named'),
+          type: code(IMPORT_TYPES, importTypeCode, 'named'),
+          isTypeOnly,
           isExternal,
         };
       });
@@ -832,6 +874,45 @@ export function decodeCompactData(compact, options = {}) {
   };
 
   // ============================================
+  // ✅ v10.3: удаляем пустые секции, которых не было в compact.
+  // ============================================
+  // collectFullJSON (compact-reporter.ts) пустые секции записывает
+  // как undefined, а не []. Чтобы DL (decode(encode(full)) === full)
+  // не падал с расхождением "$.classes: a=[] b=undefined",
+  // удаляем секции, для которых в compact нет соответствующего ключа.
+  //
+  // Соответствие compact ↔ full:
+  //   compact.cls  → full.classes
+  //   compact.cn   → full.constants
+  //   compact.gr.e → full.exports
+  //   compact.gr.i → full.imports
+  //   compact.gr.c → full.calls
+  //   compact.gr.re → full.reExports
+  //   compact.vt   → full.templates
+  //   compact.cd   → full.conditionals
+  //   compact.lc   → full.lifecycle
+  //   compact.ef   → full.effects
+  //   compact.inj  → full.injections
+  //   compact.rx   → full.reactivity
+  //   compact.ty   → full.types
+  //   compact.tr   → full.typeRefs
+  // ============================================
+  if (!compact.cls) delete out.classes;
+  if (!compact.cn) delete out.constants;
+  if (!compact.gr || !compact.gr.e) delete out.exports;
+  if (!compact.gr || !compact.gr.i) delete out.imports;
+  if (!compact.gr || !compact.gr.c) delete out.calls;
+  if (!compact.gr || !compact.gr.re) delete out.reExports;
+  if (!compact.vt) delete out.templates;
+  if (!compact.cd) delete out.conditionals;
+  if (!compact.lc) delete out.lifecycle;
+  if (!compact.ef) delete out.effects;
+  if (!compact.inj) delete out.injections;
+  if (!compact.rx) delete out.reactivity;
+  if (!compact.ty) delete out.types;
+  if (!compact.tr) delete out.typeRefs;
+
+  // ============================================
   // ✅ v10.1: edges — восстанавливаются ТОЛЬКО если includeEdges === true
   // ============================================
   // По умолчанию edges НЕ восстанавливаются — это производное поле,
@@ -974,6 +1055,11 @@ export function encodeToCompactData(full, options = {}) {
   ]);
 
   // ---- imports (gr.i) — 8 полей ----
+  // ✅ v10.3: isTypeOnly приоритетнее, чем i.type.
+  // В full.json для type-only импортов может быть записано
+  // type: 'named' + isTypeOnly: true (см. compact-reporter.ts).
+  // Раньше encode терял флаг isTypeOnly, и decode восстанавливал
+  // type='named' вместо 'type-only' (26 расхождений в L1/L2/DL).
   out.gr.i = (full.imports || []).map(i => {
     const isExt = !!i.isExternal;
     let toNum;
@@ -981,6 +1067,9 @@ export function encodeToCompactData(full, options = {}) {
     else if (isExt) toNum = -1;
     else if (i.toFileId) toNum = fi(i.toFileId);
     else toNum = -1;
+
+    const importTypeCode = i.isTypeOnly ? 'to' : rev(IMPORT_TYPES, i.type, 'n');
+
     return [
       fi(i.fromFileId),
       toNum,
@@ -988,7 +1077,7 @@ export function encodeToCompactData(full, options = {}) {
       si(i.importedName),
       si(i.localName),
       i.line,
-      rev(IMPORT_TYPES, i.type, 'n'),
+      importTypeCode,
       isExt ? 1 : 0,
     ];
   });
@@ -1280,7 +1369,7 @@ export function encodeToCompactData(full, options = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// ✅ НОВОЕ v10.1: СБОРКА EDGES (агрегированный массив связей)
+// СБОРКА EDGES (агрегированный массив связей)
 // ---------------------------------------------------------------------------
 
 /**
@@ -1494,7 +1583,7 @@ function stripServiceFields(obj) {
   const clean = {};
   for (const [k, v] of Object.entries(rest)) {
     if (k.startsWith('__')) continue;
-    if (k === 'edges' || k === 'edgesStats') continue; // ✅ v10.1: edges — производное
+    if (k === 'edges' || k === 'edgesStats') continue;
     clean[k] = v;
   }
   return clean;
@@ -1506,7 +1595,7 @@ function stripForByteCompare(obj) {
   const clean = {};
   for (const [k, v] of Object.entries(rest)) {
     if (k.startsWith('__')) continue;
-    if (k === 'edges' || k === 'edgesStats') continue; // ✅ v10.1
+    if (k === 'edges' || k === 'edgesStats') continue;
     if (v === undefined || v === null) continue;
     if (Array.isArray(v) && v.length === 0) continue;
     if (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0) continue;
@@ -1635,8 +1724,6 @@ export function verifyRoundTrip(payload, options = {}) {
       }
     }
 
-    // ✅ v10.1: edges — производное поле, игнорируем при сравнении,
-    // если не запрошено includeEdges.
     const a = stripServiceFields(payload);
     const b = stripServiceFields(decoded);
     if (!deepEqual(a, b)) {
@@ -1728,7 +1815,6 @@ export function verifyRoundTripBoth(full, compact) {
   }
 
   // DL: decode(encode(full)) === full
-  // ✅ v10.1: edges — производное поле, поэтому сравниваем без edges.
   try {
     const encoded = encodeToCompactData(full);
     const decoded = decodeCompactData(encoded);
@@ -2074,7 +2160,6 @@ export const Codec = {
     return getLegend();
   },
 
-  // ✅ НОВОЕ v10.1
   buildEdges(full) {
     return buildEdgesFromFull(full);
   },

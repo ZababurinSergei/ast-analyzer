@@ -2,13 +2,20 @@
 // ============================================
 // КОДИРОВАНИЕ: FullJSON → CompactJSON
 // ============================================
-// Версия: 9.0.5
+// Версия: 9.0.6
 //
 // Содержит:
 //   - Словари (FLAG_MAP, CALL_TYPES, EXPORT_TYPES, ...)
 //   - Функции кодирования флагов (encodeFlags, flagsToString)
 //   - Хелперы словарей (createDictBuilder, addString, addParam, ...)
 //   - Codec.encode
+//
+// ИЗМЕНЕНИЯ v9.0.6 (import types fix):
+//   - ✅ ИСПРАВЛЕНО: IMPORT_TYPES.to = 'type' (было 'type-only').
+//     Это согласовано с compact-reporter.ts, который пишет `type: 'type'`
+//     для type-only импортов (см. ImportData.type в codec-types.ts).
+//     Раньше decode возвращал 'type-only', а compact-reporter — 'named'
+//     или 'type' → расхождение L1/L2/DL.
 //
 // ИЗМЕНЕНИЯ v9.0.5 (external calls type fix):
 //   - ✅ ИСПРАВЛЕНО: gr.c — для external-вызовов сохраняется РЕАЛЬНЫЙ
@@ -174,12 +181,18 @@ export const EXPORT_TYPES: Record<string, string> = {
 
 /**
  * Типы импортов.
+ *
+ * ✅ v9.0.6: 'to' → 'type' (не 'type-only').
+ * Это согласовано с compact-reporter.ts, который пишет `type: 'type'`
+ * для type-only импортов (см. ImportData.type в codec-types.ts).
+ * Раньше decode возвращал 'type-only', что приводило к расхождению
+ * с full.json в L1_semantic, L2_byteExact и DL.
  */
 export const IMPORT_TYPES: Record<string, string> = {
   n: 'named',
   df: 'default',
   ns: 'namespace',
-  to: 'type-only',
+  to: 'type',
 };
 
 /**
@@ -678,13 +691,13 @@ export function encode(payload: FullJSON): CompactJSON {
     ).map((h: any) =>
       h
         ? [
-          addString(dict, h.eventName),
-          addString(dict, h.handlerName),
-          addString(dict, h.tag),
-          h.line || 0,
-          asArray<string>(h.modifiers).map((m: string) => addString(dict, m)),
-          h.isExternal ? 1 : 0,
-        ]
+            addString(dict, h.eventName),
+            addString(dict, h.handlerName),
+            addString(dict, h.tag),
+            h.line || 0,
+            asArray<string>(h.modifiers).map((m: string) => addString(dict, m)),
+            h.isExternal ? 1 : 0,
+          ]
         : [0, 0, 0, 0, [], 0]
     );
 
@@ -693,10 +706,10 @@ export function encode(payload: FullJSON): CompactJSON {
     ).map((d: any) =>
       d
         ? [
-          addString(dict, d.isExpression),
-          d.line || 0,
-          asArray<string>(d.resolvedComponents).map((c: string) => addString(dict, c)),
-        ]
+            addString(dict, d.isExpression),
+            d.line || 0,
+            asArray<string>(d.resolvedComponents).map((c: string) => addString(dict, c)),
+          ]
         : [0, 0, []]
     );
 
@@ -713,11 +726,11 @@ export function encode(payload: FullJSON): CompactJSON {
     ).map((r: any) =>
       r
         ? [
-          addString(dict, r.refValue),
-          addString(dict, r.tag),
-          r.line || 0,
-          asArray<string>(r.exposedMethods).map((m: string) => addString(dict, m)),
-        ]
+            addString(dict, r.refValue),
+            addString(dict, r.tag),
+            r.line || 0,
+            asArray<string>(r.exposedMethods).map((m: string) => addString(dict, m)),
+          ]
         : [0, 0, 0, []]
     );
 

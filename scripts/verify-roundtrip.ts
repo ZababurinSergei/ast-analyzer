@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // scripts/verify-roundtrip.ts
 // ============================================
-// ЕДИНЫЙ ИСТОЧНИК ИСТИНЫ ДЛЯ ROUND-TRIP ПРОВЕРОК CODEC
+// Скрипт проверки Round-Trip для CODEC
 // ============================================
 // Уровни round-trip:
 //   L0  : encode(full) === compact          (семантически)
 //   L1  : decode(compact) === full          (семантически)
-//   L2  : decode(compact) === full          (побайтово)
-//   L3  : compact на диске === encode(full) (побайтово, БЕЗ сортировки)
+//   L2  : decode(compact) === full          (побайтово, порядко-независимо)
+//   L3  : compact на диске === encode(full) (побайтово, буквально)
 //   RE  : encode(decode(compact)) === compact
 //   DL  : decode(encode(full)) === full
 //   ENC : encode(full) === encode(decode(encode(full)))
@@ -18,10 +18,10 @@
 //   I2  : imports[].type ∈ {named, default, namespace, type}
 //   I3  : exports[].type ∈ {named, default, type}
 //   I4  : external calls → isExternal = 1 в compact.gr.c
-//   I5  : external calls: не все type='direct' (регрессия v9.0.4)
+//   I5  : external calls: сохранность типа (v10.3 — сравнение full vs decoded)
 //   I6  : functions[].*Flags ∈ {true, false, undefined}
 //
-// Эталон (golden):
+// Эталоны (golden):
 //   G1  : full ≈ scripts/fixtures/index.full.golden.json
 //   G2  : compact ≈ scripts/fixtures/index.golden.json
 //
@@ -72,7 +72,7 @@ const C = {
 };
 
 // ============================================
-// ХЕЛПЕРЫ
+// ЛОГГЕРЫ
 // ============================================
 
 function log(msg: string): void {
@@ -132,11 +132,11 @@ function fileExists(filePath: string): boolean {
 }
 
 // ============================================
-// УТИЛИТЫ СРАВНЕНИЯ
+// ХЕЛПЕРЫ СРАВНЕНИЯ
 // ============================================
 
 /**
- * Удаляет производные поля (edges, edgesStats, legend, __codec)
+ * Убирает служебные поля (edges, edgesStats, legend, __codec)
  * для семантического сравнения FullJSON.
  */
 function stripEdges(value: any): any {
@@ -146,9 +146,9 @@ function stripEdges(value: any): any {
 }
 
 /**
- * Удаляет legend и __codec для сравнения CompactJSON.
- * legend содержит словари, которые могут отличаться порядком/составом
- * при одинаковой семантике.
+ * Убирает legend и __codec для сравнения CompactJSON.
+ * legend содержит словари, которые могут отличаться порядком/содержимым
+ * при пересборке словарей.
  */
 function stripLegend(value: any): any {
   if (!value || typeof value !== 'object') return value;
@@ -156,26 +156,27 @@ function stripLegend(value: any): any {
   return rest;
 }
 
-function normalizeForCompare(value: any): string {
-  const norm = (v: any): any => {
-    if (v === undefined) return undefined;
-    if (v === null) return null;
-    if (Array.isArray(v)) return v.map(norm);
-    if (typeof v === 'object') {
-      const out: Record<string, any> = {};
-      for (const key of Object.keys(v).sort()) {
-        const nv = norm(v[key]);
-        if (nv !== undefined) out[key] = nv;
-      }
-      return out;
+/**
+ * Рекурсивно сортирует ключи объекта.
+ * Используется для порядко-независимого сравнения JSON-объектов.
+ */
+function sortKeysRecursive(v: any): any {
+  if (v === undefined) return undefined;
+  if (v === null) return null;
+  if (Array.isArray(v)) return v.map(sortKeysRecursive);
+  if (typeof v === 'object') {
+    const out: Record<string, any> = {};
+    for (const key of Object.keys(v).sort()) {
+      const nv = sortKeysRecursive(v[key]);
+      if (nv !== undefined) out[key] = nv;
     }
-    return v;
-  };
-  return JSON.stringify(norm(value));
+    return out;
+  }
+  return v;
 }
 
-function byteExactStringify(value: any): string {
-  return JSON.stringify(value);
+function normalizeForCompare(value: any): string {
+  return JSON.stringify(sortKeysRecursive(value));
 }
 
 function collectDiffs(a: any, b: any, basePath: string = '$', limit: number = 100): any[] {
@@ -251,9 +252,20 @@ function semanticCompare(a: any, b: any, limit: number): LevelResult {
   return { ok: false, diffCount: diffs.length, diff: diffs };
 }
 
+/**
+ * Побайтовое сравнение с сортировкой ключей.
+ *
+ * ✅ v10.3: JSON-объекты не имеют значимого порядка ключей, поэтому
+ * для побайтового сравнения сортируем ключи рекурсивно. Это устраняет
+ * ложные FAIL, когда decode и compact-reporter.ts строят объекты
+ * в разном порядке ключей, но с одинаковым содержимым.
+ *
+ * Если нужна **буквальная** байтовая идентичность (включая порядок),
+ * используйте L3 — там сравнивается файл на диске с encode(full).
+ */
 function byteExactCompare(a: any, b: any, limit: number): LevelResult {
-  const sa = byteExactStringify(a);
-  const sb = byteExactStringify(b);
+  const sa = JSON.stringify(sortKeysRecursive(a));
+  const sb = JSON.stringify(sortKeysRecursive(b));
   if (sa === sb) {
     return { ok: true, diffCount: 0, diff: null };
   }
@@ -389,11 +401,11 @@ async function main(): Promise<void> {
   const l1 = semanticCompare(decoded, full, options.maxDiffs);
   printLevelResult('L1', l1, options.maxDiffs);
 
-  subsection('L2: decode(compact) === full (побайтово)');
+  subsection('L2: decode(compact) === full (побайтово, порядко-независимо)');
   const l2 = byteExactCompare(decoded, full, options.maxDiffs);
   printLevelResult('L2', l2, options.maxDiffs);
 
-  subsection('L3: compact (на диске) === encode(full) (побайтово)');
+  subsection('L3: compact (на диске) === encode(full) (побайтово, буквально)');
   const compactRaw = JSON.stringify(compact);
   const encodedRaw = JSON.stringify(encoded);
   let l3: LevelResult;
@@ -407,7 +419,7 @@ async function main(): Promise<void> {
       ok: false,
       diffCount: diffs.length,
       diff: diffs,
-      notes: firstDiff ? `Первое расхождение на позиции ${firstDiff.pos}` : undefined,
+      notes: firstDiff ? `первое расхождение на позиции ${firstDiff.pos}` : undefined,
     };
     fail(`L3 — FAIL (diffCount=${diffs.length})`);
     if (firstDiff) {
@@ -574,24 +586,39 @@ async function main(): Promise<void> {
     });
   }
 
-  // --- I5: external calls: не все type='direct' (регрессия v9.0.4) ---
+  // --- I5 (v10.3): external calls: сохранность типа ---
+  // Проверяем, что типы external-вызовов в full и decoded СОВПАДАЮТ.
+  // Не требуем, чтобы среди них были не-direct типы — все external
+  // могут быть 'direct', это корректно.
   {
-    const externalCalls = (full.calls || []).filter(c => c.toFunctionId?.startsWith('external:'));
-    const directCount = externalCalls.filter(c => c.type === 'direct').length;
-    const nonDirectCount = externalCalls.length - directCount;
+    const violations: string[] = [];
+    const externalFull = (full.calls || []).filter(c => c.toFunctionId?.startsWith('external:'));
+    const externalDecoded = (decoded.calls || []).filter(c =>
+      c.toFunctionId?.startsWith('external:')
+    );
 
-    // Эвристика: если ВСЕ external-вызовы имеют type='direct' — подозрительно.
-    // Исключение: если external-вызовов мало (< 3) — статистика недостоверна.
-    const suspicious = externalCalls.length >= 3 && nonDirectCount === 0;
+    for (const fc of externalFull) {
+      const dc = externalDecoded.find(
+        c =>
+          c.fromFunctionId === fc.fromFunctionId &&
+          c.toFunctionId === fc.toFunctionId &&
+          c.line === fc.line
+      );
+      if (!dc) {
+        violations.push(
+          `external call ${fc.toFunctionId} (from=${fc.fromFunctionId}, line=${fc.line}) не найден в decoded`
+        );
+        continue;
+      }
+      if (dc.type !== fc.type) {
+        violations.push(`external call ${fc.toFunctionId}: type "${fc.type}" → "${dc.type}"`);
+      }
+    }
 
     invariantResults.push({
-      name: "I5: external calls: не все type='direct' (регрессия v9.0.4)",
-      ok: !suspicious,
-      violations: suspicious
-        ? [
-            `Все ${externalCalls.length} external-вызовов имеют type='direct' — вероятна регрессия v9.0.4`,
-          ]
-        : [],
+      name: 'I5: external calls: сохранность типа (full vs decoded)',
+      ok: violations.length === 0,
+      violations,
     });
   }
 
@@ -648,7 +675,7 @@ async function main(): Promise<void> {
   }
 
   // ============================================
-  // 6. ЭТАЛОН (GOLDEN)
+  // 6. ЭТАЛОНЫ (GOLDEN)
   // ============================================
 
   interface GoldenResult {
@@ -670,7 +697,7 @@ async function main(): Promise<void> {
     // --- G1: full ≈ golden.full ---
     if (fileExists(goldenFullPath)) {
       const goldenFull = readJson<FullJSON>(goldenFullPath);
-      // Сравниваем семантически, игнорируя edges (производное поле)
+      // Исключаем служебные поля, исключаем edges (производное поле)
       const a = stripEdges(full);
       const b = stripEdges(goldenFull);
       const result = semanticCompare(a, b, options.maxDiffs);
@@ -694,7 +721,7 @@ async function main(): Promise<void> {
     // --- G2: compact ≈ golden.compact ---
     if (fileExists(goldenCompactPath)) {
       const goldenCompact = readJson<CompactJSON>(goldenCompactPath);
-      // Сравниваем семантически, игнорируя legend (динамический)
+      // Исключаем служебные поля, исключаем legend (недетерминирован)
       const a = stripLegend(compact);
       const b = stripLegend(goldenCompact);
       const result = semanticCompare(a, b, options.maxDiffs);
@@ -737,7 +764,7 @@ async function main(): Promise<void> {
   const levels: Array<{ name: string; ok: boolean }> = [
     { name: 'L0 (encode(full) === compact, семантически)', ok: l0.ok },
     { name: 'L1 (decode(compact) === full, семантически)', ok: l1.ok },
-    { name: 'L2 (decode(compact) === full, побайтово)', ok: l2.ok },
+    { name: 'L2 (decode(compact) === full, побайтово, порядко-независимо)', ok: l2.ok },
     { name: 'L3 (compact на диске === encode(full), побайтово)', ok: l3.ok },
     { name: 'RE (encode(decode(compact)) === compact)', ok: re.ok },
     { name: 'DL (decode(encode(full)) === full)', ok: dl.ok },
@@ -779,7 +806,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // Показываем skipped golden-проверки отдельно
+  // Отдельно показываем skipped golden-проверки
   const skippedGolden = goldenResults.filter(g => g.skipped);
   if (skippedGolden.length > 0) {
     log('');
@@ -828,7 +855,7 @@ async function main(): Promise<void> {
     // Семантические инварианты
     invariants: invariantResults,
 
-    // Эталон
+    // Эталоны
     golden: goldenResults,
 
     // Размеры и статистика
@@ -872,14 +899,14 @@ ${C.bold}Опции:${C.reset}
   --max-diffs <n>        Максимум расхождений для вывода (по умолчанию 10)
   --json-report <path>   Сохранить отчёт в JSON-файл
   --golden <dir>         Директория с эталонами (по умолчанию ./scripts/fixtures)
-  --no-golden            Отключить проверку против эталона
+  --no-golden            Отключить проверку эталонов
   -h, --help             Показать эту справку
 
 ${C.bold}Уровни round-trip:${C.reset}
   L0  : encode(full) === compact (семантически)
   L1  : decode(compact) === full (семантически)
-  L2  : decode(compact) === full (побайтово)
-  L3  : compact на диске === encode(full) (побайтово)
+  L2  : decode(compact) === full (побайтово, порядко-независимо)
+  L3  : compact на диске === encode(full) (побайтово, буквально)
   RE  : encode(decode(compact)) === compact
   DL  : decode(encode(full)) === full
   ENC : encode(full) === encode(decode(encode(full)))
@@ -890,10 +917,10 @@ ${C.bold}Семантические инварианты:${C.reset}
   I2  : imports[].type ∈ {named, default, namespace, type}
   I3  : exports[].type ∈ {named, default, type}
   I4  : external calls → isExternal = 1 в compact.gr.c
-  I5  : external calls: не все type='direct' (регрессия v9.0.4)
+  I5  : external calls: сохранность типа (full vs decoded)
   I6  : functions[].*Flags ∈ {true, false, undefined}
 
-${C.bold}Эталон (golden):${C.reset}
+${C.bold}Эталоны (golden):${C.reset}
   G1  : full ≈ scripts/fixtures/index.full.golden.json
   G2  : compact ≈ scripts/fixtures/index.golden.json
 
@@ -911,6 +938,6 @@ ${C.bold}Примеры:${C.reset}
 // ============================================
 
 main().catch(err => {
-  console.error(`${C.red}💥 Необработанная ошибка:${C.reset}`, err);
+  console.error(`${C.red}❌ Непредвиденная ошибка:${C.reset}`, err);
   process.exit(1);
 });

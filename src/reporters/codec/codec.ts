@@ -207,6 +207,9 @@ import {
  *
  * Используется для обратной совместимости. Реальная легенда
  * с непустыми словарями создаётся в `encode()`.
+ *
+ * ✅ v10.3: словарь IMPORT_TYPES теперь содержит 'to' → 'type'
+ *           (не 'type-only'). Это согласовано с compact-reporter.ts.
  */
 function getLegend(): CodecLegend {
   return {

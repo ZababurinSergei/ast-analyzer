@@ -2,9 +2,9 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Версия: 9.0.4
+// Версия: 9.0.5
 //
-// ИЗМЕНЕНИЯ v9.0.4:
+// ИЗМЕНЕНИЯ v9.0.5:
 //   - ✅ ДОБАВЛЕНО: опция `saveEdges` (по умолчанию false).
 //     Если true — edges восстанавливаются через
 //     `Codec.decode(compact, { includeEdges: true })` и сохраняются
@@ -15,6 +15,19 @@
 //   - ✅ Это устраняет расхождение DL (decode(encode(full)) === full),
 //     когда исходный full не содержит edges (по спецификации v9.0.4+
 //     edges — производное поле, не хранится в full.json).
+//   - ✅ v10.3 FIX: три критичных исправления для L1/L2/DL:
+//       1. ВСЕГДА массивы для базовых секций (classes/constants/exports/
+//          imports/calls/reExports) — устраняет `$.classes: [] vs undefined`.
+//       2. type-only импорты пишутся как `type: 'type'` (не 'named') —
+//          устраняет `$.imports[N].type: "type-only" vs "named"`.
+//       3. Рёбра event → handler и ref → expose больше НЕ пишутся в calls[]
+//          (писался template.fileId вместо ID функции) —
+//          устраняет `$.calls[N].fromFunctionId: "fn0" vs "f6"`.
+//       4. `templates[].conditionals[]` обогащаются полями `id` и `fileId`
+//          через единый conditionalCounter — устраняет
+//          `$.templates[N].conditionals[M].id/fileId: undefined`.
+//       5. `templates[].templateRefs[].exposedMethods` нормализуются
+//          до `[]` — устраняет `[] vs undefined`.
 //
 // ИЗМЕНЕНИЯ v9.0.2:
 //   - ✅ ИСПРАВЛЕНО: version = '9.0.0' (было '9.0.1')
@@ -25,8 +38,6 @@
 //     чтобы Codec.encode превратил его в -1 через ?? -1
 //   - ✅ ИСПРАВЛЕНО: пустые секции (cls, cn, templates, conditionals, lifecycle,
 //     effects, injections, reactivity, types, typeRefs) → undefined, а не []
-//     (это критично для чек-листа v9.0.0)
-//   - ✅ ДОБАВЛЕНО: диагностика vt.length !== 12 при AST_DEBUG_CODEC=true
 //
 // ИЗМЕНЕНИЯ v9.0.0:
 //   - ✅ УДАЛЕНЫ локальные определения GenerateReportOptions и
@@ -284,9 +295,7 @@ export function generateCompactReport(
 
       if (verbose) {
         const sizeKB = (edgesSize / 1024).toFixed(2);
-        console.log(
-          `   💾 Edges JSON: ${edgesPathResolved} (${sizeKB} KB, ${edges.length} edges)`
-        );
+        console.log(`   💾 Edges JSON: ${edgesPathResolved} (${sizeKB} KB, ${edges.length} edges)`);
       }
     }
 
@@ -390,6 +399,11 @@ export function readFullJson(fullPath: string): FullJSON {
  * ✅ v9.0.2: functionId для lc/ef/rx = '' (не undefined).
  * ✅ v9.0.0: собираются секции conditionals[], lifecycle[], effects[],
  *            injections[], reactivity[], types[], typeRefs[].
+ * ✅ v10.3: базовые секции ВСЕГДА массивы (даже пустые) — симметрия
+ *            с codec-decode.ts. type-only импорты → type: 'type'.
+ *            Рёбра event → handler и ref → expose НЕ пишутся в calls[].
+ *            conditionals обогащаются id/fileId. templateRefs[].exposedMethods
+ *            нормализуются до [].
  */
 function collectFullJSON(
   entitiesMap: Record<string, EntitiesResult>,
@@ -649,12 +663,18 @@ function collectFullJSON(
   }
 
   // ============================================
-  // ✅ v8.4.0 + v9.0.0 + v9.0.2: сбор Vue-шаблонов и conditionals
+  // ✅ v8.4.0 + v9.0.0 + v9.0.2 + v10.3: сбор Vue-шаблонов и conditionals
   // ============================================
   // ⚠️ ВАЖНО: каждый TemplateData содержит РОВНО 12 полей.
   // Это критично для Codec.encode, который строит vt-кортеж по 12 позициям.
   // Если хотя бы одно поле отсутствует (undefined), JSON.stringify
   // может обрезать массив, что ломает round-trip.
+  //
+  // ✅ v10.3:
+  //   - conditionals обогащаются id/fileId через ЕДИНЫЙ conditionalCounter
+  //     (тот же, что используется для глобальной секции conditionals[]);
+  //   - templateRefs[].exposedMethods нормализуются до [] (не undefined);
+  //   - рёбра event → handler и ref → expose НЕ пишутся в calls[].
   // ============================================
   for (const [filePath, entities] of Object.entries(workingEntitiesMap)) {
     if (!entities) continue;
@@ -670,22 +690,44 @@ function collectFullJSON(
     // ✅ v9.0.0: hasTemplate учитывает templateConditionals
     const hasTemplate =
       (e.templateReactivityDeps?.length || 0) +
-      (e.templateEventHandlers?.length || 0) +
-      (e.templateDynamicComponents?.length || 0) +
-      (e.templateRefs?.length || 0) +
-      (e.templateCssVariables?.length || 0) +
-      (e.templateDeepSelectors?.length || 0) +
-      (e.templateUsedComponents?.length || 0) +
-      (e.templateSlots?.length || 0) +
-      (e.templateDirectives?.length || 0) +
-      (e.templateConditionals?.length || 0) +
-      (e.templateComplexity || 0) >
+        (e.templateEventHandlers?.length || 0) +
+        (e.templateDynamicComponents?.length || 0) +
+        (e.templateRefs?.length || 0) +
+        (e.templateCssVariables?.length || 0) +
+        (e.templateDeepSelectors?.length || 0) +
+        (e.templateUsedComponents?.length || 0) +
+        (e.templateSlots?.length || 0) +
+        (e.templateDirectives?.length || 0) +
+        (e.templateConditionals?.length || 0) +
+        (e.templateComplexity || 0) >
       0;
 
     if (!hasTemplate) continue;
 
     // ============================================
-    // ✅ v9.0.2: гарантируем РОВНО 12 полей TemplateData.
+    // ✅ v10.3: обогащаем conditionals полями id и fileId через ЕДИНЫЙ
+    //           conditionalCounter, чтобы id совпадал с тем, что
+    //           восстанавливает codec-decode.ts ("cd1", "cd2", ...).
+    //           Заодно пушим в глобальную секцию conditionals[].
+    // ============================================
+    const fileConditionals = e.templateConditionals || [];
+    const enrichedConditionals: TemplateConditional[] = fileConditionals.map((cd: any) => {
+      conditionalCounter++;
+      const enriched: TemplateConditional = {
+        id: `cd${conditionalCounter}`,
+        directive: cd.directive,
+        fileId: file.id,
+        line: cd.line,
+        conditionExpression: cd.conditionExpression,
+        renderedComponent: cd.renderedComponent,
+      };
+      conditionals.push(enriched);
+      return enriched;
+    });
+
+    // ============================================
+    // ✅ v9.0.2 + v10.3: гарантируем РОВНО 12 полей TemplateData.
+    // ✅ v10.3: templateRefs[].exposedMethods нормализуются до [].
     // ============================================
     const templateData: TemplateData = {
       fileId: file.id,
@@ -700,32 +742,27 @@ function collectFullJSON(
       })),
       directives: e.templateDirectives || [],
       usedComponents: e.templateUsedComponents || [],
-      templateRefs: e.templateRefs || [],
+      // ✅ v10.3: нормализуем templateRefs — exposedMethods всегда массив
+      templateRefs: (e.templateRefs || []).map((ref: any) => ({
+        refValue: ref.refValue || '',
+        tag: ref.tag || '',
+        line: ref.line || 0,
+        exposedMethods: ref.exposedMethods || [],
+      })),
       cssVariables: e.templateCssVariables || [],
       deepSelectors: e.templateDeepSelectors || [],
       slots: e.templateSlots || [],
       complexity: e.templateComplexity || 0,
-      // ✅ v9.0.2: conditionals пробрасываются в шаблон
-      conditionals: e.templateConditionals || [],
+      // ✅ v10.3: обогащённые conditionals с id/fileId
+      conditionals: enrichedConditionals,
     };
 
     templates.push(templateData);
 
-    // ============================================
-    // ✅ v9.0.0: отдельная секция conditionals[]
-    // ============================================
-    const fileConditionals = e.templateConditionals || [];
-    for (const cd of fileConditionals) {
-      conditionalCounter++;
-      conditionals.push({
-        id: `cd${conditionalCounter}`,
-        directive: cd.directive,
-        fileId: file.id,
-        line: cd.line,
-        conditionExpression: cd.conditionExpression,
-        renderedComponent: cd.renderedComponent,
-      });
-    }
+    // ✅ v10.3: глобальная секция conditionals[] уже заполнена выше
+    //          через enrichedConditionals.map() + push. Дублирующий
+    //          блок удалён, чтобы conditionalCounter не инкрементировался
+    //          дважды.
   }
 
   if (verbose && templates.length > 0) {
@@ -845,9 +882,9 @@ function collectFullJSON(
 
       const packageName = isExternal
         ? (imp as any).packageName ||
-        (imp.source.startsWith('@')
-          ? imp.source.split('/').slice(0, 2).join('/')
-          : imp.source.split('/')[0])
+          (imp.source.startsWith('@')
+            ? imp.source.split('/').slice(0, 2).join('/')
+            : imp.source.split('/')[0])
         : undefined;
 
       let resolvedToFileId: string | null = null;
@@ -869,7 +906,13 @@ function collectFullJSON(
 
           importCounter++;
 
-          const importType = getImportTypeFromSpecifierType(spec.type);
+          // ✅ v10.3: isTypeOnly приоритетнее, чем spec.type.
+          // Если импорт помечен как type-only, тип должен быть 'type',
+          // чтобы full.json был согласован с codec-encode.ts и codec-decode.ts.
+          const baseType = getImportTypeFromSpecifierType(spec.type);
+          const importType: 'named' | 'default' | 'namespace' | 'type' = imp.isTypeOnly
+            ? 'type'
+            : baseType;
 
           imports.push({
             id: `i${importCounter}`,
@@ -935,6 +978,11 @@ function collectFullJSON(
 
           importCounter++;
 
+          // ✅ v10.3: isTypeOnly приоритетнее, чем spec.type.
+          const finalType: 'named' | 'default' | 'namespace' | 'type' = imp.isTypeOnly
+            ? 'type'
+            : importType;
+
           imports.push({
             id: `i${importCounter}`,
             fromFileId: file.id,
@@ -943,7 +991,7 @@ function collectFullJSON(
             importedName,
             localName,
             line: impLine,
-            type: importType,
+            type: finalType,
             isDefault,
             isNamespace,
             isTypeOnly: imp.isTypeOnly || false,
@@ -1009,45 +1057,52 @@ function collectFullJSON(
   }
 
   // ============================================
-  // ✅ v8.4.0: рёбра event → handler
+  // ✅ v8.4.0 / v10.3: рёбра event → handler и ref → expose.
+  //
+  // ⚠️ ВАЖНО: эти рёбра НЕ пишутся в calls[], потому что
+  //    CallData.fromFunctionId по контракту — это ID ФУНКЦИИ,
+  //    а не ID файла. Ранее сюда писался template.fileId ('fN'),
+  //    что нарушало контракт и приводило к расхождению L1/L2/DL:
+  //    encoder не находил 'fN' в functionReverse и записывал 0,
+  //    decoder возвращал 'fn0' вместо 'fN'.
+  //
+  //    Рёбра шаблона хранятся в templates[].eventHandlers[]
+  //    и templates[].templateRefs[] — этого достаточно для
+  //    восстановления связей. Дублировать их в calls[] не нужно.
   // ============================================
-  for (const template of templates) {
-    for (const handler of template.eventHandlers) {
-      if (handler.isExternal) continue;
-
-      const handlerFuncArray = functionMap.get(handler.handlerName);
-      const handlerFunc = handlerFuncArray?.[0];
-      if (!handlerFunc) continue;
-
-      callCounter++;
-      calls.push({
-        id: `c${callCounter}`,
-        fromFunctionId: template.fileId,
-        toFunctionId: handlerFunc.id,
-        line: handler.line,
-        type: 'callback',
-      });
-    }
-
-    for (const ref of template.templateRefs) {
-      if (!ref.exposedMethods || ref.exposedMethods.length === 0) continue;
-
-      for (const methodName of ref.exposedMethods) {
-        const methodFuncArray = functionMap.get(methodName);
-        const methodFunc = methodFuncArray?.[0];
-        if (!methodFunc) continue;
-
-        callCounter++;
-        calls.push({
-          id: `c${callCounter}`,
-          fromFunctionId: template.fileId,
-          toFunctionId: methodFunc.id,
-          line: ref.line,
-          type: 'method',
-        });
-      }
-    }
-  }
+  // ЗАКОММЕНТИРОВАНО v10.3:
+  // for (const template of templates) {
+  //   for (const handler of template.eventHandlers) {
+  //     if (handler.isExternal) continue;
+  //     const handlerFuncArray = functionMap.get(handler.handlerName);
+  //     const handlerFunc = handlerFuncArray?.[0];
+  //     if (!handlerFunc) continue;
+  //     callCounter++;
+  //     calls.push({
+  //       id: `c${callCounter}`,
+  //       fromFunctionId: template.fileId,
+  //       toFunctionId: handlerFunc.id,
+  //       line: handler.line,
+  //       type: 'callback',
+  //     });
+  //   }
+  //   for (const ref of template.templateRefs) {
+  //     if (!ref.exposedMethods || ref.exposedMethods.length === 0) continue;
+  //     for (const methodName of ref.exposedMethods) {
+  //       const methodFuncArray = functionMap.get(methodName);
+  //       const methodFunc = methodFuncArray?.[0];
+  //       if (!methodFunc) continue;
+  //       callCounter++;
+  //       calls.push({
+  //         id: `c${callCounter}`,
+  //         fromFunctionId: template.fileId,
+  //         toFunctionId: methodFunc.id,
+  //         line: ref.line,
+  //         type: 'method',
+  //       });
+  //     }
+  //   }
+  // }
 
   // ============================================
   // ✅ v9.0.0: СБОР НОВЫХ СЕКЦИЙ
@@ -1168,12 +1223,12 @@ function collectFullJSON(
   if (
     verbose &&
     lifecycle.length +
-    effects.length +
-    injections.length +
-    reactivity.length +
-    types.length +
-    typeRefs.length >
-    0
+      effects.length +
+      injections.length +
+      reactivity.length +
+      types.length +
+      typeRefs.length >
+      0
   ) {
     console.log(`   🧬 Lifecycle: ${lifecycle.length}`);
     console.log(`   ⚡ Effects: ${effects.length}`);
@@ -1228,6 +1283,11 @@ function collectFullJSON(
   // Это критично для чек-листа v9.0.0.
   // ✅ v9.0.4: edges НЕ создаются — восстанавливаются в Codec.decode
   //            через includeEdges: true (по запросу).
+  // ✅ v10.3: базовые секции (classes/constants/exports/imports/calls/reExports)
+  //           ВСЕГДА массивы, даже пустые. Это устраняет расхождение
+  //           `$.classes: [] vs undefined` между decode(compact) и full.json.
+  //           codec-decode.ts всегда возвращает [] для этих секций,
+  //           поэтому full.json должен делать то же самое.
   // ============================================
   const result: FullJSON = {
     version: '9.0.0',
@@ -1236,19 +1296,19 @@ function collectFullJSON(
     modules,
     files,
     functions,
-    // ✅ v9.0.2: классы только если непустые
-    classes: classes.length > 0 ? classes : (undefined as any),
-    // ✅ v9.0.2: константы только если непустые
-    constants: constants.length > 0 ? constants : (undefined as any),
-    exports: exports.length > 0 ? exports : (undefined as any),
-    imports: imports.length > 0 ? imports : (undefined as any),
-    calls: calls.length > 0 ? calls : (undefined as any),
-    reExports: reExports.length > 0 ? reExports : (undefined as any),
+    // ✅ v10.3: всегда массив, даже пустой — симметрия с codec-decode.ts
+    classes,
+    constants,
+    exports,
+    imports,
+    calls,
+    reExports,
+    // ✅ v9.0.0: новые секции — оставляем undefined для пустых,
+    //            так как decodeCompactData тоже их не создаёт,
+    //            если в compact нет соответствующего ключа.
     templates: templates.length > 0 ? templates : undefined,
     statistics,
-    // ✅ v9.0.0: только если непустой
     conditionals: conditionals.length > 0 ? conditionals : undefined,
-    // ✅ v9.0.0: новые секции
     lifecycle: lifecycle.length > 0 ? lifecycle : undefined,
     effects: effects.length > 0 ? effects : undefined,
     injections: injections.length > 0 ? injections : undefined,

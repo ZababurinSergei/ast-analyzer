@@ -2,7 +2,7 @@
 // ============================================
 // ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON
 // ============================================
-// Версия: 9.0.4
+// Версия: 9.0.5
 //
 // Содержит:
 //   - DecodedFlags (интерфейс результата декодирования флагов)
@@ -10,6 +10,25 @@
 //   - flagsStringToNumber
 //   - decodeFlagsToObject
 //   - decode — основная функция декодирования
+//
+// ✅ ИЗМЕНЕНИЯ v9.0.5 (v10.3 sync — full round-trip):
+//   - ✅ ИСПРАВЛЕНО: imports[].type для type-only импортов.
+//     Раньше decode возвращал 'type-only', а compact-reporter.ts
+//     в full.json пишет 'type' (см. ImportData.type).
+//     Теперь обе стороны согласованы: 'type'.
+//     Это устраняет расхождение L1/L2/DL:
+//       $.imports[N].type: a="type-only", b="named"/"type"
+//
+//   - ✅ ИСПРАВЛЕНО: удаление пустых опциональных секций.
+//     Если в compact нет ключа vt/cd/lc/ef/inj/rx/ty/tr —
+//     соответствующие поля (templates, conditionals, lifecycle,
+//     effects, injections, reactivity, types, typeRefs) УДАЛЯЮТСЯ
+//     из результата, а не остаются пустыми массивами [].
+//     Это симметрично compact-reporter.ts, который пишет
+//     undefined для пустых опциональных секций.
+//     Базовые секции (classes, constants, exports, imports,
+//     calls, reExports) НЕ удаляются — они всегда массивы,
+//     как и в compact-reporter.ts после v10.3.
 //
 // ✅ ИЗМЕНЕНИЯ v9.0.4 (includeEdges default false):
 //   - decode, options.includeEdges теперь по умолчанию false.
@@ -233,6 +252,13 @@ export function decodeFlagsToObject(flagStr: string): DecodedFlags {
  *   - functions[].*Flags восстанавливаются все 18
  *   - exports[].isStarReExport / isDefaultReExport восстанавливаются
  *
+ * ✅ ИСПРАВЛЕНО (v9.0.5 / v10.3 sync):
+ *   - imports[].type для type-only импортов возвращается как 'type',
+ *     а не 'type-only' — согласовано с compact-reporter.ts.
+ *   - Пустые опциональные секции (templates, conditionals, lifecycle,
+ *     effects, injections, reactivity, types, typeRefs) удаляются
+ *     из результата, если их не было в compact.
+ *
  * @param compact — сжатый JSON с легендой
  * @param options — опции декодирования
  * @returns полный JSON
@@ -405,6 +431,11 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   // ============================================
   // 7. Импорты
   // ============================================
+  // ✅ v9.0.5 / v10.3 sync: type-only импорты декодируются как 'type',
+  //    а не 'type-only'. Это согласовано с compact-reporter.ts,
+  //    который пишет `type: 'type'` для type-only импортов
+  //    (см. ImportData.type в codec-types.ts).
+  // ============================================
   const imports: ImportData[] = (compact.gr?.i || []).map(
     (
       [
@@ -422,6 +453,13 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
       const source = readStringOrEmpty(sourceIdx);
       const toFileId = readString(toFileIdIdx) ?? null;
 
+      // ✅ v10.3: typeCode 'to' → type: 'type'.
+      // Раньше возвращалось 'type-only', что расходилось с compact-reporter.ts,
+      // который пишет 'type' для type-only импортов (см. ImportData.type).
+      // Теперь обе стороны согласованы: 'type'.
+      const importType: ImportData['type'] =
+        typeCode === 'to' ? 'type' : ((IMPORT_TYPES[typeCode] || 'named') as ImportData['type']);
+
       return {
         id: `i${idx + 1}`,
         fromFileId: `f${fromFileIdx}`,
@@ -430,7 +468,7 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
         importedName: readStringOrEmpty(importedNameIdx),
         localName: readStringOrEmpty(localNameIdx),
         line,
-        type: (IMPORT_TYPES[typeCode] || 'named') as ImportData['type'],
+        type: importType,
         isDefault: typeCode === 'df',
         isNamespace: typeCode === 'ns',
         isTypeOnly: typeCode === 'to',
@@ -782,6 +820,25 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
     if (!types) delete (result as any).types;
     if (!typeRefs) delete (result as any).typeRefs;
   }
+
+  // ============================================
+  // ✅ v10.3: удаляем пустые ОПЦИОНАЛЬНЫЕ секции, если их не было в compact.
+  // Это симметрично compact-reporter.ts, который пишет undefined для пустых
+  // templates/conditionals/lifecycle/effects/injections/reactivity/types/typeRefs.
+  //
+  // Базовые секции (classes/constants/exports/imports/calls/reExports)
+  // НЕ удаляем — они всегда массивы (даже пустые), как в compact-reporter.ts
+  // после v10.3 (в collectFullJSON эти поля присваиваются без
+  // length>0 ? x : undefined).
+  // ============================================
+  if (!compact.vt) delete (result as any).templates;
+  if (!compact.cd) delete (result as any).conditionals;
+  if (!compact.lc) delete (result as any).lifecycle;
+  if (!compact.ef) delete (result as any).effects;
+  if (!compact.inj) delete (result as any).injections;
+  if (!compact.rx) delete (result as any).reactivity;
+  if (!compact.ty) delete (result as any).types;
+  if (!compact.tr) delete (result as any).typeRefs;
 
   if (shouldIncludeEdges && edges.length > 0) {
     result.edges = edges;
