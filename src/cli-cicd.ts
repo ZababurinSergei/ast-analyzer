@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { isMainModule } from './utils/is-main.js';
+
 /**
  * CLI для CI/CD проверки TypeScript и автоматического исправления
  *
@@ -10,49 +11,39 @@ import { isMainModule } from './utils/is-main.js';
  *   npx ast-cicd eslint <paths...> [options]
  *   npx ast-cicd eslint-init
  *   npx ast-cicd status
+ *
+ * ИЗМЕНЕНИЯ v2.0.0 (устранение дублирования):
+ *   - ✅ УДАЛЕНА локальная функция collectFiles — заменена на
+ *     collectFilesForAnalysis из './ci-cd/index.js' (единый источник).
+ *   - ✅ УДАЛЕНА локальная функция getWasmPath — заменена на
+ *     findWasmPath из './utils/wasm-utils.js' (единый источник).
+ *   - ✅ УДАЛЕНА локальная функция askQuestion — заменена на
+ *     askQuestion из './utils/askQuestion.js' (единый источник).
+ *   - ✅ УБРАН readline import (больше не нужен).
+ *
+ * ИЗМЕНЕНИЯ v1.0.0:
+ *   - Базовая структура CLI с командами ts-check, ts-fix, pipeline,
+ *     eslint, eslint-init, status, init, jsx-analyze.
  */
 
 import { Command } from 'commander';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { glob } from 'glob';
-import readline from 'readline';
 import { CICPipeline, AutoTypeScriptFixer } from './ci-cd/index.js';
+import { collectFilesForAnalysis } from './ci-cd/index.js';
 import { TypeScriptValidator } from './refactor/TypeScriptValidator.js';
 import { ESLintPipeline } from './ci-cd/ESLintPipeline.js';
+import { findWasmPath } from './utils/wasm-utils.js';
+import { askQuestion } from './utils/askQuestion.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// ============================================================
+// ТИПЫ
+// ============================================================
 
-// Автоматическое определение WASM пути
-function getWasmPath(): string {
-  const possiblePaths = [
-    path.resolve(__dirname, 'wasm'), // рядом с dist
-    path.resolve(__dirname, '../dist/wasm'), // из src/
-    path.resolve(process.cwd(), 'grammars'), // в проекте
-    path.resolve(process.cwd(), 'packages/ast-analyzer/dist/wasm'), // в монорепозитории
-    path.resolve(process.cwd(), 'node_modules/@newkind/ast-analyzer/dist/wasm'),
-  ];
-
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      try {
-        const files = fs.readdirSync(p);
-        if (files.some(f => f.endsWith('.wasm'))) {
-          return p;
-        }
-      } catch {
-        // Игнорируем ошибки чтения
-      }
-    }
-  }
-
-  // Возвращаем путь по умолчанию
-  return path.resolve(__dirname, 'wasm');
-}
-
-// Тип для результата проверки TypeScript
+/**
+ * Результат проверки TypeScript (для отчётов CI).
+ */
 export interface CIResult {
   success: boolean;
   summary: {
@@ -65,16 +56,21 @@ export interface CIResult {
   fixes: { file: string; line: number; message: string }[];
 }
 
+// ============================================================
+// ИНИЦИАЛИЗАЦИЯ CLI
+// ============================================================
+
 const program = new Command();
 
 program
   .name('ast-cicd')
   .description('🚀 CI/CD инструменты для проверки и исправления кода')
-  .version('1.0.0');
+  .version('2.0.0');
 
-/**
- * Команда: ts-check - проверка TypeScript
- */
+// ============================================================
+// КОМАНДА: ts-check
+// ============================================================
+
 program
   .command('ts-check <paths...>')
   .description('Проверка TypeScript ошибок')
@@ -86,7 +82,7 @@ program
     console.log('\n🔍 ПРОВЕРКА TYPESCRIPT ОШИБОК');
     console.log('='.repeat(60));
 
-    const files = await collectFiles(paths, options.recursive, true);
+    const files = await collectFilesForAnalysis(paths, options.recursive);
 
     if (files.length === 0) {
       console.error('❌ Не найдено TypeScript файлов для проверки');
@@ -130,9 +126,10 @@ program
     process.exit(result.success ? 0 : 1);
   });
 
-/**
- * Команда: ts-fix - автоматическое исправление
- */
+// ============================================================
+// КОМАНДА: ts-fix
+// ============================================================
+
 program
   .command('ts-fix <paths...>')
   .description('Автоматическое исправление TypeScript ошибок')
@@ -143,7 +140,7 @@ program
     console.log('\n🔧 АВТОМАТИЧЕСКОЕ ИСПРАВЛЕНИЕ TYPESCRIPT ОШИБОК');
     console.log('='.repeat(60));
 
-    const files = await collectFiles(paths, options.recursive, true);
+    const files = await collectFilesForAnalysis(paths, options.recursive);
 
     if (files.length === 0) {
       console.error('❌ Не найдено TypeScript файлов для исправления');
@@ -173,9 +170,10 @@ program
     process.exit(result.success ? 0 : 1);
   });
 
-/**
- * Команда: eslint - запуск ESLint
- */
+// ============================================================
+// КОМАНДА: eslint
+// ============================================================
+
 program
   .command('eslint <paths...>')
   .description('Запуск ESLint с автоисправлением')
@@ -199,7 +197,7 @@ program
       return;
     }
 
-    const files = await collectFiles(paths, options.recursive, true);
+    const files = await collectFilesForAnalysis(paths, options.recursive);
 
     if (files.length === 0) {
       console.error('❌ Не найдено файлов для анализа');
@@ -274,9 +272,10 @@ program
     }
   });
 
-/**
- * Команда: eslint-init - создание конфигурации ESLint
- */
+// ============================================================
+// КОМАНДА: eslint-init
+// ============================================================
+
 program
   .command('eslint-init')
   .description('Создать конфигурацию ESLint для проекта')
@@ -298,9 +297,10 @@ program
     console.log('   "lint:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix"');
   });
 
-/**
- * Команда: pipeline - полный CI/CD пайплайн
- */
+// ============================================================
+// КОМАНДА: pipeline
+// ============================================================
+
 program
   .command('pipeline <paths...>')
   .description('Запуск полного CI/CD пайплайна')
@@ -317,7 +317,7 @@ program
     console.log('\n🚀 ЗАПУСК CI/CD ПАЙПЛАЙНА');
     console.log('='.repeat(60));
 
-    const files = await collectFiles(paths, options.recursive, true);
+    const files = await collectFilesForAnalysis(paths, options.recursive);
 
     if (files.length === 0) {
       console.error('❌ Не найдено файлов для обработки');
@@ -375,9 +375,10 @@ program
     process.exit(result.success ? 0 : 1);
   });
 
-/**
- * Команда: status - статус проекта
- */
+// ============================================================
+// КОМАНДА: status
+// ============================================================
+
 program
   .command('status')
   .description('Показать общий статус проекта')
@@ -466,9 +467,10 @@ program
     }
   });
 
-/**
- * Команда: init - инициализация конфигурации
- */
+// ============================================================
+// КОМАНДА: init
+// ============================================================
+
 program
   .command('init')
   .description('Создать конфигурационный файл .ast-cicd.json')
@@ -536,9 +538,10 @@ program
     }
   });
 
-/**
- * Команда: jsx-analyze - анализ JSX/TSX файлов
- */
+// ============================================================
+// КОМАНДА: jsx-analyze
+// ============================================================
+
 program
   .command('jsx-analyze <paths...>')
   .description('Анализ JSX/TSX компонентов')
@@ -548,7 +551,7 @@ program
     console.log('\n⚛️ АНАЛИЗ JSX/TSX КОМПОНЕНТОВ');
     console.log('='.repeat(60));
 
-    const files = await collectFiles(paths, options.recursive, true);
+    const files = await collectFilesForAnalysis(paths, options.recursive);
     const jsxFiles = files.filter(f => f.endsWith('.tsx') || f.endsWith('.jsx'));
 
     if (jsxFiles.length === 0) {
@@ -559,7 +562,7 @@ program
     console.log(`📁 Найдено JSX/TSX файлов: ${jsxFiles.length}\n`);
 
     const analysisResults: any[] = [];
-    const wasmPath = getWasmPath();
+    const wasmPath = findWasmPath();
 
     // Проверяем наличие WASM файлов
     if (fs.existsSync(wasmPath)) {
@@ -664,79 +667,10 @@ program
     console.log(`   ✅ Отчёт сохранён: ${outputPath}`);
   });
 
-/**
- * Вспомогательная функция: сбор файлов
- */
-async function collectFiles(
-  paths: string[],
-  recursive: boolean,
-  includeJsx = true
-): Promise<string[]> {
-  const files: string[] = [];
-  const extensions = includeJsx
-    ? ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']
-    : ['.ts', '.js', '.mjs', '.cjs'];
+// ============================================================
+// ЗАПУСК CLI
+// ============================================================
 
-  for (const inputPath of paths) {
-    const resolvedPath = path.resolve(inputPath);
-
-    if (!fs.existsSync(resolvedPath)) {
-      console.warn(`⚠️ Путь не существует: ${inputPath}`);
-      continue;
-    }
-
-    const stat = fs.statSync(resolvedPath);
-
-    if (stat.isFile()) {
-      if (extensions.includes(path.extname(resolvedPath))) {
-        files.push(resolvedPath);
-      }
-    } else if (stat.isDirectory()) {
-      const pattern = recursive
-        ? `${resolvedPath}/**/*{${extensions.join(',')}}`
-        : `${resolvedPath}/*{${extensions.join(',')}}`;
-
-      const matched = await glob(pattern, {
-        nodir: true,
-        ignore: [
-          '**/node_modules/**',
-          '**/dist/**',
-          '**/build/**',
-          '**/coverage/**',
-          '**/*.d.ts',
-          '**/*.test.ts',
-          '**/*.spec.ts',
-          '**/*.test.js',
-          '**/*.spec.js',
-        ],
-        absolute: true,
-      });
-
-      files.push(...matched);
-    }
-  }
-
-  return [...new Set(files)];
-}
-
-/**
- * Вспомогательная функция: вопрос пользователю
- */
-function askQuestion(question: string): Promise<string> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise(resolve => {
-    rl.question(question, (answer: string) => {
-      rl.close();
-      resolve(answer);
-    });
-  });
-}
-
-// Запуск CLI
 if (isMainModule(import.meta.url) && process.argv.length <= 2) {
   program.help();
 }

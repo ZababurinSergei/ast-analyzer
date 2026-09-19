@@ -1,21 +1,72 @@
 // packages/ast-analyzer/src/cli/commands/DeadCodeCommand.ts
 // ============================================
-// ИСПРАВЛЕННАЯ ВЕРСИЯ
+// ОБНОВЛЕННАЯ ВЕРСИЯ (интеграция с reporters/json)
 // ============================================
-// Исправления:
-//   1. Путь импорта entity-extractor изменён на /index.js (устранение TS2307)
-//   2. Добавлены явные типы для параметров в callback-функциях (TS7006)
-//   3. Добавлены типы для возвращаемых значений и переменных
-//   4. Использование extractEntities с типизированным результатом
+// ИЗМЕНЕНИЯ:
+//   1. ✅ ИСПРАВЛЕНО: путь импорта entity-extractor через reporters/json
+//      (устранение дублирования)
+//   2. ✅ ИСПРАВЛЕНО: используются утилиты из reporters/json
+//   3. ✅ ДОБАВЛЕНЫ явные типы для параметров callback-функций
+//   4. ✅ Типизирован результат extractEntitiesFromFile
+//   5. ✅ Убраны неиспользуемые импорты
 // ============================================
 
 import type { Command } from 'commander';
 import path from 'path';
 import fs from 'fs';
-import type { EntitiesResult } from '../../types.js';
+import { glob } from 'glob';
+
+// ✅ ЕДИНЫЙ ИСТОЧНИК: extractEntitiesFromFile из reporters/json
+import { extractEntitiesFromFile } from '../../reporters/json/extractors/extract-entities-from-file.js';
+
+// ✅ Типы из единого источника
+import type { EnhancedEntityInfo } from '../../types.js';
+// ============================================
+// ТИПЫ ДЛЯ ОТЧЁТА
+// ============================================
 
 /**
- * Команда для поиска мертвого кода
+ * Одна проблема мёртвого кода.
+ */
+interface DeadCodeIssue {
+  type: 'function' | 'variable' | 'import' | 'constant';
+  name: string;
+  line: number;
+  message: string;
+  suggestion: string;
+}
+
+/**
+ * Результат анализа одного файла.
+ */
+interface SingleFileResult {
+  file: string;
+  functions: {
+    total: number;
+    unused: { name: string; line: number; usageCount: number }[];
+  };
+  constants: {
+    total: number;
+    unused: { name: string; line: number; usageCount: number }[];
+  };
+  variables: {
+    total: number;
+    unused: { name: string; line: number; usageCount: number }[];
+  };
+  imports: {
+    total: number;
+    unused: { name: string; source: string; line: number }[];
+  };
+  issues: DeadCodeIssue[];
+  error?: string;
+}
+
+// ============================================
+// КОМАНДА
+// ============================================
+
+/**
+ * Команда для поиска мертвого кода.
  *
  * Использование:
  *   npx ast-analyzer dead-code <file> [options]
@@ -25,6 +76,13 @@ import type { EntitiesResult } from '../../types.js';
  *   --json               Вывод в JSON формате
  *   --no-markdown        Отключить генерацию Markdown отчета
  *   -v, --verbose        Подробный вывод
+ *   --include-tests      Включить тестовые файлы
+ *   --include-exports    Проверять неиспользуемые экспорты
+ *   --include-imports    Проверять неиспользуемые импорты
+ *   --include-variables  Проверять неиспользуемые переменные
+ *   --include-functions  Проверять неиспользуемые функции
+ *   --threshold <n>      Минимальное количество использований (по умолчанию 1)
+ *   --exclude <patterns> Паттерны исключения (через запятую)
  */
 export class DeadCodeCommand {
   private program: Command;
@@ -62,7 +120,7 @@ export class DeadCodeCommand {
   }
 
   /**
-   * Выполняет анализ мертвого кода
+   * Выполняет анализ мертвого кода.
    */
   private async execute(file: string, options: any): Promise<void> {
     console.log('🗑️ Finding dead code...');
@@ -87,12 +145,11 @@ export class DeadCodeCommand {
   }
 
   /**
-   * Анализирует директорию
+   * Анализирует директорию.
    */
   private async analyzeDirectory(dir: string, options: any): Promise<void> {
     console.log(`📁 Analyzing directory: ${dir}`);
 
-    const { glob } = await import('glob');
     const excludePatterns = options.exclude
       ? options.exclude.split(',').map((p: string) => p.trim())
       : ['**/node_modules/**', '**/dist/**', '**/build/**'];
@@ -112,7 +169,7 @@ export class DeadCodeCommand {
     console.log(`📄 Found ${files.length} files to analyze\n`);
 
     let totalIssues = 0;
-    const allResults: any[] = [];
+    const allResults: SingleFileResult[] = [];
 
     for (const file of files) {
       const result = await this.analyzeSingleFile(file, options);
@@ -153,7 +210,7 @@ export class DeadCodeCommand {
   }
 
   /**
-   * Анализирует один файл
+   * Анализирует один файл.
    */
   private async analyzeFile(file: string, options: any): Promise<void> {
     const result = await this.analyzeSingleFile(file, options);
@@ -164,8 +221,8 @@ export class DeadCodeCommand {
       console.log('='.repeat(60));
       console.log(`📊 Functions: ${result.functions.total}`);
       console.log(`   🗑️ Unused: ${result.functions.unused.length}`);
-      console.log(`📊 Exports: ${result.exports.total}`);
-      console.log(`   🗑️ Unused: ${result.exports.unused.length}`);
+      console.log(`📊 Exports: ${result.constants.total}`);
+      console.log(`   🗑️ Unused: ${result.constants.unused.length}`);
       console.log(`📊 Variables: ${result.variables.total}`);
       console.log(`   🗑️ Unused: ${result.variables.unused.length}`);
       console.log(`📊 Imports: ${result.imports.total}`);
@@ -196,58 +253,49 @@ export class DeadCodeCommand {
   }
 
   /**
-   * Анализирует один файл и возвращает результаты
+   * Анализирует один файл и возвращает результаты.
+   *
+   * ✅ ОБНОВЛЕНО: использует extractEntitiesFromFile из reporters/json
    */
-  private async analyzeSingleFile(file: string, options: any): Promise<any> {
-    // ✅ ИСПРАВЛЕНО: путь к entity-extractor теперь указывает на index.js
-    const { extractEntities } = await import('../../core/entity-extractor/index.js');
-    const { parseFile } = await import('../../core/ast-parser.js');
+  private async analyzeSingleFile(file: string, options: any): Promise<SingleFileResult> {
+    // ✅ Читаем содержимое файла для подсчёта использований
+    const content = fs.readFileSync(file, 'utf-8');
+    const threshold = parseInt(options.threshold, 10) || 1;
 
-    const parsed = parseFile(file);
-    if (!parsed) {
+    // ✅ ЕДИНЫЙ ИСТОЧНИК: extractEntitiesFromFile из reporters/json
+    let entities: EnhancedEntityInfo;
+    try {
+      entities = extractEntitiesFromFile(file);
+    } catch (error) {
       return {
         file,
         functions: { total: 0, unused: [] },
-        exports: { total: 0, unused: [] },
+        constants: { total: 0, unused: [] },
         variables: { total: 0, unused: [] },
         imports: { total: 0, unused: [] },
         issues: [],
-        error: 'Failed to parse file',
+        error: error instanceof Error ? error.message : String(error),
       };
     }
 
-    // ✅ ИСПРАВЛЕНО: extractEntities принимает ast и filePath
-    // Возвращаемый тип: EntitiesResult
-    const entities: EntitiesResult = extractEntities(parsed.ast, file);
-    const content = fs.readFileSync(file, 'utf-8');
-
-    const result = {
+    const result: SingleFileResult = {
       file,
-      functions: {
-        total: 0,
-        unused: [] as { name: string; line: number; usageCount: number }[],
-      },
-      exports: {
-        total: 0,
-        unused: [] as { name: string; line: number }[],
-      },
-      variables: {
-        total: 0,
-        unused: [] as { name: string; line: number; usageCount: number }[],
-      },
-      imports: {
-        total: 0,
-        unused: [] as { name: string; source: string; line: number }[],
-      },
-      issues: [] as any[],
+      functions: { total: 0, unused: [] },
+      constants: { total: 0, unused: [] },
+      variables: { total: 0, unused: [] },
+      imports: { total: 0, unused: [] },
+      issues: [],
     };
 
+    // ============================================
     // Проверяем функции
+    // ============================================
     if (options.includeFunctions !== false) {
       for (const func of entities.functions || []) {
         result.functions.total++;
         const usageCount = this.countUsage(content, func.name);
-        if (usageCount <= parseInt(options.threshold) && !func.isExported) {
+
+        if (usageCount <= threshold && !func.isExported) {
           result.functions.unused.push({
             name: func.name,
             line: func.line,
@@ -264,27 +312,40 @@ export class DeadCodeCommand {
       }
     }
 
-    // Проверяем экспорты
-    if (options.includeExports !== false) {
-      for (const exp of entities.exports || []) {
-        result.exports.total++;
-        // Проверяем, используется ли экспорт в других файлах
-        // (это сложная проверка, упрощенно)
-        if (!exp.isDefault) {
-          result.exports.unused.push({
-            name: exp.name,
-            line: exp.loc?.start?.line || 0,
+    // ============================================
+    // Проверяем константы
+    // ============================================
+    if (options.includeVariables !== false) {
+      for (const constItem of entities.constants || []) {
+        result.constants.total++;
+        const usageCount = this.countUsage(content, constItem.name);
+
+        if (usageCount <= threshold && !constItem.isExported) {
+          result.constants.unused.push({
+            name: constItem.name,
+            line: constItem.line,
+            usageCount,
+          });
+          result.issues.push({
+            type: 'constant',
+            name: constItem.name,
+            line: constItem.line,
+            message: `Constant '${constItem.name}' is declared but never used`,
+            suggestion: 'Remove the constant or use it',
           });
         }
       }
     }
 
+    // ============================================
     // Проверяем переменные
+    // ============================================
     if (options.includeVariables !== false) {
       for (const variable of entities.variables || []) {
         result.variables.total++;
         const usageCount = this.countUsage(content, variable.name);
-        if (usageCount <= parseInt(options.threshold) && !variable.isExported) {
+
+        if (usageCount <= threshold && !variable.isExported) {
           result.variables.unused.push({
             name: variable.name,
             line: variable.line,
@@ -301,23 +362,41 @@ export class DeadCodeCommand {
       }
     }
 
+    // ============================================
     // Проверяем импорты
+    // ============================================
     if (options.includeImports !== false) {
       for (const imp of entities.imports || []) {
         result.imports.total++;
-        for (const spec of imp.specifiers) {
-          const specName = spec.imported || spec.local;
+
+        // ✅ Обрабатываем как структурированные specifiers,
+        //    так и плоский массив строк
+        const specifiers = imp.specifiers || [];
+
+        for (const spec of specifiers) {
+          // spec может быть как объектом ImportSpecifier,
+          // так и строкой
+          let specName: string;
+          if (typeof spec === 'string') {
+            specName = spec;
+          } else {
+            specName = spec.local || spec.imported || '';
+          }
+
+          if (!specName) continue;
+
           const usageCount = this.countUsage(content, specName);
-          if (usageCount <= parseInt(options.threshold)) {
+
+          if (usageCount <= threshold) {
             result.imports.unused.push({
               name: specName,
               source: imp.source,
-              line: imp.loc?.start?.line || 0,
+              line: imp.line || 0,
             });
             result.issues.push({
               type: 'import',
               name: specName,
-              line: imp.loc?.start?.line || 0,
+              line: imp.line || 0,
               message: `Import '${specName}' is never used`,
               suggestion: `Remove import '${specName}' from '${imp.source}'`,
             });
@@ -330,29 +409,42 @@ export class DeadCodeCommand {
   }
 
   /**
-   * Подсчитывает количество использований имени в коде
+   * Подсчитывает количество использований имени в коде.
+   *
+   * ⚠️ ВАЖНО: этот подсчёт — эвристика. Он не учитывает:
+   *   - области видимости (shadowing)
+   *   - строковые литералы (может найти имя внутри строки)
+   *   - комментарии
+   *   - объявления (может посчитать само объявление)
+   *
+   * Для точного анализа нужен полноценный AST-анализ использований
+   * (например, через `ts-morph`). Данный метод оставлен для
+   * обратной совместимости и скорости.
    */
   private countUsage(content: string, name: string): number {
     if (!name) return 0;
 
-    // Создаем регулярное выражение для поиска использования
-    // Используем границы слова, чтобы не находить части других слов
-    const regex = new RegExp(`\\b${this.escapeRegex(name)}\\b`, 'g');
-    const matches = content.match(regex);
-    return matches ? matches.length : 0;
+    try {
+      // Используем границы слова, чтобы не находить части других слов
+      const regex = new RegExp(`\\b${this.escapeRegex(name)}\\b`, 'g');
+      const matches = content.match(regex);
+      return matches ? matches.length : 0;
+    } catch {
+      return 0;
+    }
   }
 
   /**
-   * Экранирует специальные символы для регулярного выражения
+   * Экранирует специальные символы для регулярного выражения.
    */
   private escapeRegex(str: string): string {
     return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   /**
-   * Генерирует отчет для одного файла
+   * Генерирует отчет для одного файла.
    */
-  private generateReport(result: any, file: string): string {
+  private generateReport(result: SingleFileResult, file: string): string {
     let report = '# 🗑️ DEAD CODE REPORT\n\n';
     report += `**File:** \`${file}\`\n`;
     report += `**Generated:** ${new Date().toLocaleString()}\n\n`;
@@ -361,7 +453,7 @@ export class DeadCodeCommand {
     report += '| Type | Total | Unused |\n';
     report += '|------|-------|--------|\n';
     report += `| Functions | ${result.functions.total} | ${result.functions.unused.length} |\n`;
-    report += `| Exports | ${result.exports.total} | ${result.exports.unused.length} |\n`;
+    report += `| Constants | ${result.constants.total} | ${result.constants.unused.length} |\n`;
     report += `| Variables | ${result.variables.total} | ${result.variables.unused.length} |\n`;
     report += `| Imports | ${result.imports.total} | ${result.imports.unused.length} |\n\n`;
 
@@ -374,11 +466,11 @@ export class DeadCodeCommand {
       report += '\n';
     }
 
-    // Детали по экспортам
-    if (result.exports.unused.length > 0) {
-      report += '## ⚠️ Unused Exports\n\n';
-      for (const exp of result.exports.unused) {
-        report += `- \`${exp.name}\` (line ${exp.line})\n`;
+    // Детали по константам
+    if (result.constants.unused.length > 0) {
+      report += '## ⚠️ Unused Constants\n\n';
+      for (const c of result.constants.unused) {
+        report += `- \`${c.name}\` (line ${c.line}) - used ${c.usageCount} times\n`;
       }
       report += '\n';
     }
@@ -415,9 +507,9 @@ export class DeadCodeCommand {
   }
 
   /**
-   * Генерирует отчет для директории
+   * Генерирует отчет для директории.
    */
-  private generateDirectoryReport(results: any[], dir: string): string {
+  private generateDirectoryReport(results: SingleFileResult[], dir: string): string {
     let report = '# 🗑️ DEAD CODE REPORT - DIRECTORY\n\n';
     report += `**Directory:** \`${dir}\`\n`;
     report += `**Generated:** ${new Date().toLocaleString()}\n\n`;
@@ -447,6 +539,15 @@ export class DeadCodeCommand {
         report += '\n';
       }
 
+      // Константы
+      if (result.constants.unused.length > 0) {
+        report += '### Unused Constants\n\n';
+        for (const c of result.constants.unused) {
+          report += `- \`${c.name}\` (line ${c.line})\n`;
+        }
+        report += '\n';
+      }
+
       // Переменные
       if (result.variables.unused.length > 0) {
         report += '### Unused Variables\n\n';
@@ -472,5 +573,8 @@ export class DeadCodeCommand {
   }
 }
 
-// Экспорт по умолчанию
+// ============================================
+// ЭКСПОРТ ПО УМОЛЧАНИЮ
+// ============================================
+
 export default DeadCodeCommand;

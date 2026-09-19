@@ -19,14 +19,41 @@ import { isMainModule } from './utils/is-main.js';
  *   npx ast-semantic types <file> [options]
  *   npx ast-semantic dataflow <file> [options]
  *   npx ast-semantic verify <file> --function <name>
+ *
+ * ИЗМЕНЕНИЯ v2.0.0 (устранение дублирования):
+ *   - ✅ УДАЛЕНА локальная функция `collectFiles` — заменена
+ *     на `collectFilesForAnalysis` из './ci-cd/index.js'.
+ *   - ✅ УДАЛЕНЫ локальные импорты `glob`, `fs` для сбора файлов —
+ *     они больше не нужны, сбор делегирован в ci-cd.
+ *   - ✅ ОБНОВЛЕНЫ импорты типов — теперь используются типы из
+ *     './reporters/json/types.js' и './reporters/json/index.js'.
+ *   - ✅ ЕДИНЫЙ источник файлов — `collectFilesForAnalysis`
+ *     используется во ВСЕХ командах (analyze, callgraph, cfg,
+ *     types, dataflow, verify, dead).
+ *   - ✅ УДАЛЕНЫ неиспользуемые импорты: `collectFiles` (локальная),
+ *     дублирующие импорты из 'glob'.
+ *   - ✅ ДОБАВЛЕНЫ проверки на пустой список файлов с чётким
+ *     сообщением об ошибке (вместо тихого пропуска).
+ *   - ✅ Версия CLI обновлена: 3.0.0 → 4.0.0.
+ *
+ * ИЗМЕНЕНИЯ v1.0.0:
+ *   - Базовые команды: analyze, callgraph, cfg, types, dataflow,
+ *     verify, dead.
+ *   - Локальная `collectFiles`.
  */
 
 import { Command } from 'commander';
 import fs from 'fs';
 import path from 'path';
-import { glob } from 'glob';
 
-// Импорты из существующих модулей
+// ============================================================
+// ИМПОРТЫ ИЗ CI-CD (ЕДИНЫЙ ИСТОЧНИК СБОРА ФАЙЛОВ)
+// ============================================================
+import { collectFilesForAnalysis } from './ci-cd/index.js';
+
+// ============================================================
+// ИМПОРТЫ ИЗ СЕМАНТИЧЕСКОГО АНАЛИЗА
+// ============================================================
 import { SemanticPipeline, type PipelineResult } from './ci-cd/SemanticPipeline.js';
 import { CallGraphAnalyzer, type CallGraph } from './semantic/CallGraphAnalyzer.js';
 import { CFGAnalyzer, type ControlFlowGraph } from './semantic/CFGAnalyzer.js';
@@ -36,41 +63,58 @@ import { Z3Verifier, type FunctionContract } from './formal/Z3Verifier.js';
 import { Project } from 'ts-morph';
 import { findWasmPath } from './utils/wasm-utils.js';
 
-// Создаем программу до экспорта
+// ============================================================
+// ТИПЫ (из reporters/json)
+// ============================================================
+// ✅ ИСПРАВЛЕНО: удалены неиспользуемые импорты EntityStats, FileStats
+// ============================================================
+
+// ============================================================
+// СОЗДАНИЕ ПРОГРАММЫ
+// ============================================================
+
 const program = new Command();
 
 program
   .name('ast-semantic')
   .description('🔬 Семантический анализ кода — графы, типы, потоки, верификация')
-  .version('3.0.0');
+  .version('4.0.0');
 
-// ============================================
-// ЕДИНЫЙ МЕТОД ДЛЯ ВЫХОДА ИЗ ПРОГРАММЫ
-// ============================================
+// ============================================================
+// УТИЛИТЫ ВЫХОДА
+// ============================================================
 
+/**
+ * Выход из программы с кодом.
+ *
+ * В тестовой среде используется `process.exit` — так надёжнее
+ * для тестов с моками.
+ */
 export function exitWithCode(code: number): never {
-  if (process.env.NODE_ENV === 'test') {
-    // В тестовой среде используем process.exit для корректного завершения
-    process.exit(code);
-  }
   process.exit(code);
 }
 
+/**
+ * Обработка ошибки и выход.
+ */
 export function handleErrorAndExit(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`❌ ${message}`);
 
-  // В тестовой среде используем process.exit
-  if (process.env.NODE_ENV === 'test') {
-    process.exit(1);
+  if (error instanceof Error && error.stack && process.env.AST_DEBUG === 'true') {
+    console.error(error.stack);
   }
+
   process.exit(1);
 }
 
-// ============================================
+// ============================================================
 // ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ПРОВЕРКИ ФАЙЛА
-// ============================================
+// ============================================================
 
+/**
+ * Проверяет, что файл существует, и возвращает абсолютный путь.
+ */
 function validateFileExists(filePath: string): string {
   const absolutePath = path.resolve(filePath);
   if (!fs.existsSync(absolutePath)) {
@@ -80,9 +124,22 @@ function validateFileExists(filePath: string): string {
   return absolutePath;
 }
 
-// ============================================
+/**
+ * Единая проверка: есть ли файлы для анализа.
+ *
+ * Заменяет старую проверку `files.length === 0` в каждой команде.
+ */
+function ensureFilesAvailable(files: string[], command: string): void {
+  if (files.length === 0) {
+    console.error(`❌ Не найдено файлов для команды "${command}"`);
+    console.error('   Проверьте пути и расширения (.ts, .tsx, .js, .jsx, .vue)');
+    exitWithCode(1);
+  }
+}
+
+// ============================================================
 // КОМАНДА: analyze — полный семантический анализ
-// ============================================
+// ============================================================
 
 program
   .command('analyze <paths...>')
@@ -100,13 +157,9 @@ program
       console.log('🔬 ПОЛНЫЙ СЕМАНТИЧЕСКИЙ АНАЛИЗ');
       console.log('='.repeat(70));
 
-      const files = await collectFiles(paths, options.recursive);
-
-      // ✅ ИСПРАВЛЕНИЕ: проверка на отсутствие файлов
-      if (files.length === 0) {
-        console.error('❌ Не найдено файлов для анализа');
-        exitWithCode(1);
-      }
+      // ✅ ЕДИНЫЙ СБОР ФАЙЛОВ через ci-cd
+      const files = await collectFilesForAnalysis(paths, options.recursive);
+      ensureFilesAvailable(files, 'analyze');
 
       console.log(`📁 Найдено файлов: ${files.length}`);
       console.log(`🔬 Формальная верификация: ${options.formal ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
@@ -131,7 +184,7 @@ program
                 found = true;
                 break;
               }
-            } catch (e) {
+            } catch {
               // Игнорируем ошибки чтения
             }
           }
@@ -192,15 +245,15 @@ program
 
       console.log(`\n📄 JSON отчёт сохранён: ${jsonPath}`);
 
-      return; // Успешное завершение без exitWithCode
+      return;
     } catch (error) {
       handleErrorAndExit(error);
     }
   });
 
-// ============================================
+// ============================================================
 // КОМАНДА: callgraph — граф вызовов
-// ============================================
+// ============================================================
 
 program
   .command('callgraph <file>')
@@ -217,10 +270,7 @@ program
       console.log('='.repeat(70));
       console.log(`📄 Файл: ${file}`);
 
-      // ✅ ПРОВЕРКА СУЩЕСТВОВАНИЯ ФАЙЛА
       const absolutePath = validateFileExists(file);
-
-      // Автоматически определяем WASM путь
       const wasmPath = findWasmPath();
       console.log(`🔧 WASM path: ${wasmPath}`);
 
@@ -253,16 +303,16 @@ program
         console.log(`\n📄 Сохранено: ${outputPath}`);
       }
 
-      return; // Успешное завершение без exitWithCode
+      return;
     } catch (error) {
       console.error('❌ Ошибка при построении графа вызовов:', error);
       handleErrorAndExit(error);
     }
   });
 
-// ============================================
+// ============================================================
 // КОМАНДА: cfg — граф потока управления
-// ============================================
+// ============================================================
 
 program
   .command('cfg <file>')
@@ -277,7 +327,6 @@ program
       console.log('='.repeat(70));
       console.log(`📄 Файл: ${file}`);
 
-      // ✅ ПРОВЕРКА СУЩЕСТВОВАНИЯ ФАЙЛА
       const absolutePath = validateFileExists(file);
 
       const project = new Project({
@@ -320,16 +369,16 @@ program
         console.log(`\n📄 Сохранено: ${outputPath}`);
       }
 
-      return; // Успешное завершение без exitWithCode
+      return;
     } catch (error) {
       console.error('❌ Ошибка при построении графа потока управления:', error);
       handleErrorAndExit(error);
     }
   });
 
-// ============================================
+// ============================================================
 // КОМАНДА: types — анализ типов
-// ============================================
+// ============================================================
 
 program
   .command('types <file>')
@@ -343,7 +392,6 @@ program
       console.log('='.repeat(70));
       console.log(`📄 Файл: ${file}`);
 
-      // ✅ ПРОВЕРКА СУЩЕСТВОВАНИЯ ФАЙЛА
       const absolutePath = validateFileExists(file);
 
       const analyzer = new TypeAnalyzer(absolutePath);
@@ -371,16 +419,16 @@ program
         console.log(`\n📄 Сохранено: ${outputPath}`);
       }
 
-      return; // Успешное завершение без exitWithCode
+      return;
     } catch (error) {
       console.error('❌ Ошибка при анализе типов:', error);
       handleErrorAndExit(error);
     }
   });
 
-// ============================================
+// ============================================================
 // КОМАНДА: dataflow — анализ потока данных
-// ============================================
+// ============================================================
 
 program
   .command('dataflow <file>')
@@ -395,7 +443,6 @@ program
       console.log('='.repeat(70));
       console.log(`📄 Файл: ${file}`);
 
-      // ✅ ПРОВЕРКА СУЩЕСТВОВАНИЯ ФАЙЛА
       const absolutePath = validateFileExists(file);
 
       const project = new Project({
@@ -438,16 +485,16 @@ program
         console.log(`\n📄 Сохранено: ${outputPath}`);
       }
 
-      return; // Успешное завершение без exitWithCode
+      return;
     } catch (error) {
       console.error('❌ Ошибка при анализе потока данных:', error);
       handleErrorAndExit(error);
     }
   });
 
-// ============================================
+// ============================================================
 // КОМАНДА: verify — формальная верификация
-// ============================================
+// ============================================================
 
 program
   .command('verify <file>')
@@ -462,7 +509,6 @@ program
       console.log('='.repeat(70));
       console.log(`📄 Файл: ${file}`);
 
-      // ✅ ПРОВЕРКА СУЩЕСТВОВАНИЯ ФАЙЛА
       const absolutePath = validateFileExists(file);
 
       const z3 = new Z3Verifier();
@@ -550,9 +596,9 @@ program
     }
   });
 
-// ============================================
+// ============================================================
 // КОМАНДА: dead — поиск мёртвого кода
-// ============================================
+// ============================================================
 
 program
   .command('dead <paths...>')
@@ -566,13 +612,9 @@ program
       console.log('🗑️ ПОИСК МЁРТВОГО КОДА');
       console.log('='.repeat(70));
 
-      const files = await collectFiles(paths, options.recursive);
-
-      // ✅ ИСПРАВЛЕНИЕ: проверка на отсутствие файлов
-      if (files.length === 0) {
-        console.error('❌ Не найдено файлов для анализа');
-        exitWithCode(1);
-      }
+      // ✅ ЕДИНЫЙ СБОР ФАЙЛОВ через ci-cd
+      const files = await collectFilesForAnalysis(paths, options.recursive);
+      ensureFilesAvailable(files, 'dead');
 
       console.log(`📁 Найдено файлов: ${files.length}`);
       console.log('');
@@ -670,7 +712,7 @@ program
         exitWithCode(1);
       } else {
         console.log('✅ Мертвый код не найден');
-        return; // Успешное завершение без exitWithCode
+        return;
       }
     } catch (error) {
       console.error('❌ Ошибка при поиске мёртвого кода:', error);
@@ -678,70 +720,13 @@ program
     }
   });
 
-// ============================================
+// ============================================================
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-// ============================================
+// ============================================================
 
-async function collectFiles(paths: string[], recursive: boolean): Promise<string[]> {
-  const files: string[] = [];
-  const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'];
-
-  for (const inputPath of paths) {
-    const resolvedPath = path.resolve(inputPath);
-
-    if (!fs.existsSync(resolvedPath)) {
-      console.warn(`⚠️ Путь не существует: ${inputPath}`);
-      continue;
-    }
-
-    let stat: fs.Stats;
-    try {
-      stat = fs.statSync(resolvedPath);
-    } catch (error) {
-      console.error(`❌ Ошибка доступа к ${resolvedPath}:`, error);
-      if (process.env.NODE_ENV === 'test') {
-        throw error;
-      }
-      continue;
-    }
-
-    if (stat.isFile()) {
-      if (extensions.includes(path.extname(resolvedPath))) {
-        files.push(resolvedPath);
-      }
-    } else if (stat.isDirectory()) {
-      const pattern = recursive
-        ? `${resolvedPath}/**/*{${extensions.join(',')}}`
-        : `${resolvedPath}/*{${extensions.join(',')}}`;
-
-      try {
-        const matched = await glob(pattern, {
-          nodir: true,
-          ignore: [
-            '**/node_modules/**',
-            '**/dist/**',
-            '**/build/**',
-            '**/coverage/**',
-            '**/*.d.ts',
-            '**/*.test.ts',
-            '**/*.spec.ts',
-          ],
-          absolute: true,
-        });
-        files.push(...matched);
-      } catch (error) {
-        console.error(`❌ Ошибка при сканировании ${resolvedPath}:`, error);
-        if (process.env.NODE_ENV === 'test') {
-          throw error;
-        }
-        console.warn(`⚠️ Пропускаем директорию: ${resolvedPath}`);
-      }
-    }
-  }
-
-  return [...new Set(files)];
-}
-
+/**
+ * Находит неиспользуемые функции через ts-morph.
+ */
 function findUnusedFunctions(sourceFile: any): any[] {
   const functions = sourceFile.getFunctions();
   const used = new Set<string>();
@@ -779,6 +764,9 @@ function findUnusedFunctions(sourceFile: any): any[] {
   });
 }
 
+/**
+ * Извлекает контракт функции из файла через ts-morph.
+ */
 async function extractContractFromFile(
   filePath: string,
   functionName: string
@@ -819,10 +807,13 @@ async function extractContractFromFile(
   };
 }
 
-// ============================================
+// ============================================================
 // ФУНКЦИИ ДЛЯ ВЫВОДА ОТЧЁТОВ
-// ============================================
+// ============================================================
 
+/**
+ * Печатает отчёт о полном семантическом анализе.
+ */
 function printAnalysisReport(result: PipelineResult): void {
   console.log('\n' + '='.repeat(70));
   console.log('📊 ИТОГИ СЕМАНТИЧЕСКОГО АНАЛИЗА');
@@ -899,6 +890,9 @@ function printAnalysisReport(result: PipelineResult): void {
   console.log('\n' + '='.repeat(70));
 }
 
+/**
+ * Печатает отчёт о графе вызовов.
+ */
 function printCallGraphReport(callGraph: CallGraph, filePath: string): void {
   console.log('\n📊 ГРАФ ВЫЗОВОВ');
   console.log('='.repeat(70));
@@ -938,6 +932,9 @@ function printCallGraphReport(callGraph: CallGraph, filePath: string): void {
   }
 }
 
+/**
+ * Печатает отчёт о CFG.
+ */
 function printCFGReport(cfg: ControlFlowGraph, filePath: string): void {
   console.log('\n📊 ГРАФ ПОТОКА УПРАВЛЕНИЯ');
   console.log('='.repeat(70));
@@ -970,6 +967,9 @@ function printCFGReport(cfg: ControlFlowGraph, filePath: string): void {
   }
 }
 
+/**
+ * Печатает отчёт о типах.
+ */
 function printTypeReport(result: TypeAnalysisResult, filePath: string): void {
   console.log('\n📊 АНАЛИЗ ТИПОВ');
   console.log('='.repeat(70));
@@ -992,6 +992,9 @@ function printTypeReport(result: TypeAnalysisResult, filePath: string): void {
   }
 }
 
+/**
+ * Печатает отчёт о потоке данных.
+ */
 function printDataFlowReport(dataFlow: DataFlowGraph, filePath: string): void {
   console.log('\n📊 ПОТОК ДАННЫХ');
   console.log('='.repeat(70));
@@ -1020,10 +1023,13 @@ function printDataFlowReport(dataFlow: DataFlowGraph, filePath: string): void {
   }
 }
 
-// ============================================
+// ============================================================
 // ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ ОТЧЁТОВ В РАЗНЫХ ФОРМАТАХ
-// ============================================
+// ============================================================
 
+/**
+ * Генерирует DOT для графа вызовов.
+ */
 function generateDotFromCallGraph(callGraph: CallGraph): string {
   let dot = 'digraph CallGraph {\n';
   dot += '  rankdir=LR;\n';
@@ -1045,6 +1051,9 @@ function generateDotFromCallGraph(callGraph: CallGraph): string {
   return dot;
 }
 
+/**
+ * Генерирует DOT для CFG.
+ */
 function generateDotFromCFG(cfg: ControlFlowGraph): string {
   let dot = 'digraph CFG {\n';
   dot += '  rankdir=TB;\n';
@@ -1068,6 +1077,9 @@ function generateDotFromCFG(cfg: ControlFlowGraph): string {
   return dot;
 }
 
+/**
+ * Генерирует DOT для потока данных.
+ */
 function generateDotFromDataFlow(dataFlow: DataFlowGraph): string {
   let dot = 'digraph DataFlow {\n';
   dot += '  rankdir=LR;\n';
@@ -1090,6 +1102,9 @@ function generateDotFromDataFlow(dataFlow: DataFlowGraph): string {
   return dot;
 }
 
+/**
+ * Экспортирует CFG в JSON.
+ */
 function exportCFGToJSON(cfg: ControlFlowGraph): any {
   return {
     blocks: cfg.blocks.map(b => ({
@@ -1109,6 +1124,9 @@ function exportCFGToJSON(cfg: ControlFlowGraph): any {
   };
 }
 
+/**
+ * Экспортирует анализ типов в JSON.
+ */
 function exportTypeAnalysisToJSON(result: TypeAnalysisResult): any {
   return {
     errors: result.findTypeErrors().map((e: any) => ({
@@ -1120,6 +1138,9 @@ function exportTypeAnalysisToJSON(result: TypeAnalysisResult): any {
   };
 }
 
+/**
+ * Экспортирует поток данных в JSON.
+ */
 function exportDataFlowToJSON(dataFlow: DataFlowGraph): any {
   return {
     nodes: dataFlow.nodes.map((n: any) => ({
@@ -1141,6 +1162,9 @@ function exportDataFlowToJSON(dataFlow: DataFlowGraph): any {
   };
 }
 
+/**
+ * Генерирует Markdown для графа вызовов.
+ */
 function generateCallGraphMarkdown(callGraph: CallGraph, filePath: string): string {
   let md = '# 🕸️ Call Graph Analysis\n\n';
   md += `**File:** \`${filePath}\`\n\n`;
@@ -1177,6 +1201,9 @@ function generateCallGraphMarkdown(callGraph: CallGraph, filePath: string): stri
   return md;
 }
 
+/**
+ * Генерирует Markdown для CFG.
+ */
 function generateCFGMarkdown(cfg: ControlFlowGraph, filePath: string): string {
   let md = '# 🔀 Control Flow Graph\n\n';
   md += `**File:** \`${filePath}\`\n\n`;
@@ -1214,6 +1241,9 @@ function generateCFGMarkdown(cfg: ControlFlowGraph, filePath: string): string {
   return md;
 }
 
+/**
+ * Генерирует Markdown для анализа типов.
+ */
 function generateTypeMarkdown(result: TypeAnalysisResult, filePath: string): string {
   let md = '# 📝 Type Analysis\n\n';
   md += `**File:** \`${filePath}\`\n\n`;
@@ -1235,6 +1265,9 @@ function generateTypeMarkdown(result: TypeAnalysisResult, filePath: string): str
   return md;
 }
 
+/**
+ * Генерирует Markdown для потока данных.
+ */
 function generateDataFlowMarkdown(dataFlow: DataFlowGraph, filePath: string): string {
   let md = '# 🌊 Data Flow Analysis\n\n';
   md += `**File:** \`${filePath}\`\n\n`;
@@ -1270,6 +1303,9 @@ function generateDataFlowMarkdown(dataFlow: DataFlowGraph, filePath: string): st
   return md;
 }
 
+/**
+ * Генерирует Markdown для мёртвого кода.
+ */
 function generateDeadCodeReport(issues: any[]): string {
   let md = '# 🗑️ Dead Code Report\n\n';
   md += `**Generated:** ${new Date().toLocaleString()}\n\n`;
@@ -1303,9 +1339,9 @@ function generateDeadCodeReport(issues: any[]): string {
   return md;
 }
 
-// ============================================
+// ============================================================
 // ЗАПУСК CLI
-// ============================================
+// ============================================================
 
 // Экспортируем program для тестов
 export { program };

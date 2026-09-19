@@ -2,74 +2,114 @@
 // ============================================
 // ТИПЫ ДЛЯ КОДЕКА (Стратегия B — строгий round-trip)
 // ============================================
-// Версия: 9.0.5
+// Версия: 9.0.6
+//
+// ИЗМЕНЕНИЯ v9.0.6 (синхронизация с src/types.ts):
+//   - ✅ ИСПРАВЛЕНО: путь импорта '../../../types.js' → '../../types.js'
+//     (файл находится в src/reporters/codec/, а types.ts — в src/)
+//   - ✅ ИСПРАВЛЕНО: TemplateRefUsage больше НЕ определяется локально,
+//     а реэкспортируется из '../../types.js' (через type alias).
+//     Причина: в проекте было ДВА разных TemplateRefUsage:
+//       * src/types.ts → TemplateRefUsage (публичный)
+//       * src/reporters/codec/codec-types.ts → TemplateRefUsage (для codec)
+//     Это приводило к ошибкам TS2322 при присваивании.
+//   - ✅ ИСПРАВЛЕНО: TemplateConditional больше НЕ определяется локально,
+//     а реэкспортируется из '../../types.js'.
+//     В src/types.ts он расширен полями id?/fileId?.
+//   - ✅ ИСПРАВЛЕНО: TemplateEventHandler больше НЕ определяется локально,
+//     а реэкспортируется из '../../types.js' (type alias на vue-analyzer).
+//   - ✅ ИСПРАВЛЕНО: TemplateDynamicComponent больше НЕ определяется локально,
+//     а реэкспортируется из '../../types.js'.
+//   - ✅ ИСПРАВЛЕНО: TemplateCssVariable и TemplateDeepSelector
+//     больше НЕ определяются локально, а реэкспортируются.
+//   - ✅ ДОБАВЛЕНО: ConditionDirective — type alias на TemplateConditional['directive'].
+//   - ✅ ДОБАВЛЕНО: TemplateData.conditionals теперь использует
+//     TemplateConditional из src/types.ts (с id?/fileId?).
 //
 // ИЗМЕНЕНИЯ v9.0.5:
 //   - ✅ ДОБАВЛЕНО: DecodeOptions.includeEdges по умолчанию false.
-//     Раньше edges добавлялись в результат decode безусловно, что
-//     приводило к расхождению DL, если исходный full не содержал edges.
 //   - ✅ ДОБАВЛЕНО: GenerateReportOptions.saveEdges и edgesJsonSuffix.
-//     Позволяет сохранять агрегированный массив edges в отдельный
-//     файл `*.edges.json` (не раздувает основной full.json).
 //   - ✅ ДОБАВЛЕНО: GenerateReportResult.edgesPath и stats.edgesSize.
-//   - ✅ ОБНОВЛЕНО: комментарии к DecodeOptions и GenerateReportOptions.
 //
 // ИЗМЕНЕНИЯ v9.0.3:
-//   - ✅ ИСПРАВЛЕНО: CompactJSON.gr.c расширен с 4 до 5 полей.
-//     Добавлено поле `isExternal: 0 | 1`, которое однозначно
-//     разделяет два случая:
-//       isExternal === 0 → toIdx это индекс функции (functionReverse)
-//       isExternal === 1 → toIdx это индекс строки в stringDict
-//                          (значение начинается с 'external:')
-//     Это устраняет коллизию индексов, из-за которой DL
-//     (decode(encode(full)) === full) падал на 3 calls.
-//   - ✅ Обновлён комментарий-схема в шапке CompactJSON.
+//   - ✅ CompactJSON.gr.c: 4 → 5 полей (isExternal).
 //
 // ИЗМЕНЕНИЯ v9.0.0:
-//   - ✅ ДОБАВЛЕНЫ: LifecycleHook, LifecycleHookName
-//   - ✅ ДОБАВЛЕНЫ: EffectEdge, EffectType
-//   - ✅ ДОБАВЛЕНЫ: InjectionEdge, InjectionKind
-//   - ✅ ДОБАВЛЕНЫ: ReactivityEdge, ReactivityKind
-//   - ✅ ДОБАВЛЕНЫ: TemplateConditional, ConditionalDirective
-//   - ✅ ДОБАВЛЕНЫ: TypeNodeData, TypeKind, TypeRefData, TypeUsageKind
-//   - ✅ РАСШИРЕН: TemplateDynamicComponent (resolvedComponents?)
-//   - ✅ РАСШИРЕН: TemplateData (conditionals?)
-//   - ✅ РАСШИРЕН: FullJSON (7 новых опциональных секций)
-//   - ✅ РАСШИРЕН: CompactJSON (lc, ef, inj, rx, cd, ty, tr;
-//                              vt.dynamicComponents → 3 элемента)
-//   - ✅ РАСШИРЕН: CodecLegend (7 новых словарей + 7 новых схем)
-//   - ✅ УНИФИЦИРОВАНЫ: GenerateReportOptions, GenerateReportResult
-//                       (устранён TS2300: Duplicate identifier)
+//   - ✅ ДОБАВЛЕНЫ: LifecycleHook, EffectEdge, InjectionEdge, ReactivityEdge,
+//     TemplateConditional, TypeNodeData, TypeRefData и связанные типы.
+//   - ✅ РАСШИРЕН: FullJSON (7 новых опциональных секций).
+//   - ✅ РАСШИРЕН: CompactJSON (lc, ef, inj, rx, cd, ty, tr).
+//   - ✅ РАСШИРЕН: CodecLegend (7 новых словарей + 7 новых схем).
 //
 // ИЗМЕНЕНИЯ v4.1.0:
-//   - ✅ НОВОЕ: TemplateData + вложенные типы
-//   - ✅ НОВОЕ: templates?: TemplateData[] в FullJSON
-//   - ✅ НОВОЕ: totalTemplates?: number в StatisticsData
-//   - ✅ НОВОЕ: vt?: [...] в CompactJSON
-//   - ✅ НОВОЕ: схемы vt.* в CodecLegend.arraySchemas
+//   - ✅ НОВОЕ: TemplateData + вложенные типы.
 //
 // ИЗМЕНЕНИЯ v3.1.0:
-//   - Добавлен интерфейс DecodeOptions для Codec.decode()
+//   - Добавлен интерфейс DecodeOptions для Codec.decode().
 //
 // ИЗМЕНЕНИЯ v3.0.0:
-//   - CompactJSON: новые кортежи с индексами словарей
-//   - CodecLegend: +stringDict, +paramDict, +methodDict, +valueDict
-//   - CodecLegend: +arraySchemas (позиционные схемы массивов)
-//   - ExportData: +isReExport, +isStarReExport, +isDefaultReExport, +source
-//   - CompactJSON.mi: { n, p, f } вместо { n, f }
-//   - CompactJSON.fl: { p, m } вместо просто строки
-//   - CompactJSON.gr.e: 12 элементов
-//   - CompactJSON.gr.i: 8 элементов
-//   - CompactJSON.gr.c: 5 элементов (isExternal)
-//   - CompactJSON.gr.re: 7 элементов
-//   - Убран CompactJSON.edges (восстанавливается из gr.*)
+//   - CompactJSON: новые кортежи с индексами словарей.
+//   - CodecLegend: +stringDict, +paramDict, +methodDict, +valueDict.
+//   - CodecLegend: +arraySchemas (позиционные схемы массивов).
 //
-// ✅ ESLint: все Array<T> заменены на T[]
+// ✅ ESLint: все Array<T> заменены на T[].
 // ============================================
 
-// ============================================
+// ============================================================
+// РЕЭКСПОРТ TEMPLATE-ТИПОВ ИЗ src/types.ts
+// ============================================================
+// ⚠️ ВАЖНО: эти типы теперь живут в src/types.ts,
+// а не здесь. Это устраняет дублирование определений
+// между codec-types.ts и src/types.ts.
+//
+// ✅ ИСПРАВЛЕНО v9.0.6: путь '../../types.js' (было '../../../types.js')
+//
+// Если вам нужен тип TemplateXxx — импортируйте его
+// из '../../types.js' (или из этого файла — здесь
+// он реэкспортируется для удобства).
+// ============================================================
+
+export type {
+  /** Обработчик события из шаблона Vue (type alias на vue-analyzer) */
+  TemplateEventHandler,
+  /** Динамический компонент (type alias на vue-analyzer) */
+  TemplateDynamicComponent,
+  /** Template ref (type alias на vue-analyzer) */
+  TemplateRefUsage,
+  /** CSS-переменная из <style> (type alias на vue-analyzer) */
+  TemplateCssVariable,
+  /** :deep() селектор (type alias на vue-analyzer) */
+  TemplateDeepSelector,
+  /** Условный рендеринг (расширяет vue-analyzer + id?/fileId?) */
+  TemplateConditional,
+} from '../../types.js';
+
+// Импортируем их локально, чтобы использовать в интерфейсах ниже
+// ✅ ИСПРАВЛЕНО v9.0.6: путь '../../types.js'
+import type {
+  TemplateEventHandler,
+  TemplateDynamicComponent,
+  TemplateRefUsage,
+  TemplateCssVariable,
+  TemplateDeepSelector,
+  TemplateConditional,
+} from '../../types.js';
+
+// ============================================================
+// CONDITIONAL DIRECTIVE (type alias)
+// ============================================================
+// ✅ ДОБАВЛЕНО v9.0.6: тип директивы условного рендеринга.
+// Используется в TemplateConditional['directive'].
+// ============================================================
+
+/**
+ * Директива условного рендеринга: v-if | v-else-if | v-else.
+ */
+export type ConditionalDirective = TemplateConditional['directive'];
+
+// ============================================================
 // ПОЛНЫЙ (ЧИТАЕМЫЙ) JSON
-// ============================================
+// ============================================================
 
 /**
  * Полный (читаемый) JSON отчёта.
@@ -438,90 +478,12 @@ export interface ReExportData {
 //
 // Рёбра (event→handler, templateRef→expose) создаются
 // в CallData[], а не дублируются внутри TemplateData.
+//
+// ⚠️ ВАЖНО: TemplateEventHandler, TemplateDynamicComponent,
+//   TemplateRefUsage, TemplateCssVariable, TemplateDeepSelector,
+//   TemplateConditional — реэкспортированы из '../../types.js'
+//   в начале этого файла (устраняет дублирование).
 // ============================================
-
-export interface TemplateEventHandler {
-  /** Имя события (click, update:value, ...) */
-  eventName: string;
-  /** Имя обработчика (onClick, handleUpdate, ...) */
-  handlerName: string;
-  /** Тег (<button>, <AiButton>, ...) */
-  tag: string;
-  /** Строка */
-  line: number;
-  /** Модификаторы (.stop, .prevent, ...) */
-  modifiers: string[];
-  /** Внешний обработчик (emit/console/Math и т.п.) */
-  isExternal: boolean;
-}
-
-/**
- * Динамический компонент (<component :is="...">).
- *
- * ✅ v9.0.0: добавлено поле `resolvedComponents` —
- * возможные значения expression (если удалось статически разрешить).
- */
-export interface TemplateDynamicComponent {
-  /** Выражение из :is / v-bind:is */
-  isExpression: string;
-  /** Строка */
-  line: number;
-  /** ✅ НОВОЕ v9.0.0: возможные значения expression (если удалось разрешить) */
-  resolvedComponents?: string[];
-}
-
-export interface TemplateRefUsage {
-  /** Значение ref="dataTable" */
-  refValue: string;
-  /** Тег */
-  tag: string;
-  /** Строка */
-  line: number;
-  /** Методы из defineExpose дочернего компонента */
-  exposedMethods?: string[];
-}
-
-export interface TemplateCssVariable {
-  /** Имя переменной: --blue-700 */
-  name: string;
-  /** Значение: #1a5fb4 (если есть) */
-  value?: string;
-  /** Строка */
-  line: number;
-  /** Многострочное значение */
-  isMultiline?: boolean;
-}
-
-export interface TemplateDeepSelector {
-  /** Селектор: .n-data-table-td */
-  selector: string;
-  /** Строка */
-  line: number;
-}
-
-// ============================================
-// ✅ НОВОЕ v9.0.0: CONDITIONALS
-// ============================================
-
-export type ConditionalDirective = 'v-if' | 'v-else-if' | 'v-else';
-
-/**
- * Условный рендеринг в шаблоне Vue.
- */
-export interface TemplateConditional {
-  /** Уникальный ID (cd1, cd2, ...) */
-  id: string;
-  /** Директива условного рендеринга */
-  directive: ConditionalDirective;
-  /** ID файла */
-  fileId: string;
-  /** Номер строки */
-  line: number;
-  /** Условие (для v-if / v-else-if) */
-  conditionExpression?: string;
-  /** Компонент внутри ветки */
-  renderedComponent?: string;
-}
 
 /**
  * Шаблон Vue-файла — отдельная сущность.
@@ -555,7 +517,13 @@ export interface TemplateData {
   slots: string[];
   /** Сложность шаблона */
   complexity: number;
-  /** ✅ НОВОЕ v9.0.0: условный рендеринг */
+  /**
+   * ✅ v9.0.0: условный рендеринг.
+   *
+   * ⚠️ СИНХРОНИЗИРОВАНО: используется TemplateConditional
+   * из '../../types.js' (с id?/fileId?), а НЕ локальное
+   * определение.
+   */
   conditionals?: TemplateConditional[];
 }
 
@@ -1410,6 +1378,7 @@ export interface ExtendedImportData extends ImportData {
 // ============================================
 
 export default {
-  // Все типы экспортируются автоматически через `export interface`
-  // Этот default-экспорт нужен только для обратной совместимости
+  // Все типы экспортируются автоматически через `export interface` /
+  // `export type`. Этот default-экспорт нужен только для обратной
+  // совместимости с инструментами, которые ожидают его наличие.
 };

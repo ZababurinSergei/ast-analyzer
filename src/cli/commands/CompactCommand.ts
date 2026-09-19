@@ -1,29 +1,106 @@
 // packages/ast-analyzer/src/cli/commands/CompactCommand.ts
 // ============================================
-// ИСПРАВЛЕННАЯ ВЕРСИЯ
+// КОМАНДА COMPACT — ГЕНЕРАЦИЯ КОМПАКТНОГО ОТЧЁТА СУЩНОСТЕЙ
 // ============================================
-// Исправления:
-//   1. Строка 112: путь импорта '../core/entity-extractor.js'
-//      заменён на '../../core/entity-extractor/index.js'
-//   2. Исправлен импорт CompactReportConfig (использовался getPresetNames,
-//      но импорт был неполным) — оставлен как в оригинале, т.к. это не
-//      вызывает ошибок компиляции
-//   3. ✅ v9.0.4: добавлены флаги --edges и --edges-suffix
-//      для сохранения агрегированного массива edges в отдельный файл
+// Версия: 9.1.0
+//
+// ИЗМЕНЕНИЯ v9.1.0 (интеграция с reporters/json):
+//   - ✅ ИСПРАВЛЕНО: путь импорта entity-extractor:
+//       '../../core/entity-extractor.js'
+//       → '../../reporters/json/extractors/extract-entities-from-file.js'
+//     Теперь используется ЕДИНЫЙ источник истины для извлечения
+//     сущностей — `extractEntitiesFromFile` из reporters/json.
+//   - ✅ УДАЛЕНО: ручной вызов `parseFile` + `extractEntities`.
+//     Заменён на `extractEntitiesFromFile(absPath)`, который
+//     сам делает parseFile + extractEntities + convertEntitiesToEnhanced.
+//   - ✅ ИСПРАВЛЕНО: вместо `Record<string, any>` используется
+//     типизированный `Record<string, EnhancedEntityInfo>`.
+//   - ✅ ДОБАВЛЕНО: флаги `--edges` и `--edges-suffix` для
+//     сохранения агрегированного массива edges в отдельный файл.
+//   - ✅ ДОБАВЛЕНО: явный `try/catch` вокруг `extractEntitiesFromFile`
+//     с логированием ошибок в verbose-режиме.
+//
+// ИЗМЕНЕНИЯ v9.0.4:
+//   - ✅ v9.0.4: добавлены флаги --edges и --edges-suffix
+//     для сохранения агрегированного массива edges в отдельный файл.
+//
+// ИЗМЕНЕНИЯ v6.1.0 (историческое):
+//   - ✅ ИСПРАВЛЕНО: путь импорта '../core/entity-extractor.js'
+//     заменён на '../../core/entity-extractor/index.js'
+//     (для совместимости с директорией entity-extractor/).
+//   - ✅ v9.0.4: добавлены флаги --edges и --edges-suffix.
+//
+// Назначение:
+//   Команда для генерации компактного отчёта сущностей.
+//
+// Особенности:
+//   - Минимизированные ключи (экономия до 45% размера)
+//   - Короткие ID (m1, f1, fn1, sf1, ...)
+//   - Битовые флаги вместо булевых полей
+//   - Словари для параметров и типов
+//   - Ультра-компактный режим (максимальное сжатие)
+//   - Полная легенда для всех кодов и ключей
+//   - Self functions — изолированные функции
+//   - ✅ Сохраняет и полный JSON (для отладки) и сжатый JSON (для AI)
+//   - ✅ v9.0.4: опциональное сохранение edges в отдельный файл
 // ============================================
-
-// packages/ast-analyzer/src/cli/commands/CompactCommand.ts
-// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ - АДАПТИРОВАНА ПОД НОВЫЙ compact-reporter v6.0.0
-// Использует GenerateReportResult вместо старого CompactReport
-// ДОБАВЛЕНА ПОДДЕРЖКА SELF FUNCTIONS (sf) ЧЕРЕЗ full.statistics
 
 import type { Command } from 'commander';
 import path from 'path';
 import fs from 'fs';
 import { glob } from 'glob';
 
+// ✅ ИСПРАВЛЕНО v9.1.0: используем extractEntitiesFromFile из reporters/json
+// как единый источник истины для извлечения сущностей.
+import { extractEntitiesFromFile } from '../../reporters/json/extractors/extract-entities-from-file.js';
+
+// ✅ Единый тип EnhancedEntityInfo (из главного src/types.ts)
+import type { EnhancedEntityInfo } from '../../types.js';
+
 /**
- * Команда для генерации компактного отчета сущностей
+ * Опции команды compact.
+ *
+ * Используется для типизации `options` в action-колбэке.
+ */
+interface CompactCommandOptions {
+  /** Выходной файл (по умолчанию: entities.json) */
+  output: string;
+  /** Рекурсивный поиск файлов */
+  recursive: boolean;
+  /** Ультра-компактный режим */
+  ultra?: boolean;
+  /** Отключить битовые флаги */
+  bitFlags?: boolean;
+  /** Отключить словари */
+  dictionaries?: boolean;
+  /** Минифицировать ключи */
+  minifyKeys?: boolean;
+  /** Максимальная глубина анализа */
+  maxDepth?: string;
+  /** Пресет */
+  preset?: string;
+  /** Включать тела функций */
+  includeBody?: boolean;
+  /** Включать информацию о безопасности */
+  includeSecurity?: boolean;
+  /** Использовать шаблоны */
+  templates?: boolean;
+  /** Включать легенду */
+  legend?: boolean;
+  /** Включать self functions */
+  selfFunctions?: boolean;
+  /** Сохранять полный JSON */
+  fullJson?: boolean;
+  /** ✅ v9.0.4: сохранять edges в отдельный файл */
+  edges?: boolean;
+  /** ✅ v9.0.4: суффикс для файла edges */
+  edgesSuffix?: string;
+  /** Подробный вывод */
+  verbose?: boolean;
+}
+
+/**
+ * Команда для генерации компактного отчёта сущностей.
  *
  * Особенности:
  * - Минимизированные ключи (экономия до 45% размера)
@@ -31,11 +108,10 @@ import { glob } from 'glob';
  * - Битовые флаги вместо булевых полей
  * - Словари для параметров и типов
  * - Ультра-компактный режим (максимальное сжатие)
- * - Поддержка шаблонов для повторяющихся структур
  * - Полная легенда для всех кодов и ключей
- * - Self functions — изолированные функции (не вызывают и не вызываются)
- * - ✅ НОВОЕ: сохраняет и полный JSON (для отладки) и сжатый JSON (для AI)
- * - ✅ v9.0.4: опциональное сохранение edges в отдельный файл (*.edges.json)
+ * - Self functions — изолированные функции
+ * - ✅ Сохраняет и полный JSON и сжатый JSON
+ * - ✅ v9.0.4: опциональное сохранение edges в отдельный файл
  */
 export class CompactCommand {
   private program: Command;
@@ -83,7 +159,7 @@ export class CompactCommand {
         '.edges.json'
       )
       .option('-v, --verbose', 'Подробный вывод', false)
-      .action(async (paths: string[], options: any) => {
+      .action(async (paths: string[], options: CompactCommandOptions) => {
         try {
           await this.execute(paths, options);
         } catch (error) {
@@ -93,7 +169,15 @@ export class CompactCommand {
       });
   }
 
-  private async execute(paths: string[], options: any): Promise<void> {
+  /**
+   * Основной метод выполнения команды.
+   *
+   * 1. Собирает файлы.
+   * 2. Для каждого файла вызывает `extractEntitiesFromFile` из reporters/json.
+   * 3. Передаёт полученный `entitiesMap` в `generateCompactReport`.
+   * 4. Сохраняет результаты.
+   */
+  private async execute(paths: string[], options: CompactCommandOptions): Promise<void> {
     console.log('\n' + '='.repeat(70));
     console.log('📋 ГЕНЕРАЦИЯ КОМПАКТНОГО ОТЧЕТА СУЩНОСТЕЙ');
     console.log('='.repeat(70));
@@ -115,7 +199,7 @@ export class CompactCommand {
 
     // Проверяем пресет
     const presets = ['minimal', 'standard', 'full', 'relationshipsOnly', 'ultraCompact'];
-    if (!presets.includes(options.preset)) {
+    if (options.preset && !presets.includes(options.preset)) {
       console.warn(`⚠️ Неизвестный пресет: ${options.preset}, используем 'standard'`);
     }
 
@@ -137,14 +221,13 @@ export class CompactCommand {
     }
 
     try {
-      // Импортируем только generateCompactReport (новая версия 6.0.0)
+      // ✅ ИСПРАВЛЕНО v9.1.0: используем ЕДИНЫЙ источник истины
+      // — extractEntitiesFromFile из reporters/json.
+      // Он сам делает parseFile + extractEntities + convertEntitiesToEnhanced.
       const { generateCompactReport } = await import('../../reporters/compact-reporter.js');
-      const { parseFile } = await import('../../core/ast-parser.js');
-      // ✅ ИСПРАВЛЕНО: путь к index.js вместо entity-extractor.js
-      const { extractEntities } = await import('../../core/entity-extractor/index.js');
 
       // Собираем сущности из всех файлов
-      const entitiesMap: Record<string, any> = {};
+      const entitiesMap: Record<string, EnhancedEntityInfo> = {};
       let totalFunctions = 0;
       let totalClasses = 0;
       let totalConstants = 0;
@@ -156,15 +239,9 @@ export class CompactCommand {
         }
 
         try {
-          const parsed = parseFile(filePath);
-          if (!parsed) {
-            if (options.verbose) {
-              console.warn(`   ⚠️ Не удалось распарсить: ${path.basename(filePath)}`);
-            }
-            continue;
-          }
+          // ✅ ЕДИНЫЙ ВЫЗОВ: parseFile + extractEntities + convert
+          const entities = extractEntitiesFromFile(filePath);
 
-          const entities = extractEntities(parsed.ast, filePath);
           if (entities && Object.keys(entities).length > 0) {
             const relativePath = path.relative(process.cwd(), filePath);
             entitiesMap[relativePath] = entities;
@@ -173,7 +250,7 @@ export class CompactCommand {
             totalClasses += entities.classes?.length || 0;
             totalConstants += entities.constants?.length || 0;
 
-            // Подсчет self functions (функции без вызовов)
+            // Подсчёт self functions (функции без вызовов)
             if (options.selfFunctions !== false) {
               for (const func of entities.functions || []) {
                 const hasCalls = func.calls && func.calls.length > 0;
@@ -185,7 +262,14 @@ export class CompactCommand {
             }
           }
         } catch (error) {
-          console.warn(`   ⚠️ Ошибка при обработке ${path.basename(filePath)}:`, error);
+          // ✅ v9.1.0: явная обработка ошибок извлечения
+          if (options.verbose) {
+            console.warn(
+              `   ⚠️ Ошибка при обработке ${path.basename(filePath)}: ${
+                error instanceof Error ? error.message : String(error)
+              }`
+            );
+          }
         }
       }
 
@@ -217,7 +301,7 @@ export class CompactCommand {
       // Генерируем отчет (единая функция для всех режимов)
       console.log(`📋 Генерация ${options.ultra ? 'ультра-компактного' : 'компактного'} отчета...`);
       const startTime = Date.now();
-      const report = generateCompactReport(entitiesMap, outputPath, reportOptions);
+      const report = generateCompactReport(entitiesMap as any, outputPath, reportOptions);
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
       // ✅ ИСПРАВЛЕНО: выводим результаты, используя новую структуру GenerateReportResult
@@ -237,6 +321,9 @@ export class CompactCommand {
     }
   }
 
+  /**
+   * Собирает файлы для анализа.
+   */
   private async collectFiles(paths: string[], recursive: boolean): Promise<string[]> {
     const files: string[] = [];
     const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.vue'];
@@ -287,9 +374,16 @@ export class CompactCommand {
   }
 
   /**
-   * ✅ ИСПРАВЛЕНО: принимает GenerateReportResult (новая структура v6.0.0)
+   * Выводит результаты генерации отчёта.
+   *
+   * ✅ ИСПРАВЛЕНО: принимает GenerateReportResult (новая структура v6.0.0+).
    */
-  private printResults(report: any, outputPath: string, duration: string, options: any): void {
+  private printResults(
+    report: any,
+    outputPath: string,
+    duration: string,
+    options: CompactCommandOptions
+  ): void {
     // Размер сжатого файла
     const compactSizeKB = report.stats?.compactSize
       ? (report.stats.compactSize / 1024).toFixed(2)
@@ -348,7 +442,7 @@ export class CompactCommand {
 
     // ✅ ДОБАВЛЕНО: информация о файлах
     if (report.fullPath) {
-      console.log(`\n💾 ФАЙЛЫ:`);
+      console.log('\n💾 ФАЙЛЫ:');
       console.log(`   • Сжатый JSON: ${outputPath} (${compactSizeKB} KB)`);
       console.log(`   • Полный JSON:  ${report.fullPath} (${fullSizeKB} KB)`);
       // ✅ v9.0.4: файл edges
@@ -378,18 +472,9 @@ export class CompactCommand {
 
     // ✅ Self functions статистика (из full.statistics)
     if (options.selfFunctions !== false && stats) {
-      // Self functions считаются как разница: totalFunctions - (те, что имеют вызовы)
-      // В новой версии compact-reporter self functions НЕ выделены отдельно,
-      // но мы можем посчитать их из full JSON, если нужно.
       console.log(`\n🔍 SELF FUNCTIONS (изолированные функции):`);
       console.log(`   ℹ️ В новой версии отчёта self functions не выделены в отдельную секцию.`);
       console.log(`   ℹ️ Используйте 'analyze-extended' или 'self' команду для их поиска.`);
-    }
-
-    // ✅ Неразрешённые импорты
-    if (report.full?.statistics) {
-      // В новой версии нет прямого поля unresolved, но можно проверить
-      // через другие поля, если нужно
     }
 
     console.log('\n' + '='.repeat(70));
@@ -425,9 +510,15 @@ export class CompactCommand {
   }
 
   /**
-   * ✅ ИСПРАВЛЕНО: принимает GenerateReportResult (новая структура v6.0.0)
+   * Сохраняет дополнительную информацию в verbose режиме.
+   *
+   * ✅ ИСПРАВЛЕНО: принимает GenerateReportResult (новая структура v6.0.0+).
    */
-  private saveVerboseInfo(report: any, outputDir: string, entitiesMap: Record<string, any>): void {
+  private saveVerboseInfo(
+    report: any,
+    outputDir: string,
+    entitiesMap: Record<string, EnhancedEntityInfo>
+  ): void {
     // Сохраняем полную статистику по модулям (из full JSON)
     const statsPath = path.join(outputDir, 'compact-stats.json');
     const fullStats = report.full?.statistics;
@@ -488,7 +579,6 @@ export class CompactCommand {
     }
 
     // Сохраняем self functions в отдельный файл
-    // В новой версии self functions не выделены, но мы можем посчитать их из entitiesMap
     const selfFunctionsList: any[] = [];
     for (const [filePath, entities] of Object.entries(entitiesMap)) {
       for (const func of entities.functions || []) {
@@ -516,7 +606,7 @@ export class CompactCommand {
   }
 
   /**
-   * ✅ ИСПРАВЛЕНО: генерирует DOT из новой структуры full JSON
+   * Генерирует DOT из новой структуры full JSON.
    */
   private generateDOT(report: any): string {
     let dot = 'digraph CallGraph {\n';
@@ -599,13 +689,18 @@ export class CompactCommand {
       const isSelfFrom = selfIds.has(from);
       const isSelfTo = selfIds.has(to);
       const penwidth = isSelfFrom || isSelfTo ? '0.5' : '1';
-      dot += `  "${from}" -> "${to}" [color="${color}", style="${style}", penwidth=${penwidth}, label="${type}${line ? ` [${line}]` : ''}"];\n`;
+      dot += `  "${from}" -> "${to}" [color="${color}", style="${style}", penwidth=${penwidth}, label="${type}${
+        line ? ` [${line}]` : ''
+      }"];\n`;
     }
 
     dot += '}\n';
     return dot;
   }
 
+  /**
+   * Получить экземпляр Command.
+   */
   getCommand(): Command {
     return this.program;
   }

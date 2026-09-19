@@ -1,620 +1,149 @@
-// src/reporters/modules/types.ts
-// ============================================
-// ТИПЫ ДЛЯ МОДУЛЕЙ РЕПОРТЕРОВ
-// ============================================
-
-import type { ImportInfo } from '../../types.js';
+// packages/ast-analyzer/src/reporters/modules/types.ts
 
 // ============================================================
-// ТИПЫ ДЛЯ ENHANCED PACKAGE LOCK REPORT
+// ТИПЫ ДЛЯ МОДУЛЕЙ REPORTERS
+// ============================================================
+// Версия: 2.2.0
+//
+// ИЗМЕНЕНИЯ v2.2.0:
+//   - ✅ ДОБАВЛЕНО: импорт ExtendedFunctionInfo из ../../types.js
+//     (устранена ошибка TS2304: Cannot find name 'ExtendedFunctionInfo')
+//
+// ИЗМЕНЕНИЯ v2.1.0:
+//   - ✅ ДОБАВЛЕНО: поля parentFunction и depth в FunctionEntity
+//     (для устранения TS2339 в entity-graph.ts)
+//   - ✅ УДАЛЕНО: PackageLockImportInfo из реэкспорта ../../types.js
+//     (тип не экспортируется из основного types.ts)
+//   - ✅ ДОБАВЛЕНО: импорт ExtendedFunctionInfo из ../../types.js
+//     для использования в RelationshipReport
+//
+// ИЗМЕНЕНИЯ v2.0.0:
+//   - Реэкспорт типов из ../../types.js
+//   - Определение локальных типов для graph'ов и статистики
 // ============================================================
 
-export interface PackageLockImportInfo {
-  from: string;
-  type: 'named' | 'default' | 'namespace' | 'type';
-  imports: string[];
-}
-
 // ============================================================
-// ✅ ENHANCED FUNCTION INFO
+// ИМПОРТ ТИПОВ ИЗ ОСНОВНОГО types.ts
+// ============================================================
+// ✅ ИСПРАВЛЕНО v2.2.0: ExtendedFunctionInfo импортируется для
+// использования в RelationshipReport (устранена ошибка TS2304)
 // ============================================================
 
-export interface EnhancedFunctionInfo {
-  name: string;
-  params: string[];
-  paramTypes: string[];
-  line: number;
-  startLine: number;
-  endLine: number;
-  isAsync: boolean;
-  isExported: boolean;
-  isMethod: boolean;
-  className: string;
-  calls: string[];
-  calledBy: string[];
-  returnType: string;
-  body: string;
-  isNested: boolean;
-  parentFunction: string;
-  isArrow: boolean;
-  isEventHandler: boolean;
-  eventType: string;
-  depth: number;
-  complexity: number;
-  security: {
-    hasEval: boolean;
-    hasProcessEnv: boolean;
-    hasSensitiveData: boolean;
-    hasExec: boolean;
-    hasPassword: boolean;
-  };
-  vscode: string;
-  signature: string;
-  _safeInfo: any;
-  _modulePath?: string;
-  filePath?: string;
-  moduleName?: string;
-  id?: string;
-  isSelf?: boolean;
-  _isSelf?: boolean;
-  isConst?: boolean;
-  isMacro?: boolean;
-  isComposable?: boolean;
-  source?: string;
-  isDefaultExport?: boolean;
-  isStatic?: boolean;
-  isPrivate?: boolean;
-  isProtected?: boolean;
-  isReadonly?: boolean;
-  isOptional?: boolean;
-  isNullable?: boolean;
-  isGenerator?: boolean;
-  isDynamic?: boolean;
-  isConfig?: boolean;
-  isExternal?: boolean;
-  isVueTemplate?: boolean;
-  isAsyncChain?: boolean;
-  isClosure?: boolean;
-  isTypeDep?: boolean;
-  moduleId?: string;
-  fileId?: string;
-  _uniqueKey?: string;
-  _fullPath?: string;
-}
+import type { ExtendedFunctionInfo } from '../../types.js';
 
 // ============================================================
-// ✅ ENHANCED CONSTANT INFO
+// РЕЭКСПОРТ ТИПОВ ИЗ ОСНОВНОГО types.ts
 // ============================================================
 
-export interface EnhancedConstantInfo {
-  name: string;
-  line: number;
-  isExported: boolean;
-  type: string;
-  value: any;
-  _safeInfo: any;
-  moduleName?: string;
-  filePath?: string;
-  _modulePath?: string;
-}
+export type {
+  // === Базовые сущности ===
+  FunctionInfo,
+  ClassInfo,
+  ConstantInfo,
+  InterfaceInfo,
+  TypeInfo,
+  VariableInfo,
+
+  // === Импорты/экспорты ===
+  ImportInfo,
+  ExportInfo,
+  Location,
+
+  // === Связи ===
+  CallInfo,
+  CalledByInfo,
+  ImportedByInfo,
+  ExtendedFunctionInfo,
+
+  // === Основные структуры ===
+  EntitiesResult,
+  GraphData,
+  FullAnalysis,
+
+  // === Архитектура ===
+  ArchitectureMetrics,
+  ProjectSummary,
+
+  // === Vue ===
+  VueAnalysis,
+
+  // === Enhanced-типы ===
+  EnhancedPackageInfo,
+  EnhancedPackageLockReport,
+  EnhancedEntityInfo,
+  EnhancedFunctionInfo,
+  EnhancedConstantInfo,
+  EnhancedVariableInfo,
+  EnhancedInterfaceInfo,
+  EnhancedTypeInfo,
+  EnhancedClassInfo,
+
+  // === Опции ===
+  OptimizedReportOptions,
+} from '../../types.js';
 
 // ============================================================
-// ✅ ENHANCED VARIABLE INFO
-// ============================================================
-
-export interface EnhancedVariableInfo {
-  name: string;
-  line: number;
-  isExported: boolean;
-  type: string;
-  value: any;
-  _safeInfo: any;
-  moduleName?: string;
-  filePath?: string;
-  _modulePath?: string;
-}
-
-// ============================================================
-// ✅ ENHANCED INTERFACE INFO
-// ============================================================
-
-export interface EnhancedInterfaceInfo {
-  name: string;
-  properties: string[];
-  line: number;
-  startLine: number;
-  endLine: number;
-  isExported: boolean;
-  extends: string[];
-  _safeInfo: any;
-  moduleName?: string;
-  filePath?: string;
-  _modulePath?: string;
-}
-
-// ============================================================
-// ✅ ENHANCED TYPE INFO
-// ============================================================
-
-export interface EnhancedTypeInfo {
-  name: string;
-  definition: string;
-  line: number;
-  isExported: boolean;
-  _safeInfo: any;
-  moduleName?: string;
-  filePath?: string;
-  _modulePath?: string;
-}
-
-// ============================================================
-// ✅ ENHANCED CLASS INFO
-// ============================================================
-
-export interface EnhancedClassInfo {
-  name: string;
-  methods: string[];
-  properties: string[];
-  line: number;
-  startLine: number;
-  endLine: number;
-  isExported: boolean;
-  extends?: string;
-  implements: string[];
-  _safeInfo: any;
-  moduleName?: string;
-  filePath?: string;
-  _modulePath?: string;
-}
-
-// ============================================================
-// ✅ НОВОЕ v9.0.0: ТИПЫ ДЛЯ TEMPLATE-СЕКЦИЙ VUE
+// ТИПЫ ДЛЯ ГРАФА МОДУЛЕЙ
 // ============================================================
 
 /**
- * Обработчик события из шаблона (@click="handleClick").
+ * Узел графа модулей.
  */
-export interface TemplateEventHandlerInfo {
-  eventName: string;
-  handlerName: string;
-  tag: string;
-  line: number;
-  modifiers: string[];
-  isExternal?: boolean;
-}
-
-/**
- * Динамический компонент (<component :is="..." />).
- */
-export interface TemplateDynamicComponentInfo {
-  isExpression: string;
-  line: number;
-  /** ✅ НОВОЕ v9.0.0: возможные значения expression */
-  resolvedComponents?: string[];
-}
-
-/**
- * Условный рендеринг (v-if / v-else-if / v-else).
- */
-export interface TemplateConditionalInfo {
-  directive: 'v-if' | 'v-else-if' | 'v-else';
-  line: number;
-  conditionExpression?: string;
-  renderedComponent?: string;
-}
-
-/**
- * Реактивная связь (computed / watch / watchEffect / ref / reactive).
- */
-export interface TemplateReactivityInfo {
-  kind: 'computed' | 'watch' | 'watchEffect' | 'ref' | 'reactive' | 'shallowRef' | 'readonly';
-  functionName: string;
-  line: number;
-  reads: string[];
-  writes: string[];
-  isWriteable: boolean;
-}
-
-/**
- * Хук жизненного цикла Vue.
- */
-export interface TemplateLifecycleInfo {
-  hookName:
-    | 'onMounted'
-    | 'onUnmounted'
-    | 'onScopeDispose'
-    | 'onActivated'
-    | 'onDeactivated'
-    | 'watch'
-    | 'watchEffect'
-    | 'onErrorCaptured';
-  functionName: string;
-  line: number;
-  callbackFunctionName?: string;
-  isSetupContext: boolean;
-}
-
-/**
- * Side-effect (таймер, cleanup, promise, event, subscription).
- */
-export interface TemplateEffectInfo {
-  effectType: 'timer' | 'cleanup' | 'promise' | 'event' | 'subscription';
-  functionName: string;
-  line: number;
-  targetName: string;
-  metaValue?: string;
-}
-
-/**
- * Ребро provide / inject.
- */
-export interface TemplateInjectionInfo {
-  kind: 'provide' | 'inject';
-  filePath: string;
-  line: number;
-  key: string;
-  isSymbolKey: boolean;
-  hasDefault: boolean;
-}
-
-// ============================================================
-// ✅ НОВОЕ v9.0.0: ТИПЫ ДЛЯ ТИП-ГРАФА
-// ============================================================
-
-/**
- * Узел тип-графа.
- */
-export interface TypeNodeInfo {
-  kind: 'interface' | 'type-alias' | 'enum' | 'class';
-  name: string;
-  moduleId: string;
-  fileId: string;
-  line: number;
-  members: string[];
-  extendsTypes: string[];
-}
-
-/**
- * Ребро использования типа.
- */
-export interface TypeRefInfo {
-  typeName: string;
-  moduleId: string;
-  fileId: string;
-  line: number;
-  usageKind: 'param' | 'return' | 'field' | 'generic' | 'union' | 'extends';
-}
-
-// ============================================================
-// ✅ ОБНОВЛЕННЫЙ EnhancedEntityInfo
-// ============================================================
-
-export interface EnhancedEntityInfo {
-  functions: EnhancedFunctionInfo[];
-  constants: EnhancedConstantInfo[];
-  variables: EnhancedVariableInfo[];
-  interfaces: EnhancedInterfaceInfo[];
-  types: EnhancedTypeInfo[];
-  classes: EnhancedClassInfo[];
-
-  /**
-   * ✅ ИСПРАВЛЕНО (v8.4.2): тип `ImportInfo[]` вместо устаревшего
-   * `{ source: string; specifiers: string[]; isTypeOnly: boolean }[]`.
-   *
-   * Причина: в v7.1.0 структура import specifiers изменилась —
-   * теперь это `ImportSpecifier[]` (массив объектов `{ local, imported, type }`),
-   * а не `string[]`. Присваивание `entities.imports` (тип `ImportInfo[]`)
-   * в `EnhancedEntityInfo` давало TS2322.
-   */
-  imports?: ImportInfo[];
-
-  /** ✅ ДОБАВЛЕНО: экспорты из файла */
-  exports?: {
-    name: string;
-    type: string;
-    isDefault: boolean;
-    line?: number;
-    isReExport?: boolean;
-    source?: string;
-    loc?: any;
-    specifier?: string;
-  }[];
-
-  // ==========================================
-  // ✅ НОВОЕ: template-поля Vue
-  // Хранят ТОЛЬКО ссылки (имена/примитивы),
-  // без дубликатов объектов.
-  // ==========================================
-
-  /** root-идентификаторы шаблона (user, items, isLoading) */
-  templateReactivityDeps?: string[];
-
-  /** Обработчики событий @click → handlerName */
-  templateEventHandlers?: TemplateEventHandlerInfo[];
-
-  /** <component :is="..."> и v-bind:is */
-  templateDynamicComponents?: TemplateDynamicComponentInfo[];
-
-  /**
-   * ✅ ИСПРАВЛЕНО (v9.0.0): template refs.
-   *
-   * Без этого поля:
-   *   1. `json-reporter.ts` не может обратиться к `result.templateRefs`
-   *      (TS2339: Property 'templateRefs' does not exist on type
-   *       'EnhancedEntityInfo').
-   *   2. `compact-reporter.ts` не может собрать 9-е поле vt[]
-   *      (templateRefs) — из-за этого в `index.json` массив vt
-   *      содержал 9 полей вместо 12, что ломает round-trip.
-   *
-   * Формат — массив объектов, каждый из которых описывает один
-   * `ref="..."` в шаблоне:
-   *   - refValue       — значение атрибута ref (например, "dataTable")
-   *   - tag            — тег элемента/компонента (например, "DataTable")
-   *   - line           — строка в шаблоне
-   *   - exposedMethods — методы из defineExpose дочернего компонента
-   *                      (заполняется при двухпроходном анализе)
-   */
-  templateRefs?: {
-    refValue: string;
-    tag: string;
-    line: number;
-    exposedMethods?: string[];
-  }[];
-
-  /** CSS-переменные из <style> */
-  templateCssVariables?: {
-    name: string;
-    value?: string;
-    line: number;
-    isMultiline?: boolean;
-  }[];
-
-  /** :deep() селекторы */
-  templateDeepSelectors?: {
-    selector: string;
-    line: number;
-  }[];
-
-  /** Директивы (v-html, v-text, v-pre, v-once, v-memo, v-model, ...) */
-  templateDirectives?: string[];
-
-  /** Использованные компоненты (PascalCase + kebab-case) */
-  templateUsedComponents?: string[];
-
-  /** Слоты (из <slot name="..."> и defineSlots<T>()) */
-  templateSlots?: string[];
-
-  /** Сложность шаблона */
-  templateComplexity?: number;
-
-  // ==========================================
-  // ✅ НОВОЕ v9.0.0: расширенные template-секции
-  // ==========================================
-
-  /** Условный рендеринг (v-if / v-else-if / v-else) */
-  templateConditionals?: TemplateConditionalInfo[];
-
-  /** Хуки жизненного цикла (onMounted, onUnmounted, ...) */
-  templateLifecycle?: TemplateLifecycleInfo[];
-
-  /** Side-effects (setTimeout, clearTimeout, AbortController, ...) */
-  templateEffects?: TemplateEffectInfo[];
-
-  /** Реактивные связи (computed, watch, ref, reactive, ...) */
-  templateReactivity?: TemplateReactivityInfo[];
-
-  /** Ребра provide / inject */
-  templateInjections?: TemplateInjectionInfo[];
-
-  /** Узлы тип-графа (interface / type-alias / enum / class) */
-  typesGraph?: TypeNodeInfo[];
-
-  /** Ребра использования типов */
-  typeRefsGraph?: TypeRefInfo[];
-
-  /** ID файла для conditional/lifecycle/effect/injection секций */
-  fileId?: string;
-
-  /** ID модуля */
-  moduleId?: string;
-}
-
-// ============================================================
-// ✅ ENHANCED PACKAGE INFO
-// ============================================================
-
-export interface EnhancedPackageInfo {
-  version: string;
-  resolved: string;
-  displayPath?: string;
-  type: 'module' | 'commonjs';
-  language: 'typescript' | 'javascript' | 'vue' | 'jsx';
-  isEntry: boolean;
-  imports: Record<string, any>;
-  exports: Record<string, any>;
-  entities: EnhancedEntityInfo;
-  fileStats: {
-    size: number;
-    lines: number;
-    functions: number;
-    classes: number;
-    constants: number;
-    interfaces: number;
-    types: number;
-    variables: number;
-  };
-  vueAnalysis?: any;
-  complexity?: {
-    average: number;
-    max: number;
-    functions: Record<string, number>;
-  };
-  security?: {
-    hasEval: boolean;
-    hasProcessEnv: boolean;
-    hasSensitiveData: boolean;
-    hasExec: boolean;
-    issues: string[];
-  };
-  vscode?: string;
-  sourceCode?: string;
-}
-
-// ============================================================
-// ✅ ENHANCED PACKAGE LOCK REPORT
-// ============================================================
-
-export interface EnhancedPackageLockReport {
-  name: string;
-  version: string;
-  lockfileVersion: number;
-  packages: Record<string, EnhancedPackageInfo>;
-  dependencyGraph: {
-    direction: 'bidirectional';
-    inwardDependencies: Record<string, string[]>;
-    outwardDependencies: Record<string, string[]>;
-  };
-  executionGraph: {
-    entryPoint: string;
-    direction: 'top-down';
-    entryFunctions: string[];
-    executionFlow: {
-      type: 'sequential' | 'parallel' | 'conditional';
-      steps: {
-        func: string;
-        module: string;
-        direction: 'inward' | 'outward' | 'self';
-        isAsync: boolean;
-        branches?: Record<string, any>;
-      }[];
-    };
-  };
-  importExportFlow: {
-    imports: Record<
-      string,
-      {
-        importsFrom: {
-          module: string;
-          type: 'named' | 'default' | 'namespace';
-          imports: string[];
-        }[];
-      }
-    >;
-    exports: Record<
-      string,
-      {
-        exportsTo: {
-          module: string;
-          type: 'named' | 'default';
-          exports: string[];
-        }[];
-      }
-    >;
-  };
-  callGraph?: {
-    from: string;
-    to: string;
-    path: string[];
-    found: boolean;
-    reason?: string;
-    nodes: {
-      function: string;
-      module: string;
-      line: number;
-      isAsync: boolean;
-    }[];
-    edges: {
-      from: string;
-      to: string;
-      line?: number;
-    }[];
-  };
-  entityStats: {
-    // ==========================================
-    // Базовые поля (уже существовали)
-    // ==========================================
-    totalFunctions: number;
-    totalConstants: number;
-    totalVariables: number;
-    totalInterfaces: number;
-    /**
-     * Общее количество типов TypeScript (interface / type-alias / enum).
-     * ⚠️ Это поле УЖЕ существовало как обязательное `number`.
-     * НЕ добавлять дубликат `totalTypes?: number` в блок v9.0.0 —
-     * это даёт TS2300/TS2687/TS2717.
-     */
-    totalTypes: number;
-    totalClasses: number;
-    totalCalls: number;
-    totalExportedFunctions: number;
-    totalAsyncFunctions: number;
-
-    /** ✅ ДОБАВЛЕНО (v6.x): общее количество экспортов */
-    totalExports?: number;
-    /** ✅ ДОБАВЛЕНО (v6.x): общее количество реэкспортов */
-    totalReExports?: number;
-
-    // ==========================================
-    // ✅ НОВОЕ v9.0.0
-    // ==========================================
-    /** Общее количество Vue-шаблонов */
-    totalTemplates?: number;
-    /** Общее количество условных рендеров (v-if / v-else-if / v-else) */
-    totalConditionals?: number;
-    /** Общее количество хуков жизненного цикла */
-    totalLifecycle?: number;
-    /** Общее количество side-effects */
-    totalEffects?: number;
-    /** Общее количество provide/inject ребер */
-    totalInjections?: number;
-    /** Общее количество реактивных связей */
-    totalReactivity?: number;
-    /** Общее количество ребер использования типов */
-    totalTypeRefs?: number;
-
-    // ⚠️ totalTypes НЕ дублируется — см. выше (базовые поля).
-  };
-  fileStats: {
-    totalFiles: number;
-    totalSize: number;
-    totalLines: number;
-  };
-  architectureMetrics?: any;
-  summary?: any;
-  timestamp: string;
-}
-
-// ============================================================
-// ТИПЫ ДЛЯ ГРАФОВ
-// ============================================================
-
 export interface ModuleNode {
+  /** Уникальный идентификатор модуля (путь к файлу) */
   id: string;
+  /** Имя файла */
   name: string;
+  /** Путь к файлу */
+  path: string;
+  /** Тип модуля */
   type: 'module' | 'component' | 'vue' | 'external';
+  /** Уровень в дереве зависимостей (0 = корень) */
   level: number;
+  /** Метаданные модуля */
   metadata: {
+    /** Размер файла в байтах */
     size: number;
+    /** Количество строк */
     lines: number;
-    language: string;
+    /** Язык программирования */
+    language: 'javascript' | 'typescript' | 'vue' | 'jsx' | 'unknown';
+    /** Является ли точкой входа */
     isEntry: boolean;
+    /** Количество функций */
     functionsCount?: number;
+    /** Количество классов */
     classesCount?: number;
+    /** Количество экспортов */
     exportsCount?: number;
   };
 }
 
+/**
+ * Ребро графа модулей.
+ */
 export interface ModuleEdge {
+  /** Откуда (модуль-источник) */
   from: string;
+  /** Куда (модуль-цель) */
   to: string;
+  /** Тип связи */
   type: 'import' | 'external' | 're-export' | 'dynamic_import';
+  /** Что именно импортируется */
   specifiers: string[];
+  /** Исходный код */
   sourceCode?: string;
 }
 
+/**
+ * Граф модулей.
+ */
 export interface ModuleGraph {
+  /** Узлы графа */
   nodes: ModuleNode[];
+  /** Ребра графа */
   edges: ModuleEdge[];
+  /** Статистика графа */
   stats?: {
     totalNodes: number;
     totalEdges: number;
@@ -624,53 +153,179 @@ export interface ModuleGraph {
   };
 }
 
-export interface EntityNode {
-  id: string;
+// ============================================================
+// ТИПЫ ДЛЯ ГРАФА СУЩНОСТЕЙ
+// ============================================================
+
+/**
+ * Функция как сущность графа.
+ *
+ * ✅ v2.1.0: добавлены поля parentFunction и depth
+ * для совместимости с entity-graph.ts.
+ */
+export interface FunctionEntity {
+  /** Имя функции */
   name: string;
-  type: 'function' | 'class' | 'constant' | 'interface' | 'type' | 'variable' | 'enum' | 'module';
-  module: string;
+  /** ID функции */
+  id?: string;
+  /** Номер строки */
   line: number;
+  /** Начальная строка */
+  startLine: number;
+  /** Конечная строка */
+  endLine: number;
+  /** Асинхронная ли функция */
+  isAsync: boolean;
+  /** Экспортируется ли */
+  isExported: boolean;
+  /** Параметры */
+  params: string[];
+  /** Тип возвращаемого значения */
+  returnType?: string;
+  /** Кого вызывает */
+  calls: string[];
+  /** Кто вызывает */
+  calledBy: string[];
+  /** Тело функции */
+  body?: string;
+  /** Является ли методом класса */
+  isMethod?: boolean;
+  /** Имя класса */
+  className?: string;
+  /** Является ли вложенной */
+  isNested?: boolean;
+  /** ✅ НОВОЕ v2.1.0: имя родительской функции */
+  parentFunction?: string;
+  /** ✅ НОВОЕ v2.1.0: глубина вложенности */
+  depth?: number;
+  /** Является ли стрелочной */
+  isArrow?: boolean;
+  /** Является ли обработчиком события */
+  isEventHandler?: boolean;
+  /** Тип события */
+  eventType?: string;
+  /** Цикломатическая сложность */
+  complexity?: number;
+  /** Информация о безопасности */
+  security?: SecurityInfo;
+  /** VSCode-ссылка */
+  vscode?: string;
+  /** Сигнатура */
+  signature?: string;
+  /** Является ли изолированной (self) функцией */
+  isSelf?: boolean;
+  /** Внутренний флаг isSelf */
+  _isSelf?: boolean;
+  /** Путь к файлу */
+  filePath?: string;
+  /** Имя модуля */
+  moduleName?: string;
+  /** Путь к модулю */
+  _modulePath?: string;
+  /** ID модуля */
+  moduleId?: string;
+  /** ID файла */
+  fileId?: string;
+  /** Уникальный ключ */
+  _uniqueKey?: string;
+  /** Полный путь */
+  _fullPath?: string;
+}
+
+/**
+ * Расширенная информация о функции (в графе сущностей).
+ */
+export interface ExtendedFunctionEntity extends FunctionEntity {
+  /** ID модуля */
+  moduleId?: string;
+  /** ID файла */
+  fileId?: string;
+}
+
+/**
+ * Узел графа сущностей.
+ */
+export interface EntityNode {
+  /** Уникальный идентификатор: {module}#{entity} */
+  id: string;
+  /** Имя сущности */
+  name: string;
+  /** Тип сущности */
+  type: 'function' | 'class' | 'constant' | 'interface' | 'type' | 'variable' | 'enum' | 'module';
+  /** Родительский модуль */
+  module: string;
+  /** Строка объявления */
+  line: number;
+  /** Метаданные сущности */
   metadata: {
+    /** Экспортируется ли */
     isExported: boolean;
+    /** Тип данных */
     dataType?: string;
-    value?: any;
+    /** Значение */
+    value?: unknown;
+    /** Параметры функции */
     params?: string[];
+    /** Тип возврата */
     returnType?: string;
+    /** Async */
     isAsync?: boolean;
+    /** Метод класса */
     isMethod?: boolean;
+    /** Имя класса */
     className?: string;
+    /** Свойства */
     properties?: string[];
+    /** Методы */
     methods?: string[];
+    /** Наследование */
     extends?: string;
+    /** Имплементация */
     implements?: string[];
+    /** Расширение интерфейса */
     extendsInterfaces?: string[];
+    /** Определение типа */
     definition?: string;
+    /** Кем вызывается */
     calledBy?: string[];
+    /** Кого вызывает */
     calls?: string[];
+    /** Начальная строка */
     startLine?: number;
+    /** Конечная строка */
     endLine?: number;
+    /** Видимость */
     visibility?: 'public' | 'private' | 'protected' | 'internal';
+    /** Теги */
     tags?: string[];
+    /** Сложность */
     complexity?: number;
-    security?: {
-      hasEval: boolean;
-      hasProcessEnv: boolean;
-      hasSensitiveData: boolean;
-      hasExec: boolean;
-      hasPassword: boolean;
-    };
+    /** Информация о безопасности */
+    security?: SecurityInfo;
+    /** Тело */
     body?: string;
+    /** VSCode-ссылка */
     vscode?: string;
+    /** ID */
     id?: string;
+    /** Сигнатура */
     signature?: string;
+    /** Импортировано из */
     importedFrom?: string;
+    /** Тип */
     type?: string;
   };
 }
 
+/**
+ * Ребро графа сущностей.
+ */
 export interface EntityEdge {
+  /** Откуда */
   from: string;
+  /** Куда */
   to: string;
+  /** Тип связи */
   type:
     | 'function_call'
     | 'constant_reference'
@@ -686,13 +341,21 @@ export interface EntityEdge {
     | 'return_type'
     | 'variable_reference'
     | 'enum_member';
+  /** Строка */
   line?: number;
+  /** Количество */
   count?: number;
 }
 
+/**
+ * Граф сущностей.
+ */
 export interface EntityGraph {
+  /** Узлы графа */
   nodes: EntityNode[];
+  /** Ребра графа */
   edges: EntityEdge[];
+  /** Статистика графа */
   stats?: {
     totalNodes: number;
     totalEdges: number;
@@ -708,14 +371,22 @@ export interface EntityGraph {
 }
 
 // ============================================================
-// ТИПЫ ДЛЯ СТАТИСТИКИ
+// СТАТИСТИКА
 // ============================================================
 
+/**
+ * Статистика по сущностям.
+ */
 export interface EntityStats {
+  /** Общее количество */
   total: number;
+  /** Экспортированные */
   exported: number;
+  /** Приватные */
   private: number;
+  /** По модулям */
   byModule: Record<string, number>;
+  /** По типам */
   byType: {
     functions: number;
     classes: number;
@@ -727,58 +398,96 @@ export interface EntityStats {
   };
 }
 
+/**
+ * Статистика по файлам.
+ */
 export interface FileStats {
-  total: number;
-  byExtension: Record<
-    string,
-    {
-      count: number;
-      lines: number;
-      size: number;
-    }
-  >;
+  /** Всего файлов */
+  totalFiles: number;
+  /** Общий размер */
+  totalSize: number;
+  /** Общее количество строк */
+  totalLines: number;
+  /** По языкам */
+  byLanguage?: Record<string, number>;
 }
 
 // ============================================================
-// ТИП ДЛЯ CALL GRAPH RESULT
+// ОТЧЁТ СО ВСТРОЕННЫМИ СВЯЗЯМИ
 // ============================================================
 
-export interface CallGraphResult {
-  nodes: string[];
-  edges: [number, number, number, number, number][];
-  types: string[];
-  edgeFlags: Record<string, Record<string, string>>;
-  cycles: string[][];
+/**
+ * Отчёт со встроенными связями.
+ *
+ * ✅ v2.2.0: используем ExtendedFunctionInfo из ../../types.js
+ * (устранена ошибка TS2304: Cannot find name 'ExtendedFunctionInfo').
+ */
+export interface RelationshipReport {
+  /** Версия */
+  version: string;
+  /** Timestamp */
+  timestamp: string;
+  /** Корневой модуль */
+  root: string;
+  /** Сущности с встроенными связями */
+  entities: Record<string, ExtendedFunctionInfo>;
+  /** Статистика */
+  stats?: {
+    totalFunctions: number;
+    totalCalls: number;
+    totalCalledBy: number;
+    totalImportedBy: number;
+    totalFiles: number;
+  };
 }
 
 // ============================================================
-// ТИП ДЛЯ ФУНКЦИИ-СУЩНОСТИ
+// ВСПОМОГАТЕЛЬНЫЕ ТИПЫ
 // ============================================================
 
-export interface FunctionEntity {
-  id: string;
+/**
+ * Элемент импорта/экспорта.
+ */
+export interface ImportExportItem {
+  /** Имя */
   name: string;
-  file: string;
+  /** Тип */
+  type: 'import' | 'export';
+  /** Источник */
+  source: string;
+  /** Строка */
   line: number;
-  kind: 'function' | 'class' | 'constant' | 'interface' | 'type' | 'variable' | 'macro';
-  isExported: boolean;
-  isAsync: boolean;
-  params: string[];
-  paramsCount: number;
-  vscode: string;
-  importedBy: {
-    importerId: string;
-    importerFile: string;
-    importerVscode: string;
-    importLine: number;
-    specifier: string;
-    importType?: 'named' | 'default' | 'namespace' | 'type';
-  }[];
-  body?: string;
-  returnType?: string;
-  metadata?: Record<string, any>;
-  _uniqueKey?: string;
-  _fullPath?: string;
+}
+
+/**
+ * Информация о безопасности функции.
+ */
+export interface SecurityInfo {
+  hasEval: boolean;
+  hasProcessEnv: boolean;
+  hasSensitiveData: boolean;
+  hasExec: boolean;
+  hasPassword: boolean;
+}
+
+/**
+ * Создаёт объект SecurityInfo по умолчанию.
+ *
+ * ✅ v2.1.0: функция перенесена сюда, чтобы её можно было
+ * импортировать из '../../modules/types.js'. Ранее она
+ * использовалась как `createDefaultSecurity` в:
+ *   - save-package-lock.ts
+ *   - entity-graph.ts
+ *   - entities-converter.ts
+ */
+export function createDefaultSecurity(): SecurityInfo {
+  return {
+    hasEval: false,
+    hasProcessEnv: false,
+    hasSensitiveData: false,
+    hasExec: false,
+    hasPassword: false,
+  };
 }
 
 // ============================================================
@@ -786,5 +495,5 @@ export interface FunctionEntity {
 // ============================================================
 
 export default {
-  // Типы экспортируются автоматически
+  createDefaultSecurity,
 };

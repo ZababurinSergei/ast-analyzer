@@ -1322,7 +1322,7 @@ export class CLIExecutor {
         // Импортируем кэш из json-reporter
         let analysisCache: any = null;
         try {
-          const module = await import('../reporters/json-reporter.js');
+          const module = await import('../reporters/json/index.js');
           analysisCache = (module as any).analysisCache;
         } catch {
           console.log('⚠️ Cache module not loaded');

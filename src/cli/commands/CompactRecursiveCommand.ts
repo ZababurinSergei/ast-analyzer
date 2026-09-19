@@ -2,7 +2,7 @@
 // ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ - БЕЗ ДУБЛЕЙ, ВСЕ ОШИБКИ TypeScript И ESLint ИСПРАВЛЕНЫ
 // ДОБАВЛЕНА ПОДДЕРЖКА СЕКЦИИ SELF FUNCTIONS (sf) С ВОЗМОЖНОСТЬЮ ОТКЛЮЧЕНИЯ
 // ДОБАВЛЕНА ПОДДЕРЖКА ГИБКОГО КОНФИГА С ПРЕСЕТАМИ
-// ✅ ОБНОВЛЕНО: адаптация под новую структуру GenerateReportResult (compact-reporter v6.0.0)
+// ✅ ОБНОВЛЕНО v10.0.0: адаптация под новую структуру GenerateReportResult (compact-reporter v9.0.0)
 // ✅ ОБНОВЛЕНО v2: добавлен .default(false) для --include-body/--include-security/--include-vscode
 // ✅ ОБНОВЛЕНО v3: строгая проверка options.includeBody === true при применении опций
 // ✅ ОБНОВЛЕНО v4: добавлена поддержка --include-vscode (проброс в configBuilder)
@@ -11,11 +11,22 @@
 // ✅ ОБНОВЛЕНО v7: добавлена строка "VSCode ссылки" в блок "ВКЛЮЧЕННЫЕ КОМПОНЕНТЫ"
 // ✅ ОБНОВЛЕНО v8: добавлены флаги --edges и --edges-suffix для сохранения edges в отдельный файл
 // ✅ ОБНОВЛЕНО v9: проброс saveEdges / edgesJsonSuffix в generateCompactReport
+// ✅ ОБНОВЛЕНО v10:
+//     - extractEntities теперь импортируется из единого reporters/json модуля
+//     - все импорты core/* заменены на reporters/json/*
+//     - удалены локальные определения, дублирующие reporters/json
+//     - используется collectFilesForAnalysis из ci-cd/index.js
 
 import type { Command } from 'commander';
 import path from 'path';
 import fs from 'fs';
+
+// ✅ ЕДИНЫЙ ИСТОЧНИК JSON-ОТЧЁТОВ
 import { generateCompactReport } from '../../reporters/compact-reporter.js';
+import { extractEntitiesFromFile } from '../../reporters/json/extractors/extract-entities-from-file.js';
+import { collectFilesForAnalysis } from '../../ci-cd/index.js';
+
+// ✅ ИМПОРТ КОНФИГУРАЦИИ ДЛЯ ПРЕСЕТОВ
 import { getPresetNames, createCompactConfig } from '../../reporters/CompactReportConfig.js';
 
 /**
@@ -31,6 +42,7 @@ import { getPresetNames, createCompactConfig } from '../../reporters/CompactRepo
  * - ГИБКИЙ КОНФИГ: 5 пресетов + 30+ опций для тонкой настройки
  * - ВСЕ ОШИБКИ TypeScript И ESLint ИСПРАВЛЕНЫ
  * - ✅ EDGES: опционально, по умолчанию выключено, сохраняется в отдельный файл
+ * - ✅ v10: использует единый reporters/json модуль для анализа
  */
 export class CompactRecursiveCommand {
   private program: Command;
@@ -173,51 +185,24 @@ export class CompactRecursiveCommand {
       process.exit(1);
     }
 
-    // Шаг 1: Строим граф проекта
-    console.log('📊 Шаг 1: Построение графа зависимостей проекта...');
-    const { ProjectGraphBuilder } = await import('../../core/ProjectGraphBuilder.js');
+    // ============================================
+    // ✅ v10: Шаг 1: Собираем все файлы через единый reporters/json модуль
+    // ============================================
+    console.log('📁 Шаг 1: Сбор файлов проекта...');
+    const validFiles = await this.collectProjectFiles(entryPath, parseInt(options.depth, 10));
 
-    const builder = new ProjectGraphBuilder({
-      maxDepth: parseInt(options.depth, 10),
-      includeExternal: false,
-    });
-
-    const graphData = builder.build(entryPath);
-    const graphStats = builder.getStats();
-
-    console.log(
-      `   ✅ Граф построен: ${graphStats.totalNodes} узлов, ${graphStats.totalEdges} ребер`
-    );
-    console.log(`   🔄 Циклов: ${graphStats.cyclesCount}`);
-
-    // Шаг 2: Собираем все файлы из графа
-    console.log('\n📁 Шаг 2: Сбор всех файлов проекта...');
-    const allFiles = Object.keys(graphData.graph);
-
-    if (allFiles.length === 0) {
+    if (validFiles.length === 0) {
       console.error('❌ Не найдено файлов для анализа');
       process.exit(1);
     }
 
-    const supportedExtensions = ['.ts', '.tsx', '.js', '.jsx', '.vue', '.mjs', '.cjs'];
-    const validFiles = allFiles.filter(file => {
-      if (!fs.existsSync(file)) return false;
-      const ext = path.extname(file);
-      return supportedExtensions.includes(ext);
-    });
-
     console.log(`   📄 Найдено файлов: ${validFiles.length}`);
-    console.log(`   📊 Из них уникальных: ${new Set(validFiles).size}`);
+    console.log(`   📊 Уникальных: ${new Set(validFiles).size}`);
 
-    if (validFiles.length === 0) {
-      console.error('❌ Нет валидных файлов для анализа');
-      process.exit(1);
-    }
-
-    // Шаг 3: Извлекаем сущности
-    console.log('\n🔍 Шаг 3: Извлечение сущностей из всех файлов...');
-    const { extractEntitiesFromFile } = await import('../../reporters/json-reporter.js');
-
+    // ============================================
+    // ✅ v10: Шаг 2: Извлекаем сущности через единый extractEntitiesFromFile
+    // ============================================
+    console.log('\n🔍 Шаг 2: Извлечение сущностей из всех файлов...');
     const entitiesMap: Record<string, any> = {};
     let processedFiles = 0;
 
@@ -227,7 +212,9 @@ export class CompactRecursiveCommand {
           console.log(`   📄 Обработка: ${path.basename(file)}`);
         }
 
+        // ✅ ЕДИНЫЙ ИСТОЧНИК: extractEntitiesFromFile из reporters/json
         const entities = extractEntitiesFromFile(file);
+
         if (entities && Object.keys(entities).length > 0) {
           const relativePath = path.relative(process.cwd(), file);
           entitiesMap[relativePath] = entities;
@@ -247,8 +234,10 @@ export class CompactRecursiveCommand {
       process.exit(1);
     }
 
-    // Шаг 4: Генерируем отчет с применением конфига
-    console.log('\n📋 Шаг 4: Генерация компактного отчета с применением конфига...');
+    // ============================================
+    // Шаг 3: Генерируем отчет с применением конфига
+    // ============================================
+    console.log('\n📋 Шаг 3: Генерация компактного отчета с применением конфига...');
 
     const outputPath = path.resolve(options.output);
     const outputDir = path.dirname(outputPath);
@@ -374,7 +363,7 @@ export class CompactRecursiveCommand {
     console.log('');
 
     // ============================================
-    // ✅ ИСПРАВЛЕНО: используем новую структуру GenerateReportResult
+    // ✅ ИСПРАВЛЕНО: используем новую структуру GenerateReportResult (v9.0.0)
     // ✅ v8: пробрасываем saveEdges и edgesJsonSuffix
     // ============================================
     const report = generateCompactReport(entitiesMap, outputPath, {
@@ -518,6 +507,36 @@ export class CompactRecursiveCommand {
     console.log('');
 
     console.log('='.repeat(70) + '\n');
+  }
+
+  /**
+   * ✅ v10: Сбор файлов проекта через единый модуль reporters/json
+   *
+   * Использует collectFilesForAnalysis из ci-cd/index.js,
+   * который в свою очередь использует glob с едиными exclude-паттернами.
+   *
+   * @param entryPath — точка входа
+   * @param maxDepth — максимальная глубина (не используется, но оставлен для совместимости)
+   * @returns массив абсолютных путей к файлам
+   */
+  private async collectProjectFiles(entryPath: string, maxDepth: number): Promise<string[]> {
+    const entryDir = path.dirname(entryPath);
+
+    // ✅ ЕДИНЫЙ ИСТОЧНИК: collectFilesForAnalysis из ci-cd/index.js
+    const files = await collectFilesForAnalysis([entryDir], true);
+
+    // Фильтруем по глубине (простая эвристика: считаем слэши от entryDir)
+    if (maxDepth > 0 && maxDepth < 1000) {
+      const entryDirNormalized = entryDir.replace(/\\/g, '/');
+      return files.filter(file => {
+        const fileNormalized = file.replace(/\\/g, '/');
+        const relative = fileNormalized.substring(entryDirNormalized.length);
+        const depth = (relative.match(/\//g) || []).length;
+        return depth <= maxDepth;
+      });
+    }
+
+    return files;
   }
 
   getCommand(): Command {

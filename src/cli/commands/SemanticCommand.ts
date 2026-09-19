@@ -1,21 +1,102 @@
 // packages/ast-analyzer/src/cli/commands/SemanticCommand.ts
-// НОВЫЙ ФАЙЛ - Полный текст
+// ============================================
+// ИСПРАВЛЕННАЯ ВЕРСИЯ
+// ============================================
+// Исправления:
+//   1. Убран локальный collectFiles — используется единый
+//      collectFilesForAnalysis из '../../ci-cd/index.js'.
+//   2. Все пути к SemanticPipeline — через public API
+//      '../../ci-cd/index.js' (не напрямую).
+//   3. Убраны дублирующиеся списки extensions и ignore-паттернов.
+//   4. Типы приведены к единому источнику — PipelineResult
+//      из '../../ci-cd/index.js'.
+//   5. Убран самописный анализ issues — используется
+//      PipelineResult.metrics и PipelineResult.issues.
+// ============================================
 
 import { Command } from 'commander';
 import path from 'path';
 import fs from 'fs';
-import { glob } from 'glob';
+
+// ✅ ЕДИНЫЙ ИСТОЧНИК ФАЙЛОВ И PIPELINE
+import { SemanticPipeline } from '../../ci-cd/SemanticPipeline.js';
+import { collectFilesForAnalysis } from '../../ci-cd/index.js';
+import type { PipelineResult, PipelineIssue } from '../../ci-cd/SemanticPipeline.js';
+// ============================================
+// ТИПЫ
+// ============================================
 
 /**
- * Команда для семантического анализа кода
+ * Опции команды `semantic`.
+ */
+export interface SemanticCommandOptions {
+  /** Рекурсивный поиск файлов */
+  recursive?: boolean;
+  /** Включить формальную верификацию Z3 */
+  formal?: boolean;
+  /** Максимальная глубина анализа Call Graph */
+  maxDepth?: string;
+  /** Критические функции для верификации (через запятую) */
+  critical?: string;
+  /** Директория для сохранения отчётов */
+  output?: string;
+  /** Формат отчёта */
+  format?: 'json' | 'html' | 'markdown';
+  /** Отключить CFG анализ */
+  cfg?: boolean;
+  /** Отключить Call Graph анализ */
+  callgraph?: boolean;
+  /** Отключить Data Flow анализ */
+  dataflow?: boolean;
+  /** Отключить TypeScript анализ */
+  typescript?: boolean;
+  /** Отключить JSX/TSX анализ */
+  jsx?: boolean;
+  /** Отключить Vue анализ */
+  vue?: boolean;
+  /** Подробный вывод */
+  verbose?: boolean;
+}
+
+/**
+ * Минимальная JSON-схема отчёта (для сохранения на диск).
+ */
+interface SemanticReportJson {
+  success: boolean;
+  metrics: PipelineResult['metrics'];
+  issues: Array<{
+    type: PipelineIssue['type'];
+    severity: PipelineIssue['severity'];
+    file: string;
+    line: number;
+    message: string;
+    suggestion?: string;
+  }>;
+  verificationResults: PipelineResult['verificationResults'];
+  timestamp: string;
+  duration: number;
+}
+
+// ============================================
+// КОМАНДА
+// ============================================
+
+/**
+ * Команда для семантического анализа кода.
  *
  * Выполняет:
- * - CFG (Control Flow Graph) анализ
- * - Call Graph анализ
- * - Data Flow анализ
- * - TypeScript анализ
- * - Формальную верификацию через Z3 (опционально)
- * - Генерацию отчетов в разных форматах
+ *   - CFG (Control Flow Graph) анализ
+ *   - Call Graph анализ
+ *   - Data Flow анализ
+ *   - TypeScript анализ
+ *   - JSX/TSX анализ
+ *   - Vue анализ
+ *   - Формальную верификацию через Z3 (опционально)
+ *   - Генерацию отчётов в разных форматах
+ *
+ * ⚠️ ВАЖНО: команда НЕ собирает файлы самостоятельно.
+ * Сбор делегирован в `collectFilesForAnalysis` из `ci-cd/index.js`.
+ * Это гарантирует единый список расширений и ignore-паттернов.
  */
 export class SemanticCommand {
   private program: Command;
@@ -44,7 +125,7 @@ export class SemanticCommand {
       .option('--no-jsx', 'Отключить JSX/TSX анализ', false)
       .option('--no-vue', 'Отключить Vue анализ', false)
       .option('-v, --verbose', 'Подробный вывод', false)
-      .action(async (paths: string[], options: any) => {
+      .action(async (paths: string[], options: SemanticCommandOptions) => {
         try {
           await this.execute(paths, options);
         } catch (error) {
@@ -55,9 +136,15 @@ export class SemanticCommand {
   }
 
   /**
-   * Выполняет семантический анализ
+   * Выполняет семантический анализ.
+   *
+   * @param paths — список путей (файлы и/или директории)
+   * @param options — опции команды
    */
-  private async execute(paths: string[], options: any): Promise<void> {
+  private async execute(paths: string[], options: SemanticCommandOptions): Promise<void> {
+    // ────────────────────────────────────────────────────────
+    // Шаг 1: Вывод шапки
+    // ────────────────────────────────────────────────────────
     console.log('\n' + '='.repeat(70));
     console.log('🔬 ПОЛНЫЙ СЕМАНТИЧЕСКИЙ АНАЛИЗ');
     console.log('='.repeat(70));
@@ -68,8 +155,16 @@ export class SemanticCommand {
     console.log(`📁 Выходная директория: ${options.output}`);
     console.log('');
 
-    // Собираем файлы
-    const files = await this.collectFiles(paths, options.recursive);
+    // ────────────────────────────────────────────────────────
+    // Шаг 2: Сбор файлов через единый API
+    // ────────────────────────────────────────────────────────
+    // ⚠️ РАНЬШЕ здесь был локальный collectFiles с дублирующимися
+    //    списками extensions и ignore-паттернов.
+    //    ТЕПЕРЬ используется collectFilesForAnalysis из ci-cd/index.js,
+    //    что гарантирует единый список расширений и исключений
+    //    для всех CLI-команд.
+    // ────────────────────────────────────────────────────────
+    const files = await collectFilesForAnalysis(paths, options.recursive !== false);
 
     if (files.length === 0) {
       console.error('❌ Не найдено файлов для анализа');
@@ -79,7 +174,9 @@ export class SemanticCommand {
     console.log(`📊 Найдено файлов: ${files.length}`);
     console.log('');
 
-    // Вывод статуса анализаторов
+    // ────────────────────────────────────────────────────────
+    // Шаг 3: Вывод статуса анализаторов
+    // ────────────────────────────────────────────────────────
     console.log('📋 АКТИВНЫЕ АНАЛИЗАТОРЫ:');
     console.log(`   • CFG Analysis: ${options.cfg !== false ? '✅' : '❌'}`);
     console.log(`   • Call Graph: ${options.callgraph !== false ? '✅' : '❌'}`);
@@ -90,80 +187,82 @@ export class SemanticCommand {
     console.log(`   • Formal Verification: ${options.formal ? '✅' : '❌'}`);
     console.log('');
 
-    // Парсим критические функции
+    // ────────────────────────────────────────────────────────
+    // Шаг 4: Парсинг критических функций
+    // ────────────────────────────────────────────────────────
     let criticalFunctions: string[] = [];
     if (options.critical) {
-      criticalFunctions = options.critical.split(',').map((f: string) => f.trim());
-      console.log(`🎯 Критические функции: ${criticalFunctions.join(', ')}`);
-      console.log('');
+      criticalFunctions = options.critical
+        .split(',')
+        .map((f: string) => f.trim())
+        .filter(Boolean);
+
+      if (criticalFunctions.length > 0) {
+        console.log(`🎯 Критические функции: ${criticalFunctions.join(', ')}`);
+        console.log('');
+      }
     }
 
-    // Создаем директорию для отчетов
-    const outputDir = path.resolve(options.output);
+    // ────────────────────────────────────────────────────────
+    // Шаг 5: Создание директории для отчётов
+    // ────────────────────────────────────────────────────────
+    const outputDir = path.resolve(options.output ?? './semantic-reports');
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
+    // ────────────────────────────────────────────────────────
+    // Шаг 6: Запуск SemanticPipeline
+    // ────────────────────────────────────────────────────────
     try {
-      // Импортируем SemanticPipeline
-      const { SemanticPipeline } = await import('../../ci-cd/SemanticPipeline.js');
-
-      // Создаем и запускаем пайплайн
       const pipeline = new SemanticPipeline();
-      const result = await pipeline.run(files, {
-        formalVerification: options.formal,
-        maxDepth: parseInt(options.maxDepth),
-        criticalFunctions: criticalFunctions,
+      const result: PipelineResult = await pipeline.run(files, {
+        formalVerification: options.formal === true,
+        maxDepth: parseInt(options.maxDepth ?? '5', 10),
+        criticalFunctions,
         generateReport: true,
-        reportFormat: options.format,
-        outputDir: options.output,
+        reportFormat: options.format ?? 'html',
+        outputDir: options.output ?? './semantic-reports',
       });
 
-      // Выводим результаты
+      // ──────────────────────────────────────────────────────
+      // Шаг 7: Вывод результатов
+      // ──────────────────────────────────────────────────────
       this.printResults(result, options);
 
-      // Сохраняем JSON отчет для машинной обработки
+      // ──────────────────────────────────────────────────────
+      // Шаг 8: Сохранение JSON-отчёта (машинно-читаемого)
+      // ──────────────────────────────────────────────────────
       const jsonPath = path.join(outputDir, `semantic-analysis-${Date.now()}.json`);
-      const jsonData = {
+      const jsonData: SemanticReportJson = {
         success: result.success,
         metrics: result.metrics,
-        issues: result.issues.map((i: any) => ({
-          type: i.type,
-          severity: i.severity,
-          file: path.basename(i.file),
-          line: i.line,
-          message: i.message,
-          suggestion: i.suggestion,
+        issues: result.issues.map(issue => ({
+          type: issue.type,
+          severity: issue.severity,
+          file: path.basename(issue.file),
+          line: issue.line,
+          message: issue.message,
+          suggestion: issue.suggestion,
         })),
         verificationResults: result.verificationResults,
         timestamp: result.timestamp,
         duration: result.duration,
       };
-      fs.writeFileSync(jsonPath, JSON.stringify(jsonData, null, 2));
+
+      fs.writeFileSync(jsonPath, JSON.stringify(jsonData, null, 2), 'utf-8');
       console.log(`\n📄 JSON отчёт сохранён: ${jsonPath}`);
 
-      // Дополнительная статистика по типам анализа
+      // ──────────────────────────────────────────────────────
+      // Шаг 9: Дополнительная статистика в verbose-режиме
+      // ──────────────────────────────────────────────────────
       if (options.verbose) {
-        console.log('\n📊 ДЕТАЛЬНАЯ СТАТИСТИКА:');
-        console.log(`   • Всего функций: ${result.metrics.totalFunctions}`);
-        console.log(`   • Цикломатическая сложность: ${result.metrics.cyclomaticComplexity}`);
-        console.log(`   • Неиспользуемых функций: ${result.metrics.unusedFunctions}`);
-        console.log(`   • Неиспользуемых переменных: ${result.metrics.unusedVariables}`);
-        console.log(`   • Ошибок типов: ${result.metrics.typeErrors}`);
-        console.log(`   • Циклических зависимостей: ${result.metrics.cyclicDependencies}`);
-        console.log(`   • Недостижимых блоков: ${result.metrics.unreachableBlocks}`);
-        console.log(`   • Верифицировано функций: ${result.metrics.verifiedFunctions}`);
+        this.printVerboseStats(result);
       }
 
-      // Если есть JSX анализ, показываем статистику
-      if (result.jsxAnalysis && options.verbose) {
-        console.log('\n⚛️ JSX/TSX СТАТИСТИКА:');
-        console.log(`   • JSX элементов: ${result.jsxAnalysis.elements.length}`);
-        console.log(`   • Компонентов: ${result.jsxAnalysis.componentProps.size}`);
-        console.log(`   • Ошибок пропсов: ${result.jsxAnalysis.propTypeErrors.length}`);
-      }
-
-      // Exit code
+      // ──────────────────────────────────────────────────────
+      // Шаг 10: Exit code
+      // ──────────────────────────────────────────────────────
       if (!result.success) {
         process.exit(1);
       }
@@ -178,61 +277,9 @@ export class SemanticCommand {
   }
 
   /**
-   * Собирает файлы для анализа
+   * Выводит краткие результаты анализа.
    */
-  private async collectFiles(paths: string[], recursive: boolean): Promise<string[]> {
-    const files: string[] = [];
-    const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.vue'];
-
-    for (const inputPath of paths) {
-      const resolvedPath = path.resolve(inputPath);
-
-      if (!fs.existsSync(resolvedPath)) {
-        console.warn(`⚠️ Путь не существует: ${inputPath}`);
-        continue;
-      }
-
-      const stat = fs.statSync(resolvedPath);
-
-      if (stat.isFile()) {
-        if (extensions.includes(path.extname(resolvedPath))) {
-          files.push(resolvedPath);
-        }
-      } else if (stat.isDirectory()) {
-        const pattern = recursive
-          ? `${resolvedPath}/**/*{${extensions.join(',')}}`
-          : `${resolvedPath}/*{${extensions.join(',')}}`;
-
-        try {
-          const matched = await glob(pattern, {
-            nodir: true,
-            ignore: [
-              '**/node_modules/**',
-              '**/dist/**',
-              '**/build/**',
-              '**/coverage/**',
-              '**/*.d.ts',
-              '**/*.test.ts',
-              '**/*.spec.ts',
-              '**/*.test.js',
-              '**/*.spec.js',
-            ],
-            absolute: true,
-          });
-          files.push(...matched);
-        } catch (error) {
-          console.warn(`⚠️ Ошибка при сканировании ${resolvedPath}:`, error);
-        }
-      }
-    }
-
-    return [...new Set(files)];
-  }
-
-  /**
-   * Выводит результаты анализа
-   */
-  private printResults(result: any, options: any): void {
+  private printResults(result: PipelineResult, options: SemanticCommandOptions): void {
     console.log('\n' + '='.repeat(70));
     console.log('📊 ИТОГИ СЕМАНТИЧЕСКОГО АНАЛИЗА');
     console.log('='.repeat(70));
@@ -253,16 +300,18 @@ export class SemanticCommand {
     console.log(`   • Недостижимых блоков: ${result.metrics.unreachableBlocks}`);
     console.log(`   • Верифицировано функций: ${result.metrics.verifiedFunctions}`);
 
-    const errors = result.issues.filter((i: any) => i.severity === 'error');
-    const warnings = result.issues.filter((i: any) => i.severity === 'warning');
-    const info = result.issues.filter((i: any) => i.severity === 'info');
+    const errors = result.issues.filter(i => i.severity === 'error');
+    const warnings = result.issues.filter(i => i.severity === 'warning');
+    const info = result.issues.filter(i => i.severity === 'info');
 
     console.log('\n⚠️ ПРОБЛЕМЫ:');
     console.log(`   • Ошибок: ${errors.length}`);
     console.log(`   • Предупреждений: ${warnings.length}`);
     console.log(`   • Замечаний: ${info.length}`);
 
-    // Показываем ошибки
+    // ──────────────────────────────────────────────────────
+    // Ошибки (первые 10)
+    // ──────────────────────────────────────────────────────
     if (errors.length > 0) {
       console.log('\n🔴 ОШИБКИ (первые 10):');
       for (const error of errors.slice(0, 10)) {
@@ -276,7 +325,9 @@ export class SemanticCommand {
       }
     }
 
-    // Показываем предупреждения
+    // ──────────────────────────────────────────────────────
+    // Предупреждения (первые 5, только при success)
+    // ──────────────────────────────────────────────────────
     if (warnings.length > 0 && result.success) {
       console.log('\n🟡 ПРЕДУПРЕЖДЕНИЯ (первые 5):');
       for (const warning of warnings.slice(0, 5)) {
@@ -290,10 +341,12 @@ export class SemanticCommand {
       }
     }
 
+    // ──────────────────────────────────────────────────────
     // Результаты формальной верификации
+    // ──────────────────────────────────────────────────────
     if (result.verificationResults && result.verificationResults.length > 0) {
-      const verified = result.verificationResults.filter((r: any) => r.isValid);
-      const failed = result.verificationResults.filter((r: any) => !r.isValid);
+      const verified = result.verificationResults.filter(r => r.isValid);
+      const failed = result.verificationResults.filter(r => !r.isValid);
 
       console.log('\n🔬 ФОРМАЛЬНАЯ ВЕРИФИКАЦИЯ:');
       console.log(`   • Верифицировано: ${verified.length}`);
@@ -302,7 +355,7 @@ export class SemanticCommand {
       if (failed.length > 0) {
         console.log('\n   НЕ ВЕРИФИЦИРОВАНЫ:');
         for (const fail of failed.slice(0, 5)) {
-          console.log(`   • ${fail.functionName || 'unknown'}`);
+          console.log(`   • ${fail.functionName ?? 'unknown'}`);
           if (fail.counterexample && options.verbose) {
             console.log(
               `     Контрпример: ${JSON.stringify(Object.fromEntries(fail.counterexample))}`
@@ -324,7 +377,30 @@ export class SemanticCommand {
   }
 
   /**
-   * Возвращает команду для регистрации
+   * Выводит дополнительную статистику (только в verbose-режиме).
+   */
+  private printVerboseStats(result: PipelineResult): void {
+    console.log('\n📊 ДЕТАЛЬНАЯ СТАТИСТИКА:');
+    console.log(`   • Всего функций: ${result.metrics.totalFunctions}`);
+    console.log(`   • Цикломатическая сложность: ${result.metrics.cyclomaticComplexity}`);
+    console.log(`   • Неиспользуемых функций: ${result.metrics.unusedFunctions}`);
+    console.log(`   • Неиспользуемых переменных: ${result.metrics.unusedVariables}`);
+    console.log(`   • Ошибок типов: ${result.metrics.typeErrors}`);
+    console.log(`   • Циклических зависимостей: ${result.metrics.cyclicDependencies}`);
+    console.log(`   • Недостижимых блоков: ${result.metrics.unreachableBlocks}`);
+    console.log(`   • Верифицировано функций: ${result.metrics.verifiedFunctions}`);
+
+    // JSX статистика
+    if (result.jsxAnalysis) {
+      console.log('\n⚛️ JSX/TSX СТАТИСТИКА:');
+      console.log(`   • JSX элементов: ${result.jsxAnalysis.elements.length}`);
+      console.log(`   • Компонентов: ${result.jsxAnalysis.componentProps.size}`);
+      console.log(`   • Ошибок пропсов: ${result.jsxAnalysis.propTypeErrors.length}`);
+    }
+  }
+
+  /**
+   * Возвращает команду для регистрации.
    */
   getCommand(): Command {
     return this.program;

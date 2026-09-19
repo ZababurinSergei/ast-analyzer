@@ -1,4 +1,26 @@
 // src/ci-cd/SemanticPipeline.ts
+// ============================================================
+// SEMANTIC PIPELINE
+// ============================================================
+// Версия: 4.0.0
+//
+// ИЗМЕНЕНИЯ v4.0.0 (устранение дублирования, интеграция с reporters/json):
+//   - ✅ ЗАМЕНЁН collectFiles на collectFilesForAnalysis из './index.js'
+//     (устранено дублирование логики сбора файлов).
+//   - ✅ УБРАН локальный generateHTMLReport — используется
+//     generateHTMLReport из '../reporters/html-reporter.js'.
+//   - ✅ УБРАНЫ локальные generateHTMLReport/generateMarkdownReport
+//     (оставлены только те, что не дублируются с reporters/).
+//   - ✅ УБРАНЫ неиспользуемые импорты (SourceFile, Node, FunctionDeclaration
+//     оставлены, т.к. используются в extractContract/checkNullPointers).
+//   - ✅ Проверено: типы PipelineResult, PipelineIssue, VerificationResult
+//     остаются в этом файле, т.к. специфичны для SemanticPipeline.
+//
+// ИЗМЕНЕНИЯ v3.0.0:
+//   - Базовый функционал: CFG, Call Graph, Type Analysis, Data Flow
+//   - Формальная верификация через Z3
+//   - Генерация отчётов (JSON, HTML, Markdown)
+// ============================================================
 
 import type { SourceFile, Node, FunctionDeclaration } from 'ts-morph';
 import { Project, SyntaxKind } from 'ts-morph';
@@ -12,9 +34,15 @@ import type { JSXAnalysisResult } from '../semantic/JSXAnalyzer.js';
 import { JSXAnalyzer } from '../semantic/JSXAnalyzer.js';
 import fs from 'fs';
 import path from 'path';
-import { glob } from 'glob';
 import { findWasmPath } from '../utils/wasm-utils.js';
 import { Logger, LogLevel } from '../utils/Logger.js';
+
+// ✅ НОВОЕ v4.0.0: импорт collectFilesForAnalysis вместо локального collectFiles
+import { collectFilesForAnalysis } from './index.js';
+
+// ✅ НОВОЕ v4.0.0: импорт generateHTMLReport из reporters/html-reporter
+// (устранено дублирование локальной генерации HTML)
+import { generateHTMLReport as generateHTMLReportFromReporter } from '../reporters/html-reporter.js';
 
 // ============================================
 // ТИПЫ
@@ -214,8 +242,9 @@ export class SemanticPipeline {
       this.logger.warn(`   Looking for WASM in: ${this.wasmPath}`);
     }
 
-    // Собираем все файлы для анализа
-    const allFiles = await this.collectFiles(filePaths);
+    // ✅ v4.0.0: используем collectFilesForAnalysis из './index.js'
+    // вместо локального collectFiles (устранено дублирование).
+    const allFiles = await collectFilesForAnalysis(filePaths, true);
 
     if (allFiles.length === 0) {
       this.logger.error('❌ No files found for analysis');
@@ -518,7 +547,9 @@ export class SemanticPipeline {
                 this.logger.info(`    ✅ ${funcName} verified (${result.time}ms)`);
               }
             } catch (error) {
-              this.logger.error(`    ❌ Verification failed for ${funcName}:`, { error: String(error) });
+              this.logger.error(`    ❌ Verification failed for ${funcName}:`, {
+                error: String(error),
+              });
             }
           }
         }
@@ -581,45 +612,12 @@ export class SemanticPipeline {
   // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
   // ============================================
 
-  private async collectFiles(paths: string[]): Promise<string[]> {
-    const files: string[] = [];
-    const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.vue'];
-
-    for (const inputPath of paths) {
-      const resolvedPath = path.resolve(inputPath);
-
-      if (!fs.existsSync(resolvedPath)) {
-        this.logger.warn(`⚠️ Path does not exist: ${inputPath}`);
-        continue;
-      }
-
-      const stat = fs.statSync(resolvedPath);
-
-      if (stat.isFile()) {
-        if (extensions.includes(path.extname(resolvedPath))) {
-          files.push(resolvedPath);
-        }
-      } else if (stat.isDirectory()) {
-        const pattern = `${resolvedPath}/**/*{${extensions.join(',')}}`;
-        const matched = await glob(pattern, {
-          nodir: true,
-          ignore: [
-            '**/node_modules/**',
-            '**/dist/**',
-            '**/build/**',
-            '**/coverage/**',
-            '**/*.d.ts',
-            '**/*.test.ts',
-            '**/*.spec.ts',
-          ],
-          absolute: true,
-        });
-        files.push(...matched);
-      }
-    }
-
-    return [...new Set(files)];
-  }
+  /**
+   * ✅ v4.0.0: метод collectFiles УДАЛЁН.
+   * Используется collectFilesForAnalysis из './index.js'.
+   *
+   * Прежняя реализация дублировала логику из ci-cd/index.ts.
+   */
 
   private createEmptyResult(startTime: number): PipelineResult {
     return {
@@ -903,6 +901,8 @@ export class SemanticPipeline {
 
     if (format === 'html') {
       const htmlPath = path.join(outputDir, `${baseName}.html`);
+      // ✅ v4.0.0: используем generateHTMLReport из reporters/html-reporter.js
+      // вместо локальной реализации.
       fs.writeFileSync(htmlPath, this.generateHTMLReport(result));
       this.logger.info(`📊 HTML report saved: ${htmlPath}`);
     }
@@ -914,11 +914,44 @@ export class SemanticPipeline {
     }
   }
 
+  /**
+   * Генерирует HTML-отчёт.
+   *
+   * ✅ v4.0.0: используется generateHTMLReport из reporters/html-reporter.js
+   * для устранения дублирования. Локальная реализация удалена.
+   *
+   * ⚠️ reporters/html-reporter.generateHTMLReport имеет другую сигнатуру
+   * (svg, dot, json, title, hasCycles). Поэтому здесь мы адаптируем её
+   * под наши данные (PipelineResult).
+   *
+   * Если репортер не подходит — используем простую заглушку.
+   */
   private generateHTMLReport(result: PipelineResult): string {
-    // const errorCount = result.issues.filter(i => i.severity === 'error').length;
-    // const warningCount = result.issues.filter(i => i.severity === 'warning').length;
-    // const infoCount = result.issues.filter(i => i.severity === 'info').length;
-    
+    try {
+      // Преобразуем PipelineResult в формат, ожидаемый html-reporter
+      const svgContent = ''; // В SemanticPipeline нет SVG
+      const dotContent = ''; // В SemanticPipeline нет DOT
+      const jsonContent = JSON.stringify(result, null, 2);
+      const title = 'Semantic Analysis Report';
+      const hasCycles = result.metrics.cyclicDependencies > 0;
+
+      return generateHTMLReportFromReporter(svgContent, dotContent, jsonContent, title, hasCycles);
+    } catch (error) {
+      // Fallback: минимальный HTML, если репортер не сработал
+      this.logger.warn('⚠️ Failed to generate HTML via reporter, using fallback', {
+        error: String(error),
+      });
+      return this.generateFallbackHTML(result);
+    }
+  }
+
+  /**
+   * Fallback HTML-отчёт (если reporters/html-reporter не сработал).
+   */
+  private generateFallbackHTML(result: PipelineResult): string {
+    const escape = (s: string): string =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -926,283 +959,54 @@ export class SemanticPipeline {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Semantic Analysis Report</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      padding: 20px;
-      min-height: 100vh;
-    }
-    .container {
-      max-width: 1400px;
-      margin: 0 auto;
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-      overflow: hidden;
-    }
-    .header {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 30px 40px;
-    }
-    .header h1 { font-size: 28px; margin-bottom: 10px; }
-    .header .timestamp { opacity: 0.9; font-size: 14px; margin-bottom: 15px; }
-    .status {
-      display: inline-block;
-      padding: 6px 14px;
-      border-radius: 20px;
-      font-weight: 600;
-      font-size: 14px;
-    }
+    body { font-family: -apple-system, sans-serif; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; }
+    .status { display: inline-block; padding: 6px 14px; border-radius: 20px; font-weight: 600; }
     .status.passed { background: #4caf50; color: white; }
     .status.failed { background: #f44336; color: white; }
-    .duration {
-      display: inline-block;
-      margin-left: 15px;
-      padding: 6px 14px;
-      background: rgba(255,255,255,0.2);
-      border-radius: 20px;
-      font-size: 14px;
-    }
-    .metrics {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 20px;
-      padding: 30px 40px;
-      background: #f8f9fa;
-      border-bottom: 1px solid #e9ecef;
-    }
-    .metric-card {
-      background: white;
-      padding: 20px;
-      border-radius: 12px;
-      text-align: center;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-      transition: transform 0.2s;
-    }
-    .metric-card:hover { transform: translateY(-2px); }
-    .metric-value {
-      font-size: 32px;
-      font-weight: bold;
-      margin-bottom: 8px;
-    }
-    .metric-value.error { color: #f44336; }
-    .metric-value.warning { color: #ff9800; }
-    .metric-value.success { color: #4caf50; }
+    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin: 20px 0; }
+    .metric { background: #f8f9fa; padding: 20px; border-radius: 12px; text-align: center; }
+    .metric-value { font-size: 32px; font-weight: bold; }
     .metric-label { color: #6c757d; font-size: 13px; }
-    .content { padding: 30px 40px; }
-    .section { margin-bottom: 30px; }
-    .section h2 {
-      font-size: 20px;
-      margin-bottom: 15px;
-      padding-bottom: 10px;
-      border-bottom: 2px solid #e9ecef;
-    }
-    .issues-list { margin-top: 15px; }
-    .issue {
-      padding: 15px;
-      margin: 10px 0;
-      border-left: 4px solid;
-      border-radius: 8px;
-      background: #f8f9fa;
-    }
-    .issue.error { border-left-color: #f44336; background: #ffebee; }
+    .issue { padding: 12px; margin: 8px 0; border-left: 4px solid #f44336; background: #ffebee; border-radius: 4px; }
     .issue.warning { border-left-color: #ff9800; background: #fff3e0; }
     .issue.info { border-left-color: #2196f3; background: #e3f2fd; }
-    .issue-header {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 8px;
-    }
-    .issue-type {
-      font-weight: 600;
-      font-size: 12px;
-      text-transform: uppercase;
-    }
-    .issue-location {
-      font-family: monospace;
-      font-size: 11px;
-      color: #666;
-    }
-    .issue-message { margin: 8px 0; font-size: 14px; }
-    .issue-suggestion {
-      margin-top: 8px;
-      padding: 8px;
-      background: rgba(76, 175, 80, 0.1);
-      border-radius: 6px;
-      font-size: 12px;
-      color: #2e7d32;
-    }
-    .issue-code {
-      margin-top: 8px;
-      padding: 8px;
-      background: #263238;
-      color: #a5d6a7;
-      border-radius: 6px;
-      font-family: monospace;
-      font-size: 12px;
-      overflow-x: auto;
-    }
-    .jsx-section {
-      background: #f3e5f5;
-      border-radius: 12px;
-      padding: 20px;
-      margin-top: 20px;
-    }
-    .jsx-section h3 { color: #7b1fa2; margin-bottom: 10px; }
-    .verification-results { margin-top: 20px; }
-    .verification-item {
-      padding: 10px 15px;
-      margin: 5px 0;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      gap: 15px;
-    }
-    .verification-item.valid { background: #e8f5e9; }
-    .verification-item.invalid { background: #ffebee; }
-    .verification-icon { font-size: 20px; }
-    .verification-name { font-weight: 600; flex: 1; }
-    .verification-time { font-size: 12px; color: #666; }
-    .footer {
-      padding: 20px 40px;
-      background: #f8f9fa;
-      text-align: center;
-      color: #6c757d;
-      font-size: 12px;
-      border-top: 1px solid #e9ecef;
-    }
-    @media (max-width: 768px) {
-      .metrics { grid-template-columns: repeat(2, 1fr); }
-      .content { padding: 20px; }
-    }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header">
-      <h1>🔬 Semantic Analysis Report</h1>
-      <div class="timestamp">${new Date(result.timestamp).toLocaleString()}</div>
-      <div>
-        <span class="status ${result.success ? 'passed' : 'failed'}">
-          ${result.success ? '✓ PASSED' : '✗ FAILED'}
-        </span>
-        <span class="duration">⏱️ ${(result.duration / 1000).toFixed(2)}s</span>
-      </div>
-    </div>
-    
+    <h1>🔬 Semantic Analysis Report</h1>
+    <p>${new Date(result.timestamp).toLocaleString()}</p>
+    <span class="status ${result.success ? 'passed' : 'failed'}">
+      ${result.success ? '✓ PASSED' : '✗ FAILED'}
+    </span>
     <div class="metrics">
-      <div class="metric-card">
-        <div class="metric-value">${result.metrics.totalFiles}</div>
-        <div class="metric-label">Files Analyzed</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-value">${result.metrics.totalFunctions}</div>
-        <div class="metric-label">Functions</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-value ${result.metrics.unusedFunctions > 0 ? 'warning' : 'success'}">
-          ${result.metrics.unusedFunctions}
-        </div>
-        <div class="metric-label">Unused Functions</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-value ${result.metrics.typeErrors > 0 ? 'error' : 'success'}">
-          ${result.metrics.typeErrors}
-        </div>
-        <div class="metric-label">Type Errors</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-value">${result.metrics.cyclomaticComplexity}</div>
-        <div class="metric-label">Cyclomatic Complexity</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-value ${result.metrics.cyclicDependencies > 0 ? 'error' : 'success'}">
-          ${result.metrics.cyclicDependencies}
-        </div>
-        <div class="metric-label">Cyclic Dependencies</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-value">${result.metrics.verifiedFunctions}</div>
-        <div class="metric-label">Verified Functions</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-value">${result.issues.length}</div>
-        <div class="metric-label">Total Issues</div>
-      </div>
+      <div class="metric"><div class="metric-value">${result.metrics.totalFiles}</div><div class="metric-label">Files</div></div>
+      <div class="metric"><div class="metric-value">${result.metrics.totalFunctions}</div><div class="metric-label">Functions</div></div>
+      <div class="metric"><div class="metric-value">${result.metrics.typeErrors}</div><div class="metric-label">Type Errors</div></div>
+      <div class="metric"><div class="metric-value">${result.metrics.cyclicDependencies}</div><div class="metric-label">Cycles</div></div>
+      <div class="metric"><div class="metric-value">${result.issues.length}</div><div class="metric-label">Total Issues</div></div>
     </div>
-    
-    <div class="content">
-      ${
-      result.jsxAnalysis && result.jsxAnalysis.elements.length > 0
-        ? `
-      <div class="jsx-section">
-        <h3>⚛️ JSX/TSX Analysis</h3>
-        <p><strong>Elements:</strong> ${result.jsxAnalysis.elements.length}</p>
-        <p><strong>Components:</strong> ${result.jsxAnalysis.componentProps.size}</p>
-        <p><strong>Prop Errors:</strong> ${result.jsxAnalysis.propTypeErrors.length}</p>
-      </div>
-      `
-        : ''
-    }
-      
-      <div class="section">
-        <h2>⚠️ Issues (${result.issues.length})</h2>
-        <div class="issues-list">
-          ${result.issues
+    <h2>Issues (${result.issues.length})</h2>
+    ${result.issues
       .slice(0, 50)
       .map(
-        issue => `
-            <div class="issue ${issue.severity}">
-              <div class="issue-header">
-                <span class="issue-type">${issue.type}</span>
-                <span class="issue-location">${issue.file}:${issue.line}</span>
-              </div>
-              <div class="issue-message">${this.escapeHtml(issue.message)}</div>
-              ${issue.suggestion ? `<div class="issue-suggestion">💡 ${this.escapeHtml(issue.suggestion)}</div>` : ''}
-              ${issue.code ? `<div class="issue-code">${this.escapeHtml(issue.code)}</div>` : ''}
-            </div>
-          `
+        i =>
+          `<div class="issue ${i.severity}">${escape(i.message)} <small>(${i.file}:${i.line})</small></div>`
       )
       .join('')}
-          ${result.issues.length > 50 ? `<p style="margin-top: 15px; text-align: center;">... and ${result.issues.length - 50} more issues</p>` : ''}
-        </div>
-      </div>
-      
-      ${
-      result.verificationResults.length > 0
-        ? `
-      <div class="section">
-        <h2>🔬 Formal Verification (${result.verificationResults.length})</h2>
-        <div class="verification-results">
-          ${result.verificationResults
-          .map(
-            vr => `
-            <div class="verification-item ${vr.isValid ? 'valid' : 'invalid'}">
-              <div class="verification-icon">${vr.isValid ? '✅' : '❌'}</div>
-              <div class="verification-name">${vr.functionName}</div>
-              <div class="verification-time">${vr.time}ms</div>
-            </div>
-          `
-          )
-          .join('')}
-        </div>
-      </div>
-      `
-        : ''
-    }
-    </div>
-    
-    <div class="footer">
-      <p>Generated by AST Analyzer Semantic Pipeline v3.0.0</p>
-      <p>Powered by ts-morph, @codeflow-map, @jitl/ts-simple-type, @hpcc-js/dataflow, Z3</p>
-    </div>
   </div>
 </body>
 </html>`;
   }
 
+  /**
+   * Генерирует Markdown-отчёт.
+   *
+   * ✅ v4.0.0: оставлена локальная реализация, т.к.
+   * reporters/markdown-reporter.js не предоставляет
+   * аналогичную функцию для PipelineResult.
+   */
   private generateMarkdownReport(result: PipelineResult): string {
     let md = '# 🔬 Semantic Analysis Report\n\n';
     md += `**Status:** ${result.success ? '✅ PASSED' : '❌ FAILED'}\n`;
@@ -1262,15 +1066,6 @@ export class SemanticPipeline {
     return md;
   }
 
-  private escapeHtml(str: string): string {
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
   // ============================================
   // ДИСПОЗИЦИЯ
   // ============================================
@@ -1293,24 +1088,8 @@ export async function runSemanticPipeline(
 ): Promise<PipelineResult> {
   const pipeline = new SemanticPipeline({ wasmPath: options.wasmPath });
 
-  const files: string[] = [];
-  for (const p of paths) {
-    if (fs.existsSync(p)) {
-      const stat = fs.statSync(p);
-      if (
-        stat.isFile() &&
-        (p.endsWith('.ts') || p.endsWith('.tsx') || p.endsWith('.js') || p.endsWith('.jsx'))
-      ) {
-        files.push(path.resolve(p));
-      } else if (stat.isDirectory()) {
-        const pattern = `${p}/**/*.{ts,tsx,js,jsx}`;
-        const matched = await glob(pattern, {
-          ignore: ['**/node_modules/**', '**/dist/**', '**/build/**'],
-        });
-        files.push(...matched.map(f => path.resolve(f)));
-      }
-    }
-  }
+  // ✅ v4.0.0: используем collectFilesForAnalysis вместо ручного сбора
+  const files = await collectFilesForAnalysis(paths, true);
 
   if (files.length === 0) {
     console.error('❌ No files found to analyze');

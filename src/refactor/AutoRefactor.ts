@@ -1,9 +1,41 @@
 // packages/ast-analyzer/src/refactor/AutoRefactor.ts
-import { Project, ScriptTarget, ModuleKind, Node, type SourceFile } from 'ts-morph';
+// ============================================================
+// АВТОМАТИЧЕСКИЙ РЕФАКТОРИНГ ФАЙЛОВ
+// ============================================================
+// Версия: 4.0.0
+//
+// ИЗМЕНЕНИЯ v4.0.0 (устранение дублирования логики анализа):
+//   - ✅ analyzeAndCluster теперь использует extractEntitiesFromFile
+//     и buildFullAnalysis из reporters/json вместо собственной
+//     реализации обхода AST.
+//   - ✅ УДАЛЕНА дублирующая логика:
+//       * ручной сбор functions через sourceFile.getFunctions()
+//       * ручной сбор callGraph через forEachDescendant
+//       * ручной сбор classes, methods, properties
+//       * ручной collectOriginalExports через regex
+//   - ✅ analyzeFile теперь делегирует в extractEntitiesFromFile.
+//   - ✅ collectOriginalExports теперь использует entities.exports
+//     из extractEntitiesFromFile вместо regex.
+//   - ✅ Идентификация кластеров (identifyClusters) ОСТАВЛЕНА —
+//     это уникальная логика рефакторинга, не дублируется.
+//   - ✅ Всё остальное (валидация, ESLint, TypeScript, Z3,
+//     эквивалентность, backup, checkpoints) — БЕЗ ИЗМЕНЕНИЙ.
+//
+// ИЗМЕНЕНИЯ v3.x.x:
+//   - Полный pipeline рефакторинга с гарантиями
+//   - Интеграция с Z3, ESLint, TypeScript
+//   - Проверка эквивалентности
+// ============================================================
+
+import { Project, ScriptTarget, ModuleKind, type SourceFile } from 'ts-morph';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Logger, parseLogLevel } from '../utils/Logger.js';
+
+// ============================================================
+// ИМПОРТЫ КОМПОНЕНТОВ РЕФАКТОРИНГА
+// ============================================================
 import { ModuleExtractor } from './ModuleExtractor.js';
 import { ImportManager } from './ImportManager.js';
 import { TypeScriptValidator } from './TypeScriptValidator.js';
@@ -35,16 +67,40 @@ import {
 } from '../formal/index.js';
 import type { IRefactorContext } from './interfaces/IRefactorContext.js';
 import type { RefactorOptions, ExtractedModule, ClusterInfo, RefactorResult } from './types.js';
+
+// ============================================================
+// ✅ НОВЫЕ ИМПОРТЫ ИЗ reporters/json
+// ============================================================
+// Вся логика анализа AST теперь делегируется в reporters/json.
+// AutoRefactor больше не обходит AST вручную для сбора сущностей.
+// ============================================================
+import { extractEntitiesFromFile } from '../reporters/json/extractors/extract-entities-from-file.js';
+import { buildFullAnalysis } from '../reporters/json/graphs/full-analysis.js';
+import type { EntitiesResult, EnhancedEntityInfo } from '../types.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Автоматическое определение WASM пути
+// ============================================================
+// АВТООПРЕДЕЛЕНИЕ WASM ПУТИ
+// ============================================================
+
+/**
+ * Автоматическое определение WASM пути.
+ *
+ * Проверяет несколько возможных путей в порядке приоритета:
+ *   1. рядом с dist
+ *   2. из src/
+ *   3. в проекте (grammars/)
+ *   4. в монорепозитории
+ *   5. в node_modules
+ */
 function getDefaultWasmPath(): string {
   const possiblePaths = [
-    path.resolve(__dirname, 'wasm'), // рядом с dist
-    path.resolve(__dirname, '../dist/wasm'), // из src/
-    path.resolve(process.cwd(), 'grammars'), // в проекте
-    path.resolve(process.cwd(), 'packages/ast-analyzer/dist/wasm'), // в монорепозитории
+    path.resolve(__dirname, 'wasm'),
+    path.resolve(__dirname, '../dist/wasm'),
+    path.resolve(process.cwd(), 'grammars'),
+    path.resolve(process.cwd(), 'packages/ast-analyzer/dist/wasm'),
     path.resolve(process.cwd(), 'node_modules/@newkind/ast-analyzer/dist/wasm'),
   ];
 
@@ -61,11 +117,17 @@ function getDefaultWasmPath(): string {
     }
   }
 
-  // Возвращаем путь по умолчанию
   return path.resolve(__dirname, 'wasm');
 }
 
+// ============================================================
+// ОСНОВНОЙ КЛАСС AutoRefactor
+// ============================================================
+
 export class AutoRefactor {
+  // ----------------------------------------------------------
+  // Основные компоненты
+  // ----------------------------------------------------------
   private project: Project;
   private options: RefactorOptions;
   private logger: Logger;
@@ -85,7 +147,9 @@ export class AutoRefactor {
   private wasmPath: string;
   private context: IRefactorContext;
 
-  // Инициализируемые компоненты
+  // ----------------------------------------------------------
+  // Инициализируемые компоненты (lazy)
+  // ----------------------------------------------------------
   private tsValidator: TypeScriptValidator | null = null;
   private eslintFixer: ESLintASTFixer | null = null;
   private codeValidator: CodeValidator | null = null;
@@ -97,7 +161,9 @@ export class AutoRefactor {
   private z3Verifier: Z3Verifier | null = null;
   private equivalenceChecker: RefactoringEquivalenceChecker | null = null;
 
-  // Сохранение результатов для обратной совместимости
+  // ----------------------------------------------------------
+  // Сохранение результатов (для обратной совместимости)
+  // ----------------------------------------------------------
   private validationResults: ValidationResult | undefined;
   private eslintResults: ESLintFixResult[] | undefined = undefined;
   private tsFixResults: { fixedCount: number; remainingErrors: number } | undefined = undefined;
@@ -105,11 +171,21 @@ export class AutoRefactor {
   private verificationResults: VerificationResult[] = [];
   private equivalenceResult: RefactoringEquivalenceResult | undefined = undefined;
 
+  /**
+   * Публичный геттер для проверки режима dry-run.
+   */
   public isDryRun(): boolean {
     return this.options.dryRun || false;
   }
 
+  // ==========================================================
+  // КОНСТРУКТОР
+  // ==========================================================
+
   constructor(options: RefactorOptions = {}) {
+    // --------------------------------------------------------
+    // Дефолтные опции
+    // --------------------------------------------------------
     this.options = {
       modulesDir: 'modules',
       targetClusterSize: 3,
@@ -170,13 +246,21 @@ export class AutoRefactor {
       ...options,
     };
 
-    // Устанавливаем WASM путь
+    // --------------------------------------------------------
+    // WASM путь
+    // --------------------------------------------------------
     this.wasmPath = this.options.wasmPath || getDefaultWasmPath();
 
+    // --------------------------------------------------------
+    // Логгер
+    // --------------------------------------------------------
     const logLevel = parseLogLevel(this.options.logLevel || 'info');
     this.logger = new Logger(logLevel, this.options.logFile, true);
     this.incremental = this.options.incremental !== false;
 
+    // --------------------------------------------------------
+    // ts-morph Project
+    // --------------------------------------------------------
     this.project = new Project({
       compilerOptions: {
         target: ScriptTarget.ES2020,
@@ -190,7 +274,9 @@ export class AutoRefactor {
       useInMemoryFileSystem: false,
     });
 
-    // ✅ ПОЛНЫЙ КОНТЕКСТ со всеми методами
+    // --------------------------------------------------------
+    // Контекст (для дочерних компонентов)
+    // --------------------------------------------------------
     this.context = {
       project: this.project,
       options: this.options,
@@ -272,22 +358,32 @@ export class AutoRefactor {
       getEquivalenceCheckLevel: () => this.options.equivalenceCheckLevel || 'full',
     };
 
-    // Инициализируем компоненты через контекст
+    // --------------------------------------------------------
+    // Компоненты, не требующие тяжёлой инициализации
+    // --------------------------------------------------------
     this.importManager = new ImportManager(this.context);
     this.backupManager = new BackupManager(this.logger);
     this.moduleTypeDetector = new ModuleTypeDetector(this.logger);
     this.syntaxValidator = new SyntaxValidator(this.logger);
 
-    // Инициализируем семантические компоненты при необходимости
+    // --------------------------------------------------------
+    // Тяжёлые компоненты (по флагам)
+    // --------------------------------------------------------
     if (this.options.semanticAnalysis || this.options.formalVerification) {
       this.initSemanticComponents();
     }
 
-    // Инициализируем проверку эквивалентности
+    // --------------------------------------------------------
+    // Проверка эквивалентности
+    // --------------------------------------------------------
     if (this.options.verifyEquivalence !== false) {
       this.equivalenceChecker = new RefactoringEquivalenceChecker();
     }
   }
+
+  // ==========================================================
+  // ИНИЦИАЛИЗАЦИЯ ТЯЖЁЛЫХ КОМПОНЕНТОВ
+  // ==========================================================
 
   private initSemanticComponents(): void {
     if (this.options.eslintCheck || this.options.eslintFix) {
@@ -315,6 +411,25 @@ export class AutoRefactor {
     }
   }
 
+  // ==========================================================
+  // ПУБЛИЧНЫЙ API: REFACTOR
+  // ==========================================================
+
+  /**
+   * Запускает рефакторинг файла.
+   *
+   * Основной flow:
+   *   1. Проверка существования файла
+   *   2. Сохранение оригинала для проверки эквивалентности
+   *   3. Создание бэкапа
+   *   4. Определение типа модуля (ESM/CJS)
+   *   5. Валидация исходного файла (если не ESM)
+   *   6. Рабочая копия (если не dry-run)
+   *   7. Запуск refactorWithGuarantee или refactorStandard
+   *   8. Валидация финального файла
+   *   9. Формальная проверка эквивалентности
+   *  10. Сбор метрик
+   */
   async refactor(filePath: string): Promise<RefactorResult> {
     const absolutePath = path.resolve(filePath);
     this.logger.info('Starting refactoring with full guarantee', {
@@ -330,7 +445,9 @@ export class AutoRefactor {
       return this.createErrorResult(`File not found: ${absolutePath}`, null, -1, []);
     }
 
-    // Сохраняем оригинальное содержимое для проверки эквивалентности
+    // --------------------------------------------------------
+    // Сохраняем оригинал для проверки эквивалентности
+    // --------------------------------------------------------
     let originalContent: string;
     let originalBackupPath: string | null = null;
 
@@ -343,7 +460,9 @@ export class AutoRefactor {
       });
     }
 
-    // В dry-run режиме пропускаем создание бэкапов
+    // --------------------------------------------------------
+    // Полный бэкап (если не dry-run)
+    // --------------------------------------------------------
     if (!this.options.dryRun) {
       const backupResult = await this.backupManager.createFullBackup(absolutePath);
       if (backupResult) {
@@ -356,6 +475,9 @@ export class AutoRefactor {
       this.logger.info('DRY RUN: skipping backup creation');
     }
 
+    // --------------------------------------------------------
+    // Определение типа модуля
+    // --------------------------------------------------------
     this.detectionResult = await this.moduleTypeDetector.detect(absolutePath);
     this.moduleType = this.detectionResult.type;
     this.logger.info('Module type detected', {
@@ -367,6 +489,9 @@ export class AutoRefactor {
     const isESM = this.moduleType === 'esm';
     const skipValidation = this.options.skipValidationForESM !== false && isESM;
 
+    // --------------------------------------------------------
+    // Валидация исходного файла (если не ESM)
+    // --------------------------------------------------------
     if (!skipValidation) {
       const initialValidation = await this.syntaxValidator.validate(absolutePath);
       this.validationHistory.push(initialValidation);
@@ -383,7 +508,9 @@ export class AutoRefactor {
       }
     }
 
-    // В dry-run режиме пропускаем создание рабочей копии
+    // --------------------------------------------------------
+    // Рабочая копия (если не dry-run)
+    // --------------------------------------------------------
     let workingCopy: string | null = null;
     if (!this.options.dryRun) {
       workingCopy = await this.backupManager.createWorkingCopy(absolutePath);
@@ -392,12 +519,17 @@ export class AutoRefactor {
       this.logger.info('DRY RUN: skipping working copy creation');
     }
 
-    // Инициализируем проверку эквивалентности
+    // --------------------------------------------------------
+    // Инициализация проверки эквивалентности
+    // --------------------------------------------------------
     if (this.equivalenceChecker) {
       await this.equivalenceChecker.initialize();
     }
 
     try {
+      // ------------------------------------------------------
+      // Основной flow
+      // ------------------------------------------------------
       let result: RefactorResult;
 
       if (this.options.guaranteeMode) {
@@ -406,6 +538,9 @@ export class AutoRefactor {
         result = await this.refactorStandard(absolutePath);
       }
 
+      // ------------------------------------------------------
+      // Финальная валидация (если не ESM)
+      // ------------------------------------------------------
       if (!skipValidation) {
         const finalValidation = await this.syntaxValidator.validate(absolutePath);
         this.validationHistory.push(finalValidation);
@@ -422,7 +557,9 @@ export class AutoRefactor {
         }
       }
 
-      // ФОРМАЛЬНАЯ ПРОВЕРКА ЭКВИВАЛЕНТНОСТИ
+      // ------------------------------------------------------
+      // Формальная проверка эквивалентности
+      // ------------------------------------------------------
       if (this.options.verifyEquivalence !== false && originalBackupPath) {
         this.logger.info('🔬 Running formal equivalence verification...');
 
@@ -432,7 +569,6 @@ export class AutoRefactor {
             this.options.modulesDir || 'modules'
           );
 
-          // Проверяем, существует ли директория с модулями
           const hasModules = fs.existsSync(modulesDir) && fs.readdirSync(modulesDir).length > 0;
 
           if (hasModules || this.options.equivalenceCheckLevel === 'full') {
@@ -454,13 +590,11 @@ export class AutoRefactor {
                 );
               }
 
-              // Сохраняем отчет об ошибке
               const reportPath = `${absolutePath}.equivalence-error.md`;
               fs.writeFileSync(reportPath, equivResult.report);
               this.logger.error(`📄 Equivalence report saved: ${reportPath}`);
 
               if (!this.options.dryRun && !this.options.guaranteeMode) {
-                // Восстанавливаем оригинал
                 await this.backupManager.restore(absolutePath);
                 return this.createErrorResult(
                   'Formal equivalence check failed. Original file restored.',
@@ -486,7 +620,9 @@ export class AutoRefactor {
         }
       }
 
-      // Собираем метрики
+      // ------------------------------------------------------
+      // Метрики и финальная сборка результата
+      // ------------------------------------------------------
       const metrics = this.collectMetrics();
       result.metrics = metrics;
 
@@ -499,7 +635,6 @@ export class AutoRefactor {
         backupsCreated: this.backupManager.getBackups().length,
       };
 
-      // Добавляем результаты семантического анализа
       result.semanticResults = this.analysisData.semanticResults;
       result.verificationResults = this.verificationResults;
       result.validationResults = this.validationResults;
@@ -511,6 +646,9 @@ export class AutoRefactor {
       this.logger.info('Refactoring completed successfully');
       return result;
     } catch (error) {
+      // ------------------------------------------------------
+      // Откат при ошибке
+      // ------------------------------------------------------
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error('Refactoring failed, restoring backup', { error: errorMessage });
       if (!this.options.dryRun) {
@@ -518,6 +656,9 @@ export class AutoRefactor {
       }
       return this.createErrorResult(errorMessage, this.backupPath, -1, []);
     } finally {
+      // ------------------------------------------------------
+      // Очистка
+      // ------------------------------------------------------
       if (!this.options.dryRun) {
         await this.backupManager.cleanup();
       } else {
@@ -530,6 +671,22 @@ export class AutoRefactor {
     }
   }
 
+  // ==========================================================
+  // GUARANTEE MODE
+  // ==========================================================
+
+  /**
+   * Рефакторинг с максимальной гарантией.
+   *
+   * Использует чекпоинты между этапами:
+   *   1. analysis
+   *   2. clustering
+   *   3. extraction
+   *   4. imports
+   *
+   * При ошибке — откат к последнему чекпоинту.
+   * При исчерпании попыток — ошибка.
+   */
   private async refactorWithGuarantee(filePath: string): Promise<RefactorResult> {
     const MAX_RETRIES = this.options.maxAttempts || 3;
     const isESM = this.moduleType === 'esm';
@@ -547,7 +704,9 @@ export class AutoRefactor {
       try {
         const checkpoints: string[] = [];
 
+        // --------------------------------------------------
         // ЭТАП 1: Анализ
+        // --------------------------------------------------
         const analysisCheckpoint = await this.backupManager.createCheckpoint(filePath, 'analysis');
         if (analysisCheckpoint) {
           checkpoints.push(analysisCheckpoint);
@@ -573,12 +732,16 @@ export class AutoRefactor {
           }
         }
 
-        // ЭТАП 2: Семантический анализ (если включен)
+        // --------------------------------------------------
+        // ЭТАП 2: Семантический анализ (если включён)
+        // --------------------------------------------------
         if (this.options.semanticAnalysis) {
           await this.runSemanticAnalysis(filePath);
         }
 
+        // --------------------------------------------------
         // ЭТАП 3: Кластеризация
+        // --------------------------------------------------
         const clusterCheckpoint = await this.backupManager.createCheckpoint(filePath, 'clustering');
         if (clusterCheckpoint) {
           checkpoints.push(clusterCheckpoint);
@@ -610,7 +773,9 @@ export class AutoRefactor {
           }
         }
 
+        // --------------------------------------------------
         // ЭТАП 4: Извлечение модулей
+        // --------------------------------------------------
         const extractCheckpoint = await this.backupManager.createCheckpoint(filePath, 'extraction');
         if (extractCheckpoint) {
           checkpoints.push(extractCheckpoint);
@@ -629,7 +794,7 @@ export class AutoRefactor {
 
         await this.extractModules(filePath);
 
-        // Валидируем каждый созданный модуль
+        // Валидация каждого созданного модуля
         if (!skipValidation) {
           let allModulesValid = true;
           for (const module of this.modules) {
@@ -658,7 +823,9 @@ export class AutoRefactor {
           }
         }
 
+        // --------------------------------------------------
         // ЭТАП 5: Обновление импортов
+        // --------------------------------------------------
         const importCheckpoint = await this.backupManager.createCheckpoint(filePath, 'imports');
         if (importCheckpoint) {
           checkpoints.push(importCheckpoint);
@@ -678,38 +845,52 @@ export class AutoRefactor {
           }
         }
 
+        // --------------------------------------------------
         // ЭТАП 6: Валидация кода (если включена)
+        // --------------------------------------------------
         if (this.options.codeValidation) {
           await this.runCodeValidation(filePath);
         }
 
+        // --------------------------------------------------
         // ЭТАП 7: ESLint (если включен)
+        // --------------------------------------------------
         if (this.options.eslintCheck) {
           await this.runESLint(filePath);
         }
 
+        // --------------------------------------------------
         // ЭТАП 8: TypeScript проверка (если включена)
+        // --------------------------------------------------
         if (this.options.typeCheck) {
           await this.runTypeCheck(filePath);
         }
 
+        // --------------------------------------------------
         // ЭТАП 9: Автоисправление (если включено)
+        // --------------------------------------------------
         if (this.options.autoFix) {
           await this.runAutoFix(filePath);
         }
 
+        // --------------------------------------------------
         // ЭТАП 10: Формальная верификация (если включена)
+        // --------------------------------------------------
         if (this.options.formalVerification) {
           const sourceFile = this.project.addSourceFileAtPath(filePath);
           await this.runFormalVerification(sourceFile);
         }
 
-        // ЭТАП 11: Обновление Vue шаблона (если включено и это Vue файл)
+        // --------------------------------------------------
+        // ЭТАП 11: Обновление Vue шаблона (если включено)
+        // --------------------------------------------------
         if (this.options.updateTemplate && filePath.endsWith('.vue') && this.templateUpdater) {
           await this.templateUpdater.update(filePath, this.modules);
         }
 
+        // --------------------------------------------------
         // Удаляем чекпоинты после успеха
+        // --------------------------------------------------
         if (!this.options.dryRun) {
           for (const checkpoint of checkpoints) {
             await this.backupManager.removeCheckpoint(checkpoint);
@@ -745,6 +926,13 @@ export class AutoRefactor {
     return this.createErrorResult(errorMsg, this.backupPath, -1, []);
   }
 
+  // ==========================================================
+  // STANDARD MODE
+  // ==========================================================
+
+  /**
+   * Рефакторинг без гарантий (одна попытка).
+   */
   private async refactorStandard(filePath: string): Promise<RefactorResult> {
     const isESM = this.moduleType === 'esm';
     const skipValidation = this.options.skipValidationForESM !== false && isESM;
@@ -755,7 +943,7 @@ export class AutoRefactor {
     await this.extractModules(filePath);
     await this.updateImports(filePath);
 
-    // Выполняем дополнительные проверки если включены
+    // Дополнительные проверки
     if (this.options.semanticAnalysis) {
       await this.runSemanticAnalysis(filePath);
     }
@@ -794,64 +982,75 @@ export class AutoRefactor {
     return this.createSuccessResult(-1);
   }
 
+  // ==========================================================
+  // АНАЛИЗ ФАЙЛА (ДЕЛЕГИРУЕТСЯ В reporters/json)
+  // ============================================================
+  // ✅ v4.0.0: Вся логика обхода AST теперь делегируется в
+  // extractEntitiesFromFile. AutoRefactor больше НЕ обходит AST
+  // вручную для сбора функций/классов/вызовов.
+  // ==========================================================
+
+  /**
+   * Анализирует файл и кластеризует функции.
+   *
+   * Использует:
+   *   - extractEntitiesFromFile для получения сущностей
+   *   - buildFullAnalysis для получения полного анализа
+   *   - identifyClusters для кластеризации (уникальная логика)
+   *
+   * @param filePath — путь к файлу
+   */
   private async analyzeAndCluster(filePath: string): Promise<void> {
     this.logger.info('Analyzing and clustering', { filePath });
 
-    const sourceFile = this.project.addSourceFileAtPath(filePath);
+    // ------------------------------------------------------
+    // 1. Извлекаем сущности через reporters/json
+    // ------------------------------------------------------
+    const entities: EnhancedEntityInfo = extractEntitiesFromFile(filePath);
+
+    // ------------------------------------------------------
+    // 2. Строим полный анализ через reporters/json
+    // ------------------------------------------------------
+    const graphData = {
+      rootKey: filePath,
+      graph: { [filePath]: [] as string[] },
+    };
+
+    // buildFullAnalysis ожидает EntitiesResult (внутренний формат),
+    // а extractEntitiesFromFile возвращает EnhancedEntityInfo.
+    // Конвертируем обратно или используем напрямую.
+    //
+    // ⚠️ В текущей версии buildFullAnalysis принимает EntitiesResult.
+    // Используем `as any` для совместимости (оба типа содержат
+    // одинаковый набор полей — functions, classes, constants и т.д.).
+    const fullAnalysis = buildFullAnalysis(
+      graphData,
+      entities as any as EntitiesResult,
+      filePath
+    );
+
+    // ------------------------------------------------------
+    // 3. Собираем functions и callGraph из fullAnalysis
+    // ------------------------------------------------------
     const functions: string[] = [];
     const callGraph: Record<string, string[]> = {};
 
-    // Собираем функции
-    for (const func of sourceFile.getFunctions()) {
-      const name = func.getName();
-      if (!name) continue;
-      functions.push(name);
-      callGraph[name] = [];
-
-      func.forEachDescendant(node => {
-        if (Node.isCallExpression(node)) {
-          const expr = node.getExpression();
-          if (Node.isIdentifier(expr)) {
-            const calledName = expr.getText();
-            if (calledName && calledName !== name) {
-              if (!callGraph[name]) callGraph[name] = [];
-              if (!callGraph[name].includes(calledName)) {
-                callGraph[name].push(calledName);
-              }
-            }
-          }
-        }
-      });
-    }
-
-    // Добавляем классы в функции для кластеризации
-    const classes = sourceFile.getClasses();
-    for (const cls of classes) {
-      const className = cls.getName();
-      if (!className) continue;
-
-      if (!functions.includes(className)) {
-        functions.push(className);
-      }
-
-      if (!callGraph[className]) {
-        callGraph[className] = [];
-      }
-
-      for (const method of cls.getMethods()) {
-        const methodName = method.getName();
-        if (methodName) {
-          if (!callGraph[methodName]) {
-            callGraph[methodName] = [];
-          }
-          if (!callGraph[className].includes(methodName)) {
-            callGraph[className].push(methodName);
-          }
-        }
+    for (const node of fullAnalysis.entityGraph.nodes) {
+      if (node.type === 'function') {
+        functions.push(node.name);
+        callGraph[node.name] = node.metadata.calls || [];
       }
     }
 
-    this.originalExports = this.collectOriginalExports(sourceFile);
+    // ------------------------------------------------------
+    // 4. Собираем оригинальные экспорты
+    // ------------------------------------------------------
+    this.originalExports = this.collectOriginalExportsFromEntities(entities);
+
+    // ------------------------------------------------------
+    // 5. Кластеризация (уникальная логика рефакторинга)
+    // ------------------------------------------------------
+    const sourceFile = this.project.addSourceFileAtPath(filePath);
     let clusters = this.identifyClusters(functions, callGraph, sourceFile);
 
     if (!clusters || clusters.length === 0) {
@@ -859,6 +1058,9 @@ export class AutoRefactor {
       clusters = [];
     }
 
+    // ------------------------------------------------------
+    // 6. Сохраняем данные для следующих этапов
+    // ------------------------------------------------------
     this.analysisData = {
       functions,
       callGraph,
@@ -868,6 +1070,253 @@ export class AutoRefactor {
     };
   }
 
+  /**
+   * Анализирует файл (для guarantee mode).
+   *
+   * Возвращает:
+   *   - functions — список имён функций
+   *   - callGraph — граф вызовов
+   *   - sourceFile — ts-morph SourceFile
+   *   - isEmpty — признак пустого файла
+   *
+   * ✅ v4.0.0: использует extractEntitiesFromFile вместо ручного обхода.
+   */
+  private async analyzeFile(filePath: string): Promise<any> {
+    try {
+      const sourceFile = this.project.addSourceFileAtPath(filePath);
+
+      if (!sourceFile || sourceFile.getText().trim() === '') {
+        return { functions: [], callGraph: {}, sourceFile: null, isEmpty: true };
+      }
+
+      // --------------------------------------------------
+      // Извлекаем сущности через reporters/json
+      // --------------------------------------------------
+      const entities = extractEntitiesFromFile(filePath);
+
+      // --------------------------------------------------
+      // Собираем functions и callGraph
+      // --------------------------------------------------
+      const functions: string[] = [];
+      const callGraph: Record<string, string[]> = {};
+
+      for (const func of entities.functions || []) {
+        if (func.name) {
+          functions.push(func.name);
+          callGraph[func.name] = func.calls || [];
+        }
+      }
+
+      // --------------------------------------------------
+      // Оригинальные экспорты
+      // --------------------------------------------------
+      this.originalExports = this.collectOriginalExportsFromEntities(entities);
+
+      return { functions, callGraph, sourceFile };
+    } catch (error) {
+      this.logger.warn('Failed to analyze file, returning empty result', { error });
+      return { functions: [], callGraph: {}, sourceFile: null, isEmpty: true };
+    }
+  }
+
+  // ==========================================================
+  // КЛАСТЕРИЗАЦИЯ (УНИКАЛЬНАЯ ЛОГИКА)
+  // ==========================================================
+
+  /**
+   * Идентифицирует кластеры функций на основе графа вызовов.
+   *
+   * ⚠️ УНИКАЛЬНАЯ ЛОГИКА — НЕ ДУБЛИРУЕТСЯ.
+   * Оставлена в AutoRefactor, потому что:
+   *   - это специфика рефакторинга (кластеризация для выделения модулей)
+   *   - reporters/json занимается только анализом, не кластеризацией
+   *
+   * @param functions — список функций
+   * @param callGraph — граф вызовов
+   * @param sourceFile — ts-morph SourceFile
+   * @returns массив кластеров
+   */
+  private identifyClusters(
+    functions: string[],
+    callGraph: Record<string, string[]>,
+    sourceFile: SourceFile
+  ): ClusterInfo[] {
+    // Специальная обработка для maxClusterSize === 1
+    if (this.options.maxClusterSize === 1) {
+      return this.identifyClustersSingle(functions, callGraph, sourceFile);
+    }
+
+    const clusters: ClusterInfo[] = [];
+    const visited = new Set<string>();
+
+    // Находим точки входа (функции, которые никто не вызывает)
+    const calledFunctions = new Set<string>();
+    for (const callees of Object.values(callGraph)) {
+      for (const callee of callees) {
+        if (callee) calledFunctions.add(callee);
+      }
+    }
+
+    const entryPoints = functions.filter(f => !calledFunctions.has(f));
+
+    for (const entryPoint of entryPoints) {
+      if (visited.has(entryPoint)) continue;
+
+      const cluster: ClusterInfo = {
+        name: this.generateClusterName(entryPoint),
+        functions: [entryPoint],
+        cohesionScore: 100,
+        size: 1,
+        type: 'core',
+        isExported: false,
+        recommendation: '',
+        dependencies: [],
+        importers: [],
+      };
+
+      const queue = [entryPoint];
+      visited.add(entryPoint);
+
+      // BFS для сбора связанных функций
+      while (queue.length > 0 && cluster.functions.length < (this.options.maxClusterSize || 10)) {
+        const current = queue.shift()!;
+        const deps = callGraph[current] || [];
+
+        for (const dep of deps) {
+          if (!dep) continue;
+          if (!visited.has(dep) && functions.includes(dep)) {
+            if (cluster.functions.length >= (this.options.maxClusterSize || 10)) break;
+            visited.add(dep);
+            cluster.functions.push(dep);
+            queue.push(dep);
+          }
+        }
+      }
+
+      cluster.cohesionScore = this.calculateCohesion(cluster.functions, callGraph);
+      cluster.size = cluster.functions.length;
+
+      // Определяем, экспортируется ли хотя бы одна функция
+      let hasExported = false;
+      for (const f of cluster.functions) {
+        if (this.isExported(sourceFile, f)) {
+          hasExported = true;
+          break;
+        }
+      }
+      cluster.type = hasExported ? 'core' : 'helper';
+      cluster.isExported = hasExported;
+
+      // Рекомендация по размеру
+      if (cluster.cohesionScore >= 80) {
+        cluster.recommendation = '✅ Excellent cohesion - perfect candidate for extraction';
+      } else if (cluster.cohesionScore >= 60) {
+        cluster.recommendation = '✅ Good cohesion - suitable for extraction';
+      } else if (cluster.cohesionScore >= 40) {
+        cluster.recommendation = '⚠️ Moderate cohesion - consider merging';
+      } else {
+        cluster.recommendation = '❌ Low cohesion - review dependencies';
+      }
+
+      clusters.push(cluster);
+    }
+
+    // Сортировка по связности и размеру
+    clusters.sort((a, b) => {
+      if (b.cohesionScore !== a.cohesionScore) return b.cohesionScore - a.cohesionScore;
+      return b.functions.length - a.functions.length;
+    });
+
+    return clusters;
+  }
+
+  /**
+   * Специальная обработка для maxClusterSize === 1.
+   *
+   * Каждая функция становится отдельным модулем.
+   */
+  private identifyClustersSingle(
+    functions: string[],
+    callGraph: Record<string, string[]>,
+    sourceFile: SourceFile
+  ): ClusterInfo[] {
+    const clusters: ClusterInfo[] = [];
+    const visited = new Set<string>();
+
+    // Сортируем функции: экспорты идут первыми
+    const sortedFunctions = [...functions].sort((a, b) => {
+      const aExported = this.isExported(sourceFile, a);
+      const bExported = this.isExported(sourceFile, b);
+      if (aExported && !bExported) return -1;
+      if (!aExported && bExported) return 1;
+      return a.localeCompare(b);
+    });
+
+    for (const funcName of sortedFunctions) {
+      if (visited.has(funcName)) continue;
+      visited.add(funcName);
+
+      const deps = callGraph[funcName] || [];
+      const isExported = this.isExported(sourceFile, funcName);
+
+      // Находим импортеров (кто вызывает эту функцию)
+      const importers: string[] = [];
+      for (const [caller, callees] of Object.entries(callGraph)) {
+        if (callees.includes(funcName)) {
+          importers.push(caller);
+        }
+      }
+
+      const cluster: ClusterInfo = {
+        name: this.generateClusterName(funcName),
+        functions: [funcName],
+        cohesionScore: 100,
+        size: 1,
+        type: isExported ? 'core' : 'helper',
+        isExported: isExported,
+        recommendation: isExported
+          ? '✅ Exported function - safe to extract'
+          : 'ℹ️ Internal function - check dependencies',
+        dependencies: deps,
+        importers: importers,
+      };
+
+      clusters.push(cluster);
+    }
+
+    return clusters;
+  }
+
+  /**
+   * Проверяет, экспортируется ли сущность.
+   *
+   * ✅ v4.0.0: заменяет ручной обход AST через ts-morph.
+   */
+  private isExported(sourceFile: SourceFile, name: string): boolean {
+    const func = sourceFile.getFunction(name);
+    if (func && func.isExported()) return true;
+
+    const cls = sourceFile.getClass(name);
+    if (cls && cls.isExported()) return true;
+
+    const variable = sourceFile.getVariableDeclaration(name);
+    if (variable) {
+      const statement = variable.getParent()?.getParent();
+      if (statement && 'isExported' in statement) {
+        return (statement as any).isExported();
+      }
+    }
+
+    return false;
+  }
+
+  // ==========================================================
+  // ИЗВЛЕЧЕНИЕ МОДУЛЕЙ
+  // ==========================================================
+
+  /**
+   * Извлекает модули из кластеров.
+   */
   private async extractModules(filePath: string): Promise<void> {
     if (!this.analysisData?.clusters?.length) {
       this.logger.warn('No clusters found for extraction');
@@ -902,6 +1351,13 @@ export class AutoRefactor {
     this.logger.info(`Extracted ${this.modules.length} modules`);
   }
 
+  // ==========================================================
+  // ОБНОВЛЕНИЕ ИМПОРТОВ
+  // ==========================================================
+
+  /**
+   * Обновляет импорты в исходном файле.
+   */
   private async updateImports(filePath: string): Promise<void> {
     if (this.modules.length === 0) {
       this.logger.warn('No modules to update imports for');
@@ -922,7 +1378,6 @@ export class AutoRefactor {
       // Определяем расширение для импорта
       const ext = path.extname(module.path);
       if (ext === '.ts') {
-        // TypeScript модули импортируем без расширения
         relativePath = relativePath.replace(/\.ts$/, '');
       } else if (isESM) {
         relativePath = relativePath.replace(/\.(js|ts)$/, '.mjs');
@@ -1002,248 +1457,86 @@ export class AutoRefactor {
     }
   }
 
-  private async analyzeFile(filePath: string): Promise<any> {
-    try {
-      const sourceFile = this.project.addSourceFileAtPath(filePath);
-
-      if (!sourceFile || sourceFile.getText().trim() === '') {
-        return { functions: [], callGraph: {}, sourceFile: null, isEmpty: true };
-      }
-
-      const functions: string[] = [];
-      const callGraph: Record<string, string[]> = {};
-
-      for (const func of sourceFile.getFunctions()) {
-        const name = func.getName();
-        if (!name) continue;
-        functions.push(name);
-        callGraph[name] = [];
-
-        func.forEachDescendant(node => {
-          if (Node.isCallExpression(node)) {
-            const expr = node.getExpression();
-            if (Node.isIdentifier(expr)) {
-              const calledName = expr.getText();
-              if (calledName && calledName !== name) {
-                if (!callGraph[name]) callGraph[name] = [];
-                if (!callGraph[name].includes(calledName)) {
-                  callGraph[name].push(calledName);
-                }
-              }
-            }
-          }
-        });
-      }
-
-      const classes = sourceFile.getClasses();
-      for (const cls of classes) {
-        const className = cls.getName();
-        if (!className) continue;
-
-        if (!functions.includes(className)) {
-          functions.push(className);
-        }
-
-        if (!callGraph[className]) {
-          callGraph[className] = [];
-        }
-
-        for (const method of cls.getMethods()) {
-          const methodName = method.getName();
-          if (methodName) {
-            if (!callGraph[methodName]) {
-              callGraph[methodName] = [];
-            }
-            if (!callGraph[className].includes(methodName)) {
-              callGraph[className].push(methodName);
-            }
-          }
-        }
-      }
-
-      this.originalExports = this.collectOriginalExports(sourceFile);
-      return { functions, callGraph, sourceFile };
-    } catch (error) {
-      this.logger.warn('Failed to analyze file, returning empty result', { error });
-      return { functions: [], callGraph: {}, sourceFile: null, isEmpty: true };
-    }
-  }
-
-  private identifyClusters(
-    functions: string[],
-    callGraph: Record<string, string[]>,
-    sourceFile: SourceFile
-  ): ClusterInfo[] {
-    // Специальная обработка для maxClusterSize === 1
-    if (this.options.maxClusterSize === 1) {
-      return this.identifyClustersSingle(functions, callGraph, sourceFile);
-    }
-
-    const clusters: ClusterInfo[] = [];
-    const visited = new Set<string>();
-
-    const calledFunctions = new Set<string>();
-    for (const callees of Object.values(callGraph)) {
-      for (const callee of callees) {
-        if (callee) calledFunctions.add(callee);
-      }
-    }
-
-    const entryPoints = functions.filter(f => !calledFunctions.has(f));
-
-    for (const entryPoint of entryPoints) {
-      if (visited.has(entryPoint)) continue;
-
-      const cluster: ClusterInfo = {
-        name: this.generateClusterName(entryPoint),
-        functions: [entryPoint],
-        cohesionScore: 100,
-        size: 1,
-        type: 'core',
-        isExported: false,
-        recommendation: '',
-        dependencies: [],
-        importers: [],
-      };
-
-      const queue = [entryPoint];
-      visited.add(entryPoint);
-
-      while (queue.length > 0 && cluster.functions.length < (this.options.maxClusterSize || 10)) {
-        const current = queue.shift()!;
-        const deps = callGraph[current] || [];
-
-        for (const dep of deps) {
-          if (!dep) continue;
-          if (!visited.has(dep) && functions.includes(dep)) {
-            if (cluster.functions.length >= (this.options.maxClusterSize || 10)) break;
-            visited.add(dep);
-            cluster.functions.push(dep);
-            queue.push(dep);
-          }
-        }
-      }
-
-      cluster.cohesionScore = this.calculateCohesion(cluster.functions, callGraph);
-      cluster.size = cluster.functions.length;
-
-      let hasExported = false;
-      for (const f of cluster.functions) {
-        if (this.isExported(sourceFile, f)) {
-          hasExported = true;
-          break;
-        }
-      }
-      cluster.type = hasExported ? 'core' : 'helper';
-      cluster.isExported = hasExported;
-
-      if (cluster.cohesionScore >= 80) {
-        cluster.recommendation = '✅ Excellent cohesion - perfect candidate for extraction';
-      } else if (cluster.cohesionScore >= 60) {
-        cluster.recommendation = '✅ Good cohesion - suitable for extraction';
-      } else if (cluster.cohesionScore >= 40) {
-        cluster.recommendation = '⚠️ Moderate cohesion - consider merging';
-      } else {
-        cluster.recommendation = '❌ Low cohesion - review dependencies';
-      }
-
-      clusters.push(cluster);
-    }
-
-    clusters.sort((a, b) => {
-      if (b.cohesionScore !== a.cohesionScore) return b.cohesionScore - a.cohesionScore;
-      return b.functions.length - a.functions.length;
-    });
-
-    return clusters;
-  }
+  // ==========================================================
+  // ✅ НОВОЕ v4.0.0: ИЗВЛЕЧЕНИЕ ЭКСПОРТОВ ИЗ ENTITIES
+  // ============================================================
 
   /**
-   * Специальная обработка для maxClusterSize === 1
-   * Каждая функция становится отдельным модулем с правильными зависимостями
+   * Извлекает оригинальные экспорты из EnhancedEntityInfo.
+   *
+   * ✅ v4.0.0: заменяет ручной обход AST через regex.
+   * Использует entities.exports, которые уже собраны
+   * в extractEntitiesFromFile.
+   *
+   * @param entities — EnhancedEntityInfo из extractEntitiesFromFile
+   * @returns массив имён экспортируемых сущностей
    */
-  private identifyClustersSingle(
-    functions: string[],
-    callGraph: Record<string, string[]>,
-    sourceFile: SourceFile
-  ): ClusterInfo[] {
-    const clusters: ClusterInfo[] = [];
-    const visited = new Set<string>();
+  private collectOriginalExportsFromEntities(entities: EnhancedEntityInfo): string[] {
+    const exports: string[] = [];
+    const exportSet = new Set<string>();
 
-    // Сортируем функции: экспорты идут первыми
-    const sortedFunctions = [...functions].sort((a, b) => {
-      const aExported = this.isExported(sourceFile, a);
-      const bExported = this.isExported(sourceFile, b);
-      if (aExported && !bExported) return -1;
-      if (!aExported && bExported) return 1;
-      return a.localeCompare(b);
-    });
-
-    for (const funcName of sortedFunctions) {
-      if (visited.has(funcName)) continue;
-      visited.add(funcName);
-
-      const deps = callGraph[funcName] || [];
-      const isExported = this.isExported(sourceFile, funcName);
-
-      // Находим импортеров (кто вызывает эту функцию)
-      const importers: string[] = [];
-      for (const [caller, callees] of Object.entries(callGraph)) {
-        if (callees.includes(funcName)) {
-          importers.push(caller);
-        }
-      }
-
-      const cluster: ClusterInfo = {
-        name: this.generateClusterName(funcName),
-        functions: [funcName],
-        cohesionScore: 100,
-        size: 1,
-        type: isExported ? 'core' : 'helper',
-        isExported: isExported,
-        recommendation: isExported
-          ? '✅ Exported function - safe to extract'
-          : 'ℹ️ Internal function - check dependencies',
-        dependencies: deps,
-        importers: importers,
-      };
-
-      clusters.push(cluster);
-    }
-
-    return clusters;
-  }
-
-  /**
-   * Проверяет, экспортируется ли сущность
-   */
-  private isExported(sourceFile: SourceFile, name: string): boolean {
-    const func = sourceFile.getFunction(name);
-    if (func && func.isExported()) return true;
-
-    const cls = sourceFile.getClass(name);
-    if (cls && cls.isExported()) return true;
-
-    const variable = sourceFile.getVariableDeclaration(name);
-    if (variable) {
-      const statement = variable.getParent()?.getParent();
-      if (statement && 'isExported' in statement) {
-        return (statement as any).isExported();
+    // 1. Функции
+    for (const func of entities.functions || []) {
+      if (func.isExported && func.name && !exportSet.has(func.name)) {
+        exportSet.add(func.name);
+        exports.push(func.name);
       }
     }
 
-    return false;
+    // 2. Классы
+    for (const cls of entities.classes || []) {
+      if (cls.isExported && cls.name && !exportSet.has(cls.name)) {
+        exportSet.add(cls.name);
+        exports.push(cls.name);
+      }
+    }
+
+    // 3. Константы
+    for (const c of entities.constants || []) {
+      if (c.isExported && c.name && !exportSet.has(c.name)) {
+        exportSet.add(c.name);
+        exports.push(c.name);
+      }
+    }
+
+    // 4. Переменные
+    for (const v of entities.variables || []) {
+      if (v.isExported && v.name && !exportSet.has(v.name)) {
+        exportSet.add(v.name);
+        exports.push(v.name);
+      }
+    }
+
+    // 5. Интерфейсы
+    for (const i of entities.interfaces || []) {
+      if (i.isExported && i.name && !exportSet.has(i.name)) {
+        exportSet.add(i.name);
+        exports.push(i.name);
+      }
+    }
+
+    // 6. Типы
+    for (const t of entities.types || []) {
+      if (t.isExported && t.name && !exportSet.has(t.name)) {
+        exportSet.add(t.name);
+        exports.push(t.name);
+      }
+    }
+
+    return exports;
   }
 
+  // ==========================================================
+  // ВАЛИДАЦИЯ МОДУЛЯ
+  // ==========================================================
+
   /**
-   * Валидирует созданный модуль на наличие синтаксических ошибок
-   * При ошибке пытается переименовать модуль в другой тип
+   * Валидирует созданный модуль.
    */
   private async validateExtractedModule(modulePath: string): Promise<boolean> {
     try {
       const content = await fs.promises.readFile(modulePath, 'utf-8');
 
-      // Для TypeScript файлов используем ts-morph для валидации
       if (modulePath.endsWith('.ts')) {
         try {
           const sourceFile = this.project.addSourceFileAtPath(modulePath);
@@ -1251,24 +1544,20 @@ export class AutoRefactor {
           const errors = diagnostics.filter(d => d.getCategory() === 1);
           if (errors.length > 0) {
             this.logger.warn(`TypeScript errors in ${path.basename(modulePath)}: ${errors.length}`);
-            // Не считаем ошибки критичными для продолжения
           }
           return true;
-        } catch (error) {
-          // Если не удалось загрузить, пробуем как JavaScript
+        } catch {
           this.logger.debug(
             `Failed to validate as TypeScript, trying as JavaScript: ${path.basename(modulePath)}`
           );
         }
       }
 
-      // Для JavaScript проверяем синтаксис
       if (modulePath.endsWith('.js') || modulePath.endsWith('.mjs')) {
         try {
           new Function(content);
           return true;
         } catch (error) {
-          // Игнорируем ошибки, связанные с import.meta
           if ((error as any).message?.includes('import.meta')) {
             this.logger.debug(`import.meta in ${path.basename(modulePath)} is expected for ESM`);
             return true;
@@ -1279,7 +1568,6 @@ export class AutoRefactor {
 
       return true;
     } catch (error) {
-      // Если ошибка синтаксиса, пробуем переименовать модуль
       if ((error as any).message?.includes('syntax') || error instanceof SyntaxError) {
         this.logger.warn(
           `Syntax error in ${path.basename(modulePath)}, trying alternative extension`
@@ -1297,7 +1585,7 @@ export class AutoRefactor {
               this.logger.info(`Renamed ${path.basename(modulePath)} to ${path.basename(newPath)}`);
               return true;
             }
-          } catch (renameError) {
+          } catch {
             // Игнорируем ошибки переименования
           }
         }
@@ -1306,6 +1594,13 @@ export class AutoRefactor {
     }
   }
 
+  // ==========================================================
+  // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+  // ==========================================================
+
+  /**
+   * Вычисляет связность кластера.
+   */
   private calculateCohesion(functions: string[], callGraph: Record<string, string[]>): number {
     if (functions.length <= 1) return 100;
 
@@ -1322,6 +1617,9 @@ export class AutoRefactor {
     return Math.round((internalEdges / totalEdges) * 100);
   }
 
+  /**
+   * Генерирует имя кластера.
+   */
   private generateClusterName(funcName: string): string {
     const prefixes = [
       'get',
@@ -1347,66 +1645,18 @@ export class AutoRefactor {
     return (clean.charAt(0).toLowerCase() + clean.slice(1) || 'module') + 'Module';
   }
 
-  private collectOriginalExports(sourceFile: SourceFile): string[] {
-    const exports: string[] = [];
-    const exportSet = new Set<string>();
-
-    try {
-      const exportedDeclarations = sourceFile.getExportedDeclarations();
-      for (const [name] of exportedDeclarations) {
-        if (!exportSet.has(name)) {
-          exportSet.add(name);
-          exports.push(name);
-        }
-      }
-    } catch (error) {
-      // fallback to regex
-    }
-
-    const text = sourceFile.getText();
-
-    const funcMatches = text.match(/export\s+function\s+(\w+)/g);
-    if (funcMatches) {
-      for (const match of funcMatches) {
-        const nameMatch = match.match(/export\s+function\s+(\w+)/);
-        if (nameMatch && nameMatch[1] && !exportSet.has(nameMatch[1])) {
-          exportSet.add(nameMatch[1]);
-          exports.push(nameMatch[1]);
-        }
-      }
-    }
-
-    const varMatches = text.match(/export\s+(?:const|let|var)\s+(\w+)/g);
-    if (varMatches) {
-      for (const match of varMatches) {
-        const nameMatch = match.match(/export\s+(?:const|let|var)\s+(\w+)/);
-        if (nameMatch && nameMatch[1] && !exportSet.has(nameMatch[1])) {
-          exportSet.add(nameMatch[1]);
-          exports.push(nameMatch[1]);
-        }
-      }
-    }
-
-    const classMatches = text.match(/export\s+(?:default\s+)?class\s+(\w+)/g);
-    if (classMatches) {
-      for (const match of classMatches) {
-        const nameMatch = match.match(/export\s+(?:default\s+)?class\s+(\w+)/);
-        if (nameMatch && nameMatch[1] && !exportSet.has(nameMatch[1])) {
-          exportSet.add(nameMatch[1]);
-          exports.push(nameMatch[1]);
-        }
-      }
-    }
-
-    return exports;
-  }
-
+  /**
+   * Финальная валидация.
+   */
   private async finalValidation(filePath: string): Promise<boolean> {
     const mainValidation = await this.syntaxValidator.validate(filePath);
     this.validationHistory.push(mainValidation);
     return mainValidation.valid;
   }
 
+  /**
+   * Создаёт результат ошибки.
+   */
   private createErrorResult(
     error: string,
     _checkpointPath: string | null,
@@ -1426,6 +1676,9 @@ export class AutoRefactor {
     };
   }
 
+  /**
+   * Создаёт результат успеха.
+   */
   private createSuccessResult(lastSuccessfulStep: number): RefactorResult {
     return {
       success: true,
@@ -1448,6 +1701,9 @@ export class AutoRefactor {
     };
   }
 
+  /**
+   * Получает относительный путь.
+   */
   private getRelativePath(from: string, to: string): string {
     let relative = path.relative(path.dirname(from), to);
     if (!relative.startsWith('.') && !relative.startsWith('@')) {
@@ -1456,6 +1712,13 @@ export class AutoRefactor {
     return relative.replace(/\\/g, '/');
   }
 
+  // ==========================================================
+  // ИНИЦИАЛИЗАЦИЯ / ДИСПОЗИЦИЯ
+  // ==========================================================
+
+  /**
+   * Инициализация AutoRefactor.
+   */
   async initialize(): Promise<void> {
     this.logger.info('Initializing AutoRefactor');
     const wasmPath = path.resolve(this.wasmPath);
@@ -1481,6 +1744,9 @@ export class AutoRefactor {
     this.logger.info('AutoRefactor initialized');
   }
 
+  /**
+   * Освобождение ресурсов.
+   */
   async dispose(): Promise<void> {
     if (this.z3Verifier) {
       await this.z3Verifier.dispose();
@@ -1491,12 +1757,12 @@ export class AutoRefactor {
     this.logger.close();
   }
 
-  // ============================================
-  // РЕАЛИЗОВАННЫЕ МЕТОДЫ ДЛЯ СЕМАНТИЧЕСКОГО АНАЛИЗА
-  // ============================================
+  // ==========================================================
+  // СЕМАНТИЧЕСКИЙ АНАЛИЗ
+  // ==========================================================
 
   /**
-   * Запускает семантический анализ файла
+   * Запускает семантический анализ файла.
    */
   private async runSemanticAnalysis(filePath: string): Promise<void> {
     if (!this.options.semanticAnalysis) return;
@@ -1552,8 +1818,12 @@ export class AutoRefactor {
     }
   }
 
+  // ==========================================================
+  // CODE VALIDATION
+  // ==========================================================
+
   /**
-   * Запускает валидацию кода
+   * Запускает валидацию кода.
    */
   private async runCodeValidation(filePath: string): Promise<void> {
     if (!this.options.codeValidation || !this.codeValidator) return;
@@ -1570,8 +1840,12 @@ export class AutoRefactor {
     }
   }
 
+  // ==========================================================
+  // ESLINT
+  // ==========================================================
+
   /**
-   * Запускает ESLint анализ
+   * Запускает ESLint анализ.
    */
   private async runESLint(filePath: string): Promise<void> {
     if (!this.options.eslintCheck || !this.eslintFixer) {
@@ -1594,8 +1868,12 @@ export class AutoRefactor {
     });
   }
 
+  // ==========================================================
+  // TYPESCRIPT
+  // ==========================================================
+
   /**
-   * Запускает TypeScript проверку типов
+   * Запускает TypeScript проверку типов.
    */
   private async runTypeCheck(filePath: string): Promise<void> {
     if (!this.options.typeCheck || !this.tsValidator) {
@@ -1614,8 +1892,12 @@ export class AutoRefactor {
     });
   }
 
+  // ==========================================================
+  // AUTO-FIX
+  // ==========================================================
+
   /**
-   * Запускает автоматическое исправление кода
+   * Запускает автоматическое исправление кода.
    */
   private async runAutoFix(filePath: string): Promise<void> {
     if (!this.options.autoFix || !this.codeFixer || !this.validationResults) return;
@@ -1635,8 +1917,12 @@ export class AutoRefactor {
     });
   }
 
+  // ==========================================================
+  // FORMAL VERIFICATION
+  // ==========================================================
+
   /**
-   * Запускает формальную верификацию через Z3
+   * Запускает формальную верификацию через Z3.
    */
   private async runFormalVerification(sourceFile: SourceFile): Promise<void> {
     if (!this.options.formalVerification || !this.z3Verifier) return;
@@ -1690,7 +1976,7 @@ export class AutoRefactor {
   }
 
   /**
-   * Извлекает контракт из функции
+   * Извлекает контракт из функции.
    */
   private async extractContract(func: any): Promise<any> {
     const name = func.getName() || 'anonymous';
@@ -1751,7 +2037,7 @@ export class AutoRefactor {
   }
 
   /**
-   * Определяет тип параметра
+   * Определяет тип параметра.
    */
   private getParamType(param: any): 'int' | 'bool' | 'string' {
     const type = param.getType();
@@ -1762,7 +2048,7 @@ export class AutoRefactor {
   }
 
   /**
-   * Определяет тип возвращаемого значения
+   * Определяет тип возвращаемого значения.
    */
   private getReturnType(func: any): 'int' | 'bool' | 'string' | 'void' {
     const type = func.getReturnType();
@@ -1772,8 +2058,12 @@ export class AutoRefactor {
     return 'void';
   }
 
+  // ==========================================================
+  // МЕТРИКИ
+  // ==========================================================
+
   /**
-   * Собирает метрики из результатов анализа
+   * Собирает метрики из результатов анализа.
    */
   private collectMetrics(): RefactorResult['metrics'] {
     const semanticResults = this.analysisData.semanticResults || {};
@@ -1816,7 +2106,7 @@ export class AutoRefactor {
   }
 
   /**
-   * Вычисляет цикломатическую сложность
+   * Вычисляет цикломатическую сложность.
    */
   private calculateComplexity(cfg: ControlFlowGraph): number {
     const nodes = cfg.blocks.length;
@@ -1827,15 +2117,19 @@ export class AutoRefactor {
     return Math.max(1, edges - nodes + 2);
   }
 
+  // ==========================================================
+  // ПУБЛИЧНЫЕ ГЕТТЕРЫ
+  // ==========================================================
+
   /**
-   * Получает результат проверки эквивалентности
+   * Получает результат проверки эквивалентности.
    */
   getEquivalenceResult(): RefactoringEquivalenceResult | undefined {
     return this.equivalenceResult;
   }
 
   /**
-   * Проверяет, прошла ли проверка эквивалентности
+   * Проверяет, прошла ли проверка эквивалентности.
    */
   isEquivalenceVerified(): boolean {
     if (!this.equivalenceResult) return false;

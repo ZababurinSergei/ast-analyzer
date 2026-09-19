@@ -174,7 +174,14 @@ export interface CallInfo {
   targetVscode: string;
   callLine: number;
   callType:
-    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
+    | 'direct'
+    | 'import'
+    | 'computed'
+    | 'watch'
+    | 'event'
+    | 'lifecycle'
+    | 'method'
+    | 'constructor';
 }
 
 export interface CalledByInfo {
@@ -185,7 +192,14 @@ export interface CalledByInfo {
   callerVscode: string;
   callLine: number;
   callType:
-    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
+    | 'direct'
+    | 'import'
+    | 'computed'
+    | 'watch'
+    | 'event'
+    | 'lifecycle'
+    | 'method'
+    | 'constructor';
 }
 
 export interface ImportedByInfo {
@@ -250,10 +264,21 @@ export interface FunctionInfo {
 
   // ✅ НОВОЕ: функция экспонируется через defineExpose (Vue)
   isExposed?: boolean;
+
+  // ✅ НОВЫЕ ПОЛЯ (синхронизация с json-reporter.ts):
+  /** Является ли функция изолированной (никого не вызывает и её никто не вызывает) */
+  isSelf?: boolean;
+  /** Внутренний флаг для отладки — совпадает с isSelf */
+  _isSelf?: boolean;
 }
 
 // ==========================================
 // РАСШИРЕННАЯ ИНФОРМАЦИЯ О ФУНКЦИИ
+// ==========================================
+//
+// ✅ ОБНОВЛЕНО: добавлены поля calls, calledBy, importedBy
+// для совместимости с saveOptimizedPackageLockReport
+// (см. errors TS2353 в save-optimized.ts:184)
 // ==========================================
 
 export interface ExtendedFunctionInfo {
@@ -272,6 +297,12 @@ export interface ExtendedFunctionInfo {
   returnType?: string;
   metadata?: Record<string, any>;
   _uniqueKey?: string;
+
+  // ✅ ДОБАВЛЕНО: встроенные связи (используются в save-optimized.ts)
+  /** Кого вызывает эта функция */
+  calls?: CallInfo[];
+  /** Кто вызывает эту функцию */
+  calledBy?: CalledByInfo[];
 }
 
 // ==========================================
@@ -280,91 +311,82 @@ export interface ExtendedFunctionInfo {
 // Эти типы используются в EntitiesResult.templateXxx
 // и в EnhancedEntityInfo.templateXxx.
 // Хранят ТОЛЬКО ссылки (имена/примитивы), без дубликатов объектов.
+//
+// ⚠️ СИНХРОНИЗАЦИЯ С vue-analyzer/types.ts:
+//   - TemplateEventHandler       → EventHandlerUsage
+//   - TemplateDynamicComponent   → DynamicComponentUsage
+//   - TemplateRefUsage           → TemplateRefUsage (одноимённый)
+//   - TemplateCssVariable        → CssVariableUsage
+//   - TemplateDeepSelector       → DeepSelectorUsage
+//   - TemplateConditional        → TemplateConditionalUsage + {id?, fileId?}
 // ==========================================
+
+// Импорт типов из vue-analyzer для type aliases
+import type {
+  EventHandlerUsage as VueEventHandlerUsage,
+  DynamicComponentUsage as VueDynamicComponentUsage,
+  TemplateRefUsage as VueTemplateRefUsage,
+  CssVariableUsage as VueCssVariableUsage,
+  DeepSelectorUsage as VueDeepSelectorUsage,
+  TemplateConditional as VueTemplateConditional,
+} from './modes/vue-analyzer/types.js';
 
 /**
  * Обработчик события из шаблона Vue.
+ *
+ * ✅ СИНХРОНИЗИРОВАНО: type alias на EventHandlerUsage из vue-analyzer.
  */
-export interface TemplateEventHandler {
-  /** Имя события (click, update:value, ...) */
-  eventName: string;
-  /** Имя обработчика (onClick, handleUpdate, ...) */
-  handlerName: string;
-  /** Тег (<button>, <AiButton>, ...) */
-  tag: string;
-  /** Строка */
-  line: number;
-  /** Модификаторы (.stop, .prevent, ...) */
-  modifiers: string[];
-  /** Внешний обработчик (emit/console/Math и т.п.) */
-  isExternal?: boolean;
-}
+export type TemplateEventHandler = VueEventHandlerUsage;
 
 /**
  * Динамический компонент (<component :is="...">).
+ *
+ * ✅ СИНХРОНИЗИРОВАНО: type alias на DynamicComponentUsage из vue-analyzer.
  */
-export interface TemplateDynamicComponent {
-  /** Выражение из :is / v-bind:is */
-  isExpression: string;
-  /** Строка */
-  line: number;
-  /** ✅ v9.0.0: возможные значения expression (если удалось разрешить) */
-  resolvedComponents?: string[];
-}
+export type TemplateDynamicComponent = VueDynamicComponentUsage;
 
 /**
  * Template ref (ref="dataTable").
  *
- * ✅ НОВОЕ: используется в EntitiesResult.templateRefs
- * и пробрасывается в TemplateData.templateRefs для Codec.encode.
+ * ✅ СИНХРОНИЗИРОВАНО: type alias на TemplateRefUsage из vue-analyzer.
+ *
+ * ⚠️ КРИТИЧНО: без этого поля Codec.encode получает undefined
+ * на позиции 9 vt[] и JSON.stringify обрезает массив до 9 элементов
+ * вместо ожидаемых 12. Это ломает round-trip.
  */
-export interface TemplateRefUsage {
-  /** Значение ref="dataTable" */
-  refValue: string;
-  /** Тег элемента/компонента */
-  tag: string;
-  /** Строка в template */
-  line: number;
-  /** ✅ Методы, экспонированные через defineExpose целевого компонента */
-  exposedMethods?: string[];
-}
+export type TemplateRefUsage = VueTemplateRefUsage;
 
 /**
  * CSS-переменная из <style>.
+ *
+ * ✅ СИНХРОНИЗИРОВАНО: type alias на CssVariableUsage из vue-analyzer.
  */
-export interface TemplateCssVariable {
-  /** Имя переменной: --blue-700 */
-  name: string;
-  /** Значение: #1a5fb4 (если есть) */
-  value?: string;
-  /** Строка */
-  line: number;
-  /** Многострочное значение */
-  isMultiline?: boolean;
-}
+export type TemplateCssVariable = VueCssVariableUsage;
 
 /**
  * :deep() селектор из <style scoped>.
+ *
+ * ✅ СИНХРОНИЗИРОВАНО: type alias на DeepSelectorUsage из vue-analyzer.
  */
-export interface TemplateDeepSelector {
-  /** Селектор: .n-data-table-td */
-  selector: string;
-  /** Строка */
-  line: number;
-}
+export type TemplateDeepSelector = VueDeepSelectorUsage;
 
 /**
  * ✅ НОВОЕ v9.0.0: Условный рендеринг (v-if / v-else-if / v-else).
+ *
+ * ⚠️ СИНХРОНИЗИРОВАНО: расширяет TemplateConditionalUsage из vue-analyzer
+ * полями id и fileId, которые заполняются в compact-reporter.ts
+ * на этапе сборки FullJSON.
+ *
+ * Это позволяет:
+ *   - vue-analyzer создавать условия без id/fileId (внутренний формат)
+ *   - compact-reporter обогащать их id/fileId (публичный формат)
+ *   - codec корректно кодировать/декодировать (round-trip)
  */
-export interface TemplateConditional {
-  /** Директива */
-  directive: 'v-if' | 'v-else-if' | 'v-else';
-  /** Строка */
-  line: number;
-  /** Выражение условия (для v-if / v-else-if) */
-  conditionExpression?: string;
-  /** Компонент внутри ветки */
-  renderedComponent?: string;
+export interface TemplateConditional extends VueTemplateConditional {
+  /** Уникальный ID (cd1, cd2, ...). Заполняется в compact-reporter.ts */
+  id?: string;
+  /** ID файла (f1, f2, ...). Заполняется в compact-reporter.ts */
+  fileId?: string;
 }
 
 // ==========================================
@@ -781,7 +803,15 @@ export interface ModuleGraph {
 export interface EntityGraphNode {
   id: string;
   name: string;
-  type: 'function' | 'class' | 'constant' | 'interface' | 'type' | 'variable' | 'enum' | 'module';
+  type:
+    | 'function'
+    | 'class'
+    | 'constant'
+    | 'interface'
+    | 'type'
+    | 'variable'
+    | 'enum'
+    | 'module';
   module: string;
   line: number;
   metadata: {
@@ -1244,8 +1274,7 @@ export type CLIArgs =
   | MinifyFolderCLIArgs
   | PromptPackCLIArgs
   | SplitModuleCLIArgs
-  | ImpactCLIArgs
-  | DeadCodeCLIArgs
+  | ImpactCLIArgs  | DeadCodeCLIArgs
   | HybridReportCLIArgs
   | SemanticCLIArgs
   | VerifyCLIArgs
@@ -1539,7 +1568,21 @@ export interface EnhancedPackageLockReport {
       }
     >;
   };
-  callGraph?: {
+  /**
+   * ✅ ИСПРАВЛЕНО: callGraph может быть как простым словарём
+   * (Record<string, string[]>), так и структурированным объектом
+   * с полями from/to/path/found/nodes/edges.
+   *
+   * Причина: разные источники заполняют это поле по-разному:
+   *   - buildEnhancedPackageLockReport → Record<string, string[]>
+   *   - buildCallGraphBetweenFunctions   → структурированный объект
+   *
+   * Раньше тип требовал только структурированный объект, что давало
+   * TS2740 в enhanced-report.ts.
+   */
+  callGraph?:
+    | Record<string, string[]>
+    | {
     from: string;
     to: string;
     path: string[];
@@ -1567,6 +1610,8 @@ export interface EnhancedPackageLockReport {
     totalCalls: number;
     totalExportedFunctions: number;
     totalAsyncFunctions: number;
+    /** ✅ ДОБАВЛЕНО: количество импортов (используется в project-graph.ts:273) */
+    totalImports?: number;
   };
   fileStats: {
     totalFiles: number;
@@ -1580,6 +1625,11 @@ export interface EnhancedPackageLockReport {
 
 // ==========================================
 // ТИП ДЛЯ ENHANCED ENTITY INFO
+// ==========================================
+//
+// ✅ ОБНОВЛЕНО: добавлено поле exports
+// (см. errors TS2353 в extract-entities-from-file.ts:123
+//  и entities-converter.ts:135)
 // ==========================================
 
 export interface EnhancedEntityInfo {
@@ -1600,6 +1650,20 @@ export interface EnhancedEntityInfo {
    * `enhanced.imports = entities.imports.map(...)`.
    */
   imports?: ImportInfo[];
+
+  /**
+   * ✅ ДОБАВЛЕНО: экспорты.
+   *
+   * Используется в:
+   *   - extract-entities-from-file.ts:123
+   *   - entities-converter.ts:135
+   *   - CompactCommand.ts:561
+   *
+   * Дублирует `EntitiesResult.exports`, чтобы все потребители
+   * EnhancedEntityInfo могли обращаться к `entities.exports`
+   * без ошибок TS2339.
+   */
+  exports?: ExportInfo[];
 
   // ==========================================
   // ✅ НОВОЕ v4.1.0: template-поля Vue.

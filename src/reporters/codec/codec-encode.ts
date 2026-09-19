@@ -827,7 +827,7 @@ export function encode(payload: FullJSON): CompactJSON {
   const conditionals: NonNullable<CompactJSON['cd']> = [];
   for (const cd of asArray<TemplateConditional>(payload.conditionals)) {
     if (!cd) continue;
-    const fileIdx = fileReverse[cd.fileId] || 0;
+    const fileIdx = cd.fileId ? fileReverse[cd.fileId] || 0 : 0;
     const condIdx = addString(dict, cd.conditionExpression);
     const compIdx = addString(dict, cd.renderedComponent);
     const directiveCode = reverseLookup(CONDITIONAL_TYPES, cd.directive);
