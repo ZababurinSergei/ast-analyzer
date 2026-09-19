@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="./favicon.ico">
-    <title>Граф-инспектор</title>
+    <title>Граф-инспектор v13.0.2</title>
     <style>
         :root {
             --bg: #0d1117; --bg2: #161b22; --bg3: #21262d; --bg4: #30363d;
@@ -22,6 +22,7 @@
         .hdr {
             background: var(--bg2); border-bottom: 1px solid var(--border);
             padding: 8px 16px; display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+            flex-wrap: wrap;
         }
         .hdr h1 { font-size: 15px; }
         .hdr .v { background: var(--accent); color: #000; padding: 1px 7px; border-radius: 9px; font-size: 10px; font-weight: 700; }
@@ -30,9 +31,11 @@
         .hdr button {
             padding: 4px 10px; background: var(--bg3); border: 1px solid var(--border);
             border-radius: 6px; color: var(--text); font-size: 11px; cursor: pointer; font-family: inherit;
+            transition: all 0.15s;
         }
-        .hdr button:hover { border-color: var(--accent); }
+        .hdr button:hover:not(:disabled) { border-color: var(--accent); }
         .hdr button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .hdr button:disabled { opacity: 0.4; cursor: not-allowed; }
         .lay { display: flex; flex: 1; overflow: hidden; }
         .sb {
             width: 320px; min-width: 320px; background: var(--bg2);
@@ -173,7 +176,7 @@
         .toast.error { border-color: var(--red); color: var(--red); }
         .toast.success { border-color: var(--green); color: var(--green); }
         .toast.info { border-color: var(--accent); color: var(--accent); }
-        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: var(--bg); }
         ::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
 
@@ -213,16 +216,38 @@
         .rt-btn { padding: 8px 16px; background: var(--bg4); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; cursor: pointer; font-family: inherit; }
         .rt-btn:hover { border-color: var(--accent); }
         .rt-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+        /* PATHS STYLES (инжектится из main.js, но на случай fallback) */
+        .paths-list { font-size: 11px; }
+        .paths-count { color: var(--text2); font-size: 10px; margin-bottom: 6px; padding: 0 4px; }
+        .path-row {
+            display: flex; align-items: center; gap: 8px;
+            padding: 5px 8px; border-radius: 5px; margin-bottom: 3px;
+            background: var(--bg3); transition: background 0.15s;
+        }
+        .path-row:hover { background: var(--bg4); }
+        .path-idx { color: var(--text2); font-size: 9px; min-width: 24px; flex-shrink: 0; font-family: monospace; }
+        .path-chain { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; flex: 1; }
+        .path-node {
+            padding: 2px 8px; background: var(--bg);
+            border: 1px solid var(--border); border-radius: 4px;
+            font-family: 'Consolas', monospace; font-size: 10px;
+            color: var(--text); cursor: pointer; transition: all 0.15s;
+        }
+        .path-node:hover { border-color: var(--accent); color: var(--accent); }
+        .path-arrow { color: var(--text2); font-size: 10px; }
     </style>
 </head>
 <body>
 <div class="hdr">
-    <h1>🔍 AST Analyzer</h1><span class="v" id="verTag">v9.3</span>
+    <h1>🔍 AST Analyzer</h1>
+    <span class="v" id="verTag">v13.0.2</span>
     <div class="sm" id="sm"></div>
     <button id="btnReload" title="Перезагрузить из корня">🔄 Перезагрузить</button>
-    <button id="btnExportCompact" title="Экспорт в компактный JSON" disabled>📦 Compact</button>
+    <button id="btnExportCompact" title="Экспорт в компактный JSON v13.0.2" disabled>📦 Compact</button>
     <button id="btnExportFull" title="Экспорт в полный JSON" disabled>📄 Full</button>
-    <button id="btnRoundTrip" title="Проверка round-trip" disabled>🔁 Round-Trip</button>
+    <button id="btnLegend" title="Легенда кодека (F1)" disabled>📖 Легенда</button>
+    <button id="btnRoundTrip" title="Проверка round-trip (L0/L1/L2/L3/RE)" disabled>🔁 Round-Trip</button>
     <button id="btnCache" title="Информация о кэше">💾 Кэш</button>
     <button id="btnOpen" title="Открыть JSON">📂 Открыть</button>
     <input type="file" id="fi" accept=".json,application/json" style="display:none">
@@ -237,7 +262,7 @@
     <div style="font-size:40px;margin-bottom:10px">📦</div>
     <strong>Загрузка из корня проекта…</strong>
     <div style="font-size:11px;color:var(--text2);margin-top:6px">
-        Ожидается <code>index.json</code> или <code>index.full.json</code> рядом с HTML.<br>
+        Ожидается <code>index.json</code> (v13.0.2 compact) или <code>index.full.json</code> рядом с HTML.<br>
         Или перетащите файл сюда / нажмите для выбора.
     </div>
 </div>
@@ -263,7 +288,7 @@
 <div class="rt-overlay" id="rtOverlay">
     <div class="rt-modal">
         <div class="rt-header">
-            <h3>🔁 Проверка Round-Trip</h3>
+            <h3>🔁 Проверка Round-Trip v13.0.2</h3>
             <button class="rt-close" id="rtClose">×</button>
         </div>
         <div class="rt-body" id="rtBody"></div>

@@ -22,6 +22,7 @@ import { extractValue } from '../helpers/extract-value.js';
 import { calculateComplexity } from '../helpers/calculate-complexity.js';
 import { analyzeSecurity } from '../helpers/analyze-security.js';
 import { createEmptyEntitiesResult } from '../helpers/create-empty-result.js';
+import { inferFunctionName } from '../helpers/infer-function-name.js';
 import { findFunctionNode } from './find-function-node.js';
 import { collectAllCallsRecursive } from './collect-all-calls-recursive.js';
 import { processExports } from './process-exports.js';
@@ -362,9 +363,15 @@ export function extractEntitiesFromAST(
   // ==========================================
 
   function handleFunction(node: any, parent: any, depth: number): void {
-    if (!node.id) return;
+    // ✅ Анонимные FunctionExpression внутри переменных/присваиваний
+    //    теперь тоже получают имя из контекста через inferFunctionName.
+    const name = node.id?.name ?? inferFunctionName(node, parent);
 
-    const name = node.id.name;
+    // Если имя всё равно анонимное и это не export default — пропускаем
+    if (name === 'anonymous_function' && parent?.type !== 'ExportDefaultDeclaration') {
+      return;
+    }
+
     const isExported = isNodeExported(node, parent);
     const isMethod = parent?.type === 'MethodDefinition' || parent?.type === 'ClassMethod';
     const isEventHandlerNode = isEventHandler(node) || isEventHandler(parent);
@@ -411,12 +418,12 @@ export function extractEntitiesFromAST(
   // ==========================================
 
   function handleArrowFunction(node: any, parent: any, depth: number): void {
-    // Определяем имя: из VariableDeclarator или из Property
-    let name = 'anonymous_arrow';
+    // ✅ Единый вывод имени через inferFunctionName
+    let name = inferFunctionName(node, parent);
     let isExported = false;
 
+    // Определяем экспортируемость (та же логика, что была)
     if (parent && parent.type === 'VariableDeclarator' && parent.id?.name) {
-      name = parent.id.name;
       let exportParent = parent.parent;
       while (exportParent && exportParent.type !== 'Program') {
         if (
@@ -430,16 +437,16 @@ export function extractEntitiesFromAST(
       }
     }
 
-    if (parent && parent.type === 'Property' && parent.key) {
-      const propName = parent.key.name || parent.key.value;
-      if (propName) {
-        name = propName;
-      }
-    }
-
     // Определяем цепочку родителей
     const parentFunctions = collectParentFunctions(parent);
-    if (parentFunctions.length > 0 && !parent?.type?.includes('Property')) {
+
+    // Не префиксуем, если имя уже получено из Property/PropertyDefinition/VariableDeclarator
+    const alreadyNamed =
+        parent?.type === 'Property' ||
+        parent?.type === 'PropertyDefinition' ||
+        parent?.type === 'VariableDeclarator';
+
+    if (parentFunctions.length > 0 && !alreadyNamed) {
       name = parentFunctions.join('.') + '.' + name;
     }
 

@@ -2,7 +2,11 @@
 // ==========================================
 // ЕДИНАЯ ТОЧКА ВХОДА ДЛЯ ENTITY EXTRACTOR
 // ==========================================
-// Версия: 5.3.0
+// Версия: 5.4.0
+//
+// ИЗМЕНЕНИЯ v5.4.0:
+//   - ✅ ДОБАВЛЕНО: экспорт `inferFunctionName` из helpers/
+//     (ESTree-версия вывода имён функций из контекста AST)
 //
 // ИЗМЕНЕНИЯ v5.3.0:
 //   - ✅ ДОБАВЛЕНО: экспорт типа `TemplateConditional` (реэкспорт из vue-analyzer/types.js)
@@ -63,21 +67,23 @@ export { convertVueImportsToImportInfo } from './vue/convert-imports.js';
 
 export {
   /** Проверка, является ли узел обработчиком события */
-  isEventHandler,
+      isEventHandler,
   /** Извлечение типа события из узла */
-  extractEventType,
+      extractEventType,
   /** Вычисление цикломатической сложности */
-  calculateComplexity,
+      calculateComplexity,
   /** Анализ безопасности тела функции */
-  analyzeSecurity,
+      analyzeSecurity,
   /** Проверка, экспортируется ли узел */
-  isNodeExported,
+      isNodeExported,
   /** Извлечение текста тела функции */
-  extractBodyText,
+      extractBodyText,
   /** Извлечение значения из узла */
-  extractValue,
+      extractValue,
   /** Создание пустого EntitiesResult */
-  createEmptyEntitiesResult,
+      createEmptyEntitiesResult,
+  /** ✅ v5.4.0: Вывод имени функции из контекста AST (ESTree) */
+      inferFunctionName,
 } from './helpers/index.js';
 
 // ==========================================
@@ -99,17 +105,17 @@ export { processExports } from './ast/process-exports.js';
 
 export {
   /** Рекурсивный сбор всех вызовов функций из AST узла */
-  collectAllCalls,
+      collectAllCalls,
   /** Сбор всех вызовов без фильтрации по functionNames */
-  collectAllCallsUnfiltered,
+      collectAllCallsUnfiltered,
   /** Сбор всех объявленных функций в AST */
-  collectDeclaredFunctions,
+      collectDeclaredFunctions,
   /** Построение графа вызовов из AST */
-  buildCallGraphFromAST,
+      buildCallGraphFromAST,
   /** Поиск неиспользуемых функций */
-  findUnusedFunctions,
+      findUnusedFunctions,
   /** Поиск неразрешённых вызовов */
-  findUnresolvedCalls,
+      findUnresolvedCalls,
 } from '../call-collector.js';
 
 // ==========================================
@@ -127,7 +133,7 @@ export {
 export type { EntitiesResult } from '../../types.js';
 
 // ==========================================
-// ✅ НОВОЕ v5.3.0: РЕЭКСПОРТ ТИПОВ VUE TEMPLATE
+// ✅ РЕЭКСПОРТ ТИПОВ VUE TEMPLATE
 // ==========================================
 // Публичное API для работы с шаблонами Vue:
 //   - TemplateConditional — условный рендеринг (v-if/v-else-if/v-else)
@@ -141,25 +147,25 @@ export type { EntitiesResult } from '../../types.js';
 
 export type {
   /** Условный рендеринг: v-if / v-else-if / v-else */
-  TemplateConditional,
+      TemplateConditional,
   /** Динамический компонент: <component :is="..."> */
-  DynamicComponentUsage,
+      DynamicComponentUsage,
   /** Использование компонента в <template> */
-  TemplateComponentUsage,
+      TemplateComponentUsage,
   /** Template ref: ref="dataTable" */
-  TemplateRefUsage,
+      TemplateRefUsage,
   /** Event handler: @click="handleClick" */
-  EventHandlerUsage,
+      EventHandlerUsage,
   /** Template expression: {{ displayText }} */
-  TemplateExpressionUsage,
+      TemplateExpressionUsage,
   /** CSS-переменная из <style> */
-  CssVariableUsage,
+      CssVariableUsage,
   /** :deep() селектор */
-  DeepSelectorUsage,
+      DeepSelectorUsage,
   /** Определение слота из defineSlots<T>() */
-  SlotDefinition,
+      SlotDefinition,
   /** Атрибуты <script setup> */
-  SFCSetupAttributes,
+      SFCSetupAttributes,
 } from '../../modes/vue-analyzer/types.js';
 
 // ==========================================
@@ -183,6 +189,7 @@ import {
   extractBodyText,
   extractValue,
   createEmptyEntitiesResult,
+  inferFunctionName,
 } from './helpers/index.js';
 import {
   collectAllCalls,
@@ -221,6 +228,8 @@ export default {
   extractBodyText,
   extractValue,
   createEmptyEntitiesResult,
+  /** ✅ v5.4.0 */
+  inferFunctionName,
 
   // Реэкспорт из call-collector
   collectAllCalls,

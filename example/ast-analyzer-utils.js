@@ -1,8 +1,7 @@
 // ============================================================================
-// AST ANALYZER — UTILS v1.1
-// Общие утилиты: deepEqual, diffObjects, collectDiffs, normalizeForDiff,
-// stripServiceFields, stripForByteCompare, arrayEq, idToNum, debounce.
-// Единый источник истины — не дублировать в других модулях.
+// AST ANALYZER — UTILS v2.0
+// Общие утилиты для v13.0.2. Единый источник истины.
+// Обратная совместимость не поддерживается.
 //
 // Публичный API:
 //   // --- Сравнение ---
@@ -17,14 +16,21 @@
 //   stripServiceFields(obj)           → obj без __*/legend/edges/edgesStats
 //   stripForByteCompare(obj)          → obj без пустых полей, для L3
 //
+//   // --- RLE ---
+//   rle(arr)                          → [[value, count], ...]
+//   unrle(rle)                        → [value, value, ...]
+//
 //   // --- Прочее ---
 //   debounce(fn, ms?)                 → debounced-функция
 //
-// Изменения v1.1:
+// Изменения v2.0:
+//   - ✅ Только для формата v13.0.2 (columnar + RLE + tokens).
+//   - ✅ Добавлены rle / unrle (используются в codec v13.0.2).
 //   - ✅ Добавлен debounce (используется в main.js для поиска в дереве).
 //   - ✅ stripServiceFields и stripForByteCompare экспортируются наружу
 //        и реэкспортируются из ast-analyzer-codec.js для совместимости.
 //   - ✅ Все функции — чистые, без побочных эффектов, без зависимости от state.
+//   - ✅ Удалены все следы обратной совместимости со старыми форматами.
 // ============================================================================
 
 // ---------------------------------------------------------------------------
@@ -56,16 +62,30 @@ export function deepEqual(a, b) {
     (Array.isArray(b) && b.length === 0) ||
     (typeof b === 'object' && !Array.isArray(b) && Object.keys(b).length === 0);
 
-  if (isEmptyA && isEmptyB) {return true;}
-  if (a === b) {return true;}
-  if (typeof a !== typeof b) {return false;}
-  if (a === null || b === null) {return a === b;}
-  if (Array.isArray(a) !== Array.isArray(b)) {return false;}
+  if (isEmptyA && isEmptyB) {
+    return true;
+  }
+  if (a === b) {
+    return true;
+  }
+  if (typeof a !== typeof b) {
+    return false;
+  }
+  if (a === null || b === null) {
+    return a === b;
+  }
+  if (Array.isArray(a) !== Array.isArray(b)) {
+    return false;
+  }
 
   if (Array.isArray(a)) {
-    if (a.length !== b.length) {return false;}
+    if (a.length !== b.length) {
+      return false;
+    }
     for (let i = 0; i < a.length; i++) {
-      if (!deepEqual(a[i], b[i])) {return false;}
+      if (!deepEqual(a[i], b[i])) {
+        return false;
+      }
     }
     return true;
   }
@@ -73,9 +93,13 @@ export function deepEqual(a, b) {
   if (typeof a === 'object') {
     const ka = Object.keys(a).filter(k => a[k] !== undefined);
     const kb = Object.keys(b).filter(k => b[k] !== undefined);
-    if (ka.length !== kb.length) {return false;}
+    if (ka.length !== kb.length) {
+      return false;
+    }
     for (const k of ka) {
-      if (!deepEqual(a[k], b[k])) {return false;}
+      if (!deepEqual(a[k], b[k])) {
+        return false;
+      }
     }
     return true;
   }
@@ -100,14 +124,20 @@ export function diffObjects(a, b, limit = 20) {
   const diffs = [];
 
   const walk = (x, y, path) => {
-    if (diffs.length >= limit) {return;}
-    if (deepEqual(x, y)) {return;}
+    if (diffs.length >= limit) {
+      return;
+    }
+    if (deepEqual(x, y)) {
+      return;
+    }
 
     if (Array.isArray(x) && Array.isArray(y)) {
       const n = Math.max(x.length, y.length);
       for (let i = 0; i < n; i++) {
         walk(x[i], y[i], `${path}[${i}]`);
-        if (diffs.length >= limit) {return;}
+        if (diffs.length >= limit) {
+          return;
+        }
       }
       return;
     }
@@ -116,7 +146,9 @@ export function diffObjects(a, b, limit = 20) {
       const keys = new Set([...Object.keys(x), ...Object.keys(y)]);
       for (const k of keys) {
         walk(x[k], y[k], `${path}.${k}`);
-        if (diffs.length >= limit) {return;}
+        if (diffs.length >= limit) {
+          return;
+        }
       }
       return;
     }
@@ -142,12 +174,18 @@ export function collectDiffs(a, b, basePath = '$', limit = 20) {
   const diffs = [];
 
   const walk = (x, y, p) => {
-    if (diffs.length >= limit) {return;}
-    if (deepEqual(x, y)) {return;}
+    if (diffs.length >= limit) {
+      return;
+    }
+    if (deepEqual(x, y)) {
+      return;
+    }
 
     // null/undefined — терминальные значения
     if (x === undefined || y === undefined || x === null || y === null) {
-      if (x !== y) {diffs.push({ path: p, a: x, b: y });}
+      if (x !== y) {
+        diffs.push({ path: p, a: x, b: y });
+      }
       return;
     }
 
@@ -158,7 +196,9 @@ export function collectDiffs(a, b, basePath = '$', limit = 20) {
       const n = Math.min(x.length, y.length);
       for (let i = 0; i < n; i++) {
         walk(x[i], y[i], `${p}[${i}]`);
-        if (diffs.length >= limit) {return;}
+        if (diffs.length >= limit) {
+          return;
+        }
       }
       return;
     }
@@ -167,12 +207,16 @@ export function collectDiffs(a, b, basePath = '$', limit = 20) {
       const keys = new Set([...Object.keys(x), ...Object.keys(y)]);
       for (const k of keys) {
         walk(x[k], y[k], `${p}.${k}`);
-        if (diffs.length >= limit) {return;}
+        if (diffs.length >= limit) {
+          return;
+        }
       }
       return;
     }
 
-    if (x !== y) {diffs.push({ path: p, a: x, b: y });}
+    if (x !== y) {
+      diffs.push({ path: p, a: x, b: y });
+    }
   };
 
   walk(a, b, basePath);
@@ -194,14 +238,22 @@ export function collectDiffs(a, b, basePath = '$', limit = 20) {
  */
 export function normalizeForDiff(value) {
   const norm = v => {
-    if (v === undefined) {return undefined;}
-    if (v === null) {return null;}
-    if (Array.isArray(v)) {return v.map(norm);}
+    if (v === undefined) {
+      return undefined;
+    }
+    if (v === null) {
+      return null;
+    }
+    if (Array.isArray(v)) {
+      return v.map(norm);
+    }
     if (typeof v === 'object') {
       const out = {};
       for (const key of Object.keys(v).sort()) {
         const nv = norm(v[key]);
-        if (nv !== undefined) {out[key] = nv;}
+        if (nv !== undefined) {
+          out[key] = nv;
+        }
       }
       return out;
     }
@@ -222,9 +274,13 @@ export function normalizeForDiff(value) {
  * @returns {boolean}
  */
 export function arrayEq(a, b) {
-  if (a.length !== b.length) {return false;}
+  if (a.length !== b.length) {
+    return false;
+  }
   for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) {return false;}
+    if (a[i] !== b[i]) {
+      return false;
+    }
   }
   return true;
 }
@@ -240,7 +296,9 @@ export function arrayEq(a, b) {
  * @returns {number}
  */
 export function idToNum(id) {
-  if (!id || typeof id !== 'string') {return -1;}
+  if (!id || typeof id !== 'string') {
+    return -1;
+  }
   const m = id.match(/(\d+)$/);
   return m ? parseInt(m[1], 10) : -1;
 }
@@ -259,12 +317,18 @@ export function idToNum(id) {
  * @returns {object}
  */
 export function stripServiceFields(obj) {
-  if (!obj || typeof obj !== 'object') {return obj;}
+  if (!obj || typeof obj !== 'object') {
+    return obj;
+  }
   const { __codec, legend, ...rest } = obj;
   const clean = {};
   for (const [k, v] of Object.entries(rest)) {
-    if (k.startsWith('__')) {continue;}
-    if (k === 'edges' || k === 'edgesStats') {continue;}
+    if (k.startsWith('__')) {
+      continue;
+    }
+    if (k === 'edges' || k === 'edgesStats') {
+      continue;
+    }
     clean[k] = v;
   }
   return clean;
@@ -283,18 +347,78 @@ export function stripServiceFields(obj) {
  * @returns {object}
  */
 export function stripForByteCompare(obj) {
-  if (!obj || typeof obj !== 'object') {return obj;}
+  if (!obj || typeof obj !== 'object') {
+    return obj;
+  }
   const { legend, __codec, ...rest } = obj;
   const clean = {};
   for (const [k, v] of Object.entries(rest)) {
-    if (k.startsWith('__')) {continue;}
-    if (k === 'edges' || k === 'edgesStats') {continue;}
-    if (v === undefined || v === null) {continue;}
-    if (Array.isArray(v) && v.length === 0) {continue;}
-    if (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0) {continue;}
+    if (k.startsWith('__')) {
+      continue;
+    }
+    if (k === 'edges' || k === 'edgesStats') {
+      continue;
+    }
+    if (v === undefined || v === null) {
+      continue;
+    }
+    if (Array.isArray(v) && v.length === 0) {
+      continue;
+    }
+    if (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0) {
+      continue;
+    }
     clean[k] = v;
   }
   return clean;
+}
+
+// ---------------------------------------------------------------------------
+// RLE (Run-Length Encoding)
+// ---------------------------------------------------------------------------
+
+/**
+ * Сжимает массив чисел в RLE: [[value, count], ...].
+ *
+ * Используется в codec v13.0.2 для сжатия moduleIdx / fileIdx
+ * в секциях fns / cls / cn.
+ *
+ * @param {number[]} arr
+ * @returns {Array<[number, number]>}
+ */
+export function rle(arr) {
+  if (!arr || arr.length === 0) return [];
+  const out = [];
+  let cur = arr[0];
+  let cnt = 1;
+
+  for (let i = 1; i < arr.length; i++) {
+    if (arr[i] === cur) {
+      cnt++;
+    } else {
+      out.push([cur, cnt]);
+      cur = arr[i];
+      cnt = 1;
+    }
+  }
+  out.push([cur, cnt]);
+  return out;
+}
+
+/**
+ * Распаковывает RLE: [[value, count], ...] → [value, value, ...].
+ *
+ * @param {Array<[number, number]>} rleArr
+ * @returns {number[]}
+ */
+export function unrle(rleArr) {
+  const out = [];
+  for (const [v, c] of rleArr || []) {
+    for (let i = 0; i < c; i++) {
+      out.push(v);
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -331,6 +455,8 @@ export const __internals = {
   idToNum,
   stripServiceFields,
   stripForByteCompare,
+  rle,
+  unrle,
   debounce,
 };
 
@@ -343,5 +469,7 @@ export default {
   idToNum,
   stripServiceFields,
   stripForByteCompare,
+  rle,
+  unrle,
   debounce,
 };

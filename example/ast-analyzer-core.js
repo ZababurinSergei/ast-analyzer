@@ -1,44 +1,20 @@
 // ============================================================================
-// AST ANALYZER — CORE v9.3
-// Ядро: парсинг графа, индексация, аналитика, запросы.
+// AST ANALYZER — CORE v13.0.2
+// Только новый формат. Обратная совместимость не поддерживается.
 //
-// Форматы входа:
-//   - index.full.json — полный формат (ast-analyzer v8.0.0)
-//   - index.json      — компактный формат v9 (кодированный)
-//
-// Обновления v9.3:
-//   - ✅ УБРАНЫ ДУБЛИ: deepEqual, diffObjects, stripServiceFields,
-//        stripForByteCompare теперь импортируются из ast-analyzer-utils.js.
-//        Это единый источник истины — не дублировать в других модулях.
-//   - ✅ Реэкспорт утилит для совместимости с прежним API:
-//        export { deepEqual, diffObjects, collectDiffs, normalizeForDiff }
-//        и export const __internals = { deepEqual, diffObjects, ... }.
-//
-// Обновления v9.2:
-//   - ✅ loadData(json, options) — принимает { includeEdges } и пробрасывает
-//        в decodeCompactData. По умолчанию edges НЕ восстанавливаются —
-//        это устраняет расхождение при DL (decode(encode(full)) === full),
-//        когда исходный full не содержит edges (см. TS v9.0.4+).
-//   - ✅ verifyRoundTripBothFormats() — синхронизирован с TS-версией
-//        verifyRoundTripBoth: edges — производное поле, сравнивается
-//        без него по умолчанию.
-//   - ✅ НОВЫЕ ФУНКЦИИ:
-//        exportEdges()          → { edges, stats } — сборка edges из state
-//        downloadEdges(name?)   → скачивание edges в отдельный файл
-//        (аналогично --edges в CLI).
-//   - ✅ stripServiceFields синхронизирован: игнорирует edges и edgesStats.
-//
-// Обновления v9.1:
-//   - Поддержка компактного формата через ast-analyzer-codec.js
-//   - Автоопределение формата при загрузке (detectFormat / toFullData)
-//   - Сохранение исходных словарей для симметричного round-trip
-//   - Экспорт в компактный формат (exportCompact / downloadCompact)
-//   - Round-trip проверки: L1 (семантика), L3 (байт-в-байт), обратная
-//   - loadFromRoot() с автосканированием, кэшем localStorage и file-picker
-//   - Управление кэшем: clearRootCache / getRootCacheInfo
-//   - НОВОЕ: loadBothFormats() + verifyRoundTripBothFormats() — комплексная
-//     проверка при одновременной загрузке index.json и index.full.json
-//     (уровни L0, L1, L2, L3, RE)
+// Исправления:
+//   - ✅ preprocess(): добавлен externalCallers: {}
+//   - ✅ loadFromRoot(): return st после первого успеха
+//   - ✅ getImportedNames() для UI
+//   - ✅ FIX v13.0.2 (externalCallers): Object.create(null) + Array.isArray
+//     защита от коллизий с Object.prototype (toString, valueOf, ...).
+//   - ✅ FIX v13.0.2 (both formats, fetch): loadFromRoot() теперь проходит
+//     ВСЕ candidates и догружает второй формат через loadBothFormats().
+//     Раньше стоял `return st` после первого успеха, и rawFull всегда
+//     оставался null → L0/L2 в Round-Trip были недоступны.
+//   - ✅ FIX v13.0.2 (both formats, cache): при загрузке из кэша
+//     loadFromRoot() тоже догружает второй формат (обычно index.full.json),
+//     иначе L0/L2 не активировались при повторном открытии страницы.
 // ============================================================================
 
 import {
@@ -51,6 +27,7 @@ import {
   roundTripEncode,
   buildEdgesFromFull,
   buildEdgesStats,
+  CODEC_VERSION,
 } from './ast-analyzer-codec.js';
 
 import {
@@ -60,41 +37,24 @@ import {
   normalizeForDiff,
   stripServiceFields,
   stripForByteCompare,
+  debounce,
 } from './ast-analyzer-utils.js';
 
-// ============================================================================
-// РЕЭКСПОРТ УТИЛИТ (для обратной совместимости со старым API)
-// ============================================================================
-export {
-  deepEqual,
-  diffObjects,
-  collectDiffs,
-  normalizeForDiff,
-} from './ast-analyzer-utils.js';
-
-export const __internals = {
-  deepEqual,
-  diffObjects,
-  stripServiceFields,
-  stripForByteCompare,
-};
+export { deepEqual, diffObjects, collectDiffs, normalizeForDiff, debounce };
 
 // ============================================================================
 // STATE
 // ============================================================================
+
 export const state = {
   raw: null,
-  originalFormat: null, // 'compact' | 'full' | null
-  originalCompact: null, // исходный компактный JSON (если был)
-  __codec: null, // словари для симметричного кодирования
-
-  // НОВОЕ: для комплексной проверки, когда загружены оба файла
-  rawCompact: null, // исходный index.json (если загружался)
-  rawFull: null, // исходный index.full.json (если загружался)
-  hasBothFormats: false, // true, когда доступны оба
-
-  // ✅ v9.2: флаг для edges
-  includeEdgesOnLoad: false, // если true, decodeCompactData добавляет edges
+  originalFormat: null,
+  originalCompact: null,
+  __codec: null,
+  rawCompact: null,
+  rawFull: null,
+  hasBothFormats: false,
+  includeEdgesOnLoad: false,
 
   modules: {},
   files: {},
@@ -132,7 +92,7 @@ export const state = {
   fileByPath: {},
   moduleByName: {},
 
-  externalCallers: {},
+  externalCallers: Object.create(null),
 
   deadExports: [],
   deadFunctions: [],
@@ -143,8 +103,8 @@ export const state = {
   statistics: {},
   version: '?',
   timestamp: '',
+  valuesMode: 'relations',
 
-  // UI-состояние (разделяемое)
   selectedFileId: null,
   activeNode: null,
   searchQuery: '',
@@ -156,11 +116,12 @@ export const state = {
 // ============================================================================
 // УТИЛИТЫ
 // ============================================================================
+
 export function escapeHtml(s) {
   if (s == null) return '';
   return String(s).replace(
     /[&<>"']/g,
-    c =>
+    (c) =>
       ({
         '&': '&amp;',
         '<': '&lt;',
@@ -203,7 +164,7 @@ export function formatDate(ts) {
 export function formatType(t, max = 80) {
   if (!t) return '';
   let s = String(t);
-  s = s.replace(/import\("([^"]+)"\)\./g, '');
+  s = s.replace(/import\(["']([^"']+)["']\)\./g, '');
   s = s.replace(/import\('([^']+)'\)\./g, '');
   s = s.replace(/\s+/g, ' ');
   if (s.length > max) s = s.slice(0, max - 1) + '…';
@@ -222,7 +183,8 @@ export function copyToClipboard(text) {
 }
 
 export function downloadBlob(content, filename, mime = 'application/json') {
-  const blob = content instanceof Blob ? content : new Blob([content], { type: mime });
+  const blob =
+    content instanceof Blob ? content : new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -238,14 +200,16 @@ export function downloadJSON(data, filename) {
 }
 
 export function downloadCSV(rows, columns, filename) {
-  const esc = v => {
+  const esc = (v) => {
     const s = v == null ? '' : String(v);
     return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   };
-  const header = columns.map(c => esc(c.label || c.key)).join(',');
+  const header = columns.map((c) => esc(c.label || c.key)).join(',');
   const body = rows
-    .map(r =>
-      columns.map(c => esc(typeof c.value === 'function' ? c.value(r) : r[c.key])).join(',')
+    .map((r) =>
+      columns
+        .map((c) => esc(typeof c.value === 'function' ? c.value(r) : r[c.key]))
+        .join(',')
     )
     .join('\n');
   downloadBlob('\uFEFF' + header + '\n' + body, filename, 'text/csv;charset=utf-8');
@@ -258,33 +222,18 @@ export function downloadSVG(svgEl, filename) {
   downloadBlob(s, filename, 'image/svg+xml');
 }
 
-export function debounce(fn, ms = 200) {
-  let t;
-  return (...args) => {
-    clearTimeout(t);
-    t = setTimeout(() => fn(...args), ms);
-  };
-}
-
 // ============================================================================
-// ЗАГРУЗКА ДАННЫХ (с автоопределением формата)
+// ЗАГРУЗКА ДАННЫХ
 // ============================================================================
 
 /**
  * Загружает JSON любого формата (compact или full).
  * Если формат компактный — декодирует его в полный.
  * Сохраняет исходные словари для симметричного round-trip.
- *
- * @param {object} json — распарсенный JSON (index.json или index.full.json)
- * @param {object} [options]
- * @param {boolean} [options.includeEdges=false] — если true, добавляет
- *   в state.raw.edges агрегированный массив связей. По умолчанию false —
- *   соответствует спецификации TS v9.0.4+ (edges — производное поле,
- *   не хранится в full.json, восстанавливается только по запросу).
- * @returns {object} — state
  */
 export function loadData(json, options = {}) {
   const fmt = detectFormat(json);
+
   const { includeEdges = false } = options;
   console.log(`[AST] Формат входа: ${fmt} (includeEdges=${includeEdges})`);
 
@@ -295,8 +244,6 @@ export function loadData(json, options = {}) {
     throw new Error(`Не удалось декодировать JSON: ${e.message}`);
   }
 
-  // ✅ v9.2: если запрошены edges и формат был compact —
-  // дособерём edges через buildEdgesFromFull (производное поле).
   if (includeEdges) {
     try {
       const { edges, stats } = buildEdgesFromFull(full);
@@ -317,22 +264,36 @@ export function loadData(json, options = {}) {
   state.raw = full;
   state.originalFormat = fmt;
   state.originalCompact = fmt === 'compact' ? json : null;
-  state.__codec = full.__codec || null;
   state.includeEdgesOnLoad = includeEdges;
+  state.valuesMode = full.valuesMode || 'relations';
 
-  // НОВОЕ: запоминаем исходный файл в соответствующем слоте
+  // Запоминаем исходный файл в соответствующем слоте
   if (fmt === 'compact') {
     state.rawCompact = json;
+
+    // Восстанавливаем словари из компакта (для симметричного encode)
+    const tokens = json.tokens || [];
+    const decodeStrEntry = (entry) => {
+      if (typeof entry === 'string') return entry;
+      if (Array.isArray(entry)) return entry.map((i) => tokens[i] || '').join('');
+      return '';
+    };
+    state.__codec = {
+      stringDict: (json.strs || []).map(decodeStrEntry),
+      paramDict: (json.params || []).map(decodeStrEntry),
+      methodDict: (json.methods || []).map(decodeStrEntry),
+      valueDict: json.values || [],
+      legend: json.legend,
+      schemas: json.legend?.schemas || {},
+    };
   } else if (fmt === 'full') {
     state.rawFull = json;
+    state.__codec = full.__codec || null;
   }
 
   // Препроцессинг
   const pre = preprocess(full);
   Object.assign(state, pre);
-
-  // Восстанавливаем служебные поля (preprocess их не трогает)
-  state.__codec = full.__codec || null;
 
   // Аналитика
   computeAnalytics();
@@ -348,8 +309,6 @@ function resetState() {
   state.originalFormat = null;
   state.originalCompact = null;
   state.__codec = null;
-
-  // НОВОЕ: сбрасываем слоты для комплексной проверки
   state.rawCompact = null;
   state.rawFull = null;
   state.hasBothFormats = false;
@@ -391,7 +350,9 @@ function resetState() {
   state.fileByPath = {};
   state.moduleByName = {};
 
-  state.externalCallers = {};
+  // ✅ FIX v13.0.2: Object.create(null) — защита от коллизий с
+  // Object.prototype (toString, valueOf, constructor, hasOwnProperty).
+  state.externalCallers = Object.create(null);
 
   state.deadExports = [];
   state.deadFunctions = [];
@@ -402,6 +363,7 @@ function resetState() {
   state.statistics = {};
   state.version = '?';
   state.timestamp = '';
+  state.valuesMode = 'relations';
 
   state.selectedFileId = null;
   state.activeNode = null;
@@ -412,25 +374,12 @@ function resetState() {
 }
 
 // ============================================================================
-// НОВОЕ: ЗАГРУЗКА ОБОИХ ФОРМАТОВ
+// ЗАГРУЗКА ОБОИХ ФОРМАТОВ
 // ============================================================================
 
 /**
  * Загружает второй файл (compact или full) для комплексной проверки.
- * Первый файл уже был загружен через loadData() и установил state.raw.
- *
- * Логика:
- *   - Если формат — compact и ещё не сохранён: запоминаем в state.rawCompact.
- *   - Если формат — full и ещё не сохранён: запоминаем в state.rawFull.
- *   - Если оба уже есть: state.hasBothFormats = true.
- *
- * Модель (state.raw) НЕ перезаписывается — доверяем первому loadData().
- * Если первый был compact — модель уже декодирована из него.
- * Если первый был full — модель построена прямо из full.
- *
- * @param {object} json — распарсенный JSON второго файла
- * @param {string} fmt — 'compact' | 'full' (можно не указывать — определим)
- * @param {string} [filename] — для лога
+ * После вызова, если оба формата есть — state.hasBothFormats = true.
  */
 export function loadBothFormats(json, fmt = null, filename = '') {
   const realFmt = fmt || detectFormat(json);
@@ -460,8 +409,9 @@ export function clearBothFormats() {
 }
 
 // ============================================================================
-// PREPROCESS — построение индексов
+// PREPROCESS
 // ============================================================================
+
 export function preprocess(rawData) {
   const d = {
     modules: {},
@@ -473,12 +423,14 @@ export function preprocess(rawData) {
     imports: [],
     calls: [],
     reExports: [],
+
     fileExports: {},
     fileImports: {},
     fileFunctions: {},
     fileClasses: {},
     fileConstants: {},
     moduleFiles: {},
+
     fnById: {},
     fnCalls: {},
     fnCallers: {},
@@ -487,15 +439,21 @@ export function preprocess(rawData) {
     fnDetailedCallers: {},
     fnDetailedCalls: {},
     fnByName: {},
+
     constById: {},
     constByName: {},
     classById: {},
     classByName: {},
+
     fileDependents: {},
     fileDependencies: {},
     fileByPath: {},
     moduleByName: {},
-    externalCallers: {},
+
+    // ✅ FIX v13.0.2: Object.create(null) вместо {} — защита от
+    // коллизий с Object.prototype (toString, valueOf, constructor, ...).
+    externalCallers: Object.create(null),
+
     deadExports: [],
     deadFunctions: [],
     cyclicDeps: [],
@@ -571,13 +529,15 @@ export function preprocess(rawData) {
     if (d.fileImports[i.fromFileId]) d.fileImports[i.fromFileId].push(i);
 
     if (i.toFileId && !i.isExternal) {
-      if (d.fileDependencies[i.fromFileId]) d.fileDependencies[i.fromFileId].push(i.toFileId);
-      if (d.fileDependents[i.toFileId]) d.fileDependents[i.toFileId].push(i.fromFileId);
+      if (d.fileDependencies[i.fromFileId])
+        d.fileDependencies[i.fromFileId].push(i.toFileId);
+      if (d.fileDependents[i.toFileId])
+        d.fileDependents[i.toFileId].push(i.fromFileId);
 
       const targetExports = d.fileExports[i.toFileId] || [];
       const importName = i.importedName;
       const matchedExport = targetExports.find(
-        e =>
+        (e) =>
           e.exportName === importName ||
           e.localName === importName ||
           (importName === 'default' && e.isDefault) ||
@@ -623,7 +583,9 @@ export function preprocess(rawData) {
           : c.toFunctionId.startsWith('external:')
             ? '🌐 external'
             : '?',
-        toModuleName: toFn ? d.modules[d.files[toFn.fileId]?.moduleId]?.name || '?' : 'external',
+        toModuleName: toFn
+          ? d.modules[d.files[toFn.fileId]?.moduleId]?.name || '?'
+          : 'external',
         callLine: c.line,
         callType: c.type || 'direct',
         isExternal: c.toFunctionId.startsWith('external:'),
@@ -635,18 +597,28 @@ export function preprocess(rawData) {
         fromFnId: c.fromFunctionId,
         fromFnName: fromFnName,
         fromFilePath: fromFilePath,
-        fromModuleName: fromFn ? d.modules[d.files[fromFn.fileId]?.moduleId]?.name || '?' : '?',
+        fromModuleName: fromFn
+          ? d.modules[d.files[fromFn.fileId]?.moduleId]?.name || '?'
+          : '?',
         callLine: c.line,
         callType: c.type || 'direct',
       });
     } else if (c.toFunctionId.startsWith('external:')) {
       const extName = c.toFunctionId.replace('external:', '');
-      if (!d.externalCallers[extName]) d.externalCallers[extName] = [];
+      // ✅ FIX v13.0.2: Array.isArray вместо `!d.externalCallers[extName]`.
+      // Для имён вроде 'toString', 'valueOf', 'constructor' проверка
+      // `!obj[name]` даёт false (там уже функция из прототипа),
+      // и .push() вызывается у унаследованной функции → краш.
+      if (!Array.isArray(d.externalCallers[extName])) {
+        d.externalCallers[extName] = [];
+      }
       d.externalCallers[extName].push({
         fromFnId: c.fromFunctionId,
         fromFnName: fromFnName,
         fromFilePath: fromFilePath,
-        fromModuleName: fromFn ? d.modules[d.files[fromFn.fileId]?.moduleId]?.name || '?' : '?',
+        fromModuleName: fromFn
+          ? d.modules[d.files[fromFn.fileId]?.moduleId]?.name || '?'
+          : '?',
         callLine: c.line,
         callType: c.type || 'direct',
       });
@@ -664,6 +636,7 @@ export function preprocess(rawData) {
 // ============================================================================
 // АНАЛИТИКА
 // ============================================================================
+
 export function computeAnalytics() {
   computeDeadExports();
   computeDeadFunctions();
@@ -678,14 +651,14 @@ function computeDeadExports() {
     if (imp.isExternal) continue;
     if (imp.importedName) used.add(imp.toFileId + '::' + imp.importedName);
   }
-  state.deadExports = state.exports.filter(e => {
+  state.deadExports = state.exports.filter((e) => {
     if (e.isDefault) return false;
     return !used.has(e.fileId + '::' + (e.exportName || e.localName));
   });
 }
 
 function computeDeadFunctions() {
-  state.deadFunctions = Object.values(state.functions).filter(fn => {
+  state.deadFunctions = Object.values(state.functions).filter((fn) => {
     const hasCallers = (state.fnDetailedCallers[fn.id] || []).length > 0;
     const isExported = (state.fnExports[fn.id] || []).length > 0;
     const isImported = (state.fnImportTargets[fn.id] || []).length > 0;
@@ -717,7 +690,7 @@ function computeCyclicDeps() {
   for (const fileId of Object.keys(state.files)) dfs(fileId);
 
   const seen = new Set();
-  state.cyclicDeps = cycles.filter(c => {
+  state.cyclicDeps = cycles.filter((c) => {
     const key = [...new Set(c)].sort().join('|');
     if (seen.has(key)) return false;
     seen.add(key);
@@ -726,7 +699,7 @@ function computeCyclicDeps() {
 }
 
 function computeHotFiles() {
-  const arr = Object.keys(state.files).map(id => {
+  const arr = Object.keys(state.files).map((id) => {
     const out = new Set(state.fileDependencies[id] || []).size;
     const inc = new Set(state.fileDependents[id] || []).size;
     return { id, out, inc, total: out + inc };
@@ -736,7 +709,7 @@ function computeHotFiles() {
 }
 
 function computeHotFunctions() {
-  const arr = Object.values(state.functions).map(fn => {
+  const arr = Object.values(state.functions).map((fn) => {
     const callers = (state.fnDetailedCallers[fn.id] || []).length;
     const calls = (state.fnDetailedCalls[fn.id] || []).length;
     return { id: fn.id, callers, calls, total: callers + calls };
@@ -748,6 +721,7 @@ function computeHotFunctions() {
 // ============================================================================
 // ТРАНЗИТИВНЫЕ ВЫЗОВЫ
 // ============================================================================
+
 export function getTransitiveCallers(fnId, maxDepth = 5) {
   const result = new Set();
   const queue = [{ id: fnId, depth: 0 }];
@@ -766,7 +740,7 @@ export function getTransitiveCallers(fnId, maxDepth = 5) {
     }
   }
   return Array.from(result)
-    .map(id => state.fnById[id])
+    .map((id) => state.fnById[id])
     .filter(Boolean);
 }
 
@@ -789,7 +763,7 @@ export function getTransitiveCallees(fnId, maxDepth = 5) {
     }
   }
   return Array.from(result)
-    .map(id => state.fnById[id])
+    .map((id) => state.fnById[id])
     .filter(Boolean);
 }
 
@@ -822,28 +796,29 @@ export function findCallPaths(fromFnId, toFnId, maxDepth = 5) {
 // ============================================================================
 // ПОИСК
 // ============================================================================
+
 export function findFunctions(query, { caseSensitive = false, exact = false } = {}) {
   if (!query) return [];
   const q = caseSensitive ? query : query.toLowerCase();
   const m = exact
-    ? s => (caseSensitive ? s : s.toLowerCase()) === q
-    : s => (caseSensitive ? s : s.toLowerCase()).includes(q);
-  return Object.values(state.functions).filter(fn => m(fn.name));
+    ? (s) => (caseSensitive ? s : s.toLowerCase()) === q
+    : (s) => (caseSensitive ? s : s.toLowerCase()).includes(q);
+  return Object.values(state.functions).filter((fn) => m(fn.name));
 }
 
 export function findConstants(query, { caseSensitive = false, exact = false } = {}) {
   if (!query) return [];
   const q = caseSensitive ? query : query.toLowerCase();
   const m = exact
-    ? s => (caseSensitive ? s : s.toLowerCase()) === q
-    : s => (caseSensitive ? s : s.toLowerCase()).includes(q);
-  return Object.values(state.constants).filter(c => m(c.name));
+    ? (s) => (caseSensitive ? s : s.toLowerCase()) === q
+    : (s) => (caseSensitive ? s : s.toLowerCase()).includes(q);
+  return Object.values(state.constants).filter((c) => m(c.name));
 }
 
 export function findFiles(query, { caseSensitive = false } = {}) {
   if (!query) return [];
   const q = caseSensitive ? query : query.toLowerCase();
-  return Object.values(state.files).filter(f =>
+  return Object.values(state.files).filter((f) =>
     (caseSensitive ? f.path : f.path.toLowerCase()).includes(q)
   );
 }
@@ -851,7 +826,7 @@ export function findFiles(query, { caseSensitive = false } = {}) {
 export function findModules(query, { caseSensitive = false } = {}) {
   if (!query) return [];
   const q = caseSensitive ? query : query.toLowerCase();
-  return Object.values(state.modules).filter(m =>
+  return Object.values(state.modules).filter((m) =>
     (caseSensitive ? m.name : m.name.toLowerCase()).includes(q)
   );
 }
@@ -859,41 +834,31 @@ export function findModules(query, { caseSensitive = false } = {}) {
 // ============================================================================
 // СТАТИСТИКА
 // ============================================================================
+
 export function getProjectStats() {
-  const totalFiles = Object.keys(state.files).length;
-  const totalFunctions = Object.keys(state.functions).length;
-  const totalModules = Object.keys(state.modules).length;
-  const totalConstants = Object.keys(state.constants).length;
-  const totalCalls = state.calls.length;
-  const totalImports = state.imports.length;
-  const totalExports = state.exports.length;
-  const totalReExports = state.reExports.length;
-
-  const internalImports = state.imports.filter(i => !i.isExternal).length;
-  const externalImports = state.imports.filter(i => i.isExternal).length;
-
   const externalPkgs = new Set();
   for (const i of state.imports) {
     if (i.isExternal && i.packageName) externalPkgs.add(i.packageName);
   }
 
   return {
-    totalFiles,
-    totalFunctions,
-    totalModules,
-    totalConstants,
-    totalCalls,
-    totalImports,
-    totalExports,
-    totalReExports,
-    internalImports,
-    externalImports,
+    totalFiles: Object.keys(state.files).length,
+    totalFunctions: Object.keys(state.functions).length,
+    totalModules: Object.keys(state.modules).length,
+    totalConstants: Object.keys(state.constants).length,
+    totalCalls: state.calls.length,
+    totalImports: state.imports.length,
+    totalExports: state.exports.length,
+    totalReExports: state.reExports.length,
+    internalImports: state.imports.filter((i) => !i.isExternal).length,
+    externalImports: state.imports.filter((i) => i.isExternal).length,
     externalPackages: Array.from(externalPkgs).sort(),
     deadExports: state.deadExports.length,
     deadFunctions: state.deadFunctions.length,
     cyclicDeps: state.cyclicDeps.length,
     version: state.version,
     timestamp: state.timestamp,
+    valuesMode: state.valuesMode,
   };
 }
 
@@ -901,34 +866,46 @@ export function getModuleStats(moduleId) {
   const m = state.modules[moduleId];
   if (!m) return null;
   const fileIds = state.moduleFiles[moduleId] || [];
-  let fnCount = 0,
-    constCount = 0,
-    exportCount = 0,
-    importCount = 0;
+  let fnCount = 0;
+  let constCount = 0;
+  let exportCount = 0;
+  let importCount = 0;
   for (const fid of fileIds) {
     fnCount += (state.fileFunctions[fid] || []).length;
     constCount += (state.fileConstants[fid] || []).length;
     exportCount += (state.fileExports[fid] || []).length;
     importCount += (state.fileImports[fid] || []).length;
   }
-  return { ...m, fileCount: fileIds.length, fnCount, constCount, exportCount, importCount };
+  return {
+    ...m,
+    fileCount: fileIds.length,
+    fnCount,
+    constCount,
+    exportCount,
+    importCount,
+  };
 }
 
 // ============================================================================
 // ДОСТУП
 // ============================================================================
+
 export function getModuleName(id) {
   return state.modules[id]?.name || id;
 }
+
 export function getFilePath(id) {
   return state.files[id]?.path || id;
 }
+
 export function getFnById(id) {
   return state.fnById[id] || null;
 }
+
 export function getFileById(id) {
   return state.files[id] || null;
 }
+
 export function getModuleById(id) {
   return state.modules[id] || null;
 }
@@ -949,8 +926,14 @@ export function getFnFullInfo(fnId) {
   };
 }
 
+/**
+ * ✅ Возвращает имена импортов между двумя файлами.
+ * Используется в UI для отображения импортированных имён.
+ */
 export function getImportedNames(importerId, targetId) {
-  const list = (state.fileImports[importerId] || []).filter(i => i.toFileId === targetId);
+  const list = (state.fileImports[importerId] || []).filter(
+    (i) => i.toFileId === targetId
+  );
   const names = [];
   for (const i of list) {
     if (i.isNamespace) names.push('*');
@@ -961,14 +944,16 @@ export function getImportedNames(importerId, targetId) {
 }
 
 // ============================================================================
-// ЭКСПОРТ ВСЕГО (полный формат)
+// ЭКСПОРТ
 // ============================================================================
+
 export function exportAll() {
   return {
-    version: state.version,
+    version: CODEC_VERSION,
     timestamp: state.timestamp,
+    valuesMode: state.valuesMode,
+    root: state.raw?.root || 'm1',
     statistics: state.statistics,
-    projectStats: getProjectStats(),
     modules: Object.values(state.modules),
     files: Object.values(state.files),
     functions: Object.values(state.functions),
@@ -978,76 +963,33 @@ export function exportAll() {
     imports: state.imports,
     calls: state.calls,
     reExports: state.reExports,
-    deadExports: state.deadExports,
-    deadFunctions: state.deadFunctions,
-    cyclicDeps: state.cyclicDeps,
   };
 }
 
-// ============================================================================
-// ЭКСПОРТ В КОМПАКТНЫЙ ФОРМАТ
-// ============================================================================
-
-/**
- * Экспортирует текущее состояние в компактный формат index.json.
- *
- * @param {object} [options]
- * @param {boolean} [options.reuseDicts=true]  — переиспользовать исходные словари
- * @param {boolean} [options.strict=false]     — падать при отсутствии значения в словаре
- * @returns {object} — компактный JSON
- */
 export function exportCompact(options = {}) {
-  const { reuseDicts = true, strict = false } = options;
+  const { valuesMode = state.valuesMode || 'relations' } = options;
   const full = exportAll();
-  // Восстанавливаем __codec, если он был (для симметрии)
-  if (state.__codec) {
-    full.__codec = state.__codec;
-  }
-  return encodeToCompactData(full, { reuseDicts, strict });
+  if (state.__codec) full.__codec = state.__codec;
+  return encodeToCompactData(full, { valuesMode });
 }
 
-/**
- * Скачивает компактный JSON.
- */
-export function downloadCompact(filename = 'index.compact.json', options = {}) {
+export function downloadCompact(filename = 'index.json', options = {}) {
   const compact = exportCompact(options);
   downloadJSON(compact, filename);
   return compact;
 }
 
-/**
- * Скачивает полный JSON.
- */
 export function downloadFull(filename = 'index.full.json') {
   const full = exportAll();
   downloadJSON(full, filename);
   return full;
 }
 
-// ============================================================================
-// ✅ НОВОЕ v9.2: EDGES — сборка и экспорт в отдельный файл
-// ============================================================================
-
-/**
- * Собирает агрегированный массив edges из текущего состояния.
- *
- * edges — производное поле: собирается из state.exports + state.imports +
- * state.calls + state.reExports. Аналог того, что делает
- * compact-reporter.ts с опцией saveEdges: true.
- *
- * @returns {{ edges: Array, stats: object }}
- */
 export function exportEdges() {
   const full = exportAll();
   return buildEdgesFromFull(full);
 }
 
-/**
- * Скачивает edges в отдельный файл (аналог --edges в CLI).
- *
- * @param {string} [filename='index.edges.json']
- * @returns {{ edges: Array, stats: object }}
- */
 export function downloadEdges(filename = 'index.edges.json') {
   const { edges, stats } = exportEdges();
   const payload = {
@@ -1061,21 +1003,14 @@ export function downloadEdges(filename = 'index.edges.json') {
   return { edges, stats };
 }
 
-/**
- * Статистика по edges (без сохранения).
- */
 export function getEdgesStats() {
-  const { stats } = exportEdges();
-  return stats;
+  return exportEdges().stats;
 }
 
 // ============================================================================
-// ROUND-TRIP ПРОВЕРКИ (обёртки для UI)
+// ROUND-TRIP ОБЁРТКИ
 // ============================================================================
 
-/**
- * Проверяет симметрию: decode → encode → сравнение с исходным компактом.
- */
 export function verifyRoundTripSemantic() {
   if (!state.originalCompact) {
     return { ok: false, reason: 'Исходный файл не в компактном формате' };
@@ -1097,24 +1032,9 @@ export function verifyRoundTripEncode() {
 }
 
 // ============================================================================
-// КОМПЛЕКСНАЯ ПРОВЕРКА ПРИ НАЛИЧИИ ОБОИХ ФОРМАТОВ
+// КОМПЛЕКСНАЯ ПРОВЕРКА
 // ============================================================================
 
-/**
- * Комплексная проверка, когда доступны оба исходных файла.
- *
- * Уровни (синхронизированы с TS-версией v9.0.4):
- *   L0 — encode(full) ≈ compact (семантически)
- *   L1 — decode(compact) → семантика
- *   L2 — decode(compact) ≈ full (семантически, без edges)
- *   L3 — decode(compact) → encode(reuse, strict) → compact
- *   RE — full → compact → full → compact (идемпотентность)
- *
- * ✅ v9.2: edges — производное поле. По умолчанию не сравнивается.
- *          Если state.includeEdgesOnLoad === true — сравнивается тоже.
- *
- * @returns {object} — { ok, hasCompact, hasFull, checkedLevels, L0, L1, L2, L3, RE }
- */
 export function verifyRoundTripBothFormats() {
   const hasCompact = !!state.rawCompact;
   const hasFull = !!state.rawFull;
@@ -1139,14 +1059,10 @@ export function verifyRoundTripBothFormats() {
       const decodedCompact = decodeCompactData(state.rawCompact, {
         includeEdges: state.includeEdgesOnLoad,
       });
-      const fullFromFile = state.rawFull;
       const a = stripServiceFields(decodedCompact);
-      const b = stripServiceFields(fullFromFile);
+      const b = stripServiceFields(state.rawFull);
       const ok = deepEqual(a, b);
-      result.L2 = {
-        ok,
-        diff: ok ? null : diffObjects(a, b),
-      };
+      result.L2 = { ok, diff: ok ? null : diffObjects(a, b) };
     } catch (e) {
       result.L2 = { ok: false, error: e.message };
     }
@@ -1155,7 +1071,10 @@ export function verifyRoundTripBothFormats() {
   // -------- L0: encode(full) ↔ compact --------
   if (hasCompact && hasFull) {
     try {
-      const fullForEncoding = { ...state.rawFull, __codec: state.rawCompact?.__codec };
+      const fullForEncoding = {
+        ...state.rawFull,
+        __codec: state.rawCompact?.__codec,
+      };
       const encodedFromFull = encodeToCompactData(fullForEncoding, {
         reuseDicts: true,
         strict: true,
@@ -1163,16 +1082,13 @@ export function verifyRoundTripBothFormats() {
       const a = stripForByteCompare(state.rawCompact);
       const b = stripForByteCompare(encodedFromFull);
       const ok = deepEqual(a, b);
-      result.L0 = {
-        ok,
-        diff: ok ? null : diffObjects(a, b),
-      };
+      result.L0 = { ok, diff: ok ? null : diffObjects(a, b) };
     } catch (e) {
       result.L0 = { ok: false, error: e.message };
     }
   }
 
-  // -------- L1, L3: как обычно для компакта --------
+  // -------- L1, L3 --------
   if (hasCompact) {
     try {
       result.L1 = roundTripSemantic(state.rawCompact);
@@ -1186,7 +1102,7 @@ export function verifyRoundTripBothFormats() {
     }
   }
 
-  // -------- RE: идемпотентность --------
+  // -------- RE --------
   try {
     const full = exportAll();
     if (state.__codec) full.__codec = state.__codec;
@@ -1195,43 +1111,38 @@ export function verifyRoundTripBothFormats() {
     result.RE = { ok: false, error: e.message };
   }
 
-  // Итог
-  const checked = ['L0', 'L1', 'L2', 'L3', 'RE'].filter(k => result[k] !== null);
-  result.ok = checked.every(k => result[k].ok);
+  const checked = ['L0', 'L1', 'L2', 'L3', 'RE'].filter(
+    (k) => result[k] !== null
+  );
+  result.ok = checked.every((k) => result[k].ok);
   result.checkedLevels = checked;
 
   return result;
 }
 
 // ============================================================================
-// ЗАГРУЗКА ИЗ КОРНЯ ПРОЕКТА — с автосканированием и кэшем
+// ЗАГРУЗКА ИЗ КОРНЯ
 // ============================================================================
 
-const LS_DATA_KEY = 'ast-analyzer:last-data';
-const LS_URL_KEY = 'ast-analyzer:last-url';
-const DEFAULT_CACHE_TTL = 3600_000; // 1 час
+const LS_DATA_KEY = 'ast-analyzer:v13:data';
+const LS_URL_KEY = 'ast-analyzer:v13:url';
+const DEFAULT_CACHE_TTL = 3600_000;
 
 /**
- * Продвинутая загрузка JSON из корня проекта.
+ * Загружает JSON из корня проекта.
  *
- * Стратегия:
- *   1. Проверяем localStorage-кэш (если useCache).
- *   2. Перебираем кандидатов через fetch (index.json, index.full.json, ...).
- *   3. При провале fetch — предлагаем выбрать файл вручную (fallback).
+ * ✅ FIX v13.0.2 (fetch): проходит ВСЕ `candidates` (а не только первый),
+ * собирает успешно загруженные файлы в массив `loaded`, и:
+ *   - первый компактный (или просто первый) → `loadData()` (primary);
+ *   - все остальные → `loadBothFormats()`.
  *
- * ✅ v9.2: пробрасывает options.includeEdges в loadData.
+ * Благодаря этому `state.rawFull` заполняется, если рядом с `index.json`
+ * лежит `index.full.json`, и в Round-Trip становятся доступны L0/L2.
  *
- * @param {object}   [options]
- * @param {string}   [options.basePath='']            — базовый путь ('./data/')
- * @param {string[]} [options.candidates]             — список файлов-кандидатов
- * @param {boolean}  [options.useCache=true]          — использовать localStorage-кэш
- * @param {number}   [options.cacheTTL=3600000]       — TTL кэша в мс
- * @param {boolean}  [options.fallbackToFilePicker=true] — переходить на выбор файла
- * @param {boolean}  [options.silent=false]           — не логировать в консоль
- * @param {boolean}  [options.scanDir=false]          — сканировать директорию на index*.json
- * @param {boolean}  [options.includeEdges=false]     — восстанавливать edges при загрузке
- * @returns {Promise<object>} — state
- * @throws {Error} если ничего не удалось загрузить
+ * ✅ FIX v13.0.2 (cache): при загрузке из кэша тоже догружаем второй
+ * формат через `loadBothFormats()`. Раньше ветка кэша делала
+ * `return await loadData(...)` и второй формат не подтягивался —
+ * после перезагрузки страницы L0/L2 снова были недоступны.
  */
 export async function loadFromRoot(options = {}) {
   const {
@@ -1248,15 +1159,46 @@ export async function loadFromRoot(options = {}) {
   const log = silent ? () => {} : (...a) => console.log('[AST]', ...a);
   const warn = silent ? () => {} : (...a) => console.warn('[AST]', ...a);
 
-  // ---------------------------------------------------------------------
-  // 1. Проверка кэша
-  // ---------------------------------------------------------------------
+  /**
+   * Догрузка второго формата (обычно full) после primary.
+   * Используется и в ветке кэша, и в ветке fetch.
+   */
+  const tryLoadSecondFormat = async (primaryFormat) => {
+    for (const name of candidates) {
+      // Пропускаем тот файл, который уже загружен как primary.
+      if (primaryFormat === 'compact' && name === 'index.json') continue;
+      if (primaryFormat === 'full' && name === 'index.full.json') continue;
+
+      const url = basePath + name;
+      try {
+        const res = await fetch(url, { cache: 'no-cache' });
+        if (!res.ok) continue;
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('text/html')) continue;
+        const rawJson = await res.json();
+        const fmt = detectFormat(rawJson);
+        loadBothFormats(rawJson, fmt, url);
+        log(`✓ Догружен второй формат: ${url} (${fmt})`);
+      } catch (e) {
+        warn(`Второй формат ${url} не догружен:`, e.message);
+      }
+    }
+  };
+
+  // 1. Кэш
   if (useCache) {
     const cached = readCache(cacheTTL);
     if (cached) {
       log(`✓ Из кэша: ${cached.url}`);
       try {
-        return loadData(cached.json, { includeEdges });
+        const st = await loadData(cached.json, { includeEdges });
+
+        // ✅ FIX v13.0.2 (cache): догружаем второй формат.
+        // Иначе после перезагрузки страницы rawFull снова null,
+        // и L0/L2 в Round-Trip становятся недоступны.
+        await tryLoadSecondFormat(state.originalFormat);
+
+        return st;
       } catch (e) {
         warn('Кэш повреждён, перезагружаем:', e.message);
         clearRootCache();
@@ -1264,15 +1206,16 @@ export async function loadFromRoot(options = {}) {
     }
   }
 
-  // ---------------------------------------------------------------------
-  // 2. Сканирование директории (опционально)
-  // ---------------------------------------------------------------------
+  // 2. Сканирование (опционально)
   let effectiveCandidates = candidates.slice();
   if (scanDir) {
     try {
       const found = await scanDirectoryForIndex(basePath, silent);
       if (found.length) {
-        effectiveCandidates = [...found, ...candidates.filter(c => !found.includes(c))];
+        effectiveCandidates = [
+          ...found,
+          ...candidates.filter((c) => !found.includes(c)),
+        ];
         log(`Найдено через сканирование: ${found.join(', ')}`);
       }
     } catch (e) {
@@ -1280,70 +1223,95 @@ export async function loadFromRoot(options = {}) {
     }
   }
 
-  // ---------------------------------------------------------------------
-  // 3. Fetch с перебором кандидатов
-  // ---------------------------------------------------------------------
-  try {
-    const result = await loadViaFetch(basePath, effectiveCandidates, log, { includeEdges });
-    if (useCache) {
-      writeCache(result.url, result.rawJson);
-      localStorage.setItem(LS_URL_KEY, result.url);
-    }
-    return result.state;
-  } catch (fetchError) {
-    warn('fetch не удался:', fetchError.message);
+  // 3. Fetch с перебором ВСЕХ кандидатов
+  const errors = [];
+  const loaded = []; // { url, json, fmt }
 
-    // -------------------------------------------------------------------
-    // 4. Fallback — выбор файла вручную
-    // -------------------------------------------------------------------
+  for (const name of effectiveCandidates) {
+    const url = basePath + name;
+    try {
+      log(`Пробуем: ${url}`);
+      const res = await fetch(url, { cache: 'no-cache' });
+      console.log('--------------- ответ -----------------', res);
+      if (!res.ok) {
+        errors.push(`${url}: HTTP ${res.status}`);
+        continue;
+      }
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('text/html')) {
+        errors.push(`${url}: HTML вместо JSON`);
+        continue;
+      }
+      const rawJson = await res.json();
+      const fmt = detectFormat(rawJson);
+      log(`✓ Загружено: ${url} (формат: ${fmt})`);
+
+      loaded.push({ url, json: rawJson, fmt });
+
+      // В кэш кладём только первый успешный (обычно compact index.json).
+      // Второй формат при следующем запуске опять подтянется по candidates.
+      if (useCache && loaded.length === 1) {
+        writeCache(url, rawJson);
+        try {
+          localStorage.setItem(LS_URL_KEY, url);
+        } catch {}
+      }
+    } catch (e) {
+      errors.push(`${url}: ${e.message}`);
+    }
+  }
+
+  // Ничего не загрузилось — fallback или ошибка
+  if (loaded.length === 0) {
     if (fallbackToFilePicker) {
-      log('Переключаемся на выбор файла вручную…');
+      log('Переключаемся на выбор файла…');
       const picked = await pickFileAndParse();
       if (picked) {
-        if (useCache) {
-          writeCache('(manual)', picked);
-        }
-        return loadData(picked, { includeEdges });
+        if (useCache) writeCache('(manual)', picked);
+        return await loadData(picked, { includeEdges });
       }
     }
-
-    throw fetchError;
+    throw new Error(
+      `Не удалось загрузить JSON из корня проекта.\nПопытки:\n  - ${errors.join('\n  - ')}`
+    );
   }
+
+  // Основной файл: предпочитаем compact (index.json), т.к. именно он —
+  // источник round-trip и `originalCompact`.
+  const primary = loaded.find((x) => x.fmt === 'compact') || loaded[0];
+
+  const st = await loadData(primary.json, { includeEdges });
+
+  // ✅ FIX v13.0.2: сохраняем все остальные форматы, чтобы L0/L2
+  // стали доступны в Round-Trip.
+  for (const other of loaded) {
+    if (other === primary) continue;
+    try {
+      loadBothFormats(other.json, other.fmt, other.url);
+    } catch (e) {
+      warn('loadBothFormats не удался:', e.message);
+    }
+  }
+
+  return st;
 }
 
-// ---------------------------------------------------------------------------
-// СКАНИРОВАНИЕ ДИРЕКТОРИИ
-// ---------------------------------------------------------------------------
-
-/**
- * Пытается найти index*.json в директории.
- * Работает только если сервер отдаёт листинг директории.
- *
- * @param {string} basePath
- * @param {boolean} silent
- * @returns {Promise<string[]>} — список имён файлов
- */
 async function scanDirectoryForIndex(basePath, silent) {
   const url = basePath || './';
   try {
     const res = await fetch(url, { cache: 'no-cache' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const ct = res.headers.get('content-type') || '';
-    if (!ct.includes('text/html')) {
-      return [];
-    }
+    if (!ct.includes('text/html')) return [];
     const html = await res.text();
     const found = new Set();
-
     const re = /href="([^"]*index[^"]*\.json)"/gi;
     let m;
     while ((m = re.exec(html)) !== null) {
       let href = m[1];
       href = href.split('?')[0];
       const name = href.replace(/^\.?\//, '');
-      if (name && !name.includes('/')) {
-        found.add(name);
-      }
+      if (name && !name.includes('/')) found.add(name);
     }
     return [...found].sort((a, b) => a.localeCompare(b));
   } catch (e) {
@@ -1352,55 +1320,8 @@ async function scanDirectoryForIndex(basePath, silent) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// FETCH С ПЕРЕБОРОМ КАНДИДАТОВ
-// ---------------------------------------------------------------------------
-
-/**
- * Пробует загрузить каждого кандидата по очереди.
- * @returns {Promise<{ url: string, rawJson: object, state: object }>}
- */
-async function loadViaFetch(basePath, candidates, log, options = {}) {
-  const errors = [];
-
-  for (const name of candidates) {
-    const url = basePath + name;
-    try {
-      log(`Пробуем: ${url}`);
-      const res = await fetch(url, { cache: 'no-cache' });
-      if (!res.ok) {
-        errors.push(`${url}: HTTP ${res.status}`);
-        continue;
-      }
-      const ct = res.headers.get('content-type') || '';
-      if (ct.includes('text/html')) {
-        errors.push(`${url}: сервер вернул HTML вместо JSON`);
-        continue;
-      }
-      const rawJson = await res.json();
-      log(`✓ Загружено: ${url}`);
-      const st = loadData(rawJson, { includeEdges: options.includeEdges });
-      return { url, rawJson, state: st };
-    } catch (e) {
-      errors.push(`${url}: ${e.message}`);
-    }
-  }
-
-  throw new Error(
-    `Не удалось загрузить JSON из корня проекта.\n` + `Попытки:\n  - ${errors.join('\n  - ')}`
-  );
-}
-
-// ---------------------------------------------------------------------------
-// FILE PICKER (FALLBACK)
-// ---------------------------------------------------------------------------
-
-/**
- * Открывает системный диалог выбора файла и возвращает распарсенный JSON.
- * @returns {Promise<object|null>}
- */
 function pickFileAndParse() {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json,application/json';
@@ -1421,9 +1342,8 @@ function pickFileAndParse() {
         resolve(null);
         return;
       }
-
       const reader = new FileReader();
-      reader.onload = ev => {
+      reader.onload = (ev) => {
         try {
           resolve(JSON.parse(ev.target.result));
         } catch (e) {
@@ -1446,10 +1366,6 @@ function pickFileAndParse() {
   });
 }
 
-// ---------------------------------------------------------------------------
-// КЭШ (localStorage)
-// ---------------------------------------------------------------------------
-
 function readCache(ttl) {
   try {
     const raw = localStorage.getItem(LS_DATA_KEY);
@@ -1470,28 +1386,18 @@ function writeCache(url, json) {
   try {
     localStorage.setItem(
       LS_DATA_KEY,
-      JSON.stringify({
-        url,
-        ts: Date.now(),
-        json,
-      })
+      JSON.stringify({ url, ts: Date.now(), json })
     );
   } catch (e) {
     console.warn('[AST] Не удалось записать кэш:', e.message);
   }
 }
 
-/**
- * Полный сброс кэша.
- */
 export function clearRootCache() {
   localStorage.removeItem(LS_DATA_KEY);
   localStorage.removeItem(LS_URL_KEY);
 }
 
-/**
- * Информация о текущем кэше (для UI).
- */
 export function getRootCacheInfo() {
   try {
     const raw = localStorage.getItem(LS_DATA_KEY);
@@ -1519,8 +1425,9 @@ function formatAge(ms) {
 }
 
 // ============================================================================
-// РЕЭКСПОРТ ИЗ КОДЕКА (для удобства UI)
+// РЕЭКСПОРТ ИЗ КОДЕКА
 // ============================================================================
+
 export {
   decodeCompactData,
   encodeToCompactData,
@@ -1531,4 +1438,5 @@ export {
   roundTripEncode,
   buildEdgesFromFull,
   buildEdgesStats,
+  CODEC_VERSION,
 };
