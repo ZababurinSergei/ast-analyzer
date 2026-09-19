@@ -2,7 +2,18 @@
 // ============================================
 // ЗАГРУЗЧИК КОНФИГ-ФАЙЛА
 // ============================================
-// Версия: 1.0.0
+// Версия: 1.1.0
+//
+// ИЗМЕНЕНИЯ v1.1.0 (values-mode):
+//   - ✅ ДОБАВЛЕНО поле `valuesMode?: 'full' | 'relations'` в CompactRecursiveConfig
+//   - ✅ ДОБАВЛЕН проброс valuesMode в mergeConfigWithCli
+//     Приоритет: CLI > config > default ('relations')
+//   - ✅ Обновлены комментарии для соответствия v12.0.0 CompactRecursiveCommand
+//
+// ИЗМЕНЕНИЯ v1.0.0:
+//   - Базовая реализация загрузки ast-analyzer.config.json
+//   - Автопоиск файла вверх по дереву
+//   - mergeConfigWithCli с приоритетом CLI > config > default
 //
 // Назначение:
 //   Читает ast-analyzer.config.json (или путь из --config),
@@ -88,6 +99,18 @@ export interface CompactRecursiveConfig {
     saveEdges?: boolean;
     edgesJsonSuffix?: string;
   };
+
+  // ✅ v1.1.0: режим сериализации values
+  /**
+   * Режим сериализации секции values в компактном JSON-отчёте.
+   *
+   * - `'full'`      — все значения сохраняются (обратная совместимость)
+   * - `'relations'` — только значения, нужные для восстановления связей
+   *                   (сжатый режим, экономия 5–15x по размеру)
+   *
+   * Default: 'relations' (устанавливается в CompactRecursiveCommand).
+   */
+  valuesMode?: 'full' | 'relations';
 
   exclude?: string[];
 }
@@ -282,6 +305,23 @@ export function mergeConfigWithCli(
   // output.* → outputOptions
   if (cfg.outputOptions) {
     merged.__outputOptions = { ...cfg.outputOptions };
+  }
+
+  // ✅ v1.1.0: valuesMode
+  // Приоритет: CLI > config > default ('relations')
+  // Default устанавливается в CompactRecursiveCommand (options.valuesMode
+  // уже имеет default 'relations' через .option(..., 'relations')).
+  // Здесь только подставляем значение из конфига, если CLI его не задал.
+  if (cliOptions.valuesMode === undefined && cfg.valuesMode !== undefined) {
+    // Валидация значения из конфига
+    if (cfg.valuesMode === 'full' || cfg.valuesMode === 'relations') {
+      merged.valuesMode = cfg.valuesMode;
+    } else {
+      console.warn(
+        `⚠️ Invalid valuesMode in config: "${cfg.valuesMode}". Expected "full" or "relations". Falling back to "relations".`
+      );
+      merged.valuesMode = 'relations';
+    }
   }
 
   // exclude

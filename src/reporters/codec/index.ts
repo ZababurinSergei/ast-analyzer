@@ -2,7 +2,13 @@
 // ============================================
 // ЕДИНАЯ ТОЧКА ВХОДА ДЛЯ CODEC
 // ============================================
-// Версия: 10.4.0
+// Версия: 11.0.0
+//
+// ИЗМЕНЕНИЯ v11.0.0 (компактнее):
+//   - ✅ ДОБАВЛЕН реэкспорт `decodeFlagsFromNumber` из './codec-decode.js'
+//     (новая функция для парсинга флагов-чисел в compact.json v11.0.0).
+//   - ✅ ОБНОВЛЕНО: CODEC_MODULE_VERSION = '11.0.0'
+//   - ✅ default-экспорт включает decodeFlagsFromNumber
 //
 // ИЗМЕНЕНИЯ v10.4.0 (легенда для ИИ):
 //   - ✅ ДОБАВЛЕНО: реэкспорт из './codec-legend.js':
@@ -13,7 +19,6 @@
 //   - ✅ ДОБАВЛЕНО: реэкспорт новых типов из './codec-types.js':
 //       • FlagBit             — один бит в поле flags
 //       • CodesDict           — словарь { код: описание }
-//   - ✅ ОБНОВЛЕНО: CODEC_MODULE_VERSION = '10.4.0'
 //
 // ИЗМЕНЕНИЯ v9.0.0:
 //   - Базовая структура: реэкспорт Codec, словарей, функций флагов,
@@ -73,7 +78,13 @@ export {
 export { encodeFlags, flagsToString, reverseLookup } from './codec-encode.js';
 
 // --- Из codec-decode.ts (декодирование) ---
-export { decodeFlagsToObject, flagsStringToNumber, createEmptyFlags } from './codec-decode.js';
+// ✅ v11.0.0: добавлен decodeFlagsFromNumber (парсит число-флаги).
+export {
+  decodeFlagsToObject,
+  decodeFlagsFromNumber, // ✅ v11.0.0
+  flagsStringToNumber,
+  createEmptyFlags,
+} from './codec-decode.js';
 
 export type { DecodedFlags } from './codec-decode.js';
 
@@ -296,10 +307,10 @@ export type {
 /**
  * Версия модуля codec.
  *
- * ✅ v10.4.0: синхронизирована с codec-legend.ts
- *    и compact-reporter.ts.
+ * ✅ v11.0.0: синхронизирована с codec-legend.ts,
+ *    codec-encode.ts, codec-decode.ts и compact-reporter.ts.
  */
-export const CODEC_MODULE_VERSION = '10.4.0';
+export const CODEC_MODULE_VERSION = '11.0.0';
 
 /**
  * Имя модуля codec.
@@ -327,7 +338,12 @@ import {
   FLAG_CHAR_MAP,
   FLAG_NAMES,
 } from './codec-encode.js';
-import { decodeFlagsToObject, flagsStringToNumber, createEmptyFlags } from './codec-decode.js';
+import {
+  decodeFlagsToObject,
+  decodeFlagsFromNumber, // ✅ v11.0.0
+  flagsStringToNumber,
+  createEmptyFlags,
+} from './codec-decode.js';
 import {
   verifyRoundTrip,
   verifyRoundTripBoth,
@@ -359,6 +375,7 @@ export default {
   // ============================================
   encodeFlags,
   decodeFlagsToObject,
+  decodeFlagsFromNumber, // ✅ v11.0.0
   flagsToString,
   flagsStringToNumber,
   createEmptyFlags,

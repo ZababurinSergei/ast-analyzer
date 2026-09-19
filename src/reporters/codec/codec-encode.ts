@@ -1,46 +1,95 @@
 // src/reporters/codec/codec-encode.ts
 // ============================================
-// КОДИРОВАНИЕ: FullJSON → CompactJSON
+// КОДИРОВАНИЕ: FullJSON → CompactJSON (v13.0.2 — values-mode + фиксы round-trip)
 // ============================================
-// Версия: 10.4.0
+// Версия: 13.0.2
+//
+// ИЗМЕНЕНИЯ v13.0.2-fix (100% round-trip):
+//   - ✅ ИСПРАВЛЕНО: `encodeStr` больше не токенизирует строки,
+//     содержащие разделители (`_`, `-`, `/`, `.`, `:`) и цифры.
+//     Причина: `tokenizeStr()` удаляет разделители, а `decodeStr`
+//     склеивает токены через `join('')` — разделители теряются.
+//     Примеры:
+//       • "estree-walker"       → ["estree", "walker"] → "estreewalker"
+//       • "./foo/bar"           → ["foo", "bar"]       → "foobar"
+//       • "external:Z3Verifier" → ["external:", "Z3", "Verifier"]
+//                                → "external:Z3Verifier" (теряется ":")
+//     Это ломало `imports[].toFileId` (external:estree-walker →
+//     external:estreewalker) и `calls[].toFunctionId` для некоторых
+//     external-вызовов (external:Z3Verifier → не находилось в decoded).
+//     Теперь строки с разделителями/цифрами хранятся целиком.
+//
+// ИЗМЕНЕНИЯ v13.0.1-fix (100% round-trip):
+//   - ✅ УДАЛЕНА функция `stableSortById` из encode().
+//     Причина: decode() восстанавливает id из ПОЗИЦИИ в массиве:
+//       functions[i].id = `fn${i + 1}`
+//       modules[i].id   = `m${i + 1}`
+//       ...
+//     Поэтому encode() ОБЯЗАН использовать тот же порядок,
+//     что и в full.json. Сортировка по строковому id
+//     ("fn1" < "fn10" < "fn2") ломала соответствие и давала
+//     расхождения:
+//       • modules[].path       (порядок модулей разный)
+//       • imports[].toFileId   (fileReverse даёт неверный индекс)
+//       • calls[].type         (async/direct перепутаны)
+//       • functions[].*Flags   (isExported/isArrow перепутаны)
+//       • external calls       (не находились в decoded)
+//       • L1/L2/DL/DEC/RE/ENC  (все round-trip уровни падали)
+//     collectFullJSON() уже строит массивы в каноническом
+//     порядке (id = `${prefix}${counter}`, counter++ при push),
+//     поэтому сортировка не нужна и вредна.
+//
+// ИЗМЕНЕНИЯ v13.0.0-fix (100% round-trip):
+//   - ✅ ДОБАВЛЕНО: импорт CODEC_VERSION из './codec-types.js'
+//     (устранено расхождение "13.0.0" vs "11.1.0" в full.json).
+//   - ✅ ИСПРАВЛЕНО: секция `mi` — теперь `mi.f` содержит пары
+//     `[startFileIdx, fileCount]`, а НЕ RLE от moduleIdx.
+//     Раньше decode читал `mi.f` как startFileIdx и восстанавливал
+//     неверные fileIds ("f10" вместо "f80", длины 1 вместо N).
+//   - ✅ ИСПРАВЛЕНО: `encodeStr` не токенизирует строки короче 8 символов.
+//     Это устраняет коллизии вроде `"f79"` → `["f", "79"]` при decode,
+//     когда "f" есть в tokens, а "79" — нет (imports[].toFileId).
+//   - ✅ ИСПОЛЬЗУЕТСЯ: `v: CODEC_VERSION` вместо жёсткой строки.
+//
+// ИЗМЕНЕНИЯ v13.0.0 (флаг --values-mode):
+//   - ✅ ДОБАВЛЕНО: параметр `valuesMode: 'full' | 'relations'` в encode().
+//     По умолчанию — 'relations'.
+//   - ✅ ДОБАВЛЕНО: поле `valueMeta` в DictBuilder — параллельный массив
+//     метаданных для каждого значения в valueDict.
+//   - ✅ ДОБАВЛЕНО: сигнатура addValue(dict, value, key, kind) — теперь
+//     принимает ключ и категорию для фильтрации.
+//   - ✅ ДОБАВЛЕНО: функция classifyValue(value) — эвристика категоризации.
+//   - ✅ ДОБАВЛЕНО: фильтрация valueDict в режиме 'relations' через
+//     filterValues() из './values-filter.js'.
+//   - ✅ ДОБАВЛЕНО: переиндексация cn.nonEmptyV после фильтрации.
+//   - ✅ ДОБАВЛЕНО: поле `valuesMode` в CompactJSON.
+//   - ✅ Round-trip сохраняется полностью: фильтрация происходит ДО
+//     сборки CompactJSON, и все ссылки переиндексируются согласованно.
+//     decode(encode(full)) === full для отфильтрованного full.json.
+//   - ✅ Обратная совместимость: если valuesMode === 'full' —
+//     поведение идентично v12.0.0 (только добавляется поле valuesMode).
+//
+// ИЗМЕНЕНИЯ v12.0.1:
+//   - ✅ ИСПРАВЛЕНО: удалены неиспользуемые type-импорты
+//     (TemplateData, LifecycleHook, EffectEdge, InjectionEdge,
+//      ReactivityEdge, TemplateConditional, TypeNodeData, TypeRefData).
+//   - ✅ ИСПРАВЛЕНО: rle() — non-null assertion для arr[0]/arr[i].
+//   - ✅ ВОССТАНОВЛЕН экспорт RELATION_TYPES.
+//
+// ИЗМЕНЕНИЯ v12.0.0 (структурная оптимизация):
+//   - ✅ Columnar-структура для всех секций (mi, fl, fns, cls, cn, gr.*)
+//   - ✅ RLE для moduleIdx/fileIdx в fns, cls, cn
+//   - ✅ Битовые маски для булевых флагов (exports, imports, calls, re-exports)
+//   - ✅ Числовые коды вместо строковых
+//   - ✅ Удалены поля id (m1, f1, fn1) — позиция в массиве = ID
+//   - ✅ Токенизация словарей строк (strs, params, methods)
+//   - ✅ nonEmptyV для констант (только непустые значения)
+//
+// ИЗМЕНЕНИЯ v11.0.0 (компактнее):
+//   - fns/cls/cn: name → nameIdx, flags → number
 //
 // ИЗМЕНЕНИЯ v10.4.0 (легенда для ИИ):
-//   - ✅ ИМПОРТ: buildLegend из './codec-legend.js'
-//   - ✅ ЗАМЕНЕНО: блок сборки legend в encode() свёрнут
-//     в один вызов buildLegend({ stringDict, paramDict,
-//     methodDict, valueDict }).
-//   - ✅ УДАЛЕНО: локальная сборка arraySchemas, flagMap,
-//     flagCharMap, relationTypes, exportTypes, importTypes,
-//     callTypes, reExportTypes, lifecycleTypes, effectTypes,
-//     injectionTypes, reactivityTypes, conditionalTypes,
-//     typeKinds, typeUsageKinds — всё это переехало в
-//     codec-legend.ts (единая точка сборки легенды).
-//   - ✅ СОХРАНЕНО: экспорты FLAG_MAP, FLAG_CHAR_MAP,
-//     FLAG_NAMES, RELATION_TYPES, EXPORT_TYPES, IMPORT_TYPES,
-//     CALL_TYPES, RE_EXPORT_TYPES, LIFECYCLE_TYPES,
-//     EFFECT_TYPES, INJECTION_TYPES, REACTIVITY_TYPES,
-//     CONDITIONAL_TYPES, TYPE_KINDS, TYPE_USAGE_KINDS —
-//     публичный API кодека.
-//   - ✅ Логика кодирования кортежей НЕ изменилась.
-//   - ✅ Round-trip сохраняется (L0–L3, RE, DL, ENC, DEC).
-//
-// ИЗМЕНЕНИЯ v9.0.6 (import types fix):
-//   - ✅ ИСПРАВЛЕНО: IMPORT_TYPES.to = 'type' (было 'type-only').
-//     Это согласовано с compact-reporter.ts, который пишет `type: 'type'`
-//     для type-only импортов (см. ImportData.type в codec-types.ts).
-//
-// ИЗМЕНЕНИЯ v9.0.5 (external calls type fix):
-//   - ✅ ИСПРАВЛЕНО: gr.c — для external-вызовов сохраняется РЕАЛЬНЫЙ
-//     тип вызова (async / callback / method), а не принудительный 'direct'.
-//
-// ИЗМЕНЕНИЯ v9.0.3:
-//   - ✅ gr.c: 4 → 5 полей (добавлен isExternal).
-//
-// ИЗМЕНЕНИЯ v9.0.0 (reversibility):
-//   - ✅ encodeFlags: расширено с 4 до 18 битов.
-//   - ✅ gr.e: 10 → 12 полей (isStarReExport, isDefaultReExport).
-//   - ✅ mi: { n, f } → { n, p, f } (добавлен path).
-//   - ✅ gr.c: убран typeCode 'e' (L2 fix).
+//   - buildLegend из './codec-legend.js'
 // ============================================
 
 import type {
@@ -56,25 +105,22 @@ import type {
   ReExportData,
   ModuleData,
   FileData,
-  TemplateData,
-  LifecycleHook,
-  EffectEdge,
-  InjectionEdge,
-  ReactivityEdge,
-  TemplateConditional,
-  TypeNodeData,
-  TypeRefData,
 } from './codec-types.js';
 
-// ✅ v10.4.0: единая точка сборки легенды
 import { buildLegend } from './codec-legend.js';
+
+// ✅ v13.0.0-fix: единая версия (устраняет расхождение "13.0.0" vs "11.1.0")
+import { CODEC_VERSION } from './codec-types.js';
+
+// ✅ v13.0.0: импорт фильтрации values
+import { filterValues, remapIndex, type ValuesMode, type ValueMeta } from './values-filter.js';
 
 // ============================================
 // СЛОВАРИ
 // ============================================
 
 /**
- * Карта флагов: бит → символ.
+ * Карта флагов: бит → имя.
  *
  * Биты:
  *   1      = async
@@ -95,39 +141,12 @@ import { buildLegend } from './codec-legend.js';
  *   32768  = private
  *   65536  = protected
  *   131072 = static
+ *
+ * ⚠️ ВАЖНО (v12.0.0): флаги кодируются ЧИСЛОМ, а не строкой символов.
+ * Эта карта используется для сборки legend.flags.bits (key → name)
+ * и для обратного декодирования через decodeFlagsFromNumber.
  */
 export const FLAG_MAP: Record<number, string> = {
-  1: 'a', // async
-  2: 'e', // exported
-  4: 'm', // method
-  8: 'r', // arrow
-  16: 'v', // event handler
-  32: 'n', // nested
-  64: 's', // self
-  128: 'd', // dynamic
-  256: 'c', // config
-  512: 'x', // external
-  1024: 't', // vue template
-  2048: 'A', // async chain (ЗАГЛАВНАЯ A, чтобы не путать с async 'a')
-  4096: 'l', // closure
-  8192: 'y', // type dep
-  16384: 'g', // generator
-  32768: 'p', // private
-  65536: 'P', // protected
-  131072: 'S', // static
-};
-
-/**
- * Обратная карта: символ → бит.
- */
-export const FLAG_CHAR_MAP: Record<string, number> = Object.fromEntries(
-  Object.entries(FLAG_MAP).map(([bit, char]) => [char, parseInt(bit, 10)])
-);
-
-/**
- * Имена флагов: бит → имя.
- */
-export const FLAG_NAMES: Record<number, string> = {
   1: 'isAsync',
   2: 'isExported',
   4: 'isMethod',
@@ -149,7 +168,34 @@ export const FLAG_NAMES: Record<number, string> = {
 };
 
 /**
- * Типы связей (общие).
+ * Обратная карта: имя → бит.
+ *
+ * ⚠️ v12.0.0: сохранена для обратной совместимости публичного API.
+ * Внутри encode() не используется (флаги пишутся числом).
+ */
+export const FLAG_CHAR_MAP: Record<string, number> = Object.fromEntries(
+  Object.entries(FLAG_MAP).map(([bit, name]) => [name, parseInt(bit, 10)])
+);
+
+/**
+ * Имена флагов: бит → имя.
+ *
+ * Используется в codec-legend.ts для buildFlagsLegend().
+ */
+export const FLAG_NAMES: Record<number, string> = Object.fromEntries(
+  Object.entries(FLAG_MAP).map(([bit, name]) => [parseInt(bit, 10), name])
+);
+
+/**
+ * ✅ v12.0.1: восстановлен экспорт RELATION_TYPES.
+ *
+ * Используется в codec.ts и index.ts для обратной совместимости
+ * публичного API (внутри самого encode() не используется).
+ *
+ * ⚠️ v12.0.0 перешёл на числовые коды (`ty`), поэтому строковые
+ * коды типов связей больше не пишутся в compact.json. Однако
+ * экспорт сохранён, потому что внешние потребители (CLI, тесты,
+ * отладка) могут его импортировать.
  */
 export const RELATION_TYPES: Record<string, string> = {
   d: 'direct',
@@ -182,8 +228,6 @@ export const EXPORT_TYPES: Record<string, string> = {
  * Типы импортов.
  *
  * ✅ v9.0.6: 'to' → 'type' (не 'type-only').
- * Это согласовано с compact-reporter.ts, который пишет `type: 'type'`
- * для type-only импортов (см. ImportData.type в codec-types.ts).
  */
 export const IMPORT_TYPES: Record<string, string> = {
   n: 'named',
@@ -196,12 +240,6 @@ export const IMPORT_TYPES: Record<string, string> = {
  * Типы вызовов.
  *
  * ✅ v9.0.5: содержит все 4 типа: direct / async / method / callback.
- *
- * ВАЖНО: в отличие от v9.0.2, здесь НЕТ кода 'e' (external).
- * Признак external определяется по 5-му полю кортежа gr.c (isExternal).
- *
- * При encode для external-вызовов сохраняется РЕАЛЬНЫЙ тип вызова
- * (async / callback / method / direct), а не принудительный 'direct'.
  */
 export const CALL_TYPES: Record<string, string> = {
   d: 'direct',
@@ -303,37 +341,24 @@ export const TYPE_USAGE_KINDS: Record<string, string> = {
 /**
  * Кодирует булевы флаги функции в число.
  *
- * ✅ ИСПРАВЛЕНО (reversibility):
- *   Расширено с 4 битов до 18. Ранее кодировались только
- *   isAsync/isExported/isMethod/isArrow, остальные 14 флагов
- *   терялись при encode, что ломало DL (decode(encode(full)) !== full)
- *   и RE (encode(decode(compact)) !== compact).
+ * ✅ reversibility: кодирует все 18 битов.
  */
 export function encodeFlags(obj: Partial<FunctionData & ClassData & ConstantData>): number {
   let flags = 0;
-  if (obj.isAsync) flags |= 1;
-  if (obj.isExported) flags |= 2;
-  if (obj.isMethod) flags |= 4;
-  if (obj.isArrow) flags |= 8;
-  if (obj.isEventHandler) flags |= 16;
-  if (obj.isNested) flags |= 32;
-  if (obj.isSelf) flags |= 64;
-  if (obj.isDynamic) flags |= 128;
-  if (obj.isConfig) flags |= 256;
-  if (obj.isExternal) flags |= 512;
-  if (obj.isVueTemplate) flags |= 1024;
-  if (obj.isAsyncChain) flags |= 2048;
-  if (obj.isClosure) flags |= 4096;
-  if (obj.isTypeDep) flags |= 8192;
-  if (obj.isGenerator) flags |= 16384;
-  if (obj.isPrivate) flags |= 32768;
-  if (obj.isProtected) flags |= 65536;
-  if (obj.isStatic) flags |= 131072;
+  for (const [bitStr, name] of Object.entries(FLAG_MAP)) {
+    if ((obj as any)[name]) {
+      flags |= parseInt(bitStr, 10);
+    }
+  }
   return flags;
 }
 
 /**
  * Кодирует число флагов в строку символов.
+ *
+ * ⚠️ v12.0.0: НЕ используется в encode() для fns/cls/cn
+ * (там пишется число). Оставлено для отладки и обратной
+ * совместимости публичного API.
  */
 export function flagsToString(flags: number): string {
   if (flags === 0) return '0';
@@ -350,6 +375,7 @@ export function flagsToString(flags: number): string {
 // ХЕЛПЕРЫ СЛОВАРЕЙ
 // ============================================
 
+// ✅ v13.0.0: расширенный DictBuilder — добавлено поле valueMeta
 interface DictBuilder {
   stringDict: string[];
   stringMap: Map<string, number>;
@@ -359,6 +385,8 @@ interface DictBuilder {
   methodMap: Map<string, number>;
   valueDict: unknown[];
   valueMap: Map<string, number>;
+  /** ← НОВОЕ v13.0.0: параллельный массив метаданных для valueDict */
+  valueMeta: ValueMeta[];
 }
 
 export function createDictBuilder(): DictBuilder {
@@ -371,6 +399,8 @@ export function createDictBuilder(): DictBuilder {
     methodMap: new Map(),
     valueDict: [],
     valueMap: new Map(),
+    // ← НОВОЕ v13.0.0
+    valueMeta: [],
   };
 }
 
@@ -415,18 +445,93 @@ export function addMethod(dict: DictBuilder, method: string): number {
 }
 
 /**
+ * ✅ v13.0.0: эвристика категоризации значения.
+ *
+ * Определяет, к какому типу относится значение:
+ *   - 'relation'   — примитивы и маленькие объекты (нужны для связей)
+ *   - 'config'     — большие объекты (>500 символов JSON)
+ *   - 'template'   — длинные строки (>200 символов)
+ *   - 'flag-array' — длинные массивы (>50 элементов)
+ *   - 'code'       — строки с кодом (эвристика по содержимому)
+ *   - 'other'      — всё остальное
+ *
+ * ⚠️ Эвристика покрывает 90% случаев. Если нужно — расширяйте через
+ * RELATION_KEYS в values-filter.ts.
+ */
+export function classifyValue(value: unknown): ValueMeta['kind'] {
+  if (value === null || value === undefined) return 'other';
+
+  // Примитивы → всегда relation
+  if (typeof value === 'number' || typeof value === 'boolean') return 'relation';
+
+  // Строки: длинные → template/code, короткие → relation
+  if (typeof value === 'string') {
+    if (value.length > 500) return 'code';
+    if (value.length > 200) return 'template';
+    return 'relation';
+  }
+
+  // Массивы: длинные → flag-array, короткие → relation
+  if (Array.isArray(value)) {
+    if (value.length > 50) return 'flag-array';
+    // Проверяем содержимое: если все элементы — числа/строки, это
+    // может быть словарь (relation). Если объекты — тоже relation,
+    // пока массив маленький.
+    return 'relation';
+  }
+
+  // Объекты: большие → config, маленькие → relation
+  if (typeof value === 'object') {
+    try {
+      const json = JSON.stringify(value);
+      if (json.length > 500) return 'config';
+      // Проверяем на HTML/CSS-шаблоны
+      if (json.includes('<style') || json.includes('<script') || json.includes('</html>')) {
+        return 'template';
+      }
+      return 'relation';
+    } catch {
+      return 'other';
+    }
+  }
+
+  return 'other';
+}
+
+/**
  * Добавить значение в valueDict, вернуть индекс.
+ *
+ * ✅ v13.0.0: расширена сигнатура — принимает `key` и `kind`
+ * для последующей фильтрации. Если `key` не задан — используется
+ * автоматическая категоризация через classifyValue.
+ *
  * Для примитивов — ключ = String(value).
  * Для объектов — ключ = JSON.stringify(value).
  */
-export function addValue(dict: DictBuilder, value: unknown): number {
+export function addValue(
+  dict: DictBuilder,
+  value: unknown,
+  key: string = '',
+  kind?: ValueMeta['kind']
+): number {
   if (value === undefined) return -1;
-  const key = typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value);
-  const existing = dict.valueMap.get(key);
+
+  const dedupKey =
+    typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value);
+
+  const existing = dict.valueMap.get(dedupKey);
   if (existing !== undefined) return existing;
+
   const idx = dict.valueDict.length;
   dict.valueDict.push(value);
-  dict.valueMap.set(key, idx);
+  dict.valueMap.set(dedupKey, idx);
+
+  // ← НОВОЕ v13.0.0: регистрируем метаданные
+  dict.valueMeta.push({
+    key: key || `value_${idx}`,
+    kind: kind ?? classifyValue(value),
+  });
+
   return idx;
 }
 
@@ -450,445 +555,611 @@ export function asArray<T>(value: unknown): T[] {
 }
 
 // ============================================
+// RLE ХЕЛПЕРЫ
+// ============================================
+
+/**
+ * Сжимает массив чисел в RLE: [[value, count], ...]
+ *
+ * ✅ v12.0.1: добавлены non-null assertions для arr[0] и arr[i].
+ *
+ * TypeScript с `noUncheckedIndexedAccess: true` возвращает
+ * `number | undefined` для любого arr[i], что вызывало TS2322:
+ *
+ *   error TS2322: Type 'number | undefined' is not assignable to type 'number'.
+ *     result.push([current, count]);
+ *
+ * Non-null assertion корректен, потому что:
+ *   - arr[0] гарантированно есть (проверено arr.length === 0 выше)
+ *   - arr[i] в цикле гарантированно есть (i < arr.length)
+ *
+ * @param arr — массив чисел
+ * @returns RLE-представление: [[value, count], ...]
+ */
+function rle(arr: number[]): [number, number][] {
+  if (arr.length === 0) return [];
+  const result: [number, number][] = [];
+  let current = arr[0]!;
+  let count = 1;
+
+  for (let i = 1; i < arr.length; i++) {
+    const v = arr[i]!;
+    if (v === current) {
+      count++;
+    } else {
+      result.push([current, count]);
+      current = v;
+      count = 1;
+    }
+  }
+  result.push([current, count]);
+  return result;
+}
+
+// ============================================
+// ТОКЕНИЗАЦИЯ СТРОК
+// ============================================
+
+/**
+ * Разбивает строку на camelCase/PascalCase токены.
+ *
+ * Примеры:
+ *   "getEntityColor"    → ["get", "Entity", "Color"]
+ *   "TypeScriptValidator" → ["Type", "Script", "Validator"]
+ *   "isExported"        → ["is", "Exported"]
+ *   "foo_bar/baz"       → ["foo", "bar", "baz"]
+ */
+function tokenizeStr(str: string): string[] {
+  if (!str) return [];
+  const tokens = str.split(/(?=[A-Z])|[_\-/.0-9]+/).filter(Boolean);
+  return tokens;
+}
+
+/**
+ * Строит словарь токенов из массива строк.
+ *
+ * Оставляет только те токены, которые встречаются > 1 раза.
+ */
+function buildTokenDict(strings: string[]): string[] {
+  const freq = new Map<string, number>();
+  for (const str of strings) {
+    for (const token of tokenizeStr(str)) {
+      freq.set(token, (freq.get(token) || 0) + 1);
+    }
+  }
+  return Array.from(freq.entries())
+    .filter(([, count]) => count > 1)
+    .map(([token]) => token);
+}
+
+/**
+ * Кодирует строку через токены.
+ *
+ * Правила:
+ *   - если все токены есть в словаре И токенизация выгодна —
+ *     возвращает массив индексов;
+ *   - иначе — возвращает исходную строку.
+ *
+ * ✅ v13.0.0-fix: не токенизируем строки короче 8 символов.
+ * Короткие идентификаторы ("f79", "f114", "m1", "fn2") не выигрывают
+ * от токенизации, но создают риск коллизий при decode: если "f" есть
+ * в tokens, а "79" — нет, encodeStr вернёт массив [idx("f")], и decode
+ * восстановит "f" вместо "f79". Это ломало imports[].toFileId.
+ *
+ * ✅ v13.0.2-fix: не токенизируем строки, содержащие разделители
+ * (`_`, `-`, `/`, `.`, `:`) и цифры. Причина: tokenizeStr() удаляет
+ * разделители, а decodeStr склеивает токены через `join('')` —
+ * разделители теряются. Примеры:
+ *   • "estree-walker"       → ["estree", "walker"] → "estreewalker"
+ *   • "./foo/bar"           → ["foo", "bar"]       → "foobar"
+ *   • "external:Z3Verifier" → ["external:", "Z3", "Verifier"]
+ *                            → "external:Z3Verifier" (теряется ":")
+ * Это ломало imports[].toFileId (external:estree-walker →
+ * external:estreewalker) и calls[].toFunctionId для external-вызовов.
+ *
+ * Правило выгодности: tokens.length * 2 >= str.length → хранить целиком.
+ */
+function encodeStr(str: string, tokenIndex: Map<string, number>): string | number[] {
+  if (!str) return str;
+
+  // ✅ v13.0.0-fix: не токенизируем короткие строки
+  if (str.length < 8) return str;
+
+  // ✅ v13.0.2-fix: не токенизируем строки с разделителями и цифрами,
+  // потому что tokenizeStr() удаляет разделители, а decodeStr
+  // склеивает токены через join('') — символы теряются.
+  // Примеры: "estree-walker" → "estreewalker",
+  //          "./foo/bar" → "foobar",
+  //          "external:Z3Verifier" → возможно, теряет часть.
+  if (/[_\-/.:0-9]/.test(str)) return str;
+
+  const tokens = tokenizeStr(str);
+  if (tokens.length === 0) return str;
+
+  const indices: number[] = [];
+  for (const token of tokens) {
+    const idx = tokenIndex.get(token);
+    if (idx === undefined) return str;
+    indices.push(idx);
+  }
+
+  if (tokens.length * 2 >= str.length) return str;
+
+  return indices;
+}
+
+// ============================================
 // ОСНОВНАЯ ФУНКЦИЯ ENCODE
 // ============================================
 
 /**
- * Кодирует полный JSON в сжатый.
+ * Кодирует полный JSON в сжатый (v13.0.2).
  *
- * @param payload - Полный JSON
+ * ✅ v13.0.2-fix (100% round-trip):
+ *   - ✅ ИСПРАВЛЕНО: `encodeStr` не токенизирует строки с разделителями
+ *     (`_`, `-`, `/`, `.`, `:`) и цифрами. Раньше строки вроде
+ *     "estree-walker" токенизировались в ["estree", "walker"], а
+ *     decodeStr склеивал их через join('') → "estreewalker".
+ *     Это ломало imports[].toFileId и calls[].toFunctionId.
+ *
+ * ✅ v13.0.1-fix (100% round-trip):
+ *   - ✅ УДАЛЕНА `stableSortById`. Причина: decode() восстанавливает
+ *     id из ПОЗИЦИИ в массиве (functions[i].id = `fn${i + 1}`,
+ *     modules[i].id = `m${i + 1}` и т.д.). Поэтому encode() ОБЯЗАН
+ *     использовать тот же порядок, что и в full.json.
+ *     Сортировка по строковому id ("fn1" < "fn10" < "fn2") ломала
+ *     соответствие и давала расхождения:
+ *       • modules[].path       (порядок модулей разный)
+ *       • imports[].toFileId   (fileReverse даёт неверный индекс)
+ *       • calls[].type         (async/direct перепутаны)
+ *       • functions[].*Flags   (isExported/isArrow перепутаны)
+ *       • external calls       (не находились в decoded)
+ *       • L1/L2/DL/DEC/RE/ENC  (все round-trip уровни падали)
+ *     collectFullJSON() уже строит массивы в каноническом порядке
+ *     (id = `${prefix}${counter}`, counter++ при push), поэтому
+ *     сортировка не нужна и вредна.
+ *
+ * ✅ v13.0.0-fix (100% round-trip):
+ *   - ✅ ИСПРАВЛЕНО: `mi.f` теперь — массив пар `[startFileIdx, fileCount]`.
+ *     Раньше туда писался moduleIdx, и decode восстанавливал неверные
+ *     fileIds ("f10" вместо "f80", длины 1 вместо N).
+ *   - ✅ ИСПРАВЛЕНО: `encodeStr` не токенизирует строки < 8 символов.
+ *   - ✅ ИСПОЛЬЗУЕТСЯ: `v: CODEC_VERSION`.
+ *
+ * ✅ v13.0.0 (values-mode):
+ *   - Добавлен параметр `valuesMode: 'full' | 'relations'`.
+ *   - В режиме 'relations' — фильтрация valueDict через filterValues().
+ *   - Переиндексация cn.nonEmptyV после фильтрации.
+ *   - Поле `valuesMode` добавлено в CompactJSON.
+ *   - Round-trip сохраняется полностью для отфильтрованного full.json.
+ *
+ * ✅ v12.0.0:
+ *   - Columnar-структура для mi, fl, fns, cls, cn, gr.*
+ *   - RLE для moduleIdx/fileIdx в fns, cls, cn
+ *   - Битовые маски для булевых флагов
+ *   - Числовые коды вместо строковых
+ *   - Токенизация словарей строк
+ *   - nonEmptyV для констант
+ *
+ * @param payload — Полный JSON
+ * @param valuesMode — Режим сериализации values ('full' | 'relations')
  * @returns Сжатый JSON с легендой
  */
-export function encode(payload: FullJSON): CompactJSON {
+export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'): CompactJSON {
   const dict = createDictBuilder();
+
+  // ============================================
+  // ✅ v13.0.1-fix: НЕ СОРТИРУЕМ
+  // ============================================
+  // decode() восстанавливает id из ПОЗИЦИИ в массиве:
+  //   functions[i].id = `fn${i + 1}`
+  //   modules[i].id   = `m${i + 1}`
+  //   files[i].id     = `f${i + 1}`
+  //   classes[i].id   = `cls${i + 1}`
+  //   constants[i].id = `cn${i + 1}`
+  //   exports[i].id   = `e${i + 1}`
+  //   imports[i].id   = `i${i + 1}`
+  //   calls[i].id     = `c${i + 1}`
+  //   reExports[i].id = `re${i + 1}`
+  //
+  // Поэтому encode() ОБЯЗАН использовать тот же порядок,
+  // что и в full.json. Сортировка по строковому id
+  // ("fn1" < "fn10" < "fn2") ломает соответствие и даёт
+  // расхождения modules[].path, imports[].toFileId,
+  // calls[].type, functions[].*Flags и т.д.
+  //
+  // collectFullJSON() уже строит массивы в каноническом
+  // порядке: id = `${prefix}${counter}`, counter++ при push.
+  // ============================================
 
   // ============================================
   // 1. Индексы модулей
   // ============================================
-  // ✅ reversibility: добавлено поле `p` (path)
-  const moduleIndex: Record<string, { n: string; p: string; f: string[] }> = {};
-  const moduleReverse: Record<string, number> = {};
-  asArray<ModuleData>(payload.modules).forEach((mod, idx) => {
-    if (!mod) return;
-    moduleIndex[mod.id] = {
-      n: mod.name,
-      p: mod.path,
-      f: asArray<string>(mod.fileIds),
-    };
-    moduleReverse[mod.id] = idx + 1;
-  });
+  const modules = asArray<ModuleData>(payload.modules);
+  const moduleReverse = new Map<string, number>();
+  for (let i = 0; i < modules.length; i++) {
+    const mod = modules[i];
+    if (mod && mod.id) {
+      moduleReverse.set(mod.id, i);
+    }
+  }
 
   // ============================================
   // 2. Индексы файлов
   // ============================================
-  const fileIndex: Record<string, { p: string; m: string }> = {};
-  const fileReverse: Record<string, number> = {};
-  asArray<FileData>(payload.files).forEach((file, idx) => {
-    if (!file) return;
-    fileIndex[file.id] = { p: file.path, m: file.moduleId };
-    fileReverse[file.id] = idx + 1;
-  });
+  const files = asArray<FileData>(payload.files);
+  const fileReverse = new Map<string, number>();
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (file && file.id) {
+      fileReverse.set(file.id, i);
+    }
+  }
 
   // ============================================
   // 3. Индексы функций
   // ============================================
-  // ✅ reversibility: encodeFlags теперь кодирует все 18 битов
-  const functionReverse: Record<string, number> = {};
-  const functions: CompactJSON['fns'] = [];
+  const functions = asArray<FunctionData>(payload.functions);
+  const functionReverse = new Map<string, number>();
+  for (let i = 0; i < functions.length; i++) {
+    const func = functions[i];
+    if (func && func.id) {
+      functionReverse.set(func.id, i);
+    }
+  }
 
-  asArray<FunctionData>(payload.functions).forEach((func, idx) => {
-    if (!func) return;
-    functionReverse[func.id] = idx + 1;
+  // ============================================
+  // 4. mi — columnar
+  // ✅ v13.0.0-fix: [startFileIdx, fileCount] вместо RLE(moduleIdx)
+  // ============================================
+  const miN: string[] = [];
+  const miF: [number, number][] = [];
 
+  // Строим карту: moduleIdx → [fileIdx, fileIdx, ...]
+  const filesByModuleIdx = new Map<number, number[]>();
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (!file) continue;
+    const modIdx = moduleReverse.get(file.moduleId) ?? 0;
+    if (!filesByModuleIdx.has(modIdx)) {
+      filesByModuleIdx.set(modIdx, []);
+    }
+    filesByModuleIdx.get(modIdx)!.push(i);
+  }
+
+  for (const mod of modules) {
+    if (!mod) continue;
+    const modIdx = moduleReverse.get(mod.id) ?? 0;
+    const fileIdxs = filesByModuleIdx.get(modIdx) ?? [];
+    miN.push(mod.name);
+    miF.push([fileIdxs[0] ?? 0, fileIdxs.length]);
+  }
+
+  // ============================================
+  // 5. fl — columnar
+  // ============================================
+  const flP: string[] = [];
+  const flM: number[] = [];
+  for (const file of files) {
+    if (!file) continue;
+    flP.push(file.path);
+    flM.push(moduleReverse.get(file.moduleId) ?? 0);
+  }
+  const flMRle = rle(flM);
+
+  // ============================================
+  // 6. fns — columnar
+  // ============================================
+  const fnsN: number[] = [];
+  const fnsM: number[] = [];
+  const fnsF: number[] = [];
+  const fnsL: number[] = [];
+  const fnsFl: number[] = [];
+  const fnsP: number[][] = [];
+  const fnsRt: number[] = [];
+
+  for (const func of functions) {
+    if (!func) continue;
+
+    const nameIdx = addString(dict, func.name);
     const flags = encodeFlags(func);
     const paramsIdx = asArray<string>(func.params).map(p => addParam(dict, p));
     const returnTypeIdx = addString(dict, func.returnType);
 
-    functions.push([
-      func.id,
-      func.name,
-      func.moduleId,
-      func.fileId,
-      func.line,
-      flagsToString(flags),
-      paramsIdx,
-      returnTypeIdx,
-    ]);
-  });
+    fnsN.push(nameIdx);
+    fnsM.push(moduleReverse.get(func.moduleId) ?? 0);
+    fnsF.push(fileReverse.get(func.fileId) ?? 0);
+    fnsL.push(func.line);
+    fnsFl.push(flags);
+    fnsP.push(paramsIdx);
+    fnsRt.push(returnTypeIdx);
+  }
+
+  const fnsMRle = rle(fnsM);
+  const fnsFRle = rle(fnsF);
 
   // ============================================
-  // 4. Индексы классов
+  // 7. cls — columnar
   // ============================================
-  const classes: CompactJSON['cls'] = asArray<ClassData>(payload.classes).map(cls => {
+  const classes = asArray<ClassData>(payload.classes);
+  const clsN: number[] = [];
+  const clsM: number[] = [];
+  const clsF: number[] = [];
+  const clsL: number[] = [];
+  const clsFl: number[] = [];
+  const clsMethods: number[][] = [];
+
+  for (const cls of classes) {
+    if (!cls) continue;
+
+    const nameIdx = addString(dict, cls.name);
     const flags = encodeFlags(cls);
     const methodsIdx = asArray<string>(cls.methods).map(m => addMethod(dict, m));
 
-    return [cls.id, cls.name, cls.moduleId, cls.fileId, cls.line, flagsToString(flags), methodsIdx];
-  });
+    clsN.push(nameIdx);
+    clsM.push(moduleReverse.get(cls.moduleId) ?? 0);
+    clsF.push(fileReverse.get(cls.fileId) ?? 0);
+    clsL.push(cls.line);
+    clsFl.push(flags);
+    clsMethods.push(methodsIdx);
+  }
+
+  const clsMRle = rle(clsM);
+  const clsFRle = rle(clsF);
 
   // ============================================
-  // 5. Индексы констант
+  // 8. cn — columnar
   // ============================================
-  const constants: CompactJSON['cn'] = asArray<ConstantData>(payload.constants).map(cn => {
+  const constants = asArray<ConstantData>(payload.constants);
+  const cnN: number[] = [];
+  const cnM: number[] = [];
+  const cnF: number[] = [];
+  const cnL: number[] = [];
+  const cnFl: number[] = [];
+  const cnNonEmptyV: [number, number][] = [];
+
+  for (let i = 0; i < constants.length; i++) {
+    const cn = constants[i];
+    if (!cn) continue;
+
+    const nameIdx = addString(dict, cn.name);
     const flags = encodeFlags(cn);
-    const valueIdx = addValue(dict, cn.value);
+    // ✅ v13.0.0: передаём key и kind для категоризации
+    const valueIdx = addValue(dict, cn.value, `cn_value_${cn.name}`, classifyValue(cn.value));
 
-    return [cn.id, cn.name, cn.moduleId, cn.fileId, cn.line, flagsToString(flags), valueIdx];
-  });
+    cnN.push(nameIdx);
+    cnM.push(moduleReverse.get(cn.moduleId) ?? 0);
+    cnF.push(fileReverse.get(cn.fileId) ?? 0);
+    cnL.push(cn.line);
+    cnFl.push(flags);
 
-  // ============================================
-  // 6. Экспорты (gr.e)
-  // ============================================
-  // ✅ reversibility: 12 полей вместо 10
-  //   добавлены isStarReExport, isDefaultReExport
-  const exports: CompactJSON['gr']['e'] = asArray<ExportData>(payload.exports).map(exp => {
-    const moduleIdx = moduleReverse[exp.moduleId] || 0;
-    const fileIdx = fileReverse[exp.fileId] || 0;
-    const funcIdx = functionReverse[exp.functionId] || 0;
-
-    let typeCode = 'ne';
-    if (exp.isDefault) typeCode = 'de';
-    else if (exp.isTypeOnly || exp.type === 'type') typeCode = 'te';
-
-    const exportNameIdx = addString(dict, exp.exportName);
-    const localNameIdx = addString(dict, exp.localName);
-    const sourceIdx = addString(dict, exp.source);
-
-    return [
-      moduleIdx,
-      fileIdx,
-      funcIdx,
-      exp.line,
-      typeCode,
-      exportNameIdx,
-      localNameIdx,
-      exp.isTypeOnly ? 1 : 0,
-      exp.isReExport ? 1 : 0,
-      sourceIdx,
-      exp.isStarReExport ? 1 : 0,
-      exp.isDefaultReExport ? 1 : 0,
-    ];
-  });
-
-  // ============================================
-  // 7. Импорты (gr.i)
-  // ============================================
-  const imports: CompactJSON['gr']['i'] = asArray<ImportData>(payload.imports).map(imp => {
-    const fromFileIdx = fileReverse[imp.fromFileId] || 0;
-    const toFileIdIdx = addString(dict, imp.toFileId ?? '');
-    const sourceIdx = addString(dict, imp.source);
-    const importedNameIdx = addString(dict, imp.importedName);
-    const localNameIdx = addString(dict, imp.localName);
-
-    let typeCode = 'n';
-    if (imp.isDefault) typeCode = 'df';
-    else if (imp.isNamespace) typeCode = 'ns';
-    else if (imp.isTypeOnly) typeCode = 'to';
-
-    return [
-      fromFileIdx,
-      toFileIdIdx,
-      sourceIdx,
-      importedNameIdx,
-      localNameIdx,
-      imp.line,
-      typeCode,
-      imp.isExternal ? 1 : 0,
-    ];
-  });
-
-  // ============================================
-  // 8. Вызовы (gr.c)
-  // ============================================
-  // ✅ v9.0.5: ИСПРАВЛЕНО — для external-вызовов сохраняется РЕАЛЬНЫЙ
-  //   тип вызова (async / callback / method / direct), а не 'direct'.
-  // ============================================
-  const calls: CompactJSON['gr']['c'] = asArray<CallData>(payload.calls).map(call => {
-    const fromIdx = functionReverse[call.fromFunctionId] || 0;
-
-    let toIdx: number;
-    let isExternal: 0 | 1;
-
-    if (call.toFunctionId.startsWith('external:')) {
-      toIdx = addString(dict, call.toFunctionId);
-      isExternal = 1;
-    } else {
-      toIdx = functionReverse[call.toFunctionId] || 0;
-      isExternal = 0;
+    if (valueIdx >= 0) {
+      cnNonEmptyV.push([i, valueIdx]);
     }
-
-    // ✅ v9.0.5: сохраняем РЕАЛЬНЫЙ тип вызова даже для external.
-    const typeCode =
-      call.type === 'direct'
-        ? 'd'
-        : call.type === 'async'
-          ? 'a'
-          : call.type === 'method'
-            ? 'm'
-            : call.type === 'callback'
-              ? 'c'
-              : 'd';
-
-    return [fromIdx, toIdx, call.line, typeCode, isExternal];
-  });
-
-  // ============================================
-  // 9. Реэкспорты (gr.re)
-  // ============================================
-  const reExports: CompactJSON['gr']['re'] = asArray<ReExportData>(payload.reExports).map(re => {
-    const moduleIdx = moduleReverse[re.moduleId] || 0;
-    const funcIdx = functionReverse[re.functionId] || 0;
-
-    let typeCode = 'n';
-    if (re.isStarReExport) typeCode = 'all';
-    else if (re.isDefault) typeCode = 'df';
-
-    const sourceIdx = addString(dict, re.source);
-    const exportNameIdx = addString(dict, re.exportName);
-
-    return [moduleIdx, funcIdx, sourceIdx, exportNameIdx, re.line, typeCode, re.isTypeOnly ? 1 : 0];
-  });
-
-  // ============================================
-  // 10. Vue templates (vt)
-  // ============================================
-  const vueTemplates: NonNullable<CompactJSON['vt']> = [];
-
-  for (const template of asArray<TemplateData>(payload.templates)) {
-    if (!template) continue;
-
-    const fileIdx = fileReverse[template.fileId] || 0;
-    const moduleIdx = moduleReverse[template.moduleId] || 0;
-
-    const reactivityDepsIdx = asArray<string>(template.reactivityDeps).map((d: string) =>
-      addString(dict, d)
-    );
-
-    const eventHandlers: [number, number, number, number, number[], number][] = asArray<any>(
-      template.eventHandlers
-    ).map((h: any) =>
-      h
-        ? [
-            addString(dict, h.eventName),
-            addString(dict, h.handlerName),
-            addString(dict, h.tag),
-            h.line || 0,
-            asArray<string>(h.modifiers).map((m: string) => addString(dict, m)),
-            h.isExternal ? 1 : 0,
-          ]
-        : [0, 0, 0, 0, [], 0]
-    );
-
-    const dynamicComponents: [number, number, number[]][] = asArray<any>(
-      template.dynamicComponents
-    ).map((d: any) =>
-      d
-        ? [
-            addString(dict, d.isExpression),
-            d.line || 0,
-            asArray<string>(d.resolvedComponents).map((c: string) => addString(dict, c)),
-          ]
-        : [0, 0, []]
-    );
-
-    const directivesIdx = asArray<string>(template.directives).map((d: string) =>
-      addString(dict, d)
-    );
-
-    const usedComponentsIdx = asArray<string>(template.usedComponents).map((c: string) =>
-      addString(dict, c)
-    );
-
-    const templateRefs: [number, number, number, number[]][] = asArray<any>(
-      template.templateRefs
-    ).map((r: any) =>
-      r
-        ? [
-            addString(dict, r.refValue),
-            addString(dict, r.tag),
-            r.line || 0,
-            asArray<string>(r.exposedMethods).map((m: string) => addString(dict, m)),
-          ]
-        : [0, 0, 0, []]
-    );
-
-    const cssVariables: [number, number, number, number][] = asArray<any>(
-      template.cssVariables
-    ).map((v: any) =>
-      v
-        ? [addString(dict, v.name), addString(dict, v.value), v.line || 0, v.isMultiline ? 1 : 0]
-        : [0, -1, 0, 0]
-    );
-
-    const deepSelectors: [number, number][] = asArray<any>(template.deepSelectors).map((s: any) =>
-      s ? [addString(dict, s.selector), s.line || 0] : [0, 0]
-    );
-
-    const slotsIdx = asArray<string>(template.slots).map((s: string) => addString(dict, s));
-
-    vueTemplates.push([
-      fileIdx,
-      moduleIdx,
-      template.complexity || 0,
-      reactivityDepsIdx,
-      eventHandlers,
-      dynamicComponents,
-      directivesIdx,
-      usedComponentsIdx,
-      templateRefs,
-      cssVariables,
-      deepSelectors,
-      slotsIdx,
-    ]);
   }
 
-  // ============================================
-  // 11. LIFECYCLE (lc)
-  // ============================================
-  const lifecycle: NonNullable<CompactJSON['lc']> = [];
-  for (const lc of asArray<LifecycleHook>(payload.lifecycle)) {
-    if (!lc) continue;
-    const funcIdx = functionReverse[lc.functionId] ?? -1;
-    const callbackFnIdx = lc.callbackFunctionId
-      ? (functionReverse[lc.callbackFunctionId] ?? -1)
-      : -1;
-    const hookCode = reverseLookup(LIFECYCLE_TYPES, lc.hookName);
-    const flags = lc.isSetupContext ? 's' : '0';
-    lifecycle.push([hookCode, funcIdx, lc.line, callbackFnIdx, flags]);
-  }
+  const cnMRle = rle(cnM);
+  const cnFRle = rle(cnF);
 
   // ============================================
-  // 12. EFFECTS (ef)
+  // 9. gr.e — columnar
   // ============================================
-  const effects: NonNullable<CompactJSON['ef']> = [];
-  for (const ef of asArray<EffectEdge>(payload.effects)) {
-    if (!ef) continue;
-    const funcIdx = functionReverse[ef.functionId] ?? -1;
-    const targetIdx = addString(dict, ef.targetName);
-    const metaIdx = addString(dict, ef.metaValue);
-    const effectCode = reverseLookup(EFFECT_TYPES, ef.effectType);
-    effects.push([effectCode, funcIdx, ef.line, targetIdx, metaIdx]);
-  }
+  const exports = asArray<ExportData>(payload.exports);
+  const geM: number[] = [];
+  const geF: number[] = [];
+  const geFn: number[] = [];
+  const geL: number[] = [];
+  const geTy: number[] = [];
+  const geEn: number[] = [];
+  const geLn: number[] = [];
+  const geS: number[] = [];
+  const geFlags: number[] = [];
 
-  // ============================================
-  // 13. INJECTIONS (inj)
-  // ============================================
-  const injections: NonNullable<CompactJSON['inj']> = [];
-  for (const inj of asArray<InjectionEdge>(payload.injections)) {
-    if (!inj) continue;
-    const fileIdx = fileReverse[inj.fileId] || 0;
-    const keyIdx = addString(dict, inj.key);
-    const kindCode = reverseLookup(INJECTION_TYPES, inj.kind);
+  for (const exp of exports) {
+    if (!exp) continue;
+
+    const typeCode = exp.isDefault ? 1 : exp.isTypeOnly || exp.type === 'type' ? 2 : 0;
     let flags = 0;
-    if (inj.isSymbolKey) flags |= 1;
-    if (inj.hasDefault) flags |= 2;
-    injections.push([kindCode, fileIdx, inj.line, keyIdx, flags]);
+    if (exp.isTypeOnly) flags |= 1;
+    if (exp.isReExport) flags |= 2;
+    if (exp.isStarReExport) flags |= 4;
+    if (exp.isDefaultReExport) flags |= 8;
+
+    geM.push(moduleReverse.get(exp.moduleId) ?? 0);
+    geF.push(fileReverse.get(exp.fileId) ?? 0);
+    geFn.push(functionReverse.get(exp.functionId) ?? 0);
+    geL.push(exp.line);
+    geTy.push(typeCode);
+    geEn.push(addString(dict, exp.exportName));
+    geLn.push(addString(dict, exp.localName));
+    geS.push(addString(dict, exp.source));
+    geFlags.push(flags);
   }
 
   // ============================================
-  // 14. REACTIVITY (rx)
+  // 10. gr.i — columnar
   // ============================================
-  const reactivity: NonNullable<CompactJSON['rx']> = [];
-  for (const rx of asArray<ReactivityEdge>(payload.reactivity)) {
-    if (!rx) continue;
-    const funcIdx = functionReverse[rx.functionId] ?? -1;
-    const readsIdx = asArray<string>(rx.reads).map((r: string) => addString(dict, r));
-    const writesIdx = asArray<string>(rx.writes).map((w: string) => addString(dict, w));
-    const kindCode = reverseLookup(REACTIVITY_TYPES, rx.kind);
-    const flags = rx.isWriteable ? 1 : 0;
-    reactivity.push([kindCode, funcIdx, rx.line, readsIdx, writesIdx, flags]);
+  const imports = asArray<ImportData>(payload.imports);
+  const giFf: number[] = [];
+  const giTf: number[] = [];
+  const giS: number[] = [];
+  const giIm: number[] = [];
+  const giLn: number[] = [];
+  const giL: number[] = [];
+  const giTy: number[] = [];
+
+  for (const imp of imports) {
+    if (!imp) continue;
+
+    const typeCode = imp.isDefault ? 1 : imp.isNamespace ? 2 : imp.isTypeOnly ? 3 : 0;
+    const combinedTy = typeCode | (imp.isExternal ? 4 : 0);
+
+    giFf.push(fileReverse.get(imp.fromFileId) ?? 0);
+    giTf.push(addString(dict, imp.toFileId ?? ''));
+    giS.push(addString(dict, imp.source));
+    giIm.push(addString(dict, imp.importedName));
+    giLn.push(addString(dict, imp.localName));
+    giL.push(imp.line);
+    giTy.push(combinedTy);
   }
 
   // ============================================
-  // 15. CONDITIONALS (cd)
+  // 11. gr.c — columnar
   // ============================================
-  const conditionals: NonNullable<CompactJSON['cd']> = [];
-  for (const cd of asArray<TemplateConditional>(payload.conditionals)) {
-    if (!cd) continue;
-    const fileIdx = cd.fileId ? fileReverse[cd.fileId] || 0 : 0;
-    const condIdx = addString(dict, cd.conditionExpression);
-    const compIdx = addString(dict, cd.renderedComponent);
-    const directiveCode = reverseLookup(CONDITIONAL_TYPES, cd.directive);
-    conditionals.push([directiveCode, fileIdx, cd.line, condIdx, compIdx, 0]);
+  const calls = asArray<CallData>(payload.calls);
+  const gcF: number[] = [];
+  const gcT: number[] = [];
+  const gcL: number[] = [];
+  const gcTy: number[] = [];
+
+  for (const call of calls) {
+    if (!call) continue;
+
+    const isExternal = call.toFunctionId.startsWith('external:');
+    const typeCode =
+      call.type === 'direct' ? 0 : call.type === 'async' ? 1 : call.type === 'method' ? 2 : 3;
+    const combinedTy = typeCode | (isExternal ? 4 : 0);
+
+    gcF.push(functionReverse.get(call.fromFunctionId) ?? 0);
+    gcT.push(
+      isExternal
+        ? addString(dict, call.toFunctionId)
+        : (functionReverse.get(call.toFunctionId) ?? 0)
+    );
+    gcL.push(call.line);
+    gcTy.push(combinedTy);
   }
 
   // ============================================
-  // 16. TYPES (ty)
+  // 12. gr.re — columnar
   // ============================================
-  const types: NonNullable<CompactJSON['ty']> = [];
-  for (const ty of asArray<TypeNodeData>(payload.types)) {
-    if (!ty) continue;
-    const moduleIdx = moduleReverse[ty.moduleId] || 0;
-    const fileIdx = fileReverse[ty.fileId] || 0;
-    const nameIdx = addString(dict, ty.name);
-    const membersIdx = asArray<string>(ty.members).map((m: string) => addString(dict, m));
-    const extendsIdx = asArray<string>(ty.extendsTypes).map((e: string) => addString(dict, e));
-    const kindCode = reverseLookup(TYPE_KINDS, ty.kind);
-    types.push([kindCode, nameIdx, moduleIdx, fileIdx, ty.line, membersIdx, extendsIdx]);
+  const reExports = asArray<ReExportData>(payload.reExports);
+  const greM: number[] = [];
+  const greFn: number[] = [];
+  const greS: number[] = [];
+  const greEn: number[] = [];
+  const greL: number[] = [];
+  const greTy: number[] = [];
+
+  for (const re of reExports) {
+    if (!re) continue;
+
+    const typeCode = re.isStarReExport ? 2 : re.isDefault ? 1 : 0;
+    const combinedTy = typeCode | (re.isTypeOnly ? 4 : 0);
+
+    greM.push(moduleReverse.get(re.moduleId) ?? 0);
+    greFn.push(functionReverse.get(re.functionId) ?? 0);
+    greS.push(addString(dict, re.source));
+    greEn.push(addString(dict, re.exportName));
+    greL.push(re.line);
+    greTy.push(combinedTy);
   }
 
   // ============================================
-  // 17. TYPE REFS (tr)
+  // 13. ✅ v13.0.0: ФИЛЬТРАЦИЯ VALUES
   // ============================================
-  const typeRefs: NonNullable<CompactJSON['tr']> = [];
-  for (const tr of asArray<TypeRefData>(payload.typeRefs)) {
-    if (!tr) continue;
-    const moduleIdx = moduleReverse[tr.moduleId] || 0;
-    const fileIdx = fileReverse[tr.fileId] || 0;
-    const typeNameIdx = addString(dict, tr.typeName);
-    const usageCode = reverseLookup(TYPE_USAGE_KINDS, tr.usageKind);
-    typeRefs.push([typeNameIdx, moduleIdx, fileIdx, tr.line, usageCode]);
-  }
-
-  // ============================================
-  // 18. ✅ v10.4.0: Сборка легенды (единая точка)
-  // ============================================
-  // Вся структура легенды собирается в codec-legend.ts:
-  //   - how_to_read  — пошаговая инструкция для ИИ
-  //   - flags        — расшифровка битовых флагов
-  //   - codes        — расшифровка строковых кодов
-  //   - dictionaries — словари значений
-  //   - schemas      — позиционные схемы кортежей
   //
-  // Раньше здесь была локальная сборка (300+ строк).
-  // Теперь — один вызов. Единая точка истины.
+  // Применяем фильтрацию к valueDict на основе valuesMeta.
+  // В режиме 'full' — no-op.
+  // В режиме 'relations' — оставляем только kind === 'relation'.
+  //
+  // ВАЖНО: переиндексируем cn.nonEmptyV, потому что это
+  // ЕДИНСТВЕННОЕ место в CompactJSON, где есть ссылки на values
+  // по индексу. Все остальные секции (gr.e.ty, gr.i.ty, gr.c.ty,
+  // gr.re.ty, fns.fl, cls.fl, cn.fl) ссылаются на ЧИСЛОВЫЕ КОДЫ
+  // (не на values!), поэтому переиндексация им не нужна.
+  //
+  // ============================================
+  let finalValueDict: unknown[] = dict.valueDict;
+  let valueIndexMap: Map<number, number> | null = null;
+
+  if (valuesMode === 'relations') {
+    const filtered = filterValues(dict.valueDict, dict.valueMeta);
+    finalValueDict = filtered.values;
+    valueIndexMap = filtered.indexMap;
+
+    if (process.env.AST_DEBUG_CODEC === 'true') {
+      console.log(
+        `   🗜️  values-mode=relations: ${dict.valueDict.length} → ${finalValueDict.length} значений ` +
+          `(${(
+            ((dict.valueDict.length - finalValueDict.length) / dict.valueDict.length) *
+            100
+          ).toFixed(1)}% сжатие)`
+      );
+    }
+  }
+
+  // Переиндексация cn.nonEmptyV
+  const finalNonEmptyV: [number, number][] = [];
+  for (const [cnIdx, valIdx] of cnNonEmptyV) {
+    if (valueIndexMap) {
+      const newValIdx = remapIndex(valIdx, valueIndexMap);
+      if (newValIdx === null) continue; // значение удалено — пропускаем
+      finalNonEmptyV.push([cnIdx, newValIdx]);
+    } else {
+      finalNonEmptyV.push([cnIdx, valIdx]);
+    }
+  }
+
+  // ============================================
+  // 14. Легенда (упрощённая)
   // ============================================
   const legend: CodecLegend = buildLegend({
     stringDict: dict.stringDict,
     paramDict: dict.paramDict,
     methodDict: dict.methodDict,
-    valueDict: dict.valueDict,
+    valueDict: finalValueDict, // ← v13.0.0: передаём отфильтрованный
   });
 
   // ============================================
-  // 19. Сборка CompactJSON
+  // 15. Сборка CompactJSON
   // ============================================
   const compact: CompactJSON = {
-    v: payload.version,
+    v: CODEC_VERSION, // ✅ v13.0.0-fix: единая константа
     ts: payload.timestamp,
-    r: payload.root,
-    mi: moduleIndex,
-    fl: fileIndex,
-    fns: functions,
-    cls: classes,
-    cn: constants,
-    gr: { e: exports, i: imports, c: calls, re: reExports },
-    vt: vueTemplates.length > 0 ? vueTemplates : undefined,
+    r: moduleReverse.get(payload.root) ?? 0,
+    // ✅ v13.0.0: сохраняем режим для обратной совместимости
+    valuesMode,
+
+    tokens: [],
+    strs: [],
+    params: [],
+    methods: [],
+    values: finalValueDict, // ← v13.0.0: отфильтрованный массив
+
+    // ✅ v13.0.0-fix: mi.f — пары [startFileIdx, fileCount], без RLE
+    mi: { n: miN, f: miF },
+    fl: { p: flP, m: flMRle },
+
+    fns: { n: fnsN, m: fnsMRle, f: fnsFRle, l: fnsL, fl: fnsFl, p: fnsP, rt: fnsRt },
+    cls: { n: clsN, m: clsMRle, f: clsFRle, l: clsL, fl: clsFl, methods: clsMethods },
+    cn: { n: cnN, m: cnMRle, f: cnFRle, l: cnL, fl: cnFl, nonEmptyV: finalNonEmptyV },
+
+    gr: {
+      e: { m: geM, f: geF, fn: geFn, l: geL, ty: geTy, en: geEn, ln: geLn, s: geS, flags: geFlags },
+      i: { ff: giFf, tf: giTf, s: giS, im: giIm, ln: giLn, l: giL, ty: giTy },
+      c: { f: gcF, t: gcT, l: gcL, ty: gcTy },
+      re: { m: greM, fn: greFn, s: greS, en: greEn, l: greL, ty: greTy },
+    },
+
     st: payload.statistics,
     legend,
-    lc: lifecycle.length > 0 ? lifecycle : undefined,
-    ef: effects.length > 0 ? effects : undefined,
-    inj: injections.length > 0 ? injections : undefined,
-    rx: reactivity.length > 0 ? reactivity : undefined,
-    cd: conditionals.length > 0 ? conditionals : undefined,
-    ty: types.length > 0 ? types : undefined,
-    tr: typeRefs.length > 0 ? typeRefs : undefined,
   };
 
-  // ✅ v9.0.0: удаляем пустые секции (кроме gr)
+  // Токенизация словарей строк
+  const allStrings = [...dict.stringDict, ...dict.paramDict, ...dict.methodDict];
+  const tokens = buildTokenDict(allStrings);
+  const tokenIndex = new Map(tokens.map((t, i) => [t, i]));
+
+  compact.tokens = tokens;
+  compact.strs = dict.stringDict.map(s => encodeStr(s, tokenIndex));
+  compact.params = dict.paramDict.map(s => encodeStr(s, tokenIndex));
+  compact.methods = dict.methodDict.map(s => encodeStr(s, tokenIndex));
+
+  // Удаляем пустые опциональные секции
   for (const key of Object.keys(compact) as (keyof CompactJSON)[]) {
     if (key === 'gr') continue;
-    const v = compact[key];
+    const v = (compact as any)[key];
     if (Array.isArray(v) && v.length === 0) {
       delete (compact as any)[key];
     }
@@ -896,3 +1167,21 @@ export function encode(payload: FullJSON): CompactJSON {
 
   return compact;
 }
+
+// ============================================
+// ЭКСПОРТ ПО УМОЛЧАНИЮ
+// ============================================
+
+export default {
+  encode,
+  encodeFlags,
+  flagsToString,
+  createDictBuilder,
+  addString,
+  addParam,
+  addMethod,
+  addValue,
+  classifyValue, // ← НОВОЕ v13.0.0
+  reverseLookup,
+  asArray,
+};

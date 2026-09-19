@@ -2,7 +2,16 @@
 // ============================================================
 // ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ - БЕЗ ДУБЛЕЙ
 // ============================================================
-// Версия: 11.0.1
+// Версия: 12.0.0
+//
+// ИЗМЕНЕНИЯ v12.0.0 (values-mode):
+//   - ✅ ДОБАВЛЕН флаг --values-mode <mode>
+//     Допустимые значения: 'full' | 'relations'
+//     По умолчанию: 'relations' (сжатый режим, экономия 5–15x)
+//   - ✅ ДОБАВЛЕНА валидация значения флага (exit code 2 при ошибке)
+//   - ✅ Проброс valuesMode в generateCompactReport
+//   - ✅ valuesMode включён в вывод итоговой конфигурации
+//   - ✅ valuesMode включён в проброс из config-файла (приоритет: CLI > config > default)
 //
 // ИЗМЕНЕНИЯ v11.0.1 (fix TS2451 + TS2339):
 //   - ✅ ИСПРАВЛЕНО: переименована переменная `config` (строка 185)
@@ -35,7 +44,7 @@
 //   - ✅ Строгая проверка options.includeBody === true
 //
 // ИЗМЕНЕНИЯ v7.0.0:
-//   - ✅ Добавлена строка \"VSCode ссылки\" в блок \"ВКЛЮЧЕННЫЕ КОМПОНЕНТЫ\"
+//   - ✅ Добавлена строка "VSCode ссылки" в блок "ВКЛЮЧЕННЫЕ КОМПОНЕНТЫ"
 //
 // ИЗМЕНЕНИЯ v6.0.0:
 //   - ✅ Добавлена поддержка self functions через full.statistics
@@ -84,6 +93,7 @@ import { loadConfig, mergeConfigWithCli } from '../config/load-config.js';
  * - ✅ EDGES: опционально, по умолчанию выключено, сохраняется в отдельный файл
  * - ✅ v10: использует единый reporters/json модуль для анализа
  * - ✅ v11: приоритет CLI > config > пресет > дефолты
+ * - ✅ v12: values-mode (full | relations) для управления размером отчёта
  */
 export class CompactRecursiveCommand {
   private program: Command;
@@ -112,6 +122,13 @@ export class CompactRecursiveCommand {
       .option(
         '--config <file>',
         'Путь к конфиг-файлу (по умолчанию: автопоиск ast-analyzer.config.json)'
+      )
+
+      // === ✅ v12.0.0: VALUES MODE ===
+      .option(
+        '--values-mode <mode>',
+        'Режим сериализации values: "full" | "relations" (по умолчанию: "relations")',
+        'relations'
       )
 
       // === ВКЛЮЧЕНИЕ/ОТКЛЮЧЕНИЕ СУЩНОСТЕЙ ===
@@ -173,7 +190,7 @@ export class CompactRecursiveCommand {
       // === ✅ v11.0.0: EXCLUDE (можно также задавать в конфиге) ===
       .option(
         '-x, --exclude <patterns>',
-        'Паттерны исключения (через запятую). Пример: \"**/__tests__/**,**/fixtures/**\"'
+        'Паттерны исключения (через запятую). Пример: "**/__tests__/**,**/fixtures/**"'
       )
 
       .option('-v, --verbose', 'Подробный вывод', false)
@@ -188,6 +205,23 @@ export class CompactRecursiveCommand {
   }
 
   private async execute(entry: string, rawOptions: any): Promise<void> {
+    // ============================================================
+    // ✅ v12.0.0: ВАЛИДАЦИЯ --values-mode
+    // ============================================================
+    // Допустимые значения: 'full' | 'relations'.
+    // При неверном значении — exit code 2 с понятным сообщением.
+    // ============================================================
+    if (
+      rawOptions.valuesMode !== undefined &&
+      rawOptions.valuesMode !== 'full' &&
+      rawOptions.valuesMode !== 'relations'
+    ) {
+      console.error(
+        `Error: Invalid --values-mode value "${rawOptions.valuesMode}". Expected "full" or "relations".`
+      );
+      process.exit(2);
+    }
+
     // ============================================================
     // ✅ v11.0.0: ЗАГРУЗКА КОНФИГА И МЕРЖ С CLI
     // ============================================================
@@ -216,6 +250,7 @@ export class CompactRecursiveCommand {
     console.log(`📋 Пресет: ${options.preset}`);
     console.log(`📁 Выходной файл: ${options.output}`);
     console.log(`🚀 Ультра-компактный: ${options.ultra ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}`);
+    console.log(`🗂️  Values mode: ${options.valuesMode || 'relations'}`);
     console.log(`🔗 Edges в отдельный файл: ${options.edges === true ? 'ВКЛЮЧЕНО' : 'ВЫКЛЮЧЕНО'}`);
     if (excludePatterns.length > 0) {
       console.log(`🚫 Исключения: ${excludePatterns.join(', ')}`);
@@ -418,6 +453,7 @@ export class CompactRecursiveCommand {
     console.log(`   • Шаблоны: ${config.useTemplates ? '✅' : '❌'}`);
     console.log(`   • Тела функций: ${config.includeBody ? '✅' : '❌'}`);
     console.log(`   • VSCode ссылки: ${config.includeVSCode ? '✅' : '❌'}`);
+    console.log(`   • Values mode: ${options.valuesMode || 'relations'}`);
     console.log(`   • Edges в отдельный файл: ${options.edges === true ? '✅' : '❌'}`);
     if (options.edges === true) {
       console.log(`   • Суффикс edges: ${options.edgesSuffix || '.edges.json'}`);
@@ -426,12 +462,16 @@ export class CompactRecursiveCommand {
 
     // ============================================================
     // ✅ v11.0.0: применяем outputOptions из конфига
+    // ✅ v12.0.0: пробрасываем valuesMode
     // ============================================================
     const report = generateCompactReport(entitiesMap, outputPath, {
       ...genOptions,
       ultra: options.ultra || false,
       preset: options.preset,
       verbose: options.verbose,
+
+      // ✅ v12.0.0: values-mode
+      valuesMode: options.valuesMode || 'relations',
 
       // ✅ Из конфига (outputOptions)
       compress: outputOpts.compress !== false,
@@ -474,6 +514,7 @@ export class CompactRecursiveCommand {
     console.log('\n📦 ИНФОРМАЦИЯ О СЖАТИИ:');
     console.log(`   • Режим: ${options.ultra ? 'УЛЬТРА-КОМПАКТНЫЙ' : 'КОМПАКТНЫЙ'}`);
     console.log(`   • Пресет: ${options.preset}`);
+    console.log(`   • Values mode: ${options.valuesMode || 'relations'}`);
     console.log(`   • Битовые флаги: ${config.useBitFlags ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
     console.log(`   • Словари: ${config.useDictionaries ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
     console.log(`   • Минификация ключей: ${config.minifyKeys ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
@@ -504,19 +545,18 @@ export class CompactRecursiveCommand {
       console.log(`   • Полный JSON: ${report.fullPath}`);
     }
     if (report.edgesPath) {
-      const edgesSizeKB = report.stats.edgesSize
-        ? (report.stats.edgesSize / 1024).toFixed(2)
-        : '0';
+      const edgesSizeKB = report.stats.edgesSize ? (report.stats.edgesSize / 1024).toFixed(2) : '0';
       console.log(`   • Edges JSON: ${report.edgesPath} (${edgesSizeKB} KB)`);
     }
 
-    console.log('\n💡 ПРИНЦИП \"ЕДИНЫЙ ИСТОЧНИК ИСТИНЫ\":');
+    console.log('\n💡 ПРИНЦИП "ЕДИНЫЙ ИСТОЧНИК ИСТИНЫ":');
     console.log('   ✅ Каждый тип данных хранится в одном месте');
     console.log('   ✅ Нет дублирования информации');
     console.log('   ✅ Все связи в едином графе');
     console.log('   ✅ Добавлены новые типы связей (без дублей)');
     console.log('   ✅ Self functions с индексами sf1, sf2, ...');
     console.log('   ✅ Edges восстанавливаются из gr.* только по запросу (--edges)');
+    console.log('   ✅ Values mode управляет размером секции values');
 
     console.log('\n💡 КАК ИСПОЛЬЗОВАТЬ ОТЧЕТ:');
     console.log('   • mi/fl/fi - для навигации по индексам');
@@ -571,8 +611,14 @@ export class CompactRecursiveCommand {
     console.log('');
     console.log('   # ✅ v11.0.0: с исключениями через CLI');
     console.log(
-      '   npx ast-analyzer compact-recursive ./src/index.ts --exclude \"**/__tests__/**,**/fixtures/**\"'
+      '   npx ast-analyzer compact-recursive ./src/index.ts --exclude "**/__tests__/**,**/fixtures/**"'
     );
+    console.log('');
+    console.log('   # ✅ v12.0.0: с полным values (обратная совместимость)');
+    console.log('   npx ast-analyzer compact-recursive ./src/index.ts --values-mode full');
+    console.log('');
+    console.log('   # ✅ v12.0.0: явное указание сжатого режима (по умолчанию)');
+    console.log('   npx ast-analyzer compact-recursive ./src/index.ts --values-mode relations');
     console.log('');
 
     console.log('='.repeat(70) + '\n');

@@ -2,7 +2,14 @@
 // ============================================
 // ИЗВЛЕЧЕНИЕ ЗНАЧЕНИЯ ИЗ AST-УЗЛА
 // ============================================
-// Версия: 1.0.1
+// Версия: 1.0.2
+//
+// ИЗМЕНЕНИЯ v1.0.2:
+//   - ✅ ИСПРАВЛЕНО: FunctionExpression / ArrowFunctionExpression
+//     возвращают undefined (а не строку '[Function]').
+//     Это уменьшает valueDict: функции не сериализуются.
+//   - ✅ ИСПРАВЛЕНО: ObjectExpression не добавляет поля
+//     со значением undefined (фильтрация).
 //
 // ИЗМЕНЕНИЯ v1.0.1:
 //   - ✅ ИСПРАВЛЕНО: BigInt → строка в ветке Literal.
@@ -26,7 +33,7 @@
  *   - BinaryExpression  → `left op right`
  *   - ArrayExpression   → массив значений
  *   - ObjectExpression  → объект
- *   - ArrowFunction / FunctionExpression → '[Function]'
+ *   - ArrowFunction / FunctionExpression → undefined (не сериализуется)
  *   - TemplateLiteral   → конкатенация строк
  *   - NewExpression     → `new Callee()`
  *
@@ -102,7 +109,11 @@ export function extractValue(node: any): any {
         if (prop.type === 'Property' && prop.key) {
           const key = prop.key.name || prop.key.value;
           if (key !== undefined) {
-            obj[key] = extractValue(prop.value);
+            const val = extractValue(prop.value);
+            // ✅ v1.0.2: не добавляем поля со значением undefined
+            if (val !== undefined) {
+              obj[key] = val;
+            }
           }
         }
       }
@@ -111,10 +122,13 @@ export function extractValue(node: any): any {
   }
 
   // ─────────────────────────────────────────────
-  // ArrowFunctionExpression / FunctionExpression
+  // ✅ v1.0.2: ArrowFunctionExpression / FunctionExpression
+  // ─────────────────────────────────────────────
+  // Раньше возвращалось '[Function]' — это мусор в valueDict.
+  // Теперь возвращаем undefined → поле не сериализуется.
   // ─────────────────────────────────────────────
   if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') {
-    return '[Function]';
+    return undefined;
   }
 
   // ─────────────────────────────────────────────

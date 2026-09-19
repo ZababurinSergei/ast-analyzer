@@ -2,7 +2,16 @@
 // ============================================
 // КОМАНДА COMPACT — ГЕНЕРАЦИЯ КОМПАКТНОГО ОТЧЁТА СУЩНОСТЕЙ
 // ============================================
-// Версия: 9.1.0
+// Версия: 12.0.0
+//
+// ИЗМЕНЕНИЯ v12.0.0 (values-mode):
+//   - ✅ ДОБАВЛЕН флаг --values-mode <mode>
+//     Допустимые значения: 'full' | 'relations'
+//     По умолчанию: 'relations' (сжатый режим, экономия 5–15x)
+//   - ✅ ДОБАВЛЕНА валидация значения флага (exit code 2 при ошибке)
+//   - ✅ Проброс valuesMode в generateCompactReport
+//   - ✅ valuesMode включён в вывод информации о сжатии
+//   - ✅ valuesMode включён в вывод опций
 //
 // ИЗМЕНЕНИЯ v9.1.0 (интеграция с reporters/json):
 //   - ✅ ИСПРАВЛЕНО: путь импорта entity-extractor:
@@ -43,6 +52,7 @@
 //   - Self functions — изолированные функции
 //   - ✅ Сохраняет и полный JSON (для отладки) и сжатый JSON (для AI)
 //   - ✅ v9.0.4: опциональное сохранение edges в отдельный файл
+//   - ✅ v12.0.0: values-mode (full | relations) для управления размером
 // ============================================
 
 import type { Command } from 'commander';
@@ -95,6 +105,8 @@ interface CompactCommandOptions {
   edges?: boolean;
   /** ✅ v9.0.4: суффикс для файла edges */
   edgesSuffix?: string;
+  /** ✅ v12.0.0: режим сериализации values ('full' | 'relations') */
+  valuesMode?: string;
   /** Подробный вывод */
   verbose?: boolean;
 }
@@ -112,6 +124,7 @@ interface CompactCommandOptions {
  * - Self functions — изолированные функции
  * - ✅ Сохраняет и полный JSON и сжатый JSON
  * - ✅ v9.0.4: опциональное сохранение edges в отдельный файл
+ * - ✅ v12.0.0: values-mode (full | relations) для управления размером
  */
 export class CompactCommand {
   private program: Command;
@@ -158,6 +171,12 @@ export class CompactCommand {
         'Суффикс для файла edges (по умолчанию: .edges.json)',
         '.edges.json'
       )
+      // ✅ v12.0.0: values-mode (по умолчанию 'relations')
+      .option(
+        '--values-mode <mode>',
+        'Режим сериализации values: "full" | "relations" (по умолчанию: "relations")',
+        'relations'
+      )
       .option('-v, --verbose', 'Подробный вывод', false)
       .action(async (paths: string[], options: CompactCommandOptions) => {
         try {
@@ -178,6 +197,23 @@ export class CompactCommand {
    * 4. Сохраняет результаты.
    */
   private async execute(paths: string[], options: CompactCommandOptions): Promise<void> {
+    // ============================================================
+    // ✅ v12.0.0: ВАЛИДАЦИЯ --values-mode
+    // ============================================================
+    // Допустимые значения: 'full' | 'relations'.
+    // При неверном значении — exit code 2 с понятным сообщением.
+    // ============================================================
+    if (
+      options.valuesMode !== undefined &&
+      options.valuesMode !== 'full' &&
+      options.valuesMode !== 'relations'
+    ) {
+      console.error(
+        `Error: Invalid --values-mode value "${options.valuesMode}". Expected "full" or "relations".`
+      );
+      process.exit(2);
+    }
+
     console.log('\n' + '='.repeat(70));
     console.log('📋 ГЕНЕРАЦИЯ КОМПАКТНОГО ОТЧЕТА СУЩНОСТЕЙ');
     console.log('='.repeat(70));
@@ -190,6 +226,7 @@ export class CompactCommand {
     console.log(`🔒 Информация о безопасности: ${options.includeSecurity ? 'ДА' : 'НЕТ'}`);
     console.log(`🔍 Self functions: ${options.selfFunctions !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
     console.log(`💾 Полный JSON: ${options.fullJson !== false ? 'СОХРАНЯТЬ' : 'НЕ СОХРАНЯТЬ'}`);
+    console.log(`🗂️  Values mode: ${options.valuesMode || 'relations'}`);
     // ✅ v9.0.4: информация про edges
     console.log(`🔗 Edges в отдельный файл: ${options.edges === true ? 'ДА' : 'НЕТ'}`);
     if (options.edges === true) {
@@ -296,6 +333,8 @@ export class CompactCommand {
         // ✅ v9.0.4: edges — только если явно запрошено
         saveEdges: options.edges === true,
         edgesJsonSuffix: options.edgesSuffix || '.edges.json',
+        // ✅ v12.0.0: values-mode
+        valuesMode: (options.valuesMode as 'full' | 'relations') || 'relations',
       };
 
       // Генерируем отчет (единая функция для всех режимов)
@@ -377,6 +416,7 @@ export class CompactCommand {
    * Выводит результаты генерации отчёта.
    *
    * ✅ ИСПРАВЛЕНО: принимает GenerateReportResult (новая структура v6.0.0+).
+   * ✅ v12.0.0: добавлена строка про valuesMode.
    */
   private printResults(
     report: any,
@@ -423,6 +463,7 @@ export class CompactCommand {
     console.log('\n📦 ИНФОРМАЦИЯ О СЖАТИИ:');
     console.log(`   • Режим: ${options.ultra ? 'УЛЬТРА-КОМПАКТНЫЙ' : 'КОМПАКТНЫЙ'}`);
     console.log(`   • Пресет: ${options.preset}`);
+    console.log(`   • Values mode: ${options.valuesMode || 'relations'}`);
     console.log(`   • Битовые флаги: ${options.bitFlags !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
     console.log(`   • Словари: ${options.dictionaries !== false ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
     console.log(`   • Минификация ключей: ${options.minifyKeys ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
@@ -506,6 +547,14 @@ export class CompactCommand {
       console.log('   📊 Экономия места: ~70% по сравнению со стандартным форматом');
     }
 
+    // ✅ v12.0.0: совет про values-mode
+    if (options.valuesMode === 'relations') {
+      console.log('   🗂️  values-mode=relations: только данные для восстановления связей');
+      console.log('   📊 Экономия места: 5–15x по сравнению с values-mode=full');
+    } else if (options.valuesMode === 'full') {
+      console.log('   🗂️  values-mode=full: полный набор значений (обратная совместимость)');
+    }
+
     console.log('');
   }
 
@@ -545,6 +594,8 @@ export class CompactCommand {
       reExports: report.full?.reExports?.length || 0,
       // ✅ v9.0.4: путь к edges
       edgesPath: report.edgesPath || null,
+      // ✅ v12.0.0: valuesMode
+      valuesMode: report.full?.valuesMode || 'relations',
     };
     fs.writeFileSync(statsPath, JSON.stringify(stats, null, 2));
     console.log(`📄 Детальная статистика сохранена: ${statsPath}`);

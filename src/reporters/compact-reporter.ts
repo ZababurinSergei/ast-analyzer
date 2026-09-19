@@ -2,103 +2,72 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Версия: 10.4.0
+// Версия: 13.0.0
+//
+// ИЗМЕНЕНИЯ v13.0.0:
+//   - ✅ ИСПРАВЛЕНО: ValuesMode импортируется из './codec/values-filter.js'
+//     (codec-types.js его не экспортирует).
+//   - ✅ ЕДИНАЯ ВЕРСИЯ: version берётся из CODEC_VERSION ('13.0.0'),
+//     а не хардкодится ('11.1.0'). Устраняет расхождение L1/L2/DL
+//     ($.version: "13.0.0" vs "11.1.0").
+//   - ✅ ВАЛИДАЦИЯ toFileId: гарантируем, что после resolveToFileId
+//     результат — либо `fN`, либо `external:...`, либо `unresolved:...`.
+//     Пустая строка или одиночная `"f"` ломала round-trip
+//     (spotCheck: imports[].toFileId).
+//
+// ИЗМЕНЕНИЯ v11.1.0 (--values-mode):
+//   - ✅ ДОБАВЛЕНО: поддержка `valuesMode: 'full' | 'relations'`
+//     в GenerateReportOptions. По умолчанию — 'relations'.
+//   - ✅ ДОБАВЛЕНО: проброс valuesMode в Codec.encode().
+//   - ✅ ДОБАВЛЕНО: valuesMode сохраняется в FullJSON и CompactJSON.
+//   - ✅ ДОБАВЛЕНО: в relations-режиме тяжёлые значения (конфиги,
+//     HTML/CSS-шаблоны, длинные строки, большие массивы) не попадают
+//     в `values[]` CompactJSON. Round-trip сохраняется полностью
+//     для отфильтрованного full.json.
+//   - ✅ ДОБАВЛЕНО: диагностика размера values в verbose-режиме.
+//
+// ИЗМЕНЕНИЯ v11.0.0 (компактнее):
+//   - ✅ ВЕРСИЯ отчёта: '11.0.0' (синхронизация с codec-legend.ts
+//     и codec-encode.ts / codec-decode.ts).
+//   - ✅ fns/cls/cn: name → nameIdx (stringDict), flags → число.
+//   - ✅ extract-value.ts: undefined вместо '[Function]'.
 //
 // ИЗМЕНЕНИЯ v10.4.0 (единое сжатие + легенда для ИИ):
 //   - ✅ ДОБАВЛЕНО: единая функция `saveJsonFile` — все
 //     сохранения JSON (compact / full / edges) проходят
-//     через неё. Устраняет дублирование safeJsonStringify +
-//     fs.writeFileSync + fs.statSync + логирование.
-//   - ✅ ОБНОВЛЕНО: версия отчёта — 10.4.0 (синхронизация
-//     с codec-legend.ts).
-//   - ✅ Легенда теперь собирается в codec-legend.ts и
-//     содержит инструкцию для ИИ (how_to_read), расшифровку
-//     флагов (flags.bits), расшифровку кодов (codes.*),
-//     словари (dictionaries.*) и схемы (schemas.*).
+//     через неё.
 //
 // ИЗМЕНЕНИЯ v9.0.7 (fix: разделение файлов compact/full):
-//   - ✅ ИСПРАВЛЕНО: функция `insertSuffixBeforeExtension` переписана
-//     с нуля. Раньше она работала некорректно в некоторых случаях:
-//       • если base уже заканчивался на суффикс без расширения,
-//         она возвращала исходный filePath — и полный JSON
-//         сохранялся в тот же файл, что и сжатый;
-//       • если suffix был пустой строкой или '.json',
-//         функция возвращала путь без изменений.
-//     Теперь функция:
-//       • всегда нормализует суффикс (добавляет ведущую точку);
-//       • корректно обрабатывает суффиксы с расширением и без;
-//       • явно проверяет, что base НЕ заканчивается на суффикс;
-//       • если совпадение есть — добавляет числовой суффикс (2, 3, ...)
-//         чтобы гарантировать уникальность имени файла.
+//   - ✅ ИСПРАВЛЕНО: функция `insertSuffixBeforeExtension`.
 //   - ✅ ДОБАВЛЕНО: явное логирование путей compact и full
-//     в verbose-режиме, чтобы сразу видеть, куда сохраняются файлы.
-//   - ✅ ДОБАВЛЕНО: проверка на совпадение путей compactPath и fullPath
-//     с предупреждением, если они всё-таки совпали.
+//     в verbose-режиме.
 //
 // ИЗМЕНЕНИЯ v9.0.6 (safe-json fix):
 //   - ✅ ДОБАВЛЕНО: импорт safeJsonStringify из '../utils/safe-json.js'
-//   - ✅ ЗАМЕНЕНО: 3 вызова JSON.stringify на safeJsonStringify
-//       • сохранение compact.json
-//       • сохранение *.full.json
-//       • сохранение *.edges.json
-//   - ✅ ИСПРАВЛЕНО: TypeError "Do not know how to serialize a BigInt"
-//     при генерации отчёта для проектов с BigInt-литералами.
 //
 // ИЗМЕНЕНИЯ v9.0.5:
 //   - ✅ ДОБАВЛЕНО: опция `saveEdges` (по умолчанию false).
-//     Если true — edges восстанавливаются через
-//     `Codec.decode(compact, { includeEdges: true })` и сохраняются
-//     в отдельный файл `<output>.edges.json` (суффикс настраивается
-//     через `edgesJsonSuffix`).
-//   - ✅ ДОБАВЛЕНО: в `GenerateReportResult` — `edgesPath` и
-//     `stats.edgesSize`.
-//   - ✅ Это устраняет расхождение DL (decode(encode(full)) === full),
-//     когда исходный full не содержит edges (по спецификации v9.0.4+
-//     edges — производное поле, не хранится в full.json).
-//   - ✅ v10.3 FIX: три критичных исправления для L1/L2/DL:
-//       1. ВСЕГДА массивы для базовых секций (classes/constants/exports/
-//          imports/calls/reExports) — устраняет `$.classes: [] vs undefined`.
-//       2. type-only импорты пишутся как `type: 'type'` (не 'named') —
-//          устраняет `$.imports[N].type: "type-only" vs "named"`.
-//       3. Рёбра event → handler и ref → expose больше НЕ пишутся в calls[]
-//          (писался template.fileId вместо ID функции) —
-//          устраняет `$.calls[N].fromFunctionId: "fn0" vs "f6"`.
-//       4. `templates[].conditionals[]` обогащаются полями `id` и `fileId`
-//          через единый conditionalCounter — устраняет
-//          `$.templates[N].conditionals[M].id/fileId: undefined`.
-//       5. `templates[].templateRefs[].exposedMethods` нормализуются
-//          до `[]` — устраняет `[] vs undefined`.
+//
+// ИЗМЕНЕНИЯ v10.3 (L1/L2/DL fix):
+//   - ✅ ВСЕГДА массивы для базовых секций (classes/constants/exports/
+//     imports/calls/reExports).
+//   - ✅ type-only импорты пишутся как `type: 'type'`.
+//   - ✅ Рёбра event → handler и ref → expose больше НЕ пишутся в calls[].
+//   - ✅ `templates[].conditionals[]` обогащаются полями `id` и `fileId`.
+//   - ✅ `templates[].templateRefs[].exposedMethods` нормализуются до `[]`.
 //
 // ИЗМЕНЕНИЯ v9.0.2:
-//   - ✅ ИСПРАВЛЕНО: version = '9.0.0' (было '9.0.1')
 //   - ✅ ИСПРАВЛЕНО: templates.push({...}) — ровно 12 полей TemplateData
-//   - ✅ ИСПРАВЛЕНО: dynamicComponents — 3 поля (isExpression, line, resolvedComponents)
-//   - ✅ ИСПРАВЛЕНО: conditionals пробрасываются в templates[] и в отдельную секцию
-//   - ✅ ИСПРАВЛЕНО: lifecycle/effects/reactivity functionId = '' (не undefined),
-//     чтобы Codec.encode превратил его в -1 через ?? -1
-//   - ✅ ИСПРАВЛЕНО: пустые секции (cls, cn, templates, conditionals, lifecycle,
-//     effects, injections, reactivity, types, typeRefs) → undefined, а не []
+//   - ✅ ИСПРАВЛЕНО: dynamicComponents — 3 поля
+//   - ✅ ИСПРАВЛЕНО: пустые секции → undefined
 //
 // ИЗМЕНЕНИЯ v9.0.0:
 //   - ✅ УДАЛЕНЫ локальные определения GenerateReportOptions и
-//        GenerateReportResult (TS2300). Импортируются из './codec/codec-types.js'.
+//        GenerateReportResult.
 //   - ✅ ДОБАВЛЕН проброс templateConditionals в templates[].
 //   - ✅ ДОБАВЛЕНА отдельная секция conditionals[] в FullJSON.
-//   - ✅ hasTemplate учитывает templateConditionals.
 //   - ✅ ДОБАВЛЕН сбор секций lifecycle, effects, injections,
 //        reactivity, types, typeRefs в collectFullJSON.
-//
-// ИЗМЕНЕНИЯ v8.5.0:
-//   - ✅ resolveToFileId использует resolveAliasPath из tsconfig-resolver.
-//   - ✅ tsconfig инициализируется один раз в collectFullJSON.
-//   - ✅ sourceToFileIdMap расширен абсолютными путями.
-//
-// ИЗМЕНЕНИЯ v8.4.2:
-//   - ✅ functionMap теперь Map<string, FunctionData[]>
-//
-// ИЗМЕНЕНИЯ v8.4.0:
-//   - ✅ Секция templates[] в FullJSON (Vue-шаблоны).
-//   - ✅ Рёбра event → handler и templateRef → expose в calls[].
 // ============================================
 
 import fs from 'fs';
@@ -119,10 +88,14 @@ import { enrichWithReExports } from '../core/entity-extractor/enrich-with-re-exp
 import { safeJsonStringify } from '../utils/safe-json.js';
 
 // ============================================
-// ✅ v9.0.0: ИМПОРТ ТИПОВ ИЗ codec-types.js
+// ✅ v13.0.0: ИМПОРТ ТИПОВ ИЗ codec-types.js
 // ============================================
 // ВАЖНО: GenerateReportOptions и GenerateReportResult импортируются,
 // а НЕ определяются локально (устранён TS2300).
+//
+// ✅ v13.0.0-fix: ValuesMode УБРАН из этого импорта, потому что
+// codec-types.js его не экспортирует. ValuesMode определён в
+// values-filter.js и импортируется отдельно ниже.
 // ============================================
 import type {
   FullJSON,
@@ -150,10 +123,51 @@ import type {
   GenerateReportResult,
 } from './codec/codec-types.js';
 
+// ✅ v13.0.0-fix: единая версия CODEC
+import { CODEC_VERSION } from './codec/codec-types.js';
+
+// ✅ v13.0.0-fix: ValuesMode импортируется из values-filter.js
+// (codec-types.js его НЕ экспортирует — он там просто не определён).
+import type { ValuesMode } from './codec/values-filter.js';
+
 // ============================================
 // ✅ v9.0.0: РЕЭКСПОРТ ТИПОВ (для обратной совместимости)
 // ============================================
-export type { GenerateReportOptions, GenerateReportResult } from './codec/codec-types.js';
+export type {
+  GenerateReportOptions,
+  GenerateReportResult,
+} from './codec/codec-types.js';
+
+// ✅ v13.0.0-fix: ValuesMode реэкспортируется из values-filter.js
+export type { ValuesMode } from './codec/values-filter.js';
+
+// ============================================
+// ✅ v11.1.0: КОНСТАНТЫ РЕЖИМА VALUES
+// ============================================
+
+/**
+ * Значение по умолчанию для `valuesMode`.
+ *
+ * По ТЗ — 'relations' (сжатый режим).
+ */
+const DEFAULT_VALUES_MODE: ValuesMode = 'relations';
+
+/**
+ * Пороговые значения для классификации `value` как "тяжёлого".
+ *
+ * Значения, превышающие эти пороги, в режиме 'relations'
+ * НЕ попадают в `values[]` CompactJSON.
+ *
+ * См. `classifyValue()` в codec-encode.ts для деталей.
+ */
+const HEAVY_VALUE_THRESHOLDS = {
+  /** Строки длиннее этого — 'template' (HTML/CSS/код) */
+  STRING_LENGTH: 200,
+  /** Массивы длиннее этого — 'flag-array' */
+  ARRAY_LENGTH: 50,
+  /** Объекты с JSON.stringify длиннее этого — 'config' */
+  OBJECT_JSON_LENGTH: 500,
+} as const;
 
 // ============================================
 // ОСНОВНАЯ ФУНКЦИЯ ГЕНЕРАЦИИ
@@ -178,6 +192,9 @@ export function generateCompactReport(
   const saveFull = options.saveFullJson !== false && options.saveFull !== false;
   const fullSuffix = options.fullJsonSuffix || '.full.json';
 
+  // ✅ v11.1.0: режим сериализации values
+  const valuesMode: ValuesMode = options.valuesMode || DEFAULT_VALUES_MODE;
+
   // ✅ v9.0.4: edges — по умолчанию НЕ сохраняются в отдельный файл.
   const saveEdges = options.saveEdges === true;
   const edgesSuffix = options.edgesJsonSuffix || '.edges.json';
@@ -187,9 +204,10 @@ export function generateCompactReport(
   // ============================================
   if (verbose) {
     console.log('\n📦 [compact-reporter] Сбор полного JSON...');
+    console.log(`   🎛️  valuesMode: ${valuesMode}`);
   }
 
-  const full = collectFullJSON(entitiesMap, verbose);
+  const full = collectFullJSON(entitiesMap, verbose, valuesMode);
 
   if (verbose) {
     console.log(`   📊 Модулей: ${full.modules.length}`);
@@ -231,7 +249,7 @@ export function generateCompactReport(
   // ШАГ 2: Проверка round-trip (только в verbose)
   // ============================================
   if (verbose && useCompression) {
-    const verification = Codec.verifyRoundTrip(full);
+    const verification = Codec.verifyRoundTrip(full, { valuesMode });
     if (!verification.ok) {
       console.warn(`   ⚠️  Round-trip проверка не пройдена: ${verification.error}`);
     } else {
@@ -244,9 +262,13 @@ export function generateCompactReport(
   // ============================================
   let compact: CompactJSON | undefined;
   if (useCompression) {
-    compact = Codec.encode(full);
+    compact = Codec.encode(full, valuesMode);
     if (verbose) {
-      console.log(`   🗜️  Сжатие применено (v${compact.v})`);
+      console.log(`   🗜️  Сжатие применено (v${compact.v}, valuesMode: ${compact.valuesMode || 'undefined'})`);
+
+      // ✅ v11.1.0: диагностика размера values
+      const valuesCount = compact.values?.length ?? 0;
+      console.log(`   📦 values[]: ${valuesCount} элементов`);
 
       // ✅ v9.0.2: диагностика vt-секции
       if (process.env.AST_DEBUG_CODEC === 'true' && compact.vt) {
@@ -318,13 +340,14 @@ export function generateCompactReport(
       const edgesPathResolved = insertSuffixBeforeExtension(outputPath, edgesSuffix);
 
       // Декодируем compact с includeEdges: true
-      const fullWithEdges = Codec.decode(compact, { includeEdges: true });
+      const fullWithEdges = Codec.decode(compact, { includeEdges: true, valuesMode });
       const edges = fullWithEdges.edges || [];
 
       const edgesPayload = {
         version: fullWithEdges.version,
         timestamp: fullWithEdges.timestamp,
         root: fullWithEdges.root,
+        valuesMode,
         edges,
         stats: {
           totalEdges: edges.length,
@@ -376,6 +399,8 @@ export function generateCompactReport(
       fullSize,
       edgesSize, // ✅ v9.0.4
       compressionRatio,
+      valuesMode, // ✅ v11.1.0
+      valuesCount: compact?.values?.length ?? 0, // ✅ v11.1.0
     },
   };
 }
@@ -412,7 +437,9 @@ export function readAndDecode(compactPath: string, options: DecodeOptions = {}):
     throw new Error(`Не удалось распарсить JSON: ${msg}`);
   }
 
-  return Codec.decode(compact, options);
+  // ✅ v11.1.0: пробрасываем valuesMode из compact в decode
+  const valuesMode = (compact as any).valuesMode as ValuesMode | undefined;
+  return Codec.decode(compact, { ...options, valuesMode });
 }
 
 /**
@@ -504,10 +531,15 @@ function saveJsonFile(
  *            Рёбра event → handler и ref → expose НЕ пишутся в calls[].
  *            conditionals обогащаются id/fileId. templateRefs[].exposedMethods
  *            нормализуются до [].
+ * ✅ v11.0.0: version = '11.0.0'.
+ * ✅ v11.1.0: version = '11.1.0'. valuesMode пробрасывается в full.json.
+ * ✅ v13.0.0: version = CODEC_VERSION ('13.0.0').
+ *             Валидация toFileId для импортов.
  */
 function collectFullJSON(
   entitiesMap: Record<string, EntitiesResult>,
-  verbose: boolean = false
+  verbose: boolean = false,
+  valuesMode: ValuesMode = DEFAULT_VALUES_MODE
 ): FullJSON {
   // ============================================
   // ✅ v8.5.0: Инициализация tsconfig
@@ -746,6 +778,14 @@ function collectFullJSON(
       if (!cn || !cn.name) continue;
 
       constantCounter++;
+
+      // ✅ v11.1.0: в режиме relations тяжёлые значения не сохраняем.
+      // Это гарантирует, что decode(encode(full)) === full: то, что
+      // мы не положили в full, не будет искать и decode.
+      const valueToStore = shouldKeepValue(cn.value, valuesMode)
+        ? cn.value
+        : undefined;
+
       constants.push({
         id: `cn${constantCounter}`,
         name: cn.name,
@@ -753,7 +793,7 @@ function collectFullJSON(
         fileId: file.id,
         line: cn.line || 0,
         isExported: cn.isExported || false,
-        value: cn.value,
+        value: valueToStore,
       });
     }
   }
@@ -768,15 +808,6 @@ function collectFullJSON(
   // ✅ v8.4.0 + v9.0.0 + v9.0.2 + v10.3: сбор Vue-шаблонов и conditionals
   // ============================================
   // ⚠️ ВАЖНО: каждый TemplateData содержит РОВНО 12 полей.
-  // Это критично для Codec.encode, который строит vt-кортеж по 12 позициям.
-  // Если хотя бы одно поле отсутствует (undefined), JSON.stringify
-  // может обрезать массив, что ломает round-trip.
-  //
-  // ✅ v10.3:
-  //   - conditionals обогащаются id/fileId через ЕДИНЫЙ conditionalCounter
-  //     (тот же, что используется для глобальной секции conditionals[]);
-  //   - templateRefs[].exposedMethods нормализуются до [] (не undefined);
-  //   - рёбра event → handler и ref → expose НЕ пишутся в calls[].
   // ============================================
   for (const [filePath, entities] of Object.entries(workingEntitiesMap)) {
     if (!entities) continue;
@@ -860,11 +891,6 @@ function collectFullJSON(
     };
 
     templates.push(templateData);
-
-    // ✅ v10.3: глобальная секция conditionals[] уже заполнена выше
-    //          через enrichedConditionals.map() + push. Дублирующий
-    //          блок удалён, чтобы conditionalCounter не инкрементировался
-    //          дважды.
   }
 
   if (verbose && templates.length > 0) {
@@ -998,6 +1024,19 @@ function collectFullJSON(
         if (!resolvedToFileId) {
           resolvedToFileId = (imp as any).toFileId || `unresolved:${imp.source}`;
         }
+      }
+
+      // ✅ v13.0.0-fix: гарантируем, что toFileId — либо `fN`,
+      // либо `external:...`, либо `unresolved:...`. Пустая строка
+      // или одиночная `"f"` ломает round-trip: encodeStr("f") даёт
+      // токен "f", decodeStr возвращает "f" вместо "f79".
+      if (
+        resolvedToFileId &&
+        !/^f\d+$/.test(resolvedToFileId) &&
+        !resolvedToFileId.startsWith('external:') &&
+        !resolvedToFileId.startsWith('unresolved:')
+      ) {
+        resolvedToFileId = `unresolved:${imp.source}`;
       }
 
       const impLine = imp.loc?.start?.line ?? (imp as any).line ?? 0;
@@ -1163,54 +1202,11 @@ function collectFullJSON(
   //
   // ⚠️ ВАЖНО: эти рёбра НЕ пишутся в calls[], потому что
   //    CallData.fromFunctionId по контракту — это ID ФУНКЦИИ,
-  //    а не ID файла. Ранее сюда писался template.fileId ('fN'),
-  //    что нарушало контракт и приводило к расхождению L1/L2/DL:
-  //    encoder не находил 'fN' в functionReverse и записывал 0,
-  //    decoder возвращал 'fn0' вместо 'fN'.
-  //
-  //    Рёбра шаблона хранятся в templates[].eventHandlers[]
-  //    и templates[].templateRefs[] — этого достаточно для
-  //    восстановления связей. Дублировать их в calls[] не нужно.
+  //    а не ID файла.
   // ============================================
-  // ЗАКОММЕНТИРОВАНО v10.3:
-  // for (const template of templates) {
-  //   for (const handler of template.eventHandlers) {
-  //     if (handler.isExternal) continue;
-  //     const handlerFuncArray = functionMap.get(handler.handlerName);
-  //     const handlerFunc = handlerFuncArray?.[0];
-  //     if (!handlerFunc) continue;
-  //     callCounter++;
-  //     calls.push({
-  //       id: `c${callCounter}`,
-  //       fromFunctionId: template.fileId,
-  //       toFunctionId: handlerFunc.id,
-  //       line: handler.line,
-  //       type: 'callback',
-  //     });
-  //   }
-  //   for (const ref of template.templateRefs) {
-  //     if (!ref.exposedMethods || ref.exposedMethods.length === 0) continue;
-  //     for (const methodName of ref.exposedMethods) {
-  //       const methodFuncArray = functionMap.get(methodName);
-  //       const methodFunc = methodFuncArray?.[0];
-  //       if (!methodFunc) continue;
-  //       callCounter++;
-  //       calls.push({
-  //         id: `c${callCounter}`,
-  //         fromFunctionId: template.fileId,
-  //         toFunctionId: methodFunc.id,
-  //         line: ref.line,
-  //         type: 'method',
-  //       });
-  //     }
-  //   }
-  // }
 
   // ============================================
   // ✅ v9.0.0: СБОР НОВЫХ СЕКЦИЙ
-  // ============================================
-  // lifecycle, effects, injections, reactivity, types, typeRefs
-  // собираются из workingEntitiesMap.
   // ============================================
   for (const [filePath, entities] of Object.entries(workingEntitiesMap)) {
     if (!entities) continue;
@@ -1223,8 +1219,6 @@ function collectFullJSON(
     const e = entities as any;
 
     // --- LIFECYCLE (lc) ---
-    // ✅ v9.0.2: functionId = '' если функция не найдена.
-    // Codec.encode превратит '' в -1 через ?? -1.
     for (const lc of e.templateLifecycle || []) {
       lifecycleCounter++;
       const funcArray = functionMap.get(lc.functionName);
@@ -1245,7 +1239,6 @@ function collectFullJSON(
     }
 
     // --- EFFECTS (ef) ---
-    // ✅ v9.0.2: functionId = '' если функция не найдена.
     for (const ef of e.templateEffects || []) {
       effectCounter++;
       const funcArray = functionMap.get(ef.functionName);
@@ -1276,7 +1269,6 @@ function collectFullJSON(
     }
 
     // --- REACTIVITY (rx) ---
-    // ✅ v9.0.2: functionId = '' если функция не найдена.
     for (const rx of e.templateReactivity || []) {
       reactivityCounter++;
       const funcArray = functionMap.get(rx.functionName);
@@ -1381,21 +1373,12 @@ function collectFullJSON(
   // ============================================
   // Финальный объект
   // ============================================
-  // ✅ v9.0.2: пустые секции → undefined (НЕ [])
-  // Это критично для чек-листа v9.0.0.
-  // ✅ v9.0.4: edges НЕ создаются — восстанавливаются в Codec.decode
-  //            через includeEdges: true (по запросу).
-  // ✅ v10.3: базовые секции (classes/constants/exports/imports/calls/reExports)
-  //           ВСЕГДА массивы, даже пустые. Это устраняет расхождение
-  //           `$.classes: [] vs undefined` между decode(compact) и full.json.
-  //           codec-decode.ts всегда возвращает [] для этих секций,
-  //           поэтому full.json должен делать то же самое.
-  // ✅ v10.4.0: версия отчёта — 10.4.0 (синхронизация с codec-legend.ts).
-  // ============================================
+  // ✅ v13.0.0: version = CODEC_VERSION — единая константа.
   const result: FullJSON = {
-    version: '10.4.0',
+    version: CODEC_VERSION,
     timestamp: new Date().toISOString(),
     root,
+    valuesMode, // ✅ v11.1.0
     modules,
     files,
     functions,
@@ -1406,9 +1389,7 @@ function collectFullJSON(
     imports,
     calls,
     reExports,
-    // ✅ v9.0.0: новые секции — оставляем undefined для пустых,
-    //            так как decodeCompactData тоже их не создаёт,
-    //            если в compact нет соответствующего ключа.
+    // ✅ v9.0.0: новые секции — оставляем undefined для пустых
     templates: templates.length > 0 ? templates : undefined,
     statistics,
     conditionals: conditionals.length > 0 ? conditionals : undefined,
@@ -1432,27 +1413,10 @@ function collectFullJSON(
  * ✅ v9.0.7: вставляет суффикс перед расширением файла.
  *
  * Гарантирует, что результирующее имя файла ОТЛИЧАЕТСЯ от исходного.
- * Если после вставки суффикса имя совпадает с исходным (например,
- * потому что base уже заканчивался на этот суффикс), функция
- * добавляет числовой суффикс (2, 3, ...) до тех пор, пока имя
- * не станет уникальным.
- *
- * Примеры:
- *   insertSuffixBeforeExtension('report.json', '.full.json')
- *     → 'report.full.json'
- *
- *   insertSuffixBeforeExtension('report.full.json', '.full.json')
- *     → 'report.full.2.json'  (аварийный режим)
- *
- *   insertSuffixBeforeExtension('report.json', '.edges.json')
- *     → 'report.edges.json'
- *
- *   insertSuffixBeforeExtension('report.json', '')
- *     → 'report.2.json'       (пустой суффикс → аварийный режим)
  *
  * @param filePath — исходный путь к файлу
  * @param suffix — суффикс (например, '.full.json' или '.edges.json')
- * @returns путь к новому файлу, гарантированно отличающийся от исходного
+ * @returns путь к новому файлу
  */
 function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
   const ext = path.extname(filePath); // '.json'
@@ -1470,7 +1434,6 @@ function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
 
   // Если суффикс заканчивается на то же расширение, что и файл,
   // убираем расширение из суффикса — оно уже есть в ext.
-  // Например, suffix = '.full.json', ext = '.json' → '.full'
   let suffixWithoutExt = normalizedSuffix;
   if (suffixWithoutExt.endsWith(ext) && ext.length > 0) {
     suffixWithoutExt = suffixWithoutExt.slice(0, -ext.length);
@@ -1479,8 +1442,7 @@ function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
   // Собираем итоговый путь
   const result = `${base}${suffixWithoutExt}${ext}`;
 
-  // Защита: если результат совпал с исходным (например, base уже
-  // содержал этот суффикс), добавляем числовой суффикс.
+  // Защита: если результат совпал с исходным
   if (path.resolve(result) === path.resolve(filePath)) {
     return insertUniqueSuffix(filePath, suffix);
   }
@@ -1491,21 +1453,6 @@ function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
 /**
  * ✅ v9.0.7: аварийная функция — добавляет числовой суффикс (2, 3, ...),
  * пока результат не станет уникальным относительно исходного пути.
- *
- * Используется, когда обычная вставка суффикса не дала уникального
- * результата (например, base уже заканчивался на этот суффикс,
- * или суффикс был пустой).
- *
- * Примеры:
- *   insertUniqueSuffix('report.json', '.full.json')
- *     → 'report.2.json'   (если 'report.full.json' уже существует)
- *
- *   insertUniqueSuffix('report.full.json', '.full.json')
- *     → 'report.full.2.json'
- *
- * @param filePath — исходный путь к файлу
- * @param suffix — суффикс (может быть пустым)
- * @returns путь к новому файлу, гарантированно отличающийся от исходного
  */
 function insertUniqueSuffix(filePath: string, suffix: string): string {
   const ext = path.extname(filePath); // '.json'
@@ -1692,6 +1639,50 @@ function detectCallType(
   }
 
   return 'direct';
+}
+
+// ============================================
+// ✅ v11.1.0: КЛАССИФИКАЦИЯ ЗНАЧЕНИЙ
+// ============================================
+
+/**
+ * Определяет, нужно ли сохранять значение в `full.constants[].value`.
+ *
+ * В режиме 'full' — всегда true (обратная совместимость).
+ * В режиме 'relations' — только если значение НЕ является "тяжёлым".
+ *
+ * Критерий согласован с `classifyValue()` в codec-encode.ts:
+ * если значение отбрасывается здесь, оно не попадёт в full,
+ * а значит не попадёт и в compact — round-trip сохраняется.
+ *
+ * @param value — значение константы
+ * @param mode — режим фильтрации
+ * @returns true, если значение нужно сохранить
+ */
+function shouldKeepValue(value: unknown, mode: ValuesMode): boolean {
+  if (mode === 'full') return true;
+  if (value === undefined || value === null) return true;
+
+  if (typeof value === 'string') {
+    return value.length <= HEAVY_VALUE_THRESHOLDS.STRING_LENGTH;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length <= HEAVY_VALUE_THRESHOLDS.ARRAY_LENGTH;
+  }
+
+  if (typeof value === 'object') {
+    try {
+      const json = JSON.stringify(value);
+      return json.length <= HEAVY_VALUE_THRESHOLDS.OBJECT_JSON_LENGTH;
+    } catch {
+      // BigInt, circular — считаем "тяжёлым" и отбрасываем
+      return false;
+    }
+  }
+
+  // Примитивы: number, boolean, bigint (bigint сериализуется как строка)
+  return true;
 }
 
 // ============================================

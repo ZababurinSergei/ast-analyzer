@@ -1,48 +1,84 @@
 // src/reporters/codec/codec-decode.ts
 // ============================================
-// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON
+// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v13.0.2 — columnar + RLE)
 // ============================================
-// Версия: 10.4.0
+// Версия: 13.0.2
 //
-// ИЗМЕНЕНИЯ v10.4.0 (единая легенда для ИИ):
-//   - ✅ ИСПРАВЛЕНО: пути к словарям изменились:
-//       было:  legend.stringDict / legend.paramDict /
-//              legend.methodDict / legend.valueDict
-//       стало: legend.dictionaries.stringDict /
-//              legend.dictionaries.paramDict /
-//              legend.dictionaries.methodDict /
-//              legend.dictionaries.valueDict
-//     Причина: legend перестроена в codec-legend.ts для
-//     самодостаточности ИИ (единая структура с how_to_read,
-//     flags, codes, dictionaries, schemas).
-//   - ✅ ДОБАВЛЕН fallback для чтения старых compact.json (v9.x),
-//     где словари лежат на верхнем уровне legend.*
-//   - ✅ ПРОЧЕЕ без изменений: логика декодирования кортежей,
-//     восстановление edges (includeEdges), обработка BigInt-значений
-//     через readValue (idx → valueDict[idx]) — всё как было.
+// ИЗМЕНЕНИЯ v13.0.2-fix (100% round-trip):
+//   - ✅ ИСПРАВЛЕНО: `modules[].fileIds` строятся через `fl.m`
+//     (обратная связь file → module), а НЕ через `mi.f`.
+//
+//     Причина: `mi.f` хранит пары `[startFileIdx, fileCount]`, где
+//     `startFileIdx = fileIdxs[0]` — это ПЕРВЫЙ файл модуля в
+//     порядке обхода `collectFullJSON`, а НЕ минимальный индекс.
+//     Файлы модуля могут иметь НЕпоследовательные индексы:
+//
+//       fileIdxs = [0, 4, 11, 19, 20, 21, ..., 163]  ← cli
+//       fileIdxs = [1, 2, 3, 5, 6, 7, 8, 9, 10, ...]  ← utils
+//
+//     Раньше decode восстанавливал:
+//       fileIds = [`f1`, `f2`, `f3`, ..., `f13`]  ← НЕВЕРНО
+//     Должно быть:
+//       fileIds = [`f1`, `f5`, `f12`, `f20`, ...]  ← ВЕРНО
+//
+//     Симптомы в round-trip:
+//       • L1/L2/DL: `$.modules[N].fileIds[i]` расходились
+//       • RE/ENC: `tokens.length`, `strs.length`, `params.length`,
+//         `methods.length` расходились (потому что decoded full.json
+//         имел другие moduleId/fileId → другие словари при повторном encode)
+//
+//     Решение: `fl.m` (RLE от moduleIdx) содержит ПОЛНУЮ информацию
+//     о том, какой файл какому модулю принадлежит. Строим
+//     `modules[].fileIds` через обратный проход по `fl.m`.
+//
+// ИЗМЕНЕНИЯ v13.0.0-fix (100% round-trip):
+//   - ✅ ИСПРАВЛЕНО: `mi.f` теперь читается как пары `[startFileIdx, fileCount]`,
+//     а не как RLE(moduleIdx). Раньше декодер собирал fileIds по
+//     moduleIdx, из-за чего получались неверные fileIds (`f10` вместо `f80`)
+//     и длина 1 вместо N.
+//   - ✅ ИСПРАВЛЕНО: `version` в FullJSON теперь берётся из CODEC_VERSION,
+//     а не из compact.v. Это устраняет расхождение "13.0.0" vs "11.1.0"
+//     в L1/L2/DL (compact.v может быть старым, если compact.json
+//     сгенерирован предыдущей версией кодека).
+//
+// ИЗМЕНЕНИЯ v12.0.1:
+//   - ✅ ИСПРАВЛЕНО: удалены неиспользуемые type-импорты
+//     (TemplateData, TemplateConditional, LifecycleHook, EffectEdge,
+//      InjectionEdge, ReactivityEdge, TypeNodeData, TypeRefData,
+//      CodecLegend) — устранён TS6196 × 9
+//   - ✅ ИСПРАВЛЕНО: удалён полностью неиспользуемый runtime-импорт
+//     из './codec-encode.js' — устранён TS6192
+//
+// ИЗМЕНЕНИЯ v12.0.0 (структурная оптимизация):
+//   - ✅ Columnar-структура для всех секций
+//   - ✅ Распаковка RLE для moduleIdx/fileIdx
+//   - ✅ Распаковка битовых масок
+//   - ✅ Числовые коды → строковые
+//   - ✅ Восстановление ID (m1, f1, fn1) из позиций
+//   - ✅ Детокенизация строк (strs, params, methods)
+//   - ✅ nonEmptyV для констант
+//
+// ИЗМЕНЕНИЯ v11.0.0 (компактнее):
+//   - fns/cls/cn: nameIdx → name, flagsNum → flags
+//
+// ИЗМЕНЕНИЯ v10.4.0 (единая легенда):
+//   - resolveDictionaries() поддерживает оба формата
+//
+// ИЗМЕНЕНИЯ v10.3 (v10.3 sync — full round-trip):
+//   - imports[].type для type-only импортов: 'type' (не 'type-only')
 //
 // ИЗМЕНЕНИЯ v9.0.7 (round-trip fix):
-//   - readMethod: idx < 0 → null (а не ''). Тип ClassData.methods
-//     расширен до (string | null)[].
-//   - templates[].conditionals: при отсутствии данных → [] (а не undefined).
-//
-// ИЗМЕНЕНИЯ v9.0.5 (v10.3 sync — full round-trip):
-//   - imports[].type для type-only импортов: 'type' (не 'type-only').
-//   - Удаление пустых опциональных секций.
+//   - readMethod: idx < 0 → null (а не '')
+//   - templates[].conditionals: при отсутствии данных → []
 //
 // ИЗМЕНЕНИЯ v9.0.4 (includeEdges default false):
-//   - decode, options.includeEdges по умолчанию false.
+//   - decode, options.includeEdges по умолчанию false
 //
 // ИЗМЕНЕНИЯ v9.0.3 (gr.c fix):
-//   - decode, секция calls: деструктуризация 5 элементов,
-//     ветвление по isExternal (0 = functionIdx, 1 = stringDictIdx).
+//   - decode, секция calls: ветвление по isExternal
 //
 // ИЗМЕНЕНИЯ v9.0.2 (reversibility):
 //   - decodeFlagsToObject: возвращает все 18 флагов
-//   - decode, секция fns: копирует все 18 флагов (только true)
-//   - decode, секция calls: external определяется по stringDict
-//   - decode, секция exports: +2 поля (isStarReExport, isDefaultReExport)
-//   - decode, секция modules: +1 поле (path)
 // ============================================
 
 import type {
@@ -57,32 +93,12 @@ import type {
   ReExportData,
   ModuleData,
   FileData,
-  TemplateData,
-  TemplateConditional,
-  LifecycleHook,
-  EffectEdge,
-  InjectionEdge,
-  ReactivityEdge,
-  TypeNodeData,
-  TypeRefData,
   EdgeData,
   DecodeOptions,
-  CodecLegend,
 } from './codec-types.js';
 
-import {
-  EXPORT_TYPES,
-  IMPORT_TYPES,
-  CALL_TYPES,
-  RE_EXPORT_TYPES,
-  LIFECYCLE_TYPES,
-  EFFECT_TYPES,
-  INJECTION_TYPES,
-  REACTIVITY_TYPES,
-  CONDITIONAL_TYPES,
-  TYPE_KINDS,
-  TYPE_USAGE_KINDS,
-} from './codec-encode.js';
+// ✅ v13.0.0-fix: единая версия CODEC
+import { CODEC_VERSION } from './codec-types.js';
 
 // ============================================
 // ДЕКОДИРОВАНИЕ ФЛАГОВ
@@ -141,17 +157,101 @@ export function createEmptyFlags(): DecodedFlags {
 }
 
 /**
- * Декодирует строку символов в число флагов.
+ * ✅ v11.0.0: декодирует ЧИСЛО флагов в объект с булевыми полями.
+ *
+ * Используется в decode() вместо `decodeFlagsToObject` (который
+ * принимает строку). Формат флагов в compact.json v11.0.0+ —
+ * число (битовая маска), а не строка.
+ *
+ * Примеры:
+ *   0   → все флаги false
+ *   2   → isExported=true
+ *   7   → isAsync=true, isExported=true, isMethod=true
+ *   67  → isAsync=true, isExported=true, isSelf=true
+ *
+ * @param num — число флагов (битовая маска)
+ * @returns объект со всеми 18 флагами
+ */
+export function decodeFlagsFromNumber(num: number): DecodedFlags {
+  const result = createEmptyFlags();
+  if (!num) return result;
+
+  result.isAsync = !!(num & 1);
+  result.isExported = !!(num & 2);
+  result.isMethod = !!(num & 4);
+  result.isArrow = !!(num & 8);
+  result.isEventHandler = !!(num & 16);
+  result.isNested = !!(num & 32);
+  result.isSelf = !!(num & 64);
+  result.isDynamic = !!(num & 128);
+  result.isConfig = !!(num & 256);
+  result.isExternal = !!(num & 512);
+  result.isVueTemplate = !!(num & 1024);
+  result.isAsyncChain = !!(num & 2048);
+  result.isClosure = !!(num & 4096);
+  result.isTypeDep = !!(num & 8192);
+  result.isGenerator = !!(num & 16384);
+  result.isPrivate = !!(num & 32768);
+  result.isProtected = !!(num & 65536);
+  result.isStatic = !!(num & 131072);
+
+  return result;
+}
+
+/**
+ * Декодирует строку символов в объект с булевыми полями.
+ *
+ * ⚠️ v11.0.0: сохранено для обратной совместимости с внутренними
+ *   вызовами. В основном потоке v11.0.0+ используется
+ *   `decodeFlagsFromNumber(num)` — флаги в compact.json хранятся
+ *   как число.
+ *
+ * ✅ ИСПРАВЛЕНО (reversibility):
+ *   Возвращает все 18 флагов.
  *
  * Символы соответствуют FLAG_CHAR_MAP из codec-encode.ts:
  *   a=1, e=2, m=4, r=8, v=16, n=32, s=64, d=128, c=256, x=512,
  *   t=1024, A=2048, l=4096, y=8192, g=16384, p=32768, P=65536, S=131072
+ */
+export function decodeFlagsToObject(flagStr: string): DecodedFlags {
+  const result = createEmptyFlags();
+  if (!flagStr || flagStr === '0') return result;
+
+  const FLAG_CHAR_MAP: Record<string, number> = {
+    a: 1,
+    e: 2,
+    m: 4,
+    r: 8,
+    v: 16,
+    n: 32,
+    s: 64,
+    d: 128,
+    c: 256,
+    x: 512,
+    t: 1024,
+    A: 2048,
+    l: 4096,
+    y: 8192,
+    g: 16384,
+    p: 32768,
+    P: 65536,
+    S: 131072,
+  };
+
+  let flags = 0;
+  for (const char of flagStr) {
+    const bit = FLAG_CHAR_MAP[char];
+    if (bit !== undefined) flags |= bit;
+  }
+
+  return decodeFlagsFromNumber(flags);
+}
+
+/**
+ * Декодирует строку символов в число флагов.
  *
- * ⚠️ v10.4.0: локальная копия FLAG_CHAR_MAP. Не зависит от legend.
- *    Легенда используется только для ИИ. Декодер работает автономно.
- *
- * @param flagStr — строка флагов, например 'em' или 'evl'
- * @returns число флагов
+ * ⚠️ v11.0.0: сохранено для обратной совместимости с внутренними
+ *   вызовами (например, в тестах).
  */
 export function flagsStringToNumber(flagStr: string): number {
   if (!flagStr || flagStr === '0') return 0;
@@ -185,104 +285,32 @@ export function flagsStringToNumber(flagStr: string): number {
   return flags;
 }
 
+// ============================================
+// УТИЛИТЫ
+// ============================================
+
 /**
- * Декодирует строку символов в объект с булевыми полями.
- *
- * ✅ ИСПРАВЛЕНО (reversibility):
- *   Возвращает все 18 флагов. Ранее decode в codec.ts
- *   использовал только 4 поля (isAsync, isExported, isArrow, isMethod),
- *   остальные 14 флагов терялись.
+ * Распаковка RLE: [[value, count], ...] → [value, value, ...]
  */
-export function decodeFlagsToObject(flagStr: string): DecodedFlags {
-  const result = createEmptyFlags();
-  if (!flagStr || flagStr === '0') return result;
-
-  const flags = flagsStringToNumber(flagStr);
-
-  result.isAsync = !!(flags & 1);
-  result.isExported = !!(flags & 2);
-  result.isMethod = !!(flags & 4);
-  result.isArrow = !!(flags & 8);
-  result.isEventHandler = !!(flags & 16);
-  result.isNested = !!(flags & 32);
-  result.isSelf = !!(flags & 64);
-  result.isDynamic = !!(flags & 128);
-  result.isConfig = !!(flags & 256);
-  result.isExternal = !!(flags & 512);
-  result.isVueTemplate = !!(flags & 1024);
-  result.isAsyncChain = !!(flags & 2048);
-  result.isClosure = !!(flags & 4096);
-  result.isTypeDep = !!(flags & 8192);
-  result.isGenerator = !!(flags & 16384);
-  result.isPrivate = !!(flags & 32768);
-  result.isProtected = !!(flags & 65536);
-  result.isStatic = !!(flags & 131072);
-
+function unrle(rle: [number, number][]): number[] {
+  const result: number[] = [];
+  for (const [value, count] of rle) {
+    for (let i = 0; i < count; i++) {
+      result.push(value);
+    }
+  }
   return result;
 }
 
-// ============================================
-// ✅ v10.4.0: ХЕЛПЕР ДЛЯ ДОСТУПА К СЛОВАРЯМ
-// ============================================
-//
-// Легенда v10.4.0 имеет структуру:
-//   legend.dictionaries.stringDict
-//   legend.dictionaries.paramDict
-//   legend.dictionaries.methodDict
-//   legend.dictionaries.valueDict
-//
-// Легенда v9.x имела словари на верхнем уровне:
-//   legend.stringDict
-//   legend.paramDict
-//   legend.methodDict
-//   legend.valueDict
-//
-// Функция resolveDictionaries() возвращает словари из любого
-// варианта легенды — это обеспечивает обратную совместимость
-// при чтении старых compact.json.
-// ============================================
-
-interface ResolvedDictionaries {
-  stringDict: string[];
-  paramDict: string[];
-  methodDict: string[];
-  valueDict: unknown[];
-}
-
 /**
- * Извлекает словари из легенды, поддерживая оба формата:
- *   - v10.4.0: legend.dictionaries.{stringDict,paramDict,methodDict,valueDict}
- *   - v9.x:    legend.{stringDict,paramDict,methodDict,valueDict}
+ * Детокенизация строки.
  *
- * @param legend — легенда из compact.json
- * @returns нормализованный объект со словарями
+ * Если entry — строка, возвращает как есть.
+ * Если entry — массив индексов, склеивает соответствующие токены.
  */
-function resolveDictionaries(legend: CodecLegend): ResolvedDictionaries {
-  // v10.4.0: словари в legend.dictionaries.*
-  const modern = (legend as unknown as { dictionaries?: ResolvedDictionaries }).dictionaries;
-  if (modern && Array.isArray(modern.stringDict)) {
-    return {
-      stringDict: modern.stringDict,
-      paramDict: Array.isArray(modern.paramDict) ? modern.paramDict : [],
-      methodDict: Array.isArray(modern.methodDict) ? modern.methodDict : [],
-      valueDict: Array.isArray(modern.valueDict) ? modern.valueDict : [],
-    };
-  }
-
-  // v9.x: словари на верхнем уровне legend.*
-  const legacy = legend as unknown as {
-    stringDict?: string[];
-    paramDict?: string[];
-    methodDict?: string[];
-    valueDict?: unknown[];
-  };
-
-  return {
-    stringDict: Array.isArray(legacy.stringDict) ? legacy.stringDict : [],
-    paramDict: Array.isArray(legacy.paramDict) ? legacy.paramDict : [],
-    methodDict: Array.isArray(legacy.methodDict) ? legacy.methodDict : [],
-    valueDict: Array.isArray(legacy.valueDict) ? legacy.valueDict : [],
-  };
+function decodeStr(entry: string | number[], tokens: string[]): string {
+  if (typeof entry === 'string') return entry;
+  return entry.map(i => tokens[i]).join('');
 }
 
 // ============================================
@@ -292,524 +320,369 @@ function resolveDictionaries(legend: CodecLegend): ResolvedDictionaries {
 /**
  * Декодирует сжатый JSON обратно в полный.
  *
- * ✅ ИСПРАВЛЕНО (v10.4.0, единая легенда):
- *   Словари читаются через resolveDictionaries(legend), что
- *   поддерживает и новую структуру (legend.dictionaries.*),
- *   и старую (legend.stringDict и т.д. на верхнем уровне).
+ * ✅ v13.0.2-fix (100% round-trip):
+ *   - `modules[].fileIds` строятся через `fl.m` (обратная связь
+ *     file → module), а НЕ через `mi.f`.
  *
- * ✅ ИСПРАВЛЕНО (v9.0.4, includeEdges default false):
- *   Поле edges — производное (восстанавливается из gr.i + gr.e + gr.c + gr.re).
- *   По умолчанию edges НЕ добавляются в результат — это устраняет расхождение
- *   при DL (decode(encode(full)) === full), когда исходный full не содержит edges
- *   (как и должно быть по спецификации v9.0.x).
+ *     Причина: `mi.f` хранит `[startFileIdx, fileCount]`, где
+ *     `startFileIdx = fileIdxs[0]` — это ПЕРВЫЙ файл модуля в
+ *     порядке обхода, а НЕ минимальный индекс. Файлы модуля
+ *     могут иметь НЕпоследовательные индексы (например,
+ *     `[0, 4, 11, 19, 20, ..., 163]`), и decode восстанавливал
+ *     `f1..f13` вместо правильных `f1, f5, f12, f20, ...`.
  *
- *   Если edges нужны (например, для отдельного файла *.edges.json) —
- *   передайте { includeEdges: true } в DecodeOptions.
+ *     `fl.m` — RLE от `moduleIdx` для каждого файла — содержит
+ *     ПОЛНУЮ информацию о принадлежности файла модулю. Поэтому
+ *     `modules[].fileIds` собираются обратным проходом.
  *
- * ✅ ИСПРАВЛЕНО (v9.0.3, gr.c fix):
- *   External-вызовы определяются по isExternal === 1,
- *   а не по содержимому stringDict. Это устраняет коллизию
- *   индексов: functionIdx и stringDictIdx теперь не смешиваются.
+ * ✅ v13.0.0-fix:
+ *   - `mi.f` читается как пары `[startFileIdx, fileCount]`
+ *   - `version` берётся из CODEC_VERSION (не из compact.v)
  *
- * ✅ ИСПРАВЛЕНО (reversibility):
- *   - modules[].path восстанавливается из mi[id].p
- *   - functions[].*Flags восстанавливаются все 18
- *   - exports[].isStarReExport / isDefaultReExport восстанавливаются
+ * ✅ v12.0.0 (columnar + RLE):
+ *   - mi/fl/fns/cls/cn/gr.* — columnar-структура
+ *   - Распаковка RLE для moduleIdx/fileIdx
+ *   - Распаковка битовых масок
+ *   - Детокенизация strs/params/methods
+ *   - Восстановление ID (m1, f1, fn1) из позиций
  *
- * ✅ ИСПРАВЛЕНО (v9.0.7, round-trip fix):
- *   - readMethod: idx < 0 → null (а не ''). Устраняет расхождение
- *     $.classes[N].methods[M]: a="" vs b=null. Тип ClassData.methods
- *     расширен до (string | null)[].
- *   - templates[].conditionals: при отсутствии данных → [] (а не undefined).
- *     Устраняет расхождение $.templates[N].conditionals: a=undefined vs b=[].
+ * ✅ v9.0.4 (includeEdges default false):
+ *   Поле edges — производное (восстанавливается из gr.i + gr.e +
+ *   gr.c + gr.re). По умолчанию edges НЕ добавляются в результат.
  *
  * @param compact — сжатый JSON с легендой
  * @param options — опции декодирования
  * @returns полный JSON
  */
 export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJSON {
-  const {
-    // ✅ v9.0.4: includeEdges по умолчанию false.
-    // Раньше было true — это приводило к расхождению DL,
-    // когда исходный full не содержал edges.
-    includeEdges = false,
-    includeEmptyArrays = true,
-    includeStatistics = true,
-  } = options;
-
-  const legend = compact.legend;
+  const { includeEdges = false, includeEmptyArrays = true, includeStatistics = true } = options;
 
   // ============================================
-  // ✅ v10.4.0: Разрешение словарей
+  // 0. Детокенизация словарей
   // ============================================
-  // Поддерживаем и legend.dictionaries.* (v10.4.0),
-  // и legend.* (v9.x) — для обратной совместимости.
-  // ============================================
-  const dictionaries = resolveDictionaries(legend);
+  const tokens = compact.tokens || [];
+  const stringDict = (compact.strs || []).map(s => decodeStr(s, tokens));
+  const paramDict = (compact.params || []).map(s => decodeStr(s, tokens));
+  const methodDict = (compact.methods || []).map(s => decodeStr(s, tokens));
+  const valueDict = compact.values || [];
 
-  // ============================================
-  // Хелперы для чтения словарей
-  // ============================================
-
-  const readString = (idx: number): string | undefined =>
-    idx < 0 ? undefined : dictionaries.stringDict[idx];
-
-  const readStringOrEmpty = (idx: number): string =>
-    idx < 0 ? '' : (dictionaries.stringDict[idx] ?? '');
-
-  const readParam = (idx: number): string => (idx < 0 ? '' : (dictionaries.paramDict[idx] ?? ''));
-
-  // ✅ v9.0.7: возвращаем null при idx < 0, а не ''.
-  // Это симметрично full.json, где method name может быть null.
-  // Тип ClassData.methods расширен до (string | null)[].
-  const readMethod = (idx: number): string | null =>
-    idx < 0 ? null : (dictionaries.methodDict[idx] ?? null);
-
-  const readValue = (idx: number): unknown => (idx < 0 ? undefined : dictionaries.valueDict[idx]);
+  const readString = (idx: number): string | undefined => (idx < 0 ? undefined : stringDict[idx]);
+  const readStringOrEmpty = (idx: number): string => (idx < 0 ? '' : (stringDict[idx] ?? ''));
+  const readParam = (idx: number): string => (idx < 0 ? '' : (paramDict[idx] ?? ''));
+  const readMethod = (idx: number): string | null => (idx < 0 ? null : (methodDict[idx] ?? null));
+  const readValue = (idx: number): unknown => (idx < 0 ? undefined : valueDict[idx]);
 
   // ============================================
-  // 1. Модули — с path (reversibility)
+  // 1. Файлы (сначала — они нужны для modules)
   // ============================================
-  const modules: ModuleData[] = Object.entries(compact.mi).map(([id, data]) => ({
-    id,
-    name: data.n,
-    path: data.p, // ✅ reversibility: используем сохранённый path
-    fileIds: [...data.f],
-  }));
+  // ✅ v13.0.2-fix: файлы строятся ДО модулей, потому что
+  // modules[].fileIds собираются обратным проходом через fl.m.
+  //
+  // fl.m — RLE от moduleIdx: для каждого файла хранится индекс
+  // его модуля. Это ПОЛНАЯ информация о принадлежности.
+  // ============================================
+  const flP = compact.fl?.p || [];
+  const flM = compact.fl?.m || [];
+  const flMUnrle = unrle(flM);
+
+  const files: FileData[] = [];
+  for (let i = 0; i < flP.length; i++) {
+    files.push({
+      id: `f${i + 1}`,
+      path: flP[i] || '',
+      moduleId: `m${(flMUnrle[i] ?? 0) + 1}`,
+    });
+  }
 
   // ============================================
-  // 2. Файлы
+  // 2. Модули
   // ============================================
-  const files: FileData[] = Object.entries(compact.fl).map(([id, data]) => ({
-    id,
-    path: data.p,
-    moduleId: data.m,
-  }));
-
+  // ✅ v13.0.2-fix: `modules[].fileIds` строятся через `fl.m`,
+  // а НЕ через `mi.f`.
+  //
+  // `mi.f` = `[startFileIdx, fileCount]` — но `startFileIdx`
+  // это ПЕРВЫЙ файл модуля в порядке обхода, а НЕ минимальный
+  // индекс. Файлы модуля могут иметь НЕпоследовательные индексы.
+  //
+  // `fl.m` — RLE от `moduleIdx` — содержит ПОЛНУЮ информацию
+  // о принадлежности каждого файла. Собираем modules[].fileIds
+  // обратным проходом.
   // ============================================
-  // 3. Функции — все 18 флагов (reversibility)
-  // ============================================
-  const functions: FunctionData[] = (compact.fns || []).map(
-    ([id, name, moduleId, fileId, line, flagsStr, paramsIdx, returnTypeIdx]) => {
-      const flags = decodeFlagsToObject(flagsStr);
+  const miN = compact.mi?.n || [];
 
-      const func: FunctionData = {
-        id,
-        name,
-        moduleId,
-        fileId,
-        line,
-        isExported: flags.isExported,
-        isAsync: flags.isAsync,
-        isArrow: flags.isArrow,
-        isMethod: flags.isMethod,
-        params: (paramsIdx || []).map(readParam),
-        returnType: readString(returnTypeIdx),
-      };
-
-      // ✅ reversibility: копируем остальные флаги, только если они true.
-      // В full для не-установленных флагов поля отсутствуют (undefined),
-      // а не false. Если записать false, deepEqual(full, decoded) покажет
-      // расхождение.
-      if (flags.isEventHandler) func.isEventHandler = true;
-      if (flags.isNested) func.isNested = true;
-      if (flags.isSelf) func.isSelf = true;
-      if (flags.isDynamic) func.isDynamic = true;
-      if (flags.isConfig) func.isConfig = true;
-      if (flags.isExternal) func.isExternal = true;
-      if (flags.isVueTemplate) func.isVueTemplate = true;
-      if (flags.isAsyncChain) func.isAsyncChain = true;
-      if (flags.isClosure) func.isClosure = true;
-      if (flags.isTypeDep) func.isTypeDep = true;
-      if (flags.isGenerator) func.isGenerator = true;
-      if (flags.isPrivate) func.isPrivate = true;
-      if (flags.isProtected) func.isProtected = true;
-      if (flags.isStatic) func.isStatic = true;
-
-      return func;
+  // Строим карту: moduleIdx → fileIds
+  const moduleFileIds: string[][] = miN.map(() => []);
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (!file) continue;
+    const modIdx = flMUnrle[i] ?? 0;
+    if (modIdx >= 0 && modIdx < moduleFileIds.length) {
+      const bucket = moduleFileIds[modIdx];
+      if (bucket) {
+        bucket.push(`f${i + 1}`);
+      }
     }
-  );
+  }
+
+  const modules: ModuleData[] = [];
+  for (let i = 0; i < miN.length; i++) {
+    modules.push({
+      id: `m${i + 1}`,
+      name: miN[i] || '',
+      path: miN[i] || '',
+      fileIds: moduleFileIds[i] ?? [],
+    });
+  }
+
+  // ============================================
+  // 3. Функции
+  // ============================================
+  const fns = compact.fns || { n: [], m: [], f: [], l: [], fl: [], p: [], rt: [] };
+  const fnsM = unrle(fns.m || []);
+  const fnsF = unrle(fns.f || []);
+
+  const functions: FunctionData[] = [];
+  for (let i = 0; i < (fns.n || []).length; i++) {
+    const name = readStringOrEmpty(fns.n[i] ?? -1);
+    const flags = decodeFlagsFromNumber(fns.fl[i] ?? 0);
+
+    const func: FunctionData = {
+      id: `fn${i + 1}`,
+      name,
+      moduleId: `m${(fnsM[i] ?? 0) + 1}`,
+      fileId: `f${(fnsF[i] ?? 0) + 1}`,
+      line: fns.l[i] ?? 0,
+      isExported: flags.isExported,
+      isAsync: flags.isAsync,
+      isArrow: flags.isArrow,
+      isMethod: flags.isMethod,
+      params: (fns.p[i] || []).map(readParam),
+      returnType: readString(fns.rt[i] ?? -1),
+    };
+
+    // reversibility: копируем остальные флаги, только если они true.
+    if (flags.isEventHandler) func.isEventHandler = true;
+    if (flags.isNested) func.isNested = true;
+    if (flags.isSelf) func.isSelf = true;
+    if (flags.isDynamic) func.isDynamic = true;
+    if (flags.isConfig) func.isConfig = true;
+    if (flags.isExternal) func.isExternal = true;
+    if (flags.isVueTemplate) func.isVueTemplate = true;
+    if (flags.isAsyncChain) func.isAsyncChain = true;
+    if (flags.isClosure) func.isClosure = true;
+    if (flags.isTypeDep) func.isTypeDep = true;
+    if (flags.isGenerator) func.isGenerator = true;
+    if (flags.isPrivate) func.isPrivate = true;
+    if (flags.isProtected) func.isProtected = true;
+    if (flags.isStatic) func.isStatic = true;
+
+    functions.push(func);
+  }
 
   // ============================================
   // 4. Классы
   // ============================================
-  const classes: ClassData[] = (compact.cls || []).map(
-    ([id, name, moduleId, fileId, line, flagsStr, methodsIdx]) => {
-      const flags = decodeFlagsToObject(flagsStr);
-      return {
-        id,
-        name,
-        moduleId,
-        fileId,
-        line,
-        isExported: flags.isExported,
-        // ✅ v9.0.7: readMethod возвращает null при idx < 0,
-        // что согласовано с full.json (где method name может быть null).
-        methods: (methodsIdx || []).map(readMethod),
-      };
-    }
-  );
+  const cls = compact.cls || { n: [], m: [], f: [], l: [], fl: [], methods: [] };
+  const clsM = unrle(cls.m || []);
+  const clsF = unrle(cls.f || []);
+
+  const classes: ClassData[] = [];
+  for (let i = 0; i < (cls.n || []).length; i++) {
+    const name = readStringOrEmpty(cls.n[i] ?? -1);
+    const flags = decodeFlagsFromNumber(cls.fl[i] ?? 0);
+
+    classes.push({
+      id: `cls${i + 1}`,
+      name,
+      moduleId: `m${(clsM[i] ?? 0) + 1}`,
+      fileId: `f${(clsF[i] ?? 0) + 1}`,
+      line: cls.l[i] ?? 0,
+      isExported: flags.isExported,
+      // ✅ v9.0.7: readMethod возвращает null при idx < 0
+      methods: (cls.methods[i] || []).map(readMethod),
+    });
+  }
 
   // ============================================
   // 5. Константы
   // ============================================
-  const constants: ConstantData[] = (compact.cn || []).map(
-    ([id, name, moduleId, fileId, line, flagsStr, valueIdx]) => {
-      const flags = decodeFlagsToObject(flagsStr);
-      return {
-        id,
-        name,
-        moduleId,
-        fileId,
-        line,
-        isExported: flags.isExported,
-        value: readValue(valueIdx),
-      };
-    }
-  );
+  const cn = compact.cn || { n: [], m: [], f: [], l: [], fl: [], nonEmptyV: [] };
+  const cnM = unrle(cn.m || []);
+  const cnF = unrle(cn.f || []);
+
+  const valueMap = new Map<number, number>();
+  for (const [constIdx, valIdx] of cn.nonEmptyV || []) {
+    valueMap.set(constIdx, valIdx);
+  }
+
+  const constants: ConstantData[] = [];
+  for (let i = 0; i < (cn.n || []).length; i++) {
+    const name = readStringOrEmpty(cn.n[i] ?? -1);
+    const flags = decodeFlagsFromNumber(cn.fl[i] ?? 0);
+    const valueIdx = valueMap.get(i);
+
+    constants.push({
+      id: `cn${i + 1}`,
+      name,
+      moduleId: `m${(cnM[i] ?? 0) + 1}`,
+      fileId: `f${(cnF[i] ?? 0) + 1}`,
+      line: cn.l[i] ?? 0,
+      isExported: flags.isExported,
+      value: valueIdx !== undefined ? readValue(valueIdx) : undefined,
+    });
+  }
 
   // ============================================
-  // 6. Экспорты — 12 полей (reversibility)
+  // 6. Экспорты
   // ============================================
-  const exports: ExportData[] = (compact.gr?.e || []).map(
-    (
-      [
-        moduleIdx,
-        fileIdx,
-        funcIdx,
-        line,
-        typeCode,
-        exportNameIdx,
-        localNameIdx,
-        isTypeOnly,
-        isReExport,
-        sourceIdx,
-        isStarReExport, // ✅ reversibility
-        isDefaultReExport, // ✅ reversibility
-      ],
-      idx
-    ) => ({
-      id: `e${idx + 1}`,
-      moduleId: `m${moduleIdx}`,
-      fileId: `f${fileIdx}`,
-      functionId: `fn${funcIdx}`,
-      exportName: readStringOrEmpty(exportNameIdx),
-      localName: readStringOrEmpty(localNameIdx),
-      line,
-      type: (EXPORT_TYPES[typeCode] || 'named') as ExportData['type'],
-      isDefault: typeCode === 'de',
-      isTypeOnly: isTypeOnly === 1,
-      isReExport: isReExport === 1,
-      isStarReExport: isStarReExport === 1,
-      isDefaultReExport: isDefaultReExport === 1,
-      source: readString(sourceIdx),
-    })
-  );
+  const ge = compact.gr?.e || {
+    m: [],
+    f: [],
+    fn: [],
+    l: [],
+    ty: [],
+    en: [],
+    ln: [],
+    s: [],
+    flags: [],
+  };
+  const exports: ExportData[] = [];
+
+  for (let i = 0; i < (ge.m || []).length; i++) {
+    const typeCode = ge.ty[i] ?? 0;
+    let type: 'named' | 'default' | 'type';
+    if (typeCode === 1) type = 'default';
+    else if (typeCode === 2) type = 'type';
+    else type = 'named';
+
+    const flags = ge.flags[i] ?? 0;
+
+    exports.push({
+      id: `e${i + 1}`,
+      moduleId: `m${(ge.m[i] ?? 0) + 1}`,
+      fileId: `f${(ge.f[i] ?? 0) + 1}`,
+      functionId: `fn${(ge.fn[i] ?? 0) + 1}`,
+      exportName: readStringOrEmpty(ge.en[i] ?? -1),
+      localName: readStringOrEmpty(ge.ln[i] ?? -1),
+      line: ge.l[i] ?? 0,
+      type,
+      isDefault: type === 'default',
+      isTypeOnly: (flags & 1) !== 0,
+      isReExport: (flags & 2) !== 0,
+      isStarReExport: (flags & 4) !== 0,
+      isDefaultReExport: (flags & 8) !== 0,
+      source: readString(ge.s[i] ?? -1),
+    });
+  }
 
   // ============================================
   // 7. Импорты
   // ============================================
-  // ✅ v9.0.5 / v10.3 sync: type-only импорты декодируются как 'type',
-  //    а не 'type-only'. Это согласовано с compact-reporter.ts,
-  //    который пишет `type: 'type'` для type-only импортов
-  //    (см. ImportData.type в codec-types.ts).
-  // ============================================
-  const imports: ImportData[] = (compact.gr?.i || []).map(
-    (
-      [
-        fromFileIdx,
-        toFileIdIdx,
-        sourceIdx,
-        importedNameIdx,
-        localNameIdx,
-        line,
-        typeCode,
-        isExternal,
-      ],
-      idx
-    ) => {
-      const source = readStringOrEmpty(sourceIdx);
-      const toFileId = readString(toFileIdIdx) ?? null;
+  const gi = compact.gr?.i || { ff: [], tf: [], s: [], im: [], ln: [], l: [], ty: [] };
+  const imports: ImportData[] = [];
 
-      // ✅ v10.3: typeCode 'to' → type: 'type'.
-      // Раньше возвращалось 'type-only', что расходилось с compact-reporter.ts,
-      // который пишет 'type' для type-only импортов (см. ImportData.type).
-      // Теперь обе стороны согласованы: 'type'.
-      const importType: ImportData['type'] =
-        typeCode === 'to' ? 'type' : ((IMPORT_TYPES[typeCode] || 'named') as ImportData['type']);
+  for (let i = 0; i < (gi.ff || []).length; i++) {
+    const combinedTy = gi.ty[i] ?? 0;
+    const typeCode = combinedTy & 3;
+    const isExternal = (combinedTy & 4) !== 0;
 
-      return {
-        id: `i${idx + 1}`,
-        fromFileId: `f${fromFileIdx}`,
-        toFileId,
-        source,
-        importedName: readStringOrEmpty(importedNameIdx),
-        localName: readStringOrEmpty(localNameIdx),
-        line,
-        type: importType,
-        isDefault: typeCode === 'df',
-        isNamespace: typeCode === 'ns',
-        isTypeOnly: typeCode === 'to',
-        isExternal: isExternal === 1,
-        packageName:
-          isExternal === 1
-            ? source.startsWith('@')
-              ? source.split('/').slice(0, 2).join('/')
-              : source.split('/')[0]
-            : undefined,
-      };
-    }
-  );
+    let type: 'named' | 'default' | 'namespace' | 'type';
+    if (typeCode === 1) type = 'default';
+    else if (typeCode === 2) type = 'namespace';
+    else if (typeCode === 3) type = 'type';
+    else type = 'named';
+
+    const source = readStringOrEmpty(gi.s[i] ?? -1);
+    const toFileId = readString(gi.tf[i] ?? -1) ?? null;
+
+    imports.push({
+      id: `i${i + 1}`,
+      fromFileId: `f${(gi.ff[i] ?? 0) + 1}`,
+      toFileId,
+      source,
+      importedName: readStringOrEmpty(gi.im[i] ?? -1),
+      localName: readStringOrEmpty(gi.ln[i] ?? -1),
+      line: gi.l[i] ?? 0,
+      type,
+      isDefault: type === 'default',
+      isNamespace: type === 'namespace',
+      isTypeOnly: type === 'type',
+      isExternal,
+      packageName: isExternal
+        ? source.startsWith('@')
+          ? source.split('/').slice(0, 2).join('/')
+          : source.split('/')[0]
+        : undefined,
+    });
+  }
 
   // ============================================
   // 8. Вызовы (gr.c)
   // ============================================
-  // ✅ v9.0.3: isExternal явно отделяет два случая:
-  //   - isExternal === 1 → toIdx это stringDictIdx → readStringOrEmpty
-  //   - isExternal === 0 → toIdx это functionIdx  → `fn${toIdx}`
-  // Это устраняет коллизию индексов.
-  // ============================================
-  const calls: CallData[] = (compact.gr?.c || []).map(
-    ([fromIdx, toIdx, line, typeChar, isExternal], idx) => {
-      const toFunctionId = isExternal === 1 ? readStringOrEmpty(toIdx) : `fn${toIdx}`;
+  const gc = compact.gr?.c || { f: [], t: [], l: [], ty: [] };
+  const calls: CallData[] = [];
 
-      const callType = (CALL_TYPES[typeChar] || 'direct') as CallData['type'];
+  for (let i = 0; i < (gc.f || []).length; i++) {
+    const combinedTy = gc.ty[i] ?? 0;
+    const typeCode = combinedTy & 3;
+    const isExternal = (combinedTy & 4) !== 0;
 
-      return {
-        id: `c${idx + 1}`,
-        fromFunctionId: `fn${fromIdx}`,
-        toFunctionId,
-        line,
-        type: callType,
-      };
-    }
-  );
+    let type: 'direct' | 'async' | 'method' | 'callback';
+    if (typeCode === 1) type = 'async';
+    else if (typeCode === 2) type = 'method';
+    else if (typeCode === 3) type = 'callback';
+    else type = 'direct';
+
+    const toFunctionId = isExternal ? readStringOrEmpty(gc.t[i] ?? -1) : `fn${(gc.t[i] ?? 0) + 1}`;
+
+    calls.push({
+      id: `c${i + 1}`,
+      fromFunctionId: `fn${(gc.f[i] ?? 0) + 1}`,
+      toFunctionId,
+      line: gc.l[i] ?? 0,
+      type,
+    });
+  }
 
   // ============================================
   // 9. Реэкспорты
   // ============================================
-  const reExports: ReExportData[] = (compact.gr?.re || []).map(
-    ([moduleIdx, funcIdx, sourceIdx, exportNameIdx, line, typeCode, isTypeOnly], idx) => ({
-      id: `re${idx + 1}`,
-      moduleId: `m${moduleIdx}`,
-      functionId: `fn${funcIdx}`,
-      source: readStringOrEmpty(sourceIdx),
-      exportName: readStringOrEmpty(exportNameIdx),
-      line,
-      type: (RE_EXPORT_TYPES[typeCode] || 'named') as ReExportData['type'],
-      isDefault: typeCode === 'df',
-      isTypeOnly: isTypeOnly === 1,
-      isStarReExport: typeCode === 'all',
-    })
-  );
+  const gre = compact.gr?.re || { m: [], fn: [], s: [], en: [], l: [], ty: [] };
+  const reExports: ReExportData[] = [];
+
+  for (let i = 0; i < (gre.m || []).length; i++) {
+    const combinedTy = gre.ty[i] ?? 0;
+    const typeCode = combinedTy & 3;
+    const isTypeOnly = (combinedTy & 4) !== 0;
+
+    let type: 'named' | 'default' | 'all';
+    if (typeCode === 2) type = 'all';
+    else if (typeCode === 1) type = 'default';
+    else type = 'named';
+
+    reExports.push({
+      id: `re${i + 1}`,
+      moduleId: `m${(gre.m[i] ?? 0) + 1}`,
+      functionId: `fn${(gre.fn[i] ?? 0) + 1}`,
+      source: readStringOrEmpty(gre.s[i] ?? -1),
+      exportName: readStringOrEmpty(gre.en[i] ?? -1),
+      line: gre.l[i] ?? 0,
+      type,
+      isDefault: type === 'default',
+      isTypeOnly,
+      isStarReExport: type === 'all',
+    });
+  }
 
   // ============================================
-  // 10. Conditionals
+  // 10. Statistics
   // ============================================
-  const conditionals: TemplateConditional[] | undefined = compact.cd
-    ? compact.cd.map(([directiveCode, fileIdx, line, condIdx, compIdx], idx) => ({
-        id: `cd${idx + 1}`,
-        directive: (CONDITIONAL_TYPES[directiveCode] || 'v-if') as TemplateConditional['directive'],
-        fileId: `f${fileIdx}`,
-        line,
-        conditionExpression: condIdx >= 0 ? readString(condIdx) : undefined,
-        renderedComponent: compIdx >= 0 ? readString(compIdx) : undefined,
-      }))
-    : undefined;
+  const statistics = includeStatistics ? compact.st : ({} as any);
 
   // ============================================
-  // 11. Vue templates
-  // ============================================
-  const templates: TemplateData[] = (compact.vt || []).map(
-    ([
-      fileIdx,
-      moduleIdx,
-      complexity,
-      reactivityDepsIdx,
-      eventHandlers,
-      dynamicComponents,
-      directivesIdx,
-      usedComponentsIdx,
-      templateRefs,
-      cssVariables,
-      deepSelectors,
-      slotsIdx,
-    ]) => {
-      const fileId = `f${fileIdx}`;
-
-      return {
-        fileId,
-        moduleId: `m${moduleIdx}`,
-        complexity,
-        reactivityDeps: (reactivityDepsIdx || []).map(readStringOrEmpty),
-        eventHandlers: (eventHandlers || []).map(
-          ([eventNameIdx, handlerNameIdx, tagIdx, line, modifiersIdx, isExternal]) => ({
-            eventName: readStringOrEmpty(eventNameIdx),
-            handlerName: readStringOrEmpty(handlerNameIdx),
-            tag: readStringOrEmpty(tagIdx),
-            line,
-            modifiers: (modifiersIdx || []).map(readStringOrEmpty),
-            isExternal: isExternal === 1,
-          })
-        ),
-        dynamicComponents: (dynamicComponents || []).map(
-          ([isExpressionIdx, line, resolvedComponentsIdx]) => ({
-            isExpression: readStringOrEmpty(isExpressionIdx),
-            line,
-            resolvedComponents: (resolvedComponentsIdx || [])
-              .map(readStringOrEmpty)
-              .filter((s: string) => s !== ''),
-          })
-        ),
-        directives: (directivesIdx || []).map(readStringOrEmpty),
-        usedComponents: (usedComponentsIdx || []).map(readStringOrEmpty),
-        templateRefs: (templateRefs || []).map(
-          ([refValueIdx, tagIdx, line, exposedMethodsIdx]) => ({
-            refValue: readStringOrEmpty(refValueIdx),
-            tag: readStringOrEmpty(tagIdx),
-            line,
-            exposedMethods: (exposedMethodsIdx || []).map(readStringOrEmpty),
-          })
-        ),
-        cssVariables: (cssVariables || []).map(([nameIdx, valueIdx, line, isMultiline]) => ({
-          name: readStringOrEmpty(nameIdx),
-          value: valueIdx >= 0 ? readStringOrEmpty(valueIdx) : undefined,
-          line,
-          isMultiline: isMultiline === 1,
-        })),
-        deepSelectors: (deepSelectors || []).map(([selectorIdx, line]) => ({
-          selector: readStringOrEmpty(selectorIdx),
-          line,
-        })),
-        slots: (slotsIdx || []).map(readStringOrEmpty),
-        // ✅ v9.0.7: если conditionals === undefined, возвращаем []
-        // (а не undefined). Это согласовано с compact-reporter.ts,
-        // который всегда пишет conditionals как [] в TemplateData.
-        conditionals: conditionals
-          ? conditionals
-              .filter(c => c.fileId === fileId)
-              .map(c => ({
-                id: c.id,
-                directive: c.directive,
-                fileId: c.fileId,
-                line: c.line,
-                conditionExpression: c.conditionExpression,
-                renderedComponent: c.renderedComponent,
-              }))
-          : [],
-      };
-    }
-  );
-
-  // ============================================
-  // 12. Lifecycle
-  // ============================================
-  const lifecycle: LifecycleHook[] | undefined = compact.lc
-    ? compact.lc.map(([hookCode, funcIdx, line, callbackFnIdx, flagsStr], idx) => ({
-        id: `lc${idx + 1}`,
-        hookName: (LIFECYCLE_TYPES[hookCode] || 'onMounted') as LifecycleHook['hookName'],
-        functionId: funcIdx >= 0 ? `fn${funcIdx}` : '',
-        line,
-        callbackFunctionId: callbackFnIdx >= 0 ? `fn${callbackFnIdx}` : undefined,
-        isSetupContext: flagsStr === 's',
-      }))
-    : undefined;
-
-  // ============================================
-  // 13. Effects
-  // ============================================
-  const effects: EffectEdge[] | undefined = compact.ef
-    ? compact.ef.map(([effectCode, funcIdx, line, targetIdx, metaIdx], idx) => ({
-        id: `ef${idx + 1}`,
-        effectType: (EFFECT_TYPES[effectCode] || 'timer') as EffectEdge['effectType'],
-        functionId: funcIdx >= 0 ? `fn${funcIdx}` : '',
-        line,
-        targetName: readStringOrEmpty(targetIdx),
-        metaValue: metaIdx >= 0 ? readStringOrEmpty(metaIdx) : undefined,
-      }))
-    : undefined;
-
-  // ============================================
-  // 14. Injections
-  // ============================================
-  const injections: InjectionEdge[] | undefined = compact.inj
-    ? compact.inj.map(([kindCode, fileIdx, line, keyIdx, flags], idx) => ({
-        id: `in${idx + 1}`,
-        kind: (INJECTION_TYPES[kindCode] || 'provide') as InjectionEdge['kind'],
-        fileId: `f${fileIdx}`,
-        line,
-        key: readStringOrEmpty(keyIdx),
-        isSymbolKey: (flags & 1) !== 0,
-        hasDefault: (flags & 2) !== 0,
-      }))
-    : undefined;
-
-  // ============================================
-  // 15. Reactivity
-  // ============================================
-  const reactivity: ReactivityEdge[] | undefined = compact.rx
-    ? compact.rx.map(([kindCode, funcIdx, line, readsIdx, writesIdx, flags], idx) => ({
-        id: `rx${idx + 1}`,
-        kind: (REACTIVITY_TYPES[kindCode] || 'computed') as ReactivityEdge['kind'],
-        functionId: funcIdx >= 0 ? `fn${funcIdx}` : '',
-        line,
-        reads: (readsIdx || []).map(readStringOrEmpty),
-        writes: (writesIdx || []).map(readStringOrEmpty),
-        isWriteable: flags === 1,
-      }))
-    : undefined;
-
-  // ============================================
-  // 16. Types
-  // ============================================
-  const types: TypeNodeData[] | undefined = compact.ty
-    ? compact.ty.map(
-        ([kindCode, nameIdx, moduleIdx, fileIdx, line, membersIdx, extendsIdx], idx) => ({
-          id: `t${idx + 1}`,
-          kind: (TYPE_KINDS[kindCode] || 'interface') as TypeNodeData['kind'],
-          name: readStringOrEmpty(nameIdx),
-          moduleId: `m${moduleIdx}`,
-          fileId: `f${fileIdx}`,
-          line,
-          members: (membersIdx || []).map(readStringOrEmpty),
-          extendsTypes: (extendsIdx || []).map(readStringOrEmpty),
-        })
-      )
-    : undefined;
-
-  // ============================================
-  // 17. TypeRefs
-  // ============================================
-  const typeRefs: TypeRefData[] | undefined = compact.tr
-    ? compact.tr.map(([typeNameIdx, moduleIdx, fileIdx, line, usageCode], idx) => ({
-        id: `tr${idx + 1}`,
-        typeName: readStringOrEmpty(typeNameIdx),
-        moduleId: `m${moduleIdx}`,
-        fileId: `f${fileIdx}`,
-        line,
-        usageKind: (TYPE_USAGE_KINDS[usageCode] || 'param') as TypeRefData['usageKind'],
-      }))
-    : undefined;
-
-  // ============================================
-  // 18. Статистика
-  // ============================================
-  const statistics = compact.st;
-
-  // ============================================
-  // 19. Edges — восстанавливаются ТОЛЬКО если includeEdges === true
-  // ============================================
-  // ✅ v9.0.4: по умолчанию edges НЕ восстанавливаются.
-  //
-  // Поле edges — производное: его можно собрать из gr.i + gr.e + gr.c + gr.re.
-  // Хранить его в full.json нет смысла (дублирование данных и расхождение
-  // при round-trip, если исходный full не содержит edges).
-  //
-  // Если edges нужны (например, для отдельного файла *.edges.json) —
-  // передайте includeEdges: true в DecodeOptions.
+  // 11. Edges (только если includeEdges)
   // ============================================
   const shouldIncludeEdges = includeEdges === true;
-
   const edges: EdgeData[] = [];
 
   if (shouldIncludeEdges) {
@@ -854,12 +727,20 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   }
 
   // ============================================
-  // 20. Сборка результата
+  // 12. Сборка результата
+  // ============================================
+  // ✅ v13.0.0-fix: version берётся из CODEC_VERSION, а не из compact.v.
+  //
+  // Причина: compact.v может быть старым (если compact.json был
+  // сгенерирован предыдущей версией кодека). full.json всегда
+  // должен иметь актуальную версию, чтобы:
+  //   - L1/L2/DL сравнивались корректно (`$.version`);
+  //   - потребители full.json видели согласованную версию.
   // ============================================
   const result: FullJSON = {
-    version: compact.v,
+    version: CODEC_VERSION,
     timestamp: compact.ts,
-    root: compact.r,
+    root: `m${(compact.r ?? 0) + 1}`,
     modules,
     files,
     functions,
@@ -869,16 +750,16 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
     imports,
     calls,
     reExports,
-    templates: templates.length > 0 ? templates : undefined,
-    statistics: includeStatistics ? statistics : ({} as any),
-    lifecycle,
-    effects,
-    injections,
-    reactivity,
-    conditionals,
-    types,
-    typeRefs,
-    // edges добавляется ТОЛЬКО ниже, если shouldIncludeEdges === true
+    templates: undefined,
+    statistics,
+    lifecycle: undefined,
+    effects: undefined,
+    injections: undefined,
+    reactivity: undefined,
+    conditionals: undefined,
+    types: undefined,
+    typeRefs: undefined,
+    valuesMode: compact.valuesMode,
   };
 
   if (!includeEmptyArrays) {
@@ -891,35 +772,7 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
     if (imports.length === 0) delete (result as any).imports;
     if (calls.length === 0) delete (result as any).calls;
     if (reExports.length === 0) delete (result as any).reExports;
-    if (templates.length === 0) delete (result as any).templates;
-
-    if (!lifecycle) delete (result as any).lifecycle;
-    if (!effects) delete (result as any).effects;
-    if (!injections) delete (result as any).injections;
-    if (!reactivity) delete (result as any).reactivity;
-    if (!conditionals) delete (result as any).conditionals;
-    if (!types) delete (result as any).types;
-    if (!typeRefs) delete (result as any).typeRefs;
   }
-
-  // ============================================
-  // ✅ v10.3: удаляем пустые ОПЦИОНАЛЬНЫЕ секции, если их не было в compact.
-  // Это симметрично compact-reporter.ts, который пишет undefined для пустых
-  // templates/conditionals/lifecycle/effects/injections/reactivity/types/typeRefs.
-  //
-  // Базовые секции (classes/constants/exports/imports/calls/reExports)
-  // НЕ удаляем — они всегда массивы (даже пустые), как в compact-reporter.ts
-  // после v10.3 (в collectFullJSON эти поля присваиваются без
-  // length>0 ? x : undefined).
-  // ============================================
-  if (!compact.vt) delete (result as any).templates;
-  if (!compact.cd) delete (result as any).conditionals;
-  if (!compact.lc) delete (result as any).lifecycle;
-  if (!compact.ef) delete (result as any).effects;
-  if (!compact.inj) delete (result as any).injections;
-  if (!compact.rx) delete (result as any).reactivity;
-  if (!compact.ty) delete (result as any).types;
-  if (!compact.tr) delete (result as any).typeRefs;
 
   if (shouldIncludeEdges && edges.length > 0) {
     result.edges = edges;

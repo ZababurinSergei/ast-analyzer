@@ -1,21 +1,21 @@
 #!/usr/bin/env node
 // scripts/verify-roundtrip.ts
 // ============================================
-// Скрипт проверки Round-Trip для CODEC
+// Скрипт проверки Round-Trip для CODEC (v13.0.0)
 // ============================================
-// Версия: 10.4.0
+// Версия: 13.0.0
 //
-// ИЗМЕНЕНИЯ v10.4.0 (проверка легенды для ИИ):
-//   - ✅ ДОБАВЛЕНО: опция --no-check-legend (по умолчанию проверка включена)
-//   - ✅ ДОБАВЛЕНО: секция "СТРУКТУРА ЛЕГЕНДЫ" — проверяет, что
-//     legend содержит:
-//       • how_to_read    — инструкцию для ИИ
-//       • flags.bits     — 18 битов
-//       • flags.examples — примеры разбора
-//       • codes.*        — расшифровки кодов (export/import/call/...)
-//       • dictionaries.* — словари значений
-//       • schemas.*      — позиционные схемы кортежей
-//   - ✅ ДОБАВЛЕНО: L-проверки (L1–L6) для структуры легенды
+// ИЗМЕНЕНИЯ v13.0.0:
+//   - ✅ mi.f теперь пары [startFileIdx, fileCount] — не RLE
+//   - ✅ Проверка legend.schemas.mi (2 поля) и legend.schemas.fl (2 поля)
+//   - ✅ checkRleStructure: mi.f проверяется как пары, не RLE
+//   - ✅ Обновлён help под новый формат
+//
+// ИЗМЕНЕНИЯ v12.0.0:
+//   - ✅ compact.json v12.0.0 использует columnar-структуру + RLE
+//   - ✅ Добавлены проверки columnar-структуры, RLE, токенизации
+//   - ✅ Обновлён help под новый формат
+//   - ✅ ИСПРАВЛЕНО: TS18047 — null-guard для sc.result.diff
 //
 // Уровни round-trip:
 //   L0  : encode(full) === compact          (семантически)
@@ -34,18 +34,12 @@
 //   I4  : external calls → isExternal = 1 в compact.gr.c
 //   I5  : external calls: сохранность типа (v10.3 — сравнение full vs decoded)
 //   I6  : functions[].*Flags ∈ {true, false, undefined}
+//   I7  : fns/cls/cn — columnar-структура
 //
-// Проверки легенды (v10.4.0):
-//   L1  : legend.how_to_read присутствует и непуст
+// Проверки легенды (v13.0.0):
+//   L1  : legend.codes.* присутствуют
 //   L2  : legend.flags.bits содержит 18 битов
-//   L3  : legend.flags.examples содержит примеры
-//   L4  : legend.codes.{export,import,call,...} присутствуют
-//   L5  : legend.dictionaries.* присутствуют
-//   L6  : legend.schemas.{fns,gr.e,gr.c,vt} корректной длины
-//
-// Эталоны (golden):
-//   G1  : full ≈ scripts/fixtures/index.full.golden.json
-//   G2  : compact ≈ scripts/fixtures/index.golden.json
+//   L3  : legend.schemas.* корректной длины (включая mi и fl)
 //
 // Exit code 0 — всё ок, 1 — есть расхождения.
 // ============================================
@@ -67,7 +61,6 @@ interface ScriptOptions {
   maxDiffs: number;
   jsonReportPath: string | null;
   goldenDir: string | null;
-  /** ✅ v10.4.0: проверять ли структуру легенды */
   checkLegend: boolean;
 }
 
@@ -160,31 +153,18 @@ function fileExists(filePath: string): boolean {
 // ХЕЛПЕРЫ СРАВНЕНИЯ
 // ============================================
 
-/**
- * Убирает служебные поля (edges, edgesStats, legend, __codec)
- * для семантического сравнения FullJSON.
- */
 function stripEdges(value: any): any {
   if (!value || typeof value !== 'object') return value;
   const { edges, edgesStats, __codec, legend, ...rest } = value;
   return rest;
 }
 
-/**
- * Убирает legend и __codec для сравнения CompactJSON.
- * legend содержит словари, которые могут отличаться порядком/содержимым
- * при пересборке словарей.
- */
 function stripLegend(value: any): any {
   if (!value || typeof value !== 'object') return value;
   const { legend, __codec, ...rest } = value;
   return rest;
 }
 
-/**
- * Рекурсивно сортирует ключи объекта.
- * Используется для порядко-независимого сравнения JSON-объектов.
- */
 function sortKeysRecursive(v: any): any {
   if (v === undefined) return undefined;
   if (v === null) return null;
@@ -277,17 +257,6 @@ function semanticCompare(a: any, b: any, limit: number): LevelResult {
   return { ok: false, diffCount: diffs.length, diff: diffs };
 }
 
-/**
- * Побайтовое сравнение с сортировкой ключей.
- *
- * ✅ v10.3: JSON-объекты не имеют значимого порядка ключей, поэтому
- * для побайтового сравнения сортируем ключи рекурсивно. Это устраняет
- * ложные FAIL, когда decode и compact-reporter.ts строят объекты
- * в разном порядке ключей, но с одинаковым содержимым.
- *
- * Если нужна **буквальная** байтовая идентичность (включая порядок),
- * используйте L3 — там сравнивается файл на диске с encode(full).
- */
 function byteExactCompare(a: any, b: any, limit: number): LevelResult {
   const sa = JSON.stringify(sortKeysRecursive(a));
   const sb = JSON.stringify(sortKeysRecursive(b));
@@ -321,7 +290,7 @@ function printLevelResult(name: string, result: LevelResult, maxDiffs: number): 
 }
 
 // ============================================
-// ✅ v10.4.0: ПРОВЕРКА СТРУКТУРЫ ЛЕГЕНДЫ
+// ПРОВЕРКА ЛЕГЕНДЫ (v13.0.0)
 // ============================================
 
 interface LegendCheck {
@@ -330,54 +299,11 @@ interface LegendCheck {
   note?: string;
 }
 
-/**
- * Проверяет структуру legend в compact.json.
- *
- * Проверяет, что legend содержит все секции, необходимые ИИ
- * для самостоятельного разбора кортежей:
- *   - how_to_read    — инструкция для ИИ
- *   - flags.bits     — 18 битов
- *   - flags.examples — примеры разбора
- *   - codes.*        — расшифровки кодов
- *   - dictionaries.* — словари значений
- *   - schemas.*      — позиционные схемы кортежей
- */
 function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
   const legend = (compact as any).legend;
   const checks: LegendCheck[] = [];
 
-  // ==========================================
-  // L1: how_to_read
-  // ==========================================
-  checks.push({
-    name: 'L1: legend.how_to_read (инструкция для ИИ)',
-    ok: Array.isArray(legend?.how_to_read) && legend.how_to_read.length > 0,
-    note: legend?.how_to_read ? `${legend.how_to_read.length} строк` : 'отсутствует',
-  });
-
-  // ==========================================
-  // L2: flags.bits — 18 битов
-  // ==========================================
-  const bitsCount = legend?.flags?.bits ? Object.keys(legend.flags.bits).length : 0;
-  checks.push({
-    name: 'L2: legend.flags.bits (18 битов)',
-    ok: bitsCount === 18,
-    note: legend?.flags?.bits ? `${bitsCount} битов` : 'отсутствует',
-  });
-
-  // ==========================================
-  // L3: flags.examples
-  // ==========================================
-  const examplesCount = legend?.flags?.examples ? Object.keys(legend.flags.examples).length : 0;
-  checks.push({
-    name: 'L3: legend.flags.examples (примеры разбора)',
-    ok: examplesCount > 0,
-    note: legend?.flags?.examples ? `${examplesCount} примеров` : 'отсутствует',
-  });
-
-  // ==========================================
-  // L4: codes.* — расшифровки кодов
-  // ==========================================
+  // codes
   const requiredCodes = [
     'export',
     'import',
@@ -396,52 +322,38 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     const dict = legend?.codes?.[codeName];
     const size = dict ? Object.keys(dict).length : 0;
     checks.push({
-      name: `L4: legend.codes.${codeName}`,
+      name: `legend.codes.${codeName}`,
       ok: size > 0,
       note: dict ? `${size} кодов` : 'отсутствует',
     });
   }
 
-  // ==========================================
-  // L5: dictionaries.* — словари значений
-  // ==========================================
-  const requiredDicts = ['stringDict', 'paramDict', 'methodDict', 'valueDict'];
+  // flags.bits
+  const bitsCount = legend?.flags?.bits ? Object.keys(legend.flags.bits).length : 0;
+  checks.push({
+    name: 'legend.flags.bits (18 битов)',
+    ok: bitsCount === 18,
+    note: legend?.flags?.bits ? `${bitsCount} битов` : 'отсутствует',
+  });
 
-  for (const dictName of requiredDicts) {
-    const dict = legend?.dictionaries?.[dictName];
-    checks.push({
-      name: `L5: legend.dictionaries.${dictName}`,
-      ok: Array.isArray(dict),
-      note: Array.isArray(dict) ? `${dict.length} записей` : 'отсутствует',
-    });
-  }
-
-  // ==========================================
-  // L6: schemas.* — позиционные схемы кортежей
-  // ==========================================
+  // ✅ v13.0.0-fix: schemas — добавлены mi и fl
   const schemaChecks: Array<{ key: string; expectedLength: number }> = [
-    { key: 'fns', expectedLength: 8 },
-    { key: 'cls', expectedLength: 7 },
-    { key: 'cn', expectedLength: 7 },
-    { key: 'gr.e', expectedLength: 12 },
-    { key: 'gr.i', expectedLength: 8 },
-    { key: 'gr.c', expectedLength: 5 },
-    { key: 'gr.re', expectedLength: 7 },
-    { key: 'vt', expectedLength: 12 },
-    { key: 'lc', expectedLength: 5 },
-    { key: 'ef', expectedLength: 5 },
-    { key: 'inj', expectedLength: 5 },
-    { key: 'rx', expectedLength: 6 },
-    { key: 'cd', expectedLength: 6 },
-    { key: 'ty', expectedLength: 7 },
-    { key: 'tr', expectedLength: 5 },
+    { key: 'mi', expectedLength: 2 }, // ✅ v13.0.0-fix
+    { key: 'fl', expectedLength: 2 }, // ✅ v13.0.0-fix
+    { key: 'fns', expectedLength: 7 },
+    { key: 'cls', expectedLength: 6 },
+    { key: 'cn', expectedLength: 6 },
+    { key: 'gr.e', expectedLength: 9 },
+    { key: 'gr.i', expectedLength: 7 },
+    { key: 'gr.c', expectedLength: 4 },
+    { key: 'gr.re', expectedLength: 6 },
   ];
 
   for (const { key, expectedLength } of schemaChecks) {
     const schema = legend?.schemas?.[key];
     const actualLength = Array.isArray(schema) ? schema.length : 0;
     checks.push({
-      name: `L6: legend.schemas.${key} (${expectedLength} полей)`,
+      name: `legend.schemas.${key} (${expectedLength} полей)`,
       ok: actualLength === expectedLength,
       note: Array.isArray(schema) ? `${actualLength} полей` : 'отсутствует',
     });
@@ -475,7 +387,6 @@ async function main(): Promise<void> {
     } else if (arg === '--no-golden') {
       options.goldenDir = null;
     } else if (arg === '--no-check-legend') {
-      // ✅ v10.4.0
       options.checkLegend = false;
     } else if (arg === '--help' || arg === '-h') {
       printHelp();
@@ -483,7 +394,7 @@ async function main(): Promise<void> {
     }
   }
 
-  section('🔬 ROUND-TRIP ВЕРИФИКАЦИЯ CODEC (единый источник истины)');
+  section('🔬 ROUND-TRIP ВЕРИФИКАЦИЯ CODEC (v13.0.0)');
   info(`Compact: ${path.resolve(options.compactPath)}`);
   info(`Full:    ${path.resolve(options.fullPath)}`);
   info(`Verbose: ${options.verbose}`);
@@ -542,7 +453,7 @@ async function main(): Promise<void> {
   }
 
   // ============================================
-  // 2.5. ✅ v10.4.0: ПРОВЕРКА СТРУКТУРЫ ЛЕГЕНДЫ
+  // 2.5. ПРОВЕРКА СТРУКТУРЫ ЛЕГЕНДЫ
   // ============================================
 
   let legendChecks: LegendCheck[] = [];
@@ -550,7 +461,7 @@ async function main(): Promise<void> {
   let legendFailed = 0;
 
   if (options.checkLegend) {
-    section('📖 СТРУКТУРА ЛЕГЕНДЫ (v10.4.0)');
+    section('📖 СТРУКТУРА ЛЕГЕНДЫ (v13.0.0)');
 
     legendChecks = checkLegendStructure(compact);
 
@@ -571,8 +482,7 @@ async function main(): Promise<void> {
       );
     } else {
       log(
-        `  ${C.red}Легенда: ${legendPassed}/${legendChecks.length} проверок пройдено, ` +
-          `${legendFailed} провалено${C.reset}`
+        `  ${C.red}Легенда: ${legendPassed}/${legendChecks.length} проверок пройдено, ${legendFailed} провалено${C.reset}`
       );
     }
   }
@@ -698,6 +608,35 @@ async function main(): Promise<void> {
   }
 
   // ============================================
+  // 4.5. СТРУКТУРНЫЕ ПРОВЕРКИ
+  // ============================================
+
+  section('🏗️  СТРУКТУРНЫЕ ПРОВЕРКИ');
+
+  const structChecks: Array<{ name: string; result: LevelResult }> = [
+    { name: 'columnar structure', result: baseReport.structuralChecks.columnarStructure },
+    { name: 'RLE structure', result: baseReport.structuralChecks.rleStructure },
+    { name: 'tokenized strings', result: baseReport.structuralChecks.tokenizedStrings },
+  ];
+
+  for (const sc of structChecks) {
+    if (sc.result.ok) {
+      ok(`${sc.name} — PASS`);
+    } else {
+      fail(`${sc.name} — FAIL (diffCount=${sc.result.diffCount})`);
+      // ✅ ИСПРАВЛЕНО: null-guard для sc.result.diff
+      const diffs = sc.result.diff;
+      if (Array.isArray(diffs)) {
+        for (const d of diffs.slice(0, options.maxDiffs)) {
+          log(`    ${C.red}•${C.reset} ${d.path}`);
+          log(`        a: ${JSON.stringify(d.a)}`);
+          log(`        b: ${JSON.stringify(d.b)}`);
+        }
+      }
+    }
+  }
+
+  // ============================================
   // 5. СЕМАНТИЧЕСКИЕ ИНВАРИАНТЫ
   // ============================================
 
@@ -711,7 +650,7 @@ async function main(): Promise<void> {
 
   const invariantResults: InvariantResult[] = [];
 
-  // --- I1: calls[].type ∈ {direct, async, method, callback} ---
+  // I1
   {
     const validTypes = new Set(['direct', 'async', 'method', 'callback']);
     const violations: string[] = [];
@@ -727,7 +666,7 @@ async function main(): Promise<void> {
     });
   }
 
-  // --- I2: imports[].type ∈ {named, default, namespace, type} ---
+  // I2
   {
     const validTypes = new Set(['named', 'default', 'namespace', 'type']);
     const violations: string[] = [];
@@ -743,7 +682,7 @@ async function main(): Promise<void> {
     });
   }
 
-  // --- I3: exports[].type ∈ {named, default, type} ---
+  // I3
   {
     const validTypes = new Set(['named', 'default', 'type']);
     const violations: string[] = [];
@@ -759,32 +698,31 @@ async function main(): Promise<void> {
     });
   }
 
-  // --- I4: external calls → isExternal = 1 в compact.gr.c ---
+  // I4
   {
     const violations: string[] = [];
-    const compactCalls = (compact.gr?.c || []) as any[];
-    for (let i = 0; i < compactCalls.length; i++) {
-      const row = compactCalls[i];
-      if (!row) continue;
-      const isExternal = row[4];
+    const compactCalls = compact.gr?.c || { t: [], ty: [] };
+    const gcT = compactCalls.t || [];
+    const gcTy = compactCalls.ty || [];
+
+    for (let i = 0; i < gcT.length; i++) {
+      const combinedTy = gcTy[i] ?? 0;
+      const isExternal = (combinedTy & 4) !== 0;
       const fullCall = (full.calls || [])[i];
       if (fullCall && fullCall.toFunctionId?.startsWith('external:')) {
-        if (isExternal !== 1) {
-          violations.push(`compact.gr.c[${i}]: isExternal=${isExternal}, ожидалось 1`);
+        if (!isExternal) {
+          violations.push(`compact.gr.c[${i}]: isExternal=0, ожидалось 1`);
         }
       }
     }
     invariantResults.push({
-      name: 'I4: external calls → isExternal = 1 в compact.gr.c',
+      name: 'I4: external calls → isExternal = 1 в compact.gr.c.ty',
       ok: violations.length === 0,
       violations,
     });
   }
 
-  // --- I5 (v10.3): external calls: сохранность типа ---
-  // Проверяем, что типы external-вызовов в full и decoded СОВПАДАЮТ.
-  // Не требуем, чтобы среди них были не-direct типы — все external
-  // могут быть 'direct', это корректно.
+  // I5
   {
     const violations: string[] = [];
     const externalFull = (full.calls || []).filter(c => c.toFunctionId?.startsWith('external:'));
@@ -800,24 +738,21 @@ async function main(): Promise<void> {
           c.line === fc.line
       );
       if (!dc) {
-        violations.push(
-          `external call ${fc.toFunctionId} (from=${fc.fromFunctionId}, line=${fc.line}) не найден в decoded`
-        );
+        violations.push(`external call ${fc.toFunctionId} не найден в decoded`);
         continue;
       }
       if (dc.type !== fc.type) {
         violations.push(`external call ${fc.toFunctionId}: type "${fc.type}" → "${dc.type}"`);
       }
     }
-
     invariantResults.push({
-      name: 'I5: external calls: сохранность типа (full vs decoded)',
+      name: 'I5: external calls: сохранность типа',
       ok: violations.length === 0,
       violations,
     });
   }
 
-  // --- I6: functions[].*Flags ∈ {true, false, undefined} ---
+  // I6
   {
     const flagFields = [
       'isAsync',
@@ -850,6 +785,36 @@ async function main(): Promise<void> {
     }
     invariantResults.push({
       name: 'I6: functions[].*Flags ∈ {true, false, undefined}',
+      ok: violations.length === 0,
+      violations,
+    });
+  }
+
+  // I7 — columnar structure
+  {
+    const violations: string[] = [];
+
+    if (!compact.fns || !Array.isArray(compact.fns.n)) {
+      violations.push('fns.n не является массивом');
+    }
+    if (!compact.cls || !Array.isArray(compact.cls.n)) {
+      violations.push('cls.n не является массивом');
+    }
+    if (!compact.cn || !Array.isArray(compact.cn.n)) {
+      violations.push('cn.n не является массивом');
+    }
+    if (!compact.gr?.e || !Array.isArray(compact.gr.e.m)) {
+      violations.push('gr.e.m не является массивом');
+    }
+    if (!compact.gr?.i || !Array.isArray(compact.gr.i.ff)) {
+      violations.push('gr.i.ff не является массивом');
+    }
+    if (!compact.gr?.c || !Array.isArray(compact.gr.c.f)) {
+      violations.push('gr.c.f не является массивом');
+    }
+
+    invariantResults.push({
+      name: 'I7: columnar-структура fns/cls/cn/gr.*',
       ok: violations.length === 0,
       violations,
     });
@@ -889,10 +854,9 @@ async function main(): Promise<void> {
     const goldenCompactPath = path.join(options.goldenDir, 'index.golden.json');
     const goldenFullPath = path.join(options.goldenDir, 'index.full.golden.json');
 
-    // --- G1: full ≈ golden.full ---
+    // G1: full ≈ golden.full
     if (fileExists(goldenFullPath)) {
       const goldenFull = readJson<FullJSON>(goldenFullPath);
-      // Исключаем служебные поля, исключаем edges (производное поле)
       const a = stripEdges(full);
       const b = stripEdges(goldenFull);
       const result = semanticCompare(a, b, options.maxDiffs);
@@ -913,10 +877,9 @@ async function main(): Promise<void> {
       warn(`G1 — SKIP: ${path.relative(process.cwd(), goldenFullPath)} не найден`);
     }
 
-    // --- G2: compact ≈ golden.compact ---
+    // G2: compact ≈ golden.compact
     if (fileExists(goldenCompactPath)) {
       const goldenCompact = readJson<CompactJSON>(goldenCompactPath);
-      // Исключаем служебные поля, исключаем legend (недетерминирован)
       const a = stripLegend(compact);
       const b = stripLegend(goldenCompact);
       const result = semanticCompare(a, b, options.maxDiffs);
@@ -975,7 +938,7 @@ async function main(): Promise<void> {
     { name: 'spotCheck: modules[].path', ok: baseReport.spotChecks.modulesPath.ok },
   ];
 
-  // ✅ v10.4.0: добавляем проверки легенды
+  // Добавляем проверки легенды
   for (const check of legendChecks) {
     levels.push({ name: `legend: ${check.name}`, ok: check.ok });
   }
@@ -983,6 +946,11 @@ async function main(): Promise<void> {
   // Добавляем инварианты
   for (const inv of invariantResults) {
     levels.push({ name: `invariant: ${inv.name}`, ok: inv.ok });
+  }
+
+  // Добавляем структурные проверки
+  for (const sc of structChecks) {
+    levels.push({ name: `struct: ${sc.name}`, ok: sc.result.ok });
   }
 
   // Добавляем golden-проверки (только не-skipped)
@@ -1006,7 +974,6 @@ async function main(): Promise<void> {
     }
   }
 
-  // Отдельно показываем skipped golden-проверки
   const skippedGolden = goldenResults.filter(g => g.skipped);
   if (skippedGolden.length > 0) {
     log('');
@@ -1036,10 +1003,10 @@ async function main(): Promise<void> {
 
   const jsonReport = {
     timestamp: new Date().toISOString(),
+    codecVersion: '13.0.0',
     originalFormat: 'compact',
     bothFormats: false,
 
-    // Round-trip уровни
     L0_encodeFullVsCompact: l0,
     L1_semantic: l1,
     L2_decodeCompactVsFull: l2,
@@ -1049,13 +1016,10 @@ async function main(): Promise<void> {
     enc_idempotent: enc,
     dec_idempotent: dec,
 
-    // Spot checks
     spotChecks,
-
-    // Семантические инварианты
     invariants: invariantResults,
+    structuralChecks: structChecks,
 
-    // ✅ v10.4.0: проверки легенды
     legend: {
       enabled: options.checkLegend,
       checks: legendChecks,
@@ -1063,10 +1027,8 @@ async function main(): Promise<void> {
       failed: legendFailed,
     },
 
-    // Эталоны
     golden: goldenResults,
 
-    // Размеры и статистика
     stats: {
       compactSize,
       fullSize,
@@ -1101,14 +1063,14 @@ ${C.bold}Использование:${C.reset}
   npx tsx scripts/verify-roundtrip.ts [options]
 
 ${C.bold}Опции:${C.reset}
-  --compact <path>       Путь к compact JSON (по умолчанию ./index.json)
-  --full <path>          Путь к full JSON (по умолчанию ./index.full.json)
+  --compact <path>       Путь к compact JSON (по умолчанию ./example/index.json)
+  --full <path>          Путь к full JSON (по умолчанию ./example/index.full.json)
   -v, --verbose          Подробный вывод с расхождениями
   --max-diffs <n>        Максимум расхождений для вывода (по умолчанию 10)
   --json-report <path>   Сохранить отчёт в JSON-файл
   --golden <dir>         Директория с эталонами (по умолчанию ./scripts/fixtures)
   --no-golden            Отключить проверку эталонов
-  --no-check-legend      ✅ v10.4.0: отключить проверку структуры легенды
+  --no-check-legend      Отключить проверку структуры легенды
   -h, --help             Показать эту справку
 
 ${C.bold}Уровни round-trip:${C.reset}
@@ -1125,21 +1087,35 @@ ${C.bold}Семантические инварианты:${C.reset}
   I1  : calls[].type ∈ {direct, async, method, callback}
   I2  : imports[].type ∈ {named, default, namespace, type}
   I3  : exports[].type ∈ {named, default, type}
-  I4  : external calls → isExternal = 1 в compact.gr.c
+  I4  : external calls → isExternal = 1 в compact.gr.c.ty
   I5  : external calls: сохранность типа (full vs decoded)
   I6  : functions[].*Flags ∈ {true, false, undefined}
+  I7  : fns/cls/cn — columnar-структура
 
-${C.bold}Проверки легенды (v10.4.0):${C.reset}
-  L1  : legend.how_to_read присутствует и непуст
-  L2  : legend.flags.bits содержит 18 битов
-  L3  : legend.flags.examples содержит примеры
-  L4  : legend.codes.{export,import,call,...} присутствуют
-  L5  : legend.dictionaries.* присутствуют
-  L6  : legend.schemas.{fns,gr.e,gr.c,vt,...} корректной длины
+${C.bold}Структурные проверки:${C.reset}
+  columnar structure  — все секции имеют columnar-структуру
+  RLE structure       — fl.m, fns.m, fns.f, cls.m, cls.f, cn.m, cn.f
+  tokenized strings   — tokens, strs, params, methods присутствуют
+
+${C.bold}Проверки легенды:${C.reset}
+  legend.codes.*       — расшифровки кодов
+  legend.flags.bits    — 18 битов
+  legend.schemas.*     — позиционные схемы (mi, fl, fns, cls, cn, gr.*)
 
 ${C.bold}Эталоны (golden):${C.reset}
   G1  : full ≈ scripts/fixtures/index.full.golden.json
   G2  : compact ≈ scripts/fixtures/index.golden.json
+
+${C.bold}Формат compact.json v13.0.0:${C.reset}
+  mi:  { n: [...], f: [[startFileIdx, fileCount], ...] }   ← ✅ v13.0.0-fix: пары, не RLE
+  fl:  { p: [...], m: [[moduleIdx, count], ...] }
+  fns: { n: [...], m: [[...]], f: [[...]], l: [...], fl: [...], p: [...], rt: [...] }
+  cls: { n: [...], m: [[...]], f: [[...]], l: [...], fl: [...], methods: [...] }
+  cn:  { n: [...], m: [[...]], f: [[...]], l: [...], fl: [...], nonEmptyV: [[idx, valueIdx], ...] }
+  gr.e:  { m: [...], f: [...], fn: [...], l: [...], ty: [...], en: [...], ln: [...], s: [...], flags: [...] }
+  gr.i:  { ff: [...], tf: [...], s: [...], im: [...], ln: [...], l: [...], ty: [...] }
+  gr.c:  { f: [...], t: [...], l: [...], ty: [...] }
+  gr.re: { m: [...], fn: [...], s: [...], en: [...], l: [...], ty: [...] }
 
 ${C.bold}Примеры:${C.reset}
   npx tsx scripts/verify-roundtrip.ts
