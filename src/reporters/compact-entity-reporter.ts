@@ -25,6 +25,33 @@ interface ImportGraphEdge {
   type: 'named' | 'default' | 'namespace' | 'type';
 }
 
+// ============================================
+// ✅ НОВОЕ: ТИП ДЛЯ РЕЭКСПОРТОВ (gr.re)
+// ============================================
+
+/**
+ * Запись о реэкспорте в компактном формате.
+ * Соответствует схеме gr.re (7 полей) в ast-analyzer-codec.js.
+ *
+ * Поля:
+ *   moduleIdx     — индекс модуля в moduleIndex (m1 → 1)
+ *   funcIdx       — индекс функции или -1 (для модульных реэкспортов всегда -1)
+ *   sourceIdx     — индекс источника в stringDict ("./components/ui")
+ *   exportNameIdx — индекс имени экспорта в stringDict ("*" или "ns")
+ *   line          — строка в исходном файле
+ *   typeCode      — "all" (star) | "n" (named) | "df" (default)
+ *   isTypeOnly    — 0 | 1 (export type * from)
+ */
+export interface ReExportEntry {
+  moduleIdx: number;
+  funcIdx: number;
+  sourceIdx: number;
+  exportNameIdx: number;
+  line: number;
+  typeCode: 'all' | 'n' | 'df';
+  isTypeOnly: boolean;
+}
+
 export interface CompactReportOptions {
   /** Использовать пресет из конфига */
   usePreset?: boolean;
@@ -92,6 +119,12 @@ export interface CompactEntityReport {
     };
   };
 
+  // ✅ НОВОЕ: секция реэкспортов
+  reExports?: ReExportEntry[];
+
+  // ✅ НОВОЕ: словарь строк для декодирования sourceIdx / exportNameIdx
+  stringDict?: string[];
+
   stats: {
     totalFunctions: number;
     totalCalls: number;
@@ -101,12 +134,16 @@ export interface CompactEntityReport {
     totalDecorators: number;
     totalFiles: number;
     totalModules: number;
+    // ✅ НОВОЕ
+    totalReExports: number;
   };
 
   legend?: {
     kinds?: Record<string, string>;
     callTypes?: Record<string, string>;
     importTypes?: Record<string, string>;
+    // ✅ НОВОЕ
+    reExportTypes?: Record<string, string>;
   };
 }
 
@@ -153,14 +190,30 @@ function generateIndices(entitiesMap: Record<string, EntitiesResult>): {
   moduleIndex: Record<string, string>;
   functionIdMap: Map<string, string>;
   fileIdMap: Map<string, string>;
+  moduleIdMap: Map<string, number>; // ✅ НОВОЕ: moduleName → index
+  stringDict: string[]; // ✅ НОВОЕ
+  stringDictMap: Map<string, number>; // ✅ НОВОЕ
 } {
   const functionIndex: Record<string, string> = {};
   const functionIdMap = new Map<string, string>();
   const fileIndex: Record<string, string> = {};
   const fileIdMap = new Map<string, string>();
   const moduleIndex: Record<string, string> = {};
+  const moduleIdMap = new Map<string, number>(); // ✅ НОВОЕ
+  const stringDict: string[] = []; // ✅ НОВОЕ
+  const stringDictMap = new Map<string, number>(); // ✅ НОВОЕ
 
-  // 1. Индексы файлов
+  // ✅ НОВОЕ: хелпер для добавления строк в словарь
+  const addString = (s: string): number => {
+    if (stringDictMap.has(s)) return stringDictMap.get(s)!;
+    const idx = stringDict.length;
+    stringDict.push(s);
+    stringDictMap.set(s, idx);
+    return idx;
+  };
+
+  // 1. Индексы файлов и модулей
+  let moduleCounter = 0;
   for (const [filePath] of Object.entries(entitiesMap)) {
     const fileId = generateFileId(filePath);
     const moduleName = path.basename(path.dirname(filePath));
@@ -170,6 +223,14 @@ function generateIndices(entitiesMap: Record<string, EntitiesResult>): {
 
     const moduleId = generateModuleId(moduleName);
     moduleIndex[moduleId] = moduleName;
+
+    // ✅ НОВОЕ: сохраняем moduleName → числовой индекс
+    if (!moduleIdMap.has(moduleName)) {
+      moduleIdMap.set(moduleName, moduleCounter++);
+    }
+
+    // ✅ НОВОЕ: добавляем moduleName в stringDict
+    addString(moduleName);
   }
 
   // 2. Индексы функций
@@ -179,7 +240,6 @@ function generateIndices(entitiesMap: Record<string, EntitiesResult>): {
     for (const func of entities.functions || []) {
       let id = `${moduleName}.${func.name}`;
 
-      // Если есть конфликт, добавляем номер строки
       if (functionIndex[id]) {
         id = `${moduleName}.${func.name}_${func.line}`;
       }
@@ -187,7 +247,6 @@ function generateIndices(entitiesMap: Record<string, EntitiesResult>): {
       functionIndex[id] = func.name;
       functionIdMap.set(func.name, id);
 
-      // Сохраняем ID в функции
       func.id = id;
     }
   }
@@ -198,6 +257,9 @@ function generateIndices(entitiesMap: Record<string, EntitiesResult>): {
     fileIndex,
     fileIdMap,
     moduleIndex,
+    moduleIdMap, // ✅ НОВОЕ
+    stringDict, // ✅ НОВОЕ
+    stringDictMap, // ✅ НОВОЕ
   };
 }
 
@@ -243,12 +305,10 @@ function detectCallType(
   callName: string,
   funcBody: string
 ): 'direct' | 'import' | 'method' | 'computed' | 'watch' | 'event' {
-  // Vue композаблы
   if (VUE_COMPOSABLES.has(callName)) {
     return 'computed';
   }
 
-  // Vue события
   if (
     callName.startsWith('emit') ||
     callName.startsWith('on') ||
@@ -258,12 +318,10 @@ function detectCallType(
     return 'event';
   }
 
-  // Вызов через объект: obj.method()
   if (funcBody && funcBody.includes(`.${callName}(`)) {
     return 'method';
   }
 
-  // Импортированные функции (определяется по контексту)
   if (
     funcBody &&
     (funcBody.includes(`import { ${callName} }`) || funcBody.includes(`import ${callName}`))
@@ -293,10 +351,8 @@ function buildCallGraph(
 
       const calls = func.calls || [];
       for (const callName of calls) {
-        // Ищем вызываемую функцию
         const targetId = functionIdMap.get(callName);
         if (targetId && targetId !== callerId) {
-          // Добавляем ребро
           callGraphEdges.push({
             from: callerId,
             to: targetId,
@@ -304,7 +360,6 @@ function buildCallGraph(
             type: detectCallType(callName, func.body || ''),
           });
 
-          // Считаем статистику
           callCounts.set(targetId, (callCounts.get(targetId) || 0) + 1);
           callerCounts.set(callerId, (callerCounts.get(callerId) || 0) + 1);
         }
@@ -312,7 +367,6 @@ function buildCallGraph(
     }
   }
 
-  // Сортируем для статистики
   const mostCalled = Array.from(callCounts.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
@@ -323,7 +377,6 @@ function buildCallGraph(
     .slice(0, 10)
     .map(([functionId, count]) => ({ functionId, count }));
 
-  // Уникальные ID
   const uniqueCallers = new Set(callGraphEdges.map((e: CallGraphEdge) => e.from));
   const uniqueCallees = new Set(callGraphEdges.map((e: CallGraphEdge) => e.to));
 
@@ -355,7 +408,6 @@ function buildCalledByFromCallGraph(
     if (!calledByMap[targetId]) {
       calledByMap[targetId] = [];
     }
-    // Добавляем только уникальные callerId
     if (!calledByMap[targetId]?.includes(edge.from)) {
       calledByMap[targetId].push(edge.from);
     }
@@ -375,7 +427,6 @@ function resolveImportPath(
 ): string | null {
   const fromDir = path.dirname(fromFile);
 
-  // Относительные пути
   if (importPath.startsWith('.')) {
     const resolved = path.resolve(fromDir, importPath);
     const extensions = ['.ts', '.tsx', '.js', '.jsx', '.vue', '.mjs', '.cjs'];
@@ -396,7 +447,6 @@ function resolveImportPath(
     return null;
   }
 
-  // Алиасы (@/, #/, ~/)
   if (importPath.startsWith('@/') || importPath.startsWith('#/') || importPath.startsWith('~/')) {
     const baseName = importPath.replace(/^[@#~]\//, '');
     for (const modulePath of Object.keys(entitiesMap)) {
@@ -487,6 +537,103 @@ function buildImportGraph(
 }
 
 // ============================================
+// ✅ НОВОЕ: 6.1. ПОСТРОЕНИЕ RE-EXPORTS (gr.re)
+// ============================================
+
+/**
+ * Собирает все реэкспорты из entitiesMap в компактный формат.
+ *
+ * Источник данных:
+ *   entities.exports[] с флагом isReExport === true.
+ *   Эти записи формируются в core/entity-extractor.ts (extractEntitiesFromAST)
+ *   при обработке узлов ExportAllDeclaration / ExportNamedDeclaration со source.
+ *
+ * Дедупликация:
+ *   Ключ — moduleIdx + source + exportName.
+ *   Порядок сохраняется по первому вхождению.
+ */
+function buildReExports(
+  entitiesMap: Record<string, EntitiesResult>,
+  moduleIdMap: Map<string, number>,
+  fileIdMap: Map<string, string>,
+  stringDictMap: Map<string, number>
+): ReExportEntry[] {
+  const reExports: ReExportEntry[] = [];
+  const seen = new Set<string>();
+
+  const getStringIdx = (s: string): number => {
+    if (stringDictMap.has(s)) return stringDictMap.get(s)!;
+    // На всякий случай: если строки нет в словаре, добавляем её на лету.
+    // Это не должно происходить в нормальном потоке — словарь формируется
+    // в generateIndices(), куда попадают все moduleName.
+    // Для source/exportName — добавим здесь.
+    const idx = stringDictMap.size;
+    stringDictMap.set(s, idx);
+    return idx;
+  };
+
+  for (const [filePath, entities] of Object.entries(entitiesMap)) {
+    // Определяем moduleIdx через имя родительской директории файла
+    const moduleName = path.basename(path.dirname(filePath));
+    const moduleIdx = moduleIdMap.get(moduleName);
+
+    if (moduleIdx === undefined) {
+      // Пропускаем: модуль не зарегистрирован в индексе
+      continue;
+    }
+
+    const fileId = fileIdMap.get(filePath);
+    if (!fileId) continue;
+
+    for (const exp of entities.exports || []) {
+      const expAny = exp as any;
+      if (!expAny.isReExport || !expAny.source) continue;
+
+      const source: string = expAny.source;
+      const exportName: string = expAny.name || '*';
+      const isStarReExport: boolean = expAny.isStarReExport === true;
+      const isTypeOnly: boolean = expAny.isTypeOnly === true;
+      const line: number = expAny.startLine || 0;
+
+      // Ключ для дедупликации
+      const key = `${moduleIdx}:${source}:${exportName}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      // Определяем typeCode
+      // "all" — export * from
+      // "n"   — export { x } from
+      // "df"  — export { default } from
+      let typeCode: 'all' | 'n' | 'df' = 'n';
+      if (isStarReExport) {
+        typeCode = 'all';
+      } else if (exportName === 'default') {
+        typeCode = 'df';
+      }
+
+      reExports.push({
+        moduleIdx,
+        funcIdx: -1, // модульные реэкспорты не привязаны к функции
+        sourceIdx: getStringIdx(source),
+        exportNameIdx: getStringIdx(exportName),
+        line,
+        typeCode,
+        isTypeOnly,
+      });
+    }
+  }
+
+  // Сортируем по (moduleIdx, line, source) для детерминизма (NF-4 из ТЗ)
+  reExports.sort((a, b) => {
+    if (a.moduleIdx !== b.moduleIdx) return a.moduleIdx - b.moduleIdx;
+    if (a.line !== b.line) return a.line - b.line;
+    return a.sourceIdx - b.sourceIdx;
+  });
+
+  return reExports;
+}
+
+// ============================================
 // 7. ПОСТРОЕНИЕ ОПТИМИЗИРОВАННЫХ СУЩНОСТЕЙ
 // ============================================
 
@@ -556,20 +703,20 @@ function extractEnumsFromContent(
 ): { name: string; values: string[]; line: number; isExported: boolean }[] {
   const enums: { name: string; values: string[]; line: number; isExported: boolean }[] = [];
 
-  const enumRegex = /(?:export\\s+)?enum\\s+(\\w+)\\s*\\{([^}]*)\\}/g;
+  const enumRegex = /(?:export\s+)?enum\s+(\w+)\s*\{([^}]*)\}/g;
   let match: RegExpExecArray | null;
   while ((match = enumRegex.exec(content)) !== null) {
     const name = match[1] || 'unnamed';
     const valuesStr = match[2] || '';
     const isExported = content.includes(`export enum ${name}`);
-    const line = content.substring(0, match.index).split('\\n').length;
+    const line = content.substring(0, match.index).split('\n').length;
 
     const values = valuesStr
       .split(',')
       .map(v => v.trim())
       .filter(v => v)
       .map(v => {
-        const assignMatch = v.match(/^(\\w+)\\s*=\\s*(.+)$/);
+        const assignMatch = v.match(/^(\w+)\s*=\s*(.+)$/);
         if (assignMatch) {
           const key = assignMatch[1] || '';
           const val = assignMatch[2]?.trim() || '';
@@ -581,19 +728,19 @@ function extractEnumsFromContent(
     enums.push({ name, values, line, isExported });
   }
 
-  const constEnumRegex = /(?:export\\s+)?const\\s+enum\\s+(\\w+)\\s*\\{([^}]*)\\}/g;
+  const constEnumRegex = /(?:export\s+)?const\s+enum\s+(\w+)\s*\{([^}]*)\}/g;
   while ((match = constEnumRegex.exec(content)) !== null) {
     const name = match[1] || 'unnamed';
     const valuesStr = match[2] || '';
     const isExported = content.includes(`export const enum ${name}`);
-    const line = content.substring(0, match.index).split('\\n').length;
+    const line = content.substring(0, match.index).split('\n').length;
 
     const values = valuesStr
       .split(',')
       .map(v => v.trim())
       .filter(v => v)
       .map(v => {
-        const assignMatch = v.match(/^(\\w+)\\s*=\\s*(.+)$/);
+        const assignMatch = v.match(/^(\w+)\s*=\s*(.+)$/);
         if (assignMatch) {
           const key = assignMatch[1] || '';
           const val = assignMatch[2]?.trim() || '';
@@ -614,34 +761,34 @@ function extractDecoratorsFromContent(
   const decorators: { name: string; target: string; line: number; args: string[] }[] = [];
 
   const decoratorRegex =
-    /@(\\w+)(?:\\\\(([^)]*)\\\\))?\\s*(?:class|function|method|property|accessor)\\s+(\\w+)/g;
+    /@(\w+)(?:\(([^)]*)\))?\s*(?:class|function|method|property|accessor)\s+(\w+)/g;
   let match: RegExpExecArray | null;
   while ((match = decoratorRegex.exec(content)) !== null) {
     const name = match[1] || 'unknown';
     const args = match[2]
       ? match[2]
-          .split(',')
-          .map(a => a.trim())
-          .filter(a => a)
+        .split(',')
+        .map(a => a.trim())
+        .filter(a => a)
       : [];
     const target = match[3] || 'unknown';
-    const line = content.substring(0, match.index).split('\\n').length;
+    const line = content.substring(0, match.index).split('\n').length;
 
     decorators.push({ name, target, line, args });
   }
 
   const decoratorMultiLineRegex =
-    /@(\\w+)(?:\\\\(([^)]*)\\\\))?\\s*\\n\\s*(?:class|function|method|property|accessor)\\s+(\\w+)/g;
+    /@(\w+)(?:\(([^)]*)\))?\s*\n\s*(?:class|function|method|property|accessor)\s+(\w+)/g;
   while ((match = decoratorMultiLineRegex.exec(content)) !== null) {
     const name = match[1] || 'unknown';
     const args = match[2]
       ? match[2]
-          .split(',')
-          .map(a => a.trim())
-          .filter(a => a)
+        .split(',')
+        .map(a => a.trim())
+        .filter(a => a)
       : [];
     const target = match[3] || 'unknown';
-    const line = content.substring(0, match.index).split('\\n').length;
+    const line = content.substring(0, match.index).split('\n').length;
 
     const exists = decorators.some(d => d.name === name && d.target === target && d.line === line);
     if (!exists) {
@@ -661,7 +808,7 @@ export function generateCompactEntityReport(
   outputPath: string,
   options: CompactReportOptions = {}
 ): CompactEntityReport {
-  console.log('\\n🔧 Генерация компактного отчета с индексацией и графами...');
+  console.log('\n🔧 Генерация компактного отчета с индексацией и графами...');
   console.log('='.repeat(60));
 
   const startTime = Date.now();
@@ -766,21 +913,30 @@ export function generateCompactEntityReport(
   };
 
   // === 2. ГЕНЕРАЦИЯ ИНДЕКСОВ ===
-  console.log('\\n📊 Генерация индексов...');
-  const { functionIndex, functionIdMap, fileIndex, fileIdMap, moduleIndex } =
-    generateIndices(entitiesMap);
+  console.log('\n📊 Генерация индексов...');
+  const {
+    functionIndex,
+    functionIdMap,
+    fileIndex,
+    fileIdMap,
+    moduleIndex,
+    moduleIdMap, // ✅ НОВОЕ
+    stringDict, // ✅ НОВОЕ
+    stringDictMap, // ✅ НОВОЕ
+  } = generateIndices(entitiesMap);
 
   console.log(`   📋 Индексов функций: ${Object.keys(functionIndex).length}`);
   console.log(`   📋 Индексов файлов: ${Object.keys(fileIndex).length}`);
   console.log(`   📋 Индексов модулей: ${Object.keys(moduleIndex).length}`);
+  console.log(`   📋 Строк в stringDict: ${stringDict.length}`); // ✅ НОВОЕ
 
   // === 3. ПОСТРОЕНИЕ ОПТИМИЗИРОВАННЫХ СУЩНОСТЕЙ ===
-  console.log('\\n📦 Построение оптимизированных сущностей...');
+  console.log('\n📦 Построение оптимизированных сущностей...');
   const entities = buildOptimizedEntities(entitiesMap, functionIdMap, fileIdMap);
   console.log(`   📊 Сущностей: ${Object.keys(entities).length}`);
 
   // === 4. ПОСТРОЕНИЕ CALL GRAPH ===
-  console.log('\\n🔄 Построение графа вызовов (Call Graph)...');
+  console.log('\n🔄 Построение графа вызовов (Call Graph)...');
   const callGraph = buildCallGraph(entitiesMap, functionIdMap);
   console.log(`   📊 Вызовов: ${callGraph?.edges.length || 0}`);
   console.log(`   📊 Уникальных вызывающих: ${callGraph?.stats.uniqueCallers || 0}`);
@@ -793,11 +949,10 @@ export function generateCompactEntityReport(
   }
 
   // === 5. ПОСТРОЕНИЕ calledBy ИЗ CALL GRAPH ===
-  console.log('\\n📞 Построение обратных вызовов (calledBy)...');
+  console.log('\n📞 Построение обратных вызовов (calledBy)...');
   const calledByMap = buildCalledByFromCallGraph(callGraph);
   console.log(`   📊 Функций с обратными вызовами: ${Object.keys(calledByMap).length}`);
 
-  // Добавляем calledBy в сущности
   for (const [id, calledBy] of Object.entries(calledByMap)) {
     if (entities[id]) {
       entities[id].calledBy = calledBy;
@@ -805,7 +960,7 @@ export function generateCompactEntityReport(
   }
 
   // === 6. ПОСТРОЕНИЕ IMPORT GRAPH ===
-  console.log('\\n📥 Построение графа импортов (Import Graph)...');
+  console.log('\n📥 Построение графа импортов (Import Graph)...');
   const importGraph = buildImportGraph(entitiesMap, fileIdMap);
   console.log(`   📊 Импортов: ${importGraph?.edges.length || 0}`);
   console.log(`   📊 Уникальных импортеров: ${importGraph?.stats.uniqueImporters || 0}`);
@@ -817,8 +972,22 @@ export function generateCompactEntityReport(
     console.log(`   📊 Самые импортируемые: ${names.join(', ')}`);
   }
 
+  // === 6.1. ✅ НОВОЕ: ПОСТРОЕНИЕ RE-EXPORTS ===
+  console.log('\n📤 Построение реэкспортов (Re-Exports)...');
+  const reExports = buildReExports(entitiesMap, moduleIdMap, fileIdMap, stringDictMap);
+  console.log(`   📊 Реэкспортов: ${reExports.length}`);
+  if (reExports.length > 0) {
+    const starReExports = reExports.filter(r => r.typeCode === 'all');
+    console.log(`   📊 Из них star-реэкспортов: ${starReExports.length}`);
+  }
+
+  // Обновляем stringDict после buildReExports (могли добавиться новые строки)
+  const finalStringDict = Array.from(stringDictMap.entries())
+    .sort((a, b) => a[1] - b[1])
+    .map(([s]) => s);
+
   // === 7. ИЗВЛЕЧЕНИЕ ENUM И ДЕКОРАТОРОВ ===
-  console.log('\\n📚 Извлечение enum и декораторов...');
+  console.log('\n📚 Извлечение enum и декораторов...');
   let totalEnums = 0;
   let totalDecorators = 0;
 
@@ -895,10 +1064,10 @@ export function generateCompactEntityReport(
   const totalModules = Object.keys(moduleIndex).length;
 
   // === 9. ФОРМИРОВАНИЕ ОТЧЕТА ===
-  console.log('\\n📄 Формирование отчета...');
+  console.log('\n📄 Формирование отчета...');
 
   const report: CompactEntityReport = {
-    version: '3.0.1',
+    version: '3.0.2', // ✅ повышена версия
     timestamp: new Date().toISOString(),
 
     functionIndex,
@@ -910,6 +1079,12 @@ export function generateCompactEntityReport(
     callGraph,
     importGraph,
 
+    // ✅ НОВОЕ: секция реэкспортов
+    reExports,
+
+    // ✅ НОВОЕ: словарь строк для декодирования sourceIdx / exportNameIdx
+    stringDict: finalStringDict,
+
     stats: {
       totalFunctions,
       totalCalls,
@@ -919,6 +1094,8 @@ export function generateCompactEntityReport(
       totalDecorators,
       totalFiles,
       totalModules,
+      // ✅ НОВОЕ
+      totalReExports: reExports.length,
     },
 
     legend: {
@@ -945,6 +1122,12 @@ export function generateCompactEntityReport(
         default: 'Default import',
         namespace: 'Namespace import',
         type: 'Type-only import',
+      },
+      // ✅ НОВОЕ
+      reExportTypes: {
+        all: 'Star re-export (export * from)',
+        n: 'Named re-export (export { x } from)',
+        df: 'Default re-export (export { default } from)',
       },
     },
   };
@@ -984,7 +1167,7 @@ export function generateCompactEntityReport(
 
   // === 12. ИТОГОВАЯ СТАТИСТИКА ===
   const sizeKB = (json.length / 1024).toFixed(2);
-  console.log(`\\n✅ Отчет сохранен: ${outputPath}`);
+  console.log(`\n✅ Отчет сохранен: ${outputPath}`);
   console.log(`📊 Размер: ${sizeKB} KB`);
   console.log(`📊 Функций: ${totalFunctions}`);
   console.log(`📊 Вызовов: ${totalCalls}`);
@@ -994,6 +1177,7 @@ export function generateCompactEntityReport(
   console.log(`📊 Модулей: ${totalModules}`);
   console.log(`📊 Enum: ${totalEnums}`);
   console.log(`📊 Декораторов: ${totalDecorators}`);
+  console.log(`📊 Реэкспортов: ${reExports.length}`); // ✅ НОВОЕ
   console.log(`⏱️  Время: ${((Date.now() - startTime) / 1000).toFixed(2)} сек`);
 
   const entitiesWithCalls = Object.values(entities).filter(
@@ -1003,7 +1187,7 @@ export function generateCompactEntityReport(
     e => e.kind === 'function' && e.calledBy && e.calledBy.length > 0
   );
 
-  console.log(`\\n📊 СТАТИСТИКА СВЯЗЕЙ:`);
+  console.log(`\n📊 СТАТИСТИКА СВЯЗЕЙ:`);
   console.log(`   🔗 Сущностей с вызовами: ${entitiesWithCalls.length}`);
   console.log(`   🔗 Сущностей с обратными вызовами: ${entitiesWithCalledBy.length}`);
 
@@ -1013,12 +1197,12 @@ export function generateCompactEntityReport(
   }
 
   if (entitiesWithCalls.length === 0) {
-    console.log(`\\n⚠️ Внимание: вызовы между функциями не найдены`);
+    console.log(`\n⚠️ Внимание: вызовы между функциями не найдены`);
     console.log(`   Проверьте, что в проекте есть вызовы функций и они правильно резолвятся`);
   }
 
   const idStats = idManager.getStats();
-  console.log(`\\n🔑 СТАТИСТИКА ID:`);
+  console.log(`\n🔑 СТАТИСТИКА ID:`);
   console.log(`   📝 Всего сгенерировано ID: ${idStats.total}`);
   console.log(`   ✅ Уникальных ID: ${idStats.unique}`);
   console.log(`   📊 Всего сущностей в отчете: ${Object.keys(report.entities).length}`);

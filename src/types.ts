@@ -48,6 +48,33 @@ export interface ExportInfo {
   async?: boolean;
   startLine?: number;
   endLine?: number;
+
+  // ============================================
+  // ✅ НОВЫЕ ПОЛЯ ДЛЯ РЕЭКСПОРТОВ (v3.0.2)
+  // ============================================
+
+  /**
+   * Источник реэкспорта (путь модуля).
+   * Заполняется для `export * from '...'` и `export { x } from '...'`.
+   */
+  source?: string;
+
+  /**
+   * Является ли запись реэкспортом.
+   * true для `export * from`, `export { x } from`, `export { default } from`.
+   */
+  isReExport?: boolean;
+
+  /**
+   * Является ли реэкспортом "звёздочкой" (`export * from '...'`).
+   * true только для ExportAllDeclaration.
+   */
+  isStarReExport?: boolean;
+
+  /**
+   * Реэкспорт только типов (`export type * from`, `export type { x } from`).
+   */
+  isTypeOnly?: boolean;
 }
 
 // ==========================================
@@ -186,11 +213,11 @@ export interface FunctionInfo {
   // ============================================
   // НОВЫЕ ПОЛЯ ДЛЯ ВСТРОЕННЫХ СВЯЗЕЙ (v3.0.1)
   // ============================================
-  id?: string; // Уникальный ID сущности
-  vscode?: string; // VSCode ссылка на функцию
-  callsInfo?: CallInfo[]; // Полная информация о вызовах
-  calledByInfo?: CalledByInfo[]; // Полная информация о вызывающих
-  importedBy?: ImportedByInfo[]; // Полная информация об импортерах
+  id?: string;
+  vscode?: string;
+  callsInfo?: CallInfo[];
+  calledByInfo?: CalledByInfo[];
+  importedBy?: ImportedByInfo[];
 
   // Дополнительные поля для совместимости
   filePath?: string;
@@ -1144,6 +1171,8 @@ export interface EnhancedEntityInfo {
   types: EnhancedTypeInfo[];
   classes: EnhancedClassInfo[];
   imports?: PackageLockImportInfo[];
+  // ✅ НОВОЕ ПОЛЕ: реэкспорты (export * from)
+  exports?: ExportInfo[];
 }
 
 export interface PackageLockImportInfo {

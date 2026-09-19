@@ -4,6 +4,9 @@
 // ТИПЫ ДЛЯ МОДУЛЕЙ REPORTERS
 // ============================================================
 
+// ✅ НОВЫЙ ИМПОРТ: для поля exports в EnhancedEntityInfo
+import type { ExportInfo } from '../../types.js';
+
 export interface ModuleNode {
   id: string;
   name: string;
@@ -301,6 +304,8 @@ export interface EnhancedEntityInfo {
   types: EnhancedTypeInfo[];
   classes: EnhancedClassInfo[];
   imports?: PackageLockImportInfo[];
+  // ✅ НОВОЕ ПОЛЕ: реэкспорты (export * from, export { x } from)
+  exports?: ExportInfo[];
 }
 
 export interface PackageLockImportInfo {
@@ -579,17 +584,6 @@ export interface EntitiesResult {
   callGraph: Record<string, string[]>;
   moduleName: string;
   filePath: string;
-}
-
-export interface ExportInfo {
-  name: string;
-  type: 'function' | 'class' | 'constant' | 'value' | 'default';
-  isDefault: boolean;
-  loc: Location | null;
-  params?: string[];
-  async?: boolean;
-  startLine?: number;
-  endLine?: number;
 }
 
 export interface Location {

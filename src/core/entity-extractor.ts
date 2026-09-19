@@ -360,9 +360,6 @@ function createEmptyEntitiesResult(filePath?: string): EntitiesResult {
 // ✅ ФУНКЦИЯ КОНВЕРТАЦИИ VueAnalysis → ImportInfo[]
 // ==========================================
 
-/**
- * Конвертирует импорты из Vue анализа в формат ImportInfo[]
- */
 function convertVueImportsToImportInfo(
   vueImports: { source: string; specifiers: string[]; isTypeOnly: boolean }[]
 ): ImportInfo[] {
@@ -462,7 +459,6 @@ function convertVueAnalysisToEntities(
         hasExec: false,
         hasPassword: false,
       },
-      // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID
       id: idManager.getFunctionId({
         filePath,
         funcName: comp.name,
@@ -542,7 +538,7 @@ function convertVueAnalysisToEntities(
         let innerMatch;
         while (
           (innerMatch = innerPattern.exec(scriptContent.substring(callMatch.index))) !== null
-        ) {
+          ) {
           const called = innerMatch[1];
           if (called && called !== caller && !calls.includes(called)) {
             calls.push(called);
@@ -749,11 +745,69 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
     }
 
     // ==========================================
+    // 1.1. REQUIRE CALL (CommonJS)
+    // ==========================================
+    if (
+      node.type === 'CallExpression' &&
+      node.callee?.type === 'Identifier' &&
+      node.callee.name === 'require' &&
+      isArraySafe(node.arguments) &&
+      node.arguments[0]?.type === 'Literal' &&
+      typeof node.arguments[0].value === 'string'
+    ) {
+      const source = node.arguments[0].value;
+      imports.push({
+        source,
+        specifiers: [
+          {
+            local: '*',
+            imported: '*',
+            type: 'ImportNamespaceSpecifier',
+          },
+        ],
+        loc: node.loc,
+        isTypeOnly: false,
+      });
+    }
+
+    // ==========================================
+    // 1.2. DYNAMIC IMPORT (import(...))
+    // ==========================================
+    if (
+      node.type === 'ImportExpression' &&
+      node.source?.type === 'Literal' &&
+      typeof node.source.value === 'string'
+    ) {
+      const source = node.source.value;
+      imports.push({
+        source,
+        specifiers: [
+          {
+            local: '*',
+            imported: '*',
+            type: 'ImportNamespaceSpecifier',
+          },
+        ],
+        loc: node.loc,
+        isTypeOnly: false,
+      });
+    }
+
+    // ==========================================
     // 2. EXPORT NAMED DECLARATION
     // ==========================================
     if (node.type === 'ExportNamedDeclaration') {
       let exportName = '';
       let exportType: ExportInfo['type'] = 'default';
+      let exportSource: string | undefined = undefined;
+      let isReExport = false;
+      const isTypeOnly = node.exportKind === 'type';
+
+      // Re-export: export { x } from '...'
+      if (node.source?.value) {
+        exportSource = node.source.value;
+        isReExport = true;
+      }
 
       if (node.declaration) {
         const decl = node.declaration;
@@ -782,14 +836,60 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
         }
       }
 
-      if (exportName) {
-        exports.push({
-          name: exportName,
+      if (exportName || isReExport) {
+        const exportInfo: any = {
+          name: exportName || '*',
           type: exportType,
           isDefault: false,
           loc: node.loc,
-        });
+        };
+
+        if (isReExport) {
+          exportInfo.source = exportSource;
+          exportInfo.isReExport = true;
+          exportInfo.isStarReExport = false;
+          exportInfo.isTypeOnly = isTypeOnly;
+        }
+
+        exports.push(exportInfo);
       }
+    }
+
+    // ==========================================
+    // 2.1. ✅ НОВОЕ: EXPORT ALL DECLARATION (export * from)
+    // ==========================================
+    if (node.type === 'ExportAllDeclaration' && node.source) {
+      const source = node.source.value;
+      const isTypeOnly = node.exportKind === 'type';
+      const line = node.loc?.start?.line || 1;
+
+      // 1. Запись в exports как реэкспорт
+      exports.push({
+        name: '*',
+        type: 'value',
+        isDefault: false,
+        loc: node.loc,
+        startLine: line,
+        endLine: line,
+        source: source,
+        isReExport: true,
+        isStarReExport: true,
+        isTypeOnly: isTypeOnly,
+      } as any);
+
+      // 2. Запись в imports как namespace-импорт
+      imports.push({
+        source: source,
+        specifiers: [
+          {
+            local: '*',
+            imported: '*',
+            type: 'ImportNamespaceSpecifier',
+          },
+        ],
+        loc: node.loc,
+        isTypeOnly: isTypeOnly,
+      });
     }
 
     // ==========================================
@@ -883,11 +983,11 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
       const params = isArraySafe(node.params)
         ? node.params.map((p: any) => {
-            if (p.type === 'Identifier') return p.name || 'unknown';
-            if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
-            if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
-            return 'unknown';
-          })
+          if (p.type === 'Identifier') return p.name || 'unknown';
+          if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
+          if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
+          return 'unknown';
+        })
         : [];
 
       const isNested = parentFunctions.length > 0 || depth > 0;
@@ -895,7 +995,6 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
       const bodyText = node.body ? extractBodyText(node.body) : undefined;
 
-      // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID
       const funcId = idManager.getFunctionId({
         filePath: filePath || 'unknown',
         funcName: fullName || name,
@@ -1039,11 +1138,11 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
       const params = isArraySafe(node.params)
         ? node.params.map((p: any) => {
-            if (p.type === 'Identifier') return p.name || 'unknown';
-            if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
-            if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
-            return 'unknown';
-          })
+          if (p.type === 'Identifier') return p.name || 'unknown';
+          if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
+          if (p.type === 'RestElement' && p.argument) return `...${p.argument.name || 'unknown'}`;
+          return 'unknown';
+        })
         : [];
 
       const isNested = parentFuncs.length > 0 || depth > 0;
@@ -1051,7 +1150,6 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
       const bodyText = node.body ? extractBodyText(node.body) : undefined;
 
-      // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID
       const funcId = idManager.getFunctionId({
         filePath: filePath || 'unknown',
         funcName: name,
@@ -1120,16 +1218,15 @@ function extractEntitiesFromAST(ast: any, filePath?: string): EntitiesResult {
 
         const params = isArraySafe(node.value?.params)
           ? node.value.params.map((p: any) => {
-              if (p.type === 'Identifier') return p.name || 'unknown';
-              if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
-              return 'unknown';
-            })
+            if (p.type === 'Identifier') return p.name || 'unknown';
+            if (p.type === 'AssignmentPattern' && p.left) return p.left.name || 'unknown';
+            return 'unknown';
+          })
           : [];
 
         const parentFunc = className;
         const bodyText = node.value?.body ? extractBodyText(node.value.body) : undefined;
 
-        // ✅ ИСПОЛЬЗУЕМ IdManager ДЛЯ ГЕНЕРАЦИИ ID
         const funcId = idManager.getFunctionId({
           filePath: filePath || 'unknown',
           funcName: fullName,
