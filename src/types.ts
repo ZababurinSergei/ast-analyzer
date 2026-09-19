@@ -1,5 +1,4 @@
 // src/types.ts
-
 // ==========================================
 // КОНФИГУРАЦИОННЫЕ ТИПЫ
 // ==========================================
@@ -37,17 +36,46 @@ export interface ImportInfo {
   specifiers: ImportSpecifier[];
   loc: Location | null;
   isTypeOnly?: boolean;
+
+  // ✅ НОВЫЕ ПОЛЯ для полного графа импортов/экспортов
+  /** Номер строки импорта (из loc.start.line) */
+  line?: number;
+  /** ID файла-цели (или `external:xxx`, `unresolved:xxx`) */
+  toFileId?: string | null;
+  /** Является ли модуль внешним (node_modules) */
+  isExternal?: boolean;
+  /** Имя пакета (для внешних модулей) */
+  packageName?: string;
+  /** Структурированные specifiers (для точного графа) */
+  specifiersStructured?: {
+    imported: string;
+    local: string;
+    type: string;
+  }[];
 }
 
 export interface ExportInfo {
   name: string;
-  type: 'function' | 'class' | 'constant' | 'value' | 'default';
+  type:
+    | 'function'
+    | 'class'
+    | 'constant'
+    | 'value'
+    | 'default'
+    | 'interface'
+    | 'type'
+    | 'enum'
+    | 'object'
+    | 'all'
+    | 're-export'
+    | 'named';
   isDefault: boolean;
   loc: Location | null;
   params?: string[];
   async?: boolean;
   startLine?: number;
   endLine?: number;
+<<<<<<< HEAD
 
   // ============================================
   // ✅ НОВЫЕ ПОЛЯ ДЛЯ РЕЭКСПОРТОВ (v3.0.2)
@@ -75,6 +103,28 @@ export interface ExportInfo {
    * Реэкспорт только типов (`export type * from`, `export type { x } from`).
    */
   isTypeOnly?: boolean;
+=======
+  isReExport?: boolean;
+  source?: string;
+  isTypeOnly?: boolean;
+  specifiers?: string[];
+
+  // ✅ НОВЫЕ ПОЛЯ для полного графа импортов/экспортов и round-trip
+  /** Номер строки (из loc.start.line) */
+  line?: number;
+  /** Локальное имя (при `export { a as b }` → `a`) */
+  localName?: string;
+  /** Является ли `export * from '...'` */
+  isStarReExport?: boolean;
+  /** Является ли `export { default } from '...'` */
+  isDefaultReExport?: boolean;
+
+  // ✅ НОВОЕ: Метаданные разворачивания re-exports
+  /** Промежуточные файлы в цепочке re-export */
+  _resolvedFrom?: string[];
+  /** Глубина разворачивания (1 = прямая связь) */
+  _depth?: number;
+>>>>>>> 202db84c78bcfab4b6bee65884d05d9f3d4c22c4
 }
 
 // ==========================================
@@ -209,34 +259,43 @@ export interface FunctionInfo {
     hasExec: boolean;
     hasPassword: boolean;
   };
+<<<<<<< HEAD
 
   // ============================================
   // НОВЫЕ ПОЛЯ ДЛЯ ВСТРОЕННЫХ СВЯЗЕЙ (v3.0.1)
   // ============================================
+=======
+>>>>>>> 202db84c78bcfab4b6bee65884d05d9f3d4c22c4
   id?: string;
   vscode?: string;
   callsInfo?: CallInfo[];
   calledByInfo?: CalledByInfo[];
   importedBy?: ImportedByInfo[];
+<<<<<<< HEAD
 
   // Дополнительные поля для совместимости
+=======
+>>>>>>> 202db84c78bcfab4b6bee65884d05d9f3d4c22c4
   filePath?: string;
   moduleName?: string;
   _modulePath?: string;
   _safeInfo?: any;
-
-  // Дополнительные поля для Vue
   isConst?: boolean;
   isMacro?: boolean;
   isComposable?: boolean;
   source?: string;
-
-  // Поле signature для совместимости
   signature?: string;
+  moduleId?: string;
+  fileId?: string;
+  _uniqueKey?: string;
+  _fullPath?: string;
+
+  // ✅ НОВОЕ: функция экспонируется через defineExpose (Vue)
+  isExposed?: boolean;
 }
 
 // ==========================================
-// РАСШИРЕННАЯ ИНФОРМАЦИЯ О ФУНКЦИИ (С ВСТРОЕННЫМИ СВЯЗЯМИ)
+// РАСШИРЕННАЯ ИНФОРМАЦИЯ О ФУНКЦИИ
 // ==========================================
 
 export interface ExtendedFunctionInfo {
@@ -250,12 +309,224 @@ export interface ExtendedFunctionInfo {
   params: string[];
   paramsCount: number;
   vscode: string;
-  calls: CallInfo[];
-  calledBy: CalledByInfo[];
   importedBy: ImportedByInfo[];
   body?: string;
   returnType?: string;
   metadata?: Record<string, any>;
+  _uniqueKey?: string;
+}
+
+// ==========================================
+// ✅ НОВОЕ v9.0.0: TEMPLATE-ПОЛЯ VUE
+// ==========================================
+// Эти типы используются в EntitiesResult.templateXxx
+// и в EnhancedEntityInfo.templateXxx.
+// Хранят ТОЛЬКО ссылки (имена/примитивы), без дубликатов объектов.
+// ==========================================
+
+/**
+ * Обработчик события из шаблона Vue.
+ */
+export interface TemplateEventHandler {
+  /** Имя события (click, update:value, ...) */
+  eventName: string;
+  /** Имя обработчика (onClick, handleUpdate, ...) */
+  handlerName: string;
+  /** Тег (<button>, <AiButton>, ...) */
+  tag: string;
+  /** Строка */
+  line: number;
+  /** Модификаторы (.stop, .prevent, ...) */
+  modifiers: string[];
+  /** Внешний обработчик (emit/console/Math и т.п.) */
+  isExternal?: boolean;
+}
+
+/**
+ * Динамический компонент (<component :is="...">).
+ */
+export interface TemplateDynamicComponent {
+  /** Выражение из :is / v-bind:is */
+  isExpression: string;
+  /** Строка */
+  line: number;
+  /** ✅ v9.0.0: возможные значения expression (если удалось разрешить) */
+  resolvedComponents?: string[];
+}
+
+/**
+ * Template ref (ref="dataTable").
+ *
+ * ✅ НОВОЕ: используется в EntitiesResult.templateRefs
+ * и пробрасывается в TemplateData.templateRefs для Codec.encode.
+ */
+export interface TemplateRefUsage {
+  /** Значение ref="dataTable" */
+  refValue: string;
+  /** Тег элемента/компонента */
+  tag: string;
+  /** Строка в template */
+  line: number;
+  /** ✅ Методы, экспонированные через defineExpose целевого компонента */
+  exposedMethods?: string[];
+}
+
+/**
+ * CSS-переменная из <style>.
+ */
+export interface TemplateCssVariable {
+  /** Имя переменной: --blue-700 */
+  name: string;
+  /** Значение: #1a5fb4 (если есть) */
+  value?: string;
+  /** Строка */
+  line: number;
+  /** Многострочное значение */
+  isMultiline?: boolean;
+}
+
+/**
+ * :deep() селектор из <style scoped>.
+ */
+export interface TemplateDeepSelector {
+  /** Селектор: .n-data-table-td */
+  selector: string;
+  /** Строка */
+  line: number;
+}
+
+/**
+ * ✅ НОВОЕ v9.0.0: Условный рендеринг (v-if / v-else-if / v-else).
+ */
+export interface TemplateConditional {
+  /** Директива */
+  directive: 'v-if' | 'v-else-if' | 'v-else';
+  /** Строка */
+  line: number;
+  /** Выражение условия (для v-if / v-else-if) */
+  conditionExpression?: string;
+  /** Компонент внутри ветки */
+  renderedComponent?: string;
+}
+
+// ==========================================
+// ✅ НОВОЕ v9.0.0: ТИПЫ ДЛЯ LIFECYCLE / EFFECTS / INJECTIONS / REACTIVITY
+// ==========================================
+
+/**
+ * Хук жизненного цикла Vue (собранный из кода).
+ */
+export interface TemplateLifecycle {
+  /** Имя хука */
+  hookName:
+    | 'onMounted'
+    | 'onUnmounted'
+    | 'onScopeDispose'
+    | 'onActivated'
+    | 'onDeactivated'
+    | 'watch'
+    | 'watchEffect'
+    | 'onErrorCaptured';
+  /** Имя функции, в которой вызван хук */
+  functionName: string;
+  /** Номер строки */
+  line: number;
+  /** Имя callback-функции (если есть) */
+  callbackFunctionName?: string;
+  /** Контекст: setup / options-api */
+  isSetupContext: boolean;
+}
+
+/**
+ * Side-effect (setTimeout, clearTimeout, addEventListener, ...).
+ */
+export interface TemplateEffect {
+  /** Тип эффекта */
+  effectType: 'timer' | 'cleanup' | 'promise' | 'event' | 'subscription';
+  /** Имя функции, в которой вызван эффект */
+  functionName: string;
+  /** Номер строки */
+  line: number;
+  /** Имя вызываемой функции (setTimeout / clearTimeout / ...) */
+  targetName: string;
+  /** Дополнительное значение (например, '1000' для debounce) */
+  metaValue?: string;
+}
+
+/**
+ * Ребро provide/inject.
+ */
+export interface TemplateInjection {
+  /** Тип: provide | inject */
+  kind: 'provide' | 'inject';
+  /** Путь к файлу */
+  filePath: string;
+  /** Номер строки */
+  line: number;
+  /** Нормализованное имя ключа */
+  key: string;
+  /** Используется ли Symbol (InjectionKey<T>) */
+  isSymbolKey: boolean;
+  /** Есть ли значение по умолчанию (для inject) */
+  hasDefault: boolean;
+}
+
+/**
+ * Реактивная связь: computed/watch/watchEffect/ref/reactive.
+ */
+export interface TemplateReactivity {
+  /** Тип реактивности */
+  kind: 'computed' | 'watch' | 'watchEffect' | 'ref' | 'reactive' | 'shallowRef' | 'readonly';
+  /** Имя функции/composable, в которой объявлена реактивность */
+  functionName: string;
+  /** Номер строки */
+  line: number;
+  /** Имена реактивных полей, которые читаются */
+  reads: string[];
+  /** Имена реактивных полей, которые пишутся */
+  writes: string[];
+  /** Является ли computed writeable ({ get, set }) */
+  isWriteable: boolean;
+}
+
+// ==========================================
+// ✅ НОВОЕ v9.0.0: ТИПЫ ДЛЯ ТИП-ГРАФА
+// ==========================================
+
+/**
+ * Узел тип-графа (interface / type-alias / enum / class).
+ */
+export interface TypeNode {
+  /** Вид типа */
+  kind: 'interface' | 'type-alias' | 'enum' | 'class';
+  /** Имя типа */
+  name: string;
+  /** ID модуля */
+  moduleId: string;
+  /** ID файла */
+  fileId: string;
+  /** Номер строки */
+  line: number;
+  /** Члены типа (для интерфейсов/классов) */
+  members: string[];
+  /** Расширяемые типы (extends) */
+  extendsTypes: string[];
+}
+
+/**
+ * Ребро использования типа.
+ */
+export interface TypeRef {
+  /** Имя используемого типа */
+  typeName: string;
+  /** ID модуля */
+  moduleId: string;
+  /** ID файла */
+  fileId: string;
+  /** Номер строки */
+  line: number;
+  /** Вид использования */
+  usageKind: 'param' | 'return' | 'field' | 'generic' | 'union' | 'extends';
 }
 
 // ==========================================
@@ -274,6 +545,81 @@ export interface EntitiesResult {
   callGraph: Record<string, string[]>;
   moduleName: string;
   filePath: string;
+
+  // ==========================================
+  // ✅ НОВОЕ v4.1.0: template-поля Vue
+  // Хранят ТОЛЬКО ссылки (имена/примитивы),
+  // без дубликатов объектов.
+  // ==========================================
+
+  /** root-идентификаторы шаблона (user, items, isLoading) */
+  templateReactivityDeps?: string[];
+
+  /** Обработчики событий @click → handlerName */
+  templateEventHandlers?: TemplateEventHandler[];
+
+  /** <component :is="..."> и v-bind:is */
+  templateDynamicComponents?: TemplateDynamicComponent[];
+
+  /**
+   * ✅ ИСПРАВЛЕНО: template refs (ref="dataTable" → exposedMethods).
+   *
+   * ⚠️ КРИТИЧНО: без этого поля Codec.encode получает undefined
+   * на позиции 9 vt[] и JSON.stringify обрезает массив до 9 элементов
+   * вместо ожидаемых 12. Это ломает round-trip.
+   */
+  templateRefs?: TemplateRefUsage[];
+
+  /** CSS-переменные из <style> */
+  templateCssVariables?: TemplateCssVariable[];
+
+  /** :deep() селекторы */
+  templateDeepSelectors?: TemplateDeepSelector[];
+
+  /** Директивы (v-html, v-text, v-pre, v-once, v-memo, v-model, ...) */
+  templateDirectives?: string[];
+
+  /** Использованные компоненты (PascalCase + kebab-case) */
+  templateUsedComponents?: string[];
+
+  /** Слоты (из <slot name="..."> и defineSlots<T>()) */
+  templateSlots?: string[];
+
+  /** Сложность шаблона */
+  templateComplexity?: number;
+
+  // ==========================================
+  // ✅ НОВОЕ v9.0.0: условный рендеринг
+  // ==========================================
+
+  /** Условный рендеринг (v-if / v-else-if / v-else) */
+  templateConditionals?: TemplateConditional[];
+
+  // ==========================================
+  // ✅ НОВОЕ v9.0.0: lifecycle / effects / injections / reactivity
+  // ==========================================
+
+  /** Хуки жизненного цикла (onMounted, onUnmounted, ...) */
+  templateLifecycle?: TemplateLifecycle[];
+
+  /** Side-effects (setTimeout, clearTimeout, AbortController, ...) */
+  templateEffects?: TemplateEffect[];
+
+  /** Ребра provide / inject */
+  templateInjections?: TemplateInjection[];
+
+  /** Реактивные связи (computed, watch, ref, reactive, ...) */
+  templateReactivity?: TemplateReactivity[];
+
+  // ==========================================
+  // ✅ НОВОЕ v9.0.0: тип-граф
+  // ==========================================
+
+  /** Узлы тип-графа (interface / type-alias / enum / class) */
+  typesGraph?: TypeNode[];
+
+  /** Ребра использования типов */
+  typeRefsGraph?: TypeRef[];
 }
 
 // ==========================================
@@ -408,7 +754,7 @@ export interface AnalysisResult {
 }
 
 // ==========================================
-// ТИПЫ ДЛЯ СУЩНОСТЕЙ (устаревшие, для обратной совместимости)
+// ТИПЫ ДЛЯ СУЩНОСТЕЙ (устаревшие)
 // ==========================================
 
 export interface EntitiesResultLegacy {
@@ -514,7 +860,7 @@ export interface EntityGraphNode {
     id?: string;
     signature?: string;
     importedFrom?: string;
-    type?: string; // Для обратной совместимости
+    type?: string;
   };
 }
 
@@ -558,7 +904,7 @@ export interface EntityGraph {
 }
 
 // ==========================================
-// ПОЛНЫЙ АНАЛИЗ (ОБЪЕДИНЕНИЕ ДВУХ ГРАФОВ)
+// ПОЛНЫЙ АНАЛИЗ
 // ==========================================
 
 export interface FullAnalysis {
@@ -799,7 +1145,8 @@ export type CLIMode =
   | 'refactor'
   | 'analyze'
   | 'vue-analyze'
-  | 'vue';
+  | 'vue'
+  | 'compact';
 
 export interface ProjectCLIArgs {
   mode: 'project';
@@ -918,6 +1265,20 @@ export interface VueAnalyzeCLIArgs {
   };
 }
 
+export interface CompactCLIArgs {
+  mode: 'compact';
+  targetPath: string;
+  outputPath?: string;
+  options?: {
+    ultraCompact?: boolean;
+    useBitFlags?: boolean;
+    useDictionaries?: boolean;
+    readableKeys?: boolean;
+    useTemplates?: boolean;
+    maxDepth?: number;
+  };
+}
+
 export type CLIArgs =
   | ProjectCLIArgs
   | FileCLIArgs
@@ -933,6 +1294,7 @@ export type CLIArgs =
   | RefactorCLIArgs
   | AnalyzeCLIArgs
   | VueAnalyzeCLIArgs
+  | CompactCLIArgs
   | null;
 
 // ==========================================
@@ -973,9 +1335,13 @@ export interface AnalysisWarning {
 }
 
 // ==========================================
-// ТИПЫ ДЛЯ AST ВАЛКЕРА
+// ТИПЫ ДЛЯ AST ВАЛКЕРА (ОБЪЕДИНЕННАЯ ВЕРСИЯ)
 // ==========================================
 
+/**
+ * Базовый тип для AST-узлов с type guard
+ * Объединяет оригинальный интерфейс и улучшенные типы
+ */
 export interface ASTNode {
   type: string;
   loc?: Location | null;
@@ -1111,6 +1477,7 @@ export interface EnhancedFunctionInfo extends FunctionInfo {
   vscode: string;
   signature: string;
   _safeInfo: any;
+  _uniqueKey?: string;
 }
 
 export interface EnhancedConstantInfo {
@@ -1163,6 +1530,7 @@ export interface EnhancedClassInfo {
   _safeInfo: any;
 }
 
+<<<<<<< HEAD
 export interface EnhancedEntityInfo {
   functions: EnhancedFunctionInfo[];
   constants: EnhancedConstantInfo[];
@@ -1188,6 +1556,11 @@ export interface SecurityInfo {
   hasExec: boolean;
   hasPassword: boolean;
 }
+=======
+// ==========================================
+// ТИПЫ ДЛЯ ENHANCED PACKAGE LOCK REPORT
+// ==========================================
+>>>>>>> 202db84c78bcfab4b6bee65884d05d9f3d4c22c4
 
 export interface EnhancedPackageLockReport {
   name: string;
@@ -1236,8 +1609,25 @@ export interface EnhancedPackageLockReport {
       }
     >;
   };
-  callGraph?: Record<string, string[]>;
-  entityStats?: {
+  callGraph?: {
+    from: string;
+    to: string;
+    path: string[];
+    found: boolean;
+    reason?: string;
+    nodes: {
+      function: string;
+      module: string;
+      line: number;
+      isAsync: boolean;
+    }[];
+    edges: {
+      from: string;
+      to: string;
+      line?: number;
+    }[];
+  };
+  entityStats: {
     totalFunctions: number;
     totalConstants: number;
     totalVariables: number;
@@ -1248,342 +1638,279 @@ export interface EnhancedPackageLockReport {
     totalExportedFunctions: number;
     totalAsyncFunctions: number;
   };
-  fileStats?: {
+  fileStats: {
     totalFiles: number;
     totalSize: number;
     totalLines: number;
   };
-  timestamp?: string;
   architectureMetrics?: ArchitectureMetrics;
   summary?: ProjectSummary;
+  timestamp: string;
 }
 
 // ==========================================
-// ТИПЫ ДЛЯ МОДУЛЕЙ ИЗ REPORTERS
+// ТИП ДЛЯ ENHANCED ENTITY INFO
 // ==========================================
 
-export interface ModuleNode {
-  id: string;
+export interface EnhancedEntityInfo {
+  functions: EnhancedFunctionInfo[];
+  constants: EnhancedConstantInfo[];
+  variables: EnhancedVariableInfo[];
+  interfaces: EnhancedInterfaceInfo[];
+  types: EnhancedTypeInfo[];
+  classes: EnhancedClassInfo[];
+
+  /**
+   * ✅ ИСПРАВЛЕНО: используем ImportInfo[] вместо устаревшего
+   * `{ source: string; specifiers: string[]; isTypeOnly: boolean }[]`.
+   *
+   * Причина: `ImportInfo.specifiers` — это `ImportSpecifier[]`
+   * (объекты `{ local, imported, type }`), а не `string[]`.
+   * Прежнее определение давало TS2322 при присваивании
+   * `enhanced.imports = entities.imports.map(...)`.
+   */
+  imports?: ImportInfo[];
+
+  // ==========================================
+  // ✅ НОВОЕ v4.1.0: template-поля Vue.
+  // Добавлены, чтобы `json-reporter.ts` мог обращаться к
+  // `result.templateEventHandlers` и `result.templateReactivityDeps`
+  // без ошибок TS2339.
+  // ==========================================
+
+  /** root-идентификаторы шаблона (user, items, isLoading) */
+  templateReactivityDeps?: string[];
+
+  /** Обработчики событий @click → handlerName */
+  templateEventHandlers?: TemplateEventHandler[];
+
+  /** <component :is="..."> и v-bind:is */
+  templateDynamicComponents?: TemplateDynamicComponent[];
+
+  /**
+   * ✅ ИСПРАВЛЕНО: template refs (ref="dataTable" → exposedMethods).
+   *
+   * ⚠️ КРИТИЧНО: без этого поля Codec.encode получает undefined
+   * на позиции 9 vt[] и JSON.stringify обрезает массив до 9 элементов
+   * вместо ожидаемых 12. Это ломает round-trip.
+   */
+  templateRefs?: TemplateRefUsage[];
+
+  /** CSS-переменные из <style> */
+  templateCssVariables?: TemplateCssVariable[];
+
+  /** :deep() селекторы */
+  templateDeepSelectors?: TemplateDeepSelector[];
+
+  /** Директивы (v-html, v-text, v-pre, v-once, v-memo, v-model, ...) */
+  templateDirectives?: string[];
+
+  /** Использованные компоненты (PascalCase + kebab-case) */
+  templateUsedComponents?: string[];
+
+  /** Слоты (из <slot name="..."> и defineSlots<T>()) */
+  templateSlots?: string[];
+
+  /** Сложность шаблона */
+  templateComplexity?: number;
+
+  // ==========================================
+  // ✅ НОВОЕ v9.0.0: условный рендеринг
+  // ==========================================
+
+  /** Условный рендеринг (v-if / v-else-if / v-else) */
+  templateConditionals?: TemplateConditional[];
+
+  // ==========================================
+  // ✅ НОВОЕ v9.0.0: lifecycle / effects / injections / reactivity
+  // ==========================================
+
+  /** Хуки жизненного цикла (onMounted, onUnmounted, ...) */
+  templateLifecycle?: TemplateLifecycle[];
+
+  /** Side-effects (setTimeout, clearTimeout, AbortController, ...) */
+  templateEffects?: TemplateEffect[];
+
+  /** Ребра provide / inject */
+  templateInjections?: TemplateInjection[];
+
+  /** Реактивные связи (computed, watch, ref, reactive, ...) */
+  templateReactivity?: TemplateReactivity[];
+
+  // ==========================================
+  // ✅ НОВОЕ v9.0.0: тип-граф
+  // ==========================================
+
+  /** Узлы тип-графа (interface / type-alias / enum / class) */
+  typesGraph?: TypeNode[];
+
+  /** Ребра использования типов */
+  typeRefsGraph?: TypeRef[];
+}
+
+// ==========================================
+// 🆕 НОВЫЕ ТИПЫ ДЛЯ КОМПАКТНОГО ФОРМАТА (v4.0.0)
+// ==========================================
+
+export interface CompactReport {
+  version: string;
+  timestamp: string;
+  root: string;
+  legend: Record<string, string>;
+  moduleIndex: Record<string, string>;
+  fileIndex: Record<string, { path: string; module: string }>;
+  functionIndex: Record<string, { name: string; module: string; file: string }>;
+  modules: Record<string, CompactModule>;
+  reverseIndex: {
+    importedBy: Record<string, { from: string; line: number }[]>;
+  };
+  unresolved: {
+    module: string;
+    target: string;
+    line: number;
+  }[];
+  stats: {
+    totalModules: number;
+    totalFiles: number;
+    totalFunctions: number;
+    totalCalls: number;
+    totalImports: number;
+    totalExports: number;
+    totalUnresolved: number;
+  };
+}
+
+export interface CompactModule {
   name: string;
   path: string;
-  type: 'module' | 'component' | 'vue' | 'external';
-  level: number;
-  metadata: {
-    size: number;
-    lines: number;
-    language: string;
-    isEntry: boolean;
-    functionsCount?: number;
-    classesCount?: number;
-    exportsCount?: number;
-  };
-}
-
-export interface ModuleEdge {
-  from: string;
-  to: string;
-  type: 'import' | 'external' | 're-export' | 'dynamic_import';
-  specifiers: string[];
-  sourceCode?: string;
-}
-
-export interface EntityNode {
-  id: string;
-  name: string;
-  type: 'function' | 'class' | 'constant' | 'interface' | 'type' | 'variable' | 'enum' | 'module';
-  module: string;
-  line: number;
-  metadata: {
-    isExported: boolean;
-    dataType?: string;
-    value?: any;
-    params?: string[];
-    returnType?: string;
-    isAsync?: boolean;
-    isMethod?: boolean;
-    className?: string;
-    properties?: string[];
-    methods?: string[];
-    extends?: string;
-    implements?: string[];
-    extendsInterfaces?: string[];
-    definition?: string;
-    calledBy?: string[];
-    calls?: string[];
-    startLine?: number;
-    endLine?: number;
-    visibility?: 'public' | 'private' | 'protected' | 'internal';
-    tags?: string[];
-    complexity?: number;
-    security?: {
-      hasEval: boolean;
-      hasProcessEnv: boolean;
-      hasSensitiveData: boolean;
-      hasExec: boolean;
-      hasPassword: boolean;
-    };
-    body?: string;
-    vscode?: string;
-    id?: string;
-  };
-}
-
-export interface EntityEdge {
-  from: string;
-  to: string;
-  type:
-    | 'function_call'
-    | 'constant_reference'
-    | 'class_extends'
-    | 'class_implements'
-    | 'interface_extends'
-    | 'type_reference'
-    | 'method_call'
-    | 'property_access'
-    | 'import_binding'
-    | 'export_binding'
-    | 'parameter_type'
-    | 'return_type'
-    | 'variable_reference'
-    | 'enum_member';
-  line?: number;
-  count?: number;
-}
-
-export interface EntityStats {
-  total: number;
-  exported: number;
-  private: number;
-  byModule: Record<string, number>;
-  byType: {
-    functions: number;
-    classes: number;
-    constants: number;
-    interfaces: number;
-    types: number;
-    variables: number;
-    enums: number;
-  };
-}
-
-export interface FileStats {
-  totalFiles: number;
-  totalSize: number;
-  totalLines: number;
-}
-
-export interface FunctionEntity {
-  name: string;
-  params: string[];
-  paramTypes: string[];
-  line: number;
-  startLine: number;
-  endLine: number;
-  isAsync: boolean;
-  isExported: boolean;
-  isMethod: boolean;
-  className: string;
-  calls: string[];
-  calledBy: string[];
-  returnType: string;
-  body: string;
-  isNested: boolean;
-  parentFunction: string;
-  isArrow: boolean;
-  isEventHandler: boolean;
-  eventType: string;
-  depth: number;
-  complexity: number;
-  security: {
-    hasEval: boolean;
-    hasProcessEnv: boolean;
-    hasSensitiveData: boolean;
-    hasExec: boolean;
-    hasPassword: boolean;
-  };
-  vscode?: string;
-  signature?: string;
-  _safeInfo?: any;
-  id?: string;
-  callsInfo?: CallInfo[];
-  calledByInfo?: CalledByInfo[];
-  importedBy?: ImportedByInfo[];
-}
-
-// ==========================================
-// ТИПЫ ДЛЯ КОМПАКТНОЙ ВСЕЛЕННОЙ (ast-universe.json)
-// ==========================================
-
-export interface CompactUniverse {
-  version: string;
-  level: number;
-  root: number;
-  timestamp: string;
-  modules: string[];
-  packages: Record<number, any>;
-  functions: CompactFunction[];
-  moduleGraph: Record<number, number[]>;
-  functionGraph: Record<number, number[]>;
-  levels: Record<number, number[]>;
+  file: string;
+  imports: {
+    from: string;
+    specifiers: string[];
+    line: number;
+    type?: 'named' | 'default' | 'namespace' | 'type';
+  }[];
+  exports: {
+    function: string;
+    name: string;
+  }[];
+  functions: Record<string, CompactFunction>;
   stats: {
     functions: number;
-    modules: number;
-    calls: number;
-    size: number;
-    depth: number;
-    cycles: boolean;
+    imports: number;
+    exports: number;
+    dependencies: number;
   };
-  callDetails?: Record<number, {
-    calls: { to: number; line: number; isAsync: boolean }[];
-    calledBy: { from: number; line: number }[];
-  }>;
-  callContext?: Record<number, {
-    params: string[];
-    returnType: string;
-    isExported: boolean;
-    isAsync: boolean;
-    line: number;
-    endLine: number;
-    calls: { to: number; line: number; column: number; isAsync: boolean; isMethod: boolean; className?: string }[];
-    calledBy: { from: number; line: number; column: number }[];
-    dependencies: number[];
-  }>;
 }
 
 export interface CompactFunction {
   name: string;
-  module: number;
   line: number;
-  isExported?: boolean;
-  isAsync?: boolean;
-  params?: string[];
-  returnType?: string;
-  calls?: number[];
-  startLine?: number;
-  endLine?: number;
-  body?: string;
-  vscode?: string;
-  security?: any;
-  signature?: string;
+  flags: number;
+  params: string[];
+  isAsync: boolean;
+  isExported: boolean;
+  calls: {
+    to: string;
+    line: number;
+    type: 'direct' | 'import' | 'method' | 'computed' | 'watch' | 'event';
+  }[];
+}
+
+export interface CompactCall {
+  to: string;
+  line: number;
+  type: 'direct' | 'import' | 'method' | 'computed' | 'watch' | 'event';
 }
 
 // ==========================================
-// УТИЛИТЫ ДЛЯ ТИПОВ
+// 🆕 НОВЫЕ ТИПЫ ДЛЯ UI ТРЁХКОЛОНОЧНОГО ИНТЕРФЕЙСА (с короткими ключами)
 // ==========================================
 
-export type EntityType = EntityNode['type'];
-export type EdgeType = EntityEdge['type'];
+/**
+ * Импорт/экспорт связи: [fromFile, name, line]
+ * fromFile: ID файла, null если внешний
+ * name: имя импортируемой/экспортируемой сущности
+ * line: строка в файле
+ */
+export type UIImportTuple = [string | null, string, number];
 
-export function isExported(node: EntityNode): boolean {
-  return node.metadata.isExported || false;
+/**
+ * Вызов функции: [callerFn, calleeFn, line, type]
+ * callerFn: ID вызывающей функции (fn1, fn2, ...)
+ * calleeFn: ID вызываемой функции (fn1, fn2, ...)
+ * line: строка вызова
+ * type: тип вызова (d, a, m, c)
+ */
+export type UICallTuple = [string, string, number, string];
+
+/**
+ * Данные для одного файла в UI
+ * Все ключи короткие для минимального размера
+ */
+export interface UIFileData {
+  /** importedBy — кто импортирует этот файл (левая панель) */
+  ib: UIImportTuple[];
+  /** imports — что импортирует этот файл (правая панель) */
+  im: UIImportTuple[];
+  /** calls — вызовы функций из этого файла (правая панель) */
+  ca: UICallTuple[];
+  /** exports — экспорты файла (центр) */
+  ex: string[];
+  /** functions — функции в файле (центр) */
+  fn: string[];
 }
 
-export function isFunction(node: EntityNode): boolean {
-  return node.type === 'function';
+/**
+ * UI индекс для быстрой навигации по трём колонкам
+ * a = active (активный файл)
+ * f = files (данные по файлам)
+ */
+export interface UIIndex {
+  /** activeFileId — текущий активный файл */
+  a: string;
+  /** files — данные по каждому файлу */
+  f: Record<string, UIFileData>;
 }
 
-export function isClass(node: EntityNode): boolean {
-  return node.type === 'class';
+// ==========================================
+// УЛУЧШЕННЫЕ ТИПЫ ДЛЯ СТАТИСТИКИ
+// ==========================================
+
+export interface MutableStats {
+  totalFunctions: number;
+  totalCalls: number;
+  totalModules: number;
+  totalFiles: number;
+  totalExports: number;
+  totalReExports: number;
+  totalConstExports: number;
+  totalUnused: number;
+  totalAsync: number;
+  totalConstants: number;
+  totalConstUses: number;
+  totalConstDeps: number;
+  totalInheritance: number;
+  totalTypeDeps: number;
+  totalImports: number;
+  totalSelfFunctions: number;
+  totalDynamicImports: number;
+  totalConfigRefs: number;
+  totalExternalLibs: number;
+  totalVueTemplates: number;
+  totalAsyncChains: number;
+  totalClosures: number;
+  totalReflections: number;
 }
 
-export function isConstant(node: EntityNode): boolean {
-  return node.type === 'constant';
-}
+export type ReadonlyStats = Readonly<MutableStats>;
 
-export function isInterface(node: EntityNode): boolean {
-  return node.type === 'interface';
-}
-
-export function isType(node: EntityNode): boolean {
-  return node.type === 'type';
-}
-
-export function isVariable(node: EntityNode): boolean {
-  return node.type === 'variable';
-}
-
-export function getEntityColor(type: EntityType): string {
-  switch (type) {
-    case 'function':
-      return '#4f46e5';
-    case 'class':
-      return '#7c3aed';
-    case 'constant':
-      return '#059669';
-    case 'interface':
-      return '#0ea5e9';
-    case 'type':
-      return '#f59e0b';
-    case 'variable':
-      return '#ef4444';
-    case 'enum':
-      return '#8b5cf6';
-    case 'module':
-      return '#6b7280';
-    default:
-      return '#9ca3af';
-  }
-}
-
-export function getEntityIcon(type: EntityType): string {
-  switch (type) {
-    case 'function':
-      return 'ƒ';
-    case 'class':
-      return '📦';
-    case 'constant':
-      return '📌';
-    case 'interface':
-      return '📋';
-    case 'type':
-      return '📝';
-    case 'variable':
-      return '📄';
-    case 'enum':
-      return '🔢';
-    case 'module':
-      return '📁';
-    default:
-      return '•';
-  }
-}
-
-export function getEdgeColor(type: EdgeType): string {
-  switch (type) {
-    case 'function_call':
-      return '#f59e0b';
-    case 'constant_reference':
-      return '#059669';
-    case 'class_extends':
-      return '#7c3aed';
-    case 'class_implements':
-      return '#8b5cf6';
-    case 'interface_extends':
-      return '#0ea5e9';
-    case 'type_reference':
-      return '#f59e0b';
-    case 'method_call':
-      return '#f97316';
-    case 'property_access':
-      return '#ec4899';
-    case 'import_binding':
-      return '#3b82f6';
-    case 'export_binding':
-      return '#22c55e';
-    case 'parameter_type':
-      return '#8b5cf6';
-    case 'return_type':
-      return '#ef4444';
-    case 'variable_reference':
-      return '#f43f5e';
-    case 'enum_member':
-      return '#a855f7';
-    default:
-      return '#6b7280';
-  }
-}
+// ==========================================
+// ЭКСПОРТ ПО УМОЛЧАНИЮ
+// ==========================================
 
 export default {
+<<<<<<< HEAD
   isExported,
   isFunction,
   isClass,
@@ -1595,3 +1922,7 @@ export default {
   getEntityIcon,
   getEdgeColor,
 };
+=======
+  // Типы экспортируются автоматически
+};
+>>>>>>> 202db84c78bcfab4b6bee65884d05d9f3d4c22c4

@@ -1,4 +1,26 @@
 // core/tsconfig-resolver.ts
+// ============================================
+// РЕЗОЛВЕР tsconfig.json С ПОДДЕРЖКОЙ АЛИАСОВ
+// ============================================
+// Версия: 2.2.0
+//
+// ИЗМЕНЕНИЯ v2.2.0:
+//   - ✅ УЛУЧШЕНО: resolveAliasPath теперь более надёжно
+//     обрабатывает пути с расширениями и index-файлами.
+//   - ✅ ДОБАВЛЕНО: кэширование результатов resolveAliasPath
+//     для ускорения повторных вызовов.
+//
+// ИЗМЕНЕНИЯ v2.1.0:
+//   - ✅ УБРАНО дублирующее логирование алиасов из resolveAliasPath
+//     (раньше один и тот же алиас печатался дважды: из ast-parser.ts
+//      и из tsconfig-resolver.ts → теперь логирует только ast-parser.ts)
+//
+// ИЗМЕНЕНИЯ v2.0.0:
+//   - Поддержка кэширования tsconfig
+//   - Поддержка явного пути через setTsConfigPath
+//   - Поддержка кроссплатформенных путей через normalizePathForOS
+// ============================================
+
 import fs from 'fs';
 import path from 'path';
 import { normalizePathForOS } from '../utils/path-utils.js';
@@ -19,15 +41,31 @@ let explicitTsConfigPath: string | null = null;
 let cachedTsConfig: TsConfig | null = null;
 let cachedTsConfigDir: string | null = null;
 
-export function setTsConfigPath(configPath: string) {
+// ✅ НОВОЕ v2.2.0: кэш результатов resolveAliasPath
+// Ключ: `${importPath}|${baseDir}|${tsConfigDir}`
+// Значение: абсолютный путь или null
+const aliasResolveCache = new Map<string, string | null>();
+
+/**
+ * Устанавливает явный путь к tsconfig.json.
+ * После вызова кэш сбрасывается, и следующий loadTsConfig
+ * будет использовать именно этот путь.
+ */
+export function setTsConfigPath(configPath: string): void {
   explicitTsConfigPath = configPath;
   cachedTsConfig = null;
   cachedTsConfigDir = null;
+  aliasResolveCache.clear();
 }
 
 /**
- * Загружает tsconfig с поддержкой кэширования и Windows
- * @param startDir - Директория для поиска tsconfig.json
+ * Загружает tsconfig с поддержкой кэширования и Windows.
+ *
+ * Порядок:
+ *   1. Если задан explicitTsConfigPath — используем его
+ *   2. Иначе ищем tsconfig.json вверх по иерархии от startDir
+ *
+ * @param startDir — Директория для поиска tsconfig.json
  * @returns TsConfig или null если не найден
  */
 export function loadTsConfig(startDir: string = process.cwd()): TsConfig | null {
@@ -39,7 +77,7 @@ export function loadTsConfig(startDir: string = process.cwd()): TsConfig | null 
     if (fs.existsSync(normalizedPath)) {
       try {
         const content = fs.readFileSync(normalizedPath, 'utf-8');
-        console.log(`📄 Загружен tsconfig: ${normalizedPath}`);
+        // ✅ Убрано дублирующее логирование — ast-parser.ts уже логирует
         cachedTsConfig = JSON.parse(content) as TsConfig;
         cachedTsConfigDir = path.dirname(normalizedPath);
         return cachedTsConfig;
@@ -64,7 +102,7 @@ export function loadTsConfig(startDir: string = process.cwd()): TsConfig | null 
         const content = fs.readFileSync(normalizedTsConfigPath, 'utf-8');
         cachedTsConfig = JSON.parse(content) as TsConfig;
         cachedTsConfigDir = path.dirname(normalizedTsConfigPath);
-        console.log(`📄 Автоматически загружен tsconfig: ${normalizedTsConfigPath}`);
+        // ✅ Убрано дублирующее логирование — ast-parser.ts уже логирует
         return cachedTsConfig;
       } catch (error) {
         console.warn(`⚠️ Ошибка парсинга ${normalizedTsConfigPath}:`, error);
@@ -77,33 +115,45 @@ export function loadTsConfig(startDir: string = process.cwd()): TsConfig | null 
 }
 
 /**
- * Получить директорию, в которой находится tsconfig.json
+ * Возвращает директорию, в которой находится tsconfig.json.
  */
 export function getTsConfigDir(): string | null {
   return cachedTsConfigDir;
 }
 
 /**
- * Получить закэшированный tsconfig
+ * Возвращает закэшированный tsconfig.
  */
 export function getCachedTsConfig(): TsConfig | null {
   return cachedTsConfig;
 }
 
 /**
- * Очистить кэш tsconfig
+ * Очищает кэш tsconfig.
  */
 export function clearTsConfigCache(): void {
   cachedTsConfig = null;
   cachedTsConfigDir = null;
   explicitTsConfigPath = null;
+  aliasResolveCache.clear();
 }
 
 /**
- * Резолвит путь с учётом алиасов из tsconfig
- * @param importPath - путь из import (например, '@/components/Button')
- * @param baseDir - директория для резолвинга baseUrl (обычно директория tsconfig)
- * @param tsConfig - загруженный tsconfig
+ * Резолвит путь с учётом алиасов из tsconfig.
+ *
+ * ✅ ИСПРАВЛЕНО v2.1.0:
+ *   Убрано логирование `🔗 Алиас: ...`. Ранее один и тот же алиас
+ *   печатался дважды: из ast-parser.ts::resolveFilePath и отсюда.
+ *   Теперь логирует только ast-parser.ts.
+ *
+ * ✅ УЛУЧШЕНО v2.2.0:
+ *   - Добавлено кэширование результатов.
+ *   - Более надёжная проверка расширений и index-файлов.
+ *   - Приоритет отдаётся файлам с расширениями .ts/.tsx.
+ *
+ * @param importPath — путь из import (например, '@/components/Button')
+ * @param baseDir — директория для резолвинга baseUrl (обычно директория tsconfig)
+ * @param tsConfig — загруженный tsconfig
  * @returns Абсолютный путь к файлу или null
  */
 export function resolveAliasPath(
@@ -113,6 +163,12 @@ export function resolveAliasPath(
 ): string | null {
   if (!tsConfig?.compilerOptions?.paths) {
     return null;
+  }
+
+  // ✅ НОВОЕ v2.2.0: проверяем кэш
+  const cacheKey = `${importPath}|${baseDir}|${cachedTsConfigDir || ''}`;
+  if (aliasResolveCache.has(cacheKey)) {
+    return aliasResolveCache.get(cacheKey) ?? null;
   }
 
   const { paths, baseUrl = '.' } = tsConfig.compilerOptions;
@@ -144,29 +200,44 @@ export function resolveAliasPath(
       const resolvedPath = path.resolve(baseUrlPath, targetPath);
       const normalizedResolvedPath = normalizePathForOS(resolvedPath);
 
-      // Проверяем существование файла с разными расширениями
+      // ✅ УЛУЧШЕНО v2.2.0: приоритет расширений
+      // Сначала проверяем TypeScript-расширения, потом остальные
       const extensions = ['.ts', '.tsx', '.js', '.jsx', '.vue', '.mjs', '.cjs', ''];
+
       for (const ext of extensions) {
+        // Проверяем файл с расширением
         const testPath = normalizedResolvedPath + ext;
         if (fs.existsSync(testPath) && fs.statSync(testPath).isFile()) {
+          // ✅ Логирование убрано — ast-parser.ts::resolveFilePath уже это делает
+          aliasResolveCache.set(cacheKey, testPath);
           return testPath;
         }
-        // Проверка на index файл
-        const indexPath = path.join(normalizedResolvedPath, `index${ext}`);
-        if (ext && fs.existsSync(indexPath) && fs.statSync(indexPath).isFile()) {
-          return normalizePathForOS(indexPath);
+
+        // Проверяем index-файл в директории
+        if (ext) {
+          const indexPath = path.join(normalizedResolvedPath, `index${ext}`);
+          if (fs.existsSync(indexPath) && fs.statSync(indexPath).isFile()) {
+            const normalizedIndex = normalizePathForOS(indexPath);
+            aliasResolveCache.set(cacheKey, normalizedIndex);
+            return normalizedIndex;
+          }
         }
       }
 
+      // Если файл не найден, но путь выглядит валидным, возвращаем его
+      // (это может быть директория или файл, который будет создан позже)
+      aliasResolveCache.set(cacheKey, normalizedResolvedPath);
       return normalizedResolvedPath;
     }
   }
 
+  // ✅ НОВОЕ v2.2.0: кэшируем null (алиас не найден)
+  aliasResolveCache.set(cacheKey, null);
   return null;
 }
 
 /**
- * Проверяет, есть ли алиасы в tsconfig
+ * Проверяет, есть ли алиасы в tsconfig.
  */
 export function hasAliases(tsConfig: TsConfig | null): boolean {
   if (!tsConfig?.compilerOptions?.paths) {
@@ -176,7 +247,7 @@ export function hasAliases(tsConfig: TsConfig | null): boolean {
 }
 
 /**
- * Получить все алиасы из tsconfig
+ * Возвращает все алиасы из tsconfig.
  */
 export function getAliases(tsConfig: TsConfig | null): AliasMapping {
   if (!tsConfig?.compilerOptions?.paths) {
@@ -186,7 +257,7 @@ export function getAliases(tsConfig: TsConfig | null): AliasMapping {
 }
 
 /**
- * Получить baseUrl из tsconfig
+ * Возвращает baseUrl из tsconfig.
  */
 export function getBaseUrl(tsConfig: TsConfig | null): string | null {
   if (!tsConfig?.compilerOptions?.baseUrl) {
@@ -196,7 +267,7 @@ export function getBaseUrl(tsConfig: TsConfig | null): string | null {
 }
 
 /**
- * Проверяет, является ли путь алиасом
+ * Проверяет, является ли путь алиасом.
  */
 export function isAliasPath(importPath: string, tsConfig: TsConfig | null): boolean {
   if (!tsConfig?.compilerOptions?.paths) {
@@ -217,7 +288,7 @@ export function isAliasPath(importPath: string, tsConfig: TsConfig | null): bool
 
 /**
  * Резолвит путь алиаса без проверки существования файла
- * (только преобразование паттерна)
+ * (только преобразование паттерна).
  */
 export function resolveAliasPattern(
   importPath: string,
@@ -258,7 +329,7 @@ export function resolveAliasPattern(
 }
 
 /**
- * Добавляет алиас в tsconfig (в память, не сохраняет на диск)
+ * Добавляет алиас в tsconfig (в память, не сохраняет на диск).
  */
 export function addAlias(
   tsConfig: TsConfig | null,
@@ -278,11 +349,13 @@ export function addAlias(
   }
 
   tsConfig.compilerOptions.paths[alias] = [target];
+  // ✅ Инвалидируем кэш алиасов
+  aliasResolveCache.clear();
   return tsConfig;
 }
 
 /**
- * Удаляет алиас из tsconfig (в памяти)
+ * Удаляет алиас из tsconfig (в памяти).
  */
 export function removeAlias(tsConfig: TsConfig | null, alias: string): TsConfig | null {
   if (!tsConfig?.compilerOptions?.paths) {
@@ -290,7 +363,32 @@ export function removeAlias(tsConfig: TsConfig | null, alias: string): TsConfig 
   }
 
   delete tsConfig.compilerOptions.paths[alias];
+  // ✅ Инвалидируем кэш алиасов
+  aliasResolveCache.clear();
   return tsConfig;
+}
+
+/**
+ * ✅ НОВОЕ v2.2.0: Возвращает статистику кэша алиасов.
+ * Полезно для отладки и тестов.
+ */
+export function getAliasCacheStats(): {
+  size: number;
+  hits: number;
+  misses: number;
+} {
+  return {
+    size: aliasResolveCache.size,
+    hits: 0, // счётчики можно добавить при необходимости
+    misses: 0,
+  };
+}
+
+/**
+ * ✅ НОВОЕ v2.2.0: Очищает только кэш алиасов, не трогая tsconfig.
+ */
+export function clearAliasCache(): void {
+  aliasResolveCache.clear();
 }
 
 export default {
@@ -307,4 +405,6 @@ export default {
   isAliasPath,
   addAlias,
   removeAlias,
+  getAliasCacheStats,
+  clearAliasCache,
 };

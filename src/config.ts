@@ -1,18 +1,42 @@
-// packages/ast-analyzer/src/config.ts
+// src/config.ts
+// ОБНОВЛЕННЫЙ ФАЙЛ - УСТРАНЕН ДУБЛИРОВАНИЕ ЭКСПОРТОВ
+// ============================================
+// ВСЕ КОНСТАНТЫ ПЕРЕМЕЩЕНЫ В config/constants.ts
+// Этот файл сохраняет обратную совместимость
+// ============================================
 
-/**
- * Конфигурация для компактного отчета сущностей
- *
- * Использование:
- *   import config from './config.js';
- *   const { entityFields, relationshipFields, ... } = config;
- */
+// ============================================
+// ЭКСПОРТ КОНСТАНТ ИЗ constants.ts (ЕДИНСТВЕННЫЙ ИСТОЧНИК)
+// ============================================
+
+export {
+  // Константы
+  SUPPORTED_EXTENSIONS,
+  SUPPORTED_EXTENSIONS_SET,
+  DEFAULT_EXCLUDE_PATTERNS,
+  EXCLUDE_PATTERNS_SET,
+  VUE_SCRIPT_PATTERN,
+  VUE_SCRIPT_SETUP_PATTERN,
+  IGNORE_NODE_MODULES,
+  MAX_FILE_SIZE,
+  MAX_DEPTH_DEFAULT,
+  MAX_DEPTH_PROJECT,
+
+  // Типы
+  type SupportedExtension,
+  type ExcludePattern,
+} from './config/constants.js';
+
+// ============================================
+// КОНФИГУРАЦИЯ ДЛЯ КОМПАКТНОГО ОТЧЕТА
+// (оригинальный код, не дублируется)
+// ============================================
 
 // ============================================
 // ТИПЫ ДЛЯ КОНФИГА
 // ============================================
 
-export type PresetName = 'minimal' | 'standard' | 'full' | 'relationshipsOnly';
+export type PresetName = 'minimal' | 'standard' | 'full' | 'relationshipsOnly' | 'ultraCompact';
 
 export interface EntityFieldsConfig {
   id: boolean;
@@ -124,6 +148,52 @@ export interface PresetConfig {
   formatting: Partial<FormattingConfig>;
 }
 
+export interface UltraCompactConfig {
+  enableDedup: boolean;
+  useBitFlags: boolean;
+  useDictionaries: boolean;
+  readableKeys: boolean;
+  version: string;
+  removeCallsFromEntities: boolean;
+  removeNameFromEntities: boolean;
+  removeFileFromEntities: boolean;
+  compressCalledBy: boolean;
+}
+
+export interface AnalyzersConfig {
+  dynamicImports: boolean;
+  configRefs: boolean;
+  externalLibs: boolean;
+  vueTemplates: boolean;
+  asyncChains: boolean;
+  closures: boolean;
+  typeDeps: boolean;
+  selfFunctions: boolean;
+}
+
+export interface CompressionConfig {
+  enabled: boolean;
+  deltaEncoding: boolean;
+  rleCompression: boolean;
+  pathCompression: boolean;
+  minPathLength: number;
+}
+
+export interface CachingConfig {
+  enabled: boolean;
+  ttl: number;
+  maxEntries: number;
+  persistToDisk: boolean;
+  cachePath: string;
+}
+
+export interface MigrationConfig {
+  enabled: boolean;
+  targetVersion: string;
+  autoMigrate: boolean;
+  backupOnMigrate: boolean;
+}
+
 export interface CompactReportConfig {
   version: string;
   entityFields: EntityFieldsConfig;
@@ -133,11 +203,20 @@ export interface CompactReportConfig {
   output: OutputConfig;
   presets: Record<PresetName, PresetConfig>;
   activePreset: PresetName;
+  ultraCompact: UltraCompactConfig;
+  analyzers: AnalyzersConfig;
+  compression: CompressionConfig;
+  caching: CachingConfig;
+  migration: MigrationConfig;
   getConfig(): PresetConfig;
   getEnabledEntityFields(): (keyof EntityFieldsConfig)[];
   getEnabledRelationshipFields(relationship: keyof RelationshipFieldsConfig): string[];
   isEntityTypeEnabled(type: string): boolean;
   isModuleIncluded(modulePath: string): boolean;
+  isAnalyzerEnabled(analyzer: keyof AnalyzersConfig): boolean;
+  getCompressionConfig(): CompressionConfig;
+  getCachingConfig(): CachingConfig;
+  getMigrationConfig(): MigrationConfig;
 }
 
 // ============================================
@@ -145,151 +224,150 @@ export interface CompactReportConfig {
 // ============================================
 
 export const COMPACT_REPORT_CONFIG: CompactReportConfig = {
-  /**
-   * Версия конфигурации
-   */
   version: '1.0.0',
 
-  /**
-   * Настройки вывода сущностей
-   */
   entityFields: {
-    // === БАЗОВЫЕ ПОЛЯ (всегда включены) ===
-    id: true, // Уникальный ID сущности
-    name: true, // Имя сущности
-    file: true, // Относительный путь к файлу
-    line: true, // Номер строки определения
-    kind: true, // Тип сущности (function, class, constant, etc.)
-    vscode: true, // VSCode ссылка на сущность
-
-    // === ИНФОРМАЦИЯ О ФУНКЦИИ ===
-    isExported: true, // Экспортируется ли
-    isAsync: true, // Асинхронная ли функция
-    params: true, // Массив имен параметров
-    paramsCount: true, // Количество параметров
-    returnType: true, // Тип возвращаемого значения
-    isMethod: true, // Является ли методом класса
-    className: true, // Имя класса (для методов)
-
-    // === ВЛОЖЕННОСТЬ ===
-    isNested: true, // Вложенная ли функция
-    parentFunction: true, // Родительская функция
-    isArrow: true, // Стрелочная ли функция
-    depth: true, // Глубина вложенности
-
-    // === EVENTS ===
-    isEventHandler: true, // Обработчик события
-    eventType: true, // Тип события
-
-    // === МЕТРИКИ ===
-    complexity: true, // Цикломатическая сложность
-    startLine: true, // Начальная строка
-    endLine: true, // Конечная строка
-
-    // === ОПЦИОНАЛЬНО (по умолчанию выключено) ===
-    body: false, // Тело функции (ОТКЛЮЧЕНО ПО УМОЛЧАНИЮ)
-    security: false, // Информация о безопасности
-    signature: false, // Сигнатура функции
-    metadata: false, // Дополнительные метаданные
+    id: true,
+    name: true,
+    file: true,
+    line: true,
+    kind: true,
+    vscode: true,
+    isExported: true,
+    isAsync: true,
+    params: true,
+    paramsCount: true,
+    returnType: true,
+    isMethod: true,
+    className: true,
+    isNested: true,
+    parentFunction: true,
+    isArrow: true,
+    depth: true,
+    isEventHandler: true,
+    eventType: true,
+    complexity: true,
+    startLine: true,
+    endLine: true,
+    body: false,
+    security: false,
+    signature: false,
+    metadata: false,
   },
 
-  /**
-   * Настройки связей
-   */
   relationshipFields: {
-    // === ВЫЗОВЫ (calls) ===
     calls: {
-      enabled: true, // Включить вызовы
-      targetId: true, // ID вызываемой сущности
-      targetName: true, // Имя вызываемой сущности
-      targetFile: true, // Файл вызываемой сущности
-      targetLine: true, // Строка вызываемой сущности
-      targetVscode: true, // VSCode ссылка на вызываемую сущность
-      callLine: true, // Строка, где происходит вызов
-      callType: true, // Тип вызова (direct, import, computed, watch, event, lifecycle)
+      enabled: true,
+      targetId: true,
+      targetName: true,
+      targetFile: true,
+      targetLine: true,
+      targetVscode: true,
+      callLine: true,
+      callType: true,
     },
-
-    // === ОБРАТНЫЕ ВЫЗОВЫ (calledBy) ===
     calledBy: {
-      enabled: true, // Включить обратные вызовы
-      callerId: true, // ID вызывающей сущности
-      callerName: true, // Имя вызывающей сущности
-      callerFile: true, // Файл вызывающей сущности
-      callerLine: true, // Строка вызывающей сущности
-      callerVscode: true, // VSCode ссылка на вызывающую сущность
-      callLine: true, // Строка, где происходит вызов
-      callType: true, // Тип вызова
+      enabled: true,
+      callerId: true,
+      callerName: true,
+      callerFile: true,
+      callerLine: true,
+      callerVscode: true,
+      callLine: true,
+      callType: true,
     },
-
-    // === ИМПОРТЕРЫ (importedBy) ===
     importedBy: {
-      enabled: true, // Включить импортеры
-      importerId: true, // ID импортирующего файла
-      importerFile: true, // Файл, который импортирует
-      importerVscode: true, // VSCode ссылка на файл
-      importLine: true, // Строка, где происходит импорт
-      specifier: true, // Как импортируется (имя или алиас)
-      importType: true, // Тип импорта (named, default, namespace, type)
+      enabled: true,
+      importerId: true,
+      importerFile: true,
+      importerVscode: true,
+      importLine: true,
+      specifier: true,
+      importType: true,
     },
   },
 
-  /**
-   * Настройки фильтрации
-   */
   filters: {
-    // === ФИЛЬТРАЦИЯ ПО ТИПАМ СУЩНОСТЕЙ ===
     entityTypes: {
-      function: true, // Включить функции
-      class: true, // Включить классы
-      constant: true, // Включить константы
-      interface: true, // Включить интерфейсы
-      type: true, // Включить типы
-      variable: true, // Включить переменные
-      macro: true, // Включить макросы (Vue)
+      function: true,
+      class: true,
+      constant: true,
+      interface: true,
+      type: true,
+      variable: true,
+      macro: true,
     },
-
-    // === ФИЛЬТРАЦИЯ ПО ЭКСПОРТУ ===
-    onlyExported: false, // Только экспортируемые сущности
-    onlyNonExported: false, // Только неэкспортируемые сущности
-
-    // === ФИЛЬТРАЦИЯ ПО МОДУЛЯМ ===
-    includeModules: [], // Список модулей для включения (пусто = все)
-    excludeModules: [], // Список модулей для исключения
-
-    // === МИНИМАЛЬНАЯ СЛОЖНОСТЬ ===
-    minComplexity: 0, // Минимальная сложность для включения
-
-    // === МАКСИМАЛЬНАЯ ГЛУБИНА ===
-    maxDepth: Infinity, // Максимальная глубина вложенности
+    onlyExported: false,
+    onlyNonExported: false,
+    includeModules: [],
+    excludeModules: [],
+    minComplexity: 0,
+    maxDepth: Infinity,
   },
 
-  /**
-   * Настройки форматирования
-   */
   formatting: {
-    indentSize: 2, // Размер отступа
-    sortKeys: true, // Сортировать ключи
-    sortEntities: true, // Сортировать сущности по имени
-    includeTimestamp: true, // Включить временную метку
-    includeStats: true, // Включить статистику
+    indentSize: 2,
+    sortKeys: true,
+    sortEntities: true,
+    includeTimestamp: true,
+    includeStats: true,
   },
 
-  /**
-   * Настройки вывода
-   */
   output: {
-    outputDir: './', // Директория для сохранения
-    fileName: 'entities.json', // Имя файла
-    prettyPrint: true, // Красивый вывод (с отступами)
-    minify: false, // Минификация JSON (без пробелов)
-    generateMarkdown: false, // Генерировать Markdown отчет
+    outputDir: './',
+    fileName: 'entities.json',
+    prettyPrint: true,
+    minify: false,
+    generateMarkdown: false,
   },
 
-  /**
-   * Режимы конфигурации
-   */
+  ultraCompact: {
+    enableDedup: true,
+    useBitFlags: true,
+    useDictionaries: true,
+    readableKeys: true,
+    version: '4.0.0',
+    removeCallsFromEntities: true,
+    removeNameFromEntities: true,
+    removeFileFromEntities: true,
+    compressCalledBy: false,
+  },
+
+  analyzers: {
+    dynamicImports: true,
+    configRefs: true,
+    externalLibs: true,
+    vueTemplates: true,
+    asyncChains: true,
+    closures: true,
+    typeDeps: true,
+    selfFunctions: true,
+  },
+
+  compression: {
+    enabled: true,
+    deltaEncoding: true,
+    rleCompression: true,
+    pathCompression: true,
+    minPathLength: 30,
+  },
+
+  caching: {
+    enabled: true,
+    ttl: 300000,
+    maxEntries: 100,
+    persistToDisk: false,
+    cachePath: './.ast-cache',
+  },
+
+  migration: {
+    enabled: true,
+    targetVersion: '5.1.0',
+    autoMigrate: true,
+    backupOnMigrate: true,
+  },
+
   presets: {
-    // === МИНИМАЛЬНЫЙ (только основное) ===
     minimal: {
       entityFields: {
         id: true,
@@ -376,7 +454,6 @@ export const COMPACT_REPORT_CONFIG: CompactReportConfig = {
       },
     },
 
-    // === СТАНДАРТНЫЙ (баланс) ===
     standard: {
       entityFields: {
         id: true,
@@ -463,7 +540,6 @@ export const COMPACT_REPORT_CONFIG: CompactReportConfig = {
       },
     },
 
-    // === ПОЛНЫЙ (все данные) ===
     full: {
       entityFields: {
         id: true,
@@ -550,7 +626,6 @@ export const COMPACT_REPORT_CONFIG: CompactReportConfig = {
       },
     },
 
-    // === ДЛЯ АНАЛИЗА СВЯЗЕЙ (только граф) ===
     relationshipsOnly: {
       entityFields: {
         id: true,
@@ -636,17 +711,96 @@ export const COMPACT_REPORT_CONFIG: CompactReportConfig = {
         includeStats: true,
       },
     },
+
+    ultraCompact: {
+      entityFields: {
+        id: true,
+        name: true,
+        file: true,
+        line: true,
+        kind: true,
+        vscode: true,
+        isExported: true,
+        isAsync: true,
+        params: true,
+        paramsCount: false,
+        returnType: true,
+        isMethod: true,
+        className: false,
+        isNested: true,
+        parentFunction: false,
+        isArrow: true,
+        depth: false,
+        isEventHandler: true,
+        eventType: false,
+        complexity: false,
+        startLine: false,
+        endLine: false,
+        body: false,
+        security: false,
+        signature: false,
+        metadata: false,
+      },
+      relationshipFields: {
+        calls: {
+          enabled: true,
+          targetId: true,
+          targetName: false,
+          targetFile: false,
+          targetLine: false,
+          targetVscode: false,
+          callLine: true,
+          callType: true,
+        },
+        calledBy: {
+          enabled: true,
+          callerId: true,
+          callerName: false,
+          callerFile: false,
+          callerLine: false,
+          callerVscode: false,
+          callLine: true,
+          callType: true,
+        },
+        importedBy: {
+          enabled: true,
+          importerId: true,
+          importerFile: false,
+          importerVscode: false,
+          importLine: false,
+          specifier: true,
+          importType: false,
+        },
+      },
+      filters: {
+        entityTypes: {
+          function: true,
+          class: true,
+          constant: true,
+          interface: true,
+          type: true,
+          variable: true,
+          macro: true,
+        },
+        onlyExported: false,
+        onlyNonExported: false,
+        includeModules: [],
+        excludeModules: [],
+        minComplexity: 0,
+        maxDepth: Infinity,
+      },
+      formatting: {
+        indentSize: 2,
+        sortKeys: true,
+        sortEntities: true,
+        includeTimestamp: true,
+        includeStats: true,
+      },
+    },
   },
 
-  /**
-   * Выбор активного пресета
-   * Возможные значения: 'minimal' | 'standard' | 'full' | 'relationshipsOnly'
-   */
   activePreset: 'standard',
 
-  /**
-   * Получить конфигурацию с учетом пресета
-   */
   getConfig(): PresetConfig {
     const preset = this.presets[this.activePreset];
     if (!preset) {
@@ -656,9 +810,6 @@ export const COMPACT_REPORT_CONFIG: CompactReportConfig = {
     return preset;
   },
 
-  /**
-   * Получить только включенные поля сущностей
-   */
   getEnabledEntityFields(): (keyof EntityFieldsConfig)[] {
     const config = this.getConfig();
     return Object.entries(config.entityFields)
@@ -666,9 +817,6 @@ export const COMPACT_REPORT_CONFIG: CompactReportConfig = {
       .map(([key]) => key as keyof EntityFieldsConfig);
   },
 
-  /**
-   * Получить только включенные поля связей
-   */
   getEnabledRelationshipFields(relationship: keyof RelationshipFieldsConfig): string[] {
     const config = this.getConfig();
     const relConfig = config.relationshipFields[relationship];
@@ -678,18 +826,12 @@ export const COMPACT_REPORT_CONFIG: CompactReportConfig = {
       .map(([key]) => key);
   },
 
-  /**
-   * Проверить, включен ли тип сущности
-   */
   isEntityTypeEnabled(type: string): boolean {
     const config = this.getConfig();
     const entityTypes = config.filters.entityTypes as Partial<EntityTypesFilter>;
     return (entityTypes as Record<string, boolean>)[type] !== false;
   },
 
-  /**
-   * Проверить, должен ли модуль быть включен
-   */
   isModuleIncluded(modulePath: string): boolean {
     const config = this.getConfig();
     const { includeModules, excludeModules } = config.filters;
@@ -702,6 +844,22 @@ export const COMPACT_REPORT_CONFIG: CompactReportConfig = {
     }
     return true;
   },
+
+  isAnalyzerEnabled(analyzer: keyof AnalyzersConfig): boolean {
+    return this.analyzers[analyzer] !== false;
+  },
+
+  getCompressionConfig(): CompressionConfig {
+    return this.compression;
+  },
+
+  getCachingConfig(): CachingConfig {
+    return this.caching;
+  },
+
+  getMigrationConfig(): MigrationConfig {
+    return this.migration;
+  },
 };
 
 // ============================================
@@ -709,28 +867,3 @@ export const COMPACT_REPORT_CONFIG: CompactReportConfig = {
 // ============================================
 
 export default COMPACT_REPORT_CONFIG;
-
-// ============================================
-// КОНСТАНТЫ ИЗ ПРЕДЫДУЩЕЙ ВЕРСИИ (сохранены для обратной совместимости)
-// ============================================
-
-export const IGNORE_NODE_MODULES = true;
-export const SUPPORTED_EXTENSIONS = ['.ts', '.mjs', '.js', '.tsx', '.jsx', '.vue'];
-export const DEFAULT_EXCLUDE_PATTERNS = [
-  'node_modules',
-  '.git',
-  'dist',
-  'build',
-  'coverage',
-  '.nyc_output',
-  '__pycache__',
-  '.cache',
-  '.next',
-  'out',
-  '.nuxt',
-  '.output',
-  '.vercel',
-  'tmp',
-  'temp',
-];
-export const VUE_SCRIPT_PATTERN = /<script[^>]*>([\s\S]*?)<\/script>/i;

@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Интерактивный граф модулей и функций</title>
+  <link rel="stylesheet" href="./interactive-report.css">
+  <style>
+      .module-card.active {
+          border-color: #22d3ee;
+          box-shadow: 0 0 20px rgba(34, 211, 238, 0.15);
+          background: #1a2a4a;
+      }
+      .func-item.active {
+          background: #1a2a4a;
+          border-left-color: #22d3ee;
+      }
+      .focus-info.active {
+          display: block;
+      }
+      .controls-bar button.active {
+          background: #60a5fa;
+          color: #0f172a;
+          font-weight: 600;
+      }
+
+      /* Стили для адресной строки */
+      .location-bar {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 10px;
+          background: #0f172a;
+          border-radius: 6px;
+          border: 1px solid #1a2a4a;
+          margin-bottom: 8px;
+          min-height: 34px;
+          transition: all 0.2s ease;
+          position: relative;
+      }
+      .location-bar:hover {
+          border-color: #2a3a5a;
+      }
+      .location-bar.editing {
+          border-color: #22d3ee;
+          box-shadow: 0 0 20px rgba(34, 211, 238, 0.1);
+      }
+      .location-display {
+          flex: 1;
+          font-family: 'Fira Code', Consolas, monospace;
+          font-size: 13px;
+          color: #60a5fa;
+          padding: 4px 8px;
+          cursor: pointer;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          min-width: 0;
+          border-radius: 4px;
+          transition: all 0.2s ease;
+          user-select: none;
+          background: transparent;
+      }
+      .location-display:hover {
+          background: rgba(96, 165, 250, 0.05);
+      }
+      .location-input {
+          flex: 1;
+          font-family: 'Fira Code', Consolas, monospace;
+          font-size: 13px;
+          color: #e2e8f0;
+          background: #0a0a1a;
+          border: 1px solid #22d3ee;
+          border-radius: 4px;
+          padding: 4px 8px;
+          outline: none;
+          display: none;
+          min-width: 0;
+      }
+      .location-input:focus {
+          box-shadow: 0 0 20px rgba(34, 211, 238, 0.1);
+      }
+      .location-nav-btn {
+          background: none;
+          border: none;
+          color: #64748b;
+          cursor: pointer;
+          font-size: 13px;
+          padding: 4px 6px;
+          border-radius: 4px;
+          transition: all 0.2s ease;
+          line-height: 1;
+      }
+      .location-nav-btn:hover:not(:disabled) {
+          color: #60a5fa;
+          background: rgba(96, 165, 250, 0.1);
+      }
+      .location-nav-btn:disabled {
+          opacity: 0.3;
+          cursor: default;
+      }
+      .location-copy-btn,
+      .location-reset-btn {
+          background: none;
+          border: none;
+          color: #64748b;
+          cursor: pointer;
+          font-size: 14px;
+          padding: 4px 6px;
+          border-radius: 4px;
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          line-height: 1;
+      }
+      .location-copy-btn:hover {
+          color: #60a5fa;
+          background: rgba(96, 165, 250, 0.1);
+      }
+      .location-reset-btn:hover {
+          color: #f87171;
+          background: rgba(248, 113, 113, 0.1);
+      }
+      .location-separator {
+          color: #1a2a4a;
+          font-size: 12px;
+          flex-shrink: 0;
+      }
+      .location-icon {
+          font-size: 14px;
+          color: #60a5fa;
+          flex-shrink: 0;
+          opacity: 0.7;
+      }
+  </style>
+</head>
+<body>
+<div class="update-notification" id="updateNotification" role="status" aria-live="polite">
+  🔄 Данные обновлены <span class="count" id="updateCount">0</span>
+</div>
+
+<div class="container">
+  <header class="header" role="banner">
+    <h1>🔀 Интерактивный граф модулей и функций</h1>
+    <div class="stats-line" id="statsLine" role="list" aria-label="Статистика">
+      <span class="stat" role="listitem">📁 <strong id="statModules">__STAT_MODULES__</strong> модулей</span>
+      <span class="stat" role="listitem">ƒ <strong id="statFunctions">__STAT_FUNCTIONS__</strong> функций</span>
+      <span class="stat" role="listitem">📞 <strong id="statCalls">__STAT_CALLS__</strong> вызовов</span>
+      <span class="stat" role="listitem">📤 <strong id="statExported">__STAT_EXPORTED__</strong> экспортировано</span>
+      <span class="stat" role="listitem">⚡ <strong id="statAsync">__STAT_ASYNC__</strong> async</span>
+      <span class="stat" role="listitem">📝 <strong id="statLines">__STAT_LINES__</strong> строк</span>
+      <span class="stat" role="listitem">💾 <strong id="statSize">__STAT_SIZE__</strong> KB</span>
+    </div>
+    <div class="sub" style="margin-top: 8px;">
+      📊 По типам: __TYPES_BY_LANG__ | ⭐ Точка входа: __ENTRY_NAMES__
+    </div>
+    <div class="sub">Сгенерировано: __TIMESTAMP__</div>
+  </header>
+
+  <nav class="controls-bar" id="toolbar" aria-label="Панель управления">
+    <div class="group" role="group" aria-label="Режимы отображения графа">
+      <span class="group-label" id="graphModeLabel">Режим графа:</span>
+      <button class="active" data-mode="all" id="btnGraphAll">🌐 Все</button>
+      <button data-mode="inward" id="btnGraphInward">📥 Входящие</button>
+      <button data-mode="outward" id="btnGraphOutward">📤 Исходящие</button>
+      <button data-mode="both" id="btnGraphBoth">🔁 Оба</button>
+    </div>
+
+    <div class="group" role="group" aria-label="Режимы отображения карточек">
+      <span class="group-label" id="cardModeLabel">Режим карточек:</span>
+      <button data-card-mode="detailed" id="btnCardDetailed">📋 Детально</button>
+      <button data-card-mode="compact" id="btnCardCompact">📦 Компактно</button>
+      <button class="active" data-card-mode="list" id="btnCardList">📄 Список</button>
+    </div>
+
+    <div class="group" role="group" aria-label="Управление фокусом">
+      <span class="group-label" id="focusLabel">Фокус:</span>
+      <button id="btnClearFocus">✕ Очистить</button>
+    </div>
+
+    <!-- 🆕 ГРУППА НАВИГАЦИИ -->
+    <div class="group" role="group" aria-label="Навигация">
+      <span class="group-label" id="navLabel">🧭 Навигация:</span>
+      <button id="btnNavBack" title="Назад (Alt+←)" style="font-size: 14px; opacity: 0.3; cursor: default;">◀</button>
+      <button id="btnNavForward" title="Вперед (Alt+→)" style="font-size: 14px; opacity: 0.3; cursor: default;">▶</button>
+      <button id="btnNavHome" title="Домой (Alt+Home)" style="font-size:14px;">🏠</button>
+    </div>
+
+    <div class="group" role="search" aria-label="Поиск">
+      <label for="searchInput" class="sr-only">Поиск функции или модуля</label>
+      <input class="search-input" id="searchInput" placeholder="🔍 Поиск функции или модуля...">
+    </div>
+
+    <span class="hint">💡 Клик на функцию → детали | Клик на модуль → фокус</span>
+  </nav>
+
+  <!-- 🆕 АДРЕСНАЯ СТРОКА (динамически вставляется через LocationBar) -->
+  <div id="locationBarContainer"></div>
+
+  <nav class="breadcrumbs-container" id="breadcrumbsContainer" aria-label="Навигационная цепочка">
+    <div class="breadcrumbs-scroll">
+      <div class="breadcrumbs" id="breadcrumbs" role="list"></div>
+    </div>
+  </nav>
+
+  <div class="focus-info" id="focusInfo" role="status" aria-live="polite">
+    <button class="close-btn" id="btnCloseFocus">✕</button>
+    <div class="title" id="focusTitle">🎯 Фокус</div>
+    <div class="details" id="focusDetails"></div>
+  </div>
+
+  <div class="graph-container">
+    <div class="d3-graph-wrapper" id="d3GraphWrapper" role="img" aria-label="Интерактивный граф зависимостей">
+      <div class="graph-tooltip" id="graphTooltip" role="tooltip" aria-hidden="true">
+        <div class="tt-title" id="ttTitle"></div>
+        <div class="tt-info" id="ttInfo"></div>
+        <div class="tt-detail" id="ttDetail"></div>
+      </div>
+    </div>
+    <div class="legend" role="list" aria-label="Легенда графа">
+      <div class="legend-item" role="listitem">
+        <span class="legend-color" style="background:#fbbf24;"></span>
+        <span>⭐ Точка входа</span>
+      </div>
+      <div class="legend-item" role="listitem">
+        <span class="legend-color" style="background:#f87171;"></span>
+        <span>📤 Экспортированная функция</span>
+      </div>
+      <div class="legend-item" role="listitem">
+        <span class="legend-color" style="background:#fbbf24;"></span>
+        <span>Внутренняя функция</span>
+      </div>
+      <div class="legend-item" role="listitem">
+        <span class="legend-color" style="background:#22d3ee;"></span>
+        <span>🎯 Активная (фокус)</span>
+      </div>
+      <div class="legend-item" role="listitem">
+        <span class="legend-color" style="background:#f59e0b; width:30px; height:3px; display:inline-block;"></span>
+        <span>Вызов функции</span>
+      </div>
+      <div class="legend-item" role="listitem">
+        <span class="legend-color" style="background:#3b82f6; width:30px; height:3px; border-style:dashed; display:inline-block;"></span>
+        <span>Кем вызвана</span>
+      </div>
+      <div class="legend-item" role="listitem">
+        <span class="legend-color" style="background:#3b82f6; width:30px; height:3px; display:inline-block;"></span>
+        <span>Импорт модуля</span>
+      </div>
+      <div class="legend-item" role="listitem">
+        <span class="legend-color" style="background:#f59e0b; width:30px; height:3px; display:inline-block;"></span>
+        <span>Обратная связь</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="modulesContainer">
+    <h2 style="margin: 20px 0 12px; color:#60a5fa; font-size:18px;">📁 Модули и функции</h2>
+    <div class="modules-grid" id="modulesGrid" role="list" aria-label="Список модулей"></div>
+  </div>
+
+  <div class="detail-panel" id="detailPanel" role="dialog" aria-label="Детали функции" aria-modal="true">
+    <div class="dp-header">
+      <div class="dp-title" id="dpTitle">Функция</div>
+      <button class="dp-close" id="btnCloseDetail">✕</button>
+    </div>
+    <div id="dpContent"></div>
+  </div>
+
+  <footer class="footer" role="contentinfo">
+    <p>Сгенерировано AST Analyzer v3.0.0 | Интерактивный граф на D3.js</p>
+  </footer>
+</div>
+
+<!-- ============================================================ -->
+<!-- ✅ IMPORTS                                                    -->
+<!-- ============================================================ -->
+
+<script type="importmap">
+  {
+    "imports": {
+      "d3": "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js",
+      "./modules/AppInit.js": "./modules/AppInit.js",
+      "./modules/Router.js": "./modules/Router.js",
+      "./modules/LocationBar.js": "./modules/LocationBar.js"
+    }
+  }
+</script>
+
+<!-- ✅ ОСНОВНОЙ МОДУЛЬ -->
+<script type="module">
+  import { App } from './modules/AppInit.js';
+  import './interactive-report.js';
+
+  console.log('🚀 Template загружен, использует AppInit.js');
+  console.log('📌 Используйте: App.ready() для ожидания загрузки');
+  console.log('📌 Или: App.getAPI() для синхронного доступа');
+
+  // ✅ ИСПОЛЬЗУЕМ App.ready() ДЛЯ ОЖИДАНИЯ
+  App.ready(5000, 100)
+    .then((result) => {
+      if (result.ready) {
+        console.log('✅ Приложение готово через AppInit');
+        setupTemplateEventListeners(result.api);
+      } else {
+        console.warn('⚠️ Приложение не готово, использую fallback');
+        setupTemplateEventListeners(result.api);
+      }
+    })
+    .catch((error) => {
+      console.error('❌ Ошибка инициализации:', error);
+    });
+
+  // ✅ НАСТРОЙКА СОБЫТИЙ ДЛЯ ШАБЛОНА
+  function setupTemplateEventListeners(api) {
+    console.log('🎯 Настройка обработчиков событий шаблона...');
+
+    // ✅ БЕЗОПАСНАЯ ОБЕРТКА
+    function safeClick(action, ...args) {
+      return function(e) {
+        e?.stopPropagation?.();
+        if (api && typeof api[action] === 'function') {
+          return api[action](...args);
+        }
+        console.warn(`⚠️ Метод ${action} не доступен`);
+      };
+    }
+
+    // Кнопки режимов графа
+    document.getElementById('btnGraphAll')?.addEventListener('click', () => {
+      if (api?.setGraphMode) api.setGraphMode('all');
+      updateActiveButtons('graph', 'all');
+    });
+    document.getElementById('btnGraphInward')?.addEventListener('click', () => {
+      if (api?.setGraphMode) api.setGraphMode('inward');
+      updateActiveButtons('graph', 'inward');
+    });
+    document.getElementById('btnGraphOutward')?.addEventListener('click', () => {
+      if (api?.setGraphMode) api.setGraphMode('outward');
+      updateActiveButtons('graph', 'outward');
+    });
+    document.getElementById('btnGraphBoth')?.addEventListener('click', () => {
+      if (api?.setGraphMode) api.setGraphMode('both');
+      updateActiveButtons('graph', 'both');
+    });
+
+    // Кнопки режимов карточек
+    document.getElementById('btnCardDetailed')?.addEventListener('click', () => {
+      if (api?.setCardMode) api.setCardMode('detailed');
+      updateActiveButtons('card', 'detailed');
+    });
+    document.getElementById('btnCardCompact')?.addEventListener('click', () => {
+      if (api?.setCardMode) api.setCardMode('compact');
+      updateActiveButtons('card', 'compact');
+    });
+    document.getElementById('btnCardList')?.addEventListener('click', () => {
+      if (api?.setCardMode) api.setCardMode('list');
+      updateActiveButtons('card', 'list');
+    });
+
+    // 🆕 КНОПКИ НАВИГАЦИИ
+    document.getElementById('btnNavBack')?.addEventListener('click', () => {
+      const router = window[Symbol.for('__AST_ROUTER__')];
+      if (router && router.canGoBack()) {
+        router.goBack();
+      }
+    });
+
+    document.getElementById('btnNavForward')?.addEventListener('click', () => {
+      const router = window[Symbol.for('__AST_ROUTER__')];
+      if (router && router.canGoForward()) {
+        router.goForward();
+      }
+    });
+
+    document.getElementById('btnNavHome')?.addEventListener('click', () => {
+      const router = window[Symbol.for('__AST_ROUTER__')];
+      if (router) {
+        router.navigateToUniverse();
+      }
+      if (api?.clearFocus) api.clearFocus();
+    });
+
+    // Управление фокусом
+    document.getElementById('btnClearFocus')?.addEventListener('click', safeClick('clearFocus'));
+    document.getElementById('btnCloseFocus')?.addEventListener('click', safeClick('clearFocus'));
+    document.getElementById('btnCloseDetail')?.addEventListener('click', safeClick('closeDetail'));
+
+    // Поиск с debounce
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+      let debounceTimeout = null;
+      searchInput.addEventListener('input', function() {
+        clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(() => {
+          if (api?.handleSearch) {
+            api.handleSearch(this.value);
+          }
+        }, 300);
+      });
+
+      // 🆕 Ctrl+L - фокус на адресную строку
+      document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
+          e.preventDefault();
+          const locationBar = window[Symbol.for('__AST_LOCATION_BAR__')];
+          if (locationBar && typeof locationBar._startEditing === 'function') {
+            locationBar._startEditing();
+          }
+        }
+      });
+    }
+
+    function updateActiveButtons(type, mode) {
+      if (type === 'graph') {
+        ['btnGraphAll', 'btnGraphInward', 'btnGraphOutward', 'btnGraphBoth'].forEach(id => {
+          const btn = document.getElementById(id);
+          if (btn) {
+            btn.classList.toggle('active', btn.dataset.mode === mode);
+          }
+        });
+      } else if (type === 'card') {
+        ['btnCardDetailed', 'btnCardCompact', 'btnCardList'].forEach(id => {
+          const btn = document.getElementById(id);
+          if (btn) {
+            btn.classList.toggle('active', btn.dataset.cardMode === mode);
+          }
+        });
+      }
+    }
+
+    // Подписка на изменения режимов
+    const SYM_MODE_CHANGE = Symbol.for('__AST_MODE_CHANGE__');
+    window[SYM_MODE_CHANGE] = function(type, mode) {
+      updateActiveButtons(type, mode);
+    };
+
+    // 🆕 Обновление состояния кнопок навигации при изменении маршрута
+    const SYM_ROUTE_CHANGE = Symbol.for('__AST_ROUTE_CHANGE__');
+    window[SYM_ROUTE_CHANGE] = function(route) {
+      const router = window[Symbol.for('__AST_ROUTER__')];
+      if (!router) return;
+
+      const backBtn = document.getElementById('btnNavBack');
+      const forwardBtn = document.getElementById('btnNavForward');
+
+      if (backBtn) {
+        backBtn.style.opacity = router.canGoBack() ? '1' : '0.3';
+        backBtn.style.cursor = router.canGoBack() ? 'pointer' : 'default';
+      }
+      if (forwardBtn) {
+        forwardBtn.style.opacity = router.canGoForward() ? '1' : '0.3';
+        forwardBtn.style.cursor = router.canGoForward() ? 'pointer' : 'default';
+      }
+    };
+
+    console.log('✅ Обработчики событий шаблона настроены!');
+  }
+
+  // 🆕 ДОПОЛНИТЕЛЬНАЯ СИНХРОНИЗАЦИЯ ДЛЯ АДРЕСНОЙ СТРОКИ
+  (function syncLocationBar() {
+    const checkInterval = setInterval(() => {
+      const app = window[Symbol.for('__AST_APP__')];
+      const router = window[Symbol.for('__AST_ROUTER__')];
+      const locationBar = window[Symbol.for('__AST_LOCATION_BAR__')];
+
+      if (app && router && locationBar) {
+        clearInterval(checkInterval);
+        console.log('📍 LocationBar sync enabled');
+
+        // Принудительное обновление при клике на модуль
+        const originalFocusModule = app.focusModule;
+        app.focusModule = function(modulePath) {
+          originalFocusModule.call(this, modulePath);
+          router.navigateToModule(modulePath);
+          const route = router.getCurrentRoute();
+          locationBar._updateDisplay(route);
+          locationBar._updateInput(route);
+          locationBar._updateNavButtons();
+        };
+
+        // Принудительное обновление при клике на функцию
+        const originalFocusFunction = app.focusFunction;
+        app.focusFunction = function(funcName, modulePath) {
+          originalFocusFunction.call(this, funcName, modulePath);
+          router.navigateToFunction(modulePath, funcName);
+          const route = router.getCurrentRoute();
+          locationBar._updateDisplay(route);
+          locationBar._updateInput(route);
+          locationBar._updateNavButtons();
+        };
+
+        // Принудительное обновление при очистке фокуса
+        const originalClearFocus = app.clearFocus;
+        app.clearFocus = function() {
+          originalClearFocus.call(this);
+          router.navigateToUniverse();
+          const route = router.getCurrentRoute();
+          locationBar._updateDisplay(route);
+          locationBar._updateInput(route);
+          locationBar._updateNavButtons();
+        };
+
+        // Принудительное обновление при поиске
+        const originalHandleSearch = app.handleSearch;
+        app.handleSearch = function(query) {
+          originalHandleSearch.call(this, query);
+          if (query && query.trim()) {
+            router.navigateToSearch(query);
+          } else {
+            router.navigateToUniverse();
+          }
+          const route = router.getCurrentRoute();
+          locationBar._updateDisplay(route);
+          locationBar._updateInput(route);
+          locationBar._updateNavButtons();
+        };
+
+        console.log('✅ LocationBar sync complete');
+      }
+    }, 100);
+
+    setTimeout(() => clearInterval(checkInterval), 10000);
+  })();
+</script>
+
+<!-- Поддержка перезагрузки при разработке -->
+<script>
+  (function() {
+    var ws = new WebSocket('ws://' + window.location.host +
+      '/jb-server-page?reloadMode=RELOAD_ON_SAVE&'+
+      'referrer=' + encodeURIComponent(window.location.pathname));
+    ws.onmessage = function (msg) {
+      if (msg.data === 'reload') {
+        window.location.reload();
+      }
+      if (msg.data.startsWith('update-css ')) {
+        var messageId = msg.data.substring(11);
+        var links = document.getElementsByTagName('link');
+        for (var i = 0; i < links.length; i++) {
+          var link = links[i];
+          if (link.rel !== 'stylesheet') continue;
+          var clonedLink = link.cloneNode(true);
+          var newHref = link.href.replace(/(&|\?)jbUpdateLinksId=\d+/, "$1jbUpdateLinksId=" + messageId);
+          if (newHref !== link.href) {
+            clonedLink.href = newHref;
+          }
+          else {
+            var indexOfQuest = newHref.indexOf('?');
+            if (indexOfQuest >= 0) {
+              clonedLink.href = newHref.substring(0, indexOfQuest + 1) + 'jbUpdateLinksId=' + messageId + '&' +
+                newHref.substring(indexOfQuest + 1);
+            }
+            else {
+              clonedLink.href += '?' + 'jbUpdateLinksId=' + messageId;
+            }
+          }
+          link.replaceWith(clonedLink);
+        }
+      }
+    };
+  })();
+</script>
+</body>
+</html>

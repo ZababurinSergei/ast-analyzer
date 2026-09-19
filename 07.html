@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>⚜ Архимаг Библиотеки — RPG по AST-дереву</title>
+  <style>
+      :root{
+          --bg:#080a0f; --bg2:#0e131b; --panel:#131b26; --panel2:#1a2432; --line:#26313f;
+          --gold:#e2b857; --gold-dim:#8a6f2e; --blue:#5aa9e6; --green:#57c785; --red:#e0605c;
+          --purple:#a97cf0; --text:#cfd8e3; --dim:#7d8b9c;
+          --mono: ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+      }
+      *{box-sizing:border-box}
+      html,body{height:100%}
+      body{
+          margin:0;color:var(--text);
+          font-family:"Segoe UI",system-ui,-apple-system,sans-serif;
+          background:
+                  radial-gradient(1200px 600px at 50% -10%, #1b2a3d 0%, transparent 60%),
+                  radial-gradient(800px 500px at 10% 110%, #1a1526 0%, transparent 55%),
+                  var(--bg);
+          min-height:100vh;
+      }
+      button{font-family:inherit;cursor:pointer}
+      .hidden{display:none !important}
+      ::-webkit-scrollbar{width:9px;height:9px}
+      ::-webkit-scrollbar-track{background:#0b0f15}
+      ::-webkit-scrollbar-thumb{background:#2b3848;border-radius:5px}
+      ::-webkit-scrollbar-thumb:hover{background:#3b4c61}
+
+      /* ---------- screens ---------- */
+      .screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+
+      /* ---------- upload ---------- */
+      .upload-card{
+          width:min(720px,100%);background:linear-gradient(180deg,#131b26,#0f151d);
+          border:1px solid var(--line);border-radius:18px;padding:36px;
+          box-shadow:0 30px 80px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.04);
+      }
+      h1{font-size:34px;margin:0 0 6px;letter-spacing:.5px;
+          background:linear-gradient(180deg,#ffe9a8,#c99a2e);-webkit-background-clip:text;background-clip:text;color:transparent;
+          font-family:Georgia,"Times New Roman",serif}
+      .sub{color:var(--dim);margin:0 0 26px;font-size:14px}
+      .drop{
+          border:2px dashed #2e3d51;border-radius:14px;padding:34px 20px;text-align:center;
+          transition:.18s;background:#0c1219;
+      }
+      .drop.over{border-color:var(--gold);background:#161d27;box-shadow:0 0 0 4px rgba(226,184,87,.08)}
+      .drop-icon{font-size:44px;margin-bottom:10px;filter:drop-shadow(0 0 14px rgba(226,184,87,.35))}
+      .drop .dim{color:var(--dim);font-size:12px;margin:10px 0}
+      .btn{
+          display:inline-block;background:linear-gradient(180deg,#2a3648,#1d2735);
+          border:1px solid #38495e;color:var(--text);padding:9px 18px;border-radius:9px;
+          font-size:13px;transition:.15s;user-select:none;
+      }
+      .btn:hover{background:linear-gradient(180deg,#33445a,#233043);border-color:#4d637d}
+      .btn:active{transform:translateY(1px)}
+      .btn.gold{background:linear-gradient(180deg,#e5c063,#b8892a);border-color:#f0d38a;color:#221a05;font-weight:700}
+      .btn.gold:hover{background:linear-gradient(180deg,#f3d074,#c9992f)}
+      .btn.sm{padding:5px 11px;font-size:12px;border-radius:7px}
+      .btn:disabled{opacity:.4;cursor:not-allowed}
+      details{margin-top:20px}
+      summary{cursor:pointer;color:var(--dim);font-size:13px;padding:6px 0}
+      textarea{
+          width:100%;height:120px;background:#0b1017;border:1px solid var(--line);border-radius:9px;
+          color:var(--text);font-family:var(--mono);font-size:11px;padding:10px;resize:vertical;margin-top:8px;
+      }
+      .msg{margin-top:14px;font-size:13px;min-height:18px}
+      .msg.err{color:var(--red)} .msg.ok{color:var(--green)}
+
+      /* ---------- hero create ---------- */
+      .hero-card{width:min(760px,100%);background:var(--panel);border:1px solid var(--line);
+          border-radius:18px;padding:34px;box-shadow:0 30px 80px rgba(0,0,0,.6)}
+      .hero-card h2{margin:0 0 20px;font-family:Georgia,serif;color:var(--gold);font-weight:600}
+      input[type=text]{
+          width:100%;background:#0b1017;border:1px solid var(--line);border-radius:9px;
+          color:var(--text);padding:11px 13px;font-size:15px;outline:none;margin-bottom:18px;
+      }
+      input[type=text]:focus{border-color:var(--gold-dim)}
+      .classes{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px}
+      .cls{
+          background:#0f1620;border:1px solid var(--line);border-radius:12px;padding:16px 12px;text-align:center;
+          color:var(--text);transition:.16s;
+      }
+      .cls:hover{border-color:#3d5069;background:#131c28;transform:translateY(-2px)}
+      .cls.sel{border-color:var(--gold);background:#1a1d16;box-shadow:0 0 0 3px rgba(226,184,87,.12)}
+      .cls .ic{font-size:30px;display:block;margin-bottom:8px}
+      .cls .nm{font-weight:700;font-size:14px;margin-bottom:5px}
+      .cls .ds{font-size:11px;color:var(--dim);line-height:1.45}
+
+      /* ---------- game layout ---------- */
+      #scr-game{display:block;min-height:100vh;padding:0;align-items:stretch}
+      .topbar{
+          display:flex;align-items:center;gap:18px;padding:10px 18px;
+          background:linear-gradient(180deg,#121a24,#0d131b);
+          border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20;
+          flex-wrap:wrap;
+      }
+      .hero-mini{display:flex;align-items:center;gap:10px;font-size:13px}
+      .hero-mini .av{font-size:22px}
+      .hero-mini .nm{font-weight:700;color:var(--gold)}
+      .bar{width:110px;height:7px;background:#0a0e14;border:1px solid #222c3a;border-radius:4px;overflow:hidden}
+      .bar > i{display:block;height:100%;transition:width .3s}
+      .bar.xp > i{background:linear-gradient(90deg,#c99a2e,#f3d074)}
+      .bar.mp > i{background:linear-gradient(90deg,#2f6ea8,#5aa9e6)}
+      .bar.hp > i{background:linear-gradient(90deg,#8a2b2b,#e0605c)}
+      .stat{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim)}
+      .stat b{color:var(--text);font-variant-numeric:tabular-nums}
+      .spacer{flex:1}
+      .chip{background:#0f1620;border:1px solid var(--line);border-radius:20px;padding:4px 12px;font-size:12px;color:var(--dim)}
+      .chip b{color:var(--gold)}
+
+      .layout{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:16px;padding:16px;align-items:start}
+      @media(max-width:1000px){.layout{grid-template-columns:1fr}}
+
+      .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+      .panel-h{
+          padding:12px 16px;border-bottom:1px solid var(--line);font-size:12px;letter-spacing:1.4px;
+          text-transform:uppercase;color:var(--dim);display:flex;justify-content:space-between;align-items:center;
+          background:#101823;
+      }
+      .panel-b{padding:14px 16px;max-height:calc(100vh - 210px);overflow:auto}
+
+      .loc-title{font-family:Georgia,serif;font-size:24px;color:var(--gold);margin:0 0 3px}
+      .loc-raw{font-family:var(--mono);font-size:11px;color:var(--dim);margin-bottom:12px}
+      .loc-stats{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+      .tagline{font-size:12px;color:var(--dim);margin-bottom:14px;line-height:1.5;font-style:italic}
+
+      .files{display:flex;flex-direction:column;gap:8px}
+      .file{background:#0f1620;border:1px solid var(--line);border-radius:10px;overflow:hidden;transition:.15s}
+      .file:hover{border-color:#33445a}
+      .file-h{display:flex;align-items:center;gap:10px;padding:9px 12px;font-size:13px;cursor:pointer}
+      .file-h .ic{font-size:15px}
+      .file-h .p{font-family:var(--mono);font-size:11.5px;color:#9fb1c6;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .file-h .meta{font-size:11px;color:var(--dim);white-space:nowrap}
+      .file.studied{border-color:#2b3a4c;background:#0d141c}
+      .file-b{border-top:1px solid var(--line);padding:10px 12px;display:flex;flex-direction:column;gap:6px;background:#0a1017}
+
+      .item{display:flex;align-items:center;gap:9px;font-size:12.5px;padding:5px 8px;border-radius:7px;background:#101823;border:1px solid #1c2634}
+      .item .nm{flex:1;font-family:var(--mono);font-size:11.5px;color:#bfd0e2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .item .ln{font-size:10px;color:#556475}
+      .item.fn .nm{color:#8fd0ff}
+      .item.cn .nm{color:#e8c47a}
+      .item.ty .nm{color:#c4a6f5}
+      .item.done{opacity:.5}
+      .item.done .nm{text-decoration:line-through}
+
+      .paths{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+      .path{
+          background:#101823;border:1px solid #26313f;border-radius:20px;padding:6px 14px;font-size:12px;
+          color:var(--text);transition:.15s;
+      }
+      .path:hover{border-color:var(--gold);background:#1a2030;color:#fff}
+      .path .go{color:var(--dim);font-size:11px;margin-left:6px}
+
+      .log{font-size:12.5px;line-height:1.6;display:flex;flex-direction:column;gap:5px}
+      .log .l{padding:5px 8px;border-radius:6px;border-left:2px solid #2b3848;background:#0e151d}
+      .log .l.good{border-color:var(--green);color:#c9f0d8}
+      .log .l.bad{border-color:var(--red);color:#f2c7c6}
+      .log .l.epic{border-color:var(--gold);color:#f5e3b0;background:#171a12}
+      .log .l.sys{border-color:var(--blue);color:#bcd9f2}
+      .log .l .t{color:#556475;font-size:10.5px;margin-right:6px;font-family:var(--mono)}
+
+      .actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+
+      /* ---------- modal ---------- */
+      .overlay{
+          position:fixed;inset:0;background:rgba(4,6,10,.82);backdrop-filter:blur(3px);
+          display:flex;align-items:center;justify-content:center;z-index:100;padding:20px;
+      }
+      .modal{
+          width:min(660px,100%);max-height:88vh;overflow:auto;background:linear-gradient(180deg,#151d28,#0f151d);
+          border:1px solid #33445a;border-radius:16px;box-shadow:0 30px 90px rgba(0,0,0,.8);
+      }
+      .modal-h{padding:16px 20px;border-bottom:1px solid var(--line);font-family:Georgia,serif;
+          font-size:19px;color:var(--gold);display:flex;justify-content:space-between;align-items:center}
+      .modal-b{padding:18px 20px}
+      .modal-f{padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:9px}
+      .x{background:none;border:none;color:var(--dim);font-size:20px;line-height:1}
+      .x:hover{color:#fff}
+
+      .enemy{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+      .enemy .emo{font-size:42px;filter:drop-shadow(0 0 12px rgba(224,96,92,.5))}
+      .enemy .info{flex:1}
+      .enemy .nme{font-weight:700;color:#f0a5a3;margin-bottom:5px}
+
+      .spell-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:10px}
+      .spell{background:#111a25;border:1px solid #2b3848;border-radius:9px;padding:9px 10px;font-size:12px;text-align:left;color:var(--text);transition:.15s}
+      .spell:hover{border-color:var(--blue);background:#152030}
+      .spell:disabled{opacity:.35;cursor:not-allowed}
+      .spell .sn{font-family:var(--mono);font-size:11px;color:#8fd0ff;display:block;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .spell .sc{font-size:10.5px;color:var(--dim)}
+
+      .grid-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:7px}
+      .grid-list .item{margin:0}
+
+      .ach{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:9px;background:#101823;border:1px solid #1c2634;font-size:12.5px}
+      .ach.on{border-color:var(--gold-dim);background:#171a12}
+      .ach .ai{font-size:19px}
+      .ach.off{opacity:.42}
+
+      .toast{
+          position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);
+          background:linear-gradient(180deg,#1d2735,#141c26);border:1px solid var(--gold-dim);
+          color:#f5e3b0;padding:11px 22px;border-radius:11px;font-size:13.5px;z-index:200;
+          opacity:0;pointer-events:none;transition:.3s;box-shadow:0 10px 40px rgba(0,0,0,.6)
+      }
+      .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  </style>
+</head>
+<body>
+
+<!-- ================= UPLOAD ================= -->
+<section class="screen" id="scr-upload">
+  <div class="upload-card">
+    <h1>⚜ Архимаг Библиотеки</h1>
+    <p class="sub">Ролевая игра, сотворённая из AST-дерева вашего проекта</p>
+
+    <div class="drop" id="drop">
+      <div class="drop-icon">📜</div>
+      <div>Перетащите сюда <b>JSON-файл</b> анализатора</div>
+      <div class="dim">— или —</div>
+      <label class="btn gold" for="file">Выбрать файл</label>
+      <input type="file" id="file" accept=".json,.txt,application/json" hidden>
+    </div>
+
+    <details>
+      <summary>▸ Вставить JSON вручную</summary>
+      <textarea id="paste" placeholder='{"v":"9.0.0","ts":"...","mi":{...}}'></textarea>
+      <button class="btn" id="paste-btn" style="margin-top:8px">Загрузить из текста</button>
+    </details>
+
+    <div class="msg" id="upload-msg"></div>
+  </div>
+</section>
+
+<!-- ================= HERO ================= -->
+<section class="screen hidden" id="scr-hero">
+  <div class="hero-card">
+    <h2>Кто ты, странник?</h2>
+    <input type="text" id="hero-name" placeholder="Имя героя" value="Архимаг" maxlength="22">
+    <div class="classes" id="classes">
+      <button class="cls sel" data-cls="architect">
+        <span class="ic">🧙</span>
+        <div class="nm">Архитектор</div>
+        <div class="ds">+50% опыта за изучение файлов. Видит структуру насквозь.</div>
+      </button>
+      <button class="cls" data-cls="refactorer">
+        <span class="ic">⚔️</span>
+        <div class="nm">Рефакторщик</div>
+        <div class="ds">+50% урона в битвах с багами. Клинок чистого кода.</div>
+      </button>
+      <button class="cls" data-cls="tester">
+        <span class="ic">🎭</span>
+        <div class="nm">Тестировщик</div>
+        <div class="ds">+50% шанс найти артефакт-константу при обыске.</div>
+      </button>
+    </div>
+    <button class="btn gold" id="start-btn" style="width:100%;padding:13px;font-size:15px">Войти в Библиотеку →</button>
+    <div class="msg" id="hero-msg" style="text-align:center"></div>
+  </div>
+</section>
+
+<!-- ================= GAME ================= -->
+<section class="screen hidden" id="scr-game">
+  <div class="topbar">
+    <div class="hero-mini">
+      <span class="av" id="tb-av">🧙</span>
+      <span class="nm" id="tb-name">Архимаг</span>
+      <span class="chip">Ур. <b id="tb-lvl">1</b></span>
+    </div>
+    <div class="stat"><span>XP</span><div class="bar xp"><i id="tb-xp" style="width:0%"></i></div><b id="tb-xpt">0/80</b></div>
+    <div class="stat"><span>💧</span><div class="bar mp"><i id="tb-mp" style="width:100%"></i></div><b id="tb-mpt">60/60</b></div>
+    <div class="stat"><span>❤</span><div class="bar hp"><i id="tb-hp" style="width:100%"></i></div><b id="tb-hpt">60/60</b></div>
+    <div class="spacer"></div>
+    <button class="btn sm" id="btn-spells">📖 Гримуар <b id="spell-count">0</b></button>
+    <button class="btn sm" id="btn-artifacts">💎 Реликвии <b id="art-count">0</b></button>
+    <button class="btn sm" id="btn-ach">🏆 <b id="ach-count">0/6</b></button>
+    <button class="btn sm" id="btn-reset">↺ Новый мир</button>
+  </div>
+
+  <div class="layout">
+    <div class="panel">
+      <div class="panel-h"><span>🗺 Локация</span><span id="day-chip" class="chip">День 1</span></div>
+      <div class="panel-b" id="loc"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><span>📖 Хроника</span><span style="font-size:11px">журнал странствий</span></div>
+      <div class="panel-b"><div class="log" id="log"></div></div>
+    </div>
+  </div>
+</section>
+
+<div class="toast" id="toast"></div>
+<div id="modal-root"></div>
+
+<script>
+  "use strict";
+  /* ============================================================
+     АРХИМАГ БИБЛИОТЕКИ — RPG по AST-дереву
+     ============================================================ */
+
+  const $  = s => document.querySelector(s);
+  const $$ = s => Array.from(document.querySelectorAll(s));
+  const rnd  = n => Math.floor(Math.random() * n);
+  const pick = a => a[rnd(a.length)];
+  const esc  = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+
+  /* ---------- словарь фэнтезийных имён модулей ---------- */
+  const LORE = {
+    src:"Исток", ui:"Град Интерфейсов", icons:"Галерея Икон", composables:"Кузница Композиций",
+    AiButton:"Кнопочный Двор", AiDialog:"Зал Диалогов", AiTabs:"Ярус Вкладок", common:"Общая Площадь",
+    AiDataTable:"Великая Таблица", styles:"Мастерская Стилей", filter:"Фильтрующая Чаща",
+    sort:"Сортировочный Хребет", toolbar:"Панель-Бастион", AiContextMenu:"Меню Контекста",
+    locale:"Башня Языков", AiToolbar:"Верстак Инструментов", settings:"Хранилище Настроек",
+    AiFooter:"Подвал", Scrollbar:"Лента Прокрутки", interfaces:"Врата Контрактов",
+    defaults:"Фундамент", AiDropDownTrigger:"Курок", search:"Поисковый Родник",
+    AiCell:"Келья Ячейки", HeaderCell:"Шапка Столбца", SortButton:"Кнопка Порядка",
+    colors:"Палитра", fonts:"Шрифтовая Роща", AiModal:"Модальный Чертог", AiField:"Поле",
+    filterOperations:"Ритуалы Фильтрации", FilterSelect:"Избиратель", FilterInput:"Уста Ввода",
+    utils:"Утилитарная Кузня", FilterCell:"Ячейка Фильтра", DateFilter:"Хронофильтр",
+    DetailWrapper:"Обёртка Деталей", SelectedOption:"Избранное", AiHeaderCell:"Заглавная Ячейка",
+    SelectOption:"Опция Выбора", AiPopoverEditor:"Всплывающий Редактор", AiModalEditor:"Модальный Редактор"
+  };
+  const lore = raw => LORE[raw] || raw;
+
+  const ENEMIES = [
+    {n:"NullPointerException", e:"👻", hp:1.0, atk:1.0},
+    {n:"Undefined is not a function", e:"🕷", hp:1.1, atk:0.9},
+    {n:"Memory Leak", e:"🫧", hp:1.3, atk:0.8},
+    {n:"Race Condition", e:"⚡", hp:0.8, atk:1.4},
+    {n:"CSS Specificity War", e:"🎭", hp:1.0, atk:1.1},
+    {n:"Circular Dependency", e:"🌀", hp:1.4, atk:0.9},
+    {n:"Hydration Mismatch", e:"💧", hp:0.9, atk:1.2},
+    {n:"Stack Overflow", e:"🗻", hp:1.5, atk:1.3},
+    {n:"Off-by-one", e:"🔢", hp:0.7, atk:1.5},
+    {n:"Deprecated API", e:"🪦", hp:1.1, atk:1.0}
+  ];
+
+  const ACHIEVEMENTS = [
+    {id:"scout",   ic:"🧭", n:"Первопроходец",  d:"Посетить 10 локаций",        f:g=>g.visited.size>=10},
+    {id:"scholar", ic:"📚", n:"Книжник",        d:"Изучить 40 файлов",          f:g=>g.studied.size>=40},
+    {id:"mage",    ic:"✨", n:"Магистр",        d:"Выучить 60 заклинаний",      f:g=>g.spells.length>=60},
+    {id:"collect", ic:"💎", n:"Коллекционер",   d:"Собрать 80 реликвий",        f:g=>g.artifacts.length>=80},
+    {id:"slayer",  ic:"⚔️", n:"Гроза Багов",    d:"Победить 15 багов",          f:g=>g.kills>=15},
+    {id:"archmage",ic:"👑", n:"Архимаг",        d:"Достичь 12 уровня",          f:g=>g.level>=12}
+  ];
+
+  /* ============================================================
+     МИР
+     ============================================================ */
+  let W = null;   // мир
+  let G = null;   // герой
+
+  function buildWorld(data){
+    const legend = data.legend || {};
+    const dict   = legend.stringDict || [];
+    const values = legend.valueDict   || [];
+
+    const modules = {}, files = {};
+    const funcs = [], consts = [], types = [];
+    const byId = id => dict[id] ?? '';
+
+    /* --- модули --- */
+    Object.entries(data.mi || {}).forEach(([mid, m]) => {
+      modules[mid] = {
+        id: mid, raw: m.n || mid, name: lore(m.n || mid),
+        fileIds: (m.f || []).slice(),
+        funcs: [], consts: [], types: [],
+        discovered: false, links: new Set()
+      };
+    });
+
+    /* --- файлы --- */
+    Object.entries(data.fl || {}).forEach(([fid, f]) => {
+      const path = f.p || fid;
+      files[fid] = {
+        id: fid, path, short: path.split('/').pop(),
+        moduleId: f.m, funcs: [], consts: [], types: [], studied: false
+      };
+    });
+
+    /* --- функции (заклинания) --- */
+    (data.fns || []).forEach(([id, name, mid, fid, line, flags, pIdx]) => {
+      const fn = { id, name, moduleId: mid, fileId: fid, line: line||0,
+        arity: (pIdx||[]).length, learned: false };
+      funcs.push(fn);
+      files[fid]  && files[fid].funcs.push(fn);
+      modules[mid] && modules[mid].funcs.push(fn);
+    });
+
+    /* --- константы (реликвии) --- */
+    (data.cn || []).forEach(([id, name, mid, fid, line, flags, vIdx]) => {
+      const raw = (vIdx >= 0 && values[vIdx] != null) ? String(values[vIdx]) : null;
+      const c = { id, name, moduleId: mid, fileId: fid, line: line||0,
+        value: raw, taken: false };
+      consts.push(c);
+      files[fid]  && files[fid].consts.push(c);
+      modules[mid] && modules[mid].consts.push(c);
+    });
+
+    /* --- типы --- */
+    (data.ty || []).forEach(([kind, nameIdx, mid, fid, line]) => {
+      const nm = byId(nameIdx) || '(тип)';
+      const t = { kind, name: nm, moduleId: mid, fileId: fid, line: line||0 };
+      types.push(t);
+      files[fid]  && files[fid].types.push(t);
+      modules[mid] && modules[mid].types.push(t);
+    });
+
+    /* --- дороги между модулями (по импортам) --- */
+    const rawImports = [];
+    ((data.gr && data.gr.i) || []).forEach(imp => {
+      const fromFileId = 'f' + imp[0];
+      const toId       = byId(imp[1]);            // "f15" | "external:naive-ui"
+      const source     = byId(imp[2]);
+      const imported   = byId(imp[3]);
+      const isExternal = imp[7] === 1;
+      rawImports.push({ fromFileId, toId, source, imported, isExternal });
+
+      if (!/^f\d+$/.test(toId)) return;
+      const a = files[fromFileId], b = files[toId];
+      if (!a || !b || a.moduleId === b.moduleId) return;
+      modules[a.moduleId]?.links.add(b.moduleId);
+      modules[b.moduleId]?.links.add(a.moduleId);
+    });
+
+    /* --- стартовая локация --- */
+    let start = data.r && modules[data.r] ? data.r : Object.keys(modules)[0];
+
+    /* --- связи «сирот»: соединяем всё, что не связано --- */
+    const ids = Object.keys(modules);
+    ids.forEach(id => {
+      if (modules[id].links.size === 0) {
+        // ищем ближайший по алфавиту
+        const other = ids.find(x => x !== id && modules[x].links.size > 0) || ids[0];
+        if (other && other !== id){
+          modules[id].links.add(other);
+          modules[other].links.add(id);
+        }
+      }
+    });
+
+    W = { modules, files, funcs, consts, types, rawImports, start,
+      stats: data.st || {}, v: data.v || '?', ts: data.ts || '' };
+
+    return W;
+  }
+
+  /* ============================================================
+     ГЕРОЙ
+     ============================================================ */
+  function newHero(name, cls){
+    const base = {
+      name: name || 'Архимаг',
+      cls,
+      level: 1, xp: 0, xpNext: 80,
+      hp: 60, maxHp: 60,
+      mp: 60, maxMp: 60,
+      spells: [],       // id функций
+      artifacts: [],    // id констант
+      visited: new Set(),
+      studied: new Set(),
+      current: W.start,
+      day: 1,
+      kills: 0,
+      log: [],
+      ach: new Set()
+    };
+    return base;
+  }
+
+  const clsMeta = {
+    architect:  {ic:'🧙', nm:'Архитектор'},
+    refactorer: {ic:'⚔️', nm:'Рефакторщик'},
+    tester:     {ic:'🎭', nm:'Тестировщик'}
+  };
+
+  /* ============================================================
+     ЛОГ И ТОСТЫ
+     ============================================================ */
+  function log(text, kind){
+    if (!G) return;
+    G.log.unshift({t: `Д${G.day}`, text, kind: kind||''});
+    if (G.log.length > 220) G.log.pop();
+    renderLog();
+  }
+  function toast(text){
+    const el = $('#toast');
+    el.textContent = text;
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove('show'), 2200);
+  }
+
+  /* ============================================================
+     ОПЫТ / УРОВЕНЬ
+     ============================================================ */
+  function grantXp(amount, reason){
+    const mult = (G.cls === 'architect' && reason === 'study') ? 1.5 : 1;
+    const total = Math.round(amount * mult);
+    G.xp += total;
+    let ups = 0;
+    while (G.xp >= G.xpNext){
+      G.xp -= G.xpNext;
+      G.level++;
+      G.xpNext = Math.floor(80 * Math.pow(G.level, 1.5));
+      G.maxHp += 14; G.maxMp += 12;
+      G.hp = G.maxHp; G.mp = G.maxMp;
+      ups++;
+    }
+    if (ups > 0){
+      log(`✨ УРОВЕНЬ ${G.level}! Тело и разум крепнут. (HP+${14*ups}, MP+${12*ups})`, 'epic');
+      toast(`✨ Уровень ${G.level}!`);
+    }
+    renderTop();
+  }
+
+  function spendMp(n){
+    if (G.mp < n) { toast('💧 Недостаточно маны'); return false; }
+    G.mp -= n; renderTop(); return true;
+  }
+
+  function hasAch(id){ return G.ach.has(id); }
+  function checkAch(){
+    ACHIEVEMENTS.forEach(a => {
+      if (!G.ach.has(a.id) && a.f(G)){
+        G.ach.add(a.id);
+        log(`🏆 ДОСТИЖЕНИЕ: «${a.n}» — ${a.d}`, 'epic');
+        toast(`🏆 ${a.n}`);
+        grantXp(40, 'ach');
+      }
+    });
+    const c = $('#ach-count');
+    if (c) c.textContent = `${G.ach.size}/${ACHIEVEMENTS.length}`;
+  }
+
+  /* ============================================================
+     РЕНДЕР
+     ============================================================ */
+  function renderTop(){
+    if (!G) return;
+    $('#tb-av').textContent   = clsMeta[G.cls]?.ic || '🧙';
+    $('#tb-name').textContent = G.name;
+    $('#tb-lvl').textContent  = G.level;
+    $('#tb-xp').style.width   = clamp(G.xp / G.xpNext * 100, 0, 100) + '%';
+    $('#tb-xpt').textContent  = `${G.xp}/${G.xpNext}`;
+    $('#tb-mp').style.width   = clamp(G.mp / G.maxMp * 100, 0, 100) + '%';
+    $('#tb-mpt').textContent  = `${Math.round(G.mp)}/${G.maxMp}`;
+    $('#tb-hp').style.width   = clamp(G.hp / G.maxHp * 100, 0, 100) + '%';
+    $('#tb-hpt').textContent  = `${Math.round(G.hp)}/${G.maxHp}`;
+    $('#spell-count').textContent = G.spells.length;
+    $('#art-count').textContent   = G.artifacts.length;
+    $('#day-chip').textContent    = `День ${G.day}`;
+  }
+
+  function renderLog(){
+    const el = $('#log');
+    if (!el || !G) return;
+    el.innerHTML = G.log.slice(0, 60).map(l =>
+      `<div class="l ${l.kind}"><span class="t">${l.t}</span>${esc(l.text)}</div>`
+    ).join('');
+  }
+
+  function renderLocation(){
+    const el = $('#loc');
+    if (!el) return;
+    const M = W.modules[G.current];
+    if (!M){ el.innerHTML = '<p>Пустота...</p>'; return; }
+
+    const discoveredFiles = M.fileIds.filter(f => W.files[f]);
+    const studiedCount = discoveredFiles.filter(f => G.studied.has(f)).length;
+
+    let html = `
+    <h2 class="loc-title">${esc(M.name)}</h2>
+    <div class="loc-raw">${esc(M.raw)} · ${M.id}</div>
+    <div class="loc-stats">
+      <span class="chip">📄 файлов: <b>${discoveredFiles.length}</b></span>
+      <span class="chip">⚡ заклинаний: <b>${M.funcs.length}</b></span>
+      <span class="chip">💎 реликвий: <b>${M.consts.length}</b></span>
+      <span class="chip">📐 контрактов: <b>${M.types.length}</b></span>
+      <span class="chip">🔍 изучено: <b>${studiedCount}/${discoveredFiles.length}</b></span>
+    </div>
+    <div class="tagline">${flavour(M)}</div>
+    <div class="files">`;
+
+    discoveredFiles.forEach(fid => {
+      const F = W.files[fid];
+      const studied = G.studied.has(fid);
+      const nFn = F.funcs.length, nCn = F.consts.length, nTy = F.types.length;
+      html += `
+      <div class="file ${studied ? 'studied' : ''}">
+        <div class="file-h" data-study="${fid}">
+          <span class="ic">${studied ? '📖' : '📄'}</span>
+          <span class="p">${esc(F.path)}</span>
+          <span class="meta">${nFn?('⚡'+nFn+' '):''}${nCn?('💎'+nCn+' '):''}${nTy?('📐'+nTy):''}</span>
+          ${studied ? '' : '<span class="meta" style="color:#e2b857">изучить · 4💧</span>'}
+        </div>
+        ${studied ? renderFileBody(F) : ''}
+      </div>`;
+    });
+
+    html += `</div>`;
+
+    /* дороги */
+    const links = Array.from(M.links).filter(id => W.modules[id]);
+    html += `<div style="margin-top:18px;font-size:12px;color:var(--dim);letter-spacing:1px;text-transform:uppercase">Дороги · 6💧</div>`;
+    html += `<div class="paths">`;
+    links.forEach(id => {
+      const T = W.modules[id];
+      const disc = T.discovered;
+      html += `<button class="path" data-travel="${id}">
+      ${disc ? '🏛' : '🌫'} ${esc(disc ? T.name : 'Неизведанная земля')}
+      <span class="go">${T.raw}</span>
+    </button>`;
+    });
+    html += `</div>`;
+
+    /* действия */
+    html += `<div class="actions">
+    <button class="btn" id="act-meditate">🧘 Медитация (полн. мана)</button>
+    <button class="btn" id="act-scout">🔭 Разведать дальние земли (12💧)</button>
+  </div>`;
+
+    el.innerHTML = html;
+
+    /* вешаем обработчики */
+    el.querySelectorAll('[data-study]').forEach(node => {
+      node.addEventListener('click', () => studyFile(node.dataset.study));
+    });
+    el.querySelectorAll('[data-travel]').forEach(node => {
+      node.addEventListener('click', () => travelTo(node.dataset.travel));
+    });
+    el.querySelectorAll('[data-learn]').forEach(node => {
+      node.addEventListener('click', () => learnSpell(node.dataset.learn));
+    });
+    el.querySelectorAll('[data-take]').forEach(node => {
+      node.addEventListener('click', () => takeArtifact(node.dataset.take));
+    });
+    $('#act-meditate')?.addEventListener('click', meditate);
+    $('#act-scout')?.addEventListener('click', scout);
+    checkAch();
+  }
+
+  function renderFileBody(F){
+    let out = '';
+    if (F.funcs.length){
+      out += `<div style="font-size:10.5px;color:var(--dim);letter-spacing:1px;margin:4px 0 2px">ЗАКЛИНАНИЯ</div>`;
+      F.funcs.forEach(fn => {
+        const known = G.spells.includes(fn.id);
+        const cost = 3 + fn.arity * 2;
+        out += `<div class="item fn ${known ? 'done' : ''}">
+        <span>⚡</span>
+        <span class="nm">${esc(fn.name)}()</span>
+        <span class="ln">:${fn.line}</span>
+        ${known
+          ? '<span class="ln" style="color:var(--green)">усвоено</span>'
+          : `<button class="btn sm" data-learn="${fn.id}">Выучить · ${cost}💧</button>`}
+      </div>`;
+      });
+    }
+    if (F.consts.length){
+      out += `<div style="font-size:10.5px;color:var(--dim);letter-spacing:1px;margin:8px 0 2px">РЕЛИКВИИ</div>`;
+      F.consts.forEach(cn => {
+        const has = G.artifacts.includes(cn.id);
+        out += `<div class="item cn ${has ? 'done' : ''}">
+        <span>💎</span>
+        <span class="nm">${esc(cn.name)}</span>
+        <span class="ln">:${cn.line}</span>
+        ${has ? '<span class="ln" style="color:var(--green)">в сумке</span>'
+          : `<button class="btn sm" data-take="${cn.id}">Забрать</button>`}
+      </div>`;
+      });
+    }
+    if (F.types.length){
+      out += `<div style="font-size:10.5px;color:var(--dim);letter-spacing:1px;margin:8px 0 2px">КОНТРАКТЫ</div>`;
+      F.types.slice(0, 12).forEach(t => {
+        out += `<div class="item ty"><span>📐</span><span class="nm">${esc(t.kind)} ${esc(t.name)}</span></div>`;
+      });
+    }
+    if (!out) out = `<div style="color:var(--dim);font-size:12px">Пустой свиток. Ничего, кроме шёпота ветра.</div>`;
+    return `<div class="file-b">${out}</div>`;
+  }
+
+  function flavour(M){
+    const n = M.fileIds.length, f = M.funcs.length;
+    const bits = [];
+    if (n > 14) bits.push('Огромный лабиринт из свитков.');
+    else if (n > 6) bits.push('Несколько залов, соединённых арками.');
+    else if (n > 2) bits.push('Небольшой дворик.');
+    else bits.push('Одинокая хижина на краю мира.');
+    if (f > 40) bits.push('Воздух гудит от тысяч заклинаний.');
+    else if (f > 15) bits.push('Повсюду снуют невыученные функции.');
+    else if (f > 0) bits.push('Пара заклинаний дремлет в углу.');
+    else bits.push('Здесь нет заклинаний — только тишина.');
+    bits.push(`Связано дорогами с ${M.links.size} землями.`);
+    return bits.join(' ');
+  }
+
+  /* ============================================================
+     ДЕЙСТВИЯ
+     ============================================================ */
+  function studyFile(fid){
+    if (G.studied.has(fid)) return;
+    if (!spendMp(4)) return;
+    const F = W.files[fid];
+    if (!F) return;
+    G.studied.add(fid);
+    const xp = 10 + F.funcs.length * 3 + F.consts.length * 2 + F.types.length;
+    grantXp(xp, 'study');
+    log(`📖 Изучен свиток <b>${esc(F.short)}</b> — найдено ⚡${F.funcs.length} 💎${F.consts.length} 📐${F.types.length} (+${Math.round(xp * (G.cls==='architect'?1.5:1))} XP)`, 'good');
+    renderLocation();
+  }
+
+  function learnSpell(fnId){
+    const fn = W.funcs.find(f => f.id === fnId);
+    if (!fn || G.spells.includes(fnId)) return;
+    const cost = 3 + fn.arity * 2;
+    if (!spendMp(cost)) return;
+    G.spells.push(fnId);
+    fn.learned = true;
+    grantXp(12 + fn.arity * 3, 'spell');
+    log(`✨ Выучено заклинание <b>${esc(fn.name)}()</b> — сила ${spellPower(fn)}`, 'good');
+    renderLocation();
+  }
+
+  function takeArtifact(cnId){
+    const cn = W.consts.find(c => c.id === cnId);
+    if (!cn || G.artifacts.includes(cnId)) return;
+    // Тестировщик иногда находит бонусную реликвию
+    G.artifacts.push(cnId);
+    cn.taken = true;
+    grantXp(6, 'artifact');
+    log(`💎 Добыта реликвия <b>${esc(cn.name)}</b>`, '');
+    if (G.cls === 'tester' && Math.random() < 0.5){
+      const pool = W.consts.filter(c => !G.artifacts.includes(c.id));
+      if (pool.length){
+        const bonus = pick(pool);
+        G.artifacts.push(bonus.id); bonus.taken = true;
+        log(`🎭 Чутьё тестировщика: рядом нашлась ещё одна — <b>${esc(bonus.name)}</b>`, 'good');
+      }
+    }
+    renderLocation();
+  }
+
+  function travelTo(mid){
+    const M = W.modules[mid];
+    if (!M) return;
+    if (G.current === mid) return;
+    if (!spendMp(6)) return;
+
+    const first = !M.discovered;
+    M.discovered = true;
+    G.current = mid;
+    G.visited.add(mid);
+
+    if (first){
+      grantXp(25, 'travel');
+      log(`🧭 Открыта новая земля: <b>${esc(M.name)}</b> (${esc(M.raw)})`, 'epic');
+    } else {
+      grantXp(4, 'travel');
+      log(`🚶 Переход в <b>${esc(M.name)}</b>`, '');
+    }
+
+    renderTop();
+    renderLocation();
+
+    /* случайная встреча */
+    if (Math.random() < 0.32){
+      setTimeout(() => startBattle(), 320);
+    }
+  }
+
+  function meditate(){
+    G.day++;
+    G.mp = G.maxMp;
+    G.hp = Math.min(G.maxHp, G.hp + Math.round(G.maxHp * 0.35));
+    grantXp(5, 'rest');
+    log(`🧘 Медитация. Мана восстановлена. Наступил день ${G.day}.`, 'sys');
+    renderTop();
+    renderLocation();
+
+    const r = Math.random();
+    if (r < 0.12){
+      const pool = W.consts.filter(c => !G.artifacts.includes(c.id));
+      if (pool.length){
+        const b = pick(pool);
+        G.artifacts.push(b.id);
+        log(`🌟 Во сне явилась реликвия <b>${esc(b.name)}</b>!`, 'epic');
+        toast('🌟 Найдена реликвия!');
+      }
+    } else if (r < 0.24){
+      grantXp(45, 'rest');
+      log(`💡 Озарение во время медитации! +45 XP`, 'epic');
+    } else if (r < 0.34){
+      log(`🌫 Тревожный сон. Ничего не произошло.`, '');
+    }
+  }
+
+  function scout(){
+    if (!spendMp(12)) return;
+    const undiscovered = Object.values(W.modules).filter(m => !m.discovered);
+    if (!undiscovered.length){
+      toast('Весь мир уже открыт!');
+      G.mp += 12; renderTop();
+      return;
+    }
+    const target = pick(undiscovered);
+    target.discovered = true;
+    // соединяем с текущим
+    W.modules[G.current].links.add(target.id);
+    target.links.add(G.current);
+    grantXp(18, 'travel');
+    log(`🔭 Разведка: обнаружена земля <b>${esc(target.name)}</b>. Дорога проложена.`, 'epic');
+    renderLocation();
+  }
+
+  /* ============================================================
+     БИТВЫ
+     ============================================================ */
+  function spellPower(fn){
+    const base = 4 + fn.arity * 3;
+    const mod = G.cls === 'refactorer' ? 1.5 : 1;
+    return Math.round(base * mod);
+  }
+
+  function startBattle(){
+    if (!G) return;
+    const e = pick(ENEMIES);
+    const lvl = G.level;
+    const enemy = {
+      name: e.n, emoji: e.e,
+      maxHp: Math.round((18 + lvl * 9) * e.hp),
+      atk:   Math.round((5 + lvl * 2.2) * e.atk)
+    };
+    enemy.hp = enemy.maxHp;
+    openBattle(enemy);
+  }
+
+  function openBattle(enemy){
+    const knownSpells = G.spells.map(id => W.funcs.find(f => f.id === id)).filter(Boolean);
+    const root = $('#modal-root');
+
+    const render = () => {
+      const php = clamp(G.hp / G.maxHp * 100, 0, 100);
+      const ehp = clamp(enemy.hp / enemy.maxHp * 100, 0, 100);
+      root.innerHTML = `
+      <div class="overlay">
+        <div class="modal">
+          <div class="modal-h"><span>⚔ Битва с багом</span><button class="x" data-close>✕</button></div>
+          <div class="modal-b">
+            <div class="enemy">
+              <div class="emo">${enemy.emoji}</div>
+              <div class="info">
+                <div class="nme">${esc(enemy.name)}</div>
+                <div class="bar hp" style="width:100%"><i style="width:${ehp}%"></i></div>
+                <div style="font-size:11px;color:var(--dim);margin-top:4px">${enemy.hp} / ${enemy.maxHp} HP</div>
+              </div>
+            </div>
+
+            <div style="margin:14px 0 4px;font-size:12px;color:var(--dim)">
+              ❤ Ваше здоровье: <b style="color:#e0605c">${Math.round(G.hp)}</b> / ${G.maxHp} ·
+              💧 Мана: <b style="color:#5aa9e6">${Math.round(G.mp)}</b> / ${G.maxMp}
+            </div>
+
+            <div style="font-size:12px;color:var(--dim);margin-top:14px;letter-spacing:1px">ВАШИ ЗАКЛИНАНИЯ</div>
+            <div class="spell-grid">
+              ${knownSpells.length
+        ? knownSpells.map(f => {
+          const cost = 2 + f.arity;
+          const dis = G.mp < cost ? 'disabled' : '';
+          return `<button class="spell" data-cast="${f.id}" ${dis}>
+                      <span class="sn">${esc(f.name)}()</span>
+                      <span class="sc">💥 ${spellPower(f)} · 💧 ${cost}</span>
+                    </button>`;
+        }).join('')
+        : `<div style="color:var(--dim);font-size:12px">У вас нет заклинаний. Остаётся лишь кулак и отчаяние.</div>`}
+              <button class="spell" data-cast="__punch__">
+                <span class="sn">👊 Кулак рефакторинга</span>
+                <span class="sc">💥 ${3 + G.level} · 💧 0</span>
+              </button>
+            </div>
+
+            <div id="battle-log" style="margin-top:16px;font-size:12.5px;line-height:1.6;color:var(--dim);max-height:130px;overflow:auto"></div>
+          </div>
+        </div>
+      </div>`;
+
+      root.querySelector('[data-close]').onclick = () => { root.innerHTML = ''; };
+      root.querySelectorAll('[data-cast]').forEach(btn => {
+        btn.onclick = () => castSpell(btn.dataset.cast, enemy, render);
+      });
+      // блокируем закрытие по клику на фон
+      root.querySelector('.overlay').addEventListener('click', e => {
+        if (e.target === root.querySelector('.overlay')) e.stopPropagation();
+      });
+    };
+
+    const blog = (msg, cls) => {
+      const el = root.querySelector('#battle-log');
+      if (!el) return;
+      el.insertAdjacentHTML('afterbegin', `<div class="${cls||''}">${msg}</div>`);
+    };
+    root._blog = blog;
+
+    render();
+    root._blog(`⚔ Из тени вылезает <b style="color:#f0a5a3">${esc(enemy.name)}</b>!`);
+  }
+
+  function castSpell(key, enemy, rerender){
+    const root = $('#modal-root');
+    const blog = root._blog || (()=>{});
+    let dmg = 0, label = '';
+
+    if (key === '__punch__'){
+      dmg = 3 + G.level + rnd(4);
+      label = '👊 Кулак рефакторинга';
+    } else {
+      const fn = W.funcs.find(f => f.id === key);
+      if (!fn) return;
+      const cost = 2 + fn.arity;
+      if (G.mp < cost) return;
+      G.mp -= cost;
+      dmg = spellPower(fn) + rnd(4);
+      label = `✨ ${esc(fn.name)}()`;
+    }
+
+    enemy.hp = Math.max(0, enemy.hp - dmg);
+    blog(`${label} наносит <b style="color:#f3d074">${dmg}</b> урона.`, '');
+    renderTop();
+
+    if (enemy.hp <= 0){
+      // победа
+      const xp = 28 + G.level * 6;
+      G.kills++;
+      grantXp(xp, 'battle');
+      blog(`🏆 <b style="color:#57c785">${esc(enemy.name)} повержен!</b> +${xp} XP`, '');
+      log(`⚔ Победа над <b>${esc(enemy.name)}</b> (+${xp} XP)`, 'good');
+      setTimeout(() => {
+        root.innerHTML = '';
+        renderLocation();
+        checkAch();
+      }, 1100);
+      return;
+    }
+
+    // ответный удар
+    setTimeout(() => {
+      const eDmg = Math.max(1, enemy.atk + rnd(5) - Math.floor(G.level / 2));
+      G.hp = Math.max(0, G.hp - eDmg);
+      blog(`🩸 ${esc(enemy.name)} бьёт в ответ на <b style="color:#e0605c">${eDmg}</b>.`, '');
+      renderTop();
+      if (G.hp <= 0){
+        // поражение
+        G.hp = Math.round(G.maxHp * 0.35);
+        G.mp = Math.round(G.maxMp * 0.2);
+        log(`💀 Поражение от <b>${esc(enemy.name)}</b>. Вы очнулись в ${esc(W.modules[G.current].name)}.`, 'bad');
+        blog(`💀 Вы падаете... но что-то тянет вас обратно.`, '');
+        setTimeout(() => { root.innerHTML = ''; renderTop(); renderLocation(); }, 1200);
+        return;
+      }
+      rerender();
+      // восстанавливаем лог после ререндера
+      root._blog = (msg, cls) => {
+        const el = root.querySelector('#battle-log');
+        if (el) el.insertAdjacentHTML('afterbegin', `<div class="${cls||''}">${msg}</div>`);
+      };
+      root._blog(`🩸 Получено ${eDmg} урона.`);
+    }, 420);
+  }
+
+  /* ============================================================
+     МОДАЛКИ: ГРИМУАР / РЕЛИКВИИ / ДОСТИЖЕНИЯ
+     ============================================================ */
+  function openModal(title, bodyHtml){
+    const root = $('#modal-root');
+    root.innerHTML = `
+    <div class="overlay">
+      <div class="modal">
+        <div class="modal-h"><span>${title}</span><button class="x" data-close>✕</button></div>
+        <div class="modal-b">${bodyHtml}</div>
+      </div>
+    </div>`;
+    root.querySelector('[data-close]').onclick = () => root.innerHTML = '';
+    root.querySelector('.overlay').onclick = e => {
+      if (e.target === root.querySelector('.overlay')) root.innerHTML = '';
+    };
+  }
+
+  function showSpells(){
+    const list = G.spells.map(id => W.funcs.find(f => f.id === id)).filter(Boolean);
+    const byMod = {};
+    list.forEach(f => { (byMod[f.moduleId] ||= []).push(f); });
+    let html = `<div style="color:var(--dim);font-size:12.5px;margin-bottom:12px">Выучено заклинаний: <b style="color:var(--gold)">${list.length}</b> · Суммарная мощь: <b style="color:var(--gold)">${list.reduce((s,f)=>s+spellPower(f),0)}</b></div>`;
+    Object.entries(byMod).forEach(([mid, arr]) => {
+      const M = W.modules[mid];
+      html += `<div style="margin:14px 0 6px;font-size:11px;letter-spacing:1.2px;color:var(--dim);text-transform:uppercase">${esc(M ? M.name : mid)}</div>`;
+      html += `<div class="grid-list">`;
+      arr.forEach(f => {
+        html += `<div class="item fn"><span>⚡</span><span class="nm">${esc(f.name)}()</span><span class="ln">💥${spellPower(f)}</span></div>`;
+      });
+      html += `</div>`;
+    });
+    if (!list.length) html += `<div style="color:var(--dim)">Пусто. Найдите свиток и выучите первое заклинание.</div>`;
+    openModal('📖 Гримуар', html);
+  }
+
+  function showArtifacts(){
+    const list = G.artifacts.map(id => W.consts.find(c => c.id === id)).filter(Boolean);
+    let html = `<div style="color:var(--dim);font-size:12.5px;margin-bottom:12px">Собрано реликвий: <b style="color:var(--gold)">${list.length}</b> / ${W.consts.length}</div>`;
+    list.slice(0, 300).forEach(c => {
+      const v = c.value ? (c.value.length > 160 ? c.value.slice(0,160)+'…' : c.value) : '';
+      html += `<div class="item cn" style="margin-bottom:6px;flex-direction:column;align-items:flex-start;gap:4px">
+      <div style="display:flex;gap:8px;width:100%"><span>💎</span><span class="nm" style="flex:1">${esc(c.name)}</span><span class="ln">:${c.line}</span></div>
+      ${v ? `<div style="font-family:var(--mono);font-size:10.5px;color:#6b7c90;padding-left:23px;white-space:pre-wrap;word-break:break-all">${esc(v)}</div>` : ''}
+    </div>`;
+    });
+    if (!list.length) html += `<div style="color:var(--dim)">Сумка пуста. Обыщите изученные свитки.</div>`;
+    openModal('💎 Реликвии', html);
+  }
+
+  function showAchievements(){
+    let html = `<div style="color:var(--dim);font-size:12.5px;margin-bottom:14px">Открыто <b style="color:var(--gold)">${G.ach.size}</b> из ${ACHIEVEMENTS.length}</div>`;
+    ACHIEVEMENTS.forEach(a => {
+      const on = G.ach.has(a.id);
+      html += `<div class="ach ${on ? 'on' : 'off'}" style="margin-bottom:7px">
+      <span class="ai">${a.ic}</span>
+      <div><div style="font-weight:600">${a.n}</div><div style="font-size:11.5px;color:var(--dim)">${a.d}</div></div>
+      <div style="flex:1"></div><div>${on ? '✔' : '✖'}</div>
+    </div>`;
+    });
+
+    html += `<div style="margin-top:20px;font-size:11px;letter-spacing:1.2px;color:var(--dim);text-transform:uppercase">Мир</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px;font-size:12px;color:var(--dim)">
+      <div>Версия схемы: <b style="color:var(--text)">${esc(W.v)}</b></div>
+      <div>Модулей: <b style="color:var(--text)">${W.stats.totalModules ?? Object.keys(W.modules).length}</b></div>
+      <div>Файлов: <b style="color:var(--text)">${W.stats.totalFiles ?? Object.keys(W.files).length}</b></div>
+      <div>Функций: <b style="color:var(--text)">${W.funcs.length}</b></div>
+      <div>Констант: <b style="color:var(--text)">${W.consts.length}</b></div>
+      <div>Типов: <b style="color:var(--text)">${W.types.length}</b></div>
+      <div>Импортов: <b style="color:var(--text)">${W.stats.totalImports ?? W.rawImports.length}</b></div>
+      <div>Открыто земель: <b style="color:var(--text)">${Object.values(W.modules).filter(m=>m.discovered).length}/${Object.keys(W.modules).length}</b></div>
+    </div>`;
+    openModal('🏆 Достижения', html);
+  }
+
+  /* ============================================================
+     ЗАГРУЗКА JSON
+     ============================================================ */
+  function handleJsonText(text, sourceName){
+    const msg = $('#upload-msg');
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch(e){
+      msg.className = 'msg err';
+      msg.textContent = '✖ Не удалось разобрать JSON: ' + e.message;
+      return;
+    }
+    if (!data || !data.mi || !data.fl){
+      msg.className = 'msg err';
+      msg.textContent = '✖ Это не похоже на отчёт анализатора: нет полей "mi" и "fl".';
+      return;
+    }
+    try {
+      buildWorld(data);
+    } catch(e){
+      msg.className = 'msg err';
+      msg.textContent = '✖ Ошибка построения мира: ' + e.message;
+      return;
+    }
+
+    msg.className = 'msg ok';
+    msg.textContent = `✔ Мир сотворён: ${Object.keys(W.modules).length} земель · ${Object.keys(W.files).length} свитков · ${W.funcs.length} заклинаний · ${W.consts.length} реликвий${sourceName ? ' — из «'+sourceName+'»' : ''}`;
+
+    setTimeout(() => {
+      $('#scr-upload').classList.add('hidden');
+      $('#scr-hero').classList.remove('hidden');
+    }, 700);
+  }
+
+  function readFile(f){
+    if (!f) return;
+    const msg = $('#upload-msg');
+    msg.className = 'msg';
+    msg.textContent = '⏳ Читаю свиток...';
+    const reader = new FileReader();
+    reader.onload = () => handleJsonText(String(reader.result), f.name);
+    reader.onerror = () => {
+      msg.className = 'msg err';
+      msg.textContent = '✖ Не удалось прочитать файл.';
+    };
+    reader.readAsText(f, 'utf-8');
+  }
+
+  /* drag & drop */
+  const drop = $('#drop');
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => {
+    e.preventDefault(); e.stopPropagation(); drop.classList.add('over');
+  }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => {
+    e.preventDefault(); e.stopPropagation(); drop.classList.remove('over');
+  }));
+  drop.addEventListener('drop', e => {
+    const f = e.dataTransfer?.files?.[0];
+    if (f) readFile(f);
+  });
+  $('#file').addEventListener('change', e => readFile(e.target.files[0]));
+  $('#paste-btn').addEventListener('click', () => {
+    const t = $('#paste').value.trim();
+    if (!t) { toast('Вставьте JSON'); return; }
+    handleJsonText(t, 'вставленный текст');
+  });
+
+  /* ============================================================
+     СОЗДАНИЕ ГЕРОЯ
+     ============================================================ */
+  let chosenClass = 'architect';
+  $$('#classes .cls').forEach(btn => {
+    btn.addEventListener('click', () => {
+      $$('#classes .cls').forEach(b => b.classList.remove('sel'));
+      btn.classList.add('sel');
+      chosenClass = btn.dataset.cls;
+    });
+  });
+
+  $('#start-btn').addEventListener('click', () => {
+    const name = ($('#hero-name').value || 'Архимаг').trim().slice(0, 22);
+    G = newHero(name, chosenClass);
+
+    // стартовая локация
+    const startM = W.modules[W.start];
+    if (startM){
+      startM.discovered = true;
+      G.visited.add(W.start);
+    }
+    // открываем соседей как «видимые» (но не посещённые)
+    startM && startM.links.forEach(id => { /* остаются неоткрытыми */ });
+
+    G.log = [];
+    log(`⚜ ${esc(G.name)} (${clsMeta[chosenClass].nm}) входит в Библиотеку через <b>${esc(startM ? startM.name : '?')}</b>.`, 'epic');
+    log(`🌍 Мир насчитывает ${Object.keys(W.modules).length} земель и ${Object.keys(W.files).length} свитков.`, 'sys');
+
+    $('#scr-hero').classList.add('hidden');
+    $('#scr-game').classList.remove('hidden');
+
+    renderTop();
+    renderLog();
+    renderLocation();
+    checkAch();
+  });
+
+  /* ============================================================
+     ТОПБАР — КНОПКИ
+     ============================================================ */
+  $('#btn-spells').addEventListener('click', showSpells);
+  $('#btn-artifacts').addEventListener('click', showArtifacts);
+  $('#btn-ach').addEventListener('click', showAchievements);
+  $('#btn-reset').addEventListener('click', () => {
+    if (!confirm('Начать заново? Прогресс будет потерян.')) return;
+    W = null; G = null;
+    $('#modal-root').innerHTML = '';
+    $('#scr-game').classList.add('hidden');
+    $('#scr-hero').classList.add('hidden');
+    $('#scr-upload').classList.remove('hidden');
+    $('#upload-msg').textContent = '';
+    $('#paste').value = '';
+  });
+
+  /* хоткеи */
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape'){ $('#modal-root').innerHTML = ''; }
+    if (!G) return;
+    if (e.key.toLowerCase() === 'm') meditate();
+    if (e.key.toLowerCase() === 'g') showSpells();
+    if (e.key.toLowerCase() === 'r') showArtifacts();
+  });
+</script>
+</body>
+</html>

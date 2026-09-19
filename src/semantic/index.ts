@@ -1,4 +1,5 @@
-// Directory/ast-analyzer/src/semantic/index.ts
+// packages/ast-analyzer/src/semantic/index.ts
+// ОБНОВЛЕННЫЙ ФАЙЛ - Удалены экспорты неиспользуемых функций
 
 /**
  * Семантический анализ для AST Analyzer
@@ -23,6 +24,7 @@ export { CFGAnalyzer, type BasicBlock, type ControlFlowGraph } from './CFGAnalyz
 export { CallGraphAnalyzer, type CallGraphNode, type CallGraph } from './CallGraphAnalyzer.js';
 
 // 3. Type Analyzer - анализ типов TypeScript через @jitl/ts-simple-type
+// Удалены экспорты isTypeCompatible и getTypeString (не используются)
 export {
   TypeAnalyzer,
   type TypeInfo,
@@ -37,6 +39,15 @@ export {
   type DataFlowEdge,
   type DataFlowGraph,
 } from './DataFlowAnalyzer.js';
+
+// 5. JSX Analyzer - анализ JSX/TSX компонентов
+// Удалены экспорты isJSXFile и getJSXFiles (не используются)
+export {
+  JSXAnalyzer,
+  type JSXElementInfo,
+  type JSXAnalysisResult,
+  type JSXLintingIssue,
+} from './JSXAnalyzer.js';
 
 // ============================================
 // ЕДИНЫЙ ФАСАД ДЛЯ СЕМАНТИЧЕСКОГО АНАЛИЗА

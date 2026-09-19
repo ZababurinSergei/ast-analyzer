@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Кодекс — квест-ходок по графу проекта</title>
+  <style>
+      :root{--bg:#0b0e14;--panel:#12172290;--line:#232c3f;--txt:#d7dfec;--dim:#8a93a6;
+          --gold:#e8b33d;--gold2:#f5d47a;--cyan:#4fd8e0;--vio:#9a8cf5;--grn:#6ee7a0;--red:#f87171}
+      *{box-sizing:border-box}html,body{height:100%}
+      body{margin:0;background:radial-gradient(1200px 700px at 70% -10%,#16203a55,transparent),var(--bg);
+          color:var(--txt);font:14px/1.45 "Segoe UI",system-ui,sans-serif;overflow:hidden}
+      code,.mono{font-family:ui-monospace,Consolas,"Cascadia Mono",monospace}
+      header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 12px;
+          border-bottom:1px solid var(--line);background:linear-gradient(180deg,#101623,#0c1018)}
+      .logo{font-family:Georgia,serif;font-size:18px;letter-spacing:1px;color:var(--gold2)}
+      .logo small{color:var(--dim);font-size:11px;font-family:inherit}
+      .rank{display:flex;flex-direction:column;min-width:170px}
+      .rank .rn{font-size:12px;color:var(--gold2)}
+      .xpbar{height:7px;background:#1a2233;border-radius:5px;overflow:hidden;border:1px solid #2a3550;margin-top:3px}
+      .xpbar i{display:block;height:100%;background:linear-gradient(90deg,#8a6a1c,var(--gold));transition:width .4s}
+      .rank .xt{font-size:10px;color:var(--dim)}
+      .chips{display:flex;gap:6px;font-size:12px;color:var(--dim)}.chips b{color:var(--txt)}
+      .spacer{flex:1}
+      input[type=search]{background:#0d1320;border:1px solid #2a3550;color:var(--txt);border-radius:7px;padding:6px 10px;width:200px;font-size:13px}
+      button{background:#1a2233;border:1px solid #2c3854;color:var(--txt);border-radius:8px;padding:6px 10px;cursor:pointer;font-size:13px}
+      button:hover{border-color:var(--gold);color:var(--gold2)}
+      button.on{border-color:var(--gold);color:var(--gold2);background:#241d0e}
+      main{display:grid;grid-template-columns:300px 1fr 370px;height:calc(100vh - 54px)}
+      aside{overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:10px;background:#0c101799}
+      #left{border-right:1px solid var(--line)}#right{border-left:1px solid var(--line)}
+      .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px}
+      .panel h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);font-family:Georgia,serif}
+      .quest{border:1px solid var(--line);border-radius:9px;padding:7px 9px;margin-bottom:7px;background:#0e1320}
+      .quest .qt{display:flex;justify-content:space-between;font-size:13px}
+      .quest .qd{font-size:11px;color:var(--dim);margin:2px 0 5px}
+      .qbar{height:5px;background:#1a2233;border-radius:4px;overflow:hidden}
+      .qbar i{display:block;height:100%;background:linear-gradient(90deg,#4a6a2c,var(--grn))}
+      .quest.done{opacity:.55;border-color:#3d5a3d}
+      .quest.done .qt::after{content:"✔";color:var(--grn)}
+      #log{font-size:11px;max-height:180px;overflow-y:auto}
+      .log-line{padding:2px 0;border-bottom:1px dashed #1c2436;color:var(--dim)}
+      .log-line .lt{color:#566179;margin-right:5px;font-size:10px}
+      #stage{position:relative;overflow:hidden}
+      #roomsign{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:7;
+          background:#101826f0;border:1px solid var(--gold);color:var(--gold2);
+          padding:8px 24px;border-radius:14px;font-family:Georgia,serif;font-size:16px;text-align:center;
+          box-shadow:0 4px 24px #0008;pointer-events:none;max-width:56%}
+      #roomsign b{color:#fff}
+      #roomsign .sub{display:block;font-size:11px;color:var(--dim);font-family:"Segoe UI";margin-top:2px}
+      #poscol{position:absolute;top:10px;left:12px;z-index:6;display:flex;flex-direction:column;gap:6px;max-width:40%}
+      #poschip{font-size:12px;background:#0d121dcc;border:1px solid var(--line);padding:6px 12px;border-radius:16px;backdrop-filter:blur(4px)}
+      #poschip b{color:var(--gold2)}#poschip .sub{color:var(--dim);font-size:10px}
+      #routebar{display:none;font-size:11px;background:#0d121dcc;border:1px solid var(--vio);padding:6px 10px;border-radius:12px;backdrop-filter:blur(4px)}
+      #routebar .rch{display:inline-block;padding:1px 8px;margin:2px;border-radius:10px;border:1px solid #384;cursor:pointer;font-family:ui-monospace,monospace}
+      #routebar .rch.nx{border-color:var(--gold);color:var(--gold2)}
+      #routebar button{font-size:11px;padding:2px 8px;margin-left:4px}
+      #hint{position:absolute;top:10px;right:12px;z-index:5;font-size:11px;color:var(--dim);background:#0d121dcc;
+          border:1px solid var(--line);padding:5px 12px;border-radius:20px;max-width:330px}
+      #legend{position:absolute;bottom:10px;left:12px;z-index:5;font-size:11px;color:var(--dim);background:#0d121dcc;
+          border:1px solid var(--line);padding:8px 12px;border-radius:10px;max-width:300px}
+      #legend .l{display:flex;align-items:center;gap:7px;margin:2px 0}
+      .sw{width:22px;height:0;border-top:2px solid}
+      .doorchip{display:inline-block;padding:0 6px;border-radius:4px;font-size:10px;font-weight:700}
+      #banner{position:absolute;top:70px;left:50%;transform:translateX(-50%);z-index:9;background:#101826ee;
+          border:1px solid var(--gold);color:var(--gold2);padding:9px 20px;border-radius:12px;display:none;font-size:13px;max-width:80%}
+      #banner.bad{border-color:var(--red);color:var(--red)}#banner.good{border-color:var(--grn);color:var(--grn)}
+      svg{width:100%;height:100%;display:block;cursor:grab}
+      svg.panning{cursor:grabbing}
+      .edge{opacity:.5}
+      svg.hov .edge{opacity:.08}svg.hov .edge.hl{opacity:.95}
+      svg.hov .node{opacity:.22}svg.hov .node.hl{opacity:1}
+      .node{cursor:pointer}
+      .node text{pointer-events:none;fill:#cdd6e4;font-size:10px;text-anchor:middle;paint-order:stroke;stroke:#0b0e14;stroke-width:3px}
+      .node.n-mod text{font-size:12px;font-weight:600}
+      .node.n-mod text.cnt{fill:#fff;font-size:11px;stroke:none;font-weight:700}
+      .node.far{opacity:.45}
+      .node.sealed text{fill:#6a7488}
+      .node text.pin{font-size:15px;stroke:none}
+      .node.n-ext text.doortxt{font-size:12px;font-weight:700;fill:#fff;stroke-width:2px}
+      .node.n-ext text.doortxt.small{font-size:9px;font-weight:600;fill:#e7ecf5}
+      .node.n-dot circle{stroke:#0b0e14;stroke-width:1}
+      .roombg{pointer-events:none}
+      text.roomlabel{fill:#7fa8e8;font-size:12px;font-weight:700;letter-spacing:1px;pointer-events:none}
+      text.boxtitle{fill:#e7ecf5;font-size:12px;font-weight:700;pointer-events:none}
+      .walkring{fill:none;stroke:var(--grn);stroke-dasharray:4 4;stroke-width:1.7;opacity:.95}
+      .routering{fill:none;stroke:#fbbf24;stroke-dasharray:2 3;stroke-width:2}
+      .pulse{fill:none;stroke:var(--gold2);stroke-width:2;transform-box:fill-box;transform-origin:center;animation:pu 1.6s infinite}
+      @keyframes pu{0%{opacity:.9;transform:scale(1)}75%{opacity:0;transform:scale(1.6)}100%{opacity:0}}
+      .node.sel circle.main{stroke:#fff;stroke-width:3px}
+      .node.insp circle.main,.node.insp rect.main{stroke:#fff;stroke-width:2px;stroke-dasharray:3 2}
+      .node.denied circle.main,.node.denied rect.main{stroke:var(--red)!important;stroke-width:3px!important}
+      .d-head{display:flex;gap:10px;align-items:center}
+      .d-icon{font-size:28px}
+      .d-title{font-size:16px;font-family:Georgia,serif;color:var(--gold2)}
+      .d-sub{font-size:12px;color:var(--dim)}
+      .d-path{font-size:11px;color:#5f8fbf;margin:6px 0;word-break:break-all}
+      .d-stats{font-size:12px;color:var(--dim);margin-bottom:8px}
+      .desc{font-size:12px;color:var(--txt);background:#101826;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:6px 0}
+      .sect{margin-top:12px}.sect h4{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)}
+      .here{display:inline-block;background:#3a2c0e;border:1px solid var(--gold);color:var(--gold2);font-size:11px;border-radius:8px;padding:3px 9px;margin:4px 0}
+      .locknote{font-size:11px;color:var(--dim);background:#161c2b;border:1px dashed #38415a;border-radius:8px;padding:6px 9px;margin:6px 0}
+      .fn-item{display:flex;align-items:center;gap:6px;padding:4px 7px;border-radius:7px;cursor:pointer;font-size:12px}
+      .fn-item:hover{background:#1a2233}
+      .fn-item .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .fn-item .loc{color:#566179;font-size:10px}
+      .fn-item .go{font-size:10px;color:var(--grn)}
+      .fn-item .lk{font-size:10px;color:#566179}
+      .b{font-size:9px;padding:1px 4px;border-radius:4px;font-weight:700}
+      .b.e{background:#4a3a10;color:var(--gold2)}.b.a{background:#123c40;color:var(--cyan)}
+      .b.m{background:#2d2350;color:var(--vio)}.b.n{background:#1d3a2a;color:var(--grn)}
+      .b.r{background:#3a2440;color:#e879f9}.b.v{background:#402d12;color:#fbbf24}
+      .chip{display:inline-block;background:#141c2c;border:1px solid #2a3550;border-radius:14px;padding:3px 10px;margin:2px;
+          font-size:11px;cursor:pointer;font-family:ui-monospace,monospace}
+      .chip:hover{border-color:var(--gold);color:var(--gold2)}
+      .chip.w{border-color:#3d6a4d}.chip.w::after{content:" ➡";color:var(--grn)}
+      .const{border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-bottom:6px;background:#0e1320}
+      .const.clickable{cursor:pointer}.const.clickable:hover{border-color:var(--vio)}
+      .const .cn{color:var(--vio);font-family:ui-monospace,monospace;font-size:12px}
+      .const .cl{color:#566179;font-size:10px;float:right}
+      .const pre{display:none;margin:6px 0 0;font-size:11px;color:var(--grn);white-space:pre-wrap;word-break:break-all}
+      .const.open pre{display:block}
+      .file-l{font-size:10px;color:#5f8fbf;font-family:ui-monospace,monospace;padding:1px 0;word-break:break-all}
+      .btnrow{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap}.btnrow button{font-size:12px}
+      .fnlist{max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:8px}
+      #toasts{position:fixed;top:60px;right:16px;z-index:99;display:flex;flex-direction:column;gap:8px}
+      .toast{background:#13200fee;border:1px solid var(--grn);color:var(--grn);padding:10px 16px;border-radius:10px;
+          font-size:13px;animation:tin .3s,tout .5s 3s forwards;box-shadow:0 6px 24px #000a}
+      @keyframes tin{from{transform:translateX(60px);opacity:0}}@keyframes tout{to{transform:translateX(60px);opacity:0}}
+      #intro,#loader{position:fixed;inset:0;background:#05070bdd;z-index:100;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(3px)}
+      #intro .card,#loader .card{max-width:640px;background:#101623;border:1px solid var(--gold);border-radius:16px;padding:24px 28px}
+      #intro h1,#loader h1{font-family:Georgia,serif;color:var(--gold2);margin:0 0 10px;font-size:22px}
+      #intro p,#loader p{font-size:13px}
+      #intro li{font-size:12px;color:var(--dim);margin:3px 0}
+      #intro .big,#loader .big{margin-top:12px;font-size:15px;padding:10px 22px;border-color:var(--gold);color:var(--gold2)}
+      #jsonArea{width:100%;background:#0d1320;border:1px solid #2a3550;color:var(--txt);border-radius:8px;padding:8px;font-family:ui-monospace,monospace;font-size:11px}
+      aside::-webkit-scrollbar,#log::-webkit-scrollbar,.fnlist::-webkit-scrollbar,#jsonArea::-webkit-scrollbar{width:8px}
+      aside::-webkit-scrollbar-thumb,#log::-webkit-scrollbar-thumb,.fnlist::-webkit-scrollbar-thumb,#jsonArea::-webkit-scrollbar-thumb{background:#263149;border-radius:4px}
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">⚔️ КОДЕКС <small>· квест-ходок по графу проекта</small></div>
+  <div class="rank"><span class="rn" id="rankName">🐣 Новик</span>
+    <div class="xpbar"><i id="xpFill" style="width:0%"></i></div>
+    <span class="xt" id="xpText">0 XP</span></div>
+  <div class="chips" id="counters"></div>
+  <div class="spacer"></div>
+  <input type="search" id="search" list="fnlist" placeholder="🔍 найти функцию…">
+  <datalist id="fnlist"></datalist>
+  <button id="btnScene" class="on">🚪 Комната</button>
+  <button id="btnMap">🗺 Граф</button>
+  <button id="btnPlan">🏙 План</button>
+  <button id="btnLoad" title="Загрузить отчёт JSON">📂 JSON</button>
+  <button id="btnBack" title="Откат по пройденному пути">⬅</button>
+  <button id="btnOracle" title="Проверить граф на циклы">🔮</button>
+  <button id="btnReset" title="Сбросить прогресс">↺</button>
+</header>
+<main>
+  <aside id="left">
+    <div class="panel"><h3>📜 Журнал квестов</h3><div id="quests"></div></div>
+    <div class="panel"><h3>🪶 Летопись переходов</h3><div id="log"></div></div>
+  </aside>
+  <section id="stage">
+    <div id="roomsign"></div>
+    <div id="poscol"><div id="poschip"></div><div id="routebar"></div></div>
+    <div id="hint"></div>
+    <div id="legend">
+      <div class="l"><span style="color:var(--gold2)">◉</span> пульс + 📍 — вы здесь</div>
+      <div class="l"><span style="color:var(--grn)">◌</span> зелёный пунктир — можно шагнуть</div>
+      <div class="l"><span class="doorchip" style="background:#3a2c0e;color:#e0a83c">🚪 →</span> выход · <span class="doorchip" style="background:#12301f;color:#6ee7a0">🚪 ←</span> вход · <span class="doorchip" style="background:#241d3f;color:#9a8cf5">🚪 ⇄</span> обе</div>
+      <div class="l"><span class="sw" style="border-color:#e0a83c"></span> вызов <span class="sw" style="border-color:#4fd8e0;margin-left:6px"></span> async <span class="sw" style="border-color:#9a8cf5;border-top-style:dashed;margin-left:6px"></span> импорт</div>
+      <div class="l" style="color:#566179">🏙 План — общая карта всех комнат и функций.</div>
+    </div>
+    <div id="banner"></div>
+    <svg id="graph">
+      <defs>
+        <marker id="ar-gd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0L10,5L0,10z" fill="#e0a83c"/></marker>
+        <marker id="ar-cy" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0L10,5L0,10z" fill="#4fd8e0"/></marker>
+        <marker id="ar-vi" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0L10,5L0,10z" fill="#9a8cf5"/></marker>
+        <marker id="ar-gy" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse" markerUnits="userSpaceOnUse"><path d="M0,0L10,5L0,10z" fill="#7d8aa8"/></marker>
+      </defs>
+      <g id="vp"><g id="gE"></g><g id="gN"></g></g>
+    </svg>
+  </section>
+  <aside id="right"><div id="details"></div></aside>
+</main>
+<div id="toasts"></div>
+<div id="loader" style="display:none">
+  <div class="card">
+    <h1>📂 Загрузка отчёта JSON</h1>
+    <p>Перетащи файл <b>.json</b> в окно, выбери через кнопку, или вставь текст отчёта (формат ast-analyzer: <span class="mono">mi, fl, fns, cn, gr, r, st</span>).</p>
+    <textarea id="jsonArea" rows="9" placeholder='{ "v":"5.0.0-optimized", "r":"m1", "mi":{...}, "fl":{...}, "fns":[...], "gr":{...} }'></textarea>
+    <div class="btnrow"><button id="btnApplyJson">✅ Загрузить</button><button id="btnPickFile">📁 Выбрать файл</button><button id="btnCloseLoader">✖ Закрыть</button></div>
+    <input type="file" id="fileInput" accept=".json,application/json" style="display:none">
+  </div>
+</div>
+<div id="intro" style="display:none">
+  <div class="card">
+    <h1>⚔️ Кодекс: ходок по графу проекта</h1>
+    <p>Ты стоишь у точки входа — комната <b class="mono" id="introRoot">src</b>. Каждый модуль — <b>комната</b>, между ними <b>двери 🚪</b> (<span style="color:var(--gold)">→ выход</span>, <span style="color:var(--grn)">← вход</span>, <span style="color:var(--vio)">⇄ обе</span>). Телепортов нет — только по связям графа.</p>
+    <ul>
+      <li>📍 — позиция; вывеска сверху — текущая комната; 🏙 План — общая карта.</li>
+      <li>Клик — досье (с описанием данных комнаты). Двойной клик — шаг (зелёный пунктир).</li>
+      <li>До далёкой цели — «проложить маршрут» или поиск: пошагово или на авто.</li>
+      <li>📂 JSON — загрузить любой другой отчёт (прогресс начнётся заново).</li>
+    </ul>
+    <button class="big" id="btnStart">🚶 Начать путь</button>
+  </div>
+</div>
+
+<script>
+  /* =============== ДАННЫЕ ПО УМОЛЧАНИЮ (ваш отчёт) =============== */
+  const DEFAULT_REPORT={"v":"5.0.0-optimized","r":"m1",
+    "mi":{"m1":"src","m2":"core","m3":"modes","m4":"vue-analyzer","m5":"semantic","m6":"ci-cd","m7":"formal","m8":"refactor","m9":"reporters","m10":"cli","m11":"utils","m12":"extractors","m13":"checkers","m14":"interfaces","m15":"commands","m16":"hybrid-report","m17":"modules","m18":"generators"},
+    "fl":{"f1":"src/index.ts","f2":"src/core/ast-parser.ts","f3":"src/core/minifier.ts","f4":"src/core/graph-utils.ts","f5":"src/core/tsconfig-resolver.ts","f6":"src/core/IdManager.ts","f7":"src/core/ProjectGraphBuilder.ts","f8":"src/modes/project-graph.ts","f9":"src/modes/file-graph.ts","f10":"src/modes/minify-file.ts","f11":"src/modes/minify-folder.ts","f12":"src/modes/prompt-pack.ts","f13":"src/modes/split-module.ts","f14":"src/modes/impact.ts","f15":"src/modes/dead-code.ts","f16":"src/modes/vue-analyzer/index.ts","f17":"src/semantic/CFGAnalyzer.ts","f18":"src/semantic/CallGraphAnalyzer.ts","f19":"src/semantic/TypeAnalyzer.ts","f20":"src/semantic/DataFlowAnalyzer.ts","f21":"src/ci-cd/SemanticPipeline.ts","f22":"src/formal/index.ts","f23":"src/refactor/index.ts","f24":"src/reporters/full-reporter.ts","f25":"src/reporters/compact-reporter.ts","f26":"src/reporters/html-reporter.ts","f27":"src/reporters/interactive-reporter.ts","f28":"src/types.ts","f29":"src/config.ts","f30":"src/utils.ts","f31":"src/cli/CLIExecutor.ts","f32":"src/utils/path-utils.ts","f33":"src/reporters/core/ReportBuilder.ts","f34":"src/reporters/json-reporter.ts","f35":"src/core/call-collector.ts","f36":"src/modes/vue-analyzer.ts","f37":"src/modes/vue-analyzer/types.ts","f38":"src/modes/vue-analyzer/parser.ts","f39":"src/modes/vue-analyzer/extractors/index.ts","f40":"src/modes/vue-analyzer/template.ts","f41":"src/modes/vue-analyzer/callgraph.ts","f42":"src/modes/vue-analyzer/report.ts","f43":"src/modes/vue-analyzer/utils.ts","f44":"src/utils/wasm-utils.ts","f45":"src/formal/Z3Verifier.ts","f46":"src/semantic/JSXAnalyzer.ts","f47":"src/utils/Logger.ts","f48":"src/formal/FunctionBodyModeler.ts","f49":"src/formal/checkers/FileEquivalenceChecker.ts","f50":"src/formal/checkers/RefactoringEquivalenceChecker.ts","f51":"src/formal/ExpressionParser.ts","f52":"src/refactor/types.ts","f53":"src/refactor/AutoRefactor.ts","f54":"src/refactor/ModuleExtractor.ts","f55":"src/refactor/ImportManager.ts","f56":"src/refactor/TypeScriptValidator.ts","f57":"src/refactor/ESLintASTFixer.ts","f58":"src/refactor/CodeValidator.ts","f59":"src/refactor/CodeFixer.ts","f60":"src/refactor/TemplateUpdater.ts","f61":"src/refactor/SyntaxValidator.ts","f62":"src/refactor/ModuleTypeDetector.ts","f63":"src/refactor/BackupManager.ts","f64":"src/refactor/interfaces/IRefactorContext.ts","f65":"src/reporters/data-converter.ts","f66":"src/reporters/env.ts","f67":"src/cli/commands/CompactRecursiveCommand.ts","f68":"src/core/entity-extractor.ts","f69":"src/modes/hybrid-report/index.ts","f70":"src/utils/askQuestion.ts","f71":"src/ci-cd/ESLintPipeline.ts","f72":"src/utils/flag-utils.ts","f73":"src/reporters/modules/types.ts","f74":"src/reporters/modules/utils.ts","f75":"src/reporters/modules/metadata.ts","f76":"src/reporters/modules/statistics.ts","f77":"src/reporters/modules/graphs.ts","f78":"src/reporters/modules/flows.ts","f79":"src/reporters/modules/architecture.ts","f80":"src/reporters/modules/summary.ts","f81":"src/reporters/modules/packages.ts","f82":"src/modes/vue-analyzer/extractors/props.ts","f83":"src/modes/vue-analyzer/extractors/emits.ts","f84":"src/modes/vue-analyzer/extractors/expose.ts","f85":"src/modes/vue-analyzer/extractors/imports.ts","f86":"src/modes/vue-analyzer/extractors/composables.ts","f87":"src/modes/vue-analyzer/extractors/functions.ts","f88":"src/modes/vue-analyzer/extractors/constants.ts","f89":"src/modes/vue-analyzer/extractors/variables.ts","f90":"src/modes/vue-analyzer/extractors/types.ts","f91":"src/modes/vue-analyzer/extractors/interfaces.ts","f92":"src/formal/checkers/EquivalenceChecker.ts","f93":"src/core/ASTComparator.ts","f94":"src/core/SignatureComparator.ts","f95":"src/core/CallGraphComparator.ts","f96":"src/modes/hybrid-report/types.ts","f97":"src/modes/hybrid-report/cli.ts","f98":"src/modes/hybrid-report/builder.ts","f99":"src/modes/hybrid-report/analyzer.ts","f100":"src/modes/hybrid-report/generators/dot.ts","f101":"src/modes/hybrid-report/generators/html.ts","f102":"src/modes/hybrid-report/generators/markdown.ts"},
+    "fns":[[1,"analyzeWithSemantics","m1","f1",404,"ae"],[2,"verifyFunction","m1","f1",419,"ae"],[3,"getControlFlowGraph","m1","f1",456,"ae"],[4,"getCallGraph","m1","f1",470,"ae"],[5,"getTypeInfo","m1","f1",480,"e"],[6,"getDataFlowGraph","m1","f1",488,"ae"],[7,"runCLI","m1","f1",373,"aer"],[8,"getTsConfigForFile","m2","f2",87,"e"],[9,"parseVueSFCFile","m2","f2",145,"e"],[10,"collectImportsFromAST","m2","f2",216,"0"],[11,"collectExportsFromAST","m2","f2",260,"0"],[12,"parseFile","m2","f2",360,"e"],[13,"isExternalModule","m2","f2",564,"e"],[14,"resolveFilePath","m2","f2",597,"e"],[15,"getAllProjectFiles","m2","f2",721,"e"],[16,"extractFunctionsFromAST","m2","f2",759,"e"],[17,"extractClassesFromAST","m2","f2",819,"e"],[18,"extractConstantsFromAST","m2","f2",865,"e"],[19,"extractInterfacesFromAST","m2","f2",899,"e"],[20,"extractTypesFromAST","m2","f2",938,"e"],[21,"extractVariablesFromAST","m2","f2",965,"e"],[22,"isNodeExported","m2","f2",1001,"0"],[23,"extractValueFromNode","m2","f2",1034,"0"],[24,"collectAllNodes","m2","f3",8,"0"],[25,"minifyCodeString","m2","f3",47,"e"],[26,"shouldPreserveValue","m2","f3",139,"0"],[27,"minifyForAI","m2","f3",203,"e"],[28,"findCyclicEdges","m2","f4",8,"e"],[29,"convertToDOT","m2","f4",60,"e"],[30,"setTsConfigPath","m2","f5",22,"e"],[31,"loadTsConfig","m2","f5",33,"e"],[32,"getTsConfigDir","m2","f5",82,"e"],[33,"getCachedTsConfig","m2","f5",89,"e"],[34,"clearTsConfigCache","m2","f5",96,"e"],[35,"resolveAliasPath","m2","f5",109,"e"],[36,"hasAliases","m2","f5",171,"e"],[37,"getAliases","m2","f5",181,"e"],[38,"getBaseUrl","m2","f5",191,"e"],[39,"isAliasPath","m2","f5",201,"e"],[40,"resolveAliasPattern","m2","f5",222,"e"],[41,"addAlias","m2","f5",263,"e"],[42,"removeAlias","m2","f5",287,"e"],[43,"simpleHash","m2","f6",20,"0"],[44,"buildProjectGraph","m3","f8",73,"e"],[45,"buildInwardDependencies","m3","f8",358,"0"],[46,"exportToDOT","m3","f8",373,"e"],[47,"findCyclesInGraph","m3","f8",387,"e"],[48,"getGraphStats","m3","f8",414,"e"],[49,"findPathInGraph","m3","f8",426,"e"],[50,"buildFileInternalGraph","m3","f9",13,"e"],[51,"minifyFileCommand","m3","f10",11,"e"],[52,"generateDirectoryTree","m3","f11",24,"e"],[53,"collectFiles","m3","f11",86,"e"],[54,"minifyFolder","m3","f11",139,"e"],[55,"buildAiPromptPack","m3","f12",13,"e"],[56,"analyzeModuleStructure","m3","f13",18,"e"],[57,"identifyClusters","m3","f13",262,"e"],[58,"buildSplitModulePrompt","m3","f13",375,"e"],[59,"runImpactAnalysis","m3","f14",12,"e"],[60,"findDeadCode","m3","f15",11,"e"],[61,"analyzeVueComponent","m4","f16",77,"e"],[62,"enhanceWithVueAnalysis","m4","f16",402,"e"],[63,"analyzeVueComponentCli","m4","f16",434,"ae"],[64,"runSemanticPipeline","m6","f21",1290,"ae"],[65,"createContractTemplate","m7","f22",125,"e"],[66,"addPrecondition","m7","f22",143,"e"],[67,"addPostcondition","m7","f22",156,"e"],[68,"addInvariant","m7","f22",169,"e"],[69,"addBody","m7","f22",182,"e"],[70,"buildContract","m7","f22",192,"e"],[71,"createContractFromSignature","m7","f22",207,"e"],[72,"validatePostconditions","m7","f22",232,"e"],[73,"generateVerificationReport","m7","f22",243,"e"],[74,"areContractsEquivalent","m7","f22",272,"e"],[75,"checkFileEquivalence","m7","f22",293,"ae"],[76,"checkRefactoringEquivalence","m7","f22",309,"ae"],[77,"checkFunctionEquivalence","m7","f22",331,"ae"],[78,"checkExpressionEquivalence","m7","f22",349,"ae"],[79,"verifyFunction","m7","f22",365,"ae"],[80,"generateFullReport","m9","f24",160,"e"],[81,"findCycles","m9","f24",430,"0"],[82,"generateCompactReport","m9","f25",117,"e"],[83,"encodeFlags","m9","f25",983,"0"],[84,"findFunctionByName","m9","f25",1010,"e"],[85,"findSelfFunctionByName","m9","f25",1030,"e"],[86,"findConstantByName","m9","f25",1048,"e"],[87,"getFunctionCalls","m9","f25",1069,"e"],[88,"getFunctionCallers","m9","f25",1078,"e"],[89,"getFileName","m9","f25",1087,"e"],[90,"getModuleName","m9","f25",1094,"e"],[91,"getFunctionInfo","m9","f25",1101,"e"],[92,"getAllSelfFunctions","m9","f25",1123,"e"],[93,"isSelfFunction","m9","f25",1136,"e"],[94,"decodeFlags","m9","f25",1145,"e"],[95,"escapeHtml","m9","f26",9,"e"],[96,"generateHTMLReport","m9","f26",27,"e"],[97,"generateInteractiveHTML","m9","f27",28,"ae"],[98,"copyDirectory","m9","f27",201,"0"],[99,"escapeHtml","m1","f30",4,"e"],[100,"showHelp","m1","f30",8,"e"],[101,"formatFileSize","m1","f30",110,"e"],[102,"generateTempId","m1","f30",116,"e"],[103,"ensureDirectoryExists","m1","f30",120,"e"],[104,"renderNode","m1","f30",126,"e"],[105,"normalizePathForDisplay","m11","f32",11,"e"],[106,"getFileNameForDisplay","m11","f32",42,"e"],[107,"normalizePathForOS","m11","f32",51,"e"],[108,"normalizeGraphPaths","m11","f32",59,"e"],[109,"resolveAbsolutePath","m11","f32",82,"e"],[110,"validateAndResolvePath","m11","f32",94,"e"],[111,"extractEntitiesFromFile","m9","f34",184,"e"],[112,"extractValueFromNode","m9","f34",564,"0"],[113,"collectAllCalls","m2","f35",11,"e"],[114,"collectAllCallsUnfiltered","m2","f35",248,"e"],[115,"collectDeclaredFunctions","m2","f35",288,"e"],[116,"buildCallGraphFromAST","m2","f35",351,"e"],[117,"findUnusedFunctions","m2","f35",444,"e"],[118,"findUnresolvedCalls","m2","f35",471,"e"],[119,"collectCallsFromBlock","m2","f35",481,"e"],[120,"collectCallsFromFunction","m2","f35",496,"e"],[121,"findCallers","m2","f35",529,"e"],[122,"isFunctionCalled","m2","f35",599,"e"],[123,"parseVueFile","m4","f38",15,"e"],[124,"findTypeScriptPath","m4","f38",40,"0"],[125,"compileScriptBlock","m4","f38",70,"e"],[126,"analyzeTemplate","m4","f40",9,"e"],[127,"buildCallGraphFromScript","m4","f41",8,"e"],[128,"generateVueComponentReport","m4","f42",8,"e"],[129,"getNodeValue","m4","f43",8,"e"],[130,"safeString","m4","f43",83,"e"],[131,"findWasmPath","m11","f44",14,"e"],[132,"isWasmAvailable","m11","f44",66,"e"],[133,"getAvailableGrammars","m11","f44",75,"e"],[134,"createWasmSymlink","m11","f44",94,"e"],[135,"copyWasmFiles","m11","f44",124,"e"],[136,"createIntVar","m7","f45",53,"0"],[137,"createBoolVar","m7","f45",57,"0"],[138,"createIntVal","m7","f45",61,"0"],[139,"createIntParam","m7","f45",1010,"e"],[140,"createBoolParam","m7","f45",1014,"e"],[141,"createStringParam","m7","f45",1018,"e"],[142,"eq","m7","f45",1022,"e"],[143,"neq","m7","f45",1026,"e"],[144,"range","m7","f45",1030,"e"],[145,"implies","m7","f45",1034,"e"],[146,"and","m7","f45",1043,"e"],[147,"or","m7","f45",1052,"e"],[148,"not","m7","f45",1059,"e"],[149,"if_","m7","f45",1066,"e"],[150,"compare","m7","f45",1085,"e"],[151,"assign","m7","f45",1149,"e"],[152,"add","m7","f45",1153,"e"],[153,"sub","m7","f45",1157,"e"],[154,"mul","m7","f45",1161,"e"],[155,"div","m7","f45",1165,"e"],[156,"addExpr","m7","f45",1172,"e"],[157,"subExpr","m7","f45",1186,"e"],[158,"mulExpr","m7","f45",1200,"e"],[159,"divExpr","m7","f45",1214,"e"],[160,"parseLogLevel","m11","f47",261,"e"],[161,"getGlobalLogger","m11","f47",277,"e"],[162,"setGlobalLogger","m11","f47",284,"e"],[163,"isEquivalencePassed","m13","f49",714,"e"],[164,"hasCriticalIssues","m13","f49",719,"e"],[165,"getSummary","m13","f49",724,"e"],[166,"isRefactoringEquivalent","m13","f50",865,"e"],[167,"needsRefactoringReview","m13","f50",869,"e"],[168,"hasCriticalIssues","m13","f50",873,"e"],[169,"createExpressionParser","m7","f51",968,"e"],[170,"parseExpression","m7","f51",975,"e"],[171,"validateExpression","m7","f51",983,"e"],[172,"extractVariables","m7","f51",991,"e"],[173,"isValidForZ3","m7","f51",999,"e"],[174,"toZ3String","m7","f51",1007,"e"],[175,"parseFunctionBody","m7","f51",1020,"e"],[176,"createFunctionVariables","m7","f51",1050,"e"],[177,"verifyFunctionWithBody","m7","f51",1077,"ae"],[178,"createContractFromExpression","m7","f51",1184,"e"],[179,"createContractWithAutoPreconditions","m7","f51",1210,"e"],[180,"canParseExpression","m7","f51",1259,"e"],[181,"isSimpleExpression","m7","f51",1270,"e"],[182,"extractVariablesFromExpression","m7","f51",1280,"e"],[183,"getDefaultWasmPath","m8","f53",42,"0"],[184,"ensureArray","m9","f65",106,"0"],[185,"getRootPath","m9","f66",16,"e"],[186,"getPathSymbol","m9","f66",38,"e"],[187,"isEventHandler","m2","f68",41,"0"],[188,"extractEventType","m2","f68",79,"0"],[189,"calculateComplexity","m2","f68",107,"0"],[190,"analyzeSecurity","m2","f68",160,"0"],[191,"isNodeExported","m2","f68",199,"0"],[192,"extractBodyText","m2","f68",240,"0"],[193,"extractValue","m2","f68",279,"0"],[194,"createEmptyEntitiesResult","m2","f68",345,"0"],[195,"convertVueImportsToImportInfo","m2","f68",368,"0"],[196,"convertVueAnalysisToEntities","m2","f68",391,"0"],[197,"extractEntities","m2","f68",631,"e"],[198,"extractEntitiesFromAST","m2","f68",672,"0"],[199,"extractCallGraph","m2","f68",1662,"e"],[200,"hasCyclicDependencies","m16","f69",245,"e"],[201,"getModulesByLevel","m16","f69",252,"e"],[202,"getAllFunctions","m16","f69",259,"e"],[203,"getFunctionsByExportSource","m16","f69",270,"e"],[204,"getFunctionsStats","m16","f69",288,"e"],[205,"askQuestion","m11","f70",11,"e"],[206,"askYesNo","m11","f70",31,"ae"],[207,"askChoice","m11","f70",52,"ae"],[208,"encodeFlags","m11","f72",66,"e"],[209,"decodeFlags","m11","f72",100,"e"],[210,"getFlagsList","m11","f72",132,"e"],[211,"hasFlag","m11","f72",158,"e"],[212,"setFlag","m11","f72",168,"e"],[213,"clearFlag","m11","f72",178,"e"],[214,"toggleFlag","m11","f72",188,"e"],[215,"encodeFlagsAdvanced","m11","f72",198,"e"],[216,"decodeFlagsAdvanced","m11","f72",221,"e"],[217,"flagsToString","m11","f72",247,"e"],[218,"countFlags","m11","f72",256,"e"],[219,"hasAnyFlag","m11","f72",272,"e"],[220,"hasAllFlags","m11","f72",282,"e"],[221,"createDefaultSecurity","m17","f73",18,"e"],[222,"ensureArray","m17","f74",15,"e"],[223,"safeString","m17","f74",31,"e"],[224,"safeNumber","m17","f74",49,"e"],[225,"safeBoolean","m17","f74",62,"e"],[226,"isRealObject","m17","f74",77,"e"],[227,"filterRealObjects","m17","f74",84,"e"],[228,"sanitizeEntities","m17","f74",92,"e"],[229,"sanitize","m17","f74",100,"0"],[230,"safeTraverseAST","m17","f74",124,"e"],[231,"findProjectRoot","m17","f74",164,"e"],[232,"findFileInProject","m17","f74",181,"e"],[233,"findModuleForEntity","m17","f74",224,"e"],[234,"generateFunctionId","m17","f74",255,"e"],[235,"generateFileId","m17","f74",265,"e"],[236,"generateModuleId","m17","f74",275,"e"],[237,"normalizePathForDisplay","m17","f74",286,"e"],[238,"getFileName","m17","f74",321,"e"],[239,"getFileExtension","m17","f74",328,"e"],[240,"getFileDirectory","m17","f74",335,"e"],[241,"isTypeScriptFile","m17","f74",342,"e"],[242,"isJavaScriptFile","m17","f74",350,"e"],[243,"isVueFile","m17","f74",358,"e"],[244,"isJsxFile","m17","f74",365,"e"],[245,"detectLanguage","m17","f74",372,"e"],[246,"shortenPath","m17","f74",385,"e"],[247,"generateVscodeLink","m17","f74",421,"e"],[248,"isAbsolutePath","m17","f74",435,"e"],[249,"getRelativePath","m17","f74",442,"e"],[250,"createMetadata","m17","f75",11,"e"],[251,"getReportName","m17","f75",20,"e"],[252,"getReportVersion","m17","f75",24,"e"],[253,"getLockfileVersion","m17","f75",28,"e"],[254,"getDefaultTimestamp","m17","f75",32,"e"],[255,"formatTimestamp","m17","f75",36,"e"],[256,"getReportMetadata","m17","f75",40,"e"],[257,"calculateEntityStats","m17","f76",8,"e"],[258,"calculateFileStats","m17","f76",83,"e"],[259,"buildDependencyGraph","m17","f77",8,"e"],[260,"findCycles","m17","f77",53,"e"],[261,"getMaxDepth","m17","f77",99,"e"],[262,"getModulesByLevel","m17","f77",130,"e"],[263,"hasCycles","m17","f77",171,"e"],[264,"findAllPaths","m17","f77",180,"e"],[265,"findShortestPath","m17","f77",220,"e"],[266,"findReachableNodes","m17","f77",255,"e"],[267,"findSCC","m17","f77",281,"e"],[268,"getNeighborsSafe","m17","f77",353,"0"],[269,"isAcyclic","m17","f77",396,"e"],[270,"topologicalSort","m17","f77",403,"e"],[271,"getNodeDegree","m17","f77",435,"e"],[272,"findHubs","m17","f77",455,"e"],[273,"findIsolatedNodes","m17","f77",473,"e"],[274,"getGraphDensity","m17","f77",489,"e"],[275,"isConnected","m17","f77",507,"e"],[276,"findConnectedComponents","m17","f77",515,"e"],[277,"buildExecutionGraph","m17","f78",8,"e"],[278,"buildImportExportFlow","m17","f78",105,"e"],[279,"findCallPath","m17","f78",314,"e"],[280,"findDependents","m17","f78",370,"e"],[281,"findDependencies","m17","f78",396,"e"],[282,"findCallCycles","m17","f78",423,"e"],[283,"getCallGraphStats","m17","f78",465,"e"],[284,"buildCallGraphFromEntities","m17","f78",512,"e"],[285,"buildArchitectureMetrics","m17","f79",12,"e"],[286,"exportArchitectureMetrics","m17","f79",151,"e"],[287,"generateArchitectureReport","m17","f79",158,"e"],[288,"checkArchitectureHealth","m17","f79",215,"e"],[289,"buildSummary","m17","f80",6,"e"],[290,"generateQuickSummary","m17","f80",32,"e"],[291,"isProjectHealthy","m17","f80",54,"e"],[292,"getProjectMaturity","m17","f80",61,"e"],[293,"generateSummaryMarkdown","m17","f80",95,"e"],[294,"safeCopy","m17","f81",21,"0"],[295,"buildPackages","m17","f81",48,"e"],[296,"extractPropsFromSource","m12","f82",11,"e"],[297,"extractPropsFromCompiledScript","m12","f82",244,"e"],[298,"extractPropsFromAST","m12","f82",312,"e"],[299,"extractEmitsFromSource","m12","f83",11,"e"],[300,"extractEmitsFromCompiledScript","m12","f83",57,"e"],[301,"extractEmitsFromAST","m12","f83",104,"e"],[302,"extractExposeFromCompiledScript","m12","f84",9,"e"],[303,"extractExposeFromAST","m12","f84",22,"e"],[304,"extractImportsFromAST","m12","f85",9,"e"],[305,"extractImportsFromSource","m12","f85",63,"e"],[306,"extractImportsWithDetails","m12","f85",188,"e"],[307,"groupImportsByType","m12","f85",275,"e"],[308,"isImportUsed","m12","f85",325,"e"],[309,"filterUnusedImports","m12","f85",358,"e"],[310,"extractComposablesFromAST","m12","f86",9,"e"],[311,"extractComposablesFromSource","m12","f86",77,"e"],[312,"extractFunctionsFromScript","m12","f87",10,"e"],[313,"extractFunctionsFromScriptFallback","m12","f87",384,"0"],[314,"isNodeExported","m12","f87",697,"0"],[315,"getParamName","m12","f87",721,"0"],[316,"extractBodyText","m12","f87",752,"0"],[317,"getReturnType","m12","f87",795,"0"],[318,"extractConstantsFromAST","m12","f88",10,"e"],[319,"isNodeExported","m12","f88",162,"0"],[320,"extractConstantsFromScript","m12","f88",186,"e"],[321,"extractConstantsFromSource","m12","f88",209,"0"],[322,"isCatchClause","m12","f89",11,"0"],[323,"extractVariablesFromAST","m12","f89",18,"e"],[324,"isNodeExported","m12","f89",297,"0"],[325,"extractVariablesFromScript","m12","f89",321,"e"],[326,"extractVariablesFromSource","m12","f89",344,"0"],[327,"extractTypesFromAST","m12","f90",9,"e"],[328,"getTypeDefinition","m12","f90",88,"0"],[329,"isNodeExported","m12","f90",254,"0"],[330,"extractTypesFromScript","m12","f90",276,"e"],[331,"extractTypesFromSource","m12","f90",299,"0"],[332,"isTSInterfaceDeclaration","m12","f91",9,"0"],[333,"isTSTypeAliasDeclaration","m12","f91",16,"0"],[334,"isTSTypeLiteral","m12","f91",23,"0"],[335,"isTSPropertySignature","m12","f91",30,"0"],[336,"isTSIndexSignature","m12","f91",37,"0"],[337,"isTSMethodSignature","m12","f91",44,"0"],[338,"isExportNamedDeclaration","m12","f91",51,"0"],[339,"isIdentifier","m12","f91",58,"0"],[340,"isTSQualifiedName","m12","f91",65,"0"],[341,"isExportSpecifier","m12","f91",72,"0"],[342,"isLiteral","m12","f91",79,"0"],[343,"isTSExpressionWithTypeArguments","m12","f91",86,"0"],[344,"isExportDefaultDeclaration","m12","f91",93,"0"],[345,"getNodeKey","m12","f91",100,"0"],[346,"getNodeName","m12","f91",112,"0"],[347,"getNodeParent","m12","f91",129,"0"],[348,"extractInterfacesFromAST","m12","f91",137,"e"],[349,"isNodeExported","m12","f91",293,"0"],[350,"extractInterfacesFromScript","m12","f91",317,"e"],[351,"extractInterfacesFromSource","m12","f91",340,"0"],[352,"isEquivalent","m13","f92",1559,"e"],[353,"needsReview","m13","f92",1564,"e"],[354,"confidenceLevel","m13","f92",1572,"e"],[355,"isSignatureCompatible","m2","f94",781,"e"],[356,"compareSignatures","m2","f94",786,"e"],[357,"findFunctionByName","m2","f94",794,"e"],[358,"findFunctionBySignature","m2","f94",801,"e"],[359,"createEmptyCallGraph","m2","f95",655,"e"],[360,"mergeCallGraphs","m2","f95",663,"e"],[361,"runHybridReport","m16","f97",20,"ae"],[362,"buildHybridReport","m16","f98",16,"e"],[363,"analyzeModule","m16","f99",19,"e"],[364,"generateHybridDOT","m18","f100",10,"e"],[365,"generateHybridHTML","m18","f101",13,"ae"],[366,"generateHybridMarkdown","m18","f102",10,"e"]],
+    "cn":[[1,"VERSION","5.0.0","m1","f1",385],[2,"NAME","ast-analyzer","m1","f1",386],[3,"REPORTERS_VERSION","5.0.0","m1","f1",509],[4,"REPORTERS_NAME","reporters","m1","f1",510],[5,"SUPPORTED_EXTENSIONS",[".ts",".mjs",".js",".tsx",".jsx",".vue"],"m2","f2",44],[6,"DEFAULT_EXCLUDE_PATTERNS",["node_modules",".git","dist","build","coverage",".nyc_output","__pycache__",".cache",".next","out",".nuxt",".output",".vercel","tmp","temp"],"m2","f2",45],[7,"idManager",null,"m2","f6",854],[8,"minifyFile","minifyFileCommand","m3","f10",52],[9,"minify","minifyFileCommand","m3","f10",57],[10,"FORMAL_MODULE_VERSION","3.0.0","m7","f22",105],[11,"FORMAL_MODULE_NAME","@newkind/ast-analyzer/formal","m7","f22",106],[12,"SHORT_KEYS","словарь коротких ключей (39 пар)","m9","f25",19],[13,"FLAG_MAP",{"1":"a","2":"e","4":"m","8":"r","16":"v","32":"n"},"m9","f25",64],[14,"RELATION_TYPES","26 типов связей","m9","f25",74],[15,"__filename",null,"m9","f27",9],[16,"__dirname",null,"m9","f27",10],[17,"COMPACT_REPORT_CONFIG","конфигурация отчёта, пресеты: minimal/standard/full/relationshipsOnly/ultraCompact","m1","f29",174],[18,"IGNORE_NODE_MODULES",true,"m1","f29",846],[19,"SUPPORTED_EXTENSIONS",[".ts",".mjs",".js",".tsx",".jsx",".vue"],"m1","f29",847],[20,"DEFAULT_EXCLUDE_PATTERNS",["node_modules",".git","dist","build","coverage",".nyc_output","__pycache__",".cache",".next","out",".nuxt",".output",".vercel","tmp","temp"],"m1","f29",848],[21,"VUE_SCRIPT_PATTERN",null,"m1","f29",865],[22,"DEFAULT_EXCLUDE_PATTERNS",["node_modules",".git","dist","build","coverage",".nyc_output","__pycache__",".cache",".next","out",".nuxt",".output",".vercel","tmp","temp"],"m1","f30",92],[23,"__filename",null,"m4","f38",9],[24,"__dirname",null,"m4","f38",10],[25,"__filename",null,"m11","f44",6],[26,"__dirname",null,"m11","f44",7],[27,"__filename",null,"m8","f53",38],[28,"__dirname",null,"m8","f53",39],[29,"HYBRID_REPORT_VERSION","1.0.0","m16","f69",159],[30,"HYBRID_REPORT_NAME","@newkind/ast-analyzer/hybrid-report","m16","f69",164],[31,"STANDARD_FUNCTION",0,"m11","f72",291],[32,"NESTED_FUNCTION",null,"m11","f72",294],[33,"ASYNC_NESTED_FUNCTION",null,"m11","f72",297],[34,"EXPORTED_FUNCTION",null,"m11","f72",300],[35,"METHOD_FUNCTION",null,"m11","f72",303],[36,"ARROW_FUNCTION",null,"m11","f72",306],[37,"COMPOSABLE_FUNCTION",null,"m11","f72",309],[38,"VUE_MACRO",null,"m11","f72",312]],
+    "gr":{"c":[[79,139,419,"a"],[79,144,419,"a"],[12,9,360,"d"],[12,10,360,"d"],[12,11,360,"d"],[14,8,597,"d"],[16,349,759,"d"],[17,349,819,"d"],[318,349,865,"d"],[318,112,865,"d"],[348,349,899,"d"],[327,349,938,"d"],[323,349,965,"d"],[323,112,965,"d"],[25,24,47,"d"],[25,26,47,"d"],[27,25,203,"d"],[44,45,73,"d"],[48,47,414,"d"],[52,104,24,"d"],[54,53,139,"d"],[54,52,139,"d"],[58,56,375,"d"],[58,57,375,"d"],[62,61,402,"d"],[63,61,434,"a"],[71,65,207,"d"],[80,260,160,"d"],[82,208,117,"d"],[91,87,1101,"d"],[91,88,1101,"d"],[96,99,27,"d"],[97,98,28,"a"],[106,237,42,"d"],[108,237,59,"d"],[109,107,82,"d"],[110,109,94,"d"],[111,112,184,"d"],[116,115,351,"d"],[117,115,444,"d"],[117,116,444,"d"],[118,115,471,"d"],[118,114,471,"d"],[119,113,481,"d"],[120,113,496,"d"],[121,115,529,"d"],[121,120,529,"d"],[125,124,70,"d"],[132,131,66,"d"],[133,131,75,"d"],[134,131,94,"d"],[135,131,124,"d"],[196,194,391,"d"],[196,195,391,"d"],[197,194,631,"d"],[197,196,631,"d"],[197,198,631,"d"],[198,194,672,"d"],[198,349,672,"d"],[198,187,672,"d"],[198,188,672,"d"],[198,316,672,"d"],[198,189,672,"d"],[198,190,672,"d"],[198,193,672,"d"],[204,202,288,"d"],[206,205,31,"a"],[207,205,52,"a"],[215,208,198,"d"],[216,209,221,"d"],[217,210,247,"d"],[227,226,84,"d"],[228,229,92,"d"],[245,243,372,"d"],[245,244,372,"d"],[245,241,372,"d"],[245,242,372,"d"],[246,237,385,"d"],[256,251,40,"d"],[256,252,40,"d"],[256,253,40,"d"],[256,254,40,"d"],[260,268,53,"d"],[261,268,99,"d"],[262,268,130,"d"],[263,260,171,"d"],[264,268,180,"d"],[265,268,220,"d"],[266,268,255,"d"],[267,268,281,"d"],[269,263,396,"d"],[270,263,403,"d"],[270,268,403,"d"],[271,268,435,"d"],[272,271,455,"d"],[273,271,473,"d"],[275,266,507,"d"],[276,268,515,"d"],[283,282,465,"d"],[293,292,95,"d"],[295,245,48,"d"],[295,294,48,"d"],[309,308,358,"d"],[312,313,10,"d"],[312,349,10,"d"],[312,315,10,"d"],[312,316,10,"d"],[312,317,10,"d"],[317,316,795,"d"],[318,349,10,"d"],[320,318,186,"d"],[320,321,186,"d"],[323,349,18,"d"],[323,322,18,"d"],[325,323,321,"d"],[325,326,321,"d"],[327,349,9,"d"],[327,328,9,"d"],[330,327,276,"d"],[330,331,276,"d"],[348,332,137,"d"],[348,349,137,"d"],[348,343,137,"d"],[348,339,137,"d"],[348,340,137,"d"],[348,335,137,"d"],[348,345,137,"d"],[348,342,137,"d"],[348,336,137,"d"],[348,337,137,"d"],[348,333,137,"d"],[348,334,137,"d"],[348,338,137,"d"],[348,341,137,"d"],[348,346,137,"d"],[349,338,293,"d"],[349,344,293,"d"],[349,347,293,"d"],[350,348,317,"d"],[350,351,317,"d"]],
+      "i":[["fn8","fn31"],["fn8","fn35"],["fn8","fn32"],["fn8","fn109"],["fn8","fn110"],["fn8","fn107"],["fn24","fn12"],["fn30","fn107"],["fn44","fn111"],["fn50","fn12"],["fn50","fn237"],["fn50","fn115"],["fn50","fn116"],["fn51","fn27"],["fn52","fn27"],["fn55","fn44"],["fn55","fn27"],["fn56","fn12"],["fn56","fn27"],["fn56","fn50"],["fn56","fn28"],["fn56","fn61"],["fn56","fn128"],["fn59","fn12"],["fn59","fn15"],["fn59","fn14"],["fn60","fn12"],["fn60","fn15"],["fn60","fn14"],["fn61","fn123"],["fn61","fn125"],["fn61","fn126"],["fn61","fn296"],["fn61","fn297"],["fn61","fn298"],["fn61","fn299"],["fn61","fn300"],["fn61","fn301"],["fn61","fn302"],["fn61","fn303"],["fn61","fn304"],["fn61","fn305"],["fn61","fn310"],["fn61","fn311"],["fn61","fn312"],["fn61","fn320"],["fn61","fn325"],["fn61","fn330"],["fn61","fn350"],["fn61","fn127"],["fn61","fn128"],["fn64","fn144"],["fn64","fn131"],["fn65","fn139"],["fn65","fn140"],["fn65","fn141"],["fn65","fn142"],["fn65","fn143"],["fn65","fn144"],["fn65","fn145"],["fn65","fn146"],["fn65","fn147"],["fn65","fn148"],["fn65","fn149"],["fn65","fn150"],["fn65","fn151"],["fn65","fn152"],["fn65","fn153"],["fn65","fn154"],["fn65","fn155"],["fn65","fn156"],["fn65","fn157"],["fn65","fn158"],["fn65","fn159"],["fn65","fn169"],["fn65","fn170"],["fn65","fn171"],["fn65","fn172"],["fn65","fn173"],["fn65","fn174"],["fn65","fn175"],["fn65","fn176"],["fn65","fn177"],["fn65","fn178"],["fn65","fn179"],["fn65","fn180"],["fn65","fn181"],["fn65","fn182"],["fn65","fn166"],["fn65","fn167"],["fn65","fn168"],["fn99","fn237"],["fn99","fn106"],["fn97","fn185"],["fn97","fn186"],["fn111","fn222"],["fn111","fn223"],["fn111","fn224"],["fn111","fn225"],["fn111","fn226"],["fn111","fn227"],["fn111","fn228"],["fn111","fn230"],["fn111","fn231"],["fn111","fn232"],["fn111","fn233"],["fn111","fn250"],["fn111","fn251"],["fn111","fn252"],["fn111","fn253"],["fn111","fn257"],["fn111","fn258"],["fn111","fn259"],["fn111","fn260"],["fn111","fn261"],["fn111","fn262"],["fn111","fn277"],["fn111","fn278"],["fn111","fn285"],["fn111","fn289"],["fn111","fn295"],["fn136","fn170"],["fn136","fn171"],["fn136","fn172"],["fn136","fn173"],["fn136","fn174"],["fn183","fn160"],["fn187","fn61"],["fn187","fn113"],["fn187","fn114"],["fn187","fn115"],["fn187","fn116"],["fn187","fn117"],["fn187","fn118"],["fn200","fn361"],["fn200","fn362"],["fn200","fn363"],["fn200","fn364"],["fn200","fn365"],["fn200","fn366"],["fn285","fn260"],["fn285","fn261"],["fn285","fn262"],["fn296","fn129"],["fn299","fn129"],["fn318","fn129"],["fn322","fn129"],["fn352","fn144"],["fn352","fn142"],["fn352","fn147"],["fn361","fn50"],["fn361","fn28"],["fn361","fn29"],["fn361","fn362"],["fn361","fn364"],["fn361","fn365"],["fn361","fn366"],["fn362","fn44"],["fn362","fn28"],["fn362","fn363"],["fn365","fn364"]]},
+    "st":{"tf":366,"tc":140,"tm":18,"tfils":102,"tun":206,"async":19,"cy":false,"tcn":38,"ti":161,"tsf":225,"modulesWithFunctions":14,"filesWithFunctions":71}};
+
+  /* =============== ДИНАМИЧЕСКИЕ СТРУКТУРЫ =============== */
+  const PAL=["#f59e0b","#22d3ee","#a78bfa","#34d399","#f472b6","#60a5fa","#facc15","#fb7185","#4ade80","#c084fc","#38bdf8","#fbbf24","#2dd4bf","#e879f9","#a3e635","#f97316","#94a3b8","#fca5a5"];
+  const FLB={a:"async",e:"export",m:"метод",r:"стрелка",v:"Vue-макрос",n:"вложенная"};
+  let MODIDS=[],MODNAME=id=>id,FILES={},FN={},MODFNS={},OUT={},INN={},IMP_OUT={},IMP_INN={},DEG={},
+    MREL={},ADJ={},OUTMOD={},INMOD={},CONSTS=[],CALLS=[],IMPS=[],FNSALL=[],SEALED=new Set(),REACHABLE=[],ROOT="m1",ST=null,QUESTS=[];
+  const num=s=>+String(s).replace(/\D/g,"");
+  function describeModule(name){const n=(name||"").toLowerCase();const K=[
+    [/^src$|index|root/,"🚪","корень проекта · точка входа"],[/core/,"⚙️","ядро: парсеры, графы, минификатор"],
+    [/util/,"🧰","утилиты и хелперы"],[/command|cli/,"⌨️","CLI и команды"],[/mode/,"🧪","режимы анализа"],
+    [/vue/,"🐉","анализатор Vue SFC"],[/extract/,"⛏️","экстракторы сущностей"],[/semantic/,"🔭","семантический анализ"],
+    [/ci|cd|pipeline/,"🚀","CI/CD пайплайны"],[/formal|z3|verif|check|equival/,"🧙","формальная верификация и проверки"],
+    [/refactor/,"🔧","рефакторинг"],[/hybrid/,"📖","гибридный отчёт"],[/report/,"📚","репортёры и отчёты"],
+    [/generat/,"🖨️","генераторы форматов"],[/module|metric|architect/,"🧮","метрики и секции отчёта"],
+    [/interface|type/,"📜","интерфейсы и типы"]];
+    for(const[re,ic,ds]of K)if(re.test(n))return[ic,ds];return["🏠","модуль проекта"];}
+  function initData(json){
+    MODIDS=Object.keys(json.mi||{});MODNAME=id=>(json.mi||{})[id]||id;FILES=json.fl||{};
+    FN={};MODFNS={};OUT={};INN={};IMP_OUT={};IMP_INN={};DEG={};MREL={};ADJ={};OUTMOD={};INMOD={};
+    (json.fns||[]).forEach(f=>{const id=num(f[0]);const o={id,name:f[1],mod:f[2],file:f[3],line:f[4],flags:String(f[5]||"0")};
+      FN[id]=o;(MODFNS[f[2]]||(MODFNS[f[2]]=[])).push(id);});
+    CALLS=((json.gr&&json.gr.c)||[]);IMPS=((json.gr&&json.gr.i)||[]).map(e=>[num(e[0]),num(e[1])]);
+    CALLS.forEach(([a,b,l,t])=>{(OUT[a]||(OUT[a]=[])).push({o:b,l,t});(INN[b]||(INN[b]=[])).push({o:a,l,t});});
+    IMPS.forEach(([a,b])=>{(IMP_OUT[a]||(IMP_OUT[a]=[])).push(b);(IMP_INN[b]||(IMP_INN[b]=[])).push(a);});
+    FNSALL=Object.values(FN).map(o=>[o.id,o.name,o.mod,o.file,o.line,o.flags]);
+    FNSALL.forEach(f=>DEG[f[0]]=(OUT[f[0]]?OUT[f[0]].length:0)+(INN[f[0]]?INN[f[0]].length:0));
+    const bump=(a,b)=>{const ma=FN[a].mod,mb=FN[b].mod;if(ma!==mb){const k=ma+">"+mb;MREL[k]=(MREL[k]||0)+1;
+      (ADJ[ma]||(ADJ[ma]=new Set())).add(mb);(ADJ[mb]||(ADJ[mb]=new Set())).add(ma);
+      (OUTMOD[ma]||(OUTMOD[ma]=new Set())).add(mb);(INMOD[mb]||(INMOD[mb]=new Set())).add(ma);}};
+    CALLS.forEach(([a,b])=>bump(a,b));IMPS.forEach(([a,b])=>bump(a,b));
+    CONSTS=(json.cn||[]).map(c=>({id:num(c[0]),name:c[1],value:c[2],mod:c[3],file:c[4],line:c[5]}));
+    ROOT=json.r||MODIDS[0]||"m1";ST=json.st||null;
+    SEALED=new Set(MODIDS.filter(m=>!(MODFNS[m]||[]).length&&!(ADJ[m]&&ADJ[m].size)));
+    REACHABLE=(()=>{const seen=new Set([ROOT]);const q=[ROOT];while(q.length){const c=q.shift();(ADJ[c]||new Set()).forEach(n=>{if(!seen.has(n)){seen.add(n);q.push(n);}});}return[...seen];})();
+    buildQuests();buildDatalist();}
+  const adjModules=m=>[...(ADJ[m]||[])];
+  const pal=m=>PAL[(MODIDS.indexOf(m)+PAL.length)%PAL.length];
+  function modFiles(m){const s=new Set();(MODFNS[m]||[]).forEach(id=>s.add(FN[id].file));return[...s].sort();}
+  function modPath(m){const fs=modFiles(m);if(!fs.length)return"src/"+MODNAME(m);const p=FILES[fs[0]]||"";const i=p.lastIndexOf("/");return i>0?p.slice(0,i):p;}
+  const topMod=()=>MODIDS.reduce((a,b)=>((MODFNS[a]||[]).length>=(MODFNS[b]||[]).length?a:b),MODIDS[0]);
+  const findMod=re=>MODIDS.find(id=>re.test(MODNAME(id)));
+
+  /* =============== СОСТОЯНИЕ =============== */
+  const LS="codex-walker-v4";
+  function fresh(){return{v:4,xp:0,mods:new Set(),fns:new Set(),consts:new Set(),fnsteps:0,moves:0,quests:new Set(),oracle:false,search:false,infn:false,mapOpened:false};}
+  function load(){try{const d=JSON.parse(localStorage.getItem(LS));if(d&&d.v===4){const s=fresh();
+    Object.assign(s,{xp:d.xp||0,moves:d.moves||0,fnsteps:d.fnsteps||0,oracle:!!d.oracle,search:!!d.search,infn:!!d.infn,mapOpened:!!d.mapOpened});
+    s.mods=new Set(d.mods);s.fns=new Set(d.fns);s.consts=new Set(d.consts);s.quests=new Set(d.quests);return s;}}catch(e){}return fresh();}
+  let S=load();
+  function save(){try{localStorage.setItem(LS,JSON.stringify({v:4,xp:S.xp,mods:[...S.mods],fns:[...S.fns],consts:[...S.consts],
+    fnsteps:S.fnsteps,moves:S.moves,quests:[...S.quests],oracle:S.oracle,search:S.search,infn:S.infn,mapOpened:S.mapOpened}));}catch(e){}}
+  const RANKS=[[0,"Новик","🐣"],[150,"Странник","🥾"],[400,"Следопыт","🧭"],[800,"Картограф","🗺️"],[1400,"Мастер гильдии","⚒️"],[2200,"Архимаг кода","🧙"],[3200,"Легенда графов","🌟"]];
+  function rankInfo(xp){let r=RANKS[0],next=null;for(let i=0;i<RANKS.length;i++){if(xp>=RANKS[i][0]){r=RANKS[i];next=RANKS[i+1]||null;}}return{r,next};}
+
+  /* =============== КВЕСТЫ (динамические) =============== */
+  function cntFnsInMod(m){let c=0;S.fns.forEach(id=>{if(FN[id]&&FN[id].mod===m)c++;});return c;}
+  const visitedReachable=()=>REACHABLE.filter(m=>S.mods.has(m)).length;
+  function buildQuests(){const core=topMod(),formal=findMod(/formal|z3/),vue=findMod(/vue/);
+    const rootFns=()=> (MODFNS[ROOT]||[]).some(id=>S.fns.has(id));
+    QUESTS=[
+      {id:"wake",icon:"🌅",name:"Точка входа",desc:"Открой карту (🗺 Граф или 🏙 План)",xp:10,prog:()=>[S.mapOpened?1:0,1]},
+      {id:"dive",icon:"🤿",name:"Погружение",desc:"Войди внутрь любой функции",xp:20,prog:()=>[S.infn?1:0,1]},
+      {id:"scout",icon:"🧭",name:"Разведка",desc:"Доберись до 3 комнат",xp:40,prog:()=>[Math.min(S.mods.size,3),3]},
+      {id:"gate",icon:"🛡️",name:"Страж входа",desc:`Войди в функцию комнаты ${MODNAME(ROOT)}`,xp:30,prog:()=>[rootFns()?1:0,1]},
+      {id:"forge",icon:"⚙️",name:"Ядро",desc:`Открой 5 функций комнаты ${MODNAME(core)}`,xp:60,prog:()=>[Math.min(cntFnsInMod(core),5),5]},
+      ...(formal?[{id:"formal",icon:"🧙",name:"Формальная верификация",desc:`Доберись до комнаты ${MODNAME(formal)}`,xp:30,prog:()=>[S.mods.has(formal)?1:0,1]}]:[]),
+      ...(vue?[{id:"dragon",icon:"🐉",name:"Vue-анализатор",desc:`Доберись до комнаты ${MODNAME(vue)}`,xp:30,prog:()=>[S.mods.has(vue)?1:0,1]}]:[]),
+      {id:"trace",icon:"🐾",name:"По вызовам",desc:"Сделай 3 перехода функция → функция",xp:60,prog:()=>[Math.min(S.fnsteps,3),3]},
+      {id:"relic",icon:"🏺",name:"Константы",desc:"Изучи 5 констант (стоя в их комнате)",xp:40,prog:()=>[Math.min(S.consts.size,5),5]},
+      {id:"deep",icon:"🕯️",name:"Глубокая разведка",desc:"Доберись до 10 комнат",xp:80,prog:()=>[Math.min(S.mods.size,10),10]},
+      {id:"all",icon:"👑",name:"Полная карта",desc:`Посети все ${REACHABLE.length} достижимых комнат`,xp:150,prog:()=>[visitedReachable(),REACHABLE.length]},
+      {id:"k25",icon:"📜",name:"Знаток функций",desc:"Открой 25 функций",xp:80,prog:()=>[Math.min(S.fns.size,25),25]},
+      {id:"k100",icon:"🌟",name:"Легенда графов",desc:"Открой 100 функций",xp:200,prog:()=>[Math.min(S.fns.size,100),100]},
+      {id:"oracle",icon:"🔮",name:"Оракул",desc:"Спроси Оракула о циклах на карте",xp:40,prog:()=>[S.oracle?1:0,1]},
+      {id:"hound",icon:"🔍",name:"Ищейка",desc:"Найди функцию через поиск и проложи маршрут",xp:30,prog:()=>[S.search?1:0,1]},
+      {id:"walk10",icon:"🚶",name:"Ходок",desc:"Сделай 10 шагов по графу",xp:50,prog:()=>[Math.min(S.moves,10),10]}];}
+
+  /* =============== ПЕРЕДВИЖЕНИЕ =============== */
+  let POS={type:"module",id:ROOT},TRAIL=[{type:"module",id:ROOT}],VIEWMODE="scene",INSPECT={type:"module",id:ROOT},ROUTE=[],autoTok=null;
+  const keyOf=p=>p.type==="module"?"m"+p.id:"f"+p.id;
+  const fromKey=k=>k[0]==="m"?{type:"module",id:k.slice(1)}:{type:"fn",id:+k.slice(1)};
+  const currentMod=()=>POS.type==="module"?POS.id:FN[POS.id].mod;
+  function neighborsOf(p){
+    if(p.type==="module"){const r=[];(MODFNS[p.id]||[]).forEach(f=>r.push({type:"fn",id:f}));
+      adjModules(p.id).forEach(m=>r.push({type:"module",id:m}));return r;}
+    const f=p.id,r=[{type:"module",id:FN[f].mod}],seen=new Set(["m"+FN[f].mod]);
+    const push=x=>{const k=keyOf(x);if(!seen.has(k)){seen.add(k);r.push(x);}};
+    (OUT[f]||[]).forEach(o=>push({type:"fn",id:o.o}));(INN[f]||[]).forEach(o=>push({type:"fn",id:o.o}));
+    (IMP_OUT[f]||[]).forEach(o=>push({type:"fn",id:o}));(IMP_INN[f]||[]).forEach(o=>push({type:"fn",id:o}));
+    return r;}
+  function isWalkable(t){return neighborsOf(POS).some(n=>keyOf(n)===keyOf(t));}
+  function buildRoute(from,to){const st=keyOf(from),en=keyOf(to);if(st===en)return[];
+    const prev={},seen=new Set([st]),q=[st];
+    while(q.length){const cur=q.shift();if(cur===en)break;
+      for(const nb of neighborsOf(fromKey(cur))){const k=keyOf(nb);if(!seen.has(k)){seen.add(k);prev[k]=cur;q.push(k);}}}
+    if(!seen.has(en))return null;const path=[];let c=en;while(c!==st){path.unshift(fromKey(c));c=prev[c];}return path;}
+  function posName(p){return p.type==="module"?"комната "+MODNAME(p.id):(FN[p.id]?FN[p.id].name+"()":"?");}
+  function checkQuests(){let ch=false;
+    for(const q of QUESTS){if(S.quests.has(q.id))continue;const[c,g]=q.prog();if(c>=g){S.quests.add(q.id);S.xp+=q.xp;
+      toast(`🏆 Квест выполнен: ${q.name} (+${q.xp} XP)`);log(`Квест «${q.name}» завершён!`);ch=true;}}
+    if(ch){renderQuests();renderHeader();save();}}
+  function discoverModule(m){if(!S.mods.has(m)){S.mods.add(m);S.xp+=20;toast(`Открыта комната ${MODNAME(m)} (+20 XP)`);
+    log(`Открыта комната <b>${MODNAME(m)}</b> (+20 XP)`);renderHeader();checkQuests();save();}}
+  function discoverFn(id){if(!S.fns.has(id)){S.fns.add(id);S.xp+=5;
+    log(`Открыта функция <b>${FN[id].name}</b> (+5 XP)`);renderHeader();checkQuests();save();}}
+  function reject(msg){banner("🚫 "+msg,"bad");log("🚫 "+msg);
+    const k=keyOf(INSPECT);if(NODE_EL[k]){NODE_EL[k].classList.add("denied");setTimeout(()=>NODE_EL[k]&&NODE_EL[k].classList.remove("denied"),700);}}
+  function moveTo(t,viaRoute){
+    if(!isWalkable(t)){reject(`${posName(t)} — не сосед текущей позиции. Ходить можно только по связям графа.`);return false;}
+    const wasFn=POS.type==="fn";
+    if(!viaRoute){stopAuto();ROUTE=[];renderRoutebar();}
+    POS=t;TRAIL.push(t);INSPECT=t;S.moves++;
+    if(t.type==="fn"){S.infn=true;if(wasFn)S.fnsteps++;}
+    log(`Шаг ${S.moves}: ${posName(TRAIL[TRAIL.length-2])} → ${posName(t)}`);
+    if(t.type==="module")discoverModule(t.id);else discoverFn(t.id);
+    checkQuests();save();render();return true;}
+  function goBack(){if(TRAIL.length<2){banner("Ты у самой точки входа — отступать некуда.","");return;}
+    stopAuto();ROUTE=[];TRAIL.pop();POS=TRAIL[TRAIL.length-1];INSPECT=POS;log(`↩ Откат к ${posName(POS)}`);render();}
+
+  /* =============== UI =============== */
+  function toast(m){const d=document.createElement("div");d.className="toast";d.textContent=m;
+    document.getElementById("toasts").appendChild(d);setTimeout(()=>d.remove(),3700);}
+  function log(m){const box=document.getElementById("log");const d=document.createElement("div");d.className="log-line";
+    d.innerHTML=`<span class="lt">${new Date().toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})}</span>${m}`;
+    box.prepend(d);while(box.children.length>60)box.lastChild.remove();}
+  let banT=null;
+  function banner(m,k){const b=document.getElementById("banner");b.textContent=m;b.className=k||"";b.style.display="block";
+    clearTimeout(banT);banT=setTimeout(()=>b.style.display="none",5000);}
+  function renderHeader(){const{r,next}=rankInfo(S.xp);
+    document.getElementById("rankName").textContent=`${r[2]} ${r[1]}`;
+    document.getElementById("xpText").textContent=next?`${S.xp} / ${next[0]} XP`:`${S.xp} XP — предел`;
+    document.getElementById("xpFill").style.width=(next?Math.min(100,(S.xp-r[0])/(next[0]-r[0])*100):100)+"%";
+    document.getElementById("counters").innerHTML=`🚪 комнаты <b>${visitedReachable()}/${REACHABLE.length}</b> · 📜 функции <b>${S.fns.size}/${FNSALL.length}</b> · 🏺 константы <b>${S.consts.size}/${CONSTS.length}</b> · 🚶 шаги <b>${S.moves}</b>`;}
+  function renderQuests(){const box=document.getElementById("quests");box.innerHTML="";
+    [...QUESTS].sort((a,b)=>(S.quests.has(a.id)?1:0)-(S.quests.has(b.id)?1:0)).forEach(q=>{
+      const[c,g]=q.prog();const d=document.createElement("div");d.className="quest"+(S.quests.has(q.id)?" done":"");
+      d.innerHTML=`<div class="qt"><span>${q.icon} ${q.name}</span><span style="color:var(--gold)">+${q.xp}</span></div>
+  <div class="qd">${q.desc}</div><div class="qbar"><i style="width:${Math.min(100,c/g*100)}%"></i></div>`;
+      box.appendChild(d);});}
+
+  /* =============== SVG =============== */
+  const svg=document.getElementById("graph"),vp=document.getElementById("vp"),gE=document.getElementById("gE"),gN=document.getElementById("gN");
+  const NS="http://www.w3.org/2000/svg";
+  function el(t,at,p){const e=document.createElementNS(NS,t);for(const k in at)e.setAttribute(k,at[k]);if(p)p.appendChild(e);return e;}
+  let vt={x:0,y:0,k:1};
+  function applyVT(){vp.setAttribute("transform",`translate(${vt.x},${vt.y}) scale(${vt.k})`);}
+  svg.addEventListener("wheel",e=>{e.preventDefault();const r=svg.getBoundingClientRect();const mx=e.clientX-r.left,my=e.clientY-r.top;
+    const nz=Math.max(.25,Math.min(4,vt.k*Math.exp(-e.deltaY*.0012)));const f=nz/vt.k;
+    vt.x=mx-(mx-vt.x)*f;vt.y=my-(my-vt.y)*f;vt.k=nz;applyVT();},{passive:false});
+  let pan=null;
+  svg.addEventListener("pointerdown",e=>{if(e.target.closest(".node"))return;pan={x:e.clientX,y:e.clientY};svg.classList.add("panning");svg.setPointerCapture(e.pointerId);});
+  svg.addEventListener("pointermove",e=>{if(!pan)return;vt.x+=e.clientX-pan.x;vt.y+=e.clientY-pan.y;pan={x:e.clientX,y:e.clientY};applyVT();});
+  svg.addEventListener("pointerup",()=>{pan=null;svg.classList.remove("panning");});
+  function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+  function layout(nodes,edges,W,H,seed){const n=nodes.length;if(!n)return;
+    const rnd=mulberry32(seed);const k=Math.sqrt(W*H/n)*.9;
+    nodes.forEach((nd,i)=>{const a=i/n*Math.PI*2;const r=Math.min(W,H)*.33;
+      nd.x=W/2+Math.cos(a)*r*(.6+rnd()*.7);nd.y=H/2+Math.sin(a)*r*(.6+rnd()*.7);});
+    const byId={};nodes.forEach(nd=>byId[nd.id]=nd);edges.forEach(e=>{e.a=byId[e.s];e.b=byId[e.t];});
+    let temp=Math.min(W,H)*.14;const iters=n>60?230:330;
+    for(let it=0;it<iters;it++){
+      nodes.forEach(nd=>{nd.dx=0;nd.dy=0;});
+      for(let i=0;i<n;i++){const a=nodes[i];
+        for(let j=i+1;j<n;j++){const b=nodes[j];let dx=a.x-b.x,dy=a.y-b.y;let d=Math.sqrt(dx*dx+dy*dy)||.01;
+          if(d<k*3){const f=k*k/d;a.dx+=dx/d*f;a.dy+=dy/d*f;b.dx-=dx/d*f;b.dy-=dy/d*f;}}}
+      for(const e of edges){if(!e.a||!e.b)continue;let dx=e.a.x-e.b.x,dy=e.a.y-e.b.y;let d=Math.sqrt(dx*dx+dy*dy)||.01;
+        const f=d*d/k*.35;e.a.dx-=dx/d*f;e.a.dy-=dy/d*f;e.b.dx+=dx/d*f;e.b.dy+=dy/d*f;}
+      for(const nd of nodes){nd.dx+=(W/2-nd.x)*.035;nd.dy+=(H/2-nd.y)*.035;}
+      for(const nd of nodes){const d=Math.sqrt(nd.dx*nd.dx+nd.dy*nd.dy)||.01;const cap=Math.min(d,temp);
+        nd.x+=nd.dx/d*cap;nd.y+=nd.dy/d*cap;nd.x=Math.max(50,Math.min(W-50,nd.x));nd.y=Math.max(45,Math.min(H-55,nd.y));}
+      temp*=.96;}}
+  const fnR=id=>6+Math.min(9,DEG[id]*1.1)+((FN[id].flags.indexOf("e")>=0)?1:0);
+
+  /* =============== ГРАФЫ =============== */
+  function buildProject(){
+    const nodes=MODIDS.map(m=>{const fc=(MODFNS[m]||[]).length;
+      return{id:"m"+m,type:"mod",mid:m,label:MODNAME(m),cnt:fc,r:15+Math.min(17,fc*.5),sealed:SEALED.has(m)};});
+    const edges=Object.keys(MREL).map(k=>{const[a,b]=k.split(">");
+      return{s:"m"+a,t:"m"+b,kind:"dep",w:Math.min(1.4+Math.log2(1+MREL[k])*1.3,5),label:`${MODNAME(a)} → ${MODNAME(b)} · ${MREL[k]} связей`};});
+    return{nodes,edges};}
+  function buildModule(mid){
+    const ids=MODFNS[mid]||[];
+    const nodes=ids.map(id=>({id:"f"+id,type:"fn",fnid:id,label:FN[id].name,r:fnR(id)}));
+    const edges=[],seen=new Set();
+    const push=(s,t,kind,label)=>{const key=s+"|"+t+"|"+kind;if(seen.has(key))return;seen.add(key);edges.push({s,t,kind,label});};
+    CALLS.forEach(([a,b,l,t])=>{if(FN[a]&&FN[b]&&FN[a].mod===mid&&FN[b].mod===mid)push("f"+a,"f"+b,t==="a"?"async":"call",`${FN[a].name} → ${FN[b].name} (стр. ${l})`);});
+    const ext={};
+    function extEdge(om,fnId,dir,kind){const e=ext[om]||(ext[om]={n:0,in:0,out:0});e.n++;
+      if(dir==="out"){e.out++;push("f"+fnId,"x"+om,kind,`${FN[fnId].name} → комната ${MODNAME(om)}`);}
+      else{e.in++;push("x"+om,"f"+fnId,kind,`комната ${MODNAME(om)} → ${FN[fnId].name}`);}}
+    CALLS.forEach(([a,b])=>{if(FN[a]&&FN[b]&&FN[a].mod===mid&&FN[b].mod!==mid)extEdge(FN[b].mod,a,"out","call");
+    else if(FN[a]&&FN[b]&&FN[b].mod===mid&&FN[a].mod!==mid)extEdge(FN[a].mod,b,"in","call");});
+    IMPS.forEach(([a,b])=>{if(FN[a]&&FN[b]&&FN[a].mod===mid&&FN[b].mod!==mid)extEdge(FN[b].mod,a,"out","imp");
+    else if(FN[a]&&FN[b]&&FN[b].mod===mid&&FN[a].mod!==mid)extEdge(FN[a].mod,b,"in","imp");});
+    Object.keys(ext).forEach(m=>{const e=ext[m];const nm=MODNAME(m);const w=Math.max(92,nm.length*7+56);
+      nodes.push({id:"x"+m,type:"ext",mid:m,label:nm,cnt:e.n,in:e.in,out:e.out,r:w/2,w:w});});
+    return{nodes,edges};}
+  function buildEgo(fid){
+    const set=new Map();const add=(id,ex)=>{if(!set.has(id))set.set(id,Object.assign({id:"f"+id,type:"fn",fnid:id,label:FN[id].name,r:fnR(id)},ex));};
+    add(fid,{r:fnR(fid)+5});
+    const edges=[],seen=new Set();const push=(s,t,kind)=>{const k=s+">"+t+kind;if(seen.has(k))return;seen.add(k);edges.push({s,t,kind});};
+    (OUT[fid]||[]).forEach(({o,t})=>{add(o);push("f"+fid,"f"+o,t==="a"?"async":"call");});
+    (INN[fid]||[]).forEach(({o,t})=>{add(o);push("f"+o,"f"+fid,t==="a"?"async":"call");});
+    (IMP_OUT[fid]||[]).forEach(o=>{add(o);push("f"+fid,"f"+o,"imp");});
+    (IMP_INN[fid]||[]).forEach(o=>{add(o);push("f"+o,"f"+fid,"imp");});
+    CALLS.forEach(([a,b,l,t])=>{if(a!==fid&&b!==fid&&set.has(a)&&set.has(b))push("f"+a,"f"+b,t==="a"?"async":"call");});
+    IMPS.forEach(([a,b])=>{if(a!==fid&&b!==fid&&set.has(a)&&set.has(b))push("f"+a,"f"+b,"imp");});
+    return{nodes:[...set.values()],edges};}
+
+  /* =============== ОТРИСОВКА =============== */
+  let NODE_EL={},ND_EDGES={},HOV_ADJ={};
+  function edgeCoords(e){const dx=e.b.x-e.a.x,dy=e.b.y-e.a.y;const d=Math.sqrt(dx*dx+dy*dy)||.01;const ux=dx/d,uy=dy/d;
+    return{x1:e.a.x+ux*(e.a.r+2),y1:e.a.y+uy*(e.a.r+2),x2:e.b.x-ux*(e.b.r+5),y2:e.b.y-uy*(e.b.r+5)};}
+  function sceneWalkSet(){const s=new Set();
+    if(VIEWMODE!=="scene"){adjModules(currentMod()).forEach(m=>s.add("m"+m));}
+    else if(POS.type==="module"){(MODFNS[POS.id]||[]).forEach(f=>s.add("f"+f));adjModules(POS.id).forEach(m=>s.add("m"+m));}
+    else neighborsOf(POS).forEach(p=>s.add(keyOf(p)));
+    return s;}
+  function drawGraph(g,opt){
+    const W=svg.clientWidth||900,H=svg.clientHeight||700;
+    svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+    if(!g.nodes.length){gE.innerHTML="";gN.innerHTML="";return;}
+    layout(g.nodes,g.edges,W,H,g.nodes.length*7919+g.edges.length*31+(POS.id?String(POS.id).length:1));
+    gE.innerHTML="";gN.innerHTML="";NODE_EL={};ND_EDGES={};HOV_ADJ={};
+    if(opt.roomLabel){const fns=g.nodes.filter(n=>n.type==="fn");
+      if(fns.length){const pad=36;const xs=fns.map(n=>n.x),ys=fns.map(n=>n.y);
+        const minx=Math.min(...xs)-pad,maxx=Math.max(...xs)+pad,miny=Math.min(...ys)-pad,maxy=Math.max(...ys)+pad;
+        el("rect",{x:minx,y:miny,width:maxx-minx,height:maxy-miny,rx:18,class:"roombg",fill:"#0e132088",stroke:"#3a4a6a","stroke-dasharray":"7 5","stroke-width":1.5},gE);
+        el("text",{x:minx+14,y:miny+20,class:"roomlabel"},gE).textContent="🚪 КОМНАТА: "+opt.roomLabel;}}
+    g.nodes.forEach(nd=>{HOV_ADJ[nd.id]=new Set();ND_EDGES[nd.id]=[];});
+    g.edges=g.edges.filter(e=>e.a&&e.b);
+    g.edges.forEach(e=>{HOV_ADJ[e.s].add(e.t);HOV_ADJ[e.t].add(e.s);
+      const col=e.kind==="async"?"#4fd8e0":e.kind==="call"?"#e0a83c":e.kind==="imp"?"#9a8cf5":"#7d8aa8";
+      const mk=e.kind==="async"?"ar-cy":e.kind==="call"?"ar-gd":e.kind==="imp"?"ar-vi":"ar-gy";
+      const c=edgeCoords(e);
+      const line=el("line",Object.assign(c,{class:"edge",stroke:col,"stroke-width":e.w||1.4,"marker-end":`url(#${mk})`}),gE);
+      if(e.kind==="imp")line.setAttribute("stroke-dasharray","5 4");
+      el("title",{},line).textContent=e.label||`${e.a.label} → ${e.b.label}`;
+      const rec={line,e};ND_EDGES[e.s].push(rec);ND_EDGES[e.t].push(rec);});
+    const fnFont=g.nodes.length>45?"8.5px":"10.5px";
+    g.nodes.forEach(nd=>{
+      const grp=el("g",{class:"node n-"+nd.type,transform:`translate(${nd.x},${nd.y})`},gN);
+      const isCur=opt.cur===nd.id,isWalk=opt.walk.has(nd.id),isNext=opt.rn===nd.id;
+      if(nd.type==="mod"){
+        const vis=S.mods.has(nd.mid);
+        if(nd.sealed)el("circle",{r:nd.r,class:"main",fill:"#161b26",stroke:"#3a4152","stroke-width":1.3,"stroke-dasharray":"2 3"},grp);
+        else if(vis)el("circle",{r:nd.r,class:"main",fill:pal(nd.mid),"fill-opacity":.9,stroke:"#f5d47a","stroke-width":2},grp);
+        else el("circle",{r:nd.r,class:"main",fill:"#232a3b",stroke:"#4a5468","stroke-width":1.3,"stroke-dasharray":"4 3"},grp);
+        el("text",{class:"cnt",y:4},grp).textContent=nd.sealed?"🔒":nd.cnt;
+        el("text",{y:nd.r+14},grp).textContent=nd.label+(nd.sealed?"":vis?"":" · не открыта");
+        if(nd.sealed){grp.classList.add("sealed");
+          el("title",{},grp).textContent=`комната ${MODNAME(nd.mid)}\n🔒 запечатана: нет функций и связей`;}
+        else el("title",{},grp).textContent=`комната ${MODNAME(nd.mid)} · ${modPath(nd.mid)}\nфункций: ${nd.cnt}${isWalk?"\n✅ можно шагнуть":isCur?"":"\n🔒 нужен маршрут"}`;
+        if(VIEWMODE!=="scene"&&!isCur&&!isWalk&&!nd.sealed)grp.classList.add("far");
+      }else if(nd.type==="fn"){
+        const f=FN[nd.fnid];
+        if(f.flags.indexOf("a")>=0)el("circle",{r:nd.r+3.5,fill:"none",stroke:"#4fd8e0","stroke-opacity":.55,"stroke-width":1.5},grp);
+        el("circle",{r:nd.r,class:"main",fill:pal(f.mod),"fill-opacity":.88,stroke:f.flags.indexOf("e")>=0?"#f5d47a":"#00000066","stroke-width":f.flags.indexOf("e")>=0?2:1},grp);
+        const lb=el("text",{y:nd.r+12,style:"font-size:"+fnFont},grp);lb.textContent=nd.label;
+        el("title",{},grp).textContent=`${f.name}()\nкомната ${MODNAME(f.mod)} · ${FILES[f.file]||""}:${f.line}${isWalk?"\n✅ можно шагнуть":""}`;
+      }else{
+        const w=nd.w||92,h=42;const out=nd.out>0,inc=nd.in>0;
+        const col=out&&inc?"#9a8cf5":out?"#e0a83c":"#6ee7a0";
+        const dlabel=out&&inc?"⇄ вход и выход":out?"→ выход":"← вход";
+        el("rect",{x:-w/2,y:-h/2,width:w,height:h,rx:9,class:"main",fill:"#141b2a",stroke:col,"stroke-width":2.2},grp);
+        el("text",{y:-4,class:"doortxt"},grp).textContent="🚪 "+nd.label;
+        el("text",{y:13,class:"doortxt small"},grp).textContent=dlabel;
+        el("title",{},grp).textContent=`Дверь в комнату ${nd.label}\n${dlabel}\nсвязей: ${nd.cnt} (вх: ${nd.in}, вых: ${nd.out})\nдвойной клик — пройти`;
+      }
+      if(isWalk)el("circle",{r:nd.r+6,class:"walkring"},grp);
+      if(isNext)el("circle",{r:nd.r+9,class:"routering"},grp);
+      if(isCur){el("circle",{r:nd.r+6,class:"pulse"},grp);el("text",{class:"pin",y:-nd.r-8},grp).textContent="📍";}
+      NODE_EL[nd.id]=grp;
+      grp.addEventListener("pointerenter",()=>hover(nd,true));
+      grp.addEventListener("pointerleave",()=>hover(nd,false));
+      grp.addEventListener("pointerdown",ev=>startDrag(ev,nd,grp));
+      grp.addEventListener("click",ev=>{ev.stopPropagation();nodeClick(nd);});
+      grp.addEventListener("dblclick",ev=>{ev.stopPropagation();nodeDbl(nd);});});
+    vt={x:0,y:0,k:1};applyVT();markInspect();}
+
+  /* =============== ОБЩАЯ КАРТА (ПЛАН) =============== */
+  function drawPlan(opt){
+    const W=Math.max(svg.clientWidth||900,1100),H=Math.max(svg.clientHeight||700,900);
+    svg.setAttribute("viewBox",`0 0 ${W} ${H}`);
+    gE.innerHTML="";gN.innerHTML="";NODE_EL={};ND_EDGES={};HOV_ADJ={};
+    const boxes=[];const order=[...MODIDS].sort((a,b)=>(MODFNS[b]||[]).length-(MODFNS[a]||[]).length);
+    let x=20,y=20,rowH=0;
+    for(const m of order){const fc=(MODFNS[m]||[]).length;
+      const cols=Math.min(8,Math.max(3,Math.ceil(Math.sqrt(Math.max(1,fc)))));
+      const rows=Math.max(1,Math.ceil(Math.max(1,fc)/cols));
+      const w=Math.max(120,cols*14+26),h=rows*14+46;
+      if(x+w>W-20){x=20;y+=rowH+26;rowH=0;}
+      boxes.push({m,x,y,w,h});x+=w+26;rowH=Math.max(rowH,h);}
+    const boxBy={};boxes.forEach(b=>boxBy[b.m]=b);
+    Object.keys(MREL).forEach(k=>{const[a,b]=k.split(">");const A=boxBy[a],B=boxBy[b];if(!A||!B)return;
+      el("line",{x1:A.x+A.w/2,y1:A.y+A.h/2,x2:B.x+B.w/2,y2:B.y+B.h/2,class:"edge",stroke:"#7d8aa8","stroke-width":1.2,"marker-end":"url(#ar-gy)"},gE);});
+    boxes.forEach(b=>{
+      const m=b.m,cur=opt.cur==="m"+m,walk=opt.walk.has("m"+m),sealed=SEALED.has(m);
+      const grp=el("g",{class:"node n-box"},gN);
+      el("rect",{x:b.x,y:b.y,width:b.w,height:b.h,rx:10,class:"main",fill:"#10162388",
+        stroke:cur?"#f5d47a":sealed?"#3a4152":walk?"#6ee7a0":"#2c3854",
+        "stroke-width":cur?2.5:1.5,"stroke-dasharray":walk?"5 4":sealed?"2 3":""},grp);
+      el("text",{x:b.x+10,y:b.y+18,class:"boxtitle"},grp).textContent=(cur?"📍 ":sealed?"🔒 ":"")+MODNAME(m);
+      el("title",{},grp).textContent=`комната ${MODNAME(m)} · функций: ${(MODFNS[m]||[]).length}${walk?"\n✅ можно шагнуть":cur?"":"\n🔒 нужен маршрут"}`;
+      NODE_EL["m"+m]=grp;
+      grp.addEventListener("click",ev=>{ev.stopPropagation();INSPECT={type:"module",id:m};renderDossier();markInspect();});
+      grp.addEventListener("dblclick",ev=>{ev.stopPropagation();
+        if(m===currentMod()){VIEWMODE="scene";render();return;}
+        if(sealed){reject(`${MODNAME(m)} запечатана: нет функций и связей`);return;}
+        moveTo({type:"module",id:m});});
+      const cols=Math.min(8,Math.max(3,Math.ceil(Math.sqrt(Math.max(1,(MODFNS[m]||[]).length)))));
+      (MODFNS[m]||[]).forEach((id,i)=>{const cx=b.x+16+(i%cols)*14,cy=b.y+34+Math.floor(i/cols)*14;
+        const d=el("g",{class:"node n-dot",transform:`translate(${cx},${cy})`},gN);
+        el("circle",{r:4.5,class:"main",fill:S.fns.has(id)?"#f5d47a":pal(m),"fill-opacity":S.fns.has(id)?1:.75},d);
+        el("title",{},d).textContent=`${FN[id].name}()\n${FILES[FN[id].file]||""}:${FN[id].line}`;
+        NODE_EL["f"+id]=d;
+        d.addEventListener("click",ev=>{ev.stopPropagation();INSPECT={type:"fn",id};renderDossier();markInspect();});
+        d.addEventListener("dblclick",ev=>{ev.stopPropagation();moveTo({type:"fn",id});});});});
+    vt={x:0,y:0,k:1};applyVT();markInspect();}
+
+  function hover(nd,on){svg.classList.toggle("hov",on);
+    if(!on){Object.values(NODE_EL).forEach(g=>g.classList.remove("hl"));
+      document.querySelectorAll(".edge.hl").forEach(l=>l.classList.remove("hl"));return;}
+    NODE_EL[nd.id].classList.add("hl");
+    HOV_ADJ[nd.id].forEach(id=>NODE_EL[id]&&NODE_EL[id].classList.add("hl"));
+    ND_EDGES[nd.id].forEach(r=>r.line.classList.add("hl"));}
+  function updatePos(nd,grp){grp.setAttribute("transform",`translate(${nd.x},${nd.y})`);
+    ND_EDGES[nd.id].forEach(r=>{const c=edgeCoords(r.e);for(const k in c)r.line.setAttribute(k,c[k]);});}
+  function startDrag(ev,nd,grp){ev.stopPropagation();let moved=0;const sx=ev.clientX,sy=ev.clientY;
+    grp.setPointerCapture(ev.pointerId);let lx=ev.clientX,ly=ev.clientY;
+    const mv=e=>{moved=Math.max(moved,Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy));
+      nd.x+=(e.clientX-lx)/vt.k;nd.y+=(e.clientY-ly)/vt.k;lx=e.clientX;ly=e.clientY;updatePos(nd,grp);};
+    grp.addEventListener("pointermove",mv);
+    grp.addEventListener("pointerup",()=>grp.removeEventListener("pointermove",mv),{once:true});}
+  function posFromNode(nd){return nd.type==="fn"?{type:"fn",id:nd.fnid}:{type:"module",id:nd.mid};}
+  function nodeClick(nd){INSPECT=posFromNode(nd);renderDossier();markInspect();}
+  function nodeDbl(nd){
+    if(VIEWMODE!=="scene"){const mid=nd.mid;
+      if(mid===currentMod()){VIEWMODE="scene";render();return;}
+      if(SEALED.has(mid)){reject(`${MODNAME(mid)} запечатана: нет функций и связей`);return;}
+      moveTo({type:"module",id:mid});return;}
+    moveTo(posFromNode(nd));}
+  function markInspect(){document.querySelectorAll(".node.insp").forEach(g=>g.classList.remove("insp"));
+    const g=NODE_EL[keyOf(INSPECT)];if(g)g.classList.add("insp");}
+
+  /* =============== РЕНДЕР =============== */
+  function renderRoomSign(){const rs=document.getElementById("roomsign");
+    if(VIEWMODE==="plan")rs.innerHTML=`🏙 Общая карта проекта<span class="sub">вы в комнате: <b class="mono">${MODNAME(currentMod())}</b></span>`;
+    else if(VIEWMODE==="map")rs.innerHTML=`🗺 Граф модулей<span class="sub">вы в комнате: <b class="mono">${MODNAME(currentMod())}</b></span>`;
+    else if(POS.type==="module")rs.innerHTML=`🚪 Комната: <b class="mono">${MODNAME(POS.id)}</b><span class="sub mono">${modPath(POS.id)}</span>`;
+    else{const f=FN[POS.id];rs.innerHTML=`🚪 Комната: <b class="mono">${MODNAME(f.mod)}</b><span class="sub">вы у функции <b class="mono">${f.name}()</b></span>`;}}
+  function renderPosChip(){const pc=document.getElementById("poschip");
+    if(POS.type==="module")pc.innerHTML=`📍 <b>${MODNAME(POS.id)}</b> <span class="sub mono">${modPath(POS.id)}</span> · шагов: ${S.moves}`;
+    else{const f=FN[POS.id];pc.innerHTML=`📍 <b>${f.name}()</b> <span class="sub mono">${FILES[f.file]||""}:${f.line}</span> · шагов: ${S.moves}`;}}
+  function renderRoutebar(){const rb=document.getElementById("routebar");
+    if(!ROUTE.length){rb.style.display="none";return;}
+    rb.style.display="block";
+    rb.innerHTML=`🧭 Маршрут (${ROUTE.length}): `+
+      ROUTE.map((p,i)=>`<span class="rch${i===0?" nx":""}" data-i="${i}">${i+1}. ${posName(p)}</span>`).join(" → ")+
+      ` <button data-r="step">▶ шаг</button><button data-r="auto" id="btnAuto">⏩ авто</button><button data-r="cancel">✖</button>`;}
+  document.getElementById("routebar").addEventListener("click",e=>{
+    const r=e.target.dataset.r;if(r==="step"){stepRoute();return;}
+    if(r==="auto"){if(autoTok)stopAuto();else startAuto();return;}
+    if(r==="cancel"){stopAuto();ROUTE=[];renderRoutebar();return;}
+    if(e.target.dataset.i){INSPECT=ROUTE[+e.target.dataset.i];renderDossier();}});
+  function stepRoute(){if(!ROUTE.length){stopAuto();return;}
+    const t=ROUTE[0];
+    if(isWalkable(t)){moveTo(t,true);ROUTE.shift();renderRoutebar();
+      if(!ROUTE.length){stopAuto();banner("🏁 Маршрут пройден","good");}}
+    else{stopAuto();ROUTE=[];renderRoutebar();banner("Маршрут сбился — перепроложи путь","bad");}}
+  function startAuto(){if(autoTok)return;autoTok=setInterval(stepRoute,700);
+    const b=document.getElementById("btnAuto");if(b)b.textContent="⏸ стоп";}
+  function stopAuto(){if(autoTok){clearInterval(autoTok);autoTok=null;}
+    const b=document.getElementById("btnAuto");if(b)b.textContent="⏩ авто";}
+  function setView(v){VIEWMODE=v;
+    document.getElementById("btnScene").classList.toggle("on",v==="scene");
+    document.getElementById("btnMap").classList.toggle("on",v==="map");
+    document.getElementById("btnPlan").classList.toggle("on",v==="plan");
+    if(v!=="scene"&&!S.mapOpened){S.mapOpened=true;checkQuests();save();}
+    render();}
+  function render(){
+    renderRoomSign();renderPosChip();
+    if(VIEWMODE==="plan"){drawPlan({walk:sceneWalkSet(),cur:keyOf(POS),rn:ROUTE.length?keyOf(ROUTE[0]):null});}
+    else{let g;
+      if(VIEWMODE==="map")g=buildProject();
+      else if(POS.type==="module")g=buildModule(POS.id);
+      else g=buildEgo(POS.id);
+      const roomLabel=(VIEWMODE==="scene"&&POS.type==="module")?MODNAME(POS.id):null;
+      drawGraph(g,{walk:sceneWalkSet(),cur:keyOf(POS),rn:ROUTE.length?keyOf(ROUTE[0]):null,roomLabel});}
+    document.getElementById("hint").textContent=VIEWMODE==="plan"
+      ?"общая карта: клик — досье · двойной клик по соседу — шаг · точки — функции"
+      :VIEWMODE==="map"
+        ?"граф модулей: двойной клик по соседу — шаг · 📍 — текущая комната"
+        :POS.type==="module"
+          ?"клик — досье · двойной клик — шаг (зелёный пунктир) · 🚪 — двери"
+          :"клик — досье · двойной клик — шаг к соседу · 📍 — ты здесь";
+    renderDossier();renderRoutebar();}
+
+  /* =============== ОПИСАНИЕ КОМНАТЫ + ДОСЬЕ =============== */
+  function roomDescription(m){const fns=MODFNS[m]||[];
+    const exp=fns.filter(id=>FN[id].flags.includes("e")).length;
+    const asy=fns.filter(id=>FN[id].flags.includes("a")).length;
+    const files=modFiles(m).length,consts=CONSTS.filter(c=>c.mod===m).length;
+    const oS=(OUTMOD[m]||new Set()).size,iS=(INMOD[m]||new Set()).size;
+    let top=null;fns.forEach(id=>{if(!top||DEG[id]>DEG[top])top=id;});
+    const L=describeModule(MODNAME(m));
+    return `${L[0]} <b>${MODNAME(m)}</b> — ${L[1]}. Данных: функций <b>${fns.length}</b> (экспортировано ${exp}, async ${asy}), файлов <b>${files}</b>, констант <b>${consts}</b>. Дверей: выходов <b>${oS}</b>, входов <b>${iS}</b>.`+(top?` Самая связанная функция — <b>${FN[top].name}</b> (${DEG[top]} связей).`:"");}
+  const details=document.getElementById("details");
+  function badges(fl){let h="";for(const ch of fl){if(FLB[ch])h+=`<span class="b ${ch}" title="${FLB[ch]}">${ch}</span>`;}
+    return h||'<span class="b" style="background:#22293a;color:#78829a">std</span>';}
+  function fnLine(id){const f=FN[id];const here=POS.type==="fn"&&POS.id===id;const walk=isWalkable({type:"fn",id});
+    return `<div class="fn-item" data-a="fn-insp" data-id="${id}">${badges(f.flags)}<span class="nm mono">${f.name}</span>
+  <span class="loc">:${f.line}</span>${here?'<span class="go">📍</span>':walk?'<span class="go">➡ войти</span>':'<span class="lk">🔒</span>'}</div>`;}
+  function renderDossier(){
+    const T=INSPECT;let h="";const isHere=keyOf(T)===keyOf(POS);
+    if(T.type==="module"){
+      const m=T.id,fns=[...(MODFNS[m]||[])].sort((a,b)=>DEG[b]-DEG[a]);
+      const hereMod=currentMod()===m&&POS.type==="module";
+      const outs=[...(OUTMOD[m]||[])],ins=[...(INMOD[m]||[])];
+      h=`<div class="panel"><div class="d-head"><div class="d-icon">${describeModule(MODNAME(m))[0]}</div><div>
+   <div class="d-title mono">${MODNAME(m)}</div><div class="d-sub">${describeModule(MODNAME(m))[1]}</div></div></div>
+   <div class="d-path mono">${modPath(m)}</div>
+   <div class="desc">📋 ${roomDescription(m)}</div>
+   <div class="d-stats">функций: <b>${fns.length}</b> · файлов: <b>${modFiles(m).length}</b>${SEALED.has(m)?' · <span style="color:var(--red)">запечатана</span>':''}</div>
+   ${isHere?'<div class="here">📍 Вы здесь</div>':""}
+   ${SEALED.has(m)?'<div class="locknote">🔒 В отчёте у комнаты нет функций и связей — дойти нельзя.</div>':""}
+   ${!isHere&&!SEALED.has(m)?routeBlock({type:"module",id:m}):""}
+   <div class="sect"><h4>🚪 Двери комнаты</h4>
+    ${outs.length?`<div style="margin:2px 0"><span class="doorchip" style="background:#3a2c0e;color:#e0a83c">→ выходы</span> ${outs.map(x=>modChip(x,hereMod)).join("")}</div>`:'<div style="font-size:11px;color:var(--dim)">выходов нет</div>'}
+    ${ins.length?`<div style="margin:2px 0"><span class="doorchip" style="background:#12301f;color:#6ee7a0">← входы</span> ${ins.map(x=>modChip(x,hereMod)).join("")}</div>`:'<div style="font-size:11px;color:var(--dim)">входов нет</div>'}</div>
+   <div class="sect"><h4>Функции (${fns.length})</h4>
+   ${fns.length?`<div class="fnlist">${fns.map(fnLine).join("")}</div>`:'<div style="font-size:12px;color:var(--dim)">Функций нет.</div>'}</div>
+   ${renderConsts(m,hereMod)}
+   <div class="sect"><h4>Файлы</h4>${modFiles(m).map(f=>`<div class="file-l">${FILES[f]||f}</div>`).join("")}</div></div>`;
+    }else{
+      const id=T.id,f=FN[id];
+      const outs=OUT[id]||[],ins=INN[id]||[],io=IMP_OUT[id]||[],ii=IMP_INN[id]||[];
+      h=`<div class="panel"><div class="d-head"><div class="d-icon">🗡️</div><div>
+   <div class="d-title mono" style="font-size:15px">${f.flags.indexOf("a")>=0?"async ":""}${f.name}()</div>
+   <div class="d-sub">${badges(f.flags)}</div></div></div>
+   <div class="d-path mono">${FILES[f.file]||""} : ${f.line} · <span class="chip" data-a="mod-insp" data-id="${f.mod}" style="display:inline-block">комната ${MODNAME(f.mod)}</span></div>
+   ${isHere?'<div class="here">📍 Вы здесь</div>':routeBlock({type:"fn",id})}
+   <div class="sect"><h4>➡️ Вызывает (${outs.length})</h4>${outs.length?outs.map(o=>relChip(o.o)).join(""):'<span style="font-size:11px;color:var(--dim)">нет исходящих вызовов</span>'}</div>
+   <div class="sect"><h4>⬅️ Вызывается из (${ins.length})</h4>${ins.length?ins.map(o=>relChip(o.o)).join(""):'<span style="font-size:11px;color:var(--dim)">никто не вызывает</span>'}</div>
+   ${io.length?`<div class="sect"><h4>📦 Импортирует (${io.length})</h4>${io.map(o=>relChip(o)).join("")}</div>`:""}
+   ${ii.length?`<div class="sect"><h4>📥 Импортируется в (${ii.length})</h4>${ii.map(o=>relChip(o)).join("")}</div>`:""}</div>`;
+    }
+    details.innerHTML=h;
+    function relChip(o){const w=isWalkable({type:"fn",id:o});return `<span class="chip${w?" w":""}" data-a="fn-insp" data-id="${o}">${FN[o].name}</span>`;}
+    function modChip(x,here){const w=here&&isWalkable({type:"module",id:x});return `<span class="chip${w?" w":""}" data-a="mod-insp" data-id="${x}">${MODNAME(x)}</span>`;}
+    function routeBlock(t){
+      if(isWalkable(t))return `<div class="btnrow"><button data-a="move" data-t="${t.type}" data-id="${t.id}">🚶 Перейти сюда (1 шаг)</button></div>`;
+      const r=buildRoute(POS,t);
+      if(r===null)return '<div class="locknote">🔒 Путь не существует.</div>';
+      return `<div class="locknote">🔒 Напрямую не добраться. Кратчайший путь: <b>${r.length} шаг(ов)</b>.</div>
+   <div class="btnrow"><button data-a="route">🧭 Проложить маршрут</button></div>`;}}
+  function renderConsts(m,active){const cs=CONSTS.filter(c=>c.mod===m);if(!cs.length)return"";
+    return `<div class="sect"><h4>Константы (${cs.length})</h4>${cs.map(c=>{
+      const open=S.consts.has("c"+c.id);
+      return `<div class="const${open?" open":""}${active?" clickable":""}" ${active?`data-a="const" data-id="c${c.id}"`:""}>
+   <span class="cl">${FILES[c.file]||""}:${c.line}</span><span class="cn">${c.name}</span><pre>${JSON.stringify(c.value)}</pre></div>`;}).join("")}
+  ${active?"":'<div style="font-size:10px;color:var(--dim)">Изучать константы можно только стоя в этой комнате.</div>'}</div>`;}
+  details.addEventListener("click",e=>{const t=e.target.closest("[data-a]");if(!t)return;
+    const a=t.dataset.a;
+    if(a==="mod-insp"){INSPECT={type:"module",id:t.dataset.id};renderDossier();markInspect();}
+    else if(a==="fn-insp"){INSPECT={type:"fn",id:+t.dataset.id};renderDossier();markInspect();}
+    else if(a==="move"){moveTo({type:t.dataset.t==="module"?"module":"fn",id:t.dataset.t==="module"?t.dataset.id:+t.dataset.id});}
+    else if(a==="route"){const r=buildRoute(POS,INSPECT);if(r){ROUTE=r;stopAuto();renderRoutebar();
+      log(`Проложен маршрут: ${r.length} шагов до ${posName(INSPECT)}`);}else banner("Путь не существует","bad");}
+    else if(a==="const"){t.classList.toggle("open");const id=t.dataset.id;
+      if(!S.consts.has(id)){S.consts.add(id);S.xp+=3;log(`Изучена константа (+3 XP)`);renderHeader();checkQuests();save();}}});
+
+  /* =============== ЗАГРУЗКА JSON =============== */
+  function tryLoad(text){let j;try{j=JSON.parse(text);}catch(e){banner("Не удалось разобрать JSON: "+e.message,"bad");return;}
+    if(!j.mi||!j.fns||!j.gr){banner("Это не похоже на отчёт ast-analyzer (нужны mi, fns, gr).","bad");return;}
+    initData(j);
+    S=fresh();save();
+    POS={type:"module",id:ROOT};TRAIL=[{type:"module",id:ROOT}];INSPECT={type:"module",id:ROOT};ROUTE=[];stopAuto();VIEWMODE="scene";
+    document.getElementById("introRoot").textContent=MODNAME(ROOT);
+    renderHeader();renderQuests();setView("scene");
+    toast(`📂 Загружен отчёт ${j.v||""}: ${FNSALL.length} функций, ${MODIDS.length} модулей`);
+    log(`Загружен новый отчёт: корень <b>${MODNAME(ROOT)}</b>`);}
+  const loader=document.getElementById("loader"),fileInput=document.getElementById("fileInput");
+  document.getElementById("btnLoad").onclick=()=>loader.style.display="flex";
+  document.getElementById("btnCloseLoader").onclick=()=>loader.style.display="none";
+  document.getElementById("btnPickFile").onclick=()=>fileInput.click();
+  fileInput.onchange=()=>{const f=fileInput.files[0];if(!f)return;const r=new FileReader();
+    r.onload=()=>{tryLoad(r.result);loader.style.display="none";};r.readAsText(f);};
+  document.getElementById("btnApplyJson").onclick=()=>tryLoad(document.getElementById("jsonArea").value);
+  window.addEventListener("dragover",e=>e.preventDefault());
+  window.addEventListener("drop",e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(!f)return;
+    const r=new FileReader();r.onload=()=>tryLoad(r.result);r.readAsText(f);});
+
+  /* =============== КНОПКИ / ПОИСК / ОРАКУЛ =============== */
+  document.getElementById("btnScene").onclick=()=>setView("scene");
+  document.getElementById("btnMap").onclick=()=>setView("map");
+  document.getElementById("btnPlan").onclick=()=>setView("plan");
+  document.getElementById("btnBack").onclick=goBack;
+  document.getElementById("btnReset").onclick=()=>{if(confirm("Сбросить весь прогресс?")){localStorage.removeItem(LS);location.reload();}};
+  document.getElementById("btnOracle").onclick=()=>{
+    let ids,out,names;
+    if(VIEWMODE==="scene"&&POS.type==="module"){ids=MODFNS[POS.id]||[];out={};ids.forEach(i=>out[i]=[]);
+      CALLS.forEach(([a,b])=>{if(FN[a]&&FN[b]&&FN[a].mod===POS.id&&FN[b].mod===POS.id)out[a].push(b);});names=i=>FN[i].name;}
+    else if(VIEWMODE==="scene"){ids=[POS.id];out={[POS.id]:[]};names=i=>FN[i].name;}
+    else{ids=MODIDS;out={};ids.forEach(m=>out[m]=[]);
+      Object.keys(MREL).forEach(k=>{const[a,b]=k.split(">");out[a].push(b);});names=m=>MODNAME(m);}
+    const cyc=detectCycle(ids,out);
+    if(!cyc.length)banner("🔮 Оракул: циклов не найдено — граф ацикличен ✨","good");
+    else banner("🔮 Оракул: найден цикл: "+cyc.map(names).join(" → ")+" → …","bad");
+    if(VIEWMODE!=="scene"&&!S.oracle){S.oracle=true;checkQuests();save();}};
+  function detectCycle(ids,out){const indeg={};ids.forEach(n=>indeg[n]=0);
+    ids.forEach(n=>(out[n]||[]).forEach(m=>{if(indeg[m]!=null)indeg[m]++;}));
+    const q=ids.filter(n=>indeg[n]===0),seen=new Set();
+    while(q.length){const n=q.pop();seen.add(n);(out[n]||[]).forEach(m=>{if(indeg[m]!=null&&--indeg[m]===0)q.push(m);});}
+    const rest=ids.filter(n=>!seen.has(n));if(!rest.length)return[];
+    const inR=new Set(rest);let cur=rest[0];const path=[cur],pos={[cur]:0};
+    for(let g=0;g<rest.length+2;g++){const nxt=(out[cur]||[]).find(x=>inR.has(x));if(nxt==null)break;
+      if(pos[nxt]!=null)return path.slice(pos[nxt]);pos[nxt]=path.length;path.push(nxt);cur=nxt;}
+    return rest.slice(0,4);}
+  const searchEl=document.getElementById("search");
+  function doSearch(q){q=(q||"").trim().toLowerCase();if(!q)return;
+    const hit=FNSALL.find(f=>f[1].toLowerCase()===q)||FNSALL.find(f=>f[1].toLowerCase().includes(q));
+    if(!hit){banner("Не найдено. Попробуй другое имя.","bad");return;}
+    INSPECT={type:"fn",id:hit[0]};
+    if(keyOf(POS)===keyOf(INSPECT)){renderDossier();markInspect();return;}
+    const r=buildRoute(POS,INSPECT);
+    if(r){ROUTE=r;S.search=true;stopAuto();log(`🔍 Найдено: ${hit[1]} — маршрут ${r.length} шагов`);
+      toast(`🔍 ${hit[1]}: маршрут ${r.length} шагов`);checkQuests();save();renderRoutebar();renderDossier();markInspect();}
+    else banner("Эта функция недосягаема.","bad");}
+  searchEl.addEventListener("keydown",e=>{if(e.key==="Enter")doSearch(searchEl.value);});
+  searchEl.addEventListener("change",()=>doSearch(searchEl.value));
+  function buildDatalist(){const dl=document.getElementById("fnlist");dl.innerHTML="";
+    FNSALL.forEach(f=>{const o=document.createElement("option");o.value=f[1];o.label=`${MODNAME(f[2])} · ${FILES[f[3]]||""}`;dl.appendChild(o);});}
+  window.addEventListener("keydown",e=>{if(e.key==="Escape"){
+    if(VIEWMODE!=="scene")setView("scene");
+    else if(POS.type==="fn"){INSPECT={type:"module",id:FN[POS.id].mod};renderDossier();markInspect();}}});
+  let rzT=null;window.addEventListener("resize",()=>{clearTimeout(rzT);rzT=setTimeout(render,200);});
+
+  /* =============== СТАРТ =============== */
+  initData(DEFAULT_REPORT);
+  renderHeader();renderQuests();render();
+  log(`Точка входа: комната <b>${MODNAME(ROOT)}</b>. Телепорты отключены — только по связям графа.`);
+  if(!localStorage.getItem("codex-intro4"))document.getElementById("intro").style.display="flex";
+  document.getElementById("btnStart").onclick=()=>{document.getElementById("intro").style.display="none";
+    localStorage.setItem("codex-intro4","1");toast("🚶 Путь начался");};
+</script>
+</body>
+</html>

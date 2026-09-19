@@ -1,5 +1,11 @@
 // src/utils.ts
+// ОБНОВЛЕННЫЙ ФАЙЛ - Удалены дублирующиеся константы, используются импорты из config
+
 import fs from 'fs';
+import { DEFAULT_EXCLUDE_PATTERNS } from './config/constants.js';
+
+// Re-export для обратной совместимости
+export { DEFAULT_EXCLUDE_PATTERNS };
 
 export function escapeHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -89,23 +95,8 @@ export function showHelp(): void {
   `);
 }
 
-export const DEFAULT_EXCLUDE_PATTERNS = [
-  'node_modules',
-  '.git',
-  'dist',
-  'build',
-  'coverage',
-  '.nyc_output',
-  '__pycache__',
-  '.cache',
-  '.next',
-  'out',
-  '.nuxt',
-  '.output',
-  '.vercel',
-  'tmp',
-  'temp',
-];
+// DEFAULT_EXCLUDE_PATTERNS больше не определяется здесь - импортируется из config/constants.ts
+// Удалено дублирование: было определено и здесь, и в config.ts
 
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

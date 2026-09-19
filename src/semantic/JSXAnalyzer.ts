@@ -626,11 +626,10 @@ export class JSXAnalyzer {
   }
 }
 
-// Экспорт утилит для удобства
-export function isJSXFile(filePath: string): boolean {
-  return filePath.endsWith('.tsx') || filePath.endsWith('.jsx');
-}
+// ============================================================
+// ЭКСПОРТ ПО УМОЛЧАНИЮ - ТОЛЬКО ОСНОВНОЙ КЛАСС И ТИПЫ
+// ============================================================
 
-export function getJSXFiles(filePaths: string[]): string[] {
-  return filePaths.filter(f => isJSXFile(f));
-}
+export { TypeAnalyzer };
+
+// Утилиты isJSXFile и getJSXFiles удалены как неиспользуемые

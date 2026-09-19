@@ -11,42 +11,46 @@ import { DEFAULT_EXCLUDE_PATTERNS } from '../config.js';
 export function findDeadCode(targetFile: string): string | null {
   const targetAbsPath = path.resolve(targetFile);
   const targetRelKey = path.relative(process.cwd(), targetAbsPath);
-  const ast = parseFile(targetAbsPath);
-  if (!ast) return null;
+  const parsed = parseFile(targetAbsPath);
+  if (!parsed) return null;
+
+  const ast = parsed.ast; // ✅ Используем ast из ParsedFileInfo
 
   const declaredLocals: Record<string, any> = {};
   const declaredExports: Record<string, any> = {};
   const usedIdentifiers = new Set<string>();
 
-  // Сбор объявленных сущностей
-  ast.body.forEach((node: any) => {
-    let isExport = false;
-    let targetNode = node;
+  // Сбор объявленных сущностей - используем ast.body
+  if (ast && ast.body) {
+    ast.body.forEach((node: any) => {
+      let isExport = false;
+      let targetNode = node;
 
-    if (node.type === 'ExportNamedDeclaration') {
-      isExport = true;
-      targetNode = node.declaration;
-    } else if (node.type === 'ExportDefaultDeclaration') {
-      isExport = true;
-      targetNode = node.declaration;
-      if (targetNode && targetNode.id) declaredExports['default'] = targetNode;
-    }
+      if (node.type === 'ExportNamedDeclaration') {
+        isExport = true;
+        targetNode = node.declaration;
+      } else if (node.type === 'ExportDefaultDeclaration') {
+        isExport = true;
+        targetNode = node.declaration;
+        if (targetNode && targetNode.id) declaredExports['default'] = targetNode;
+      }
 
-    if (!targetNode) return;
-    const collection = isExport ? declaredExports : declaredLocals;
+      if (!targetNode) return;
+      const collection = isExport ? declaredExports : declaredLocals;
 
-    if (targetNode.type === 'FunctionDeclaration' && targetNode.id) {
-      collection[targetNode.id.name] = targetNode;
-    } else if (targetNode.type === 'VariableDeclaration') {
-      targetNode.declarations.forEach((decl: any) => {
-        if (decl.id && decl.id.name) {
-          collection[decl.id.name] = decl;
-        }
-      });
-    } else if (targetNode.type === 'ClassDeclaration' && targetNode.id) {
-      collection[targetNode.id.name] = targetNode;
-    }
-  });
+      if (targetNode.type === 'FunctionDeclaration' && targetNode.id) {
+        collection[targetNode.id.name] = targetNode;
+      } else if (targetNode.type === 'VariableDeclaration') {
+        targetNode.declarations.forEach((decl: any) => {
+          if (decl.id && decl.id.name) {
+            collection[decl.id.name] = decl;
+          }
+        });
+      } else if (targetNode.type === 'ClassDeclaration' && targetNode.id) {
+        collection[targetNode.id.name] = targetNode;
+      }
+    });
+  }
 
   // Сбор использованных идентификаторов
   walk(ast, {
@@ -81,8 +85,9 @@ export function findDeadCode(targetFile: string): string | null {
     for (const file of allProjectFiles) {
       if (path.resolve(file) === targetAbsPath) continue;
 
-      const projectAst = parseFile(file);
-      if (!projectAst) continue;
+      const projectParsed = parseFile(file);
+      if (!projectParsed) continue;
+      const projectAst = projectParsed.ast; // ✅ Используем projectAst.ast
 
       const currentDir = path.dirname(file);
 

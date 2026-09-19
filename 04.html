@@ -1,0 +1,1548 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🔍 AST Analyzer — Инспектор графа v8</title>
+  <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      :root {
+          --bg: #0d1117;
+          --bg-panel: #161b22;
+          --bg-elev: #1c2128;
+          --bg-input: #0d1117;
+          --border: #30363d;
+          --border-hover: #484f58;
+          --text: #e6edf3;
+          --text-dim: #8b949e;
+          --text-faint: #6e7681;
+          --accent: #58a6ff;
+          --accent-hover: #79c0ff;
+          --green: #3fb950;
+          --yellow: #d29922;
+          --orange: #db6d28;
+          --red: #f85149;
+          --purple: #a371f7;
+          --cyan: #39d353;
+          --pink: #f778ba;
+      }
+
+      body.light {
+          --bg: #ffffff;
+          --bg-panel: #f6f8fa;
+          --bg-elev: #ffffff;
+          --bg-input: #ffffff;
+          --border: #d0d7de;
+          --border-hover: #8c959f;
+          --text: #1f2328;
+          --text-dim: #57606a;
+          --text-faint: #8c959f;
+          --accent: #0969da;
+          --accent-hover: #0550ae;
+      }
+
+      body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          background: var(--bg);
+          color: var(--text);
+          font-size: 14px;
+          line-height: 1.5;
+          min-height: 100vh;
+          transition: background 0.2s, color 0.2s;
+      }
+
+      .app {
+          max-width: 1800px;
+          margin: 0 auto;
+          padding: 16px;
+      }
+
+      /* ===== HEADER ===== */
+      header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+          flex-wrap: wrap;
+          gap: 12px;
+      }
+      h1 {
+          font-size: 22px;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+      }
+      h1 .ver {
+          font-size: 11px;
+          padding: 2px 8px;
+          background: var(--accent);
+          color: var(--bg);
+          border-radius: 10px;
+          font-weight: 600;
+      }
+      .header-actions {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+      }
+      .btn {
+          padding: 6px 14px;
+          border: 1px solid var(--border);
+          background: var(--bg-panel);
+          color: var(--text);
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 13px;
+          font-weight: 500;
+          transition: all 0.15s;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+      }
+      .btn:hover { border-color: var(--border-hover); background: var(--bg-elev); }
+      .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+      .btn.primary:hover { background: var(--accent-hover); }
+      .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+      .btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+      /* ===== UPLOAD ===== */
+      .upload {
+          border: 2px dashed var(--border);
+          border-radius: 10px;
+          padding: 32px;
+          text-align: center;
+          margin-bottom: 16px;
+          background: var(--bg-panel);
+          cursor: pointer;
+          transition: all 0.2s;
+      }
+      .upload:hover, .upload.drag { border-color: var(--accent); background: var(--bg-elev); }
+      .upload input { display: none; }
+      .upload .icon { font-size: 42px; margin-bottom: 8px; }
+      .upload .title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+      .upload .subtitle { color: var(--text-dim); font-size: 13px; }
+      .upload .loaded {
+          margin-top: 8px;
+          color: var(--green);
+          font-weight: 600;
+          font-size: 13px;
+      }
+
+      /* ===== CONTROLS ===== */
+      .controls {
+          display: flex;
+          gap: 10px;
+          margin-bottom: 16px;
+          flex-wrap: wrap;
+          align-items: center;
+          background: var(--bg-panel);
+          padding: 10px 14px;
+          border-radius: 8px;
+          border: 1px solid var(--border);
+      }
+      .search-box {
+          flex: 1;
+          min-width: 200px;
+          position: relative;
+      }
+      .search-box input {
+          width: 100%;
+          padding: 8px 14px 8px 34px;
+          background: var(--bg-input);
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          color: var(--text);
+          font-size: 13px;
+          outline: none;
+          transition: border-color 0.15s;
+      }
+      .search-box input:focus { border-color: var(--accent); }
+      .search-box::before {
+          content: '🔍';
+          position: absolute;
+          left: 10px;
+          top: 50%;
+          transform: translateY(-50%);
+          font-size: 14px;
+          opacity: 0.5;
+      }
+      .stats {
+          margin-left: auto;
+          font-size: 12px;
+          color: var(--text-dim);
+          display: flex;
+          gap: 14px;
+          flex-wrap: wrap;
+      }
+      .stats b { color: var(--text); }
+
+      /* ===== LAYOUT ===== */
+      .layout {
+          display: grid;
+          grid-template-columns: 320px 1fr;
+          gap: 16px;
+          align-items: start;
+      }
+      @media (max-width: 1024px) {
+          .layout { grid-template-columns: 1fr; }
+      }
+
+      /* ===== SIDEBAR ===== */
+      .sidebar {
+          background: var(--bg-panel);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          overflow: hidden;
+          position: sticky;
+          top: 16px;
+          max-height: calc(100vh - 32px);
+          display: flex;
+          flex-direction: column;
+      }
+      .sidebar-header {
+          padding: 10px 14px;
+          border-bottom: 1px solid var(--border);
+          font-size: 12px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          color: var(--text-dim);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+      }
+      .sidebar-header .count {
+          background: var(--bg-elev);
+          padding: 2px 8px;
+          border-radius: 10px;
+          font-size: 11px;
+          color: var(--text);
+      }
+      .file-list {
+          list-style: none;
+          overflow-y: auto;
+          flex: 1;
+          padding: 6px;
+      }
+      .file-list::-webkit-scrollbar { width: 6px; }
+      .file-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+      .file-item {
+          padding: 6px 10px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 12px;
+          font-family: 'Consolas', monospace;
+          color: var(--text-dim);
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          transition: all 0.1s;
+          border-left: 2px solid transparent;
+          word-break: break-all;
+      }
+      .file-item:hover {
+          background: var(--bg-elev);
+          color: var(--text);
+          border-left-color: var(--border-hover);
+      }
+      .file-item.active {
+          background: var(--bg-elev);
+          color: var(--accent);
+          border-left-color: var(--accent);
+          font-weight: 600;
+      }
+      .file-item .mod-badge {
+          font-size: 9px;
+          padding: 1px 6px;
+          border-radius: 8px;
+          background: var(--bg-elev);
+          color: var(--text-faint);
+          text-transform: uppercase;
+          flex-shrink: 0;
+      }
+      .file-item.active .mod-badge { background: var(--accent); color: #fff; }
+
+      /* ===== MAIN ===== */
+      .main {
+          background: var(--bg-panel);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          min-height: 600px;
+          overflow: hidden;
+      }
+      .empty {
+          padding: 80px 20px;
+          text-align: center;
+          color: var(--text-dim);
+      }
+      .empty .icon { font-size: 56px; margin-bottom: 12px; opacity: 0.5; }
+
+      /* ===== TABS ===== */
+      .tabs {
+          display: flex;
+          border-bottom: 1px solid var(--border);
+          background: var(--bg-elev);
+          padding: 0 8px;
+          overflow-x: auto;
+      }
+      .tab {
+          padding: 10px 16px;
+          border: none;
+          background: none;
+          color: var(--text-dim);
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          border-bottom: 2px solid transparent;
+          white-space: nowrap;
+          transition: all 0.15s;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+      }
+      .tab:hover { color: var(--text); }
+      .tab.active {
+          color: var(--accent);
+          border-bottom-color: var(--accent);
+      }
+      .tab .badge {
+          font-size: 10px;
+          padding: 1px 6px;
+          background: var(--bg);
+          border-radius: 8px;
+          color: var(--text-faint);
+          font-weight: 500;
+      }
+      .tab.active .badge { background: var(--accent); color: #fff; }
+
+      .tab-content { display: none; padding: 16px; }
+      .tab-content.active { display: block; }
+
+      /* ===== FILE INFO ===== */
+      .file-info {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          padding: 12px 16px;
+          background: var(--bg-elev);
+          border-bottom: 1px solid var(--border);
+          font-size: 12px;
+          align-items: center;
+      }
+      .file-path {
+          font-family: 'Consolas', monospace;
+          color: var(--text);
+          font-weight: 600;
+          flex: 1;
+          word-break: break-all;
+      }
+      .chip {
+          padding: 3px 10px;
+          border-radius: 10px;
+          font-size: 11px;
+          font-weight: 600;
+          background: var(--bg);
+          border: 1px solid var(--border);
+          color: var(--text-dim);
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+      }
+      .chip.blue { background: rgba(88,166,255,0.15); border-color: var(--accent); color: var(--accent); }
+      .chip.green { background: rgba(63,185,80,0.15); border-color: var(--green); color: var(--green); }
+      .chip.yellow { background: rgba(210,153,34,0.15); border-color: var(--yellow); color: var(--yellow); }
+      .chip.purple { background: rgba(163,113,247,0.15); border-color: var(--purple); color: var(--purple); }
+      .chip.orange { background: rgba(219,109,40,0.15); border-color: var(--orange); color: var(--orange); }
+
+      /* ===== GRID ===== */
+      .grid-2 {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+          gap: 14px;
+      }
+      .grid-3 {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+          gap: 12px;
+      }
+
+      /* ===== CARD/PANEL ===== */
+      .panel {
+          background: var(--bg-elev);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          overflow: hidden;
+      }
+      .panel-header {
+          padding: 10px 14px;
+          border-bottom: 1px solid var(--border);
+          font-size: 12px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          color: var(--text-dim);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+      }
+      .panel-header .icon { font-size: 14px; }
+      .panel-body {
+          padding: 8px;
+          max-height: 500px;
+          overflow-y: auto;
+      }
+      .panel-body::-webkit-scrollbar { width: 6px; }
+      .panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+      /* ===== ITEM ROW ===== */
+      .row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 10px;
+          border-radius: 6px;
+          font-size: 12px;
+          font-family: 'Consolas', monospace;
+          color: var(--text);
+          cursor: pointer;
+          transition: background 0.1s;
+          word-break: break-all;
+      }
+      .row:hover { background: var(--bg-panel); }
+      .row .name { flex: 1; min-width: 0; }
+      .row .type-tag {
+          font-size: 9px;
+          padding: 1px 7px;
+          border-radius: 8px;
+          font-weight: 700;
+          text-transform: uppercase;
+          flex-shrink: 0;
+          letter-spacing: 0.3px;
+      }
+      .tag-fn { background: rgba(163,113,247,0.2); color: var(--purple); }
+      .tag-class { background: rgba(219,109,40,0.2); color: var(--orange); }
+      .tag-const { background: rgba(63,185,80,0.2); color: var(--green); }
+      .tag-export { background: rgba(210,153,34,0.2); color: var(--yellow); }
+      .tag-import { background: rgba(88,166,255,0.2); color: var(--accent); }
+      .tag-external { background: rgba(248,81,73,0.2); color: var(--red); }
+      .tag-default { background: rgba(247,120,186,0.2); color: var(--pink); }
+      .tag-type { background: rgba(57,211,83,0.2); color: var(--cyan); }
+      .tag-call { background: rgba(88,166,255,0.2); color: var(--accent); }
+      .tag-async { background: rgba(163,113,247,0.2); color: var(--purple); }
+
+      .empty-msg {
+          padding: 24px;
+          text-align: center;
+          color: var(--text-faint);
+          font-size: 12px;
+          font-style: italic;
+      }
+
+      /* ===== STATS GRID ===== */
+      .stat-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+          gap: 10px;
+      }
+      .stat-card {
+          background: var(--bg-elev);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 12px;
+          text-align: center;
+      }
+      .stat-card .num {
+          font-size: 24px;
+          font-weight: 800;
+          color: var(--accent);
+          line-height: 1.2;
+      }
+      .stat-card .lbl {
+          font-size: 11px;
+          color: var(--text-dim);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-top: 4px;
+      }
+      .stat-card.green .num { color: var(--green); }
+      .stat-card.yellow .num { color: var(--yellow); }
+      .stat-card.purple .num { color: var(--purple); }
+      .stat-card.orange .num { color: var(--orange); }
+
+      /* ===== SEARCH/FILTERS ===== */
+      .filters {
+          display: flex;
+          gap: 6px;
+          flex-wrap: wrap;
+          margin-bottom: 12px;
+          padding: 8px;
+          background: var(--bg-elev);
+          border-radius: 8px;
+          border: 1px solid var(--border);
+      }
+      .filter-btn {
+          padding: 4px 10px;
+          border: 1px solid var(--border);
+          background: var(--bg);
+          color: var(--text-dim);
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 11px;
+          font-weight: 600;
+          transition: all 0.15s;
+      }
+      .filter-btn:hover { color: var(--text); border-color: var(--border-hover); }
+      .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+      /* ===== CODE PREVIEW ===== */
+      .code-preview {
+          background: var(--bg);
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          padding: 10px;
+          font-family: 'Consolas', monospace;
+          font-size: 11px;
+          color: var(--text-dim);
+          max-height: 200px;
+          overflow-y: auto;
+          white-space: pre-wrap;
+          word-break: break-all;
+      }
+      .code-preview .line-num {
+          color: var(--text-faint);
+          user-select: none;
+          margin-right: 8px;
+      }
+
+      /* ===== TOAST ===== */
+      .toast {
+          position: fixed;
+          bottom: 20px;
+          left: 50%;
+          transform: translateX(-50%) translateY(100px);
+          background: var(--bg-elev);
+          color: var(--text);
+          padding: 10px 20px;
+          border-radius: 8px;
+          border: 1px solid var(--border);
+          font-size: 13px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+          transition: transform 0.3s;
+          z-index: 9999;
+          pointer-events: none;
+      }
+      .toast.show { transform: translateX(-50%) translateY(0); }
+      .toast.error { border-color: var(--red); color: var(--red); }
+      .toast.success { border-color: var(--green); color: var(--green); }
+
+      /* ===== MODAL ===== */
+      .modal-overlay {
+          position: fixed; inset: 0;
+          background: rgba(0,0,0,0.7);
+          display: none; align-items: center; justify-content: center;
+          z-index: 1000;
+          backdrop-filter: blur(4px);
+      }
+      .modal-overlay.show { display: flex; }
+      .modal {
+          background: var(--bg-panel);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          padding: 24px;
+          max-width: 800px;
+          width: 90%;
+          max-height: 80vh;
+          overflow-y: auto;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+      }
+      .modal h3 { margin-bottom: 12px; font-size: 18px; }
+      .modal-close {
+          float: right;
+          background: none;
+          border: none;
+          color: var(--text-dim);
+          font-size: 24px;
+          cursor: pointer;
+          line-height: 1;
+      }
+
+      /* ===== KEYBOARD HINT ===== */
+      .kbd {
+          display: inline-block;
+          padding: 1px 5px;
+          background: var(--bg);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          font-size: 10px;
+          font-family: monospace;
+          color: var(--text-dim);
+      }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <h1>
+      🔍 AST Analyzer <span class="ver" id="verTag">v8.0.0</span>
+    </h1>
+    <div class="header-actions">
+      <button class="btn" id="themeBtn" title="Переключить тему">🌙 Тема</button>
+      <button class="btn" id="exportBtn" disabled title="Экспорт в JSON">📥 Экспорт</button>
+      <button class="btn" id="helpBtn" title="Горячие клавиши">⌨️ Горячие</button>
+    </div>
+  </header>
+
+  <div class="upload" id="upload">
+    <input type="file" id="fileInput" accept=".json,application/json">
+    <div class="icon">📦</div>
+    <div class="title">Перетащите JSON-файл графа сюда</div>
+    <div class="subtitle">или нажмите для выбора · Поддерживается структура v8.0.0</div>
+    <div class="loaded" id="fileName"></div>
+  </div>
+
+  <div class="controls">
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="Поиск файла по пути... (Ctrl+K)">
+    </div>
+    <button class="btn" id="expandAllBtn">↕️ Развернуть</button>
+    <button class="btn" id="depsOnlyBtn">🔗 Только с зависимостями</button>
+    <div class="stats">
+      <span>📁 <b id="totalFiles">0</b></span>
+      <span>📦 <b id="totalModules">0</b></span>
+      <span>⚙️ <b id="totalFunctions">0</b></span>
+      <span>🔗 <b id="totalCalls">0</b></span>
+      <span>📤 <b id="totalExports">0</b></span>
+      <span>📥 <b id="totalImports">0</b></span>
+    </div>
+  </div>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <span>📁 Файлы</span>
+        <span class="count" id="sidebarCount">0</span>
+      </div>
+      <ul class="file-list" id="fileList"></ul>
+    </aside>
+
+    <main class="main" id="mainArea">
+      <div class="empty" id="emptyState">
+        <div class="icon">📊</div>
+        <div>Загрузите JSON-файл для анализа</div>
+        <div style="margin-top:8px; font-size:12px; color:var(--text-faint)">
+          <span class="kbd">↑</span> <span class="kbd">↓</span> — навигация · <span class="kbd">Ctrl+K</span> — поиск
+        </div>
+      </div>
+
+      <div id="analysisView" style="display:none;">
+        <div class="file-info" id="fileInfo"></div>
+        <div class="tabs" id="tabs">
+          <button class="tab active" data-tab="overview">📊 Обзор</button>
+          <button class="tab" data-tab="functions">⚙️ Функции <span class="badge" id="fnBadge">0</span></button>
+          <button class="tab" data-tab="classes">🏛️ Классы <span class="badge" id="clsBadge">0</span></button>
+          <button class="tab" data-tab="deps">🔗 Зависимости <span class="badge" id="depBadge">0</span></button>
+          <button class="tab" data-tab="calls">📞 Вызовы <span class="badge" id="callBadge">0</span></button>
+          <button class="tab" data-tab="constants">📌 Константы <span class="badge" id="constBadge">0</span></button>
+        </div>
+
+        <div class="tab-content active" id="tab-overview"></div>
+        <div class="tab-content" id="tab-functions"></div>
+        <div class="tab-content" id="tab-classes"></div>
+        <div class="tab-content" id="tab-deps"></div>
+        <div class="tab-content" id="tab-calls"></div>
+        <div class="tab-content" id="tab-constants"></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <button class="modal-close" onclick="document.getElementById('modal').classList.remove('show')">×</button>
+    <h3>⌨️ Горячие клавиши</h3>
+    <div style="display:grid; grid-template-columns: auto 1fr; gap: 8px 20px; font-size:13px; margin-top:16px;">
+      <div><span class="kbd">Ctrl</span>+<span class="kbd">K</span></div><div>Фокус на поиск</div>
+      <div><span class="kbd">↑</span> / <span class="kbd">↓</span></div><div>Навигация по файлам</div>
+      <div><span class="kbd">Enter</span></div><div>Открыть выбранный файл</div>
+      <div><span class="kbd">Ctrl</span>+<span class="kbd">E</span></div><div>Экспорт текущего файла</div>
+      <div><span class="kbd">Esc</span></div><div>Закрыть модалку / очистить поиск</div>
+      <div><span class="kbd">1</span>...<span class="kbd">6</span></div><div>Переключение вкладок</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ============================================================================
+  // ГЛОБАЛЬНОЕ СОСТОЯНИЕ
+  // ============================================================================
+  const state = {
+    data: null,           // Сырой JSON
+    modules: {},          // moduleId -> module
+    files: {},            // fileId -> file
+    functions: {},        // fnId -> function
+    classes: {},          // clsId -> class
+    constants: {},        // cnId -> constant
+    exports: [],          // массив экспортов
+    imports: [],          // массив импортов
+    calls: [],            // массив вызовов
+    reExports: [],        // массив реэкспортов
+
+    // Индексы для быстрого доступа
+    fileExports: {},      // fileId -> [exports]
+    fileImports: {},      // fileId -> [imports]
+    fileFunctions: {},    // fileId -> [functions]
+    fileClasses: {},      // fileId -> [classes]
+    fileConstants: {},    // fileId -> [constants]
+    moduleFiles: {},      // moduleId -> [files]
+    fnById: {},           // fnId -> function
+    fnCalls: {},          // fnId -> [calls from this fn]
+    fnCallers: {},        // fnId -> [calls to this fn]
+    fnExports: {},        // fnId -> [exports]
+    clsMethods: {},       // clsId -> [methods]
+    fileDependents: {},   // fileId -> [files that import this]
+    fileDependencies: {}, // fileId -> [files this imports]
+
+    selectedFileId: null,
+    searchQuery: '',
+    depsOnly: false,
+    currentTab: 'overview',
+    keyboardIndex: -1,
+  };
+
+  // ============================================================================
+  // УТИЛИТЫ
+  // ============================================================================
+  const $ = (id) => document.getElementById(id);
+
+  function toast(msg, type = '') {
+    const el = $('toast');
+    el.textContent = msg;
+    el.className = 'toast show ' + type;
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.className = 'toast', 2500);
+  }
+
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  function getModuleName(moduleId) {
+    return state.modules[moduleId]?.name || moduleId;
+  }
+
+  function getFilePath(fileId) {
+    return state.files[fileId]?.path || fileId;
+  }
+
+  function getFileName(fileId) {
+    const p = getFilePath(fileId);
+    return p.split('/').pop();
+  }
+
+  // ============================================================================
+  // ПРЕДОБРАБОТКА ДАННЫХ
+  // ============================================================================
+  function preprocess(rawData) {
+    const d = {
+      modules: {}, files: {}, functions: {}, classes: {}, constants: {},
+      exports: [], imports: [], calls: [], reExports: [],
+      fileExports: {}, fileImports: {}, fileFunctions: {}, fileClasses: {},
+      fileConstants: {}, moduleFiles: {},
+      fnById: {}, fnCalls: {}, fnCallers: {}, fnExports: {},
+      clsMethods: {},
+      fileDependents: {}, fileDependencies: {},
+      statistics: rawData.statistics || {},
+      version: rawData.version || '?',
+      timestamp: rawData.timestamp || '',
+    };
+
+    // Модули
+    for (const m of (rawData.modules || [])) {
+      d.modules[m.id] = m;
+      d.moduleFiles[m.id] = m.fileIds || [];
+    }
+
+    // Файлы
+    for (const f of (rawData.files || [])) {
+      d.files[f.id] = f;
+      d.fileExports[f.id] = [];
+      d.fileImports[f.id] = [];
+      d.fileFunctions[f.id] = [];
+      d.fileClasses[f.id] = [];
+      d.fileConstants[f.id] = [];
+      d.fileDependents[f.id] = [];
+      d.fileDependencies[f.id] = [];
+    }
+
+    // Функции
+    for (const fn of (rawData.functions || [])) {
+      d.functions[fn.id] = fn;
+      d.fnById[fn.id] = fn;
+      d.fnCalls[fn.id] = [];
+      d.fnCallers[fn.id] = [];
+      d.fnExports[fn.id] = [];
+      if (d.fileFunctions[fn.fileId]) d.fileFunctions[fn.fileId].push(fn);
+    }
+
+    // Классы
+    for (const c of (rawData.classes || [])) {
+      d.classes[c.id] = c;
+      d.clsMethods[c.id] = c.methods || [];
+      if (d.fileClasses[c.fileId]) d.fileClasses[c.fileId].push(c);
+    }
+
+    // Константы
+    for (const cn of (rawData.constants || [])) {
+      d.constants[cn.id] = cn;
+      if (d.fileConstants[cn.fileId]) d.fileConstants[cn.fileId].push(cn);
+    }
+
+    // Экспорты
+    for (const e of (rawData.exports || [])) {
+      d.exports.push(e);
+      if (d.fileExports[e.fileId]) d.fileExports[e.fileId].push(e);
+      if (e.functionId && d.fnExports[e.functionId]) d.fnExports[e.functionId].push(e);
+    }
+
+    // Импорты
+    for (const i of (rawData.imports || [])) {
+      d.imports.push(i);
+      if (d.fileImports[i.fromFileId]) d.fileImports[i.fromFileId].push(i);
+      // Строим обратные связи
+      if (i.toFileId && !i.isExternal) {
+        if (!d.fileDependencies[i.fromFileId]) d.fileDependencies[i.fromFileId] = [];
+        d.fileDependencies[i.fromFileId].push(i.toFileId);
+        if (!d.fileDependents[i.toFileId]) d.fileDependents[i.toFileId] = [];
+        d.fileDependents[i.toFileId].push(i.fromFileId);
+      }
+    }
+
+    // Вызовы
+    for (const c of (rawData.calls || [])) {
+      d.calls.push(c);
+      if (d.fnCalls[c.fromFunctionId]) d.fnCalls[c.fromFunctionId].push(c);
+      if (d.fnCallers[c.toFunctionId]) d.fnCallers[c.toFunctionId].push(c);
+    }
+
+    // Реэкспорты
+    for (const r of (rawData.reExports || [])) {
+      d.reExports.push(r);
+    }
+
+    return d;
+  }
+
+  // ============================================================================
+  // ЗАГРУЗКА ФАЙЛА
+  // ============================================================================
+  function loadData(json) {
+    try {
+      if (!json.files || !json.modules) {
+        toast('Неверный формат JSON: нужны поля files и modules', 'error');
+        return;
+      }
+
+      state.data = json;
+      const pre = preprocess(json);
+
+      // Переносим в state
+      Object.assign(state, pre);
+
+      // Обновляем UI
+      $('verTag').textContent = 'v' + state.version;
+      $('fileName').textContent = `✓ Загружено: ${Object.keys(state.files).length} файлов, ${Object.keys(state.functions).length} функций, ${state.calls.length} вызовов`;
+      $('totalFiles').textContent = Object.keys(state.files).length;
+      $('totalModules').textContent = Object.keys(state.modules).length;
+      $('totalFunctions').textContent = Object.keys(state.functions).length;
+      $('totalCalls').textContent = state.calls.length;
+      $('totalExports').textContent = state.exports.length;
+      $('totalImports').textContent = state.imports.length;
+      $('exportBtn').disabled = false;
+
+      renderFileList();
+      toast(`✓ Загружено ${Object.keys(state.files).length} файлов`, 'success');
+
+      // Автовыбор первого файла
+      const first = Object.keys(state.files)[0];
+      if (first) selectFile(first);
+    } catch (e) {
+      console.error(e);
+      toast('Ошибка загрузки: ' + e.message, 'error');
+    }
+  }
+
+  // ============================================================================
+  // СПИСОК ФАЙЛОВ
+  // ============================================================================
+  function renderFileList() {
+    const list = $('fileList');
+    const q = state.searchQuery.toLowerCase();
+    list.innerHTML = '';
+    let count = 0;
+
+    for (const [id, f] of Object.entries(state.files)) {
+      if (q && !f.path.toLowerCase().includes(q)) continue;
+
+      const deps = state.fileDependents[id]?.length || 0;
+      const imps = state.fileImports[id]?.length || 0;
+      const hasDeps = deps > 0 || imps > 0;
+      if (state.depsOnly && !hasDeps) continue;
+
+      count++;
+      const li = document.createElement('li');
+      li.className = 'file-item' + (id === state.selectedFileId ? ' active' : '');
+      li.dataset.fileId = id;
+      li.title = f.path;
+
+      const modName = getModuleName(f.moduleId);
+      li.innerHTML = `
+      <span style="flex:1;">${escapeHtml(f.path)}</span>
+      <span class="mod-badge">${escapeHtml(modName)}</span>
+    `;
+      li.addEventListener('click', () => selectFile(id));
+      list.appendChild(li);
+    }
+
+    $('sidebarCount').textContent = count;
+    if (count === 0) {
+      list.innerHTML = '<div class="empty-msg">Ничего не найдено</div>';
+    }
+  }
+
+  // ============================================================================
+  // ВЫБОР ФАЙЛА
+  // ============================================================================
+  function selectFile(fileId) {
+    state.selectedFileId = fileId;
+    renderFileList();
+    $('emptyState').style.display = 'none';
+    $('analysisView').style.display = 'block';
+    renderAnalysis();
+  }
+
+  // ============================================================================
+  // РЕНДЕР АНАЛИЗА
+  // ============================================================================
+  function renderAnalysis() {
+    const fileId = state.selectedFileId;
+    if (!fileId) return;
+
+    const f = state.files[fileId];
+    const modName = getModuleName(f.moduleId);
+
+    const fns = state.fileFunctions[fileId] || [];
+    const cls = state.fileClasses[fileId] || [];
+    const consts = state.fileConstants[fileId] || [];
+    const exps = state.fileExports[fileId] || [];
+    const imps = state.fileImports[fileId] || [];
+    const deps = state.fileDependents[fileId] || [];
+    const depsOut = state.fileDependencies[fileId] || [];
+
+    // Считаем вызовы, исходящие из этого файла
+    const fnIds = new Set(fns.map(x => x.id));
+    const outgoingCalls = state.calls.filter(c => fnIds.has(c.fromFunctionId)).length;
+    const incomingCalls = state.calls.filter(c => {
+      const toFn = state.fnById[c.toFunctionId];
+      return toFn && toFn.fileId === fileId;
+    }).length;
+
+    // Инфо-панель
+    $('fileInfo').innerHTML = `
+    <span class="file-path">📄 ${escapeHtml(f.path)}</span>
+    <span class="chip blue">📦 ${escapeHtml(modName)}</span>
+    <span class="chip green">⚙️ ${fns.length} функций</span>
+    <span class="chip purple">🏛️ ${cls.length} классов</span>
+    <span class="chip yellow">📌 ${consts.length} констант</span>
+    <span class="chip orange">📤 ${exps.length} эксп.</span>
+    <span class="chip">📥 ${imps.length} имп.</span>
+    <span class="chip">📞 ${outgoingCalls}/${incomingCalls} вызовов</span>
+  `;
+
+    // Бейджи на вкладках
+    $('fnBadge').textContent = fns.length;
+    $('clsBadge').textContent = cls.length;
+    $('depBadge').textContent = deps.length + depsOut.length;
+    $('callBadge').textContent = outgoingCalls + incomingCalls;
+    $('constBadge').textContent = consts.length;
+
+    // Рендер вкладок
+    renderOverview(f, fns, cls, consts, exps, imps, deps, depsOut, outgoingCalls, incomingCalls);
+    renderFunctions(fns, exps);
+    renderClasses(cls);
+    renderDeps(imps, deps, depsOut);
+    renderCalls(fns, outgoingCalls, incomingCalls);
+    renderConstants(consts);
+  }
+
+  // ============================================================================
+  // ВКЛАДКА: ОБЗОР
+  // ============================================================================
+  function renderOverview(f, fns, cls, consts, exps, imps, deps, depsOut, outCalls, inCalls) {
+    const el = $('tab-overview');
+
+    const exportedFns = fns.filter(x => x.isExported);
+    const asyncFns = fns.filter(x => x.isAsync);
+    const arrowFns = fns.filter(x => x.isArrow);
+    const methodFns = fns.filter(x => x.isMethod);
+
+    el.innerHTML = `
+    <div class="stat-grid" style="margin-bottom:16px;">
+      <div class="stat-card">
+        <div class="num">${fns.length}</div>
+        <div class="lbl">Функций</div>
+      </div>
+      <div class="stat-card green">
+        <div class="num">${exportedFns.length}</div>
+        <div class="lbl">Экспортировано</div>
+      </div>
+      <div class="stat-card purple">
+        <div class="num">${asyncFns.length}</div>
+        <div class="lbl">Async</div>
+      </div>
+      <div class="stat-card yellow">
+        <div class="num">${arrowFns.length}</div>
+        <div class="lbl">Arrow</div>
+      </div>
+      <div class="stat-card orange">
+        <div class="num">${methodFns.length}</div>
+        <div class="lbl">Методов</div>
+      </div>
+      <div class="stat-card">
+        <div class="num">${cls.length}</div>
+        <div class="lbl">Классов</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-header"><span><span class="icon">🔗</span> Входящие зависимости</span><span class="chip">${deps.length}</span></div>
+        <div class="panel-body">
+          ${deps.length === 0 ? '<div class="empty-msg">Никто не импортирует этот файл</div>' :
+      deps.map(id => `<div class="row" onclick="selectFile('${id}')"><span class="name">${escapeHtml(getFilePath(id))}</span><span class="type-tag tag-import">import</span></div>`).join('')}
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span><span class="icon">📤</span> Исходящие зависимости</span><span class="chip">${depsOut.length}</span></div>
+        <div class="panel-body">
+          ${depsOut.length === 0 ? '<div class="empty-msg">Нет исходящих зависимостей</div>' :
+      depsOut.map(id => `<div class="row" onclick="selectFile('${id}')"><span class="name">${escapeHtml(getFilePath(id))}</span><span class="type-tag tag-export">→</span></div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top:16px;">
+      <div class="panel">
+        <div class="panel-header"><span><span class="icon">📞</span> Вызовы</span></div>
+        <div class="panel-body">
+          <div class="row"><span class="name">Исходящих вызовов</span><span class="type-tag tag-call">${outCalls}</span></div>
+          <div class="row"><span class="name">Входящих вызовов</span><span class="type-tag tag-call">${inCalls}</span></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span><span class="icon">📤</span> Экспорты</span></div>
+        <div class="panel-body">
+          ${exps.length === 0 ? '<div class="empty-msg">Нет экспортов</div>' :
+      exps.slice(0, 20).map(e => `
+              <div class="row">
+                <span class="name">${escapeHtml(e.exportName || e.localName || '?')}</span>
+                <span class="type-tag ${e.isDefault ? 'tag-default' : e.isTypeOnly ? 'tag-type' : 'tag-export'}">${e.type || 'named'}</span>
+              </div>
+            `).join('')}
+          ${exps.length > 20 ? `<div class="empty-msg">...и ещё ${exps.length - 20}</div>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+  }
+
+  // ============================================================================
+  // ВКЛАДКА: ФУНКЦИИ
+  // ============================================================================
+  function renderFunctions(fns, exps) {
+    const el = $('tab-functions');
+    if (fns.length === 0) {
+      el.innerHTML = '<div class="empty-msg">В этом файле нет функций</div>';
+      return;
+    }
+
+    // Фильтры
+    const filters = [
+      { id: 'all', label: 'Все', test: () => true },
+      { id: 'exported', label: '📤 Экспортированные', test: f => f.isExported },
+      { id: 'async', label: '⚡ Async', test: f => f.isAsync },
+      { id: 'arrow', label: '➡️ Arrow', test: f => f.isArrow },
+      { id: 'method', label: '🔧 Методы', test: f => f.isMethod },
+    ];
+
+    el.innerHTML = `
+    <div class="filters" id="fnFilters">
+      ${filters.map((f, i) => `<button class="filter-btn ${i === 0 ? 'active' : ''}" data-filter="${f.id}">${f.label}</button>`).join('')}
+    </div>
+    <div id="fnList"></div>
+  `;
+
+    function renderList(filterId) {
+      const f = filters.find(x => x.id === filterId) || filters[0];
+      const list = fns.filter(f.test);
+      const listEl = document.getElementById('fnList');
+
+      if (list.length === 0) {
+        listEl.innerHTML = '<div class="empty-msg">Нет функций с таким фильтром</div>';
+        return;
+      }
+
+      listEl.innerHTML = `
+      <div class="grid-2">
+        ${list.map(fn => {
+        const exportInfo = exps.find(e => e.functionId === fn.id);
+        const calls = state.fnCalls[fn.id]?.length || 0;
+        const callers = state.fnCallers[fn.id]?.length || 0;
+        const params = (fn.params || []).join(', ');
+        const ret = fn.returnType ? fn.returnType.split('.').pop() : '';
+
+        return `
+            <div class="panel" style="margin-bottom:8px;">
+              <div class="panel-header" style="text-transform:none; letter-spacing:0;">
+                <span style="font-family:Consolas,monospace; color:var(--text); font-weight:700;">
+                  ${fn.isAsync ? '⚡ ' : ''}${fn.isArrow ? '➡️ ' : ''}${fn.isMethod ? '🔧 ' : ''}${escapeHtml(fn.name)}
+                </span>
+                <span style="display:flex; gap:4px;">
+                  ${fn.isExported ? '<span class="type-tag tag-export">export</span>' : ''}
+                  ${fn.isAsync ? '<span class="type-tag tag-async">async</span>' : ''}
+                </span>
+              </div>
+              <div class="panel-body" style="padding:10px 14px; font-size:12px; font-family:Consolas,monospace;">
+                <div style="color:var(--text-dim); margin-bottom:6px;">
+                  <span style="color:var(--text-faint);">строка</span> ${fn.line}
+                  ${params ? `<span style="color:var(--text-faint);"> · параметры:</span> <span style="color:var(--yellow);">(${escapeHtml(params)})</span>` : ''}
+                </div>
+                ${ret ? `<div style="color:var(--text-dim); margin-bottom:6px;"><span style="color:var(--text-faint);">→</span> <span style="color:var(--green);">${escapeHtml(ret)}</span></div>` : ''}
+                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">
+                  ${calls > 0 ? `<span class="chip">📞 вызывает: ${calls}</span>` : ''}
+                  ${callers > 0 ? `<span class="chip">📥 вызывается: ${callers}</span>` : ''}
+                  ${exportInfo ? `<span class="chip yellow">📤 ${escapeHtml(exportInfo.exportName || '')}</span>` : ''}
+                </div>
+              </div>
+            </div>
+          `;
+      }).join('')}
+      </div>
+    `;
+    }
+
+    renderList('all');
+
+    document.getElementById('fnFilters').addEventListener('click', (e) => {
+      const btn = e.target.closest('.filter-btn');
+      if (!btn) return;
+      document.querySelectorAll('#fnFilters .filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderList(btn.dataset.filter);
+    });
+  }
+
+  // ============================================================================
+  // ВКЛАДКА: КЛАССЫ
+  // ============================================================================
+  function renderClasses(cls) {
+    const el = $('tab-classes');
+    if (cls.length === 0) {
+      el.innerHTML = '<div class="empty-msg">В этом файле нет классов</div>';
+      return;
+    }
+
+    el.innerHTML = cls.map(c => `
+    <div class="panel" style="margin-bottom:12px;">
+      <div class="panel-header" style="text-transform:none; letter-spacing:0;">
+        <span style="font-family:Consolas,monospace; color:var(--orange); font-weight:700;">
+          🏛️ ${escapeHtml(c.name)}
+        </span>
+        <span style="display:flex; gap:6px;">
+          ${c.isExported ? '<span class="type-tag tag-export">export</span>' : ''}
+          <span class="chip">строка ${c.line}</span>
+        </span>
+      </div>
+      <div class="panel-body">
+        <div style="color:var(--text-dim); font-size:11px; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">
+          Методы (${(c.methods || []).length}):
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:4px;">
+          ${(c.methods || []).map(m => `
+            <span class="chip" style="font-family:Consolas,monospace; font-size:11px;">${escapeHtml(m)}</span>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  `).join('');
+  }
+
+  // ============================================================================
+  // ВКЛАДКА: ЗАВИСИМОСТИ
+  // ============================================================================
+  function renderDeps(imps, deps, depsOut) {
+    const el = $('tab-deps');
+    el.innerHTML = `
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-header"><span>📥 Импорты (${imps.length})</span></div>
+        <div class="panel-body">
+          ${imps.length === 0 ? '<div class="empty-msg">Нет импортов</div>' :
+      imps.map(i => {
+        const target = i.isExternal ? i.source : getFilePath(i.toFileId);
+        const modName = i.isExternal ? '🌐 external' : getModuleName(state.files[i.toFileId]?.moduleId);
+        return `
+                <div class="row" ${!i.isExternal ? `onclick="selectFile('${i.toFileId}')"` : ''}>
+                  <span class="name">${escapeHtml(target)}</span>
+                  <span class="type-tag ${i.isExternal ? 'tag-external' : 'tag-import'}">${escapeHtml(i.type || 'named')}</span>
+                </div>
+              `;
+      }).join('')}
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span>📤 Кто импортирует (${deps.length})</span></div>
+        <div class="panel-body">
+          ${deps.length === 0 ? '<div class="empty-msg">Никто не импортирует</div>' :
+      [...new Set(deps)].map(id => `
+              <div class="row" onclick="selectFile('${id}')">
+                <span class="name">${escapeHtml(getFilePath(id))}</span>
+                <span class="type-tag tag-export">←</span>
+              </div>
+            `).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:14px;">
+      <div class="panel-header"><span>📤 Исходящие зависимости (${depsOut.length})</span></div>
+      <div class="panel-body">
+        ${depsOut.length === 0 ? '<div class="empty-msg">Нет исходящих</div>' :
+      [...new Set(depsOut)].map(id => `
+            <div class="row" onclick="selectFile('${id}')">
+              <span class="name">${escapeHtml(getFilePath(id))}</span>
+              <span class="type-tag tag-import">→</span>
+            </div>
+          `).join('')}
+      </div>
+    </div>
+  `;
+  }
+
+  // ============================================================================
+  // ВКЛАДКА: ВЫЗОВЫ
+  // ============================================================================
+  function renderCalls(fns, outCalls, inCalls) {
+    const el = $('tab-calls');
+    const fnIds = new Set(fns.map(x => x.id));
+
+    // Исходящие вызовы из функций этого файла
+    const outgoing = state.calls.filter(c => fnIds.has(c.fromFunctionId));
+    // Входящие вызовы в функции этого файла
+    const incoming = state.calls.filter(c => {
+      const toFn = state.fnById[c.toFunctionId];
+      return toFn && toFn.fileId === state.selectedFileId;
+    });
+
+    el.innerHTML = `
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-header"><span>📞 Исходящие вызовы (${outgoing.length})</span></div>
+        <div class="panel-body">
+          ${outgoing.length === 0 ? '<div class="empty-msg">Нет исходящих вызовов</div>' :
+      outgoing.map(c => {
+        const fromFn = state.fnById[c.fromFunctionId];
+        const toFn = state.fnById[c.toFunctionId];
+        const toExternal = c.toFunctionId.startsWith('external:');
+        return `
+                <div class="row">
+                  <span class="name" style="color:var(--purple);">${escapeHtml(fromFn?.name || '?')}</span>
+                  <span style="color:var(--text-faint);">→</span>
+                  <span class="name" style="color:${toExternal ? 'var(--red)' : 'var(--accent)'};">
+                    ${escapeHtml(toExternal ? c.toFunctionId.replace('external:', '') : (toFn?.name || c.toFunctionId))}
+                  </span>
+                  <span class="type-tag tag-call">${c.type || 'direct'}</span>
+                </div>
+              `;
+      }).join('')}
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span>📥 Входящие вызовы (${incoming.length})</span></div>
+        <div class="panel-body">
+          ${incoming.length === 0 ? '<div class="empty-msg">Нет входящих вызовов</div>' :
+      incoming.map(c => {
+        const fromFn = state.fnById[c.fromFunctionId];
+        const toFn = state.fnById[c.toFunctionId];
+        return `
+                <div class="row">
+                  <span class="name" style="color:var(--accent);">${escapeHtml(fromFn?.name || '?')}</span>
+                  <span style="color:var(--text-faint);">→</span>
+                  <span class="name" style="color:var(--purple);">${escapeHtml(toFn?.name || '?')}</span>
+                  <span class="type-tag tag-call">${c.type || 'direct'}</span>
+                </div>
+              `;
+      }).join('')}
+        </div>
+      </div>
+    </div>
+  `;
+  }
+
+  // ============================================================================
+  // ВКЛАДКА: КОНСТАНТЫ
+  // ============================================================================
+  function renderConstants(consts) {
+    const el = $('tab-constants');
+    if (consts.length === 0) {
+      el.innerHTML = '<div class="empty-msg">В этом файле нет констант</div>';
+      return;
+    }
+
+    el.innerHTML = `
+    <div class="grid-2">
+      ${consts.map(c => {
+      let valueStr = '';
+      if (c.value !== undefined) {
+        if (typeof c.value === 'object') {
+          valueStr = JSON.stringify(c.value, null, 2);
+        } else {
+          valueStr = String(c.value);
+        }
+      } else {
+        valueStr = '(значение не извлечено)';
+      }
+      const truncated = valueStr.length > 300 ? valueStr.slice(0, 300) + '...' : valueStr;
+
+      return `
+          <div class="panel" style="margin-bottom:8px;">
+            <div class="panel-header" style="text-transform:none;">
+              <span style="font-family:Consolas,monospace; color:var(--green); font-weight:700;">
+                📌 ${escapeHtml(c.name)}
+              </span>
+              <span style="display:flex; gap:6px;">
+                ${c.isExported ? '<span class="type-tag tag-export">export</span>' : ''}
+                <span class="chip">строка ${c.line}</span>
+              </span>
+            </div>
+            <div class="panel-body" style="padding:10px 14px;">
+              <div class="code-preview">${escapeHtml(truncated)}</div>
+            </div>
+          </div>
+        `;
+    }).join('')}
+    </div>
+  `;
+  }
+
+  // ============================================================================
+  // ВКЛАДКИ
+  // ============================================================================
+  document.getElementById('tabs').addEventListener('click', (e) => {
+    const tab = e.target.closest('.tab');
+    if (!tab) return;
+    switchTab(tab.dataset.tab);
+  });
+
+  function switchTab(tabId) {
+    state.currentTab = tabId;
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabId));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + tabId));
+  }
+
+  // ============================================================================
+  // ПОИСК / ФИЛЬТРЫ
+  // ============================================================================
+  $('searchInput').addEventListener('input', (e) => {
+    state.searchQuery = e.target.value;
+    renderFileList();
+  });
+
+  $('depsOnlyBtn').addEventListener('click', () => {
+    state.depsOnly = !state.depsOnly;
+    $('depsOnlyBtn').classList.toggle('active', state.depsOnly);
+    renderFileList();
+  });
+
+  $('expandAllBtn').addEventListener('click', () => {
+    document.querySelectorAll('.panel-body').forEach(p => {
+      p.style.maxHeight = p.style.maxHeight === 'none' ? '500px' : 'none';
+    });
+  });
+
+  // ============================================================================
+  // ТЕМА
+  // ============================================================================
+  $('themeBtn').addEventListener('click', () => {
+    document.body.classList.toggle('light');
+    $('themeBtn').textContent = document.body.classList.contains('light') ? '☀️ Тема' : '🌙 Тема';
+  });
+
+  // ============================================================================
+  // ЭКСПОРТ
+  // ============================================================================
+  $('exportBtn').addEventListener('click', () => {
+    if (!state.selectedFileId) return;
+    const f = state.files[state.selectedFileId];
+    const data = {
+      file: f,
+      module: state.modules[f.moduleId],
+      functions: state.fileFunctions[state.selectedFileId],
+      classes: state.fileClasses[state.selectedFileId],
+      constants: state.fileConstants[state.selectedFileId],
+      exports: state.fileExports[state.selectedFileId],
+      imports: state.fileImports[state.selectedFileId],
+      dependents: state.fileDependents[state.selectedFileId] || [],
+      dependencies: state.fileDependencies[state.selectedFileId] || [],
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = f.path.replace(/\//g, '_') + '.analysis.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('Экспортировано', 'success');
+  });
+
+  // ============================================================================
+  // ГОРЯЧИЕ КЛАВИШИ
+  // ============================================================================
+  document.addEventListener('keydown', (e) => {
+    // Ctrl+K — фокус на поиск
+    if (e.ctrlKey && e.key === 'k') {
+      e.preventDefault();
+      $('searchInput').focus();
+      return;
+    }
+
+    // Ctrl+E — экспорт
+    if (e.ctrlKey && e.key === 'e') {
+      e.preventDefault();
+      $('exportBtn').click();
+      return;
+    }
+
+    // Esc — очистка / закрытие
+    if (e.key === 'Escape') {
+      if ($('modal').classList.contains('show')) {
+        $('modal').classList.remove('show');
+      } else {
+        $('searchInput').value = '';
+        state.searchQuery = '';
+        renderFileList();
+      }
+      return;
+    }
+
+    // Цифры 1-6 — вкладки
+    if (/^[1-6]$/.test(e.key) && !e.ctrlKey && document.activeElement.tagName !== 'INPUT') {
+      const tabs = ['overview', 'functions', 'classes', 'deps', 'calls', 'constants'];
+      switchTab(tabs[parseInt(e.key) - 1]);
+      return;
+    }
+
+    // Стрелки — навигация
+    if (document.activeElement.tagName === 'INPUT') return;
+
+    const items = document.querySelectorAll('.file-item');
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const current = Array.from(items).findIndex(x => x.classList.contains('active'));
+      let next = e.key === 'ArrowDown' ? current + 1 : current - 1;
+      if (next < 0) next = items.length - 1;
+      if (next >= items.length) next = 0;
+      const nextItem = items[next];
+      if (nextItem) {
+        nextItem.scrollIntoView({ block: 'nearest' });
+        selectFile(nextItem.dataset.fileId);
+      }
+    }
+  });
+
+  // ============================================================================
+  // ЗАГРУЗКА ФАЙЛА
+  // ============================================================================
+  const upload = $('upload');
+  const fileInput = $('fileInput');
+
+  upload.addEventListener('click', () => fileInput.click());
+
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        loadData(JSON.parse(ev.target.result));
+      } catch (err) {
+        toast('Ошибка парсинга JSON: ' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  upload.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    upload.classList.add('drag');
+  });
+
+  upload.addEventListener('dragleave', () => {
+    upload.classList.remove('drag');
+  });
+
+  upload.addEventListener('drop', (e) => {
+    e.preventDefault();
+    upload.classList.remove('drag');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        loadData(JSON.parse(ev.target.result));
+      } catch (err) {
+        toast('Ошибка парсинга JSON: ' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // ============================================================================
+  // ЗАГРУЗКА ИЗ URL (?data=...)
+  // ============================================================================
+  const urlData = new URLSearchParams(location.search).get('data');
+  if (urlData) {
+    fetch(urlData)
+      .then(r => r.json())
+      .then(loadData)
+      .catch(e => toast('Ошибка загрузки из URL: ' + e.message, 'error'));
+  }
+
+  // ============================================================================
+  // ИНФО О ГОРЯЧИХ КЛАВИШАХ
+  // ============================================================================
+  $('helpBtn').addEventListener('click', () => {
+    $('modal').classList.add('show');
+  });
+
+  // Закрытие модалки по клику на фон
+  $('modal').addEventListener('click', (e) => {
+    if (e.target.id === 'modal') $('modal').classList.remove('show');
+  });
+
+  console.log('%c🔍 AST Analyzer v8','font-size:16px; font-weight:bold; color:#58a6ff;');
+  console.log('Готов к загрузке JSON-файла графа.');
+</script>
+</body>
+</html>

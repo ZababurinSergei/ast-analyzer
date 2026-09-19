@@ -1,0 +1,29 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published] # Срабатывает при создании нового Release на GitHub
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Обязательно для Trusted Publishing (OIDC)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies & build
+        run: |
+          npm ci
+          npm run build # Если у вас есть этап сборки (TypeScript и т.д.)
+
+      - name: Publish to npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }} # Не пугайтесь, при OIDC npm сам поймет контекст через id-token

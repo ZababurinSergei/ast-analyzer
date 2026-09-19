@@ -7,6 +7,7 @@ import type { Logger } from '../utils/Logger.js';
 import type { ModuleType } from './ModuleTypeDetector.js';
 import type { IRefactorContext } from './interfaces/IRefactorContext.js';
 import type { ExtractedModule } from './types.js';
+
 export interface Cluster {
   name: string;
   functions: string[];
@@ -27,92 +28,6 @@ export interface DependencyInfo {
   isExported: boolean;
   sourceFile: string;
   node?: Node;
-}
-
-// ==========================================
-// НОВЫЕ ФУНКЦИИ ДЛЯ ОПРЕДЕЛЕНИЯ ТИПА МОДУЛЯ
-// ==========================================
-
-function determineModuleExtension(
-  code: string,
-  sourcePath: string,
-  defaultType: 'esm' | 'cjs'
-): string {
-  // Если исходный файл TypeScript, используем .ts
-  if (sourcePath.endsWith('.ts') || sourcePath.endsWith('.tsx')) {
-    return '.ts';
-  }
-
-  // Если есть TypeScript-специфичные конструкции, но файл не .ts, используем .js
-  if (hasTypeScriptSyntax(code) && !sourcePath.endsWith('.ts')) {
-    return '.js';
-  }
-
-  // Проверяем наличие top-level await
-  if (/(?:^|\n)\s*await\s+/.test(code) && !/async\s+function/.test(code)) {
-    return '.mjs';
-  }
-
-  // Проверяем наличие ESM-специфичных конструкций
-  if (hasESMSpecificSyntax(code)) {
-    return '.mjs';
-  }
-
-  // По умолчанию используем расширение, определенное ранее
-  return defaultType === 'esm' ? '.mjs' : '.js';
-}
-
-function hasTypeScriptSyntax(code: string): boolean {
-  // Проверяем наличие декораторов
-  if (/@\w+\s*(?:\(\))?/.test(code)) return true;
-
-  // Проверяем наличие generics (но не HTML теги)
-  if (/<\s*\w+\s*(?:extends\s+\w+)?\s*>/g.test(code) && !/<[a-z][a-z0-9]*\s*[>/]/i.test(code)) {
-    return true;
-  }
-
-  // Проверяем наличие type annotations
-  if (/:\s*(?:string|number|boolean|any|void|unknown|never)\b/.test(code)) return true;
-
-  // Проверяем наличие интерфейсов и type aliases
-  if (/\b(?:interface|type)\s+\w+\s*(?:<[^>]*>)?\s*{/.test(code)) return true;
-
-  // Проверяем наличие enum
-  if (/\benum\s+\w+\s*{/.test(code)) return true;
-
-  // Проверяем наличие namespace
-  if (/\bnamespace\s+\w+\s*{/.test(code)) return true;
-
-  return false;
-}
-
-function hasESMSpecificSyntax(code: string): boolean {
-  // Проверяем наличие import.meta
-  if (/\bimport\.meta\b/.test(code)) return true;
-
-  // Проверяем наличие динамических импортов
-  if (/import\s*\(/.test(code)) return true;
-
-  // Проверяем наличие export default
-  if (/\bexport\s+default\b/.test(code)) return true;
-
-  return false;
-}
-
-function hasSpecialConstructs(code: string): boolean {
-  const specialPatterns = [
-    /\bSymbol\s*\(/,
-    /\bProxy\s*\{/,
-    /\bWeakMap\s*\(/,
-    /\bWeakSet\s*\(/,
-    /\bBigInt\s*\(/,
-    /\d+n\b/, // BigInt literal
-  ];
-
-  for (const pattern of specialPatterns) {
-    if (pattern.test(code)) return true;
-  }
-  return false;
 }
 
 export class ModuleExtractor {
@@ -212,15 +127,15 @@ export class ModuleExtractor {
       const clusterCode = this.generateClusterCode(sourceFile, cluster);
 
       // Определяем расширение
-      let ext = determineModuleExtension(
+      let ext = this.determineModuleExtension(
         clusterCode,
         sourcePath,
         this.moduleType === 'esm' ? 'esm' : 'cjs'
       );
 
       // Для специальных конструкций используем .js если это возможно
-      if (hasSpecialConstructs(clusterCode) && ext === '.mjs') {
-        if (!hasESMSpecificSyntax(clusterCode) && !hasTypeScriptSyntax(clusterCode)) {
+      if (this.hasSpecialConstructs(clusterCode) && ext === '.mjs') {
+        if (!this.hasESMSpecificSyntax(clusterCode) && !this.hasTypeScriptSyntax(clusterCode)) {
           ext = '.js';
           this.logger.debug(`Using .js for special constructs in ${moduleName}`);
         }
@@ -1127,5 +1042,87 @@ export class ModuleExtractor {
       relative = './' + relative;
     }
     return relative.replace(/\\/g, '/');
+  }
+
+  private determineModuleExtension(
+    code: string,
+    sourcePath: string,
+    defaultType: 'esm' | 'cjs'
+  ): string {
+    // Если исходный файл TypeScript, используем .ts
+    if (sourcePath.endsWith('.ts') || sourcePath.endsWith('.tsx')) {
+      return '.ts';
+    }
+
+    // Если есть TypeScript-специфичные конструкции, но файл не .ts, используем .js
+    if (this.hasTypeScriptSyntax(code) && !sourcePath.endsWith('.ts')) {
+      return '.js';
+    }
+
+    // Проверяем наличие top-level await
+    if (/(?:^|\n)\s*await\s+/.test(code) && !/async\s+function/.test(code)) {
+      return '.mjs';
+    }
+
+    // Проверяем наличие ESM-специфичных конструкций
+    if (this.hasESMSpecificSyntax(code)) {
+      return '.mjs';
+    }
+
+    // По умолчанию используем расширение, определенное ранее
+    return defaultType === 'esm' ? '.mjs' : '.js';
+  }
+
+  private hasTypeScriptSyntax(code: string): boolean {
+    // Проверяем наличие декораторов
+    if (/@\w+\s*(?:\(\))?/.test(code)) return true;
+
+    // Проверяем наличие generics (но не HTML теги)
+    if (/<\s*\w+\s*(?:extends\s+\w+)?\s*>/g.test(code) && !/<[a-z][a-z0-9]*\s*[>/]/i.test(code)) {
+      return true;
+    }
+
+    // Проверяем наличие type annotations
+    if (/:\s*(?:string|number|boolean|any|void|unknown|never)\b/.test(code)) return true;
+
+    // Проверяем наличие интерфейсов и type aliases
+    if (/\b(?:interface|type)\s+\w+\s*(?:<[^>]*>)?\s*{/.test(code)) return true;
+
+    // Проверяем наличие enum
+    if (/\benum\s+\w+\s*{/.test(code)) return true;
+
+    // Проверяем наличие namespace
+    if (/\bnamespace\s+\w+\s*{/.test(code)) return true;
+
+    return false;
+  }
+
+  private hasESMSpecificSyntax(code: string): boolean {
+    // Проверяем наличие import.meta
+    if (/\bimport\.meta\b/.test(code)) return true;
+
+    // Проверяем наличие динамических импортов
+    if (/import\s*\(/.test(code)) return true;
+
+    // Проверяем наличие export default
+    if (/\bexport\s+default\b/.test(code)) return true;
+
+    return false;
+  }
+
+  private hasSpecialConstructs(code: string): boolean {
+    const specialPatterns = [
+      /\bSymbol\s*\(/,
+      /\bProxy\s*\{/,
+      /\bWeakMap\s*\(/,
+      /\bWeakSet\s*\(/,
+      /\bBigInt\s*\(/,
+      /\d+n\b/, // BigInt literal
+    ];
+
+    for (const pattern of specialPatterns) {
+      if (pattern.test(code)) return true;
+    }
+    return false;
   }
 }

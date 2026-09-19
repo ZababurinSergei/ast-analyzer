@@ -27,29 +27,7 @@ const external = [
   'buffer',
   'tty',
   'readline',
-  'string_decoder',
-
-  // Тяжелые зависимости (пользователь устанавливает отдельно)
-  'z3-solver',
-  'typescript',
-  '@babel/generator',
-  '@babel/parser',
-  '@babel/traverse',
-  '@hpcc-js/dataflow',
-  '@hpcc-js/wasm-graphviz',
-  '@jitl/ts-simple-type',
-  '@typescript-eslint/parser',
-  '@vue/compiler-sfc',
-  '@vue/compiler-dom',
-  'estree-walker',
-  'ts-morph',
-  'web-tree-sitter',
-  '@codeflow-map/core',
-  '@codeflow-map/wasm',
-  'eslint',
-  'commander',
-  'glob',
-  'vitest',
+  'string_decoder'
 ];
 
 // Функция для копирования WASM файлов

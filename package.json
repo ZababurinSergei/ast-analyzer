@@ -1,52 +1,102 @@
 {
   "name": "@newkind/ast-analyzer",
-  "version": "3.0.13",
-  "description": "AST Analyzer - AI Toolkit for code analysis, graph visualization, refactoring, semantic analysis, and formal verification",
+  "version": "5.1.3",
+  "description": "🔍 AST Analyzer - AI Toolkit для анализа кода с GraphStore и CompactReportConfig",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
-    "@newkind/ast-analyzer": "dist/cli.js",
-    "ast-refactor": "dist/cli-refactor.js",
-    "ast-semantic": "dist/cli-semantic.js",
-    "ast-cicd": "dist/cli-cicd.js",
-    "ast-ts-validator": "dist/cli-ts-validator.js"
+    "ast-analyzer": "./dist/cli.js",
+    "ast-cicd": "./dist/cli-cicd.js",
+    "ast-semantic": "./dist/cli-semantic.js",
+    "ast-refactor": "./dist/cli-refactor.js",
+    "ast-ts-validator": "./dist/cli-ts-validator.js"
   },
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./cli": {
-      "import": "./dist/cli.js",
-      "types": "./dist/cli.d.ts"
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js"
     },
-    "./refactor": {
-      "import": "./dist/refactor/index.js",
-      "types": "./dist/refactor/index.d.ts"
-    },
-    "./semantic": {
-      "import": "./dist/semantic/index.js",
-      "types": "./dist/semantic/index.d.ts"
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js"
     },
     "./formal": {
-      "import": "./dist/formal/index.js",
-      "types": "./dist/formal/index.d.ts"
+      "types": "./dist/formal/index.d.ts",
+      "import": "./dist/formal/index.js"
+    },
+    "./refactor": {
+      "types": "./dist/refactor/index.d.ts",
+      "import": "./dist/refactor/index.js"
+    },
+    "./semantic": {
+      "types": "./dist/semantic/index.d.ts",
+      "import": "./dist/semantic/index.js"
+    },
+    "./reporters": {
+      "types": "./dist/reporters/index.d.ts",
+      "import": "./dist/reporters/index.js"
+    },
+    "./analyzers": {
+      "types": "./dist/analyzers/index.d.ts",
+      "import": "./dist/analyzers/index.js"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.js"
     }
   },
   "scripts": {
-    "check": "npx tsc --noEmit --skipLibCheck",
+    "check": "npx tsc --noEmit --skipLibCheck --excludeDirectories ./src/process",
+    "build:infoenergo": "tsx ./src/cli.ts compact-recursive ./infoenergo-ui/src/index.ts --preset full --depth 1000 -o ./infoenergo-ui/index.json",
+    "build:graph": "tsx ./src/cli.ts compact-recursive ./src/index.ts --preset full --depth 1000 -o ./example/index.json",
+    "check:graph": "npx tsx scripts/verify-roundtrip.ts -v --max-diffs 20",
+    "build:decode:roundTrip": "tsx ./decode.ts",
+    "build": "tsc -p tsconfig.json",
+    "build:watch": "tsc -p tsconfig.json --watch",
+    "dev": "tsx ./src/cli.ts",
+    "cli": "tsx ./src/cli.ts",
+    "cli:semantic": "tsx ./src/cli-semantic.ts",
+    "cli:refactor": "tsx ./src/cli-refactor.ts",
+    "cli:cicd": "tsx ./src/cli-cicd.ts",
+    "cli:validator": "tsx ./src/cli-ts-validator.ts",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest --coverage",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "format": "prettier --write src/**/*.ts",
+    "clean": "rm -rf dist coverage reports",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build",
+    "graph:enrich": "tsx scripts/enrich-report-with-graph.ts",
+    "graph:full": "npm run graph:enrich -- ./reports/project-compact-full.json ./src",
+    "graph:validate": "tsx scripts/validate-graph.ts",
+    "report:compact": "tsx ./src/cli.ts compact-recursive ./src/index.ts --preset standard --depth 100 -o ./reports/compact.json",
+    "report:full": "tsx ./src/cli.ts compact-recursive ./src/index.ts --preset full --depth 1000 -o ./reports/full.json",
+    "report:graphs": "tsx ./src/cli.ts compact-recursive ./src/index.ts --preset relationships --depth 1000 -o ./reports/graphs-only.json",
+    "report:ultra": "tsx ./src/cli.ts compact-recursive ./src/index.ts --preset ultra --ultra --minify-keys -o ./reports/ultra.json",
+    "report:custom": "tsx ./src/cli.ts compact-recursive ./src/index.ts --preset minimal --no-imports --no-exports --include-body -o ./reports/custom.json",
+    "report:stats": "tsx ./src/cli.ts compact-recursive ./src/index.ts --no-relations --no-functions --no-constants --stats -o ./reports/stats-only.json",
+    "report:vue": "tsx ./src/cli.ts compact-recursive ./src/index.ts --preset full --vue-templates --depth 1000 -o ./reports/vue-full.json",
+    "report:all": "npm run report:compact && npm run report:full && npm run report:graphs && npm run report:ultra && npm run report:custom && npm run report:stats && npm run report:vue",
+    "validate:graph": "tsx scripts/validate-graph.ts ./reports/full.json",
+    "version:patch": "npm version patch",
+    "version:minor": "npm version minor",
+    "version:major": "npm version major",
+    "===================== СИСТЕМНЫЕ ВЫЗОВЫ =====================": "",
     "start:win": "node ./dist/cli.js project ./src/cli.ts 15 -o ./reports/component-tree-deep",
     "start:win:abs": "node ./dist/cli.js project %CD%/src/cli.ts 15 -o ./reports/component-tree-deep",
     "start:ts": "NODE_OPTIONS=\"--trace-warnings --unhandled-rejections=strict\" tsx src/cli.ts project src/cli.ts 15 -o ./reports/component-tree-deep --entities 2>&1 | tee debug.log\n",
-    "clean": "rimraf dist",
-    "build": "npm run clean && npm run build:types && npm run build:bundle && npm run build:cli",
     "build:types": "tsc --emitDeclarationOnly --declaration --declarationMap --outDir dist",
     "build:bundle": "cross-env NODE_ENV=production  node esbuild.bundle.config.js",
     "build:cli": "cross-env NODE_ENV=production  node esbuild.cli.config.js",
     "build:prod": "cross-env NODE_ENV=production  npm run build",
     "start": "node dist/cli.js",
-    "dev": "tsx src/cli.ts",
     "semantic": "node dist/cli-semantic.js",
     "semantic:analyze": "node dist/cli-semantic.js analyze",
     "semantic:callgraph": "node dist/cli-semantic.js callgraph",
@@ -79,9 +129,7 @@
     "type-check:test": "tsc --noEmit -p tsconfig.test.json",
     "type-check:all": "npm run type-check && npm run type-check:test",
     "===================== тесты =====================": "",
-    "test": "vitest --exclude src/__tests__/vue-analyzer.test.ts",
     "test:watch": "vitest --watch",
-    "test:coverage": "vitest run --coverage",
     "test:coverage:html": "vitest run --coverage --coverage.reporter=html",
     "test:coverage:lcov": "vitest run --coverage --coverage.reporter=lcov",
     "===================== ФОРМАЛЬНАЯ ВЕРИФИКАЦИЯ (Z3) =====================": "",
@@ -210,103 +258,73 @@
     "test:debug:imports": "vitest src/refactor/__tests__/import-fixes.test.ts --inspect-brk --no-file-parallelism",
     "test:debug:analyzers": "vitest src/refactor/__tests__/analyzers-comprehensive.test.ts --inspect-brk --no-file-parallelism",
     "test:debug:jsx": "vitest src/refactor/__tests__/jsx-vue-analyzers.test.ts --inspect-brk --no-file-parallelism",
-    "test:debug:jsx-edge": "vitest src/refactor/__tests__/jsx-vue-advanced-edge.test.ts --inspect-brk --no-file-parallelism",
-    "===================== LINT И FORMAT =====================": "",
-    "lint": "eslint src --ext .ts",
-    "lint:errors": "eslint src --ext .ts --quiet",
-    "lint:fix": "eslint src --ext .ts --fix",
-    "format": "prettier --write \"src/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\"",
-    "preinstall": "",
-    "========== ГРАФИКИ ================": "",
-    "project:infoenergo-ui": "npm run build:data-converter && tsx ./src/cli.ts project ./infoenergo-ui/src/index.ts 150 --entities -o ./reports/infoenergo-ui",
-    "project:ast-analizer": "npm run build:data-converter && tsx ./src/cli.ts project ./src/cli.ts 150 --entities -o ./reports/ast-analizer && npm run copy:report",
-    "========== КОМПАКТНЫЕ ОТЧЕТЫ (БЕЗ BODY) ================": "",
-    "compact:infoenergo-ui": "npm run build:data-converter && tsx ./src/cli.ts compact-report ./infoenergo-ui/src/index.ts --preset standard -o ./reports/entities-infoenergo-ui.json",
-    "compact:ast-analizer": "npm run build:data-converter && tsx ./src/cli.ts compact-report ./src/cli.ts --preset standard -o ./reports/entities-ast-analizer.json",
-    "========== ТЕСТЫ ================": "",
-    "test:compress": "vitest --ui src/reporters/__tests__/compressReport.test.ts --run",
-    "test:compress:watch": "vitest --ui src/reporters/__tests__/compressReport.test.ts",
-    "test:compress:coverage": "vitest --ui src/reporters/__tests__/compressReport.test.ts --run --coverage",
-    "========== УТИЛИТЫ ================": "",
-    "build:data-converter": "esbuild src/reporters/data-converter.ts --bundle --platform=node --target=es2022 --format=esm --outfile=src/reporters/templates/data-converter.js",
-    "========== КОНЕЦ ================": "",
-    "copy:report": "cp reports/entities-component-tree-deep/package-lock-report.json src/reporters/templates/package-lock-report.json || echo '⚠️ Report not found, skipping copy'",
-    "file": "tsx ./src/cli.ts file ./src/cli.ts 15 -o ./reports/file-tree-deep",
-    "project:--entities:log:timestamp": "mkdir -p logs && npm run project:--entities 2>&1 | tee ./logs/project-entities-$(date +%Y%m%d-%H%M%S).log && echo '📄 Log saved to ./logs/project-entities-$(date +%Y%m%d-%H%M%S).log'"
+    "test:debug:jsx-edge": "vitest src/refactor/__tests__/jsx-vue-advanced-edge.test.ts --inspect-brk --no-file-parallelism"
   },
   "keywords": [
     "ast",
+    "parser",
     "analyzer",
-    "graph",
-    "visualization",
+    "typescript",
+    "javascript",
+    "vue",
+    "jsx",
+    "tsx",
+    "call-graph",
+    "data-flow",
+    "control-flow",
+    "type-analyzer",
+    "semantic-analysis",
     "refactoring",
-    "ai",
-    "code-analysis"
+    "code-analysis",
+    "ai-toolkit",
+    "graph-store",
+    "compact-report"
   ],
-  "author": "Zababurin Sergei",
+  "author": "Newkind",
   "license": "MIT",
-  "dependencies": {
-    "@babel/generator": "^8.0.0",
-    "@babel/parser": "^8.0.4",
-    "@babel/traverse": "^8.0.4",
-    "@codeflow-map/core": "^1.0.3",
-    "@hpcc-js/dataflow": "^9.7.9",
-    "@hpcc-js/wasm-graphviz": "^1.28.0",
-    "@jitl/ts-simple-type": "^2.0.0-next.3",
-    "@typescript-eslint/parser": "^8.26.1",
-    "@vue/compiler-sfc": "^3.5.41",
-    "eslint": "^10.8.1",
-    "estree-walker": "^3.0.3",
-    "execa": "^10.0.1",
-    "glob": "^13.0.6",
-    "ts-morph": "^28.0.0",
-    "web-tree-sitter": "^0.26.12",
-    "z3-solver": "^5.1.0"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/newkind/ast-analyzer"
   },
-  "peerDependencies": {
-    "typescript": "^5.9.3"
+  "bugs": {
+    "url": "https://github.com/newkind/ast-analyzer/issues"
   },
-  "devDependencies": {
-    "@eslint/eslintrc": "^3.3.6",
-    "@eslint/js": "^10.0.1",
-    "@types/estree": "^1.0.9",
-    "@types/node": "^22.15.0",
-    "@typescript-eslint/eslint-plugin": "^8.26.1",
-    "@typescript-eslint/parser": "^8.67.0",
-    "@vitest/coverage-v8": "^3.0.9",
-    "@vitest/ui": "^3.0.9",
-    "@vue/compiler-dom": "^3.5.41",
-    "async-mutex": "^0.5.0",
-    "commander": "^15.0.0",
-    "cross-env": "^10.1.0",
-    "esbuild": "^0.28.2",
-    "esbuild-plugin-copy": "^2.1.1",
-    "globals": "^17.11.0",
-    "only-allow": "^1.2.2",
-    "prettier": "^3.9.6",
-    "rimraf": "^6.1.3",
-    "tree-sitter-wasms": "^0.1.13",
-    "tsx": "^4.23.12",
-    "vitest": "^3.0.9"
-  },
+  "homepage": "https://github.com/newkind/ast-analyzer#readme",
   "engines": {
     "node": ">=18.0.0"
   },
-  "packageManager": "pnpm@11.22.0",
+  "dependencies": {
+    "@codeflow-map/core": "latest",
+    "@hpcc-js/dataflow": "latest",
+    "@hpcc-js/wasm-graphviz": "latest",
+    "@jitl/ts-simple-type": "latest",
+    "@typescript-eslint/parser": "latest",
+    "@vue/compiler-sfc": "latest",
+    "commander": "latest",
+    "eslint": "latest",
+    "estree-walker": "latest",
+    "execa": "latest",
+    "glob": "latest",
+    "ts-morph": "latest",
+    "z3-solver": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@typescript-eslint/eslint-plugin": "latest",
+    "@vitest/coverage-v8": "latest",
+    "eslint-config-prettier": "latest",
+    "eslint-plugin-import": "latest",
+    "prettier": "latest",
+    "tsx": "latest",
+    "typescript": "latest",
+    "vitest": "latest",
+    "ts-prune": "latest",
+    "knip": "latest"
+  },
   "files": [
     "dist",
+    "src",
     "README.md",
-    "LICENSE",
-    "src/utils/Logger.ts",
-    "src/grammars/**/*.wasm"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/ZababurinSergei/ast-analyzer"
-  },
-  "bugs": {
-    "url": "https://github.com/ZababurinSergei/ast-analyzer/issues"
-  },
-  "homepage": "https://github.com/ZababurinSergei/ast-analyzer#readme"
+    "LICENSE"
+  ]
 }

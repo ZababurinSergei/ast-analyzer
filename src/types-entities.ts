@@ -1,6 +1,14 @@
 // packages/ast-analyzer/src/types-entities.ts
+// ============================================
+// ИСПРАВЛЕННАЯ ВЕРСИЯ
+// ============================================
+// Исправления:
+//   1. Путь реэкспорта './core/entity-extractor.js' → './core/entity-extractor/index.js'
+//      (TypeScript не находил модуль, т.к. entity-extractor — это директория,
+//       а не файл entity-extractor.ts)
+// ============================================
 
-export * from './core/entity-extractor.js';
+export * from './core/entity-extractor/index.js';
 
 // ============================================
 // ТИПЫ ДЛЯ ГРАФА МОДУЛЕЙ

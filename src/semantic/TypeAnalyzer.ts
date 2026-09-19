@@ -1,8 +1,13 @@
 // src/semantic/TypeAnalyzer.ts
+// ИСПРАВЛЕННАЯ ВЕРСИЯ - устранены все конфликты экспортов
 
 import ts from 'typescript';
 import { toSimpleType, isAssignableToType, typeToString } from '@jitl/ts-simple-type';
 import type { SimpleType } from '@jitl/ts-simple-type';
+
+// ==========================================
+// ЭКСПОРТ ИНТЕРФЕЙСОВ - только здесь
+// ==========================================
 
 export interface TypeInfo {
   type: SimpleType;
@@ -28,6 +33,10 @@ export interface TypeError {
   location: { line: number; column: number };
 }
 
+// ==========================================
+// ЭКСПОРТ КЛАССА - только здесь
+// ==========================================
+
 export class TypeAnalyzer {
   private program: ts.Program;
   private typeChecker: ts.TypeChecker;
@@ -35,7 +44,6 @@ export class TypeAnalyzer {
   private typeInfoCache: Map<ts.Node, TypeInfo> = new Map();
 
   constructor(filePath: string) {
-    // Создаем программу TypeScript
     const compilerOptions: ts.CompilerOptions = {
       target: ts.ScriptTarget.ES2020,
       module: ts.ModuleKind.CommonJS,
@@ -79,7 +87,6 @@ export class TypeAnalyzer {
       isOptional: this.isOptional(node),
     };
 
-    // Рекурсивно анализируем свойства для объектов
     if (this.isObjectType(simpleType)) {
       const properties = new Map<string, TypeInfo>();
       const props = this.getPropertyOfSimpleType(simpleType);
@@ -93,7 +100,6 @@ export class TypeAnalyzer {
       info.properties = properties;
     }
 
-    // Анализируем элементы для массивов
     if (this.isArrayType(simpleType)) {
       const elementType = this.getElementType(simpleType);
       if (elementType) {
@@ -118,7 +124,6 @@ export class TypeAnalyzer {
     const actualType = this.getTypeInfo(node);
     if (!actualType) return true;
 
-    // Создаем простой тип для ожидаемого типа
     const expectedSimpleType = this.parseTypeString(expectedType);
     if (!expectedSimpleType) return true;
 
@@ -129,7 +134,6 @@ export class TypeAnalyzer {
     const errors: TypeError[] = [];
 
     const visit = (node: ts.Node) => {
-      // Проверяем присвоения
       if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
         const leftType = this.getTypeInfo(node.left);
         const rightType = this.getTypeInfo(node.right);
@@ -149,7 +153,6 @@ export class TypeAnalyzer {
         }
       }
 
-      // Проверяем аргументы функций
       if (ts.isCallExpression(node)) {
         const signature = this.typeChecker.getResolvedSignature(node);
         if (signature) {
@@ -189,7 +192,6 @@ export class TypeAnalyzer {
         }
       }
 
-      // Проверяем return операторы
       if (ts.isReturnStatement(node) && node.expression) {
         const enclosingFunction = this.getEnclosingFunction(node);
         if (enclosingFunction) {
@@ -288,12 +290,10 @@ export class TypeAnalyzer {
   }
 
   private parseTypeString(typeStr: string): SimpleType | null {
-    // Простой парсинг строк типов (можно улучшить)
     if (typeStr === 'string') return { kind: 'STRING' } as any;
     if (typeStr === 'number') return { kind: 'NUMBER' } as any;
     if (typeStr === 'boolean') return { kind: 'BOOLEAN' } as any;
     if (typeStr === 'any') return { kind: 'ANY' } as any;
-
     return null;
   }
 
@@ -303,45 +303,24 @@ export class TypeAnalyzer {
     return { line: line + 1, column: character + 1 };
   }
 
-  // ==========================================
-  // ИСПРАВЛЕННЫЕ МЕТОДЫ - используем kind вместо type
-  // ==========================================
-
-  /**
-   * Проверяет, является ли тип массивом
-   * Исправлено: используем kind вместо type
-   */
   private isArrayType(type: any): boolean {
     if (!type) return false;
-    // Проверяем по kind (исправлено с type на kind)
     return type.kind === 'ARRAY' || (type.kind === 'OBJECT' && type.array === true);
   }
 
-  /**
-   * Проверяет, является ли тип объектом
-   * Исправлено: используем kind вместо type
-   */
   private isObjectType(type: any): boolean {
     if (!type) return false;
-    // Проверяем по kind (исправлено с type на kind)
     return type.kind === 'OBJECT' || type.kind === 'INTERFACE' || type.kind === 'CLASS';
   }
 
-  /**
-   * Получает свойства простого типа
-   * Исправлено: проверка на существование type
-   */
   private getPropertyOfSimpleType(type: any): any {
     if (!type) return {};
 
-    // Проверяем по kind (исправлено с type на kind)
     if (type.kind === 'OBJECT' || type.kind === 'INTERFACE' || type.kind === 'CLASS') {
       return type.properties || {};
     }
 
-    // Для других типов (UNION, INTERSECTION и т.д.)
     if (type.kind === 'UNION' && type.types) {
-      // Для union типов объединяем свойства
       const allProps: Record<string, any> = {};
       for (const subType of type.types) {
         const props = this.getPropertyOfSimpleType(subType);
@@ -354,15 +333,9 @@ export class TypeAnalyzer {
   }
 }
 
-// Экспорт вспомогательных функций
-export function isTypeCompatible(
-  type1: SimpleType,
-  type2: SimpleType,
-  typeChecker: ts.TypeChecker
-): boolean {
-  return isAssignableToType(type1, type2, typeChecker);
-}
-
-export function getTypeString(type: SimpleType, typeChecker: ts.TypeChecker): string {
-  return typeToString(type, typeChecker);
-}
+// ==========================================
+// НЕТ ДУБЛИРУЮЩИХ ЭКСПОРТОВ - все уже экспортировано выше
+// ==========================================
+// Все интерфейсы экспортируются через export interface
+// Класс экспортируется через export class
+// Дополнительных экспортов нет

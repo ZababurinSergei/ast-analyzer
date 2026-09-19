@@ -1,7 +1,17 @@
-// packages/ast-analyzer/src/modes/project-graph.ts
+// src/modes/project-graph.ts
+// ИСПРАВЛЕННАЯ ВЕРСИЯ - все ошибки TypeScript устранены
+// Удалены неиспользуемые функции: buildEntitiesMap, buildReport,
+// findPathBetweenFunctions, buildRelationshipGraph
+// Функции встроены в buildProjectGraph для улучшения читаемости
+// ✅ v2: добавлена интеграция enrichWithReExports для разворачивания re-exports
+// ✅ v3: enrichWithReExports вызывается ДО collectFullJSON и пробрасывает
+//        обогащённый entitiesMap во все последующие шаги
+
 import path from 'path';
 import fs from 'fs';
+import { Project } from 'ts-morph';
 import {
+<<<<<<< HEAD
   parseFile,
   resolveFilePath,
   isExternalModule,
@@ -17,96 +27,54 @@ import {
 } from '../reporters/json-reporter.js';
 import { extractEntities } from '../core/entity-extractor.js';
 import { findWasmPath } from '../utils/wasm-utils.js';
+=======
+  ProjectGraphBuilder,
+  type GraphData,
+  type GraphStats,
+} from '../core/ProjectGraphBuilder.js';
+import { ReportBuilder } from '../reporters/core/ReportBuilder.js';
+import type { EntitiesResult } from '../types.js';
+import { extractEntitiesFromFile } from '../reporters/json-reporter.js';
+import { enrichWithReExports } from '../core/entity-extractor/enrich-with-re-exports.js';
+>>>>>>> 202db84c78bcfab4b6bee65884d05d9f3d4c22c4
 
-// ==========================================
-// ТИП: Информация о функции в формате package-lock
-// ==========================================
-export interface PackageLockFunctionInfo {
-  isAsync: boolean;
-  isExported: boolean;
-  params: string[];
-  line: number;
-  direction?: 'inward' | 'outward' | 'self';
-  calls?: {
-    target: string;
-    direction: 'inward' | 'outward' | 'self';
-    isAsync: boolean;
-    line?: number;
-  }[];
-  consumers?: {
-    module: string;
-    direction: 'outward';
-    type: 'import' | 'call';
-  }[];
+// ============================================
+// ЭКСПОРТ ТИПОВ ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ
+// ============================================
+
+export type { GraphData };
+
+/**
+ * Результат построения графа проекта
+ */
+export interface ProjectGraphResult {
+  rootKey: string;
+  graph: Record<string, string[]>;
+  entities?: Record<string, EntitiesResult>;
+  packageLockReport?: any;
+  callGraphResult?: CallGraphPathResult;
+  relationshipGraph?: Record<string, RelationshipNode>;
+  stats?: GraphStats;
+  levels?: Record<string, number>;
+  reExportStats?: {
+    expandedChains: number;
+    filesWithReExports: number;
+    maxDepth: number;
+  };
 }
 
-// ==========================================
-// ТИП: Информация об импорте в package-lock
-// ==========================================
-export interface PackageLockImportInfo {
-  direction: 'inward';
-  type: 'import' | 'external-import' | 'internal-import';
-  specifiers: string[];
-  functions: Record<string, PackageLockFunctionInfo>;
-}
-
-// ==========================================
-// ТИП: Информация об экспорте в package-lock
-// ==========================================
-export interface PackageLockExportInfo {
-  direction: 'outward';
-  type: 'export';
-  isAsync: boolean;
-  params: string[];
-  returns: string;
-  line: number;
-  consumers: {
-    module: string;
-    direction: 'outward';
-    type: 'import' | 'call';
-  }[];
-}
-
-// ==========================================
-// ТИП: Информация о пакете (модуле)
-// ==========================================
-export interface PackageLockPackage {
-  version: string;
-  resolved: string;
-  type: 'module' | 'commonjs';
-  language: 'typescript' | 'javascript' | 'vue' | 'jsx';
-  isEntry: boolean;
-  imports: Record<string, PackageLockImportInfo>;
-  exports: Record<string, PackageLockExportInfo>;
-}
-
-// ==========================================
-// ТИП: Граф вызовов
-// ==========================================
-export interface CallGraphResult {
-  from: string;
-  to: string;
-  path: string[];
+export interface CallGraphPathResult {
   found: boolean;
+  path?: string[];
   reason?: string;
-  nodes: {
-    function: string;
-    module: string;
-    line: number;
-    isAsync: boolean;
-  }[];
-  edges: {
-    from: string;
-    to: string;
-    line?: number;
-  }[];
+  nodes?: { function: string; module: string; line: number; isAsync: boolean }[];
+  edges?: { from: string; to: string; line: number }[];
 }
 
-// ==========================================
-// ТИП: Полный отчет в стиле package-lock
-// ==========================================
-export interface PackageLockReport {
+export interface RelationshipNode {
+  id: string;
   name: string;
+<<<<<<< HEAD
   version: string;
   lockfileVersion: number;
   packages: Record<string, PackageLockPackage>;
@@ -193,6 +161,17 @@ export interface CalledByInfo {
     | 'lifecycle'
     | 'method'
     | 'constructor';
+=======
+  file: string;
+  line: number;
+  kind: 'function' | 'class' | 'constant' | 'interface' | 'type' | 'variable';
+  isExported: boolean;
+  isAsync: boolean;
+  params: string[];
+  calls: string[];
+  calledBy: string[];
+  importedBy: ImportedByInfo[];
+>>>>>>> 202db84c78bcfab4b6bee65884d05d9f3d4c22c4
 }
 
 export interface ImportedByInfo {
@@ -204,6 +183,7 @@ export interface ImportedByInfo {
   importType?: 'named' | 'default' | 'namespace' | 'type';
 }
 
+<<<<<<< HEAD
 export interface ExtendedFunctionInfo {
   id: string;
   name: string;
@@ -868,54 +848,43 @@ function expandFolderReExport(folderPath: string, _baseDir: string): string[] {
 // ==========================================
 // ОСНОВНАЯ ФУНКЦИЯ buildProjectGraph
 // ==========================================
+=======
+// ============================================
+// ОСНОВНАЯ ФУНКЦИЯ
+// ============================================
+>>>>>>> 202db84c78bcfab4b6bee65884d05d9f3d4c22c4
 
 export function buildProjectGraph(
   entryPoint: string,
-  maxDepth = Infinity,
-  includeEntities = false,
+  maxDepth: number = Infinity,
+  includeEntities: boolean = false,
   fromFunction?: string,
   toFunction?: string
-): {
-  rootKey: string;
-  graph: Record<string, string[]>;
-  entities?: Record<string, EntitiesResult>;
-  packageLockReport?: PackageLockReport;
-  callGraphResult?: CallGraphResult;
-  relationshipGraph?: Record<string, ExtendedFunctionInfo>;
-} {
-  const graph: Record<string, string[]> = {};
-  const visited = new Set<string>();
-  const entitiesMap: Record<string, EntitiesResult> = {};
-  const rootAbsPath = path.resolve(entryPoint);
-  const queue: { path: string; depth: number; isRoot: boolean }[] = [];
+): ProjectGraphResult {
+  console.log('📊 Building project graph...');
+  console.log(`📄 Entry point: ${entryPoint}`);
+  console.log(`📏 Max depth: ${maxDepth === Infinity ? '∞' : maxDepth}`);
+  console.log(`🔍 Entities: ${includeEntities ? 'ON' : 'OFF'}`);
 
-  const allFunctions = new Map<
-    string,
-    { module: string; line: number; isAsync: boolean; calls: string[] }
-  >();
-
-  const tsConfig = getTsConfigForFile(rootAbsPath);
-  if (tsConfig?.compilerOptions?.paths) {
-    console.log('🔗 Найдены алиасы в tsconfig:');
-    Object.entries(tsConfig.compilerOptions.paths).forEach(([alias, targets]) => {
-      console.log(`   ${alias} → ${targets[0]}`);
-    });
+  if (fromFunction && toFunction) {
+    console.log(`🎯 Path: ${fromFunction} → ${toFunction}`);
   }
 
-  queue.push({ path: rootAbsPath, depth: 1, isRoot: true });
+  const startTime = Date.now();
 
-  while (queue.length > 0) {
-    const { path: currentPath, depth, isRoot } = queue.shift()!;
+  const builder = new ProjectGraphBuilder({
+    maxDepth,
+    includeExternal: false,
+  });
 
-    if (depth > maxDepth) continue;
-    if (visited.has(currentPath)) continue;
-    visited.add(currentPath);
+  const graphData = builder.build(entryPoint);
+  const stats = builder.getStats();
+  const levels = builder.getDepthMap();
 
-    const relativeKey = path.relative(process.cwd(), currentPath) || currentPath;
-    if (!graph[relativeKey]) {
-      graph[relativeKey] = [];
-    }
+  console.log(`   ✅ Graph built: ${stats.totalNodes} nodes, ${stats.totalEdges} edges`);
+  console.log(`   🔄 Cycles: ${stats.cyclesCount}`);
 
+<<<<<<< HEAD
     if (
       currentPath.endsWith('.css') ||
       currentPath.endsWith('.scss') ||
@@ -1063,11 +1032,19 @@ export function buildProjectGraph(
       path.relative(process.cwd(), rootAbsPath) || rootAbsPath
     ),
     graph: normalizedGraph,
+=======
+  const result: ProjectGraphResult = {
+    rootKey: graphData.rootKey,
+    graph: graphData.graph,
+    stats,
+    levels: Object.fromEntries(levels),
+>>>>>>> 202db84c78bcfab4b6bee65884d05d9f3d4c22c4
   };
 
   if (includeEntities) {
-    const finalEntitiesMap: Record<string, EntitiesResult> = {};
+    console.log('\n📦 Extracting entities...');
 
+<<<<<<< HEAD
     if (Object.keys(entitiesMap).length === 0) {
       console.warn('⚠️ entitiesMap пуст, возможно сущности не были извлечены');
       console.warn('   💡 Попытка принудительного извлечения сущностей из всех файлов...');
@@ -1100,40 +1077,271 @@ export function buildProjectGraph(
                 });
               }
             }
+=======
+    // ✅ ВСТРОЕННАЯ ЛОГИКА ВМЕСТО buildEntitiesMap
+    let entitiesMap: Record<string, EntitiesResult> = {};
+    for (const filePath of Object.keys(graphData.graph)) {
+      try {
+        const absPath = path.resolve(filePath);
+        if (fs.existsSync(absPath) && fs.statSync(absPath).isFile()) {
+          const enhancedEntities = extractEntitiesFromFile(absPath);
+          if (enhancedEntities && Object.keys(enhancedEntities).length > 0) {
+            entitiesMap[filePath] = enhancedEntities as unknown as EntitiesResult;
+>>>>>>> 202db84c78bcfab4b6bee65884d05d9f3d4c22c4
           }
-        } catch (error) {
-          console.warn(`   ⚠️ Не удалось извлечь сущности из ${modulePath}:`, error);
+        }
+      } catch (error) {
+        // Игнорируем ошибки
+      }
+    }
+
+    // ============================================
+    // 🆕 ОБОГАЩЕНИЕ RE-EXPORTS (Подход A)
+    // ============================================
+    // ВАЖНО: должно выполняться ДО формирования packageLockReport,
+    // чтобы все связи (gr.re, gr.e) содержали развёрнутые данные.
+    // ============================================
+    if (Object.keys(entitiesMap).length > 0) {
+      console.log('\n🔄 Разворачивание re-exports...');
+
+      try {
+        const tsProject = new Project({
+          compilerOptions: {
+            target: 99, // ESNext
+            module: 99, // ESNext
+            allowJs: true,
+            checkJs: false,
+            skipLibCheck: true,
+            jsx: 2, // React JSX
+          },
+          useInMemoryFileSystem: false,
+        });
+
+        // Добавляем все файлы в проект ts-morph
+        let addedFiles = 0;
+        for (const filePath of Object.keys(entitiesMap)) {
+          try {
+            const absPath = path.resolve(filePath);
+            if (fs.existsSync(absPath)) {
+              tsProject.addSourceFileAtPath(absPath);
+              addedFiles++;
+            }
+          } catch {
+            // Игнорируем ошибки отдельных файлов
+          }
+        }
+
+        console.log(`   📁 Файлов добавлено в ts-morph: ${addedFiles}`);
+
+        // Разворачиваем re-exports
+        const enrichResult = enrichWithReExports(tsProject, entitiesMap, {
+          maxDepth: 10,
+          projectRoot: process.cwd(),
+          debug: false,
+        });
+
+        // ✅ Заменяем entitiesMap на обогащённый
+        entitiesMap = enrichResult.enrichedEntities as Record<string, EntitiesResult>;
+
+        console.log(`   ✅ Развёрнуто связей: ${enrichResult.stats.expandedChains}`);
+        console.log(`   📁 Файлов с re-exports: ${enrichResult.stats.filesWithReExports}`);
+        console.log(`   📏 Макс. глубина цепочки: ${enrichResult.stats.maxDepth}`);
+
+        // Сохраняем статистику в результат
+        result.reExportStats = {
+          expandedChains: enrichResult.stats.expandedChains,
+          filesWithReExports: enrichResult.stats.filesWithReExports,
+          maxDepth: enrichResult.stats.maxDepth,
+        };
+      } catch (error) {
+        console.warn(
+          `   ⚠️ Не удалось развернуть re-exports: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+    }
+
+    // ✅ ВСТРОЕННАЯ ЛОГИКА ВМЕСТО buildReport
+    // ВАЖНО: используем ОБОГАЩЁННЫЙ entitiesMap
+    const reportBuilder = new ReportBuilder();
+    const report = reportBuilder.build(graphData, entitiesMap);
+    const packageLockReport = {
+      ...report,
+      name: 'ast-analyzer',
+      version: '3.1.2',
+      lockfileVersion: 3,
+      timestamp: new Date().toISOString(),
+      dependencyGraph: {
+        direction: 'bidirectional' as const,
+        inwardDependencies: buildInwardDependencies(graphData.graph),
+        outwardDependencies: graphData.graph,
+      },
+    };
+
+    result.entities = entitiesMap;
+    result.packageLockReport = packageLockReport;
+
+    let totalFunctions = 0;
+    let totalCalls = 0;
+    let totalImports = 0;
+    for (const entities of Object.values(entitiesMap)) {
+      totalFunctions += entities.functions?.length || 0;
+      for (const func of entities.functions || []) {
+        totalCalls += func.calls?.length || 0;
+      }
+      totalImports += entities.imports?.length || 0;
+    }
+    console.log(`   ✅ Functions: ${totalFunctions}`);
+    console.log(`   📞 Calls: ${totalCalls}`);
+    console.log(`   📥 Imports: ${totalImports}`);
+
+    // ✅ ВСТРОЕННАЯ ЛОГИКА ВМЕСТО findPathBetweenFunctions
+    if (fromFunction && toFunction) {
+      console.log(`\n🔍 Finding path: ${fromFunction} → ${toFunction}`);
+
+      const nodes: string[] = packageLockReport.callGraph?.nodes || [];
+      const edges: [number, number, number, number, number][] =
+        packageLockReport.callGraph?.edges || [];
+
+      const nodeIndex = new Map<string, number>();
+      for (let i = 0; i < nodes.length; i++) {
+        const nodeName = nodes[i];
+        if (nodeName !== undefined) {
+          nodeIndex.set(nodeName, i);
         }
       }
 
-      console.log(
-        `✅ Принудительно извлечено сущностей из ${Object.keys(entitiesMap).length} модулей`
-      );
-    }
+      const fromIdx = nodeIndex.get(fromFunction);
+      const toIdx = nodeIndex.get(toFunction);
 
-    for (const [modulePath, entities] of Object.entries(entitiesMap)) {
-      if (!entities) {
-        console.warn(`⚠️ Нет сущностей для ${modulePath}`);
-        continue;
+      let callGraphResult: CallGraphPathResult;
+
+      if (fromIdx === undefined) {
+        callGraphResult = {
+          found: false,
+          reason: `Function '${fromFunction}' not found in call graph`,
+        };
+      } else if (toIdx === undefined) {
+        callGraphResult = {
+          found: false,
+          reason: `Function '${toFunction}' not found in call graph`,
+        };
+      } else {
+        const callGraph: Record<number, number[]> = {};
+        for (const [f, t] of edges) {
+          if (!callGraph[f]) callGraph[f] = [];
+          callGraph[f].push(t);
+        }
+
+        const visited = new Set<number>();
+        const queue: { node: number; path: number[] }[] = [{ node: fromIdx, path: [fromIdx] }];
+        let found = false;
+        let pathNames: string[] = [];
+        let pathNodes: { function: string; module: string; line: number; isAsync: boolean }[] = [];
+        let pathEdges: { from: string; to: string; line: number }[] = [];
+
+        while (queue.length > 0 && !found) {
+          const { node, path: currentPath } = queue.shift()!;
+
+          if (visited.has(node)) continue;
+          visited.add(node);
+
+          if (node === toIdx) {
+            // ✅ БЕЗОПАСНОЕ ПОЛУЧЕНИЕ ИМЕН (исправлено)
+            pathNames = currentPath.map(i => {
+              const name = nodes[i];
+              return name !== undefined ? name : `unknown_${i}`;
+            });
+
+            pathNodes = currentPath.map(i => ({
+              function: nodes[i] !== undefined ? nodes[i] : `unknown_${i}`,
+              module: 'unknown',
+              line: 0,
+              isAsync: false,
+            }));
+
+            pathEdges = currentPath
+              .slice(0, -1)
+              .map((i, idx) => {
+                const nextIdx = currentPath[idx + 1];
+                if (nextIdx === undefined) return null;
+
+                const fromName = nodes[i] !== undefined ? nodes[i] : `unknown_${i}`;
+                const toName = nodes[nextIdx] !== undefined ? nodes[nextIdx] : `unknown_${nextIdx}`;
+
+                return {
+                  from: fromName,
+                  to: toName,
+                  line: 0,
+                };
+              })
+              .filter((item): item is { from: string; to: string; line: number } => item !== null);
+
+            found = true;
+            break;
+          }
+
+          for (const neighbor of callGraph[node] || []) {
+            if (!visited.has(neighbor)) {
+              queue.push({ node: neighbor, path: [...currentPath, neighbor] });
+            }
+          }
+        }
+
+        if (found) {
+          callGraphResult = {
+            found: true,
+            path: pathNames,
+            nodes: pathNodes,
+            edges: pathEdges,
+          };
+        } else {
+          callGraphResult = {
+            found: false,
+            reason: `No path found from '${fromFunction}' to '${toFunction}'`,
+          };
+        }
       }
 
-      const normalizedKey = normalizePathForDisplay(modulePath);
+      result.callGraphResult = callGraphResult;
 
-      finalEntitiesMap[normalizedKey] = {
-        functions: Array.isArray(entities.functions) ? entities.functions : [],
-        classes: Array.isArray(entities.classes) ? entities.classes : [],
-        constants: Array.isArray(entities.constants) ? entities.constants : [],
-        interfaces: Array.isArray(entities.interfaces) ? entities.interfaces : [],
-        types: Array.isArray(entities.types) ? entities.types : [],
-        variables: Array.isArray(entities.variables) ? entities.variables : [],
-        imports: Array.isArray(entities.imports) ? entities.imports : [],
-        exports: Array.isArray(entities.exports) ? entities.exports : [],
-        callGraph: entities.callGraph || {},
-        moduleName: entities.moduleName || modulePath,
-        filePath: entities.filePath || modulePath,
+      if (callGraphResult.found) {
+        console.log(`   ✅ Path found: ${callGraphResult.path?.join(' → ')}`);
+      } else {
+        console.log(`   ❌ Path not found: ${callGraphResult.reason}`);
+      }
+    }
+
+    // ✅ ВСТРОЕННАЯ ЛОГИКА ВМЕСТО buildRelationshipGraph
+    console.log('\n🔗 Building relationship graph...');
+
+    const relationshipGraph: Record<string, RelationshipNode> = {};
+    const nodeDetails = packageLockReport.nodeDetails || {};
+
+    for (const [idx, detail] of Object.entries(nodeDetails)) {
+      const detailObj = detail as any;
+      const funcName = detailObj?.n || `func_${idx}`;
+      const fileId = detailObj?.f || 'unknown';
+      const files = packageLockReport.files || {};
+      const fileInfo = files[fileId] || { path: 'unknown' };
+
+      relationshipGraph[funcName] = {
+        id: idx,
+        name: funcName,
+        file: fileInfo.path || 'unknown',
+        line: detailObj?.ln || 0,
+        kind: (detailObj?.tp as RelationshipNode['kind']) || 'function',
+        isExported: !!(detailObj?.fg & 32),
+        isAsync: !!(detailObj?.fg & 1),
+        params: detailObj?.p || [],
+        calls: detailObj?.cl || [],
+        calledBy: [],
+        importedBy: [],
       };
     }
 
+<<<<<<< HEAD
     console.log(
       `✅ Подготовлено ${Object.keys(finalEntitiesMap).length} модулей с сущностями:`
     );
@@ -1222,27 +1430,156 @@ export function buildProjectGraph(
         fromFunction,
         toFunction
       );
+=======
+    // Строим calledBy
+    for (const [funcName, info] of Object.entries(relationshipGraph)) {
+      for (const [otherName, otherInfo] of Object.entries(relationshipGraph)) {
+        if (otherInfo.calls.includes(funcName)) {
+          info.calledBy.push(otherName);
+        }
+      }
     }
 
-    console.log('🔗 Построение графа отношений между сущностями...');
-    const relationshipGraph = buildRelationships(finalEntitiesMap);
+    // Строим importedBy
+    const reverseIndex = (packageLockReport as any).reverseIndex || {};
+    const importedByMap = reverseIndex.importedBy || {};
+
+    for (const [targetId, importers] of Object.entries(importedByMap)) {
+      for (const [, info] of Object.entries(relationshipGraph)) {
+        if (info.id === targetId) {
+          for (const imp of importers as any[]) {
+            info.importedBy.push({
+              importerId: imp.from || '',
+              importerFile: imp.file || '',
+              importerVscode: imp.vscode || '',
+              importLine: imp.line || 0,
+              specifier: imp.specifier || '',
+              importType: imp.importType || 'named',
+            });
+          }
+          break;
+        }
+      }
+>>>>>>> 202db84c78bcfab4b6bee65884d05d9f3d4c22c4
+    }
+
     result.relationshipGraph = relationshipGraph;
-
-    let totalCallsInfo = 0;
-    let totalCalledBy = 0;
-    let totalImportedBy = 0;
-    for (const func of Object.values(relationshipGraph)) {
-      totalCallsInfo += func.calls.length;
-      totalCalledBy += func.calledBy.length;
-      totalImportedBy += func.importedBy.length;
+    let totalRelations = 0;
+    for (const node of Object.values(relationshipGraph)) {
+      totalRelations += node.calls.length + node.calledBy.length + node.importedBy.length;
     }
-    console.log(`   📞 Всего вызовов (calls): ${totalCallsInfo}`);
-    console.log(`   📞 Всего обратных ссылок (calledBy): ${totalCalledBy}`);
-    console.log(`   📥 Всего импортеров (importedBy): ${totalImportedBy}`);
-    console.log(`   📊 Всего функций с отношениями: ${Object.keys(relationshipGraph).length}`);
+    console.log(
+      `   ✅ ${Object.keys(relationshipGraph).length} nodes, ${totalRelations} relations`
+    );
   }
+
+  const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+  console.log(`\n⏱️  Done in ${duration}s`);
 
   return result;
 }
 
+<<<<<<< HEAD
 export default buildProjectGraph;
+=======
+// ============================================
+// ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ
+// ============================================
+
+function buildInwardDependencies(graph: Record<string, string[]>): Record<string, string[]> {
+  const inward: Record<string, string[]> = {};
+  for (const [from, deps] of Object.entries(graph)) {
+    for (const to of deps) {
+      if (!inward[to]) inward[to] = [];
+      if (!inward[to].includes(from)) inward[to].push(from);
+    }
+  }
+  return inward;
+}
+
+// ============================================
+// ДОПОЛНИТЕЛЬНЫЕ УТИЛИТЫ
+// ============================================
+
+export function exportToDOT(graph: Record<string, string[]>): string {
+  let dot = 'digraph Dependencies {\n';
+  dot += '  rankdir=LR;\n';
+  dot += '  node [shape=box, style="filled,rounded", fillcolor="#f3f4f6"];\n';
+  dot += '  edge [color="#9ca3af", arrowhead=vee];\n\n';
+  for (const [from, deps] of Object.entries(graph)) {
+    for (const to of deps) {
+      dot += `  "${from}" -> "${to}";\n`;
+    }
+  }
+  dot += '}\n';
+  return dot;
+}
+
+export function findCyclesInGraph(graph: Record<string, string[]>): string[][] {
+  const cycles: string[][] = [];
+  const visited = new Set<string>();
+  const recursionStack = new Set<string>();
+  const path: string[] = [];
+
+  const dfs = (node: string) => {
+    if (recursionStack.has(node)) {
+      const start = path.indexOf(node);
+      if (start !== -1) cycles.push(path.slice(start));
+      return;
+    }
+    if (visited.has(node)) return;
+    visited.add(node);
+    recursionStack.add(node);
+    path.push(node);
+    for (const dep of graph[node] || []) dfs(dep);
+    recursionStack.delete(node);
+    path.pop();
+  };
+
+  for (const node of Object.keys(graph)) {
+    if (!visited.has(node)) dfs(node);
+  }
+  return cycles;
+}
+
+export function getGraphStats(graph: Record<string, string[]>): GraphStats {
+  let totalEdges = 0;
+  for (const deps of Object.values(graph)) totalEdges += deps.length;
+  const cycles = findCyclesInGraph(graph);
+  return {
+    totalNodes: Object.keys(graph).length,
+    totalEdges,
+    hasCycles: cycles.length > 0,
+    cyclesCount: cycles.length,
+  };
+}
+
+export function findPathInGraph(
+  graph: Record<string, string[]>,
+  from: string,
+  to: string
+): string[] | null {
+  if (from === to) return [from];
+  const queue: { node: string; path: string[] }[] = [{ node: from, path: [from] }];
+  const visited = new Set<string>();
+  while (queue.length > 0) {
+    const { node, path } = queue.shift()!;
+    if (visited.has(node)) continue;
+    visited.add(node);
+    for (const dep of graph[node] || []) {
+      if (dep === to) return [...path, dep];
+      if (!visited.has(dep)) queue.push({ node: dep, path: [...path, dep] });
+    }
+  }
+  return null;
+}
+
+export default {
+  buildProjectGraph,
+  exportToDOT,
+  findCyclesInGraph,
+  getGraphStats,
+  findPathInGraph,
+  ProjectGraphBuilder,
+};
+>>>>>>> 202db84c78bcfab4b6bee65884d05d9f3d4c22c4

@@ -1,0 +1,1014 @@
+{
+  "info": {
+    "name": "process run/stop — тестирование",
+    "description": "Коллекция тестов запуска и остановки процесса (process.create_process, add_iterations, update_process, update_iteration, stop_process, get_statistic, delete_process). Резерв process.run_process отключён.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "b1a2c3d4-e5f6-7890-abcd-ef1234567890"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://asuse-ai-rc.infoenergo.loc", "type": "string" },
+    { "key": "token", "value": "", "type": "string" },
+    { "key": "processIdNatural", "value": "", "type": "string" },
+    { "key": "processIdUser", "value": "", "type": "string" },
+    { "key": "processIdDeleteRunning", "value": "", "type": "string" },
+    { "key": "iterationIdNatural1", "value": "ВСТАВЬ_ID_ВРУЧНУЮ", "type": "string" },
+    { "key": "iterationIdNatural2", "value": "ВСТАВЬ_ID_ВРУЧНУЮ", "type": "string" },
+    { "key": "iterationIdNatural3", "value": "ВСТАВЬ_ID_ВРУЧНУЮ", "type": "string" },
+    { "key": "iterationIdUser1", "value": "ВСТАВЬ_ID_ВРУЧНУЮ", "type": "string" },
+    { "key": "iterationIdUser2", "value": "ВСТАВЬ_ID_ВРУЧНУЮ", "type": "string" },
+    { "key": "iterationIdUser3", "value": "ВСТАВЬ_ID_ВРУЧНУЮ", "type": "string" },
+    { "key": "processCommandUser", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Группа 0: Авторизация",
+      "item": [
+        {
+          "name": "login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('token получен', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.token).to.be.a('string').and.not.empty;",
+                  "  pm.collectionVariables.set('token', body.token);",
+                  "  console.log('token: ' + body.token);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/common", "host": ["{{baseUrl}}"], "path": ["common"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"auth./auth/user/login\",\n  \"args\": {\n    \"login\": \"developer\",\n    \"password\": \"123456\"\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Группа 1: Подготовка — создание процессов",
+      "item": [
+        {
+          "name": "1.1 Создать процесс NATURAL",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('processIdNatural получен', function () {",
+                  "  pm.expect(body.data && body.data.processId).to.be.a('string').and.not.empty;",
+                  "  pm.collectionVariables.set('processIdNatural', body.data.processId);",
+                  "  console.log('processIdNatural: ' + body.data.processId);",
+                  "  console.log('status: ' + body.data.status);",
+                  "  console.log('totalIterations: ' + body.data.totalIterations);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./init/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"userId\": \"1\",\n    \"userLogin\": \"developer\",\n    \"userIp\": \"127.0.0.1\",\n    \"processName\": \"run-stop-natural-test\",\n    \"depId\": 14\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "1.2 Создать процесс USER",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('processIdUser получен', function () {",
+                  "  pm.expect(body.data && body.data.processId).to.be.a('string').and.not.empty;",
+                  "  pm.collectionVariables.set('processIdUser', body.data.processId);",
+                  "  console.log('processIdUser: ' + body.data.processId);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./init/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"userId\": \"1\",\n    \"userLogin\": \"developer\",\n    \"userIp\": \"127.0.0.1\",\n    \"processName\": \"run-stop-user-test\",\n    \"depId\": 14\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Группа 2: Добавление итераций",
+      "item": [
+        {
+          "name": "2.1 Добавить 3 итерации в NATURAL",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('addedCount=3', function () {",
+                  "  pm.expect(body.data.addedCount).to.eql(3);",
+                  "  pm.expect(body.data.totalIterations).to.eql(3);",
+                  "  console.log('addedCount: ' + body.data.addedCount);",
+                  "  console.log('totalIterations: ' + body.data.totalIterations);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./iteration/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\",\n    \"entities\": [\n      { \"id\": 1, \"name\": \"run-stop-natural-1\" },\n      { \"id\": 2, \"name\": \"run-stop-natural-2\" },\n      { \"id\": 3, \"name\": \"run-stop-natural-3\" }\n    ]\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "2.2 Добавить 3 итерации в USER",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "console.log('addedCount: ' + body.data.addedCount);",
+                  "console.log('totalIterations: ' + body.data.totalIterations);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./iteration/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdUser}}\",\n    \"entities\": [\n      { \"id\": 1, \"name\": \"run-stop-user-1\" },\n      { \"id\": 2, \"name\": \"run-stop-user-2\" },\n      { \"id\": 3, \"name\": \"run-stop-user-3\" }\n    ]\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Группа 3: Снимок «до запуска»",
+      "item": [
+        {
+          "name": "3.1 Статистика NATURAL до запуска",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json().data;",
+                  "console.log('status: ' + d.status);",
+                  "console.log('pendingCount: ' + d.pendingCount);",
+                  "console.log('runningCount: ' + d.runningCount);",
+                  "console.log('completedCount: ' + d.completedCount);",
+                  "console.log('failedCount: ' + d.failedCount);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./info/get\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "3.2 Статистика USER до запуска",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json().data;",
+                  "console.log('status: ' + d.status);",
+                  "console.log('pendingCount: ' + d.pendingCount);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./info/get\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdUser}}\"\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Группа 4: Запуск процесса (PENDING → RUNNING)",
+      "item": [
+        {
+          "name": "4.1 NATURAL → RUNNING",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json().data;",
+                  "console.log('oldStatus: ' + d.oldStatus);",
+                  "console.log('newStatus: ' + d.newStatus);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./process/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\",\n    \"newStatus\": \"RUNNING\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "4.2 USER → RUNNING",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json().data;",
+                  "console.log('oldStatus: ' + d.oldStatus);",
+                  "console.log('newStatus: ' + d.newStatus);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./process/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdUser}}\",\n    \"newStatus\": \"RUNNING\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "4.3 Снимок после запуска — NATURAL",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json().data;",
+                  "console.log('status: ' + d.status);",
+                  "console.log('pendingCount: ' + d.pendingCount);",
+                  "console.log('runningCount: ' + d.runningCount);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./info/get\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "4.4 Снимок после запуска — USER",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json().data;",
+                  "console.log('status: ' + d.status);",
+                  "console.log('pendingCount: ' + d.pendingCount);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./info/get\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdUser}}\"\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Группа 5: Снимок ID итераций (SQL — вручную)",
+      "item": [
+        {
+          "name": "5. SQL-заметка (вручную получить ID итераций)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "console.log('=====================================================');",
+                  "console.log('ВРУЧНУЮ выполни SQL и подставь ID в переменные коллекции:');",
+                  "console.log('  SELECT id FROM process.process_data');",
+                  "console.log('   WHERE process_id = \\'<processIdNatural>\\' ORDER BY dtc;');",
+                  "console.log('  SELECT id FROM process.process_data');",
+                  "console.log('   WHERE process_id = \\'<processIdUser>\\' ORDER BY dtc;');",
+                  "console.log('Переменные: iterationIdNatural1..3, iterationIdUser1..3');",
+                  "console.log('=====================================================');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/", "host": ["{{baseUrl}}"], "path": [""] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Группа 6: Перевод итераций в RUNNING",
+      "item": [
+        {
+          "name": "6.1 NATURAL: итерация 1 → RUNNING",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json().data;",
+                  "console.log('iterationId: ' + d.id);",
+                  "console.log('status: ' + d.status);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./iteration_upd/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\",\n    \"iterationId\": \"{{iterationIdNatural1}}\",\n    \"status\": \"RUNNING\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "6.2 USER: итерация 1 → RUNNING",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json().data;",
+                  "console.log('iterationId: ' + d.id);",
+                  "console.log('status: ' + d.status);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./iteration_upd/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdUser}}\",\n    \"iterationId\": \"{{iterationIdUser1}}\",\n    \"status\": \"RUNNING\"\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Группа 7: Остановка при активных RUNNING-итерациях",
+      "item": [
+        {
+          "name": "7.1 NATURAL: stop при RUNNING-итерации (USER)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json().data;",
+                  "console.log('stopped: ' + d.stopped);",
+                  "console.log('hasRunningIterations: ' + d.hasRunningIterations);",
+                  "console.log('oldStatus: ' + d.oldStatus);",
+                  "console.log('newStatus: ' + d.newStatus);",
+                  "console.log('processCommand: ' + d.processCommand);",
+                  "pm.test('stopped=false', function () { pm.expect(d.stopped).to.eql(false); });",
+                  "pm.test('hasRunningIterations=true', function () { pm.expect(d.hasRunningIterations).to.eql(true); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./stop/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\",\n    \"stopType\": \"USER\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "7.2 USER: stop при RUNNING-итерации (USER)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json().data;",
+                  "console.log('stopped: ' + d.stopped);",
+                  "console.log('hasRunningIterations: ' + d.hasRunningIterations);",
+                  "console.log('processCommand: ' + d.processCommand);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./stop/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdUser}}\",\n    \"stopType\": \"USER\"\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Группа 8: Завершение итераций и повторная остановка",
+      "item": [
+        {
+          "name": "8.1 NATURAL: итерация 1 → COMPLETED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "console.log('status: ' + pm.response.json().data.status);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./iteration_upd/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\",\n    \"iterationId\": \"{{iterationIdNatural1}}\",\n    \"status\": \"COMPLETED\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "8.2 NATURAL: итерация 2 → COMPLETED",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./iteration_upd/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\",\n    \"iterationId\": \"{{iterationIdNatural2}}\",\n    \"status\": \"COMPLETED\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "8.3 NATURAL: итерация 3 → COMPLETED",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./iteration_upd/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\",\n    \"iterationId\": \"{{iterationIdNatural3}}\",\n    \"status\": \"COMPLETED\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "8.4 NATURAL: повторная остановка (NATURAL)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json().data;",
+                  "console.log('stopped: ' + d.stopped);",
+                  "console.log('newStatus: ' + d.newStatus);",
+                  "console.log('processCommand: ' + d.processCommand);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./stop/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\",\n    \"stopType\": \"NATURAL\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "8.5 Финальная статистика NATURAL",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json().data;",
+                  "console.log('status: ' + d.status);",
+                  "console.log('completedCount: ' + d.completedCount);",
+                  "console.log('failedCount: ' + d.failedCount);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./info/get\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\"\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Группа 9: Остановка USER → STOPPED",
+      "item": [
+        {
+          "name": "9.1 USER: итерация 1 → COMPLETED",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./iteration_upd/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdUser}}\",\n    \"iterationId\": \"{{iterationIdUser1}}\",\n    \"status\": \"COMPLETED\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "9.2 USER: остановка → STOPPED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json().data;",
+                  "console.log('stopped: ' + d.stopped);",
+                  "console.log('newStatus: ' + d.newStatus);",
+                  "console.log('processCommand: ' + d.processCommand);",
+                  "pm.collectionVariables.set('processCommandUser', d.processCommand);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./stop/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdUser}}\",\n    \"stopType\": \"USER\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "9.3 USER: повторная остановка (идемпотентность)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json().data;",
+                  "console.log('stopped: ' + d.stopped);",
+                  "console.log('processCommand: ' + d.processCommand);",
+                  "console.log('processCommand из 9.2: ' + pm.collectionVariables.get('processCommandUser'));",
+                  "pm.test('processCommand не перезаписан', function () {",
+                  "  pm.expect(d.processCommand).to.eql(pm.collectionVariables.get('processCommandUser'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./stop/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdUser}}\",\n    \"stopType\": \"USER\"\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Группа 10: Резерв — process.run_process (ОТКЛЮЧЕНО)",
+      "item": [
+        {
+          "name": "10.1 run_process (резерв, disabled)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "console.log('Функция process.run_process ещё не выложена.');",
+                  "console.log('Ожидаемо: function process.run_process(json) does not exist.');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api\": \"process./run/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\"\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Группа 11: Негативные проверки",
+      "item": [
+        {
+          "name": "11.1.1 create_process без userId",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "const b = pm.response.json();",
+            "console.log('result: ' + b.result);",
+            "console.log('errors: ' + JSON.stringify(b.errors));"
+          ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./init/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"userLogin\": \"developer\",\n    \"userIp\": \"127.0.0.1\",\n    \"processName\": \"neg-no-userid\",\n    \"depId\": 14\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.1.2 create_process без processName",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./init/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"userId\": \"1\",\n    \"userLogin\": \"developer\",\n    \"userIp\": \"127.0.0.1\",\n    \"depId\": 14\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.1.3 create_process без appId",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./init/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"userId\": \"1\",\n    \"userLogin\": \"developer\",\n    \"userIp\": \"127.0.0.1\",\n    \"processName\": \"neg-no-appid\",\n    \"depId\": 14\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.1.4 create_process без depId",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./init/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"userId\": \"1\",\n    \"userLogin\": \"developer\",\n    \"userIp\": \"127.0.0.1\",\n    \"processName\": \"neg-no-depid\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.2.1 add_iterations без processId",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./iteration/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"entities\": [{ \"id\": 1 }]\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.2.2 add_iterations с пустым entities",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./iteration/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\",\n    \"entities\": []\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.2.3 add_iterations в несуществующий процесс",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./iteration/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"00000000-0000-0000-0000-000000000000\",\n    \"entities\": [{ \"id\": 1 }]\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.3.1 update_process без processId",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./process/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"newStatus\": \"RUNNING\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.3.2 update_process без newStatus",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./process/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.3.3 update_process с некорректным newStatus",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./process/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\",\n    \"newStatus\": \"INVALID_STATUS\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.3.4 update_process несуществующего процесса",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./process/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"00000000-0000-0000-0000-000000000000\",\n    \"newStatus\": \"RUNNING\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.3.5 COMPLETED → RUNNING (недопустимо)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./process/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\",\n    \"newStatus\": \"RUNNING\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.3.6 STOPPED → RUNNING (недопустимо)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./process/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdUser}}\",\n    \"newStatus\": \"RUNNING\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.4.1 update_iteration без processId",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./iteration_upd/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"iterationId\": \"{{iterationIdNatural1}}\",\n    \"status\": \"RUNNING\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.4.2 update_iteration без iterationId",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./iteration_upd/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\",\n    \"status\": \"RUNNING\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.4.3 update_iteration с некорректным status",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./iteration_upd/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\",\n    \"iterationId\": \"{{iterationIdNatural1}}\",\n    \"status\": \"INVALID_STATUS\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.4.4 update_iteration в завершённом процессе",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./iteration_upd/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\",\n    \"iterationId\": \"{{iterationIdNatural1}}\",\n    \"status\": \"RUNNING\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.4.5 update_iteration несуществующей итерации",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./iteration_upd/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdUser}}\",\n    \"iterationId\": \"00000000-0000-0000-0000-000000000000\",\n    \"status\": \"RUNNING\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.5.1 stop_process без processId",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./stop/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"stopType\": \"NATURAL\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.5.2 stop_process с некорректным stopType",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./stop/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\",\n    \"stopType\": \"INVALID\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.5.3 stop_process несуществующего процесса",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./stop/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"00000000-0000-0000-0000-000000000000\",\n    \"stopType\": \"NATURAL\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.6.1 get_statistic без processId",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./info/get\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.6.2 get_statistic несуществующего процесса",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./info/get\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"00000000-0000-0000-0000-000000000000\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.7.1 delete_process без processId",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./delete/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.7.2 delete_process несуществующего процесса",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./delete/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"00000000-0000-0000-0000-000000000000\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.7.3 create_process для delete RUNNING",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "const b = pm.response.json();",
+            "pm.collectionVariables.set('processIdDeleteRunning', b.data.processId);",
+            "console.log('processIdDeleteRunning: ' + b.data.processId);"
+          ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./init/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"userId\": \"1\",\n    \"userLogin\": \"developer\",\n    \"userIp\": \"127.0.0.1\",\n    \"processName\": \"neg-delete-running\",\n    \"depId\": 14\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.7.4 Перевести в RUNNING",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./process/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdDeleteRunning}}\",\n    \"newStatus\": \"RUNNING\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.7.5 delete_process в RUNNING (должно упасть)",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "const b = pm.response.json();",
+            "console.log('result: ' + b.result);",
+            "console.log('errors: ' + JSON.stringify(b.errors));"
+          ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./delete/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdDeleteRunning}}\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.7.6 Очистка: перевести в STOPPED",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./stop/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdDeleteRunning}}\",\n    \"stopType\": \"USER\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "11.7.7 Удалить процесс после STOPPED",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./delete/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdDeleteRunning}}\"\n  }\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Группа 12: Очистка",
+      "item": [
+        {
+          "name": "12.1 Удалить NATURAL-процесс",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "const d = pm.response.json().data;",
+            "console.log('deleted: ' + d.deleted);",
+            "console.log('status: ' + d.status);"
+          ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./delete/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdNatural}}\"\n  }\n}" }
+          }
+        },
+        {
+          "name": "12.2 Удалить USER-процесс",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api", "host": ["{{baseUrl}}"], "path": ["api"] },
+            "body": { "mode": "raw", "raw": "{\n  \"api\": \"process./delete/set\",\n  \"args\": {\n    \"token\": \"{{token}}\",\n    \"appId\": 10,\n    \"processId\": \"{{processIdUser}}\"\n  }\n}" }
+          }
+        }
+      ]
+    }
+  ]
+}
