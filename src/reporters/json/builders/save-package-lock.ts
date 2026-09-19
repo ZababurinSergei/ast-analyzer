@@ -15,6 +15,9 @@ import { detectLanguage } from '../utils/language-detector.js';
 import { computeExportConsumers } from '../consumers/export-consumers.js';
 import idManager from '../../../core/IdManager.js';
 
+// ✅ v9.0.5-fix: безопасная сериализация (BigInt, Map, Set, Circular)
+import { safeJsonStringify } from '../../../utils/safe-json.js';
+
 // ============================================================
 // ТИПЫ
 // ============================================================
@@ -460,13 +463,8 @@ interface BuildFinalReportParams {
  * после того как все остальные поля собраны.
  */
 function buildFinalReportWithoutSummary(params: BuildFinalReportParams): any {
-  const {
-    normalizedEntitiesMap,
-    packages,
-    dependencyGraph,
-    executionGraph,
-    rawImportExportFlow,
-  } = params;
+  const { normalizedEntitiesMap, packages, dependencyGraph, executionGraph, rawImportExportFlow } =
+    params;
 
   const safeImportExportFlow = sanitizeImportExportFlow(rawImportExportFlow);
   const callGraph = buildFlatCallGraph(normalizedEntitiesMap);
@@ -563,21 +561,25 @@ function buildFlatCallGraph(entitiesMap: Record<string, EntitiesResult>): Record
 // ============================================================
 
 /**
- * Сохраняет отчёт на диск, корректно обрабатывая Map/Set/опасные ключи.
+ * Сохраняет отчёт на диск.
+ *
+ * ✅ v9.0.5-fix: используется safeJsonStringify вместо JSON.stringify.
+ *
+ * Причина: нативный JSON.stringify падает с ошибкой
+ *   `TypeError: Do not know how to serialize a BigInt`
+ * если в отчёте встречается BigInt-значение (например, в константе
+ * вида `const MAX = 18446744073709551615n;`).
+ *
+ * safeJsonStringify обрабатывает:
+ *   - BigInt → строка
+ *   - Map    → объект
+ *   - Set    → массив
+ *   - циклические ссылки → '[Circular]'
+ *   - опасные ключи (__proto__, constructor, _safeInfo) → удаляются
  */
 function saveReportToDisk(report: any, outputPath: string): void {
-  const json = JSON.stringify(
-    report,
-    (key, value) => {
-      if (value instanceof Map) return Object.fromEntries(value);
-      if (value instanceof Set) return Array.from(value);
-      if (key === '_safeInfo' || key === '__proto__' || key === 'constructor') {
-        return undefined;
-      }
-      return value;
-    },
-    2
-  );
+  // ✅ ИСПРАВЛЕНО: безопасная сериализация (BigInt, Map, Set, Circular)
+  const json = safeJsonStringify(report);
 
   const outputDir = path.dirname(outputPath);
   if (!fs.existsSync(outputDir)) {

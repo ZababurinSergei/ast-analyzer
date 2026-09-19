@@ -1,0 +1,371 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ast-analyzer.dev/schemas/ast-analyzer.config.schema.json",
+  "title": "AST Analyzer Configuration",
+  "description": "Схема конфигурационного файла ast-analyzer.config.json для пакета @newkind/ast-analyzer. Описывает секцию compactRecursive (команда compact-recursive) и общие настройки.",
+  "type": "object",
+  "additionalProperties": false,
+
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Ссылка на JSON-схему для валидации и автодополнения в IDE."
+    },
+
+    "version": {
+      "type": "string",
+      "description": "Версия формата конфигурации.",
+      "default": "1.0.0",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+
+    "compactRecursive": {
+      "$ref": "#/definitions/CompactRecursiveConfig"
+    }
+  },
+
+  "definitions": {
+    "CompactRecursiveConfig": {
+      "type": "object",
+      "description": "Настройки команды `compact-recursive`. Соответствует интерфейсу CompactRecursiveConfig из src/cli/config/load-config.ts и CompactReportConfig из src/reporters/CompactReportConfig.ts.",
+      "additionalProperties": false,
+
+      "properties": {
+        "preset": {
+          "type": "string",
+          "description": "Пресет конфигурации отчёта. Определяет набор включаемых полей и уровень сжатия.",
+          "enum": [
+            "minimal",
+            "standard",
+            "full",
+            "relationships",
+            "relationshipsOnly",
+            "ultra",
+            "ultraCompact"
+          ],
+          "default": "standard"
+        },
+
+        "depth": {
+          "type": "integer",
+          "description": "Максимальная глубина рекурсивного обхода зависимостей. Значения >= 1000 трактуются как «без ограничения».",
+          "minimum": 0,
+          "default": 100,
+          "examples": [5, 10, 100, 1000]
+        },
+
+        "output": {
+          "type": "string",
+          "description": "Путь к выходному файлу компактного JSON-отчёта.",
+          "default": "./reports/ast-analyzer-full.json",
+          "examples": ["./reports/ast-analyzer-full.json", "./example/index.json"]
+        },
+
+        "config": {
+          "type": "string",
+          "description": "Путь к конфиг-файлу (для CLI-флага --config). В самом конфиг-файле обычно не задаётся."
+        },
+
+        "includeBody": {
+          "type": "boolean",
+          "description": "Включать тела функций в отчёт. Значительно увеличивает размер.",
+          "default": false
+        },
+
+        "includeSecurity": {
+          "type": "boolean",
+          "description": "Включать информацию о безопасности (eval, exec, process.env, пароли и т.д.).",
+          "default": false
+        },
+
+        "includeVSCode": {
+          "type": "boolean",
+          "description": "Включать VSCode-ссылки (vscode://file/...) для функций и других сущностей.",
+          "default": false
+        },
+
+        "functions": {
+          "type": "boolean",
+          "description": "Включать функции в отчёт.",
+          "default": true
+        },
+
+        "constants": {
+          "type": "boolean",
+          "description": "Включать константы в отчёт.",
+          "default": true
+        },
+
+        "selfFunctions": {
+          "type": "boolean",
+          "description": "Включать self-функции (изолированные — не вызывают никого и не вызываются никем).",
+          "default": true
+        },
+
+        "relations": {
+          "$ref": "#/definitions/RelationsConfig"
+        },
+
+        "extended": {
+          "$ref": "#/definitions/ExtendedConfig"
+        },
+
+        "stats": {
+          "$ref": "#/definitions/StatsConfig"
+        },
+
+        "metadata": {
+          "$ref": "#/definitions/MetadataConfig"
+        },
+
+        "formatting": {
+          "$ref": "#/definitions/FormattingConfig"
+        },
+
+        "outputOptions": {
+          "$ref": "#/definitions/OutputOptionsConfig",
+          "description": "Опции сохранения отчёта (сжатие, полный JSON, edges). Читаются через cfg.outputOptions в mergeConfigWithCli."
+        },
+
+        "exclude": {
+          "type": "array",
+          "description": "Glob-паттерны исключения файлов из анализа. Мержатся с DEFAULT_IGNORE из collect-files.ts.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true,
+          "default": [
+            "**/node_modules/**",
+            "**/dist/**",
+            "**/build/**",
+            "**/coverage/**",
+            "**/*.d.ts",
+            "**/__tests__/**",
+            "**/fixtures/**"
+          ]
+        }
+      }
+    },
+
+    "RelationsConfig": {
+      "type": "object",
+      "description": "Управление секциями связей (gr.*) в компактном отчёте.",
+      "additionalProperties": false,
+      "properties": {
+        "calls": {
+          "type": "boolean",
+          "description": "Включать граф вызовов (gr.c — кто кого вызывает).",
+          "default": true
+        },
+        "imports": {
+          "type": "boolean",
+          "description": "Включать граф импортов (gr.i — кто от кого зависит).",
+          "default": true
+        },
+        "exports": {
+          "type": "boolean",
+          "description": "Включать граф экспортов (gr.e — кто что экспортирует).",
+          "default": true
+        },
+        "inheritance": {
+          "type": "boolean",
+          "description": "Включать граф наследования (gr.h — иерархия классов/интерфейсов).",
+          "default": true
+        },
+        "typeDeps": {
+          "type": "boolean",
+          "description": "Включать типовые зависимости (gr.td — использование типов).",
+          "default": true
+        },
+        "reExports": {
+          "type": "boolean",
+          "description": "Включать реэкспорты (gr.re — export * from, export { x } from).",
+          "default": true
+        },
+        "constUses": {
+          "type": "boolean",
+          "description": "Включать использование констант (gr.uc).",
+          "default": true
+        },
+        "constDeps": {
+          "type": "boolean",
+          "description": "Включать зависимости констант (gr.cd).",
+          "default": true
+        },
+        "constExports": {
+          "type": "boolean",
+          "description": "Включать экспорты констант (gr.ce).",
+          "default": true
+        }
+      }
+    },
+
+    "ExtendedConfig": {
+      "type": "object",
+      "description": "Управление расширенными анализаторами (анализаторы/index.ts).",
+      "additionalProperties": false,
+      "properties": {
+        "dynamicImports": {
+          "type": "boolean",
+          "description": "Включать анализ динамических импортов (gr.di).",
+          "default": true
+        },
+        "configRefs": {
+          "type": "boolean",
+          "description": "Включать анализ ссылок на конфигурации (gr.cfg).",
+          "default": true
+        },
+        "externalLibs": {
+          "type": "boolean",
+          "description": "Включать анализ внешних библиотек (gr.ext).",
+          "default": true
+        },
+        "vueTemplates": {
+          "type": "boolean",
+          "description": "Включать анализ Vue-шаблонов (gr.vt).",
+          "default": true
+        },
+        "asyncChains": {
+          "type": "boolean",
+          "description": "Включать анализ асинхронных цепочек (gr.async).",
+          "default": true
+        },
+        "closures": {
+          "type": "boolean",
+          "description": "Включать анализ замыканий (gr.closures).",
+          "default": true
+        },
+        "reflections": {
+          "type": "boolean",
+          "description": "Включать анализ рефлексии (gr.reflection). Зарезервировано.",
+          "default": false
+        }
+      }
+    },
+
+    "StatsConfig": {
+      "type": "object",
+      "description": "Управление секцией статистики (st).",
+      "additionalProperties": false,
+      "properties": {
+        "basic": {
+          "type": "boolean",
+          "description": "Включать базовую статистику (st).",
+          "default": true
+        },
+        "extended": {
+          "type": "boolean",
+          "description": "Включать расширенную статистику (st.extended).",
+          "default": true
+        },
+        "byModule": {
+          "type": "boolean",
+          "description": "Разбивка статистики по модулям.",
+          "default": true
+        },
+        "byFile": {
+          "type": "boolean",
+          "description": "Разбивка статистики по файлам.",
+          "default": true
+        },
+        "byType": {
+          "type": "boolean",
+          "description": "Разбивка статистики по типам сущностей.",
+          "default": true
+        }
+      }
+    },
+
+    "MetadataConfig": {
+      "type": "object",
+      "description": "Управление метаданными отчёта.",
+      "additionalProperties": false,
+      "properties": {
+        "flags": {
+          "type": "boolean",
+          "description": "Включать битовые флаги (flg).",
+          "default": true
+        },
+        "types": {
+          "type": "boolean",
+          "description": "Включать типы (types).",
+          "default": true
+        },
+        "errors": {
+          "type": "boolean",
+          "description": "Включать информацию об ошибках (errors).",
+          "default": false
+        }
+      }
+    },
+
+    "FormattingConfig": {
+      "type": "object",
+      "description": "Управление форматированием и сжатием ключей отчёта.",
+      "additionalProperties": false,
+      "properties": {
+        "minifyKeys": {
+          "type": "boolean",
+          "description": "Минифицировать ключи (более короткие имена).",
+          "default": false
+        },
+        "useBitFlags": {
+          "type": "boolean",
+          "description": "Использовать битовые флаги вместо булевых полей.",
+          "default": true
+        },
+        "useDictionaries": {
+          "type": "boolean",
+          "description": "Использовать словари для параметров и типов.",
+          "default": true
+        },
+        "useTemplates": {
+          "type": "boolean",
+          "description": "Использовать шаблоны.",
+          "default": true
+        },
+        "readableKeys": {
+          "type": "boolean",
+          "description": "Использовать читаемые ключи (вместо сокращений).",
+          "default": true
+        }
+      }
+    },
+
+    "OutputOptionsConfig": {
+      "type": "object",
+      "description": "Опции сохранения отчёта на диск. Соответствует cfg.outputOptions в load-config.ts и GenerateReportOptions.saveEdges / edgesJsonSuffix в codec-types.ts.",
+      "additionalProperties": false,
+      "properties": {
+        "compress": {
+          "type": "boolean",
+          "description": "Применять сжатие (Codec.encode).",
+          "default": true
+        },
+        "saveFullJson": {
+          "type": "boolean",
+          "description": "Сохранять полный (читаемый) JSON рядом со сжатым.",
+          "default": true
+        },
+        "fullJsonSuffix": {
+          "type": "string",
+          "description": "Суффикс для файла полного JSON.",
+          "default": ".full.json",
+          "pattern": "^\\.[a-zA-Z0-9._-]+$"
+        },
+        "saveEdges": {
+          "type": "boolean",
+          "description": "Сохранять агрегированный массив edges в отдельный файл. По умолчанию выключено — edges восстанавливаются из gr.* по запросу.",
+          "default": false
+        },
+        "edgesJsonSuffix": {
+          "type": "string",
+          "description": "Суффикс для файла edges.",
+          "default": ".edges.json",
+          "pattern": "^\\.[a-zA-Z0-9._-]+$"
+        }
+      }
+    }
+  }
+}

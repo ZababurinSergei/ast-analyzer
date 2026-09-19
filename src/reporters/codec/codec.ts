@@ -2,18 +2,31 @@
 // ============================================
 // ФАСАД КОДЕКА
 // ============================================
-// Версия: 9.0.0
+// Версия: 10.4.0
 //
-// Модуль разбит на три части:
+// Модуль разбит на четыре части:
 //   - codec-encode.ts  — кодирование (FullJSON → CompactJSON)
 //   - codec-decode.ts  — декодирование (CompactJSON → FullJSON)
 //   - codec-verify.ts  — проверки обратимости
+//   - codec-legend.ts  — сборка legend (v10.4.0)
 //
 // Этот файл сохраняет обратную совместимость: `Codec.encode`,
 // `Codec.decode`, `Codec.verifyRoundTrip` работают как раньше.
 //
 // Все существующие импорты `import { Codec } from './codec.js'`
 // продолжают работать без изменений.
+//
+// ИЗМЕНЕНИЯ v10.4.0:
+//   - ✅ getLegend() теперь делегирует в buildEmptyLegend()
+//     из './codec-legend.js' (единая точка сборки легенды).
+//   - ✅ УДАЛЕНЫ прямые импорты словарей (FLAG_MAP, FLAG_CHAR_MAP,
+//     RELATION_TYPES, EXPORT_TYPES, IMPORT_TYPES, CALL_TYPES,
+//     RE_EXPORT_TYPES, LIFECYCLE_TYPES, EFFECT_TYPES,
+//     INJECTION_TYPES, REACTIVITY_TYPES, CONDITIONAL_TYPES,
+//     TYPE_KINDS, TYPE_USAGE_KINDS) — они больше не нужны здесь,
+//     потому что вся сборка легенды вынесена в codec-legend.ts.
+//   - ✅ РЕЭКСПОРТ словарей из './codec-encode.js' СОХРАНЁН
+//     для обратной совместимости публичного API.
 // ============================================
 
 import type { FullJSON, CompactJSON, DecodeOptions, CodecLegend } from './codec-types.js';
@@ -21,10 +34,6 @@ import { encode } from './codec-encode.js';
 import { decode } from './codec-decode.js';
 import {
   verifyRoundTrip,
-  // ✅ ИСПРАВЛЕНО: deepEqual и normalizeForDiff удалены из импорта,
-  // т.к. они не используются в этом файле (TS6133).
-  // deepEqual,
-  // normalizeForDiff,
   getCompactSize,
   getFullSize,
   getCompressionRatio,
@@ -32,8 +41,14 @@ import {
   parse,
 } from './codec-verify.js';
 
+// ✅ v10.4.0: легенда собирается в codec-legend.ts
+import { buildEmptyLegend } from './codec-legend.js';
+
 // ============================================
 // РЕЭКСПОРТ СЛОВАРЕЙ ИЗ codec-encode.ts
+// ============================================
+// Публичный API сохранён для обратной совместимости.
+// Внутренне эти словари теперь используются в codec-legend.ts.
 // ============================================
 
 export {
@@ -79,6 +94,16 @@ export {
   stringify,
   parse,
 } from './codec-verify.js';
+
+// ============================================
+// ✅ v10.4.0: РЕЭКСПОРТ ЛЕГЕНДЫ
+// ============================================
+
+export { buildLegend, buildEmptyLegend, SCHEMAS } from './codec-legend.js';
+
+export type { LegendDictionaries } from './codec-legend.js';
+
+export type { FlagBit, CodesDict } from './codec-types.js';
 
 // ============================================
 // ФАСАДНЫЙ КЛАСС Codec
@@ -173,148 +198,14 @@ export class Codec {
   /**
    * Возвращает легенду для декодирования.
    *
-   * ВНИМАНИЕ: словари пустые — используйте encode() для получения словарей.
+   * ✅ v10.4.0: делегирует в buildEmptyLegend() из codec-legend.ts.
+   *
+   * ВНИМАНИЕ: словари пустые — используйте encode() для получения
+   * реальной легенды с непустыми dictionaries.
    */
   static getLegend(): CodecLegend {
-    return getLegend();
+    return buildEmptyLegend();
   }
-}
-
-// ============================================
-// getLegend — использует словари из codec-encode.ts
-// ============================================
-
-import {
-  FLAG_MAP,
-  FLAG_CHAR_MAP,
-  RELATION_TYPES,
-  EXPORT_TYPES,
-  IMPORT_TYPES,
-  CALL_TYPES,
-  RE_EXPORT_TYPES,
-  LIFECYCLE_TYPES,
-  EFFECT_TYPES,
-  INJECTION_TYPES,
-  REACTIVITY_TYPES,
-  CONDITIONAL_TYPES,
-  TYPE_KINDS,
-  TYPE_USAGE_KINDS,
-} from './codec-encode.js';
-
-/**
- * Возвращает легенду со всеми словарями и схемами,
- * но с пустыми stringDict/paramDict/methodDict/valueDict.
- *
- * Используется для обратной совместимости. Реальная легенда
- * с непустыми словарями создаётся в `encode()`.
- *
- * ✅ v10.3: словарь IMPORT_TYPES теперь содержит 'to' → 'type'
- *           (не 'type-only'). Это согласовано с compact-reporter.ts.
- */
-function getLegend(): CodecLegend {
-  return {
-    // Карты флагов
-    flagMap: Object.fromEntries(Object.entries(FLAG_MAP).map(([bit, char]) => [char, bit])),
-    flagCharMap: { ...FLAG_CHAR_MAP },
-
-    // Типы связей
-    relationTypes: { ...RELATION_TYPES },
-    exportTypes: { ...EXPORT_TYPES },
-    importTypes: { ...IMPORT_TYPES },
-    callTypes: { ...CALL_TYPES },
-    reExportTypes: { ...RE_EXPORT_TYPES },
-
-    // Типы v9.0.0
-    lifecycleTypes: { ...LIFECYCLE_TYPES },
-    effectTypes: { ...EFFECT_TYPES },
-    injectionTypes: { ...INJECTION_TYPES },
-    reactivityTypes: { ...REACTIVITY_TYPES },
-    conditionalTypes: { ...CONDITIONAL_TYPES },
-    typeKinds: { ...TYPE_KINDS },
-    typeUsageKinds: { ...TYPE_USAGE_KINDS },
-
-    // Позиционные схемы массивов
-    arraySchemas: {
-      fns: ['id', 'name', 'moduleId', 'fileId', 'line', 'flags', 'paramsIdx', 'returnTypeIdx'],
-      cls: ['id', 'name', 'moduleId', 'fileId', 'line', 'flags', 'methodsIdx'],
-      cn: ['id', 'name', 'moduleId', 'fileId', 'line', 'flags', 'valueIdx'],
-      // ✅ reversibility: 12 полей
-      'gr.e': [
-        'moduleIdx',
-        'fileIdx',
-        'funcIdx',
-        'line',
-        'typeCode',
-        'exportNameIdx',
-        'localNameIdx',
-        'isTypeOnly',
-        'isReExport',
-        'sourceIdx',
-        'isStarReExport',
-        'isDefaultReExport',
-      ],
-      'gr.i': [
-        'fromFileIdx',
-        'toFileIdIdx',
-        'sourceIdx',
-        'importedNameIdx',
-        'localNameIdx',
-        'line',
-        'typeCode',
-        'isExternal',
-      ],
-      // ✅ L2 fix: 4 поля, без 'e'
-      'gr.c': ['fromIdx', 'toIdxOrExternalIdx', 'line', 'typeCode'],
-      'gr.re': [
-        'moduleIdx',
-        'funcIdx',
-        'sourceIdx',
-        'exportNameIdx',
-        'line',
-        'typeCode',
-        'isTypeOnly',
-      ],
-      vt: [
-        'fileIdx',
-        'moduleIdx',
-        'complexity',
-        'reactivityDepsIdx',
-        'eventHandlers',
-        'dynamicComponents',
-        'directivesIdx',
-        'usedComponentsIdx',
-        'templateRefs',
-        'cssVariables',
-        'deepSelectors',
-        'slotsIdx',
-      ],
-      'vt.eventHandlers': [
-        'eventNameIdx',
-        'handlerNameIdx',
-        'tagIdx',
-        'line',
-        'modifiersIdx',
-        'isExternal',
-      ],
-      'vt.dynamicComponents': ['isExpressionIdx', 'line', 'resolvedComponentsIdx'],
-      'vt.templateRefs': ['refValueIdx', 'tagIdx', 'line', 'exposedMethodsIdx'],
-      'vt.cssVariables': ['nameIdx', 'valueIdx', 'line', 'isMultiline'],
-      'vt.deepSelectors': ['selectorIdx', 'line'],
-      lc: ['hookCode', 'funcIdx', 'line', 'callbackFnIdx', 'flags'],
-      ef: ['effectCode', 'funcIdx', 'line', 'targetIdx', 'metaIdx'],
-      inj: ['kindCode', 'fileIdx', 'line', 'keyIdx', 'flags'],
-      rx: ['kindCode', 'funcIdx', 'line', 'readsIdx', 'writesIdx', 'flags'],
-      cd: ['directiveCode', 'fileIdx', 'line', 'condIdx', 'compIdx', 'flags'],
-      ty: ['kindCode', 'nameIdx', 'moduleIdx', 'fileIdx', 'line', 'membersIdx', 'extendsIdx'],
-      tr: ['typeNameIdx', 'moduleIdx', 'fileIdx', 'line', 'usageCode'],
-    },
-
-    // Пустые словари
-    stringDict: [],
-    paramDict: [],
-    methodDict: [],
-    valueDict: [],
-  };
 }
 
 // ============================================

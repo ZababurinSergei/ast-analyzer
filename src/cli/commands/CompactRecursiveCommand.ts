@@ -1,21 +1,57 @@
 // packages/ast-analyzer/src/cli/commands/CompactRecursiveCommand.ts
-// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ - БЕЗ ДУБЛЕЙ, ВСЕ ОШИБКИ TypeScript И ESLint ИСПРАВЛЕНЫ
-// ДОБАВЛЕНА ПОДДЕРЖКА СЕКЦИИ SELF FUNCTIONS (sf) С ВОЗМОЖНОСТЬЮ ОТКЛЮЧЕНИЯ
-// ДОБАВЛЕНА ПОДДЕРЖКА ГИБКОГО КОНФИГА С ПРЕСЕТАМИ
-// ✅ ОБНОВЛЕНО v10.0.0: адаптация под новую структуру GenerateReportResult (compact-reporter v9.0.0)
-// ✅ ОБНОВЛЕНО v2: добавлен .default(false) для --include-body/--include-security/--include-vscode
-// ✅ ОБНОВЛЕНО v3: строгая проверка options.includeBody === true при применении опций
-// ✅ ОБНОВЛЕНО v4: добавлена поддержка --include-vscode (проброс в configBuilder)
-// ✅ ОБНОВЛЕНО v5: строгая проверка options.includeVSCode === true при применении опций
-// ✅ ОБНОВЛЕНО v6: добавлена поддержка self functions через full.statistics (совместимость)
-// ✅ ОБНОВЛЕНО v7: добавлена строка "VSCode ссылки" в блок "ВКЛЮЧЕННЫЕ КОМПОНЕНТЫ"
-// ✅ ОБНОВЛЕНО v8: добавлены флаги --edges и --edges-suffix для сохранения edges в отдельный файл
-// ✅ ОБНОВЛЕНО v9: проброс saveEdges / edgesJsonSuffix в generateCompactReport
-// ✅ ОБНОВЛЕНО v10:
-//     - extractEntities теперь импортируется из единого reporters/json модуля
-//     - все импорты core/* заменены на reporters/json/*
-//     - удалены локальные определения, дублирующие reporters/json
-//     - используется collectFilesForAnalysis из ci-cd/index.js
+// ============================================================
+// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ - БЕЗ ДУБЛЕЙ
+// ============================================================
+// Версия: 11.0.1
+//
+// ИЗМЕНЕНИЯ v11.0.1 (fix TS2451 + TS2339):
+//   - ✅ ИСПРАВЛЕНО: переименована переменная `config` (строка 185)
+//     в `appConfig`, чтобы устранить конфликт с `config` (строка 377).
+//     Раньше было два `const config` в одной области видимости:
+//       1. loadConfig(...) → AstAnalyzerConfig
+//       2. configBuilder.build() → CompactReportConfig
+//     Это вызывало TS2451 (Cannot redeclare block-scoped variable 'config')
+//     и 34 ошибки TS2339 (Property 'functions' does not exist on
+//     type 'AstAnalyzerConfig' и т.д.), потому что TypeScript
+//     использовал тип первого объявления.
+//
+// ИЗМЕНЕНИЯ v11.0.0 (config file integration):
+//   - ✅ ДОБАВЛЕНО: флаг --config <file> для указания конфиг-файла
+//   - ✅ ДОБАВЛЕНО: авто-поиск ast-analyzer.config.json вверх по дереву
+//   - ✅ ДОБАВЛЕНО: loadConfig + mergeConfigWithCli
+//   - ✅ ДОБАВЛЕНО: проброс exclude-паттернов в collectProjectFiles
+//   - ✅ ДОБАВЛЕНО: проброс outputOptions (compress, saveFullJson,
+//     fullJsonSuffix, saveEdges, edgesJsonSuffix) в generateCompactReport
+//   - ✅ ПРИОРИТЕТ: CLI-флаги > config-файл > пресет > дефолты
+//
+// ИЗМЕНЕНИЯ v10.0.0 (адаптация под новую структуру GenerateReportResult):
+//   - ✅ extractEntities импортируется из единого reporters/json модуля
+//   - ✅ collectFilesForAnalysis из ci-cd/index.js
+//
+// ИЗМЕНЕНИЯ v9.0.0:
+//   - ✅ Добавлены флаги --edges и --edges-suffix
+//
+// ИЗМЕНЕНИЯ v8.0.0:
+//   - ✅ Строгая проверка options.includeBody === true
+//
+// ИЗМЕНЕНИЯ v7.0.0:
+//   - ✅ Добавлена строка \"VSCode ссылки\" в блок \"ВКЛЮЧЕННЫЕ КОМПОНЕНТЫ\"
+//
+// ИЗМЕНЕНИЯ v6.0.0:
+//   - ✅ Добавлена поддержка self functions через full.statistics
+//
+// ИЗМЕНЕНИЯ v5.0.0:
+//   - ✅ Строгая проверка options.includeVSCode === true
+//
+// ИЗМЕНЕНИЯ v4.0.0:
+//   - ✅ Добавлена поддержка --include-vscode
+//
+// ИЗМЕНЕНИЯ v3.0.0:
+//   - ✅ Строгая проверка options.includeBody === true
+//
+// ИЗМЕНЕНИЯ v2.0.0:
+//   - ✅ Добавлен .default(false) для --include-body/--include-security/--include-vscode
+// ============================================================
 
 import type { Command } from 'commander';
 import path from 'path';
@@ -29,10 +65,14 @@ import { collectFilesForAnalysis } from '../../ci-cd/index.js';
 // ✅ ИМПОРТ КОНФИГУРАЦИИ ДЛЯ ПРЕСЕТОВ
 import { getPresetNames, createCompactConfig } from '../../reporters/CompactReportConfig.js';
 
+// ✅ v11.0.0: загрузчик конфиг-файла
+import { loadConfig, mergeConfigWithCli } from '../config/load-config.js';
+
 /**
- * Команда для рекурсивного компакт-отчета
+ * Команда для рекурсивного компакт-отчета.
+ *
  * Работает как project + compact: строит граф зависимостей,
- * собирает все файлы и генерирует компактный отчет
+ * собирает все файлы и генерирует компактный отчёт.
  *
  * ОСОБЕННОСТИ:
  * - НЕТ ДУБЛИРОВАНИЯ: каждый тип данных в одном месте
@@ -40,9 +80,10 @@ import { getPresetNames, createCompactConfig } from '../../reporters/CompactRepo
  * - СЖАТИЕ: короткие ключи, сжатые флаги
  * - SELF FUNCTIONS: изолированные функции с индексами sf1, sf2, ...
  * - ГИБКИЙ КОНФИГ: 5 пресетов + 30+ опций для тонкой настройки
- * - ВСЕ ОШИБКИ TypeScript И ESLint ИСПРАВЛЕНЫ
+ * - ✅ CONFIG FILE: загрузка из ast-analyzer.config.json (v11.0.0)
  * - ✅ EDGES: опционально, по умолчанию выключено, сохраняется в отдельный файл
  * - ✅ v10: использует единый reporters/json модуль для анализа
+ * - ✅ v11: приоритет CLI > config > пресет > дефолты
  */
 export class CompactRecursiveCommand {
   private program: Command;
@@ -66,6 +107,12 @@ export class CompactRecursiveCommand {
         'standard'
       )
       .option('--ultra', 'Ультра-компактный режим (максимальное сжатие, экономия ~70%)')
+
+      // === ✅ v11.0.0: CONFIG FILE ===
+      .option(
+        '--config <file>',
+        'Путь к конфиг-файлу (по умолчанию: автопоиск ast-analyzer.config.json)'
+      )
 
       // === ВКЛЮЧЕНИЕ/ОТКЛЮЧЕНИЕ СУЩНОСТЕЙ ===
       .option('--no-functions', 'Отключить функции (fns)')
@@ -96,7 +143,7 @@ export class CompactRecursiveCommand {
       .option('--no-stats', 'Отключить статистику (st)')
       .option('--no-extended-stats', 'Отключить расширенную статистику')
 
-      // === ✅ v8: EDGES (отдельный файл, по умолчанию выключено) ===
+      // === ✅ EDGES (отдельный файл, по умолчанию выключено) ===
       .option(
         '--edges',
         'Сохранять агрегированный массив edges в отдельный файл (по умолчанию: выключено)',
@@ -109,13 +156,11 @@ export class CompactRecursiveCommand {
       )
 
       // === МЕТАДАННЫЕ ===
-      // ✅ ИСПРАВЛЕНО v2: добавлен .default(false) для boolean-флагов
       .option('--no-flags', 'Отключить битовые флаги (flg)')
       .option('--no-types', 'Отключить типы (types)')
       .option('--no-legend', 'Отключить легенду (legend)')
       .option('--include-body', 'Включить тела функций (увеличивает размер)', false)
       .option('--include-security', 'Включить информацию о безопасности', false)
-      // ✅ ИСПРАВЛЕНО v4: добавлена опция --include-vscode
       .option('--include-vscode', 'Включить VSCode ссылки для функций', false)
 
       // === ФОРМАТИРОВАНИЕ ===
@@ -124,6 +169,12 @@ export class CompactRecursiveCommand {
       .option('--no-dictionaries', 'Отключить словари для параметров и типов')
       .option('--no-templates', 'Отключить использование шаблонов')
       .option('--readable-keys', 'Использовать читаемые ключи (вместо сокращений)')
+
+      // === ✅ v11.0.0: EXCLUDE (можно также задавать в конфиге) ===
+      .option(
+        '-x, --exclude <patterns>',
+        'Паттерны исключения (через запятую). Пример: \"**/__tests__/**,**/fixtures/**\"'
+      )
 
       .option('-v, --verbose', 'Подробный вывод', false)
       .action(async (entry: string, options: any) => {
@@ -136,7 +187,24 @@ export class CompactRecursiveCommand {
       });
   }
 
-  private async execute(entry: string, options: any): Promise<void> {
+  private async execute(entry: string, rawOptions: any): Promise<void> {
+    // ============================================================
+    // ✅ v11.0.0: ЗАГРУЗКА КОНФИГА И МЕРЖ С CLI
+    // ============================================================
+    // Приоритет: CLI > config > пресет > дефолты
+    // ============================================================
+    // ✅ v11.0.1-fix: переименовано в `appConfig`, чтобы не конфликтовать
+    // с `config` (CompactReportConfig) на строке 377.
+    // ============================================================
+    const appConfig = loadConfig(rawOptions.config, process.cwd());
+    const options = mergeConfigWithCli(appConfig, rawOptions);
+
+    // Извлекаем outputOptions (не CLI-поля, а из конфига)
+    const outputOpts = options.__outputOptions ?? {};
+
+    // Парсим exclude-паттерны
+    const excludePatterns = this.parseExcludePatterns(options.exclude);
+
     const startTime = Date.now();
     const entryPath = path.resolve(entry);
 
@@ -149,6 +217,9 @@ export class CompactRecursiveCommand {
     console.log(`📁 Выходной файл: ${options.output}`);
     console.log(`🚀 Ультра-компактный: ${options.ultra ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}`);
     console.log(`🔗 Edges в отдельный файл: ${options.edges === true ? 'ВКЛЮЧЕНО' : 'ВЫКЛЮЧЕНО'}`);
+    if (excludePatterns.length > 0) {
+      console.log(`🚫 Исключения: ${excludePatterns.join(', ')}`);
+    }
 
     // Показываем что включено
     console.log('\n📊 ВКЛЮЧЕННЫЕ КОМПОНЕНТЫ:');
@@ -172,11 +243,8 @@ export class CompactRecursiveCommand {
     );
     console.log(`   • Статистика: ${options.stats !== false ? '✅' : '❌'}`);
     console.log(`   • Расширенный анализ: ${options.extendedStats !== false ? '✅' : '❌'}`);
-    // ✅ ИСПРАВЛЕНО v2: показываем состояние includeBody в логе
     console.log(`   • Тела функций: ${options.includeBody === true ? '✅' : '❌'}`);
-    // ✅ НОВОЕ v7: показываем состояние includeVSCode в логе "ВКЛЮЧЕННЫЕ КОМПОНЕНТЫ"
     console.log(`   • VSCode ссылки: ${options.includeVSCode === true ? '✅' : '❌'}`);
-    // ✅ НОВОЕ v8: показываем состояние edges в логе "ВКЛЮЧЕННЫЕ КОМПОНЕНТЫ"
     console.log(`   • Edges в отдельный файл: ${options.edges === true ? '✅' : '❌'}`);
     console.log('');
 
@@ -185,11 +253,15 @@ export class CompactRecursiveCommand {
       process.exit(1);
     }
 
-    // ============================================
-    // ✅ v10: Шаг 1: Собираем все файлы через единый reporters/json модуль
-    // ============================================
+    // ============================================================
+    // ✅ Шаг 1: Сбор всех файлов проекта
+    // ============================================================
     console.log('📁 Шаг 1: Сбор файлов проекта...');
-    const validFiles = await this.collectProjectFiles(entryPath, parseInt(options.depth, 10));
+    const validFiles = await this.collectProjectFiles(
+      entryPath,
+      parseInt(options.depth, 10),
+      excludePatterns
+    );
 
     if (validFiles.length === 0) {
       console.error('❌ Не найдено файлов для анализа');
@@ -199,9 +271,9 @@ export class CompactRecursiveCommand {
     console.log(`   📄 Найдено файлов: ${validFiles.length}`);
     console.log(`   📊 Уникальных: ${new Set(validFiles).size}`);
 
-    // ============================================
-    // ✅ v10: Шаг 2: Извлекаем сущности через единый extractEntitiesFromFile
-    // ============================================
+    // ============================================================
+    // ✅ Шаг 2: Извлечение сущностей через extractEntitiesFromFile
+    // ============================================================
     console.log('\n🔍 Шаг 2: Извлечение сущностей из всех файлов...');
     const entitiesMap: Record<string, any> = {};
     let processedFiles = 0;
@@ -212,7 +284,6 @@ export class CompactRecursiveCommand {
           console.log(`   📄 Обработка: ${path.basename(file)}`);
         }
 
-        // ✅ ЕДИНЫЙ ИСТОЧНИК: extractEntitiesFromFile из reporters/json
         const entities = extractEntitiesFromFile(file);
 
         if (entities && Object.keys(entities).length > 0) {
@@ -234,9 +305,9 @@ export class CompactRecursiveCommand {
       process.exit(1);
     }
 
-    // ============================================
-    // Шаг 3: Генерируем отчет с применением конфига
-    // ============================================
+    // ============================================================
+    // Шаг 3: Генерация отчёта с применением конфига
+    // ============================================================
     console.log('\n📋 Шаг 3: Генерация компактного отчета с применением конфига...');
 
     const outputPath = path.resolve(options.output);
@@ -245,29 +316,24 @@ export class CompactRecursiveCommand {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    // Создаем конфиг из опций
+    // Создаём конфиг из опций
     const configBuilder = createCompactConfig(options.preset || 'standard');
 
-    // ============================================
-    // ✅ ИСПРАВЛЕНО v3: строгая проверка === true
-    // ============================================
-    // Commander без .default() возвращает undefined для boolean-флагов,
-    // поэтому `if (undefined)` НЕ срабатывает. Используем строгое сравнение.
-    // ============================================
-
+    // ============================================================
     // Форматирование
-    if (options.ultra)
+    // ============================================================
+    if (options.ultra) {
       configBuilder.setMinifyKeys(true).setUseBitFlags(true).setUseDictionaries(true);
+    }
     if (options.minifyKeys) configBuilder.setMinifyKeys(true);
     if (options.bitFlags === false) configBuilder.setUseBitFlags(false);
     if (options.dictionaries === false) configBuilder.setUseDictionaries(false);
     if (options.templates === false) configBuilder.setUseTemplates(false);
     if (options.readableKeys) configBuilder.setReadableKeys(true);
 
-    // ✅ ИСПРАВЛЕНО: строгая проверка === true
+    // Строгая проверка === true
     if (options.includeBody === true) configBuilder.setIncludeBody(true);
     if (options.includeSecurity === true) configBuilder.setIncludeSecurity(true);
-    // ✅ ИСПРАВЛЕНО v5: строгая проверка === true для includeVSCode
     if (options.includeVSCode === true) configBuilder.setIncludeVSCode(true);
 
     if (options.depth) configBuilder.setMaxDepth(parseInt(options.depth, 10));
@@ -277,7 +343,7 @@ export class CompactRecursiveCommand {
     if (options.constants === false) configBuilder.includeConstants(false);
     if (options.selfFunctions === false) configBuilder.includeSelfFunctions(false);
 
-    // Связи - если relations отключены, отключаем всё
+    // Связи — если relations отключены, отключаем всё
     if (options.relations === false) {
       configBuilder
         .includeCalls(false)
@@ -290,7 +356,6 @@ export class CompactRecursiveCommand {
         .includeConstDeps(false)
         .includeConstExports(false);
     } else {
-      // Иначе применяем индивидуальные опции
       if (options.calls === false) configBuilder.includeCalls(false);
       if (options.imports === false) configBuilder.includeImports(false);
       if (options.exports === false) configBuilder.includeExports(false);
@@ -326,8 +391,6 @@ export class CompactRecursiveCommand {
     const config = configBuilder.build();
     const genOptions = configBuilder.toGeneratorOptions();
 
-    // ✅ ИСПРАВЛЕНО v2: показываем реальное состояние includeBody
-    // ✅ ИСПРАВЛЕНО v5: показываем реальное состояние includeVSCode
     console.log('\n📋 ИТОГОВАЯ КОНФИГУРАЦИЯ:');
     console.log(`   • Пресет: ${options.preset}`);
     console.log(`   • Функции: ${config.functions ? '✅' : '❌'}`);
@@ -355,27 +418,29 @@ export class CompactRecursiveCommand {
     console.log(`   • Шаблоны: ${config.useTemplates ? '✅' : '❌'}`);
     console.log(`   • Тела функций: ${config.includeBody ? '✅' : '❌'}`);
     console.log(`   • VSCode ссылки: ${config.includeVSCode ? '✅' : '❌'}`);
-    // ✅ НОВОЕ v8: строка про edges в итоговой конфигурации
     console.log(`   • Edges в отдельный файл: ${options.edges === true ? '✅' : '❌'}`);
     if (options.edges === true) {
       console.log(`   • Суффикс edges: ${options.edgesSuffix || '.edges.json'}`);
     }
     console.log('');
 
-    // ============================================
-    // ✅ ИСПРАВЛЕНО: используем новую структуру GenerateReportResult (v9.0.0)
-    // ✅ v8: пробрасываем saveEdges и edgesJsonSuffix
-    // ============================================
+    // ============================================================
+    // ✅ v11.0.0: применяем outputOptions из конфига
+    // ============================================================
     const report = generateCompactReport(entitiesMap, outputPath, {
       ...genOptions,
       ultra: options.ultra || false,
       preset: options.preset,
       verbose: options.verbose,
-      compress: true,
-      saveFullJson: true,
-      // ✅ v8: edges — только если явно запрошено
-      saveEdges: options.edges === true,
-      edgesJsonSuffix: options.edgesSuffix || '.edges.json',
+
+      // ✅ Из конфига (outputOptions)
+      compress: outputOpts.compress !== false,
+      saveFullJson: outputOpts.saveFullJson !== false,
+      fullJsonSuffix: outputOpts.fullJsonSuffix || '.full.json',
+
+      // ✅ Edges
+      saveEdges: options.edges === true || outputOpts.saveEdges === true,
+      edgesJsonSuffix: options.edgesSuffix || outputOpts.edgesJsonSuffix || '.edges.json',
     });
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -387,9 +452,7 @@ export class CompactRecursiveCommand {
     console.log(`📄 Файл: ${outputPath}`);
     console.log(`⏱️  Время: ${duration} сек`);
 
-    // ============================================
-    // ✅ ИСПРАВЛЕНО: безопасное получение статистики из новой структуры
-    // ============================================
+    // Безопасное получение статистики
     const fullStats = report.full?.statistics;
 
     console.log('\n📊 СТАТИСТИКА ОТЧЕТА:');
@@ -407,9 +470,7 @@ export class CompactRecursiveCommand {
       console.log('   ⚠️ Статистика недоступна');
     }
 
-    // ============================================
-    // ✅ ИСПРАВЛЕНО: размеры из report.stats
-    // ============================================
+    // Информация о сжатии
     console.log('\n📦 ИНФОРМАЦИЯ О СЖАТИИ:');
     console.log(`   • Режим: ${options.ultra ? 'УЛЬТРА-КОМПАКТНЫЙ' : 'КОМПАКТНЫЙ'}`);
     console.log(`   • Пресет: ${options.preset}`);
@@ -420,10 +481,8 @@ export class CompactRecursiveCommand {
     console.log(`   • Легенда: ${config.legend ? 'ВКЛЮЧЕНА' : 'ВЫКЛЮЧЕНА'}`);
     console.log(`   • Self functions: ${config.selfFunctions ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
     console.log(`   • Тела функций: ${config.includeBody ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
-    // ✅ ИСПРАВЛЕНО v5: показываем реальное состояние includeVSCode
     console.log(`   • VSCode ссылки: ${config.includeVSCode ? 'ВКЛЮЧЕНЫ' : 'ВЫКЛЮЧЕНЫ'}`);
 
-    // Размеры файлов
     if (report.stats.compactSize !== undefined) {
       const sizeKB = (report.stats.compactSize / 1024).toFixed(2);
       const sizeMB = (report.stats.compactSize / 1024 / 1024).toFixed(2);
@@ -444,13 +503,14 @@ export class CompactRecursiveCommand {
     if (report.fullPath) {
       console.log(`   • Полный JSON: ${report.fullPath}`);
     }
-    // ✅ НОВОЕ v8: информация о файле edges
     if (report.edgesPath) {
-      const edgesSizeKB = report.stats.edgesSize ? (report.stats.edgesSize / 1024).toFixed(2) : '0';
+      const edgesSizeKB = report.stats.edgesSize
+        ? (report.stats.edgesSize / 1024).toFixed(2)
+        : '0';
       console.log(`   • Edges JSON: ${report.edgesPath} (${edgesSizeKB} KB)`);
     }
 
-    console.log('\n💡 ПРИНЦИП "ЕДИНЫЙ ИСТОЧНИК ИСТИНЫ":');
+    console.log('\n💡 ПРИНЦИП \"ЕДИНЫЙ ИСТОЧНИК ИСТИНЫ\":');
     console.log('   ✅ Каждый тип данных хранится в одном месте');
     console.log('   ✅ Нет дублирования информации');
     console.log('   ✅ Все связи в едином графе');
@@ -496,7 +556,6 @@ export class CompactRecursiveCommand {
     console.log('   # Без импортов и экспортов (только вызовы)');
     console.log('   npx ast-analyzer compact-recursive ./src/index.ts --no-imports --no-exports');
     console.log('');
-    // ✅ НОВОЕ v8: примеры с --edges
     console.log('   # С edges в отдельном файле');
     console.log('   npx ast-analyzer compact-recursive ./src/index.ts --preset full --edges');
     console.log('');
@@ -505,25 +564,55 @@ export class CompactRecursiveCommand {
       '   npx ast-analyzer compact-recursive ./src/index.ts --edges --edges-suffix .graph.json'
     );
     console.log('');
+    console.log('   # ✅ v11.0.0: с конфиг-файлом');
+    console.log(
+      '   npx ast-analyzer compact-recursive ./src/index.ts --config ./ast-analyzer.config.json'
+    );
+    console.log('');
+    console.log('   # ✅ v11.0.0: с исключениями через CLI');
+    console.log(
+      '   npx ast-analyzer compact-recursive ./src/index.ts --exclude \"**/__tests__/**,**/fixtures/**\"'
+    );
+    console.log('');
 
     console.log('='.repeat(70) + '\n');
   }
 
+  private parseExcludePatterns(exclude: unknown): string[] {
+    if (!exclude) return [];
+
+    if (Array.isArray(exclude)) {
+      return exclude.filter((p): p is string => typeof p === 'string' && p.length > 0);
+    }
+
+    if (typeof exclude === 'string') {
+      return exclude
+        .split(',')
+        .map(p => p.trim())
+        .filter(p => p.length > 0);
+    }
+
+    return [];
+  }
+
   /**
-   * ✅ v10: Сбор файлов проекта через единый модуль reporters/json
-   *
-   * Использует collectFilesForAnalysis из ci-cd/index.js,
-   * который в свою очередь использует glob с едиными exclude-паттернами.
+   * ✅ v11.0.0: Сбор файлов проекта через единый модуль reporters/json.
    *
    * @param entryPath — точка входа
-   * @param maxDepth — максимальная глубина (не используется, но оставлен для совместимости)
+   * @param maxDepth — максимальная глубина (не используется, оставлен для совместимости)
+   * @param excludePatterns — дополнительные паттерны исключения
    * @returns массив абсолютных путей к файлам
    */
-  private async collectProjectFiles(entryPath: string, maxDepth: number): Promise<string[]> {
+  private async collectProjectFiles(
+    entryPath: string,
+    maxDepth: number,
+    excludePatterns: string[] = []
+  ): Promise<string[]> {
     const entryDir = path.dirname(entryPath);
 
     // ✅ ЕДИНЫЙ ИСТОЧНИК: collectFilesForAnalysis из ci-cd/index.js
-    const files = await collectFilesForAnalysis([entryDir], true);
+    // Передаём excludePatterns третьим аргументом
+    const files = await collectFilesForAnalysis([entryDir], true, excludePatterns);
 
     // Фильтруем по глубине (простая эвристика: считаем слэши от entryDir)
     if (maxDepth > 0 && maxDepth < 1000) {

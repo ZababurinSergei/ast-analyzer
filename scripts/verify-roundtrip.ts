@@ -3,6 +3,20 @@
 // ============================================
 // Скрипт проверки Round-Trip для CODEC
 // ============================================
+// Версия: 10.4.0
+//
+// ИЗМЕНЕНИЯ v10.4.0 (проверка легенды для ИИ):
+//   - ✅ ДОБАВЛЕНО: опция --no-check-legend (по умолчанию проверка включена)
+//   - ✅ ДОБАВЛЕНО: секция "СТРУКТУРА ЛЕГЕНДЫ" — проверяет, что
+//     legend содержит:
+//       • how_to_read    — инструкцию для ИИ
+//       • flags.bits     — 18 битов
+//       • flags.examples — примеры разбора
+//       • codes.*        — расшифровки кодов (export/import/call/...)
+//       • dictionaries.* — словари значений
+//       • schemas.*      — позиционные схемы кортежей
+//   - ✅ ДОБАВЛЕНО: L-проверки (L1–L6) для структуры легенды
+//
 // Уровни round-trip:
 //   L0  : encode(full) === compact          (семантически)
 //   L1  : decode(compact) === full          (семантически)
@@ -20,6 +34,14 @@
 //   I4  : external calls → isExternal = 1 в compact.gr.c
 //   I5  : external calls: сохранность типа (v10.3 — сравнение full vs decoded)
 //   I6  : functions[].*Flags ∈ {true, false, undefined}
+//
+// Проверки легенды (v10.4.0):
+//   L1  : legend.how_to_read присутствует и непуст
+//   L2  : legend.flags.bits содержит 18 битов
+//   L3  : legend.flags.examples содержит примеры
+//   L4  : legend.codes.{export,import,call,...} присутствуют
+//   L5  : legend.dictionaries.* присутствуют
+//   L6  : legend.schemas.{fns,gr.e,gr.c,vt} корректной длины
 //
 // Эталоны (golden):
 //   G1  : full ≈ scripts/fixtures/index.full.golden.json
@@ -45,6 +67,8 @@ interface ScriptOptions {
   maxDiffs: number;
   jsonReportPath: string | null;
   goldenDir: string | null;
+  /** ✅ v10.4.0: проверять ли структуру легенды */
+  checkLegend: boolean;
 }
 
 const DEFAULT_OPTIONS: ScriptOptions = {
@@ -54,6 +78,7 @@ const DEFAULT_OPTIONS: ScriptOptions = {
   maxDiffs: 10,
   jsonReportPath: null,
   goldenDir: './scripts/fixtures',
+  checkLegend: true,
 };
 
 // ============================================
@@ -296,6 +321,136 @@ function printLevelResult(name: string, result: LevelResult, maxDiffs: number): 
 }
 
 // ============================================
+// ✅ v10.4.0: ПРОВЕРКА СТРУКТУРЫ ЛЕГЕНДЫ
+// ============================================
+
+interface LegendCheck {
+  name: string;
+  ok: boolean;
+  note?: string;
+}
+
+/**
+ * Проверяет структуру legend в compact.json.
+ *
+ * Проверяет, что legend содержит все секции, необходимые ИИ
+ * для самостоятельного разбора кортежей:
+ *   - how_to_read    — инструкция для ИИ
+ *   - flags.bits     — 18 битов
+ *   - flags.examples — примеры разбора
+ *   - codes.*        — расшифровки кодов
+ *   - dictionaries.* — словари значений
+ *   - schemas.*      — позиционные схемы кортежей
+ */
+function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
+  const legend = (compact as any).legend;
+  const checks: LegendCheck[] = [];
+
+  // ==========================================
+  // L1: how_to_read
+  // ==========================================
+  checks.push({
+    name: 'L1: legend.how_to_read (инструкция для ИИ)',
+    ok: Array.isArray(legend?.how_to_read) && legend.how_to_read.length > 0,
+    note: legend?.how_to_read ? `${legend.how_to_read.length} строк` : 'отсутствует',
+  });
+
+  // ==========================================
+  // L2: flags.bits — 18 битов
+  // ==========================================
+  const bitsCount = legend?.flags?.bits ? Object.keys(legend.flags.bits).length : 0;
+  checks.push({
+    name: 'L2: legend.flags.bits (18 битов)',
+    ok: bitsCount === 18,
+    note: legend?.flags?.bits ? `${bitsCount} битов` : 'отсутствует',
+  });
+
+  // ==========================================
+  // L3: flags.examples
+  // ==========================================
+  const examplesCount = legend?.flags?.examples ? Object.keys(legend.flags.examples).length : 0;
+  checks.push({
+    name: 'L3: legend.flags.examples (примеры разбора)',
+    ok: examplesCount > 0,
+    note: legend?.flags?.examples ? `${examplesCount} примеров` : 'отсутствует',
+  });
+
+  // ==========================================
+  // L4: codes.* — расшифровки кодов
+  // ==========================================
+  const requiredCodes = [
+    'export',
+    'import',
+    'call',
+    'reExport',
+    'lifecycle',
+    'effect',
+    'injection',
+    'reactivity',
+    'conditional',
+    'typeKind',
+    'typeUsage',
+  ];
+
+  for (const codeName of requiredCodes) {
+    const dict = legend?.codes?.[codeName];
+    const size = dict ? Object.keys(dict).length : 0;
+    checks.push({
+      name: `L4: legend.codes.${codeName}`,
+      ok: size > 0,
+      note: dict ? `${size} кодов` : 'отсутствует',
+    });
+  }
+
+  // ==========================================
+  // L5: dictionaries.* — словари значений
+  // ==========================================
+  const requiredDicts = ['stringDict', 'paramDict', 'methodDict', 'valueDict'];
+
+  for (const dictName of requiredDicts) {
+    const dict = legend?.dictionaries?.[dictName];
+    checks.push({
+      name: `L5: legend.dictionaries.${dictName}`,
+      ok: Array.isArray(dict),
+      note: Array.isArray(dict) ? `${dict.length} записей` : 'отсутствует',
+    });
+  }
+
+  // ==========================================
+  // L6: schemas.* — позиционные схемы кортежей
+  // ==========================================
+  const schemaChecks: Array<{ key: string; expectedLength: number }> = [
+    { key: 'fns', expectedLength: 8 },
+    { key: 'cls', expectedLength: 7 },
+    { key: 'cn', expectedLength: 7 },
+    { key: 'gr.e', expectedLength: 12 },
+    { key: 'gr.i', expectedLength: 8 },
+    { key: 'gr.c', expectedLength: 5 },
+    { key: 'gr.re', expectedLength: 7 },
+    { key: 'vt', expectedLength: 12 },
+    { key: 'lc', expectedLength: 5 },
+    { key: 'ef', expectedLength: 5 },
+    { key: 'inj', expectedLength: 5 },
+    { key: 'rx', expectedLength: 6 },
+    { key: 'cd', expectedLength: 6 },
+    { key: 'ty', expectedLength: 7 },
+    { key: 'tr', expectedLength: 5 },
+  ];
+
+  for (const { key, expectedLength } of schemaChecks) {
+    const schema = legend?.schemas?.[key];
+    const actualLength = Array.isArray(schema) ? schema.length : 0;
+    checks.push({
+      name: `L6: legend.schemas.${key} (${expectedLength} полей)`,
+      ok: actualLength === expectedLength,
+      note: Array.isArray(schema) ? `${actualLength} полей` : 'отсутствует',
+    });
+  }
+
+  return checks;
+}
+
+// ============================================
 // ОСНОВНАЯ ЛОГИКА
 // ============================================
 
@@ -319,6 +474,9 @@ async function main(): Promise<void> {
       options.goldenDir = args[++i]!;
     } else if (arg === '--no-golden') {
       options.goldenDir = null;
+    } else if (arg === '--no-check-legend') {
+      // ✅ v10.4.0
+      options.checkLegend = false;
     } else if (arg === '--help' || arg === '-h') {
       printHelp();
       process.exit(0);
@@ -331,6 +489,7 @@ async function main(): Promise<void> {
   info(`Verbose: ${options.verbose}`);
   info(`MaxDiffs: ${options.maxDiffs}`);
   info(`Golden:  ${options.goldenDir ? path.resolve(options.goldenDir) : 'disabled'}`);
+  info(`CheckLegend: ${options.checkLegend}`);
   if (options.jsonReportPath) {
     info(`JSON report: ${path.resolve(options.jsonReportPath)}`);
   }
@@ -380,6 +539,42 @@ async function main(): Promise<void> {
   log('  FullJSON секции:');
   for (const [key, value] of Object.entries(sections)) {
     log(`    ${key.padEnd(14)} ${value}`);
+  }
+
+  // ============================================
+  // 2.5. ✅ v10.4.0: ПРОВЕРКА СТРУКТУРЫ ЛЕГЕНДЫ
+  // ============================================
+
+  let legendChecks: LegendCheck[] = [];
+  let legendPassed = 0;
+  let legendFailed = 0;
+
+  if (options.checkLegend) {
+    section('📖 СТРУКТУРА ЛЕГЕНДЫ (v10.4.0)');
+
+    legendChecks = checkLegendStructure(compact);
+
+    for (const check of legendChecks) {
+      if (check.ok) {
+        ok(`${check.name}${check.note ? ` — ${check.note}` : ''}`);
+        legendPassed++;
+      } else {
+        fail(`${check.name}${check.note ? ` — ${check.note}` : ''}`);
+        legendFailed++;
+      }
+    }
+
+    log('');
+    if (legendFailed === 0) {
+      log(
+        `  ${C.green}Легенда: ${legendPassed}/${legendChecks.length} проверок пройдено${C.reset}`
+      );
+    } else {
+      log(
+        `  ${C.red}Легенда: ${legendPassed}/${legendChecks.length} проверок пройдено, ` +
+          `${legendFailed} провалено${C.reset}`
+      );
+    }
   }
 
   // ============================================
@@ -780,6 +975,11 @@ async function main(): Promise<void> {
     { name: 'spotCheck: modules[].path', ok: baseReport.spotChecks.modulesPath.ok },
   ];
 
+  // ✅ v10.4.0: добавляем проверки легенды
+  for (const check of legendChecks) {
+    levels.push({ name: `legend: ${check.name}`, ok: check.ok });
+  }
+
   // Добавляем инварианты
   for (const inv of invariantResults) {
     levels.push({ name: `invariant: ${inv.name}`, ok: inv.ok });
@@ -855,6 +1055,14 @@ async function main(): Promise<void> {
     // Семантические инварианты
     invariants: invariantResults,
 
+    // ✅ v10.4.0: проверки легенды
+    legend: {
+      enabled: options.checkLegend,
+      checks: legendChecks,
+      passed: legendPassed,
+      failed: legendFailed,
+    },
+
     // Эталоны
     golden: goldenResults,
 
@@ -900,6 +1108,7 @@ ${C.bold}Опции:${C.reset}
   --json-report <path>   Сохранить отчёт в JSON-файл
   --golden <dir>         Директория с эталонами (по умолчанию ./scripts/fixtures)
   --no-golden            Отключить проверку эталонов
+  --no-check-legend      ✅ v10.4.0: отключить проверку структуры легенды
   -h, --help             Показать эту справку
 
 ${C.bold}Уровни round-trip:${C.reset}
@@ -920,6 +1129,14 @@ ${C.bold}Семантические инварианты:${C.reset}
   I5  : external calls: сохранность типа (full vs decoded)
   I6  : functions[].*Flags ∈ {true, false, undefined}
 
+${C.bold}Проверки легенды (v10.4.0):${C.reset}
+  L1  : legend.how_to_read присутствует и непуст
+  L2  : legend.flags.bits содержит 18 битов
+  L3  : legend.flags.examples содержит примеры
+  L4  : legend.codes.{export,import,call,...} присутствуют
+  L5  : legend.dictionaries.* присутствуют
+  L6  : legend.schemas.{fns,gr.e,gr.c,vt,...} корректной длины
+
 ${C.bold}Эталоны (golden):${C.reset}
   G1  : full ≈ scripts/fixtures/index.full.golden.json
   G2  : compact ≈ scripts/fixtures/index.golden.json
@@ -929,6 +1146,7 @@ ${C.bold}Примеры:${C.reset}
   npx tsx scripts/verify-roundtrip.ts --json-report ./round-trip-report.json
   npx tsx scripts/verify-roundtrip.ts -v --max-diffs 20
   npx tsx scripts/verify-roundtrip.ts --no-golden
+  npx tsx scripts/verify-roundtrip.ts --no-check-legend
   npx tsx scripts/verify-roundtrip.ts --golden ./my-fixtures
 `);
 }

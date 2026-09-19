@@ -1,0 +1,80 @@
+{
+  "$schema": "./schemas/ast-analyzer.config.schema.json",
+  "version": "1.0.0",
+
+  "compactRecursive": {
+    "preset": "standard",
+    "depth": 1000,
+    "output": "./example/index.json",
+
+    "includeBody": false,
+    "includeSecurity": false,
+    "includeVSCode": false,
+
+    "functions": true,
+    "constants": true,
+    "selfFunctions": true,
+
+    "relations": {
+      "calls": true,
+      "imports": true,
+      "exports": true,
+      "inheritance": true,
+      "typeDeps": true,
+      "reExports": true,
+      "constUses": true,
+      "constDeps": true,
+      "constExports": true
+    },
+
+    "extended": {
+      "dynamicImports": true,
+      "configRefs": true,
+      "externalLibs": true,
+      "vueTemplates": true,
+      "asyncChains": true,
+      "closures": true,
+      "reflections": false
+    },
+
+    "stats": {
+      "basic": true,
+      "extended": true,
+      "byModule": true,
+      "byFile": true,
+      "byType": true
+    },
+
+    "metadata": {
+      "flags": true,
+      "types": true,
+      "errors": false
+    },
+
+    "formatting": {
+      "minifyKeys": false,
+      "useBitFlags": true,
+      "useDictionaries": true,
+      "useTemplates": true,
+      "readableKeys": true
+    },
+
+    "outputOptions": {
+      "compress": true,
+      "saveFullJson": true,
+      "fullJsonSuffix": ".full.json",
+      "saveEdges": false,
+      "edgesJsonSuffix": ".edges.json"
+    },
+
+    "exclude": [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/coverage/**",
+      "**/*.d.ts",
+      "**/__tests__/**",
+      "**/fixtures/**"
+    ]
+  }
+}

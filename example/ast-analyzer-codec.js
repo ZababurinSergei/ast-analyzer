@@ -149,7 +149,40 @@
 //   - ✅ Сохранены обратно-совместимые API v9.4:
 //        decodeCompactData, encodeToCompactData, roundTripSemantic,
 //        roundTripByteExact, roundTripEncode, detectFormat, toFullData
+//
 // ============================================================================
+//
+// Изменения в этой версии (интеграция с ast-analyzer-utils.js):
+//   - ✅ УБРАНЫ ДУБЛИ: deepEqual, diffObjects, collectDiffs, normalizeForDiff,
+//       arrayEq, idToNum, stripServiceFields, stripForByteCompare
+//       теперь импортируются из './ast-analyzer-utils.js' — единый источник.
+//   - ✅ Реэкспорт утилит для обратной совместимости (Codec.__internals,
+//       прямые экспорты).
+// ============================================================================
+
+import {
+  deepEqual,
+  diffObjects,
+  collectDiffs,
+  normalizeForDiff,
+  arrayEq,
+  idToNum,
+  stripServiceFields,
+  stripForByteCompare,
+} from './ast-analyzer-utils.js';
+
+// Реэкспортируем утилиты для обратной совместимости:
+// любой, кто импортировал их из codec, продолжит работать.
+export {
+  deepEqual,
+  diffObjects,
+  collectDiffs,
+  normalizeForDiff,
+  arrayEq,
+  idToNum,
+  stripServiceFields,
+  stripForByteCompare,
+};
 
 // ---------------------------------------------------------------------------
 // ВЕРСИЯ
@@ -481,22 +514,6 @@ class FrozenValueDictBuilder {
     this.map.set(key, idx);
     return idx;
   }
-}
-
-// ---------------------------------------------------------------------------
-// УТИЛИТЫ
-// ---------------------------------------------------------------------------
-
-function idToNum(id) {
-  if (!id || typeof id !== 'string') return -1;
-  const m = id.match(/(\d+)$/);
-  return m ? parseInt(m[1], 10) : -1;
-}
-
-function arrayEq(a, b) {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -1469,140 +1486,13 @@ export function buildEdgesStats(edges) {
 }
 
 // ---------------------------------------------------------------------------
-// DEEP EQUAL / DIFF
+// DEEP EQUAL / DIFF — реэкспортированы из utils (см. начало файла).
+// Локальных дублей больше нет.
 // ---------------------------------------------------------------------------
-
-export function deepEqual(a, b) {
-  const isEmptyA =
-    a === undefined ||
-    a === null ||
-    (Array.isArray(a) && a.length === 0) ||
-    (typeof a === 'object' && !Array.isArray(a) && Object.keys(a).length === 0);
-  const isEmptyB =
-    b === undefined ||
-    b === null ||
-    (Array.isArray(b) && b.length === 0) ||
-    (typeof b === 'object' && !Array.isArray(b) && Object.keys(b).length === 0);
-  if (isEmptyA && isEmptyB) return true;
-  if (a === b) return true;
-  if (typeof a !== typeof b) return false;
-  if (a === null || b === null) return a === b;
-  if (Array.isArray(a) !== Array.isArray(b)) return false;
-  if (Array.isArray(a)) {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) if (!deepEqual(a[i], b[i])) return false;
-    return true;
-  }
-  if (typeof a === 'object') {
-    const ka = Object.keys(a).filter(k => a[k] !== undefined);
-    const kb = Object.keys(b).filter(k => b[k] !== undefined);
-    if (ka.length !== kb.length) return false;
-    for (const k of ka) if (!deepEqual(a[k], b[k])) return false;
-    return true;
-  }
-  return false;
-}
-
-export function diffObjects(a, b) {
-  const diffs = [];
-  const walk = (x, y, path) => {
-    if (diffs.length >= 20) return;
-    if (deepEqual(x, y)) return;
-    if (Array.isArray(x) && Array.isArray(y)) {
-      const n = Math.max(x.length, y.length);
-      for (let i = 0; i < n; i++) walk(x[i], y[i], `${path}[${i}]`);
-    } else if (x && y && typeof x === 'object' && typeof y === 'object') {
-      const keys = new Set([...Object.keys(x), ...Object.keys(y)]);
-      for (const k of keys) walk(x[k], y[k], `${path}.${k}`);
-    } else {
-      diffs.push({ path, a: x, b: y });
-    }
-  };
-  walk(a, b, '$');
-  return diffs;
-}
-
-/**
- * Собирает расхождения между двумя значениями (TS-совместимый API).
- * Возвращает массив {path, a, b}.
- */
-export function collectDiffs(a, b, basePath = '$', limit = 20) {
-  const diffs = [];
-  const walk = (x, y, p) => {
-    if (diffs.length >= limit) return;
-    if (deepEqual(x, y)) return;
-    if (x === undefined || y === undefined || x === null || y === null) {
-      if (x !== y) diffs.push({ path: p, a: x, b: y });
-      return;
-    }
-    if (Array.isArray(x) && Array.isArray(y)) {
-      if (x.length !== y.length) diffs.push({ path: `${p}.length`, a: x.length, b: y.length });
-      const n = Math.min(x.length, y.length);
-      for (let i = 0; i < n; i++) walk(x[i], y[i], `${p}[${i}]`);
-      return;
-    }
-    if (typeof x === 'object' && typeof y === 'object') {
-      const keys = new Set([...Object.keys(x), ...Object.keys(y)]);
-      for (const k of keys) walk(x[k], y[k], `${p}.${k}`);
-      return;
-    }
-    if (x !== y) diffs.push({ path: p, a: x, b: y });
-  };
-  walk(a, b, basePath);
-  return diffs;
-}
-
-/**
- * Нормализует значение для диагностики: сортирует ключи, убирает undefined.
- */
-export function normalizeForDiff(value) {
-  const norm = v => {
-    if (v === undefined) return undefined;
-    if (v === null) return null;
-    if (Array.isArray(v)) return v.map(norm);
-    if (typeof v === 'object') {
-      const out = {};
-      for (const key of Object.keys(v).sort()) {
-        const nv = norm(v[key]);
-        if (nv !== undefined) out[key] = nv;
-      }
-      return out;
-    }
-    return v;
-  };
-  return JSON.stringify(norm(value));
-}
 
 // ---------------------------------------------------------------------------
 // ROUND-TRIP ПРОВЕРКИ
 // ---------------------------------------------------------------------------
-
-function stripServiceFields(obj) {
-  if (!obj || typeof obj !== 'object') return obj;
-  const { __codec, legend, ...rest } = obj;
-  const clean = {};
-  for (const [k, v] of Object.entries(rest)) {
-    if (k.startsWith('__')) continue;
-    if (k === 'edges' || k === 'edgesStats') continue;
-    clean[k] = v;
-  }
-  return clean;
-}
-
-function stripForByteCompare(obj) {
-  if (!obj || typeof obj !== 'object') return obj;
-  const { legend, __codec, ...rest } = obj;
-  const clean = {};
-  for (const [k, v] of Object.entries(rest)) {
-    if (k.startsWith('__')) continue;
-    if (k === 'edges' || k === 'edgesStats') continue;
-    if (v === undefined || v === null) continue;
-    if (Array.isArray(v) && v.length === 0) continue;
-    if (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0) continue;
-    clean[k] = v;
-  }
-  return clean;
-}
 
 export function roundTripSemantic(compact) {
   const full1 = decodeCompactData(compact);

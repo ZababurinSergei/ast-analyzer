@@ -37,7 +37,7 @@ import { convertEntitiesToEnhanced } from '../utils/entities-converter.js';
  * СХЕМА РАБОТЫ
  * ════════════════════════════════════════════════════════════
  *
- *   1. parseFile(filePath)              → AST (или null)
+ *   1. parseFile(filePath)              → ParsedFileInfo | null
  *   2. extractEntities(ast, filePath)   → EntitiesResult
  *   3. convertEntitiesToEnhanced(...)   → EnhancedEntityInfo
  *
@@ -68,9 +68,9 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
   // ────────────────────────────────────────────────────────
   // Шаг 1: Парсинг файла в AST
   // ────────────────────────────────────────────────────────
-  const ast = parseFile(filePath);
+  const parsed = parseFile(filePath);
 
-  if (!ast) {
+  if (!parsed) {
     // Файл не существует, пустой, неподдерживаемый,
     // или содержит синтаксические ошибки.
     // Возвращаем пустой результат — это безопасное поведение
@@ -91,7 +91,16 @@ export function extractEntitiesFromFile(filePath: string): EnhancedEntityInfo {
   //   - imports
   //   - exports (в т.ч. ✅ export * from, export * as ns from)
   //   - callGraph
-  const entities = extractEntities(ast, filePath);
+  //
+  // ✅ ИСПРАВЛЕНО: передаём `parsed.ast`, а не `parsed` целиком.
+  //
+  // Ранее (в ошибочной версии) сюда передавался весь объект
+  // `ParsedFileInfo`, из-за чего `extractEntities` получал
+  // не AST-дерево, а обёртку и возвращал пустой результат.
+  // Это и было причиной нулевой статистики (0 функций, 0 классов).
+  //
+  // Теперь передаём именно `parsed.ast` — реальное ESTree-дерево.
+  const entities = extractEntities(parsed.ast, filePath);
 
   // ────────────────────────────────────────────────────────
   // Шаг 3: Конвертация в публичный формат

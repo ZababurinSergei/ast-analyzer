@@ -2,51 +2,42 @@
 // ============================================
 // ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON
 // ============================================
-// Версия: 9.0.5
+// Версия: 10.4.0
 //
-// Содержит:
-//   - DecodedFlags (интерфейс результата декодирования флагов)
-//   - createEmptyFlags
-//   - flagsStringToNumber
-//   - decodeFlagsToObject
-//   - decode — основная функция декодирования
+// ИЗМЕНЕНИЯ v10.4.0 (единая легенда для ИИ):
+//   - ✅ ИСПРАВЛЕНО: пути к словарям изменились:
+//       было:  legend.stringDict / legend.paramDict /
+//              legend.methodDict / legend.valueDict
+//       стало: legend.dictionaries.stringDict /
+//              legend.dictionaries.paramDict /
+//              legend.dictionaries.methodDict /
+//              legend.dictionaries.valueDict
+//     Причина: legend перестроена в codec-legend.ts для
+//     самодостаточности ИИ (единая структура с how_to_read,
+//     flags, codes, dictionaries, schemas).
+//   - ✅ ДОБАВЛЕН fallback для чтения старых compact.json (v9.x),
+//     где словари лежат на верхнем уровне legend.*
+//   - ✅ ПРОЧЕЕ без изменений: логика декодирования кортежей,
+//     восстановление edges (includeEdges), обработка BigInt-значений
+//     через readValue (idx → valueDict[idx]) — всё как было.
 //
-// ✅ ИЗМЕНЕНИЯ v9.0.5 (v10.3 sync — full round-trip):
-//   - ✅ ИСПРАВЛЕНО: imports[].type для type-only импортов.
-//     Раньше decode возвращал 'type-only', а compact-reporter.ts
-//     в full.json пишет 'type' (см. ImportData.type).
-//     Теперь обе стороны согласованы: 'type'.
-//     Это устраняет расхождение L1/L2/DL:
-//       $.imports[N].type: a="type-only", b="named"/"type"
+// ИЗМЕНЕНИЯ v9.0.7 (round-trip fix):
+//   - readMethod: idx < 0 → null (а не ''). Тип ClassData.methods
+//     расширен до (string | null)[].
+//   - templates[].conditionals: при отсутствии данных → [] (а не undefined).
 //
-//   - ✅ ИСПРАВЛЕНО: удаление пустых опциональных секций.
-//     Если в compact нет ключа vt/cd/lc/ef/inj/rx/ty/tr —
-//     соответствующие поля (templates, conditionals, lifecycle,
-//     effects, injections, reactivity, types, typeRefs) УДАЛЯЮТСЯ
-//     из результата, а не остаются пустыми массивами [].
-//     Это симметрично compact-reporter.ts, который пишет
-//     undefined для пустых опциональных секций.
-//     Базовые секции (classes, constants, exports, imports,
-//     calls, reExports) НЕ удаляются — они всегда массивы,
-//     как и в compact-reporter.ts после v10.3.
+// ИЗМЕНЕНИЯ v9.0.5 (v10.3 sync — full round-trip):
+//   - imports[].type для type-only импортов: 'type' (не 'type-only').
+//   - Удаление пустых опциональных секций.
 //
-// ✅ ИЗМЕНЕНИЯ v9.0.4 (includeEdges default false):
-//   - decode, options.includeEdges теперь по умолчанию false.
-//     Поле edges — производное (восстанавливается из gr.i + gr.e + gr.c + gr.re),
-//     поэтому по умолчанию НЕ добавляется в результат.
-//     Это устраняет расхождение при DL (decode(encode(full)) === full),
-//     когда исходный full не содержит edges (как и должно быть по спецификации).
-//   - При includeEdges === true — edges собирается и добавляется в результат.
-//     Используется для отдельного файла *.edges.json в compact-reporter.ts.
+// ИЗМЕНЕНИЯ v9.0.4 (includeEdges default false):
+//   - decode, options.includeEdges по умолчанию false.
 //
-// ✅ ИЗМЕНЕНИЯ v9.0.3 (gr.c fix):
+// ИЗМЕНЕНИЯ v9.0.3 (gr.c fix):
 //   - decode, секция calls: деструктуризация 5 элементов,
 //     ветвление по isExternal (0 = functionIdx, 1 = stringDictIdx).
-//     Устранена коллизия индексов, из-за которой functionIdx
-//     случайно совпадал с stringDictIdx и decode возвращал
-//     чужое значение 'external:...'.
 //
-// ✅ ИЗМЕНЕНИЯ v9.0.2 (reversibility):
+// ИЗМЕНЕНИЯ v9.0.2 (reversibility):
 //   - decodeFlagsToObject: возвращает все 18 флагов
 //   - decode, секция fns: копирует все 18 флагов (только true)
 //   - decode, секция calls: external определяется по stringDict
@@ -76,6 +67,7 @@ import type {
   TypeRefData,
   EdgeData,
   DecodeOptions,
+  CodecLegend,
 } from './codec-types.js';
 
 import {
@@ -155,6 +147,9 @@ export function createEmptyFlags(): DecodedFlags {
  *   a=1, e=2, m=4, r=8, v=16, n=32, s=64, d=128, c=256, x=512,
  *   t=1024, A=2048, l=4096, y=8192, g=16384, p=32768, P=65536, S=131072
  *
+ * ⚠️ v10.4.0: локальная копия FLAG_CHAR_MAP. Не зависит от legend.
+ *    Легенда используется только для ИИ. Декодер работает автономно.
+ *
  * @param flagStr — строка флагов, например 'em' или 'evl'
  * @returns число флагов
  */
@@ -227,11 +222,80 @@ export function decodeFlagsToObject(flagStr: string): DecodedFlags {
 }
 
 // ============================================
+// ✅ v10.4.0: ХЕЛПЕР ДЛЯ ДОСТУПА К СЛОВАРЯМ
+// ============================================
+//
+// Легенда v10.4.0 имеет структуру:
+//   legend.dictionaries.stringDict
+//   legend.dictionaries.paramDict
+//   legend.dictionaries.methodDict
+//   legend.dictionaries.valueDict
+//
+// Легенда v9.x имела словари на верхнем уровне:
+//   legend.stringDict
+//   legend.paramDict
+//   legend.methodDict
+//   legend.valueDict
+//
+// Функция resolveDictionaries() возвращает словари из любого
+// варианта легенды — это обеспечивает обратную совместимость
+// при чтении старых compact.json.
+// ============================================
+
+interface ResolvedDictionaries {
+  stringDict: string[];
+  paramDict: string[];
+  methodDict: string[];
+  valueDict: unknown[];
+}
+
+/**
+ * Извлекает словари из легенды, поддерживая оба формата:
+ *   - v10.4.0: legend.dictionaries.{stringDict,paramDict,methodDict,valueDict}
+ *   - v9.x:    legend.{stringDict,paramDict,methodDict,valueDict}
+ *
+ * @param legend — легенда из compact.json
+ * @returns нормализованный объект со словарями
+ */
+function resolveDictionaries(legend: CodecLegend): ResolvedDictionaries {
+  // v10.4.0: словари в legend.dictionaries.*
+  const modern = (legend as unknown as { dictionaries?: ResolvedDictionaries }).dictionaries;
+  if (modern && Array.isArray(modern.stringDict)) {
+    return {
+      stringDict: modern.stringDict,
+      paramDict: Array.isArray(modern.paramDict) ? modern.paramDict : [],
+      methodDict: Array.isArray(modern.methodDict) ? modern.methodDict : [],
+      valueDict: Array.isArray(modern.valueDict) ? modern.valueDict : [],
+    };
+  }
+
+  // v9.x: словари на верхнем уровне legend.*
+  const legacy = legend as unknown as {
+    stringDict?: string[];
+    paramDict?: string[];
+    methodDict?: string[];
+    valueDict?: unknown[];
+  };
+
+  return {
+    stringDict: Array.isArray(legacy.stringDict) ? legacy.stringDict : [],
+    paramDict: Array.isArray(legacy.paramDict) ? legacy.paramDict : [],
+    methodDict: Array.isArray(legacy.methodDict) ? legacy.methodDict : [],
+    valueDict: Array.isArray(legacy.valueDict) ? legacy.valueDict : [],
+  };
+}
+
+// ============================================
 // ОСНОВНАЯ ФУНКЦИЯ DECODE
 // ============================================
 
 /**
  * Декодирует сжатый JSON обратно в полный.
+ *
+ * ✅ ИСПРАВЛЕНО (v10.4.0, единая легенда):
+ *   Словари читаются через resolveDictionaries(legend), что
+ *   поддерживает и новую структуру (legend.dictionaries.*),
+ *   и старую (legend.stringDict и т.д. на верхнем уровне).
  *
  * ✅ ИСПРАВЛЕНО (v9.0.4, includeEdges default false):
  *   Поле edges — производное (восстанавливается из gr.i + gr.e + gr.c + gr.re).
@@ -252,12 +316,12 @@ export function decodeFlagsToObject(flagStr: string): DecodedFlags {
  *   - functions[].*Flags восстанавливаются все 18
  *   - exports[].isStarReExport / isDefaultReExport восстанавливаются
  *
- * ✅ ИСПРАВЛЕНО (v9.0.5 / v10.3 sync):
- *   - imports[].type для type-only импортов возвращается как 'type',
- *     а не 'type-only' — согласовано с compact-reporter.ts.
- *   - Пустые опциональные секции (templates, conditionals, lifecycle,
- *     effects, injections, reactivity, types, typeRefs) удаляются
- *     из результата, если их не было в compact.
+ * ✅ ИСПРАВЛЕНО (v9.0.7, round-trip fix):
+ *   - readMethod: idx < 0 → null (а не ''). Устраняет расхождение
+ *     $.classes[N].methods[M]: a="" vs b=null. Тип ClassData.methods
+ *     расширен до (string | null)[].
+ *   - templates[].conditionals: при отсутствии данных → [] (а не undefined).
+ *     Устраняет расхождение $.templates[N].conditionals: a=undefined vs b=[].
  *
  * @param compact — сжатый JSON с легендой
  * @param options — опции декодирования
@@ -276,20 +340,32 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   const legend = compact.legend;
 
   // ============================================
+  // ✅ v10.4.0: Разрешение словарей
+  // ============================================
+  // Поддерживаем и legend.dictionaries.* (v10.4.0),
+  // и legend.* (v9.x) — для обратной совместимости.
+  // ============================================
+  const dictionaries = resolveDictionaries(legend);
+
+  // ============================================
   // Хелперы для чтения словарей
   // ============================================
 
   const readString = (idx: number): string | undefined =>
-    idx < 0 ? undefined : legend.stringDict[idx];
+    idx < 0 ? undefined : dictionaries.stringDict[idx];
 
   const readStringOrEmpty = (idx: number): string =>
-    idx < 0 ? '' : (legend.stringDict[idx] ?? '');
+    idx < 0 ? '' : (dictionaries.stringDict[idx] ?? '');
 
-  const readParam = (idx: number): string => (idx < 0 ? '' : (legend.paramDict[idx] ?? ''));
+  const readParam = (idx: number): string => (idx < 0 ? '' : (dictionaries.paramDict[idx] ?? ''));
 
-  const readMethod = (idx: number): string => (idx < 0 ? '' : (legend.methodDict[idx] ?? ''));
+  // ✅ v9.0.7: возвращаем null при idx < 0, а не ''.
+  // Это симметрично full.json, где method name может быть null.
+  // Тип ClassData.methods расширен до (string | null)[].
+  const readMethod = (idx: number): string | null =>
+    idx < 0 ? null : (dictionaries.methodDict[idx] ?? null);
 
-  const readValue = (idx: number): unknown => (idx < 0 ? undefined : legend.valueDict[idx]);
+  const readValue = (idx: number): unknown => (idx < 0 ? undefined : dictionaries.valueDict[idx]);
 
   // ============================================
   // 1. Модули — с path (reversibility)
@@ -367,6 +443,8 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
         fileId,
         line,
         isExported: flags.isExported,
+        // ✅ v9.0.7: readMethod возвращает null при idx < 0,
+        // что согласовано с full.json (где method name может быть null).
         methods: (methodsIdx || []).map(readMethod),
       };
     }
@@ -604,6 +682,9 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
           line,
         })),
         slots: (slotsIdx || []).map(readStringOrEmpty),
+        // ✅ v9.0.7: если conditionals === undefined, возвращаем []
+        // (а не undefined). Это согласовано с compact-reporter.ts,
+        // который всегда пишет conditionals как [] в TemplateData.
         conditionals: conditionals
           ? conditionals
               .filter(c => c.fileId === fileId)
@@ -615,7 +696,7 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
                 conditionExpression: c.conditionExpression,
                 renderedComponent: c.renderedComponent,
               }))
-          : undefined,
+          : [],
       };
     }
   );

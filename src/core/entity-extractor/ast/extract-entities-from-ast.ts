@@ -26,9 +26,9 @@ import { findFunctionNode } from './find-function-node.js';
 import { collectAllCallsRecursive } from './collect-all-calls-recursive.js';
 import { processExports } from './process-exports.js';
 
-// ==========================================\\
-// ОПЦИИ РЕКУРСИВНОГО ОБХОДА\\
-// ==========================================\\
+// ==========================================
+// ОПЦИИ РЕКУРСИВНОГО ОБХОДА
+// ==========================================
 
 export interface TraverseOptions {
   /**
@@ -40,9 +40,9 @@ export interface TraverseOptions {
   maxDepth?: number;
 }
 
-// ==========================================\\
-// ГЛАВНАЯ ФУНКЦИЯ\\
-// ==========================================\\
+// ==========================================
+// ГЛАВНАЯ ФУНКЦИЯ
+// ==========================================
 
 /**
  * Стандартный анализ AST.
@@ -55,20 +55,20 @@ export interface TraverseOptions {
  * @param options  — опции обхода (по умолчанию: всё дерево)
  */
 export function extractEntitiesFromAST(
-  ast: any,
-  filePath?: string,
-  options: TraverseOptions = {}
+    ast: any,
+    filePath?: string,
+    options: TraverseOptions = {}
 ): EntitiesResult {
   const result = createEmptyEntitiesResult(filePath);
 
-  // ==========================================\\
-  // ГЛУБИНА: минимум 0, по умолчанию Infinity\\
-  // ==========================================\\
+  // ==========================================
+  // ГЛУБИНА: минимум 0, по умолчанию Infinity
+  // ==========================================
   const maxDepth = options.maxDepth === undefined ? Infinity : Math.max(0, options.maxDepth);
 
-  // ==========================================\\
-  // КОНТЕКСТ (мутируется в процессе обхода)\\
-  // ==========================================\\
+  // ==========================================
+  // КОНТЕКСТ (мутируется в процессе обхода)
+  // ==========================================
   const functions: FunctionInfo[] = [];
   const classes: ClassInfo[] = [];
   const constants: ConstantInfo[] = [];
@@ -82,9 +82,9 @@ export function extractEntitiesFromAST(
   const moduleId = filePath && idManager.getModuleId ? idManager.getModuleId(filePath) : undefined;
   const fileId = filePath && idManager.getFileId ? idManager.getFileId(filePath) : undefined;
 
-  // ==========================================\\
-  // ЭКСПОРТЫ ИЗ AST (собираются заранее)\\
-  // ==========================================\\
+  // ==========================================
+  // ЭКСПОРТЫ ИЗ AST (собираются заранее)
+  // ==========================================
   const exportsFromAST = collectExportsFromAST(ast);
 
   if (exportsFromAST.length > 0) {
@@ -111,9 +111,9 @@ export function extractEntitiesFromAST(
     }
   }
 
-  // ==========================================\\
-  // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (внутри замыкания)\\
-  // ==========================================\\
+  // ==========================================
+  // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ (внутри замыкания)
+  // ==========================================
 
   /**
    * Собирает цепочку родительских функций для узла.
@@ -125,8 +125,8 @@ export function extractEntitiesFromAST(
 
     while (current && current.type !== 'Program' && depthCount < 50) {
       if (
-        (current.type === 'FunctionDeclaration' || current.type === 'FunctionExpression') &&
-        current.id
+          (current.type === 'FunctionDeclaration' || current.type === 'FunctionExpression') &&
+          current.id
       ) {
         parentFunctions.unshift(current.id.name);
         depthCount++;
@@ -168,20 +168,20 @@ export function extractEntitiesFromAST(
    * Создаёт и регистрирует FunctionInfo.
    */
   function registerFunction(
-    name: string,
-    node: any,
-    opts: {
-      isExported: boolean;
-      isAsync: boolean;
-      isMethod: boolean;
-      isArrow: boolean;
-      className?: string;
-      parentFunc?: string;
-      isNested: boolean;
-      depth: number;
-      isEventHandler: boolean;
-      eventType?: string;
-    }
+      name: string,
+      node: any,
+      opts: {
+        isExported: boolean;
+        isAsync: boolean;
+        isMethod: boolean;
+        isArrow: boolean;
+        className?: string;
+        parentFunc?: string;
+        isNested: boolean;
+        depth: number;
+        isEventHandler: boolean;
+        eventType?: string;
+      }
   ): void {
     const params = extractParamNames(node.params);
     const bodyText = node.body ? extractBodyText(node.body) : undefined;
@@ -230,9 +230,9 @@ export function extractEntitiesFromAST(
     }
   }
 
-  // ==========================================\\
-  // ЕДИНЫЙ РЕКУРСИВНЫЙ МЕТОД ОБХОДА\\
-  // ==========================================\\
+  // ==========================================
+  // ЕДИНЫЙ РЕКУРСИВНЫЙ МЕТОД ОБХОДА
+  // ==========================================
 
   /**
    * Рекурсивный обход дерева.
@@ -269,9 +269,9 @@ export function extractEntitiesFromAST(
     }
   }
 
-  // ==========================================\\
-  // ДИСПЕТЧЕР ПО ТИПУ УЗЛА\\
-  // ==========================================\\
+  // ==========================================
+  // ДИСПЕТЧЕР ПО ТИПУ УЗЛА
+  // ==========================================
 
   function handleNode(node: any, parent: any, depth: number): void {
     switch (node.type) {
@@ -313,9 +313,9 @@ export function extractEntitiesFromAST(
     }
   }
 
-  // ==========================================\\
-  // ОБРАБОТЧИК: IMPORT DECLARATION\\
-  // ==========================================\\
+  // ==========================================
+  // ОБРАБОТЧИК: IMPORT DECLARATION
+  // ==========================================
 
   function handleImportDeclaration(node: any): void {
     if (!node.source) return;
@@ -357,9 +357,9 @@ export function extractEntitiesFromAST(
     });
   }
 
-  // ==========================================\\
-  // ОБРАБОТЧИК: FUNCTION DECLARATION / EXPRESSION\\
-  // ==========================================\\
+  // ==========================================
+  // ОБРАБОТЧИК: FUNCTION DECLARATION / EXPRESSION
+  // ==========================================
 
   function handleFunction(node: any, parent: any, depth: number): void {
     if (!node.id) return;
@@ -406,9 +406,9 @@ export function extractEntitiesFromAST(
     });
   }
 
-  // ==========================================\\
-  // ОБРАБОТЧИК: ARROW FUNCTION\\
-  // ==========================================\\
+  // ==========================================
+  // ОБРАБОТЧИК: ARROW FUNCTION
+  // ==========================================
 
   function handleArrowFunction(node: any, parent: any, depth: number): void {
     // Определяем имя: из VariableDeclarator или из Property
@@ -420,8 +420,8 @@ export function extractEntitiesFromAST(
       let exportParent = parent.parent;
       while (exportParent && exportParent.type !== 'Program') {
         if (
-          exportParent.type === 'ExportNamedDeclaration' ||
-          exportParent.type === 'ExportDefaultDeclaration'
+            exportParent.type === 'ExportNamedDeclaration' ||
+            exportParent.type === 'ExportDefaultDeclaration'
         ) {
           isExported = true;
           break;
@@ -463,9 +463,9 @@ export function extractEntitiesFromAST(
     });
   }
 
-  // ==========================================\\
-  // ОБРАБОТЧИК: METHOD DEFINITION\\
-  // ==========================================\\
+  // ==========================================
+  // ОБРАБОТЧИК: METHOD DEFINITION
+  // ==========================================
 
   function handleMethodDefinition(node: any, parent: any, depth: number): void {
     if (!node.key) return;
@@ -511,9 +511,9 @@ export function extractEntitiesFromAST(
     });
   }
 
-  // ==========================================\\
-  // ОБРАБОТЧИК: CLASS DECLARATION\\
-  // ==========================================\\
+  // ==========================================
+  // ОБРАБОТЧИК: CLASS DECLARATION
+  // ==========================================
 
   function handleClassDeclaration(node: any, parent: any): void {
     if (!node.id) return;
@@ -554,9 +554,9 @@ export function extractEntitiesFromAST(
     classes.push(classInfo);
   }
 
-  // ==========================================\\
-  // ОБРАБОТЧИК: VARIABLE DECLARATION\\
-  // ==========================================\\
+  // ==========================================
+  // ОБРАБОТЧИК: VARIABLE DECLARATION
+  // ==========================================
 
   function handleVariableDeclaration(node: any, parent: any): void {
     const isExported = isNodeExported(node, parent);
@@ -573,8 +573,8 @@ export function extractEntitiesFromAST(
 
       // Пропускаем стрелочные функции — они обрабатываются в handleArrowFunction
       if (
-        decl.init &&
-        (decl.init.type === 'ArrowFunctionExpression' || decl.init.type === 'FunctionExpression')
+          decl.init &&
+          (decl.init.type === 'ArrowFunctionExpression' || decl.init.type === 'FunctionExpression')
       ) {
         continue;
       }
@@ -605,9 +605,9 @@ export function extractEntitiesFromAST(
     }
   }
 
-  // ==========================================\\
-  // ОБРАБОТЧИК: TS INTERFACE DECLARATION\\
-  // ==========================================\\
+  // ==========================================
+  // ОБРАБОТЧИК: TS INTERFACE DECLARATION
+  // ==========================================
 
   function handleInterfaceDeclaration(node: any, parent: any): void {
     if (!node.id) return;
@@ -639,9 +639,9 @@ export function extractEntitiesFromAST(
     interfaces.push(intfInfo);
   }
 
-  // ==========================================\\
-  // ОБРАБОТЧИК: TS TYPE ALIAS DECLARATION\\
-  // ==========================================\\
+  // ==========================================
+  // ОБРАБОТЧИК: TS TYPE ALIAS DECLARATION
+  // ==========================================
 
   function handleTypeAliasDeclaration(node: any, parent: any): void {
     if (!node.id) return;
@@ -660,9 +660,9 @@ export function extractEntitiesFromAST(
     types.push(typeInfo);
   }
 
-  // ==========================================\\
-  // ЗАПУСК РЕКУРСИВНОГО ОБХОДА\\
-  // ==========================================\\
+  // ==========================================
+  // ЗАПУСК РЕКУРСИВНОГО ОБХОДА
+  // ==========================================
 
   if (ast && Array.isArray(ast.body)) {
     for (const rootNode of ast.body) {
@@ -670,16 +670,16 @@ export function extractEntitiesFromAST(
     }
   }
 
-  // ==========================================\\
-  // ДОБАВЛЯЕМ ЭКСПОРТЫ (БЕЗ isTypeOnly)\\
-  // ==========================================\\
+  // ==========================================
+  // ДОБАВЛЯЕМ ЭКСПОРТЫ (БЕЗ isTypeOnly)
+  // ==========================================
 
   const processedExports = processExports(exportsFromAST);
   exports.push(...processedExports);
 
-  // ==========================================\\
-  // СБОР ВЫЗОВОВ (второй проход по функциям)\\
-  // ==========================================\\
+  // ==========================================
+  // СБОР ВЫЗОВОВ (второй проход по функциям)
+  // ==========================================
 
   for (const func of functions) {
     const { node: funcNode } = findFunctionNode(ast, func.name);
@@ -699,9 +699,9 @@ export function extractEntitiesFromAST(
     }
   }
 
-  // ==========================================\\
-  // ПОСТРОЕНИЕ calledBy\\
-  // ==========================================\\
+  // ==========================================
+  // ПОСТРОЕНИЕ calledBy
+  // ==========================================
 
   for (const func of functions) {
     func.calledBy = [];
@@ -714,9 +714,9 @@ export function extractEntitiesFromAST(
     }
   }
 
-  // ==========================================\\
-  // ЗАПОЛНЕНИЕ РЕЗУЛЬТАТА\\
-  // ==========================================\\
+  // ==========================================
+  // ЗАПОЛНЕНИЕ РЕЗУЛЬТАТА
+  // ==========================================
 
   result.functions = functions;
   result.classes = classes;
@@ -735,9 +735,9 @@ export function extractEntitiesFromAST(
     (result as any)._fileId = fileId;
   }
 
-  // ==========================================\\
-  // ЛОГИРОВАНИЕ\\
-  // ==========================================\\
+  // ==========================================
+  // ЛОГИРОВАНИЕ
+  // ==========================================
 
   // ✅ ИСПРАВЛЕНО: console.log → console.debug
   console.debug(`📤 Экспортов собрано: ${exports.length}`);

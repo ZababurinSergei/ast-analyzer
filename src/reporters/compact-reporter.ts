@@ -2,7 +2,47 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Версия: 9.0.5
+// Версия: 10.4.0
+//
+// ИЗМЕНЕНИЯ v10.4.0 (единое сжатие + легенда для ИИ):
+//   - ✅ ДОБАВЛЕНО: единая функция `saveJsonFile` — все
+//     сохранения JSON (compact / full / edges) проходят
+//     через неё. Устраняет дублирование safeJsonStringify +
+//     fs.writeFileSync + fs.statSync + логирование.
+//   - ✅ ОБНОВЛЕНО: версия отчёта — 10.4.0 (синхронизация
+//     с codec-legend.ts).
+//   - ✅ Легенда теперь собирается в codec-legend.ts и
+//     содержит инструкцию для ИИ (how_to_read), расшифровку
+//     флагов (flags.bits), расшифровку кодов (codes.*),
+//     словари (dictionaries.*) и схемы (schemas.*).
+//
+// ИЗМЕНЕНИЯ v9.0.7 (fix: разделение файлов compact/full):
+//   - ✅ ИСПРАВЛЕНО: функция `insertSuffixBeforeExtension` переписана
+//     с нуля. Раньше она работала некорректно в некоторых случаях:
+//       • если base уже заканчивался на суффикс без расширения,
+//         она возвращала исходный filePath — и полный JSON
+//         сохранялся в тот же файл, что и сжатый;
+//       • если suffix был пустой строкой или '.json',
+//         функция возвращала путь без изменений.
+//     Теперь функция:
+//       • всегда нормализует суффикс (добавляет ведущую точку);
+//       • корректно обрабатывает суффиксы с расширением и без;
+//       • явно проверяет, что base НЕ заканчивается на суффикс;
+//       • если совпадение есть — добавляет числовой суффикс (2, 3, ...)
+//         чтобы гарантировать уникальность имени файла.
+//   - ✅ ДОБАВЛЕНО: явное логирование путей compact и full
+//     в verbose-режиме, чтобы сразу видеть, куда сохраняются файлы.
+//   - ✅ ДОБАВЛЕНО: проверка на совпадение путей compactPath и fullPath
+//     с предупреждением, если они всё-таки совпали.
+//
+// ИЗМЕНЕНИЯ v9.0.6 (safe-json fix):
+//   - ✅ ДОБАВЛЕНО: импорт safeJsonStringify из '../utils/safe-json.js'
+//   - ✅ ЗАМЕНЕНО: 3 вызова JSON.stringify на safeJsonStringify
+//       • сохранение compact.json
+//       • сохранение *.full.json
+//       • сохранение *.edges.json
+//   - ✅ ИСПРАВЛЕНО: TypeError "Do not know how to serialize a BigInt"
+//     при генерации отчёта для проектов с BigInt-литералами.
 //
 // ИЗМЕНЕНИЯ v9.0.5:
 //   - ✅ ДОБАВЛЕНО: опция `saveEdges` (по умолчанию false).
@@ -74,6 +114,9 @@ import {
   clearTsConfigCache,
 } from '../core/tsconfig-resolver.js';
 import { enrichWithReExports } from '../core/entity-extractor/enrich-with-re-exports.js';
+
+// ✅ v9.0.6: безопасная сериализация (BigInt, Map, Set, Circular)
+import { safeJsonStringify } from '../utils/safe-json.js';
 
 // ============================================
 // ✅ v9.0.0: ИМПОРТ ТИПОВ ИЗ codec-types.js
@@ -218,7 +261,7 @@ export function generateCompactReport(
   }
 
   // ============================================
-  // ШАГ 4: Сохранение файлов
+  // ШАГ 4: Сохранение файлов (через единый saveJsonFile)
   // ============================================
   let compactPath: string | undefined;
   let fullPath: string | undefined;
@@ -229,38 +272,48 @@ export function generateCompactReport(
   let compressionRatio: number | undefined;
 
   if (outputPath) {
-    // Создаём директорию
-    const outputDir = path.dirname(outputPath);
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
-
-    // Сохраняем сжатый JSON (основной)
-    if (compact) {
-      fs.writeFileSync(outputPath, JSON.stringify(compact, null, 2), 'utf-8');
-      compactPath = outputPath;
-      compactSize = fs.statSync(outputPath).size;
-
-      if (verbose) {
-        const sizeKB = (compactSize / 1024).toFixed(2);
-        console.log(`   💾 Сжатый JSON: ${outputPath} (${sizeKB} KB)`);
-      }
-    }
-
-    // Сохраняем полный JSON (для отладки)
+    // ✅ v9.0.7: заранее вычисляем путь к full-файлу, чтобы
+    // гарантировать его уникальность относительно compact-файла.
+    let fullPathResolved: string | undefined;
     if (saveFull) {
-      const fullPathResolved = insertSuffixBeforeExtension(outputPath, fullSuffix);
-      fs.writeFileSync(fullPathResolved, JSON.stringify(full, null, 2), 'utf-8');
-      fullPath = fullPathResolved;
-      fullSize = fs.statSync(fullPathResolved).size;
+      fullPathResolved = insertSuffixBeforeExtension(outputPath, fullSuffix);
 
-      if (verbose) {
-        const sizeKB = (fullSize / 1024).toFixed(2);
-        console.log(`   💾 Полный JSON: ${fullPathResolved} (${sizeKB} KB)`);
+      // ✅ v9.0.7: защита от коллизии — если по какой-то причине
+      // путь к full-файлу совпал с compact-файлом, добавляем
+      // числовой суффикс, чтобы гарантировать уникальность.
+      if (path.resolve(fullPathResolved) === path.resolve(outputPath)) {
+        console.warn(
+          `   ⚠️  [compact-reporter] fullPath совпал с compactPath, ` +
+          `применяю аварийный суффикс: ${outputPath}`
+        );
+        fullPathResolved = insertUniqueSuffix(outputPath, fullSuffix);
       }
     }
 
-    // ✅ v9.0.4: сохраняем edges в отдельный файл (только если saveEdges: true)
+    // ---- Сохраняем сжатый JSON (основной) ----
+    if (compact) {
+      const saved = saveJsonFile(outputPath, compact, 'Сжатый JSON', verbose);
+      compactPath = saved.path;
+      compactSize = saved.size;
+    }
+
+    // ---- Сохраняем полный JSON (для отладки) ----
+    if (saveFull && fullPathResolved) {
+      const saved = saveJsonFile(fullPathResolved, full, 'Полный JSON', verbose);
+      fullPath = saved.path;
+      fullSize = saved.size;
+
+      // ✅ v9.0.7: финальная проверка — если пути всё ещё совпали,
+      // это критическая ошибка, о которой нужно сообщить громко.
+      if (compactPath && path.resolve(compactPath) === path.resolve(fullPath)) {
+        console.error(
+          `   ❌ [compact-reporter] КРИТИЧЕСКАЯ ОШИБКА: ` +
+          `compactPath и fullPath совпадают: ${compactPath}`
+        );
+      }
+    }
+
+    // ---- Сохраняем edges в отдельный файл (только если saveEdges: true) ----
     if (saveEdges && compact) {
       const edgesPathResolved = insertSuffixBeforeExtension(outputPath, edgesSuffix);
 
@@ -268,38 +321,31 @@ export function generateCompactReport(
       const fullWithEdges = Codec.decode(compact, { includeEdges: true });
       const edges = fullWithEdges.edges || [];
 
-      fs.writeFileSync(
+      const edgesPayload = {
+        version: fullWithEdges.version,
+        timestamp: fullWithEdges.timestamp,
+        root: fullWithEdges.root,
+        edges,
+        stats: {
+          totalEdges: edges.length,
+          byType: edges.reduce((acc: Record<string, number>, e) => {
+            acc[e.type] = (acc[e.type] || 0) + 1;
+            return acc;
+          }, {}),
+        },
+      };
+
+      const saved = saveJsonFile(
         edgesPathResolved,
-        JSON.stringify(
-          {
-            version: fullWithEdges.version,
-            timestamp: fullWithEdges.timestamp,
-            root: fullWithEdges.root,
-            edges,
-            stats: {
-              totalEdges: edges.length,
-              byType: edges.reduce((acc: Record<string, number>, e) => {
-                acc[e.type] = (acc[e.type] || 0) + 1;
-                return acc;
-              }, {}),
-            },
-          },
-          null,
-          2
-        ),
-        'utf-8'
+        edgesPayload,
+        `Edges JSON (${edges.length} edges)`,
+        verbose
       );
-
-      edgesPath = edgesPathResolved;
-      edgesSize = fs.statSync(edgesPathResolved).size;
-
-      if (verbose) {
-        const sizeKB = (edgesSize / 1024).toFixed(2);
-        console.log(`   💾 Edges JSON: ${edgesPathResolved} (${sizeKB} KB, ${edges.length} edges)`);
-      }
+      edgesPath = saved.path;
+      edgesSize = saved.size;
     }
 
-    // Сравнение размеров
+    // ---- Считаем коэффициент сжатия ----
     if (compactSize !== undefined && fullSize !== undefined && fullSize > 0) {
       compressionRatio = (compactSize / fullSize) * 100;
       if (verbose) {
@@ -341,7 +387,10 @@ export function generateCompactReport(
 /**
  * Декодирует сжатый JSON обратно в полный.
  */
-export function decodeCompactReport(compact: CompactJSON, options: DecodeOptions = {}): FullJSON {
+export function decodeCompactReport(
+  compact: CompactJSON,
+  options: DecodeOptions = {}
+): FullJSON {
   return Codec.decode(compact, options);
 }
 
@@ -376,6 +425,57 @@ export function readFullJson(fullPath: string): FullJSON {
 
   const content = fs.readFileSync(fullPath, 'utf-8');
   return JSON.parse(content) as FullJSON;
+}
+
+// ============================================
+// ✅ v10.4.0: ЕДИНОЕ СОХРАНЕНИЕ JSON
+// ============================================
+// Все сохранения JSON в этом файле идут через saveJsonFile.
+// Это устраняет дублирование safeJsonStringify + fs.writeFileSync
+// + fs.statSync + логирование.
+// ============================================
+
+interface SaveJsonResult {
+  path: string;
+  size: number;
+}
+
+/**
+ * Сохраняет объект в JSON-файл.
+ *
+ * Особенности:
+ *   - использует safeJsonStringify (BigInt → строка, Map/Set,
+ *     circular references);
+ *   - создаёт директорию, если её нет;
+ *   - возвращает путь и размер в байтах;
+ *   - логирует в verbose-режиме.
+ *
+ * @param filePath — путь для сохранения
+ * @param data     — данные для сериализации
+ * @param label    — человекочитаемая метка (для лога)
+ * @param verbose  — логировать ли результат
+ * @returns { path, size } — путь и размер в байтах
+ */
+function saveJsonFile(
+  filePath: string,
+  data: unknown,
+  label: string,
+  verbose: boolean
+): SaveJsonResult {
+  const outputDir = path.dirname(filePath);
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  fs.writeFileSync(filePath, safeJsonStringify(data), 'utf-8');
+  const size = fs.statSync(filePath).size;
+
+  if (verbose) {
+    const sizeKB = (size / 1024).toFixed(2);
+    console.log(`   💾 ${label}: ${filePath} (${sizeKB} KB)`);
+  }
+
+  return { path: filePath, size };
 }
 
 // ============================================
@@ -414,7 +514,9 @@ function collectFullJSON(
   // ============================================
   try {
     clearTsConfigCache();
-    const firstTsFile = Object.keys(entitiesMap).find(f => f.endsWith('.ts') || f.endsWith('.tsx'));
+    const firstTsFile = Object.keys(entitiesMap).find(
+      f => f.endsWith('.ts') || f.endsWith('.tsx')
+    );
     const startDir = firstTsFile ? path.dirname(path.resolve(firstTsFile)) : process.cwd();
     loadTsConfig(startDir);
     if (verbose) {
@@ -690,16 +792,16 @@ function collectFullJSON(
     // ✅ v9.0.0: hasTemplate учитывает templateConditionals
     const hasTemplate =
       (e.templateReactivityDeps?.length || 0) +
-        (e.templateEventHandlers?.length || 0) +
-        (e.templateDynamicComponents?.length || 0) +
-        (e.templateRefs?.length || 0) +
-        (e.templateCssVariables?.length || 0) +
-        (e.templateDeepSelectors?.length || 0) +
-        (e.templateUsedComponents?.length || 0) +
-        (e.templateSlots?.length || 0) +
-        (e.templateDirectives?.length || 0) +
-        (e.templateConditionals?.length || 0) +
-        (e.templateComplexity || 0) >
+      (e.templateEventHandlers?.length || 0) +
+      (e.templateDynamicComponents?.length || 0) +
+      (e.templateRefs?.length || 0) +
+      (e.templateCssVariables?.length || 0) +
+      (e.templateDeepSelectors?.length || 0) +
+      (e.templateUsedComponents?.length || 0) +
+      (e.templateSlots?.length || 0) +
+      (e.templateDirectives?.length || 0) +
+      (e.templateConditionals?.length || 0) +
+      (e.templateComplexity || 0) >
       0;
 
     if (!hasTemplate) continue;
@@ -882,9 +984,9 @@ function collectFullJSON(
 
       const packageName = isExternal
         ? (imp as any).packageName ||
-          (imp.source.startsWith('@')
-            ? imp.source.split('/').slice(0, 2).join('/')
-            : imp.source.split('/')[0])
+        (imp.source.startsWith('@')
+          ? imp.source.split('/').slice(0, 2).join('/')
+          : imp.source.split('/')[0])
         : undefined;
 
       let resolvedToFileId: string | null = null;
@@ -1223,12 +1325,12 @@ function collectFullJSON(
   if (
     verbose &&
     lifecycle.length +
-      effects.length +
-      injections.length +
-      reactivity.length +
-      types.length +
-      typeRefs.length >
-      0
+    effects.length +
+    injections.length +
+    reactivity.length +
+    types.length +
+    typeRefs.length >
+    0
   ) {
     console.log(`   🧬 Lifecycle: ${lifecycle.length}`);
     console.log(`   ⚡ Effects: ${effects.length}`);
@@ -1288,9 +1390,10 @@ function collectFullJSON(
   //           `$.classes: [] vs undefined` между decode(compact) и full.json.
   //           codec-decode.ts всегда возвращает [] для этих секций,
   //           поэтому full.json должен делать то же самое.
+  // ✅ v10.4.0: версия отчёта — 10.4.0 (синхронизация с codec-legend.ts).
   // ============================================
   const result: FullJSON = {
-    version: '9.0.0',
+    version: '10.4.0',
     timestamp: new Date().toISOString(),
     root,
     modules,
@@ -1325,16 +1428,112 @@ function collectFullJSON(
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ============================================
 
+/**
+ * ✅ v9.0.7: вставляет суффикс перед расширением файла.
+ *
+ * Гарантирует, что результирующее имя файла ОТЛИЧАЕТСЯ от исходного.
+ * Если после вставки суффикса имя совпадает с исходным (например,
+ * потому что base уже заканчивался на этот суффикс), функция
+ * добавляет числовой суффикс (2, 3, ...) до тех пор, пока имя
+ * не станет уникальным.
+ *
+ * Примеры:
+ *   insertSuffixBeforeExtension('report.json', '.full.json')
+ *     → 'report.full.json'
+ *
+ *   insertSuffixBeforeExtension('report.full.json', '.full.json')
+ *     → 'report.full.2.json'  (аварийный режим)
+ *
+ *   insertSuffixBeforeExtension('report.json', '.edges.json')
+ *     → 'report.edges.json'
+ *
+ *   insertSuffixBeforeExtension('report.json', '')
+ *     → 'report.2.json'       (пустой суффикс → аварийный режим)
+ *
+ * @param filePath — исходный путь к файлу
+ * @param suffix — суффикс (например, '.full.json' или '.edges.json')
+ * @returns путь к новому файлу, гарантированно отличающийся от исходного
+ */
 function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
-  const ext = path.extname(filePath);
-  const base = filePath.slice(0, -ext.length);
+  const ext = path.extname(filePath); // '.json'
+  const base = filePath.slice(0, -ext.length); // 'report'
 
-  const suffixNoExt = suffix.replace(/\.json$/i, '').replace(/^\./, '');
-  if (base.endsWith(suffixNoExt)) {
-    return filePath;
+  // Нормализуем суффикс: убеждаемся, что он начинается с точки
+  let normalizedSuffix = suffix.trim();
+  if (!normalizedSuffix) {
+    // Пустой суффикс — аварийный режим
+    return insertUniqueSuffix(filePath, suffix);
+  }
+  if (!normalizedSuffix.startsWith('.')) {
+    normalizedSuffix = `.${normalizedSuffix}`;
   }
 
-  return `${base}${suffix.replace('.json', '')}${ext}`;
+  // Если суффикс заканчивается на то же расширение, что и файл,
+  // убираем расширение из суффикса — оно уже есть в ext.
+  // Например, suffix = '.full.json', ext = '.json' → '.full'
+  let suffixWithoutExt = normalizedSuffix;
+  if (suffixWithoutExt.endsWith(ext) && ext.length > 0) {
+    suffixWithoutExt = suffixWithoutExt.slice(0, -ext.length);
+  }
+
+  // Собираем итоговый путь
+  const result = `${base}${suffixWithoutExt}${ext}`;
+
+  // Защита: если результат совпал с исходным (например, base уже
+  // содержал этот суффикс), добавляем числовой суффикс.
+  if (path.resolve(result) === path.resolve(filePath)) {
+    return insertUniqueSuffix(filePath, suffix);
+  }
+
+  return result;
+}
+
+/**
+ * ✅ v9.0.7: аварийная функция — добавляет числовой суффикс (2, 3, ...),
+ * пока результат не станет уникальным относительно исходного пути.
+ *
+ * Используется, когда обычная вставка суффикса не дала уникального
+ * результата (например, base уже заканчивался на этот суффикс,
+ * или суффикс был пустой).
+ *
+ * Примеры:
+ *   insertUniqueSuffix('report.json', '.full.json')
+ *     → 'report.2.json'   (если 'report.full.json' уже существует)
+ *
+ *   insertUniqueSuffix('report.full.json', '.full.json')
+ *     → 'report.full.2.json'
+ *
+ * @param filePath — исходный путь к файлу
+ * @param suffix — суффикс (может быть пустым)
+ * @returns путь к новому файлу, гарантированно отличающийся от исходного
+ */
+function insertUniqueSuffix(filePath: string, suffix: string): string {
+  const ext = path.extname(filePath); // '.json'
+  const base = filePath.slice(0, -ext.length); // 'report'
+
+  // Нормализуем суффикс
+  let normalizedSuffix = suffix.trim();
+  if (normalizedSuffix && !normalizedSuffix.startsWith('.')) {
+    normalizedSuffix = `.${normalizedSuffix}`;
+  }
+  if (normalizedSuffix.endsWith(ext) && ext.length > 0) {
+    normalizedSuffix = normalizedSuffix.slice(0, -ext.length);
+  }
+
+  // Пробуем числовые суффиксы: 2, 3, 4, ...
+  for (let i = 2; i < 1000; i++) {
+    const candidate = `${base}${normalizedSuffix}.${i}${ext}`;
+    if (path.resolve(candidate) !== path.resolve(filePath)) {
+      // Дополнительная проверка: файл не должен существовать на диске
+      if (!fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  // Совсем аварийный случай — используем timestamp
+  const timestamp = Date.now();
+  return `${base}${normalizedSuffix}.${timestamp}${ext}`;
 }
 
 /**
@@ -1375,7 +1574,8 @@ function resolveToFileId(
       if (resolved) {
         const resolvedNormalized = resolved.replace(/\\/g, '/');
 
-        const byAbs = sourceToFileIdMap.get(resolved) || sourceToFileIdMap.get(resolvedNormalized);
+        const byAbs =
+          sourceToFileIdMap.get(resolved) || sourceToFileIdMap.get(resolvedNormalized);
         if (byAbs) return byAbs;
 
         const resolvedBase = path.basename(resolved);
@@ -1411,7 +1611,8 @@ function resolveToFileId(
       if (resolved) {
         const resolvedNormalized = resolved.replace(/\\/g, '/');
 
-        const byAbs = sourceToFileIdMap.get(resolved) || sourceToFileIdMap.get(resolvedNormalized);
+        const byAbs =
+          sourceToFileIdMap.get(resolved) || sourceToFileIdMap.get(resolvedNormalized);
         if (byAbs) return byAbs;
 
         for (const [fp, fd] of fileMap) {

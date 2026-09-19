@@ -1,10 +1,18 @@
 // ============================================================================
-// AST ANALYZER — CORE v9.2
+// AST ANALYZER — CORE v9.3
 // Ядро: парсинг графа, индексация, аналитика, запросы.
 //
 // Форматы входа:
 //   - index.full.json — полный формат (ast-analyzer v8.0.0)
 //   - index.json      — компактный формат v9 (кодированный)
+//
+// Обновления v9.3:
+//   - ✅ УБРАНЫ ДУБЛИ: deepEqual, diffObjects, stripServiceFields,
+//        stripForByteCompare теперь импортируются из ast-analyzer-utils.js.
+//        Это единый источник истины — не дублировать в других модулях.
+//   - ✅ Реэкспорт утилит для совместимости с прежним API:
+//        export { deepEqual, diffObjects, collectDiffs, normalizeForDiff }
+//        и export const __internals = { deepEqual, diffObjects, ... }.
 //
 // Обновления v9.2:
 //   - ✅ loadData(json, options) — принимает { includeEdges } и пробрасывает
@@ -44,6 +52,32 @@ import {
   buildEdgesFromFull,
   buildEdgesStats,
 } from './ast-analyzer-codec.js';
+
+import {
+  deepEqual,
+  diffObjects,
+  collectDiffs,
+  normalizeForDiff,
+  stripServiceFields,
+  stripForByteCompare,
+} from './ast-analyzer-utils.js';
+
+// ============================================================================
+// РЕЭКСПОРТ УТИЛИТ (для обратной совместимости со старым API)
+// ============================================================================
+export {
+  deepEqual,
+  diffObjects,
+  collectDiffs,
+  normalizeForDiff,
+} from './ast-analyzer-utils.js';
+
+export const __internals = {
+  deepEqual,
+  diffObjects,
+  stripServiceFields,
+  stripForByteCompare,
+};
 
 // ============================================================================
 // STATE
@@ -1167,101 +1201,6 @@ export function verifyRoundTripBothFormats() {
   result.checkedLevels = checked;
 
   return result;
-}
-
-// ---------------------------------------------------------------------------
-// ВНУТРЕННИЕ ХЕЛПЕРЫ ДЛЯ КОМПЛЕКСНОЙ ПРОВЕРКИ
-// ---------------------------------------------------------------------------
-
-/**
- * Убирает служебные поля перед сравнением.
- *
- * ✅ v9.2: игнорирует edges и edgesStats — это производные поля,
- * не хранящиеся в full.json по спецификации.
- */
-function stripServiceFields(obj) {
-  if (!obj || typeof obj !== 'object') return obj;
-  const { __codec, legend, ...rest } = obj;
-  const clean = {};
-  for (const [k, v] of Object.entries(rest)) {
-    if (k.startsWith('__')) continue;
-    if (k === 'edges' || k === 'edgesStats') continue; // ✅ v9.2
-    clean[k] = v;
-  }
-  return clean;
-}
-
-function stripForByteCompare(obj) {
-  if (!obj || typeof obj !== 'object') return obj;
-  const { legend, __codec, ...rest } = obj;
-  const clean = {};
-  for (const [k, v] of Object.entries(rest)) {
-    if (k.startsWith('__')) continue;
-    if (k === 'edges' || k === 'edgesStats') continue; // ✅ v9.2
-    if (v === undefined || v === null) continue;
-    if (Array.isArray(v) && v.length === 0) continue;
-    if (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0) continue;
-    clean[k] = v;
-  }
-  return clean;
-}
-
-function deepEqual(a, b) {
-  const isEmptyA =
-    a === undefined ||
-    a === null ||
-    (Array.isArray(a) && a.length === 0) ||
-    (typeof a === 'object' && !Array.isArray(a) && Object.keys(a).length === 0);
-  const isEmptyB =
-    b === undefined ||
-    b === null ||
-    (Array.isArray(b) && b.length === 0) ||
-    (typeof b === 'object' && !Array.isArray(b) && Object.keys(b).length === 0);
-  if (isEmptyA && isEmptyB) return true;
-
-  if (a === b) return true;
-  if (typeof a !== typeof b) return false;
-  if (a === null || b === null) return a === b;
-
-  if (Array.isArray(a) !== Array.isArray(b)) return false;
-  if (Array.isArray(a)) {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      if (!deepEqual(a[i], b[i])) return false;
-    }
-    return true;
-  }
-
-  if (typeof a === 'object') {
-    const ka = Object.keys(a).filter(k => a[k] !== undefined);
-    const kb = Object.keys(b).filter(k => b[k] !== undefined);
-    if (ka.length !== kb.length) return false;
-    for (const k of ka) {
-      if (!deepEqual(a[k], b[k])) return false;
-    }
-    return true;
-  }
-
-  return false;
-}
-
-function diffObjects(a, b) {
-  const diffs = [];
-  const walk = (x, y, path) => {
-    if (diffs.length >= 20) return;
-    if (deepEqual(x, y)) return;
-    if (Array.isArray(x) && Array.isArray(y)) {
-      const n = Math.max(x.length, y.length);
-      for (let i = 0; i < n; i++) walk(x[i], y[i], `${path}[${i}]`);
-    } else if (x && y && typeof x === 'object' && typeof y === 'object') {
-      const keys = new Set([...Object.keys(x), ...Object.keys(y)]);
-      for (const k of keys) walk(x[k], y[k], `${path}.${k}`);
-    } else {
-      diffs.push({ path, a: x, b: y });
-    }
-  };
-  walk(a, b, '$');
-  return diffs;
 }
 
 // ============================================================================

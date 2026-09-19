@@ -2,7 +2,17 @@
 // ============================================================
 // SEMANTIC PIPELINE
 // ============================================================
-// Версия: 4.0.0
+// Версия: 4.1.0
+//
+// ИЗМЕНЕНИЯ v4.1.0 (разрыв циклической зависимости):
+//   - ✅ ЗАМЕНЁН импорт collectFilesForAnalysis:
+//       было:  import { collectFilesForAnalysis } from './index.js';
+//       стало: import { collectFilesForAnalysis } from './collect-files.js';
+//     Причина: циклическая зависимость index.ts ↔ SemanticPipeline.ts
+//     приводила к ошибке ESM:
+//       ReferenceError: Cannot access 'SemanticPipeline' before initialization
+//     Утилита collectFilesForAnalysis вынесена в отдельный модуль
+//     `./collect-files.js`, и цикл разорван.
 //
 // ИЗМЕНЕНИЯ v4.0.0 (устранение дублирования, интеграция с reporters/json):
 //   - ✅ ЗАМЕНЁН collectFiles на collectFilesForAnalysis из './index.js'
@@ -37,8 +47,10 @@ import path from 'path';
 import { findWasmPath } from '../utils/wasm-utils.js';
 import { Logger, LogLevel } from '../utils/Logger.js';
 
-// ✅ НОВОЕ v4.0.0: импорт collectFilesForAnalysis вместо локального collectFiles
-import { collectFilesForAnalysis } from './index.js';
+// ✅ v4.1.0-fix: импорт из отдельного файла (разорвана цикл. зависимость)
+// Было:  import { collectFilesForAnalysis } from './index.js';
+// Стало: import { collectFilesForAnalysis } from './collect-files.js';
+import { collectFilesForAnalysis } from './collect-files.js';
 
 // ✅ НОВОЕ v4.0.0: импорт generateHTMLReport из reporters/html-reporter
 // (устранено дублирование локальной генерации HTML)
@@ -242,8 +254,9 @@ export class SemanticPipeline {
       this.logger.warn(`   Looking for WASM in: ${this.wasmPath}`);
     }
 
-    // ✅ v4.0.0: используем collectFilesForAnalysis из './index.js'
+    // ✅ v4.0.0: используем collectFilesForAnalysis из './collect-files.js'
     // вместо локального collectFiles (устранено дублирование).
+    // ✅ v4.1.0-fix: импорт из './collect-files.js' (разорвана цикл. зависимость).
     const allFiles = await collectFilesForAnalysis(filePaths, true);
 
     if (allFiles.length === 0) {
@@ -614,7 +627,7 @@ export class SemanticPipeline {
 
   /**
    * ✅ v4.0.0: метод collectFiles УДАЛЁН.
-   * Используется collectFilesForAnalysis из './index.js'.
+   * ✅ v4.1.0-fix: используется collectFilesForAnalysis из './collect-files.js'.
    *
    * Прежняя реализация дублировала логику из ci-cd/index.ts.
    */
@@ -1088,7 +1101,8 @@ export async function runSemanticPipeline(
 ): Promise<PipelineResult> {
   const pipeline = new SemanticPipeline({ wasmPath: options.wasmPath });
 
-  // ✅ v4.0.0: используем collectFilesForAnalysis вместо ручного сбора
+  // ✅ v4.0.0: используем collectFilesForAnalysis из './collect-files.js'
+  // ✅ v4.1.0-fix: импорт из './collect-files.js' (разорвана цикл. зависимость).
   const files = await collectFilesForAnalysis(paths, true);
 
   if (files.length === 0) {

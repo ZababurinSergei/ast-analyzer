@@ -21,9 +21,23 @@ import { TypeScriptValidator } from '../refactor/TypeScriptValidator.js';
 import { CodeValidator } from '../refactor/CodeValidator.js';
 import { ESLintASTFixer } from '../refactor/ESLintASTFixer.js';
 import { ESLintPipeline, type ESLintConfig } from './ESLintPipeline.js';
-import { glob } from 'glob';
+
+// ✅ v2.0.1-fix: импорт + реэкспорт утилиты сбора файлов
+// (разорвана циклическая зависимость с SemanticPipeline.ts)
+//
+// ⚠️ ВАЖНО: используется import + отдельный export, а не
+//    `export { X } from './file.js'`, потому что последний
+//    НЕ создаёт локальную переменную `X`. Она нужна внутри
+//    этого модуля для функции `runCIFromCLI`.
+import { collectFilesForAnalysis } from './collect-files.js';
+export { collectFilesForAnalysis };
+
+// ✅ ИСПРАВЛЕНО: fs и path нужны для работы с файлами
+// (используются в AutoTypeScriptFixer, CICIPipeline, saveReport,
+//  resolveToFileId, fixImportExtensions и других местах)
 import fs from 'fs';
 import path from 'path';
+
 import type { SourceFile } from 'ts-morph';
 import { Project, Node } from 'ts-morph';
 import { JSXAnalyzer, type JSXAnalysisResult } from '../semantic/JSXAnalyzer.js';
@@ -275,7 +289,7 @@ export class AutoTypeScriptFixer {
    * TS2304: Cannot find name - добавляет декларацию
    */
   private fixCannotFindName(sourceFile: SourceFile, message: string): boolean {
-    const match = message.match(/Cannot find name ['\"](\\w+)['\"]/);
+    const match = message.match(/Cannot find name ['\\"](\\w+)['\\"]/);
     if (!match) return false;
 
     const name = match[1];
@@ -310,7 +324,7 @@ export class AutoTypeScriptFixer {
    * TS2307: Cannot find module - исправляет путь или добавляет декларацию
    */
   private fixCannotFindModule(sourceFile: SourceFile, message: string): boolean {
-    const match = message.match(/Cannot find module ['\"]([^'\"]+)['\"]/);
+    const match = message.match(/Cannot find module ['\\"]([^'\\"]+)['\\"]/);
     if (!match) return false;
 
     const modulePath = match[1];
@@ -362,7 +376,7 @@ export class AutoTypeScriptFixer {
    */
   private fixMissingProperty(sourceFile: SourceFile, message: string): boolean {
     const match = message.match(
-      /Property ['\"](\\w+)['\"] does not exist on type ['\"]([^'\"]+)['\"]/
+      /Property ['\\"](\\w+)['\\"] does not exist on type ['\\"]([^'\\"]+)['\\"]/
     );
     if (!match) return false;
 
@@ -398,7 +412,7 @@ export class AutoTypeScriptFixer {
    * TS7006: Parameter implicitly has any type - добавляет тип any
    */
   private fixImplicitAny(sourceFile: SourceFile, message: string, _line: number): boolean {
-    const match = message.match(/Parameter ['\"](\\w+)['\"] implicitly has an 'any' type/);
+    const match = message.match(/Parameter ['\\"](\\w+)['\\"] implicitly has an 'any' type/);
     if (!match) return false;
 
     const paramName = match[1];
@@ -441,7 +455,7 @@ export class AutoTypeScriptFixer {
    * TS7031: Binding element implicitly has any type
    */
   private fixBindingImplicitAny(sourceFile: SourceFile, message: string): boolean {
-    const match = message.match(/Binding element ['\"](\\w+)['\"] implicitly has an 'any' type/);
+    const match = message.match(/Binding element ['\\"](\\w+)['\\"] implicitly has an 'any' type/);
     if (!match) return false;
 
     const bindingName = match[1];
@@ -490,7 +504,7 @@ export class AutoTypeScriptFixer {
    * TS6133: Variable is declared but never used - добавляет префикс _
    */
   private fixUnusedVariable(sourceFile: SourceFile, message: string): boolean {
-    const match = message.match(/['\"](\\w+)['\"] is declared but never used/);
+    const match = message.match(/['\\"](\\w+)['\\"] is declared but never used/);
     if (!match) return false;
 
     const varName = match[1];
@@ -542,7 +556,9 @@ export class AutoTypeScriptFixer {
    * TS2552: Typo - исправляет опечатку
    */
   private fixTypo(sourceFile: SourceFile, message: string): boolean {
-    const match = message.match(/Cannot find name ['\"](\\w+)['\"].*Did you mean ['\"](\\w+)['\"]/);
+    const match = message.match(
+      /Cannot find name ['\\"](\\w+)['\\"].*Did you mean ['\\"](\\w+)['\\"]/
+    );
     if (!match) return false;
 
     const wrongName = match[1];
@@ -626,7 +642,7 @@ export class AutoTypeScriptFixer {
    * TS2591: Cannot find type definitions - добавляет @ts-ignore
    */
   private fixMissingTypes(sourceFile: SourceFile, message: string): boolean {
-    const match = message.match(/Cannot find name ['\"](\\w+)['\"]/);
+    const match = message.match(/Cannot find name ['\\"](\\w+)['\\"]/);
     if (!match) return false;
 
     const name = match[1];
@@ -1482,44 +1498,20 @@ export class CICPipeline {
 // УТИЛИТЫ ДЛЯ CI/CD
 // ============================================
 
-/**
- * Сбор всех файлов для анализа
- */
-export async function collectFilesForAnalysis(
-  paths: string[],
-  recursive = true
-): Promise<string[]> {
-  const files: string[] = [];
-  const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.vue'];
-
-  for (const inputPath of paths) {
-    if (!fs.existsSync(inputPath)) {
-      console.warn(`⚠️ Path does not exist: ${inputPath}`);
-      continue;
-    }
-
-    const stat = fs.statSync(inputPath);
-
-    if (stat.isFile()) {
-      if (extensions.includes(path.extname(inputPath))) {
-        files.push(path.resolve(inputPath));
-      }
-    } else if (stat.isDirectory()) {
-      const pattern = recursive
-        ? `${inputPath}/**/*{${extensions.join(',')}}`
-        : `${inputPath}/*{${extensions.join(',')}}`;
-
-      const matched = await glob(pattern, {
-        nodir: true,
-        ignore: ['**/node_modules/**', '**/dist/**', '**/build/**', '**/coverage/**', '**/*.d.ts'],
-      });
-
-      files.push(...matched.map(f => path.resolve(f)));
-    }
-  }
-
-  return [...new Set(files)];
-}
+// ✅ v2.0.1-fix: collectFilesForAnalysis вынесена в ./collect-files.ts
+// и импортируется в начале этого файла.
+//
+// Раньше функция была определена здесь, что создавало циклическую
+// зависимость с SemanticPipeline.ts:
+//     index.ts  ──imports──▶  SemanticPipeline.ts
+//        ▲                            │
+//        │                            │
+//        └──────imports───────────────┘
+//
+// Что приводило к ошибке при загрузке ESM:
+//     ReferenceError: Cannot access 'SemanticPipeline' before initialization
+//
+// Теперь цикл разорван, функция живёт в ./collect-files.ts.
 
 /**
  * Генерация CI/CD конфигурации

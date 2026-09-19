@@ -2,49 +2,45 @@
 // ============================================
 // КОДИРОВАНИЕ: FullJSON → CompactJSON
 // ============================================
-// Версия: 9.0.6
+// Версия: 10.4.0
 //
-// Содержит:
-//   - Словари (FLAG_MAP, CALL_TYPES, EXPORT_TYPES, ...)
-//   - Функции кодирования флагов (encodeFlags, flagsToString)
-//   - Хелперы словарей (createDictBuilder, addString, addParam, ...)
-//   - Codec.encode
+// ИЗМЕНЕНИЯ v10.4.0 (легенда для ИИ):
+//   - ✅ ИМПОРТ: buildLegend из './codec-legend.js'
+//   - ✅ ЗАМЕНЕНО: блок сборки legend в encode() свёрнут
+//     в один вызов buildLegend({ stringDict, paramDict,
+//     methodDict, valueDict }).
+//   - ✅ УДАЛЕНО: локальная сборка arraySchemas, flagMap,
+//     flagCharMap, relationTypes, exportTypes, importTypes,
+//     callTypes, reExportTypes, lifecycleTypes, effectTypes,
+//     injectionTypes, reactivityTypes, conditionalTypes,
+//     typeKinds, typeUsageKinds — всё это переехало в
+//     codec-legend.ts (единая точка сборки легенды).
+//   - ✅ СОХРАНЕНО: экспорты FLAG_MAP, FLAG_CHAR_MAP,
+//     FLAG_NAMES, RELATION_TYPES, EXPORT_TYPES, IMPORT_TYPES,
+//     CALL_TYPES, RE_EXPORT_TYPES, LIFECYCLE_TYPES,
+//     EFFECT_TYPES, INJECTION_TYPES, REACTIVITY_TYPES,
+//     CONDITIONAL_TYPES, TYPE_KINDS, TYPE_USAGE_KINDS —
+//     публичный API кодека.
+//   - ✅ Логика кодирования кортежей НЕ изменилась.
+//   - ✅ Round-trip сохраняется (L0–L3, RE, DL, ENC, DEC).
 //
 // ИЗМЕНЕНИЯ v9.0.6 (import types fix):
 //   - ✅ ИСПРАВЛЕНО: IMPORT_TYPES.to = 'type' (было 'type-only').
 //     Это согласовано с compact-reporter.ts, который пишет `type: 'type'`
 //     для type-only импортов (см. ImportData.type в codec-types.ts).
-//     Раньше decode возвращал 'type-only', а compact-reporter — 'named'
-//     или 'type' → расхождение L1/L2/DL.
 //
 // ИЗМЕНЕНИЯ v9.0.5 (external calls type fix):
 //   - ✅ ИСПРАВЛЕНО: gr.c — для external-вызовов сохраняется РЕАЛЬНЫЙ
 //     тип вызова (async / callback / method), а не принудительный 'direct'.
 //
-//     Раньше (v9.0.3):
-//       rev(CALL_TYPES, isExt ? 'direct' : call.type, 'd')
-//     Теперь:
-//       rev(CALL_TYPES, call.type, 'd')
-//
-//     Признак external передаётся ОТДЕЛЬНЫМ 5-м полем кортежа
-//     gr.c (isExternal), поэтому нет причин терять исходный тип.
-//
-//     Симптом: L1_semantic и L3_byteExact падали с расхождениями
-//       $.calls[N].type: a="async"/"callback", b="direct"
-//       $.gr.c[N][3]:  a="a"/"c",               b="d"
-//     после чего Codec.verifyRoundTripBoth выдавал FAIL.
-//
 // ИЗМЕНЕНИЯ v9.0.3:
-//   - ✅ gr.c: 4 → 5 полей (добавлен isExternal)
-//     Это устраняет коллизию индексов: functionIdx и stringDictIdx
-//     больше не смешиваются. External-вызовы явно помечаются
-//     флагом isExternal === 1.
+//   - ✅ gr.c: 4 → 5 полей (добавлен isExternal).
 //
 // ИЗМЕНЕНИЯ v9.0.0 (reversibility):
-//   - ✅ encodeFlags: расширено с 4 до 18 битов
-//   - ✅ gr.e: 10 → 12 полей (isStarReExport, isDefaultReExport)
-//   - ✅ mi: { n, f } → { n, p, f } (добавлен path)
-//   - ✅ gr.c: убран typeCode 'e' (L2 fix)
+//   - ✅ encodeFlags: расширено с 4 до 18 битов.
+//   - ✅ gr.e: 10 → 12 полей (isStarReExport, isDefaultReExport).
+//   - ✅ mi: { n, f } → { n, p, f } (добавлен path).
+//   - ✅ gr.c: убран typeCode 'e' (L2 fix).
 // ============================================
 
 import type {
@@ -69,6 +65,9 @@ import type {
   TypeNodeData,
   TypeRefData,
 } from './codec-types.js';
+
+// ✅ v10.4.0: единая точка сборки легенды
+import { buildLegend } from './codec-legend.js';
 
 // ============================================
 // СЛОВАРИ
@@ -185,8 +184,6 @@ export const EXPORT_TYPES: Record<string, string> = {
  * ✅ v9.0.6: 'to' → 'type' (не 'type-only').
  * Это согласовано с compact-reporter.ts, который пишет `type: 'type'`
  * для type-only импортов (см. ImportData.type в codec-types.ts).
- * Раньше decode возвращал 'type-only', что приводило к расхождению
- * с full.json в L1_semantic, L2_byteExact и DL.
  */
 export const IMPORT_TYPES: Record<string, string> = {
   n: 'named',
@@ -205,8 +202,6 @@ export const IMPORT_TYPES: Record<string, string> = {
  *
  * При encode для external-вызовов сохраняется РЕАЛЬНЫЙ тип вызова
  * (async / callback / method / direct), а не принудительный 'direct'.
- * Это устраняет регрессию v9.0.4, из-за которой терялся тип
- * для всех external-вызовов.
  */
 export const CALL_TYPES: Record<string, string> = {
   d: 'direct',
@@ -313,8 +308,6 @@ export const TYPE_USAGE_KINDS: Record<string, string> = {
  *   isAsync/isExported/isMethod/isArrow, остальные 14 флагов
  *   терялись при encode, что ломало DL (decode(encode(full)) !== full)
  *   и RE (encode(decode(compact)) !== compact).
- *
- *   Биты соответствуют FLAG_MAP (см. выше).
  */
 export function encodeFlags(obj: Partial<FunctionData & ClassData & ConstantData>): number {
   let flags = 0;
@@ -609,19 +602,6 @@ export function encode(payload: FullJSON): CompactJSON {
   // ============================================
   // ✅ v9.0.5: ИСПРАВЛЕНО — для external-вызовов сохраняется РЕАЛЬНЫЙ
   //   тип вызова (async / callback / method / direct), а не 'direct'.
-  //
-  //   Раньше (v9.0.3):
-  //     rev(CALL_TYPES, isExt ? 'direct' : call.type, 'd')
-  //   Теперь:
-  //     rev(CALL_TYPES, call.type, 'd')
-  //
-  //   Признак external передаётся отдельным 5-м полем кортежа gr.c
-  //   (isExternal). Это устраняет регрессию, при которой для всех
-  //   external-вызовов терялся реальный тип (async/callback/method).
-  //
-  //   Симптом: L1_semantic и L3_byteExact падали с расхождениями:
-  //     $.calls[N].type: a="async"/"callback", b="direct"
-  //     $.gr.c[N][3]:  a="a"/"c",               b="d"
   // ============================================
   const calls: CompactJSON['gr']['c'] = asArray<CallData>(payload.calls).map(call => {
     const fromIdx = functionReverse[call.fromFunctionId] || 0;
@@ -638,8 +618,6 @@ export function encode(payload: FullJSON): CompactJSON {
     }
 
     // ✅ v9.0.5: сохраняем РЕАЛЬНЫЙ тип вызова даже для external.
-    // Признак external передаётся отдельным флагом `isExternal` (5-е поле),
-    // поэтому нет причин терять тип (async / callback / method).
     const typeCode =
       call.type === 'direct'
         ? 'd'
@@ -863,105 +841,24 @@ export function encode(payload: FullJSON): CompactJSON {
   }
 
   // ============================================
-  // 18. Сборка легенды с словарями
+  // 18. ✅ v10.4.0: Сборка легенды (единая точка)
   // ============================================
-  const legend: CodecLegend = {
-    flagMap: Object.fromEntries(Object.entries(FLAG_MAP).map(([bit, char]) => [char, bit])),
-    flagCharMap: { ...FLAG_CHAR_MAP },
-    relationTypes: { ...RELATION_TYPES },
-    exportTypes: { ...EXPORT_TYPES },
-    importTypes: { ...IMPORT_TYPES },
-    callTypes: { ...CALL_TYPES },
-    reExportTypes: { ...RE_EXPORT_TYPES },
-    lifecycleTypes: { ...LIFECYCLE_TYPES },
-    effectTypes: { ...EFFECT_TYPES },
-    injectionTypes: { ...INJECTION_TYPES },
-    reactivityTypes: { ...REACTIVITY_TYPES },
-    conditionalTypes: { ...CONDITIONAL_TYPES },
-    typeKinds: { ...TYPE_KINDS },
-    typeUsageKinds: { ...TYPE_USAGE_KINDS },
-
-    arraySchemas: {
-      fns: ['id', 'name', 'moduleId', 'fileId', 'line', 'flags', 'paramsIdx', 'returnTypeIdx'],
-      cls: ['id', 'name', 'moduleId', 'fileId', 'line', 'flags', 'methodsIdx'],
-      cn: ['id', 'name', 'moduleId', 'fileId', 'line', 'flags', 'valueIdx'],
-      // ✅ reversibility: 12 полей
-      'gr.e': [
-        'moduleIdx',
-        'fileIdx',
-        'funcIdx',
-        'line',
-        'typeCode',
-        'exportNameIdx',
-        'localNameIdx',
-        'isTypeOnly',
-        'isReExport',
-        'sourceIdx',
-        'isStarReExport',
-        'isDefaultReExport',
-      ],
-      'gr.i': [
-        'fromFileIdx',
-        'toFileIdIdx',
-        'sourceIdx',
-        'importedNameIdx',
-        'localNameIdx',
-        'line',
-        'typeCode',
-        'isExternal',
-      ],
-      // ✅ v9.0.5: 5 полей (fromIdx, toIdx, line, typeCode, isExternal)
-      // typeCode содержит РЕАЛЬНЫЙ тип (d/a/m/c) даже для external
-      'gr.c': ['fromIdx', 'toIdx', 'line', 'typeCode', 'isExternal'],
-      'gr.re': [
-        'moduleIdx',
-        'funcIdx',
-        'sourceIdx',
-        'exportNameIdx',
-        'line',
-        'typeCode',
-        'isTypeOnly',
-      ],
-      vt: [
-        'fileIdx',
-        'moduleIdx',
-        'complexity',
-        'reactivityDepsIdx',
-        'eventHandlers',
-        'dynamicComponents',
-        'directivesIdx',
-        'usedComponentsIdx',
-        'templateRefs',
-        'cssVariables',
-        'deepSelectors',
-        'slotsIdx',
-      ],
-      'vt.eventHandlers': [
-        'eventNameIdx',
-        'handlerNameIdx',
-        'tagIdx',
-        'line',
-        'modifiersIdx',
-        'isExternal',
-      ],
-      'vt.dynamicComponents': ['isExpressionIdx', 'line', 'resolvedComponentsIdx'],
-      'vt.templateRefs': ['refValueIdx', 'tagIdx', 'line', 'exposedMethodsIdx'],
-      'vt.cssVariables': ['nameIdx', 'valueIdx', 'line', 'isMultiline'],
-      'vt.deepSelectors': ['selectorIdx', 'line'],
-      lc: ['hookCode', 'funcIdx', 'line', 'callbackFnIdx', 'flags'],
-      ef: ['effectCode', 'funcIdx', 'line', 'targetIdx', 'metaIdx'],
-      inj: ['kindCode', 'fileIdx', 'line', 'keyIdx', 'flags'],
-      rx: ['kindCode', 'funcIdx', 'line', 'readsIdx', 'writesIdx', 'flags'],
-      cd: ['directiveCode', 'fileIdx', 'line', 'condIdx', 'compIdx', 'flags'],
-      ty: ['kindCode', 'nameIdx', 'moduleIdx', 'fileIdx', 'line', 'membersIdx', 'extendsIdx'],
-      tr: ['typeNameIdx', 'moduleIdx', 'fileIdx', 'line', 'usageCode'],
-    },
-
+  // Вся структура легенды собирается в codec-legend.ts:
+  //   - how_to_read  — пошаговая инструкция для ИИ
+  //   - flags        — расшифровка битовых флагов
+  //   - codes        — расшифровка строковых кодов
+  //   - dictionaries — словари значений
+  //   - schemas      — позиционные схемы кортежей
+  //
+  // Раньше здесь была локальная сборка (300+ строк).
+  // Теперь — один вызов. Единая точка истины.
+  // ============================================
+  const legend: CodecLegend = buildLegend({
     stringDict: dict.stringDict,
     paramDict: dict.paramDict,
     methodDict: dict.methodDict,
     valueDict: dict.valueDict,
-  };
+  });
 
   // ============================================
   // 19. Сборка CompactJSON

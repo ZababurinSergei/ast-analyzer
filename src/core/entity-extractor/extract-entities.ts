@@ -62,7 +62,7 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
       // чтобы узел модуля всё равно попал в граф проекта.
       if (process.env.AST_DEBUG_VUE === 'true') {
         console.debug(
-          `ℹ️ Vue без <script>: ${path.basename(filePath)} — возвращаем пустой результат`
+            `ℹ️ Vue без <script>: ${path.basename(filePath)} — возвращаем пустой результат`
         );
       }
       return createEmptyEntitiesResult(filePath);
@@ -72,7 +72,7 @@ export function extractEntities(ast: any, filePath?: string): EntitiesResult {
       // ошибки Vue-анализа ожидаемы и не должны засорять stdout.
       if (process.env.AST_DEBUG_VUE === 'true') {
         console.debug(
-          `ℹ️ Vue-анализ не удался для ${path.basename(filePath)}, используем пустой результат`
+            `ℹ️ Vue-анализ не удался для ${path.basename(filePath)}, используем пустой результат`
         );
         console.debug(`   Причина: ${error instanceof Error ? error.message : String(error)}`);
       }

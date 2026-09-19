@@ -8,6 +8,8 @@ import type {
 } from '../../../types.js';
 import { buildOptimizedRelationships } from '../relationships/optimized-relationships.js';
 import idManager from '../../../core/IdManager.js';
+// ✅ v9.0.5-fix: безопасная сериализация (BigInt, Map, Set, Circular)
+import { safeJsonStringify } from '../../../utils/safe-json.js';
 
 // ============================================================
 // ТИПЫ
@@ -86,19 +88,14 @@ export function saveOptimizedPackageLockReport(
   const relationships = buildOptimizedRelationships(entitiesMap, graph);
 
   // Шаг 2: Сборка плоского словаря сущностей
-  const { entities, stats } = buildEntitiesDictionary(
-    entitiesMap,
-    relationships,
-    { includeBody, includeVscodeLinks, includeMetadata }
-  );
+  const { entities, stats } = buildEntitiesDictionary(entitiesMap, relationships, {
+    includeBody,
+    includeVscodeLinks,
+    includeMetadata,
+  });
 
   // Шаг 3: Формирование финального отчёта
-  const report = buildReport(
-    rootKey,
-    entities,
-    stats,
-    includeStats
-  );
+  const report = buildReport(rootKey, entities, stats, includeStats);
 
   // Шаг 4: Сохранение JSON
   saveReportToDisk(report, outputPath);
@@ -156,9 +153,7 @@ function buildEntitiesDictionary(
           depth: func.depth || 0,
         });
 
-      const vscode = includeVscodeLinks
-        ? `vscode://file/${filePath}:${func.line}`
-        : '';
+      const vscode = includeVscodeLinks ? `vscode://file/${filePath}:${func.line}` : '';
 
       // Получаем связи из построенных отношений
       const funcCalls = relationships.calls[id] || [];
@@ -254,12 +249,12 @@ function buildReport(
     entities,
     stats: includeStats
       ? {
-        totalFunctions: stats.totalFunctions,
-        totalCalls: stats.totalCalls,
-        totalCalledBy: stats.totalCalledBy,
-        totalImportedBy: stats.totalImportedBy,
-        totalFiles: countUniqueFiles(entities),
-      }
+          totalFunctions: stats.totalFunctions,
+          totalCalls: stats.totalCalls,
+          totalCalledBy: stats.totalCalledBy,
+          totalImportedBy: stats.totalImportedBy,
+          totalFiles: countUniqueFiles(entities),
+        }
       : undefined,
   };
 }
@@ -267,9 +262,7 @@ function buildReport(
 /**
  * Считает количество уникальных файлов, в которых есть сущности.
  */
-function countUniqueFiles(
-  entities: Record<string, ExtendedFunctionInfo>
-): number {
+function countUniqueFiles(entities: Record<string, ExtendedFunctionInfo>): number {
   const files = new Set<string>();
   for (const entity of Object.values(entities)) {
     if (entity.file) {
@@ -284,25 +277,22 @@ function countUniqueFiles(
 // ============================================================
 
 /**
- * Сохраняет отчёт на диск, корректно обрабатывая Map/Set/опасные ключи.
+ * Сохраняет отчёт на диск.
+ *
+ * ✅ v9.0.5-fix: используем `safeJsonStringify` вместо нативного
+ * `JSON.stringify`. Это решает проблему с BigInt (падало с
+ * "Do not know how to serialize a BigInt"), а также безопасно
+ * обрабатывает Map, Set, циклические ссылки и опасные ключи
+ * (`__proto__`, `constructor`, `_safeInfo`).
+ *
+ * Ранее здесь был inline-обработчик, который умел только
+ * Map/Set/опасные ключи, но НЕ умел BigInt. Теперь логика
+ * сериализации вынесена в единый модуль `utils/safe-json.ts`
+ * и переиспользуется во всех местах.
  */
 function saveReportToDisk(report: OptimizedReport, outputPath: string): void {
-  const json = JSON.stringify(
-    report,
-    (key, value) => {
-      if (value instanceof Map) return Object.fromEntries(value);
-      if (value instanceof Set) return Array.from(value);
-      if (
-        key === '_safeInfo' ||
-        key === '__proto__' ||
-        key === 'constructor'
-      ) {
-        return undefined;
-      }
-      return value;
-    },
-    2
-  );
+  // ✅ ИСПРАВЛЕНО: безопасная сериализация (BigInt, Map, Set, Circular)
+  const json = safeJsonStringify(report);
 
   const outputDir = require('path').dirname(outputPath);
   if (!fs.existsSync(outputDir)) {
@@ -335,9 +325,7 @@ function logOptimizedSummary(
   // Проверка дублирующихся ID
   const validation = idManager.validate();
   if (!validation.valid) {
-    console.warn(
-      `⚠️ Найдены дублирующиеся ID: ${validation.duplicates.join(', ')}`
-    );
+    console.warn(`⚠️ Найдены дублирующиеся ID: ${validation.duplicates.join(', ')}`);
   }
 
   // Статистика ID
@@ -359,23 +347,11 @@ function logOptimizedSummary(
 
   // Опции
   console.log(
-    `   🔗 VSCode ссылки: ${
-      options.includeVscodeLinks !== false ? 'включены' : 'выключены'
-    }`
+    `   🔗 VSCode ссылки: ${options.includeVscodeLinks !== false ? 'включены' : 'выключены'}`
   );
+  console.log(`   📝 Тела функций: ${options.includeBody === true ? 'включены' : 'выключены'}`);
+  console.log(`   📋 Метаданные: ${options.includeMetadata === true ? 'включены' : 'выключены'}`);
   console.log(
-    `   📝 Тела функций: ${
-      options.includeBody === true ? 'включены' : 'выключены'
-    }`
-  );
-  console.log(
-    `   📋 Метаданные: ${
-      options.includeMetadata === true ? 'включены' : 'выключены'
-    }`
-  );
-  console.log(
-    `   📊 Статистика в отчёте: ${
-      options.includeStats !== false ? 'включена' : 'выключена'
-    }`
+    `   📊 Статистика в отчёте: ${options.includeStats !== false ? 'включена' : 'выключена'}`
   );
 }
