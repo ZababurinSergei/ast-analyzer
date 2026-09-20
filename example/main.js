@@ -27,6 +27,16 @@
 //   - ✅ Активная секция подсвечивается в навигации (🧭)
 //   - ✅ window.__astActiveSectionId — глобальная переменная активной секции
 //   - ✅ Подсветка синхронизируется через scroll-слушатель на .mn-sections
+//
+// v13.0.6 (ТЕКУЩАЯ):
+//   - ✅ import * as Groups / GroupsUI / GroupsStyles
+//   - ✅ GroupsStyles.inject() — CSS для .mn-group
+//   - ✅ Groups.load() — загрузка конфига из URL/localStorage
+//   - ✅ Кнопка #btnGroups → GroupsUI.openEditor() (Alt+G)
+//   - ✅ Groups.onChange() → перерисовка текущего экрана
+//   - ✅ window.__astRerender — публичный rerender для GroupsUI
+//   - ✅ mountSections() — обёртка над Groups.renderSections()
+//   - ✅ renderFn() / renderFile() используют mountSections()
 // ============================================================================
 
 import * as Core from './ast-analyzer-core.js';
@@ -39,6 +49,9 @@ import * as Vscode from './ast-analyzer-vscode.js';
 import * as Extensions from './ast-analyzer-extensions.js';
 import * as Nav from './ast-analyzer-nav.js';
 import * as LocationBar from './ast-analyzer-location-bar.js';
+import * as Groups from './ast-analyzer-groups.js';
+import * as GroupsUI from './ast-analyzer-groups-ui.js';
+import * as GroupsStyles from './ast-analyzer-groups-styles.js';
 import {
   roundTripSemantic,
   roundTripByteExact,
@@ -91,6 +104,11 @@ function bindSectionsScrollTracking() {
       // Подсветка в открытой панели навигации (если она открыта)
       document
         .querySelectorAll('.ast-nav-panel .ast-nav-item')
+        .forEach(it => {
+          it.classList.toggle('active', it.dataset.navTarget === id);
+        });
+      document
+        .querySelectorAll('.ast-nav-group-header')
         .forEach(it => {
           it.classList.toggle('active', it.dataset.navTarget === id);
         });
@@ -314,6 +332,36 @@ function handleFile(file) {
 }
 
 // ---------------------------------------------------------------------------
+// МОНТИРОВАНИЕ СЕКЦИЙ (с учётом групп)
+// ---------------------------------------------------------------------------
+/**
+ * Принимает массив HTML-строк секций, создаёт временный контейнер,
+ * собирает карту { sectionId: HTMLElement } и передаёт в
+ * Groups.renderSections() — который применяет Grid-раскладку групп.
+ *
+ * @param {string[]} htmlArray
+ */
+function mountSections(htmlArray) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = htmlArray.join('');
+
+  // Собираем карту { sectionId: HTMLElement }
+  const map = {};
+  for (const el of tmp.querySelectorAll('[data-nav-section]')) {
+    const id = el.dataset.navSection;
+    if (!id) continue;
+    if (!map[id]) map[id] = el;
+  }
+
+  // Рендерим через Groups — учитываются группы + ungrouped
+  const sectionsEl = Groups.renderSections(map);
+
+  const mn = $('mn');
+  mn.innerHTML = '';
+  mn.appendChild(sectionsEl);
+}
+
+// ---------------------------------------------------------------------------
 // ИНИЦИАЛИЗАЦИЯ
 // ---------------------------------------------------------------------------
 function init() {
@@ -343,6 +391,13 @@ function init() {
         },
       });
     });
+  }
+
+  // --- Группы кнопка ---
+  const btnGroups = $('btnGroups');
+  if (btnGroups) {
+    btnGroups.disabled = false;
+    btnGroups.addEventListener('click', () => GroupsUI.openEditor());
   }
 
   // --- Инжект стилей ---
@@ -394,6 +449,24 @@ function init() {
     style.textContent = LocationBar.buildStyles();
     document.head.appendChild(style);
   }
+
+  // --- Инжект CSS для групп (.mn-group) ---
+  GroupsStyles.inject();
+
+  // --- Загрузка конфига групп ---
+  Groups.load();
+
+  // --- Подписка на изменения групп → перерисовка текущего экрана ---
+  Groups.onChange(() => {
+    if (activeFnId) renderFn(activeFnId);
+    else if (activeFileId) renderFile(activeFileId);
+  });
+
+  // --- Публичный rerender для GroupsUI ---
+  window.__astRerender = () => {
+    if (activeFnId) renderFn(activeFnId);
+    else if (activeFileId) renderFile(activeFileId);
+  };
 
   // --- Автоопределение basePath (только при первом запуске) ---
   const cfg = Vscode.getVscodeConfig();
@@ -468,10 +541,20 @@ function init() {
       panel: ({ close }) => {
         return Nav.createPanel({
           onJump: sectionId => {
-            const el =
+            // Секция может быть внутри группы — ищем и по группе
+            let el =
               document.querySelector(
                 `[data-nav-section="${sectionId}"]`
               ) || document.getElementById(sectionId);
+
+            // Если id начинается с 'group:' — ищем .mn-group по data-group-id
+            if (!el && sectionId.startsWith('group:')) {
+              const gid = sectionId.slice(6);
+              el = document.querySelector(
+                `.mn-group[data-group-id="${gid}"]`
+              );
+            }
+
             if (el) {
               el.scrollIntoView({
                 behavior: 'smooth',
@@ -825,8 +908,8 @@ function renderFn(id) {
     </div>`);
   }
 
-  // --- Обёртка .mn-sections ---
-  $('mn').innerHTML = `<div class="mn-sections">${h.join('')}</div>`;
+  // --- Обёртка .mn-sections через mountSections (с учётом групп) ---
+  mountSections(h);
 
   // --- Навешиваем scroll-tracking для подсветки активной секции ---
   bindSectionsScrollTracking();
@@ -1047,8 +1130,8 @@ function renderFile(fid) {
   } else h.push('<div class="imp-empty">Нет функций</div>');
   h.push(`</div></div>`);
 
-  // --- Обёртка .mn-sections ---
-  $('mn').innerHTML = `<div class="mn-sections">${h.join('')}</div>`;
+  // --- Обёртка .mn-sections через mountSections (с учётом групп) ---
+  mountSections(h);
 
   // --- Навешиваем scroll-tracking ---
   bindSectionsScrollTracking();
@@ -1259,6 +1342,7 @@ document.addEventListener('click', e => {
   if (target.closest('.fs-tree')) return;
   if (target.closest('.ast-ext')) return;
   if (target.closest('.ast-loc')) return;
+  if (target.closest('.ast-groups-overlay')) return;
   const action = target.dataset.action;
   const id = target.dataset.id;
 
@@ -1586,10 +1670,15 @@ $('btnCache').addEventListener('click', () => {
 });
 
 // ---------------------------------------------------------------------------
-// DRAG & DROP
+// DRAG & DROP (файлы JSON — не путать с DnD групп)
 // ---------------------------------------------------------------------------
-document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('dragover', e => {
+  // Игнорируем DnD внутри редактора групп
+  if (e.target.closest && e.target.closest('.ast-groups-overlay')) return;
+  e.preventDefault();
+});
 document.addEventListener('drop', e => {
+  if (e.target.closest && e.target.closest('.ast-groups-overlay')) return;
   e.preventDefault();
   const f = e.dataTransfer.files[0];
   if (f && f.name.endsWith('.json')) handleFile(f);
@@ -1635,6 +1724,14 @@ document.addEventListener('keydown', e => {
     }
     return;
   }
+  if (
+    e.altKey &&
+    (e.key === 'g' || e.key === 'G' || e.key === 'п' || e.key === 'П')
+  ) {
+    e.preventDefault();
+    GroupsUI.openEditor();
+    return;
+  }
   if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
     e.preventDefault();
     if (e.key === 'ArrowLeft') LocationBar.goBack();
@@ -1657,11 +1754,11 @@ document.addEventListener('keydown', e => {
 // СТАРТ
 // ---------------------------------------------------------------------------
 console.log(
-  '%c🔍 AST Analyzer v13.0.5',
+  '%c🔍 AST Analyzer v13.0.6',
   'font-size:16px;font-weight:bold;color:#58a6ff;'
 );
 console.log(
-  'Модули: ast-analyzer-codec.js (v13.0.2), ast-analyzer-utils.js, ast-analyzer-core.js (v13.0.3), ast-analyzer-ui.js, ast-analyzer-graph.js, ast-analyzer-tree.js, ast-analyzer-legend.js, ast-analyzer-paths.js, ast-analyzer-vscode.js, ast-analyzer-extensions.js (v1.0), ast-analyzer-nav.js (v1.3), ast-analyzer-location-bar.js (v1.4)'
+  'Модули: ast-analyzer-codec.js (v13.0.2), ast-analyzer-utils.js, ast-analyzer-core.js (v13.0.3), ast-analyzer-ui.js, ast-analyzer-graph.js, ast-analyzer-tree.js, ast-analyzer-legend.js, ast-analyzer-paths.js, ast-analyzer-vscode.js, ast-analyzer-extensions.js (v1.0), ast-analyzer-nav.js (v1.4), ast-analyzer-location-bar.js (v1.4), ast-analyzer-groups.js (v1.0), ast-analyzer-groups-ui.js (v1.0), ast-analyzer-groups-styles.js (v1.0)'
 );
 
 await autoLoad();

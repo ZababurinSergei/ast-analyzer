@@ -1,6 +1,6 @@
 // ============================================================================
-// AST ANALYZER — NAV v1.4
-// Плавающая мини-навигация по секциям текущего экрана.
+// AST ANALYZER — NAV v1.5
+// Плавающая мини-навигация по секциям + встроенная панель для Extensions.
 //
 // Публичный API:
 //   Nav.mount(opts)                    — создать/примонтировать панель (floating)
@@ -14,58 +14,24 @@
 //
 // Особенности:
 //   - position: fixed, с пересчётом на resize
-//   - Учёт высоты .hdr (шапка) и .ast-loc (адресная строка) —
-//     панель в top-* позициях не перекрывает location bar
-//   - Не мешает контенту (max-width ограничен)
+//   - Учёт высоты .hdr (шапка) и .ast-loc (адресная строка)
 //   - Делегирование кликов: [data-action="nav-jump"] → scrollIntoView
 //   - Автоопределение секций по [data-nav-section]
 //   - Подсветка активной секции при скролле .mn-sections
 //   - Сворачивание в иконку
 //
-// v1.1:
-//   - attachResize(): учитывает .ast-loc в дополнение к .hdr
-//     (top = hdr + loc + offset)
-//   - setPosition(): тоже пересчитывает --nav-header-height
-//     с учётом location bar
-//
-// v1.2:
-//   - attachResize(): учитывает .hdr.hdr-hidden (высота 0,
-//     когда шапка скрыта кнопкой в location bar)
-//   - setPosition(): то же самое
-//   - compute(): headerHeight = 0, если .hdr имеет класс hdr-hidden
-//
-// v1.3:
-//   - ✅ NEW: createPanel(opts) — возвращает HTMLElement со списком
-//     секций для встраивания в выпадающую панель Extensions
-//     (см. ast-analyzer-extensions.js).
-//   - ✅ NEW: в createPanel() используется собственный MutationObserver,
-//     который останавливает IntersectionObserver после удаления панели
-//     из DOM.
-//   - ✅ NEW: onJump колбэк в createPanel() — позволяет вызывающему
-//     коду самому решать, как скроллить (например, закрыть панель).
-//   - ✅ Floating-режим (mount/unmount) сохранён, но в main.js
-//     больше не используется. Оставлен для обратной совместимости
-//     и для случаев, когда панель нужна отдельно от location bar.
-//
-// v1.4 (ТЕКУЩАЯ):
-//   - ✅ createPanel() переписан под scroll-snap архитектуру:
-//     секции живут в .mn-sections (scroll-snap-type: y mandatory),
-//     каждая секция — ровно один экран.
-//   - ✅ Убран IntersectionObserver (в scroll-snap он ненадёжен из-за
-//     rootMargin и mandatory-снапа).
-//   - ✅ Активная секция определяется через window.__astActiveSectionId
-//     (устанавливается scroll-слушателем в main.js по формуле
-//     Math.round(scrollTop / clientHeight)).
-//   - ✅ Fallback: если window.__astActiveSectionId не установлен —
-//     вычисляем индекс секции сами из scrollTop .mn-sections.
-//   - ✅ Подсветка в панели синхронизируется со скроллом:
-//     подписка на событие 'scroll' у .mn-sections, пока панель открыта.
-//   - ✅ Очистка: при удалении панели из DOM снимаем scroll-слушатель
-//     (MutationObserver).
-//   - ✅ onJump в createPanel() НЕ скроллит сам — только вызывает
-//     колбэк. Скролл делает main.js через el.scrollIntoView({behavior:'smooth'}),
-//     а scroll-snap дощёлкивает до границы секции.
+// v1.5 (ТЕКУЩАЯ):
+//   - ✅ createPanel() поддерживает ИЕРАРХИЮ групп из Groups.buildTree()
+//   - ✅ Группы рендерятся как раскрывающиеся узлы (toggle)
+//   - ✅ Master-detail: вложенные группы отображаются с отступом
+//   - ✅ Клик по группе → scrollIntoView на .mn-group[data-group-id=...]
+//   - ✅ Клик по секции → scrollIntoView на секцию
+//   - ✅ _attachScrollSync(): MutationObserver на #mn (childList), а не на body+subtree
+//   - ✅ Кэш label'ов и поиск по индексам Groups.getIndex() — O(1)
+//   - ✅ CSS иерархии в buildNavStyles() (.ast-nav-group*)
 // ============================================================================
+
+import * as Groups from './ast-analyzer-groups.js';
 
 const STYLE_ID = 'ast-nav-styles';
 const ROOT_ID = 'astNavRoot';
@@ -244,15 +210,83 @@ export function buildNavStyles() {
 .ast-nav.collapsed .ast-nav-count { display: none; }
 .ast-nav.collapsed .ast-nav-title { display: none; }
 
+/* --- Иерархия групп (v1.5) --- */
+.ast-nav-group { margin-bottom: 3px; }
+
+.ast-nav-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: var(--bg4, #30363d);
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text, #e6edf3);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  border-left: 2px solid transparent;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.ast-nav-group-header:hover {
+  background: var(--accent, #58a6ff);
+  color: #fff;
+}
+.ast-nav-group-header.active {
+  background: rgba(88, 166, 255, 0.15);
+  color: var(--accent, #58a6ff);
+  border-left-color: var(--accent, #58a6ff);
+}
+.ast-nav-group-header .toggle {
+  font-size: 9px;
+  width: 10px;
+  text-align: center;
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+.ast-nav-group.collapsed .toggle { transform: rotate(-90deg); }
+.ast-nav-group.collapsed .ast-nav-group-body { display: none; }
+.ast-nav-group-header .icon { font-size: 12px; flex-shrink: 0; }
+.ast-nav-group-header .label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ast-nav-group-header .count {
+  font-size: 9px;
+  background: var(--bg, #0d1117);
+  padding: 1px 6px;
+  border-radius: 8px;
+  color: var(--text2, #8b949e);
+  flex-shrink: 0;
+}
+
+.ast-nav-group-body {
+  padding-left: 10px;
+  border-left: 2px solid var(--border, #30363d);
+  margin-left: 8px;
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
 /* --- Встроенная панель (для Extensions) --- */
 .ast-nav-panel {
   display: flex;
   flex-direction: column;
   gap: 1px;
   padding: 2px 0;
+  max-height: 70vh;
+  overflow-y: auto;
 }
 .ast-nav-panel .ast-nav-item {
-  /* переиспользует .ast-nav-item, дополнительных правил не требует */
+  /* переиспользует .ast-nav-item */
+}
+.ast-nav-panel .ast-nav-group {
+  /* переиспользует .ast-nav-group */
 }
 `;
 }
@@ -356,7 +390,7 @@ function extractCount(el) {
 }
 
 // ---------------------------------------------------------------------------
-// АКТИВНАЯ СЕКЦИЯ (v1.4)
+// АКТИВНАЯ СЕКЦИЯ
 // ---------------------------------------------------------------------------
 
 /**
@@ -414,8 +448,8 @@ function renderNav() {
   const bodyHtml = sections.length
     ? `<div class="ast-nav-body">
         ${sections
-          .map(
-            s => `
+      .map(
+        s => `
           <div class="ast-nav-item${s.id === state.activeId ? ' active' : ''}"
                data-action="nav-jump"
                data-nav-target="${escapeAttr(s.id)}"
@@ -425,8 +459,8 @@ function renderNav() {
             ${s.count != null ? `<span class="ast-nav-item-count">${s.count}</span>` : ''}
           </div>
         `
-          )
-          .join('')}
+      )
+      .join('')}
       </div>`
     : `<div class="ast-nav-body">
         <div class="ast-nav-item" style="cursor:default;color:var(--text2);font-style:italic">
@@ -458,11 +492,8 @@ function jumpToSection(id) {
   if (!sec) return;
   const el = sec.el;
 
-  // v1.4: используем scrollIntoView — он работает и со scroll-snap,
-  // и с обычным overflow-y: auto. Никаких ручных расчётов scrollTop.
   el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  // Подсветка
   state.activeId = id;
   renderNav();
 }
@@ -474,9 +505,6 @@ function jumpToSection(id) {
 function startTracking() {
   stopTracking();
 
-  // v1.4: IntersectionObserver убран. Используем scroll-слушатель
-  // на .mn-sections. Формула: idx = Math.round(scrollTop / clientHeight).
-  // Это работает идеально для scroll-snap, где каждая секция = один экран.
   const mnSections = document.querySelector('.mn-sections');
   if (!mnSections) return;
 
@@ -538,13 +566,7 @@ function attachHandlers() {
  *   .hdr     — шапка приложения (может быть скрыта через .hdr-hidden)
  *   .ast-loc — адресная строка (location bar)
  *
- * Результат пишется в CSS-переменную --nav-header-height,
- * которую использует .ast-nav.pos-top-right / .pos-top-left.
- *
- * Также вычисляет --nav-max-height — сколько панели остаётся
- * по вертикали до низа окна.
- *
- * v1.2: если .hdr имеет класс hdr-hidden — его высота считается 0.
+ * Результат пишется в CSS-переменную --nav-header-height.
  */
 function attachResize() {
   detachResize();
@@ -552,19 +574,14 @@ function attachResize() {
   const compute = () => {
     if (!_root) return;
 
-    // 1. Высота шапки .hdr (учитываем скрытие)
     const hdr = document.querySelector('.hdr');
     const hdrHidden = hdr && hdr.classList.contains('hdr-hidden');
     const headerHeight = hdr && !hdrHidden ? Math.ceil(hdr.getBoundingClientRect().height) : 0;
 
-    // 2. Высота адресной строки .ast-loc (если она есть)
     const loc = document.querySelector('.ast-loc');
     const locHeight = loc ? Math.ceil(loc.getBoundingClientRect().height) : 0;
 
-    // 3. Суммарная высота всего, что выше панели
     const topOffset = headerHeight + locHeight;
-
-    // 4. Свободное место до низа окна
     const freeHeight = Math.max(220, window.innerHeight - topOffset - state.offset * 2);
 
     _root.style.setProperty('--nav-header-height', topOffset + 'px');
@@ -575,14 +592,10 @@ function attachResize() {
   _resizeHandler = compute;
   window.addEventListener('resize', _resizeHandler, { passive: true });
 
-  // Вызываем сразу и с задержками — DOM и шрифты могут догружаться
   compute();
   setTimeout(compute, 50);
   setTimeout(compute, 300);
 
-  // Отдельно слушаем изменение размера .hdr / .ast-loc
-  // (например, если location bar появится позже,
-  //  или если шапка будет скрыта/показана)
   if (typeof ResizeObserver !== 'undefined') {
     try {
       _resizeObserver = new ResizeObserver(() => compute());
@@ -637,7 +650,6 @@ export function mount(opts = {}) {
 export function refresh() {
   if (!_root) return;
   state.sections = collectSections();
-  // Если ранее активная секция исчезла — сбросить
   if (state.activeId && !state.sections.find(s => s.id === state.activeId)) {
     state.activeId = state.sections[0]?.id || null;
   }
@@ -646,7 +658,6 @@ export function refresh() {
   }
   renderNav();
   startTracking();
-  // Пересчёт высоты — контент мог измениться
   if (_resizeHandler) _resizeHandler();
 }
 
@@ -665,8 +676,6 @@ export function setPosition(pos) {
     _root.classList.remove('pos-bottom-right', 'pos-top-right', 'pos-bottom-left', 'pos-top-left');
     _root.classList.add('pos-' + pos);
 
-    // Пересчёт отступа для top-* — учитываем .hdr + .ast-loc
-    // v1.2: если .hdr скрыт (.hdr-hidden) — высота 0
     const hdr = document.querySelector('.hdr');
     const hdrHidden = hdr && hdr.classList.contains('hdr-hidden');
     const headerHeight = hdr && !hdrHidden ? Math.ceil(hdr.getBoundingClientRect().height) : 0;
@@ -689,33 +698,17 @@ export function getState() {
 }
 
 // ---------------------------------------------------------------------------
-// ПУБЛИЧНЫЙ API — EMBEDDED PANEL (для Extensions)
+// ПУБЛИЧНЫЙ API — EMBEDDED PANEL (для Extensions) v1.5
 // ---------------------------------------------------------------------------
 
 /**
  * Возвращает HTMLElement со списком секций — для встраивания
  * в выпадающую панель расширения (Extensions.register({panel})).
  *
- * v1.4: панель пересобирает секции каждый раз при вызове (актуальный DOM).
- *
- * Активная секция определяется через:
- *   1. window.__astActiveSectionId — устанавливается scroll-слушателем
- *      в main.js по формуле Math.round(scrollTop / clientHeight).
- *   2. Fallback: сами вычисляем из scrollTop .mn-sections.
- *   3. Fallback: первая секция.
- *
- * Подсветка синхронизируется со скроллом .mn-sections, пока панель
- * открыта. При удалении панели из DOM слушатель снимается
- * (MutationObserver).
- *
- * onJump в opts — колбэк, вызываемый при клике. Панель НЕ скроллит
- * сама — это делает main.js через el.scrollIntoView({behavior:'smooth'}),
- * а scroll-snap дощёлкивает до границы секции.
+ * v1.5: поддержка иерархии групп через Groups.buildTree().
  *
  * @param {object} [opts]
- * @param {Function} [opts.onJump] — колбэк (id) => void при клике на секцию.
- *                                   Если не задан — используется
- *                                   встроенный jumpToSection(id).
+ * @param {Function} [opts.onJump] — колбэк (id) => void при клике на секцию/группу.
  * @returns {HTMLElement}
  */
 export function createPanel(opts = {}) {
@@ -724,10 +717,9 @@ export function createPanel(opts = {}) {
   const wrap = document.createElement('div');
   wrap.className = 'ast-nav-panel';
 
-  // Собираем секции из текущего DOM
-  const sections = collectSections();
+  const allSections = collectSections();
 
-  if (!sections.length) {
+  if (!allSections.length) {
     const empty = document.createElement('div');
     empty.className = 'ast-ext-panel-empty';
     empty.textContent = 'Нет секций на текущем экране';
@@ -735,92 +727,243 @@ export function createPanel(opts = {}) {
     return wrap;
   }
 
-  // v1.4: активная секция — из window.__astActiveSectionId или fallback
-  const activeId = detectActiveId(sections);
+  const sectionsById = new Map(allSections.map(s => [s.id, s]));
+  const activeId = detectActiveId(allSections);
   state.activeId = activeId;
 
-  // --- Header ---
+  // Header
   const header = document.createElement('div');
   header.className = 'ast-ext-panel-header';
   header.innerHTML = `
     <span>🧭</span>
     <span>Навигация</span>
-    <span style="margin-left:auto;opacity:0.6">${sections.length}</span>
+    <span style="margin-left:auto;opacity:0.6">${allSections.length}</span>
   `;
   wrap.appendChild(header);
 
-  // --- Items ---
-  const itemEls = [];
-  for (const s of sections) {
-    const row = document.createElement('div');
-    row.className = 'ast-nav-item' + (s.id === activeId ? ' active' : '');
-    row.dataset.navTarget = s.id;
-    row.title = s.label;
+  // Множество секций, попадающих в группы
+  const grouped = new Set();
+  for (const g of Groups.listGroups()) {
+    for (const c of g.cells) grouped.add(c.section);
+  }
 
-    const icon = document.createElement('span');
-    icon.className = 'ast-nav-item-icon';
-    icon.textContent = s.icon;
+  const itemEls = []; // для синхронизации подсветки
 
-    const label = document.createElement('span');
-    label.className = 'ast-nav-item-label';
-    label.textContent = s.label;
-
-    row.appendChild(icon);
-    row.appendChild(label);
-
-    if (s.count != null) {
-      const cnt = document.createElement('span');
-      cnt.className = 'ast-nav-item-count';
-      cnt.textContent = s.count;
-      row.appendChild(cnt);
+  // 1. Иерархия групп
+  const tree = Groups.buildTree();
+  if (tree.length) {
+    for (const node of tree) {
+      const nodeEl = _renderGroupNode(node, opts, sectionsById, itemEls, activeId);
+      if (nodeEl) wrap.appendChild(nodeEl);
     }
+  }
 
-    row.addEventListener('click', () => {
-      state.activeId = s.id;
-      // Обновляем подсветку сразу — не ждём scroll-события
-      for (const it of itemEls) {
-        it.el.classList.toggle('active', it.id === s.id);
-      }
-      if (typeof opts.onJump === 'function') {
-        opts.onJump(s.id);
-      } else {
-        jumpToSection(s.id);
-      }
-    });
-
+  // 2. Ungrouped секции
+  for (const s of allSections) {
+    if (grouped.has(s.id)) continue;
+    const row = _renderSectionNode(s, opts, activeId, itemEls);
     wrap.appendChild(row);
-    itemEls.push({ id: s.id, el: row });
   }
 
-  // --- Синхронизация подсветки со скроллом .mn-sections ---
-  // Пока панель открыта — слушаем scroll и обновляем active.
-  // При удалении панели из DOM — снимаем слушатель (MutationObserver).
-  const mnSections = document.querySelector('.mn-sections');
-  const onScroll = () => {
-    const id = window.__astActiveSectionId;
-    if (!id || id === state.activeId) return;
-    state.activeId = id;
-    for (const it of itemEls) {
-      it.el.classList.toggle('active', it.id === id);
-    }
-  };
-  if (mnSections) {
-    mnSections.addEventListener('scroll', onScroll, { passive: true });
-  }
-
-  if (typeof MutationObserver !== 'undefined') {
-    const mo = new MutationObserver(() => {
-      if (!wrap.isConnected) {
-        if (mnSections) {
-          mnSections.removeEventListener('scroll', onScroll);
-        }
-        mo.disconnect();
-      }
-    });
-    mo.observe(document.body, { childList: true, subtree: true });
-  }
+  // 3. Синхронизация подсветки со скроллом .mn-sections
+  _attachScrollSync(itemEls);
 
   return wrap;
+}
+
+// ---------------------------------------------------------------------------
+// ИЕРАРХИЯ: узел группы
+// ---------------------------------------------------------------------------
+
+function _renderGroupNode(node, opts, sectionsById, itemEls, activeId) {
+  const groupWrap = document.createElement('div');
+  groupWrap.className = 'ast-nav-group';
+  groupWrap.dataset.groupId = node.groupId;
+
+  // Header группы
+  const headerEl = document.createElement('div');
+  headerEl.className = 'ast-nav-group-header' + (node.id === activeId ? ' active' : '');
+  headerEl.dataset.navTarget = node.id;
+  headerEl.title = node.label;
+  headerEl.innerHTML = `
+    <span class="toggle">▾</span>
+    <span class="icon">📊</span>
+    <span class="label">${escapeHtml(node.label)}</span>
+    <span class="count">${node.cells.length + (node.children?.length || 0)}</span>
+  `;
+
+  // Клик: toggle по иконке-стрелке, jump — по остальному
+  headerEl.addEventListener('click', e => {
+    if (e.target.classList.contains('toggle')) {
+      groupWrap.classList.toggle('collapsed');
+      return;
+    }
+    state.activeId = node.id;
+    for (const it of itemEls) {
+      it.el.classList.toggle('active', it.id === node.id);
+    }
+    if (typeof opts.onJump === 'function') {
+      opts.onJump(node.id);
+    } else {
+      _jumpToNode(node.id);
+    }
+  });
+
+  itemEls.push({ id: node.id, el: headerEl });
+
+  // Body
+  const bodyEl = document.createElement('div');
+  bodyEl.className = 'ast-nav-group-body';
+
+  // Дочерние группы (master-detail)
+  if (node.children && node.children.length) {
+    for (const child of node.children) {
+      const childEl = _renderGroupNode(child, opts, sectionsById, itemEls, activeId);
+      if (childEl) bodyEl.appendChild(childEl);
+    }
+  }
+
+  // Секции внутри группы
+  for (const sid of node.cells || []) {
+    const s = sectionsById.get(sid);
+    if (!s) continue;
+    const row = _renderSectionNode(s, opts, activeId, itemEls);
+    bodyEl.appendChild(row);
+  }
+
+  groupWrap.appendChild(headerEl);
+  groupWrap.appendChild(bodyEl);
+
+  return groupWrap;
+}
+
+// ---------------------------------------------------------------------------
+// ИЕРАРХИЯ: узел секции
+// ---------------------------------------------------------------------------
+
+function _renderSectionNode(s, opts, activeId, itemEls) {
+  const row = document.createElement('div');
+  row.className = 'ast-nav-item' + (s.id === activeId ? ' active' : '');
+  row.dataset.navTarget = s.id;
+  row.title = s.label;
+
+  const icon = document.createElement('span');
+  icon.className = 'ast-nav-item-icon';
+  icon.textContent = s.icon || '§';
+
+  const label = document.createElement('span');
+  label.className = 'ast-nav-item-label';
+  label.textContent = s.label;
+
+  row.appendChild(icon);
+  row.appendChild(label);
+
+  if (s.count != null) {
+    const cnt = document.createElement('span');
+    cnt.className = 'ast-nav-item-count';
+    cnt.textContent = s.count;
+    row.appendChild(cnt);
+  }
+
+  row.addEventListener('click', () => {
+    state.activeId = s.id;
+    for (const it of itemEls) {
+      it.el.classList.toggle('active', it.id === s.id);
+    }
+    if (typeof opts.onJump === 'function') {
+      opts.onJump(s.id);
+    } else {
+      _jumpToNode(s.id);
+    }
+  });
+
+  itemEls.push({ id: s.id, el: row });
+
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// JUMP: группа или секция
+// ---------------------------------------------------------------------------
+
+function _jumpToNode(id) {
+  // Группа?
+  if (id.startsWith('group:')) {
+    const gid = id.slice(6);
+    const el = document.querySelector(`.mn-group[data-group-id="${_cssEscape(gid)}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+  }
+  // Обычная секция
+  const el =
+    document.querySelector(`[data-nav-section="${_cssEscape(id)}"]`) ||
+    document.getElementById(id);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function _cssEscape(s) {
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+    return CSS.escape(String(s));
+  }
+  return String(s).replace(/[^a-zA-Z0-9_-]/g, c => '\\' + c);
+}
+
+// ---------------------------------------------------------------------------
+// СИНХРОНИЗАЦИЯ ПОДСВЕТКИ СО СКРОЛЛОМ
+// ---------------------------------------------------------------------------
+
+function _attachScrollSync(itemEls) {
+  if (!itemEls.length) return;
+
+  const mnSections = document.querySelector('.mn-sections');
+  if (!mnSections) return;
+
+  const onScroll = () => {
+    const id = window.__astActiveSectionId;
+    if (!id) return;
+    let matched = false;
+    for (const it of itemEls) {
+      if (it.id === id) {
+        for (const other of itemEls) {
+          other.el.classList.toggle('active', other.id === id);
+        }
+        matched = true;
+        break;
+      }
+    }
+    // Если активна группа, но id группы не совпадает с section id —
+    // попробуем найти по data-group-id
+    if (!matched) {
+      for (const it of itemEls) {
+        if (it.id === `group:${id}`) {
+          for (const other of itemEls) {
+            other.el.classList.toggle('active', other.id === it.id);
+          }
+          break;
+        }
+      }
+    }
+  };
+
+  mnSections.addEventListener('scroll', onScroll, { passive: true });
+
+  // MutationObserver на #mn (только childList), не на body+subtree
+  const mn = document.getElementById('mn');
+  if (!mn || typeof MutationObserver === 'undefined') return;
+  const firstEl = itemEls[0]?.el;
+  if (!firstEl) return;
+
+  const mo = new MutationObserver(() => {
+    if (!document.body.contains(firstEl)) {
+      mnSections.removeEventListener('scroll', onScroll);
+      mo.disconnect();
+    }
+  });
+  mo.observe(mn, { childList: true });
 }
 
 // ---------------------------------------------------------------------------
