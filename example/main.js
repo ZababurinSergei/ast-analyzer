@@ -1,5 +1,5 @@
 // ============================================================================
-// AST ANALYZER — MAIN v13.0.3
+// AST ANALYZER — MAIN v13.0.5
 // Только новый формат. Обратная совместимость не поддерживается.
 //
 // Особенности:
@@ -9,39 +9,24 @@
 //   - Round-Trip L0/L1/L2/L3/RE
 //   - valuesMode в шапке и при экспорте
 //   - VS Code ссылки (basePath, форма настройки, бейджи)
-//   - Мини-навигация по секциям (fixed, верхний правый угол под шапкой)
+//   - Мини-навигация по секциям — через кнопку 🧭 в location bar
 //   - Адресная строка как в браузере (◀ ▶ ⟳ ⌂ + autocomplete)
 //
-// FIX v13.0.2:
-//   - openRoundTripModal(): hasCompact/hasFull теперь берутся
-//     из state.rawCompact / state.rawFull (а не из originalFormat),
-//     корректно обрабатывается случай «загружен только full».
+// v13.0.4:
+//   - import * as Extensions — реестр кнопок-расширений в location bar
+//   - import * as Nav — мини-навигация по секциям через Nav.createPanel()
+//   - УДАЛЁН вызов Nav.mount({ position: 'top-right', offset: 16 })
+//   - В init() регистрируется расширение 'nav' (🧭)
 //
-// v13.0.2 + VS Code:
-//   - import * as Vscode
-//   - window.__astToast = UI.toast (для формы basePath)
-//   - кнопка btnVscodeSetup + обработчик open-vscode-setup
-//   - renderVscodeBadge() в карточках fn/file
-//   - renderVscodeIcon() в списках
-//   - автоопределение basePath при первом запуске
-//   - инжект стилей Vscode + Vscode.form
-//
-// v13.0.3:
-//   - renderHeader() вынесена из init() — обновляется сразу после
-//     сохранения basePath в модалке
-//   - Чип basePath в шапке кликабельный (data-action="copy-basepath")
-//   - middleEllipsis() для basePath (видно и корень, и конец пути)
-//   - Обработчик копирования basePath в буфер обмена
-//   - import * as Nav — мини-навигация по секциям
-//   - Nav.mount() в init() с position: 'top-right' (под шапкой)
-//   - Nav.refresh() в renderFn()/renderFile()
-//   - data-nav-section / data-nav-label на секциях (точные иконки)
-//   - Alt+N — циклическое переключение угла мини-навигации
-//   - import * as LocationBar — адресная строка как в браузере
-//   - LocationBar.mount() в init(), syncFromSelection() в selectFn/selectFile
-//   - Горячие клавиши: Ctrl+L, Alt+←, Alt+→, Alt+Home, F5
-//   - renderHeader() обновляет CSS-переменную --hdr-height
-//     (учитывает .hdr-hidden — для корректной работы Nav)
+// v13.0.5 (ТЕКУЩАЯ):
+//   - ✅ Full-page секции внутри #mn: каждая секция = высота #mn
+//   - ✅ Скролл колесом/тачпадом переключает секции через scroll-snap
+//   - ✅ scroll-snap-type: y mandatory + scroll-snap-stop: always
+//   - ✅ Внутри секции — свой скролл (.es-b)
+//   - ✅ Графы растягиваются на всю высоту секции
+//   - ✅ Активная секция подсвечивается в навигации (🧭)
+//   - ✅ window.__astActiveSectionId — глобальная переменная активной секции
+//   - ✅ Подсветка синхронизируется через scroll-слушатель на .mn-sections
 // ============================================================================
 
 import * as Core from './ast-analyzer-core.js';
@@ -51,6 +36,7 @@ import * as Tree from './ast-analyzer-tree.js';
 import * as Legend from './ast-analyzer-legend.js';
 import * as Paths from './ast-analyzer-paths.js';
 import * as Vscode from './ast-analyzer-vscode.js';
+import * as Extensions from './ast-analyzer-extensions.js';
 import * as Nav from './ast-analyzer-nav.js';
 import * as LocationBar from './ast-analyzer-location-bar.js';
 import {
@@ -73,6 +59,51 @@ let activeFileId = null;
 // ГЛОБАЛЬНЫЙ ТОСТ (для формы basePath в ast-analyzer-vscode.js)
 // ---------------------------------------------------------------------------
 window.__astToast = (msg, type = 'info') => UI.toast(msg, type);
+
+// ---------------------------------------------------------------------------
+// АКТИВНАЯ СЕКЦИЯ (для навигации 🧭)
+// ---------------------------------------------------------------------------
+window.__astActiveSectionId = null;
+
+/**
+ * Навешивает scroll-слушатель на .mn-sections, чтобы отслеживать
+ * активную секцию (по scrollTop) и подсвечивать её в панели навигации.
+ *
+ * Вызывается после каждого renderFn() / renderFile(), т.к. .mn-sections
+ * пересоздаётся при innerHTML = ...
+ */
+function bindSectionsScrollTracking() {
+  const mnSections = document.querySelector('.mn-sections');
+  if (!mnSections) return;
+
+  mnSections.addEventListener(
+    'scroll',
+    () => {
+      const h = mnSections.clientHeight || 1;
+      const idx = Math.round(mnSections.scrollTop / h);
+      const secs = mnSections.querySelectorAll('[data-nav-section]');
+      const active = secs[idx];
+      if (!active) return;
+
+      const id = active.dataset.navSection;
+      window.__astActiveSectionId = id;
+
+      // Подсветка в открытой панели навигации (если она открыта)
+      document
+        .querySelectorAll('.ast-nav-panel .ast-nav-item')
+        .forEach(it => {
+          it.classList.toggle('active', it.dataset.navTarget === id);
+        });
+    },
+    { passive: true }
+  );
+
+  // Инициализируем активную секцию сразу
+  const first = mnSections.querySelector('[data-nav-section]');
+  if (first) {
+    window.__astActiveSectionId = first.dataset.navSection;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // СТИЛИ ДЛЯ ПУТЕЙ (инжектятся в init)
@@ -128,6 +159,95 @@ export const PATHS_STYLES = `
 .path-arrow {
   color: var(--text2, #8b949e);
   font-size: 10px;
+}
+`;
+
+// ---------------------------------------------------------------------------
+// СТИЛИ FULL-PAGE СЕКЦИЙ (инжектятся в init)
+// ---------------------------------------------------------------------------
+export const MN_SECTIONS_STYLES = `
+.mn {
+  flex: 1;
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mn-sections {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+.mn-sections::-webkit-scrollbar { display: none; }
+
+.mn-sections > .es,
+.mn-sections > .n-card-wrap {
+  flex: 0 0 100%;
+  height: 100%;
+  min-height: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.mn-sections > .es > .es-h {
+  flex-shrink: 0;
+}
+
+.mn-sections > .es > .es-b {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 16px;
+  box-sizing: border-box;
+  max-height: none;
+}
+
+.mn-sections > .es > .es-b > .graph-wrap {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+  overflow: hidden;
+}
+.mn-sections > .es > .es-b > .graph-wrap > .graph-svg {
+  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Grid-секции (Входы/Выходы и т.д.) — становятся обычным потоком */
+.mn-sections > .eg {
+  display: block;
+  flex: 0 0 100%;
+  height: 100%;
+  min-height: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+/* Для .es внутри .eg-секций, которые мы выносим как отдельные секции */
+.eg-fragment {
+  display: contents;
 }
 `;
 
@@ -216,11 +336,8 @@ function init() {
             cfg.basePath ? `basePath: ${cfg.basePath}` : 'basePath очищен',
             cfg.basePath ? 'success' : 'warn'
           );
-          // 1. Перерисовать шапку
           renderHeader();
-          // 2. Синхронизировать адресную строку
           LocationBar.setUniverse(cfg.basePath);
-          // 3. Перерисовать текущий экран
           if (activeFnId) renderFn(activeFnId);
           else if (activeFileId) renderFile(activeFileId);
         },
@@ -247,6 +364,12 @@ function init() {
     style.textContent = PATHS_STYLES;
     document.head.appendChild(style);
   }
+  if (!document.getElementById('ast-mn-sections-styles')) {
+    const style = document.createElement('style');
+    style.id = 'ast-mn-sections-styles';
+    style.textContent = MN_SECTIONS_STYLES;
+    document.head.appendChild(style);
+  }
   if (!document.getElementById('ast-vscode-styles')) {
     const style = document.createElement('style');
     style.id = 'ast-vscode-styles';
@@ -259,10 +382,10 @@ function init() {
     style.textContent = Vscode.buildVscodeFormStyles();
     document.head.appendChild(style);
   }
-  if (!document.getElementById('ast-nav-styles')) {
+  if (!document.getElementById('ast-ext-styles')) {
     const style = document.createElement('style');
-    style.id = 'ast-nav-styles';
-    style.textContent = Nav.buildNavStyles();
+    style.id = 'ast-ext-styles';
+    style.textContent = Extensions.buildStyles();
     document.head.appendChild(style);
   }
   if (!document.getElementById('ast-location-styles')) {
@@ -298,9 +421,9 @@ function init() {
 
   // --- Адресная строка (как в браузере) ---
   LocationBar.mount({
-    container: document.getElementById('locationBarContainer') || document.body,
+    container:
+      document.getElementById('locationBarContainer') || document.body,
     onChange: entry => {
-      // Обработка перехода из адресной строки
       if (entry.kind === 'fn' && state.fnById[entry.id]) {
         activeFnId = entry.id;
         activeFileId = null;
@@ -312,7 +435,6 @@ function init() {
         renderTree();
         renderFile(entry.id);
       } else if (entry.kind === 'module') {
-        // Модуль — открываем первый файл модуля
         const firstFile = (state.moduleFiles[entry.id] || [])[0];
         if (firstFile) {
           activeFnId = null;
@@ -321,7 +443,6 @@ function init() {
           renderFile(firstFile);
         }
       } else if (entry.kind === 'universe') {
-        // Возврат к universe — открываем первый файл проекта
         const firstFile = Object.keys(state.files)[0];
         if (firstFile) {
           activeFnId = null;
@@ -333,8 +454,48 @@ function init() {
     },
   });
 
-  // --- Мини-навигация (верхний правый угол, под шапкой) ---
-  Nav.mount({ position: 'top-right', offset: 16 });
+  // --- Панель расширений в location bar ---
+  const extSlot = LocationBar.getExtensionsSlot
+    ? LocationBar.getExtensionsSlot()
+    : null;
+
+  if (extSlot) {
+    Extensions.register({
+      id: 'nav',
+      icon: '🧭',
+      title: 'Навигация по секциям',
+      order: 100,
+      panel: ({ close }) => {
+        return Nav.createPanel({
+          onJump: sectionId => {
+            const el =
+              document.querySelector(
+                `[data-nav-section="${sectionId}"]`
+              ) || document.getElementById(sectionId);
+            if (el) {
+              el.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start',
+              });
+            }
+            close();
+          },
+        });
+      },
+      onClose: () => {
+        try {
+          Nav.unmount?.();
+        } catch {}
+      },
+    });
+
+    Extensions.renderInto(extSlot);
+  } else {
+    console.warn(
+      '[AST] LocationBar.getExtensionsSlot() недоступен — ' +
+      'мини-навигация не будет примонтирована в location bar.'
+    );
+  }
 
   // --- Первый экран ---
   if (state.functions && Object.keys(state.functions).length) {
@@ -351,7 +512,6 @@ function renderHeader() {
   const fmt = state.originalFormat || '?';
   const vscodeCfg = Vscode.getVscodeConfig();
 
-  // Чип basePath с копированием
   const basePathChip = vscodeCfg.basePath
     ? `<span
          class="chip blue basepath-chip"
@@ -360,7 +520,9 @@ function renderHeader() {
          title="basePath: ${Core.escapeHtml(vscodeCfg.basePath)}
 Клик — скопировать"
          style="cursor:pointer;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle;"
-       >🔗 ${Core.escapeHtml(Core.middleEllipsis(vscodeCfg.basePath, 40))}</span>`
+       >🔗 ${Core.escapeHtml(
+      Core.middleEllipsis(vscodeCfg.basePath, 40)
+    )}</span>`
     : `<span class="chip" title="basePath не задан — ссылки VS Code работать не будут">🔗 (не задан)</span>`;
 
   $('sm').innerHTML = `
@@ -377,8 +539,6 @@ function renderHeader() {
     ${basePathChip}
   `;
 
-  // ✅ v13.0.3: обновляем CSS-переменную --hdr-height
-  // (учитывает .hdr-hidden — для корректной работы Nav)
   const hdr = document.querySelector('.hdr');
   if (hdr) {
     const h = hdr.classList.contains('hdr-hidden')
@@ -413,7 +573,6 @@ function selectFn(id) {
   activeFileId = null;
   renderTree();
   renderFn(id);
-  // Синхронизировать адресную строку
   LocationBar.syncFromSelection('fn', id, { replace: true });
 }
 
@@ -422,7 +581,6 @@ function selectFile(fid) {
   activeFileId = fid;
   renderTree();
   renderFile(fid);
-  // Синхронизировать адресную строку
   LocationBar.syncFromSelection('file', fid, { replace: true });
 }
 
@@ -440,7 +598,9 @@ function renderFn(id) {
   const fImps = file ? state.fileImports[file.id] || [] : [];
   const fImporters = file ? state.fileDependents[file.id] || [] : [];
   const exps = info.exports;
-  const sibs = file ? (state.fileFunctions[file.id] || []).filter(f => f.id !== id) : [];
+  const sibs = file
+    ? (state.fileFunctions[file.id] || []).filter(f => f.id !== id)
+    : [];
 
   const bds = [];
   if (fn.isExported) bds.push('<span class="b e">export</span>');
@@ -448,64 +608,90 @@ function renderFn(id) {
   if (fn.isMethod) bds.push('<span class="b m">method</span>');
   if (fn.isArrow) bds.push('<span class="b r">arrow</span>');
 
-  // VS Code бейдж для шапки
   const vscodeBadge = Vscode.renderVscodeBadge({
     fileId: fn.fileId,
     line: fn.line,
   });
 
   const h = [];
-  h.push(`<div class="ctx">
-    <span class="c">📦 ${Core.escapeHtml(mod?.name || '?')}</span>
-    <span class="ar">→</span>
-    <span class="c" data-action="select-file" data-id="${file?.id || ''}">📄 ${Core.escapeHtml(Core.shortPath(file?.path || '?', 60))}</span>
-    ${exps.length ? `<span class="ar">→</span><span class="c" style="border-color:var(--green);color:var(--green)">📤 ${Core.escapeHtml(exps[0].exportName)}</span>` : ''}
+
+  // --- Карточка функции (отдельная full-page секция) ---
+  h.push(`<div class="es" data-nav-section="fn-card" data-nav-label="${Core.escapeHtml(
+    fn.name
+  )}" style="text-align:center;">
+    <div class="es-b" style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
+      <div class="ctx" style="display:flex;justify-content:center;flex-wrap:wrap;gap:6px;margin-bottom:16px;">
+        <span class="c">📦 ${Core.escapeHtml(mod?.name || '?')}</span>
+        <span class="ar">→</span>
+        <span class="c" data-action="select-file" data-id="${file?.id || ''}">📄 ${Core.escapeHtml(
+    Core.shortPath(file?.path || '?', 60)
+  )}</span>
+        ${
+    exps.length
+      ? `<span class="ar">→</span><span class="c" style="border-color:var(--green);color:var(--green)">📤 ${Core.escapeHtml(
+        exps[0].exportName
+      )}</span>`
+      : ''
+  }
+      </div>
+      <div class="n-card">
+        <div class="nm">ƒ ${Core.escapeHtml(fn.name)}</div>
+        <div class="mt">
+          <span>📍 L${fn.line || 0}</span>
+          ${vscodeBadge}
+          ${
+    fn.params?.length
+      ? `<span>(${Core.escapeHtml(fn.params.join(', '))})</span>`
+      : ''
+  }
+          ${
+    fn.returnType
+      ? `<span>→ ${Core.escapeHtml(Core.formatType(fn.returnType))}</span>`
+      : ''
+  }
+        </div>
+        <div class="bd">${bds.join('')}</div>
+      </div>
+    </div>
   </div>`);
 
-  h.push(`<div style="text-align:center"><div class="n-card" data-nav-section="fn-card" data-nav-label="${Core.escapeHtml(fn.name)}">
-    <div class="nm">ƒ ${Core.escapeHtml(fn.name)}</div>
-    <div class="mt">
-      <span>📍 L${fn.line || 0}</span>
-      ${vscodeBadge}
-      ${fn.params?.length ? `<span>(${Core.escapeHtml(fn.params.join(', '))})</span>` : ''}
-      ${fn.returnType ? `<span>→ ${Core.escapeHtml(Core.formatType(fn.returnType))}</span>` : ''}
-    </div>
-    <div class="bd">${bds.join('')}</div>
-  </div></div>`);
-
-  // Пути ДО
-  h.push(`<div class="es" data-nav-section="paths-to" data-nav-label="Пути ДО" style="margin-bottom:12px;">
+  // --- Пути ДО ---
+  h.push(`<div class="es" data-nav-section="paths-to" data-nav-label="Пути ДО">
     <div class="es-h">🛤️ Пути ДО этой функции <span class="ct" id="pathsToCount">…</span></div>
     <div class="es-b" id="pathsToFnBody"></div>
   </div>`);
-  // Пути ОТ
-  h.push(`<div class="es" data-nav-section="paths-from" data-nav-label="Пути ОТ" style="margin-bottom:12px;">
+
+  // --- Пути ОТ ---
+  h.push(`<div class="es" data-nav-section="paths-from" data-nav-label="Пути ОТ">
     <div class="es-h">🛤️ Пути ОТ этой функции <span class="ct" id="pathsFromCount">…</span></div>
     <div class="es-b" id="pathsFromFnBody"></div>
   </div>`);
-  // Цепочка вызовов
-  h.push(`<div class="es" data-nav-section="chain" data-nav-label="Цепочка вызовов" style="margin-bottom:12px;">
+
+  // --- Цепочка вызовов ---
+  h.push(`<div class="es" data-nav-section="chain" data-nav-label="Цепочка вызовов">
     <div class="es-h">🔗 Цепочка вызовов</div>
     <div class="es-b" id="callChainBody"></div>
   </div>`);
-  // Граф вызовов
-  h.push(`<div class="es" data-nav-section="call-graph" data-nav-label="Граф вызовов" style="margin-bottom:12px;">
+
+  // --- Граф вызовов ---
+  h.push(`<div class="es" data-nav-section="call-graph" data-nav-label="Граф вызовов">
     <div class="es-h">📞 Граф вызовов</div>
     <div class="es-b" id="callGraphBody"></div>
   </div>`);
-  // Граф зависимостей файла
+
+  // --- Граф зависимостей файла ---
   if (file) {
-    h.push(`<div class="es" data-nav-section="file-dep-graph" data-nav-label="Граф зависимостей" style="margin-bottom:12px;">
+    h.push(`<div class="es" data-nav-section="file-dep-graph" data-nav-label="Граф зависимостей">
       <div class="es-h">🔗 Граф зависимостей файла</div>
       <div class="es-b" id="fileDepGraphBody"></div>
     </div>`);
   }
 
-  h.push(`<div class="eg">`);
-
-  // Входы
+  // --- Входы ---
   h.push(
-    `<div class="es" data-nav-section="callers" data-nav-label="Входы"><div class="es-h">📥 Входы — кто вызывает <span class="ct">${callers.length}</span></div><div class="es-b">`
+    `<div class="es" data-nav-section="callers" data-nav-label="Входы">
+      <div class="es-h">📥 Входы — кто вызывает <span class="ct">${callers.length}</span></div>
+      <div class="es-b">`
   );
   if (callers.length) {
     for (const c of callers) {
@@ -527,9 +713,11 @@ function renderFn(id) {
   } else h.push('<div class="imp-empty">Нет входящих вызовов</div>');
   h.push(`</div></div>`);
 
-  // Выходы
+  // --- Выходы ---
   h.push(
-    `<div class="es" data-nav-section="callees" data-nav-label="Выходы"><div class="es-h">📤 Выходы — что вызывает <span class="ct">${callees.length}</span></div><div class="es-b">`
+    `<div class="es" data-nav-section="callees" data-nav-label="Выходы">
+      <div class="es-h">📤 Выходы — что вызывает <span class="ct">${callees.length}</span></div>
+      <div class="es-b">`
   );
   if (callees.length) {
     for (const c of callees) {
@@ -541,29 +729,47 @@ function renderFn(id) {
           label: '↗',
         })
         : '';
-      h.push(`<div class="ei" ${!c.isExternal ? `data-action="select-fn" data-id="${c.toFnId}"` : ''}>
+      h.push(`<div class="ei" ${
+        !c.isExternal
+          ? `data-action="select-fn" data-id="${c.toFnId}"`
+          : ''
+      }>
         <span class="d" style="color:var(--red)">→</span>
-        <span class="n">${c.isExternal ? '🌐 ' : ''}${Core.escapeHtml(c.toFnName)}</span>
-        <span class="inf">${Core.escapeHtml(c.callType)}·L${c.callLine}${c.isExternal ? '·⚡' : ''}</span>
+        <span class="n">${c.isExternal ? '🌐 ' : ''}${Core.escapeHtml(
+        c.toFnName
+      )}</span>
+        <span class="inf">${Core.escapeHtml(c.callType)}·L${c.callLine}${
+        c.isExternal ? '·⚡' : ''
+      }</span>
         ${vscodeIcon}
       </div>`);
     }
   } else h.push('<div class="imp-empty">Нет исходящих вызовов</div>');
   h.push(`</div></div>`);
 
-  // Импорты файла
+  // --- Импорты файла ---
   h.push(
-    `<div class="es" data-nav-section="file-imports" data-nav-label="Импорты файла"><div class="es-h">📦 Импорты файла <span class="ct">${fImps.length}</span></div><div class="es-b">${renderImportsBlock(fImps)}</div></div>`
+    `<div class="es" data-nav-section="file-imports" data-nav-label="Импорты файла">
+      <div class="es-h">📦 Импорты файла <span class="ct">${fImps.length}</span></div>
+      <div class="es-b">${renderImportsBlock(fImps)}</div>
+    </div>`
   );
 
-  // Импортируют файл
+  // --- Импортируют файл ---
   h.push(
-    `<div class="es" data-nav-section="file-importers" data-nav-label="Импортируют файл"><div class="es-h">🔗 Импортируют файл <span class="ct">${fImporters.length}</span></div><div class="es-b">${renderImportersBlock(fImporters)}</div></div>`
+    `<div class="es" data-nav-section="file-importers" data-nav-label="Импортируют файл">
+      <div class="es-h">🔗 Импортируют файл <span class="ct">${fImporters.length}</span></div>
+      <div class="es-b">${renderImportersBlock(
+      fImporters.map(fid => ({ fromFileId: fid }))
+    )}</div>
+    </div>`
   );
 
-  // Соседи
+  // --- Соседи ---
   h.push(
-    `<div class="es" data-nav-section="siblings" data-nav-label="Соседи по файлу"><div class="es-h">👥 Соседи по файлу <span class="ct">${sibs.length}</span></div><div class="es-b">`
+    `<div class="es" data-nav-section="siblings" data-nav-label="Соседи по файлу">
+      <div class="es-h">👥 Соседи по файлу <span class="ct">${sibs.length}</span></div>
+      <div class="es-b">`
   );
   if (sibs.length) {
     for (const s of sibs.slice(0, 20)) {
@@ -579,15 +785,16 @@ function renderFn(id) {
         ${vscodeIcon}
       </div>`);
     }
-    if (sibs.length > 20) h.push(`<div class="imp-empty">…ещё ${sibs.length - 20}</div>`);
+    if (sibs.length > 20)
+      h.push(`<div class="imp-empty">…ещё ${sibs.length - 20}</div>`);
   } else h.push('<div class="imp-empty">Единственная функция в файле</div>');
   h.push(`</div></div>`);
 
-  // Транзитивные
+  // --- Транзитивные ---
   const tCallers = Core.getTransitiveCallers(id, 3);
   const tCallees = Core.getTransitiveCallees(id, 3);
   if (tCallers.length > 1 || tCallees.length > 1) {
-    h.push(`<div class="es" data-nav-section="transitive" data-nav-label="Транзитивные связи" style="grid-column:1/-1;">
+    h.push(`<div class="es" data-nav-section="transitive" data-nav-label="Транзитивные связи">
       <div class="es-h">🔮 Транзитивные связи (глубина 3)</div>
       <div class="es-b">
         <div style="font-size:10px;color:var(--text2);margin-bottom:6px;">Вызывающие (${tCallers.length}):</div>
@@ -596,7 +803,9 @@ function renderFn(id) {
       .slice(0, 20)
       .map(
         f =>
-          `<span class="ei" style="display:inline-flex;padding:2px 8px;background:var(--bg3);border-radius:10px;" data-action="select-fn" data-id="${f.id}">${Core.escapeHtml(f.name)}</span>`
+          `<span class="ei" style="display:inline-flex;padding:2px 8px;background:var(--bg3);border-radius:10px;" data-action="select-fn" data-id="${f.id}">${Core.escapeHtml(
+            f.name
+          )}</span>`
       )
       .join('')}
         </div>
@@ -606,7 +815,9 @@ function renderFn(id) {
       .slice(0, 20)
       .map(
         f =>
-          `<span class="ei" style="display:inline-flex;padding:2px 8px;background:var(--bg3);border-radius:10px;" data-action="select-fn" data-id="${f.id}">${Core.escapeHtml(f.name)}</span>`
+          `<span class="ei" style="display:inline-flex;padding:2px 8px;background:var(--bg3);border-radius:10px;" data-action="select-fn" data-id="${f.id}">${Core.escapeHtml(
+            f.name
+          )}</span>`
       )
       .join('')}
         </div>
@@ -614,11 +825,26 @@ function renderFn(id) {
     </div>`);
   }
 
-  h.push(`</div>`);
-  $('mn').innerHTML = h.join('');
+  // --- Обёртка .mn-sections ---
+  $('mn').innerHTML = `<div class="mn-sections">${h.join('')}</div>`;
 
-  // Пути ДО
-  const pathsTo = Paths.findAllPathsTo(id, { type: 'function', maxDepth: 6, maxPaths: 20 });
+  // --- Навешиваем scroll-tracking для подсветки активной секции ---
+  bindSectionsScrollTracking();
+
+  // --- Прокрутка к первой секции без анимации ---
+  requestAnimationFrame(() => {
+    const first = document.querySelector('.mn-sections > [data-nav-section]');
+    if (first) {
+      first.scrollIntoView({ behavior: 'auto', block: 'start' });
+    }
+  });
+
+  // --- Пути ДО ---
+  const pathsTo = Paths.findAllPathsTo(id, {
+    type: 'function',
+    maxDepth: 6,
+    maxPaths: 20,
+  });
   const cntTo = $('pathsToCount');
   if (cntTo) cntTo.textContent = pathsTo.length;
   Paths.renderPathsList($('pathsToFnBody'), pathsTo, {
@@ -626,8 +852,12 @@ function renderFn(id) {
     label: 'путей до',
   });
 
-  // Пути ОТ
-  const pathsFrom = Paths.findAllPathsFrom(id, { type: 'function', maxDepth: 6, maxPaths: 20 });
+  // --- Пути ОТ ---
+  const pathsFrom = Paths.findAllPathsFrom(id, {
+    type: 'function',
+    maxDepth: 6,
+    maxPaths: 20,
+  });
   const cntFrom = $('pathsFromCount');
   if (cntFrom) cntFrom.textContent = pathsFrom.length;
   Paths.renderPathsList($('pathsFromFnBody'), pathsFrom, {
@@ -635,10 +865,12 @@ function renderFn(id) {
     label: 'путей от',
   });
 
-  // Цепочка
-  $('callChainBody').appendChild(Graph.renderCallChain(id, { direction: 'both', depth: 3 }));
+  // --- Цепочка ---
+  $('callChainBody').appendChild(
+    Graph.renderCallChain(id, { direction: 'both', depth: 3 })
+  );
 
-  // Граф вызовов
+  // --- Граф вызовов ---
   $('callGraphBody').appendChild(
     Graph.renderCallGraph(id, {
       onNodeClick: (nid, t) => {
@@ -647,15 +879,12 @@ function renderFn(id) {
     })
   );
 
-  // Граф зависимостей
+  // --- Граф зависимостей ---
   if (file) {
     $('fileDepGraphBody').appendChild(
       Graph.renderFileDepGraph(file.id, { onNodeClick: selectFile })
     );
   }
-
-  // Обновить мини-навигацию
-  Nav.refresh();
 }
 
 // ---------------------------------------------------------------------------
@@ -671,50 +900,64 @@ function renderFile(fid) {
   const deps = [...new Set(state.fileDependents[fid] || [])];
   const depsOut = [...new Set(state.fileDependencies[fid] || [])];
 
-  // VS Code бейдж для шапки
   const vscodeBadge = Vscode.renderVscodeBadge({ fileId: fid });
 
   const h = [];
-  h.push(`<div class="ctx">
-    <span class="c">📦 ${Core.escapeHtml(mod?.name || '?')}</span>
-    <span class="ar">→</span>
-    <span class="c" style="border-color:var(--yellow);color:var(--yellow)">📄 ${Core.escapeHtml(f.path)}</span>
+
+  // --- Карточка файла ---
+  h.push(`<div class="es" data-nav-section="file-card" data-nav-label="${Core.escapeHtml(
+    f.path
+  )}" style="text-align:center;">
+    <div class="es-b" style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
+      <div class="ctx" style="display:flex;justify-content:center;flex-wrap:wrap;gap:6px;margin-bottom:16px;">
+        <span class="c">📦 ${Core.escapeHtml(mod?.name || '?')}</span>
+        <span class="ar">→</span>
+        <span class="c" style="border-color:var(--yellow);color:var(--yellow)">📄 ${Core.escapeHtml(
+    f.path
+  )}</span>
+      </div>
+      <div class="n-card">
+        <div class="nm">📄 ${Core.escapeHtml(f.path)}</div>
+        <div class="mt">
+          <span>${vscodeBadge}</span>
+          <span>Модуль: ${Core.escapeHtml(mod?.name || '?')}</span>
+          <span>Функций: ${fns.length}</span>
+          <span>Экспортов: ${exps.length}</span>
+          <span>Импортов: ${imps.length}</span>
+        </div>
+      </div>
+    </div>
   </div>`);
 
-  h.push(`<div style="text-align:center"><div class="n-card" data-nav-section="file-card" data-nav-label="${Core.escapeHtml(f.path)}">
-    <div class="nm">📄 ${Core.escapeHtml(f.path)}</div>
-    <div class="mt">
-      <span>${vscodeBadge}</span>
-      <span>Модуль: ${Core.escapeHtml(mod?.name || '?')}</span>
-      <span>Функций: ${fns.length}</span>
-      <span>Экспортов: ${exps.length}</span>
-      <span>Импортов: ${imps.length}</span>
-    </div>
-  </div></div>`);
-
-  h.push(`<div class="es" data-nav-section="paths-to-file" data-nav-label="Пути ДО файла" style="margin-bottom:12px;">
+  // --- Пути ДО ---
+  h.push(`<div class="es" data-nav-section="paths-to-file" data-nav-label="Пути ДО файла">
     <div class="es-h">🛤️ Пути ДО этого файла <span class="ct" id="pathsToCount">…</span></div>
     <div class="es-b" id="pathsToFileBody"></div>
   </div>`);
-  h.push(`<div class="es" data-nav-section="paths-from-file" data-nav-label="Пути ОТ файла" style="margin-bottom:12px;">
+
+  // --- Пути ОТ ---
+  h.push(`<div class="es" data-nav-section="paths-from-file" data-nav-label="Пути ОТ файла">
     <div class="es-h">🛤️ Пути ОТ этого файла <span class="ct" id="pathsFromCount">…</span></div>
     <div class="es-b" id="pathsFromFileBody"></div>
   </div>`);
 
-  h.push(`<div class="es" data-nav-section="module-graph" data-nav-label="Граф модулей" style="margin-bottom:12px;">
+  // --- Граф модулей ---
+  h.push(`<div class="es" data-nav-section="module-graph" data-nav-label="Граф модулей">
     <div class="es-h">🗺️ Граф модулей</div>
     <div class="es-b" id="moduleGraphBody"></div>
   </div>`);
-  h.push(`<div class="es" data-nav-section="file-dep-graph" data-nav-label="Граф зависимостей" style="margin-bottom:12px;">
+
+  // --- Граф зависимостей ---
+  h.push(`<div class="es" data-nav-section="file-dep-graph" data-nav-label="Граф зависимостей">
     <div class="es-h">🔗 Граф зависимостей файла</div>
     <div class="es-b" id="fileDepGraphBody"></div>
   </div>`);
 
-  h.push(`<div class="eg">`);
-
-  // Прямые экспорты
+  // --- Прямые экспорты ---
   h.push(
-    `<div class="es" data-nav-section="exports" data-nav-label="Прямые экспорты"><div class="es-h">📤 Прямые экспорты <span class="ct">${exps.length}</span></div><div class="es-b">`
+    `<div class="es" data-nav-section="exports" data-nav-label="Прямые экспорты">
+      <div class="es-h">📤 Прямые экспорты <span class="ct">${exps.length}</span></div>
+      <div class="es-b">`
   );
   if (exps.length) {
     for (const ex of exps) {
@@ -730,7 +973,9 @@ function renderFile(fid) {
           line: ex.line,
           label: '↗',
         });
-      h.push(`<div class="ei" ${fn ? `data-action="select-fn" data-id="${fn.id}"` : ''}>
+      h.push(`<div class="ei" ${
+        fn ? `data-action="select-fn" data-id="${fn.id}"` : ''
+      }>
         <span class="d" style="color:var(--green)">📤</span>
         <span class="n">${Core.escapeHtml(ex.exportName || '?')}</span>
         <span class="inf">${Core.escapeHtml(ex.type || 'named')}</span>
@@ -740,19 +985,29 @@ function renderFile(fid) {
   } else h.push('<div class="imp-empty">Нет прямых экспортов</div>');
   h.push(`</div></div>`);
 
-  // Импорты
+  // --- Импорты ---
   h.push(
-    `<div class="es" data-nav-section="file-imports" data-nav-label="Импорты файла"><div class="es-h">📥 Импорты файла <span class="ct">${imps.length}</span></div><div class="es-b">${renderImportsBlock(imps)}</div></div>`
+    `<div class="es" data-nav-section="file-imports" data-nav-label="Импорты файла">
+      <div class="es-h">📥 Импорты файла <span class="ct">${imps.length}</span></div>
+      <div class="es-b">${renderImportsBlock(imps)}</div>
+    </div>`
   );
 
-  // Импортируют файл
+  // --- Импортируют файл ---
   h.push(
-    `<div class="es" data-nav-section="file-importers" data-nav-label="Импортируют файл"><div class="es-h">🔗 Импортируют файл <span class="ct">${deps.length}</span></div><div class="es-b">${renderImportersBlock(deps.map(id => ({ fromFileId: id })))}</div></div>`
+    `<div class="es" data-nav-section="file-importers" data-nav-label="Импортируют файл">
+      <div class="es-h">🔗 Импортируют файл <span class="ct">${deps.length}</span></div>
+      <div class="es-b">${renderImportersBlock(
+      deps.map(id => ({ fromFileId: id }))
+    )}</div>
+    </div>`
   );
 
-  // Импортирует из
+  // --- Импортирует из ---
   h.push(
-    `<div class="es" data-nav-section="file-deps-out" data-nav-label="Импортирует из"><div class="es-h">📤 Импортирует из <span class="ct">${depsOut.length}</span></div><div class="es-b">`
+    `<div class="es" data-nav-section="file-deps-out" data-nav-label="Импортирует из">
+      <div class="es-h">📤 Импортирует из <span class="ct">${depsOut.length}</span></div>
+      <div class="es-b">`
   );
   if (depsOut.length) {
     for (const id of depsOut) {
@@ -769,9 +1024,11 @@ function renderFile(fid) {
   } else h.push('<div class="imp-empty">Нет исходящих зависимостей</div>');
   h.push(`</div></div>`);
 
-  // Функции
+  // --- Функции ---
   h.push(
-    `<div class="es" data-nav-section="file-functions" data-nav-label="Функции файла"><div class="es-h">⚙️ Функции <span class="ct">${fns.length}</span></div><div class="es-b">`
+    `<div class="es" data-nav-section="file-functions" data-nav-label="Функции файла">
+      <div class="es-h">⚙️ Функции <span class="ct">${fns.length}</span></div>
+      <div class="es-b">`
   );
   if (fns.length) {
     for (const fn of fns) {
@@ -790,11 +1047,26 @@ function renderFile(fid) {
   } else h.push('<div class="imp-empty">Нет функций</div>');
   h.push(`</div></div>`);
 
-  h.push(`</div>`);
-  $('mn').innerHTML = h.join('');
+  // --- Обёртка .mn-sections ---
+  $('mn').innerHTML = `<div class="mn-sections">${h.join('')}</div>`;
 
-  // Пути
-  const pathsTo = Paths.findAllPathsTo(fid, { type: 'file', maxDepth: 5, maxPaths: 20 });
+  // --- Навешиваем scroll-tracking ---
+  bindSectionsScrollTracking();
+
+  // --- Прокрутка к первой секции без анимации ---
+  requestAnimationFrame(() => {
+    const first = document.querySelector('.mn-sections > [data-nav-section]');
+    if (first) {
+      first.scrollIntoView({ behavior: 'auto', block: 'start' });
+    }
+  });
+
+  // --- Пути ---
+  const pathsTo = Paths.findAllPathsTo(fid, {
+    type: 'file',
+    maxDepth: 5,
+    maxPaths: 20,
+  });
   const cntTo = $('pathsToCount');
   if (cntTo) cntTo.textContent = pathsTo.length;
   Paths.renderPathsList($('pathsToFileBody'), pathsTo, {
@@ -802,7 +1074,11 @@ function renderFile(fid) {
     label: 'путей до',
   });
 
-  const pathsFrom = Paths.findAllPathsFrom(fid, { type: 'file', maxDepth: 5, maxPaths: 20 });
+  const pathsFrom = Paths.findAllPathsFrom(fid, {
+    type: 'file',
+    maxDepth: 5,
+    maxPaths: 20,
+  });
   const cntFrom = $('pathsFromCount');
   if (cntFrom) cntFrom.textContent = pathsFrom.length;
   Paths.renderPathsList($('pathsFromFileBody'), pathsFrom, {
@@ -810,7 +1086,7 @@ function renderFile(fid) {
     label: 'путей от',
   });
 
-  // Графы
+  // --- Графы ---
   $('moduleGraphBody').appendChild(
     Graph.renderModuleGraph({
       onNodeClick: (id, t) => {
@@ -818,10 +1094,9 @@ function renderFile(fid) {
       },
     })
   );
-  $('fileDepGraphBody').appendChild(Graph.renderFileDepGraph(fid, { onNodeClick: selectFile }));
-
-  // Обновить мини-навигацию
-  Nav.refresh();
+  $('fileDepGraphBody').appendChild(
+    Graph.renderFileDepGraph(fid, { onNodeClick: selectFile })
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -842,7 +1117,8 @@ function getTypeLabel(type) {
 }
 
 function renderImportsBlock(fileImports) {
-  if (!fileImports.length) return '<div class="imp-empty">Нет импортов</div>';
+  if (!fileImports.length)
+    return '<div class="imp-empty">Нет импортов</div>';
   const ext = {};
   const int = {};
   for (const imp of fileImports) {
@@ -871,7 +1147,13 @@ function renderImportsBlock(fileImports) {
       const showLocal = im.localName !== im.importedName;
       h.push(`<div class="imp-row">
         <span class="from">${Core.escapeHtml(im.importedName)}</span>
-        ${showLocal ? `<span class="arrow">→</span><span class="to">${Core.escapeHtml(im.localName)}</span>` : ''}
+        ${
+        showLocal
+          ? `<span class="arrow">→</span><span class="to">${Core.escapeHtml(
+            im.localName
+          )}</span>`
+          : ''
+      }
         <span class="typ ${tc}">${tl}</span>
       </div>`);
     }
@@ -900,7 +1182,13 @@ function renderImportsBlock(fileImports) {
       const showLocal = im.localName !== im.importedName;
       h.push(`<div class="imp-row">
         <span class="from">${Core.escapeHtml(im.importedName)}</span>
-        ${showLocal ? `<span class="arrow">→</span><span class="to">${Core.escapeHtml(im.localName)}</span>` : ''}
+        ${
+        showLocal
+          ? `<span class="arrow">→</span><span class="to">${Core.escapeHtml(
+            im.localName
+          )}</span>`
+          : ''
+      }
         <span class="typ ${tc}">${tl}</span>
       </div>`);
     }
@@ -911,7 +1199,8 @@ function renderImportsBlock(fileImports) {
 }
 
 function renderImportersBlock(importers) {
-  if (!importers.length) return '<div class="imp-empty">Никто не импортирует</div>';
+  if (!importers.length)
+    return '<div class="imp-empty">Никто не импортирует</div>';
   const grouped = {};
   for (const imp of importers) {
     const fid = imp.fromFileId || imp;
@@ -942,7 +1231,13 @@ function renderImportersBlock(importers) {
             const showLocal = im.localName !== im.importedName;
             return `<div class="imp-row">
             <span class="from">${Core.escapeHtml(im.importedName)}</span>
-            ${showLocal ? `<span class="arrow">→</span><span class="to">${Core.escapeHtml(im.localName)}</span>` : ''}
+            ${
+              showLocal
+                ? `<span class="arrow">→</span><span class="to">${Core.escapeHtml(
+                  im.localName
+                )}</span>`
+                : ''
+            }
             <span class="typ ${tc}">${tl}</span>
           </div>`;
           })
@@ -962,8 +1257,8 @@ document.addEventListener('click', e => {
   const target = e.target.closest('[data-action]');
   if (!target) return;
   if (target.closest('.fs-tree')) return;
-  if (target.closest('.ast-nav')) return; // мини-навигация обрабатывает сама
-  if (target.closest('.ast-loc')) return; // адресная строка обрабатывает сама
+  if (target.closest('.ast-ext')) return;
+  if (target.closest('.ast-loc')) return;
   const action = target.dataset.action;
   const id = target.dataset.id;
 
@@ -1037,9 +1332,13 @@ $('btnReload').addEventListener('click', async () => {
 
 $('btnExportCompact').addEventListener('click', () => {
   try {
-    const compact = Core.downloadCompact('index.json', { valuesMode: state.valuesMode });
+    const compact = Core.downloadCompact('index.json', {
+      valuesMode: state.valuesMode,
+    });
     UI.toast(
-      `✓ Экспортировано (${Object.keys(compact).length} ключей, ${state.valuesMode})`,
+      `✓ Экспортировано (${Object.keys(compact).length} ключей, ${
+        state.valuesMode
+      })`,
       'success'
     );
   } catch (e) {
@@ -1064,7 +1363,9 @@ if (btnLegend) {
 }
 
 $('btnRoundTrip').addEventListener('click', () => openRoundTripModal());
-$('rtClose').addEventListener('click', () => $('rtOverlay').classList.remove('show'));
+$('rtClose').addEventListener('click', () =>
+  $('rtOverlay').classList.remove('show')
+);
 $('rtOverlay').addEventListener('click', e => {
   if (e.target === $('rtOverlay')) $('rtOverlay').classList.remove('show');
 });
@@ -1073,11 +1374,6 @@ $('rtOverlay').addEventListener('click', e => {
 // ROUND-TRIP MODAL
 // ---------------------------------------------------------------------------
 function openRoundTripModal() {
-  // ✅ FIX v13.0.2: hasCompact / hasFull проверяем через state.rawCompact
-  // и state.rawFull. Раньше hasFull вычислялся через originalFormat,
-  // и при загрузке только index.full.json (без index.json) всё равно
-  // попадал в ветку «compact», из-за чего модалка писала «L0 и L2
-  // доступны только при загрузке обоих файлов», хотя full был загружен.
   const compactSource = state.rawCompact || state.originalCompact;
   const fullSource = state.rawFull;
 
@@ -1104,8 +1400,6 @@ function openRoundTripModal() {
       let r3 = null;
       let rE = null;
 
-      // ---------- L0: encode(full) ↔ compact ----------
-      // Требует оба файла.
       if (bothFormats) {
         try {
           const enc = Core.encodeToCompactData(fullSource);
@@ -1118,8 +1412,6 @@ function openRoundTripModal() {
         }
       }
 
-      // ---------- L1: semantic round-trip ----------
-      // Требует compact.
       if (hasCompact) {
         try {
           r1 = roundTripSemantic(compactSource);
@@ -1128,8 +1420,6 @@ function openRoundTripModal() {
         }
       }
 
-      // ---------- L2: decode(compact) ↔ full ----------
-      // Требует оба файла.
       if (bothFormats) {
         try {
           const decoded = Core.decodeCompactData(compactSource);
@@ -1142,8 +1432,6 @@ function openRoundTripModal() {
         }
       }
 
-      // ---------- L3: byte-exact ----------
-      // Требует compact.
       if (hasCompact) {
         try {
           r3 = roundTripByteExact(compactSource);
@@ -1152,8 +1440,6 @@ function openRoundTripModal() {
         }
       }
 
-      // ---------- RE: идемпотентность ----------
-      // Работает всегда (на основе exportAll).
       try {
         const full = Core.exportAll();
         if (state.__codec) full.__codec = state.__codec;
@@ -1162,7 +1448,6 @@ function openRoundTripModal() {
         rE = { ok: false, error: e.message };
       }
 
-      // Карточка результата. Если result === null — карточка не выводится.
       const card = (title, subtitle, r) => {
         if (!r) return '';
         const ok = !!r.ok;
@@ -1185,7 +1470,6 @@ function openRoundTripModal() {
           </div>`;
       };
 
-      // Информационная карточка о том, что загружено.
       const loadedNote = bothFormats
         ? '<div class="rt-card"><div class="rt-title">📚 Комплексная проверка</div><div class="rt-row"><span>Загружены оба формата (compact + full)</span><span class="rt-ok">✓</span></div></div>'
         : hasCompact
@@ -1213,26 +1497,53 @@ function openRoundTripModal() {
           hasCompact,
           hasFull,
           L0_encodeFullVsCompact: r0
-            ? { ok: r0.ok, diffCount: r0.diff?.length || 0, diff: r0.diff, error: r0.error }
+            ? {
+              ok: r0.ok,
+              diffCount: r0.diff?.length || 0,
+              diff: r0.diff,
+              error: r0.error,
+            }
             : null,
           L1_semantic: r1
-            ? { ok: r1.ok, diffCount: r1.diff?.length || 0, diff: r1.diff, error: r1.error }
+            ? {
+              ok: r1.ok,
+              diffCount: r1.diff?.length || 0,
+              diff: r1.diff,
+              error: r1.error,
+            }
             : null,
           L2_decodeCompactVsFull: r2
-            ? { ok: r2.ok, diffCount: r2.diff?.length || 0, diff: r2.diff, error: r2.error }
+            ? {
+              ok: r2.ok,
+              diffCount: r2.diff?.length || 0,
+              diff: r2.diff,
+              error: r2.error,
+            }
             : null,
           L3_byteExact: r3
-            ? { ok: r3.ok, diffCount: r3.diff?.length || 0, diff: r3.diff, error: r3.error }
+            ? {
+              ok: r3.ok,
+              diffCount: r3.diff?.length || 0,
+              diff: r3.diff,
+              error: r3.error,
+            }
             : null,
           reverse: rE
-            ? { ok: rE.ok, diffCount: rE.diff?.length || 0, diff: rE.diff, error: rE.error }
+            ? {
+              ok: rE.ok,
+              diffCount: rE.diff?.length || 0,
+              diff: rE.diff,
+              error: rE.error,
+            }
             : null,
         };
         Core.downloadJSON(report, 'round-trip-report.json');
         UI.toast('Отчёт скачан', 'success');
       });
     } catch (e) {
-      body.innerHTML = `<div class="rt-card"><div class="rt-title">Ошибка</div><div style="color:var(--red);font-family:monospace">${Core.escapeHtml(e.message)}</div></div>`;
+      body.innerHTML = `<div class="rt-card"><div class="rt-title">Ошибка</div><div style="color:var(--red);font-family:monospace">${Core.escapeHtml(
+        e.message
+      )}</div></div>`;
     }
   }, 50);
 }
@@ -1246,11 +1557,19 @@ function renderDiffs(diffs) {
       d => `
       <div class="rt-diff-item">
         <span class="path">${Core.escapeHtml(d.path)}</span>
-        <span class="val"> → было: ${Core.escapeHtml(JSON.stringify(d.a))}, стало: ${Core.escapeHtml(JSON.stringify(d.b))}</span>
+        <span class="val"> → было: ${Core.escapeHtml(
+        JSON.stringify(d.a)
+      )}, стало: ${Core.escapeHtml(JSON.stringify(d.b))}</span>
       </div>`
     )
     .join('')}
-    ${diffs.length > 20 ? `<div class="rt-diff-item"><span class="val">… ещё ${diffs.length - 20}</span></div>` : ''}
+    ${
+    diffs.length > 20
+      ? `<div class="rt-diff-item"><span class="val">… ещё ${
+        diffs.length - 20
+      }</span></div>`
+      : ''
+  }
   </div>`;
 }
 
@@ -1280,24 +1599,22 @@ document.addEventListener('drop', e => {
 // ГОРЯЧИЕ КЛАВИШИ
 // ---------------------------------------------------------------------------
 document.addEventListener('keydown', e => {
-  // Ctrl+K — фокус в поиск дерева
   if (e.ctrlKey && e.key === 'k') {
     e.preventDefault();
     $('si').focus();
     return;
   }
-  // F1 — легенда
   if (e.key === 'F1') {
     e.preventDefault();
     Legend.showLegendModal({ title: 'Легенда кодека v13.0.2' });
     return;
   }
-  // Escape — закрыть модалку / сбросить поиск
   if (e.key === 'Escape') {
     if ($('rtOverlay').classList.contains('show')) {
       $('rtOverlay').classList.remove('show');
       return;
     }
+    Extensions.closePanel();
     const s = $('si');
     if (s) {
       s.value = '';
@@ -1306,30 +1623,29 @@ document.addEventListener('keydown', e => {
     }
     return;
   }
-  // Alt+N — циклическое переключение угла мини-навигации
-  if (e.altKey && (e.key === 'n' || e.key === 'N' || e.key === 'т' || e.key === 'Т')) {
+  if (
+    e.altKey &&
+    (e.key === 'n' || e.key === 'N' || e.key === 'т' || e.key === 'Т')
+  ) {
     e.preventDefault();
-    const cur = Nav.getState().position;
-    const order = ['top-right', 'bottom-right', 'bottom-left', 'top-left'];
-    const next = order[(order.indexOf(cur) + 1) % order.length];
-    Nav.setPosition(next);
-    UI.toast('Навигация: ' + next, 'info');
+    if (Extensions.getActive() === 'nav') {
+      Extensions.closePanel();
+    } else {
+      Extensions.openPanel('nav');
+    }
     return;
   }
-  // Alt+← / Alt+→ — назад/вперёд по истории адресной строки
   if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
     e.preventDefault();
     if (e.key === 'ArrowLeft') LocationBar.goBack();
     else LocationBar.goForward();
     return;
   }
-  // Alt+Home — в universe
   if (e.altKey && e.key === 'Home') {
     e.preventDefault();
     LocationBar.goHome();
     return;
   }
-  // F5 — эмуляция обновления (без перезагрузки страницы)
   if (e.key === 'F5') {
     e.preventDefault();
     LocationBar.reload();
@@ -1340,9 +1656,12 @@ document.addEventListener('keydown', e => {
 // ---------------------------------------------------------------------------
 // СТАРТ
 // ---------------------------------------------------------------------------
-console.log('%c🔍 AST Analyzer v13.0.3', 'font-size:16px;font-weight:bold;color:#58a6ff;');
 console.log(
-  'Модули: ast-analyzer-codec.js (v13.0.2), ast-analyzer-utils.js, ast-analyzer-core.js (v13.0.3), ast-analyzer-ui.js, ast-analyzer-graph.js, ast-analyzer-tree.js, ast-analyzer-legend.js, ast-analyzer-paths.js, ast-analyzer-vscode.js, ast-analyzer-nav.js, ast-analyzer-location-bar.js'
+  '%c🔍 AST Analyzer v13.0.5',
+  'font-size:16px;font-weight:bold;color:#58a6ff;'
+);
+console.log(
+  'Модули: ast-analyzer-codec.js (v13.0.2), ast-analyzer-utils.js, ast-analyzer-core.js (v13.0.3), ast-analyzer-ui.js, ast-analyzer-graph.js, ast-analyzer-tree.js, ast-analyzer-legend.js, ast-analyzer-paths.js, ast-analyzer-vscode.js, ast-analyzer-extensions.js (v1.0), ast-analyzer-nav.js (v1.3), ast-analyzer-location-bar.js (v1.4)'
 );
 
 await autoLoad();

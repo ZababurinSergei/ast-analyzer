@@ -1,5 +1,5 @@
 // ============================================================================
-// AST ANALYZER — LOCATION BAR v1.3
+// AST ANALYZER — LOCATION BAR v1.4
 // Адресная строка как в браузере: путь, кнопки ◀ ▶ ⟳ ⌂, история переходов.
 //
 // Публичный API:
@@ -11,6 +11,7 @@
 //   LocationBar.setPathResolver(fn)               — своя логика парсинга
 //   LocationBar.getHistory() / getCurrent()
 //   LocationBar.buildStyles()
+//   LocationBar.getExtensionsSlot()               — DOM-элемент слота расширений
 //
 // Модель пути:
 //   universe / module / <file.path без префикса module> / fn
@@ -55,6 +56,18 @@
 //   - buildStyles() — добавлен CSS .hdr.hdr-hidden { display: none !important; }
 //   - Обновляется CSS-переменная --hdr-height при toggle (для Nav)
 //   - Состояние сохраняется в localStorage 'ast-analyzer:header-hidden'
+//
+// v1.4 (текущая):
+//   - ✅ Добавлен слот расширений #astLocExtSlot между кнопками
+//     vscode 🔗 и toggle-header ▾. Сюда монтируются кнопки из
+//     ast-analyzer-extensions.js (например, 🧭 навигация по секциям).
+//   - ✅ buildStyles(): добавлен .ast-loc-ext-slot { position: relative;
+//     display: inline-flex; align-items: center; gap: 2px; }
+//   - ✅ Новый экспорт getExtensionsSlot() — возвращает DOM-элемент
+//     слота расширений (или null, если панель не смонтирована).
+//     Используется в main.js для Extensions.renderInto(slot).
+//   - ✅ renderShell() дополнен <span class="ast-loc-ext-slot"
+//     id="astLocExtSlot"></span>
 // ============================================================================
 
 import { state, escapeHtml, shortPath, middleEllipsis } from './ast-analyzer-core.js';
@@ -295,6 +308,15 @@ export function buildStyles() {
 .ast-loc-status.ok { color: var(--green, #3fb950); }
 .ast-loc-status.warn { color: var(--yellow, #d29922); }
 .ast-loc-status.err { color: var(--red, #f85149); }
+
+/* --- ✅ v1.4: слот расширений --- */
+.ast-loc-ext-slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  position: relative;
+  flex-shrink: 0;
+}
 
 /* --- Скрытая шапка (toggle-header) --- */
 .hdr.hdr-hidden {
@@ -666,6 +688,7 @@ function renderShell() {
     </div>
     <span class="ast-loc-status"></span>
     <button class="ast-loc-btn" data-loc="vscode" title="Открыть в VS Code">🔗</button>
+    <span class="ast-loc-ext-slot" id="astLocExtSlot"></span>
     <button class="ast-loc-btn" data-loc="toggle-header" title="Показать / скрыть шапку">▾</button>
   `;
   updateButtons();
@@ -1098,6 +1121,21 @@ export function getCurrent() {
   return S.history[S.index] || null;
 }
 
+/**
+ * ✅ v1.4: возвращает DOM-элемент слота для расширений
+ * (#astLocExtSlot) или null, если панель не смонтирована.
+ *
+ * Используется в main.js:
+ *   const slot = LocationBar.getExtensionsSlot();
+ *   if (slot) Extensions.renderInto(slot);
+ *
+ * @returns {HTMLElement|null}
+ */
+export function getExtensionsSlot() {
+  if (!S.root) return null;
+  return S.root.querySelector('#astLocExtSlot');
+}
+
 export default {
   mount,
   unmount,
@@ -1112,4 +1150,5 @@ export default {
   getCurrent,
   parsePath,
   buildStyles,
+  getExtensionsSlot,
 };

@@ -1,15 +1,16 @@
 // ============================================================================
-// AST ANALYZER — NAV v1.2
+// AST ANALYZER — NAV v1.4
 // Плавающая мини-навигация по секциям текущего экрана.
 //
 // Публичный API:
-//   Nav.mount(opts)                    — создать/примонтировать панель
+//   Nav.mount(opts)                    — создать/примонтировать панель (floating)
 //   Nav.refresh()                      — пересобрать оглавление по текущему DOM
 //   Nav.unmount()                      — удалить панель
 //   Nav.setPosition(pos)               — 'top-right' | 'bottom-right' | 'bottom-left' | 'top-left'
 //   Nav.setCollapsed(bool)
 //   Nav.getState()
 //   Nav.buildNavStyles()               — CSS-строка
+//   Nav.createPanel(opts)              — HTMLElement со списком секций (для Extensions)
 //
 // Особенности:
 //   - position: fixed, с пересчётом на resize
@@ -18,7 +19,7 @@
 //   - Не мешает контенту (max-width ограничен)
 //   - Делегирование кликов: [data-action="nav-jump"] → scrollIntoView
 //   - Автоопределение секций по [data-nav-section]
-//   - Подсветка активной секции при скролле (IntersectionObserver)
+//   - Подсветка активной секции при скролле .mn-sections
 //   - Сворачивание в иконку
 //
 // v1.1:
@@ -32,6 +33,38 @@
 //     когда шапка скрыта кнопкой в location bar)
 //   - setPosition(): то же самое
 //   - compute(): headerHeight = 0, если .hdr имеет класс hdr-hidden
+//
+// v1.3:
+//   - ✅ NEW: createPanel(opts) — возвращает HTMLElement со списком
+//     секций для встраивания в выпадающую панель Extensions
+//     (см. ast-analyzer-extensions.js).
+//   - ✅ NEW: в createPanel() используется собственный MutationObserver,
+//     который останавливает IntersectionObserver после удаления панели
+//     из DOM.
+//   - ✅ NEW: onJump колбэк в createPanel() — позволяет вызывающему
+//     коду самому решать, как скроллить (например, закрыть панель).
+//   - ✅ Floating-режим (mount/unmount) сохранён, но в main.js
+//     больше не используется. Оставлен для обратной совместимости
+//     и для случаев, когда панель нужна отдельно от location bar.
+//
+// v1.4 (ТЕКУЩАЯ):
+//   - ✅ createPanel() переписан под scroll-snap архитектуру:
+//     секции живут в .mn-sections (scroll-snap-type: y mandatory),
+//     каждая секция — ровно один экран.
+//   - ✅ Убран IntersectionObserver (в scroll-snap он ненадёжен из-за
+//     rootMargin и mandatory-снапа).
+//   - ✅ Активная секция определяется через window.__astActiveSectionId
+//     (устанавливается scroll-слушателем в main.js по формуле
+//     Math.round(scrollTop / clientHeight)).
+//   - ✅ Fallback: если window.__astActiveSectionId не установлен —
+//     вычисляем индекс секции сами из scrollTop .mn-sections.
+//   - ✅ Подсветка в панели синхронизируется со скроллом:
+//     подписка на событие 'scroll' у .mn-sections, пока панель открыта.
+//   - ✅ Очистка: при удалении панели из DOM снимаем scroll-слушатель
+//     (MutationObserver).
+//   - ✅ onJump в createPanel() НЕ скроллит сам — только вызывает
+//     колбэк. Скролл делает main.js через el.scrollIntoView({behavior:'smooth'}),
+//     а scroll-snap дощёлкивает до границы секции.
 // ============================================================================
 
 const STYLE_ID = 'ast-nav-styles';
@@ -41,6 +74,7 @@ let _root = null;
 let _observer = null;
 let _scrollHandler = null;
 let _resizeHandler = null;
+let _resizeObserver = null;
 
 const state = {
   position: 'bottom-right', // 'bottom-right' | 'top-right' | 'bottom-left' | 'top-left'
@@ -209,6 +243,17 @@ export function buildNavStyles() {
 .ast-nav.collapsed .ast-nav-body { display: none; }
 .ast-nav.collapsed .ast-nav-count { display: none; }
 .ast-nav.collapsed .ast-nav-title { display: none; }
+
+/* --- Встроенная панель (для Extensions) --- */
+.ast-nav-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 0;
+}
+.ast-nav-panel .ast-nav-item {
+  /* переиспользует .ast-nav-item, дополнительных правил не требует */
+}
 `;
 }
 
@@ -311,7 +356,40 @@ function extractCount(el) {
 }
 
 // ---------------------------------------------------------------------------
-// РЕНДЕР
+// АКТИВНАЯ СЕКЦИЯ (v1.4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Возвращает id активной секции.
+ *
+ * Приоритет:
+ *   1. window.__astActiveSectionId — устанавливается scroll-слушателем
+ *      в main.js (Math.round(scrollTop / clientHeight)).
+ *   2. Fallback: вычисляем из scrollTop .mn-sections.
+ *   3. Fallback: первая секция.
+ *
+ * @param {Array} sections — массив секций из collectSections()
+ * @returns {string|null}
+ */
+function detectActiveId(sections) {
+  if (typeof window !== 'undefined' && window.__astActiveSectionId) {
+    return window.__astActiveSectionId;
+  }
+
+  const mnSections = document.querySelector('.mn-sections');
+  if (mnSections && sections.length) {
+    const h = mnSections.clientHeight || 1;
+    const idx = Math.round(mnSections.scrollTop / h);
+    const secs = mnSections.querySelectorAll('[data-nav-section]');
+    const active = secs[idx];
+    if (active?.dataset.navSection) return active.dataset.navSection;
+  }
+
+  return sections[0]?.id || null;
+}
+
+// ---------------------------------------------------------------------------
+// РЕНДЕР (floating)
 // ---------------------------------------------------------------------------
 
 function renderNav() {
@@ -372,7 +450,7 @@ function escapeAttr(s) {
 }
 
 // ---------------------------------------------------------------------------
-// СКРОЛЛ К СЕКЦИИ
+// СКРОЛЛ К СЕКЦИИ (floating fallback)
 // ---------------------------------------------------------------------------
 
 function jumpToSection(id) {
@@ -380,19 +458,9 @@ function jumpToSection(id) {
   if (!sec) return;
   const el = sec.el;
 
-  // Скроллим .mn (у него overflow-y: auto)
-  const mn = document.getElementById('mn');
-  if (mn) {
-    const mnRect = mn.getBoundingClientRect();
-    const elRect = el.getBoundingClientRect();
-    const delta = elRect.top - mnRect.top;
-    mn.scrollTo({
-      top: mn.scrollTop + delta - 8,
-      behavior: 'smooth',
-    });
-  } else {
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
+  // v1.4: используем scrollIntoView — он работает и со scroll-snap,
+  // и с обычным overflow-y: auto. Никаких ручных расчётов scrollTop.
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   // Подсветка
   state.activeId = id;
@@ -400,82 +468,50 @@ function jumpToSection(id) {
 }
 
 // ---------------------------------------------------------------------------
-// ОТСЛЕЖИВАНИЕ АКТИВНОЙ СЕКЦИИ
+// ОТСЛЕЖИВАНИЕ АКТИВНОЙ СЕКЦИИ (floating)
 // ---------------------------------------------------------------------------
 
 function startTracking() {
   stopTracking();
-  if (typeof IntersectionObserver === 'undefined') {
-    // Fallback: scroll handler
-    const mn = document.getElementById('mn');
-    if (!mn) return;
-    _scrollHandler = () => {
-      const sections = state.sections;
-      if (!sections.length) return;
-      const mnRect = mn.getBoundingClientRect();
-      let best = null;
-      let bestDelta = Infinity;
-      for (const s of sections) {
-        const r = s.el.getBoundingClientRect();
-        const delta = Math.abs(r.top - mnRect.top);
-        if (delta < bestDelta) {
-          bestDelta = delta;
-          best = s;
-        }
-      }
-      if (best && state.activeId !== best.id) {
-        state.activeId = best.id;
-        renderNav();
-      }
-    };
-    mn.addEventListener('scroll', _scrollHandler, { passive: true });
-    _scrollHandler();
-    return;
-  }
 
-  const mn = document.getElementById('mn');
-  if (!mn) return;
+  // v1.4: IntersectionObserver убран. Используем scroll-слушатель
+  // на .mn-sections. Формула: idx = Math.round(scrollTop / clientHeight).
+  // Это работает идеально для scroll-snap, где каждая секция = один экран.
+  const mnSections = document.querySelector('.mn-sections');
+  if (!mnSections) return;
 
-  _observer = new IntersectionObserver(
-    entries => {
-      // Берём первую видимую секцию
-      const visible = entries
-        .filter(e => e.isIntersecting)
-        .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-      if (visible.length) {
-        const id = visible[0].target.id;
-        if (state.activeId !== id) {
-          state.activeId = id;
-          renderNav();
-        }
-      }
-    },
-    {
-      root: mn,
-      rootMargin: '-10% 0px -70% 0px',
-      threshold: 0,
+  _scrollHandler = () => {
+    const sections = state.sections;
+    if (!sections.length) return;
+    const h = mnSections.clientHeight || 1;
+    const idx = Math.round(mnSections.scrollTop / h);
+    const secs = mnSections.querySelectorAll('[data-nav-section]');
+    const active = secs[idx];
+    if (!active) return;
+    const id = active.dataset.navSection;
+    if (id && id !== state.activeId) {
+      state.activeId = id;
+      renderNav();
     }
-  );
-
-  for (const s of state.sections) {
-    _observer.observe(s.el);
-  }
+  };
+  mnSections.addEventListener('scroll', _scrollHandler, { passive: true });
+  _scrollHandler();
 }
 
 function stopTracking() {
+  if (_scrollHandler) {
+    const mnSections = document.querySelector('.mn-sections');
+    if (mnSections) mnSections.removeEventListener('scroll', _scrollHandler);
+    _scrollHandler = null;
+  }
   if (_observer) {
     _observer.disconnect();
     _observer = null;
   }
-  if (_scrollHandler) {
-    const mn = document.getElementById('mn');
-    if (mn) mn.removeEventListener('scroll', _scrollHandler);
-    _scrollHandler = null;
-  }
 }
 
 // ---------------------------------------------------------------------------
-// ОБРАБОТЧИКИ
+// ОБРАБОТЧИКИ (floating)
 // ---------------------------------------------------------------------------
 
 function attachHandlers() {
@@ -573,10 +609,8 @@ function detachResize() {
   }
 }
 
-let _resizeObserver = null;
-
 // ---------------------------------------------------------------------------
-// ПУБЛИЧНЫЙ API
+// ПУБЛИЧНЫЙ API — FLOATING
 // ---------------------------------------------------------------------------
 
 export function mount(opts = {}) {
@@ -608,7 +642,7 @@ export function refresh() {
     state.activeId = state.sections[0]?.id || null;
   }
   if (!state.activeId && state.sections.length) {
-    state.activeId = state.sections[0].id;
+    state.activeId = detectActiveId(state.sections);
   }
   renderNav();
   startTracking();
@@ -654,6 +688,145 @@ export function getState() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// ПУБЛИЧНЫЙ API — EMBEDDED PANEL (для Extensions)
+// ---------------------------------------------------------------------------
+
+/**
+ * Возвращает HTMLElement со списком секций — для встраивания
+ * в выпадающую панель расширения (Extensions.register({panel})).
+ *
+ * v1.4: панель пересобирает секции каждый раз при вызове (актуальный DOM).
+ *
+ * Активная секция определяется через:
+ *   1. window.__astActiveSectionId — устанавливается scroll-слушателем
+ *      в main.js по формуле Math.round(scrollTop / clientHeight).
+ *   2. Fallback: сами вычисляем из scrollTop .mn-sections.
+ *   3. Fallback: первая секция.
+ *
+ * Подсветка синхронизируется со скроллом .mn-sections, пока панель
+ * открыта. При удалении панели из DOM слушатель снимается
+ * (MutationObserver).
+ *
+ * onJump в opts — колбэк, вызываемый при клике. Панель НЕ скроллит
+ * сама — это делает main.js через el.scrollIntoView({behavior:'smooth'}),
+ * а scroll-snap дощёлкивает до границы секции.
+ *
+ * @param {object} [opts]
+ * @param {Function} [opts.onJump] — колбэк (id) => void при клике на секцию.
+ *                                   Если не задан — используется
+ *                                   встроенный jumpToSection(id).
+ * @returns {HTMLElement}
+ */
+export function createPanel(opts = {}) {
+  injectStyles();
+
+  const wrap = document.createElement('div');
+  wrap.className = 'ast-nav-panel';
+
+  // Собираем секции из текущего DOM
+  const sections = collectSections();
+
+  if (!sections.length) {
+    const empty = document.createElement('div');
+    empty.className = 'ast-ext-panel-empty';
+    empty.textContent = 'Нет секций на текущем экране';
+    wrap.appendChild(empty);
+    return wrap;
+  }
+
+  // v1.4: активная секция — из window.__astActiveSectionId или fallback
+  const activeId = detectActiveId(sections);
+  state.activeId = activeId;
+
+  // --- Header ---
+  const header = document.createElement('div');
+  header.className = 'ast-ext-panel-header';
+  header.innerHTML = `
+    <span>🧭</span>
+    <span>Навигация</span>
+    <span style="margin-left:auto;opacity:0.6">${sections.length}</span>
+  `;
+  wrap.appendChild(header);
+
+  // --- Items ---
+  const itemEls = [];
+  for (const s of sections) {
+    const row = document.createElement('div');
+    row.className = 'ast-nav-item' + (s.id === activeId ? ' active' : '');
+    row.dataset.navTarget = s.id;
+    row.title = s.label;
+
+    const icon = document.createElement('span');
+    icon.className = 'ast-nav-item-icon';
+    icon.textContent = s.icon;
+
+    const label = document.createElement('span');
+    label.className = 'ast-nav-item-label';
+    label.textContent = s.label;
+
+    row.appendChild(icon);
+    row.appendChild(label);
+
+    if (s.count != null) {
+      const cnt = document.createElement('span');
+      cnt.className = 'ast-nav-item-count';
+      cnt.textContent = s.count;
+      row.appendChild(cnt);
+    }
+
+    row.addEventListener('click', () => {
+      state.activeId = s.id;
+      // Обновляем подсветку сразу — не ждём scroll-события
+      for (const it of itemEls) {
+        it.el.classList.toggle('active', it.id === s.id);
+      }
+      if (typeof opts.onJump === 'function') {
+        opts.onJump(s.id);
+      } else {
+        jumpToSection(s.id);
+      }
+    });
+
+    wrap.appendChild(row);
+    itemEls.push({ id: s.id, el: row });
+  }
+
+  // --- Синхронизация подсветки со скроллом .mn-sections ---
+  // Пока панель открыта — слушаем scroll и обновляем active.
+  // При удалении панели из DOM — снимаем слушатель (MutationObserver).
+  const mnSections = document.querySelector('.mn-sections');
+  const onScroll = () => {
+    const id = window.__astActiveSectionId;
+    if (!id || id === state.activeId) return;
+    state.activeId = id;
+    for (const it of itemEls) {
+      it.el.classList.toggle('active', it.id === id);
+    }
+  };
+  if (mnSections) {
+    mnSections.addEventListener('scroll', onScroll, { passive: true });
+  }
+
+  if (typeof MutationObserver !== 'undefined') {
+    const mo = new MutationObserver(() => {
+      if (!wrap.isConnected) {
+        if (mnSections) {
+          mnSections.removeEventListener('scroll', onScroll);
+        }
+        mo.disconnect();
+      }
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  }
+
+  return wrap;
+}
+
+// ---------------------------------------------------------------------------
+// ЭКСПОРТ ПО УМОЛЧАНИЮ
+// ---------------------------------------------------------------------------
+
 export default {
   mount,
   refresh,
@@ -662,4 +835,5 @@ export default {
   setCollapsed,
   getState,
   buildNavStyles,
+  createPanel,
 };
