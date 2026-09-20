@@ -981,3 +981,11 @@ SOFTWARE.
 [← Наверх](#-ast-analyzer---ai-toolkit-for-code-analysis)
 
 </div>
+
+
+vscode://file/ast-analyzer/example/src/config.ts:817
+
+vscode://file/ast-analyzer/src/config.ts:817
+
+
+vscode://file/src/config.ts:817

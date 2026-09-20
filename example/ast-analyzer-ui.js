@@ -1,6 +1,14 @@
 // ============================================================================
-// AST ANALYZER — UI COMPONENTS v9.1
+// AST ANALYZER — UI COMPONENTS v9.2
 // Переиспользуемые UI-компоненты: карточки, таблицы, дерево, тосты.
+//
+// Обновления v9.2:
+//   - Интеграция с ast-analyzer-vscode.js
+//   - В renderFnCard() добавлен бейдж "🔗 VS Code"
+//   - В renderLinkRow() добавлены опциональные параметры vscodeFileId/vscodeLine
+//   - В renderConstCard() добавлен бейдж VS Code
+//   - В renderModuleCard() добавлена ссылка на первый файл модуля
+//   - В renderLoadInfo() добавлена кнопка настройки basePath
 //
 // Обновления v9.1:
 //   - Поддержка компактного формата (через ast-analyzer-core)
@@ -18,6 +26,8 @@ import {
   getRootCacheInfo,
   clearRootCache,
 } from './ast-analyzer-core.js';
+
+import * as Vscode from './ast-analyzer-vscode.js';
 
 // ============================================================================
 // ТОСТ
@@ -152,6 +162,13 @@ export function renderFnCard(fn, { compact = false, active = false, showCaret = 
   const file = state.files[fn.fileId];
   const mod = file ? state.modules[file.moduleId] : null;
 
+  // VS Code бейдж
+  const vscodeBadge = Vscode.renderVscodeBadge({
+    fileId: fn.fileId,
+    line: fn.line,
+    short: true,
+  });
+
   return `
     <div class="fn-card ${active ? 'active' : ''}" id="fn-card-${fn.id}" data-fn-id="${fn.id}">
       <div class="fn-card-header" data-action="set-active" data-type="fn" data-id="${fn.id}">
@@ -161,6 +178,7 @@ export function renderFnCard(fn, { compact = false, active = false, showCaret = 
           <span class="fn-real">${escapeHtml(fn.name)}</span><span class="dim">(</span><span class="params">${escapeHtml(params)}</span><span class="dim">)</span>
         </span>
         <span class="fn-meta">
+          ${vscodeBadge}
           ${exported ? chip('📤', 'yellow') : ''}
           ${importersCount > 0 ? chip('📥 ' + importersCount, 'blue') : ''}
           ${callersCount > 0 ? chip('📞 ' + callersCount, 'purple') : ''}
@@ -237,11 +255,20 @@ export function renderConstCard(c) {
     valueStr = '(не извлечено)';
   }
   const truncated = valueStr.length > 600 ? valueStr.slice(0, 600) + '…' : valueStr;
+
+  // VS Code бейдж
+  const vscodeBadge = Vscode.renderVscodeBadge({
+    fileId: c.fileId,
+    line: c.line,
+    short: true,
+  });
+
   return `
     <div class="panel" style="margin-bottom:8px;" id="const-card-${c.id}">
       <div class="panel-header" style="text-transform:none;">
         <span class="mono green-bold">📌 ${escapeHtml(c.name)}</span>
-        <span style="display:flex; gap:6px;">
+        <span style="display:flex; gap:6px; align-items:center;">
+          ${vscodeBadge}
           ${c.isExported ? typeTag('export') : ''}
           <span class="chip">L${c.line}</span>
           <span class="chip">${escapeHtml(getModuleName(c.moduleId))}</span>
@@ -259,11 +286,19 @@ export function renderConstCard(c) {
 // ============================================================================
 export function renderModuleCard(m, stats) {
   if (!m) return '';
+
+  // Ссылка на первый файл модуля
+  const firstFileId = (state.moduleFiles[m.id] || [])[0];
+  const vscodeBadge = firstFileId
+    ? Vscode.renderVscodeBadge({ fileId: firstFileId, short: true })
+    : '';
+
   return `
     <div class="panel" style="margin-bottom:10px;">
       <div class="panel-header" style="text-transform:none;">
         <span class="mono blue-bold">📦 ${escapeHtml(m.name)}</span>
-        <span style="display:flex; gap:6px;">
+        <span style="display:flex; gap:6px; align-items:center;">
+          ${vscodeBadge}
           ${chip(stats.fileCount + ' файлов')}
           ${chip(stats.fnCount + ' ƒ', 'purple')}
           ${chip(stats.exportCount + ' эксп.', 'yellow')}
@@ -348,12 +383,30 @@ export function renderSection(title, count, bodyHtml, { open = true, icon = '' }
 // ============================================================================
 // СТРОКИ
 // ============================================================================
-export function renderLinkRow({ icon, name, nameClass = '', meta, tag, tagClass = '', line, action, id, title }) {
+export function renderLinkRow({
+  icon, name, nameClass = '', meta, tag, tagClass = '',
+  line, action, id, title,
+  // Новые поля для VS Code:
+  vscodeFileId = null,
+  vscodeLine = null,
+  vscodeColumn = null,
+}) {
   const attrs = [
     action ? `data-action="${escapeHtml(action)}"` : '',
     id ? `data-id="${escapeHtml(id)}"` : '',
     title ? `title="${escapeHtml(title)}"` : '',
   ].filter(Boolean).join(' ');
+
+  const vscodeIcon = vscodeFileId
+    ? Vscode.renderVscodeIcon({
+      fileId: vscodeFileId,
+      line: vscodeLine,
+      column: vscodeColumn,
+      label: '↗',
+      className: 'vscode-icon',
+    })
+    : '';
+
   return `
     <div class="anp-link" ${attrs}>
       ${icon ? `<span class="link-icon">${icon}</span>` : ''}
@@ -361,6 +414,7 @@ export function renderLinkRow({ icon, name, nameClass = '', meta, tag, tagClass 
       ${meta ? `<span class="link-meta">${escapeHtml(meta)}</span>` : ''}
       ${tag ? `<span class="link-tag ${tagClass}">${escapeHtml(tag)}</span>` : ''}
       ${line != null ? `<span class="link-line">L${line}</span>` : ''}
+      ${vscodeIcon}
     </div>
   `;
 }
@@ -396,9 +450,15 @@ export function renderFileList(filter = {}) {
   return items.map(({ id, f }) => {
     const modName = getModuleName(f.moduleId);
     const active = id === selectedId ? ' active' : '';
+    const vscodeIcon = Vscode.renderVscodeIcon({
+      fileId: id,
+      label: '↗',
+      className: 'vscode-icon',
+    });
     return `<div class="file-item${active}" data-action="select-file" data-id="${escapeHtml(id)}" title="${escapeHtml(f.path)}">
       <span class="file-path">${escapeHtml(f.path)}</span>
       <span class="mod-badge">${escapeHtml(modName)}</span>
+      ${vscodeIcon}
     </div>`;
   }).join('');
 }
@@ -416,10 +476,11 @@ export function heatColor(v, max) {
 }
 
 // ============================================================================
-// ПАНЕЛЬ ИНФОРМАЦИИ О ФОРМАТЕ И КЭШЕ (новое)
+// ПАНЕЛЬ ИНФОРМАЦИИ О ФОРМАТЕ И КЭШЕ
 // ============================================================================
 /**
  * Возвращает HTML-блок с информацией о текущем файле: формат, кэш, версия.
+ * + кнопка настройки VS Code basePath.
  */
 export function renderLoadInfo() {
   const fmt = state.originalFormat || '?';
@@ -432,18 +493,29 @@ export function renderLoadInfo() {
     : fmt === 'full' ? '📄 full (index.full.json)'
       : '❓ не загружено';
 
+  const vscodeCfg = Vscode.getVscodeConfig();
+  const basePathShort = vscodeCfg.basePath
+    ? shortPath(vscodeCfg.basePath, 40)
+    : '(не задан)';
+
   return `
     <div class="load-info" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
       <span class="chip">${escapeHtml(fmtLabel)}</span>
       ${cacheInfo}
       <span class="chip">v${escapeHtml(state.version)}</span>
       <span class="chip">${escapeHtml(state.timestamp || '?')}</span>
+      <span class="chip blue" title="basePath для VS Code ссылок">
+        🔗 ${escapeHtml(basePathShort)}
+      </span>
+      <button class="btn" data-action="open-vscode-setup" title="Настроить basePath для VS Code ссылок">
+        ⚙️ VS Code
+      </button>
     </div>
   `;
 }
 
 // ============================================================================
-// КНОПКИ ЭКСПОРТА (новое)
+// КНОПКИ ЭКСПОРТА
 // ============================================================================
 /**
  * Возвращает HTML с кнопками экспорта и round-trip.
@@ -463,7 +535,7 @@ export function renderExportControls() {
 }
 
 // ============================================================================
-// ПАНЕЛЬ РЕЗУЛЬТАТОВ ROUND-TRIP (новое)
+// ПАНЕЛЬ РЕЗУЛЬТАТОВ ROUND-TRIP
 // ============================================================================
 /**
  * Отображает результат round-trip проверки.
@@ -523,15 +595,15 @@ function stringifyShort(v) {
 }
 
 // ============================================================================
-// МОДАЛКА ИНФОРМАЦИИ О ФАЙЛЕ (новое)
+// МОДАЛКА ИНФОРМАЦИИ О ФАЙЛЕ
 // ============================================================================
 /**
  * Открывает модалку с информацией о текущем загруженном файле.
- * Использует существующий fnModal или создаёт свой.
  */
 export function showLoadInfoModal() {
   const info = getRootCacheInfo();
   const fmt = state.originalFormat || '?';
+  const vscodeCfg = Vscode.getVscodeConfig();
 
   const rows = [
     ['Формат', fmt === 'compact' ? '📦 compact (index.json)' : fmt === 'full' ? '📄 full (index.full.json)' : '❓ неизвестно'],
@@ -546,6 +618,8 @@ export function showLoadInfoModal() {
     ['Вызовов', state.calls.length],
     ['Источник', info ? info.url : '(manual)'],
     ['Возраст кэша', info ? info.ageHuman : '—'],
+    ['VS Code basePath', vscodeCfg.basePath || '(не задан)'],
+    ['VS Code scheme', vscodeCfg.scheme],
   ];
 
   const html = `
@@ -587,7 +661,7 @@ export function showLoadInfoModal() {
 }
 
 // ============================================================================
-// ПРОГРЕСС ЗАГРУЗКИ (новое)
+// ПРОГРЕСС ЗАГРУЗКИ
 // ============================================================================
 /**
  * Простой прогресс-бар для длительных операций (декодирование больших JSON).
@@ -643,3 +717,45 @@ export function hideProgress() {
     label.remove();
   }
 }
+
+// ============================================================================
+// VS CODE: НАСТРОЙКА basePath (обёртки над ast-analyzer-vscode.js)
+// ============================================================================
+
+/**
+ * Открывает модалку настройки VS Code basePath.
+ * @param {object} [opts]
+ * @param {Function} [opts.onChange] — колбэк после сохранения
+ */
+export function showVscodeSetupModal(opts = {}) {
+  Vscode.showBasePathModal(opts);
+}
+
+/**
+ * Встраивает форму basePath прямо в контейнер.
+ * @param {HTMLElement} container
+ * @param {object} [opts]
+ */
+export function renderVscodeSetupInline(container, opts = {}) {
+  if (!container) return;
+  container.innerHTML = '';
+  const form = Vscode.createBasePathForm(opts);
+  container.appendChild(form);
+}
+
+/**
+ * Возвращает HTML-превью basePath (для шапки).
+ */
+export function renderVscodeBasePathChip() {
+  const cfg = Vscode.getVscodeConfig();
+  const label = cfg.basePath ? shortPath(cfg.basePath, 40) : '(не задан)';
+  const cls = cfg.basePath ? 'chip blue' : 'chip';
+  return `<span class="${cls}" title="basePath для VS Code ссылок">🔗 ${escapeHtml(label)}</span>`;
+}
+
+// ============================================================================
+// РЕЭКСПОРТ VS CODE API (для удобства)
+// ============================================================================
+export {
+  Vscode,
+};

@@ -1,5 +1,5 @@
 // ============================================================================
-// AST ANALYZER — CORE v13.0.2
+// AST ANALYZER — CORE v13.0.3
 // Только новый формат. Обратная совместимость не поддерживается.
 //
 // Исправления:
@@ -15,6 +15,9 @@
 //   - ✅ FIX v13.0.2 (both formats, cache): при загрузке из кэша
 //     loadFromRoot() тоже догружает второй формат (обычно index.full.json),
 //     иначе L0/L2 не активировались при повторном открытии страницы.
+//   - ✅ NEW v13.0.3: добавлена middleEllipsis(p, max) — обрезка пути
+//     «начало + … + конец». Нужна для отображения basePath VS Code,
+//     где важен и корень, и конец пути.
 // ============================================================================
 
 import {
@@ -132,10 +135,40 @@ export function escapeHtml(s) {
   );
 }
 
+/**
+ * Обрезает путь с конца: сохраняет ПОСЛЕДНИЕ max-1 символов.
+ * Используется для отображения полных путей файлов, где важен
+ * конец (имя файла), а не начало (корень).
+ *
+ * Пример: shortPath('/a/b/c/very/long/file.ts', 20) → '…/very/long/file.ts'
+ */
 export function shortPath(p, max = 40) {
   if (!p) return '';
   if (p.length <= max) return p;
   return '…' + p.slice(-(max - 1));
+}
+
+/**
+ * ✅ NEW v13.0.3: обрезает строку посередине.
+ * Сохраняет начало и конец, ставит … между ними.
+ * Удобно для basePath VS Code: важен и корень (начало), и конец пути.
+ *
+ * Пример: middleEllipsis('/home/user/very/long/path/to/project', 30)
+ *   → '/home/user/ve…/path/to/project'
+ *
+ * @param {string} p
+ * @param {number} [max=40]
+ * @returns {string}
+ */
+export function middleEllipsis(p, max = 40) {
+  if (!p) return '';
+  const s = String(p);
+  if (s.length <= max) return s;
+  const inner = max - 1; // символ для '…'
+  if (inner <= 0) return '…';
+  const head = Math.ceil(inner / 2);
+  const tail = Math.floor(inner / 2);
+  return s.slice(0, head) + '…' + s.slice(-tail);
 }
 
 export function formatNumber(n) {

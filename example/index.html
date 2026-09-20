@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="./favicon.ico">
-    <title>Граф-инспектор v13.0.2</title>
+    <title>Граф-инспектор v13.0.3</title>
     <style>
         :root {
             --bg: #0d1117; --bg2: #161b22; --bg3: #21262d; --bg4: #30363d;
@@ -26,7 +26,7 @@
         }
         .hdr h1 { font-size: 15px; }
         .hdr .v { background: var(--accent); color: #000; padding: 1px 7px; border-radius: 9px; font-size: 10px; font-weight: 700; }
-        .hdr .sm { margin-left: auto; font-size: 11px; color: var(--text2); display: flex; gap: 8px; flex-wrap: wrap; }
+        .hdr .sm { margin-left: auto; font-size: 11px; color: var(--text2); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
         .hdr .sm b { color: var(--accent); }
         .hdr button {
             padding: 4px 10px; background: var(--bg3); border: 1px solid var(--border);
@@ -236,22 +236,44 @@
         }
         .path-node:hover { border-color: var(--accent); color: var(--accent); }
         .path-arrow { color: var(--text2); font-size: 10px; }
+
+        /* Chip / btn для renderLoadInfo */
+        .chip {
+            display: inline-block; padding: 2px 10px; border-radius: 10px;
+            background: var(--bg3); border: 1px solid var(--border);
+            font-size: 10px; color: var(--text2);
+            font-family: 'Consolas', monospace;
+        }
+        .chip.green { border-color: var(--green); color: var(--green); }
+        .chip.blue { border-color: var(--accent); color: var(--accent); }
+        .chip.yellow { border-color: var(--yellow); color: var(--yellow); }
+        .chip.red { border-color: var(--red); color: var(--red); }
+        .chip.purple { border-color: var(--purple); color: var(--purple); }
+
+        /* Контейнер адресной строки — flex-элемент между .hdr и .lay */
+        #locationBarContainer {
+            flex-shrink: 0;
+        }
     </style>
 </head>
 <body>
 <div class="hdr">
     <h1>🔍 AST Analyzer</h1>
-    <span class="v" id="verTag">v13.0.2</span>
+    <span class="v" id="verTag">v13.0.3</span>
     <div class="sm" id="sm"></div>
     <button id="btnReload" title="Перезагрузить из корня">🔄 Перезагрузить</button>
     <button id="btnExportCompact" title="Экспорт в компактный JSON v13.0.2" disabled>📦 Compact</button>
     <button id="btnExportFull" title="Экспорт в полный JSON" disabled>📄 Full</button>
     <button id="btnLegend" title="Легенда кодека (F1)" disabled>📖 Легенда</button>
     <button id="btnRoundTrip" title="Проверка round-trip (L0/L1/L2/L3/RE)" disabled>🔁 Round-Trip</button>
+    <button id="btnVscodeSetup" title="Настройка ссылок VS Code" disabled>🔗 VS Code</button>
     <button id="btnCache" title="Информация о кэше">💾 Кэш</button>
     <button id="btnOpen" title="Открыть JSON">📂 Открыть</button>
     <input type="file" id="fi" accept=".json,application/json" style="display:none">
 </div>
+
+<!-- Контейнер адресной строки (монтируется ast-analyzer-location-bar.js) -->
+<div id="locationBarContainer"></div>
 
 <div id="cacheStatus" class="cache-status hidden">
     <span class="dot" id="cacheDot"></span>
