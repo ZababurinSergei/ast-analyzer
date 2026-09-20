@@ -241,7 +241,7 @@ export function flagsStringToNumber(flagStr) {
 // ТОКЕНЫ
 // ---------------------------------------------------------------------------
 
-function decodeStr(entry, tokens) {
+export function decodeStr(entry, tokens) {
   if (typeof entry === 'string') return entry;
   if (Array.isArray(entry)) return entry.map(i => tokens[i] || '').join('');
   return '';

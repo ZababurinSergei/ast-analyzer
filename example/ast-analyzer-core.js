@@ -1,23 +1,5 @@
 // ============================================================================
-// AST ANALYZER — CORE v13.0.3
-// Только новый формат. Обратная совместимость не поддерживается.
-//
-// Исправления:
-//   - ✅ preprocess(): добавлен externalCallers: {}
-//   - ✅ loadFromRoot(): return st после первого успеха
-//   - ✅ getImportedNames() для UI
-//   - ✅ FIX v13.0.2 (externalCallers): Object.create(null) + Array.isArray
-//     защита от коллизий с Object.prototype (toString, valueOf, ...).
-//   - ✅ FIX v13.0.2 (both formats, fetch): loadFromRoot() теперь проходит
-//     ВСЕ candidates и догружает второй формат через loadBothFormats().
-//     Раньше стоял `return st` после первого успеха, и rawFull всегда
-//     оставался null → L0/L2 в Round-Trip были недоступны.
-//   - ✅ FIX v13.0.2 (both formats, cache): при загрузке из кэша
-//     loadFromRoot() тоже догружает второй формат (обычно index.full.json),
-//     иначе L0/L2 не активировались при повторном открытии страницы.
-//   - ✅ NEW v13.0.3: добавлена middleEllipsis(p, max) — обрезка пути
-//     «начало + … + конец». Нужна для отображения basePath VS Code,
-//     где важен и корень, и конец пути.
+// AST ANALYZER — CORE v13.0.7
 // ============================================================================
 
 import {
@@ -31,6 +13,8 @@ import {
   buildEdgesFromFull,
   buildEdgesStats,
   CODEC_VERSION,
+  decodeFlagsFromNumber,
+  decodeStr,
 } from './ast-analyzer-codec.js';
 
 import {
@@ -41,7 +25,10 @@ import {
   stripServiceFields,
   stripForByteCompare,
   debounce,
+  unrle,
 } from './ast-analyzer-utils.js';
+
+import { showProgress, setProgress, hideProgress } from './ast-analyzer-progress.js';
 
 export { deepEqual, diffObjects, collectDiffs, normalizeForDiff, debounce };
 
@@ -114,6 +101,12 @@ export const state = {
   depsOnly: false,
   expandAllFns: false,
   currentTab: 'overview',
+
+  __fileDepsBuilt: false,
+  __fnCallBuilt: false,
+  __fnImportTargetsBuilt: false,
+  __extCallersBuilt: false,
+  __stats: null,
 };
 
 // ============================================================================
@@ -135,36 +128,17 @@ export function escapeHtml(s) {
   );
 }
 
-/**
- * Обрезает путь с конца: сохраняет ПОСЛЕДНИЕ max-1 символов.
- * Используется для отображения полных путей файлов, где важен
- * конец (имя файла), а не начало (корень).
- *
- * Пример: shortPath('/a/b/c/very/long/file.ts', 20) → '…/very/long/file.ts'
- */
 export function shortPath(p, max = 40) {
   if (!p) return '';
   if (p.length <= max) return p;
   return '…' + p.slice(-(max - 1));
 }
 
-/**
- * ✅ NEW v13.0.3: обрезает строку посередине.
- * Сохраняет начало и конец, ставит … между ними.
- * Удобно для basePath VS Code: важен и корень (начало), и конец пути.
- *
- * Пример: middleEllipsis('/home/user/very/long/path/to/project', 30)
- *   → '/home/user/ve…/path/to/project'
- *
- * @param {string} p
- * @param {number} [max=40]
- * @returns {string}
- */
 export function middleEllipsis(p, max = 40) {
   if (!p) return '';
   const s = String(p);
   if (s.length <= max) return s;
-  const inner = max - 1; // символ для '…'
+  const inner = max - 1;
   if (inner <= 0) return '…';
   const head = Math.ceil(inner / 2);
   const tail = Math.floor(inner / 2);
@@ -256,193 +230,298 @@ export function downloadSVG(svgEl, filename) {
 }
 
 // ============================================================================
-// ЗАГРУЗКА ДАННЫХ
+// YIELD / IDLE
+// ============================================================================
+
+function _yield() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function _idle(fn, timeout = 2000) {
+  if (typeof requestIdleCallback === 'function') {
+    return requestIdleCallback(fn, { timeout });
+  }
+  return setTimeout(fn, 1);
+}
+
+// ============================================================================
+// CHUNKED DECODE
 // ============================================================================
 
 /**
- * Загружает JSON любого формата (compact или full).
- * Если формат компактный — декодирует его в полный.
- * Сохраняет исходные словари для симметричного round-trip.
+ * Асинхронная версия decodeCompactData: разбивает работу на фазы,
+ * между фазами отдаёт управление UI. Возвращает Promise<full>.
+ *
+ * @param {object} compact
+ * @param {(info: {phase: string, pct: number}) => void} [onProgress]
+ * @returns {Promise<object>}
  */
-export function loadData(json, options = {}) {
-  const fmt = detectFormat(json);
-
-  const { includeEdges = false } = options;
-  console.log(`[AST] Формат входа: ${fmt} (includeEdges=${includeEdges})`);
-
-  let full;
-  try {
-    full = toFullData(json);
-  } catch (e) {
-    throw new Error(`Не удалось декодировать JSON: ${e.message}`);
+export async function decodeCompactDataChunked(compact, onProgress = null) {
+  if (!compact || typeof compact !== 'object') {
+    throw new Error('decodeCompactDataChunked: ожидается объект');
   }
 
-  if (includeEdges) {
-    try {
-      const { edges, stats } = buildEdgesFromFull(full);
-      full.edges = edges;
-      full.edgesStats = stats;
-    } catch (e) {
-      console.warn('[AST] Не удалось собрать edges:', e.message);
+  const report = (phase, pct) => {
+    if (onProgress) onProgress({ phase, pct });
+  };
+
+  const tokens = compact.tokens || [];
+  const stringDict = (compact.strs || []).map((s) => decodeStr(s, tokens));
+  const paramDict = (compact.params || []).map((s) => decodeStr(s, tokens));
+  const methodDict = (compact.methods || []).map((s) => decodeStr(s, tokens));
+  const valueDict = compact.values || [];
+
+  const readStr = (i) => (i == null || i < 0 ? '' : stringDict[i] ?? '');
+  const readStrOpt = (i) => (i == null || i < 0 ? undefined : stringDict[i]);
+  const readPar = (i) => (i == null || i < 0 ? '' : paramDict[i] ?? '');
+  const readMeth = (i) => (i == null || i < 0 ? null : methodDict[i] ?? null);
+  const readVal = (i) => (i == null || i < 0 ? undefined : valueDict[i]);
+
+  // ---- 1. files + modules ----
+  report('files', 5);
+  await _yield();
+
+  const flP = compact.fl?.p || [];
+  const flM = unrle(compact.fl?.m || []);
+  const files = flP.map((p, i) => ({
+    id: `f${i + 1}`,
+    path: p || '',
+    moduleId: `m${(flM[i] ?? 0) + 1}`,
+  }));
+
+  const miN = compact.mi?.n || [];
+  const moduleFileIds = miN.map(() => []);
+  for (let i = 0; i < files.length; i++) {
+    const modIdx = flM[i] ?? 0;
+    if (modIdx >= 0 && modIdx < moduleFileIds.length) {
+      moduleFileIds[modIdx].push(`f${i + 1}`);
     }
   }
+  const modules = miN.map((n, i) => ({
+    id: `m${i + 1}`,
+    name: n || '',
+    path: n || '',
+    fileIds: moduleFileIds[i] || [],
+  }));
 
-  if (!full.files || !full.modules) {
-    throw new Error('Неверный формат JSON: ожидаются поля files и modules');
-  }
+  // ---- 2. functions ----
+  report('functions', 25);
+  await _yield();
 
-  // Сброс состояния
-  resetState();
-
-  state.raw = full;
-  state.originalFormat = fmt;
-  state.originalCompact = fmt === 'compact' ? json : null;
-  state.includeEdgesOnLoad = includeEdges;
-  state.valuesMode = full.valuesMode || 'relations';
-
-  // Запоминаем исходный файл в соответствующем слоте
-  if (fmt === 'compact') {
-    state.rawCompact = json;
-
-    // Восстанавливаем словари из компакта (для симметричного encode)
-    const tokens = json.tokens || [];
-    const decodeStrEntry = (entry) => {
-      if (typeof entry === 'string') return entry;
-      if (Array.isArray(entry)) return entry.map((i) => tokens[i] || '').join('');
-      return '';
+  const fns = compact.fns || { n: [], m: [], f: [], l: [], fl: [], p: [], rt: [] };
+  const fnsM = unrle(fns.m || []);
+  const fnsF = unrle(fns.f || []);
+  const extras = [
+    'isEventHandler',
+    'isNested',
+    'isSelf',
+    'isDynamic',
+    'isConfig',
+    'isExternal',
+    'isVueTemplate',
+    'isAsyncChain',
+    'isClosure',
+    'isTypeDep',
+    'isGenerator',
+    'isPrivate',
+    'isProtected',
+    'isStatic',
+  ];
+  const functions = (fns.n || []).map((nIdx, i) => {
+    const fl = decodeFlagsFromNumber(fns.fl?.[i] ?? 0);
+    const fn = {
+      id: `fn${i + 1}`,
+      name: readStr(nIdx),
+      moduleId: `m${(fnsM[i] ?? 0) + 1}`,
+      fileId: `f${(fnsF[i] ?? 0) + 1}`,
+      line: fns.l?.[i] ?? 0,
+      isExported: fl.isExported,
+      isAsync: fl.isAsync,
+      isArrow: fl.isArrow,
+      isMethod: fl.isMethod,
+      params: (fns.p?.[i] || []).map(readPar),
+      returnType: readStrOpt(fns.rt?.[i]),
     };
-    state.__codec = {
-      stringDict: (json.strs || []).map(decodeStrEntry),
-      paramDict: (json.params || []).map(decodeStrEntry),
-      methodDict: (json.methods || []).map(decodeStrEntry),
-      valueDict: json.values || [],
-      legend: json.legend,
-      schemas: json.legend?.schemas || {},
+    for (const k of extras) if (fl[k]) fn[k] = true;
+    return fn;
+  });
+
+  // ---- 3. classes ----
+  report('classes', 40);
+  await _yield();
+
+  const cls = compact.cls || { n: [], m: [], f: [], l: [], fl: [], methods: [] };
+  const clsM = unrle(cls.m || []);
+  const clsF = unrle(cls.f || []);
+  const classes = (cls.n || []).map((nIdx, i) => {
+    const fl = decodeFlagsFromNumber(cls.fl?.[i] ?? 0);
+    return {
+      id: `cls${i + 1}`,
+      name: readStr(nIdx),
+      moduleId: `m${(clsM[i] ?? 0) + 1}`,
+      fileId: `f${(clsF[i] ?? 0) + 1}`,
+      line: cls.l?.[i] ?? 0,
+      isExported: fl.isExported,
+      methods: (cls.methods?.[i] || []).map(readMeth),
     };
-  } else if (fmt === 'full') {
-    state.rawFull = json;
-    state.__codec = full.__codec || null;
-  }
+  });
 
-  // Препроцессинг
-  const pre = preprocess(full);
-  Object.assign(state, pre);
+  // ---- 4. constants ----
+  report('constants', 55);
+  await _yield();
 
-  // Аналитика
-  computeAnalytics();
+  const cn = compact.cn || { n: [], m: [], f: [], l: [], fl: [], nonEmptyV: [] };
+  const cnM = unrle(cn.m || []);
+  const cnF = unrle(cn.f || []);
+  const valueMap = new Map();
+  for (const [ci, vi] of cn.nonEmptyV || []) valueMap.set(ci, vi);
+  const constants = (cn.n || []).map((nIdx, i) => {
+    const fl = decodeFlagsFromNumber(cn.fl?.[i] ?? 0);
+    const vi = valueMap.get(i);
+    return {
+      id: `cn${i + 1}`,
+      name: readStr(nIdx),
+      moduleId: `m${(cnM[i] ?? 0) + 1}`,
+      fileId: `f${(cnF[i] ?? 0) + 1}`,
+      line: cn.l?.[i] ?? 0,
+      isExported: fl.isExported,
+      value: vi !== undefined ? readVal(vi) : undefined,
+    };
+  });
 
-  return state;
-}
+  // ---- 5. exports ----
+  report('exports', 70);
+  await _yield();
 
-/**
- * Полный сброс state перед загрузкой нового файла.
- */
-function resetState() {
-  state.raw = null;
-  state.originalFormat = null;
-  state.originalCompact = null;
-  state.__codec = null;
-  state.rawCompact = null;
-  state.rawFull = null;
-  state.hasBothFormats = false;
-  state.includeEdgesOnLoad = false;
+  const ge = compact.gr?.e || {
+    m: [],
+    f: [],
+    fn: [],
+    l: [],
+    ty: [],
+    en: [],
+    ln: [],
+    s: [],
+    flags: [],
+  };
+  const exports = (ge.m || []).map((mIdx, i) => {
+    const ty = ge.ty?.[i] ?? 0;
+    const type = ty === 1 ? 'default' : ty === 2 ? 'type' : 'named';
+    const flags = ge.flags?.[i] ?? 0;
+    return {
+      id: `e${i + 1}`,
+      moduleId: `m${mIdx + 1}`,
+      fileId: `f${(ge.f?.[i] ?? 0) + 1}`,
+      functionId: `fn${(ge.fn?.[i] ?? 0) + 1}`,
+      exportName: readStr(ge.en?.[i]),
+      localName: readStr(ge.ln?.[i]),
+      line: ge.l?.[i] ?? 0,
+      type,
+      isDefault: type === 'default',
+      isTypeOnly: (flags & 1) !== 0,
+      isReExport: (flags & 2) !== 0,
+      isStarReExport: (flags & 4) !== 0,
+      isDefaultReExport: (flags & 8) !== 0,
+      source: readStrOpt(ge.s?.[i]),
+    };
+  });
 
-  state.modules = {};
-  state.files = {};
-  state.functions = {};
-  state.classes = {};
-  state.constants = {};
-  state.exports = [];
-  state.imports = [];
-  state.calls = [];
-  state.reExports = [];
+  // ---- 6. imports ----
+  report('imports', 80);
+  await _yield();
 
-  state.fileExports = {};
-  state.fileImports = {};
-  state.fileFunctions = {};
-  state.fileClasses = {};
-  state.fileConstants = {};
-  state.moduleFiles = {};
+  const gi = compact.gr?.i || { ff: [], tf: [], s: [], im: [], ln: [], l: [], ty: [] };
+  const imports = (gi.ff || []).map((ff, i) => {
+    const c = gi.ty?.[i] ?? 0;
+    const tc = c & 3;
+    const isExt = (c & 4) !== 0;
+    const type =
+      tc === 1 ? 'default' : tc === 2 ? 'namespace' : tc === 3 ? 'type' : 'named';
+    const source = readStr(gi.s?.[i]);
+    return {
+      id: `i${i + 1}`,
+      fromFileId: `f${ff + 1}`,
+      toFileId: readStrOpt(gi.tf?.[i]) ?? null,
+      source,
+      importedName: readStr(gi.im?.[i]),
+      localName: readStr(gi.ln?.[i]),
+      line: gi.l?.[i] ?? 0,
+      type,
+      isDefault: type === 'default',
+      isNamespace: type === 'namespace',
+      isTypeOnly: type === 'type',
+      isExternal: isExt,
+      packageName: isExt
+        ? source.startsWith('@')
+          ? source.split('/').slice(0, 2).join('/')
+          : source.split('/')[0]
+        : undefined,
+    };
+  });
 
-  state.fnById = {};
-  state.fnCalls = {};
-  state.fnCallers = {};
-  state.fnExports = {};
-  state.fnImportTargets = {};
-  state.fnDetailedCallers = {};
-  state.fnDetailedCalls = {};
-  state.fnByName = {};
+  // ---- 7. calls + reExports ----
+  report('calls', 90);
+  await _yield();
 
-  state.constById = {};
-  state.constByName = {};
-  state.classById = {};
-  state.classByName = {};
+  const gc = compact.gr?.c || { f: [], t: [], l: [], ty: [] };
+  const calls = (gc.f || []).map((fromIdx, i) => {
+    const c = gc.ty?.[i] ?? 0;
+    const tc = c & 3;
+    const isExt = (c & 4) !== 0;
+    const type =
+      tc === 1 ? 'async' : tc === 2 ? 'method' : tc === 3 ? 'callback' : 'direct';
+    return {
+      id: `c${i + 1}`,
+      fromFunctionId: `fn${fromIdx + 1}`,
+      toFunctionId: isExt ? readStr(gc.t?.[i]) : `fn${(gc.t?.[i] ?? 0) + 1}`,
+      line: gc.l?.[i] ?? 0,
+      type,
+    };
+  });
 
-  state.fileDependents = {};
-  state.fileDependencies = {};
-  state.fileByPath = {};
-  state.moduleByName = {};
+  const gre = compact.gr?.re || { m: [], fn: [], s: [], en: [], l: [], ty: [] };
+  const reExports = (gre.m || []).map((mIdx, i) => {
+    const c = gre.ty?.[i] ?? 0;
+    const tc = c & 3;
+    const isTypeOnly = (c & 4) !== 0;
+    const type = tc === 2 ? 'all' : tc === 1 ? 'default' : 'named';
+    return {
+      id: `re${i + 1}`,
+      moduleId: `m${mIdx + 1}`,
+      functionId: `fn${(gre.fn?.[i] ?? 0) + 1}`,
+      source: readStr(gre.s?.[i]),
+      exportName: readStr(gre.en?.[i]),
+      line: gre.l?.[i] ?? 0,
+      type,
+      isDefault: type === 'default',
+      isTypeOnly,
+      isStarReExport: type === 'all',
+    };
+  });
 
-  // ✅ FIX v13.0.2: Object.create(null) — защита от коллизий с
-  // Object.prototype (toString, valueOf, constructor, hasOwnProperty).
-  state.externalCallers = Object.create(null);
+  report('done', 100);
 
-  state.deadExports = [];
-  state.deadFunctions = [];
-  state.cyclicDeps = [];
-  state.hotFiles = [];
-  state.hotFunctions = [];
-
-  state.statistics = {};
-  state.version = '?';
-  state.timestamp = '';
-  state.valuesMode = 'relations';
-
-  state.selectedFileId = null;
-  state.activeNode = null;
-  state.searchQuery = '';
-  state.depsOnly = false;
-  state.expandAllFns = false;
-  state.currentTab = 'overview';
+  return {
+    version: CODEC_VERSION,
+    timestamp: compact.ts || '',
+    root: `m${(compact.r ?? 0) + 1}`,
+    valuesMode: compact.valuesMode,
+    modules,
+    files,
+    functions,
+    classes,
+    constants,
+    exports,
+    imports,
+    calls,
+    reExports,
+    statistics: compact.st || {},
+    legend: compact.legend,
+  };
 }
 
 // ============================================================================
-// ЗАГРУЗКА ОБОИХ ФОРМАТОВ
-// ============================================================================
-
-/**
- * Загружает второй файл (compact или full) для комплексной проверки.
- * После вызова, если оба формата есть — state.hasBothFormats = true.
- */
-export function loadBothFormats(json, fmt = null, filename = '') {
-  const realFmt = fmt || detectFormat(json);
-
-  if (realFmt === 'compact') {
-    state.rawCompact = json;
-  } else if (realFmt === 'full') {
-    state.rawFull = json;
-  } else {
-    console.warn('[AST] loadBothFormats: неизвестный формат', filename);
-    return;
-  }
-
-  if (state.rawCompact && state.rawFull) {
-    state.hasBothFormats = true;
-    console.log(`[AST] Загружены оба формата: compact + full (${filename})`);
-  }
-}
-
-/**
- * Сброс обоих форматов (без полного resetState).
- */
-export function clearBothFormats() {
-  state.rawCompact = null;
-  state.rawFull = null;
-  state.hasBothFormats = false;
-}
-
-// ============================================================================
-// PREPROCESS
+// PREPROCESS — только быстрые индексы (по ID)
 // ============================================================================
 
 export function preprocess(rawData) {
@@ -483,8 +562,6 @@ export function preprocess(rawData) {
     fileByPath: {},
     moduleByName: {},
 
-    // ✅ FIX v13.0.2: Object.create(null) вместо {} — защита от
-    // коллизий с Object.prototype (toString, valueOf, constructor, ...).
     externalCallers: Object.create(null),
 
     deadExports: [],
@@ -492,6 +569,7 @@ export function preprocess(rawData) {
     cyclicDeps: [],
     hotFiles: [],
     hotFunctions: [],
+
     statistics: rawData.statistics || {},
     version: rawData.version || '?',
     timestamp: rawData.timestamp || '',
@@ -556,106 +634,15 @@ export function preprocess(rawData) {
     if (e.functionId && d.fnExports[e.functionId]) d.fnExports[e.functionId].push(e);
   }
 
-  // ---- imports ----
+  // ---- imports (только fileImports — быстро) ----
   for (const i of rawData.imports || []) {
     d.imports.push(i);
     if (d.fileImports[i.fromFileId]) d.fileImports[i.fromFileId].push(i);
-
-    if (i.toFileId && !i.isExternal) {
-      if (d.fileDependencies[i.fromFileId])
-        d.fileDependencies[i.fromFileId].push(i.toFileId);
-      if (d.fileDependents[i.toFileId])
-        d.fileDependents[i.toFileId].push(i.fromFileId);
-
-      const targetExports = d.fileExports[i.toFileId] || [];
-      const importName = i.importedName;
-      const matchedExport = targetExports.find(
-        (e) =>
-          e.exportName === importName ||
-          e.localName === importName ||
-          (importName === 'default' && e.isDefault) ||
-          (i.isNamespace && e.isExported)
-      );
-
-      if (matchedExport && matchedExport.functionId) {
-        d.fnImportTargets[matchedExport.functionId].push({
-          toFileId: i.fromFileId,
-          toFilePath: d.files[i.fromFileId]?.path || '?',
-          toModuleName: d.modules[d.files[i.fromFileId]?.moduleId]?.name || '?',
-          importName: i.localName || importName,
-          originalName: importName,
-          source: i.source,
-          line: i.line,
-          isDefault: i.isDefault,
-          isNamespace: i.isNamespace,
-          isTypeOnly: i.isTypeOnly,
-          importId: i.id,
-        });
-      }
-    }
   }
 
   // ---- calls ----
   for (const c of rawData.calls || []) {
     d.calls.push(c);
-    if (d.fnCalls[c.fromFunctionId]) d.fnCalls[c.fromFunctionId].push(c);
-    if (d.fnCallers[c.toFunctionId]) d.fnCallers[c.toFunctionId].push(c);
-
-    const fromFn = d.fnById[c.fromFunctionId];
-    const toFn = d.fnById[c.toFunctionId];
-    const fromFilePath = fromFn ? d.files[fromFn.fileId]?.path || '?' : '?';
-    const fromFnName = fromFn ? fromFn.name : c.fromFunctionId;
-    const toFnName = toFn ? toFn.name : c.toFunctionId;
-
-    if (fromFn) {
-      d.fnDetailedCalls[c.fromFunctionId].push({
-        toFnId: c.toFunctionId,
-        toFnName: toFnName,
-        toFilePath: toFn
-          ? d.files[toFn.fileId]?.path || '?'
-          : c.toFunctionId.startsWith('external:')
-            ? '🌐 external'
-            : '?',
-        toModuleName: toFn
-          ? d.modules[d.files[toFn.fileId]?.moduleId]?.name || '?'
-          : 'external',
-        callLine: c.line,
-        callType: c.type || 'direct',
-        isExternal: c.toFunctionId.startsWith('external:'),
-      });
-    }
-
-    if (toFn) {
-      d.fnDetailedCallers[c.toFunctionId].push({
-        fromFnId: c.fromFunctionId,
-        fromFnName: fromFnName,
-        fromFilePath: fromFilePath,
-        fromModuleName: fromFn
-          ? d.modules[d.files[fromFn.fileId]?.moduleId]?.name || '?'
-          : '?',
-        callLine: c.line,
-        callType: c.type || 'direct',
-      });
-    } else if (c.toFunctionId.startsWith('external:')) {
-      const extName = c.toFunctionId.replace('external:', '');
-      // ✅ FIX v13.0.2: Array.isArray вместо `!d.externalCallers[extName]`.
-      // Для имён вроде 'toString', 'valueOf', 'constructor' проверка
-      // `!obj[name]` даёт false (там уже функция из прототипа),
-      // и .push() вызывается у унаследованной функции → краш.
-      if (!Array.isArray(d.externalCallers[extName])) {
-        d.externalCallers[extName] = [];
-      }
-      d.externalCallers[extName].push({
-        fromFnId: c.fromFunctionId,
-        fromFnName: fromFnName,
-        fromFilePath: fromFilePath,
-        fromModuleName: fromFn
-          ? d.modules[d.files[fromFn.fileId]?.moduleId]?.name || '?'
-          : '?',
-        callLine: c.line,
-        callType: c.type || 'direct',
-      });
-    }
   }
 
   // ---- reExports ----
@@ -667,15 +654,404 @@ export function preprocess(rawData) {
 }
 
 // ============================================================================
-// АНАЛИТИКА
+// LAZY INDEXES
+// ============================================================================
+
+const _lazyBuilt = new Set();
+
+function _ensure(key, builder) {
+  if (_lazyBuilt.has(key)) return;
+  builder();
+  _lazyBuilt.add(key);
+}
+
+function _resetLazy() {
+  _lazyBuilt.clear();
+}
+
+function _buildFileDepsIndex() {
+  if (state.__fileDepsBuilt) return;
+  state.fileDependents = {};
+  state.fileDependencies = {};
+  for (const f of Object.values(state.files)) {
+    state.fileDependents[f.id] = [];
+    state.fileDependencies[f.id] = [];
+  }
+  for (const i of state.imports) {
+    if (!i.toFileId || i.isExternal) continue;
+    if (state.fileDependencies[i.fromFileId])
+      state.fileDependencies[i.fromFileId].push(i.toFileId);
+    if (state.fileDependents[i.toFileId])
+      state.fileDependents[i.toFileId].push(i.fromFileId);
+  }
+  state.__fileDepsBuilt = true;
+}
+
+function _buildFnCallIndex() {
+  if (state.__fnCallBuilt) return;
+  for (const fn of Object.values(state.functions)) {
+    state.fnCalls[fn.id] = [];
+    state.fnCallers[fn.id] = [];
+    state.fnDetailedCalls[fn.id] = [];
+    state.fnDetailedCallers[fn.id] = [];
+  }
+
+  for (const c of state.calls) {
+    if (state.fnCalls[c.fromFunctionId]) state.fnCalls[c.fromFunctionId].push(c);
+    if (state.fnCallers[c.toFunctionId]) state.fnCallers[c.toFunctionId].push(c);
+
+    const fromFn = state.fnById[c.fromFunctionId];
+    const toFn = state.fnById[c.toFunctionId];
+
+    if (fromFn && state.fnDetailedCalls[c.fromFunctionId]) {
+      state.fnDetailedCalls[c.fromFunctionId].push({
+        toFnId: c.toFunctionId,
+        toFnName: toFn ? toFn.name : c.toFunctionId,
+        toFilePath: toFn
+          ? state.files[toFn.fileId]?.path || '?'
+          : c.toFunctionId.startsWith('external:')
+            ? '🌐 external'
+            : '?',
+        toModuleName: toFn
+          ? state.modules[state.files[toFn.fileId]?.moduleId]?.name || '?'
+          : 'external',
+        callLine: c.line,
+        callType: c.type || 'direct',
+        isExternal: c.toFunctionId.startsWith('external:'),
+      });
+    }
+    if (toFn && state.fnDetailedCallers[c.toFunctionId]) {
+      state.fnDetailedCallers[c.toFunctionId].push({
+        fromFnId: c.fromFunctionId,
+        fromFnName: fromFn ? fromFn.name : c.fromFunctionId,
+        fromFilePath: fromFn ? state.files[fromFn.fileId]?.path || '?' : '?',
+        fromModuleName: fromFn
+          ? state.modules[state.files[fromFn.fileId]?.moduleId]?.name || '?'
+          : '?',
+        callLine: c.line,
+        callType: c.type || 'direct',
+      });
+    }
+  }
+  state.__fnCallBuilt = true;
+}
+
+function _buildFnImportTargetsIndex() {
+  if (state.__fnImportTargetsBuilt) return;
+  for (const fn of Object.values(state.functions)) {
+    state.fnImportTargets[fn.id] = [];
+  }
+  for (const i of state.imports) {
+    if (!i.toFileId || i.isExternal) continue;
+    const targetExports = state.fileExports[i.toFileId] || [];
+    const importName = i.importedName;
+    const matched = targetExports.find(
+      (e) =>
+        e.exportName === importName ||
+        e.localName === importName ||
+        (importName === 'default' && e.isDefault) ||
+        (i.isNamespace && e.isExported)
+    );
+    if (matched && matched.functionId && state.fnImportTargets[matched.functionId]) {
+      state.fnImportTargets[matched.functionId].push({
+        toFileId: i.fromFileId,
+        toFilePath: state.files[i.fromFileId]?.path || '?',
+        toModuleName:
+          state.modules[state.files[i.fromFileId]?.moduleId]?.name || '?',
+        importName: i.localName || importName,
+        originalName: importName,
+        source: i.source,
+        line: i.line,
+        isDefault: i.isDefault,
+        isNamespace: i.isNamespace,
+        isTypeOnly: i.isTypeOnly,
+        importId: i.id,
+      });
+    }
+  }
+  state.__fnImportTargetsBuilt = true;
+}
+
+function _buildExternalCallersIndex() {
+  if (state.__extCallersBuilt) return;
+  state.externalCallers = Object.create(null);
+  for (const c of state.calls) {
+    if (!c.toFunctionId.startsWith('external:')) continue;
+    const extName = c.toFunctionId.replace('external:', '');
+    const fromFn = state.fnById[c.fromFunctionId];
+    if (!Array.isArray(state.externalCallers[extName])) {
+      state.externalCallers[extName] = [];
+    }
+    state.externalCallers[extName].push({
+      fromFnId: c.fromFunctionId,
+      fromFnName: fromFn ? fromFn.name : c.fromFunctionId,
+      fromFilePath: fromFn ? state.files[fromFn.fileId]?.path || '?' : '?',
+      fromModuleName: fromFn
+        ? state.modules[state.files[fromFn.fileId]?.moduleId]?.name || '?'
+        : '?',
+      callLine: c.line,
+      callType: c.type || 'direct',
+    });
+  }
+  state.__extCallersBuilt = true;
+}
+
+export function ensureIndexes() {
+  _ensure('fileDeps', _buildFileDepsIndex);
+  _ensure('fnCall', _buildFnCallIndex);
+  _ensure('fnImportTargets', _buildFnImportTargetsIndex);
+  _ensure('extCallers', _buildExternalCallersIndex);
+}
+
+export function scheduleIdleIndexing() {
+  _idle(() => _buildFileDepsIndex(), 500);
+  _idle(() => _buildFnCallIndex(), 1500);
+  _idle(() => _buildFnImportTargetsIndex(), 3000);
+  _idle(() => _buildExternalCallersIndex(), 4000);
+  _idle(() => computeDeadExports(), 4500);
+  _idle(() => computeDeadFunctions(), 5000);
+  _idle(() => computeCyclicDeps(), 5500);
+  _idle(() => computeHotFiles(), 6000);
+  _idle(() => computeHotFunctions(), 6500);
+}
+
+// ============================================================================
+// SECTION CACHE
+// ============================================================================
+
+const _sectionCache = new Map();
+const _sectionOrder = [];
+const _SECTION_MAX = 200;
+
+export function renderSectionCached(key, builder) {
+  if (_sectionCache.has(key)) {
+    const idx = _sectionOrder.indexOf(key);
+    if (idx >= 0) {
+      _sectionOrder.splice(idx, 1);
+      _sectionOrder.push(key);
+    }
+    return _sectionCache.get(key);
+  }
+  const html = builder();
+  _sectionCache.set(key, html);
+  _sectionOrder.push(key);
+  if (_sectionOrder.length > _SECTION_MAX) {
+    const evict = _sectionOrder.shift();
+    _sectionCache.delete(evict);
+  }
+  return html;
+}
+
+export function invalidateSectionCache(prefix = null) {
+  if (!prefix) {
+    _sectionCache.clear();
+    _sectionOrder.length = 0;
+    return;
+  }
+  for (const k of [..._sectionCache.keys()]) {
+    if (k.startsWith(prefix)) {
+      _sectionCache.delete(k);
+      const idx = _sectionOrder.indexOf(k);
+      if (idx >= 0) _sectionOrder.splice(idx, 1);
+    }
+  }
+}
+
+// ============================================================================
+// LOAD DECODED + BUILD INDEXES
+// ============================================================================
+
+export function loadDecoded(full, originalJson, fmt) {
+  resetState();
+
+  state.raw = full;
+  state.originalFormat = fmt;
+  state.originalCompact = fmt === 'compact' ? originalJson : null;
+  state.valuesMode = full.valuesMode || 'relations';
+
+  if (fmt === 'compact') {
+    state.rawCompact = originalJson;
+    const tokens = originalJson.tokens || [];
+    const decodeStrEntry = (entry) => {
+      if (typeof entry === 'string') return entry;
+      if (Array.isArray(entry)) return entry.map((i) => tokens[i] || '').join('');
+      return '';
+    };
+    state.__codec = {
+      stringDict: (originalJson.strs || []).map(decodeStrEntry),
+      paramDict: (originalJson.params || []).map(decodeStrEntry),
+      methodDict: (originalJson.methods || []).map(decodeStrEntry),
+      valueDict: originalJson.values || [],
+      legend: originalJson.legend,
+      schemas: originalJson.legend?.schemas || {},
+    };
+  } else if (fmt === 'full') {
+    state.rawFull = originalJson;
+    state.__codec = full.__codec || null;
+  }
+
+  const pre = preprocess(full);
+  Object.assign(state, pre);
+
+  _resetLazy();
+  invalidateSectionCache();
+
+  return state;
+}
+
+export function buildIndexes() {
+  const t0 = performance.now();
+  _buildFileDepsIndex();
+  const t1 = performance.now();
+  _buildFnCallIndex();
+  const t2 = performance.now();
+  _buildFnImportTargetsIndex();
+  _buildExternalCallersIndex();
+  const t3 = performance.now();
+
+  state.__stats = getProjectStats();
+
+  console.log(
+    `[AST] buildIndexes: fileDeps=${(t1 - t0).toFixed(0)}ms, ` +
+    `fnCalls=${(t2 - t1).toFixed(0)}ms, ` +
+    `importTargets=${(t3 - t2).toFixed(0)}ms`
+  );
+  return state;
+}
+
+export function getProjectStatsCached() {
+  if (!state.__stats) state.__stats = getProjectStats();
+  return state.__stats;
+}
+
+// ============================================================================
+// LOAD DATA (синхронный, для совместимости)
+// ============================================================================
+
+export function loadData(json, options = {}) {
+  const fmt = detectFormat(json);
+  const { includeEdges = false } = options;
+  console.log(`[AST] Формат входа: ${fmt} (includeEdges=${includeEdges})`);
+
+  let full;
+  try {
+    full = toFullData(json);
+  } catch (e) {
+    throw new Error(`Не удалось декодировать JSON: ${e.message}`);
+  }
+
+  if (includeEdges) {
+    try {
+      const { edges, stats } = buildEdgesFromFull(full);
+      full.edges = edges;
+      full.edgesStats = stats;
+    } catch (e) {
+      console.warn('[AST] Не удалось собрать edges:', e.message);
+    }
+  }
+
+  if (!full.files || !full.modules) {
+    throw new Error('Неверный формат JSON: ожидаются поля files и modules');
+  }
+
+  return loadDecoded(full, json, fmt);
+}
+
+// ============================================================================
+// RESET
+// ============================================================================
+
+function resetState() {
+  state.raw = null;
+  state.originalFormat = null;
+  state.originalCompact = null;
+  state.__codec = null;
+  state.rawCompact = null;
+  state.rawFull = null;
+  state.hasBothFormats = false;
+  state.includeEdgesOnLoad = false;
+
+  state.modules = {};
+  state.files = {};
+  state.functions = {};
+  state.classes = {};
+  state.constants = {};
+  state.exports = [];
+  state.imports = [];
+  state.calls = [];
+  state.reExports = [];
+
+  state.fileExports = {};
+  state.fileImports = {};
+  state.fileFunctions = {};
+  state.fileClasses = {};
+  state.fileConstants = {};
+  state.moduleFiles = {};
+
+  state.fnById = {};
+  state.fnCalls = {};
+  state.fnCallers = {};
+  state.fnExports = {};
+  state.fnImportTargets = {};
+  state.fnDetailedCallers = {};
+  state.fnDetailedCalls = {};
+  state.fnByName = {};
+
+  state.constById = {};
+  state.constByName = {};
+  state.classById = {};
+  state.classByName = {};
+
+  state.fileDependents = {};
+  state.fileDependencies = {};
+  state.fileByPath = {};
+  state.moduleByName = {};
+
+  state.externalCallers = Object.create(null);
+
+  state.deadExports = [];
+  state.deadFunctions = [];
+  state.cyclicDeps = [];
+  state.hotFiles = [];
+  state.hotFunctions = [];
+
+  state.statistics = {};
+  state.version = '?';
+  state.timestamp = '';
+  state.valuesMode = 'relations';
+
+  state.selectedFileId = null;
+  state.activeNode = null;
+  state.searchQuery = '';
+  state.depsOnly = false;
+  state.expandAllFns = false;
+  state.currentTab = 'overview';
+
+  state.__fileDepsBuilt = false;
+  state.__fnCallBuilt = false;
+  state.__fnImportTargetsBuilt = false;
+  state.__extCallersBuilt = false;
+  state.__stats = null;
+
+  _resetLazy();
+  invalidateSectionCache();
+}
+
+// ============================================================================
+// COMPUTE ANALYTICS (лениво — через scheduleIdleIndexing)
 // ============================================================================
 
 export function computeAnalytics() {
-  computeDeadExports();
-  computeDeadFunctions();
-  computeCyclicDeps();
-  computeHotFiles();
-  computeHotFunctions();
+  // Намеренно пусто: аналитика строится лениво в scheduleIdleIndexing()
+  // или принудительно через ensureAnalytics().
+}
+
+export function ensureAnalytics() {
+  _ensure('deadExports', () => computeDeadExports());
+  _ensure('deadFunctions', () => computeDeadFunctions());
+  _ensure('cyclicDeps', () => computeCyclicDeps());
+  _ensure('hotFiles', () => computeHotFiles());
+  _ensure('hotFunctions', () => computeHotFunctions());
 }
 
 function computeDeadExports() {
@@ -959,10 +1335,6 @@ export function getFnFullInfo(fnId) {
   };
 }
 
-/**
- * ✅ Возвращает имена импортов между двумя файлами.
- * Используется в UI для отображения импортированных имён.
- */
 export function getImportedNames(importerId, targetId) {
   const list = (state.fileImports[importerId] || []).filter(
     (i) => i.toFileId === targetId
@@ -1064,10 +1436,6 @@ export function verifyRoundTripEncode() {
   return roundTripEncode(full);
 }
 
-// ============================================================================
-// КОМПЛЕКСНАЯ ПРОВЕРКА
-// ============================================================================
-
 export function verifyRoundTripBothFormats() {
   const hasCompact = !!state.rawCompact;
   const hasFull = !!state.rawFull;
@@ -1086,7 +1454,6 @@ export function verifyRoundTripBothFormats() {
     RE: null,
   };
 
-  // -------- L2: decode(compact) ↔ full --------
   if (hasCompact && hasFull) {
     try {
       const decodedCompact = decodeCompactData(state.rawCompact, {
@@ -1101,7 +1468,6 @@ export function verifyRoundTripBothFormats() {
     }
   }
 
-  // -------- L0: encode(full) ↔ compact --------
   if (hasCompact && hasFull) {
     try {
       const fullForEncoding = {
@@ -1121,7 +1487,6 @@ export function verifyRoundTripBothFormats() {
     }
   }
 
-  // -------- L1, L3 --------
   if (hasCompact) {
     try {
       result.L1 = roundTripSemantic(state.rawCompact);
@@ -1135,7 +1500,6 @@ export function verifyRoundTripBothFormats() {
     }
   }
 
-  // -------- RE --------
   try {
     const full = exportAll();
     if (state.__codec) full.__codec = state.__codec;
@@ -1144,13 +1508,35 @@ export function verifyRoundTripBothFormats() {
     result.RE = { ok: false, error: e.message };
   }
 
-  const checked = ['L0', 'L1', 'L2', 'L3', 'RE'].filter(
-    (k) => result[k] !== null
-  );
+  const checked = ['L0', 'L1', 'L2', 'L3', 'RE'].filter((k) => result[k] !== null);
   result.ok = checked.every((k) => result[k].ok);
   result.checkedLevels = checked;
 
   return result;
+}
+
+// ============================================================================
+// ЗАГРУЗКА ОБОИХ ФОРМАТОВ
+// ============================================================================
+
+export function loadBothFormats(json, fmt = null, filename = '') {
+  const realFmt = fmt || detectFormat(json);
+  if (realFmt === 'compact') state.rawCompact = json;
+  else if (realFmt === 'full') state.rawFull = json;
+  else {
+    console.warn('[AST] loadBothFormats: неизвестный формат', filename);
+    return;
+  }
+  if (state.rawCompact && state.rawFull) {
+    state.hasBothFormats = true;
+    console.log(`[AST] Загружены оба формата: compact + full (${filename})`);
+  }
+}
+
+export function clearBothFormats() {
+  state.rawCompact = null;
+  state.rawFull = null;
+  state.hasBothFormats = false;
 }
 
 // ============================================================================
@@ -1161,172 +1547,62 @@ const LS_DATA_KEY = 'ast-analyzer:v13:data';
 const LS_URL_KEY = 'ast-analyzer:v13:url';
 const DEFAULT_CACHE_TTL = 3600_000;
 
-/**
- * Загружает JSON из корня проекта.
- *
- * ✅ FIX v13.0.2 (fetch): проходит ВСЕ `candidates` (а не только первый),
- * собирает успешно загруженные файлы в массив `loaded`, и:
- *   - первый компактный (или просто первый) → `loadData()` (primary);
- *   - все остальные → `loadBothFormats()`.
- *
- * Благодаря этому `state.rawFull` заполняется, если рядом с `index.json`
- * лежит `index.full.json`, и в Round-Trip становятся доступны L0/L2.
- *
- * ✅ FIX v13.0.2 (cache): при загрузке из кэша тоже догружаем второй
- * формат через `loadBothFormats()`. Раньше ветка кэша делала
- * `return await loadData(...)` и второй формат не подтягивался —
- * после перезагрузки страницы L0/L2 снова были недоступны.
- */
-export async function loadFromRoot(options = {}) {
-  const {
-    basePath = '',
-    candidates = ['index.json', 'index.full.json'],
-    useCache = true,
-    cacheTTL = DEFAULT_CACHE_TTL,
-    fallbackToFilePicker = true,
-    silent = false,
-    scanDir = false,
-    includeEdges = false,
-  } = options;
+export function clearRootCache() {
+  localStorage.removeItem(LS_DATA_KEY);
+  localStorage.removeItem(LS_URL_KEY);
+}
 
-  const log = silent ? () => {} : (...a) => console.log('[AST]', ...a);
-  const warn = silent ? () => {} : (...a) => console.warn('[AST]', ...a);
-
-  /**
-   * Догрузка второго формата (обычно full) после primary.
-   * Используется и в ветке кэша, и в ветке fetch.
-   */
-  const tryLoadSecondFormat = async (primaryFormat) => {
-    for (const name of candidates) {
-      // Пропускаем тот файл, который уже загружен как primary.
-      if (primaryFormat === 'compact' && name === 'index.json') continue;
-      if (primaryFormat === 'full' && name === 'index.full.json') continue;
-
-      const url = basePath + name;
-      try {
-        const res = await fetch(url, { cache: 'no-cache' });
-        if (!res.ok) continue;
-        const ct = res.headers.get('content-type') || '';
-        if (ct.includes('text/html')) continue;
-        const rawJson = await res.json();
-        const fmt = detectFormat(rawJson);
-        loadBothFormats(rawJson, fmt, url);
-        log(`✓ Догружен второй формат: ${url} (${fmt})`);
-      } catch (e) {
-        warn(`Второй формат ${url} не догружен:`, e.message);
-      }
-    }
-  };
-
-  // 1. Кэш
-  if (useCache) {
-    const cached = readCache(cacheTTL);
-    if (cached) {
-      log(`✓ Из кэша: ${cached.url}`);
-      try {
-        const st = await loadData(cached.json, { includeEdges });
-
-        // ✅ FIX v13.0.2 (cache): догружаем второй формат.
-        // Иначе после перезагрузки страницы rawFull снова null,
-        // и L0/L2 в Round-Trip становятся недоступны.
-        await tryLoadSecondFormat(state.originalFormat);
-
-        return st;
-      } catch (e) {
-        warn('Кэш повреждён, перезагружаем:', e.message);
-        clearRootCache();
-      }
-    }
+export function getRootCacheInfo() {
+  try {
+    const raw = localStorage.getItem(LS_DATA_KEY);
+    if (!raw) return null;
+    const { url, ts } = JSON.parse(raw);
+    return {
+      url,
+      ts,
+      age: Date.now() - ts,
+      ageHuman: formatAge(Date.now() - ts),
+    };
+  } catch {
+    return null;
   }
+}
 
-  // 2. Сканирование (опционально)
-  let effectiveCandidates = candidates.slice();
-  if (scanDir) {
-    try {
-      const found = await scanDirectoryForIndex(basePath, silent);
-      if (found.length) {
-        effectiveCandidates = [
-          ...found,
-          ...candidates.filter((c) => !found.includes(c)),
-        ];
-        log(`Найдено через сканирование: ${found.join(', ')}`);
-      }
-    } catch (e) {
-      warn('Сканирование не удалось:', e.message);
+function formatAge(ms) {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s} сек назад`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} мин назад`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} ч назад`;
+  return `${Math.floor(h / 24)} дн назад`;
+}
+
+function readCache(ttl) {
+  try {
+    const raw = localStorage.getItem(LS_DATA_KEY);
+    if (!raw) return null;
+    const { url, ts, json } = JSON.parse(raw);
+    if (!ts || Date.now() - ts > ttl) {
+      localStorage.removeItem(LS_DATA_KEY);
+      localStorage.removeItem(LS_URL_KEY);
+      return null;
     }
+    return { url, json };
+  } catch {
+    return null;
   }
+}
 
-  // 3. Fetch с перебором ВСЕХ кандидатов
-  const errors = [];
-  const loaded = []; // { url, json, fmt }
-
-  for (const name of effectiveCandidates) {
-    const url = basePath + name;
-    try {
-      log(`Пробуем: ${url}`);
-      const res = await fetch(url, { cache: 'no-cache' });
-      console.log('--------------- ответ -----------------', res);
-      if (!res.ok) {
-        errors.push(`${url}: HTTP ${res.status}`);
-        continue;
-      }
-      const ct = res.headers.get('content-type') || '';
-      if (ct.includes('text/html')) {
-        errors.push(`${url}: HTML вместо JSON`);
-        continue;
-      }
-      const rawJson = await res.json();
-      const fmt = detectFormat(rawJson);
-      log(`✓ Загружено: ${url} (формат: ${fmt})`);
-
-      loaded.push({ url, json: rawJson, fmt });
-
-      // В кэш кладём только первый успешный (обычно compact index.json).
-      // Второй формат при следующем запуске опять подтянется по candidates.
-      if (useCache && loaded.length === 1) {
-        writeCache(url, rawJson);
-        try {
-          localStorage.setItem(LS_URL_KEY, url);
-        } catch {}
-      }
-    } catch (e) {
-      errors.push(`${url}: ${e.message}`);
-    }
-  }
-
-  // Ничего не загрузилось — fallback или ошибка
-  if (loaded.length === 0) {
-    if (fallbackToFilePicker) {
-      log('Переключаемся на выбор файла…');
-      const picked = await pickFileAndParse();
-      if (picked) {
-        if (useCache) writeCache('(manual)', picked);
-        return await loadData(picked, { includeEdges });
-      }
-    }
-    throw new Error(
-      `Не удалось загрузить JSON из корня проекта.\nПопытки:\n  - ${errors.join('\n  - ')}`
+function writeCache(url, json) {
+  try {
+    localStorage.setItem(
+      LS_DATA_KEY,
+      JSON.stringify({ url, ts: Date.now(), json })
     );
+  } catch (e) {
+    console.warn('[AST] Не удалось записать кэш:', e.message);
   }
-
-  // Основной файл: предпочитаем compact (index.json), т.к. именно он —
-  // источник round-trip и `originalCompact`.
-  const primary = loaded.find((x) => x.fmt === 'compact') || loaded[0];
-
-  const st = await loadData(primary.json, { includeEdges });
-
-  // ✅ FIX v13.0.2: сохраняем все остальные форматы, чтобы L0/L2
-  // стали доступны в Round-Trip.
-  for (const other of loaded) {
-    if (other === primary) continue;
-    try {
-      loadBothFormats(other.json, other.fmt, other.url);
-    } catch (e) {
-      warn('loadBothFormats не удался:', e.message);
-    }
-  }
-
-  return st;
 }
 
 async function scanDirectoryForIndex(basePath, silent) {
@@ -1399,62 +1675,181 @@ function pickFileAndParse() {
   });
 }
 
-function readCache(ttl) {
-  try {
-    const raw = localStorage.getItem(LS_DATA_KEY);
-    if (!raw) return null;
-    const { url, ts, json } = JSON.parse(raw);
-    if (!ts || Date.now() - ts > ttl) {
-      localStorage.removeItem(LS_DATA_KEY);
-      localStorage.removeItem(LS_URL_KEY);
-      return null;
+/**
+ * Загружает JSON из корня проекта.
+ * Всегда использует chunked decode + buildIndexes.
+ */
+export async function loadFromRoot(options = {}) {
+  const {
+    basePath = '',
+    candidates = ['index.json', 'index.full.json'],
+    useCache = true,
+    cacheTTL = DEFAULT_CACHE_TTL,
+    fallbackToFilePicker = true,
+    silent = false,
+    scanDir = false,
+    includeEdges = false,
+  } = options;
+
+  const log = silent ? () => {} : (...a) => console.log('[AST]', ...a);
+  const warn = silent ? () => {} : (...a) => console.warn('[AST]', ...a);
+
+  const tryLoadSecondFormat = async (primaryFormat) => {
+    for (const name of candidates) {
+      if (primaryFormat === 'compact' && name === 'index.json') continue;
+      if (primaryFormat === 'full' && name === 'index.full.json') continue;
+      const url = basePath + name;
+      try {
+        const res = await fetch(url, { cache: 'no-cache' });
+        if (!res.ok) continue;
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('text/html')) continue;
+        const rawJson = await res.json();
+        const fmt = detectFormat(rawJson);
+        loadBothFormats(rawJson, fmt, url);
+        log(`✓ Догружен второй формат: ${url} (${fmt})`);
+      } catch (e) {
+        warn(`Второй формат ${url} не догружен:`, e.message);
+      }
     }
-    return { url, json };
-  } catch {
-    return null;
-  }
-}
+  };
 
-function writeCache(url, json) {
-  try {
-    localStorage.setItem(
-      LS_DATA_KEY,
-      JSON.stringify({ url, ts: Date.now(), json })
+  // 1. Кэш
+  if (useCache) {
+    const cached = readCache(cacheTTL);
+    if (cached) {
+      log(`✓ Из кэша: ${cached.url}`);
+      try {
+        const fmt = detectFormat(cached.json);
+        let full;
+        if (fmt === 'compact') {
+          showProgress('Декодирование (кэш)…');
+          full = await decodeCompactDataChunked(
+            cached.json,
+            ({ phase, pct }) => {
+              setProgress(pct, `Декодирование: ${phase} (${pct}%)`);
+            }
+          );
+        } else {
+          full = cached.json;
+        }
+        loadDecoded(full, cached.json, fmt);
+        buildIndexes();
+        hideProgress();
+
+        await tryLoadSecondFormat(state.originalFormat);
+        return state;
+      } catch (e) {
+        hideProgress();
+        warn('Кэш повреждён, перезагружаем:', e.message);
+        clearRootCache();
+      }
+    }
+  }
+
+  // 2. Сканирование
+  let effectiveCandidates = candidates.slice();
+  if (scanDir) {
+    try {
+      const found = await scanDirectoryForIndex(basePath, silent);
+      if (found.length) {
+        effectiveCandidates = [
+          ...found,
+          ...candidates.filter((c) => !found.includes(c)),
+        ];
+        log(`Найдено через сканирование: ${found.join(', ')}`);
+      }
+    } catch (e) {
+      warn('Сканирование не удалось:', e.message);
+    }
+  }
+
+  // 3. Fetch с перебором всех кандидатов
+  const errors = [];
+  const loaded = [];
+
+  for (const name of effectiveCandidates) {
+    const url = basePath + name;
+    try {
+      log(`Пробуем: ${url}`);
+      const res = await fetch(url, { cache: 'no-cache' });
+      if (!res.ok) {
+        errors.push(`${url}: HTTP ${res.status}`);
+        continue;
+      }
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('text/html')) {
+        errors.push(`${url}: HTML вместо JSON`);
+        continue;
+      }
+      const rawJson = await res.json();
+      const fmt = detectFormat(rawJson);
+      log(`✓ Загружено: ${url} (формат: ${fmt})`);
+      loaded.push({ url, json: rawJson, fmt });
+      if (useCache && loaded.length === 1) {
+        writeCache(url, rawJson);
+        try {
+          localStorage.setItem(LS_URL_KEY, url);
+        } catch {}
+      }
+    } catch (e) {
+      errors.push(`${url}: ${e.message}`);
+    }
+  }
+
+  if (loaded.length === 0) {
+    if (fallbackToFilePicker) {
+      log('Переключаемся на выбор файла…');
+      const picked = await pickFileAndParse();
+      if (picked) {
+        const fmt = detectFormat(picked);
+        let full;
+        if (fmt === 'compact') {
+          showProgress('Декодирование (файл)…');
+          full = await decodeCompactDataChunked(picked, ({ phase, pct }) => {
+            setProgress(pct, `Декодирование: ${phase} (${pct}%)`);
+          });
+        } else {
+          full = picked;
+        }
+        loadDecoded(full, picked, fmt);
+        buildIndexes();
+        hideProgress();
+        if (useCache) writeCache('(manual)', picked);
+        return state;
+      }
+    }
+    throw new Error(
+      `Не удалось загрузить JSON из корня проекта.\nПопытки:\n  - ${errors.join('\n  - ')}`
     );
-  } catch (e) {
-    console.warn('[AST] Не удалось записать кэш:', e.message);
   }
-}
 
-export function clearRootCache() {
-  localStorage.removeItem(LS_DATA_KEY);
-  localStorage.removeItem(LS_URL_KEY);
-}
+  const primary = loaded.find((x) => x.fmt === 'compact') || loaded[0];
 
-export function getRootCacheInfo() {
-  try {
-    const raw = localStorage.getItem(LS_DATA_KEY);
-    if (!raw) return null;
-    const { url, ts } = JSON.parse(raw);
-    return {
-      url,
-      ts,
-      age: Date.now() - ts,
-      ageHuman: formatAge(Date.now() - ts),
-    };
-  } catch {
-    return null;
+  let full;
+  if (primary.fmt === 'compact') {
+    showProgress('Декодирование…');
+    full = await decodeCompactDataChunked(primary.json, ({ phase, pct }) => {
+      setProgress(pct, `Декодирование: ${phase} (${pct}%)`);
+    });
+  } else {
+    full = primary.json;
   }
-}
 
-function formatAge(ms) {
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s} сек назад`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m} мин назад`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h} ч назад`;
-  return `${Math.floor(h / 24)} дн назад`;
+  loadDecoded(full, primary.json, primary.fmt);
+  buildIndexes();
+  hideProgress();
+
+  for (const other of loaded) {
+    if (other === primary) continue;
+    try {
+      loadBothFormats(other.json, other.fmt, other.url);
+    } catch (e) {
+      warn('loadBothFormats не удался:', e.message);
+    }
+  }
+
+  return state;
 }
 
 // ============================================================================
