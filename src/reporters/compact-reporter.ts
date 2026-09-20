@@ -2,72 +2,57 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Версия: 13.0.0
+// Версия: 14.0.0
+//
+// ИЗМЕНЕНИЯ v14.0.0:
+//   - ✅ ДОБАВЛЕНО: `canonicalizeFullJSON` в конце `collectFullJSON` —
+//     сортировка всех массивов по числовому `id` (fn1 < fn2 < ... < fn10).
+//     Это гарантирует байтовое равенство
+//     `encode(decode(encode(full))) === encode(full)`.
+//   - ✅ ДОБАВЛЕНО: `detectCallType` распознаёт callback-рёбра
+//     по суффиксу `_callback` в имени вызываемой функции.
+//   - ✅ ДОБАВЛЕНЫ вспомогательные: `extractNumericId`, `sortByIdNumeric`,
+//     `canonicalizeFullJSON`.
 //
 // ИЗМЕНЕНИЯ v13.0.0:
 //   - ✅ ИСПРАВЛЕНО: ValuesMode импортируется из './codec/values-filter.js'
 //     (codec-types.js его не экспортирует).
 //   - ✅ ЕДИНАЯ ВЕРСИЯ: version берётся из CODEC_VERSION ('13.0.0'),
-//     а не хардкодится ('11.1.0'). Устраняет расхождение L1/L2/DL
-//     ($.version: "13.0.0" vs "11.1.0").
+//     а не хардкодится ('11.1.0').
 //   - ✅ ВАЛИДАЦИЯ toFileId: гарантируем, что после resolveToFileId
 //     результат — либо `fN`, либо `external:...`, либо `unresolved:...`.
-//     Пустая строка или одиночная `"f"` ломала round-trip
-//     (spotCheck: imports[].toFileId).
 //
 // ИЗМЕНЕНИЯ v11.1.0 (--values-mode):
-//   - ✅ ДОБАВЛЕНО: поддержка `valuesMode: 'full' | 'relations'`
-//     в GenerateReportOptions. По умолчанию — 'relations'.
-//   - ✅ ДОБАВЛЕНО: проброс valuesMode в Codec.encode().
-//   - ✅ ДОБАВЛЕНО: valuesMode сохраняется в FullJSON и CompactJSON.
-//   - ✅ ДОБАВЛЕНО: в relations-режиме тяжёлые значения (конфиги,
-//     HTML/CSS-шаблоны, длинные строки, большие массивы) не попадают
-//     в `values[]` CompactJSON. Round-trip сохраняется полностью
-//     для отфильтрованного full.json.
-//   - ✅ ДОБАВЛЕНО: диагностика размера values в verbose-режиме.
+//   - ✅ ДОБАВЛЕНО: поддержка `valuesMode: 'full' | 'relations'`.
+//   - ✅ Проброс valuesMode в Codec.encode().
 //
 // ИЗМЕНЕНИЯ v11.0.0 (компактнее):
-//   - ✅ ВЕРСИЯ отчёта: '11.0.0' (синхронизация с codec-legend.ts
-//     и codec-encode.ts / codec-decode.ts).
+//   - ✅ ВЕРСИЯ отчёта: '11.0.0'.
 //   - ✅ fns/cls/cn: name → nameIdx (stringDict), flags → число.
-//   - ✅ extract-value.ts: undefined вместо '[Function]'.
 //
 // ИЗМЕНЕНИЯ v10.4.0 (единое сжатие + легенда для ИИ):
-//   - ✅ ДОБАВЛЕНО: единая функция `saveJsonFile` — все
-//     сохранения JSON (compact / full / edges) проходят
-//     через неё.
+//   - ✅ ДОБАВЛЕНО: единая функция `saveJsonFile`.
 //
 // ИЗМЕНЕНИЯ v9.0.7 (fix: разделение файлов compact/full):
 //   - ✅ ИСПРАВЛЕНО: функция `insertSuffixBeforeExtension`.
-//   - ✅ ДОБАВЛЕНО: явное логирование путей compact и full
-//     в verbose-режиме.
 //
 // ИЗМЕНЕНИЯ v9.0.6 (safe-json fix):
-//   - ✅ ДОБАВЛЕНО: импорт safeJsonStringify из '../utils/safe-json.js'
+//   - ✅ ДОБАВЛЕНО: импорт safeJsonStringify.
 //
 // ИЗМЕНЕНИЯ v9.0.5:
 //   - ✅ ДОБАВЛЕНО: опция `saveEdges` (по умолчанию false).
 //
 // ИЗМЕНЕНИЯ v10.3 (L1/L2/DL fix):
-//   - ✅ ВСЕГДА массивы для базовых секций (classes/constants/exports/
-//     imports/calls/reExports).
+//   - ✅ ВСЕГДА массивы для базовых секций.
 //   - ✅ type-only импорты пишутся как `type: 'type'`.
-//   - ✅ Рёбра event → handler и ref → expose больше НЕ пишутся в calls[].
 //   - ✅ `templates[].conditionals[]` обогащаются полями `id` и `fileId`.
-//   - ✅ `templates[].templateRefs[].exposedMethods` нормализуются до `[]`.
 //
 // ИЗМЕНЕНИЯ v9.0.2:
-//   - ✅ ИСПРАВЛЕНО: templates.push({...}) — ровно 12 полей TemplateData
-//   - ✅ ИСПРАВЛЕНО: dynamicComponents — 3 поля
-//   - ✅ ИСПРАВЛЕНО: пустые секции → undefined
+//   - ✅ ИСПРАВЛЕНО: templates.push({...}) — ровно 12 полей TemplateData.
+//   - ✅ ИСПРАВЛЕНО: пустые секции → undefined.
 //
 // ИЗМЕНЕНИЯ v9.0.0:
-//   - ✅ УДАЛЕНЫ локальные определения GenerateReportOptions и
-//        GenerateReportResult.
-//   - ✅ ДОБАВЛЕН проброс templateConditionals в templates[].
-//   - ✅ ДОБАВЛЕНА отдельная секция conditionals[] в FullJSON.
-//   - ✅ ДОБАВЛЕН сбор секций lifecycle, effects, injections,
-//        reactivity, types, typeRefs в collectFullJSON.
+//   - ✅ УДАЛЕНЫ локальные определения GenerateReportOptions/Result.
 // ============================================
 
 import fs from 'fs';
@@ -89,13 +74,6 @@ import { safeJsonStringify } from '../utils/safe-json.js';
 
 // ============================================
 // ✅ v13.0.0: ИМПОРТ ТИПОВ ИЗ codec-types.js
-// ============================================
-// ВАЖНО: GenerateReportOptions и GenerateReportResult импортируются,
-// а НЕ определяются локально (устранён TS2300).
-//
-// ✅ v13.0.0-fix: ValuesMode УБРАН из этого импорта, потому что
-// codec-types.js его не экспортирует. ValuesMode определён в
-// values-filter.js и импортируется отдельно ниже.
 // ============================================
 import type {
   FullJSON,
@@ -127,7 +105,6 @@ import type {
 import { CODEC_VERSION } from './codec/codec-types.js';
 
 // ✅ v13.0.0-fix: ValuesMode импортируется из values-filter.js
-// (codec-types.js его НЕ экспортирует — он там просто не определён).
 import type { ValuesMode } from './codec/values-filter.js';
 
 // ============================================
@@ -147,18 +124,11 @@ export type { ValuesMode } from './codec/values-filter.js';
 
 /**
  * Значение по умолчанию для `valuesMode`.
- *
- * По ТЗ — 'relations' (сжатый режим).
  */
 const DEFAULT_VALUES_MODE: ValuesMode = 'relations';
 
 /**
- * Пороговые значения для классификации `value` как "тяжёлого".
- *
- * Значения, превышающие эти пороги, в режиме 'relations'
- * НЕ попадают в `values[]` CompactJSON.
- *
- * См. `classifyValue()` в codec-encode.ts для деталей.
+ * Пороговые значения для классификации `value` как «тяжёлого».
  */
 const HEAVY_VALUE_THRESHOLDS = {
   /** Строки длиннее этого — 'template' (HTML/CSS/код) */
@@ -264,7 +234,9 @@ export function generateCompactReport(
   if (useCompression) {
     compact = Codec.encode(full, valuesMode);
     if (verbose) {
-      console.log(`   🗜️  Сжатие применено (v${compact.v}, valuesMode: ${compact.valuesMode || 'undefined'})`);
+      console.log(
+        `   🗜️  Сжатие применено (v${compact.v}, valuesMode: ${compact.valuesMode || 'undefined'})`
+      );
 
       // ✅ v11.1.0: диагностика размера values
       const valuesCount = compact.values?.length ?? 0;
@@ -294,15 +266,12 @@ export function generateCompactReport(
   let compressionRatio: number | undefined;
 
   if (outputPath) {
-    // ✅ v9.0.7: заранее вычисляем путь к full-файлу, чтобы
-    // гарантировать его уникальность относительно compact-файла.
+    // ✅ v9.0.7: заранее вычисляем путь к full-файлу
     let fullPathResolved: string | undefined;
     if (saveFull) {
       fullPathResolved = insertSuffixBeforeExtension(outputPath, fullSuffix);
 
-      // ✅ v9.0.7: защита от коллизии — если по какой-то причине
-      // путь к full-файлу совпал с compact-файлом, добавляем
-      // числовой суффикс, чтобы гарантировать уникальность.
+      // ✅ v9.0.7: защита от коллизии
       if (path.resolve(fullPathResolved) === path.resolve(outputPath)) {
         console.warn(
           `   ⚠️  [compact-reporter] fullPath совпал с compactPath, ` +
@@ -325,8 +294,7 @@ export function generateCompactReport(
       fullPath = saved.path;
       fullSize = saved.size;
 
-      // ✅ v9.0.7: финальная проверка — если пути всё ещё совпали,
-      // это критическая ошибка, о которой нужно сообщить громко.
+      // ✅ v9.0.7: финальная проверка
       if (compactPath && path.resolve(compactPath) === path.resolve(fullPath)) {
         console.error(
           `   ❌ [compact-reporter] КРИТИЧЕСКАЯ ОШИБКА: ` +
@@ -339,7 +307,6 @@ export function generateCompactReport(
     if (saveEdges && compact) {
       const edgesPathResolved = insertSuffixBeforeExtension(outputPath, edgesSuffix);
 
-      // Декодируем compact с includeEdges: true
       const fullWithEdges = Codec.decode(compact, { includeEdges: true, valuesMode });
       const edges = fullWithEdges.edges || [];
 
@@ -457,10 +424,6 @@ export function readFullJson(fullPath: string): FullJSON {
 // ============================================
 // ✅ v10.4.0: ЕДИНОЕ СОХРАНЕНИЕ JSON
 // ============================================
-// Все сохранения JSON в этом файле идут через saveJsonFile.
-// Это устраняет дублирование safeJsonStringify + fs.writeFileSync
-// + fs.statSync + логирование.
-// ============================================
 
 interface SaveJsonResult {
   path: string;
@@ -469,19 +432,6 @@ interface SaveJsonResult {
 
 /**
  * Сохраняет объект в JSON-файл.
- *
- * Особенности:
- *   - использует safeJsonStringify (BigInt → строка, Map/Set,
- *     circular references);
- *   - создаёт директорию, если её нет;
- *   - возвращает путь и размер в байтах;
- *   - логирует в verbose-режиме.
- *
- * @param filePath — путь для сохранения
- * @param data     — данные для сериализации
- * @param label    — человекочитаемая метка (для лога)
- * @param verbose  — логировать ли результат
- * @returns { path, size } — путь и размер в байтах
  */
 function saveJsonFile(
   filePath: string,
@@ -506,35 +456,83 @@ function saveJsonFile(
 }
 
 // ============================================
+// ✅ v14.0.0: КАНОНИЗАЦИЯ FULLJSON
+// ============================================
+//
+// Сортировка всех массивов по числовому `id` (fn1 < fn2 < ... < fn10).
+//
+// ⚠️ Это НЕ строковая сортировка (`'fn1' < 'fn10' < 'fn2'`) —
+// она ломала round-trip в v13.0.1. Здесь числовая.
+//
+// `decode` восстанавливает `id` из позиции (`functions[i].id = 'fn${i+1}'`).
+// Если `encode` пишет массивы в каноническом порядке, то `decode`
+// восстанавливает их в том же порядке → байтовое равенство.
+// ============================================
+
+/**
+ * Извлекает числовой суффикс из `id` (`fn123` → 123).
+ * Не-числовой суффикс → `Infinity` (уходит в конец).
+ */
+function extractNumericId(id: string | undefined): number {
+  if (!id) return Infinity;
+  const match = id.match(/(\d+)$/);
+  const suffix = match?.[1];
+  return suffix ? parseInt(suffix, 10) : Infinity;
+}
+
+/**
+ * Сортирует массив по числовому `id`. Не мутирует исходный массив.
+ */
+function sortByIdNumeric<T extends { id?: string }>(arr: T[] | undefined): T[] {
+  if (!arr) return [];
+  return [...arr].sort((a, b) => {
+    const na = extractNumericId(a.id);
+    const nb = extractNumericId(b.id);
+    if (na !== nb) return na - nb;
+    return (a.id ?? '').localeCompare(b.id ?? '');
+  });
+}
+
+/**
+ * Канонизирует `FullJSON`:
+ *   - сортирует `modules`, `files`, `functions`, `classes`, `constants`,
+ *     `exports`, `imports`, `calls`, `reExports` по числовому `id`;
+ *   - не трогает `id` внутри элементов;
+ *   - не трогает вложенные массивы (`fileIds`, `methods` и т.п.).
+ */
+function canonicalizeFullJSON(payload: FullJSON): FullJSON {
+  return {
+    ...payload,
+    modules: sortByIdNumeric(payload.modules),
+    files: sortByIdNumeric(payload.files),
+    functions: sortByIdNumeric(payload.functions),
+    classes: sortByIdNumeric(payload.classes),
+    constants: sortByIdNumeric(payload.constants),
+    exports: sortByIdNumeric(payload.exports),
+    imports: sortByIdNumeric(payload.imports),
+    calls: sortByIdNumeric(payload.calls),
+    reExports: sortByIdNumeric(payload.reExports),
+  };
+}
+
+// ============================================
 // СБОР ПОЛНОГО JSON (ВНУТРЕННЯЯ ФУНКЦИЯ)
 // ============================================
 
 /**
  * Собирает полный JSON из карты сущностей.
  *
- * Работает в два прохода:
- *   1. Собирает модули, файлы, функции, классы, константы
- *   2. Собирает экспорты, импорты, вызовы, реэкспорты
+ * ✅ v14.0.0: в конце вызывается `canonicalizeFullJSON` — все массивы
+ * сортируются по числовому `id`. Это гарантирует детерминированный
+ * порядок независимо от порядка обхода `entitiesMap`.
  *
- * ⚠️ edges НЕ создаются здесь — они восстанавливаются при decode
- *    (производное поле, не хранится в full.json по спецификации v9.0.4+).
- *
- * ✅ v9.0.2: templates.push содержит ВСЕ 12 полей TemplateData.
- * ✅ v9.0.2: пустые секции → undefined (не []).
- * ✅ v9.0.2: dynamicComponents — 3 поля (isExpression, line, resolvedComponents).
- * ✅ v9.0.2: conditionals пробрасываются в templates[] и в отдельную секцию.
- * ✅ v9.0.2: functionId для lc/ef/rx = '' (не undefined).
+ * ✅ v13.0.0: version = CODEC_VERSION; валидация toFileId.
+ * ✅ v11.1.0: version = '11.1.0'; valuesMode пробрасывается.
+ * ✅ v11.0.0: version = '11.0.0'.
+ * ✅ v10.3: базовые секции ВСЕГДА массивы.
+ * ✅ v9.0.2: templates.push содержит ровно 12 полей TemplateData.
  * ✅ v9.0.0: собираются секции conditionals[], lifecycle[], effects[],
  *            injections[], reactivity[], types[], typeRefs[].
- * ✅ v10.3: базовые секции ВСЕГДА массивы (даже пустые) — симметрия
- *            с codec-decode.ts. type-only импорты → type: 'type'.
- *            Рёбра event → handler и ref → expose НЕ пишутся в calls[].
- *            conditionals обогащаются id/fileId. templateRefs[].exposedMethods
- *            нормализуются до [].
- * ✅ v11.0.0: version = '11.0.0'.
- * ✅ v11.1.0: version = '11.1.0'. valuesMode пробрасывается в full.json.
- * ✅ v13.0.0: version = CODEC_VERSION ('13.0.0').
- *             Валидация toFileId для импортов.
  */
 function collectFullJSON(
   entitiesMap: Record<string, EntitiesResult>,
@@ -780,11 +778,7 @@ function collectFullJSON(
       constantCounter++;
 
       // ✅ v11.1.0: в режиме relations тяжёлые значения не сохраняем.
-      // Это гарантирует, что decode(encode(full)) === full: то, что
-      // мы не положили в full, не будет искать и decode.
-      const valueToStore = shouldKeepValue(cn.value, valuesMode)
-        ? cn.value
-        : undefined;
+      const valueToStore = shouldKeepValue(cn.value, valuesMode) ? cn.value : undefined;
 
       constants.push({
         id: `cn${constantCounter}`,
@@ -807,8 +801,6 @@ function collectFullJSON(
   // ============================================
   // ✅ v8.4.0 + v9.0.0 + v9.0.2 + v10.3: сбор Vue-шаблонов и conditionals
   // ============================================
-  // ⚠️ ВАЖНО: каждый TemplateData содержит РОВНО 12 полей.
-  // ============================================
   for (const [filePath, entities] of Object.entries(workingEntitiesMap)) {
     if (!entities) continue;
     if (!filePath.endsWith('.vue')) continue;
@@ -820,7 +812,6 @@ function collectFullJSON(
 
     const e = entities as any;
 
-    // ✅ v9.0.0: hasTemplate учитывает templateConditionals
     const hasTemplate =
       (e.templateReactivityDeps?.length || 0) +
       (e.templateEventHandlers?.length || 0) +
@@ -837,12 +828,7 @@ function collectFullJSON(
 
     if (!hasTemplate) continue;
 
-    // ============================================
-    // ✅ v10.3: обогащаем conditionals полями id и fileId через ЕДИНЫЙ
-    //           conditionalCounter, чтобы id совпадал с тем, что
-    //           восстанавливает codec-decode.ts ("cd1", "cd2", ...).
-    //           Заодно пушим в глобальную секцию conditionals[].
-    // ============================================
+    // ✅ v10.3: обогащаем conditionals полями id и fileId
     const fileConditionals = e.templateConditionals || [];
     const enrichedConditionals: TemplateConditional[] = fileConditionals.map((cd: any) => {
       conditionalCounter++;
@@ -858,10 +844,7 @@ function collectFullJSON(
       return enriched;
     });
 
-    // ============================================
     // ✅ v9.0.2 + v10.3: гарантируем РОВНО 12 полей TemplateData.
-    // ✅ v10.3: templateRefs[].exposedMethods нормализуются до [].
-    // ============================================
     const templateData: TemplateData = {
       fileId: file.id,
       moduleId: module.id,
@@ -870,12 +853,10 @@ function collectFullJSON(
       dynamicComponents: (e.templateDynamicComponents || []).map((d: any) => ({
         isExpression: d.isExpression || '',
         line: d.line || 0,
-        // ✅ v9.0.2: 3-е поле — resolvedComponents
         resolvedComponents: d.resolvedComponents || [],
       })),
       directives: e.templateDirectives || [],
       usedComponents: e.templateUsedComponents || [],
-      // ✅ v10.3: нормализуем templateRefs — exposedMethods всегда массив
       templateRefs: (e.templateRefs || []).map((ref: any) => ({
         refValue: ref.refValue || '',
         tag: ref.tag || '',
@@ -886,7 +867,6 @@ function collectFullJSON(
       deepSelectors: e.templateDeepSelectors || [],
       slots: e.templateSlots || [],
       complexity: e.templateComplexity || 0,
-      // ✅ v10.3: обогащённые conditionals с id/fileId
       conditionals: enrichedConditionals,
     };
 
@@ -897,7 +877,6 @@ function collectFullJSON(
     console.log(`   🎨 Vue-шаблонов: ${templates.length}`);
     console.log(`   🎯 Conditionals: ${conditionals.length}`);
 
-    // ✅ v9.0.2: диагностика 12 полей
     if (process.env.AST_DEBUG_CODEC === 'true') {
       for (let i = 0; i < templates.length; i++) {
         const t = templates[i];
@@ -1027,9 +1006,7 @@ function collectFullJSON(
       }
 
       // ✅ v13.0.0-fix: гарантируем, что toFileId — либо `fN`,
-      // либо `external:...`, либо `unresolved:...`. Пустая строка
-      // или одиночная `"f"` ломает round-trip: encodeStr("f") даёт
-      // токен "f", decodeStr возвращает "f" вместо "f79".
+      // либо `external:...`, либо `unresolved:...`.
       if (
         resolvedToFileId &&
         !/^f\d+$/.test(resolvedToFileId) &&
@@ -1047,9 +1024,6 @@ function collectFullJSON(
 
           importCounter++;
 
-          // ✅ v10.3: isTypeOnly приоритетнее, чем spec.type.
-          // Если импорт помечен как type-only, тип должен быть 'type',
-          // чтобы full.json был согласован с codec-encode.ts и codec-decode.ts.
           const baseType = getImportTypeFromSpecifierType(spec.type);
           const importType: 'named' | 'default' | 'namespace' | 'type' = imp.isTypeOnly
             ? 'type'
@@ -1119,7 +1093,6 @@ function collectFullJSON(
 
           importCounter++;
 
-          // ✅ v10.3: isTypeOnly приоритетнее, чем spec.type.
           const finalType: 'named' | 'default' | 'namespace' | 'type' = imp.isTypeOnly
             ? 'type'
             : importType;
@@ -1196,14 +1169,6 @@ function collectFullJSON(
       `   ✅ Второй проход: ${exports.length} экспортов, ${reExports.length} реэкспортов, ${calls.length} вызовов, ${imports.length} импортов`
     );
   }
-
-  // ============================================
-  // ✅ v8.4.0 / v10.3: рёбра event → handler и ref → expose.
-  //
-  // ⚠️ ВАЖНО: эти рёбра НЕ пишутся в calls[], потому что
-  //    CallData.fromFunctionId по контракту — это ID ФУНКЦИИ,
-  //    а не ID файла.
-  // ============================================
 
   // ============================================
   // ✅ v9.0.0: СБОР НОВЫХ СЕКЦИЙ
@@ -1382,14 +1347,12 @@ function collectFullJSON(
     modules,
     files,
     functions,
-    // ✅ v10.3: всегда массив, даже пустой — симметрия с codec-decode.ts
     classes,
     constants,
     exports,
     imports,
     calls,
     reExports,
-    // ✅ v9.0.0: новые секции — оставляем undefined для пустых
     templates: templates.length > 0 ? templates : undefined,
     statistics,
     conditionals: conditionals.length > 0 ? conditionals : undefined,
@@ -1399,10 +1362,19 @@ function collectFullJSON(
     reactivity: reactivity.length > 0 ? reactivity : undefined,
     types: types.length > 0 ? types : undefined,
     typeRefs: typeRefs.length > 0 ? typeRefs : undefined,
-    // ⚠️ edges НЕ создаются — восстанавливаются в Codec.decode
   };
 
-  return result;
+  // ============================================
+  // ✅ v14.0.0: КАНОНИЗАЦИЯ
+  // ============================================
+  // Сортируем все массивы по ЧИСЛОВОМУ `id`. Это гарантирует,
+  // что `full.json` детерминирован независимо от порядка обхода
+  // `entitiesMap`.
+  //
+  // Без этого `encode(decode(encode(x)))` может дать другой порядок
+  // в `strs` / `params` / `values`, и байтовое равенство сломается.
+  // ============================================
+  return canonicalizeFullJSON(result);
 }
 
 // ============================================
@@ -1411,12 +1383,6 @@ function collectFullJSON(
 
 /**
  * ✅ v9.0.7: вставляет суффикс перед расширением файла.
- *
- * Гарантирует, что результирующее имя файла ОТЛИЧАЕТСЯ от исходного.
- *
- * @param filePath — исходный путь к файлу
- * @param suffix — суффикс (например, '.full.json' или '.edges.json')
- * @returns путь к новому файлу
  */
 function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
   const ext = path.extname(filePath); // '.json'
@@ -1425,7 +1391,6 @@ function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
   // Нормализуем суффикс: убеждаемся, что он начинается с точки
   let normalizedSuffix = suffix.trim();
   if (!normalizedSuffix) {
-    // Пустой суффикс — аварийный режим
     return insertUniqueSuffix(filePath, suffix);
   }
   if (!normalizedSuffix.startsWith('.')) {
@@ -1451,14 +1416,13 @@ function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
 }
 
 /**
- * ✅ v9.0.7: аварийная функция — добавляет числовой суффикс (2, 3, ...),
+ * ✅ v9.0.7: аварийная функция — добавляет числовой суффикс,
  * пока результат не станет уникальным относительно исходного пути.
  */
 function insertUniqueSuffix(filePath: string, suffix: string): string {
   const ext = path.extname(filePath); // '.json'
   const base = filePath.slice(0, -ext.length); // 'report'
 
-  // Нормализуем суффикс
   let normalizedSuffix = suffix.trim();
   if (normalizedSuffix && !normalizedSuffix.startsWith('.')) {
     normalizedSuffix = `.${normalizedSuffix}`;
@@ -1467,18 +1431,15 @@ function insertUniqueSuffix(filePath: string, suffix: string): string {
     normalizedSuffix = normalizedSuffix.slice(0, -ext.length);
   }
 
-  // Пробуем числовые суффиксы: 2, 3, 4, ...
   for (let i = 2; i < 1000; i++) {
     const candidate = `${base}${normalizedSuffix}.${i}${ext}`;
     if (path.resolve(candidate) !== path.resolve(filePath)) {
-      // Дополнительная проверка: файл не должен существовать на диске
       if (!fs.existsSync(candidate)) {
         return candidate;
       }
     }
   }
 
-  // Совсем аварийный случай — используем timestamp
   const timestamp = Date.now();
   return `${base}${normalizedSuffix}.${timestamp}${ext}`;
 }
@@ -1618,12 +1579,20 @@ function getImportTypeFromSpecifierType(
 
 /**
  * Определяет тип вызова по контексту.
+ *
+ * ✅ v14.0.0: добавлена явная проверка `_callback` в имени —
+ * это самый надёжный признак callback-ребра, сгенерированного
+ * в `extract-entities-from-ast.ts` через `inferFunctionName`.
  */
 function detectCallType(
   func: FunctionInfo,
   callName: string
 ): 'direct' | 'async' | 'method' | 'callback' {
   if (func.isAsync) return 'async';
+
+  // ✅ v14.0.0: callback-рёбра имеют суффикс `_callback`
+  if (callName.endsWith('_callback')) return 'callback';
+
   if (callName.includes('.')) return 'method';
 
   const body = func.body || '';
@@ -1647,17 +1616,6 @@ function detectCallType(
 
 /**
  * Определяет, нужно ли сохранять значение в `full.constants[].value`.
- *
- * В режиме 'full' — всегда true (обратная совместимость).
- * В режиме 'relations' — только если значение НЕ является "тяжёлым".
- *
- * Критерий согласован с `classifyValue()` в codec-encode.ts:
- * если значение отбрасывается здесь, оно не попадёт в full,
- * а значит не попадёт и в compact — round-trip сохраняется.
- *
- * @param value — значение константы
- * @param mode — режим фильтрации
- * @returns true, если значение нужно сохранить
  */
 function shouldKeepValue(value: unknown, mode: ValuesMode): boolean {
   if (mode === 'full') return true;
@@ -1676,12 +1634,10 @@ function shouldKeepValue(value: unknown, mode: ValuesMode): boolean {
       const json = JSON.stringify(value);
       return json.length <= HEAVY_VALUE_THRESHOLDS.OBJECT_JSON_LENGTH;
     } catch {
-      // BigInt, circular — считаем "тяжёлым" и отбрасываем
       return false;
     }
   }
 
-  // Примитивы: number, boolean, bigint (bigint сериализуется как строка)
   return true;
 }
 

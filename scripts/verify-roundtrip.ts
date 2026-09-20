@@ -1,9 +1,15 @@
 #!/usr/bin/env node
 // scripts/verify-roundtrip.ts
 // ============================================
-// Скрипт проверки Round-Trip для CODEC (v13.0.0)
+// Скрипт проверки Round-Trip для CODEC (v14.0.0)
 // ============================================
-// Версия: 13.0.0
+// Версия: 14.0.0
+//
+// ИЗМЕНЕНИЯ v14.0.0:
+//   - ✅ ДОБАВЛЕН уровень L4: encode(decode(encode(full))) === encode(full)
+//     (побайтовое равенство — идемпотентность encode).
+//   - ✅ L4 добавлен в levels[] и в jsonReport.
+//   - ✅ Обновлён help под новый уровень.
 //
 // ИЗМЕНЕНИЯ v13.0.0:
 //   - ✅ mi.f теперь пары [startFileIdx, fileCount] — не RLE
@@ -22,6 +28,7 @@
 //   L1  : decode(compact) === full          (семантически)
 //   L2  : decode(compact) === full          (побайтово, порядко-независимо)
 //   L3  : compact на диске === encode(full) (побайтово, буквально)
+//   L4  : encode(decode(encode(full))) === encode(full) (побайтово)  ← v14.0.0
 //   RE  : encode(decode(compact)) === compact
 //   DL  : decode(encode(full)) === full
 //   ENC : encode(full) === encode(decode(encode(full)))
@@ -336,10 +343,10 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     note: legend?.flags?.bits ? `${bitsCount} битов` : 'отсутствует',
   });
 
-  // ✅ v13.0.0-fix: schemas — добавлены mi и fl
+  // schemas — добавлены mi и fl
   const schemaChecks: Array<{ key: string; expectedLength: number }> = [
-    { key: 'mi', expectedLength: 2 }, // ✅ v13.0.0-fix
-    { key: 'fl', expectedLength: 2 }, // ✅ v13.0.0-fix
+    { key: 'mi', expectedLength: 2 },
+    { key: 'fl', expectedLength: 2 },
     { key: 'fns', expectedLength: 7 },
     { key: 'cls', expectedLength: 6 },
     { key: 'cn', expectedLength: 6 },
@@ -394,7 +401,7 @@ async function main(): Promise<void> {
     }
   }
 
-  section('🔬 ROUND-TRIP ВЕРИФИКАЦИЯ CODEC (v13.0.0)');
+  section('🔬 ROUND-TRIP ВЕРИФИКАЦИЯ CODEC (v14.0.0)');
   info(`Compact: ${path.resolve(options.compactPath)}`);
   info(`Full:    ${path.resolve(options.fullPath)}`);
   info(`Verbose: ${options.verbose}`);
@@ -545,6 +552,50 @@ async function main(): Promise<void> {
     }
   }
 
+  // ============================================
+  // ✅ v14.0.0: L4 — байтовое равенство encode(decode(encode(full))) === encode(full)
+  // ============================================
+  subsection('L4: encode(decode(encode(full))) === encode(full) (побайтово)');
+
+  const enc1 = Codec.encode(full);
+  const dec1 = Codec.decode(enc1);
+  const enc2 = Codec.encode(dec1);
+
+  const enc1Raw = JSON.stringify(enc1);
+  const enc2Raw = JSON.stringify(enc2);
+
+  let l4: LevelResult;
+  if (enc1Raw === enc2Raw) {
+    l4 = { ok: true, diffCount: 0, diff: null };
+    ok('L4 — PASS (байтовое равенство)');
+  } else {
+    const diffs = collectDiffs(enc1, enc2, '$', options.maxDiffs);
+    const firstDiff = findFirstDiff(enc1Raw, enc2Raw);
+    l4 = {
+      ok: false,
+      diffCount: diffs.length,
+      diff: diffs,
+      notes: firstDiff ? `первое расхождение на позиции ${firstDiff.pos}` : undefined,
+    };
+    fail(`L4 — FAIL (diffCount=${diffs.length})`);
+    if (firstDiff) {
+      log(`  Первое расхождение на позиции ${firstDiff.pos}:`);
+      log(`    enc1: ...${firstDiff.a}...`);
+      log(`    enc2: ...${firstDiff.b}...`);
+    }
+    if (options.verbose && diffs.length > 0) {
+      log(`  ${C.gray}Первые ${Math.min(diffs.length, options.maxDiffs)} расхождений:${C.reset}`);
+      for (const d of diffs.slice(0, options.maxDiffs)) {
+        log(`    ${C.red}•${C.reset} ${d.path}`);
+        log(`        a: ${JSON.stringify(d.a)}`);
+        log(`        b: ${JSON.stringify(d.b)}`);
+      }
+      if (diffs.length > options.maxDiffs) {
+        log(`    ${C.gray}... и ещё ${diffs.length - options.maxDiffs}${C.reset}`);
+      }
+    }
+  }
+
   subsection('RE: encode(decode(compact)) === compact (семантически)');
   const reEncoded = Codec.encode(decoded);
   const re = semanticCompare(reEncoded, compact, options.maxDiffs);
@@ -624,7 +675,6 @@ async function main(): Promise<void> {
       ok(`${sc.name} — PASS`);
     } else {
       fail(`${sc.name} — FAIL (diffCount=${sc.result.diffCount})`);
-      // ✅ ИСПРАВЛЕНО: null-guard для sc.result.diff
       const diffs = sc.result.diff;
       if (Array.isArray(diffs)) {
         for (const d of diffs.slice(0, options.maxDiffs)) {
@@ -924,6 +974,7 @@ async function main(): Promise<void> {
     { name: 'L1 (decode(compact) === full, семантически)', ok: l1.ok },
     { name: 'L2 (decode(compact) === full, побайтово, порядко-независимо)', ok: l2.ok },
     { name: 'L3 (compact на диске === encode(full), побайтово)', ok: l3.ok },
+    { name: 'L4 (encode(decode(encode(full))) === encode(full), побайтово)', ok: l4.ok },
     { name: 'RE (encode(decode(compact)) === compact)', ok: re.ok },
     { name: 'DL (decode(encode(full)) === full)', ok: dl.ok },
     { name: 'ENC (encode идемпотентен)', ok: enc.ok },
@@ -1003,7 +1054,7 @@ async function main(): Promise<void> {
 
   const jsonReport = {
     timestamp: new Date().toISOString(),
-    codecVersion: '13.0.0',
+    codecVersion: '14.0.0',
     originalFormat: 'compact',
     bothFormats: false,
 
@@ -1011,6 +1062,7 @@ async function main(): Promise<void> {
     L1_semantic: l1,
     L2_decodeCompactVsFull: l2,
     L3_byteExact: l3,
+    L4_byteExactIdempotent: l4,
     reverse: re,
     dl,
     enc_idempotent: enc,
@@ -1058,8 +1110,7 @@ async function main(): Promise<void> {
 // ============================================
 
 function printHelp(): void {
-  log(`
-${C.bold}Использование:${C.reset}
+  log(`\n${C.bold}Использование:${C.reset}
   npx tsx scripts/verify-roundtrip.ts [options]
 
 ${C.bold}Опции:${C.reset}
@@ -1078,6 +1129,7 @@ ${C.bold}Уровни round-trip:${C.reset}
   L1  : decode(compact) === full (семантически)
   L2  : decode(compact) === full (побайтово, порядко-независимо)
   L3  : compact на диске === encode(full) (побайтово, буквально)
+  L4  : encode(decode(encode(full))) === encode(full) (побайтово)   ← v14.0.0
   RE  : encode(decode(compact)) === compact
   DL  : decode(encode(full)) === full
   ENC : encode(full) === encode(decode(encode(full)))
@@ -1106,8 +1158,8 @@ ${C.bold}Эталоны (golden):${C.reset}
   G1  : full ≈ scripts/fixtures/index.full.golden.json
   G2  : compact ≈ scripts/fixtures/index.golden.json
 
-${C.bold}Формат compact.json v13.0.0:${C.reset}
-  mi:  { n: [...], f: [[startFileIdx, fileCount], ...] }   ← ✅ v13.0.0-fix: пары, не RLE
+${C.bold}Формат compact.json v14.0.0:${C.reset}
+  mi:  { n: [...], f: [[startFileIdx, fileCount], ...] }
   fl:  { p: [...], m: [[moduleIdx, count], ...] }
   fns: { n: [...], m: [[...]], f: [[...]], l: [...], fl: [...], p: [...], rt: [...] }
   cls: { n: [...], m: [[...]], f: [[...]], l: [...], fl: [...], methods: [...] }

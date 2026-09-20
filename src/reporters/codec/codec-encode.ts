@@ -1,89 +1,57 @@
 // src/reporters/codec/codec-encode.ts
 // ============================================
-// КОДИРОВАНИЕ: FullJSON → CompactJSON (v13.0.2 — values-mode + фиксы round-trip)
+// КОДИРОВАНИЕ: FullJSON → CompactJSON (v14.0.0 — values-mode + канонизация)
 // ============================================
-// Версия: 13.0.2
+// Версия: 14.0.0
+//
+// ИЗМЕНЕНИЯ v14.0.0 (байтовое равенство):
+//   - ✅ ДОБАВЛЕНО: `canonicalizeFullJSON(payload)` в начале `encode`.
+//     Все массивы `FullJSON` сортируются по ЧИСЛОВОМУ значению `id`
+//     (`fn1 < fn2 < ... < fn10`), а не по строковому
+//     (`'fn1' < 'fn10' < 'fn2'`).
+//
+//     Причина: `decode` восстанавливает `id` из ПОЗИЦИИ в массиве
+//     (`functions[i].id = 'fn${i + 1}'`). Если `encode` получает массивы
+//     в произвольном порядке, то `encode(decode(encode(x)))` может дать
+//     другой порядок в `strs` / `params` / `values`, и байтовое равенство
+//     L4 сломается.
+//
+//     Канонизация гарантирует, что `encode` — детерминированная функция
+//     от СЕМАНТИЧЕСКОГО содержимого `FullJSON`.
+//
+//   - ✅ ОБНОВЛЕНО: все ссылки на `payload.X` заменены на `canonical.X`
+//     (`timestamp`, `root`, `statistics`, `modules`, `files`, `functions`,
+//     `classes`, `constants`, `exports`, `imports`, `calls`, `reExports`).
+//
+//   - ✅ СОХРАНЕНО: комментарий v13.0.1-fix про удалённый `stableSortById`
+//     (строковая сортировка — была ошибкой; здесь числовая).
 //
 // ИЗМЕНЕНИЯ v13.0.2-fix (100% round-trip):
 //   - ✅ ИСПРАВЛЕНО: `encodeStr` больше не токенизирует строки,
 //     содержащие разделители (`_`, `-`, `/`, `.`, `:`) и цифры.
-//     Причина: `tokenizeStr()` удаляет разделители, а `decodeStr`
-//     склеивает токены через `join('')` — разделители теряются.
-//     Примеры:
-//       • "estree-walker"       → ["estree", "walker"] → "estreewalker"
-//       • "./foo/bar"           → ["foo", "bar"]       → "foobar"
-//       • "external:Z3Verifier" → ["external:", "Z3", "Verifier"]
-//                                → "external:Z3Verifier" (теряется ":")
-//     Это ломало `imports[].toFileId` (external:estree-walker →
-//     external:estreewalker) и `calls[].toFunctionId` для некоторых
-//     external-вызовов (external:Z3Verifier → не находилось в decoded).
-//     Теперь строки с разделителями/цифрами хранятся целиком.
 //
 // ИЗМЕНЕНИЯ v13.0.1-fix (100% round-trip):
-//   - ✅ УДАЛЕНА функция `stableSortById` из encode().
-//     Причина: decode() восстанавливает id из ПОЗИЦИИ в массиве:
-//       functions[i].id = `fn${i + 1}`
-//       modules[i].id   = `m${i + 1}`
-//       ...
-//     Поэтому encode() ОБЯЗАН использовать тот же порядок,
-//     что и в full.json. Сортировка по строковому id
-//     ("fn1" < "fn10" < "fn2") ломала соответствие и давала
-//     расхождения:
-//       • modules[].path       (порядок модулей разный)
-//       • imports[].toFileId   (fileReverse даёт неверный индекс)
-//       • calls[].type         (async/direct перепутаны)
-//       • functions[].*Flags   (isExported/isArrow перепутаны)
-//       • external calls       (не находились в decoded)
-//       • L1/L2/DL/DEC/RE/ENC  (все round-trip уровни падали)
-//     collectFullJSON() уже строит массивы в каноническом
-//     порядке (id = `${prefix}${counter}`, counter++ при push),
-//     поэтому сортировка не нужна и вредна.
-//
-// ИЗМЕНЕНИЯ v13.0.0-fix (100% round-trip):
-//   - ✅ ДОБАВЛЕНО: импорт CODEC_VERSION из './codec-types.js'
-//     (устранено расхождение "13.0.0" vs "11.1.0" в full.json).
-//   - ✅ ИСПРАВЛЕНО: секция `mi` — теперь `mi.f` содержит пары
-//     `[startFileIdx, fileCount]`, а НЕ RLE от moduleIdx.
-//     Раньше decode читал `mi.f` как startFileIdx и восстанавливал
-//     неверные fileIds ("f10" вместо "f80", длины 1 вместо N).
-//   - ✅ ИСПРАВЛЕНО: `encodeStr` не токенизирует строки короче 8 символов.
-//     Это устраняет коллизии вроде `"f79"` → `["f", "79"]` при decode,
-//     когда "f" есть в tokens, а "79" — нет (imports[].toFileId).
-//   - ✅ ИСПОЛЬЗУЕТСЯ: `v: CODEC_VERSION` вместо жёсткой строки.
+//   - ✅ УДАЛЕНА функция `stableSortById` из `encode()`.
 //
 // ИЗМЕНЕНИЯ v13.0.0 (флаг --values-mode):
-//   - ✅ ДОБАВЛЕНО: параметр `valuesMode: 'full' | 'relations'` в encode().
-//     По умолчанию — 'relations'.
-//   - ✅ ДОБАВЛЕНО: поле `valueMeta` в DictBuilder — параллельный массив
-//     метаданных для каждого значения в valueDict.
-//   - ✅ ДОБАВЛЕНО: сигнатура addValue(dict, value, key, kind) — теперь
-//     принимает ключ и категорию для фильтрации.
-//   - ✅ ДОБАВЛЕНО: функция classifyValue(value) — эвристика категоризации.
-//   - ✅ ДОБАВЛЕНО: фильтрация valueDict в режиме 'relations' через
-//     filterValues() из './values-filter.js'.
-//   - ✅ ДОБАВЛЕНО: переиндексация cn.nonEmptyV после фильтрации.
-//   - ✅ ДОБАВЛЕНО: поле `valuesMode` в CompactJSON.
-//   - ✅ Round-trip сохраняется полностью: фильтрация происходит ДО
-//     сборки CompactJSON, и все ссылки переиндексируются согласованно.
-//     decode(encode(full)) === full для отфильтрованного full.json.
-//   - ✅ Обратная совместимость: если valuesMode === 'full' —
-//     поведение идентично v12.0.0 (только добавляется поле valuesMode).
+//   - ✅ ДОБАВЛЕНО: параметр `valuesMode: 'full' | 'relations'` в `encode()`.
+//   - ✅ ДОБАВЛЕНО: поле `valueMeta` в `DictBuilder`.
+//   - ✅ ДОБАВЛЕНО: сигнатура `addValue(dict, value, key, kind)`.
+//   - ✅ ДОБАВЛЕНО: функция `classifyValue(value)`.
+//   - ✅ ДОБАВЛЕНО: фильтрация `valueDict` в режиме `'relations'`.
 //
 // ИЗМЕНЕНИЯ v12.0.1:
-//   - ✅ ИСПРАВЛЕНО: удалены неиспользуемые type-импорты
-//     (TemplateData, LifecycleHook, EffectEdge, InjectionEdge,
-//      ReactivityEdge, TemplateConditional, TypeNodeData, TypeRefData).
-//   - ✅ ИСПРАВЛЕНО: rle() — non-null assertion для arr[0]/arr[i].
-//   - ✅ ВОССТАНОВЛЕН экспорт RELATION_TYPES.
+//   - ✅ ИСПРАВЛЕНО: удалены неиспользуемые type-импорты.
+//   - ✅ ИСПРАВЛЕНО: `rle()` — non-null assertion для `arr[0]` / `arr[i]`.
+//   - ✅ ВОССТАНОВЛЕН экспорт `RELATION_TYPES`.
 //
 // ИЗМЕНЕНИЯ v12.0.0 (структурная оптимизация):
 //   - ✅ Columnar-структура для всех секций (mi, fl, fns, cls, cn, gr.*)
 //   - ✅ RLE для moduleIdx/fileIdx в fns, cls, cn
-//   - ✅ Битовые маски для булевых флагов (exports, imports, calls, re-exports)
+//   - ✅ Битовые маски для булевых флагов
 //   - ✅ Числовые коды вместо строковых
-//   - ✅ Удалены поля id (m1, f1, fn1) — позиция в массиве = ID
+//   - ✅ Удалены поля id — позиция в массиве = ID
 //   - ✅ Токенизация словарей строк (strs, params, methods)
-//   - ✅ nonEmptyV для констант (только непустые значения)
 //
 // ИЗМЕНЕНИЯ v11.0.0 (компактнее):
 //   - fns/cls/cn: name → nameIdx, flags → number
@@ -109,7 +77,7 @@ import type {
 
 import { buildLegend } from './codec-legend.js';
 
-// ✅ v13.0.0-fix: единая версия (устраняет расхождение "13.0.0" vs "11.1.0")
+// ✅ Единая версия (устраняет расхождение версий в full.json / compact.json)
 import { CODEC_VERSION } from './codec-types.js';
 
 // ✅ v13.0.0: импорт фильтрации values
@@ -141,10 +109,6 @@ import { filterValues, remapIndex, type ValuesMode, type ValueMeta } from './val
  *   32768  = private
  *   65536  = protected
  *   131072 = static
- *
- * ⚠️ ВАЖНО (v12.0.0): флаги кодируются ЧИСЛОМ, а не строкой символов.
- * Эта карта используется для сборки legend.flags.bits (key → name)
- * и для обратного декодирования через decodeFlagsFromNumber.
  */
 export const FLAG_MAP: Record<number, string> = {
   1: 'isAsync',
@@ -169,9 +133,6 @@ export const FLAG_MAP: Record<number, string> = {
 
 /**
  * Обратная карта: имя → бит.
- *
- * ⚠️ v12.0.0: сохранена для обратной совместимости публичного API.
- * Внутри encode() не используется (флаги пишутся числом).
  */
 export const FLAG_CHAR_MAP: Record<string, number> = Object.fromEntries(
   Object.entries(FLAG_MAP).map(([bit, name]) => [name, parseInt(bit, 10)])
@@ -179,23 +140,13 @@ export const FLAG_CHAR_MAP: Record<string, number> = Object.fromEntries(
 
 /**
  * Имена флагов: бит → имя.
- *
- * Используется в codec-legend.ts для buildFlagsLegend().
  */
 export const FLAG_NAMES: Record<number, string> = Object.fromEntries(
   Object.entries(FLAG_MAP).map(([bit, name]) => [parseInt(bit, 10), name])
 );
 
 /**
- * ✅ v12.0.1: восстановлен экспорт RELATION_TYPES.
- *
- * Используется в codec.ts и index.ts для обратной совместимости
- * публичного API (внутри самого encode() не используется).
- *
- * ⚠️ v12.0.0 перешёл на числовые коды (`ty`), поэтому строковые
- * коды типов связей больше не пишутся в compact.json. Однако
- * экспорт сохранён, потому что внешние потребители (CLI, тесты,
- * отладка) могут его импортировать.
+ * Типы связей.
  */
 export const RELATION_TYPES: Record<string, string> = {
   d: 'direct',
@@ -226,8 +177,6 @@ export const EXPORT_TYPES: Record<string, string> = {
 
 /**
  * Типы импортов.
- *
- * ✅ v9.0.6: 'to' → 'type' (не 'type-only').
  */
 export const IMPORT_TYPES: Record<string, string> = {
   n: 'named',
@@ -238,8 +187,6 @@ export const IMPORT_TYPES: Record<string, string> = {
 
 /**
  * Типы вызовов.
- *
- * ✅ v9.0.5: содержит все 4 типа: direct / async / method / callback.
  */
 export const CALL_TYPES: Record<string, string> = {
   d: 'direct',
@@ -340,8 +287,6 @@ export const TYPE_USAGE_KINDS: Record<string, string> = {
 
 /**
  * Кодирует булевы флаги функции в число.
- *
- * ✅ reversibility: кодирует все 18 битов.
  */
 export function encodeFlags(obj: Partial<FunctionData & ClassData & ConstantData>): number {
   let flags = 0;
@@ -356,9 +301,8 @@ export function encodeFlags(obj: Partial<FunctionData & ClassData & ConstantData
 /**
  * Кодирует число флагов в строку символов.
  *
- * ⚠️ v12.0.0: НЕ используется в encode() для fns/cls/cn
- * (там пишется число). Оставлено для отладки и обратной
- * совместимости публичного API.
+ * ⚠️ Не используется в `encode()` для fns/cls/cn (там пишется число).
+ * Оставлено для отладки и обратной совместимости публичного API.
  */
 export function flagsToString(flags: number): string {
   if (flags === 0) return '0';
@@ -375,7 +319,6 @@ export function flagsToString(flags: number): string {
 // ХЕЛПЕРЫ СЛОВАРЕЙ
 // ============================================
 
-// ✅ v13.0.0: расширенный DictBuilder — добавлено поле valueMeta
 interface DictBuilder {
   stringDict: string[];
   stringMap: Map<string, number>;
@@ -385,7 +328,6 @@ interface DictBuilder {
   methodMap: Map<string, number>;
   valueDict: unknown[];
   valueMap: Map<string, number>;
-  /** ← НОВОЕ v13.0.0: параллельный массив метаданных для valueDict */
   valueMeta: ValueMeta[];
 }
 
@@ -399,7 +341,6 @@ export function createDictBuilder(): DictBuilder {
     methodMap: new Map(),
     valueDict: [],
     valueMap: new Map(),
-    // ← НОВОЕ v13.0.0
     valueMeta: [],
   };
 }
@@ -446,17 +387,6 @@ export function addMethod(dict: DictBuilder, method: string): number {
 
 /**
  * ✅ v13.0.0: эвристика категоризации значения.
- *
- * Определяет, к какому типу относится значение:
- *   - 'relation'   — примитивы и маленькие объекты (нужны для связей)
- *   - 'config'     — большие объекты (>500 символов JSON)
- *   - 'template'   — длинные строки (>200 символов)
- *   - 'flag-array' — длинные массивы (>50 элементов)
- *   - 'code'       — строки с кодом (эвристика по содержимому)
- *   - 'other'      — всё остальное
- *
- * ⚠️ Эвристика покрывает 90% случаев. Если нужно — расширяйте через
- * RELATION_KEYS в values-filter.ts.
  */
 export function classifyValue(value: unknown): ValueMeta['kind'] {
   if (value === null || value === undefined) return 'other';
@@ -474,9 +404,6 @@ export function classifyValue(value: unknown): ValueMeta['kind'] {
   // Массивы: длинные → flag-array, короткие → relation
   if (Array.isArray(value)) {
     if (value.length > 50) return 'flag-array';
-    // Проверяем содержимое: если все элементы — числа/строки, это
-    // может быть словарь (relation). Если объекты — тоже relation,
-    // пока массив маленький.
     return 'relation';
   }
 
@@ -485,7 +412,6 @@ export function classifyValue(value: unknown): ValueMeta['kind'] {
     try {
       const json = JSON.stringify(value);
       if (json.length > 500) return 'config';
-      // Проверяем на HTML/CSS-шаблоны
       if (json.includes('<style') || json.includes('<script') || json.includes('</html>')) {
         return 'template';
       }
@@ -500,13 +426,6 @@ export function classifyValue(value: unknown): ValueMeta['kind'] {
 
 /**
  * Добавить значение в valueDict, вернуть индекс.
- *
- * ✅ v13.0.0: расширена сигнатура — принимает `key` и `kind`
- * для последующей фильтрации. Если `key` не задан — используется
- * автоматическая категоризация через classifyValue.
- *
- * Для примитивов — ключ = String(value).
- * Для объектов — ключ = JSON.stringify(value).
  */
 export function addValue(
   dict: DictBuilder,
@@ -526,7 +445,6 @@ export function addValue(
   dict.valueDict.push(value);
   dict.valueMap.set(dedupKey, idx);
 
-  // ← НОВОЕ v13.0.0: регистрируем метаданные
   dict.valueMeta.push({
     key: key || `value_${idx}`,
     kind: kind ?? classifyValue(value),
@@ -536,9 +454,7 @@ export function addValue(
 }
 
 /**
- * ✅ v9.0.0: типобезопасный reverse lookup.
- * Возвращает код по имени. Если имени нет — первый код словаря
- * (гарантирует round-trip: undefined → код → имя из словаря).
+ * Типобезопасный reverse lookup.
  */
 export function reverseLookup(dict: Record<string, string>, name: string | undefined): string {
   if (!name) return Object.keys(dict)[0] ?? '?';
@@ -547,8 +463,7 @@ export function reverseLookup(dict: Record<string, string>, name: string | undef
 }
 
 /**
- * Проверяет, является ли значение массивом, и возвращает его
- * (или пустой массив, если нет).
+ * Проверяет, является ли значение массивом, и возвращает его.
  */
 export function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
@@ -560,21 +475,6 @@ export function asArray<T>(value: unknown): T[] {
 
 /**
  * Сжимает массив чисел в RLE: [[value, count], ...]
- *
- * ✅ v12.0.1: добавлены non-null assertions для arr[0] и arr[i].
- *
- * TypeScript с `noUncheckedIndexedAccess: true` возвращает
- * `number | undefined` для любого arr[i], что вызывало TS2322:
- *
- *   error TS2322: Type 'number | undefined' is not assignable to type 'number'.
- *     result.push([current, count]);
- *
- * Non-null assertion корректен, потому что:
- *   - arr[0] гарантированно есть (проверено arr.length === 0 выше)
- *   - arr[i] в цикле гарантированно есть (i < arr.length)
- *
- * @param arr — массив чисел
- * @returns RLE-представление: [[value, count], ...]
  */
 function rle(arr: number[]): [number, number][] {
   if (arr.length === 0) return [];
@@ -602,12 +502,6 @@ function rle(arr: number[]): [number, number][] {
 
 /**
  * Разбивает строку на camelCase/PascalCase токены.
- *
- * Примеры:
- *   "getEntityColor"    → ["get", "Entity", "Color"]
- *   "TypeScriptValidator" → ["Type", "Script", "Validator"]
- *   "isExported"        → ["is", "Exported"]
- *   "foo_bar/baz"       → ["foo", "bar", "baz"]
  */
 function tokenizeStr(str: string): string[] {
   if (!str) return [];
@@ -617,8 +511,6 @@ function tokenizeStr(str: string): string[] {
 
 /**
  * Строит словарь токенов из массива строк.
- *
- * Оставляет только те токены, которые встречаются > 1 раза.
  */
 function buildTokenDict(strings: string[]): string[] {
   const freq = new Map<string, number>();
@@ -634,30 +526,6 @@ function buildTokenDict(strings: string[]): string[] {
 
 /**
  * Кодирует строку через токены.
- *
- * Правила:
- *   - если все токены есть в словаре И токенизация выгодна —
- *     возвращает массив индексов;
- *   - иначе — возвращает исходную строку.
- *
- * ✅ v13.0.0-fix: не токенизируем строки короче 8 символов.
- * Короткие идентификаторы ("f79", "f114", "m1", "fn2") не выигрывают
- * от токенизации, но создают риск коллизий при decode: если "f" есть
- * в tokens, а "79" — нет, encodeStr вернёт массив [idx("f")], и decode
- * восстановит "f" вместо "f79". Это ломало imports[].toFileId.
- *
- * ✅ v13.0.2-fix: не токенизируем строки, содержащие разделители
- * (`_`, `-`, `/`, `.`, `:`) и цифры. Причина: tokenizeStr() удаляет
- * разделители, а decodeStr склеивает токены через `join('')` —
- * разделители теряются. Примеры:
- *   • "estree-walker"       → ["estree", "walker"] → "estreewalker"
- *   • "./foo/bar"           → ["foo", "bar"]       → "foobar"
- *   • "external:Z3Verifier" → ["external:", "Z3", "Verifier"]
- *                            → "external:Z3Verifier" (теряется ":")
- * Это ломало imports[].toFileId (external:estree-walker →
- * external:estreewalker) и calls[].toFunctionId для external-вызовов.
- *
- * Правило выгодности: tokens.length * 2 >= str.length → хранить целиком.
  */
 function encodeStr(str: string, tokenIndex: Map<string, number>): string | number[] {
   if (!str) return str;
@@ -665,12 +533,7 @@ function encodeStr(str: string, tokenIndex: Map<string, number>): string | numbe
   // ✅ v13.0.0-fix: не токенизируем короткие строки
   if (str.length < 8) return str;
 
-  // ✅ v13.0.2-fix: не токенизируем строки с разделителями и цифрами,
-  // потому что tokenizeStr() удаляет разделители, а decodeStr
-  // склеивает токены через join('') — символы теряются.
-  // Примеры: "estree-walker" → "estreewalker",
-  //          "./foo/bar" → "foobar",
-  //          "external:Z3Verifier" → возможно, теряет часть.
+  // ✅ v13.0.2-fix: не токенизируем строки с разделителями и цифрами
   if (/[_\-/.:0-9]/.test(str)) return str;
 
   const tokens = tokenizeStr(str);
@@ -689,49 +552,98 @@ function encodeStr(str: string, tokenIndex: Map<string, number>): string | numbe
 }
 
 // ============================================
+// ✅ v14.0.0: КАНОНИЗАЦИЯ FULLJSON
+// ============================================
+//
+// Сортировка всех массивов по ЧИСЛОВОМУ значению `id`
+// (`fn1 < fn2 < ... < fn10`).
+//
+// ⚠️ Это НЕ строковая сортировка (`'fn1' < 'fn10' < 'fn2'`) —
+// она ломала round-trip в v13.0.1. Здесь числовая.
+//
+// `decode` восстанавливает `id` из позиции (`functions[i].id = 'fn${i+1}'`).
+// Если `encode` пишет массивы в каноническом порядке, то `decode`
+// восстанавливает их в том же порядке → байтовое равенство L4.
+// ============================================
+
+/**
+ * Извлекает числовой суффикс из `id` (`fn123` → 123).
+ * Не-числовой суффикс → `Infinity` (уходит в конец).
+ */
+function extractNumericId(id: string | undefined): number {
+  if (!id) return Infinity;
+  const match = id.match(/(\d+)$/);
+  if (!match) return Infinity;
+  const numStr = match[1];
+  if (!numStr) return Infinity;
+  return parseInt(numStr, 10);
+}
+
+/**
+ * Сортирует массив по числовому `id`. Не мутирует исходный массив.
+ */
+function sortByIdNumeric<T extends { id?: string }>(arr: T[] | undefined): T[] {
+  if (!arr) return [];
+  return [...arr].sort((a, b) => {
+    const na = extractNumericId(a.id);
+    const nb = extractNumericId(b.id);
+    if (na !== nb) return na - nb;
+    return (a.id ?? '').localeCompare(b.id ?? '');
+  });
+}
+
+/**
+ * Канонизирует `FullJSON`:
+ *   - сортирует `modules`, `files`, `functions`, `classes`, `constants`,
+ *     `exports`, `imports`, `calls`, `reExports` по числовому `id`;
+ *   - не трогает `id` внутри элементов;
+ *   - не трогает вложенные массивы (`fileIds`, `methods` и т.п.).
+ */
+function canonicalizeFullJSON(payload: FullJSON): FullJSON {
+  return {
+    ...payload,
+    modules: sortByIdNumeric(payload.modules),
+    files: sortByIdNumeric(payload.files),
+    functions: sortByIdNumeric(payload.functions),
+    classes: sortByIdNumeric(payload.classes),
+    constants: sortByIdNumeric(payload.constants),
+    exports: sortByIdNumeric(payload.exports),
+    imports: sortByIdNumeric(payload.imports),
+    calls: sortByIdNumeric(payload.calls),
+    reExports: sortByIdNumeric(payload.reExports),
+  };
+}
+
+// ============================================
 // ОСНОВНАЯ ФУНКЦИЯ ENCODE
 // ============================================
 
 /**
- * Кодирует полный JSON в сжатый (v13.0.2).
+ * Кодирует полный JSON в сжатый (v14.0.0).
+ *
+ * ✅ v14.0.0 (байтовое равенство):
+ *   - Добавлена канонизация входа через `canonicalizeFullJSON`.
+ *   - Все `payload.X` заменены на `canonical.X`.
+ *   - `encode` теперь детерминированная функция от семантики `FullJSON`.
  *
  * ✅ v13.0.2-fix (100% round-trip):
- *   - ✅ ИСПРАВЛЕНО: `encodeStr` не токенизирует строки с разделителями
- *     (`_`, `-`, `/`, `.`, `:`) и цифрами. Раньше строки вроде
- *     "estree-walker" токенизировались в ["estree", "walker"], а
- *     decodeStr склеивал их через join('') → "estreewalker".
- *     Это ломало imports[].toFileId и calls[].toFunctionId.
+ *   - `encodeStr` не токенизирует строки с разделителями и цифрами.
  *
  * ✅ v13.0.1-fix (100% round-trip):
- *   - ✅ УДАЛЕНА `stableSortById`. Причина: decode() восстанавливает
- *     id из ПОЗИЦИИ в массиве (functions[i].id = `fn${i + 1}`,
- *     modules[i].id = `m${i + 1}` и т.д.). Поэтому encode() ОБЯЗАН
- *     использовать тот же порядок, что и в full.json.
- *     Сортировка по строковому id ("fn1" < "fn10" < "fn2") ломала
- *     соответствие и давала расхождения:
- *       • modules[].path       (порядок модулей разный)
- *       • imports[].toFileId   (fileReverse даёт неверный индекс)
- *       • calls[].type         (async/direct перепутаны)
- *       • functions[].*Flags   (isExported/isArrow перепутаны)
- *       • external calls       (не находились в decoded)
- *       • L1/L2/DL/DEC/RE/ENC  (все round-trip уровни падали)
- *     collectFullJSON() уже строит массивы в каноническом порядке
- *     (id = `${prefix}${counter}`, counter++ при push), поэтому
- *     сортировка не нужна и вредна.
+ *   - УДАЛЕНА `stableSortById`. Причина: decode восстанавливает id
+ *     из ПОЗИЦИИ в массиве. Сортировка по строковому id ломала
+ *     соответствие.
  *
  * ✅ v13.0.0-fix (100% round-trip):
- *   - ✅ ИСПРАВЛЕНО: `mi.f` теперь — массив пар `[startFileIdx, fileCount]`.
- *     Раньше туда писался moduleIdx, и decode восстанавливал неверные
- *     fileIds ("f10" вместо "f80", длины 1 вместо N).
- *   - ✅ ИСПРАВЛЕНО: `encodeStr` не токенизирует строки < 8 символов.
- *   - ✅ ИСПОЛЬЗУЕТСЯ: `v: CODEC_VERSION`.
+ *   - `mi.f` — массив пар `[startFileIdx, fileCount]`.
+ *   - `encodeStr` не токенизирует строки < 8 символов.
+ *   - Используется `v: CODEC_VERSION`.
  *
  * ✅ v13.0.0 (values-mode):
- *   - Добавлен параметр `valuesMode: 'full' | 'relations'`.
- *   - В режиме 'relations' — фильтрация valueDict через filterValues().
- *   - Переиндексация cn.nonEmptyV после фильтрации.
- *   - Поле `valuesMode` добавлено в CompactJSON.
- *   - Round-trip сохраняется полностью для отфильтрованного full.json.
+ *   - Параметр `valuesMode: 'full' | 'relations'`.
+ *   - В режиме 'relations' — фильтрация `valueDict` через `filterValues()`.
+ *   - Переиндексация `cn.nonEmptyV` после фильтрации.
+ *   - Поле `valuesMode` добавлено в `CompactJSON`.
  *
  * ✅ v12.0.0:
  *   - Columnar-структура для mi, fl, fns, cls, cn, gr.*
@@ -749,33 +661,23 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   const dict = createDictBuilder();
 
   // ============================================
-  // ✅ v13.0.1-fix: НЕ СОРТИРУЕМ
+  // ✅ v14.0.0: КАНОНИЗАЦИЯ ВХОДА
   // ============================================
-  // decode() восстанавливает id из ПОЗИЦИИ в массиве:
-  //   functions[i].id = `fn${i + 1}`
-  //   modules[i].id   = `m${i + 1}`
-  //   files[i].id     = `f${i + 1}`
-  //   classes[i].id   = `cls${i + 1}`
-  //   constants[i].id = `cn${i + 1}`
-  //   exports[i].id   = `e${i + 1}`
-  //   imports[i].id   = `i${i + 1}`
-  //   calls[i].id     = `c${i + 1}`
-  //   reExports[i].id = `re${i + 1}`
+  // Для байтового равенства `encode(decode(encode(x))) === encode(x)`
+  // нужно, чтобы `encode` был детерминированной функцией от
+  // СЕМАНТИЧЕСКОГО содержимого `FullJSON`, а не от порядка обхода.
   //
-  // Поэтому encode() ОБЯЗАН использовать тот же порядок,
-  // что и в full.json. Сортировка по строковому id
-  // ("fn1" < "fn10" < "fn2") ломает соответствие и даёт
-  // расхождения modules[].path, imports[].toFileId,
-  // calls[].type, functions[].*Flags и т.д.
+  // Канонизация сортирует массивы по ЧИСЛОВОМУ значению `id`.
   //
-  // collectFullJSON() уже строит массивы в каноническом
-  // порядке: id = `${prefix}${counter}`, counter++ при push.
+  // ⚠️ Это НЕ `stableSortById` из v13.0.1 — там была строковая
+  // сортировка, которая ломала round-trip. Здесь числовая.
   // ============================================
+  const canonical = canonicalizeFullJSON(payload);
 
   // ============================================
   // 1. Индексы модулей
   // ============================================
-  const modules = asArray<ModuleData>(payload.modules);
+  const modules = asArray<ModuleData>(canonical.modules);
   const moduleReverse = new Map<string, number>();
   for (let i = 0; i < modules.length; i++) {
     const mod = modules[i];
@@ -787,7 +689,7 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   // ============================================
   // 2. Индексы файлов
   // ============================================
-  const files = asArray<FileData>(payload.files);
+  const files = asArray<FileData>(canonical.files);
   const fileReverse = new Map<string, number>();
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
@@ -799,7 +701,7 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   // ============================================
   // 3. Индексы функций
   // ============================================
-  const functions = asArray<FunctionData>(payload.functions);
+  const functions = asArray<FunctionData>(canonical.functions);
   const functionReverse = new Map<string, number>();
   for (let i = 0; i < functions.length; i++) {
     const func = functions[i];
@@ -815,7 +717,6 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   const miN: string[] = [];
   const miF: [number, number][] = [];
 
-  // Строим карту: moduleIdx → [fileIdx, fileIdx, ...]
   const filesByModuleIdx = new Map<number, number[]>();
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
@@ -881,7 +782,7 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   // ============================================
   // 7. cls — columnar
   // ============================================
-  const classes = asArray<ClassData>(payload.classes);
+  const classes = asArray<ClassData>(canonical.classes);
   const clsN: number[] = [];
   const clsM: number[] = [];
   const clsF: number[] = [];
@@ -910,7 +811,7 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   // ============================================
   // 8. cn — columnar
   // ============================================
-  const constants = asArray<ConstantData>(payload.constants);
+  const constants = asArray<ConstantData>(canonical.constants);
   const cnN: number[] = [];
   const cnM: number[] = [];
   const cnF: number[] = [];
@@ -924,7 +825,6 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
 
     const nameIdx = addString(dict, cn.name);
     const flags = encodeFlags(cn);
-    // ✅ v13.0.0: передаём key и kind для категоризации
     const valueIdx = addValue(dict, cn.value, `cn_value_${cn.name}`, classifyValue(cn.value));
 
     cnN.push(nameIdx);
@@ -944,7 +844,7 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   // ============================================
   // 9. gr.e — columnar
   // ============================================
-  const exports = asArray<ExportData>(payload.exports);
+  const exports = asArray<ExportData>(canonical.exports);
   const geM: number[] = [];
   const geF: number[] = [];
   const geFn: number[] = [];
@@ -979,7 +879,7 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   // ============================================
   // 10. gr.i — columnar
   // ============================================
-  const imports = asArray<ImportData>(payload.imports);
+  const imports = asArray<ImportData>(canonical.imports);
   const giFf: number[] = [];
   const giTf: number[] = [];
   const giS: number[] = [];
@@ -1006,7 +906,7 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   // ============================================
   // 11. gr.c — columnar
   // ============================================
-  const calls = asArray<CallData>(payload.calls);
+  const calls = asArray<CallData>(canonical.calls);
   const gcF: number[] = [];
   const gcT: number[] = [];
   const gcL: number[] = [];
@@ -1033,7 +933,7 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   // ============================================
   // 12. gr.re — columnar
   // ============================================
-  const reExports = asArray<ReExportData>(payload.reExports);
+  const reExports = asArray<ReExportData>(canonical.reExports);
   const greM: number[] = [];
   const greFn: number[] = [];
   const greS: number[] = [];
@@ -1057,18 +957,6 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
 
   // ============================================
   // 13. ✅ v13.0.0: ФИЛЬТРАЦИЯ VALUES
-  // ============================================
-  //
-  // Применяем фильтрацию к valueDict на основе valuesMeta.
-  // В режиме 'full' — no-op.
-  // В режиме 'relations' — оставляем только kind === 'relation'.
-  //
-  // ВАЖНО: переиндексируем cn.nonEmptyV, потому что это
-  // ЕДИНСТВЕННОЕ место в CompactJSON, где есть ссылки на values
-  // по индексу. Все остальные секции (gr.e.ty, gr.i.ty, gr.c.ty,
-  // gr.re.ty, fns.fl, cls.fl, cn.fl) ссылаются на ЧИСЛОВЫЕ КОДЫ
-  // (не на values!), поэтому переиндексация им не нужна.
-  //
   // ============================================
   let finalValueDict: unknown[] = dict.valueDict;
   let valueIndexMap: Map<number, number> | null = null;
@@ -1094,7 +982,7 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   for (const [cnIdx, valIdx] of cnNonEmptyV) {
     if (valueIndexMap) {
       const newValIdx = remapIndex(valIdx, valueIndexMap);
-      if (newValIdx === null) continue; // значение удалено — пропускаем
+      if (newValIdx === null) continue;
       finalNonEmptyV.push([cnIdx, newValIdx]);
     } else {
       finalNonEmptyV.push([cnIdx, valIdx]);
@@ -1108,26 +996,24 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
     stringDict: dict.stringDict,
     paramDict: dict.paramDict,
     methodDict: dict.methodDict,
-    valueDict: finalValueDict, // ← v13.0.0: передаём отфильтрованный
+    valueDict: finalValueDict,
   });
 
   // ============================================
   // 15. Сборка CompactJSON
   // ============================================
   const compact: CompactJSON = {
-    v: CODEC_VERSION, // ✅ v13.0.0-fix: единая константа
-    ts: payload.timestamp,
-    r: moduleReverse.get(payload.root) ?? 0,
-    // ✅ v13.0.0: сохраняем режим для обратной совместимости
+    v: CODEC_VERSION,
+    ts: canonical.timestamp,
+    r: moduleReverse.get(canonical.root) ?? 0,
     valuesMode,
 
     tokens: [],
     strs: [],
     params: [],
     methods: [],
-    values: finalValueDict, // ← v13.0.0: отфильтрованный массив
+    values: finalValueDict,
 
-    // ✅ v13.0.0-fix: mi.f — пары [startFileIdx, fileCount], без RLE
     mi: { n: miN, f: miF },
     fl: { p: flP, m: flMRle },
 
@@ -1142,7 +1028,7 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
       re: { m: greM, fn: greFn, s: greS, en: greEn, l: greL, ty: greTy },
     },
 
-    st: payload.statistics,
+    st: canonical.statistics,
     legend,
   };
 
@@ -1181,7 +1067,7 @@ export default {
   addParam,
   addMethod,
   addValue,
-  classifyValue, // ← НОВОЕ v13.0.0
+  classifyValue,
   reverseLookup,
   asArray,
 };

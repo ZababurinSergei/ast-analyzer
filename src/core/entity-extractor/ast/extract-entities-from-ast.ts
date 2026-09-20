@@ -1,5 +1,26 @@
 // packages/ast-analyzer/src/core/entity-extractor/ast/extract-entities-from-ast.ts
+// ============================================
+// ИЗВЛЕЧЕНИЕ СУЩНОСТЕЙ ИЗ AST — v14.0.0
+// ============================================
+//
+// ИЗМЕНЕНИЯ v14.0.0:
+//   - ✅ ДОБАВЛЕН второй проход: генерация callback-рёбер.
+//     Для CallExpression с методом из CALLBACK_METHODS и первым
+//     аргументом-функцией добавляется ребро
+//     `<enclosingFuncName> → <callbackName>` в callGraph.
+//   - ✅ ИСПРАВЛЕНО: handleMethodDefinition больше не генерирует
+//     `Anonymous.*`. Если класс анонимный — имя берётся из
+//     VariableDeclarator / ExportDefaultDeclaration / enclosing.
+//   - ✅ ИМПОРТЫ: `walk` из 'estree-walker', `CALLBACK_METHODS`
+//     из '../../../config/constants.js'.
+//
+// ИЗМЕНЕНИЯ v13.0.0:
+//   - Базовая реализация.
+// ============================================
+
 import path from 'path';
+import { walk } from 'estree-walker';
+
 import type {
   FunctionInfo,
   ClassInfo,
@@ -26,6 +47,9 @@ import { inferFunctionName } from '../helpers/infer-function-name.js';
 import { findFunctionNode } from './find-function-node.js';
 import { collectAllCallsRecursive } from './collect-all-calls-recursive.js';
 import { processExports } from './process-exports.js';
+
+// ✅ v14.0.0: список callback-методов
+import { CALLBACK_METHODS } from '../../../config/constants.js';
 
 // ==========================================
 // ОПЦИИ РЕКУРСИВНОГО ОБХОДА
@@ -56,9 +80,9 @@ export interface TraverseOptions {
  * @param options  — опции обхода (по умолчанию: всё дерево)
  */
 export function extractEntitiesFromAST(
-    ast: any,
-    filePath?: string,
-    options: TraverseOptions = {}
+  ast: any,
+  filePath?: string,
+  options: TraverseOptions = {}
 ): EntitiesResult {
   const result = createEmptyEntitiesResult(filePath);
 
@@ -126,8 +150,8 @@ export function extractEntitiesFromAST(
 
     while (current && current.type !== 'Program' && depthCount < 50) {
       if (
-          (current.type === 'FunctionDeclaration' || current.type === 'FunctionExpression') &&
-          current.id
+        (current.type === 'FunctionDeclaration' || current.type === 'FunctionExpression') &&
+        current.id
       ) {
         parentFunctions.unshift(current.id.name);
         depthCount++;
@@ -169,20 +193,20 @@ export function extractEntitiesFromAST(
    * Создаёт и регистрирует FunctionInfo.
    */
   function registerFunction(
-      name: string,
-      node: any,
-      opts: {
-        isExported: boolean;
-        isAsync: boolean;
-        isMethod: boolean;
-        isArrow: boolean;
-        className?: string;
-        parentFunc?: string;
-        isNested: boolean;
-        depth: number;
-        isEventHandler: boolean;
-        eventType?: string;
-      }
+    name: string,
+    node: any,
+    opts: {
+      isExported: boolean;
+      isAsync: boolean;
+      isMethod: boolean;
+      isArrow: boolean;
+      className?: string;
+      parentFunc?: string;
+      isNested: boolean;
+      depth: number;
+      isEventHandler: boolean;
+      eventType?: string;
+    }
   ): void {
     const params = extractParamNames(node.params);
     const bodyText = node.body ? extractBodyText(node.body) : undefined;
@@ -427,8 +451,8 @@ export function extractEntitiesFromAST(
       let exportParent = parent.parent;
       while (exportParent && exportParent.type !== 'Program') {
         if (
-            exportParent.type === 'ExportNamedDeclaration' ||
-            exportParent.type === 'ExportDefaultDeclaration'
+          exportParent.type === 'ExportNamedDeclaration' ||
+          exportParent.type === 'ExportDefaultDeclaration'
         ) {
           isExported = true;
           break;
@@ -442,9 +466,9 @@ export function extractEntitiesFromAST(
 
     // Не префиксуем, если имя уже получено из Property/PropertyDefinition/VariableDeclarator
     const alreadyNamed =
-        parent?.type === 'Property' ||
-        parent?.type === 'PropertyDefinition' ||
-        parent?.type === 'VariableDeclarator';
+      parent?.type === 'Property' ||
+      parent?.type === 'PropertyDefinition' ||
+      parent?.type === 'VariableDeclarator';
 
     if (parentFunctions.length > 0 && !alreadyNamed) {
       name = parentFunctions.join('.') + '.' + name;
@@ -489,6 +513,43 @@ export function extractEntitiesFromAST(
         break;
       }
       classParent = classParent.parent;
+    }
+
+    // ✅ v14.0.0: если класс анонимный — берём имя из контекста.
+    //   - const X = class { ... }              → 'X'
+    //   - export default class { ... }         → 'default'
+    //   - class внутри функции foo             → 'foo'
+    //   - вложенный метод bar                  → 'bar'
+    if (className === 'Anonymous') {
+      let ctx: any = parent;
+      let guard = 0;
+      while (ctx && ctx.type !== 'Program' && guard < 50) {
+        // const X = class { ... }
+        if (ctx.type === 'VariableDeclarator' && ctx.id?.name) {
+          className = ctx.id.name;
+          break;
+        }
+        // export default class { ... }
+        if (ctx.type === 'ExportDefaultDeclaration') {
+          className = 'default';
+          break;
+        }
+        // class внутри функции
+        if (
+          (ctx.type === 'FunctionDeclaration' || ctx.type === 'FunctionExpression') &&
+          ctx.id?.name
+        ) {
+          className = ctx.id.name;
+          break;
+        }
+        // вложенный метод
+        if (ctx.type === 'MethodDefinition' && ctx.key?.name) {
+          className = ctx.key.name;
+          break;
+        }
+        ctx = ctx.parent;
+        guard++;
+      }
     }
 
     const fullName = `${className}.${methodName}`;
@@ -580,8 +641,8 @@ export function extractEntitiesFromAST(
 
       // Пропускаем стрелочные функции — они обрабатываются в handleArrowFunction
       if (
-          decl.init &&
-          (decl.init.type === 'ArrowFunctionExpression' || decl.init.type === 'FunctionExpression')
+        decl.init &&
+        (decl.init.type === 'ArrowFunctionExpression' || decl.init.type === 'FunctionExpression')
       ) {
         continue;
       }
@@ -704,6 +765,61 @@ export function extractEntitiesFromAST(
       }
       func.calls = callGraph[func.name] || [];
     }
+  }
+
+  // ==========================================
+  // ✅ v14.0.0: СБОР CALLBACK-РЁБЕР
+  // ==========================================
+  //
+  // Для каждого CallExpression, где:
+  //   - callee — MemberExpression с методом из CALLBACK_METHODS,
+  //   - первый аргумент — анонимная функция (ArrowFunctionExpression
+  //     или FunctionExpression),
+  // добавляем ребро:
+  //   <enclosingFuncName> → <callbackName>
+  //
+  // Имя колбэка уже сгенерировано через inferFunctionName при регистрации
+  // функции, поэтому здесь мы его просто переиспользуем.
+  //
+  // compact-reporter.ts::collectFullJSON автоматически подхватит это ребро,
+  // потому что он резолвит func.calls по functionMap.
+  // ==========================================
+
+  for (const func of functions) {
+    const { node: funcNode } = findFunctionNode(ast, func.name);
+    if (!funcNode) continue;
+
+    walk(funcNode, {
+      enter(node: any) {
+        if (!node || node.type !== 'CallExpression') return;
+        if (!node.callee || node.callee.type !== 'MemberExpression') return;
+
+        const method = node.callee.property?.name;
+        if (!method || !CALLBACK_METHODS.has(method)) return;
+
+        const firstArg = node.arguments?.[0];
+        if (!firstArg) return;
+        if (firstArg.type !== 'ArrowFunctionExpression' && firstArg.type !== 'FunctionExpression') {
+          return;
+        }
+
+        const callbackName = inferFunctionName(firstArg, node);
+        if (!callbackName || callbackName === func.name) return;
+
+        // ✅ v14.0.1: сохраняем ссылку в локальную переменную —
+        // TypeScript с noUncheckedIndexedAccess не сужает тип при
+        // повторном обращении callGraph[func.name].
+        let calls = callGraph[func.name];
+        if (!calls) {
+          calls = [];
+          callGraph[func.name] = calls;
+        }
+        if (!calls.includes(callbackName)) {
+          calls.push(callbackName);
+          func.calls = calls;
+        }
+      },
+    });
   }
 
   // ==========================================
