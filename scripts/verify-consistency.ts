@@ -50,8 +50,8 @@ interface Args {
 
 function parseArgs(argv: string[]): Args {
   const args: Args = {
-    compact: 'example/index.json',
-    full: 'example/index.full.json',
+    compact: 'ast-graph-viewer/index.json',
+    full: 'ast-graph-viewer/index.full.json',
     verbose: false,
     maxDiffs: 20,
   };
