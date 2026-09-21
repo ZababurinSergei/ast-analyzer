@@ -1,5 +1,6 @@
 # Dependency directory
 .idea
+ast-graph-viewer
 # Logs
 logs
 *.log
