@@ -1,25 +1,22 @@
 // packages/ast-analyzer/src/core/entity-extractor/ast/extract-entities-from-ast.ts
 // ============================================
-// ИЗВЛЕЧЕНИЕ СУЩНОСТЕЙ ИЗ AST — v14.0.0
+// ИЗВЛЕЧЕНИЕ СУЩНОСТЕЙ ИЗ AST — v15.0.0
 // ============================================
 //
-// ИЗМЕНЕНИЯ v14.0.0:
-//   - ✅ ДОБАВЛЕН второй проход: генерация callback-рёбер.
-//     Для CallExpression с методом из CALLBACK_METHODS и первым
-//     аргументом-функцией добавляется ребро
-//     `<enclosingFuncName> → <callbackName>` в callGraph.
-//   - ✅ ИСПРАВЛЕНО: handleMethodDefinition больше не генерирует
-//     `Anonymous.*`. Если класс анонимный — имя берётся из
-//     VariableDeclarator / ExportDefaultDeclaration / enclosing.
-//   - ✅ ИМПОРТЫ: `walk` из 'estree-walker', `CALLBACK_METHODS`
-//     из '../../../config/constants.js'.
-//
-// ИЗМЕНЕНИЯ v13.0.0:
-//   - Базовая реализация.
+// ИЗМЕНЕНИЯ v15.0.0:
+//   - ✅ ИСПРАВЛЕНО: handleImportDeclaration теперь заполняет
+//     local/imported для ВСЕХ типов specifiers
+//   - ✅ ДОБАВЛЕНО: handleExportAllAsImport — экспорт * from './foo'
+//     создаёт запись в imports[]
+//   - ✅ ДОБАВЛЕНО: handleExportNamedAsImport — export { X } from './foo'
+//     создаёт запись в imports[]
+//   - ✅ ДОБАВЛЕНО: resolveImportPathSafe — попытка резолвить toFileId
+//     для реэкспортов через resolveFilePath
+//   - ✅ УДАЛЕНО: v14.0.0 callback-логика (перенесена в relation-resolver)
+//   - ✅ УДАЛЕНО: неиспользуемые импорты `walk` и `ASTExport`
 // ============================================
 
 import path from 'path';
-import { walk } from 'estree-walker';
 
 import type {
   FunctionInfo,
@@ -32,9 +29,8 @@ import type {
   ExportInfo,
   EntitiesResult,
 } from '../../../types.js';
-import type { ASTExport } from '../types.js';
 import idManager from '../../IdManager.js';
-import { collectExportsFromAST } from '../../ast-parser.js';
+import { collectExportsFromAST, resolveFilePath } from '../../ast-parser.js';
 import { isNodeExported } from '../helpers/is-node-exported.js';
 import { isEventHandler } from '../helpers/is-event-handler.js';
 import { extractEventType } from '../helpers/extract-event-type.js';
@@ -47,9 +43,6 @@ import { inferFunctionName } from '../helpers/infer-function-name.js';
 import { findFunctionNode } from './find-function-node.js';
 import { collectAllCallsRecursive } from './collect-all-calls-recursive.js';
 import { processExports } from './process-exports.js';
-
-// ✅ v14.0.0: список callback-методов
-import { CALLBACK_METHODS } from '../../../config/constants.js';
 
 // ==========================================
 // ОПЦИИ РЕКУРСИВНОГО ОБХОДА
@@ -106,6 +99,7 @@ export function extractEntitiesFromAST(
 
   const moduleId = filePath && idManager.getModuleId ? idManager.getModuleId(filePath) : undefined;
   const fileId = filePath && idManager.getFileId ? idManager.getFileId(filePath) : undefined;
+  const fileDir = filePath ? path.dirname(filePath) : process.cwd();
 
   // ==========================================
   // ЭКСПОРТЫ ИЗ AST (собираются заранее)
@@ -113,9 +107,9 @@ export function extractEntitiesFromAST(
   const exportsFromAST = collectExportsFromAST(ast);
 
   if (exportsFromAST.length > 0) {
-    const reExports = exportsFromAST.filter((e: ASTExport) => e.isReExport);
-    const namedExports = exportsFromAST.filter((e: ASTExport) => !e.isReExport && !e.isDefault);
-    const defaultExports = exportsFromAST.filter((e: ASTExport) => e.isDefault);
+    const reExports = exportsFromAST.filter((e: any) => e.isReExport);
+    const namedExports = exportsFromAST.filter((e: any) => !e.isReExport && !e.isDefault);
+    const defaultExports = exportsFromAST.filter((e: any) => e.isDefault);
 
     // ✅ ИСПРАВЛЕНО: console.log → console.debug
     console.debug(`📤 Найдено экспортов в ${filePath || 'unknown'}: ${exportsFromAST.length}`);
@@ -304,6 +298,17 @@ export function extractEntitiesFromAST(
         handleImportDeclaration(node);
         break;
 
+      // ✅ НОВОЕ v15.0.0: реэкспорты дают рёбра в imports[]
+      case 'ExportNamedDeclaration':
+        if (node.source && Array.isArray(node.specifiers) && node.specifiers.length > 0) {
+          handleExportNamedAsImport(node);
+        }
+        break;
+
+      case 'ExportAllDeclaration':
+        if (node.source) handleExportAllAsImport(node);
+        break;
+
       case 'FunctionDeclaration':
       case 'FunctionExpression':
         handleFunction(node, parent, depth);
@@ -352,34 +357,181 @@ export function extractEntitiesFromAST(
     if (Array.isArray(node.specifiers)) {
       for (const spec of node.specifiers) {
         if (!spec) continue;
+
         if (spec.type === 'ImportSpecifier') {
-          specifiers.push({
-            local: spec.local?.name || 'unknown',
-            imported: spec.imported?.name || 'unknown',
-            type: 'ImportSpecifier',
-          });
+          // import { X } or import { X as Y }
+          const importedName = spec.imported?.name ?? spec.local?.name;
+          const localName = spec.local?.name ?? spec.imported?.name;
+
+          if (importedName && localName) {
+            specifiers.push({
+              local: localName,
+              imported: importedName,
+              type: 'ImportSpecifier',
+            });
+          }
         } else if (spec.type === 'ImportDefaultSpecifier') {
-          specifiers.push({
-            local: spec.local?.name || 'unknown',
-            imported: 'default',
-            type: 'ImportDefaultSpecifier',
-          });
+          const localName = spec.local?.name;
+          if (localName) {
+            specifiers.push({
+              local: localName,
+              imported: 'default',
+              type: 'ImportDefaultSpecifier',
+            });
+          }
         } else if (spec.type === 'ImportNamespaceSpecifier') {
+          const localName = spec.local?.name;
+          if (localName) {
+            specifiers.push({
+              local: localName,
+              imported: '*',
+              type: 'ImportNamespaceSpecifier',
+            });
+          }
+        }
+      }
+    }
+
+    // ✅ Резолвим toFileId
+    const toFileId = resolveImportPathSafe(source, fileDir);
+
+    imports.push({
+      source: source || '',
+      specifiers,
+      loc: node.loc || null,
+      isTypeOnly,
+      line: node.loc?.start?.line ?? 0,
+      toFileId,
+      specifiersStructured: specifiers,
+      isReExport: false,
+      isStarReExport: false,
+    });
+  }
+
+  // ==========================================
+  // ✅ НОВОЕ v15.0.0: RE-EXPORT as IMPORT
+  // ==========================================
+
+  /**
+   * Обрабатывает `export { X } from './foo'` и `export { default } from './foo'`.
+   * Добавляет запись в imports[] — чтобы граф содержал ребро файл→файл.
+   */
+  function handleExportNamedAsImport(node: any): void {
+    if (!node.source) return;
+    if (!Array.isArray(node.specifiers) || node.specifiers.length === 0) return;
+
+    const source = node.source.value;
+    const isTypeOnly = node.exportKind === 'type';
+    const specifiers: { local: string; imported: string; type: string }[] = [];
+
+    for (const spec of node.specifiers) {
+      if (!spec) continue;
+
+      if (spec.type === 'ExportSpecifier') {
+        // export { X as Y } from './foo'
+        const importedName = spec.local?.name ?? spec.exported?.name;
+        const localName = spec.exported?.name ?? spec.local?.name;
+
+        if (importedName && localName) {
           specifiers.push({
-            local: spec.local?.name || 'unknown',
-            imported: '*',
-            type: 'ImportNamespaceSpecifier',
+            local: localName,
+            imported: importedName,
+            type: 'ExportSpecifier',
           });
         }
       }
     }
 
+    if (specifiers.length === 0) return;
+
+    const toFileId = resolveImportPathSafe(source, fileDir);
+
     imports.push({
-      source: source || 'unknown',
+      source,
       specifiers,
-      loc: node.loc,
+      loc: node.loc || null,
       isTypeOnly,
+      line: node.loc?.start?.line ?? 0,
+      toFileId,
+      specifiersStructured: specifiers,
+      isReExport: true,
+      isStarReExport: false,
     });
+  }
+
+  /**
+   * Обрабатывает `export * from './foo'` и `export * as ns from './foo'`.
+   * Добавляет запись в imports[] — графовое ребро.
+   */
+  function handleExportAllAsImport(node: any): void {
+    if (!node.source) return;
+
+    const source = node.source.value;
+    const isTypeOnly = node.exportKind === 'type';
+
+    let localName = '*';
+    let importedName = '*';
+
+    if (node.exported?.name) {
+      // export * as ns from './foo'
+      localName = node.exported.name;
+      importedName = '*';
+    }
+
+    const toFileId = resolveImportPathSafe(source, fileDir);
+
+    imports.push({
+      source,
+      specifiers: [
+        {
+          local: localName,
+          imported: importedName,
+          type: 'ExportAllSpecifier',
+        },
+      ],
+      loc: node.loc || null,
+      isTypeOnly,
+      line: node.loc?.start?.line ?? 0,
+      toFileId,
+      specifiersStructured: [
+        {
+          local: localName,
+          imported: importedName,
+          type: 'ExportAllSpecifier',
+        },
+      ],
+      isReExport: true,
+      isStarReExport: true,
+    });
+  }
+
+  /**
+   * Безопасный резолвинг пути импорта.
+   * Возвращает абсолютный путь или null.
+   */
+  function resolveImportPathSafe(source: string, baseDir: string): string | null {
+    if (!source) return null;
+
+    // Относительные пути и абсолютные — резолвим через resolveFilePath
+    if (source.startsWith('.') || source.startsWith('/')) {
+      try {
+        return resolveFilePath(baseDir, source) ?? null;
+      } catch {
+        return null;
+      }
+    }
+
+    // Алиасы (@/, ~/, #/) — тоже пробуем резолвить
+    if (source.startsWith('@/') || source.startsWith('~') || source.startsWith('#')) {
+      try {
+        return resolveFilePath(baseDir, source) ?? null;
+      } catch {
+        return null;
+      }
+    }
+
+    // Внешние npm-пакеты — не резолвим
+    return null;
   }
 
   // ==========================================
@@ -387,8 +539,6 @@ export function extractEntitiesFromAST(
   // ==========================================
 
   function handleFunction(node: any, parent: any, depth: number): void {
-    // ✅ Анонимные FunctionExpression внутри переменных/присваиваний
-    //    теперь тоже получают имя из контекста через inferFunctionName.
     const name = node.id?.name ?? inferFunctionName(node, parent);
 
     // Если имя всё равно анонимное и это не export default — пропускаем
@@ -442,11 +592,10 @@ export function extractEntitiesFromAST(
   // ==========================================
 
   function handleArrowFunction(node: any, parent: any, depth: number): void {
-    // ✅ Единый вывод имени через inferFunctionName
     let name = inferFunctionName(node, parent);
     let isExported = false;
 
-    // Определяем экспортируемость (та же логика, что была)
+    // Определяем экспортируемость
     if (parent && parent.type === 'VariableDeclarator' && parent.id?.name) {
       let exportParent = parent.parent;
       while (exportParent && exportParent.type !== 'Program') {
@@ -515,26 +664,19 @@ export function extractEntitiesFromAST(
       classParent = classParent.parent;
     }
 
-    // ✅ v14.0.0: если класс анонимный — берём имя из контекста.
-    //   - const X = class { ... }              → 'X'
-    //   - export default class { ... }         → 'default'
-    //   - class внутри функции foo             → 'foo'
-    //   - вложенный метод bar                  → 'bar'
+    // ✅ v15.0.0: если класс анонимный — берём имя из контекста.
     if (className === 'Anonymous') {
       let ctx: any = parent;
       let guard = 0;
       while (ctx && ctx.type !== 'Program' && guard < 50) {
-        // const X = class { ... }
         if (ctx.type === 'VariableDeclarator' && ctx.id?.name) {
           className = ctx.id.name;
           break;
         }
-        // export default class { ... }
         if (ctx.type === 'ExportDefaultDeclaration') {
           className = 'default';
           break;
         }
-        // class внутри функции
         if (
           (ctx.type === 'FunctionDeclaration' || ctx.type === 'FunctionExpression') &&
           ctx.id?.name
@@ -542,7 +684,6 @@ export function extractEntitiesFromAST(
           className = ctx.id.name;
           break;
         }
-        // вложенный метод
         if (ctx.type === 'MethodDefinition' && ctx.key?.name) {
           className = ctx.key.name;
           break;
@@ -739,7 +880,7 @@ export function extractEntitiesFromAST(
   }
 
   // ==========================================
-  // ДОБАВЛЯЕМ ЭКСПОРТЫ (БЕЗ isTypeOnly)
+  // ДОБАВЛЯЕМ ЭКСПОРТЫ
   // ==========================================
 
   const processedExports = processExports(exportsFromAST);
@@ -765,61 +906,6 @@ export function extractEntitiesFromAST(
       }
       func.calls = callGraph[func.name] || [];
     }
-  }
-
-  // ==========================================
-  // ✅ v14.0.0: СБОР CALLBACK-РЁБЕР
-  // ==========================================
-  //
-  // Для каждого CallExpression, где:
-  //   - callee — MemberExpression с методом из CALLBACK_METHODS,
-  //   - первый аргумент — анонимная функция (ArrowFunctionExpression
-  //     или FunctionExpression),
-  // добавляем ребро:
-  //   <enclosingFuncName> → <callbackName>
-  //
-  // Имя колбэка уже сгенерировано через inferFunctionName при регистрации
-  // функции, поэтому здесь мы его просто переиспользуем.
-  //
-  // compact-reporter.ts::collectFullJSON автоматически подхватит это ребро,
-  // потому что он резолвит func.calls по functionMap.
-  // ==========================================
-
-  for (const func of functions) {
-    const { node: funcNode } = findFunctionNode(ast, func.name);
-    if (!funcNode) continue;
-
-    walk(funcNode, {
-      enter(node: any) {
-        if (!node || node.type !== 'CallExpression') return;
-        if (!node.callee || node.callee.type !== 'MemberExpression') return;
-
-        const method = node.callee.property?.name;
-        if (!method || !CALLBACK_METHODS.has(method)) return;
-
-        const firstArg = node.arguments?.[0];
-        if (!firstArg) return;
-        if (firstArg.type !== 'ArrowFunctionExpression' && firstArg.type !== 'FunctionExpression') {
-          return;
-        }
-
-        const callbackName = inferFunctionName(firstArg, node);
-        if (!callbackName || callbackName === func.name) return;
-
-        // ✅ v14.0.1: сохраняем ссылку в локальную переменную —
-        // TypeScript с noUncheckedIndexedAccess не сужает тип при
-        // повторном обращении callGraph[func.name].
-        let calls = callGraph[func.name];
-        if (!calls) {
-          calls = [];
-          callGraph[func.name] = calls;
-        }
-        if (!calls.includes(callbackName)) {
-          calls.push(callbackName);
-          func.calls = calls;
-        }
-      },
-    });
   }
 
   // ==========================================

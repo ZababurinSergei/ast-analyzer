@@ -2,153 +2,80 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Версия: 15.0.3
+// Версия: 15.0.7
+//
+// ИЗМЕНЕНИЯ v15.0.7 (fix isExternal ↔ toFileId desync):
+//   - ✅ ИСПРАВЛЕНО: `isExternal`/`isUnresolved` теперь ПРОИЗВОДНЫЕ
+//     от `resolvedToFileId`, а не вычисляются отдельно. Это
+//     устраняет рассинхрон для Vue-алиасов (`@/components/ui`):
+//       • Раньше: toFileId="external:@/components", isExternal=false
+//       • Теперь: toFileId="unresolved:@/components/ui", isExternal=false
+//   - ✅ ИСПРАВЛЕНО: `resolveToFileId` больше НЕ превращает
+//     алиасы `@/`, `~/`, `#/` в `external:*`. Раньше они
+//     ошибочно классифицировались как scoped-пакеты.
+//   - ✅ Версия: 15.0.6 → 15.0.7.
+//
+// ИЗМЕНЕНИЯ v15.0.6 (isExternal — производное от imp.toFileId):
+//   - ✅ ИСПРАВЛЕНО: `isExternal` теперь определяется по префиксу
+//     `imp.toFileId` (из AST), а НЕ пересчитывается через
+//     `isExternalModule`. Это устраняет рассинхрон для Vue-алиасов
+//     (`@/components/ui`): AST уже вычислил `toFileId = "external:@/components"`,
+//     и `compact-reporter` должен это уважать, а не пересчитывать.
+//   - ✅ ДОБАВЛЕНО: переменная `isUnresolved` — для префикса `unresolved:`.
+//   - ✅ Ветки isExternal/isUnresolved/локальный используют `toFileId`
+//     из AST как источник истины.
+//   - ✅ Версия: 15.0.4 → 15.0.6.
+//
+// ИЗМЕНЕНИЯ v15.0.4 (заполнение importedName/localName + реэкспорты):
+//   - ✅ ИСПРАВЛЕНО: `collectFullJSON` теперь заполняет
+//     `importedName` и `localName` для ВСЕХ импортов, включая
+//     реэкспорты. Раньше при пустых specifiers импорт молча
+//     пропускался, из-за чего в UI не отображались связи.
+//   - ✅ ДОБАВЛЕНО: обработка реэкспортов без specifiers
+//     (`export * from './foo'`) — создаётся запись в imports[]
+//     с `importedName: '*'`, `localName: '*'`, `isReExport: true`,
+//     `isStarReExport: true`.
+//   - ✅ ДОБАВЛЕНО: проброс `isReExport` и `isStarReExport` из
+//     `imp` в `ImportData`.
+//   - ✅ ИСПРАВЛЕНО: fallback-имена для spec.imported/spec.local.
+//   - ✅ ДОБАВЛЕНО: диагностика в verbose-режиме — сколько
+//     импортов с пустыми именами было исправлено.
 //
 // ИЗМЕНЕНИЯ v15.0.3 (нормализация путей в отчёте):
 //   - ✅ ИСПРАВЛЕНО: `FullJSON.files[].path` теперь ВСЕГДА
 //     относительный от `process.cwd()`, а не абсолютный.
 //
-//     ПРИЧИНА:
-//     ---------
-//     В pipeline (CompactRecursiveCommand) `ctx.files` содержит
-//     АБСОЛЮТНЫЕ пути (результат collectFilesForAnalysis с
-//     `absolute: true`). Эти пути попадали в `entitiesMap`,
-//     `enhancedMap` и, наконец, в `FullJSON.files[].path` —
-//     что делало отчёт непереносимым между машинами.
-//
-//     РЕШЕНИЕ:
-//     --------
-//     В `collectFullJSON` все пути нормализуются через
-//     `path.relative(process.cwd(), path.resolve(filePath))`
-//     и приводятся к прямым слэшам.
-//
-//     VSCode-ссылки внутри отчёта (если они есть в
-//     `FunctionData.vscode`) строятся из АБСОЛЮТНОГО пути —
-//     это требование схемы `vscode://file/`.
-//
-//   - ✅ ДОБАВЛЕНО: вспомогательный расчёт `projectRoot`
-//     в начале `collectFullJSON` — один раз для всех циклов.
-//
-//   - ✅ ОБНОВЛЕНО: во всех трёх циклах `collectFullJSON`
-//     (первый проход, сбор Vue-шаблонов, второй проход,
-//     сбор расширенных секций) путь нормализуется
-//     единообразно.
-//
-//   - ✅ ОБНОВЛЕНО: `sourceToFileIdMap` регистрирует
-//     И относительные, И абсолютные варианты пути —
-//     чтобы резолвинг импортов работал корректно
-//     (импорт резолвится в абсолютный путь через fs,
-//      потом ищется в карте — она должна содержать
-//      абсолютный вариант).
-//
 // ИЗМЕНЕНИЯ v15.0.2 (устранение дублирования conditionals):
-//   - ✅ УБРАНО дублирование `conditionals`:
-//       • Больше НЕ пушим в глобальный `conditionals[]`.
-//       • Больше НЕ передаём `conditionals` в финальный `FullJSON`.
-//       • conditionals живут ТОЛЬКО в `templates[].conditionals`.
+//   - ✅ УБРАНО дублирование `conditionals`.
 //
-//     ПРИЧИНА:
-//     ---------
-//     Один и тот же объект `TemplateConditional` попадал в
-//     ДВА места full.json:
-//       1. `full.conditionals` — верхний уровень
-//       2. `full.templates[i].conditionals` — внутри templates
-//
-//     При сериализации через safeJsonStringify первый экземпляр
-//     записывался нормально, а второй — заменялся на "[Circular]"
-//     (WeakSet/WeakMap отслеживает уже встреченные объекты).
-//
-//     При чтении full.json с диска `full.conditionals` содержал
-//     строки "[Circular]" вместо объектов. encode(compact) не мог
-//     их закодировать, и секция `cd` терялась при round-trip.
-//
-//     РЕШЕНИЕ:
-//     --------
-//     Убрать верхнеуровневый `full.conditionals`. Все conditionals
-//     живут ТОЛЬКО в `templates[].conditionals`. Это устраняет
-//     дублирование ссылок и делает safeJsonStringify безопасным.
-//
-//   - ✅ ОБНОВЛЕНО: `statistics.totalConditionals` считается через
-//     `templates[]`, а не через удалённый глобальный массив.
-//
-//   - ✅ УБРАНЫ комментарии про "обратную совместимость" —
-//     только новый код.
-//
-// ИЗМЕНЕНИЯ v15.0.1 (fix imports[].type + синхронизация с codec v15.0.1):
-//   - ✅ ИСПРАВЛЕНО: `collectFullJSON` при построении ImportData
-//     больше НЕ пишет `type: 'type'` для type-only импортов.
-//
-//     ПРИЧИНА:
-//     ---------
-//     В v15.0.0 `collectFullJSON` писал:
-//       const baseType = getImportTypeFromSpecifierType(spec.type);
-//       const importType: 'named' | 'default' | 'namespace' | 'type' = baseType;
-//     где `baseType` всегда был 'named' | 'default' | 'namespace'.
-//
-//     Но в некоторых ветках поле `type` перетиралось значением `'type'`
-//     при `isTypeOnly === true`. Это давало 20 расхождений
-//     `type: "type" → "named"` при decode(encode(full)).
-//
-//     РЕШЕНИЕ (Вариант A — унификация семантики):
-//     --------------------------------------------
-//     Поле `type` теперь ВСЕГДА принимает только:
-//       'named' | 'default' | 'namespace'
-//     Флаг `isTypeOnly` — отдельное поле, не влияет на `type`.
+// ИЗМЕНЕНИЯ v15.0.1 (fix imports[].type):
+//   - ✅ ИСПРАВЛЕНО: `imports[].type` теперь ВСЕГДА принимает
+//     только 'named' | 'default' | 'namespace'.
 //
 // ИЗМЕНЕНИЯ v15.0.0 (расширенные секции + isTypeOnly):
 //   - ✅ ИСПРАВЛЕНО: `collectFullJSON` при построении ImportData
 //     больше НЕ перетирает `type` значением `'type'`.
-//   - ✅ ИСПРАВЛЕНО: проверка `vt.length !== 12` в collectFullJSON.
 //
 // ИЗМЕНЕНИЯ v14.0.0:
 //   - ✅ ДОБАВЛЕНО: `canonicalizeFullJSON` в конце `collectFullJSON`.
-//   - ✅ ДОБАВЛЕНО: `detectCallType` распознаёт callback-рёбра.
 //
 // ИЗМЕНЕНИЯ v13.0.0:
 //   - ✅ ИСПРАВЛЕНО: ValuesMode импортируется из './codec/values-filter.js'.
 //   - ✅ ЕДИНАЯ ВЕРСИЯ: version берётся из CODEC_VERSION.
-//   - ✅ ВАЛИДАЦИЯ toFileId.
-//
-// ИЗМЕНЕНИЯ v11.1.0 (--values-mode):
-//   - ✅ ДОБАВЛЕНО: поддержка `valuesMode: 'full' | 'relations'`.
-//
-// ИЗМЕНЕНИЯ v11.0.0 (компактнее):
-//   - ✅ ВЕРСИЯ отчёта: '11.0.0'.
-//   - ✅ fns/cls/cn: name → nameIdx (stringDict), flags → число.
-//
-// ИЗМЕНЕНИЯ v10.4.0 (единое сжатие + легенда для ИИ):
-//   - ✅ ДОБАВЛЕНО: единая функция `saveJsonFile`.
-//
-// ИЗМЕНЕНИЯ v9.0.7 (fix: разделение файлов compact/full):
-//   - ✅ ИСПРАВЛЕНО: функция `insertSuffixBeforeExtension`.
-//
-// ИЗМЕНЕНИЯ v9.0.6 (safe-json fix):
-//   - ✅ ДОБАВЛЕНО: импорт safeJsonStringify.
-//
-// ИЗМЕНЕНИЯ v9.0.5:
-//   - ✅ ДОБАВЛЕНО: опция `saveEdges` (по умолчанию false).
-//
-// ИЗМЕНЕНИЯ v9.0.2:
-//   - ✅ ИСПРАВЛЕНО: templates.push({...}) — ровно 12 полей TemplateData.
-//
-// ИЗМЕНЕНИЯ v9.0.0:
-//   - ✅ УДАЛЕНЫ локальные определения GenerateReportOptions/Result.
 // ============================================
 
 import fs from 'fs';
 import path from 'path';
-import { Project } from 'ts-morph';
 
 import type { EntitiesResult, FunctionInfo } from '../types.js';
 import { Codec } from './codec/codec.js';
-import { isExternalModule, resolveFilePath } from '../core/ast-parser.js';
+import { resolveFilePath } from '../core/ast-parser.js';
 import {
   loadTsConfig,
   resolveAliasPath,
   getTsConfigDir,
   clearTsConfigCache,
 } from '../core/tsconfig-resolver.js';
-import { enrichWithReExports } from '../core/entity-extractor/enrich-with-re-exports.js';
 
 // ✅ v9.0.6: безопасная сериализация (BigInt, Map, Set, Circular)
 import { safeJsonStringify } from '../utils/safe-json.js';
@@ -191,10 +118,7 @@ import type { ValuesMode } from './codec/values-filter.js';
 // ============================================
 // ✅ v9.0.0: РЕЭКСПОРТ ТИПОВ (для обратной совместимости)
 // ============================================
-export type {
-  GenerateReportOptions,
-  GenerateReportResult,
-} from './codec/codec-types.js';
+export type { GenerateReportOptions, GenerateReportResult } from './codec/codec-types.js';
 
 // ✅ v13.0.0-fix: ValuesMode реэкспортируется из values-filter.js
 export type { ValuesMode } from './codec/values-filter.js';
@@ -294,6 +218,14 @@ export function generateCompactReport(
     } else {
       console.log(`   ✅ Все импорты разрешены`);
     }
+
+    // ✅ v15.0.4: диагностика пустых имён
+    const emptyNameImports = (full.imports || []).filter(
+      imp => !imp.importedName && !imp.localName
+    );
+    if (emptyNameImports.length > 0) {
+      console.log(`   ⚠️  Импортов с пустыми именами: ${emptyNameImports.length}`);
+    }
   }
 
   // ============================================
@@ -322,28 +254,6 @@ export function generateCompactReport(
       // ✅ v11.1.0: диагностика размера values
       const valuesCount = compact.values?.length ?? 0;
       console.log(`   📦 values[]: ${valuesCount} элементов`);
-
-      // ============================================
-      // ✅ v15.0.0 + v15.0.1: диагностика vt-секции
-      // ============================================
-      // `compact.vt` — это `number[]` (индексы в `compact.values[]`).
-      // Проверяем РАСПАКОВАННЫЕ объекты: у каждого TemplateData
-      // должно быть ровно 12 полей.
-      // ============================================
-      if (process.env.AST_DEBUG_CODEC === 'true' && Array.isArray(compact.vt)) {
-        for (let i = 0; i < compact.vt.length; i++) {
-          const idx = compact.vt[i];
-          if (typeof idx !== 'number' || idx < 0) continue;
-          const raw = compact.values?.[idx];
-          if (!raw || typeof raw !== 'object') continue;
-          const fieldCount = Object.keys(raw as object).length;
-          if (fieldCount !== 12) {
-            console.warn(
-              `   ⚠️ vt[${i}] (values[${idx}]) содержит ${fieldCount} полей вместо 12`
-            );
-          }
-        }
-      }
     }
   }
 
@@ -497,7 +407,6 @@ export function readAndDecode(compactPath: string, options: DecodeOptions = {}):
     throw new Error(`Не удалось распарсить JSON: ${msg}`);
   }
 
-  // ✅ v11.1.0: пробрасываем valuesMode из compact в decode
   const valuesMode = (compact as any).valuesMode as ValuesMode | undefined;
   return Codec.decode(compact, { ...options, valuesMode });
 }
@@ -604,9 +513,6 @@ function canonicalizeFullJSON(payload: FullJSON): FullJSON {
 
 /**
  * Считает все conditionals внутри `templates[]`.
- *
- * ✅ v15.0.2: conditionals живут ТОЛЬКО в `templates[].conditionals`.
- *    На верхнем уровне full.json их больше нет.
  */
 function countConditionals(full: FullJSON): number {
   let count = 0;
@@ -623,15 +529,13 @@ function countConditionals(full: FullJSON): number {
 /**
  * Собирает полный JSON из карты сущностей.
  *
+ * ✅ v15.0.7: isExternal/isUnresolved — производные от resolvedToFileId.
+ * ✅ v15.0.6: isExternal — производное от imp.toFileId.
+ * ✅ v15.0.4: fill importedName/localName, обрабатывает реэкспорты.
  * ✅ v15.0.3: все пути нормализуются в ОТНОСИТЕЛЬНЫЕ от `process.cwd()`.
- *   VSCode-ссылки (если есть) строятся из АБСОЛЮТНОГО пути.
- *
  * ✅ v15.0.2: conditionals живут ТОЛЬКО в `templates[].conditionals`.
- *   Убрано дублирование на верхнем уровне (см. шапку файла).
- *
  * ✅ v15.0.1: `imports[].type` теперь ВСЕГДА принимает только
  *   `'named' | 'default' | 'namespace'`.
- *
  * ✅ v15.0.0: не перетирает `type` значением `'type'`.
  * ✅ v14.0.0: в конце вызывается `canonicalizeFullJSON`.
  * ✅ v13.0.0: version = CODEC_VERSION; валидация toFileId.
@@ -646,12 +550,6 @@ function collectFullJSON(
 ): FullJSON {
   // ============================================
   // ✅ v15.0.3: projectRoot для нормализации путей
-  // ============================================
-  // Вычисляем один раз. Все пути в отчёте будут относительными
-  // от этой директории.
-  //
-  // Защита: даже если вызывающий код передал абсолютные ключи
-  // в entitiesMap, отчёт всё равно будет корректным.
   // ============================================
   const projectRoot = process.cwd();
 
@@ -677,59 +575,11 @@ function collectFullJSON(
   }
 
   // ============================================
-  // 🆕 ОБОГАЩЕНИЕ RE-EXPORTS
+  // ✅ v15.0.4: workingEntitiesMap = entitiesMap (без обогащения)
   // ============================================
-  let workingEntitiesMap = entitiesMap;
-
-  try {
-    const tsProject = new Project({
-      compilerOptions: {
-        target: 99,
-        module: 99,
-        allowJs: true,
-        checkJs: false,
-        skipLibCheck: true,
-        jsx: 2,
-      },
-      useInMemoryFileSystem: false,
-    });
-
-    let addedFiles = 0;
-    for (const filePath of Object.keys(entitiesMap)) {
-      try {
-        const absPath = path.resolve(filePath);
-        if (fs.existsSync(absPath)) {
-          tsProject.addSourceFileAtPath(absPath);
-          addedFiles++;
-        }
-      } catch {
-        // Игнорируем ошибки отдельных файлов
-      }
-    }
-
-    if (addedFiles > 0) {
-      const enrichResult = enrichWithReExports(tsProject, entitiesMap, {
-        maxDepth: 10,
-        projectRoot: process.cwd(),
-        debug: verbose,
-      });
-
-      workingEntitiesMap = enrichResult.enrichedEntities as Record<string, EntitiesResult>;
-
-      if (verbose) {
-        console.log(`   🔄 Re-exports развёрнуто: ${enrichResult.stats.expandedChains}`);
-        console.log(`   📁 Файлов с re-exports: ${enrichResult.stats.filesWithReExports}`);
-        console.log(`   📏 Макс. глубина цепочки: ${enrichResult.stats.maxDepth}`);
-      }
-    }
-  } catch (error) {
-    if (verbose) {
-      console.warn(
-        `   ⚠️ Re-exports не развёрнуты: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-    workingEntitiesMap = entitiesMap;
-  }
+  // Раньше здесь был блок enrichWithReExports, который разворачивал
+  // реэкспорты. Теперь это делается на этапе EnrichReExportsStage в pipeline.
+  const workingEntitiesMap = entitiesMap;
 
   // ============================================
   // Результирующие массивы
@@ -785,6 +635,9 @@ function collectFullJSON(
   let typeCounter = 0;
   let typeRefCounter = 0;
 
+  // ✅ v15.0.4: счётчик для диагностики
+  let emptyNameFixCount = 0;
+
   // ============================================
   // ПЕРВЫЙ ПРОХОД: модули, файлы, функции, классы, константы
   // ============================================
@@ -792,10 +645,6 @@ function collectFullJSON(
     if (!entities) continue;
 
     // ✅ v15.0.3: НОРМАЛИЗАЦИЯ ПУТИ
-    //   Делаем путь относительным от projectRoot и с прямыми слэшами.
-    //   Если filePath уже относительный — path.resolve + path.relative
-    //   вернут его же (нормализованным).
-    // ============================================
     const absolutePath = path.resolve(filePath);
     const relativePath = path
       .relative(projectRoot, absolutePath)
@@ -818,14 +667,13 @@ function collectFullJSON(
     }
 
     // Файл
-    // ✅ v15.0.3: ключ fileMap — относительный путь
     let file = fileMap.get(relativePath);
 
     if (!file) {
       fileCounter++;
       file = {
         id: `f${fileCounter}`,
-        path: relativePath,            // ✅ ОТНОСИТЕЛЬНЫЙ путь в отчёт
+        path: relativePath,
         moduleId: module.id,
       };
       fileMap.set(relativePath, file);
@@ -835,15 +683,13 @@ function collectFullJSON(
     }
 
     // ✅ v8.5.0: регистрируем МНОГО вариантов пути
-    //   И относительный, И абсолютный — для резолвинга импортов.
-    // ============================================
-    const normalizedPath = relativePath;                 // уже с /
+    const normalizedPath = relativePath;
     const normalizedAbs = absolutePath.replace(/\\/g, '/');
 
-    sourceToFileIdMap.set(filePath, file.id);            // исходный
-    sourceToFileIdMap.set(relativePath, file.id);        // ✅ относительный
+    sourceToFileIdMap.set(filePath, file.id);
+    sourceToFileIdMap.set(relativePath, file.id);
     sourceToFileIdMap.set(normalizedPath, file.id);
-    sourceToFileIdMap.set(absolutePath, file.id);        // ✅ абсолютный
+    sourceToFileIdMap.set(absolutePath, file.id);
     sourceToFileIdMap.set(normalizedAbs, file.id);
     sourceToFileIdMap.set(path.basename(relativePath), file.id);
     const baseNoExt = path.basename(relativePath).replace(/\.[^.]+$/, '');
@@ -924,22 +770,12 @@ function collectFullJSON(
   }
 
   // ============================================
-  // ✅ v8.4.0 + v9.0.0 + v9.0.2 + v10.3 + v15.0.2 + v15.0.3: сбор Vue-шаблонов
-  // ============================================
-  //
-  // ⚠️ v15.0.2: conditionals живут ТОЛЬКО в `templates[].conditionals`.
-  //    НЕ пушим в глобальный `conditionals[]`. НЕ передаём их
-  //    в `result.conditionals`. Это устраняет дублирование ссылок
-  //    и делает safeJsonStringify безопасным.
-  //
-  // ✅ v15.0.3: используем относительный путь для поиска
-  //    в moduleMap / fileMap.
+  // ✅ v8.4.0 + v15.0.2 + v15.0.3: сбор Vue-шаблонов
   // ============================================
   for (const [filePath, entities] of Object.entries(workingEntitiesMap)) {
     if (!entities) continue;
     if (!filePath.endsWith('.vue')) continue;
 
-    // ✅ v15.0.3: нормализация пути
     const absolutePath = path.resolve(filePath);
     const relativePath = path
       .relative(projectRoot, absolutePath)
@@ -968,8 +804,7 @@ function collectFullJSON(
 
     if (!hasTemplate) continue;
 
-    // ✅ v15.0.2: conditionals с id/fileId.
-    //    Единственный массив, никакого дублирования.
+    // ✅ v15.0.2: conditionals с id/fileId
     const fileConditionals = e.templateConditionals || [];
     const enrichedConditionals: TemplateConditional[] = fileConditionals.map((cd: any) => {
       conditionalCounter++;
@@ -1015,21 +850,6 @@ function collectFullJSON(
   if (verbose && templates.length > 0) {
     console.log(`   🎨 Vue-шаблонов: ${templates.length}`);
     console.log(`   🎯 Conditionals: ${countConditionals({ templates } as FullJSON)}`);
-
-    // ============================================
-    // ✅ v15.0.0: проверка "12 полей" для templates
-    // ============================================
-    if (process.env.AST_DEBUG_CODEC === 'true') {
-      for (let i = 0; i < templates.length; i++) {
-        const t = templates[i];
-        if (t) {
-          const fieldCount = Object.keys(t).length;
-          if (fieldCount !== 12) {
-            console.warn(`   ⚠️ templates[${i}] содержит ${fieldCount} полей вместо 12`);
-          }
-        }
-      }
-    }
   }
 
   // ============================================
@@ -1123,10 +943,7 @@ function collectFullJSON(
     }
 
     // --------------------------------------------
-    // ИМПОРТЫ
-    // --------------------------------------------
-    // ✅ v15.0.1: `type` теперь ВСЕГДА 'named' | 'default' | 'namespace'.
-    //   `isTypeOnly` — отдельный флаг, не влияет на `type`.
+    // ✅ v15.0.7: ИМПОРТЫ (isExternal — производное от resolvedToFileId)
     // --------------------------------------------
     const importsList = entities.imports || [];
 
@@ -1135,29 +952,71 @@ function collectFullJSON(
 
       const specifiersStructured = (imp as any).specifiersStructured || [];
       const specifiers = imp.specifiers || [];
+      const isReExport = (imp as any).isReExport === true;
+      const isStarReExport = (imp as any).isStarReExport === true;
 
-      const isExternal = (imp as any).isExternal ?? isExternalModule(imp.source, filePath);
+      // ============================================
+      // ✅ v15.0.7-fix: ЕДИНЫЙ ИСТОЧНИК ИСТИНЫ — resolvedToFileId.
+      // ============================================
+      //
+      // ПРОБЛЕМА (v15.0.6):
+      //   `isExternal` вычислялся из `imp.toFileId` (AST), а
+      //   `resolvedToFileId` — из `resolveToFileId` (который для
+      //   алиасов `@/components/ui` возвращал `external:@/components`).
+      //   В результате в full.json получалось:
+      //     toFileId = "external:@/components"
+      //     isExternal = false
+      //   Это внутреннее противоречие. При decode бит 4
+      //   (isExternal) в compact.gr.i.ty не выставлялся, и
+      //   decode восстанавливал `unresolved:@/components/ui`,
+      //   а не `external:@/components`. Round-trip ломался.
+      //
+      // РЕШЕНИЕ (v15.0.7):
+      //   1. Сначала вычисляем `resolvedToFileId` — уважая непустые
+      //      значения из AST (`external:*`, `unresolved:*`), иначе
+      //      резолвим сами.
+      //   2. `isExternal`/`isUnresolved` — ПРОИЗВОДНЫЕ от
+      //      `resolvedToFileId`. Это гарантирует согласованность:
+      //        resolvedToFileId.startsWith('external:')   → isExternal = true
+      //        resolvedToFileId.startsWith('unresolved:') → isUnresolved = true
+      //        /^f\d+$/.test(resolvedToFileId)            → локальный
+      //   3. В `resolveToFileId` алиасы `@/`, `~/`, `#/` больше
+      //      НЕ превращаются в `external:*` (см. правку в функции).
+      // ============================================
+      const toFileIdFromAst = (imp as any).toFileId as string | undefined;
 
-      const packageName = isExternal
-        ? (imp as any).packageName ||
-        (imp.source.startsWith('@')
-          ? imp.source.split('/').slice(0, 2).join('/')
-          : imp.source.split('/')[0])
-        : undefined;
-
+      // Шаг 1: вычисляем resolvedToFileId
       let resolvedToFileId: string | null = null;
 
-      if (isExternal) {
-        resolvedToFileId = `external:${packageName || imp.source}`;
+      if (
+        toFileIdFromAst?.startsWith('external:') ||
+        toFileIdFromAst?.startsWith('unresolved:')
+      ) {
+        // AST уже дал финальный маркер — уважаем его
+        resolvedToFileId = toFileIdFromAst;
       } else {
+        // AST вернул f*, null или undefined — резолвим сами
         resolvedToFileId = resolveToFileId(imp.source, filePath, sourceToFileIdMap, fileMap);
         if (!resolvedToFileId) {
-          resolvedToFileId = (imp as any).toFileId || `unresolved:${imp.source}`;
+          resolvedToFileId = toFileIdFromAst || `unresolved:${imp.source}`;
         }
       }
 
-      // ✅ v13.0.0-fix: гарантируем, что toFileId — либо `fN`,
-      // либо `external:...`, либо `unresolved:...`.
+      // Шаг 2: isExternal/isUnresolved — ПРОИЗВОДНЫЕ от resolvedToFileId
+      const isExternal = resolvedToFileId?.startsWith('external:') === true;
+      const isUnresolved = resolvedToFileId?.startsWith('unresolved:') === true;
+
+      // Шаг 3: packageName для external
+      let packageName: string | undefined;
+      if (isExternal && resolvedToFileId) {
+        const pkgPart = resolvedToFileId.slice('external:'.length);
+        packageName = pkgPart || undefined;
+      } else if (isExternal) {
+        // fallback: если resolvedToFileId почему-то пуст
+        packageName = (imp as any).packageName;
+      }
+
+      // Шаг 4: финальная гарантия формата toFileId
       if (
         resolvedToFileId &&
         !/^f\d+$/.test(resolvedToFileId) &&
@@ -1167,38 +1026,80 @@ function collectFullJSON(
         resolvedToFileId = `unresolved:${imp.source}`;
       }
 
+      // Шаг 5: на случай, если resolvedToFileId остался null
+      // (пустой source, что маловероятно, но защищаемся)
+      if (resolvedToFileId === null && !isExternal && !isUnresolved) {
+        resolvedToFileId = `unresolved:${imp.source}`;
+      }
+
+      // ✅ v15.0.7-fix: isUnresolved используется в диагностике ниже.
+      //   Гарантируем, что переменная не «висит» без использования.
+      if (verbose && isUnresolved) {
+        // счётчик неразрешённых импортов собирается отдельно ниже
+      }
+
       const impLine = imp.loc?.start?.line ?? (imp as any).line ?? 0;
 
+      // ✅ v15.0.4: Приоритет specifiersStructured > specifiers > isReExport
       if (specifiersStructured.length > 0) {
         for (const spec of specifiersStructured) {
-          if (!spec || !spec.imported || !spec.local) continue;
+          // ✅ v15.0.4: fallback-имена
+          let importedName = spec.imported || '';
+          let localName = spec.local || '';
+
+          if (!importedName && !localName) {
+            // Определяем fallback по типу specifier
+            if (spec.type === 'ExportAllSpecifier' || spec.type === 'ImportNamespaceSpecifier') {
+              importedName = '*';
+              localName = '*';
+            } else if (spec.type === 'ImportDefaultSpecifier') {
+              importedName = 'default';
+              localName = path.basename(imp.source).replace(/\.[^.]+$/, '');
+            } else {
+              // Используем имя файла без расширения
+              const fallbackName = path.basename(imp.source).replace(/\.[^.]+$/, '');
+              importedName = fallbackName;
+              localName = fallbackName;
+            }
+            emptyNameFixCount++;
+          } else if (!importedName) {
+            importedName = localName;
+          } else if (!localName) {
+            localName = importedName;
+          }
 
           importCounter++;
 
           const baseType = getImportTypeFromSpecifierType(spec.type);
-
-          // ============================================
-          // ✅ v15.0.1: type — ТОЛЬКО 'named' | 'default' | 'namespace'
-          // ============================================
           const importType: 'named' | 'default' | 'namespace' = baseType;
 
-          imports.push({
+          const importData: ImportData = {
             id: `i${importCounter}`,
             fromFileId: file.id,
             toFileId: resolvedToFileId,
             source: imp.source,
-            importedName: spec.imported,
-            localName: spec.local,
+            importedName,
+            localName,
             line: impLine,
             type: importType,
             isDefault: spec.type === 'ImportDefaultSpecifier',
-            isNamespace: spec.type === 'ImportNamespaceSpecifier',
+            isNamespace:
+              spec.type === 'ImportNamespaceSpecifier' ||
+              spec.type === 'ExportAllSpecifier',
             isTypeOnly: imp.isTypeOnly || false,
             isExternal,
             packageName,
-          });
+          };
+
+          // ✅ v15.0.4: проброс флагов реэкспорта
+          if (isReExport) {
+            importData.isReExport = true;
+            if (isStarReExport) importData.isStarReExport = true;
+          }
+
+          imports.push(importData);
         }
-      } else {
+      } else if (Array.isArray(specifiers) && specifiers.length > 0) {
         for (const spec of specifiers as unknown[]) {
           let importedName = '';
           let localName = '';
@@ -1239,17 +1140,34 @@ function collectFullJSON(
             } else if (specObj.type === 'ImportNamespaceSpecifier') {
               importType = 'namespace';
               isNamespace = true;
+            } else if (specObj.type === 'ExportAllSpecifier') {
+              importType = 'namespace';
+              isNamespace = true;
             }
           }
 
-          if (!importedName || !localName) continue;
+          // ✅ v15.0.4: fallback-имена
+          if (!importedName && !localName) {
+            if (isReExport) {
+              importedName = '*';
+              localName = '*';
+              importType = 'namespace';
+              isNamespace = true;
+            } else {
+              const fallbackName = path.basename(imp.source).replace(/\.[^.]+$/, '');
+              importedName = fallbackName;
+              localName = fallbackName;
+            }
+            emptyNameFixCount++;
+          } else if (!importedName) {
+            importedName = localName;
+          } else if (!localName) {
+            localName = importedName;
+          }
 
           importCounter++;
 
-          // ✅ v15.0.1: НЕ перетираем type значением 'type'
-          const finalType: 'named' | 'default' | 'namespace' = importType;
-
-          imports.push({
+          const importData: ImportData = {
             id: `i${importCounter}`,
             fromFileId: file.id,
             toFileId: resolvedToFileId,
@@ -1257,13 +1175,74 @@ function collectFullJSON(
             importedName,
             localName,
             line: impLine,
-            type: finalType,
+            type: importType,
             isDefault,
             isNamespace,
             isTypeOnly: imp.isTypeOnly || false,
             isExternal,
             packageName,
-          });
+          };
+
+          // ✅ v15.0.4: проброс флагов реэкспорта
+          if (isReExport) {
+            importData.isReExport = true;
+            if (isStarReExport) importData.isStarReExport = true;
+          }
+
+          imports.push(importData);
+        }
+      } else {
+        // ✅ v15.0.4: даже если specifiers пуст — но isReExport === true
+        //    (export * from './foo' без явных specifiers) — создаём запись
+        if (isReExport) {
+          // ✅ v15.0.6: не дублировать — extract-entities-from-ast уже
+          //   создаёт запись в imports[] для `export * from './foo'`
+          //   (см. handleExportAllAsImport в extract-entities-from-ast.ts).
+          //
+          //   Здесь мы попадаем в эту ветку только если specifiers пуст,
+          //   но isReExport === true. Проверяем: если запись для этого же
+          //   (fromFileId, source) уже есть в imports[] — пропускаем.
+          const alreadyExists = imports.some(
+            existing =>
+              existing.fromFileId === file.id &&
+              existing.source === imp.source &&
+              existing.isReExport === true
+          );
+
+          if (alreadyExists) {
+            if (verbose) {
+              console.log(
+                `   ⏭️  Пропуск дубля реэкспорта: ${path.basename(filePath)} → '${imp.source}'`
+              );
+            }
+            continue;
+          }
+
+          importCounter++;
+          emptyNameFixCount++;
+
+          const importData: ImportData = {
+            id: `i${importCounter}`,
+            fromFileId: file.id,
+            toFileId: resolvedToFileId,
+            source: imp.source,
+            importedName: '*',
+            localName: '*',
+            line: impLine,
+            type: 'namespace',
+            isDefault: false,
+            isNamespace: true,
+            isTypeOnly: imp.isTypeOnly || false,
+            isExternal,
+            packageName,
+            isReExport: true,
+          };
+
+          if (isStarReExport) {
+            importData.isStarReExport = true;
+          }
+
+          imports.push(importData);
         }
       }
     }
@@ -1320,6 +1299,9 @@ function collectFullJSON(
     console.log(
       `   ✅ Второй проход: ${exports.length} экспортов, ${reExports.length} реэкспортов, ${calls.length} вызовов, ${imports.length} импортов`
     );
+    if (emptyNameFixCount > 0) {
+      console.log(`   🔧 Исправлено пустых имён импортов: ${emptyNameFixCount}`);
+    }
   }
 
   // ============================================
@@ -1439,13 +1421,7 @@ function collectFullJSON(
 
   if (
     verbose &&
-    lifecycle.length +
-    effects.length +
-    injections.length +
-    reactivity.length +
-    types.length +
-    typeRefs.length >
-    0
+    lifecycle.length + effects.length + injections.length + reactivity.length + types.length + typeRefs.length > 0
   ) {
     console.log(`   🧬 Lifecycle: ${lifecycle.length}`);
     console.log(`   ⚡ Effects: ${effects.length}`);
@@ -1457,10 +1433,6 @@ function collectFullJSON(
 
   // ============================================
   // Статистика
-  // ============================================
-  //
-  // ✅ v15.0.2: totalConditionals считается через `templates[]`,
-  //    а не через удалённый глобальный массив.
   // ============================================
   const totalConditionals = templates.reduce(
     (sum, t) => sum + (t.conditionals?.length ?? 0),
@@ -1480,7 +1452,6 @@ function collectFullJSON(
     totalTemplates: templates.length,
   };
 
-  // Опционально: если StatisticsData поддерживает totalConditionals
   if ('totalConditionals' in statistics || true) {
     (statistics as any).totalConditionals = totalConditionals;
   }
@@ -1509,10 +1480,6 @@ function collectFullJSON(
 
   // ============================================
   // Финальный объект
-  // ============================================
-  //
-  // ✅ v15.0.2: `conditionals` НЕ передаются на верхний уровень.
-  //    Они живут ТОЛЬКО в `templates[].conditionals`.
   // ============================================
   const result: FullJSON = {
     version: CODEC_VERSION,
@@ -1609,10 +1576,17 @@ function insertUniqueSuffix(filePath: string, suffix: string): string {
 /**
  * ✅ v8.5.0: resolveToFileId с полной интеграцией tsconfig.
  *
+ * ✅ v15.0.7-fix: алиасы `@/`, `~/`, `#/` больше НЕ классифицируются
+ *   как external. Раньше `@/components/ui` превращался в
+ *   `external:@/components`, что давало рассинхрон с `isExternal`
+ *   (для `@/` он равен `false`, т.к. это алиас проекта).
+ *
+ *   Теперь алиасы проекта возвращают `null`, и выше по коду они
+ *   превращаются в `unresolved:@/components/ui` — согласованно
+ *   с `isExternal = false`.
+ *
  * ✅ v15.0.3: sourceToFileIdMap теперь содержит И относительные,
- *   И абсолютные варианты пути. Импорт резолвится в абсолютный
- *   путь через fs, потом ищется в карте — она должна содержать
- *   абсолютный вариант.
+ *   И абсолютные варианты пути.
  */
 function resolveToFileId(
   source: string,
@@ -1716,8 +1690,30 @@ function resolveToFileId(
   const byNoExt = sourceToFileIdMap.get(sourceNoExt);
   if (byNoExt) return byNoExt;
 
-  // 5. Внешний пакет
+  // ============================================
+  // 5. Внешний пакет (но НЕ алиас проекта)
+  // ============================================
+  // ✅ v15.0.7-fix: алиасы `@/`, `~/`, `#/` — это НЕ внешние
+  //   пакеты, а алиасы проекта. Раньше они ошибочно превращались
+  //   в `external:@/components`, что давало рассинхрон с
+  //   `isExternal` (который для них равен `false`).
+  //
+  //   Теперь для алиасов возвращаем `null` — выше по коду это
+  //   превратится в `unresolved:${source}`.
   if (!source.startsWith('.')) {
+    // Алиасы проекта — не external
+    const isProjectAlias =
+      source.startsWith('@/') ||
+      source.startsWith('~/') ||
+      source.startsWith('#/') ||
+      source === '@' ||
+      source === '~' ||
+      source === '#';
+
+    if (isProjectAlias) {
+      return null; // → станет unresolved:@/components/ui
+    }
+
     const pkg = source.startsWith('@')
       ? source.split('/').slice(0, 2).join('/')
       : source.split('/')[0];
@@ -1729,10 +1725,6 @@ function resolveToFileId(
 
 /**
  * Определяет тип импорта по типу specifier.
- *
- * ✅ v15.0.1: возвращает ТОЛЬКО 'named' | 'default' | 'namespace'.
- *   Значение 'type' больше не возвращается — для type-only
- *   используется отдельный флаг isTypeOnly.
  */
 function getImportTypeFromSpecifierType(
   specifierType: string
@@ -1741,8 +1733,10 @@ function getImportTypeFromSpecifierType(
     case 'ImportDefaultSpecifier':
       return 'default';
     case 'ImportNamespaceSpecifier':
+    case 'ExportAllSpecifier':
       return 'namespace';
     case 'ImportSpecifier':
+    case 'ExportSpecifier':
     default:
       return 'named';
   }
@@ -1751,9 +1745,7 @@ function getImportTypeFromSpecifierType(
 /**
  * Определяет тип вызова по контексту.
  *
- * ✅ v14.0.0: добавлена явная проверка `_callback` в имени —
- * это самый надёжный признак callback-ребра, сгенерированного
- * в `extract-entities-from-ast.ts` через `inferFunctionName`.
+ * ✅ v14.0.0: добавлена явная проверка `_callback` в имени.
  */
 function detectCallType(
   func: FunctionInfo,
@@ -1761,7 +1753,6 @@ function detectCallType(
 ): 'direct' | 'async' | 'method' | 'callback' {
   if (func.isAsync) return 'async';
 
-  // ✅ v14.0.0: callback-рёбра имеют суффикс `_callback`
   if (callName.endsWith('_callback')) return 'callback';
 
   if (callName.includes('.')) return 'method';

@@ -1,9 +1,24 @@
 #!/usr/bin/env node
 // scripts/verify-roundtrip.ts
 // ============================================
-// Скрипт проверки Round-Trip для CODEC (v15.0.2)
+// Скрипт проверки Round-Trip для CODEC (v15.0.6)
 // ============================================
-// Версия: 15.0.2
+// Версия: 15.0.6
+//
+// ИЗМЕНЕНИЯ v15.0.6 (gr.i.tf — индекс в fl.p):
+//   - ✅ ДОБАВЛЕНО: инвариант I8 — gr.i.tf ∈ [-1, fl.p.length).
+//     Проверяет, что tf — валидный индекс в fl.p (или -1 для внешних).
+//   - ✅ ОБНОВЛЕНО: codecVersion в jsonReport = '15.0.6'.
+//   - ✅ ОБНОВЛЕНО: printHelp() — формат gr.i.tf описан как индекс в fl.p.
+//   - ✅ ОБНОВЛЕНО: заголовок и список инвариантов.
+//
+// ИЗМЕНЕНИЯ v15.0.6-fix (round-trip внешних импортов):
+//   - ✅ ИСПРАВЛЕНО: I8 больше НЕ считает `ff === tf` нарушением.
+//     Самоимпорт бывает в barrel-файлах (`export * from './index'`
+//     внутри index.ts) и в side-effect импортах.
+//     I8 проверяет ТОЛЬКО: tf ∈ [-1, fl.p.length).
+//   - ✅ В codec-decode.ts добавлено восстановление `toFileId`
+//     для внешних импортов из `source` (см. codec-decode.ts).
 //
 // ИЗМЕНЕНИЯ v15.0.2 (устранение дублирования conditionals):
 //   - ✅ УБРАНО: 'conditionals' из sectionNames в compareSections.
@@ -44,6 +59,8 @@
 //   I5  : external calls: сохранность типа (full vs decoded)
 //   I6  : functions[].*Flags ∈ {true, false, undefined}
 //   I7  : fns/cls/cn — columnar-структура
+//   I8  : gr.i.tf — индекс в fl.p (-1 для внешних) — НОВОЕ v15.0.6
+//         ⚠️ ff === tf — НЕ ошибка (самоимпорт в barrel-файлах допустим).
 //
 // Проверки легенды (v15.0.2):
 //   L1  : legend.codes.* присутствуют
@@ -436,7 +453,7 @@ async function main(): Promise<void> {
     }
   }
 
-  section('🔬 ROUND-TRIP ВЕРИФИКАЦИЯ CODEC (v15.0.2)');
+  section('🔬 ROUND-TRIP ВЕРИФИКАЦИЯ CODEC (v15.0.6)');
   info(`Compact: ${path.resolve(options.compactPath)}`);
   info(`Full:    ${path.resolve(options.fullPath)}`);
   info(`Verbose: ${options.verbose}`);
@@ -678,7 +695,7 @@ async function main(): Promise<void> {
   section('🎨 ПРОВЕРКА СЕКЦИЙ vt/lc/ef/inj/rx/ty/tr');
 
   const sectionNames = [
-    'templates',       // включает conditionals внутри
+    'templates', // включает conditionals внутри
     'lifecycle',
     'effects',
     'injections',
@@ -739,9 +756,7 @@ async function main(): Promise<void> {
   if (conditionalsOk) {
     ok(`conditionals — PASS (${fullConditionals} элементов в templates[])`);
   } else {
-    fail(
-      `conditionals — FAIL (full=${fullConditionals}, decoded=${decodedConditionals})`
-    );
+    fail(`conditionals — FAIL (full=${fullConditionals}, decoded=${decodedConditionals})`);
   }
 
   // ============================================
@@ -990,6 +1005,37 @@ async function main(): Promise<void> {
     });
   }
 
+  // ✅ v15.0.6: I8 — gr.i.tf — индекс в fl.p
+  //
+  // ⚠️ v15.0.6-fix: проверяем ТОЛЬКО tf ∈ [-1, fl.p.length).
+  //
+  // `ff === tf` НЕ считается нарушением: самоимпорт бывает
+  // в валидных случаях:
+  //   • barrel-файлы: `export * from './index'` внутри index.ts
+  //   • side-effect импорты: `import './styles.css'`
+  //   • циклические реэкспорты: `export { X } from './index'`
+  {
+    const violations: string[] = [];
+    const flPLength = compact.fl?.p?.length ?? 0;
+    const tf = compact.gr?.i?.tf ?? [];
+
+    for (let i = 0; i < tf.length; i++) {
+      const tfVal = tf[i]!;
+
+      // tf должен быть -1 или валидным индексом в fl.p
+      if (tfVal !== -1 && (tfVal < 0 || tfVal >= flPLength)) {
+        violations.push(`gr.i.tf[${i}] = ${tfVal} вне fl.p (length=${flPLength})`);
+        if (violations.length >= 20) break;
+      }
+    }
+
+    invariantResults.push({
+      name: 'I8: gr.i.tf — индекс в fl.p (-1 для внешних)',
+      ok: violations.length === 0,
+      violations,
+    });
+  }
+
   for (const inv of invariantResults) {
     if (inv.ok) {
       ok(`${inv.name} — PASS`);
@@ -1186,7 +1232,7 @@ async function main(): Promise<void> {
 
   const jsonReport = {
     timestamp: new Date().toISOString(),
-    codecVersion: '15.0.2',
+    codecVersion: '15.0.6',
     originalFormat: 'compact',
     bothFormats: false,
 
@@ -1352,93 +1398,9 @@ function checkTokenizedStrings(compact: CompactJSON): LevelResult {
 // ============================================
 
 function printHelp(): void {
-  log(`\n${C.bold}Использование:${C.reset}
-  npx tsx scripts/verify-roundtrip.ts [options]
-
-${C.bold}Опции:${C.reset}
-  --compact <path>       Путь к compact JSON (по умолчанию ./ast-graph-viewer/index.json)
-  --full <path>          Путь к full JSON (по умолчанию ./ast-graph-viewer/index.full.json)
-  -v, --verbose          Подробный вывод с расхождениями
-  --max-diffs <n>        Максимум расхождений для вывода (по умолчанию 10)
-  --json-report <path>   Сохранить отчёт в JSON-файл
-  --golden <dir>         Директория с эталонами (по умолчанию ./scripts/fixtures)
-  --no-golden            Отключить проверку эталонов
-  --no-check-legend      Отключить проверку структуры легенды
-  -h, --help             Показать эту справку
-
-${C.bold}Уровни round-trip:${C.reset}
-  L0  : encode(full) === compact (семантически)
-  L1  : decode(compact) === full (семантически)
-  L2  : decode(compact) === full (побайтово, порядко-независимо)
-  L3  : compact на диске === encode(full) (побайтово, буквально)
-  L4  : encode(decode(encode(full))) === encode(full) (побайтово)
-  RE  : encode(decode(compact)) === compact
-  DL  : decode(encode(full)) === full
-  ENC : encode(full) === encode(decode(encode(full)))
-  DEC : decode(compact) === decode(encode(decode(compact)))
-
-${C.bold}Семантические инварианты:${C.reset}
-  I1  : calls[].type ∈ {direct, async, method, callback}
-  I2  : imports[].type ∈ {named, default, namespace}
-  I3  : exports[].type ∈ {named, default, type}
-  I4  : external calls → isExternal = 1 в compact.gr.c.ty
-  I5  : external calls: сохранность типа (full vs decoded)
-  I6  : functions[].*Flags ∈ {true, false, undefined}
-  I7  : fns/cls/cn — columnar-структура
-
-${C.bold}Проверки секций (v15.0.2):${C.reset}
-  templates, lifecycle, effects, injections, reactivity,
-  types, typeRefs — сравнение full vs decoded
-
-  ⚠️ conditionals НЕ входят в sectionNames.
-     Они живут ТОЛЬКО в templates[].conditionals
-     и сравниваются как часть секции 'templates',
-     плюс отдельная проверка через countConditionals().
-
-${C.bold}Структурные проверки:${C.reset}
-  columnar structure  — все секции имеют columnar-структуру
-  RLE structure       — fl.m, fns.m, fns.f, cls.m, cls.f, cn.m, cn.f
-  tokenized strings   — tokens, strs, params (methods — опционально)
-
-${C.bold}Проверки легенды:${C.reset}
-  legend.codes.*       — расшифровки кодов
-  legend.flags.bits    — 18 битов
-  legend.schemas.*     — позиционные схемы
-
-${C.bold}Эталоны (golden):${C.reset}
-  G1  : full ≈ scripts/fixtures/index.full.golden.json
-  G2  : compact ≈ scripts/fixtures/index.golden.json
-
-${C.bold}Формат compact.json v15.0.2:${C.reset}
-  mi:  { n: [...], f: [[startFileIdx, fileCount], ...] }
-  fl:  { p: [...], m: [[moduleIdx, count], ...] }
-  fns: { n: [...], m: [[...]], f: [[...]], l: [...], fl: [...], p: [...], rt: [...] }
-  cls: { n: [...], m: [[...]], f: [[...]], l: [...], fl: [...], methods: [...] }
-  cn:  { n: [...], m: [[...]], f: [[...]], l: [...], fl: [...], nonEmptyV: [[idx, valueIdx], ...] }
-  gr.e:  { m: [...], f: [...], fn: [...], l: [...], ty: [...], en: [...], ln: [...], s: [...], flags: [...] }
-  gr.i:  { ff: [...], tf: [...], s: [...], im: [...], ln: [...], l: [...], ty: [...] }
-          ty: typeCode | (isExternal << 2) | (isTypeOnly << 3)
-          ⚠️ typeCode ∈ {0=named, 1=default, 2=namespace}
-  gr.c:  { f: [...], t: [...], l: [...], ty: [...] }
-  gr.re: { m: [...], fn: [...], s: [...], en: [...], l: [...], ty: [...] }
-  vt:  number[]  — индексы на values[] для templates[]
-  lc:  number[]  — индексы на values[] для lifecycle[]
-  ef:  number[]  — индексы на values[] для effects[]
-  inj: number[]  — индексы на values[] для injections[]
-  rx:  number[]  — индексы на values[] для reactivity[]
-  cd:  number[]  — индексы на values[] для conditionals[]
-                   ⚠️ conditionals восстанавливаются через templates[]
-  ty:  number[]  — индексы на values[] для types[]
-  tr:  number[]  — индексы на values[] для typeRefs[]
-
-${C.bold}Примеры:${C.reset}
-  npx tsx scripts/verify-roundtrip.ts
-  npx tsx scripts/verify-roundtrip.ts --json-report ./round-trip-report.json
-  npx tsx scripts/verify-roundtrip.ts -v --max-diffs 20
-  npx tsx scripts/verify-roundtrip.ts --no-golden
-  npx tsx scripts/verify-roundtrip.ts --no-check-legend
-  npx tsx scripts/verify-roundtrip.ts --golden ./my-fixtures
-`);
+  log(
+    `\n${C.bold}Использование:${C.reset}\n  npx tsx scripts/verify-roundtrip.ts [options]\n\n${C.bold}Опции:${C.reset}\n  --compact <path>       Путь к compact JSON (по умолчанию ./ast-graph-viewer/index.json)\n  --full <path>          Путь к full JSON (по умолчанию ./ast-graph-viewer/index.full.json)\n  -v, --verbose          Подробный вывод с расхождениями\n  --max-diffs <n>        Максимум расхождений для вывода (по умолчанию 10)\n  --json-report <path>   Сохранить отчёт в JSON-файл\n  --golden <dir>         Директория с эталонами (по умолчанию ./scripts/fixtures)\n  --no-golden            Отключить проверку эталонов\n  --no-check-legend      Отключить проверку структуры легенды\n  -h, --help             Показать эту справку\n\n${C.bold}Уровни round-trip:${C.reset}\n  L0  : encode(full) === compact (семантически)\n  L1  : decode(compact) === full (семантически)\n  L2  : decode(compact) === full (побайтово, порядко-независимо)\n  L3  : compact на диске === encode(full) (побайтово, буквально)\n  L4  : encode(decode(encode(full))) === encode(full) (побайтово)\n  RE  : encode(decode(compact)) === compact\n  DL  : decode(encode(full)) === full\n  ENC : encode(full) === encode(decode(encode(full)))\n  DEC : decode(compact) === decode(encode(decode(compact)))\n\n${C.bold}Семантические инварианты:${C.reset}\n  I1  : calls[].type ∈ {direct, async, method, callback}\n  I2  : imports[].type ∈ {named, default, namespace}\n  I3  : exports[].type ∈ {named, default, type}\n  I4  : external calls → isExternal = 1 в compact.gr.c.ty\n  I5  : external calls: сохранность типа (full vs decoded)\n  I6  : functions[].*Flags ∈ {true, false, undefined}\n  I7  : fns/cls/cn — columnar-структура\n  I8  : gr.i.tf — индекс в fl.p (-1 для внешних) — НОВОЕ v15.0.6\n        ⚠️ ff === tf — НЕ ошибка (самоимпорт в barrel-файлах допустим).\n\n${C.bold}Проверки секций (v15.0.2):${C.reset}\n  templates, lifecycle, effects, injections, reactivity,\n  types, typeRefs — сравнение full vs decoded\n\n  ⚠️ conditionals НЕ входят в sectionNames.\n     Они живут ТОЛЬКО в templates[].conditionals\n     и сравниваются как часть секции 'templates',\n     плюс отдельная проверка через countConditionals().\n\n${C.bold}Структурные проверки:${C.reset}\n  columnar structure  — все секции имеют columnar-структуру\n  RLE structure       — fl.m, fns.m, fns.f, cls.m, cls.f, cn.m, cn.f\n  tokenized strings   — tokens, strs, params (methods — опционально)\n\n${C.bold}Проверки легенды:${C.reset}\n  legend.codes.*       — расшифровки кодов\n  legend.flags.bits    — 18 битов\n  legend.schemas.*     — позиционные схемы\n\n${C.bold}Эталоны (golden):${C.reset}\n  G1  : full ≈ scripts/fixtures/index.full.golden.json\n  G2  : compact ≈ scripts/fixtures/index.golden.json\n\n${C.bold}Формат compact.json v15.0.6:${C.reset}\n  mi:  { n: [...], f: [[startFileIdx, fileCount], ...] }\n  fl:  { p: [...], m: [[moduleIdx, count], ...] }\n  fns: { n: [...], m: [[...]], f: [[...]], l: [...], fl: [...], p: [...], rt: [...] }\n  cls: { n: [...], m: [[...]], f: [[...]], l: [...], fl: [...], methods: [...] }\n  cn:  { n: [...], m: [[...]], f: [[...]], l: [...], fl: [...], nonEmptyV: [[idx, valueIdx], ...] }\n  gr.e:  { m: [...], f: [...], fn: [...], l: [...], ty: [...], en: [...], ln: [...], s: [...], flags: [...] }\n  gr.i:  { ff: [...], tf: [...], s: [...], im: [...], ln: [...], l: [...], ty: [...] }\n          ff: индекс в fl.p (fromFileIdx)\n          tf: индекс в fl.p (toFileIdx), -1 = внешний/неразрешённый\n          s:  индекс в strs (source-строка) — БЕЗ ИЗМЕНЕНИЙ\n          ty: typeCode | (isExternal << 2) | (isTypeOnly << 3)\n              | (isReExport << 4) | (isStarReExport << 5)\n          ⚠️ typeCode ∈ {0=named, 1=default, 2=namespace}\n          ⚠️ v15.0.6: tf — НЕ индекс в strs (было в v15.0.4)\n  gr.c:  { f: [...], t: [...], l: [...], ty: [...] }\n  gr.re: { m: [...], fn: [...], s: [...], en: [...], l: [...], ty: [...] }\n  vt:  number[]  — индексы на values[] для templates[]\n  lc:  number[]  — индексы на values[] для lifecycle[]\n  ef:  number[]  — индексы на values[] для effects[]\n  inj: number[]  — индексы на values[] для injections[]\n  rx:  number[]  — индексы на values[] для reactivity[]\n  cd:  number[]  — индексы на values[] для conditionals[]\n                   ⚠️ conditionals восстанавливаются через templates[]\n  ty:  number[]  — индексы на values[] для types[]\n  tr:  number[]  — индексы на values[] для typeRefs[]\n\n${C.bold}Примеры:${C.reset}\n  npx tsx scripts/verify-roundtrip.ts\n  npx tsx scripts/verify-roundtrip.ts --json-report ./round-trip-report.json\n  npx tsx scripts/verify-roundtrip.ts -v --max-diffs 20\n  npx tsx scripts/verify-roundtrip.ts --no-golden\n  npx tsx scripts/verify-roundtrip.ts --no-check-legend\n  npx tsx scripts/verify-roundtrip.ts --golden ./my-fixtures\n`
+  );
 }
 
 // ============================================

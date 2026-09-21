@@ -2,7 +2,17 @@
 // ============================================
 // Проверка согласованности index.json ↔ index.full.json
 // ============================================
-// Версия: 2.2.0
+// Версия: 2.3.0
+//
+// ИЗМЕНЕНИЯ v2.3.0 (проверка инварианта isExternal ↔ toFileId):
+//   - ✅ ДОБАВЛЕНО: проверка `imports[].isExternal ↔ toFileId` —
+//     ловит рассинхрон, когда toFileId="external:@/components",
+//     а isExternal=false (регрессия v15.0.6 в compact-reporter.ts).
+//   - ✅ ДОБАВЛЕНО: функция `checkImportsIsExternalConsistency(full)`.
+//   - ✅ ДОБАВЛЕНО: секция «СОГЛАСОВАННОСТЬ IMPORTS».
+//   - ✅ ОБНОВЛЕНО: заголовок v2.2.0 → v2.3.0.
+//   - ✅ ОБНОВЛЕНО: рекомендации — добавлен пункт 7 про
+//     isExternal ↔ toFileId.
 //
 // ИЗМЕНЕНИЯ v2.2.0 (устранение дублирования conditionals):
 //   - ✅ УБРАНО: 'conditionals' из sectionNames в compareSections.
@@ -219,6 +229,86 @@ function countConditionals(full: FullJSON): number {
     count += (t.conditionals ?? []).length;
   }
   return count;
+}
+
+// ============================================
+// ✅ v2.3.0: ПРОВЕРКА isExternal ↔ toFileId
+// ============================================
+
+/**
+ * Проверяет, что для всех импортов выполняется инвариант:
+ *
+ *   toFileId.startsWith('external:')   →  isExternal === true
+ *   toFileId.startsWith('unresolved:') →  isExternal === false
+ *   /^f\d+$/.test(toFileId)            →  isExternal === false
+ *   toFileId === null                  →  isExternal === false
+ *
+ * Ловит регрессию v15.0.6 в compact-reporter.ts, когда
+ * `resolveToFileId('@/components/ui')` возвращал `external:@/components`,
+ * а `isExternal` (производный от AST) оставался `false`. В результате
+ * в full.json оказывалось:
+ *   toFileId = "external:@/components"
+ *   isExternal = false
+ * Это ломало decode(compact): он видел isExternal=false и
+ * восстанавливал `unresolved:@/components/ui` вместо `external:@/components`.
+ *
+ * @param full — FullJSON для проверки
+ * @returns { ok, violations, detail }
+ */
+function checkImportsIsExternalConsistency(full: FullJSON): {
+  ok: boolean;
+  violations: string[];
+  detail: string;
+} {
+  const imports = full.imports ?? [];
+  const violations: string[] = [];
+
+  for (const imp of imports) {
+    if (!imp || !imp.id) continue;
+
+    const toFileId = imp.toFileId;
+    const isExternal = imp.isExternal === true;
+
+    // Определяем, каким должен быть isExternal по toFileId
+    let expectedExternal: boolean;
+    let kind: string;
+
+    if (toFileId === null || toFileId === undefined) {
+      expectedExternal = false;
+      kind = 'null';
+    } else if (toFileId.startsWith('external:')) {
+      expectedExternal = true;
+      kind = 'external:';
+    } else if (toFileId.startsWith('unresolved:')) {
+      expectedExternal = false;
+      kind = 'unresolved:';
+    } else if (/^f\d+$/.test(toFileId)) {
+      expectedExternal = false;
+      kind = 'local-f*';
+    } else {
+      // Невалидный префикс
+      violations.push(
+        `${imp.id}: toFileId="${toFileId}" — невалидный префикс (ожидается external:*, unresolved:*, f*, null)`
+      );
+      continue;
+    }
+
+    if (isExternal !== expectedExternal) {
+      violations.push(
+        `${imp.id}: isExternal=${isExternal}, toFileId="${toFileId}" (${kind}) — ожидается isExternal=${expectedExternal}`
+      );
+      if (violations.length >= 50) break;
+    }
+  }
+
+  return {
+    ok: violations.length === 0,
+    violations,
+    detail:
+      violations.length === 0
+        ? `${imports.length} импортов согласованы`
+        : `${violations.length} нарушений из ${imports.length}`,
+  };
 }
 
 // ============================================
@@ -477,7 +567,7 @@ interface CheckResult {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
-  printHeader('🔍 ПРОВЕРКА СОГЛАСОВАННОСТИ index.json ↔ index.full.json (v2.2.0)');
+  printHeader('🔍 ПРОВЕРКА СОГЛАСОВАННОСТИ index.json ↔ index.full.json (v2.3.0)');
   console.log(`  ${INFO} compact: ${C.cyan}${path.resolve(args.compact)}${C.reset}`);
   console.log(`  ${INFO} full:    ${C.cyan}${path.resolve(args.full)}${C.reset}`);
   console.log(`  ${INFO} verbose: ${args.verbose}`);
@@ -633,6 +723,31 @@ async function main(): Promise<void> {
       checks.push({ name: 'encode(full) ≟ compact', ok: false, detail: (err as Error).message });
       printResult('encode(full) ≟ compact', false, (err as Error).message);
     }
+  }
+
+  // ============================================
+  // ✅ v2.3.0: СОГЛАСОВАННОСТЬ IMPORTS (isExternal ↔ toFileId)
+  // ============================================
+  printSection('🔗 СОГЛАСОВАННОСТЬ IMPORTS (isExternal ↔ toFileId)');
+
+  {
+    const result = checkImportsIsExternalConsistency(full);
+    printResult('imports[].isExternal ↔ toFileId', result.ok, result.detail);
+
+    if (!result.ok && args.verbose) {
+      for (const v of result.violations.slice(0, args.maxDiffs)) {
+        console.log(`     ${C.red}•${C.reset} ${v}`);
+      }
+      if (result.violations.length > args.maxDiffs) {
+        console.log(`     ${C.dim}... и ещё ${result.violations.length - args.maxDiffs}${C.reset}`);
+      }
+    }
+
+    checks.push({
+      name: 'imports[].isExternal ↔ toFileId',
+      ok: result.ok,
+      detail: result.detail,
+    });
   }
 
   // ============================================
@@ -881,7 +996,7 @@ async function main(): Promise<void> {
     console.log(`     Это гарантирует совпадение timestamp и version.`);
     console.log('');
     console.log(`  ${C.bold}2. Проверить CODEC_VERSION${C.reset} в обоих файлах — должен`);
-    console.log(`     быть ${C.cyan}'15.0.2'${C.reset} (или совпадать). Если full.json`);
+    console.log(`     быть ${C.cyan}'15.0.6'${C.reset} (или совпадать). Если full.json`);
     console.log(`     собирался старой версией кодека — его нужно`);
     console.log(`     пересобрать.`);
     console.log('');
@@ -908,6 +1023,24 @@ async function main(): Promise<void> {
     console.log('');
     console.log(`     ${C.dim}Проверьте, что decoded.templates[].conditionals и${C.reset}`);
     console.log(`     ${C.dim}full.templates[].conditionals совпадают по длине.${C.reset}`);
+    console.log('');
+    console.log(
+      `  ${C.bold}6. Если расхождение в imports[].isExternal ↔ toFileId${C.reset} (симптом:`
+    );
+    console.log(
+      `     ${C.red}toFileId="external:@/components", isExternal=false${C.reset}):`
+    );
+    console.log(`     ${C.cyan}resolveToFileId()${C.reset} в compact-reporter.ts превращает`);
+    console.log(`     Vue-алиасы (${C.cyan}@/components/ui${C.reset}) в ${C.red}external:@/components${C.reset},`);
+    console.log(`     тогда как ${C.cyan}isExternalModule('@/...')${C.reset} возвращает ${C.green}false${C.reset}.`);
+    console.log(`     Фикс:`);
+    console.log(`       1. В ${C.cyan}resolveToFileId()${C.reset} исключить алиасы`);
+    console.log(`          ${C.cyan}@/${C.reset}, ${C.cyan}~/${C.reset}, ${C.cyan}#/${C.reset} из ветки «внешний пакет» —`);
+    console.log(`          возвращать ${C.cyan}null${C.reset} (→ ${C.cyan}unresolved:@/components/ui${C.reset}).`);
+    console.log(`       2. В ${C.cyan}compact-reporter.ts${C.reset} вычислять ${C.cyan}isExternal${C.reset}`);
+    console.log(`          как ПРОИЗВОДНОЕ от ${C.cyan}resolvedToFileId${C.reset},`);
+    console.log(`          а не от ${C.cyan}imp.toFileId${C.reset}.`);
+    console.log(`       3. Пересобрать index.json и index.full.json.`);
     console.log('');
     console.log(
       `  ${C.dim}Подробнее: scripts/verify-roundtrip.ts проверяет round-trip кодека.${C.reset}`

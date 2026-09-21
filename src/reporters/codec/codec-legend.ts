@@ -2,33 +2,37 @@
 // ============================================
 // ЛЕГЕНДА КОДЕКА
 // ============================================
-// Версия: 15.0.2
+// Версия: 15.0.5
+//
+// ИЗМЕНЕНИЯ v15.0.5 (gr.i.tf — индекс в fl.p):
+//   - ✅ ОБНОВЛЕНО: схема `gr.i` — `tf` теперь ИНДЕКС В `fl.p`,
+//     а не в `strs`. -1 = внешний/неразрешённый.
+//   - ✅ ОБНОВЛЕНО: `legend.codes.import` — добавлены пояснения
+//     про `tf` (индекс в fl.p) и `s` (индекс в strs).
+//   - ✅ ОБНОВЛЕНА версия: 15.0.4 → 15.0.5.
+//
+// ИЗМЕНЕНИЯ v15.0.4 (isReExport / isStarReExport в gr.i.ty):
+//   - ✅ ОБНОВЛЕНО: схема `gr.i` — комментарий про биты combinedTy
+//     теперь включает биты 4 (isReExport) и 5 (isStarReExport).
+//   - ✅ ОБНОВЛЕНО: `legend.codes.import` — добавлены пояснения
+//     про реэкспорты.
 //
 // ИЗМЕНЕНИЯ v15.0.2:
-//   - ✅ УБРАНО упоминание '@deprecated' и обратной совместимости.
-//   - ✅ ОБНОВЛЕНА версия: 15.0.1 → 15.0.2.
+//   - ✅ УБРАНО упоминание '@deprecated'.
 //   - ✅ ЯВНО указано, что conditionals живут ТОЛЬКО в
-//     `templates[].conditionals`. Секция `cd` в compact.json
-//     по-прежнему существует (схема `cd` сохранена) и кодируется
-//     из `templates[].conditionals`.
+//     `templates[].conditionals`.
 //
 // ИЗМЕНЕНИЯ v15.0.1:
 //   - ✅ УБРАН код 'to' из legend.codes.import.
-//     Причина: поле ImportData.type больше НЕ содержит 'type' —
-//     isTypeOnly вынесен в отдельный флаг. Семантика:
-//       type        — 'named' | 'default' | 'namespace'
-//       isTypeOnly  — boolean
 //
 // ИЗМЕНЕНИЯ v13.0.0:
 //   - ✅ ДОБАВЛЕНЫ схемы mi и fl в SCHEMAS.
-//   - ✅ УТОЧНЕН комментарий к mi.f: пары [startFileIdx, fileCount].
 //
 // ИЗМЕНЕНИЯ v12.0.0 (структурная оптимизация):
 //   - ✅ УДАЛЕНЫ how_to_read и flags.examples.
 //   - ✅ flags.bits — простой словарь { "1": "isAsync", ... }.
 //   - ✅ schemas — обновлены под columnar-структуру.
-//   - ✅ УДАЛЕНО поле dictionaries (словари переехали в корень
-//     compact.json).
+//   - ✅ УДАЛЕНО поле dictionaries.
 //
 // ИЗМЕНЕНИЯ v10.4.1:
 //   - Удалены 5 полей description.
@@ -122,15 +126,50 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   // ==========================================
   // gr.i — импорты: 7 параллельных массивов
   // ==========================================
+  //
+  // ✅ v15.0.5: `tf` — ИНДЕКС В `fl.p` (файлы), а не в `strs`.
+  //   -1 = внешний/неразрешённый импорт.
+  //   Ранее (v15.0.4): `tf` — индекс в `strs` (source-строка).
+  //
+  // ✅ v15.0.5: `s` — ПО-ПРЕЖНЕМУ индекс в `strs` (source-строка).
+  //   Не удалять — нужен для UI и диагностики.
+  //
+  // ✅ v15.0.4: массив `ty` содержит combinedTy с битами:
+  //
+  //   0-1 : typeCode (0=named, 1=default, 2=namespace)
+  //   2   : isExternal
+  //   3   : isTypeOnly
+  //   4   : isReExport
+  //   5   : isStarReExport
+  //
+  // Пример:
+  //   ty = 0  → named, не внешний, не type-only
+  //   ty = 1  → default
+  //   ty = 2  → namespace
+  //   ty = 4  → named + external
+  //   ty = 8  → named + type-only
+  //   ty = 16 → named + isReExport (export { X } from './foo')
+  //   ty = 20 → named + external + isReExport
+  //   ty = 48 → named + isReExport + isStarReExport (export * from)
+  //   ty = 56 → named + external + isReExport + isStarReExport
+  // ==========================================
   'gr.i': ['ff', 'tf', 's', 'im', 'ln', 'l', 'ty'],
 
   // ==========================================
   // gr.c — вызовы: 4 параллельных массива
   // ==========================================
+  // ty = typeCode | (isExternal << 2)
+  //   0-1 : typeCode (0=direct, 1=async, 2=method, 3=callback)
+  //   2   : isExternal
+  // ==========================================
   'gr.c': ['f', 't', 'l', 'ty'],
 
   // ==========================================
   // gr.re — реэкспорты: 6 параллельных массивов
+  // ==========================================
+  // ty = typeCode | (isTypeOnly << 2)
+  //   0-1 : typeCode (0=named, 1=default, 2=all)
+  //   2   : isTypeOnly
   // ==========================================
   'gr.re': ['m', 'fn', 's', 'en', 'l', 'ty'],
 
@@ -298,6 +337,8 @@ function buildCodesLegend(): CodecLegend['codes'] {
     // Семантика:
     //   type        — 'named' | 'default' | 'namespace'
     //   isTypeOnly  — отдельный boolean (import type ...)
+    //   isReExport  — отдельный boolean (export ... from ...)
+    //   isStarReExport — отдельный boolean (export * from ...)
     //
     // Числовые коды в compact.gr.i.ty (младшие 2 бита):
     //   0 = named
@@ -305,12 +346,24 @@ function buildCodesLegend(): CodecLegend['codes'] {
     //   2 = namespace
     //   3 = reserved
     //
-    // Бит 2 = isExternal
-    // Бит 3 = isTypeOnly
+    // Старшие биты combinedTy:
+    //   бит 2 = isExternal
+    //   бит 3 = isTypeOnly
+    //   бит 4 = isReExport
+    //   бит 5 = isStarReExport
     //
-    // ⚠️ Код 'to' (type) остаётся в IMPORT_TYPES для обратной
-    // совместимости со старыми full.json, но в legend он
-    // не нужен — isTypeOnly читается из отдельного бита.
+    // Примеры:
+    //   ty = 0   → named
+    //   ty = 1   → default
+    //   ty = 2   → namespace
+    //   ty = 4   → named + external
+    //   ty = 8   → named + type-only
+    //   ty = 16  → named + re-export
+    //   ty = 48  → named + re-export + star-re-export
+    //   ty = 56  → named + external + re-export + star-re-export
+    //
+    // ✅ v15.0.5: `gr.i.tf` — ИНДЕКС В `fl.p` (файлы), -1 = внешний.
+    //   `gr.i.s`  — ПО-ПРЕЖНЕМУ индекс в `strs` (source-строка).
     // ==========================================
     import: {
       n: 'named (именованный импорт)',
@@ -343,6 +396,10 @@ function buildCodesLegend(): CodecLegend['codes'] {
     //   1 = default
     //   2 = all (export * from)
     // Старший бит (bit 2) = isTypeOnly
+    //
+    // ⚠️ v15.0.4: gr.re — это "чистые" реэкспорты (дедуплицированные
+    // и агрегированные). Для полного графа связей используйте gr.i
+    // с битами isReExport / isStarReExport.
     // ==========================================
     reExport: mergeDict(RE_EXPORT_TYPES, {
       n: 'named (именованный)',

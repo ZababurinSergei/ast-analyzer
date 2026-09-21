@@ -2,40 +2,32 @@
 // ============================================
 // ОСНОВНАЯ ФУНКЦИЯ АНАЛИЗА VUE КОМПОНЕНТА
 // ============================================
-// Версия: 4.4.0 (FINAL, v9.0.0)
+// Версия: 5.0.1
 //
-// ИЗМЕНЕНИЯ v4.4.0 (FINAL):
-//   - ✅ ДОБАВЛЕНО: вызов extractEffects (было упущено в v4.3.0)
-//   - ✅ ДОБАВЛЕНО: проброс effects в анализ
-//   - ✅ ДОБАВЛЕНО: логирование количества effects
-//   - ✅ ДОБАВЛЕНО: defensive-проверки для extractLifecycle/extractEffects/
-//     extractInjections/extractReactivity — если что-то падает,
-//     остальные секции всё равно собираются
-//   - ✅ ДОБАВЛЕНО: пустые массивы → пустые массивы (не undefined),
-//     чтобы convertVueAnalysisToEntities корректно пробросил их
+// ИЗМЕНЕНИЯ v5.0.1 (fix TS6133):
+//   - ✅ ИСПРАВЛЕНО: убрана неиспользуемая переменная `compiledScript`
+//     в analyzeVueComponent — она больше не нужна после удаления
+//     extractPropsFromCompiledScript, extractEmitsFromCompiledScript,
+//     extractExposeFromCompiledScript
+//   - ✅ УБРАН вызов compileScriptBlock(descriptor, filePath)
+//     (больше не используется)
+//   - ✅ УБРАН реэкспорт `compileScriptBlock` из './parser.js'
+//     (больше не нужен)
 //
-// ИЗМЕНЕНИЯ v4.3.0:
-//   - ✅ ДОБАВЛЕНО: вызов extractLifecycle, extractInjections,
-//     extractReactivity из analyzers/index.js
-//   - ✅ ДОБАВЛЕНО: заполнение полей lifecycle, effects, injections,
-//     reactivity в результате анализа
+// ИЗМЕНЕНИЯ v5.0.0 (удаление props/emits/expose):
+//   - ✅ УДАЛЕНЫ импорты extractProps*, extractEmits*, extractExpose*
+//   - ✅ УДАЛЕНЫ реэкспорты extractProps*, extractEmits*, extractExpose*
+//   - ✅ ЗАМЕНЕНО: analyzeVueComponent больше НЕ извлекает
+//     props/emits/expose напрямую — только через vue-macros
+//     (в relation-resolver)
+//   - ✅ УБРАНЫ поля props/emits/expose из результата
+//     VueComponentAnalysis — они заполняются позже
+//     в relation-resolver (пустые заглушки для совместимости)
 //
-// ИЗМЕНЕНИЯ v4.2.0:
-//   - ✅ ДОБАВЛЕНО: явный экспорт findProjectRoot (для CLI)
-//   - ✅ ДОБАВЛЕНО: агрегация reactivityDeps из expressions
-//   - ✅ ИСПРАВЛЕНО: linkTemplateRefsToExpose использует globalMap
-//
-// ИЗМЕНЕНИЯ v4.1.0:
-//   - ✅ ДОБАВЛЕНО: двухпроходный анализ через GlobalComponentMap
-//   - ✅ ИСПРАВЛЕНО: linkTemplateRefsToExpose использует глобальную карту
-//   - ✅ ДОБАВЛЕНО: buildGlobalComponentMap + findProjectRoot в CLI
-//
-// ИЗМЕНЕНИЯ v4.0.0:
-//   - ✅ ИСПРАВЛЕНО: связь templateRefs → defineExpose дочернего компонента
-//   - ✅ ИСПРАВЛЕНО: функции одного имени в Map<string, FunctionInfo[]>
-//   - ✅ ИСПРАВЛЕНО: setupAttributes.generic через нормализованный API
-//   - ✅ ИСПРАВЛЕНО: defineSlots через AST (основной путь)
-//   - ✅ ИСПРАВЛЕНО: idManager/filePath в convertVueAnalysisToEntities
+// ИЗМЕНЕНИЯ v4.4.0 (FINAL, v9.0.0):
+//   - ✅ ДОБАВЛЕНО: вызов extractEffects
+//   - ✅ ДОБАВЛЕНО: defensive-проверки для extractLifecycle/
+//     extractEffects/extractInjections/extractReactivity
 // ============================================
 
 import fs from 'fs';
@@ -43,19 +35,21 @@ import path from 'path';
 import { parse as parseTS } from '@typescript-eslint/parser';
 import type { Program } from 'estree';
 
+// ============================================
+// РЕЭКСПОРТЫ
+// ============================================
+
 export * from './types.js';
-export { parseVueFile, compileScriptBlock } from './parser.js';
+export { parseVueFile } from './parser.js';
+
+// ✅ ОБНОВЛЕНО: убраны extractProps*, extractEmits*, extractExpose*
 export {
-  extractPropsFromSource,
-  extractPropsFromCompiledScript,
-  extractPropsFromAST,
-  extractEmitsFromSource,
-  extractEmitsFromCompiledScript,
-  extractEmitsFromAST,
-  extractExposeFromCompiledScript,
-  extractExposeFromAST,
   extractImportsFromAST,
   extractImportsFromSource,
+  extractImportsWithDetails,
+  groupImportsByType,
+  isImportUsed,
+  filterUnusedImports,
   extractComposablesFromAST,
   extractComposablesFromSource,
   extractFunctionsFromScript,
@@ -66,6 +60,7 @@ export {
   extractSlotsFromAST,
   extractSlotsFromSource,
 } from './extractors/index.js';
+
 export { analyzeTemplate } from './template.js';
 export { buildCallGraphFromScript } from './callgraph.js';
 export { generateVueComponentReport } from './report.js';
@@ -78,18 +73,14 @@ export {
   type BuildGlobalMapOptions,
 } from './global-component-map.js';
 
+// ============================================
+// ИМПОРТЫ
+// ============================================
+
 import type { VueComponentAnalysis, AnalysisOptions } from './types.js';
-import { parseVueFile, compileScriptBlock } from './parser.js';
+import { parseVueFile } from './parser.js';
 import { analyzeTemplate } from './template.js';
 import {
-  extractPropsFromSource,
-  extractPropsFromCompiledScript,
-  extractPropsFromAST,
-  extractEmitsFromSource,
-  extractEmitsFromCompiledScript,
-  extractEmitsFromAST,
-  extractExposeFromCompiledScript,
-  extractExposeFromAST,
   extractImportsFromAST,
   extractImportsFromSource,
   extractComposablesFromAST,
@@ -106,7 +97,7 @@ import { buildCallGraphFromScript } from './callgraph.js';
 import { generateVueComponentReport } from './report.js';
 import { buildGlobalComponentMap, type GlobalComponentMap } from './global-component-map.js';
 
-// ✅ НОВОЕ v4.3.0: импорт анализаторов из analyzers/index.js
+// ✅ Анализаторы lifecycle/effects/injections/reactivity
 import {
   extractLifecycle,
   extractEffects,
@@ -118,19 +109,8 @@ import {
 // РАСШИРЕННЫЕ ОПЦИИ АНАЛИЗА
 // ============================================
 
-/**
- * Опции анализа Vue-компонента.
- *
- * Расширяет базовый AnalysisOptions полем globalMap —
- * картой всех Vue-компонентов проекта (для связи refs → expose).
- */
 export interface AnalyzeVueOptions extends AnalysisOptions {
-  /**
-   * Глобальная карта компонентов проекта.
-   * Если не передана — используется локальная эвристика.
-   */
   globalMap?: GlobalComponentMap;
-  /** Подробный вывод (для CLI) */
   verbose?: boolean;
 }
 
@@ -163,7 +143,11 @@ export function analyzeVueComponent(
   if (!parsed) return null;
 
   const { descriptor } = parsed;
-  const compiledScript = compileScriptBlock(descriptor, filePath);
+
+  // ✅ УБРАНО: compileScriptBlock — больше не нужен
+  // (extractPropsFromCompiledScript / extractEmitsFromCompiledScript /
+  //  extractExposeFromCompiledScript удалены)
+
   const templateAnalysis = analyzeTemplate(descriptor, options);
 
   const originalScriptContent = descriptor.scriptSetup?.content || descriptor.script?.content || '';
@@ -184,33 +168,6 @@ export function analyzeVueComponent(
     } catch {
       // Игнорируем ошибки парсинга
     }
-  }
-
-  // === PROPS ===
-  let props = extractPropsFromCompiledScript(compiledScript);
-  if (props.names.length === 0 && scriptAst) {
-    const astProps = extractPropsFromAST(scriptAst);
-    if (astProps.names.length > 0) props = astProps;
-  }
-  if (props.names.length === 0) {
-    props = extractPropsFromSource(originalScriptContent);
-  }
-
-  // === EMITS ===
-  let emits = extractEmitsFromCompiledScript(compiledScript);
-  if (emits.names.length === 0 && scriptAst) {
-    const astEmits = extractEmitsFromAST(scriptAst);
-    if (astEmits.names.length > 0) emits = astEmits;
-  }
-  if (emits.names.length === 0) {
-    emits = extractEmitsFromSource(originalScriptContent);
-  }
-
-  // === EXPOSE ===
-  let expose = extractExposeFromCompiledScript(compiledScript);
-  if (expose.length === 0 && scriptAst) {
-    const astExpose = extractExposeFromAST(scriptAst);
-    if (astExpose.length > 0) expose = astExpose;
   }
 
   // === IMPORTS ===
@@ -236,7 +193,7 @@ export function analyzeVueComponent(
   const types = extractTypesFromScript(originalScriptContent);
   const interfaces = extractInterfacesFromScript(originalScriptContent);
 
-  // === ✅ defineSlots через AST (основной путь) ===
+  // === defineSlots через AST ===
   let slotDefinitions: string[] = [];
   if (scriptAst) {
     try {
@@ -296,12 +253,10 @@ export function analyzeVueComponent(
     }
   }
 
-  // === ✅ СВЯЗЬ templateRefs → defineExpose (двухпроходная) ===
+  // === СВЯЗЬ templateRefs → defineExpose (двухпроходная) ===
   linkTemplateRefsToExpose(templateAnalysis, functions, options.globalMap);
 
-  // === ✅ НОВОЕ v4.2.0: агрегация reactivityDeps ===
-  // Собираем root-идентификаторы из всех expressions в единый список.
-  // Это то, что реально используется в реактивных зависимостях шаблона.
+  // === ✅ Агрегация reactivityDeps ===
   const rootDepsSet = new Set<string>();
   for (const expr of templateAnalysis.expressions) {
     if (expr.rootIdentifiers && Array.isArray(expr.rootIdentifiers)) {
@@ -313,22 +268,7 @@ export function analyzeVueComponent(
   templateAnalysis.reactivityDeps = [...rootDepsSet];
 
   // ============================================
-  // ✅ НОВОЕ v4.3.0 + v4.4.0: РАСШИРЕННЫЙ АНАЛИЗ
-  // ============================================
-  // Вызываем анализаторы lifecycle, effects, injections, reactivity.
-  //
-  // ВАЖНО: эти анализаторы работают на сыром тексте <script setup>
-  // (originalScriptContent), а не на AST. Это сделано осознанно:
-  //   - lifecycle-хуки и эффекты проще найти регулярками;
-  //   - reactivity (ref/computed/watch) — тоже регулярками, но
-  //     с поддержкой generic-параметров (исправлено в v9.0.1);
-  //   - injections (provide/inject) — аналогично.
-  //
-  // Все ошибки оборачиваются в try/catch, чтобы один анализатор
-  // не сломал весь Vue-анализ.
-  //
-  // ✅ v4.4.0: добавлен extractEffects (был упущен в v4.3.0).
-  //   Без него секция `effects` в FullJSON всегда была пустой.
+  // ✅ РАСШИРЕННЫЙ АНАЛИЗ (lifecycle/effects/injections/reactivity)
   // ============================================
 
   let lifecycle: VueComponentAnalysis['lifecycle'] = [];
@@ -337,7 +277,6 @@ export function analyzeVueComponent(
   let reactivity: VueComponentAnalysis['reactivity'] = [];
 
   if (originalScriptContent && originalScriptContent.trim() !== '') {
-    // --- LIFECYCLE ---
     try {
       lifecycle = extractLifecycle(originalScriptContent);
     } catch (error) {
@@ -351,8 +290,6 @@ export function analyzeVueComponent(
       lifecycle = [];
     }
 
-    // --- EFFECTS ---
-    // ✅ v4.4.0: КРИТИЧНО — без этого секция `ef` всегда пустая
     try {
       effects = extractEffects(originalScriptContent);
     } catch (error) {
@@ -366,7 +303,6 @@ export function analyzeVueComponent(
       effects = [];
     }
 
-    // --- INJECTIONS ---
     try {
       injections = extractInjections(originalScriptContent);
     } catch (error) {
@@ -380,7 +316,6 @@ export function analyzeVueComponent(
       injections = [];
     }
 
-    // --- REACTIVITY ---
     try {
       reactivity = extractReactivity(originalScriptContent);
     } catch (error) {
@@ -405,7 +340,6 @@ export function analyzeVueComponent(
     totalSize = fileContent.length;
   }
 
-  // === ✅ setupAttributes через нормализованный API ===
   const setupAttributes = extractSetupAttributes(descriptor);
 
   const analysis: VueComponentAnalysis = {
@@ -419,9 +353,12 @@ export function analyzeVueComponent(
       size: originalScriptContent.length,
     },
     template: templateAnalysis,
-    props,
-    emits,
-    expose,
+
+    // ✅ УБРАНО: props, emits, expose — заполняются в relation-resolver
+    props: { names: [], types: {}, required: {}, defaults: {} },
+    emits: { names: [], types: {} },
+    expose: [],
+
     slots: allSlots,
     imports,
     composables,
@@ -439,14 +376,13 @@ export function analyzeVueComponent(
     },
     setupAttributes,
 
-    // ✅ НОВОЕ v4.3.0 + v4.4.0: расширенные секции
+    // ✅ расширенные секции
     lifecycle,
     effects,
     injections,
     reactivity,
   };
 
-  // ✅ v4.4.0: логирование расширенных секций (для отладки)
   if (options.verbose) {
     console.log(
       `   🔬 Vue-анализ ${path.basename(filePath)}: lifecycle=${lifecycle.length}, ` +
@@ -461,20 +397,6 @@ export function analyzeVueComponent(
 // СВЯЗЬ TEMPLATE REFS → defineExpose
 // ============================================
 
-/**
- * Для каждого template ref связывает с expose целевого компонента.
- *
- * Двухпроходный подход:
- *   1. Из глобальной карты берём expose нужного компонента по тегу
- *   2. Записываем в templateRefs[ref].exposedMethods
- *
- * Fallback: если глобальная карта пуста — используем локальную эвристику
- * (ищем функцию с именем = refValue в текущем файле).
- *
- * @param templateAnalysis — результат анализа шаблона текущего компонента
- * @param functions — функции текущего компонента (для fallback)
- * @param globalMap — глобальная карта компонентов проекта
- */
 function linkTemplateRefsToExpose(
   templateAnalysis: VueComponentAnalysis['template'],
   functions: VueComponentAnalysis['functions'],
@@ -486,9 +408,6 @@ function linkTemplateRefsToExpose(
     const tag = ref.tag;
     if (!tag || tag === 'unknown') continue;
 
-    // ============================================
-    // 1. ГЛОБАЛЬНАЯ КАРТА (основной путь)
-    // ============================================
     if (globalMap && globalMap.size > 0) {
       const info = globalMap.get(tag);
       if (info && info.expose.length > 0) {
@@ -496,7 +415,6 @@ function linkTemplateRefsToExpose(
         continue;
       }
 
-      // Пробуем kebab-case → PascalCase
       const pascal = toPascalCase(tag);
       if (pascal !== tag) {
         const info2 = globalMap.get(pascal);
@@ -507,11 +425,6 @@ function linkTemplateRefsToExpose(
       }
     }
 
-    // ============================================
-    // 2. FALLBACK: локальная эвристика
-    // ============================================
-    // Если глобальная карта не дала результата — ищем функцию
-    // с именем = refValue в текущем файле
     const matchingFunc = functions.find(f => f.name === ref.refValue);
     if (matchingFunc) {
       ref.exposedMethods = [matchingFunc.name];
@@ -519,9 +432,6 @@ function linkTemplateRefsToExpose(
   }
 }
 
-/**
- * kebab-case → PascalCase.
- */
 function toPascalCase(str: string): string {
   return str
     .split('-')
@@ -530,7 +440,7 @@ function toPascalCase(str: string): string {
 }
 
 // ============================================
-// ИЗВЛЕЧЕНИЕ setupAttributes (нормализованный API)
+// ИЗВЛЕЧЕНИЕ setupAttributes
 // ============================================
 
 function extractSetupAttributes(descriptor: any): VueComponentAnalysis['setupAttributes'] {
@@ -544,7 +454,6 @@ function extractSetupAttributes(descriptor: any): VueComponentAnalysis['setupAtt
     lang: setupBlock.lang === 'ts' ? 'ts' : 'js',
   };
 
-  // ✅ Нормализуем API attrs (массив / объект / undefined)
   const attrs = setupBlock.attrs;
   let genericValue: string | undefined;
 
@@ -574,9 +483,6 @@ export async function analyzeVueComponentCli(
   console.log('🎯 АНАЛИЗ VUE КОМПОНЕНТА');
   console.log(`${'='.repeat(60)}\n`);
 
-  // ============================================
-  // ПЕРВЫЙ ПРОХОД: строим глобальную карту
-  // ============================================
   let globalMap: GlobalComponentMap | undefined = options.globalMap;
 
   if (!globalMap) {
@@ -593,9 +499,6 @@ export async function analyzeVueComponentCli(
     console.log(`✅ Найдено компонентов: ${globalMap.size} (${duration}s)\n`);
   }
 
-  // ============================================
-  // ВТОРОЙ ПРОХОД: анализ конкретного файла
-  // ============================================
   const analysis = analyzeVueComponent(filePath, {
     ...options,
     globalMap,
@@ -606,7 +509,6 @@ export async function analyzeVueComponentCli(
     return;
   }
 
-  // Выводим статистику по связанным refs
   const linkedRefs = analysis.template.templateRefs.filter(
     r => r.exposedMethods && r.exposedMethods.length > 0
   );
@@ -621,7 +523,6 @@ export async function analyzeVueComponentCli(
     console.log('');
   }
 
-  // ✅ НОВОЕ v4.3.0 + v4.4.0: статистика расширенного анализа
   if (analysis.lifecycle.length > 0) {
     console.log(`🧬 Lifecycle hooks: ${analysis.lifecycle.length}`);
   }
@@ -648,7 +549,7 @@ export async function analyzeVueComponentCli(
   const jsonOutput = {
     analysis,
     timestamp: new Date().toISOString(),
-    version: '4.4.0',
+    version: '5.0.1',
   };
   const jsonFile = `${analysis.componentName}-analysis.json`;
   fs.writeFileSync(jsonFile, JSON.stringify(jsonOutput, null, 2));
@@ -657,9 +558,6 @@ export async function analyzeVueComponentCli(
 
 /**
  * Находит корень проекта от указанного файла.
- * Идёт вверх, ищет package.json или .git.
- *
- * ✅ ИСПРАВЛЕНО v4.2.0: функция экспортируется (для использования в CLI).
  */
 export function findProjectRoot(fromFile: string): string {
   let dir = path.dirname(path.resolve(fromFile));
@@ -706,7 +604,6 @@ export function enhanceWithVueAnalysis(
       constantsCount: vueAnalysis.constants.length,
       typesCount: vueAnalysis.types.length,
       interfacesCount: vueAnalysis.interfaces.length,
-      // ✅ НОВОЕ v4.3.0 + v4.4.0
       lifecycleCount: vueAnalysis.lifecycle.length,
       effectsCount: vueAnalysis.effects.length,
       injectionsCount: vueAnalysis.injections.length,
@@ -723,10 +620,9 @@ export function enhanceWithVueAnalysis(
 export default {
   analyzeVueComponent,
   parseVueFile,
-  compileScriptBlock,
   generateVueComponentReport,
   enhanceWithVueAnalysis,
   analyzeVueComponentCli,
   buildGlobalComponentMap,
-  findProjectRoot, // ✅ Явно экспортируем для CLI
+  findProjectRoot,
 };

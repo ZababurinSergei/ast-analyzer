@@ -2,10 +2,33 @@
 // ============================================================
 // STAGE 5: BUILD REPORT
 // ============================================================
-// Версия: 1.0.0
+// Версия: 2.0.0
 //
+// ИЗМЕНЕНИЯ v2.0.0 (удаление enrich re-exports + relations):
+//   - ✅ УДАЛЕНО упоминание EnrichReExportsStage из шапки —
+//     этот stage больше не входит в стандартный pipeline
+//   - ✅ ОБНОВЛЕНО: номер stage — теперь Stage 5 (после
+//     ResolveRelationsStage)
+//   - ✅ ДОБАВЛЕНО: поддержка `includeBody` и `includeVSCode`
+//     в вызове `generateCompactReport` (эти поля теперь есть
+//     в GenerateReportOptions)
+//   - ✅ ОБНОВЛЕНО: логирование — убраны упоминания
+//     re-exports из стадий (re-exports разворачиваются
+//     в ParseFileStage)
+//   - ✅ ОБНОВЛЕНО: версия stage 1.0.0 → 2.0.0
+//
+// ИЗМЕНЕНИЯ v1.0.0:
+//   - Первая версия
+//   - Поддержка трёх режимов (full / compact / entities-only)
+//   - Сохранение артефактов через generateCompactReport
+//   - Метрики: размеры compact/full, compression ratio, valuesCount
+//   - Подробное логирование в verbose-режиме
+//   - Обработка ошибок через StageError
+//
+// ============================================================
 // НАЗНАЧЕНИЕ
-// ------------------------------------------------------------
+// ============================================================
+//
 // Финальный этап единого pipeline анализа. Собирает отчёт
 // из нормализованных сущностей (`ctx.enhancedMap`) и
 // сохраняет его в `ctx.full` и `ctx.compact`.
@@ -19,6 +42,9 @@
 //   • извлечения сущностей
 //   • сборки FullJSON «руками»
 //   • кодирования CompactJSON «руками»
+//   • разворачивания re-exports (это делает ParseFileStage)
+//   • разрешения кросс-файловых связей (это делает
+//     ResolveRelationsStage)
 //
 // Всё это уже сделано в stages 1-4 и в `compact-reporter.ts`.
 // Этот stage — ТОНКИЙ ОРКЕСТРАТОР для:
@@ -26,8 +52,10 @@
 //   2. Сохранения артефактов на диск (если задан `outputPath`)
 //   3. Обновления метрик pipeline
 //
-// СХЕМА
-// ------------------------------------------------------------
+// ============================================================
+// СХЕМА (v2.0.0)
+// ============================================================
+//
 //   ctx.enhancedMap  ──►  generateCompactReport()  ──►  ctx.full
 //                              │                          ctx.compact
 //                              │
@@ -35,8 +63,10 @@
 //                              ├──► CompactJSON (для AI/хранения)
 //                              └──► Codec.encode(full, valuesMode)
 //
+// ============================================================
 // РЕЖИМЫ РАБОТЫ
-// ------------------------------------------------------------
+// ============================================================
+//
 // Stage поддерживает три режима, управляемых через
 // `ctx.options.mode`:
 //
@@ -45,8 +75,10 @@
 //   • 'entities-only'  — только entitiesMap, без отчёта
 //                        (полезно для кастомных pipeline)
 //
+// ============================================================
 // СОХРАНЕНИЕ ФАЙЛОВ
-// ------------------------------------------------------------
+// ============================================================
+//
 // Если в `ctx.options` заданы пути:
 //
 //   • `outputPath`     — путь для CompactJSON
@@ -57,23 +89,14 @@
 // логику `compact-reporter.ts::saveJsonFile` — мы вызываем
 // его через `generateCompactReport`, передавая `outputPath`.
 //
+// ============================================================
 // ЗАВИСИМОСТИ
-// ------------------------------------------------------------
+// ============================================================
 //   • `generateCompactReport` — единая сборка отчёта.
 //   • `PipelineContext`       — общий контекст pipeline.
 //   • `PipelineStage`         — интерфейс stage.
 //   • `StageError`            — единый тип ошибок pipeline.
 //
-// ИЗМЕНЕНИЯ
-// ------------------------------------------------------------
-// v1.0.0:
-//   • Первая версия.
-//   • Поддержка трёх режимов (full / compact / entities-only).
-//   • Сохранение артефактов через `generateCompactReport`.
-//   • Метрики: размеры compact/full, compression ratio,
-//     количество values.
-//   • Подробное логирование в verbose-режиме.
-//   • Обработка ошибок через StageError.
 // ============================================================
 
 import fs from 'fs';
@@ -110,6 +133,9 @@ import { StageError } from '../errors.js';
  *        • `valuesMode`   = ctx.options.valuesMode
  *        • `compress`     = (mode === 'compact')
  *        • `saveFullJson` = ctx.options.saveFullJson
+ *        • `includeBody`  = ctx.options.includeBody
+ *        • `includeVSCode`= ctx.options.includeVSCode
+ *        • `saveEdges`    = ctx.options.saveEdges
  *        • `verbose`      = ctx.options.verbose
  *
  *   3. Сохраняет результаты в контекст:
@@ -192,12 +218,8 @@ export class BuildReportStage implements PipelineStage {
     if (options.mode === 'entities-only') {
       if (options.verbose) {
         console.log('');
-        console.log(
-          '   ⏭️  Режим entities-only — генерация отчёта пропущена'
-        );
-        console.log(
-          `      • Сущностей: ${Object.keys(ctx.enhancedMap).length}`
-        );
+        console.log('   ⏭️  Режим entities-only — генерация отчёта пропущена');
+        console.log(`      • Сущностей: ${Object.keys(ctx.enhancedMap).length}`);
       }
       return ctx;
     }
@@ -223,9 +245,10 @@ export class BuildReportStage implements PipelineStage {
       console.log(`   📦 Генерация отчёта из ${entitiesCount} файлов...`);
       console.log(`      • Режим:    ${options.mode}`);
       console.log(`      • Values:   ${options.valuesMode}`);
-      console.log(
-        `      • Compress: ${options.mode === 'compact' ? 'ВКЛ' : 'ВЫКЛ'}`
-      );
+      console.log(`      • Compress: ${options.mode === 'compact' ? 'ВКЛ' : 'ВЫКЛ'}`);
+      console.log(`      • Body:     ${options.includeBody ? 'ВКЛ' : 'ВЫКЛ'}`);
+      console.log(`      • VSCode:   ${options.includeVSCode ? 'ВКЛ' : 'ВЫКЛ'}`);
+      console.log(`      • Edges:    ${options.saveEdges ? 'ВКЛ' : 'ВЫКЛ'}`);
       if (options.outputPath) {
         console.log(`      • Output:   ${options.outputPath}`);
       }
@@ -236,58 +259,52 @@ export class BuildReportStage implements PipelineStage {
     // ────────────────────────────────────────────────────────
     let report: GenerateReportResult;
     try {
-      report = generateCompactReport(
-        ctx.enhancedMap as any,
-        options.outputPath,
-        {
-          // ────────────────────────────────────────────────
-          // Режим сжатия: только для mode === 'compact'
-          // ────────────────────────────────────────────────
-          compress: options.mode === 'compact',
+      report = generateCompactReport(ctx.enhancedMap as any, options.outputPath, {
+        // ────────────────────────────────────────────────
+        // Режим сжатия: только для mode === 'compact'
+        // ────────────────────────────────────────────────
+        compress: options.mode === 'compact',
 
-          // ────────────────────────────────────────────────
-          // Сохранение FullJSON рядом с CompactJSON
-          // ────────────────────────────────────────────────
-          saveFullJson: options.saveFullJson,
+        // ────────────────────────────────────────────────
+        // Сохранение FullJSON рядом с CompactJSON
+        // ────────────────────────────────────────────────
+        saveFullJson: options.saveFullJson,
 
-          // ────────────────────────────────────────────────
-          // Суффикс для FullJSON
-          // ────────────────────────────────────────────────
-          fullJsonSuffix: options.fullJsonSuffix,
+        // ────────────────────────────────────────────────
+        // Суффикс для FullJSON
+        // ────────────────────────────────────────────────
+        fullJsonSuffix: options.fullJsonSuffix,
 
-          // ────────────────────────────────────────────────
-          // Режим сериализации values
-          // ────────────────────────────────────────────────
-          valuesMode: options.valuesMode,
+        // ────────────────────────────────────────────────
+        // Режим сериализации values
+        // ────────────────────────────────────────────────
+        valuesMode: options.valuesMode,
 
-          // ────────────────────────────────────────────────
-          // Включать тела функций
-          // ────────────────────────────────────────────────
-          includeBody: options.includeBody,
+        // ────────────────────────────────────────────────
+        // ✅ v2.0.0: включать тела функций
+        // ────────────────────────────────────────────────
+        includeBody: options.includeBody,
 
-          // ────────────────────────────────────────────────
-          // Включать VSCode-ссылки
-          // ────────────────────────────────────────────────
-          includeVSCode: options.includeVSCode,
+        // ────────────────────────────────────────────────
+        // ✅ v2.0.0: включать VSCode-ссылки
+        // ────────────────────────────────────────────────
+        includeVSCode: options.includeVSCode,
 
-          // ────────────────────────────────────────────────
-          // Edges (по умолчанию выключено)
-          // ────────────────────────────────────────────────
-          saveEdges: options.saveEdges,
-          edgesJsonSuffix: options.edgesJsonSuffix,
+        // ────────────────────────────────────────────────
+        // Edges (по умолчанию выключено)
+        // ────────────────────────────────────────────────
+        saveEdges: options.saveEdges,
+        edgesJsonSuffix: options.edgesJsonSuffix,
 
-          // ────────────────────────────────────────────────
-          // Подробный вывод
-          // ────────────────────────────────────────────────
-          verbose: options.verbose,
-        }
-      );
+        // ────────────────────────────────────────────────
+        // Подробный вывод
+        // ────────────────────────────────────────────────
+        verbose: options.verbose,
+      });
     } catch (error) {
       throw new StageError(
         this.name,
-        `Ошибка генерации отчёта: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `Ошибка генерации отчёта: ${error instanceof Error ? error.message : String(error)}`,
         undefined,
         error
       );
@@ -332,10 +349,7 @@ export class BuildReportStage implements PipelineStage {
    * @param ctx    — контекст pipeline
    * @param report — результат generateCompactReport
    */
-  private updateMetrics(
-    ctx: PipelineContext,
-    report: GenerateReportResult
-  ): void {
+  private updateMetrics(ctx: PipelineContext, report: GenerateReportResult): void {
     // Размеры файлов (если сохранены)
     if (report.stats.compactSize !== undefined) {
       ctx.metrics.compactSize = report.stats.compactSize;
@@ -393,10 +407,7 @@ export class BuildReportStage implements PipelineStage {
    * @param ctx    — контекст pipeline
    * @param report — результат generateCompactReport
    */
-  private logReport(
-    _ctx: PipelineContext,
-    report: GenerateReportResult
-  ): void {
+  private logReport(_ctx: PipelineContext, report: GenerateReportResult): void {
     console.log('');
     console.log('   ✅ Отчёт собран');
 
@@ -418,6 +429,10 @@ export class BuildReportStage implements PipelineStage {
 
       if (stats.totalTemplates !== undefined && stats.totalTemplates > 0) {
         console.log(`      • Шаблонов:   ${stats.totalTemplates}`);
+      }
+
+      if (stats.totalConditionals !== undefined && stats.totalConditionals > 0) {
+        console.log(`      • Conditionals: ${stats.totalConditionals}`);
       }
     }
 
@@ -443,9 +458,7 @@ export class BuildReportStage implements PipelineStage {
       }
 
       if (s.compressionRatio !== undefined) {
-        console.log(
-          `      • Сжатие:     ${s.compressionRatio.toFixed(1)}% от полного`
-        );
+        console.log(`      • Сжатие:     ${s.compressionRatio.toFixed(1)}% от полного`);
       }
 
       if (s.valuesCount !== undefined) {
@@ -506,10 +519,7 @@ export class BuildReportStage implements PipelineStage {
  * @param full       — FullJSON
  * @param outputPath — путь для сохранения
  */
-export function saveFullJSON(
-  full: FullJSON,
-  outputPath: string
-): void {
+export function saveFullJSON(full: FullJSON, outputPath: string): void {
   const dir = path.dirname(outputPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -530,10 +540,7 @@ export function saveFullJSON(
  * @param compact    — CompactJSON
  * @param outputPath — путь для сохранения
  */
-export function saveCompactJSON(
-  compact: CompactJSON,
-  outputPath: string
-): void {
+export function saveCompactJSON(compact: CompactJSON, outputPath: string): void {
   const dir = path.dirname(outputPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });

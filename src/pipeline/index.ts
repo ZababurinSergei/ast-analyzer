@@ -2,18 +2,35 @@
 // ============================================================
 // ЕДИНАЯ ТОЧКА ВХОДА ДЛЯ ANALYSIS PIPELINE
 // ============================================================
-// Версия: 1.0.0
+// Версия: 2.0.0
 //
+// ИЗМЕНЕНИЯ v2.0.0 (интеграция relation-resolver):
+//   - ✅ ДОБАВЛЕН реэкспорт ResolveRelationsStage
+//     (новый stage для кросс-файловых связей)
+//   - ✅ УДАЛЕН реэкспорт EnrichReExportsStage
+//     (re-exports теперь разворачиваются внутри ParseFileStage)
+//   - ✅ УДАЛЕН реэкспорт файла './stages/enrich-re-exports.js'
+//     (сам файл удалён)
+//   - ✅ ОБНОВЛЕНО: комментарии и архитектурные схемы
+//     под v2.0.0
+//
+// ИЗМЕНЕНИЯ v1.0.0:
+//   - Базовая структура: экспорт AnalysisPipeline,
+//     createContext, ошибок, типов, stages, веток парсинга
+//
+// ============================================================
 // НАЗНАЧЕНИЕ
-// ------------------------------------------------------------
+// ============================================================
+//
 // Публичный API pipeline-модуля. Здесь собраны:
 //   - Основной класс `AnalysisPipeline` — оркестратор
 //   - Все stages по отдельности (для тестов и кастомных pipeline)
 //   - Ветки парсинга: TS/JS и Vue (ответвление)
 //   - Типы, контекст, ошибки
 //
-// АРХИТЕКТУРА
-// ------------------------------------------------------------
+// ============================================================
+// АРХИТЕКТУРА (v2.0.0)
+// ============================================================
 //
 //                    ┌─────────────────────────┐
 //                    │   AnalysisPipeline      │
@@ -42,13 +59,15 @@
 //                   └──────────┬──────────┘
 //                              │
 //                    ┌─────────▼──────────┐
-//                    │ Stage 3: Enrich    │
-//                    │  ReExports         │
+//                    │ Stage 3: Normalize │
+//                    │  Entities          │
 //                    └─────────┬──────────┘
 //                              │
 //                    ┌─────────▼──────────┐
-//                    │ Stage 4: Normalize │
-//                    │  Entities          │
+//                    │ Stage 4: Resolve   │  ⬅ НОВЫЙ v2.0.0
+//                    │  Relations         │
+//                    │  (refCalls, props, │
+//                    │   emits, stores...)│
 //                    └─────────┬──────────┘
 //                              │
 //                    ┌─────────▼──────────┐
@@ -56,8 +75,9 @@
 //                    │  Report            │
 //                    └────────────────────┘
 //
+// ============================================================
 // ИСПОЛЬЗОВАНИЕ
-// ------------------------------------------------------------
+// ============================================================
 //
 //   import { AnalysisPipeline } from './pipeline/index.js';
 //
@@ -74,8 +94,10 @@
 //   // result.metrics  → метрики pipeline
 //   // result.errors   → ошибки файлов
 //
+// ============================================================
 // ЗАЧЕМ ЭТОТ МОДУЛЬ
-// ------------------------------------------------------------
+// ============================================================
+//
 // Ранее логика анализа была разбросана по:
 //   - cli.ts / CompactRecursiveCommand.ts  — цикл по файлам
 //   - core/entity-extractor/extract-entities.ts — Vue-ветка внутри
@@ -87,11 +109,12 @@
 //   - трудности с тестированием отдельных этапов
 //   - потерю template-полей при normalize (баг с conditionals)
 //
-// Теперь:
+// Теперь (v2.0.0):
 //   - единый `AnalysisPipeline.run()`
 //   - явный `ParseFileStage.dispatch()` для ветвления
 //   - каждый stage — отдельный класс (тестируемый)
 //   - явный проброс template-полей в NormalizeEntitiesStage
+//   - явный ResolveRelationsStage для кросс-файловых связей
 // ============================================================
 
 // ============================================================
@@ -111,8 +134,8 @@ export { AnalysisPipeline } from './AnalysisPipeline.js';
 // Контекст мутируется stages последовательно:
 //   - Stage 1: ctx.files
 //   - Stage 2: ctx.entitiesMap, ctx.metrics
-//   - Stage 3: ctx.entitiesMap (обогащённый), ctx.metrics
-//   - Stage 4: ctx.enhancedMap
+//   - Stage 3: ctx.enhancedMap
+//   - Stage 4: ctx.enhancedMap (обогащённый relation-связями)
 //   - Stage 5: ctx.full, ctx.compact
 // ============================================================
 
@@ -152,6 +175,11 @@ export type {
    */
   PipelineOptions,
 
+  /**
+   * Разрешённые опции (после нормализации).
+   */
+  ResolvedPipelineOptions,
+
   // ============================================
   // Контекст
   // ============================================
@@ -180,8 +208,13 @@ export type {
   PipelineMetrics,
 
   /**
+   * ✅ НОВОЕ v2.0.0: метрики разрешённых связей
+   * (refCalls, eventHandlers, composables, ...).
+   */
+  RelationsResolvedMetrics,
+
+  /**
    * Ошибка обработки одного файла.
-   * Собирается в `ctx.errors` при `continueOnError: true`.
    */
   FileError,
 
@@ -191,13 +224,13 @@ export type {
 
   /**
    * Интерфейс stage. Реализуется каждым этапом pipeline.
-   *
-   * Позволяет:
-   *   - собирать кастомные pipeline
-   *   - тестировать stages по отдельности
-   *   - добавлять/удалять stages
    */
   PipelineStage,
+
+  /**
+   * ✅ НОВОЕ v2.0.0: тип TemplateRecord для контекста.
+   */
+  TemplateRecord,
 } from './types.js';
 
 // ============================================================
@@ -230,13 +263,18 @@ export {
 //   - в кастомном pipeline (передать в конструктор)
 //   - в unit-тестах (запустить изолированно)
 //
-// ПОСЛЕДОВАТЕЛЬНОСТЬ ПО УМОЛЧАНИЮ:
+// ПОСЛЕДОВАТЕЛЬНОСТЬ ПО УМОЛЧАНИЮ (v2.0.0):
 //
 //   1. DiscoverFilesStage     — собрать файлы
 //   2. ParseFileStage         — диспетчер: TS/JS или Vue
-//   3. EnrichReExportsStage   — развернуть re-exports
-//   4. NormalizeEntitiesStage — EntitiesResult → EnhancedEntityInfo
+//   3. NormalizeEntitiesStage — EntitiesResult → EnhancedEntityInfo
+//   4. ResolveRelationsStage  — кросс-файловые связи (refCalls, props, emits...)
 //   5. BuildReportStage       — FullJSON → CompactJSON
+//
+// ⚠️ Изменения в v2.0.0:
+//   - УДАЛЁН EnrichReExportsStage — re-exports теперь
+//     разворачиваются внутри ParseFileStage
+//   - ДОБАВЛЕН ResolveRelationsStage — кросс-файловые связи
 // ============================================================
 
 // ------------------------------------------------------------
@@ -255,29 +293,21 @@ export { DiscoverFilesStage } from './stages/discover-files.js';
 // ------------------------------------------------------------
 // Ключевой stage. Определяет, какой парсер использовать:
 //
-//   - .vue                       → Vue-ветка
+//   - .vue                        → Vue-ветка
 //   - .ts/.tsx/.js/.jsx/.mjs/.cjs → TS/JS-ветка
 //
 // ⚠️ ЭТО ЕДИНСТВЕННОЕ МЕСТО, где принимается решение
 // о выборе ветки. Обе ветки возвращают EntitiesResult
 // — единый формат для дальнейших stages.
+//
+// Внутри ParseFileStage также разворачиваются re-exports
+// (`export * from`, `export { x } from`).
 // ------------------------------------------------------------
 
 export { ParseFileStage } from './stages/parse-file.js';
 
 // ------------------------------------------------------------
-// 5.3. Stage 3: EnrichReExports
-// ------------------------------------------------------------
-// Разворачивает re-exports (`export * from`, `export { x } from`)
-// в прямые связи. Применяется К ОБЕИМ ВЕТКАМ.
-//
-// Использует `enrichWithReExports` из entity-extractor.
-// ------------------------------------------------------------
-
-export { EnrichReExportsStage } from './stages/enrich-re-exports.js';
-
-// ------------------------------------------------------------
-// 5.4. Stage 4: NormalizeEntities
+// 5.3. Stage 3: NormalizeEntities
 // ------------------------------------------------------------
 // Конвертирует EntitiesResult → EnhancedEntityInfo.
 //
@@ -287,11 +317,45 @@ export { EnrichReExportsStage } from './stages/enrich-re-exports.js';
 // usedComponents, slots, complexity).
 //
 // Без этого проброса секция `conditionals` теряется на этапе
-// normalize, и в FullJSON попадает пустой массив — что даёт
-// расхождение `decoded=0, full=30` при round-trip.
+// normalize, и в FullJSON попадает пустой массив.
 // ------------------------------------------------------------
 
 export { NormalizeEntitiesStage } from './stages/normalize-entities.js';
+
+// ------------------------------------------------------------
+// 5.4. Stage 4: ResolveRelations ✅ НОВЫЙ v2.0.0
+// ------------------------------------------------------------
+// Запускает relation-resolver для кросс-файловых связей.
+//
+// Обогащает templates полями:
+//   - refCalls           — contextMenu.value?.openContextMenu()
+//   - localBindings      — const { data } = useDataState()
+//   - exposedMethods     — defineExpose
+//   - props              — defineProps
+//   - models             — defineModel
+//   - slotDefinitions    — defineSlots
+//   - options            — defineOptions
+//   - emits.consumers    — emit → parent handler
+//   - dynamicComponents.resolvedComponents
+//   - directives.definition
+//
+// Это ЕДИНСТВЕННЫЙ stage, который знает о кросс-файловых
+// связях (использует global-index).
+//
+// Резолверы:
+//   - ref-call-resolver           → refCall → exposedMethod
+//   - event-handler-resolver      → @click → function.id
+//   - composable-resolver         → useXxx returnedKeys + bindings
+//   - props-resolver              → props.xxx → source
+//   - emits-resolver              → emit → parent handler
+//   - v-model-resolver            → v-model → model + localVar
+//   - dynamic-component-resolver  → <component :is> → import
+//   - store-resolver              → Pinia
+//   - router-resolver             → router.push → routes
+//   - directive-resolver          → v-my-directive → import/binding
+// ------------------------------------------------------------
+
+export { ResolveRelationsStage } from './stages/resolve-relations.js';
 
 // ------------------------------------------------------------
 // 5.5. Stage 5: BuildReport
@@ -351,9 +415,6 @@ export { parseTypeScriptFile } from './stages/parse-typescript.js';
 //   - templateUsedComponents
 //   - templateSlots
 //   - templateComplexity
-//
-// ⚠️ После возврата в основной pipeline — продолжается
-// общими stages 3-5.
 // ------------------------------------------------------------
 
 export { parseVueFile } from './stages/parse-vue.js';
@@ -374,8 +435,8 @@ import { createContext } from './context.js';
 import { PipelineError, StageError } from './errors.js';
 import { DiscoverFilesStage } from './stages/discover-files.js';
 import { ParseFileStage } from './stages/parse-file.js';
-import { EnrichReExportsStage } from './stages/enrich-re-exports.js';
 import { NormalizeEntitiesStage } from './stages/normalize-entities.js';
+import { ResolveRelationsStage } from './stages/resolve-relations.js';
 import { BuildReportStage } from './stages/build-report.js';
 import { parseTypeScriptFile } from './stages/parse-typescript.js';
 import { parseVueFile } from './stages/parse-vue.js';
@@ -386,7 +447,7 @@ import { parseVueFile } from './stages/parse-vue.js';
  * ⚠️ При изменении публичного API (добавлении/удалении
  * экспортов, изменении сигнатур) — поднимать версию.
  */
-export const PIPELINE_MODULE_VERSION = '1.0.0';
+export const PIPELINE_MODULE_VERSION = '2.0.0';
 
 /**
  * Имя модуля pipeline.
@@ -411,12 +472,12 @@ export default {
   StageError,
 
   // ============================================
-  // Stages
+  // Stages (5 штук в v2.0.0)
   // ============================================
   DiscoverFilesStage,
   ParseFileStage,
-  EnrichReExportsStage,
   NormalizeEntitiesStage,
+  ResolveRelationsStage, // ✅ НОВЫЙ v2.0.0
   BuildReportStage,
 
   // ============================================

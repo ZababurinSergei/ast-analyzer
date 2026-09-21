@@ -1,8 +1,24 @@
 // src/reporters/codec/codec-decode.ts
 // ============================================
-// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v15.0.2)
+// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v15.0.6)
 // ============================================
-// Версия: 15.0.2
+// Версия: 15.0.6
+//
+// ИЗМЕНЕНИЯ v15.0.6 (gr.i.tf — индекс в fl.p):
+//   - ✅ ИЗМЕНЕНО: `gr.i.tf` читается как ИНДЕКС В `fl.p` (файлы),
+//     а не как индекс в `strs` (source-строка).
+//   - ✅ -1 = внешний/неразрешённый импорт:
+//       • isExternal → `external:${pkg}` (Вариант A)
+//       • !isExternal ∧ source → `unresolved:${source}` (Вариант C)
+//   - ✅ `gr.i.s` (source) — ПО-ПРЕЖНЕМУ читается как индекс в `strs`.
+//
+// ИЗМЕНЕНИЯ v15.0.4 (проброс isReExport/isStarReExport):
+//   - ✅ ДОБАВЛЕНО: чтение битов 4 и 5 из `gr.i.ty`:
+//       бит 4 (16) = isReExport
+//       бит 5 (32) = isStarReExport
+//   - ✅ ДОБАВЛЕНО: проброс `isReExport` и `isStarReExport` в ImportData.
+//     Это позволяет фронту строить полные цепочки связей, включая
+//     `export * from './foo'` и `export { X } from './foo'`.
 //
 // ИЗМЕНЕНИЯ v15.0.2 (устранение дублирования conditionals):
 //   - ✅ УБРАНО: чтение `compact.cd` через decodeSection.
@@ -10,9 +26,6 @@
 //     `templates[].conditionals` — они восстанавливаются
 //     как часть TemplateData через `decodeSection<TemplateData>(compact.vt)`.
 //   - ✅ УБРАНО: поле `conditionals` из финального `FullJSON`.
-//     Верхнеуровневого conditionals больше нет.
-//   - ✅ УБРАНЫ упоминания @deprecated из комментариев —
-//     только новый код.
 //
 // ИЗМЕНЕНИЯ v15.0.1 (fix imports[].type):
 //   - ✅ ИСПРАВЛЕНО: восстановление `imports[].type` больше НЕ
@@ -29,7 +42,7 @@
 // ИЗМЕНЕНИЯ v14.0.0 (100% round-trip):
 //   - ✅ ИСПРАВЛЕНО: imports[].isTypeOnly читается из бита 8.
 //   - ✅ ИСПРАВЛЕНО: восстановление секций vt/lc/ef/inj/rx/cd/ty/tr.
-//   - ✅ ИСПРАВЛЕНО: `version` = CODEC_VERSION ('15.0.0').
+//   - ✅ ИСПРАВЛЕНО: `version` = CODEC_VERSION ('15.0.4').
 //
 // ИЗМЕНЕНИЯ v13.0.2-fix (100% round-trip):
 //   - ✅ ИСПРАВЛЕНО: `modules[].fileIds` строятся через `fl.m`.
@@ -311,12 +324,6 @@ function decodeStr(entry: string | number[], tokens: string[]): string {
 
 /**
  * ✅ v14.0.0: безопасный JSON.parse для восстановления расширенных секций.
- *
- * Используется для восстановления vt/lc/ef/inj/rx/ty/tr, которые
- * были сериализованы в JSON-строку в `encode()`.
- *
- * Возвращает `null`, если значение не строка или JSON.parse упал.
- * Это безопасно, так как decode не гарантирует присутствие всех ключей.
  */
 function safeJsonParse<T>(value: unknown): T | null {
   if (typeof value !== 'string') return null;
@@ -334,26 +341,34 @@ function safeJsonParse<T>(value: unknown): T | null {
 /**
  * Декодирует сжатый JSON обратно в полный.
  *
+ * ✅ v15.0.6 (gr.i.tf — индекс в fl.p):
+ *   - `tf[i] >= 0`  →  локальный разрешённый импорт, `toFileId = f${tf+1}`
+ *   - `tf[i] = -1` ∧ isExternal  →  `toFileId = external:${pkg}`
+ *   - `tf[i] = -1` ∧ !isExternal ∧ source  →  `toFileId = unresolved:${source}`
+ *   - `tf[i] = -1` ∧ !isExternal ∧ !source  →  `toFileId = null`
+ *
+ *   Логика СИММЕТРИЧНА compact-reporter.ts::resolveToFileId.
+ *
+ * ✅ v15.0.4 (проброс isReExport/isStarReExport):
+ *   - Читаются биты 4 и 5 из `gr.i.ty`:
+ *       бит 4 (16) = isReExport
+ *       бит 5 (32) = isStarReExport
+ *   - Оба поля пробрасываются в ImportData.
+ *
  * ✅ v15.0.2 (устранение дублирования conditionals):
  *   - `conditionals` больше НЕ восстанавливаются на верхнем уровне.
- *     Все conditionals живут ВНУТРИ `templates[].conditionals`
- *     (они декодируются как часть `TemplateData` из `compact.vt`).
- *   - Секция `compact.cd` в compact.json по-прежнему существует
- *     (генерируется из `templates[].conditionals` при encode),
- *     но decode её НЕ читает напрямую — только через templates[].
+ *     Все conditionals живут ВНУТРИ `templates[].conditionals`.
  *
  * ✅ v15.0.1 (fix imports[].type):
  *   - `imports[].type` восстанавливается ТОЛЬКО из typeCode
  *     (0=named, 1=default, 2=namespace). Значение `'type'` больше
- *     не возвращается — для type-only импортов используется
- *     отдельный флаг `isTypeOnly`.
+ *     не возвращается.
  *
  * ✅ v15.0.0 (100% round-trip расширенных секций):
  *   - decodeSection читает и объект, и строку из values[].
  *
  * ✅ v14.0.0 (100% round-trip):
  *   - imports[].isTypeOnly читается из бита 8 в combinedTy.
- *   - Восстанавливаются секции vt/lc/ef/inj/rx/ty/tr.
  *
  * ✅ v13.0.2-fix:
  *   - modules[].fileIds строятся через `fl.m`.
@@ -393,12 +408,6 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   // ============================================
   // 1. Файлы (сначала — они нужны для modules)
   // ============================================
-  // ✅ v13.0.2-fix: файлы строятся ДО модулей, потому что
-  // modules[].fileIds собираются обратным проходом через fl.m.
-  //
-  // fl.m — RLE от moduleIdx: для каждого файла хранится индекс
-  // его модуля. Это ПОЛНАЯ информация о принадлежности.
-  // ============================================
   const flP = compact.fl?.p || [];
   const flM = compact.fl?.m || [];
   const flMUnrle = unrle(flM);
@@ -414,9 +423,6 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
 
   // ============================================
   // 2. Модули
-  // ============================================
-  // ✅ v13.0.2-fix: `modules[].fileIds` строятся через `fl.m`,
-  // а НЕ через `mi.f`.
   // ============================================
   const miN = compact.mi?.n || [];
 
@@ -470,7 +476,6 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
       returnType: readString(fns.rt[i] ?? -1),
     };
 
-    // reversibility: копируем остальные флаги, только если они true.
     if (flags.isEventHandler) func.isEventHandler = true;
     if (flags.isNested) func.isNested = true;
     if (flags.isSelf) func.isSelf = true;
@@ -508,7 +513,6 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
       fileId: `f${(clsF[i] ?? 0) + 1}`,
       line: cls.l[i] ?? 0,
       isExported: flags.isExported,
-      // ✅ v9.0.7: readMethod возвращает null при idx < 0
       methods: (cls.methods[i] || []).map(readMethod),
     });
   }
@@ -588,17 +592,24 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   // ============================================
   // 7. Импорты
   // ============================================
-  // ✅ v15.0.1: восстановление `type` БЕЗ эвристики isTypeOnly.
-  // ============================================
+  // ✅ v15.0.6: `tf` — ИНДЕКС В `fl.p` (файлы), а не в `strs`.
+  //   -1 = внешний/неразрешённый импорт:
+  //       • isExternal → `external:${pkg}` (Вариант A)
+  //       • !isExternal ∧ source → `unresolved:${source}` (Вариант C)
+  //   `s` — ПО-ПРЕЖНЕМУ индекс в `strs` (source-строка).
   //
   // Семантика полей:
   //   - `type` ∈ {'named', 'default', 'namespace'}
   //   - `isTypeOnly` — отдельный флаг
+  //   - `isReExport` — отдельный флаг
+  //   - `isStarReExport` — отдельный флаг
   //
   // БИТЫ combinedTy в gr.i.ty:
   //   0-1 : typeCode (0=named, 1=default, 2=namespace)
-  //   2   : isExternal
-  //   3   : isTypeOnly
+  //   2   : isExternal    (4)
+  //   3   : isTypeOnly    (8)
+  //   4   : isReExport    (16)
+  //   5   : isStarReExport(32)
   // ============================================
   const gi = compact.gr?.i || { ff: [], tf: [], s: [], im: [], ln: [], l: [], ty: [] };
   const imports: ImportData[] = [];
@@ -608,17 +619,60 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
     const typeCode = combinedTy & 3;
     const isExternal = (combinedTy & 4) !== 0;
     const isTypeOnly = (combinedTy & 8) !== 0;
+    const isReExport = (combinedTy & 16) !== 0;
+    const isStarReExport = (combinedTy & 32) !== 0;
 
-    // ✅ v15.0.1: type — ТОЛЬКО из typeCode, БЕЗ эвристики isTypeOnly.
+    // type — ТОЛЬКО из typeCode
     let type: 'named' | 'default' | 'namespace';
     if (typeCode === 1) type = 'default';
     else if (typeCode === 2) type = 'namespace';
     else type = 'named';
 
     const source = readStringOrEmpty(gi.s[i] ?? -1);
-    const toFileId = readString(gi.tf[i] ?? -1) ?? null;
 
-    imports.push({
+    // ✅ v15.0.6: tf — индекс в fl.p, -1 = внешний/неразрешённый
+    //
+    // Семантика tf:
+    //   tf >= 0  →  локальный РАЗРЕШЁННЫЙ импорт, индекс в fl.p
+    //   tf = -1  →  импорт НЕ попал в fl.p:
+    //                • внешний пакет       → external:${pkg}
+    //                • неразрешённый локал → unresolved:${source}
+    const toFileIdx = gi.tf[i] ?? -1;
+    let toFileId: string | null = null;
+
+    if (toFileIdx >= 0) {
+      // Локальный РАЗРЕШЁННЫЙ импорт — индекс в fl.p
+      toFileId = `f${toFileIdx + 1}`;
+    } else if (isExternal) {
+      // ✅ v15.0.6-fix (Вариант A): внешний импорт — восстанавливаем
+      //   toFileId из source: "external:fs", "external:commander",
+      //   "external:@scope/pkg", ...
+      //
+      //   Алгоритм вычисления packageName совпадает с compact-reporter.ts:
+      //     - scoped:     "@scope/pkg"    → "@scope/pkg"
+      //     - остальное:  "commander"      → "commander"
+      //                   "commander/sub"  → "commander"
+      const pkg = source.startsWith('@')
+        ? source.split('/').slice(0, 2).join('/')
+        : source.split('/')[0];
+      toFileId = pkg ? `external:${pkg}` : null;
+    } else if (source) {
+      // ✅ v15.0.6-fix (Вариант C): НЕразрешённый локальный импорт.
+      //
+      //   Пример: "./entities.json" — JSON-файл, который не попал в fl.p
+      //   (потому что compact-reporter не добавляет .json в files[]).
+      //
+      //   В compact-reporter.ts такие импорты получают
+      //   toFileId = "unresolved:${source}". Восстанавливаем
+      //   его здесь, чтобы round-trip был 100%.
+      //
+      //   ⚠️ Ветка срабатывает ТОЛЬКО если source непустой.
+      //   Пустой source → toFileId остаётся null.
+      toFileId = `unresolved:${source}`;
+    }
+    // else: source пустой → toFileId = null
+
+    const importData: ImportData = {
       id: `i${i + 1}`,
       fromFileId: `f${(gi.ff[i] ?? 0) + 1}`,
       toFileId,
@@ -636,7 +690,17 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
           ? source.split('/').slice(0, 2).join('/')
           : source.split('/')[0]
         : undefined,
-    });
+    };
+
+    // Проброс флагов реэкспорта
+    if (isReExport) {
+      importData.isReExport = true;
+      if (isStarReExport) {
+        importData.isStarReExport = true;
+      }
+    }
+
+    imports.push(importData);
   }
 
   // ============================================
@@ -706,26 +770,9 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   // 10.5. Восстановление расширенных секций
   // vt / lc / ef / inj / rx / ty / tr
   // ============================================
-  // Секции хранятся в compact как массивы индексов в values[].
-  // Каждое значение в values[] — это либо объект (после
-  // не-дедуплицирующего addAny из v15.0.1), либо JSON-строка
-  // (обратная совместимость с v15.0.0, где addAny → addValue →
-  // JSON.stringify в некоторых случаях).
-  //
   // ⚠️ v15.0.2: секция `cd` (conditionals) НЕ читается здесь.
-  //    conditionals восстанавливаются как часть `TemplateData`
-  //    через `decodeSection<TemplateData>(compact.vt)`.
-  //
-  // Структура compact (см. codec-encode.ts):
-  //   vt:  number[]   — индексы из values[] для templates[]
-  //   lc:  number[]   — индексы из values[] для lifecycle[]
-  //   ef:  number[]   — индексы из values[] для effects[]
-  //   inj: number[]   — индексы из values[] для injections[]
-  //   rx:  number[]   — индексы из values[] для reactivity[]
-  //   cd:  number[]   — индексы из values[] для conditionals[]
-  //                     (НЕ читается здесь — только через templates[])
-  //   ty:  number[]   — индексы из values[] для types[]
-  //   tr:  number[]   — индексы из values[] для typeRefs[]
+  //    conditionals восстанавливаются как часть TemplateData
+  //    через decodeSection<TemplateData>(compact.vt).
   // ============================================
 
   const decodeSection = <T>(section: unknown): T[] | undefined => {
@@ -736,8 +783,6 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
       const raw = readValue(idx);
       if (raw === undefined || raw === null) continue;
 
-      // ✅ v15.0.1: values хранит объекты (после addAny),
-      // но поддерживаем и строки для обратной совместимости.
       if (typeof raw === 'string') {
         const parsed = safeJsonParse<T>(raw);
         if (parsed !== null) result.push(parsed);
@@ -755,11 +800,6 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   const reactivity = decodeSection<ReactivityEdge>(compact.rx);
   const types = decodeSection<TypeNodeData>(compact.ty);
   const typeRefs = decodeSection<TypeRefData>(compact.tr);
-
-  // ⚠️ v15.0.2: секция `cd` (conditionals) НЕ читается здесь.
-  //    Все conditionals восстанавливаются внутри `templates[]`
-  //    (см. `decodeSection<TemplateData>(compact.vt)` выше).
-  //    Верхнеуровневого `conditionals` в FullJSON больше нет.
 
   // ============================================
   // 11. Edges (только если includeEdges)
@@ -811,12 +851,8 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   // ============================================
   // 12. Сборка результата
   // ============================================
-  // ✅ v13.0.0-fix: version берётся из CODEC_VERSION.
-  // ✅ v15.0.0: восстановление templates/lifecycle/effects/injections/
-  //             reactivity/types/typeRefs.
-  // ✅ v15.0.1: type импортов без 'type'.
+  // ✅ v15.0.6: version = CODEC_VERSION ('15.0.6')
   // ✅ v15.0.2: conditionals живут ТОЛЬКО в templates[].conditionals.
-  //             Верхнеуровневого `conditionals` в FullJSON НЕТ.
   // ============================================
   const result: FullJSON = {
     version: CODEC_VERSION,

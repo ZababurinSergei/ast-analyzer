@@ -2,10 +2,32 @@
 // ============================================================
 // ЕДИНЫЙ АНАЛИЗ PIPELINE — ОРКЕСТРАТОР
 // ============================================================
-// Версия: 1.0.0
+// Версия: 2.0.0
 //
+// ИЗМЕНЕНИЯ v2.0.0 (интеграция relation-resolver):
+//   - ✅ ДОБАВЛЕН новый stage: ResolveRelationsStage
+//     Он запускается ПОСЛЕ NormalizeEntitiesStage и
+//     ДО BuildReportStage — обогащает templates
+//     кросс-файловыми связями
+//   - ✅ УБРАН EnrichReExportsStage из стандартного набора
+//     (re-exports разворачиваются внутри ParseFileStage,
+//      а не отдельным stage)
+//   - ✅ ОБНОВЛЁН стандартный набор stages:
+//       DiscoverFiles → ParseFile → NormalizeEntities →
+//       ResolveRelations → BuildReport
+//   - ✅ Версия модуля: 1.0.0 → 2.0.0
+//
+// ИЗМЕНЕНИЯ v1.0.0:
+//   - Базовая реализация оркестратора
+//   - 5 стандартных stages: DiscoverFiles, ParseFile,
+//     EnrichReExports, NormalizeEntities, BuildReport
+//   - Единые метрики (PipelineMetrics)
+//   - Единая обработка ошибок (FileError[])
+//
+// ============================================================
 // НАЗНАЧЕНИЕ
-// ------------------------------------------------------------
+// ============================================================
+//
 // Оркестратор единого pipeline анализа кода. Запускает stages
 // последовательно, собирает метрики, обрабатывает ошибки.
 //
@@ -15,8 +37,9 @@
 //   - core/entity-extractor/extract-entities.ts (Vue-ветка)
 //   - reporters/compact-reporter.ts (enrich re-exports)
 //
-// АРХИТЕКТУРА
-// ------------------------------------------------------------
+// ============================================================
+// АРХИТЕКТУРА (v2.0.0)
+// ============================================================
 //
 //                       ┌───────────────────────┐
 //                       │  AnalysisPipeline     │
@@ -27,10 +50,23 @@
 //         │                         │                         │
 //         ▼                         ▼                         ▼
 //   ┌───────────┐            ┌───────────┐            ┌───────────┐
-//   │ Stage 1   │            │ Stage 2   │            │ ...       │
-//   │ Discover  │───────────▶│ ParseFile │───────────▶│ Stage 5   │
-//   │ Files     │            │(диспетчер)│            │ Build     │
-//   └───────────┘            └─────┬─────┘            │ Report    │
+//   │ Stage 1   │            │ Stage 2   │            │ Stage 3   │
+//   │ Discover  │───────────▶│ ParseFile │───────────▶│ Normalize │
+//   │ Files     │            │(диспетчер)│            │ Entities  │
+//   └───────────┘            └─────┬─────┘            └─────┬─────┘
+//                                  │                        │
+//                                  │                        ▼
+//                                  │                  ┌───────────┐
+//                                  │                  │ Stage 4   │
+//                                  │                  │ Resolve   │
+//                                  │                  │ Relations │
+//                                  │                  └─────┬─────┘
+//                                  │                        │
+//                                  │                        ▼
+//                                  │                  ┌───────────┐
+//                                  │                  │ Stage 5   │
+//                                  │                  │ Build     │
+//                                  │                  │ Report    │
 //                                  │                  └───────────┘
 //                                  │
 //                     ┌────────────┴────────────┐
@@ -38,29 +74,20 @@
 //                     ▼                         ▼
 //              ┌────────────┐            ┌────────────┐
 //              │ TS/JS-ветка│            │ Vue-ветка  │
-//              │            │            │(ответвление)│
 //              │ parseTS    │            │ parseVue   │
-//              │   ↓        │            │   ↓        │
-//              │ extract    │            │ analyze    │
-//              │  FromAST   │            │   ↓        │
-//              │            │            │ convert    │
-//              └─────┬──────┘            └─────┬──────┘
-//                    │                         │
-//                    └────────────┬────────────┘
-//                                 │
-//                                 ▼
-//                         (возврат в общий pipeline)
+//              └────────────┘            └────────────┘
 //
+// ============================================================
 // ПРИНЦИПЫ
-// ------------------------------------------------------------
+// ============================================================
 //
 //   1. ЕДИНЫЙ ИСТОЧНИК ИСТИНЫ
 //      Каждый stage делегирует в существующий модуль:
-//        - DiscoverFilesStage → collectFilesForAnalysis
-//        - ParseFileStage     → parseFile / analyzeVueComponent
-//        - EnrichReExports    → enrichWithReExports
-//        - NormalizeEntities  → convertEntitiesToEnhanced
-//        - BuildReport        → generateCompactReport
+//        - DiscoverFilesStage    → collectFilesForAnalysis
+//        - ParseFileStage        → parseFile / analyzeVueComponent
+//        - NormalizeEntitiesStage→ convertEntitiesToEnhanced
+//        - ResolveRelationsStage → runRelationResolver
+//        - BuildReportStage      → generateCompactReport
 //
 //   2. ЯВНОЕ ВЕТВЛЕНИЕ
 //      Только ParseFileStage знает о существовании Vue.
@@ -69,13 +96,10 @@
 //
 //   3. МУТИРУЕМЫЙ КОНТЕКСТ
 //      Stage.run(ctx) принимает контекст и возвращает его
-//      (возможно, мутированный). Это позволяет легко
-//      обмениваться данными между stages без глобальных
-//      переменных.
+//      (возможно, мутированный).
 //
 //   4. ТЕСТИРУЕМОСТЬ
-//      Каждый stage — отдельный класс. Можно собрать pipeline
-//      только из нужных stages (передать в конструктор).
+//      Каждый stage — отдельный класс.
 //
 //   5. ОБРАБОТКА ОШИБОК
 //      При `continueOnError: true` (по умолчанию) ошибки
@@ -83,8 +107,9 @@
 //      продолжает работу. При `false` — pipeline падает
 //      на первой ошибке.
 //
+// ============================================================
 // ИСПОЛЬЗОВАНИЕ
-// ------------------------------------------------------------
+// ============================================================
 //
 //   // 1. Базовое использование
 //   const pipeline = new AnalysisPipeline();
@@ -113,8 +138,8 @@
 import { createContext } from './context.js';
 import { DiscoverFilesStage } from './stages/discover-files.js';
 import { ParseFileStage } from './stages/parse-file.js';
-import { EnrichReExportsStage } from './stages/enrich-re-exports.js';
 import { NormalizeEntitiesStage } from './stages/normalize-entities.js';
+import { ResolveRelationsStage } from './stages/resolve-relations.js';
 import { BuildReportStage } from './stages/build-report.js';
 import type { PipelineContext, PipelineOptions, PipelineResult, PipelineStage } from './types.js';
 
@@ -162,7 +187,7 @@ interface StageExecutionResult {
  *      await pipeline.run({ projectRoot: './b' }); // ✅ OK
  *
  * ════════════════════════════════════════════════════════════
- * STAGES ПО УМОЛЧАНИЮ
+ * STAGES ПО УМОЛЧАНИЮ (v2.0.0)
  * ════════════════════════════════════════════════════════════
  *
  *   1. DiscoverFilesStage
@@ -171,29 +196,29 @@ interface StageExecutionResult {
  *   2. ParseFileStage
  *      → диспетчер: TS/JS или Vue
  *      → parseTypeScriptFile / parseVueFile
+ *      → внутри ParseFileStage автоматически разворачиваются
+ *        re-exports (export * from)
  *
- *   3. EnrichReExportsStage
- *      → enrichWithReExports
- *
- *   4. NormalizeEntitiesStage
+ *   3. NormalizeEntitiesStage
  *      → convertEntitiesToEnhanced
  *      → ✅ ЯВНЫЙ проброс template-полей (фикс бага conditionals)
  *
+ *   4. ResolveRelationsStage (НОВЫЙ в v2.0.0)
+ *      → runRelationResolver
+ *      → Обогащает templates кросс-файловыми связями:
+ *        • refCalls (contextMenu.value?.openContextMenu())
+ *        • localBindings (const { data } = useDataState())
+ *        • exposedMethods (defineExpose)
+ *        • props (defineProps)
+ *        • models (defineModel)
+ *        • slotDefinitions (defineSlots)
+ *        • options (defineOptions)
+ *        • emits.consumers (emit → parent handler)
+ *        • dynamicComponents.resolvedComponents
+ *        • directives.definition
+ *
  *   5. BuildReportStage
  *      → generateCompactReport
- *
- * ════════════════════════════════════════════════════════════
- * ПРЕИМУЩЕСТВА ПЕРЕД СТАРОЙ АРХИТЕКТУРОЙ
- * ════════════════════════════════════════════════════════════
- *
- *   ✅ Единая точка входа для всех CLI-команд
- *   ✅ Явное ветвление для Vue (в ParseFileStage)
- *   ✅ Тестируемость (stages — отдельные классы)
- *   ✅ Расширяемость (легко добавить новый stage)
- *   ✅ Единые метрики (PipelineMetrics)
- *   ✅ Единая обработка ошибок (FileError[])
- *   ✅ Явный проброс template-полей (фикс round-trip)
- *   ✅ Возможность кастомных pipeline
  *
  * ════════════════════════════════════════════════════════════
  * ПОТОКОБЕЗОПАСНОСТЬ
@@ -205,10 +230,7 @@ interface StageExecutionResult {
  *   на одном экземпляре теоретически возможны, НО:
  *     - stages могут использовать общие ресурсы (ts-morph Project)
  *     - нет синхронизации доступа к `this.stages`
- *   Для параллельных запусков создавайте отдельные экземпляры:
- *     const p1 = new AnalysisPipeline();
- *     const p2 = new AnalysisPipeline();
- *     await Promise.all([p1.run(...), p2.run(...)]);
+ *   Для параллельных запусков создавайте отдельные экземпляры.
  */
 export class AnalysisPipeline {
   // ==========================================================
@@ -220,10 +242,6 @@ export class AnalysisPipeline {
    *
    * Задаётся в конструкторе. Может быть переопределён
    * для кастомных pipeline.
-   *
-   * ⚠️ Список НЕ копируется при каждом `run()` — если
-   * вы мутируете массив после создания pipeline, изменения
-   * применятся к следующему запуску.
    */
   private readonly stages: PipelineStage[];
 
@@ -236,8 +254,8 @@ export class AnalysisPipeline {
    *
    * @param customStages — кастомный список stages. Если не задан,
    *                       используется стандартный набор из 5 stages
-   *                       (DiscoverFiles → ParseFile → EnrichReExports
-   *                       → NormalizeEntities → BuildReport).
+   *                       (DiscoverFiles → ParseFile → NormalizeEntities
+   *                        → ResolveRelations → BuildReport).
    *
    * @example
    * ```typescript
@@ -253,15 +271,14 @@ export class AnalysisPipeline {
    *
    * // Пустой pipeline (для ручного добавления stages)
    * const pipeline = new AnalysisPipeline([]);
-   * pipeline['stages'].push(new DiscoverFilesStage()); // не рекомендуется
    * ```
    */
   constructor(customStages?: PipelineStage[]) {
     this.stages = customStages ?? [
       new DiscoverFilesStage(),
       new ParseFileStage(),
-      new EnrichReExportsStage(),
       new NormalizeEntitiesStage(),
+      new ResolveRelationsStage(), // ✅ НОВЫЙ STAGE v2.0.0
       new BuildReportStage(),
     ];
   }
@@ -301,50 +318,6 @@ export class AnalysisPipeline {
    *     enhancedMap:    Record<string, EnhancedEntityInfo>,
    *     metrics:        PipelineMetrics,
    *     errors:         FileError[],
-   *   }
-   *
-   * ════════════════════════════════════════════════════════════
-   * ПРИМЕРЫ
-   * ════════════════════════════════════════════════════════════
-   *
-   *   // 1. Компактный отчёт (по умолчанию)
-   *   const result = await pipeline.run({
-   *     projectRoot: './src',
-   *     mode: 'compact',
-   *     valuesMode: 'relations',
-   *   });
-   *   fs.writeFileSync('out.json', JSON.stringify(result.compact));
-   *
-   *   // 2. Только entities (без отчёта)
-   *   const result = await pipeline.run({
-   *     projectRoot: './src',
-   *     mode: 'entities-only',
-   *   });
-   *   console.log(Object.keys(result.entitiesMap).length);
-   *
-   *   // 3. FullJSON + CompactJSON
-   *   const result = await pipeline.run({
-   *     projectRoot: './src',
-   *     mode: 'full',
-   *   });
-   *   fs.writeFileSync('out.full.json', JSON.stringify(result.full));
-   *   fs.writeFileSync('out.json', JSON.stringify(result.compact));
-   *
-   *   // 4. Без остановки на ошибках (по умолчанию)
-   *   const result = await pipeline.run({
-   *     projectRoot: './src',
-   *     continueOnError: true,
-   *   });
-   *   console.log(`Ошибок: ${result.errors.length}`);
-   *
-   *   // 5. С остановкой на первой ошибке
-   *   try {
-   *     await pipeline.run({
-   *       projectRoot: './src',
-   *       continueOnError: false,
-   *     });
-   *   } catch (error) {
-   *     // pipeline прерван на первой ошибке файла
    *   }
    *
    * @param options — опции pipeline (все опциональны)
@@ -533,17 +506,28 @@ export class AnalysisPipeline {
    */
   private printHeader(ctx: PipelineContext): void {
     console.log('\n' + '='.repeat(70));
-    console.log('🚀 ANALYSIS PIPELINE');
+    console.log('🚀 ANALYSIS PIPELINE v2.0.0');
     console.log('='.repeat(70));
     console.log(`   Режим:        ${ctx.options.mode}`);
     console.log(`   Values mode:  ${ctx.options.valuesMode}`);
     console.log(`   Vue:          ответвление активно`);
+    console.log(`   Relations:    resolve-relations stage активен`);
     console.log(`   Project root: ${ctx.options.projectRoot}`);
     console.log(`   Recursive:    ${ctx.options.recursive}`);
     console.log(`   Include body: ${ctx.options.includeBody}`);
     console.log(`   VSCode links: ${ctx.options.includeVSCode}`);
     console.log(`   Extended:     ${ctx.options.includeExtended}`);
     console.log(`   Stages:       ${this.stages.length}`);
+    console.log('');
+
+    // Показываем список stages
+    console.log('   📋 Stages:');
+    for (let i = 0; i < this.stages.length; i++) {
+      const stage = this.stages[i];
+      if (stage) {
+        console.log(`      ${i + 1}. ${stage.name}`);
+      }
+    }
     console.log('');
   }
 
@@ -573,7 +557,24 @@ export class AnalysisPipeline {
     console.log(`   Conditionals:     ${m.totalConditionals}`);
     console.log(`   Lifecycle:        ${m.totalLifecycle}`);
     console.log(`   Reactivity:       ${m.totalReactivity}`);
-    console.log(`   Re-export chains: ${m.reExportChains}`);
+
+    // ✅ Relation-метрики (новые в v2.0.0)
+    const rel = (m as any).relationsResolved;
+    if (rel) {
+      console.log('');
+      console.log('   🔗 РАЗРЕШЁННЫЕ СВЯЗИ:');
+      console.log(`   refCalls:         ${rel.refCalls}`);
+      console.log(`   eventHandlers:    ${rel.eventHandlers}`);
+      console.log(`   composables:      ${rel.composables}`);
+      console.log(`   localBindings:    ${rel.localBindings}`);
+      console.log(`   props:            ${rel.props}`);
+      console.log(`   emits:            ${rel.emits}`);
+      console.log(`   vModels:          ${rel.vModels}`);
+      console.log(`   dynamicComponents:${rel.dynamicComponents}`);
+      console.log(`   stores:           ${rel.stores}`);
+      console.log(`   routes:           ${rel.routes}`);
+      console.log(`   directives:       ${rel.directives}`);
+    }
 
     // Тайминги stages
     const stageNames = Object.keys(m.stageTimings);
@@ -581,7 +582,6 @@ export class AnalysisPipeline {
       console.log('');
       console.log('   ⏱️  ТАЙМИНГИ STAGES:');
 
-      // Находим самый длинный stage для красивой печати
       const maxNameLen = Math.max(...stageNames.map(n => n.length));
 
       for (const [stageName, ms] of Object.entries(m.stageTimings)) {

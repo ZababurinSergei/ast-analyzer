@@ -1,49 +1,26 @@
 // src/modes/vue-analyzer/extractors/index.ts
 // ============================================
-// ЕДИНАЯ ТОЧКА ЭКСПОРТА ВСЕХ ЭКСТРАКТОРОВ
+// ЕДИНАЯ ТОЧКА ЭКСПОРТА ЭКСТРАКТОРОВ
 // ============================================
-// Версия: 2.0.0
+// Версия: 3.0.0
+//
+// ИЗМЕНЕНИЯ v3.0.0:
+//   - ✅ УДАЛЕНЫ: props.js, emits.js, expose.js
+//     Их функциональность перенесена в
+//     core/relations/vue-macros-extractor.ts
+//     (единый модуль defineExpose/defineProps/defineEmits/
+//      defineModel/defineSlots/defineOptions)
 //
 // ИЗМЕНЕНИЯ v2.0.0:
 //   - ✅ ДОБАВЛЕН экспорт './slots.js'
-//     (экстрактор defineSlots<T>() и defineSlots([...]))
 //
 // ИЗМЕНЕНИЯ v1.0.0:
-//   - Базовые экстракторы: props, emits, expose, imports,
-//     composables, functions, constants, variables, types, interfaces
+//   - Базовые экстракторы: imports, composables, functions,
+//     constants, variables, types, interfaces
 // ============================================
 
 // ============================================
-// 1. PROPS — извлечение props из Vue компонента
-// ============================================
-// Функции:
-//   - extractPropsFromSource(content)
-//   - extractPropsFromCompiledScript(compiledScript)
-//   - extractPropsFromAST(ast)
-// ============================================
-export * from './props.js';
-
-// ============================================
-// 2. EMITS — извлечение событий (defineEmits)
-// ============================================
-// Функции:
-//   - extractEmitsFromSource(content)
-//   - extractEmitsFromCompiledScript(compiledScript)
-//   - extractEmitsFromAST(ast)
-// ============================================
-export * from './emits.js';
-
-// ============================================
-// 3. EXPOSE — извлечение defineExpose
-// ============================================
-// Функции:
-//   - extractExposeFromCompiledScript(compiledScript)
-//   - extractExposeFromAST(ast)
-// ============================================
-export * from './expose.js';
-
-// ============================================
-// 4. IMPORTS — извлечение импортов
+// 1. IMPORTS — извлечение импортов
 // ============================================
 // Функции:
 //   - extractImportsFromAST(ast)
@@ -56,7 +33,7 @@ export * from './expose.js';
 export * from './imports.js';
 
 // ============================================
-// 5. COMPOSABLES — извлечение composables (use*)
+// 2. COMPOSABLES — извлечение composables (use*)
 // ============================================
 // Функции:
 //   - extractComposablesFromAST(ast)
@@ -65,7 +42,7 @@ export * from './imports.js';
 export * from './composables.js';
 
 // ============================================
-// 6. FUNCTIONS — извлечение функций
+// 3. FUNCTIONS — извлечение функций
 // ============================================
 // Функции:
 //   - extractFunctionsFromScript(content, filePath)
@@ -73,7 +50,7 @@ export * from './composables.js';
 export * from './functions.js';
 
 // ============================================
-// 7. CONSTANTS — извлечение констант
+// 4. CONSTANTS — извлечение констант
 // ============================================
 // Функции:
 //   - extractConstantsFromAST(ast)
@@ -82,7 +59,7 @@ export * from './functions.js';
 export * from './constants.js';
 
 // ============================================
-// 8. VARIABLES — извлечение переменных (let, var)
+// 5. VARIABLES — извлечение переменных (let, var)
 // ============================================
 // Функции:
 //   - extractVariablesFromAST(ast)
@@ -91,7 +68,7 @@ export * from './constants.js';
 export * from './variables.js';
 
 // ============================================
-// 9. TYPES — извлечение TypeScript типов
+// 6. TYPES — извлечение TypeScript типов
 // ============================================
 // Функции:
 //   - extractTypesFromAST(ast)
@@ -101,7 +78,7 @@ export * from './variables.js';
 export * from './types.js';
 
 // ============================================
-// 10. INTERFACES — извлечение TypeScript интерфейсов
+// 7. INTERFACES — извлечение TypeScript интерфейсов
 // ============================================
 // Функции:
 //   - extractInterfacesFromAST(ast)
@@ -110,7 +87,7 @@ export * from './types.js';
 export * from './interfaces.js';
 
 // ============================================
-// 11. ✅ НОВОЕ: SLOTS — извлечение defineSlots<T>()
+// 8. SLOTS — извлечение defineSlots<T>()
 // ============================================
 // Функции:
 //   - extractSlotsFromSource(content) — regex-парсинг
@@ -122,6 +99,6 @@ export * from './interfaces.js';
 export * from './slots.js';
 
 // ============================================
-// 12. РЕЭКСПОРТ ТИПОВ
+// 9. РЕЭКСПОРТ ТИПОВ
 // ============================================
 export type { SlotDefinition } from '../types.js';

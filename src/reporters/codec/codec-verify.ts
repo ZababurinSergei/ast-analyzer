@@ -1,8 +1,19 @@
 // src/reporters/codec/codec-verify.ts
 // ============================================
-// ПРОВЕРКИ ОБРАТИМОСТИ КОДЕКА (v12.0.0)
+// ПРОВЕРКИ ОБРАТИМОСТИ КОДЕКА (v15.0.6)
 // ============================================
-// Версия: 12.0.0
+// Версия: 15.0.6
+//
+// ИЗМЕНЕНИЯ v15.0.6 (gr.i.tf — индекс в fl.p):
+//   - ✅ ДОБАВЛЕНО: checkTfIndices — проверка, что gr.i.tf ∈ [-1, fl.p.length).
+//   - ✅ ДОБАВЛЕНО: проверка decoded.imports[].toFileId с полной семантикой:
+//       • f1, f2, ...        — ID файла, должен быть в files[]
+//       • external:fs        — внешний пакет, НЕ в files[]
+//       • unresolved:./x.json — неразрешённый локальный, НЕ в files[]
+//       • null               — пустой source
+//   - ✅ УБРАНО: проверка ff === tf (самоимпорт — валидный случай
+//     в barrel-файлах и side-effect импортах).
+//   - ✅ ОБНОВЛЕНО: вызов checkTfIndices в verifyRoundTripBoth.
 //
 // ИЗМЕНЕНИЯ v12.0.0:
 //   - ✅ Обновлены проверки под columnar-структуру
@@ -343,6 +354,14 @@ export function verifyRoundTripBoth(full: FullJSON, compact: CompactJSON): Rever
     report.spotChecks.functionsFlags = checkFunctionsFlags(decoded, full);
     report.spotChecks.externalCalls = checkExternalCalls(decoded, full);
     report.spotChecks.modulesPath = checkModulesPath(decoded, full);
+
+    // ✅ v15.0.6: проверка, что gr.i.tf — валидный индекс в fl.p
+    //              и что toFileId имеет корректный формат
+    //              (f*, external:*, unresolved:* или null).
+    const tfCheck = checkTfIndices(compact, decoded);
+    if (!tfCheck.ok) {
+      report.spotChecks.importsToFileId = tfCheck;
+    }
   } catch (err) {
     report.spotChecks.callsType = makeErrorLevel(err);
   }
@@ -467,6 +486,112 @@ function checkModulesPath(decoded: FullJSON, full: FullJSON): LevelResult {
     if (dm.path !== fm.path) {
       diffs.push({ path: `$.modules[${i}].path`, a: dm.path, b: fm.path });
     }
+  }
+
+  return makeLevel(diffs);
+}
+
+// ============================================
+// ✅ v15.0.6: ПРОВЕРКА gr.i.tf И toFileId
+// ============================================
+
+/**
+ * Проверяет:
+ *   1. `gr.i.tf[i]` ∈ [-1, fl.p.length) — валидный индекс в fl.p
+ *      или -1 (внешний/неразрешённый).
+ *
+ *   2. `decoded.imports[].toFileId` имеет корректный формат:
+ *      • f1, f2, ...          — ID файла, должен быть в files[]
+ *      • external:fs          — внешний пакет, НЕ в files[]
+ *      • unresolved:./x.json  — неразрешённый локальный, НЕ в files[]
+ *      • null                 — пустой source
+ *
+ *   ⚠️ v15.0.6: НЕ проверяем `ff === tf` — самоимпорт в barrel-файлах
+ *   (`export * from './index'` внутри index.ts) и в side-effect импортах
+ *   (`import './styles.css'`) — валидный случай, а не нарушение.
+ *
+ *   ⚠️ v15.0.6: `external:*` и `unresolved:*` — легитимные маркеры,
+ *   они НЕ должны искаться в files[].
+ *
+ * @param compact — сжатый JSON
+ * @param decoded — результат decode(compact)
+ */
+function checkTfIndices(compact: CompactJSON, decoded: FullJSON): LevelResult {
+  const diffs: RoundTripDiff[] = [];
+
+  const flPLength = compact.fl?.p?.length ?? 0;
+  const tf = compact.gr?.i?.tf ?? [];
+
+  // ============================================
+  // 1. Проверяем gr.i.tf ∈ [-1, fl.p.length)
+  // ============================================
+  for (let i = 0; i < tf.length; i++) {
+    const tfVal = tf[i]!;
+
+    if (tfVal !== -1 && (tfVal < 0 || tfVal >= flPLength)) {
+      diffs.push({
+        path: `$.gr.i.tf[${i}]`,
+        a: tfVal,
+        b: `out of range [0, ${flPLength})`,
+      });
+      if (diffs.length >= 20) break;
+    }
+
+    // ✅ v15.0.6: ff === tf — НЕ ошибка (самоимпорт в barrel-файлах
+    //   и side-effect импортах). Не проверяем.
+  }
+
+  // ============================================
+  // 2. Проверяем decoded.imports[].toFileId
+  // ============================================
+  //
+  // Полная семантика toFileId:
+  //   • f1, f2, ...         — ID файла, ОБЯЗАН быть в files[]
+  //   • external:fs         — внешний пакет, НЕ в files[]
+  //   • unresolved:./x.json — неразрешённый локальный, НЕ в files[]
+  //   • null                — пустой source
+  //
+  // Проверяем ТОЛЬКО f* против files[].
+  // ============================================
+  const fileIds = new Set(decoded.files.map(f => f.id));
+
+  for (let i = 0; i < decoded.imports.length; i++) {
+    const imp = decoded.imports[i]!;
+    const toFileId = imp.toFileId;
+
+    // null — валидно (пустой source)
+    if (!toFileId) continue;
+
+    // f1, f2, ... — должен быть в files[]
+    if (/^f\d+$/.test(toFileId)) {
+      if (!fileIds.has(toFileId)) {
+        diffs.push({
+          path: `$.imports[${i}].toFileId`,
+          a: toFileId,
+          b: 'not found in $.files',
+        });
+        if (diffs.length >= 20) break;
+      }
+      continue;
+    }
+
+    // external:* — легитимный маркер, не проверяем в files[]
+    if (toFileId.startsWith('external:')) {
+      continue;
+    }
+
+    // unresolved:* — легитимный маркер, не проверяем в files[]
+    if (toFileId.startsWith('unresolved:')) {
+      continue;
+    }
+
+    // Прочие значения — неожиданный префикс
+    diffs.push({
+      path: `$.imports[${i}].toFileId`,
+      a: toFileId,
+      b: 'invalid prefix (expected f*, external:*, unresolved:* or null)',
+    });
+    if (diffs.length >= 20) break;
   }
 
   return makeLevel(diffs);

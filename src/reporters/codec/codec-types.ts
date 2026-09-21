@@ -1,8 +1,21 @@
 // src/reporters/codec/codec-types.ts
 // ============================================
-// ТИПЫ ДЛЯ КОДЕКА (v15.0.2)
+// ТИПЫ ДЛЯ КОДЕКА (v15.0.5)
 // ============================================
-// Версия: 15.0.2
+// Версия: 15.0.5
+//
+// ИЗМЕНЕНИЯ v15.0.5 (gr.i.tf — индекс в fl.p):
+//   - ✅ ИЗМЕНЕНО: `gr.i.tf` теперь содержит ИНДЕКС В `fl.p` (файлы),
+//     а не индекс в `strs` (source-строка). -1 = внешний/неразрешённый.
+//   - ✅ `gr.i.s` (source) — БЕЗ ИЗМЕНЕНИЙ, остаётся индексом в `strs`.
+//   - ✅ `ImportData.toFileId` восстанавливается из `gr.i.tf`.
+//   - ✅ CODEC_VERSION = '15.0.5'.
+//
+// ИЗМЕНЕНИЯ v15.0.4 (проброс реэкспортов через imports):
+//   - ✅ ДОБАВЛЕНО: `ImportData.isReExport?: boolean`
+//   - ✅ ДОБАВЛЕНО: `ImportData.isStarReExport?: boolean`
+//     Это позволяет фронту строить полный граф файловых связей,
+//     включая `export { X } from './foo'` и `export * from './foo'`.
 //
 // ИЗМЕНЕНИЯ v15.0.2 (устранение дублирования conditionals):
 //   - ✅ УДАЛЕНО: поле `FullJSON.conditionals`.
@@ -26,8 +39,6 @@
 //     Верхнеуровневое поле удалено полностью. Все потребители
 //     (`codec-encode.ts`, `codec-decode.ts`, `verify-*.ts`)
 //     обновлены для работы через `templates[]`.
-//
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '15.0.2'.
 //
 // ИЗМЕНЕНИЯ v15.0.1 (fix imports[].type):
 //   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '15.0.1'.
@@ -69,7 +80,7 @@
 // ============================================
 
 // ============================================================
-// ✅ v15.0.2: ЕДИНАЯ ВЕРСИЯ CODEC
+// ✅ v15.0.5: ЕДИНАЯ ВЕРСИЯ CODEC
 // ============================================================
 // Используется в:
 //   - compact-reporter.ts (version в full.json)
@@ -80,7 +91,7 @@
 // full.json и compact.json.
 // ============================================================
 
-export const CODEC_VERSION = '15.0.2';
+export const CODEC_VERSION = '15.0.5';
 
 // ============================================================
 // РЕЭКСПОРТ TEMPLATE-ТИПОВ ИЗ src/types.ts
@@ -88,17 +99,17 @@ export const CODEC_VERSION = '15.0.2';
 
 export type {
   /** Обработчик события из шаблона Vue (type alias на vue-analyzer) */
-  TemplateEventHandler,
+      TemplateEventHandler,
   /** Динамический компонент (type alias на vue-analyzer) */
-  TemplateDynamicComponent,
+      TemplateDynamicComponent,
   /** Template ref (type alias на vue-analyzer) */
-  TemplateRefUsage,
+      TemplateRefUsage,
   /** CSS-переменная из <style> (type alias на vue-analyzer) */
-  TemplateCssVariable,
+      TemplateCssVariable,
   /** :deep() селектор (type alias на vue-analyzer) */
-  TemplateDeepSelector,
+      TemplateDeepSelector,
   /** Условный рендеринг (расширяет vue-analyzer + id?/fileId?) */
-  TemplateConditional,
+      TemplateConditional,
 } from '../../types.js';
 
 // Импортируем их локально, чтобы использовать в интерфейсах ниже
@@ -338,16 +349,35 @@ export interface ExportData {
 //   import type Foo from '...'      → type: 'default',   isTypeOnly: true
 //   import * as ns from '...'       → type: 'namespace', isTypeOnly: false
 //   import type * as ns from '...'  → type: 'namespace', isTypeOnly: true
+//
+// ✅ v15.0.4: добавлены флаги реэкспорта.
+//
+//   export { X } from './foo'       → type: 'named',     isReExport: true
+//   export { default } from './foo' → type: 'default',   isReExport: true
+//   export * from './foo'           → type: 'namespace', isReExport: true,
+//                                     isStarReExport: true
+//   export * as ns from './foo'     → type: 'namespace', isReExport: true,
+//                                     isStarReExport: true
 // ============================================
 
 export interface ImportData {
   id: string;
   fromFileId: string;
+
+  /**
+   * ID файла-цели (f1, f2, ...).
+   * null — если импорт внешний (node_modules) или не разрешён.
+   *
+   * ✅ v15.0.5: восстанавливается из `gr.i.tf` (индекс в `fl.p`),
+   * а не из `gr.i.s` (source-строка).
+   */
   toFileId: string | null;
+
   source: string;
   importedName: string;
   localName: string;
   line: number;
+
   /** ✅ v15.0.1: вид импорта — БЕЗ 'type' */
   type: 'named' | 'default' | 'namespace';
   isDefault: boolean;
@@ -355,6 +385,33 @@ export interface ImportData {
   isTypeOnly: boolean;
   isExternal: boolean;
   packageName?: string;
+
+  // ==========================================
+  // ✅ НОВОЕ v15.0.4: признаки реэкспорта
+  // ==========================================
+
+  /**
+   * Является ли этот импорт частью конструкции `export ... from`.
+   *
+   * Используется фронтом для построения полного графа связей:
+   * цепочка `AiDataTable.vue ← ui/index.ts ← src/index.ts`
+   * строится в том числе по рёбрам от реэкспортов.
+   *
+   * Примеры:
+   *   export { X } from './foo'   → isReExport: true
+   *   export * from './foo'       → isReExport: true, isStarReExport: true
+   *   export * as ns from './foo' → isReExport: true, isStarReExport: true
+   *   import { X } from './foo'   → undefined (обычный импорт)
+   */
+  isReExport?: boolean;
+
+  /**
+   * Является ли `export * from './foo'` или `export * as ns from './foo'`.
+   *
+   * Только для `isReExport === true`. Используется фронтом для
+   * визуального выделения star-реэкспортов (синий цвет в UI).
+   */
+  isStarReExport?: boolean;
 }
 
 // ============================================
@@ -430,14 +487,14 @@ export interface TemplateData {
 // ============================================
 
 export type LifecycleHookName =
-  | 'onMounted'
-  | 'onUnmounted'
-  | 'onScopeDispose'
-  | 'onActivated'
-  | 'onDeactivated'
-  | 'watch'
-  | 'watchEffect'
-  | 'onErrorCaptured';
+    | 'onMounted'
+    | 'onUnmounted'
+    | 'onScopeDispose'
+    | 'onActivated'
+    | 'onDeactivated'
+    | 'watch'
+    | 'watchEffect'
+    | 'onErrorCaptured';
 
 export interface LifecycleHook {
   id: string;
@@ -484,7 +541,13 @@ export interface InjectionEdge {
 // ============================================
 
 export type ReactivityKind =
-  'computed' | 'watch' | 'watchEffect' | 'ref' | 'reactive' | 'shallowRef' | 'readonly';
+    | 'computed'
+    | 'watch'
+    | 'watchEffect'
+    | 'ref'
+    | 'reactive'
+    | 'shallowRef'
+    | 'readonly';
 
 export interface ReactivityEdge {
   id: string;
@@ -556,8 +619,21 @@ export interface EdgeData {
 }
 
 // ============================================================
-// СЖАТЫЙ JSON (v15.0.2 — COLUMNAR + RLE + РАСШИРЕННЫЕ СЕКЦИИ)
+// СЖАТЫЙ JSON (v15.0.5 — COLUMNAR + RLE + РАСШИРЕННЫЕ СЕКЦИИ)
 // ============================================================
+//
+// ✅ v15.0.5: `gr.i.tf` — ИНДЕКС В `fl.p` (файлы), а не в `strs`.
+//    -1 = внешний/неразрешённый импорт.
+//
+//    `gr.i.s` — ПО-ПРЕЖНЕМУ индекс в `strs` (source-строка).
+//    Не удалять — нужен для UI и диагностики.
+//
+//    combinedTy (`gr.i.ty`) — биты:
+//      0-1 : typeCode (0=named, 1=default, 2=namespace)
+//      2   : isExternal
+//      3   : isTypeOnly
+//      4   : isReExport
+//      5   : isStarReExport
 //
 // ✅ v15.0.2: расширенные секции vt/lc/ef/inj/rx/cd/ty/tr хранятся
 //    как массивы индексов в values[]. Каждый элемент values[i] — это
@@ -566,12 +642,6 @@ export interface EdgeData {
 //    Секция `cd` собирается из `templates[].conditionals` (см.
 //    codec-encode.ts). Верхнеуровневого `conditionals` в FullJSON
 //    больше нет.
-//
-// ✅ v15.0.1: combinedTy в gr.i использует бит 8 для isTypeOnly.
-//    Биты:
-//      0-1 : typeCode (0=named, 1=default, 2=namespace)
-//      2   : isExternal
-//      3   : isTypeOnly
 //
 // ✅ v13.0.2-fix: encodeStr() не токенизирует строки с разделителями
 //    и двоеточием. decode() строит modules[].fileIds через fl.m.
@@ -686,19 +756,28 @@ export interface CompactJSON {
     /**
      * Imports: columnar.
      *
-     * ✅ v15.0.0: ty — combinedTy с битами:
+     * ✅ v15.0.5: `tf` — ИНДЕКС В `fl.p` (файлы), а не в `strs`.
+     *   -1 = внешний/неразрешённый импорт.
+     *   Ранее (v15.0.4): `tf` — индекс в `strs` (source-строка).
+     *
+     * ✅ v15.0.5: `s` — ПО-ПРЕЖНЕМУ индекс в `strs` (source-строка).
+     *   Не удалять — нужен для UI и диагностики.
+     *
+     * combinedTy (`ty`) — биты:
      *   0-1: typeCode (0=named, 1=default, 2=namespace)
      *   2:   isExternal
      *   3:   isTypeOnly
+     *   4:   isReExport
+     *   5:   isStarReExport
      */
     i: {
-      ff: number[]; // fromFileIdx
-      tf: number[]; // toFileIdIdx
-      s: number[]; // sourceIdx
-      im: number[]; // importedNameIdx
-      ln: number[]; // localNameIdx
+      ff: number[]; // fromFileIdx (индекс в fl.p)
+      tf: number[]; // ✅ v15.0.5: toFileIdx (индекс в fl.p), -1 = внешний
+      s: number[]; // sourceIdx (индекс в strs) — БЕЗ ИЗМЕНЕНИЙ
+      im: number[]; // importedNameIdx (индекс в strs)
+      ln: number[]; // localNameIdx (индекс в strs)
       l: number[]; // line
-      ty: number[]; // combinedTy (см. комментарий выше)
+      ty: number[]; // combinedTy
     };
 
     /** Calls: columnar */
@@ -760,7 +839,7 @@ export interface CompactJSON {
 }
 
 // ============================================================
-// ЛЕГЕНДА (v15.0.2)
+// ЛЕГЕНДА (v15.0.5)
 // ============================================================
 
 /**
@@ -782,7 +861,7 @@ export interface CodesDict {
 /**
  * Легенда — все словари и схемы, необходимые для декодирования.
  *
- * ✅ v15.0.2: версия синхронизирована с CODEC_VERSION.
+ * ✅ v15.0.5: версия синхронизирована с CODEC_VERSION.
  */
 export interface CodecLegend {
   /** Расшифровка строковых кодов */
@@ -861,6 +940,16 @@ export interface GenerateReportOptions {
    * Default: 'relations'.
    */
   valuesMode?: 'full' | 'relations';
+
+  // ==========================================
+  // ✅ v15.0.5: проброс в BuildReportStage
+  // ==========================================
+
+  /** Включать тела функций в отчёт */
+  includeBody?: boolean;
+
+  /** Включать VSCode-ссылки */
+  includeVSCode?: boolean;
 }
 
 // ============================================

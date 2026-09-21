@@ -2,37 +2,32 @@
 // ============================================================
 // ТИПЫ PIPELINE
 // ============================================================
-// Версия: 1.2.0
+// Версия: 2.0.0
+//
+// ИЗМЕНЕНИЯ v2.0.0 (интеграция relation-resolver):
+//   - ✅ ДОБАВЛЕНО: RelationsResolvedMetrics — метрики
+//     разрешённых связей (refCalls, eventHandlers, composables, ...)
+//   - ✅ ДОБАВЛЕНО: TemplateRecord — тип для обогащённых templates
+//     с relation-полями (refCalls, localBindings, exposedMethods, ...)
+//   - ✅ ДОБАВЛЕНО: поле relationsResolved в PipelineMetrics
+//   - ✅ ДОБАВЛЕНО: поле relationsStats в PipelineResult
+//   - ✅ ДОБАВЛЕНО: ResolvedPipelineOptions вынесен в отдельный тип
+//   - ✅ ОБНОВЛЕНО: версия типа 1.2.0 → 2.0.0
 //
 // ИЗМЕНЕНИЯ v1.2.0:
-//   - ✅ ДОБАВЛЕНО в PipelineOptions:
-//       • paths          — первоклассное поле для массива путей
-//       • inputPaths     — синоним (обратная совместимость)
-//       • outputPath     — путь для сохранения отчёта
-//       • saveFullJson   — сохранять .full.json
-//       • fullJsonSuffix — суффикс .full.json
-//       • saveEdges      — сохранять edges
-//       • edgesJsonSuffix— суффикс edges
-//   - ✅ РАСШИРЕНО PipelineMetrics:
-//       • inputPathsCount, inputDirectories, inputFiles, inputMissing
-//       • filesNormalized, filesWithConditionals, filesWithLifecycle,
-//         filesWithReactivity
-//       • reExportFiles, reExportMaxDepth, reExportSkipped
-//       • totalEffects, totalInjections, totalTemplateRefs,
-//         totalClasses, totalCalls, totalReExports, totalTemplates,
-//         totalModules, totalFiles
-//       • compactSize, fullSize, edgesSize, compressionRatio,
-//         valuesCount, compactPath, fullPath, edgesPath
+//   - ✅ ДОБАВЛЕНО в PipelineOptions: paths, inputPaths,
+//     outputPath, saveFullJson, fullJsonSuffix, saveEdges,
+//     edgesJsonSuffix
+//   - ✅ РАСШИРЕНО PipelineMetrics
 //   - ✅ РАСШИРЕНО PipelineResult: compactPath, fullPath, edgesPath
 //
 // ИЗМЕНЕНИЯ v1.1.0:
-//   - ✅ ДОБАВЛЕНО: PipelineOptions.paths — первоклассное поле.
-//   - ✅ ПРИОРИТЕТ: paths > inputPaths > projectRoot > cwd.
+//   - ✅ ДОБАВЛЕНО: PipelineOptions.paths
 // ============================================================
 
 import type { EntitiesResult, EnhancedEntityInfo } from '../types.js';
-
 import type { FullJSON, CompactJSON } from '../reporters/codec/codec-types.js';
+
 // ============================================================
 // РЕЖИМЫ
 // ============================================================
@@ -50,14 +45,10 @@ export interface PipelineOptions {
   // ──────────────────────────────────────────────────
 
   /**
-   * ✅ НОВОЕ v1.1.0: явный список путей для анализа
+   * Явный список путей для анализа
    * (файлы и/или директории).
    *
    * ПРИОРИТЕТ: paths > inputPaths > projectRoot > cwd
-   *
-   * ПРИМЕРЫ:
-   *   paths: ['./src', './tests/index.ts']
-   *   paths: ['/abs/path/to/project']
    */
   paths?: string[];
 
@@ -69,11 +60,6 @@ export interface PipelineOptions {
 
   /**
    * Корень проекта. Используется, если paths/inputPaths не заданы.
-   *
-   * Дополнительно используется для:
-   *   - резолвинга tsconfig.json (re-export resolver)
-   *   - разрешения алиасов (@/, ~/, #/)
-   *   - относительных путей в отчёте
    */
   projectRoot?: string;
 
@@ -114,29 +100,29 @@ export interface PipelineOptions {
   // ──────────────────────────────────────────────────
 
   /**
-   * ✅ НОВОЕ v1.2.0: путь для сохранения сжатого отчёта.
+   * Путь для сохранения сжатого отчёта.
    * Если задан — BuildReportStage сохранит compact на диск.
    */
   outputPath?: string;
 
   /**
-   * ✅ НОВОЕ v1.2.0: сохранять полный JSON рядом с compact.
+   * Сохранять полный JSON рядом с compact.
    */
   saveFullJson?: boolean;
 
   /**
-   * ✅ НОВОЕ v1.2.0: суффикс для полного JSON.
+   * Суффикс для полного JSON.
    * По умолчанию '.full.json'.
    */
   fullJsonSuffix?: string;
 
   /**
-   * ✅ НОВОЕ v1.2.0: сохранять edges в отдельный файл.
+   * Сохранять edges в отдельный файл.
    */
   saveEdges?: boolean;
 
   /**
-   * ✅ НОВОЕ v1.2.0: суффикс для edges JSON.
+   * Суффикс для edges JSON.
    * По умолчанию '.edges.json'.
    */
   edgesJsonSuffix?: string;
@@ -189,7 +175,118 @@ export interface FileError {
 }
 
 // ============================================================
-// МЕТРИКИ (расширенные)
+// ✅ НОВОЕ v2.0.0: TEMPLATE RECORD
+// ============================================================
+// Тип для обогащённого templates-объекта, который проходит
+// через ResolveRelationsStage.
+//
+// Базовые поля берутся из EnhancedEntityInfo (templateXxx),
+// relation-поля добавляются в ResolveRelationsStage.
+// ============================================================
+
+export interface TemplateRecord {
+  // ──────────────────────────────────────────────────
+  // БАЗОВЫЕ ПОЛЯ (из NormalizeEntitiesStage)
+  // ──────────────────────────────────────────────────
+
+  fileId: string;
+  moduleId: string;
+  reactivityDeps: string[];
+  eventHandlers: any[];
+  dynamicComponents: any[];
+  directives: any[];
+  usedComponents: any[];
+  templateRefs: any[];
+  cssVariables: any[];
+  deepSelectors: any[];
+  slots: any[];
+  complexity: number;
+  conditionals: any[];
+
+  // ──────────────────────────────────────────────────
+  // ✅ RELATION-ПОЛЯ (из ResolveRelationsStage)
+  // ──────────────────────────────────────────────────
+
+  /** Emits с consumers (emit → parent handler) */
+  emits?: any[];
+
+  /** Разрешённые ref-вызовы (contextMenu.value?.openContextMenu()) */
+  refCalls?: any[];
+
+  /** Local bindings (const { data } = useDataState()) */
+  localBindings?: any[];
+
+  /** defineExpose методы */
+  exposedMethods?: any[];
+
+  /** defineProps */
+  props?: any[];
+
+  /** defineModel */
+  models?: any[];
+
+  /** defineSlots */
+  slotDefinitions?: any[];
+
+  /** defineOptions */
+  options?: any;
+
+  /** Prop bindings (:title="props.title") */
+  propBindings?: any[];
+
+  /** v-model bindings */
+  vModels?: any[];
+
+  /** Инъекции provide/inject */
+  templateInjections?: any[];
+}
+
+// ============================================================
+// ✅ НОВОЕ v2.0.0: МЕТРИКИ RELATION-RESOLVER
+// ============================================================
+
+/**
+ * Метрики разрешённых кросс-файловых связей.
+ *
+ * Заполняется в ResolveRelationsStage.
+ */
+export interface RelationsResolvedMetrics {
+  /** Количество разрешённых refCall → exposedMethod */
+  refCalls: number;
+
+  /** Количество разрешённых @click → function.id */
+  eventHandlers: number;
+
+  /** Количество найденных composables */
+  composables: number;
+
+  /** Количество localBindings (деструктуризаций composables) */
+  localBindings: number;
+
+  /** Количество разрешённых props → source */
+  props: number;
+
+  /** Количество разрешённых emit → parent handler */
+  emits: number;
+
+  /** Количество разрешённых v-model → model + localVar */
+  vModels: number;
+
+  /** Количество разрешённых <component :is> → import/map */
+  dynamicComponents: number;
+
+  /** Количество разрешённых Pinia stores */
+  stores: number;
+
+  /** Количество разрешённых router.push → route */
+  routes: number;
+
+  /** Количество разрешённых v-my-directive → import/binding */
+  directives: number;
+}
+
+// ============================================================
+// МЕТРИКИ PIPELINE
 // ============================================================
 
 export interface PipelineMetrics {
@@ -257,6 +354,16 @@ export interface PipelineMetrics {
   filesWithReactivity: number;
 
   // ──────────────────────────────────────────────────
+  // ✅ НОВОЕ v2.0.0: RELATION-МЕТРИКИ
+  // ──────────────────────────────────────────────────
+
+  /**
+   * Количество разрешённых кросс-файловых связей.
+   * Заполняется в ResolveRelationsStage.
+   */
+  relationsResolved?: RelationsResolvedMetrics;
+
+  // ──────────────────────────────────────────────────
   // РАЗМЕРЫ / СЖАТИЕ
   // ──────────────────────────────────────────────────
 
@@ -291,6 +398,12 @@ export interface PipelineResult {
   compactPath?: string;
   fullPath?: string;
   edgesPath?: string;
+
+  /**
+   * ✅ НОВОЕ v2.0.0: метрики разрешённых связей
+   * (копия из metrics.relationsResolved для удобства).
+   */
+  relationsStats?: RelationsResolvedMetrics;
 }
 
 // ============================================================

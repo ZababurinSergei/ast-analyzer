@@ -2,7 +2,13 @@
 // ============================================
 // ЕДИНАЯ ТОЧКА ВХОДА ДЛЯ CODEC
 // ============================================
-// Версия: 11.0.0
+// Версия: 15.0.6
+//
+// ИЗМЕНЕНИЯ v15.0.6 (gr.i.tf — индекс в fl.p):
+//   - ✅ ОБНОВЛЕНО: CODEC_MODULE_VERSION = '15.0.6'
+//   - ✅ Синхронизировано с codec-encode.ts (v15.0.6),
+//     codec-decode.ts (v15.0.6), codec-legend.ts (v15.0.6)
+//     и codec-types.ts (CODEC_VERSION = '15.0.5').
 //
 // ИЗМЕНЕНИЯ v11.0.0 (компактнее):
 //   - ✅ ДОБАВЛЕН реэкспорт `decodeFlagsFromNumber` из './codec-decode.js'
@@ -114,12 +120,10 @@ export type { RoundTripDiff, LevelResult, ReversibilityReport } from './codec-ve
 // ============================================
 // Единая точка сборки legend для compact.json.
 //
-// Содержит 5 секций:
-//   • how_to_read  — пошаговая инструкция для ИИ
-//   — flags        — расшифровка битовых флагов
-//   — codes        — расшифровка строковых кодов типов
-//   — dictionaries — словари значений
-//   — schemas      — позиционные схемы кортежей
+// Содержит 3 секции:
+//   • codes        — расшифровка строковых кодов типов
+//   • flags        — расшифровка битовых флагов
+//   • schemas      — позиционные схемы кортежей
 // ============================================
 
 export {
@@ -307,10 +311,10 @@ export type {
 /**
  * Версия модуля codec.
  *
- * ✅ v11.0.0: синхронизирована с codec-legend.ts,
+ * ✅ v15.0.6: синхронизирована с codec-legend.ts,
  *    codec-encode.ts, codec-decode.ts и compact-reporter.ts.
  */
-export const CODEC_MODULE_VERSION = '13.0.2';
+export const CODEC_MODULE_VERSION = '15.0.6';
 
 /**
  * Имя модуля codec.

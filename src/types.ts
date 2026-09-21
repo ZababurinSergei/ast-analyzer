@@ -37,7 +37,7 @@ export interface ImportInfo {
   loc: Location | null;
   isTypeOnly?: boolean;
 
-  // ✅ НОВЫЕ ПОЛЯ для полного графа импортов/экспортов
+  // ✅ Поля для полного графа импортов/экспортов
   /** Номер строки импорта (из loc.start.line) */
   line?: number;
   /** ID файла-цели (или `external:xxx`, `unresolved:xxx`) */
@@ -52,6 +52,12 @@ export interface ImportInfo {
     local: string;
     type: string;
   }[];
+
+  // ✅ НОВОЕ v15.0.0: признак реэкспорта
+  /** Является ли запись реэкспортом (`export { X } from './foo'` или `export * from './foo'`) */
+  isReExport?: boolean;
+  /** Является ли `export * from './foo'` (без явного имени) */
+  isStarReExport?: boolean;
 }
 
 export interface ExportInfo {
@@ -1274,7 +1280,8 @@ export type CLIArgs =
   | MinifyFolderCLIArgs
   | PromptPackCLIArgs
   | SplitModuleCLIArgs
-  | ImpactCLIArgs  | DeadCodeCLIArgs
+  | ImpactCLIArgs
+  | DeadCodeCLIArgs
   | HybridReportCLIArgs
   | SemanticCLIArgs
   | VerifyCLIArgs
