@@ -1,31 +1,41 @@
 // src/reporters/codec/codec-legend.ts
 // ============================================
-// ЛЕГЕНДА КОДЕКА (v13.0.0)
+// ЛЕГЕНДА КОДЕКА
 // ============================================
-// Версия: 13.0.0
+// Версия: 15.0.2
+//
+// ИЗМЕНЕНИЯ v15.0.2:
+//   - ✅ УБРАНО упоминание '@deprecated' и обратной совместимости.
+//   - ✅ ОБНОВЛЕНА версия: 15.0.1 → 15.0.2.
+//   - ✅ ЯВНО указано, что conditionals живут ТОЛЬКО в
+//     `templates[].conditionals`. Секция `cd` в compact.json
+//     по-прежнему существует (схема `cd` сохранена) и кодируется
+//     из `templates[].conditionals`.
+//
+// ИЗМЕНЕНИЯ v15.0.1:
+//   - ✅ УБРАН код 'to' из legend.codes.import.
+//     Причина: поле ImportData.type больше НЕ содержит 'type' —
+//     isTypeOnly вынесен в отдельный флаг. Семантика:
+//       type        — 'named' | 'default' | 'namespace'
+//       isTypeOnly  — boolean
 //
 // ИЗМЕНЕНИЯ v13.0.0:
-//   - ✅ ДОБАВЛЕНЫ схемы mi и fl в SCHEMAS:
-//       mi: ['n', 'f'] — модули, f = [startFileIdx, fileCount][]
-//       fl: ['p', 'm'] — файлы, m = RLE [moduleIdx, count][]
-//     Без этого verify-roundtrip.ts не мог проверить длину схем
-//     для mi/fl и падал на несоответствии.
-//   - ✅ ОБНОВЛЁН комментарий к mi.f: теперь это пары
-//     [startFileIdx, fileCount], а НЕ RLE(moduleIdx).
-//     Это ключевое исправление round-trip: decode(compact) теперь
-//     корректно восстанавливает modules[].fileIds.
+//   - ✅ ДОБАВЛЕНЫ схемы mi и fl в SCHEMAS.
+//   - ✅ УТОЧНЕН комментарий к mi.f: пары [startFileIdx, fileCount].
 //
 // ИЗМЕНЕНИЯ v12.0.0 (структурная оптимизация):
-//   - ✅ УДАЛЕНЫ how_to_read и flags.examples (справка)
-//   - ✅ flags.bits — простой словарь { "1": "isAsync", ... }
-//   - ✅ schemas — обновлены под columnar-структуру
-//   - ✅ УДАЛЕНО поле dictionaries (словари переехали в корень compact.json)
+//   - ✅ УДАЛЕНЫ how_to_read и flags.examples.
+//   - ✅ flags.bits — простой словарь { "1": "isAsync", ... }.
+//   - ✅ schemas — обновлены под columnar-структуру.
+//   - ✅ УДАЛЕНО поле dictionaries (словари переехали в корень
+//     compact.json).
 //
 // ИЗМЕНЕНИЯ v10.4.1:
-//   - Удалены 5 полей description
+//   - Удалены 5 полей description.
 //
 // ИЗМЕНЕНИЯ v10.4.0:
-//   - Перестроена структура legend: how_to_read, flags, codes, dictionaries, schemas
+//   - Перестроена структура legend: how_to_read, flags, codes,
+//     dictionaries, schemas.
 // ============================================
 
 import type { CodecLegend, CodesDict } from './codec-types.js';
@@ -33,7 +43,6 @@ import type { CodecLegend, CodesDict } from './codec-types.js';
 import {
   FLAG_MAP,
   EXPORT_TYPES,
-  IMPORT_TYPES,
   CALL_TYPES,
   RE_EXPORT_TYPES,
   LIFECYCLE_TYPES,
@@ -49,17 +58,9 @@ import {
 // SCHEMAS — ПОЗИЦИОННЫЕ СХЕМЫ КОРТЕЖЕЙ
 // ============================================
 //
-// ✅ v12.0.0: схемы отражают columnar-структуру.
+// Схемы отражают columnar-структуру compact.json.
 // Каждое имя в массиве — это имя поля-массива внутри
 // соответствующего columnar-объекта.
-//
-// ✅ v13.0.0: ДОБАВЛЕНЫ mi и fl.
-//   mi: ['n', 'f'] — модули
-//       n: string[]           — имена модулей
-//       f: [startFileIdx, fileCount][] — пары (НЕ RLE!)
-//   fl: ['p', 'm'] — файлы
-//       p: string[]           — пути файлов
-//       m: [moduleIdx, count][] — RLE от moduleIdx
 //
 // Пример:
 //   schemas.fns = ['n', 'm', 'f', 'l', 'fl', 'p', 'rt']
@@ -71,11 +72,16 @@ import {
 //     fns.fl[0] — flags
 //     fns.p[0]  — paramsIdx
 //     fns.rt[0] — returnTypeIdx
+//
+// ⚠️ ВАЖНО (v15.0.2): схема `cd` сохранена, потому что секция `cd`
+// по-прежнему кодируется в compact.json. НО в FullJSON верхнеуровневого
+// `conditionals` больше нет — все conditionals живут ТОЛЬКО в
+// `templates[].conditionals`, и `cd` собирается из них при encode.
 // ============================================
 
 export const SCHEMAS: CodecLegend['schemas'] = {
   // ==========================================
-  // ✅ v13.0.0: mi — модули: 2 параллельных массива
+  // mi — модули: 2 параллельных массива
   // ==========================================
   // f: [startFileIdx, fileCount][] — пары.
   // ⚠️ НЕ RLE: раньше здесь был RLE от moduleIdx, что ломало
@@ -85,7 +91,7 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   mi: ['n', 'f'],
 
   // ==========================================
-  // ✅ v13.0.0: fl — файлы: 2 параллельных массива
+  // fl — файлы: 2 параллельных массива
   // ==========================================
   // m: [moduleIdx, count][] — RLE от moduleIdx.
   // Здесь RLE корректен: fl.m восстанавливается побайтово,
@@ -130,6 +136,14 @@ export const SCHEMAS: CodecLegend['schemas'] = {
 
   // ==========================================
   // vt — Vue шаблоны (12 полей, не columnar)
+  // ==========================================
+  // conditionals входят в vt[11] — это отдельное поле TemplateData,
+  // но оно сериализуется внутри vt, потому что TemplateData содержит
+  // поле `conditionals?: TemplateConditional[]`.
+  //
+  // ⚠️ v15.0.2: НЕ путать с `cd`. `cd` — это агрегированный
+  // индекс conditionals для быстрого доступа; сами объекты
+  // лежат в templates[].conditionals.
   // ==========================================
   vt: [
     'fileIdx',
@@ -201,6 +215,15 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   // ==========================================
   // cd — conditionals: 6 полей
   // ==========================================
+  //
+  // ⚠️ v15.0.2: `cd` — это АГРЕГИРОВАННЫЙ индекс conditionals.
+  // Собирается при encode из `templates[].conditionals` (НЕ из
+  // верхнеуровневого `full.conditionals` — его больше нет).
+  //
+  // При decode conditionals восстанавливаются внутри
+  // `templates[].conditionals`, и `cd` используется только
+  // как ссылка на values[] для внутреннего доступа.
+  // ==========================================
   cd: ['directiveCode', 'fileIdx', 'line', 'condIdx', 'compIdx', 'flags'],
 
   // ==========================================
@@ -226,11 +249,10 @@ export const SCHEMAS: CodecLegend['schemas'] = {
 //   3. Если в overrides есть код, которого нет в base —
 //      добавляем его (для расширяемости).
 //
-// ⚠️ v12.0.0: коды остаются строковыми в legend.codes,
-//   но в compact.json они уже записаны ЧИСЛАМИ.
-//   ИИ должен использовать legend.codes.<type>[String(num)],
-//   но т.к. в JSON ключи всегда строки — ИИ сам преобразует
-//   число в строку для lookup.
+// ⚠️ Коды остаются строковыми в legend.codes, но в compact.json
+// они уже записаны ЧИСЛАМИ. ИИ должен использовать
+// legend.codes.<type>[String(num)], но т.к. в JSON ключи всегда
+// строки — ИИ сам преобразует число в строку для lookup.
 // ============================================
 
 function mergeDict(base: Record<string, string>, overrides: CodesDict): CodesDict {
@@ -272,19 +294,29 @@ function buildCodesLegend(): CodecLegend['codes'] {
     // ==========================================
     // ИМПОРТЫ
     // ==========================================
+    // Поле ImportData.type больше НЕ содержит 'type'.
+    // Семантика:
+    //   type        — 'named' | 'default' | 'namespace'
+    //   isTypeOnly  — отдельный boolean (import type ...)
+    //
     // Числовые коды в compact.gr.i.ty (младшие 2 бита):
     //   0 = named
     //   1 = default
     //   2 = namespace
-    //   3 = type
-    // Старший бит (bit 2) = isExternal
+    //   3 = reserved
+    //
+    // Бит 2 = isExternal
+    // Бит 3 = isTypeOnly
+    //
+    // ⚠️ Код 'to' (type) остаётся в IMPORT_TYPES для обратной
+    // совместимости со старыми full.json, но в legend он
+    // не нужен — isTypeOnly читается из отдельного бита.
     // ==========================================
-    import: mergeDict(IMPORT_TYPES, {
+    import: {
       n: 'named (именованный импорт)',
       df: 'default (импорт по умолчанию)',
       ns: 'namespace (import * as)',
-      to: 'type (import type)',
-    }),
+    },
 
     // ==========================================
     // ВЫЗОВЫ
@@ -367,6 +399,11 @@ function buildCodesLegend(): CodecLegend['codes'] {
     // ==========================================
     // CONDITIONALS
     // ==========================================
+    // ⚠️ v15.0.2: conditionals живут ТОЛЬКО в
+    // `templates[].conditionals`. Эти коды используются
+    // для расшифровки `templates[].conditionals[].directive`
+    // и агрегированной секции `cd` в compact.json.
+    // ==========================================
     conditional: mergeDict(CONDITIONAL_TYPES, {
       i: 'v-if',
       e: 'v-else-if',
@@ -401,7 +438,7 @@ function buildCodesLegend(): CodecLegend['codes'] {
 // СБОРКА ФЛАГОВ
 // ============================================
 //
-// ✅ v12.0.0: flags.bits — простой словарь { "1": "isAsync", ... }.
+// flags.bits — простой словарь { "1": "isAsync", ... }.
 //
 // В compact.json флаги хранятся ЧИСЛОМ (битовая маска).
 // Чтобы разобрать число, ИИ смотрит legend.flags.bits:
@@ -416,8 +453,8 @@ function buildCodesLegend(): CodecLegend['codes'] {
 //   fns.fl[0] = 7
 //   7 = 1 + 2 + 4  →  isAsync + isExported + isMethod
 //
-// Использует FLAG_MAP из codec-encode.ts, чтобы не дублировать константы.
-// FLAG_MAP: { 1: 'isAsync', 2: 'isExported', 4: 'isMethod', ... }
+// Использует FLAG_MAP из codec-encode.ts, чтобы не дублировать
+// константы. FLAG_MAP: { 1: 'isAsync', 2: 'isExported', ... }
 // ============================================
 
 function buildFlagsLegend(): CodecLegend['flags'] {
@@ -434,9 +471,9 @@ function buildFlagsLegend(): CodecLegend['flags'] {
 // СБОРКА ПОЛНОЙ ЛЕГЕНДЫ
 // ============================================
 //
-// ✅ v12.0.0: сигнатура buildLegend сохранена для совместимости,
-//   но параметр _dict больше не используется — словари
-//   переехали в корень compact.json (tokens, strs, params, methods, values).
+// buildLegend сохранён для совместимости, но параметр _dict
+// больше не используется — словари переехали в корень
+// compact.json (tokens, strs, params, methods, values).
 //
 // Легенда теперь содержит только:
 //   - codes    — расшифровки числовых кодов

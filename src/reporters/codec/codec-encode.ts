@@ -1,63 +1,83 @@
 // src/reporters/codec/codec-encode.ts
 // ============================================
-// КОДИРОВАНИЕ: FullJSON → CompactJSON (v14.0.0 — values-mode + канонизация)
+// КОДИРОВАНИЕ: FullJSON → CompactJSON
 // ============================================
-// Версия: 14.0.0
+// Версия: 15.0.3
+//
+// ИЗМЕНЕНИЯ v15.0.3 (fix round-trip Vue conditionals):
+//   - ✅ ИСПРАВЛЕНО: `addAny()` теперь делает `structuredClone(value)`
+//     перед push в `valueDict`. Это разрывает общую ссылку между
+//     `templates[].conditionals` (и другими extended-секциями)
+//     и `values[]`.
+//
+//     ПРИЧИНА:
+//     ---------
+//     Расширенные секции (vt/lc/ef/inj/rx/cd/ty/tr) кладутся в
+//     `values[]` через `addAny`. Объекты этих секций МОГУТ совпадать
+//     по ссылке с объектами в `templates[].conditionals` (cd).
+//     Если положить ссылку как есть, `safeJsonStringify` при записи
+//     `index.full.json` увидит первый экземпляр (в `templates[]`),
+//     запишет его, а второй (в `values[]`) заменит на `"[Circular]"`.
+//
+//     Это ломало `encode(full) === compact`:
+//       compact.values[418] = "[Circular]"
+//       encode(full).values[418] = {id: "cd1", directive: "v-else-if", ...}
+//
+//     Фикс: `structuredClone` разрывает общую ссылку, сохраняя ВСЕ
+//     данные, включая `undefined`-поля (важно для `v-else`, у которых
+//     `conditionExpression === undefined`).
+//
+//     ⚠️ НЕ использовать `JSON.parse(JSON.stringify(...))` —
+//     он удаляет `undefined`-поля, что даст расхождение
+//     `decoded` vs `full` по ключу `conditionExpression`.
+//
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '15.0.3'.
+//
+// ИЗМЕНЕНИЯ v15.0.2 (устранение дублирования conditionals):
+//   - ✅ УБРАН fallback на `canonical.conditionals`.
+//     Теперь секция `cd` собирается ТОЛЬКО из
+//     `templates[].conditionals` — единственного источника.
+//
+//     ПРИЧИНА:
+//     Раньше conditionals дублировались на двух уровнях:
+//       • full.conditionals (верхний уровень)
+//       • full.templates[i].conditionals (внутри template)
+//     При сериализации через `safeJsonStringify` второй экземпляр
+//     заменялся на "[Circular]", и данные терялись при чтении
+//     с диска. Теперь в FullJSON conditionals живут ТОЛЬКО
+//     в `templates[].conditionals`.
+//
+//     Удалены:
+//       • сбор conditionals из `canonical.conditionals`
+//       • дедупликация по `id`
+//       • все комментарии про обратную совместимость
+//
+// ИЗМЕНЕНИЯ v15.0.1 (fix дедупликации extended-секций):
+//   - ✅ ИСПРАВЛЕНО: `addAny()` больше НЕ дедуплицирует объекты
+//     extended-секций (vt/lc/ef/inj/rx/cd/ty/tr) через JSON.stringify.
+//     Это восстанавливает 1-к-1 соответствие compact.cd[i] ↔
+//     full.conditionals[i] и устраняет расхождение
+//     `section.conditionals: decoded=0, full=30`.
+//
+// ИЗМЕНЕНИЯ v15.0.0 (полный round-trip расширенных секций):
+//   - ✅ ДОБАВЛЕНО: кодирование секций vt/lc/ef/inj/rx/cd/ty/tr.
+//   - ✅ ИСПРАВЛЕНО: isTypeOnly вынесен в отдельный бит 8.
 //
 // ИЗМЕНЕНИЯ v14.0.0 (байтовое равенство):
-//   - ✅ ДОБАВЛЕНО: `canonicalizeFullJSON(payload)` в начале `encode`.
-//     Все массивы `FullJSON` сортируются по ЧИСЛОВОМУ значению `id`
-//     (`fn1 < fn2 < ... < fn10`), а не по строковому
-//     (`'fn1' < 'fn10' < 'fn2'`).
+//   - ✅ ДОБАВЛЕНО: canonicalizeFullJSON(payload) в начале encode.
 //
-//     Причина: `decode` восстанавливает `id` из ПОЗИЦИИ в массиве
-//     (`functions[i].id = 'fn${i + 1}'`). Если `encode` получает массивы
-//     в произвольном порядке, то `encode(decode(encode(x)))` может дать
-//     другой порядок в `strs` / `params` / `values`, и байтовое равенство
-//     L4 сломается.
+// ИЗМЕНЕНИЯ v13.0.2-fix:
+//   - ✅ encodeStr не токенизирует строки с разделителями и цифрами.
 //
-//     Канонизация гарантирует, что `encode` — детерминированная функция
-//     от СЕМАНТИЧЕСКОГО содержимого `FullJSON`.
+// ИЗМЕНЕНИЯ v13.0.1-fix:
+//   - ✅ УДАЛЕНА функция stableSortById из encode().
 //
-//   - ✅ ОБНОВЛЕНО: все ссылки на `payload.X` заменены на `canonical.X`
-//     (`timestamp`, `root`, `statistics`, `modules`, `files`, `functions`,
-//     `classes`, `constants`, `exports`, `imports`, `calls`, `reExports`).
+// ИЗМЕНЕНИЯ v13.0.0 (values-mode):
+//   - ✅ ДОБАВЛЕНО: valuesMode: 'full' | 'relations'.
+//   - ✅ ДОБАВЛЕНО: filterValues/remapIndex из values-filter.js.
 //
-//   - ✅ СОХРАНЕНО: комментарий v13.0.1-fix про удалённый `stableSortById`
-//     (строковая сортировка — была ошибкой; здесь числовая).
-//
-// ИЗМЕНЕНИЯ v13.0.2-fix (100% round-trip):
-//   - ✅ ИСПРАВЛЕНО: `encodeStr` больше не токенизирует строки,
-//     содержащие разделители (`_`, `-`, `/`, `.`, `:`) и цифры.
-//
-// ИЗМЕНЕНИЯ v13.0.1-fix (100% round-trip):
-//   - ✅ УДАЛЕНА функция `stableSortById` из `encode()`.
-//
-// ИЗМЕНЕНИЯ v13.0.0 (флаг --values-mode):
-//   - ✅ ДОБАВЛЕНО: параметр `valuesMode: 'full' | 'relations'` в `encode()`.
-//   - ✅ ДОБАВЛЕНО: поле `valueMeta` в `DictBuilder`.
-//   - ✅ ДОБАВЛЕНО: сигнатура `addValue(dict, value, key, kind)`.
-//   - ✅ ДОБАВЛЕНО: функция `classifyValue(value)`.
-//   - ✅ ДОБАВЛЕНО: фильтрация `valueDict` в режиме `'relations'`.
-//
-// ИЗМЕНЕНИЯ v12.0.1:
-//   - ✅ ИСПРАВЛЕНО: удалены неиспользуемые type-импорты.
-//   - ✅ ИСПРАВЛЕНО: `rle()` — non-null assertion для `arr[0]` / `arr[i]`.
-//   - ✅ ВОССТАНОВЛЕН экспорт `RELATION_TYPES`.
-//
-// ИЗМЕНЕНИЯ v12.0.0 (структурная оптимизация):
-//   - ✅ Columnar-структура для всех секций (mi, fl, fns, cls, cn, gr.*)
-//   - ✅ RLE для moduleIdx/fileIdx в fns, cls, cn
-//   - ✅ Битовые маски для булевых флагов
-//   - ✅ Числовые коды вместо строковых
-//   - ✅ Удалены поля id — позиция в массиве = ID
-//   - ✅ Токенизация словарей строк (strs, params, methods)
-//
-// ИЗМЕНЕНИЯ v11.0.0 (компактнее):
-//   - fns/cls/cn: name → nameIdx, flags → number
-//
-// ИЗМЕНЕНИЯ v10.4.0 (легенда для ИИ):
-//   - buildLegend из './codec-legend.js'
+// ИЗМЕНЕНИЯ v12.0.0 (columnar):
+//   - ✅ Columnar-структура, RLE, битовые маски, токенизация.
 // ============================================
 
 import type {
@@ -73,14 +93,22 @@ import type {
   ReExportData,
   ModuleData,
   FileData,
+  TemplateData,
+  TemplateConditional,
+  LifecycleHook,
+  EffectEdge,
+  InjectionEdge,
+  ReactivityEdge,
+  TypeNodeData,
+  TypeRefData,
 } from './codec-types.js';
 
 import { buildLegend } from './codec-legend.js';
 
-// ✅ Единая версия (устраняет расхождение версий в full.json / compact.json)
+// ✅ Единая версия
 import { CODEC_VERSION } from './codec-types.js';
 
-// ✅ v13.0.0: импорт фильтрации values
+// ✅ v13.0.0: фильтрация values
 import { filterValues, remapIndex, type ValuesMode, type ValueMeta } from './values-filter.js';
 
 // ============================================
@@ -426,6 +454,11 @@ export function classifyValue(value: unknown): ValueMeta['kind'] {
 
 /**
  * Добавить значение в valueDict, вернуть индекс.
+ *
+ * ⚠️ Дедуплицирует по `JSON.stringify`. Используется для `cn.nonEmptyV`
+ * (значения констант), где дедупликация безопасна и полезна.
+ *
+ * @see addAny() — для extended-секций, где дедупликация ЗАПРЕЩЕНА.
  */
 export function addValue(
   dict: DictBuilder,
@@ -448,6 +481,82 @@ export function addValue(
   dict.valueMeta.push({
     key: key || `value_${idx}`,
     kind: kind ?? classifyValue(value),
+  });
+
+  return idx;
+}
+
+// ============================================
+// addAny — БЕЗ ДЕДУПЛИКАЦИИ + structuredClone (v15.0.3)
+// ============================================
+//
+// Extended-секции (vt/lc/ef/inj/rx/cd/ty/tr) — это СТРУКТУРНЫЕ
+// СУЩНОСТИ. Каждая запись — отдельная сущность. Их НЕЛЬЗЯ
+// дедуплицировать, даже если они структурно совпадают.
+//
+// Поэтому `addAny` ВСЕГДА создаёт новый value.
+//
+// ✅ v15.0.3: `addAny` теперь делает `structuredClone(value)`.
+// Это разрывает общую ссылку между `templates[].conditionals`
+// и `values[]`, из-за которой `safeJsonStringify` заменял второй
+// экземпляр на `"[Circular]"`.
+// ============================================
+
+/**
+ * Добавить произвольный объект/массив/примитив в valueDict.
+ *
+ * Отличия от addValue():
+ *   - НЕ дедуплицирует. Каждый вызов = новый value с новым индексом.
+ *   - НЕ применяет фильтрацию values (kind = 'relation').
+ *   - ✅ v15.0.3: делает `structuredClone(value)` перед push,
+ *     чтобы разорвать общую ссылку с объектами в `templates[]`
+ *     (или в других extended-секциях).
+ *   - Используется ТОЛЬКО для extended-секций (vt/lc/ef/inj/rx/cd/ty/tr).
+ *
+ * @param dict  — словарь
+ * @param value — произвольное значение (объект/массив/примитив)
+ * @param key   — строковый ключ для отладки (например, `vt[0]`, `cd[3]`)
+ * @returns индекс в valueDict
+ */
+function addAny(dict: DictBuilder, value: unknown, key: string): number {
+  if (value === undefined) return -1;
+
+  const idx = dict.valueDict.length;
+
+  // ✅ v15.0.3 (fix round-trip Vue conditionals):
+  // Расширенные секции (vt/lc/ef/inj/rx/cd/ty/tr) кладутся в values[]
+  // через addAny. Объекты этих секций МОГУТ совпадать по ссылке
+  // с объектами в templates[].conditionals (cd). Если положить
+  // ссылку как есть, safeJsonStringify при записи full.json
+  // увидит первый экземпляр (в templates[]), запишет его,
+  // а второй (в values[]) заменит на "[Circular]".
+  //
+  // Это ломает encode(full) === compact (L0/L3/RE):
+  //   compact.values[418] = "[Circular]"
+  //   encode(full).values[418] = {id: "cd1", directive: "v-else-if", ...}
+  //
+  // Фикс: structuredClone разрывает общую ссылку, сохраняя
+  // ВСЕ данные, включая undefined-поля (важно для v-else,
+  // у которых conditionExpression === undefined).
+  //
+  // ⚠️ НЕ использовать JSON.parse(JSON.stringify(...)) —
+  // он удаляет undefined-поля, что даст расхождение
+  // decoded vs full по ключу conditionExpression.
+  //
+  // ⚠️ addAny применяется ТОЛЬКО к extended-секциям.
+  // Для TS/JS-файлов эти секции пусты, поэтому structuredClone
+  // там не вызывается. Для Vue-файлов все объекты extended-секций
+  // — это простые POJO (string, number, boolean, массивы строк,
+  // вложенные POJO), которые structuredClone обрабатывает идеально.
+  // Функций, Date, Map, Set, BigInt, Symbol в них нет.
+  const stored: unknown =
+    value !== null && typeof value === 'object' ? structuredClone(value) : value;
+
+  dict.valueDict.push(stored);
+
+  dict.valueMeta.push({
+    key: key || `value_${idx}`,
+    kind: 'relation',
   });
 
   return idx;
@@ -552,7 +661,7 @@ function encodeStr(str: string, tokenIndex: Map<string, number>): string | numbe
 }
 
 // ============================================
-// ✅ v14.0.0: КАНОНИЗАЦИЯ FULLJSON
+// КАНОНИЗАЦИЯ FULLJSON (v14.0.0)
 // ============================================
 //
 // Сортировка всех массивов по ЧИСЛОВОМУ значению `id`
@@ -560,10 +669,6 @@ function encodeStr(str: string, tokenIndex: Map<string, number>): string | numbe
 //
 // ⚠️ Это НЕ строковая сортировка (`'fn1' < 'fn10' < 'fn2'`) —
 // она ломала round-trip в v13.0.1. Здесь числовая.
-//
-// `decode` восстанавливает `id` из позиции (`functions[i].id = 'fn${i+1}'`).
-// Если `encode` пишет массивы в каноническом порядке, то `decode`
-// восстанавливает их в том же порядке → байтовое равенство L4.
 // ============================================
 
 /**
@@ -594,10 +699,10 @@ function sortByIdNumeric<T extends { id?: string }>(arr: T[] | undefined): T[] {
 
 /**
  * Канонизирует `FullJSON`:
- *   - сортирует `modules`, `files`, `functions`, `classes`, `constants`,
- *     `exports`, `imports`, `calls`, `reExports` по числовому `id`;
- *   - не трогает `id` внутри элементов;
- *   - не трогает вложенные массивы (`fileIds`, `methods` и т.п.).
+ *   - сортирует modules/files/functions/classes/constants/
+ *     exports/imports/calls/reExports по числовому `id`
+ *   - не трогает `id` внутри элементов
+ *   - не трогает вложенные массивы
  */
 function canonicalizeFullJSON(payload: FullJSON): FullJSON {
   return {
@@ -619,41 +724,30 @@ function canonicalizeFullJSON(payload: FullJSON): FullJSON {
 // ============================================
 
 /**
- * Кодирует полный JSON в сжатый (v14.0.0).
+ * Кодирует полный JSON в сжатый (v15.0.3).
+ *
+ * ✅ v15.0.3 (fix round-trip Vue conditionals):
+ *   - `addAny()` теперь делает `structuredClone(value)` перед
+ *     push в `valueDict`. Это разрывает общую ссылку между
+ *     `templates[].conditionals` и `values[]`.
+ *
+ * ✅ v15.0.2 (устранение дублирования conditionals):
+ *   - `cd` собирается ТОЛЬКО из `templates[].conditionals`.
+ *   - Убран fallback на `canonical.conditionals` — его больше
+ *     нет в FullJSON.
+ *   - Убрана дедупликация по `id`.
+ *
+ * ✅ v15.0.1 (fix дедупликации extended-секций):
+ *   - `addAny` больше НЕ дедуплицирует объекты extended-секций.
+ *
+ * ✅ v15.0.0 (расширенные секции):
+ *   - Добавлено кодирование vt/lc/ef/inj/rx/cd/ty/tr.
+ *   - isTypeOnly вынесен в отдельный бит 8.
  *
  * ✅ v14.0.0 (байтовое равенство):
- *   - Добавлена канонизация входа через `canonicalizeFullJSON`.
- *   - Все `payload.X` заменены на `canonical.X`.
- *   - `encode` теперь детерминированная функция от семантики `FullJSON`.
+ *   - Канонизация входа через `canonicalizeFullJSON`.
  *
- * ✅ v13.0.2-fix (100% round-trip):
- *   - `encodeStr` не токенизирует строки с разделителями и цифрами.
- *
- * ✅ v13.0.1-fix (100% round-trip):
- *   - УДАЛЕНА `stableSortById`. Причина: decode восстанавливает id
- *     из ПОЗИЦИИ в массиве. Сортировка по строковому id ломала
- *     соответствие.
- *
- * ✅ v13.0.0-fix (100% round-trip):
- *   - `mi.f` — массив пар `[startFileIdx, fileCount]`.
- *   - `encodeStr` не токенизирует строки < 8 символов.
- *   - Используется `v: CODEC_VERSION`.
- *
- * ✅ v13.0.0 (values-mode):
- *   - Параметр `valuesMode: 'full' | 'relations'`.
- *   - В режиме 'relations' — фильтрация `valueDict` через `filterValues()`.
- *   - Переиндексация `cn.nonEmptyV` после фильтрации.
- *   - Поле `valuesMode` добавлено в `CompactJSON`.
- *
- * ✅ v12.0.0:
- *   - Columnar-структура для mi, fl, fns, cls, cn, gr.*
- *   - RLE для moduleIdx/fileIdx в fns, cls, cn
- *   - Битовые маски для булевых флагов
- *   - Числовые коды вместо строковых
- *   - Токенизация словарей строк
- *   - nonEmptyV для констант
- *
- * @param payload — Полный JSON
+ * @param payload    — Полный JSON
  * @param valuesMode — Режим сериализации values ('full' | 'relations')
  * @returns Сжатый JSON с легендой
  */
@@ -661,16 +755,7 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   const dict = createDictBuilder();
 
   // ============================================
-  // ✅ v14.0.0: КАНОНИЗАЦИЯ ВХОДА
-  // ============================================
-  // Для байтового равенства `encode(decode(encode(x))) === encode(x)`
-  // нужно, чтобы `encode` был детерминированной функцией от
-  // СЕМАНТИЧЕСКОГО содержимого `FullJSON`, а не от порядка обхода.
-  //
-  // Канонизация сортирует массивы по ЧИСЛОВОМУ значению `id`.
-  //
-  // ⚠️ Это НЕ `stableSortById` из v13.0.1 — там была строковая
-  // сортировка, которая ломала round-trip. Здесь числовая.
+  // v14.0.0: КАНОНИЗАЦИЯ ВХОДА
   // ============================================
   const canonical = canonicalizeFullJSON(payload);
 
@@ -712,7 +797,7 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
 
   // ============================================
   // 4. mi — columnar
-  // ✅ v13.0.0-fix: [startFileIdx, fileCount] вместо RLE(moduleIdx)
+  // f: [startFileIdx, fileCount][]
   // ============================================
   const miN: string[] = [];
   const miF: [number, number][] = [];
@@ -879,6 +964,13 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   // ============================================
   // 10. gr.i — columnar
   // ============================================
+  // isTypeOnly вынесен в отдельный бит 8.
+  //
+  //   Биты combinedTy:
+  //     0-1 : typeCode (0=named, 1=default, 2=namespace)
+  //     2   : isExternal
+  //     3   : isTypeOnly
+  // ============================================
   const imports = asArray<ImportData>(canonical.imports);
   const giFf: number[] = [];
   const giTf: number[] = [];
@@ -891,8 +983,8 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   for (const imp of imports) {
     if (!imp) continue;
 
-    const typeCode = imp.isDefault ? 1 : imp.isNamespace ? 2 : imp.isTypeOnly ? 3 : 0;
-    const combinedTy = typeCode | (imp.isExternal ? 4 : 0);
+    const typeCode = imp.isDefault ? 1 : imp.isNamespace ? 2 : 0;
+    const combinedTy = typeCode | (imp.isExternal ? 4 : 0) | (imp.isTypeOnly ? 8 : 0);
 
     giFf.push(fileReverse.get(imp.fromFileId) ?? 0);
     giTf.push(addString(dict, imp.toFileId ?? ''));
@@ -956,7 +1048,77 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   }
 
   // ============================================
-  // 13. ✅ v13.0.0: ФИЛЬТРАЦИЯ VALUES
+  // 12.5. Кодирование расширенных секций
+  //       vt/lc/ef/inj/rx/cd/ty/tr
+  // ============================================
+  //
+  // Каждая секция сериализуется как объект
+  // и складывается в valueDict через `addAny` (БЕЗ дедупликации).
+  // В CompactJSON хранится только массив индексов в values.
+  //
+  // ✅ v15.0.3: addAny делает structuredClone(value), разрывая
+  //   общую ссылку между templates[].conditionals и values[].
+  // ============================================
+  function encodeExtendedSection<T>(items: T[] | undefined, prefix: string): number[] {
+    if (!items || items.length === 0) return [];
+    const result: number[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item === undefined || item === null) continue;
+      const idx = addAny(dict, item, `${prefix}[${i}]`);
+      if (idx >= 0) result.push(idx);
+    }
+    return result;
+  }
+
+  // vt — Vue templates
+  const vt = encodeExtendedSection<TemplateData>(canonical.templates, 'vt');
+
+  // lc — lifecycle
+  const lc = encodeExtendedSection<LifecycleHook>(canonical.lifecycle, 'lc');
+
+  // ef — effects
+  const ef = encodeExtendedSection<EffectEdge>(canonical.effects, 'ef');
+
+  // inj — injections
+  const inj = encodeExtendedSection<InjectionEdge>(canonical.injections, 'inj');
+
+  // rx — reactivity
+  const rx = encodeExtendedSection<ReactivityEdge>(canonical.reactivity, 'rx');
+
+  // ============================================
+  // ✅ v15.0.2: cd — conditionals
+  // ============================================
+  // conditionals живут ТОЛЬКО в `templates[].conditionals`.
+  // На верхнем уровне FullJSON их больше нет — дублирование
+  // приводило к тому, что safeJsonStringify заменял второй
+  // экземпляр на "[Circular]", и данные терялись при чтении
+  // с диска.
+  //
+  // Собираем все conditionals из templates[] в один плоский
+  // массив и кодируем как extended-секцию.
+  //
+  // ✅ v15.0.3: addAny делает structuredClone каждого элемента,
+  //   поэтому values[] получает СВОЮ копию, а не ссылку на
+  //   объект из templates[]. Это устраняет "[Circular]" в
+  //   index.json на диске.
+  // ============================================
+  const allConditionals: TemplateConditional[] = [];
+  for (const template of canonical.templates ?? []) {
+    for (const cd of template.conditionals ?? []) {
+      allConditionals.push(cd);
+    }
+  }
+  const cd = encodeExtendedSection<TemplateConditional>(allConditionals, 'cd');
+
+  // ty — types
+  const ty = encodeExtendedSection<TypeNodeData>(canonical.types, 'ty');
+
+  // tr — typeRefs
+  const tr = encodeExtendedSection<TypeRefData>(canonical.typeRefs, 'tr');
+
+  // ============================================
+  // 13. ФИЛЬТРАЦИЯ VALUES
   // ============================================
   let finalValueDict: unknown[] = dict.valueDict;
   let valueIndexMap: Map<number, number> | null = null;
@@ -969,13 +1131,35 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
     if (process.env.AST_DEBUG_CODEC === 'true') {
       console.log(
         `   🗜️  values-mode=relations: ${dict.valueDict.length} → ${finalValueDict.length} значений ` +
-          `(${(
-            ((dict.valueDict.length - finalValueDict.length) / dict.valueDict.length) *
-            100
-          ).toFixed(1)}% сжатие)`
+        `(${(
+          ((dict.valueDict.length - finalValueDict.length) / dict.valueDict.length) *
+          100
+        ).toFixed(1)}% сжатие)`
       );
     }
   }
+
+  // ============================================
+  // Переиндексация ссылок в расширенных секциях
+  // ============================================
+  function remapIndices(indices: number[]): number[] {
+    if (!valueIndexMap) return indices;
+    const result: number[] = [];
+    for (const oldIdx of indices) {
+      const newIdx = remapIndex(oldIdx, valueIndexMap);
+      if (newIdx !== null) result.push(newIdx);
+    }
+    return result;
+  }
+
+  const finalVt = remapIndices(vt);
+  const finalLc = remapIndices(lc);
+  const finalEf = remapIndices(ef);
+  const finalInj = remapIndices(inj);
+  const finalRx = remapIndices(rx);
+  const finalCd = remapIndices(cd);
+  const finalTy = remapIndices(ty);
+  const finalTr = remapIndices(tr);
 
   // Переиндексация cn.nonEmptyV
   const finalNonEmptyV: [number, number][] = [];
@@ -990,7 +1174,7 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   }
 
   // ============================================
-  // 14. Легенда (упрощённая)
+  // 14. Легенда
   // ============================================
   const legend: CodecLegend = buildLegend({
     stringDict: dict.stringDict,
@@ -1028,6 +1212,16 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
       re: { m: greM, fn: greFn, s: greS, en: greEn, l: greL, ty: greTy },
     },
 
+    // Расширенные секции
+    vt: finalVt,
+    lc: finalLc,
+    ef: finalEf,
+    inj: finalInj,
+    rx: finalRx,
+    cd: finalCd,
+    ty: finalTy,
+    tr: finalTr,
+
     st: canonical.statistics,
     legend,
   };
@@ -1042,9 +1236,24 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   compact.params = dict.paramDict.map(s => encodeStr(s, tokenIndex));
   compact.methods = dict.methodDict.map(s => encodeStr(s, tokenIndex));
 
+  // ============================================
   // Удаляем пустые опциональные секции
-  for (const key of Object.keys(compact) as (keyof CompactJSON)[]) {
-    if (key === 'gr') continue;
+  // ============================================
+  // methods, tokens, strs, params, values — НЕ удаляются (словари).
+  // mi, fl, fns, cls, cn, gr.* — НЕ удаляются (обязательные).
+  // vt, lc, ef, inj, rx, cd, ty, tr — можно удалять, если пустые.
+  const OPTIONAL_SECTIONS: (keyof CompactJSON)[] = [
+    'vt',
+    'lc',
+    'ef',
+    'inj',
+    'rx',
+    'cd',
+    'ty',
+    'tr',
+  ];
+
+  for (const key of OPTIONAL_SECTIONS) {
     const v = (compact as any)[key];
     if (Array.isArray(v) && v.length === 0) {
       delete (compact as any)[key];

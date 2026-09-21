@@ -2,7 +2,15 @@
 // ============================================
 // КОМАНДА COMPACT — ГЕНЕРАЦИЯ КОМПАКТНОГО ОТЧЁТА СУЩНОСТЕЙ
 // ============================================
-// Версия: 12.0.0
+// Версия: 13.0.0
+//
+// ИЗМЕНЕНИЯ v13.0.0 (переход на AnalysisPipeline):
+//   - ✅ ПЕРЕВЕДЕНО на AnalysisPipeline с paths.
+//   - ✅ УДАЛЕНЫ: collectFiles, ручной цикл extractEntitiesFromFile,
+//     импорты extractEntitiesFromFile и glob.
+//   - ✅ ДОБАВЛЕНО: paths: paths в pipeline.run().
+//   - ✅ ЕДИНЫЙ прогон вместо цикла по paths — дедупликация файлов
+//     через Set внутри collectFilesForAnalysis.
 //
 // ИЗМЕНЕНИЯ v12.0.0 (values-mode):
 //   - ✅ ДОБАВЛЕН флаг --values-mode <mode>
@@ -53,19 +61,18 @@
 //   - ✅ Сохраняет и полный JSON (для отладки) и сжатый JSON (для AI)
 //   - ✅ v9.0.4: опциональное сохранение edges в отдельный файл
 //   - ✅ v12.0.0: values-mode (full | relations) для управления размером
+//   - ✅ v13.0.0: единый AnalysisPipeline
 // ============================================
 
 import type { Command } from 'commander';
 import path from 'path';
 import fs from 'fs';
-import { glob } from 'glob';
 
-// ✅ ИСПРАВЛЕНО v9.1.0: используем extractEntitiesFromFile из reporters/json
-// как единый источник истины для извлечения сущностей.
-import { extractEntitiesFromFile } from '../../reporters/json/extractors/extract-entities-from-file.js';
+// ✅ v13.0.0: единый pipeline
+import { AnalysisPipeline } from '../../pipeline/index.js';
 
-// ✅ Единый тип EnhancedEntityInfo (из главного src/types.ts)
-import type { EnhancedEntityInfo } from '../../types.js';
+// ✅ v13.0.0: используется для генерации отчёта
+import { generateCompactReport } from '../../reporters/compact-reporter.js';
 
 /**
  * Опции команды compact.
@@ -125,6 +132,7 @@ interface CompactCommandOptions {
  * - ✅ Сохраняет и полный JSON и сжатый JSON
  * - ✅ v9.0.4: опциональное сохранение edges в отдельный файл
  * - ✅ v12.0.0: values-mode (full | relations) для управления размером
+ * - ✅ v13.0.0: единый AnalysisPipeline
  */
 export class CompactCommand {
   private program: Command;
@@ -191,10 +199,9 @@ export class CompactCommand {
   /**
    * Основной метод выполнения команды.
    *
-   * 1. Собирает файлы.
-   * 2. Для каждого файла вызывает `extractEntitiesFromFile` из reporters/json.
-   * 3. Передаёт полученный `entitiesMap` в `generateCompactReport`.
-   * 4. Сохраняет результаты.
+   * ✅ v13.0.0: использует AnalysisPipeline для сбора, парсинга
+   * и нормализации сущностей. Никакого ручного цикла по paths —
+   * pipeline сам разбирается с массивом путей.
    */
   private async execute(paths: string[], options: CompactCommandOptions): Promise<void> {
     // ============================================================
@@ -215,7 +222,7 @@ export class CompactCommand {
     }
 
     console.log('\n' + '='.repeat(70));
-    console.log('📋 ГЕНЕРАЦИЯ КОМПАКТНОГО ОТЧЕТА СУЩНОСТЕЙ');
+    console.log('📋 ГЕНЕРАЦИЯ КОМПАКТНОГО ОТЧЕТА СУЩНОСТЕЙ (v13.0.0)');
     console.log('='.repeat(70));
     console.log(`📁 Пути: ${paths.join(', ')}`);
     console.log(`📄 Выходной файл: ${options.output}`);
@@ -240,92 +247,92 @@ export class CompactCommand {
       console.warn(`⚠️ Неизвестный пресет: ${options.preset}, используем 'standard'`);
     }
 
-    // Собираем файлы
-    const files = await this.collectFiles(paths, options.recursive);
-
-    if (files.length === 0) {
-      console.error('❌ Не найдено файлов для анализа');
-      process.exit(1);
-    }
-
-    console.log(`📊 Найдено файлов: ${files.length}`);
-    console.log('');
-
+    // Проверяем выходную директорию
     const outputPath = path.resolve(options.output);
     const outputDir = path.dirname(outputPath);
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
+    // ============================================================
+    // ✅ v13.0.0: ЕДИНЫЙ PIPELINE
+    // ============================================================
+    //
+    // Раньше (v12.0.0):
+    //   const files = await this.collectFiles(paths, options.recursive);
+    //   const entitiesMap = {};
+    //   for (const filePath of files) {
+    //     const entities = extractEntitiesFromFile(filePath);
+    //     if (entities) entitiesMap[relativePath] = entities;
+    //   }
+    //
+    // Теперь (v13.0.0):
+    //   pipeline.run({ paths, recursive, mode: 'entities-only' })
+    //
+    // Преимущества:
+    //   - ОДИН прогон вместо ручного цикла
+    //   - Дедупликация файлов через Set в collectFilesForAnalysis
+    //   - Единый projectRoot (вычисляется из первого path)
+    //   - Единые метрики
+    //   - Единый errors[]
+    //   - Диспетчеризация Vue vs TS/JS внутри ParseFileStage
+    //   - Явный проброс template-полей в NormalizeEntitiesStage
+    // ============================================================
+
+    console.log('📁 Шаг 1: Сбор и парсинг (единый pipeline)...');
+
+    const pipeline = new AnalysisPipeline();
+    const pipelineResult = await pipeline.run({
+      paths,
+      recursive: options.recursive !== false,
+      mode: 'entities-only',
+      verbose: options.verbose === true,
+      continueOnError: true,
+    });
+
+    // ============================================================
+    // ДИАГНОСТИКА PIPELINE
+    // ============================================================
+    const m = pipelineResult.metrics;
+    console.log(`   📁 Найдено файлов: ${m.filesDiscovered}`);
+    console.log(`   ✅ Разобрано: ${m.filesParsed}`);
+    console.log(`   🎯 Vue: ${m.vueFiles}, TS/JS: ${m.tsFiles}`);
+    if (m.filesFailed > 0) {
+      console.log(`   ⚠️  Ошибок парсинга: ${m.filesFailed}`);
+    }
+    if (options.verbose) {
+      console.log(`   ƒ  Функций: ${m.totalFunctions}`);
+      console.log(`   📌 Констант: ${m.totalConstants}`);
+      console.log(`   📥 Импортов: ${m.totalImports}`);
+      console.log(`   📤 Экспортов: ${m.totalExports}`);
+      if (m.totalConditionals > 0) {
+        console.log(`   🎨 Conditionals: ${m.totalConditionals}`);
+      }
+      if (m.totalLifecycle > 0) {
+        console.log(`   🧬 Lifecycle: ${m.totalLifecycle}`);
+      }
+      if (m.totalReactivity > 0) {
+        console.log(`   ⚡ Reactivity: ${m.totalReactivity}`);
+      }
+      if (m.reExportChains > 0) {
+        console.log(`   🔄 Re-exports: ${m.reExportChains}`);
+      }
+    }
+    console.log('');
+
+    if (Object.keys(pipelineResult.enhancedMap).length === 0) {
+      console.error('❌ Не найдено сущностей для анализа');
+      process.exit(1);
+    }
+
     try {
-      // ✅ ИСПРАВЛЕНО v9.1.0: используем ЕДИНЫЙ источник истины
-      // — extractEntitiesFromFile из reporters/json.
-      // Он сам делает parseFile + extractEntities + convertEntitiesToEnhanced.
-      const { generateCompactReport } = await import('../../reporters/compact-reporter.js');
+      // ============================================================
+      // ШАГ 2: Генерация отчёта
+      // ============================================================
+      console.log(
+        `📋 Шаг 2: Генерация ${options.ultra ? 'ультра-компактного' : 'компактного'} отчета...`
+      );
 
-      // Собираем сущности из всех файлов
-      const entitiesMap: Record<string, EnhancedEntityInfo> = {};
-      let totalFunctions = 0;
-      let totalClasses = 0;
-      let totalConstants = 0;
-      let totalSelfFunctions = 0;
-
-      for (const filePath of files) {
-        if (options.verbose) {
-          console.log(`   📄 Обработка: ${path.basename(filePath)}`);
-        }
-
-        try {
-          // ✅ ЕДИНЫЙ ВЫЗОВ: parseFile + extractEntities + convert
-          const entities = extractEntitiesFromFile(filePath);
-
-          if (entities && Object.keys(entities).length > 0) {
-            const relativePath = path.relative(process.cwd(), filePath);
-            entitiesMap[relativePath] = entities;
-
-            totalFunctions += entities.functions?.length || 0;
-            totalClasses += entities.classes?.length || 0;
-            totalConstants += entities.constants?.length || 0;
-
-            // Подсчёт self functions (функции без вызовов)
-            if (options.selfFunctions !== false) {
-              for (const func of entities.functions || []) {
-                const hasCalls = func.calls && func.calls.length > 0;
-                const hasCalledBy = func.calledBy && func.calledBy.length > 0;
-                if (!hasCalls && !hasCalledBy) {
-                  totalSelfFunctions++;
-                }
-              }
-            }
-          }
-        } catch (error) {
-          // ✅ v9.1.0: явная обработка ошибок извлечения
-          if (options.verbose) {
-            console.warn(
-              `   ⚠️ Ошибка при обработке ${path.basename(filePath)}: ${
-                error instanceof Error ? error.message : String(error)
-              }`
-            );
-          }
-        }
-      }
-
-      if (Object.keys(entitiesMap).length === 0) {
-        console.error('❌ Не найдено сущностей для анализа');
-        process.exit(1);
-      }
-
-      console.log(`📊 Собрано сущностей:`);
-      console.log(`   • Файлов: ${Object.keys(entitiesMap).length}`);
-      console.log(`   • Функций: ${totalFunctions}`);
-      console.log(`   • Классов: ${totalClasses}`);
-      console.log(`   • Констант: ${totalConstants}`);
-      if (options.selfFunctions !== false) {
-        console.log(`   • Self функций: ${totalSelfFunctions}`);
-      }
-      console.log('');
-
-      // ✅ ИСПРАВЛЕНО: формируем опции под новый GenerateReportOptions
       const reportOptions = {
         compress: true,
         saveFullJson: options.fullJson !== false,
@@ -337,10 +344,12 @@ export class CompactCommand {
         valuesMode: (options.valuesMode as 'full' | 'relations') || 'relations',
       };
 
-      // Генерируем отчет (единая функция для всех режимов)
-      console.log(`📋 Генерация ${options.ultra ? 'ультра-компактного' : 'компактного'} отчета...`);
       const startTime = Date.now();
-      const report = generateCompactReport(entitiesMap as any, outputPath, reportOptions);
+      const report = generateCompactReport(
+        pipelineResult.enhancedMap as any,
+        outputPath,
+        reportOptions
+      );
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
       // ✅ ИСПРАВЛЕНО: выводим результаты, используя новую структуру GenerateReportResult
@@ -348,7 +357,7 @@ export class CompactCommand {
 
       // Сохраняем дополнительную информацию в verbose режиме
       if (options.verbose) {
-        this.saveVerboseInfo(report, outputDir, entitiesMap);
+        this.saveVerboseInfo(report, outputDir, pipelineResult.enhancedMap);
       }
     } catch (error) {
       console.error('❌ Ошибка при генерации отчета:', error);
@@ -358,58 +367,6 @@ export class CompactCommand {
       }
       process.exit(1);
     }
-  }
-
-  /**
-   * Собирает файлы для анализа.
-   */
-  private async collectFiles(paths: string[], recursive: boolean): Promise<string[]> {
-    const files: string[] = [];
-    const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.vue'];
-
-    for (const inputPath of paths) {
-      const resolvedPath = path.resolve(inputPath);
-
-      if (!fs.existsSync(resolvedPath)) {
-        console.warn(`⚠️ Путь не существует: ${inputPath}`);
-        continue;
-      }
-
-      const stat = fs.statSync(resolvedPath);
-
-      if (stat.isFile()) {
-        if (extensions.includes(path.extname(resolvedPath))) {
-          files.push(resolvedPath);
-        }
-      } else if (stat.isDirectory()) {
-        const pattern = recursive
-          ? `${resolvedPath}/**/*{${extensions.join(',')}}`
-          : `${resolvedPath}/*{${extensions.join(',')}}`;
-
-        try {
-          const matched = await glob(pattern, {
-            nodir: true,
-            ignore: [
-              '**/node_modules/**',
-              '**/dist/**',
-              '**/build/**',
-              '**/coverage/**',
-              '**/*.d.ts',
-              '**/*.test.ts',
-              '**/*.spec.ts',
-              '**/*.test.js',
-              '**/*.spec.js',
-            ],
-            absolute: true,
-          });
-          files.push(...matched);
-        } catch (error) {
-          console.warn(`⚠️ Ошибка при сканировании ${resolvedPath}:`, error);
-        }
-      }
-    }
-
-    return [...new Set(files)];
   }
 
   /**
@@ -563,11 +520,7 @@ export class CompactCommand {
    *
    * ✅ ИСПРАВЛЕНО: принимает GenerateReportResult (новая структура v6.0.0+).
    */
-  private saveVerboseInfo(
-    report: any,
-    outputDir: string,
-    entitiesMap: Record<string, EnhancedEntityInfo>
-  ): void {
+  private saveVerboseInfo(report: any, outputDir: string, entitiesMap: Record<string, any>): void {
     // Сохраняем полную статистику по модулям (из full JSON)
     const statsPath = path.join(outputDir, 'compact-stats.json');
     const fullStats = report.full?.statistics;
@@ -604,18 +557,25 @@ export class CompactCommand {
     const entitiesPath = path.join(outputDir, 'compact-entities-readable.json');
     const readableEntities: Record<string, any> = {};
     for (const [filePath, entities] of Object.entries(entitiesMap)) {
+      const e = entities as any;
       readableEntities[filePath] = {
-        functionsCount: entities.functions?.length || 0,
-        classesCount: entities.classes?.length || 0,
-        constantsCount: entities.constants?.length || 0,
-        importsCount: entities.imports?.length || 0,
-        exportsCount: entities.exports?.length || 0,
-        interfacesCount: entities.interfaces?.length || 0,
-        typesCount: entities.types?.length || 0,
-        variablesCount: entities.variables?.length || 0,
-        selfFunctionsCount: (entities.functions || []).filter(
+        functionsCount: e.functions?.length || 0,
+        classesCount: e.classes?.length || 0,
+        constantsCount: e.constants?.length || 0,
+        importsCount: e.imports?.length || 0,
+        exportsCount: e.exports?.length || 0,
+        interfacesCount: e.interfaces?.length || 0,
+        typesCount: e.types?.length || 0,
+        variablesCount: e.variables?.length || 0,
+        selfFunctionsCount: (e.functions || []).filter(
           (f: any) => !(f.calls && f.calls.length > 0) && !(f.calledBy && f.calledBy.length > 0)
         ).length,
+        // ✅ v9.0.0: Vue секции
+        templateConditionalsCount: e.templateConditionals?.length || 0,
+        templateLifecycleCount: e.templateLifecycle?.length || 0,
+        templateEffectsCount: e.templateEffects?.length || 0,
+        templateInjectionsCount: e.templateInjections?.length || 0,
+        templateReactivityCount: e.templateReactivity?.length || 0,
       };
     }
     fs.writeFileSync(entitiesPath, JSON.stringify(readableEntities, null, 2));
@@ -632,7 +592,8 @@ export class CompactCommand {
     // Сохраняем self functions в отдельный файл
     const selfFunctionsList: any[] = [];
     for (const [filePath, entities] of Object.entries(entitiesMap)) {
-      for (const func of entities.functions || []) {
+      const e = entities as any;
+      for (const func of e.functions || []) {
         const hasCalls = func.calls && func.calls.length > 0;
         const hasCalledBy = func.calledBy && func.calledBy.length > 0;
         if (!hasCalls && !hasCalledBy) {

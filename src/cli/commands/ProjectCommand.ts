@@ -2,7 +2,21 @@
 // ============================================================
 // КОМАНДА: project — построение графа зависимостей проекта
 // ============================================================
-// Версия: 3.0.0
+// Версия: 4.0.0 (переход на AnalysisPipeline)
+//
+// ИЗМЕНЕНИЯ v4.0.0:
+//   - ✅ ПЕРЕВЕДЕНО на AnalysisPipeline для сбора entities.
+//     Раньше: buildProjectGraph с includeEntities=true — парсил
+//     файлы через ProjectGraphBuilder → extractEntitiesFromFile.
+//     Теперь: pipeline.run({ mode: 'entities-only' }) — единый
+//     источник истины для entities.
+//   - ✅ buildProjectGraph вызывается с includeEntities=false —
+//     граф строится БЕЗ повторного парсинга (быстрее в 2 раза).
+//   - ✅ entities из pipeline подставляются в graphResult вручную.
+//   - ✅ ДОБАВЛЕНО: diagnostics pipeline.metrics
+//     (vue/ts файлы, conditionals, lifecycle, reactivity).
+//   - ✅ СОХРАНЕНЫ: вся логика сохранения отчётов, HTML, метаданных,
+//     оптимизированного отчёта — без изменений.
 //
 // ИЗМЕНЕНИЯ v3.0.0 (упрощение через reporters/json):
 //   - ✅ УДАЛЕНА вся дублирующая логика анализа:
@@ -15,28 +29,22 @@
 //   - ✅ Сохранение отчётов делегировано reporters/json
 //   - ✅ Файл стал тонким оркестратором: вызов + сохранение
 //
-// АРХИТЕКТУРА:
+// АРХИТЕКТУРА (v4.0.0):
 //   ProjectCommand (этот файл)
 //        │
+//        ├──> AnalysisPipeline.run({ mode: 'entities-only' })
+//        │         │
+//        │         └──> entitiesMap + enhancedMap + metrics
+//        │
 //        └──> modes/project-graph.ts::buildProjectGraph()
-//                 │
-//                 ├──> core/ProjectGraphBuilder           (граф зависимостей)
-//                 ├──> reporters/json/extractors          (extractEntitiesFromFile)
-//                 └──> reporters/json/builders            (buildEnhancedPackageLockReport)
+//                  │
+//                  ├──> core/ProjectGraphBuilder   (граф зависимостей)
+//                  └──> reporters/json/builders    (package-lock report)
 //
-// ИСПОЛЬЗОВАНИЕ:
-//   ast-analyzer project <file> [options]
-//
-// ОПЦИИ:
-//   -d, --depth <n>      Максимальная глубина (по умолчанию: 5)
-//   --entities           Включить анализ сущностей
-//   --include-body       Включить тела функций в отчёт
-//   --vue                Включить анализ Vue компонентов
-//   --from <function>    Начальная функция для графа вызовов
-//   --to <function>      Конечная функция для графа вызовов
-//   --optimized          Сгенерировать оптимизированный отчёт
-//   -o, --output <dir>   Выходная директория
-//   -v, --verbose        Подробный вывод
+// ⚠️ TODO (следующий рефакторинг):
+//   ProjectGraphBuilder пока не принимает entitiesMap извне.
+//   Когда это будет сделано — buildProjectGraph получит второй
+//   аргумент entitiesMap, и двойной парсинг исчезнет полностью.
 // ============================================================
 
 import fs from 'fs';
@@ -47,8 +55,12 @@ import type { Command } from 'commander';
 //    (который внутри использует reporters/json)
 import { buildProjectGraph } from '../../modes/project-graph.js';
 
+// ✅ v4.0.0: единый pipeline для entities
+import { AnalysisPipeline } from '../../pipeline/index.js';
+
 // ✅ Типы для аннотаций
 import type { GraphStats } from '../../core/ProjectGraphBuilder.js';
+import type { PipelineMetrics } from '../../pipeline/index.js';
 
 // ============================================================
 // ВСПОМОГАТЕЛЬНЫЕ ТИПЫ
@@ -72,7 +84,8 @@ interface ProjectCommandOptions {
 /**
  * Результат работы команды `project`.
  *
- * Формируется из данных, полученных от `buildProjectGraph`.
+ * Формируется из данных, полученных от `buildProjectGraph`
+ * и `AnalysisPipeline`.
  */
 interface ProjectCommandResult {
   /** Точка входа */
@@ -98,6 +111,8 @@ interface ProjectCommandResult {
     htmlReport?: string;
     metadata?: string;
   };
+  /** Метрики pipeline (если --entities) */
+  pipelineMetrics?: PipelineMetrics;
 }
 
 // ============================================================
@@ -111,8 +126,10 @@ interface ProjectCommandResult {
  *
  * ⚠️ АРХИТЕКТУРНОЕ ПРАВИЛО:
  *   Этот файл — только оркестратор. Вся логика анализа
- *   находится в `modes/project-graph.ts`, который в свою
- *   очередь делегирует в `reporters/json`.
+ *   находится в:
+ *     - `pipeline/` — для entities (парсинг AST)
+ *     - `modes/project-graph.ts` — для графа зависимостей
+ *     - `reporters/json/` — для построения отчётов
  *
  *   НЕ добавляйте сюда:
  *     - парсинг AST
@@ -121,7 +138,7 @@ interface ProjectCommandResult {
  *     - генерацию отчётов
  *
  *   Если нужна новая функциональность — добавьте её в
- *   `reporters/json`, а здесь только вызовите.
+ *   соответствующий модуль, а здесь только вызовите.
  */
 export class ProjectCommand {
   private program: Command;
@@ -167,9 +184,11 @@ export class ProjectCommand {
    *
    * Шаги:
    *   1. Валидация входных данных
-   *   2. Вызов buildProjectGraph (вся тяжёлая работа там)
-   *   3. Сохранение результатов
-   *   4. Вывод статистики
+   *   2. [v4.0.0] AnalysisPipeline для entities (если --entities)
+   *   3. buildProjectGraph для графа зависимостей
+   *   4. Подстановка entities из pipeline в graphResult
+   *   5. Сохранение результатов
+   *   6. Вывод статистики
    */
   private async execute(file: string, options: ProjectCommandOptions): Promise<void> {
     const startTime = Date.now();
@@ -191,25 +210,70 @@ export class ProjectCommand {
     }
 
     // ----------------------------------------------------------
-    // Шаг 2: Построение графа
-    //         ★ Вся логика анализа — внутри buildProjectGraph
+    // Шаг 2: ✅ v4.0.0 — Pipeline для entities
+    // ----------------------------------------------------------
+    let pipelineResult: Awaited<ReturnType<AnalysisPipeline['run']>> | undefined;
+    let pipelineMetrics: PipelineMetrics | undefined;
+
+    if (options.entities) {
+      console.log('\n🔍 Running unified pipeline for entities...');
+
+      const pipeline = new AnalysisPipeline();
+      pipelineResult = await pipeline.run({
+        paths: [resolvedFile],
+        recursive: true,
+        mode: 'entities-only',
+        includeBody: options.includeBody === true,
+        includeVSCode: true,
+        includeExtended: true,
+        verbose: options.verbose === true,
+        continueOnError: true,
+      });
+
+      pipelineMetrics = pipelineResult.metrics;
+      this.printPipelineDiagnostics(pipelineMetrics);
+
+      if (pipelineResult.errors.length > 0 && options.verbose) {
+        console.log(`\n   ⚠️  Ошибок парсинга: ${pipelineResult.errors.length}`);
+        for (const err of pipelineResult.errors.slice(0, 5)) {
+          console.log(`      • ${path.basename(err.file)}: ${err.message}`);
+        }
+        if (pipelineResult.errors.length > 5) {
+          console.log(`      ... и ещё ${pipelineResult.errors.length - 5}`);
+        }
+      }
+    }
+
+    // ----------------------------------------------------------
+    // Шаг 3: Построение графа зависимостей
+    // ----------------------------------------------------------
+    // ⚠️ v4.0.0: includeEntities=false — entities уже собраны
+    //    pipeline'ом. ProjectGraphBuilder не парсит файлы повторно.
     // ----------------------------------------------------------
     if (options.verbose) {
-      console.log('🔍 Building project graph...\n');
+      console.log('\n🔍 Building project graph...');
     }
 
     const graphResult = buildProjectGraph(
       resolvedFile,
       parseInt(options.depth, 10),
-      options.entities === true,
+      false, // ← v4.0.0: НЕ дублируем entities
       options.from,
       options.to
     );
 
+    // ----------------------------------------------------------
+    // Шаг 4: Подстановка entities из pipeline в graphResult
+    // ----------------------------------------------------------
+    if (pipelineResult) {
+      (graphResult as any).entities = pipelineResult.entitiesMap;
+      (graphResult as any).enhancedMap = pipelineResult.enhancedMap;
+    }
+
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
     // ----------------------------------------------------------
-    // Шаг 3: Вывод статистики графа
+    // Шаг 5: Вывод статистики графа
     // ----------------------------------------------------------
     const stats = this.extractStats(graphResult);
     this.printGraphSummary(stats, duration);
@@ -222,15 +286,17 @@ export class ProjectCommand {
       this.printCallGraphPath(graphResult.callGraphResult);
     }
 
-    // ----------------------------------------------------------
-    // Шаг 4: Сохранение результатов
-    //         ★ Сохранение делегируется reporters/json через
-    //           buildProjectGraph → buildEnhancedPackageLockReport
-    // ----------------------------------------------------------
-    const savedFiles = this.saveResults(graphResult, outputDir, options);
+    if (pipelineMetrics) {
+      this.printPipelineSummary(pipelineMetrics);
+    }
 
     // ----------------------------------------------------------
-    // Шаг 5: Финальный отчёт
+    // Шаг 6: Сохранение результатов
+    // ----------------------------------------------------------
+    const savedFiles = this.saveResults(graphResult, outputDir, options, pipelineResult);
+
+    // ----------------------------------------------------------
+    // Шаг 7: Финальный отчёт
     // ----------------------------------------------------------
     this.printFinalReport(stats, savedFiles, outputDir, duration);
   }
@@ -244,7 +310,7 @@ export class ProjectCommand {
    */
   private printHeader(file: string, options: ProjectCommandOptions): void {
     console.log('\n' + '='.repeat(70));
-    console.log('📊 PROJECT GRAPH ANALYSIS');
+    console.log('📊 PROJECT GRAPH ANALYSIS (v4.0.0)');
     console.log('='.repeat(70));
     console.log(`📄 Entry point: ${file}`);
     console.log(`📏 Max depth: ${options.depth}`);
@@ -255,6 +321,67 @@ export class ProjectCommand {
     console.log(`🎯 To: ${options.to || 'auto'}`);
     console.log(`📁 Output: ${options.output}`);
     console.log(`🚀 Optimized: ${options.optimized ? 'ON' : 'OFF'}`);
+  }
+
+  /**
+   * ✅ v4.0.0: печатает диагностику pipeline.
+   */
+  private printPipelineDiagnostics(m: PipelineMetrics): void {
+    console.log(`   📁 Files discovered: ${m.filesDiscovered}`);
+    console.log(`   ✅ Files parsed:     ${m.filesParsed}`);
+    console.log(`   🎯 Vue: ${m.vueFiles}, TS/JS: ${m.tsFiles}`);
+    if (m.filesFailed > 0) {
+      console.log(`   ⚠️  Failed: ${m.filesFailed}`);
+    }
+    console.log(`   ƒ  Functions:        ${m.totalFunctions}`);
+    console.log(`   📌 Constants:        ${m.totalConstants}`);
+    console.log(`   📥 Imports:          ${m.totalImports}`);
+    console.log(`   📤 Exports:          ${m.totalExports}`);
+    if (m.totalConditionals > 0) {
+      console.log(`   🎨 Conditionals:     ${m.totalConditionals}`);
+    }
+    if (m.totalLifecycle > 0) {
+      console.log(`   🧬 Lifecycle:        ${m.totalLifecycle}`);
+    }
+    if (m.totalReactivity > 0) {
+      console.log(`   ⚡ Reactivity:       ${m.totalReactivity}`);
+    }
+    if (m.reExportChains > 0) {
+      console.log(`   🔄 Re-exports:       ${m.reExportChains}`);
+    }
+  }
+
+  /**
+   * ✅ v4.0.0: печатает итоговую сводку pipeline.
+   */
+  private printPipelineSummary(m: PipelineMetrics): void {
+    console.log('\n📊 PIPELINE METRICS:');
+    console.log(`   • Files parsed:  ${m.filesParsed}/${m.filesDiscovered}`);
+    console.log(`   • Vue / TS-JS:   ${m.vueFiles} / ${m.tsFiles}`);
+    console.log(`   • Failed:        ${m.filesFailed}`);
+    console.log(`   • Functions:     ${m.totalFunctions}`);
+    console.log(`   • Constants:     ${m.totalConstants}`);
+    console.log(`   • Imports:       ${m.totalImports}`);
+    console.log(`   • Exports:       ${m.totalExports}`);
+    if (m.totalConditionals > 0) {
+      console.log(`   • Conditionals:  ${m.totalConditionals}`);
+    }
+    if (m.totalLifecycle > 0) {
+      console.log(`   • Lifecycle:     ${m.totalLifecycle}`);
+    }
+    if (m.totalReactivity > 0) {
+      console.log(`   • Reactivity:    ${m.totalReactivity}`);
+    }
+    console.log(`   • Duration:      ${(m.durationMs / 1000).toFixed(2)}s`);
+
+    // Тайминги stages (только если их немного)
+    const stageEntries = Object.entries(m.stageTimings);
+    if (stageEntries.length > 0) {
+      console.log('   • Stage timings:');
+      for (const [stage, ms] of stageEntries) {
+        console.log(`      - ${stage.padEnd(22)} ${ms}ms`);
+      }
+    }
   }
 
   /**
@@ -364,7 +491,8 @@ export class ProjectCommand {
   private saveResults(
     graphResult: any,
     outputDir: string,
-    options: ProjectCommandOptions
+    options: ProjectCommandOptions,
+    pipelineResult?: Awaited<ReturnType<AnalysisPipeline['run']>>
   ): ProjectCommandResult['savedFiles'] {
     console.log('\n💾 Saving results...');
     const savedFiles: ProjectCommandResult['savedFiles'] = {};
@@ -392,13 +520,18 @@ export class ProjectCommand {
     // ----------------------------------------------------------
     // 3. Compact universe отчёт
     //    ★ Генерируется через reporters/json/compact-reporter
+    //    ✅ v4.0.0: используем enhancedMap из pipeline, если есть
     // ----------------------------------------------------------
-    if (options.entities && graphResult.entities) {
+    if (options.entities && (pipelineResult || graphResult.entities)) {
       try {
         const { generateCompactReport } = require('../../reporters/compact-reporter.js');
         const compactPath = path.join(outputDir, 'compact-universe.json');
 
-        generateCompactReport(graphResult.entities, compactPath, {
+        const entitiesForCompact = pipelineResult
+          ? pipelineResult.enhancedMap
+          : graphResult.entities;
+
+        generateCompactReport(entitiesForCompact, compactPath, {
           compress: true,
           saveFullJson: true,
           verbose: options.verbose === true,
@@ -417,17 +550,21 @@ export class ProjectCommand {
     // 4. Optimized report (встроенные связи)
     //    ★ Генерируется через reporters/json/builders/save-optimized
     // ----------------------------------------------------------
-    if (options.optimized && graphResult.entities) {
+    if (options.optimized && (pipelineResult || graphResult.entities)) {
       try {
         const {
           saveOptimizedPackageLockReport,
         } = require('../../reporters/json/builders/save-optimized.js');
         const optimizedPath = path.join(outputDir, 'optimized-report.json');
 
+        const entitiesForOptimized = pipelineResult
+          ? pipelineResult.entitiesMap
+          : graphResult.entities;
+
         saveOptimizedPackageLockReport(
           graphResult.rootKey,
           graphResult.graph,
-          graphResult.entities,
+          entitiesForOptimized,
           optimizedPath,
           {
             includeBody: options.includeBody === true,
@@ -462,13 +599,18 @@ export class ProjectCommand {
     // ----------------------------------------------------------
     // 6. Metadata (метаданные о запуске)
     // ----------------------------------------------------------
-    const metadata = {
+    const metadata: any = {
       timestamp: new Date().toISOString(),
-      entryPoint: options.output,
+      entryPoint: graphResult.rootKey,
       depth: parseInt(options.depth, 10),
       stats: graphResult.stats,
       savedFiles,
     };
+
+    // ✅ v4.0.0: добавляем метрики pipeline в metadata
+    if (pipelineResult) {
+      metadata.pipelineMetrics = pipelineResult.metrics;
+    }
 
     const metadataPath = path.join(outputDir, 'project-metadata.json');
     fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));

@@ -2,29 +2,78 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Версия: 14.0.0
+// Версия: 15.0.2
+//
+// ИЗМЕНЕНИЯ v15.0.2 (устранение дублирования conditionals):
+//   - ✅ УБРАНО дублирование `conditionals`:
+//       • Больше НЕ пушим в глобальный `conditionals[]`.
+//       • Больше НЕ передаём `conditionals` в финальный `FullJSON`.
+//       • conditionals живут ТОЛЬКО в `templates[].conditionals`.
+//
+//     ПРИЧИНА:
+//     ---------
+//     Один и тот же объект `TemplateConditional` попадал в
+//     ДВА места full.json:
+//       1. `full.conditionals` — верхний уровень
+//       2. `full.templates[i].conditionals` — внутри templates
+//
+//     При сериализации через safeJsonStringify первый экземпляр
+//     записывался нормально, а второй — заменялся на "[Circular]"
+//     (WeakSet/WeakMap отслеживает уже встреченные объекты).
+//
+//     При чтении full.json с диска `full.conditionals` содержал
+//     строки "[Circular]" вместо объектов. encode(compact) не мог
+//     их закодировать, и секция `cd` терялась при round-trip.
+//
+//     РЕШЕНИЕ:
+//     --------
+//     Убрать верхнеуровневый `full.conditionals`. Все conditionals
+//     живут ТОЛЬКО в `templates[].conditionals`. Это устраняет
+//     дублирование ссылок и делает safeJsonStringify безопасным.
+//
+//   - ✅ ОБНОВЛЕНО: `statistics.totalConditionals` считается через
+//     `templates[]`, а не через удалённый глобальный массив.
+//
+//   - ✅ УБРАНЫ комментарии про "обратную совместимость" —
+//     только новый код.
+//
+// ИЗМЕНЕНИЯ v15.0.1 (fix imports[].type + синхронизация с codec v15.0.1):
+//   - ✅ ИСПРАВЛЕНО: `collectFullJSON` при построении ImportData
+//     больше НЕ пишет `type: 'type'` для type-only импортов.
+//
+//     ПРИЧИНА:
+//     ---------
+//     В v15.0.0 `collectFullJSON` писал:
+//       const baseType = getImportTypeFromSpecifierType(spec.type);
+//       const importType: 'named' | 'default' | 'namespace' | 'type' = baseType;
+//     где `baseType` всегда был 'named' | 'default' | 'namespace'.
+//
+//     Но в некоторых ветках поле `type` перетиралось значением `'type'`
+//     при `isTypeOnly === true`. Это давало 20 расхождений
+//     `type: "type" → "named"` при decode(encode(full)).
+//
+//     РЕШЕНИЕ (Вариант A — унификация семантики):
+//     --------------------------------------------
+//     Поле `type` теперь ВСЕГДА принимает только:
+//       'named' | 'default' | 'namespace'
+//     Флаг `isTypeOnly` — отдельное поле, не влияет на `type`.
+//
+// ИЗМЕНЕНИЯ v15.0.0 (расширенные секции + isTypeOnly):
+//   - ✅ ИСПРАВЛЕНО: `collectFullJSON` при построении ImportData
+//     больше НЕ перетирает `type` значением `'type'`.
+//   - ✅ ИСПРАВЛЕНО: проверка `vt.length !== 12` в collectFullJSON.
 //
 // ИЗМЕНЕНИЯ v14.0.0:
-//   - ✅ ДОБАВЛЕНО: `canonicalizeFullJSON` в конце `collectFullJSON` —
-//     сортировка всех массивов по числовому `id` (fn1 < fn2 < ... < fn10).
-//     Это гарантирует байтовое равенство
-//     `encode(decode(encode(full))) === encode(full)`.
-//   - ✅ ДОБАВЛЕНО: `detectCallType` распознаёт callback-рёбра
-//     по суффиксу `_callback` в имени вызываемой функции.
-//   - ✅ ДОБАВЛЕНЫ вспомогательные: `extractNumericId`, `sortByIdNumeric`,
-//     `canonicalizeFullJSON`.
+//   - ✅ ДОБАВЛЕНО: `canonicalizeFullJSON` в конце `collectFullJSON`.
+//   - ✅ ДОБАВЛЕНО: `detectCallType` распознаёт callback-рёбра.
 //
 // ИЗМЕНЕНИЯ v13.0.0:
-//   - ✅ ИСПРАВЛЕНО: ValuesMode импортируется из './codec/values-filter.js'
-//     (codec-types.js его не экспортирует).
-//   - ✅ ЕДИНАЯ ВЕРСИЯ: version берётся из CODEC_VERSION ('13.0.0'),
-//     а не хардкодится ('11.1.0').
-//   - ✅ ВАЛИДАЦИЯ toFileId: гарантируем, что после resolveToFileId
-//     результат — либо `fN`, либо `external:...`, либо `unresolved:...`.
+//   - ✅ ИСПРАВЛЕНО: ValuesMode импортируется из './codec/values-filter.js'.
+//   - ✅ ЕДИНАЯ ВЕРСИЯ: version берётся из CODEC_VERSION.
+//   - ✅ ВАЛИДАЦИЯ toFileId.
 //
 // ИЗМЕНЕНИЯ v11.1.0 (--values-mode):
 //   - ✅ ДОБАВЛЕНО: поддержка `valuesMode: 'full' | 'relations'`.
-//   - ✅ Проброс valuesMode в Codec.encode().
 //
 // ИЗМЕНЕНИЯ v11.0.0 (компактнее):
 //   - ✅ ВЕРСИЯ отчёта: '11.0.0'.
@@ -42,14 +91,8 @@
 // ИЗМЕНЕНИЯ v9.0.5:
 //   - ✅ ДОБАВЛЕНО: опция `saveEdges` (по умолчанию false).
 //
-// ИЗМЕНЕНИЯ v10.3 (L1/L2/DL fix):
-//   - ✅ ВСЕГДА массивы для базовых секций.
-//   - ✅ type-only импорты пишутся как `type: 'type'`.
-//   - ✅ `templates[].conditionals[]` обогащаются полями `id` и `fileId`.
-//
 // ИЗМЕНЕНИЯ v9.0.2:
 //   - ✅ ИСПРАВЛЕНО: templates.push({...}) — ровно 12 полей TemplateData.
-//   - ✅ ИСПРАВЛЕНО: пустые секции → undefined.
 //
 // ИЗМЕНЕНИЯ v9.0.0:
 //   - ✅ УДАЛЕНЫ локальные определения GenerateReportOptions/Result.
@@ -58,6 +101,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Project } from 'ts-morph';
+
 import type { EntitiesResult, FunctionInfo } from '../types.js';
 import { Codec } from './codec/codec.js';
 import { isExternalModule, resolveFilePath } from '../core/ast-parser.js';
@@ -119,7 +163,7 @@ export type {
 export type { ValuesMode } from './codec/values-filter.js';
 
 // ============================================
-// ✅ v11.1.0: КОНСТАНТЫ РЕЖИМА VALUES
+// КОНСТАНТЫ
 // ============================================
 
 /**
@@ -190,7 +234,7 @@ export function generateCompactReport(
     console.log(`   📞 Вызовов: ${full.calls?.length || 0}`);
     console.log(`   🔄 Реэкспортов: ${full.reExports?.length || 0}`);
     console.log(`   🎨 Vue-шаблонов: ${full.templates?.length || 0}`);
-    console.log(`   🎯 Conditionals: ${full.conditionals?.length || 0}`);
+    console.log(`   🎯 Conditionals: ${countConditionals(full)}`);
     console.log(`   🧬 Lifecycle: ${full.lifecycle?.length || 0}`);
     console.log(`   ⚡ Effects: ${full.effects?.length || 0}`);
     console.log(`   💉 Injections: ${full.injections?.length || 0}`);
@@ -242,12 +286,24 @@ export function generateCompactReport(
       const valuesCount = compact.values?.length ?? 0;
       console.log(`   📦 values[]: ${valuesCount} элементов`);
 
-      // ✅ v9.0.2: диагностика vt-секции
-      if (process.env.AST_DEBUG_CODEC === 'true' && compact.vt) {
+      // ============================================
+      // ✅ v15.0.0 + v15.0.1: диагностика vt-секции
+      // ============================================
+      // `compact.vt` — это `number[]` (индексы в `compact.values[]`).
+      // Проверяем РАСПАКОВАННЫЕ объекты: у каждого TemplateData
+      // должно быть ровно 12 полей.
+      // ============================================
+      if (process.env.AST_DEBUG_CODEC === 'true' && Array.isArray(compact.vt)) {
         for (let i = 0; i < compact.vt.length; i++) {
-          const vt = compact.vt[i];
-          if (vt && vt.length !== 12) {
-            console.warn(`   ⚠️ vt[${i}] содержит ${vt.length} полей вместо 12`);
+          const idx = compact.vt[i];
+          if (typeof idx !== 'number' || idx < 0) continue;
+          const raw = compact.values?.[idx];
+          if (!raw || typeof raw !== 'object') continue;
+          const fieldCount = Object.keys(raw as object).length;
+          if (fieldCount !== 12) {
+            console.warn(
+              `   ⚠️ vt[${i}] (values[${idx}]) содержит ${fieldCount} полей вместо 12`
+            );
           }
         }
       }
@@ -359,15 +415,15 @@ export function generateCompactReport(
     compact,
     compactPath,
     fullPath,
-    edgesPath, // ✅ v9.0.4
+    edgesPath,
     stats: {
       duration,
       compactSize,
       fullSize,
-      edgesSize, // ✅ v9.0.4
+      edgesSize,
       compressionRatio,
-      valuesMode, // ✅ v11.1.0
-      valuesCount: compact?.values?.length ?? 0, // ✅ v11.1.0
+      valuesMode,
+      valuesCount: compact?.values?.length ?? 0,
     },
   };
 }
@@ -458,16 +514,6 @@ function saveJsonFile(
 // ============================================
 // ✅ v14.0.0: КАНОНИЗАЦИЯ FULLJSON
 // ============================================
-//
-// Сортировка всех массивов по числовому `id` (fn1 < fn2 < ... < fn10).
-//
-// ⚠️ Это НЕ строковая сортировка (`'fn1' < 'fn10' < 'fn2'`) —
-// она ломала round-trip в v13.0.1. Здесь числовая.
-//
-// `decode` восстанавливает `id` из позиции (`functions[i].id = 'fn${i+1}'`).
-// Если `encode` пишет массивы в каноническом порядке, то `decode`
-// восстанавливает их в том же порядке → байтовое равенство.
-// ============================================
 
 /**
  * Извлекает числовой суффикс из `id` (`fn123` → 123).
@@ -516,23 +562,42 @@ function canonicalizeFullJSON(payload: FullJSON): FullJSON {
 }
 
 // ============================================
+// ✅ v15.0.2: ПОДСЧЁТ CONDITIONALS
+// ============================================
+
+/**
+ * Считает все conditionals внутри `templates[]`.
+ *
+ * ✅ v15.0.2: conditionals живут ТОЛЬКО в `templates[].conditionals`.
+ *    На верхнем уровне full.json их больше нет.
+ */
+function countConditionals(full: FullJSON): number {
+  let count = 0;
+  for (const template of full.templates ?? []) {
+    count += (template.conditionals ?? []).length;
+  }
+  return count;
+}
+
+// ============================================
 // СБОР ПОЛНОГО JSON (ВНУТРЕННЯЯ ФУНКЦИЯ)
 // ============================================
 
 /**
  * Собирает полный JSON из карты сущностей.
  *
- * ✅ v14.0.0: в конце вызывается `canonicalizeFullJSON` — все массивы
- * сортируются по числовому `id`. Это гарантирует детерминированный
- * порядок независимо от порядка обхода `entitiesMap`.
+ * ✅ v15.0.2: conditionals живут ТОЛЬКО в `templates[].conditionals`.
+ *   Убрано дублирование на верхнем уровне (см. шапку файла).
  *
+ * ✅ v15.0.1: `imports[].type` теперь ВСЕГДА принимает только
+ *   `'named' | 'default' | 'namespace'`.
+ *
+ * ✅ v15.0.0: не перетирает `type` значением `'type'`.
+ * ✅ v14.0.0: в конце вызывается `canonicalizeFullJSON`.
  * ✅ v13.0.0: version = CODEC_VERSION; валидация toFileId.
- * ✅ v11.1.0: version = '11.1.0'; valuesMode пробрасывается.
- * ✅ v11.0.0: version = '11.0.0'.
+ * ✅ v11.1.0: valuesMode пробрасывается.
  * ✅ v10.3: базовые секции ВСЕГДА массивы.
  * ✅ v9.0.2: templates.push содержит ровно 12 полей TemplateData.
- * ✅ v9.0.0: собираются секции conditionals[], lifecycle[], effects[],
- *            injections[], reactivity[], types[], typeRefs[].
  */
 function collectFullJSON(
   entitiesMap: Record<string, EntitiesResult>,
@@ -628,7 +693,6 @@ function collectFullJSON(
   const calls: CallData[] = [];
   const reExports: ReExportData[] = [];
   const templates: TemplateData[] = [];
-  const conditionals: TemplateConditional[] = [];
 
   // ✅ v9.0.0: новые секции
   const lifecycle: LifecycleHook[] = [];
@@ -643,7 +707,6 @@ function collectFullJSON(
   // ============================================
   const moduleMap = new Map<string, ModuleData>();
   const fileMap = new Map<string, FileData>();
-  // ✅ v8.4.2: массив функций для каждого имени (дубли не теряются)
   const functionMap = new Map<string, FunctionData[]>();
 
   // ✅ v8.5.0: карта source → fileId
@@ -799,7 +862,13 @@ function collectFullJSON(
   }
 
   // ============================================
-  // ✅ v8.4.0 + v9.0.0 + v9.0.2 + v10.3: сбор Vue-шаблонов и conditionals
+  // ✅ v8.4.0 + v9.0.0 + v9.0.2 + v10.3 + v15.0.2: сбор Vue-шаблонов
+  // ============================================
+  //
+  // ⚠️ v15.0.2: conditionals живут ТОЛЬКО в `templates[].conditionals`.
+  //    НЕ пушим в глобальный `conditionals[]`. НЕ передаём их
+  //    в `result.conditionals`. Это устраняет дублирование ссылок
+  //    и делает safeJsonStringify безопасным.
   // ============================================
   for (const [filePath, entities] of Object.entries(workingEntitiesMap)) {
     if (!entities) continue;
@@ -828,11 +897,12 @@ function collectFullJSON(
 
     if (!hasTemplate) continue;
 
-    // ✅ v10.3: обогащаем conditionals полями id и fileId
+    // ✅ v15.0.2: conditionals с id/fileId.
+    //    Единственный массив, никакого дублирования.
     const fileConditionals = e.templateConditionals || [];
     const enrichedConditionals: TemplateConditional[] = fileConditionals.map((cd: any) => {
       conditionalCounter++;
-      const enriched: TemplateConditional = {
+      return {
         id: `cd${conditionalCounter}`,
         directive: cd.directive,
         fileId: file.id,
@@ -840,8 +910,6 @@ function collectFullJSON(
         conditionExpression: cd.conditionExpression,
         renderedComponent: cd.renderedComponent,
       };
-      conditionals.push(enriched);
-      return enriched;
     });
 
     // ✅ v9.0.2 + v10.3: гарантируем РОВНО 12 полей TemplateData.
@@ -875,8 +943,11 @@ function collectFullJSON(
 
   if (verbose && templates.length > 0) {
     console.log(`   🎨 Vue-шаблонов: ${templates.length}`);
-    console.log(`   🎯 Conditionals: ${conditionals.length}`);
+    console.log(`   🎯 Conditionals: ${countConditionals({ templates } as FullJSON)}`);
 
+    // ============================================
+    // ✅ v15.0.0: проверка "12 полей" для templates
+    // ============================================
     if (process.env.AST_DEBUG_CODEC === 'true') {
       for (let i = 0; i < templates.length; i++) {
         const t = templates[i];
@@ -977,6 +1048,9 @@ function collectFullJSON(
     // --------------------------------------------
     // ИМПОРТЫ
     // --------------------------------------------
+    // ✅ v15.0.1: `type` теперь ВСЕГДА 'named' | 'default' | 'namespace'.
+    //   `isTypeOnly` — отдельный флаг, не влияет на `type`.
+    // --------------------------------------------
     const importsList = entities.imports || [];
 
     for (const imp of importsList) {
@@ -1025,9 +1099,11 @@ function collectFullJSON(
           importCounter++;
 
           const baseType = getImportTypeFromSpecifierType(spec.type);
-          const importType: 'named' | 'default' | 'namespace' | 'type' = imp.isTypeOnly
-            ? 'type'
-            : baseType;
+
+          // ============================================
+          // ✅ v15.0.1: type — ТОЛЬКО 'named' | 'default' | 'namespace'
+          // ============================================
+          const importType: 'named' | 'default' | 'namespace' = baseType;
 
           imports.push({
             id: `i${importCounter}`,
@@ -1049,7 +1125,7 @@ function collectFullJSON(
         for (const spec of specifiers as unknown[]) {
           let importedName = '';
           let localName = '';
-          let importType: 'named' | 'default' | 'namespace' | 'type' = 'named';
+          let importType: 'named' | 'default' | 'namespace' = 'named';
           let isDefault = false;
           let isNamespace = false;
 
@@ -1093,9 +1169,8 @@ function collectFullJSON(
 
           importCounter++;
 
-          const finalType: 'named' | 'default' | 'namespace' | 'type' = imp.isTypeOnly
-            ? 'type'
-            : importType;
+          // ✅ v15.0.1: НЕ перетираем type значением 'type'
+          const finalType: 'named' | 'default' | 'namespace' = importType;
 
           imports.push({
             id: `i${importCounter}`,
@@ -1300,6 +1375,15 @@ function collectFullJSON(
   // ============================================
   // Статистика
   // ============================================
+  //
+  // ✅ v15.0.2: totalConditionals считается через `templates[]`,
+  //    а не через удалённый глобальный массив.
+  // ============================================
+  const totalConditionals = templates.reduce(
+    (sum, t) => sum + (t.conditionals?.length ?? 0),
+    0
+  );
+
   const statistics: StatisticsData = {
     totalModules: modules.length,
     totalFiles: files.length,
@@ -1312,6 +1396,11 @@ function collectFullJSON(
     totalReExports: reExports.length,
     totalTemplates: templates.length,
   };
+
+  // Опционально: если StatisticsData поддерживает totalConditionals
+  if ('totalConditionals' in statistics || true) {
+    (statistics as any).totalConditionals = totalConditionals;
+  }
 
   // ============================================
   // Определение корневого модуля
@@ -1338,12 +1427,15 @@ function collectFullJSON(
   // ============================================
   // Финальный объект
   // ============================================
-  // ✅ v13.0.0: version = CODEC_VERSION — единая константа.
+  //
+  // ✅ v15.0.2: `conditionals` НЕ передаются на верхний уровень.
+  //    Они живут ТОЛЬКО в `templates[].conditionals`.
+  // ============================================
   const result: FullJSON = {
     version: CODEC_VERSION,
     timestamp: new Date().toISOString(),
     root,
-    valuesMode, // ✅ v11.1.0
+    valuesMode,
     modules,
     files,
     functions,
@@ -1355,7 +1447,6 @@ function collectFullJSON(
     reExports,
     templates: templates.length > 0 ? templates : undefined,
     statistics,
-    conditionals: conditionals.length > 0 ? conditionals : undefined,
     lifecycle: lifecycle.length > 0 ? lifecycle : undefined,
     effects: effects.length > 0 ? effects : undefined,
     injections: injections.length > 0 ? injections : undefined,
@@ -1366,13 +1457,6 @@ function collectFullJSON(
 
   // ============================================
   // ✅ v14.0.0: КАНОНИЗАЦИЯ
-  // ============================================
-  // Сортируем все массивы по ЧИСЛОВОМУ `id`. Это гарантирует,
-  // что `full.json` детерминирован независимо от порядка обхода
-  // `entitiesMap`.
-  //
-  // Без этого `encode(decode(encode(x)))` может дать другой порядок
-  // в `strs` / `params` / `values`, и байтовое равенство сломается.
   // ============================================
   return canonicalizeFullJSON(result);
 }
@@ -1385,10 +1469,9 @@ function collectFullJSON(
  * ✅ v9.0.7: вставляет суффикс перед расширением файла.
  */
 function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
-  const ext = path.extname(filePath); // '.json'
-  const base = filePath.slice(0, -ext.length); // 'report'
+  const ext = path.extname(filePath);
+  const base = filePath.slice(0, -ext.length);
 
-  // Нормализуем суффикс: убеждаемся, что он начинается с точки
   let normalizedSuffix = suffix.trim();
   if (!normalizedSuffix) {
     return insertUniqueSuffix(filePath, suffix);
@@ -1397,17 +1480,13 @@ function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
     normalizedSuffix = `.${normalizedSuffix}`;
   }
 
-  // Если суффикс заканчивается на то же расширение, что и файл,
-  // убираем расширение из суффикса — оно уже есть в ext.
   let suffixWithoutExt = normalizedSuffix;
   if (suffixWithoutExt.endsWith(ext) && ext.length > 0) {
     suffixWithoutExt = suffixWithoutExt.slice(0, -ext.length);
   }
 
-  // Собираем итоговый путь
   const result = `${base}${suffixWithoutExt}${ext}`;
 
-  // Защита: если результат совпал с исходным
   if (path.resolve(result) === path.resolve(filePath)) {
     return insertUniqueSuffix(filePath, suffix);
   }
@@ -1420,8 +1499,8 @@ function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
  * пока результат не станет уникальным относительно исходного пути.
  */
 function insertUniqueSuffix(filePath: string, suffix: string): string {
-  const ext = path.extname(filePath); // '.json'
-  const base = filePath.slice(0, -ext.length); // 'report'
+  const ext = path.extname(filePath);
+  const base = filePath.slice(0, -ext.length);
 
   let normalizedSuffix = suffix.trim();
   if (normalizedSuffix && !normalizedSuffix.startsWith('.')) {
@@ -1562,10 +1641,14 @@ function resolveToFileId(
 
 /**
  * Определяет тип импорта по типу specifier.
+ *
+ * ✅ v15.0.1: возвращает ТОЛЬКО 'named' | 'default' | 'namespace'.
+ *   Значение 'type' больше не возвращается — для type-only
+ *   используется отдельный флаг isTypeOnly.
  */
 function getImportTypeFromSpecifierType(
   specifierType: string
-): 'named' | 'default' | 'namespace' | 'type' {
+): 'named' | 'default' | 'namespace' {
   switch (specifierType) {
     case 'ImportDefaultSpecifier':
       return 'default';
@@ -1600,7 +1683,10 @@ function detectCallType(
     const escapedCallName = callName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     try {
-      const cbPattern = new RegExp(String.raw`${escapedCallName}\s*\([^)]*(?:=>|function)`, 'i');
+      const cbPattern = new RegExp(
+        String.raw`${escapedCallName}\s*\([^)]*(?:=>|function)`,
+        'i'
+      );
       if (cbPattern.test(body)) return 'callback';
     } catch {
       return 'direct';

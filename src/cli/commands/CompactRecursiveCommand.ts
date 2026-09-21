@@ -1,65 +1,41 @@
 // packages/ast-analyzer/src/cli/commands/CompactRecursiveCommand.ts
 // ============================================================
-// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ - БЕЗ ДУБЛЕЙ
+// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ
 // ============================================================
-// Версия: 12.0.0
+// Версия: 13.1.0
+//
+// ИЗМЕНЕНИЯ v13.1.0 (фикс сборки файлов):
+//   - ✅ ИСПРАВЛЕНО: `paths: [entryPath]` → `paths: [projectRoot]`.
+//     `entryPath` — файл (./src/index.ts), `collectFilesForAnalysis`
+//     не разворачивает его в директорию и возвращает 1 файл.
+//     Теперь передаём `path.dirname(entryPath)` — обход всей
+//     директории точки входа, как и требует семантика
+//     "compact-RECURSIVE".
+//   - ✅ ДОБАВЛЕНО: диагностика `Сканирование директории: ...`.
+//
+// ИЗМЕНЕНИЯ v13.0.0 (переход на AnalysisPipeline):
+//   - ✅ ПЕРЕВЕДЕНО на AnalysisPipeline.
+//   - ✅ УДАЛЕНЫ: collectProjectFiles, ручной цикл
+//     extractEntitiesFromFile, импорты extractEntitiesFromFile
+//     и collectFilesForAnalysis.
+//   - ✅ УДАЛЕНЫ: stats от generateCompactReport, заменены на
+//     pipeline.metrics.
+//   - ✅ ДОБАВЛЕНО: paths в pipeline.run().
 //
 // ИЗМЕНЕНИЯ v12.0.0 (values-mode):
-//   - ✅ ДОБАВЛЕН флаг --values-mode <mode>
-//     Допустимые значения: 'full' | 'relations'
-//     По умолчанию: 'relations' (сжатый режим, экономия 5–15x)
-//   - ✅ ДОБАВЛЕНА валидация значения флага (exit code 2 при ошибке)
-//   - ✅ Проброс valuesMode в generateCompactReport
-//   - ✅ valuesMode включён в вывод итоговой конфигурации
-//   - ✅ valuesMode включён в проброс из config-файла (приоритет: CLI > config > default)
+//   - ✅ ДОБАВЛЕН флаг --values-mode <mode>.
 //
 // ИЗМЕНЕНИЯ v11.0.1 (fix TS2451 + TS2339):
-//   - ✅ ИСПРАВЛЕНО: переименована переменная `config` (строка 185)
-//     в `appConfig`, чтобы устранить конфликт с `config` (строка 377).
-//     Раньше было два `const config` в одной области видимости:
-//       1. loadConfig(...) → AstAnalyzerConfig
-//       2. configBuilder.build() → CompactReportConfig
-//     Это вызывало TS2451 (Cannot redeclare block-scoped variable 'config')
-//     и 34 ошибки TS2339 (Property 'functions' does not exist on
-//     type 'AstAnalyzerConfig' и т.д.), потому что TypeScript
-//     использовал тип первого объявления.
+//   - ✅ ИСПРАВЛЕНО: переименовано `config` → `appConfig`.
 //
 // ИЗМЕНЕНИЯ v11.0.0 (config file integration):
-//   - ✅ ДОБАВЛЕНО: флаг --config <file> для указания конфиг-файла
-//   - ✅ ДОБАВЛЕНО: авто-поиск ast-analyzer.config.json вверх по дереву
-//   - ✅ ДОБАВЛЕНО: loadConfig + mergeConfigWithCli
-//   - ✅ ДОБАВЛЕНО: проброс exclude-паттернов в collectProjectFiles
-//   - ✅ ДОБАВЛЕНО: проброс outputOptions (compress, saveFullJson,
-//     fullJsonSuffix, saveEdges, edgesJsonSuffix) в generateCompactReport
-//   - ✅ ПРИОРИТЕТ: CLI-флаги > config-файл > пресет > дефолты
+//   - ✅ ДОБАВЛЕН флаг --config <file>, авто-поиск, mergeConfigWithCli.
 //
-// ИЗМЕНЕНИЯ v10.0.0 (адаптация под новую структуру GenerateReportResult):
-//   - ✅ extractEntities импортируется из единого reporters/json модуля
-//   - ✅ collectFilesForAnalysis из ci-cd/index.js
+// ИЗМЕНЕНИЯ v10.0.0:
+//   - ✅ extractEntities импортируется из reporters/json.
 //
 // ИЗМЕНЕНИЯ v9.0.0:
-//   - ✅ Добавлены флаги --edges и --edges-suffix
-//
-// ИЗМЕНЕНИЯ v8.0.0:
-//   - ✅ Строгая проверка options.includeBody === true
-//
-// ИЗМЕНЕНИЯ v7.0.0:
-//   - ✅ Добавлена строка "VSCode ссылки" в блок "ВКЛЮЧЕННЫЕ КОМПОНЕНТЫ"
-//
-// ИЗМЕНЕНИЯ v6.0.0:
-//   - ✅ Добавлена поддержка self functions через full.statistics
-//
-// ИЗМЕНЕНИЯ v5.0.0:
-//   - ✅ Строгая проверка options.includeVSCode === true
-//
-// ИЗМЕНЕНИЯ v4.0.0:
-//   - ✅ Добавлена поддержка --include-vscode
-//
-// ИЗМЕНЕНИЯ v3.0.0:
-//   - ✅ Строгая проверка options.includeBody === true
-//
-// ИЗМЕНЕНИЯ v2.0.0:
-//   - ✅ Добавлен .default(false) для --include-body/--include-security/--include-vscode
+//   - ✅ Добавлены флаги --edges и --edges-suffix.
 // ============================================================
 
 import type { Command } from 'commander';
@@ -68,32 +44,49 @@ import fs from 'fs';
 
 // ✅ ЕДИНЫЙ ИСТОЧНИК JSON-ОТЧЁТОВ
 import { generateCompactReport } from '../../reporters/compact-reporter.js';
-import { extractEntitiesFromFile } from '../../reporters/json/extractors/extract-entities-from-file.js';
-import { collectFilesForAnalysis } from '../../ci-cd/index.js';
-
-// ✅ ИМПОРТ КОНФИГУРАЦИИ ДЛЯ ПРЕСЕТОВ
 import { getPresetNames, createCompactConfig } from '../../reporters/CompactReportConfig.js';
 
 // ✅ v11.0.0: загрузчик конфиг-файла
 import { loadConfig, mergeConfigWithCli } from '../config/load-config.js';
 
+// ✅ НОВОЕ v13.0.0: единый pipeline
+import { AnalysisPipeline } from '../../pipeline/index.js';
+
 /**
  * Команда для рекурсивного компакт-отчета.
  *
- * Работает как project + compact: строит граф зависимостей,
- * собирает все файлы и генерирует компактный отчёт.
+ * Работает как project + compact: обходит директорию точки входа,
+ * собирает все файлы, извлекает сущности и генерирует компактный
+ * отчёт через единый AnalysisPipeline.
  *
- * ОСОБЕННОСТИ:
- * - НЕТ ДУБЛИРОВАНИЯ: каждый тип данных в одном месте
- * - НОВЫЕ ТИПЫ СВЯЗЕЙ: импорты, экспорты, наследование, типовые зависимости
- * - СЖАТИЕ: короткие ключи, сжатые флаги
- * - SELF FUNCTIONS: изолированные функции с индексами sf1, sf2, ...
- * - ГИБКИЙ КОНФИГ: 5 пресетов + 30+ опций для тонкой настройки
- * - ✅ CONFIG FILE: загрузка из ast-analyzer.config.json (v11.0.0)
- * - ✅ EDGES: опционально, по умолчанию выключено, сохраняется в отдельный файл
- * - ✅ v10: использует единый reporters/json модуль для анализа
- * - ✅ v11: приоритет CLI > config > пресет > дефолты
- * - ✅ v12: values-mode (full | relations) для управления размером отчёта
+ * ═══════════════════════════════════════════════════════════
+ * АРХИТЕКТУРА (v13.0.0+)
+ * ═══════════════════════════════════════════════════════════
+ *
+ *   CompactRecursiveCommand
+ *        │
+ *        └──> AnalysisPipeline.run({ paths: [projectRoot] })
+ *                 │
+ *                 ├──> DiscoverFilesStage     (сбор файлов)
+ *                 ├──> ParseFileStage          (диспетчер: Vue | TS/JS)
+ *                 ├──> EnrichReExportsStage    (разворот export * from)
+ *                 ├──> NormalizeEntitiesStage  (проброс template-полей)
+ *                 └──> BuildReportStage        (FullJSON → CompactJSON)
+ *
+ *   Результат pipeline → generateCompactReport → сохранение файлов.
+ *
+ * ═══════════════════════════════════════════════════════════
+ * КЛЮЧЕВОЕ ОТЛИЧИЕ v13.1.0
+ * ═══════════════════════════════════════════════════════════
+ *
+ *   `paths: [projectRoot]`, где projectRoot = path.dirname(entryPath).
+ *
+ *   Это соответствует семантике "compact-RECURSIVE":
+ *     - entryPath = ./src/index.ts (точка входа)
+ *     - projectRoot = ./src (директория для рекурсивного обхода)
+ *
+ *   `collectFilesForAnalysis(['/src/index.ts'])` вернёт 1 файл.
+ *   `collectFilesForAnalysis(['/src'])` вернёт все файлы проекта.
  */
 export class CompactRecursiveCommand {
   private program: Command;
@@ -111,11 +104,7 @@ export class CompactRecursiveCommand {
       // === ОСНОВНЫЕ ОПЦИИ ===
       .option('-o, --output <file>', 'Выходной файл', './reports/ast-analyzer-full.json')
       .option('-d, --depth <n>', 'Максимальная глубина анализа', '100')
-      .option(
-        '--preset <name>',
-        `Пресет: ${getPresetNames().join(', ')}. Подробнее: https://docs.ast-analyzer.dev/presets`,
-        'standard'
-      )
+      .option('--preset <name>', `Пресет: ${getPresetNames().join(', ')}`, 'standard')
       .option('--ultra', 'Ультра-компактный режим (максимальное сжатие, экономия ~70%)')
 
       // === ✅ v11.0.0: CONFIG FILE ===
@@ -187,7 +176,7 @@ export class CompactRecursiveCommand {
       .option('--no-templates', 'Отключить использование шаблонов')
       .option('--readable-keys', 'Использовать читаемые ключи (вместо сокращений)')
 
-      // === ✅ v11.0.0: EXCLUDE (можно также задавать в конфиге) ===
+      // === ✅ v11.0.0: EXCLUDE ===
       .option(
         '-x, --exclude <patterns>',
         'Паттерны исключения (через запятую). Пример: "**/__tests__/**,**/fixtures/**"'
@@ -204,12 +193,13 @@ export class CompactRecursiveCommand {
       });
   }
 
+  // ============================================================
+  // ОСНОВНОЙ МЕТОД
+  // ============================================================
+
   private async execute(entry: string, rawOptions: any): Promise<void> {
     // ============================================================
     // ✅ v12.0.0: ВАЛИДАЦИЯ --values-mode
-    // ============================================================
-    // Допустимые значения: 'full' | 'relations'.
-    // При неверном значении — exit code 2 с понятным сообщением.
     // ============================================================
     if (
       rawOptions.valuesMode !== undefined &&
@@ -227,9 +217,6 @@ export class CompactRecursiveCommand {
     // ============================================================
     // Приоритет: CLI > config > пресет > дефолты
     // ============================================================
-    // ✅ v11.0.1-fix: переименовано в `appConfig`, чтобы не конфликтовать
-    // с `config` (CompactReportConfig) на строке 377.
-    // ============================================================
     const appConfig = loadConfig(rawOptions.config, process.cwd());
     const options = mergeConfigWithCli(appConfig, rawOptions);
 
@@ -242,6 +229,9 @@ export class CompactRecursiveCommand {
     const startTime = Date.now();
     const entryPath = path.resolve(entry);
 
+    // ============================================================
+    // ШАПКА
+    // ============================================================
     console.log('\n' + '='.repeat(70));
     console.log('📋 КОМПАКТНЫЙ ОТЧЕТ С ГИБКОЙ НАСТРОЙКОЙ');
     console.log('='.repeat(70));
@@ -289,59 +279,80 @@ export class CompactRecursiveCommand {
     }
 
     // ============================================================
-    // ✅ Шаг 1: Сбор всех файлов проекта
+    // ✅ v13.1.0: ШАГ 1: ЕДИНЫЙ PIPELINE
     // ============================================================
-    console.log('📁 Шаг 1: Сбор файлов проекта...');
-    const validFiles = await this.collectProjectFiles(
-      entryPath,
-      parseInt(options.depth, 10),
-      excludePatterns
-    );
+    //
+    // ⚠️ КЛЮЧЕВОЙ МОМЕНТ:
+    //   Обходим ДИРЕКТОРИЮ точки входа, а не сам файл.
+    //
+    //   `collectFilesForAnalysis` НЕ разворачивает файл в директорию:
+    //   если передать `./src/index.ts`, вернётся 1 файл.
+    //   Если передать `./src`, вернутся все файлы проекта.
+    //
+    //   Это соответствует семантике `compact-RECURSIVE`:
+    //   рекурсивный обход проекта от директории точки входа.
+    // ============================================================
+    console.log('📁 Шаг 1: Сбор и парсинг файлов (единый pipeline)...');
 
-    if (validFiles.length === 0) {
-      console.error('❌ Не найдено файлов для анализа');
-      process.exit(1);
+    const projectRoot = path.dirname(entryPath);
+
+    if (options.verbose) {
+      console.log(`   📂 Сканирование директории: ${projectRoot}`);
     }
 
-    console.log(`   📄 Найдено файлов: ${validFiles.length}`);
-    console.log(`   📊 Уникальных: ${new Set(validFiles).size}`);
+    const pipeline = new AnalysisPipeline();
+    const pipelineResult = await pipeline.run({
+      paths: [projectRoot], // ← ✅ ДИРЕКТОРИЯ, а не entryPath
+      recursive: true,
+      additionalIgnore: excludePatterns,
+      mode: 'compact',
+      valuesMode: (options.valuesMode as 'full' | 'relations') ?? 'relations',
+      maxReExportDepth: parseInt(options.depth, 10) || 10,
+      includeBody: options.includeBody === true,
+      includeVSCode: options.includeVSCode === true,
+      includeExtended: true,
+      verbose: options.verbose === true,
+      continueOnError: true,
+    });
 
     // ============================================================
-    // ✅ Шаг 2: Извлечение сущностей через extractEntitiesFromFile
+    // ДИАГНОСТИКА PIPELINE
     // ============================================================
-    console.log('\n🔍 Шаг 2: Извлечение сущностей из всех файлов...');
-    const entitiesMap: Record<string, any> = {};
-    let processedFiles = 0;
+    const m = pipelineResult.metrics;
 
-    for (const file of validFiles) {
-      try {
-        if (options.verbose) {
-          console.log(`   📄 Обработка: ${path.basename(file)}`);
-        }
+    console.log(`   📁 Найдено файлов: ${m.filesDiscovered}`);
+    console.log(`   ✅ Разобрано: ${m.filesParsed}`);
+    console.log(`   🎯 Vue: ${m.vueFiles}, TS/JS: ${m.tsFiles}`);
+    if (m.filesFailed > 0) {
+      console.log(`   ⚠️  Ошибок парсинга: ${m.filesFailed}`);
+    }
 
-        const entities = extractEntitiesFromFile(file);
-
-        if (entities && Object.keys(entities).length > 0) {
-          const relativePath = path.relative(process.cwd(), file);
-          entitiesMap[relativePath] = entities;
-          processedFiles++;
-        }
-      } catch (error) {
-        if (options.verbose) {
-          console.warn(`   ⚠️ Ошибка при обработке ${path.basename(file)}:`, error);
-        }
+    if (options.verbose) {
+      console.log(`   ƒ  Функций: ${m.totalFunctions}`);
+      console.log(`   📌 Констант: ${m.totalConstants}`);
+      console.log(`   📥 Импортов: ${m.totalImports}`);
+      console.log(`   📤 Экспортов: ${m.totalExports}`);
+      if (m.totalConditionals > 0) {
+        console.log(`   🎨 Conditionals: ${m.totalConditionals}`);
+      }
+      if (m.totalLifecycle > 0) {
+        console.log(`   🧬 Lifecycle: ${m.totalLifecycle}`);
+      }
+      if (m.totalReactivity > 0) {
+        console.log(`   ⚡ Reactivity: ${m.totalReactivity}`);
+      }
+      if (m.reExportChains > 0) {
+        console.log(`   🔄 Re-exports развёрнуто: ${m.reExportChains}`);
       }
     }
 
-    console.log(`   ✅ Обработано файлов: ${processedFiles}/${validFiles.length}`);
-
-    if (Object.keys(entitiesMap).length === 0) {
+    if (Object.keys(pipelineResult.entitiesMap).length === 0) {
       console.error('❌ Не найдено сущностей для анализа');
       process.exit(1);
     }
 
     // ============================================================
-    // Шаг 3: Генерация отчёта с применением конфига
+    // ШАГ 2: Генерация компактного отчета
     // ============================================================
     console.log('\n📋 Шаг 3: Генерация компактного отчета с применением конфига...');
 
@@ -461,10 +472,9 @@ export class CompactRecursiveCommand {
     console.log('');
 
     // ============================================================
-    // ✅ v11.0.0: применяем outputOptions из конфига
-    // ✅ v12.0.0: пробрасываем valuesMode
+    // ✅ v11.0.0 + v12.0.0: применяем outputOptions из конфига
     // ============================================================
-    const report = generateCompactReport(entitiesMap, outputPath, {
+    const report = generateCompactReport(pipelineResult.enhancedMap as any, outputPath, {
       ...genOptions,
       ultra: options.ultra || false,
       preset: options.preset,
@@ -485,24 +495,47 @@ export class CompactRecursiveCommand {
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
-    // Вывод результатов
+    // ============================================================
+    // ФИНАЛЬНАЯ СТАТИСТИКА
+    // ============================================================
     console.log('\n' + '='.repeat(70));
     console.log('✅ ОТЧЕТ УСПЕШНО СОЗДАН!');
     console.log('='.repeat(70));
     console.log(`📄 Файл: ${outputPath}`);
     console.log(`⏱️  Время: ${duration} сек`);
 
-    // Безопасное получение статистики
+    // ✅ Статистика из pipeline (более полная и всегда актуальная)
+    console.log('\n📊 СТАТИСТИКА (pipeline metrics):');
+    console.log(`   • Файлов: ${m.filesParsed}/${m.filesDiscovered}`);
+    console.log(`   • Vue: ${m.vueFiles}, TS/JS: ${m.tsFiles}`);
+    console.log(`   • Функций: ${m.totalFunctions}`);
+    console.log(`   • Констант: ${m.totalConstants}`);
+    console.log(`   • Импортов: ${m.totalImports}`);
+    console.log(`   • Экспортов: ${m.totalExports}`);
+    if (m.totalConditionals > 0) {
+      console.log(`   • Conditionals: ${m.totalConditionals}`);
+    }
+    if (m.totalLifecycle > 0) {
+      console.log(`   • Lifecycle: ${m.totalLifecycle}`);
+    }
+    if (m.totalReactivity > 0) {
+      console.log(`   • Reactivity: ${m.totalReactivity}`);
+    }
+    if (m.reExportChains > 0) {
+      console.log(`   • Re-exports: ${m.reExportChains}`);
+    }
+
+    // Безопасное получение статистики из отчёта
     const fullStats = report.full?.statistics;
 
     console.log('\n📊 СТАТИСТИКА ОТЧЕТА:');
     if (fullStats) {
+      console.log(`   • Модулей: ${fullStats.totalModules}`);
+      console.log(`   • Файлов: ${fullStats.totalFiles}`);
       console.log(`   • Функций: ${fullStats.totalFunctions}`);
       console.log(`   • Классов: ${fullStats.totalClasses}`);
       console.log(`   • Констант: ${fullStats.totalConstants}`);
       console.log(`   • Вызовов: ${fullStats.totalCalls}`);
-      console.log(`   • Модулей: ${fullStats.totalModules}`);
-      console.log(`   • Файлов: ${fullStats.totalFiles}`);
       console.log(`   • Импортов: ${fullStats.totalImports}`);
       console.log(`   • Экспортов: ${fullStats.totalExports}`);
       console.log(`   • Реэкспортов: ${fullStats.totalReExports}`);
@@ -549,14 +582,25 @@ export class CompactRecursiveCommand {
       console.log(`   • Edges JSON: ${report.edgesPath} (${edgesSizeKB} KB)`);
     }
 
+    // Тайминги stages
+    if (options.verbose) {
+      console.log('\n⏱️  Тайминги pipeline:');
+      for (const [stage, ms] of Object.entries(m.stageTimings)) {
+        console.log(`   ${stage.padEnd(24)} ${ms}ms`);
+      }
+    }
+
+    // ============================================================
+    // Подсказки
+    // ============================================================
     console.log('\n💡 ПРИНЦИП "ЕДИНЫЙ ИСТОЧНИК ИСТИНЫ":');
     console.log('   ✅ Каждый тип данных хранится в одном месте');
     console.log('   ✅ Нет дублирования информации');
     console.log('   ✅ Все связи в едином графе');
-    console.log('   ✅ Добавлены новые типы связей (без дублей)');
     console.log('   ✅ Self functions с индексами sf1, sf2, ...');
     console.log('   ✅ Edges восстанавливаются из gr.* только по запросу (--edges)');
     console.log('   ✅ Values mode управляет размером секции values');
+    console.log('   ✅ Единый AnalysisPipeline для всех парсеров (v13.0.0)');
 
     console.log('\n💡 КАК ИСПОЛЬЗОВАТЬ ОТЧЕТ:');
     console.log('   • mi/fl/fi - для навигации по индексам');
@@ -599,11 +643,6 @@ export class CompactRecursiveCommand {
     console.log('   # С edges в отдельном файле');
     console.log('   npx ast-analyzer compact-recursive ./src/index.ts --preset full --edges');
     console.log('');
-    console.log('   # С кастомным суффиксом для edges');
-    console.log(
-      '   npx ast-analyzer compact-recursive ./src/index.ts --edges --edges-suffix .graph.json'
-    );
-    console.log('');
     console.log('   # ✅ v11.0.0: с конфиг-файлом');
     console.log(
       '   npx ast-analyzer compact-recursive ./src/index.ts --config ./ast-analyzer.config.json'
@@ -624,6 +663,10 @@ export class CompactRecursiveCommand {
     console.log('='.repeat(70) + '\n');
   }
 
+  // ============================================================
+  // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
+  // ============================================================
+
   private parseExcludePatterns(exclude: unknown): string[] {
     if (!exclude) return [];
 
@@ -642,37 +685,10 @@ export class CompactRecursiveCommand {
   }
 
   /**
-   * ✅ v11.0.0: Сбор файлов проекта через единый модуль reporters/json.
-   *
-   * @param entryPath — точка входа
-   * @param maxDepth — максимальная глубина (не используется, оставлен для совместимости)
-   * @param excludePatterns — дополнительные паттерны исключения
-   * @returns массив абсолютных путей к файлам
+   * ✅ v13.1.0: метод collectProjectFiles УДАЛЁН.
+   * Обход директории выполняет DiscoverFilesStage внутри pipeline.
+   * Семантика: paths: [path.dirname(entryPath)] → рекурсивный сбор.
    */
-  private async collectProjectFiles(
-    entryPath: string,
-    maxDepth: number,
-    excludePatterns: string[] = []
-  ): Promise<string[]> {
-    const entryDir = path.dirname(entryPath);
-
-    // ✅ ЕДИНЫЙ ИСТОЧНИК: collectFilesForAnalysis из ci-cd/index.js
-    // Передаём excludePatterns третьим аргументом
-    const files = await collectFilesForAnalysis([entryDir], true, excludePatterns);
-
-    // Фильтруем по глубине (простая эвристика: считаем слэши от entryDir)
-    if (maxDepth > 0 && maxDepth < 1000) {
-      const entryDirNormalized = entryDir.replace(/\\/g, '/');
-      return files.filter(file => {
-        const fileNormalized = file.replace(/\\/g, '/');
-        const relative = fileNormalized.substring(entryDirNormalized.length);
-        const depth = (relative.match(/\//g) || []).length;
-        return depth <= maxDepth;
-      });
-    }
-
-    return files;
-  }
 
   getCommand(): Command {
     return this.program;

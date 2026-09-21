@@ -2,7 +2,33 @@
 // ============================================
 // Проверка согласованности index.json ↔ index.full.json
 // ============================================
-// Версия: 1.0.1
+// Версия: 2.2.0
+//
+// ИЗМЕНЕНИЯ v2.2.0 (устранение дублирования conditionals):
+//   - ✅ УБРАНО: 'conditionals' из sectionNames в compareSections.
+//     Раньше сравнивались full.conditionals и decoded.conditionals
+//     на верхнем уровне. Теперь этих полей не существует —
+//     conditionals живут ТОЛЬКО в templates[].conditionals
+//     и сравниваются как часть секции 'templates'.
+//   - ✅ ИСПРАВЛЕНО: checkConditionalsDedup — считает через
+//     countConditionals(full) / countConditionals(decoded),
+//     которые обходят full.templates[].conditionals.
+//   - ✅ ДОБАВЛЕНО: helper countConditionals(full: FullJSON): number.
+//   - ✅ ИСПРАВЛЕНО: вывод "Что делать" — убран пункт 6 про
+//     дедупликацию conditionals (неактуально — conditionals
+//     больше не дублируются, теперь они в templates[]).
+//   - ✅ ОБНОВЛЕНО: заголовок и рекомендации под v15.0.2.
+//   - ✅ УБРАН пункт про imports[].type из "Что делать"
+//     (уже решено в v15.0.1).
+//
+// ИЗМЕНЕНИЯ v2.1.0 (под CODEC v15.0.1):
+//   - ✅ ДОБАВЛЕНО: проверка conditionals dedup (compact.cd).
+//   - ✅ ДОБАВЛЕНО: рекомендация №6 про дедупликацию conditionals.
+//
+// ИЗМЕНЕНИЯ v2.0.0 (под CODEC v14.0.0):
+//   - ✅ ДОБАВЛЕНО: проверка секций templates/lifecycle/effects/
+//     injections/reactivity/conditionals/types/typeRefs.
+//   - ✅ ДОБАВЛЕНО: проверка imports[].isTypeOnly.
 //
 // Назначение
 // ----------
@@ -130,6 +156,16 @@ function readJson(filePath: string): any {
 // stripServiceFields / stripForByteCompare
 // ============================================
 
+/**
+ * Удаляет служебные поля, которые не должны участвовать в сравнении
+ * `decode(compact) ≟ full`:
+ *   - edges         — производное поле, добавляется только при
+ *                     `includeEdges: true` в decode
+ *   - edgesStats    — статистика edges
+ *   - __codec       — служебное
+ *   - legend        — легенда есть только в compact
+ *   - поля, начинающиеся с `__`
+ */
 function stripServiceFields(obj: any): any {
   if (!obj || typeof obj !== 'object') return obj;
   const { __codec, legend, ...rest } = obj;
@@ -142,6 +178,13 @@ function stripServiceFields(obj: any): any {
   return clean;
 }
 
+/**
+ * Для сравнения `encode(full) ≟ compact`:
+ *   - удаляем legend  — легенда есть в compact, но не в full
+ *   - удаляем __codec
+ *   - удаляем edges/edgesStats
+ *   - удаляем undefined/пустые, чтобы не считать их за расхождения
+ */
 function stripForByteCompare(obj: any): any {
   if (!obj || typeof obj !== 'object') return obj;
   const { legend, __codec, ...rest } = obj;
@@ -155,6 +198,27 @@ function stripForByteCompare(obj: any): any {
     clean[k] = v;
   }
   return clean;
+}
+
+// ============================================
+// ✅ v2.2.0: ПОДСЧЁТ CONDITIONALS ЧЕРЕЗ templates[]
+// ============================================
+
+/**
+ * Считает все conditionals внутри templates[].
+ *
+ * ⚠️ v2.2.0: conditionals больше НЕ существуют на верхнем уровне
+ * FullJSON. Единственное место хранения — templates[].conditionals.
+ *
+ * Эта функция заменяет прежние обращения к `full.conditionals`
+ * и `decoded.conditionals` во всех проверках.
+ */
+function countConditionals(full: FullJSON): number {
+  let count = 0;
+  for (const t of full.templates ?? []) {
+    count += (t.conditionals ?? []).length;
+  }
+  return count;
 }
 
 // ============================================
@@ -206,6 +270,200 @@ function compareDictionaries(
 }
 
 // ============================================
+// ✅ v2.2.0: СРАВНЕНИЕ СЕКЦИЙ
+// ============================================
+
+/**
+ * Сравнивает секции full vs decoded.
+ *
+ * ⚠️ v2.2.0: 'conditionals' УБРАНЫ из sectionNames.
+ *   Раньше сравнивались full.conditionals и decoded.conditionals
+ *   на верхнем уровне. Теперь этого поля не существует —
+ *   conditionals живут ТОЛЬКО в templates[].conditionals
+ *   и сравниваются как часть секции 'templates'.
+ *
+ * Возвращает массив результатов — по одному на каждую секцию.
+ * Пустые массивы и `undefined` считаются эквивалентными, чтобы
+ * не падать на опциональных секциях.
+ */
+function compareSections(
+  decoded: FullJSON,
+  full: FullJSON,
+  maxDiffs: number
+): Array<{ name: string; ok: boolean; detail: string; diffs?: any[] }> {
+  const sectionNames = [
+    'templates', // включает conditionals внутри
+    'lifecycle',
+    'effects',
+    'injections',
+    'reactivity',
+    // 'conditionals',  // ← v2.2.0: убрано, см. комментарий выше
+    'types',
+    'typeRefs',
+  ] as const;
+
+  const results: Array<{ name: string; ok: boolean; detail: string; diffs?: any[] }> = [];
+
+  for (const name of sectionNames) {
+    const a = (decoded as any)[name];
+    const b = (full as any)[name];
+
+    // Нормализуем: undefined ≡ []
+    const normA = Array.isArray(a) ? a : [];
+    const normB = Array.isArray(b) ? b : [];
+
+    const ok = deepEqual(normA, normB);
+    const detail = ok
+      ? `${normA.length} элементов`
+      : `decoded=${normA.length}, full=${normB.length}`;
+
+    const result: { name: string; ok: boolean; detail: string; diffs?: any[] } = {
+      name,
+      ok,
+      detail,
+    };
+
+    if (!ok) {
+      result.diffs = diffObjects(normA, normB, maxDiffs);
+    }
+
+    results.push(result);
+  }
+
+  return results;
+}
+
+/**
+ * Явная проверка imports[].isTypeOnly и isNamespace.
+ *
+ * Скрипт определяет вариант семантики автоматически по
+ * фактическим данным full.json:
+ *   • Вариант A: `type ∈ {named, default, namespace}` —
+ *     `isTypeOnly` отдельный флаг, `'type'` НЕ встречается.
+ *   • Вариант B (legacy): `type ∈ {named, default, namespace, type}` —
+ *     `'type'` может встречаться.
+ */
+function compareImportsTypeOnly(
+  decoded: FullJSON,
+  full: FullJSON,
+  maxDiffs: number
+): { ok: boolean; detail: string; diffs?: any[]; variant: 'A' | 'B' } {
+  // Определяем вариант по full.imports
+  const usesTypeLiteral = (full.imports || []).some((i: any) => i.type === 'type');
+  const variant: 'A' | 'B' = usesTypeLiteral ? 'B' : 'A';
+
+  const a = (decoded.imports || []).map((i: any) => ({
+    id: i.id,
+    isTypeOnly: i.isTypeOnly,
+    isNamespace: i.isNamespace,
+    type: i.type,
+  }));
+  const b = (full.imports || []).map((i: any) => ({
+    id: i.id,
+    isTypeOnly: i.isTypeOnly,
+    isNamespace: i.isNamespace,
+    type: i.type,
+  }));
+
+  const ok = deepEqual(a, b);
+  if (ok) {
+    return {
+      ok: true,
+      detail: `${a.length} импортов (вариант ${variant})`,
+      variant,
+    };
+  }
+
+  const diffs = diffObjects(a, b, maxDiffs);
+  return {
+    ok: false,
+    detail: `${diffs.length} расхождений (вариант ${variant})`,
+    diffs,
+    variant,
+  };
+}
+
+// ============================================
+// ✅ v2.2.0: ЯВНАЯ ПРОВЕРКА conditionals
+// ============================================
+
+/**
+ * Проверяет, что количество conditionals в compact.cd[],
+ * decoded.templates[].conditionals и full.templates[].conditionals
+ * совпадает.
+ *
+ * ⚠️ v2.2.0: считаем через countConditionals(full), который
+ * обходит full.templates[].conditionals. Верхнеуровневого
+ * full.conditionals больше не существует.
+ *
+ * Ловит регрессию дедупликации в `addAny` (codec-encode.ts):
+ * если все conditionals имеют одинаковое содержимое, дедупликация
+ * схлопывает их в один value, и `compact.cd = [380, 380, 380, ...]`.
+ *
+ * После исправления `compact.cd = [380, 381, 382, ...]` — длина
+ * совпадает.
+ */
+function checkConditionalsDedup(
+  compact: CompactJSON,
+  decoded: FullJSON,
+  full: FullJSON
+): { ok: boolean; detail: string; diffs?: any[] } {
+  const cdIndices = (compact as any).cd;
+
+  // ✅ v2.2.0: считаем через templates[]
+  const decodedCd = countConditionals(decoded);
+  const fullCd = countConditionals(full);
+
+  // Если секция отсутствует в compact — это ок, если и в full её нет
+  if (!Array.isArray(cdIndices)) {
+    if (fullCd === 0) {
+      return { ok: true, detail: 'conditionals отсутствуют (0)' };
+    }
+    return {
+      ok: false,
+      detail: `compact.cd отсутствует, а full.templates[].conditionals = ${fullCd}`,
+      diffs: [{ path: '$.cd', a: 'missing', b: `${fullCd} элементов в templates[]` }],
+    };
+  }
+
+  const compactCdLen = cdIndices.length;
+  const ok = compactCdLen === decodedCd && decodedCd === fullCd;
+
+  if (ok) {
+    return {
+      ok: true,
+      detail: `compact.cd=${compactCdLen}, templates=${decodedCd}/${fullCd}`,
+    };
+  }
+
+  // Диагностика: уникальные индексы в compact.cd
+  const uniqueIndices = new Set(cdIndices.filter((x: any) => typeof x === 'number'));
+  const uniqueCount = uniqueIndices.size;
+
+  const diffs: { path: string; a: unknown; b: unknown }[] = [
+    {
+      path: '$.cd.length',
+      a: compactCdLen,
+      b: `${fullCd} (unique values: ${uniqueCount})`,
+    },
+  ];
+
+  if (uniqueCount < compactCdLen) {
+    diffs.push({
+      path: '$.cd (дедупликация)',
+      a: `${compactCdLen} ссылок, но только ${uniqueCount} уникальных value`,
+      b: 'ожидается 1:1 (addAny не должен дедуплицировать extended-секции)',
+    });
+  }
+
+  return {
+    ok: false,
+    detail: `compact.cd=${compactCdLen}, decoded.templates=${decodedCd}, full.templates=${fullCd}, unique=${uniqueCount}`,
+    diffs,
+  };
+}
+
+// ============================================
 // ОСНОВНАЯ ПРОВЕРКА
 // ============================================
 
@@ -219,7 +477,7 @@ interface CheckResult {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
-  printHeader('🔍 ПРОВЕРКА СОГЛАСОВАННОСТИ index.json ↔ index.full.json');
+  printHeader('🔍 ПРОВЕРКА СОГЛАСОВАННОСТИ index.json ↔ index.full.json (v2.2.0)');
   console.log(`  ${INFO} compact: ${C.cyan}${path.resolve(args.compact)}${C.reset}`);
   console.log(`  ${INFO} full:    ${C.cyan}${path.resolve(args.full)}${C.reset}`);
   console.log(`  ${INFO} verbose: ${args.verbose}`);
@@ -444,6 +702,82 @@ async function main(): Promise<void> {
   }
 
   // ============================================
+  // ✅ v2.2.0: СЕКЦИИ (без 'conditionals')
+  // ============================================
+  printSection(
+    '🎨 СЕКЦИИ (templates, lifecycle, effects, injections, reactivity, types, typeRefs)'
+  );
+
+  if (decodedCompact) {
+    const sectionResults = compareSections(decodedCompact, full, args.maxDiffs);
+
+    for (const sr of sectionResults) {
+      printResult(sr.name, sr.ok, sr.detail);
+      if (!sr.ok && args.verbose && sr.diffs) {
+        for (const d of sr.diffs.slice(0, args.maxDiffs)) {
+          console.log(
+            `     ${C.dim}${d.path}: ${C.reset}${C.red}${JSON.stringify(d.a)}${C.reset} → ${C.green}${JSON.stringify(d.b)}${C.reset}`
+          );
+        }
+      }
+      checks.push({ name: `section.${sr.name}`, ok: sr.ok, detail: sr.detail });
+    }
+  } else {
+    printResult('sections', false, 'decode(compact) не удался — пропускаем');
+    checks.push({ name: 'sections', ok: false, detail: 'decode failed' });
+  }
+
+  // ============================================
+  // ИМПОРТЫ (isTypeOnly)
+  // ============================================
+  printSection('📥 ИМПОРТЫ (isTypeOnly / isNamespace / type)');
+
+  if (decodedCompact) {
+    const impResult = compareImportsTypeOnly(decodedCompact, full, args.maxDiffs);
+    printResult('imports[].isTypeOnly', impResult.ok, impResult.detail);
+    if (!impResult.ok && args.verbose && impResult.diffs) {
+      for (const d of impResult.diffs.slice(0, args.maxDiffs)) {
+        console.log(
+          `     ${C.dim}${d.path}: ${C.reset}${C.red}${JSON.stringify(d.a)}${C.reset} → ${C.green}${JSON.stringify(d.b)}${C.reset}`
+        );
+      }
+    }
+    checks.push({
+      name: 'imports[].isTypeOnly',
+      ok: impResult.ok,
+      detail: impResult.detail,
+    });
+  } else {
+    printResult('imports', false, 'decode(compact) не удался — пропускаем');
+    checks.push({ name: 'imports', ok: false, detail: 'decode failed' });
+  }
+
+  // ============================================
+  // ✅ v2.2.0: CONDITIONALS (через templates[])
+  // ============================================
+  printSection('🎯 CONDITIONALS (через templates[], проверка дедупликации compact.cd[])');
+
+  if (decodedCompact) {
+    const dedupResult = checkConditionalsDedup(compact, decodedCompact, full);
+    printResult('conditionals dedup', dedupResult.ok, dedupResult.detail);
+    if (!dedupResult.ok && args.verbose && dedupResult.diffs) {
+      for (const d of dedupResult.diffs.slice(0, args.maxDiffs)) {
+        console.log(
+          `     ${C.dim}${d.path}: ${C.reset}${C.red}${JSON.stringify(d.a)}${C.reset} → ${C.green}${JSON.stringify(d.b)}${C.reset}`
+        );
+      }
+    }
+    checks.push({
+      name: 'conditionals dedup',
+      ok: dedupResult.ok,
+      detail: dedupResult.detail,
+    });
+  } else {
+    printResult('conditionals dedup', false, 'decode(compact) не удался — пропускаем');
+    checks.push({ name: 'conditionals dedup', ok: false, detail: 'decode failed' });
+  }
+
+  // ============================================
   // СЛОВАРИ
   // ============================================
   printSection('📚 СЛОВАРИ (tokens/strs/params/methods)');
@@ -537,11 +871,48 @@ async function main(): Promise<void> {
     );
     console.log('');
     console.log(`  ${WARN} Что делать:`);
-    console.log(`  ${C.dim}   1. Пересобрать index.full.json из тех же исходников,`);
-    console.log(`      что и index.json.`);
-    console.log(`   2. Либо удалить устаревший index.full.json — он больше`);
-    console.log(`      не соответствует index.json.`);
-    console.log(`   3. Проверить timestamp обоих файлов — они должны совпадать.${C.reset}`);
+    console.log('');
+    console.log(`  ${C.bold}1. Пересобрать index.full.json${C.reset} из тех же исходников,`);
+    console.log(`     что и index.json, ОДНИМ прогоном:`);
+    console.log(`       generateCompactReport(entitiesMap, 'index.json', {`);
+    console.log(`         saveFullJson: true,`);
+    console.log(`         valuesMode: 'relations'`);
+    console.log(`       });`);
+    console.log(`     Это гарантирует совпадение timestamp и version.`);
+    console.log('');
+    console.log(`  ${C.bold}2. Проверить CODEC_VERSION${C.reset} в обоих файлах — должен`);
+    console.log(`     быть ${C.cyan}'15.0.2'${C.reset} (или совпадать). Если full.json`);
+    console.log(`     собирался старой версией кодека — его нужно`);
+    console.log(`     пересобрать.`);
+    console.log('');
+    console.log(`  ${C.bold}3. Проверить valuesMode:${C.reset} если full.json собирался`);
+    console.log(`     с valuesMode: 'relations', значения в`);
+    console.log(`     full.constants[].value могут быть обрезаны —`);
+    console.log(`     это ожидаемо. Если нужно полное содержимое —`);
+    console.log(`     пересобрать с valuesMode: 'full'.`);
+    console.log('');
+    console.log(`  ${C.bold}4. Если расхождение в section.*${C.reset} — значит`);
+    console.log(`     encode()/decode() не полностью поддерживают`);
+    console.log(`     эти секции. Проверьте codec-encode.ts и codec-decode.ts.`);
+    console.log('');
+    console.log(`  ${C.bold}5. Если расхождение в conditionals${C.reset} (симптом:`);
+    console.log(
+      `     ${C.red}compact.cd=30, decoded=0${C.reset} или ${C.red}compact.cd=30, decoded=0, full=30${C.reset}):`
+    );
+    console.log(`     ${C.cyan}addAny()${C.reset} в codec-encode.ts мог дедуплицировать`);
+    console.log(`     extended-секции через JSON.stringify. Если все`);
+    console.log(`     conditionals одинаковы — они схлопываются в один`);
+    console.log(`     value, и ${C.red}compact.cd = [380, 380, 380, ...]${C.reset}.`);
+    console.log(`     Фикс: в ${C.cyan}addAny()${C.reset} НЕ дедуплицировать extended-`);
+    console.log(`     секции (vt/lc/ef/inj/rx/cd/ty/tr).`);
+    console.log('');
+    console.log(`     ${C.dim}Проверьте, что decoded.templates[].conditionals и${C.reset}`);
+    console.log(`     ${C.dim}full.templates[].conditionals совпадают по длине.${C.reset}`);
+    console.log('');
+    console.log(
+      `  ${C.dim}Подробнее: scripts/verify-roundtrip.ts проверяет round-trip кодека.${C.reset}`
+    );
+    console.log(`${C.reset}`);
     process.exit(1);
   }
 }

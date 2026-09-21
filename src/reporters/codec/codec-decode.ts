@@ -1,84 +1,73 @@
 // src/reporters/codec/codec-decode.ts
 // ============================================
-// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v13.0.2 — columnar + RLE)
+// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v15.0.2)
 // ============================================
-// Версия: 13.0.2
+// Версия: 15.0.2
+//
+// ИЗМЕНЕНИЯ v15.0.2 (устранение дублирования conditionals):
+//   - ✅ УБРАНО: чтение `compact.cd` через decodeSection.
+//     Причина: conditionals теперь живут ТОЛЬКО в
+//     `templates[].conditionals` — они восстанавливаются
+//     как часть TemplateData через `decodeSection<TemplateData>(compact.vt)`.
+//   - ✅ УБРАНО: поле `conditionals` из финального `FullJSON`.
+//     Верхнеуровневого conditionals больше нет.
+//   - ✅ УБРАНЫ упоминания @deprecated из комментариев —
+//     только новый код.
+//
+// ИЗМЕНЕНИЯ v15.0.1 (fix imports[].type):
+//   - ✅ ИСПРАВЛЕНО: восстановление `imports[].type` больше НЕ
+//     использует эвристику `isTypeOnly → type = 'type'`.
+//     Поле `type` теперь ВСЕГДА принимает только
+//     'named' | 'default' | 'namespace'.
+//   - ✅ УТОЧНЕНО: `imports[].isTypeOnly` читается из бита 8.
+//
+// ИЗМЕНЕНИЯ v15.0.0 (100% round-trip расширенных секций):
+//   - ✅ ИСПРАВЛЕНО: decodeSection читает и объект, и строку.
+//   - ✅ СОХРАНЕНО: imports[].isTypeOnly из бита 8 combinedTy.
+//   - ✅ СОХРАНЕНО: восстановление vt/lc/ef/inj/rx/ty/tr.
+//
+// ИЗМЕНЕНИЯ v14.0.0 (100% round-trip):
+//   - ✅ ИСПРАВЛЕНО: imports[].isTypeOnly читается из бита 8.
+//   - ✅ ИСПРАВЛЕНО: восстановление секций vt/lc/ef/inj/rx/cd/ty/tr.
+//   - ✅ ИСПРАВЛЕНО: `version` = CODEC_VERSION ('15.0.0').
 //
 // ИЗМЕНЕНИЯ v13.0.2-fix (100% round-trip):
-//   - ✅ ИСПРАВЛЕНО: `modules[].fileIds` строятся через `fl.m`
-//     (обратная связь file → module), а НЕ через `mi.f`.
-//
-//     Причина: `mi.f` хранит пары `[startFileIdx, fileCount]`, где
-//     `startFileIdx = fileIdxs[0]` — это ПЕРВЫЙ файл модуля в
-//     порядке обхода `collectFullJSON`, а НЕ минимальный индекс.
-//     Файлы модуля могут иметь НЕпоследовательные индексы:
-//
-//       fileIdxs = [0, 4, 11, 19, 20, 21, ..., 163]  ← cli
-//       fileIdxs = [1, 2, 3, 5, 6, 7, 8, 9, 10, ...]  ← utils
-//
-//     Раньше decode восстанавливал:
-//       fileIds = [`f1`, `f2`, `f3`, ..., `f13`]  ← НЕВЕРНО
-//     Должно быть:
-//       fileIds = [`f1`, `f5`, `f12`, `f20`, ...]  ← ВЕРНО
-//
-//     Симптомы в round-trip:
-//       • L1/L2/DL: `$.modules[N].fileIds[i]` расходились
-//       • RE/ENC: `tokens.length`, `strs.length`, `params.length`,
-//         `methods.length` расходились (потому что decoded full.json
-//         имел другие moduleId/fileId → другие словари при повторном encode)
-//
-//     Решение: `fl.m` (RLE от moduleIdx) содержит ПОЛНУЮ информацию
-//     о том, какой файл какому модулю принадлежит. Строим
-//     `modules[].fileIds` через обратный проход по `fl.m`.
+//   - ✅ ИСПРАВЛЕНО: `modules[].fileIds` строятся через `fl.m`.
 //
 // ИЗМЕНЕНИЯ v13.0.0-fix (100% round-trip):
-//   - ✅ ИСПРАВЛЕНО: `mi.f` теперь читается как пары `[startFileIdx, fileCount]`,
-//     а не как RLE(moduleIdx). Раньше декодер собирал fileIds по
-//     moduleIdx, из-за чего получались неверные fileIds (`f10` вместо `f80`)
-//     и длина 1 вместо N.
-//   - ✅ ИСПРАВЛЕНО: `version` в FullJSON теперь берётся из CODEC_VERSION,
-//     а не из compact.v. Это устраняет расхождение "13.0.0" vs "11.1.0"
-//     в L1/L2/DL (compact.v может быть старым, если compact.json
-//     сгенерирован предыдущей версией кодека).
-//
-// ИЗМЕНЕНИЯ v12.0.1:
-//   - ✅ ИСПРАВЛЕНО: удалены неиспользуемые type-импорты
-//     (TemplateData, TemplateConditional, LifecycleHook, EffectEdge,
-//      InjectionEdge, ReactivityEdge, TypeNodeData, TypeRefData,
-//      CodecLegend) — устранён TS6196 × 9
-//   - ✅ ИСПРАВЛЕНО: удалён полностью неиспользуемый runtime-импорт
-//     из './codec-encode.js' — устранён TS6192
+//   - ✅ ИСПРАВЛЕНО: `mi.f` читается как пары `[startFileIdx, fileCount]`.
+//   - ✅ ИСПРАВЛЕНО: `version` берётся из CODEC_VERSION.
 //
 // ИЗМЕНЕНИЯ v12.0.0 (структурная оптимизация):
-//   - ✅ Columnar-структура для всех секций
-//   - ✅ Распаковка RLE для moduleIdx/fileIdx
-//   - ✅ Распаковка битовых масок
-//   - ✅ Числовые коды → строковые
-//   - ✅ Восстановление ID (m1, f1, fn1) из позиций
-//   - ✅ Детокенизация строк (strs, params, methods)
-//   - ✅ nonEmptyV для констант
+//   - ✅ Columnar-структура для всех секций.
+//   - ✅ Распаковка RLE для moduleIdx/fileIdx.
+//   - ✅ Распаковка битовых масок.
+//   - ✅ Числовые коды → строковые.
+//   - ✅ Восстановление ID (m1, f1, fn1) из позиций.
+//   - ✅ Детокенизация строк (strs, params, methods).
+//   - ✅ nonEmptyV для констант.
 //
 // ИЗМЕНЕНИЯ v11.0.0 (компактнее):
-//   - fns/cls/cn: nameIdx → name, flagsNum → flags
+//   - fns/cls/cn: nameIdx → name, flagsNum → flags.
 //
 // ИЗМЕНЕНИЯ v10.4.0 (единая легенда):
-//   - resolveDictionaries() поддерживает оба формата
+//   - resolveDictionaries() поддерживает оба формата.
 //
 // ИЗМЕНЕНИЯ v10.3 (v10.3 sync — full round-trip):
-//   - imports[].type для type-only импортов: 'type' (не 'type-only')
+//   - imports[].type для type-only импортов: 'type' (не 'type-only').
 //
 // ИЗМЕНЕНИЯ v9.0.7 (round-trip fix):
-//   - readMethod: idx < 0 → null (а не '')
-//   - templates[].conditionals: при отсутствии данных → []
+//   - readMethod: idx < 0 → null (а не '').
+//   - templates[].conditionals: при отсутствии данных → [].
 //
 // ИЗМЕНЕНИЯ v9.0.4 (includeEdges default false):
-//   - decode, options.includeEdges по умолчанию false
+//   - decode, options.includeEdges по умолчанию false.
 //
 // ИЗМЕНЕНИЯ v9.0.3 (gr.c fix):
-//   - decode, секция calls: ветвление по isExternal
+//   - decode, секция calls: ветвление по isExternal.
 //
 // ИЗМЕНЕНИЯ v9.0.2 (reversibility):
-//   - decodeFlagsToObject: возвращает все 18 флагов
+//   - decodeFlagsToObject: возвращает все 18 флагов.
 // ============================================
 
 import type {
@@ -95,6 +84,13 @@ import type {
   FileData,
   EdgeData,
   DecodeOptions,
+  TemplateData,
+  LifecycleHook,
+  EffectEdge,
+  InjectionEdge,
+  ReactivityEdge,
+  TypeNodeData,
+  TypeRefData,
 } from './codec-types.js';
 
 // ✅ v13.0.0-fix: единая версия CODEC
@@ -313,6 +309,24 @@ function decodeStr(entry: string | number[], tokens: string[]): string {
   return entry.map(i => tokens[i]).join('');
 }
 
+/**
+ * ✅ v14.0.0: безопасный JSON.parse для восстановления расширенных секций.
+ *
+ * Используется для восстановления vt/lc/ef/inj/rx/ty/tr, которые
+ * были сериализованы в JSON-строку в `encode()`.
+ *
+ * Возвращает `null`, если значение не строка или JSON.parse упал.
+ * Это безопасно, так как decode не гарантирует присутствие всех ключей.
+ */
+function safeJsonParse<T>(value: unknown): T | null {
+  if (typeof value !== 'string') return null;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+}
+
 // ============================================
 // ОСНОВНАЯ ФУНКЦИЯ DECODE
 // ============================================
@@ -320,35 +334,39 @@ function decodeStr(entry: string | number[], tokens: string[]): string {
 /**
  * Декодирует сжатый JSON обратно в полный.
  *
- * ✅ v13.0.2-fix (100% round-trip):
- *   - `modules[].fileIds` строятся через `fl.m` (обратная связь
- *     file → module), а НЕ через `mi.f`.
+ * ✅ v15.0.2 (устранение дублирования conditionals):
+ *   - `conditionals` больше НЕ восстанавливаются на верхнем уровне.
+ *     Все conditionals живут ВНУТРИ `templates[].conditionals`
+ *     (они декодируются как часть `TemplateData` из `compact.vt`).
+ *   - Секция `compact.cd` в compact.json по-прежнему существует
+ *     (генерируется из `templates[].conditionals` при encode),
+ *     но decode её НЕ читает напрямую — только через templates[].
  *
- *     Причина: `mi.f` хранит `[startFileIdx, fileCount]`, где
- *     `startFileIdx = fileIdxs[0]` — это ПЕРВЫЙ файл модуля в
- *     порядке обхода, а НЕ минимальный индекс. Файлы модуля
- *     могут иметь НЕпоследовательные индексы (например,
- *     `[0, 4, 11, 19, 20, ..., 163]`), и decode восстанавливал
- *     `f1..f13` вместо правильных `f1, f5, f12, f20, ...`.
+ * ✅ v15.0.1 (fix imports[].type):
+ *   - `imports[].type` восстанавливается ТОЛЬКО из typeCode
+ *     (0=named, 1=default, 2=namespace). Значение `'type'` больше
+ *     не возвращается — для type-only импортов используется
+ *     отдельный флаг `isTypeOnly`.
  *
- *     `fl.m` — RLE от `moduleIdx` для каждого файла — содержит
- *     ПОЛНУЮ информацию о принадлежности файла модулю. Поэтому
- *     `modules[].fileIds` собираются обратным проходом.
+ * ✅ v15.0.0 (100% round-trip расширенных секций):
+ *   - decodeSection читает и объект, и строку из values[].
+ *
+ * ✅ v14.0.0 (100% round-trip):
+ *   - imports[].isTypeOnly читается из бита 8 в combinedTy.
+ *   - Восстанавливаются секции vt/lc/ef/inj/rx/ty/tr.
+ *
+ * ✅ v13.0.2-fix:
+ *   - modules[].fileIds строятся через `fl.m`.
  *
  * ✅ v13.0.0-fix:
- *   - `mi.f` читается как пары `[startFileIdx, fileCount]`
- *   - `version` берётся из CODEC_VERSION (не из compact.v)
+ *   - mi.f читается как пары [startFileIdx, fileCount].
+ *   - version берётся из CODEC_VERSION.
  *
- * ✅ v12.0.0 (columnar + RLE):
- *   - mi/fl/fns/cls/cn/gr.* — columnar-структура
- *   - Распаковка RLE для moduleIdx/fileIdx
- *   - Распаковка битовых масок
- *   - Детокенизация strs/params/methods
- *   - Восстановление ID (m1, f1, fn1) из позиций
+ * ✅ v12.0.0:
+ *   - Columnar + RLE + битовые маски + токенизация.
  *
- * ✅ v9.0.4 (includeEdges default false):
- *   Поле edges — производное (восстанавливается из gr.i + gr.e +
- *   gr.c + gr.re). По умолчанию edges НЕ добавляются в результат.
+ * ✅ v9.0.4:
+ *   - поле edges — производное, по умолчанию не добавляются.
  *
  * @param compact — сжатый JSON с легендой
  * @param options — опции декодирования
@@ -399,14 +417,6 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   // ============================================
   // ✅ v13.0.2-fix: `modules[].fileIds` строятся через `fl.m`,
   // а НЕ через `mi.f`.
-  //
-  // `mi.f` = `[startFileIdx, fileCount]` — но `startFileIdx`
-  // это ПЕРВЫЙ файл модуля в порядке обхода, а НЕ минимальный
-  // индекс. Файлы модуля могут иметь НЕпоследовательные индексы.
-  //
-  // `fl.m` — RLE от `moduleIdx` — содержит ПОЛНУЮ информацию
-  // о принадлежности каждого файла. Собираем modules[].fileIds
-  // обратным проходом.
   // ============================================
   const miN = compact.mi?.n || [];
 
@@ -578,6 +588,18 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   // ============================================
   // 7. Импорты
   // ============================================
+  // ✅ v15.0.1: восстановление `type` БЕЗ эвристики isTypeOnly.
+  // ============================================
+  //
+  // Семантика полей:
+  //   - `type` ∈ {'named', 'default', 'namespace'}
+  //   - `isTypeOnly` — отдельный флаг
+  //
+  // БИТЫ combinedTy в gr.i.ty:
+  //   0-1 : typeCode (0=named, 1=default, 2=namespace)
+  //   2   : isExternal
+  //   3   : isTypeOnly
+  // ============================================
   const gi = compact.gr?.i || { ff: [], tf: [], s: [], im: [], ln: [], l: [], ty: [] };
   const imports: ImportData[] = [];
 
@@ -585,11 +607,12 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
     const combinedTy = gi.ty[i] ?? 0;
     const typeCode = combinedTy & 3;
     const isExternal = (combinedTy & 4) !== 0;
+    const isTypeOnly = (combinedTy & 8) !== 0;
 
-    let type: 'named' | 'default' | 'namespace' | 'type';
+    // ✅ v15.0.1: type — ТОЛЬКО из typeCode, БЕЗ эвристики isTypeOnly.
+    let type: 'named' | 'default' | 'namespace';
     if (typeCode === 1) type = 'default';
     else if (typeCode === 2) type = 'namespace';
-    else if (typeCode === 3) type = 'type';
     else type = 'named';
 
     const source = readStringOrEmpty(gi.s[i] ?? -1);
@@ -606,7 +629,7 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
       type,
       isDefault: type === 'default',
       isNamespace: type === 'namespace',
-      isTypeOnly: type === 'type',
+      isTypeOnly,
       isExternal,
       packageName: isExternal
         ? source.startsWith('@')
@@ -680,6 +703,65 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   const statistics = includeStatistics ? compact.st : ({} as any);
 
   // ============================================
+  // 10.5. Восстановление расширенных секций
+  // vt / lc / ef / inj / rx / ty / tr
+  // ============================================
+  // Секции хранятся в compact как массивы индексов в values[].
+  // Каждое значение в values[] — это либо объект (после
+  // не-дедуплицирующего addAny из v15.0.1), либо JSON-строка
+  // (обратная совместимость с v15.0.0, где addAny → addValue →
+  // JSON.stringify в некоторых случаях).
+  //
+  // ⚠️ v15.0.2: секция `cd` (conditionals) НЕ читается здесь.
+  //    conditionals восстанавливаются как часть `TemplateData`
+  //    через `decodeSection<TemplateData>(compact.vt)`.
+  //
+  // Структура compact (см. codec-encode.ts):
+  //   vt:  number[]   — индексы из values[] для templates[]
+  //   lc:  number[]   — индексы из values[] для lifecycle[]
+  //   ef:  number[]   — индексы из values[] для effects[]
+  //   inj: number[]   — индексы из values[] для injections[]
+  //   rx:  number[]   — индексы из values[] для reactivity[]
+  //   cd:  number[]   — индексы из values[] для conditionals[]
+  //                     (НЕ читается здесь — только через templates[])
+  //   ty:  number[]   — индексы из values[] для types[]
+  //   tr:  number[]   — индексы из values[] для typeRefs[]
+  // ============================================
+
+  const decodeSection = <T>(section: unknown): T[] | undefined => {
+    if (!Array.isArray(section)) return undefined;
+    const result: T[] = [];
+    for (const idx of section) {
+      if (typeof idx !== 'number' || idx < 0) continue;
+      const raw = readValue(idx);
+      if (raw === undefined || raw === null) continue;
+
+      // ✅ v15.0.1: values хранит объекты (после addAny),
+      // но поддерживаем и строки для обратной совместимости.
+      if (typeof raw === 'string') {
+        const parsed = safeJsonParse<T>(raw);
+        if (parsed !== null) result.push(parsed);
+      } else if (typeof raw === 'object') {
+        result.push(raw as T);
+      }
+    }
+    return result.length > 0 ? result : undefined;
+  };
+
+  const templates = decodeSection<TemplateData>(compact.vt);
+  const lifecycle = decodeSection<LifecycleHook>(compact.lc);
+  const effects = decodeSection<EffectEdge>(compact.ef);
+  const injections = decodeSection<InjectionEdge>(compact.inj);
+  const reactivity = decodeSection<ReactivityEdge>(compact.rx);
+  const types = decodeSection<TypeNodeData>(compact.ty);
+  const typeRefs = decodeSection<TypeRefData>(compact.tr);
+
+  // ⚠️ v15.0.2: секция `cd` (conditionals) НЕ читается здесь.
+  //    Все conditionals восстанавливаются внутри `templates[]`
+  //    (см. `decodeSection<TemplateData>(compact.vt)` выше).
+  //    Верхнеуровневого `conditionals` в FullJSON больше нет.
+
+  // ============================================
   // 11. Edges (только если includeEdges)
   // ============================================
   const shouldIncludeEdges = includeEdges === true;
@@ -729,13 +811,12 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   // ============================================
   // 12. Сборка результата
   // ============================================
-  // ✅ v13.0.0-fix: version берётся из CODEC_VERSION, а не из compact.v.
-  //
-  // Причина: compact.v может быть старым (если compact.json был
-  // сгенерирован предыдущей версией кодека). full.json всегда
-  // должен иметь актуальную версию, чтобы:
-  //   - L1/L2/DL сравнивались корректно (`$.version`);
-  //   - потребители full.json видели согласованную версию.
+  // ✅ v13.0.0-fix: version берётся из CODEC_VERSION.
+  // ✅ v15.0.0: восстановление templates/lifecycle/effects/injections/
+  //             reactivity/types/typeRefs.
+  // ✅ v15.0.1: type импортов без 'type'.
+  // ✅ v15.0.2: conditionals живут ТОЛЬКО в templates[].conditionals.
+  //             Верхнеуровневого `conditionals` в FullJSON НЕТ.
   // ============================================
   const result: FullJSON = {
     version: CODEC_VERSION,
@@ -750,15 +831,14 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
     imports,
     calls,
     reExports,
-    templates: undefined,
+    templates,
     statistics,
-    lifecycle: undefined,
-    effects: undefined,
-    injections: undefined,
-    reactivity: undefined,
-    conditionals: undefined,
-    types: undefined,
-    typeRefs: undefined,
+    lifecycle,
+    effects,
+    injections,
+    reactivity,
+    types,
+    typeRefs,
     valuesMode: compact.valuesMode,
   };
 

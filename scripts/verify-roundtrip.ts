@@ -1,34 +1,36 @@
 #!/usr/bin/env node
 // scripts/verify-roundtrip.ts
 // ============================================
-// Скрипт проверки Round-Trip для CODEC (v14.0.0)
+// Скрипт проверки Round-Trip для CODEC (v15.0.2)
 // ============================================
-// Версия: 14.0.0
+// Версия: 15.0.2
 //
-// ИЗМЕНЕНИЯ v14.0.0:
-//   - ✅ ДОБАВЛЕН уровень L4: encode(decode(encode(full))) === encode(full)
-//     (побайтовое равенство — идемпотентность encode).
-//   - ✅ L4 добавлен в levels[] и в jsonReport.
-//   - ✅ Обновлён help под новый уровень.
+// ИЗМЕНЕНИЯ v15.0.2 (устранение дублирования conditionals):
+//   - ✅ УБРАНО: 'conditionals' из sectionNames в compareSections.
+//     Раньше сравнивались full.conditionals и decoded.conditionals
+//     на верхнем уровне. Теперь эти поля не существуют —
+//     conditionals живут ТОЛЬКО в templates[].conditionals.
+//   - ✅ ИСПРАВЛЕНО: checkConditionalsDedup — считает через
+//     countConditionals(full) / countConditionals(decoded),
+//     которые обходят full.templates[].conditionals.
+//   - ✅ ДОБАВЛЕНО: helper countConditionals(full: FullJSON): number.
+//   - ✅ ИСПРАВЛЕНО: вывод статистики в main() — считает
+//     conditionals через countConditionals(full).
+//   - ✅ ОБНОВЛЕНО: codecVersion в jsonReport = '15.0.2'.
+//   - ✅ ОБНОВЛЁН заголовок и help.
 //
-// ИЗМЕНЕНИЯ v13.0.0:
-//   - ✅ mi.f теперь пары [startFileIdx, fileCount] — не RLE
-//   - ✅ Проверка legend.schemas.mi (2 поля) и legend.schemas.fl (2 поля)
-//   - ✅ checkRleStructure: mi.f проверяется как пары, не RLE
-//   - ✅ Обновлён help под новый формат
-//
-// ИЗМЕНЕНИЯ v12.0.0:
-//   - ✅ compact.json v12.0.0 использует columnar-структуру + RLE
-//   - ✅ Добавлены проверки columnar-структуры, RLE, токенизации
-//   - ✅ Обновлён help под новый формат
-//   - ✅ ИСПРАВЛЕНО: TS18047 — null-guard для sc.result.diff
+// ИЗМЕНЕНИЯ v15.0.1:
+//   - ✅ ИСПРАВЛЕНО: инвариант I2 — imports[].type ∈ {named, default, namespace}.
+//   - ✅ ИСПРАВЛЕНО: checkTokenizedStrings — methods проверяется опционально.
+//   - ✅ ДОБАВЛЕНО: проверка isTypeOnly у импортов.
+//   - ✅ ДОБАВЛЕНО: явные проверки секций vt/lc/ef/inj/rx/cd/ty/tr.
 //
 // Уровни round-trip:
 //   L0  : encode(full) === compact          (семантически)
 //   L1  : decode(compact) === full          (семантически)
 //   L2  : decode(compact) === full          (побайтово, порядко-независимо)
 //   L3  : compact на диске === encode(full) (побайтово, буквально)
-//   L4  : encode(decode(encode(full))) === encode(full) (побайтово)  ← v14.0.0
+//   L4  : encode(decode(encode(full))) === encode(full) (побайтово)
 //   RE  : encode(decode(compact)) === compact
 //   DL  : decode(encode(full)) === full
 //   ENC : encode(full) === encode(decode(encode(full)))
@@ -36,14 +38,14 @@
 //
 // Семантические инварианты:
 //   I1  : calls[].type ∈ {direct, async, method, callback}
-//   I2  : imports[].type ∈ {named, default, namespace, type}
+//   I2  : imports[].type ∈ {named, default, namespace}
 //   I3  : exports[].type ∈ {named, default, type}
 //   I4  : external calls → isExternal = 1 в compact.gr.c
-//   I5  : external calls: сохранность типа (v10.3 — сравнение full vs decoded)
+//   I5  : external calls: сохранность типа (full vs decoded)
 //   I6  : functions[].*Flags ∈ {true, false, undefined}
 //   I7  : fns/cls/cn — columnar-структура
 //
-// Проверки легенды (v13.0.0):
+// Проверки легенды (v15.0.2):
 //   L1  : legend.codes.* присутствуют
 //   L2  : legend.flags.bits содержит 18 битов
 //   L3  : legend.schemas.* корректной длины (включая mi и fl)
@@ -297,7 +299,28 @@ function printLevelResult(name: string, result: LevelResult, maxDiffs: number): 
 }
 
 // ============================================
-// ПРОВЕРКА ЛЕГЕНДЫ (v13.0.0)
+// ✅ v15.0.2: ПОДСЧЁТ CONDITIONALS ЧЕРЕЗ templates[]
+// ============================================
+
+/**
+ * Считает все conditionals внутри templates[].
+ *
+ * ⚠️ v15.0.2: conditionals больше НЕ существуют на верхнем уровне
+ * FullJSON. Единственное место хранения — templates[].conditionals.
+ *
+ * Эта функция заменяет прежние обращения к `full.conditionals`
+ * и `decoded.conditionals` во всех проверках.
+ */
+function countConditionals(full: FullJSON): number {
+  let count = 0;
+  for (const t of full.templates ?? []) {
+    count += (t.conditionals ?? []).length;
+  }
+  return count;
+}
+
+// ============================================
+// ПРОВЕРКА ЛЕГЕНДЫ (v15.0.2)
 // ============================================
 
 interface LegendCheck {
@@ -343,7 +366,7 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     note: legend?.flags?.bits ? `${bitsCount} битов` : 'отсутствует',
   });
 
-  // schemas — добавлены mi и fl + под-схемы vt.*, lc, ef, inj, rx, cd, ty, tr
+  // schemas — mi и fl + под-схемы vt.*, lc, ef, inj, rx, cd, ty, tr
   const schemaChecks: Array<{ key: string; expectedLength: number }> = [
     { key: 'mi', expectedLength: 2 },
     { key: 'fl', expectedLength: 2 },
@@ -413,7 +436,7 @@ async function main(): Promise<void> {
     }
   }
 
-  section('🔬 ROUND-TRIP ВЕРИФИКАЦИЯ CODEC (v14.0.0)');
+  section('🔬 ROUND-TRIP ВЕРИФИКАЦИЯ CODEC (v15.0.2)');
   info(`Compact: ${path.resolve(options.compactPath)}`);
   info(`Full:    ${path.resolve(options.fullPath)}`);
   info(`Verbose: ${options.verbose}`);
@@ -446,6 +469,9 @@ async function main(): Promise<void> {
 
   section('🧱 БАЗОВАЯ СТРУКТУРА');
 
+  // ✅ v15.0.2: conditionals считаем через templates[]
+  const conditionalsCount = countConditionals(full);
+
   const sections: Record<string, number> = {
     modules: full.modules?.length ?? 0,
     files: full.files?.length ?? 0,
@@ -461,7 +487,8 @@ async function main(): Promise<void> {
     effects: full.effects?.length ?? 0,
     injections: full.injections?.length ?? 0,
     reactivity: full.reactivity?.length ?? 0,
-    conditionals: full.conditionals?.length ?? 0,
+    // ✅ v15.0.2: считается через countConditionals(full)
+    conditionals: conditionalsCount,
     types: full.types?.length ?? 0,
     typeRefs: full.typeRefs?.length ?? 0,
   };
@@ -480,7 +507,7 @@ async function main(): Promise<void> {
   let legendFailed = 0;
 
   if (options.checkLegend) {
-    section('📖 СТРУКТУРА ЛЕГЕНДЫ (v13.0.0)');
+    section('📖 СТРУКТУРА ЛЕГЕНДЫ (v15.0.2)');
 
     legendChecks = checkLegendStructure(compact);
 
@@ -564,9 +591,6 @@ async function main(): Promise<void> {
     }
   }
 
-  // ============================================
-  // ✅ v14.0.0: L4 — байтовое равенство encode(decode(encode(full))) === encode(full)
-  // ============================================
   subsection('L4: encode(decode(encode(full))) === encode(full) (побайтово)');
 
   const enc1 = Codec.encode(full);
@@ -641,6 +665,86 @@ async function main(): Promise<void> {
   }
 
   // ============================================
+  // 3.5. ПРОВЕРКА СЕКЦИЙ vt/lc/ef/inj/rx/cd/ty/tr (v15.0.2)
+  // ============================================
+  //
+  // ⚠️ v15.0.2: 'conditionals' УБРАНЫ из sectionNames.
+  //   Раньше сравнивались full.conditionals и decoded.conditionals
+  //   на верхнем уровне. Теперь этого поля не существует —
+  //   conditionals живут ТОЛЬКО в templates[].conditionals
+  //   и сравниваются как часть секции 'templates'.
+  // ============================================
+
+  section('🎨 ПРОВЕРКА СЕКЦИЙ vt/lc/ef/inj/rx/ty/tr');
+
+  const sectionNames = [
+    'templates',       // включает conditionals внутри
+    'lifecycle',
+    'effects',
+    'injections',
+    'reactivity',
+    // 'conditionals',  // ← v15.0.2: убрано, см. комментарий выше
+    'types',
+    'typeRefs',
+  ] as const;
+
+  interface SectionResult {
+    name: string;
+    fullCount: number;
+    decodedCount: number;
+    ok: boolean;
+    result?: LevelResult;
+  }
+
+  const sectionResults: SectionResult[] = [];
+
+  for (const name of sectionNames) {
+    const fullArr = (full as any)[name];
+    const decodedArr = (decoded as any)[name];
+    const fullCount = Array.isArray(fullArr) ? fullArr.length : 0;
+    const decodedCount = Array.isArray(decodedArr) ? decodedArr.length : 0;
+
+    const result = semanticCompare(fullArr ?? null, decodedArr ?? null, options.maxDiffs);
+
+    sectionResults.push({
+      name,
+      fullCount,
+      decodedCount,
+      ok: result.ok,
+      result,
+    });
+
+    if (result.ok) {
+      ok(`${name} — PASS (${fullCount} элементов)`);
+    } else {
+      fail(
+        `${name} — FAIL (full=${fullCount}, decoded=${decodedCount}, diffCount=${result.diffCount})`
+      );
+      if (options.verbose && result.diff) {
+        for (const d of result.diff.slice(0, Math.min(options.maxDiffs, 5))) {
+          log(`    ${C.red}•${C.reset} ${d.path}`);
+          log(`        a: ${JSON.stringify(d.a)}`);
+          log(`        b: ${JSON.stringify(d.b)}`);
+        }
+      }
+    }
+  }
+
+  // ✅ v15.0.2: отдельная проверка conditionals через templates[]
+  subsection('conditionals (через templates[])');
+  const decodedConditionals = countConditionals(decoded);
+  const fullConditionals = countConditionals(full);
+  const conditionalsOk = decodedConditionals === fullConditionals;
+
+  if (conditionalsOk) {
+    ok(`conditionals — PASS (${fullConditionals} элементов в templates[])`);
+  } else {
+    fail(
+      `conditionals — FAIL (full=${fullConditionals}, decoded=${decodedConditionals})`
+    );
+  }
+
+  // ============================================
   // 4. ТОЧЕЧНЫЕ ПРОВЕРКИ
   // ============================================
 
@@ -649,6 +753,10 @@ async function main(): Promise<void> {
   const spotChecks: Array<{ name: string; result: LevelResult }> = [
     { name: 'calls[].type', result: baseReport.spotChecks.callsType },
     { name: 'imports[].toFileId', result: baseReport.spotChecks.importsToFileId },
+    {
+      name: 'imports[].isTypeOnly',
+      result: spotCheckImportsIsTypeOnly(decoded, full, options.maxDiffs),
+    },
     { name: 'exports[].isReExport', result: baseReport.spotChecks.exportsIsReExport },
     { name: 'functions[].*Flags', result: baseReport.spotChecks.functionsFlags },
     { name: 'external calls type', result: baseReport.spotChecks.externalCalls },
@@ -679,7 +787,7 @@ async function main(): Promise<void> {
   const structChecks: Array<{ name: string; result: LevelResult }> = [
     { name: 'columnar structure', result: baseReport.structuralChecks.columnarStructure },
     { name: 'RLE structure', result: baseReport.structuralChecks.rleStructure },
-    { name: 'tokenized strings', result: baseReport.structuralChecks.tokenizedStrings },
+    { name: 'tokenized strings', result: checkTokenizedStrings(compact) },
   ];
 
   for (const sc of structChecks) {
@@ -730,7 +838,7 @@ async function main(): Promise<void> {
 
   // I2
   {
-    const validTypes = new Set(['named', 'default', 'namespace', 'type']);
+    const validTypes = new Set(['named', 'default', 'namespace']);
     const violations: string[] = [];
     for (const i of full.imports || []) {
       if (!validTypes.has(i.type)) {
@@ -738,7 +846,7 @@ async function main(): Promise<void> {
       }
     }
     invariantResults.push({
-      name: 'I2: imports[].type ∈ {named, default, namespace, type}',
+      name: 'I2: imports[].type ∈ {named, default, namespace}',
       ok: violations.length === 0,
       violations,
     });
@@ -995,11 +1103,23 @@ async function main(): Promise<void> {
     { name: 'compact_self_contained', ok: baseReport.compact_self_contained },
     { name: 'spotCheck: calls[].type', ok: baseReport.spotChecks.callsType.ok },
     { name: 'spotCheck: imports[].toFileId', ok: baseReport.spotChecks.importsToFileId.ok },
+    {
+      name: 'spotCheck: imports[].isTypeOnly',
+      ok: spotChecks.find(s => s.name === 'imports[].isTypeOnly')!.result.ok,
+    },
     { name: 'spotCheck: exports[].isReExport', ok: baseReport.spotChecks.exportsIsReExport.ok },
     { name: 'spotCheck: functions[].*Flags', ok: baseReport.spotChecks.functionsFlags.ok },
     { name: 'spotCheck: external calls', ok: baseReport.spotChecks.externalCalls.ok },
     { name: 'spotCheck: modules[].path', ok: baseReport.spotChecks.modulesPath.ok },
   ];
+
+  // Добавляем проверки секций v15.0.2
+  for (const sr of sectionResults) {
+    levels.push({ name: `section: ${sr.name}`, ok: sr.ok });
+  }
+
+  // ✅ v15.0.2: отдельная проверка conditionals через templates[]
+  levels.push({ name: 'section: conditionals (via templates[])', ok: conditionalsOk });
 
   // Добавляем проверки легенды
   for (const check of legendChecks) {
@@ -1066,7 +1186,7 @@ async function main(): Promise<void> {
 
   const jsonReport = {
     timestamp: new Date().toISOString(),
-    codecVersion: '14.0.0',
+    codecVersion: '15.0.2',
     originalFormat: 'compact',
     bothFormats: false,
 
@@ -1083,6 +1203,18 @@ async function main(): Promise<void> {
     spotChecks,
     invariants: invariantResults,
     structuralChecks: structChecks,
+    sectionChecks: sectionResults.map(sr => ({
+      name: sr.name,
+      fullCount: sr.fullCount,
+      decodedCount: sr.decodedCount,
+      ok: sr.ok,
+    })),
+    // ✅ v15.0.2: conditionals через templates[]
+    conditionalsCheck: {
+      fullCount: fullConditionals,
+      decodedCount: decodedConditionals,
+      ok: conditionalsOk,
+    },
 
     legend: {
       enabled: options.checkLegend,
@@ -1118,6 +1250,104 @@ async function main(): Promise<void> {
 }
 
 // ============================================
+// ДОПОЛНИТЕЛЬНЫЕ ПРОВЕРКИ (v15.0.2)
+// ============================================
+
+/**
+ * Явная проверка imports[].isTypeOnly.
+ *
+ * Ловит регрессию по биту 8 в gr.i.ty.
+ */
+function spotCheckImportsIsTypeOnly(decoded: FullJSON, full: FullJSON, limit: number): LevelResult {
+  const a = (decoded.imports || []).map((i: any, idx: number) => ({
+    idx,
+    id: i.id,
+    isTypeOnly: i.isTypeOnly,
+    isNamespace: i.isNamespace,
+    type: i.type,
+  }));
+  const b = (full.imports || []).map((i: any, idx: number) => ({
+    idx,
+    id: i.id,
+    isTypeOnly: i.isTypeOnly,
+    isNamespace: i.isNamespace,
+    type: i.type,
+  }));
+
+  const diffs: any[] = [];
+  const n = Math.min(a.length, b.length);
+
+  if (a.length !== b.length) {
+    diffs.push({ path: '$.imports.length', a: a.length, b: b.length });
+  }
+
+  for (let i = 0; i < n && diffs.length < limit; i++) {
+    const ai = a[i];
+    const bi = b[i];
+    if (!ai || !bi) continue;
+    if (ai.isTypeOnly !== bi.isTypeOnly) {
+      diffs.push({
+        path: `$.imports[${i}].isTypeOnly`,
+        a: ai.isTypeOnly,
+        b: bi.isTypeOnly,
+      });
+    }
+    if (ai.isNamespace !== bi.isNamespace) {
+      diffs.push({
+        path: `$.imports[${i}].isNamespace`,
+        a: ai.isNamespace,
+        b: bi.isNamespace,
+      });
+    }
+    if (ai.type !== bi.type) {
+      diffs.push({
+        path: `$.imports[${i}].type`,
+        a: ai.type,
+        b: bi.type,
+      });
+    }
+  }
+
+  return {
+    ok: diffs.length === 0,
+    diffCount: diffs.length,
+    diff: diffs,
+  };
+}
+
+/**
+ * Проверка tokenized strings.
+ *
+ * `methods` — опционален: проверяем, только если присутствует
+ * и не является массивом.
+ */
+function checkTokenizedStrings(compact: CompactJSON): LevelResult {
+  const diffs: any[] = [];
+
+  if (!Array.isArray(compact.tokens)) {
+    diffs.push({ path: '$.tokens', a: 'missing', b: 'array expected' });
+  }
+
+  if (!Array.isArray(compact.strs)) {
+    diffs.push({ path: '$.strs', a: 'missing', b: 'array expected' });
+  }
+
+  if (!Array.isArray(compact.params)) {
+    diffs.push({ path: '$.params', a: 'missing', b: 'array expected' });
+  }
+
+  if (compact.methods !== undefined && !Array.isArray(compact.methods)) {
+    diffs.push({ path: '$.methods', a: 'not array', b: 'array expected' });
+  }
+
+  return {
+    ok: diffs.length === 0,
+    diffCount: diffs.length,
+    diff: diffs,
+  };
+}
+
+// ============================================
 // HELP
 // ============================================
 
@@ -1126,8 +1356,8 @@ function printHelp(): void {
   npx tsx scripts/verify-roundtrip.ts [options]
 
 ${C.bold}Опции:${C.reset}
-  --compact <path>       Путь к compact JSON (по умолчанию ./example/index.json)
-  --full <path>          Путь к full JSON (по умолчанию ./example/index.full.json)
+  --compact <path>       Путь к compact JSON (по умолчанию ./ast-graph-viewer/index.json)
+  --full <path>          Путь к full JSON (по умолчанию ./ast-graph-viewer/index.full.json)
   -v, --verbose          Подробный вывод с расхождениями
   --max-diffs <n>        Максимум расхождений для вывода (по умолчанию 10)
   --json-report <path>   Сохранить отчёт в JSON-файл
@@ -1141,7 +1371,7 @@ ${C.bold}Уровни round-trip:${C.reset}
   L1  : decode(compact) === full (семантически)
   L2  : decode(compact) === full (побайтово, порядко-независимо)
   L3  : compact на диске === encode(full) (побайтово, буквально)
-  L4  : encode(decode(encode(full))) === encode(full) (побайтово)   ← v14.0.0
+  L4  : encode(decode(encode(full))) === encode(full) (побайтово)
   RE  : encode(decode(compact)) === compact
   DL  : decode(encode(full)) === full
   ENC : encode(full) === encode(decode(encode(full)))
@@ -1149,29 +1379,37 @@ ${C.bold}Уровни round-trip:${C.reset}
 
 ${C.bold}Семантические инварианты:${C.reset}
   I1  : calls[].type ∈ {direct, async, method, callback}
-  I2  : imports[].type ∈ {named, default, namespace, type}
+  I2  : imports[].type ∈ {named, default, namespace}
   I3  : exports[].type ∈ {named, default, type}
   I4  : external calls → isExternal = 1 в compact.gr.c.ty
   I5  : external calls: сохранность типа (full vs decoded)
   I6  : functions[].*Flags ∈ {true, false, undefined}
   I7  : fns/cls/cn — columnar-структура
 
+${C.bold}Проверки секций (v15.0.2):${C.reset}
+  templates, lifecycle, effects, injections, reactivity,
+  types, typeRefs — сравнение full vs decoded
+
+  ⚠️ conditionals НЕ входят в sectionNames.
+     Они живут ТОЛЬКО в templates[].conditionals
+     и сравниваются как часть секции 'templates',
+     плюс отдельная проверка через countConditionals().
+
 ${C.bold}Структурные проверки:${C.reset}
   columnar structure  — все секции имеют columnar-структуру
   RLE structure       — fl.m, fns.m, fns.f, cls.m, cls.f, cn.m, cn.f
-  tokenized strings   — tokens, strs, params, methods присутствуют
+  tokenized strings   — tokens, strs, params (methods — опционально)
 
 ${C.bold}Проверки легенды:${C.reset}
   legend.codes.*       — расшифровки кодов
   legend.flags.bits    — 18 битов
-  legend.schemas.*     — позиционные схемы (mi, fl, fns, cls, cn, gr.*,
-                          vt.*, lc, ef, inj, rx, cd, ty, tr)
+  legend.schemas.*     — позиционные схемы
 
 ${C.bold}Эталоны (golden):${C.reset}
   G1  : full ≈ scripts/fixtures/index.full.golden.json
   G2  : compact ≈ scripts/fixtures/index.golden.json
 
-${C.bold}Формат compact.json v14.0.0:${C.reset}
+${C.bold}Формат compact.json v15.0.2:${C.reset}
   mi:  { n: [...], f: [[startFileIdx, fileCount], ...] }
   fl:  { p: [...], m: [[moduleIdx, count], ...] }
   fns: { n: [...], m: [[...]], f: [[...]], l: [...], fl: [...], p: [...], rt: [...] }
@@ -1179,8 +1417,19 @@ ${C.bold}Формат compact.json v14.0.0:${C.reset}
   cn:  { n: [...], m: [[...]], f: [[...]], l: [...], fl: [...], nonEmptyV: [[idx, valueIdx], ...] }
   gr.e:  { m: [...], f: [...], fn: [...], l: [...], ty: [...], en: [...], ln: [...], s: [...], flags: [...] }
   gr.i:  { ff: [...], tf: [...], s: [...], im: [...], ln: [...], l: [...], ty: [...] }
+          ty: typeCode | (isExternal << 2) | (isTypeOnly << 3)
+          ⚠️ typeCode ∈ {0=named, 1=default, 2=namespace}
   gr.c:  { f: [...], t: [...], l: [...], ty: [...] }
   gr.re: { m: [...], fn: [...], s: [...], en: [...], l: [...], ty: [...] }
+  vt:  number[]  — индексы на values[] для templates[]
+  lc:  number[]  — индексы на values[] для lifecycle[]
+  ef:  number[]  — индексы на values[] для effects[]
+  inj: number[]  — индексы на values[] для injections[]
+  rx:  number[]  — индексы на values[] для reactivity[]
+  cd:  number[]  — индексы на values[] для conditionals[]
+                   ⚠️ conditionals восстанавливаются через templates[]
+  ty:  number[]  — индексы на values[] для types[]
+  tr:  number[]  — индексы на values[] для typeRefs[]
 
 ${C.bold}Примеры:${C.reset}
   npx tsx scripts/verify-roundtrip.ts

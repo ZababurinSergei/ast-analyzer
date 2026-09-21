@@ -1,75 +1,86 @@
 // src/reporters/codec/codec-types.ts
 // ============================================
-// ТИПЫ ДЛЯ КОДЕКА (v13.0.2 — columnar + RLE)
+// ТИПЫ ДЛЯ КОДЕКА (v15.0.2)
 // ============================================
-// Версия: 13.0.2
+// Версия: 15.0.2
+//
+// ИЗМЕНЕНИЯ v15.0.2 (устранение дублирования conditionals):
+//   - ✅ УДАЛЕНО: поле `FullJSON.conditionals`.
+//
+//     ПРИЧИНА:
+//     ---------
+//     В v15.0.1 `conditionals` дублировались в двух местах
+//     FullJSON:
+//       1. `full.conditionals`            — верхний уровень
+//       2. `full.templates[i].conditionals` — внутри templates
+//
+//     Один и тот же массив присваивался в оба места, поэтому
+//     при сериализации через `safeJsonStringify` второй экземпляр
+//     превращался в строку "[Circular]". Это ломало round-trip:
+//       decode(compact).conditionals = undefined
+//       full.conditionals = ["[Circular]", "[Circular]", ...]
+//
+//     РЕШЕНИЕ:
+//     ---------
+//     `conditionals` живут ТОЛЬКО в `templates[i].conditionals`.
+//     Верхнеуровневое поле удалено полностью. Все потребители
+//     (`codec-encode.ts`, `codec-decode.ts`, `verify-*.ts`)
+//     обновлены для работы через `templates[]`.
+//
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '15.0.2'.
+//
+// ИЗМЕНЕНИЯ v15.0.1 (fix imports[].type):
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '15.0.1'.
+//   - ✅ ИСПРАВЛЕНО: тип `ImportData['type']` сужен до
+//     `'named' | 'default' | 'namespace'`. Значение `'type'`
+//     УДАЛЕНО — для type-only импортов используйте отдельный
+//     флаг `isTypeOnly`.
+//
+// ИЗМЕНЕНИЯ v15.0.0 (полный round-trip расширенных секций):
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '15.0.0'.
+//   - ✅ УТОЧНЕНО: тип CompactJSON для полей vt/lc/ef/inj/rx/cd/ty/tr —
+//     массивы индексов в values[].
 //
 // ИЗМЕНЕНИЯ v13.0.2 (fix round-trip):
 //   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '13.0.2'.
-//     Причина: в v13.0.1 исправлена сортировка (удалён stableSortById),
-//     в v13.0.2 исправлены:
-//       • decode(): modules[].fileIds строятся через fl.m, а не через mi.f
-//       • encode(): encodeStr() не токенизирует строки с разделителями
-//         и двоеточием (потеря символов при join(''))
-//     Это устраняет расхождения modules[].fileIds, imports[].toFileId,
-//     external calls, L1/L2/DL/RE/ENC.
-//
-// ИЗМЕНЕНИЯ v13.0.1 (fix round-trip):
-//   - ✅ УДАЛЕНА stableSortById из encode() (см. codec-encode.ts).
 //
 // ИЗМЕНЕНИЯ v13.0.0 (fix round-trip):
-//   - ✅ ДОБАВЛЕНО: константа CODEC_VERSION — единый источник
-//     истины для версии. Используется в compact-reporter.ts,
-//     codec-encode.ts, codec-decode.ts.
-//   - ✅ ИСПРАВЛЕНО: тип mi.f — теперь [startFileIdx, fileCount][],
-//     а не RLE от moduleIdx. Раньше декодер интерпретировал moduleIdx
-//     как fileIdx, что давало fileIds длиной 1 и "f10" вместо "f80".
+//   - ✅ ДОБАВЛЕНО: константа CODEC_VERSION — единый источник истины.
+//   - ✅ ИСПРАВЛЕНО: тип mi.f — [startFileIdx, fileCount][].
 //   - ✅ ДОБАВЛЕНО: mi и fl в CodecLegend.schemas.
 //   - ✅ ОБНОВЛЕНО: valuesMode сохраняется в FullJSON и CompactJSON.
 //
 // ИЗМЕНЕНИЯ v12.0.0 (структурная оптимизация):
-//   - ✅ CompactJSON переведён на columnar-структуру:
-//       • mi, fl, fns, cls, cn, gr.* — объекты с параллельными массивами
-//       • RLE для moduleIdx/fileIdx в fns, cls, cn
-//       • битовые маски для булевых флагов
-//       • числовые коды вместо строковых
-//   - ✅ Удалены поля id (m1, f1, fn1) — позиция в массиве = ID
-//   - ✅ CodecLegend упрощён: удалены how_to_read, flags.examples
-//   - ✅ flags.bits — простой словарь { "1": "isAsync", ... }
-//   - ✅ Токенизация словарей строк (strs, params, methods)
-//   - ❌ Обратная совместимость со старыми compact.json НЕ поддерживается
+//   - ✅ CompactJSON переведён на columnar-структуру.
 //
 // ИЗМЕНЕНИЯ v11.0.0 (компактнее):
-//   - fns/cls/cn: name → nameIdx, flags → number
-//
-// ИЗМЕНЕНИЯ v10.4.1:
-//   - Удалены 5 полей description из CodecLegend
+//   - fns/cls/cn: name → nameIdx, flags → number.
 //
 // ИЗМЕНЕНИЯ v10.4.0:
-//   - Перестроен CodecLegend: how_to_read, flags, codes, dictionaries, schemas
+//   - Перестроен CodecLegend: how_to_read, flags, codes, dictionaries,
+//     schemas.
 //
 // ИЗМЕНЕНИЯ v9.0.6:
-//   - TemplateRefUsage / TemplateConditional реэкспортируются из '../../types.js'
+//   - TemplateRefUsage / TemplateConditional реэкспортируются из '../../types.js'.
 //
 // ИЗМЕНЕНИЯ v9.0.0:
 //   - Добавлены LifecycleHook, EffectEdge, InjectionEdge, ReactivityEdge,
 //     TemplateConditional, TypeNodeData, TypeRefData и связанные типы.
-//   - Расширены FullJSON, CompactJSON, CodecLegend.
 // ============================================
 
 // ============================================================
-// ✅ v13.0.2: ЕДИНАЯ ВЕРСИЯ CODEC
+// ✅ v15.0.2: ЕДИНАЯ ВЕРСИЯ CODEC
 // ============================================================
 // Используется в:
 //   - compact-reporter.ts (version в full.json)
 //   - codec-encode.ts     (v в compact.json)
 //   - codec-decode.ts     (version в full.json при decode)
 //
-// Единый источник истины — устраняет расхождение "13.0.0" vs "11.1.0",
-// которое ломало L1/L2/DL round-trip.
+// Единый источник истины — устраняет расхождение версий между
+// full.json и compact.json.
 // ============================================================
 
-export const CODEC_VERSION = '13.0.2';
+export const CODEC_VERSION = '15.0.2';
 
 // ============================================================
 // РЕЭКСПОРТ TEMPLATE-ТИПОВ ИЗ src/types.ts
@@ -115,6 +126,14 @@ export type ConditionalDirective = TemplateConditional['directive'];
 
 /**
  * Полный (читаемый) JSON отчёта.
+ *
+ * ⚠️ v15.0.2: поле `conditionals` УДАЛЕНО с верхнего уровня.
+ *    Единственное место хранения — `templates[i].conditionals`.
+ *
+ *    Причина: дублирование на верхнем уровне и в templates[]
+ *    приводило к тому, что `safeJsonStringify` заменял второй
+ *    экземпляр на "[Circular]", и conditionals терялись при
+ *    чтении с диска.
  */
 export interface FullJSON {
   /** Версия формата отчёта */
@@ -141,15 +160,22 @@ export interface FullJSON {
   calls: CallData[];
   /** Список реэкспортов */
   reExports: ReExportData[];
-  /** Vue-шаблоны (отдельные сущности). */
+
+  /**
+   * Vue-шаблоны — отдельные сущности.
+   *
+   * ⚠️ v15.0.2: `conditionals` живут ВНУТРИ каждого TemplateData.
+   *    На верхнем уровне FullJSON их нет.
+   */
   templates?: TemplateData[];
+
   /** Статистика */
   statistics: StatisticsData;
   /** Единый массив рёбер для сводного графа. */
   edges?: EdgeData[];
 
   // ==========================================
-  // ✅ НОВОЕ v9.0.0
+  // ✅ РАСШИРЕННЫЕ СЕКЦИИ (v9.0.0+)
   // ==========================================
 
   /** Хуки жизненного цикла (onMounted, onUnmounted, ...) */
@@ -160,15 +186,13 @@ export interface FullJSON {
   injections?: InjectionEdge[];
   /** Реактивные связи (computed/watch/ref/...) */
   reactivity?: ReactivityEdge[];
-  /** Условный рендеринг (v-if / v-else-if / v-else) */
-  conditionals?: TemplateConditional[];
   /** Узлы тип-графа (interface / type-alias / enum / class) */
   types?: TypeNodeData[];
   /** Рёбра использования типов (param / return / field / ...) */
   typeRefs?: TypeRefData[];
 
   // ==========================================
-  // ✅ НОВОЕ v12.0.0: values mode
+  // ✅ v12.0.0: values mode
   // ==========================================
 
   /**
@@ -295,6 +319,26 @@ export interface ExportData {
 // ============================================
 // ИМПОРТ
 // ============================================
+//
+// ✅ v15.0.1: семантика полей `type` и `isTypeOnly` УНИФИЦИРОВАНА.
+//
+//   type        — вид импорта: 'named' | 'default' | 'namespace'
+//                 Значение 'type' УДАЛЕНО. Для type-only импортов
+//                 используйте `isTypeOnly: true` — это ОТДЕЛЬНЫЙ флаг.
+//
+//   isTypeOnly  — отдельный флаг (`import type ...`)
+//
+// ════════════════════════════════════════════════════════════
+// ПРИМЕРЫ
+// ════════════════════════════════════════════════════════════
+//
+//   import { X } from '...'         → type: 'named',     isTypeOnly: false
+//   import type { X } from '...'    → type: 'named',     isTypeOnly: true
+//   import Foo from '...'           → type: 'default',   isTypeOnly: false
+//   import type Foo from '...'      → type: 'default',   isTypeOnly: true
+//   import * as ns from '...'       → type: 'namespace', isTypeOnly: false
+//   import type * as ns from '...'  → type: 'namespace', isTypeOnly: true
+// ============================================
 
 export interface ImportData {
   id: string;
@@ -304,7 +348,8 @@ export interface ImportData {
   importedName: string;
   localName: string;
   line: number;
-  type: 'named' | 'default' | 'namespace' | 'type';
+  /** ✅ v15.0.1: вид импорта — БЕЗ 'type' */
+  type: 'named' | 'default' | 'namespace';
   isDefault: boolean;
   isNamespace: boolean;
   isTypeOnly: boolean;
@@ -344,6 +389,10 @@ export interface ReExportData {
 // ============================================
 // VUE TEMPLATE
 // ============================================
+//
+// ⚠️ v15.0.2: `conditionals` живут ТОЛЬКО ЗДЕСЬ.
+//    На верхнем уровне FullJSON их больше нет.
+// ============================================
 
 export interface TemplateData {
   fileId: string;
@@ -358,11 +407,26 @@ export interface TemplateData {
   deepSelectors: TemplateDeepSelector[];
   slots: string[];
   complexity: number;
+
+  /**
+   * ✅ v15.0.2: условный рендеринг (v-if / v-else-if / v-else).
+   *
+   * ЕДИНСТВЕННОЕ место хранения conditionals в FullJSON.
+   * На верхнем уровне FullJSON этого поля нет.
+   *
+   * Каждый элемент содержит:
+   *   - id                 (cd1, cd2, ...)
+   *   - directive          ('v-if' | 'v-else-if' | 'v-else')
+   *   - fileId             (f1, f2, ...)
+   *   - line               (номер строки в шаблоне)
+   *   - conditionExpression (для v-if / v-else-if)
+   *   - renderedComponent   (опционально)
+   */
   conditionals?: TemplateConditional[];
 }
 
 // ============================================
-// ✅ НОВОЕ v9.0.0: LIFECYCLE
+// ✅ LIFECYCLE
 // ============================================
 
 export type LifecycleHookName =
@@ -385,7 +449,7 @@ export interface LifecycleHook {
 }
 
 // ============================================
-// ✅ НОВОЕ v9.0.0: EFFECTS
+// ✅ EFFECTS
 // ============================================
 
 export type EffectType = 'timer' | 'cleanup' | 'promise' | 'event' | 'subscription';
@@ -400,7 +464,7 @@ export interface EffectEdge {
 }
 
 // ============================================
-// ✅ НОВОЕ v9.0.0: INJECTIONS
+// ✅ INJECTIONS
 // ============================================
 
 export type InjectionKind = 'provide' | 'inject';
@@ -416,7 +480,7 @@ export interface InjectionEdge {
 }
 
 // ============================================
-// ✅ НОВОЕ v9.0.0: REACTIVITY
+// ✅ REACTIVITY
 // ============================================
 
 export type ReactivityKind =
@@ -433,7 +497,7 @@ export interface ReactivityEdge {
 }
 
 // ============================================
-// ✅ НОВОЕ v9.0.0: TYPES
+// ✅ TYPES
 // ============================================
 
 export type TypeKind = 'interface' | 'type-alias' | 'enum' | 'class';
@@ -475,6 +539,8 @@ export interface StatisticsData {
   totalCalls: number;
   totalReExports: number;
   totalTemplates?: number;
+  /** ✅ v15.0.2: количество conditionals (считается через templates[]) */
+  totalConditionals?: number;
 }
 
 // ============================================
@@ -490,33 +556,44 @@ export interface EdgeData {
 }
 
 // ============================================================
-// СЖАТЫЙ JSON (v13.0.2 — COLUMNAR + RLE)
+// СЖАТЫЙ JSON (v15.0.2 — COLUMNAR + RLE + РАСШИРЕННЫЕ СЕКЦИИ)
+// ============================================================
+//
+// ✅ v15.0.2: расширенные секции vt/lc/ef/inj/rx/cd/ty/tr хранятся
+//    как массивы индексов в values[]. Каждый элемент values[i] — это
+//    ОБЪЕКТ (после не-дедуплицирующего addAny).
+//
+//    Секция `cd` собирается из `templates[].conditionals` (см.
+//    codec-encode.ts). Верхнеуровневого `conditionals` в FullJSON
+//    больше нет.
+//
+// ✅ v15.0.1: combinedTy в gr.i использует бит 8 для isTypeOnly.
+//    Биты:
+//      0-1 : typeCode (0=named, 1=default, 2=namespace)
+//      2   : isExternal
+//      3   : isTypeOnly
+//
+// ✅ v13.0.2-fix: encodeStr() не токенизирует строки с разделителями
+//    и двоеточием. decode() строит modules[].fileIds через fl.m.
+// ✅ v13.0.0-fix: mi.f — пары [startFileIdx, fileCount].
+// ✅ v12.0.0: columnar-структура + RLE + битовые маски.
+//
+// Формат кортежей (позиции фиксированы, см. legend.schemas):
+//
+//   mi:  { n: string[], f: [startFileIdx, fileCount][] }
+//   fl:  { p: string[], m: [moduleIdx, count][] }
+//   fns: { n: nameIdx[], m: [moduleIdx, count][], f: [fileIdx, count][],
+//          l: line[], fl: flags[], p: paramsIdx[][], rt: returnTypeIdx[] }
+//   cls: { n: nameIdx[], m: [moduleIdx, count][], f: [fileIdx, count][],
+//          l: line[], fl: flags[], methods: methodsIdx[][] }
+//   cn:  { n: nameIdx[], m: [moduleIdx, count][], f: [fileIdx, count][],
+//          l: line[], fl: flags[], nonEmptyV: [constIdx, valueIdx][] }
+//   gr.e:  { m, f, fn, l, ty, en, ln, s, flags }
+//   gr.i:  { ff, tf, s, im, ln, l, ty }
+//   gr.c:  { f, t, l, ty }
+//   gr.re: { m, fn, s, en, l, ty }
 // ============================================================
 
-/**
- * Сжатый JSON — ПОЛНОСТЬЮ ОБРАТИМ.
- *
- * ✅ v13.0.2-fix: encodeStr() не токенизирует строки с разделителями
- *    и двоеточием (см. codec-encode.ts). decode() строит
- *    modules[].fileIds через fl.m, а не через mi.f.
- * ✅ v13.0.0-fix: mi.f — пары [startFileIdx, fileCount].
- * ✅ v12.0.0: columnar-структура + RLE + битовые маски.
- *
- * Формат кортежей (позиции фиксированы, см. legend.schemas):
- *
- *   mi:  { n: string[], f: [startFileIdx, fileCount][] }
- *   fl:  { p: string[], m: [moduleIdx, count][] }
- *   fns: { n: nameIdx[], m: [moduleIdx, count][], f: [fileIdx, count][],
- *          l: line[], fl: flags[], p: paramsIdx[][], rt: returnTypeIdx[] }
- *   cls: { n: nameIdx[], m: [moduleIdx, count][], f: [fileIdx, count][],
- *          l: line[], fl: flags[], methods: methodsIdx[][] }
- *   cn:  { n: nameIdx[], m: [moduleIdx, count][], f: [fileIdx, count][],
- *          l: line[], fl: flags[], nonEmptyV: [constIdx, valueIdx][] }
- *   gr.e:  { m, f, fn, l, ty, en, ln, s, flags }
- *   gr.i:  { ff, tf, s, im, ln, l, ty }
- *   gr.c:  { f, t, l, ty }
- *   gr.re: { m, fn, s, en, l, ty }
- */
 export interface CompactJSON {
   /** Version */
   v: string;
@@ -548,13 +625,6 @@ export interface CompactJSON {
    * Module index: columnar.
    *
    * ✅ v13.0.0-fix: `f` — массив пар [startFileIdx, fileCount].
-   * Раньше здесь был RLE от moduleIdx, что ломало round-trip:
-   * decode интерпретировал moduleIdx как fileIdx, и modules[].fileIds
-   * получал длину 1 вместо N (и "f10" вместо "f80").
-   *
-   * ✅ v13.0.2-fix: decode() больше НЕ использует mi.f для построения
-   * modules[].fileIds — строит через fl.m. mi.f сохранён только для
-   * обратной совместимости схемы (legend.schemas.mi = ['n', 'f']).
    */
   mi: {
     n: string[];
@@ -613,7 +683,14 @@ export interface CompactJSON {
       flags: number[]; // isTypeOnly | isReExport<<1 | isStarReExport<<2 | isDefaultReExport<<3
     };
 
-    /** Imports: columnar */
+    /**
+     * Imports: columnar.
+     *
+     * ✅ v15.0.0: ty — combinedTy с битами:
+     *   0-1: typeCode (0=named, 1=default, 2=namespace)
+     *   2:   isExternal
+     *   3:   isTypeOnly
+     */
     i: {
       ff: number[]; // fromFileIdx
       tf: number[]; // toFileIdIdx
@@ -621,7 +698,7 @@ export interface CompactJSON {
       im: number[]; // importedNameIdx
       ln: number[]; // localNameIdx
       l: number[]; // line
-      ty: number[]; // typeCode | (isExternal << 2)
+      ty: number[]; // combinedTy (см. комментарий выше)
     };
 
     /** Calls: columnar */
@@ -643,33 +720,47 @@ export interface CompactJSON {
     };
   };
 
-  /** Vue templates */
-  vt?: any[];
+  // ==========================================
+  // ✅ v15.0.0: расширенные секции vt/lc/ef/inj/rx/cd/ty/tr
+  // ==========================================
+  //
+  // Каждая секция — массив индексов в values[].
+  // Сами объекты лежат в values[idx] (ОБЪЕКТ, не строка).
+  //
+  // ⚠️ v15.0.1: `addAny` больше НЕ дедуплицирует. Это гарантирует
+  //    1-к-1 соответствие: compact.cd[i] ↔ full.templates[].conditionals[i].
+  //
+  // ⚠️ v15.0.2: секция `cd` собирается из templates[].conditionals
+  //    (см. codec-encode.ts). Верхнеуровневого `conditionals` в
+  //    FullJSON больше нет.
+  // ==========================================
+
+  /** Vue templates: number[] — индексы в values[] */
+  vt?: number[];
+  /** Lifecycle: number[] — индексы в values[] */
+  lc?: number[];
+  /** Effects: number[] — индексы в values[] */
+  ef?: number[];
+  /** Injections: number[] — индексы в values[] */
+  inj?: number[];
+  /** Reactivity: number[] — индексы в values[] */
+  rx?: number[];
+  /** Conditionals: number[] — индексы в values[] */
+  cd?: number[];
+  /** Types: number[] — индексы в values[] */
+  ty?: number[];
+  /** Type refs: number[] — индексы в values[] */
+  tr?: number[];
 
   /** Statistics */
   st: StatisticsData;
 
   /** Legend (codes + flags + schemas) */
   legend: CodecLegend;
-
-  /** Lifecycle */
-  lc?: any[];
-  /** Effects */
-  ef?: any[];
-  /** Injections */
-  inj?: any[];
-  /** Reactivity */
-  rx?: any[];
-  /** Conditionals */
-  cd?: any[];
-  /** Types */
-  ty?: any[];
-  /** Type refs */
-  tr?: any[];
 }
 
 // ============================================================
-// ЛЕГЕНДА (v13.0.2)
+// ЛЕГЕНДА (v15.0.2)
 // ============================================================
 
 /**
@@ -691,11 +782,7 @@ export interface CodesDict {
 /**
  * Легенда — все словари и схемы, необходимые для декодирования.
  *
- * ✅ v13.0.2-fix: версия синхронизирована с CODEC_VERSION.
- * ✅ v13.0.0-fix: добавлены mi и fl в schemas.
- * ✅ v12.0.0: упрощена.
- *   - УДАЛЕНЫ: how_to_read, flags.examples, dictionaries.
- *   - flags.bits — простой словарь { "1": "isAsync", ... }.
+ * ✅ v15.0.2: версия синхронизирована с CODEC_VERSION.
  */
 export interface CodecLegend {
   /** Расшифровка строковых кодов */
@@ -720,7 +807,6 @@ export interface CodecLegend {
 
   /** Позиционные схемы кортежей */
   schemas: {
-    // ✅ v13.0.0-fix: добавлены mi и fl
     mi: string[];
     fl: string[];
     fns: string[];
@@ -763,7 +849,7 @@ export interface GenerateReportOptions {
   edgesJsonSuffix?: string;
 
   // ==========================================
-  // ✅ НОВОЕ v12.0.0: values mode
+  // ✅ v12.0.0: values mode
   // ==========================================
 
   /**
@@ -771,7 +857,6 @@ export interface GenerateReportOptions {
    *
    * - `'full'`      — все значения сохраняются (обратная совместимость)
    * - `'relations'` — только значения, нужные для восстановления связей
-   *                   (сжатый режим, экономия 5–15x по размеру)
    *
    * Default: 'relations'.
    */
@@ -796,16 +881,14 @@ export interface GenerateReportResult {
     compressionRatio?: number;
 
     // ==========================================
-    // ✅ НОВОЕ v12.0.0: values mode
+    // ✅ v12.0.0: values mode
     // ==========================================
 
     /**
      * Режим сериализации values, использованный при генерации.
-     * Возвращается, чтобы вызывающий код мог логировать/сохранять его.
      */
     valuesMode?: 'full' | 'relations';
 
-    // ✅ v13.0.0-fix: добавлено для диагностики
     /** Количество значений в compact.values[] */
     valuesCount?: number;
   };
@@ -827,18 +910,13 @@ export interface DecodeOptions {
   includeStatistics?: boolean;
 
   // ==========================================
-  // ✅ НОВОЕ v12.0.0: values mode
+  // ✅ v12.0.0: values mode
   // ==========================================
 
   /**
    * Режим сериализации values.
    *
    * Влияет только на переиндексацию `cn.nonEmptyV` при декодировании.
-   * В режиме `relations` декодер ожидает, что `compact.values` уже
-   * отфильтрован, и корректно восстанавливает `constants[].value`.
-   *
-   * Опционально для обратной совместимости: если не задан,
-   * используется значение из `compact.valuesMode` (или 'full').
    */
   valuesMode?: 'full' | 'relations';
 }
@@ -907,5 +985,4 @@ export interface ExtendedImportData extends ImportData {
 
 export default {
   CODEC_VERSION,
-  // Все типы экспортируются автоматически
 };
