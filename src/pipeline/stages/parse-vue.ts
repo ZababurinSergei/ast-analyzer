@@ -2,109 +2,27 @@
 // ============================================================
 // STAGE 2b: PARSE VUE SFC (ОТВЕТВЛЕНИЕ)
 // ============================================================
-// Версия: 1.0.0
+// Версия: 1.1.0
 //
-// НАЗНАЧЕНИЕ
-// ------------------------------------------------------------
-// Ветка pipeline для файлов Vue Single File Component (.vue).
-// Вызывается из `ParseFileStage.dispatch()` для расширения `.vue`.
+// ИЗМЕНЕНИЯ v1.1.0 (нормализация путей):
+//   - ✅ ДОБАВЛЕН Шаг 1.5: резолвинг относительного пути в абсолютный
+//     через `path.resolve(options.projectRoot, file)`.
+//   - ✅ ИЗМЕНЕНО: `analyzeVueComponent(absolutePath, ...)` вместо
+//     `analyzeVueComponent(file, ...)` — для валидных vscode-ссылок
+//     и стабильных ID.
+//   - ✅ ИЗМЕНЕНО: `convertVueAnalysisToEntities(vueAnalysis, absolutePath)`
+//     вместо `convertVueAnalysisToEntities(vueAnalysis, file)`.
+//   - ✅ ДОБАВЛЕН Шаг 4.5: нормализация `entities.filePath` обратно
+//     в относительный путь из `ctx.files`.
+//   - ✅ ОБНОВЛЕНЫ все вызовы `createEmptyEntitiesResult(file)` —
+//     теперь принимают относительный путь (это и нужно для отчёта).
 //
-// Это ОТВЕТВЛЕНИЕ основного pipeline. После обработки
-// возвращает `EntitiesResult` обратно в общий pipeline,
-// где он сливается с результатами TS/JS-ветки и продолжает
-// в общие stages:
-//     enrich-re-exports → normalize → report
-//
-// СХЕМА
-// ------------------------------------------------------------
-//                          App.vue
-//                             │
-//                             ▼
-//                  analyzeVueComponent(file, opts)
-//                             │
-//                             ▼
-//                    VueComponentAnalysis
-//                    ┌────────┴────────┐
-//                    │                 │
-//              script, template,   props, emits,
-//              style, ...          composables,
-//                                  functions,
-//                                  lifecycle,
-//                                  effects,
-//                                  injections,
-//                                  reactivity,
-//                                  conditionals,
-//                                  templateRefs,
-//                                  cssVariables,
-//                                  deepSelectors,
-//                                  usedComponents,
-//                                  slots, ...
-//                             │
-//                             ▼
-//              convertVueAnalysisToEntities(vueAnalysis, file)
-//                             │
-//                             ▼
-//                      EntitiesResult
-//              ┌──────────────┴──────────────┐
-//              │                             │
-//        стандартные поля:             templateXxx-поля:
-//        • functions                   • templateConditionals
-//        • classes                     • templateLifecycle
-//        • constants                   • templateEffects
-//        • interfaces                  • templateInjections
-//        • types                       • templateReactivity
-//        • variables                   • templateRefs
-//        • imports                     • templateCssVariables
-//        • exports                     • templateDeepSelectors
-//        • callGraph                   • templateDirectives
-//                                      • templateUsedComponents
-//                                      • templateSlots
-//                                      • templateComplexity
-//                             │
-//                             ▼
-//              возврат в ParseFileStage.dispatch()
-//
-// ЧТО ВОЗВРАЩАЕТСЯ
-// ------------------------------------------------------------
-// Полный `EntitiesResult`:
-//   • Стандартные секции (functions, classes, ...) — заполняются
-//     из `<script>` и `<script setup>`.
-//   • Vue-специфичные templateXxx-поля — заполняются из
-//     `<template>` через analyzeVueComponent.
-//
-// ⚠️ КРИТИЧНО: именно здесь заполняются templateXxx-поля,
-//     которые потом идут в FullJSON и в compact-отчёт.
-//     Если их потерять — сломается round-trip кодек.
-//
-// ОСОБЕННОСТИ
-// ------------------------------------------------------------
-//   • Делегирует работу в ЕДИНЫЕ источники:
-//       - `analyzeVueComponent`              — Vue-анализ
-//       - `convertVueAnalysisToEntities`     — приведение к EntitiesResult
-//       - `createEmptyEntitiesResult`        — пустой результат для Vue без <script>
-//   • Возвращает ПУСТОЙ `EntitiesResult` (не null!) для
-//     Vue-файлов без `<script>` — чтобы узел модуля попал в граф.
-//   • Обрабатывает ошибки компиляции @vue/compiler-sfc:
-//     fallback на AST-разбор (внутри analyzeVueComponent).
-//   • Логирует результат в verbose-режиме, включая статистику
-//     по templateXxx-секциям.
-//   • Защита от случайного вызова на не-Vue файлах.
-//
-// ЗАВИСИМОСТИ
-// ------------------------------------------------------------
-//   • `analyzeVueComponent`              — Vue-анализатор.
-//   • `convertVueAnalysisToEntities`     — конвертер.
-//   • `createEmptyEntitiesResult`        — пустой результат.
-//   • `PipelineContext`                  — контекст pipeline.
-//
-// ИЗМЕНЕНИЯ
-// ------------------------------------------------------------
-// v1.0.0:
-//   • Первая версия.
-//   • Явная проверка расширения `.vue`.
-//   • Fallback на пустой EntitiesResult для Vue без <script>.
-//   • Расширенное логирование templateXxx-секций в verbose.
-//   • Экспорт утилит `isVueExtension()` и `getVueExtension()`.
+// ИЗМЕНЕНИЯ v1.0.0:
+//   - Первая версия.
+//   - Явная проверка расширения `.vue`.
+//   - Fallback на пустой EntitiesResult для Vue без <script>.
+//   - Расширенное логирование templateXxx-секций в verbose.
+//   - Экспорт утилит `isVueExtension()` и `getVueExtension()`.
 // ============================================================
 
 import path from 'path';
@@ -143,8 +61,14 @@ const VUE_EXTENSION = '.vue';
  *          Это защита: если кто-то вызовет функцию напрямую
  *          для `.ts` — она не сломается, а просто вернёт null.
  *
+ *   1.5. ✅ РЕЗОЛВИНГ ПУТИ (v1.1.0)
+ *        • `file` приходит из `ctx.files` и является ОТНОСИТЕЛЬНЫМ
+ *          от `projectRoot`.
+ *        • Вычисляем `absolutePath = path.resolve(projectRoot, file)`
+ *          для передачи в анализаторы.
+ *
  *   2. Vue-анализ
- *        • `analyzeVueComponent(file, opts)` из
+ *        • `analyzeVueComponent(absolutePath, opts)` из
  *          `modes/vue-analyzer/index.ts`.
  *        • Возвращает `VueComponentAnalysis | null`.
  *        • Внутри обрабатывает:
@@ -168,10 +92,16 @@ const VUE_EXTENSION = '.vue';
  *        • Пример: иконки, презентационные компоненты.
  *
  *   4. Конвертация в EntitiesResult
- *        • `convertVueAnalysisToEntities(vueAnalysis, file)`
+ *        • `convertVueAnalysisToEntities(vueAnalysis, absolutePath)`
  *          из `core/entity-extractor/vue/convert-analysis.ts`.
  *        • Возвращает единый `EntitiesResult` со всеми полями,
  *          включая templateXxx.
+ *
+ *   4.5. ✅ НОРМАЛИЗАЦИЯ entities.filePath (v1.1.0)
+ *        • `convertVueAnalysisToEntities` записал АБСОЛЮТНЫЙ путь
+ *          (для корректных vscode-ссылок и idManager).
+ *        • Заменяем `entities.filePath` на относительный из `file`
+ *          и `entities.moduleName` на `path.basename(file)`.
  *
  *   5. Возврат
  *        • `EntitiesResult` — при успехе.
@@ -200,21 +130,22 @@ const VUE_EXTENSION = '.vue';
  * ════════════════════════════════════════════════════════════
  *
  *   // Обычный Vue-компонент
- *   const entities = await parseVueFile('./src/App.vue', ctx);
- *   // entities.functions = [...]
- *   // entities.templateConditionals = [{...}, ...]
+ *   const entities = await parseVueFile('src/App.vue', ctx);
+ *   // entities.filePath = 'src/App.vue'         (относительный)
+ *   // entities.functions[0].vscode = 'vscode://file//abs/path/src/App.vue:10'
  *
  *   // Vue без <script> (иконка)
- *   const entities = await parseVueFile('./src/Icon.vue', ctx);
+ *   const entities = await parseVueFile('src/Icon.vue', ctx);
  *   // entities = { functions: [], ..., templateXxx: [] }
  *   // (пустой, но не null)
  *
  *   // Не наш файл (защита от случайного вызова)
- *   const entities = await parseVueFile('./src/utils.ts', ctx);
+ *   const entities = await parseVueFile('src/utils.ts', ctx);
  *   // entities = null
  *
- * @param file — абсолютный путь к файлу
- * @param ctx  — контекст pipeline (для verbose-логирования)
+ * @param file — относительный путь к файлу (от projectRoot)
+ * @param ctx  — контекст pipeline (для verbose-логирования
+ *               и для получения projectRoot)
  * @returns EntitiesResult или null
  */
 export async function parseVueFile(
@@ -238,6 +169,18 @@ export async function parseVueFile(
   }
 
   // ────────────────────────────────────────────────────────
+  // Шаг 1.5: ✅ РЕЗОЛВИНГ ПУТИ (v1.1.0)
+  // ────────────────────────────────────────────────────────
+  // `file` приходит из ctx.files и является ОТНОСИТЕЛЬНЫМ
+  // от projectRoot. Для парсинга, fs-операций и vscode-ссылок
+  // нужен АБСОЛЮТНЫЙ путь.
+  //
+  // После анализа нормализуем entities.filePath обратно
+  // в относительный — это то, что попадёт в отчёт.
+  // ────────────────────────────────────────────────────────
+  const absolutePath = path.isAbsolute(file) ? file : path.resolve(options.projectRoot, file);
+
+  // ────────────────────────────────────────────────────────
   // Шаг 2: Vue-анализ
   // ────────────────────────────────────────────────────────
   let vueAnalysis: ReturnType<typeof analyzeVueComponent>;
@@ -246,7 +189,7 @@ export async function parseVueFile(
     //    Работает с @vue/compiler-sfc + ESTree AST.
     //    Внутри обрабатывает:
     //      • script / script setup
-    //      - template (AST + regex fallback)
+    //      • template (AST + regex fallback)
     //      • style (CSS-переменные, :deep())
     //      • props / emits / expose / slots
     //      • composables (use*)
@@ -255,7 +198,11 @@ export async function parseVueFile(
     //      • conditionals
     //      • templateRefs, cssVariables, deepSelectors
     //      • usedComponents, directives
-    vueAnalysis = analyzeVueComponent(file, {
+    //
+    // ✅ v1.1.0: передаём АБСОЛЮТНЫЙ путь — чтобы vscode-ссылки
+    //    внутри анализатора были валидными, а idManager
+    //    работал со стабильными ключами.
+    vueAnalysis = analyzeVueComponent(absolutePath, {
       includeTemplateAST: true,
       includeScriptAST: true,
       extractComposableCalls: true,
@@ -274,6 +221,7 @@ export async function parseVueFile(
 
     // ✅ Возвращаем пустой EntitiesResult, а НЕ null,
     //    чтобы узел модуля попал в граф зависимостей.
+    //    filePath — ОТНОСИТЕЛЬНЫЙ (это то, что попадёт в отчёт).
     return createEmptyEntitiesResult(file);
   }
 
@@ -316,7 +264,10 @@ export async function parseVueFile(
     //      • templateUsedComponents — PascalCase + kebab-case
     //      • templateSlots        — <slot> + defineSlots<T>()
     //      • templateComplexity   — количество узлов шаблона
-    entities = convertVueAnalysisToEntities(vueAnalysis, file);
+    //
+    // ✅ v1.1.0: передаём АБСОЛЮТНЫЙ путь — для валидных
+    //    vscode-ссылок и стабильных ID в idManager.
+    entities = convertVueAnalysisToEntities(vueAnalysis, absolutePath);
   } catch (error) {
     if (options.verbose) {
       console.warn(
@@ -328,6 +279,25 @@ export async function parseVueFile(
     // это серьёзнее, чем "Vue без <script>".
     return null;
   }
+
+  // ────────────────────────────────────────────────────────
+  // Шаг 4.5: ✅ НОРМАЛИЗАЦИЯ entities.filePath (v1.1.0)
+  // ────────────────────────────────────────────────────────
+  // convertVueAnalysisToEntities записал АБСОЛЮТНЫЙ путь
+  // (для корректных vscode-ссылок и idManager).
+  // В отчёте мы хотим ОТНОСИТЕЛЬНЫЙ путь — переносимый
+  // между машинами и не зависящий от cwd.
+  //
+  // Заменяем:
+  //   • entities.filePath  = file (относительный из ctx.files)
+  //   • entities.moduleName = path.basename(file)
+  //
+  // Внутренние поля (functions[].vscode, id) остаются с
+  // абсолютными путями — это ожидаемо и не попадает
+  // в FullJSON.files[].path.
+  // ────────────────────────────────────────────────────────
+  entities.filePath = file;
+  entities.moduleName = path.basename(file);
 
   // ────────────────────────────────────────────────────────
   // Шаг 5: Логирование в verbose-режиме
@@ -359,11 +329,12 @@ export async function parseVueFile(
  *   inj  — количество injections
  *   rx   — количество reactivity-связей
  *   ref  — количество templateRefs
+ *   comp — количество usedComponents
  *
  * Показываются только непустые секции — чтобы не было
  * шума из нулей.
  *
- * @param file     — путь к файлу
+ * @param file     — относительный путь к файлу
  * @param entities — результат парсинга
  */
 function logSuccess(file: string, entities: EntitiesResult): void {

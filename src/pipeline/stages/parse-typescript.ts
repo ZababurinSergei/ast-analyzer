@@ -2,7 +2,28 @@
 // ============================================================
 // STAGE 2a: PARSE TYPESCRIPT / JAVASCRIPT FILE
 // ============================================================
-// Версия: 1.0.0
+// Версия: 1.1.0
+//
+// ИЗМЕНЕНИЯ v1.1.0 (нормализация путей, Вариант B):
+//   - ✅ ДОБАВЛЕНО: резолвинг относительного пути в абсолютный
+//     перед вызовом parseFile и extractEntitiesFromAST.
+//     Причина: `file` приходит из ctx.files и является
+//     относительным от projectRoot (после DiscoverFilesStage v1.1.0).
+//     Для fs-операций, vscode-ссылок и idManager нужен абсолютный путь.
+//   - ✅ ДОБАВЛЕНО: нормализация entities.filePath обратно
+//     в относительный после extractEntitiesFromAST.
+//     Причина: в отчёте (FullJSON.files[].path) должны быть
+//     относительные пути — для переносимости и round-trip.
+//   - ✅ ОБНОВЛЕНО: лог-функция logSuccess теперь получает
+//     относительный путь (для красивого вывода в verbose-режиме).
+//
+// ИЗМЕНЕНИЯ v1.0.0:
+//   - Базовая реализация.
+//   - Поддержка всех TS/JS-расширений.
+//   - Проверка расширения — защита от случайного вызова
+//     на Vue-файлах или неподдерживаемых расширениях.
+//   - Расширенное логирование в verbose-режиме.
+//   - Обработка ошибок через возврат `null` (не throw).
 //
 // НАЗНАЧЕНИЕ
 // ------------------------------------------------------------
@@ -24,16 +45,22 @@
 //   file.ts / file.tsx / file.js / file.jsx / file.mjs / file.cjs
 //                              │
 //                              ▼
-//                     parseFile(file)
+//              ✅ absolutePath = path.resolve(projectRoot, file)
+//                              │
+//                              ▼
+//                     parseFile(absolutePath)
 //                              │
 //                              ▼
 //                    { ast, content, ... }
 //                              │
 //                              ▼
-//              extractEntitiesFromAST(ast, file)
+//         extractEntitiesFromAST(ast, absolutePath)
 //                              │
 //                              ▼
 //                       EntitiesResult
+//                              │
+//                              ▼
+//         ✅ entities.filePath = file (относительный)
 //                              │
 //                              ▼
 //              возврат в ParseFileStage.dispatch()
@@ -50,7 +77,7 @@
 //   • imports                — импорты
 //   • exports                — экспорты (включая re-exports)
 //   • callGraph              — граф вызовов
-//   • moduleName, filePath   — метаданные
+//   • moduleName, filePath   — метаданные (filePath — относительный)
 //
 // ⚠️ ВАЖНО: templateXxx-поля (Vue-специфичные) НЕ заполняются.
 //     Это ожидаемо — в TS/JS-файлах нет `<template>`.
@@ -72,15 +99,6 @@
 //   • `extractEntitiesFromAST`  — единый извлекатель сущностей.
 //   • `PipelineContext`         — общий контекст pipeline.
 //
-// ИЗМЕНЕНИЯ
-// ------------------------------------------------------------
-// v1.0.0:
-//   • Первая версия.
-//   • Поддержка всех TS/JS-расширений.
-//   • Проверка расширения — защита от случайного вызова
-//     на Vue-файлах или неподдерживаемых расширениях.
-//   • Расширенное логирование в verbose-режиме.
-//   • Обработка ошибок через возврат `null` (не throw).
 // ============================================================
 
 import path from 'path';
@@ -121,8 +139,16 @@ const SUPPORTED_EXTENSIONS = new Set<string>(['.ts', '.tsx', '.js', '.jsx', '.mj
  *          Это защита: если кто-то вызовет функцию напрямую
  *          для .vue — она не сломается, а просто вернёт null.
  *
- *   2. Парсинг в ESTree AST
- *        • `parseFile(file)` из `core/ast-parser.ts`.
+ *   2. ✅ Резолвинг пути
+ *        • `file` приходит из ctx.files и является ОТНОСИТЕЛЬНЫМ
+ *          от projectRoot (после DiscoverFilesStage v1.1.0).
+ *        • Для fs-операций, vscode-ссылок и idManager нужен
+ *          АБСОЛЮТНЫЙ путь.
+ *        • `absolutePath = path.isAbsolute(file) ? file
+ *                        : path.resolve(projectRoot, file)`
+ *
+ *   3. Парсинг в ESTree AST
+ *        • `parseFile(absolutePath)` из `core/ast-parser.ts`.
  *        • Возвращает `ParsedFileInfo | null`.
  *        • Внутри обрабатывает:
  *            - Vue SFC (извлекает `<script>`)
@@ -130,17 +156,26 @@ const SUPPORTED_EXTENSIONS = new Set<string>(['.ts', '.tsx', '.js', '.jsx', '.mj
  *            - битые файлы (возвращает null)
  *        • Для TS/JS-файлов возвращает полноценный AST.
  *
- *   3. Извлечение сущностей
- *        • `extractEntitiesFromAST(ast, file)` из
+ *   4. Извлечение сущностей
+ *        • `extractEntitiesFromAST(ast, absolutePath)` из
  *          `core/entity-extractor/ast/extract-entities-from-ast.ts`.
  *        • Возвращает `EntitiesResult` со всеми секциями:
  *            functions, classes, constants, interfaces,
  *            types, variables, imports, exports, callGraph.
  *        • Внутри: единый рекурсивный обход AST.
  *        • Включает сбор callbacks (v14.0.0).
+ *        • ⚠️ Использует `absolutePath` для корректных
+ *          vscode-ссылок и стабильных ID через idManager.
  *
- *   4. Возврат
- *        • `EntitiesResult` — при успехе.
+ *   5. ✅ Нормализация entities.filePath
+ *        • `extractEntitiesFromAST` записал АБСОЛЮТНЫЙ путь
+ *          в `entities.filePath` (для vscode:// и idManager).
+ *        • В отчёте мы хотим ОТНОСИТЕЛЬНЫЙ путь.
+ *        • Заменяем: `entities.filePath = file` (относительный).
+ *        • `entities.moduleName = path.basename(file)`.
+ *
+ *   6. Возврат
+ *        • `EntitiesResult` — при успехе (с относительным filePath).
  *        • `null` — если файл не распарсился.
  *
  * ════════════════════════════════════════════════════════════
@@ -163,19 +198,23 @@ const SUPPORTED_EXTENSIONS = new Set<string>(['.ts', '.tsx', '.js', '.jsx', '.mj
  * ПРИМЕРЫ
  * ════════════════════════════════════════════════════════════
  *
- *   // Успешный TS-файл
- *   const entities = await parseTypeScriptFile('./src/utils.ts', ctx);
+ *   // Успешный TS-файл (относительный путь из ctx.files)
+ *   const entities = await parseTypeScriptFile(
+ *     'src/utils.ts',
+ *     ctx
+ *   );
  *   // entities.functions = [...]
+ *   // entities.filePath = 'src/utils.ts' (относительный)
  *
  *   // Битый файл
- *   const entities = await parseTypeScriptFile('./src/broken.ts', ctx);
+ *   const entities = await parseTypeScriptFile('src/broken.ts', ctx);
  *   // entities = null
  *
  *   // Не наш файл (защита от случайного вызова)
- *   const entities = await parseTypeScriptFile('./src/App.vue', ctx);
+ *   const entities = await parseTypeScriptFile('src/App.vue', ctx);
  *   // entities = null
  *
- * @param file — абсолютный путь к файлу
+ * @param file — путь к файлу (ОТНОСИТЕЛЬНЫЙ от projectRoot)
  * @param ctx  — контекст pipeline (для verbose-логирования)
  * @returns EntitiesResult или null
  */
@@ -201,11 +240,25 @@ export async function parseTypeScriptFile(
   }
 
   // ────────────────────────────────────────────────────────
-  // Шаг 2: Парсинг в ESTree AST
+  // Шаг 2: ✅ РЕЗОЛВИНГ ПУТИ
+  // ────────────────────────────────────────────────────────
+  // `file` приходит из ctx.files и является ОТНОСИТЕЛЬНЫМ
+  // от projectRoot (после DiscoverFilesStage v1.1.0).
+  //
+  // Для парсинга, fs-операций, vscode-ссылок и idManager
+  // нужен АБСОЛЮТНЫЙ путь.
+  //
+  // После анализа нормализуем entities.filePath обратно
+  // в относительный — это то, что попадёт в отчёт.
+  // ────────────────────────────────────────────────────────
+  const absolutePath = path.isAbsolute(file) ? file : path.resolve(options.projectRoot, file);
+
+  // ────────────────────────────────────────────────────────
+  // Шаг 3: Парсинг в ESTree AST
   // ────────────────────────────────────────────────────────
   let parsed: ReturnType<typeof parseFile>;
   try {
-    parsed = parseFile(file);
+    parsed = parseFile(absolutePath);
   } catch (error) {
     // parseFile обычно не бросает, но подстрахуемся
     if (options.verbose) {
@@ -227,7 +280,7 @@ export async function parseTypeScriptFile(
   }
 
   // ────────────────────────────────────────────────────────
-  // Шаг 3: Извлечение сущностей из AST
+  // Шаг 4: Извлечение сущностей из AST
   // ────────────────────────────────────────────────────────
   let entities: EntitiesResult;
   try {
@@ -242,7 +295,11 @@ export async function parseTypeScriptFile(
     //      • imports
     //      • exports (включая re-exports: export * from)
     //      • callGraph (включая callback-рёбра, v14.0.0)
-    entities = extractEntitiesFromAST(parsed.ast, file);
+    //
+    // ✅ Передаём АБСОЛЮТНЫЙ путь — чтобы vscode-ссылки
+    //    внутри extractEntitiesFromAST были валидными,
+    //    а idManager работал со стабильными ключами.
+    entities = extractEntitiesFromAST(parsed.ast, absolutePath);
   } catch (error) {
     if (options.verbose) {
       console.warn(
@@ -254,7 +311,20 @@ export async function parseTypeScriptFile(
   }
 
   // ────────────────────────────────────────────────────────
-  // Шаг 4: Логирование в verbose-режиме
+  // Шаг 5: ✅ НОРМАЛИЗАЦИЯ entities.filePath
+  // ────────────────────────────────────────────────────────
+  // extractEntitiesFromAST записал в entities.filePath
+  // АБСОЛЮТНЫЙ путь (для корректных vscode-ссылок и idManager).
+  // Но в отчёте мы хотим ОТНОСИТЕЛЬНЫЙ путь.
+  //
+  // Заменяем filePath на относительный из ctx.files.
+  // moduleName — basename относительного пути.
+  // ────────────────────────────────────────────────────────
+  entities.filePath = file;
+  entities.moduleName = path.basename(file);
+
+  // ────────────────────────────────────────────────────────
+  // Шаг 6: Логирование в verbose-режиме
   // ────────────────────────────────────────────────────────
   if (options.verbose) {
     logSuccess(file, ext, entities);
@@ -282,7 +352,7 @@ export async function parseTypeScriptFile(
  * Показываются только непустые секции — чтобы не было
  * шума из нулей.
  *
- * @param file     — путь к файлу
+ * @param file     — путь к файлу (ОТНОСИТЕЛЬНЫЙ)
  * @param ext      — расширение (для иконки)
  * @param entities — результат парсинга
  */

@@ -2,7 +2,44 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Версия: 15.0.2
+// Версия: 15.0.3
+//
+// ИЗМЕНЕНИЯ v15.0.3 (нормализация путей в отчёте):
+//   - ✅ ИСПРАВЛЕНО: `FullJSON.files[].path` теперь ВСЕГДА
+//     относительный от `process.cwd()`, а не абсолютный.
+//
+//     ПРИЧИНА:
+//     ---------
+//     В pipeline (CompactRecursiveCommand) `ctx.files` содержит
+//     АБСОЛЮТНЫЕ пути (результат collectFilesForAnalysis с
+//     `absolute: true`). Эти пути попадали в `entitiesMap`,
+//     `enhancedMap` и, наконец, в `FullJSON.files[].path` —
+//     что делало отчёт непереносимым между машинами.
+//
+//     РЕШЕНИЕ:
+//     --------
+//     В `collectFullJSON` все пути нормализуются через
+//     `path.relative(process.cwd(), path.resolve(filePath))`
+//     и приводятся к прямым слэшам.
+//
+//     VSCode-ссылки внутри отчёта (если они есть в
+//     `FunctionData.vscode`) строятся из АБСОЛЮТНОГО пути —
+//     это требование схемы `vscode://file/`.
+//
+//   - ✅ ДОБАВЛЕНО: вспомогательный расчёт `projectRoot`
+//     в начале `collectFullJSON` — один раз для всех циклов.
+//
+//   - ✅ ОБНОВЛЕНО: во всех трёх циклах `collectFullJSON`
+//     (первый проход, сбор Vue-шаблонов, второй проход,
+//     сбор расширенных секций) путь нормализуется
+//     единообразно.
+//
+//   - ✅ ОБНОВЛЕНО: `sourceToFileIdMap` регистрирует
+//     И относительные, И абсолютные варианты пути —
+//     чтобы резолвинг импортов работал корректно
+//     (импорт резолвится в абсолютный путь через fs,
+//      потом ищется в карте — она должна содержать
+//      абсолютный вариант).
 //
 // ИЗМЕНЕНИЯ v15.0.2 (устранение дублирования conditionals):
 //   - ✅ УБРАНО дублирование `conditionals`:
@@ -586,6 +623,9 @@ function countConditionals(full: FullJSON): number {
 /**
  * Собирает полный JSON из карты сущностей.
  *
+ * ✅ v15.0.3: все пути нормализуются в ОТНОСИТЕЛЬНЫЕ от `process.cwd()`.
+ *   VSCode-ссылки (если есть) строятся из АБСОЛЮТНОГО пути.
+ *
  * ✅ v15.0.2: conditionals живут ТОЛЬКО в `templates[].conditionals`.
  *   Убрано дублирование на верхнем уровне (см. шапку файла).
  *
@@ -604,6 +644,17 @@ function collectFullJSON(
   verbose: boolean = false,
   valuesMode: ValuesMode = DEFAULT_VALUES_MODE
 ): FullJSON {
+  // ============================================
+  // ✅ v15.0.3: projectRoot для нормализации путей
+  // ============================================
+  // Вычисляем один раз. Все пути в отчёте будут относительными
+  // от этой директории.
+  //
+  // Защита: даже если вызывающий код передал абсолютные ключи
+  // в entitiesMap, отчёт всё равно будет корректным.
+  // ============================================
+  const projectRoot = process.cwd();
+
   // ============================================
   // ✅ v8.5.0: Инициализация tsconfig
   // ============================================
@@ -740,8 +791,18 @@ function collectFullJSON(
   for (const [filePath, entities] of Object.entries(workingEntitiesMap)) {
     if (!entities) continue;
 
+    // ✅ v15.0.3: НОРМАЛИЗАЦИЯ ПУТИ
+    //   Делаем путь относительным от projectRoot и с прямыми слэшами.
+    //   Если filePath уже относительный — path.resolve + path.relative
+    //   вернут его же (нормализованным).
+    // ============================================
+    const absolutePath = path.resolve(filePath);
+    const relativePath = path
+      .relative(projectRoot, absolutePath)
+      .replace(/\\/g, '/');
+
     // Модуль = директория файла
-    const dirName = path.basename(path.dirname(filePath)) || 'root';
+    const dirName = path.basename(path.dirname(relativePath)) || 'root';
     let module = moduleMap.get(dirName);
 
     if (!module) {
@@ -757,36 +818,37 @@ function collectFullJSON(
     }
 
     // Файл
-    let file = fileMap.get(filePath);
+    // ✅ v15.0.3: ключ fileMap — относительный путь
+    let file = fileMap.get(relativePath);
 
     if (!file) {
       fileCounter++;
       file = {
         id: `f${fileCounter}`,
-        path: filePath,
+        path: relativePath,            // ✅ ОТНОСИТЕЛЬНЫЙ путь в отчёт
         moduleId: module.id,
       };
-      fileMap.set(filePath, file);
+      fileMap.set(relativePath, file);
       files.push(file);
       // ✅ ЗАПОЛНЯЕМ fileIds модуля
       module.fileIds.push(file.id);
     }
 
     // ✅ v8.5.0: регистрируем МНОГО вариантов пути
-    const absolutePath = path.resolve(filePath);
-    const normalizedPath = filePath.replace(/\\/g, '/');
+    //   И относительный, И абсолютный — для резолвинга импортов.
+    // ============================================
+    const normalizedPath = relativePath;                 // уже с /
     const normalizedAbs = absolutePath.replace(/\\/g, '/');
 
-    sourceToFileIdMap.set(filePath, file.id);
+    sourceToFileIdMap.set(filePath, file.id);            // исходный
+    sourceToFileIdMap.set(relativePath, file.id);        // ✅ относительный
     sourceToFileIdMap.set(normalizedPath, file.id);
-    sourceToFileIdMap.set(absolutePath, file.id);
+    sourceToFileIdMap.set(absolutePath, file.id);        // ✅ абсолютный
     sourceToFileIdMap.set(normalizedAbs, file.id);
-    sourceToFileIdMap.set(path.basename(filePath), file.id);
-    const baseNoExt = path.basename(filePath).replace(/\.[^.]+$/, '');
+    sourceToFileIdMap.set(path.basename(relativePath), file.id);
+    const baseNoExt = path.basename(relativePath).replace(/\.[^.]+$/, '');
     sourceToFileIdMap.set(baseNoExt, file.id);
-    const relFromCwd = path.relative(process.cwd(), absolutePath).replace(/\\/g, '/');
-    sourceToFileIdMap.set(relFromCwd, file.id);
-    sourceToFileIdMap.set(relFromCwd.replace(/\.[^.]+$/, ''), file.id);
+    sourceToFileIdMap.set(relativePath.replace(/\.[^.]+$/, ''), file.id);
 
     // Функции
     const funcs = entities.functions || [];
@@ -862,21 +924,30 @@ function collectFullJSON(
   }
 
   // ============================================
-  // ✅ v8.4.0 + v9.0.0 + v9.0.2 + v10.3 + v15.0.2: сбор Vue-шаблонов
+  // ✅ v8.4.0 + v9.0.0 + v9.0.2 + v10.3 + v15.0.2 + v15.0.3: сбор Vue-шаблонов
   // ============================================
   //
   // ⚠️ v15.0.2: conditionals живут ТОЛЬКО в `templates[].conditionals`.
   //    НЕ пушим в глобальный `conditionals[]`. НЕ передаём их
   //    в `result.conditionals`. Это устраняет дублирование ссылок
   //    и делает safeJsonStringify безопасным.
+  //
+  // ✅ v15.0.3: используем относительный путь для поиска
+  //    в moduleMap / fileMap.
   // ============================================
   for (const [filePath, entities] of Object.entries(workingEntitiesMap)) {
     if (!entities) continue;
     if (!filePath.endsWith('.vue')) continue;
 
-    const dirName = path.basename(path.dirname(filePath)) || 'root';
+    // ✅ v15.0.3: нормализация пути
+    const absolutePath = path.resolve(filePath);
+    const relativePath = path
+      .relative(projectRoot, absolutePath)
+      .replace(/\\/g, '/');
+
+    const dirName = path.basename(path.dirname(relativePath)) || 'root';
     const module = moduleMap.get(dirName);
-    const file = fileMap.get(filePath);
+    const file = fileMap.get(relativePath);
     if (!module || !file) continue;
 
     const e = entities as any;
@@ -967,9 +1038,15 @@ function collectFullJSON(
   for (const [filePath, entities] of Object.entries(workingEntitiesMap)) {
     if (!entities) continue;
 
-    const dirName = path.basename(path.dirname(filePath)) || 'root';
+    // ✅ v15.0.3: нормализация пути
+    const absolutePath = path.resolve(filePath);
+    const relativePath = path
+      .relative(projectRoot, absolutePath)
+      .replace(/\\/g, '/');
+
+    const dirName = path.basename(path.dirname(relativePath)) || 'root';
     const module = moduleMap.get(dirName);
-    const file = fileMap.get(filePath);
+    const file = fileMap.get(relativePath);
 
     if (!module || !file) continue;
 
@@ -1251,9 +1328,15 @@ function collectFullJSON(
   for (const [filePath, entities] of Object.entries(workingEntitiesMap)) {
     if (!entities) continue;
 
-    const dirName = path.basename(path.dirname(filePath)) || 'root';
+    // ✅ v15.0.3: нормализация пути
+    const absolutePath = path.resolve(filePath);
+    const relativePath = path
+      .relative(projectRoot, absolutePath)
+      .replace(/\\/g, '/');
+
+    const dirName = path.basename(path.dirname(relativePath)) || 'root';
     const module = moduleMap.get(dirName);
-    const file = fileMap.get(filePath);
+    const file = fileMap.get(relativePath);
     if (!module || !file) continue;
 
     const e = entities as any;
@@ -1525,6 +1608,11 @@ function insertUniqueSuffix(filePath: string, suffix: string): string {
 
 /**
  * ✅ v8.5.0: resolveToFileId с полной интеграцией tsconfig.
+ *
+ * ✅ v15.0.3: sourceToFileIdMap теперь содержит И относительные,
+ *   И абсолютные варианты пути. Импорт резолвится в абсолютный
+ *   путь через fs, потом ищется в карте — она должна содержать
+ *   абсолютный вариант.
  */
 function resolveToFileId(
   source: string,

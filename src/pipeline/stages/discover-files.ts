@@ -2,7 +2,22 @@
 // ============================================================
 // STAGE 1: DISCOVER FILES
 // ============================================================
-// Версия: 1.0.0
+// Версия: 1.1.0
+//
+// ИЗМЕНЕНИЯ v1.1.0 (нормализация путей):
+//   - ✅ ДОБАВЛЕНА нормализация путей: ctx.files теперь содержит
+//     ОТНОСИТЕЛЬНЫЕ пути от projectRoot (с прямыми слэшами).
+//   - ✅ Это гарантирует переносимость FullJSON между машинами
+//     и корректный round-trip кодека.
+//   - ✅ Абсолютные пути будут восстановлены в ParseFileStage
+//     (там, где это нужно для fs и vscode://).
+//   - ✅ Расширенное логирование: показываем относительные пути.
+//
+// ИЗМЕНЕНИЯ v1.0.0:
+//   - Первая версия, вынесена из CompactRecursiveCommand.
+//   - Поддержка нескольких входных путей.
+//   - Расширенные метрики: директории vs файлы на входе.
+//   - Подробное логирование в verbose-режиме.
 //
 // НАЗНАЧЕНИЕ
 // ------------------------------------------------------------
@@ -27,20 +42,13 @@
 //   • Дополнительные ignore-паттерны мержатся с базовыми.
 //   • Автоматически убирает дубликаты.
 //   • Не выбрасывает исключения — всегда возвращает массив.
+//   • ✅ НОРМАЛИЗУЕТ пути в относительные от projectRoot.
 //
 // ЗАВИСИМОСТИ
 // ------------------------------------------------------------
 //   • `collectFilesForAnalysis` — единый сборщик файлов.
 //   • `PipelineContext`         — общий контекст pipeline.
 //   • `PipelineStage`           — интерфейс stage.
-//
-// ИЗМЕНЕНИЯ
-// ------------------------------------------------------------
-// v1.0.0:
-//   • Первая версия, вынесена из CompactRecursiveCommand.
-//   • Поддержка нескольких входных путей.
-//   • Расширенные метрики: директории vs файлы на входе.
-//   • Подробное логирование в verbose-режиме.
 // ============================================================
 
 import path from 'path';
@@ -67,13 +75,41 @@ import { StageError } from '../errors.js';
  *   2. Для каждого пути делегирует сбор в
  *      `collectFilesForAnalysis` из `ci-cd/collect-files.ts`.
  *
- *   3. Сохраняет результат в `ctx.files`.
+ *   3. ✅ НОРМАЛИЗУЕТ пути: делает их относительными от
+ *      `projectRoot` и всегда с прямыми слэшами. Это гарантирует:
+ *        • переносимость FullJSON между машинами;
+ *        • корректный round-trip (encode/decode);
+ *        • одинаковые пути в FullJSON.files[].path.
  *
- *   4. Обновляет метрики:
+ *   4. Сохраняет результат в `ctx.files`.
+ *
+ *   5. Обновляет метрики:
  *        • `filesDiscovered`     — всего найдено
  *        • `inputPathsCount`     — сколько путей передано
  *        • `inputDirectories`    — сколько из них директорий
  *        • `inputFiles`          — сколько из них файлов
+ *
+ * ════════════════════════════════════════════════════════════
+ * НОРМАЛИЗАЦИЯ ПУТЕЙ (v1.1.0)
+ * ════════════════════════════════════════════════════════════
+ *
+ *   `collectFilesForAnalysis` возвращает АБСОЛЮТНЫЕ пути
+ *   (glob с `absolute: true`). Это правильно для сбора, но
+ *   неправильно для отчёта: пути в FullJSON должны быть
+ *   относительными от `projectRoot` (или от `process.cwd()`).
+ *
+ *   Алгоритм нормализации:
+ *     1. Если путь УЖЕ относительный — оставляем,
+ *        только нормализуем слэши (`\\` → `/`).
+ *     2. Если путь АБСОЛЮТНЫЙ:
+ *        a. `path.relative(projectRoot, absolutePath)` —
+ *           делаем относительным.
+ *        b. Если результат начинается с `..` — файл вне
+ *           projectRoot (edge case) — оставляем абсолютным.
+ *        c. Иначе — нормализуем слэши.
+ *
+ *   Абсолютные пути будут восстановлены позже в
+ *   `ParseFileStage` — там, где это нужно для `fs` и `vscode://`.
  *
  * ════════════════════════════════════════════════════════════
  * ВХОДНЫЕ ПУТИ
@@ -91,15 +127,16 @@ import { StageError } from '../errors.js';
  *   // Одна директория проекта
  *   const ctx = createContext({ projectRoot: './src' });
  *   await new DiscoverFilesStage().run(ctx);
- *   // ctx.files = [...все файлы из ./src]
+ *   // ctx.files = ['src/index.ts', 'src/utils.ts', ...]
+ *   //              ↑ относительные пути
  *
  *   // Несколько входных путей
  *   const ctx = createContext({
  *     inputPaths: ['./src', './packages/foo', './scripts/cli.ts'],
  *   });
  *   await new DiscoverFilesStage().run(ctx);
- *   // ctx.files = [...все файлы из всех путей, без дублей]
- *
+ *   // ctx.files = [...все файлы из всех путей, без дублей,
+ *   //              в относительной форме]
  */
 export class DiscoverFilesStage implements PipelineStage {
   readonly name = 'discover-files';
@@ -114,8 +151,8 @@ export class DiscoverFilesStage implements PipelineStage {
 
     if (inputPaths.length === 0) {
       throw new StageError(
-        this.name,
-        'Не задано ни одного входного пути (inputPaths/projectRoot)'
+          this.name,
+          'Не задано ни одного входного пути (inputPaths/projectRoot)'
       );
     }
 
@@ -140,7 +177,7 @@ export class DiscoverFilesStage implements PipelineStage {
 
     if (options.verbose && inputStats.missing > 0) {
       console.warn(
-        `   ⚠️  Несуществующих путей: ${inputStats.missing} (будут пропущены)`
+          `   ⚠️  Несуществующих путей: ${inputStats.missing} (будут пропущены)`
       );
     }
 
@@ -151,40 +188,67 @@ export class DiscoverFilesStage implements PipelineStage {
     let files: string[];
     try {
       files = await collectFilesForAnalysis(
-        inputPaths,
-        options.recursive,
-        options.additionalIgnore
+          inputPaths,
+          options.recursive,
+          options.additionalIgnore
       );
     } catch (error) {
       // collectFilesForAnalysis НЕ должен бросать исключения,
       // но на всякий случай оборачиваем.
       throw new StageError(
-        this.name,
-        `Ошибка сбора файлов: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-        undefined,
-        error
+          this.name,
+          `Ошибка сбора файлов: ${
+              error instanceof Error ? error.message : String(error)
+          }`,
+          undefined,
+          error
       );
     }
 
     // ────────────────────────────────────────────────────────
-    // Шаг 4: Сохраняем результат в контекст
+    // Шаг 4: ✅ НОРМАЛИЗАЦИЯ ПУТЕЙ
     // ────────────────────────────────────────────────────────
-    ctx.files = files;
-    ctx.metrics.filesDiscovered = files.length;
+    // Приводим все пути к ОТНОСИТЕЛЬНЫМ от projectRoot,
+    // всегда с прямыми слэшами (для кроссплатформенности).
+    //
+    // Это гарантирует:
+    //   • переносимость FullJSON между машинами
+    //   • корректный round-trip (encode/decode)
+    //   • одинаковые пути в FullJSON.files[].path
+    //
+    // Абсолютные пути будут восстановлены в ParseFileStage
+    // (там, где это нужно для fs и vscode://).
+    // ────────────────────────────────────────────────────────
+    const projectRoot = options.projectRoot;
+    const relativeFiles = files.map(f => {
+      // Уже относительный — оставляем (только нормализуем слэши)
+      if (!path.isAbsolute(f)) {
+        return f.replace(/\\/g, '/');
+      }
+      // Абсолютный — делаем относительным от projectRoot
+      const rel = path.relative(projectRoot, f);
+      // Если файл вне projectRoot (edge case) — оставляем абсолютным,
+      // но с прямыми слэшами
+      return rel.startsWith('..') ? f.replace(/\\/g, '/') : rel.replace(/\\/g, '/');
+    });
 
     // ────────────────────────────────────────────────────────
-    // Шаг 5: Логирование
+    // Шаг 5: Сохраняем результат в контекст
+    // ────────────────────────────────────────────────────────
+    ctx.files = relativeFiles;
+    ctx.metrics.filesDiscovered = relativeFiles.length;
+
+    // ────────────────────────────────────────────────────────
+    // Шаг 6: Логирование
     // ────────────────────────────────────────────────────────
     if (options.verbose) {
       console.log('');
-      console.log(`   📁 Найдено файлов: ${files.length}`);
+      console.log(`   📁 Найдено файлов: ${relativeFiles.length}`);
 
       // ────────────────────────────────────────────────────
       // Разбивка по расширениям
       // ────────────────────────────────────────────────────
-      const byExtension = this.groupByExtension(files);
+      const byExtension = this.groupByExtension(relativeFiles);
 
       if (byExtension.size > 0) {
         console.log('   📊 По расширениям:');
@@ -208,7 +272,7 @@ export class DiscoverFilesStage implements PipelineStage {
       // ────────────────────────────────────────────────────
       // Предупреждение, если ничего не найдено
       // ────────────────────────────────────────────────────
-      if (files.length === 0) {
+      if (relativeFiles.length === 0) {
         console.warn('');
         console.warn('   ⚠️  Не найдено ни одного файла для анализа');
         console.warn('   💡 Проверьте входные пути и расширения');
