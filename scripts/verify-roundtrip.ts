@@ -343,7 +343,7 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     note: legend?.flags?.bits ? `${bitsCount} битов` : 'отсутствует',
   });
 
-  // schemas — добавлены mi и fl
+  // schemas — добавлены mi и fl + под-схемы vt.*, lc, ef, inj, rx, cd, ty, tr
   const schemaChecks: Array<{ key: string; expectedLength: number }> = [
     { key: 'mi', expectedLength: 2 },
     { key: 'fl', expectedLength: 2 },
@@ -354,6 +354,18 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     { key: 'gr.i', expectedLength: 7 },
     { key: 'gr.c', expectedLength: 4 },
     { key: 'gr.re', expectedLength: 6 },
+    { key: 'vt.eventHandlers', expectedLength: 6 },
+    { key: 'vt.dynamicComponents', expectedLength: 3 },
+    { key: 'vt.templateRefs', expectedLength: 4 },
+    { key: 'vt.cssVariables', expectedLength: 4 },
+    { key: 'vt.deepSelectors', expectedLength: 2 },
+    { key: 'lc', expectedLength: 5 },
+    { key: 'ef', expectedLength: 5 },
+    { key: 'inj', expectedLength: 5 },
+    { key: 'rx', expectedLength: 6 },
+    { key: 'cd', expectedLength: 6 },
+    { key: 'ty', expectedLength: 7 },
+    { key: 'tr', expectedLength: 5 },
   ];
 
   for (const { key, expectedLength } of schemaChecks) {
@@ -1152,7 +1164,8 @@ ${C.bold}Структурные проверки:${C.reset}
 ${C.bold}Проверки легенды:${C.reset}
   legend.codes.*       — расшифровки кодов
   legend.flags.bits    — 18 битов
-  legend.schemas.*     — позиционные схемы (mi, fl, fns, cls, cn, gr.*)
+  legend.schemas.*     — позиционные схемы (mi, fl, fns, cls, cn, gr.*,
+                          vt.*, lc, ef, inj, rx, cd, ty, tr)
 
 ${C.bold}Эталоны (golden):${C.reset}
   G1  : full ≈ scripts/fixtures/index.full.golden.json

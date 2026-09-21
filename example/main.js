@@ -1,5 +1,5 @@
 // ============================================================================
-// AST ANALYZER — MAIN v13.0.7
+// AST ANALYZER — MAIN v13.0.12
 // Только новый формат. Обратная совместимость не поддерживается.
 //
 // Особенности:
@@ -12,7 +12,7 @@
 //   - Мини-навигация по секциям — через кнопку 🧭 в location bar
 //   - Адресная строка как в браузере (◀ ▶ ⟳ ⌂ + autocomplete)
 //
-// v13.0.7 (ТЕКУЩАЯ):
+// v13.0.7:
 //   - ✅ Chunked decode с прогресс-баром (showProgress/setProgress/hideProgress)
 //   - ✅ Core.loadFromRoot сам делает decode + buildIndexes
 //   - ✅ Core.getProjectStatsCached() вместо getProjectStats()
@@ -21,6 +21,55 @@
 //   - ✅ Обработчики btnExpandAll / btnCollapseAll
 //   - ✅ btnReload сбрасывает кэши (tree + sections)
 //   - ✅ renderTree() использует новый Tree.renderProjectTree
+//
+// v13.0.8:
+//   - ✅ lazyRender() + глобальный IntersectionObserver для тяжёлых секций
+//   - ✅ BFS-пути и SVG-графы рендерятся только при попадании в viewport
+//   - ✅ mountSections без renderSections, если групп нет (быстрый путь)
+//   - ✅ Дебаунс selectFn / selectFile (защита от быстрых кликов)
+//   - ✅ Paths.invalidateAdjacency() при загрузке нового проекта
+//
+// v13.0.9:
+//   - ✅ init(): не перетираем восстановленный LocationBar путь
+//     (устранён сброс на первую функцию escapeHtml при F5)
+//   - ✅ mountSections(): быстрый путь оборачивает HTML в .mn-sections,
+//     чтобы CSS .mn-sections > .es применялся (full-page секции)
+//
+// v13.0.10:
+//   - ✅ lazyRender(): флаг __lazyDone — защита от повторного вызова
+//     для одного и того же DOM-элемента
+//   - ✅ IntersectionObserver: помечает __lazyDone = true при срабатывании
+//   - ✅ _unobserveLazy(): сбрасывает __lazyDone = false при пересоздании DOM
+//   - ✅ 5 lazyRender-колбэков используют replaceChildren вместо appendChild:
+//     callChainBody, callGraphBody, fileDepGraphBody (в renderFn и renderFile),
+//     moduleGraphBody — устранены дубликаты <svg> в контейнере
+//
+// v13.0.11:
+//   - ✅ selectFile() получил параметр opts.fromTree — различает клик
+//     по файлу В ДЕРЕВЕ (не раскрывать дерево) от внешнего выбора
+//     (LocationBar / карточки / F5 — раскрывать).
+//   - ✅ Введён временный флаг _fromTreeClick, устанавливаемый на время
+//     renderTree() и сбрасываемый сразу после — чтобы Tree.renderProjectTree
+//     получил expandActiveFile = !_fromTreeClick.
+//   - ✅ renderTree() передаёт onSelectFile: fid => selectFile(fid, { fromTree: true }),
+//     чтобы клик по имени файла не «прыгал» по дереву.
+//   - ✅ Tree.renderProjectTree получает новый параметр expandActiveFile
+//     (см. ast-analyzer-tree.js v1.8).
+//
+// v13.0.12 (ТЕКУЩАЯ):
+//   - ✅ selectFile(): renderTree() обёрнут в try/finally — при любом
+//     исключении флаг _fromTreeClick будет сброшен, не «залипнет» true.
+//   - ✅ selectFile() и selectFn(): LocationBar.syncFromSelection() вызывается
+//     ДО renderTree()/renderFile(). Это устраняет двойной renderTree:
+//     syncFromSelection → applyEntry → S.onChange → main.onChange → renderTree
+//     (с expandActiveFile=true) перезатирал результат первого renderTree
+//     (с expandActiveFile=false) и файл раскрывался. Теперь syncFromSelection
+//     silent (см. ast-analyzer-location-bar.js v1.6) и вызывается первым.
+//   - ✅ Комментарии в renderTree() уточнены: expandActiveFile=false теперь
+//     НЕ сворачивает активный файл, а оставляет состояние раскрытия как есть.
+//   - ✅ Согласовано с ast-analyzer-tree.js v1.11 (убраны вызовы
+//     _collapsePathToFile/_collapsePathToFn) и ast-analyzer-location-bar.js
+//     v1.6 (applyEntry учитывает opts.silent, syncFromSelection всегда silent).
 // ============================================================================
 
 import * as Core from './ast-analyzer-core.js';
@@ -52,6 +101,63 @@ const state = Core.state;
 
 let activeFnId = null;
 let activeFileId = null;
+
+// ✅ v13.0.11: временный флаг на время renderTree().
+// Если true — Tree.renderProjectTree НЕ раскрывает путь до активного файла.
+// Управляется selectFile(fid, { fromTree: true }).
+//
+// v13.0.12: сбрасывается в finally, чтобы не «залипнуть» при исключении.
+let _fromTreeClick = false;
+
+// ---------------------------------------------------------------------------
+// ЛЕНИВАЯ ОТРИСОВКА ТЯЖЁЛЫХ СЕКЦИЙ (paths, graphs)
+// ---------------------------------------------------------------------------
+const _lazyIO = new IntersectionObserver(
+  entries => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      const fn = e.target.__lazyRender;
+      e.target.__lazyRender = null;
+      e.target.__lazyDone = true;        // ← v13.0.10
+      _lazyIO.unobserve(e.target);
+      if (fn) {
+        try { fn(); } catch (err) { console.warn('[AST] lazyRender error:', err); }
+      }
+    }
+  },
+  { rootMargin: '300px 0px' }
+);
+
+/**
+ * Рендерит секцию сразу, если она уже в viewport (±200px),
+ * иначе — откладывает до попадания в viewport.
+ *
+ * v13.0.10: защита от повторного вызова через флаг __lazyDone.
+ */
+function lazyRender(el, render) {
+  if (!el) return;
+  if (el.__lazyDone) return;              // ← v13.0.10
+  const r = el.getBoundingClientRect();
+  if (r.top < innerHeight + 200 && r.bottom > -200) {
+    el.__lazyDone = true;                 // ← v13.0.10
+    render();
+    return;
+  }
+  el.__lazyRender = render;
+  _lazyIO.observe(el);
+}
+
+/** Отписка старых lazy-секций (вызывается при перерисовке / очистке mn). */
+function _unobserveLazy(root) {
+  if (!root) return;
+  root.querySelectorAll('[data-nav-section]').forEach(el => {
+    if (el.__lazyRender) {
+      el.__lazyRender = null;
+      _lazyIO.unobserve(el);
+    }
+    el.__lazyDone = false;                // ← v13.0.10
+  });
+}
 
 // ---------------------------------------------------------------------------
 // ГЛОБАЛЬНЫЙ ТОСТ (для формы basePath в ast-analyzer-vscode.js)
@@ -320,6 +426,8 @@ function handleFile(file) {
       Tree.invalidateTreeCache();
       Tree.buildTreeOnce();
 
+      Paths.invalidateAdjacency();
+
       hideProgress();
       setStatus(`✓ Загружено: ${file.name}`);
       hideStatus(1500);
@@ -339,8 +447,24 @@ function handleFile(file) {
 // МОНТИРОВАНИЕ СЕКЦИЙ (с учётом групп)
 // ---------------------------------------------------------------------------
 function mountSections(htmlArray) {
+  const mn = $('mn');
+
+  // отписываем старые lazy-секции, чтобы не копились мёртвые ссылки
+  _unobserveLazy(mn);
+
+  const html = htmlArray.join('');
+
+  // Быстрый путь: если групп нет — вставляем HTML напрямую, без
+  // промежуточного DOM, querySelectorAll и renderSections.
+  const groups = Groups.listGroups();
+  if (!groups || groups.length === 0) {
+    mn.innerHTML = `<div class="mn-sections">${html}</div>`;
+    return;
+  }
+
+  // Медленный путь: строим карту секций и отдаём Groups.renderSections
   const tmp = document.createElement('div');
-  tmp.innerHTML = htmlArray.join('');
+  tmp.innerHTML = html;
 
   const map = {};
   for (const el of tmp.querySelectorAll('[data-nav-section]')) {
@@ -350,8 +474,6 @@ function mountSections(htmlArray) {
   }
 
   const sectionsEl = Groups.renderSections(map);
-
-  const mn = $('mn');
   mn.innerHTML = '';
   mn.appendChild(sectionsEl);
 }
@@ -360,6 +482,8 @@ function mountSections(htmlArray) {
 // ИНИЦИАЛИЗАЦИЯ
 // ---------------------------------------------------------------------------
 function init() {
+  Paths.invalidateAdjacency(); // сбросить кэш графа при новой загрузке
+
   $('dropZone').style.display = 'none';
   $('app').style.display = 'flex';
   $('btnExportCompact').disabled = false;
@@ -594,7 +718,17 @@ function init() {
   }
 
   // --- Первый экран ---
-  if (state.functions && Object.keys(state.functions).length) {
+  // Если LocationBar уже восстановил сохранённый путь из localStorage,
+  // не перетираем его выбором первой функции.
+  //
+  // LocationBar.mount() синхронно устанавливает S.history=[home, last], S.index=1,
+  // поэтому getCurrent() уже возвращает восстановленный entry до того,
+  // как onChange будет вызван в queueMicrotask.
+  const current = LocationBar.getCurrent();
+  const hasRestored =
+    current && current.kind && current.kind !== 'universe';
+
+  if (!hasRestored && state.functions && Object.keys(state.functions).length) {
     const firstFn = Object.values(state.functions)[0];
     selectFn(firstFn.id);
   }
@@ -651,33 +785,93 @@ function renderTree() {
   const container = $('st');
   if (!container) return;
   const q = ($('si')?.value || '').trim();
+
+  // ✅ v13.0.11: _fromTreeClick устанавливается ТОЛЬКО на время
+  // renderTree(), который вызван из selectFile(fid, { fromTree: true }).
+  //
+  // v13.0.12: expandActiveFile=false теперь означает «НЕ ТРОГАТЬ
+  // раскрытие активного файла» (см. ast-analyzer-tree.js v1.11 —
+  // убраны вызовы _collapsePathToFile/_collapsePathToFn).
+  // Файл становится активным (подсвечен), но его раскрытие —
+  // и раскрытие его родителей — не меняется.
   Tree.renderProjectTree(container, {
     query: q,
     expandAll: false,
     activeFnId,
     activeFileId,
-    onSelectFile: fid => selectFile(fid),
+    onSelectFile: fid => selectFile(fid, { fromTree: true }),
     onSelectFn: fid => selectFn(fid),
+    expandActiveFile: !_fromTreeClick,
   });
 }
 
 // ---------------------------------------------------------------------------
-// ВЫБОР
+// ВЫБОР (с дебаунсом, чтобы быстрые клики не запускали рендер по несколько раз)
 // ---------------------------------------------------------------------------
+let _selectFnTimer = null;
 function selectFn(id) {
-  activeFnId = id;
-  activeFileId = null;
-  renderTree();
-  renderFn(id);
-  LocationBar.syncFromSelection('fn', id, { replace: true });
+  clearTimeout(_selectFnTimer);
+  _selectFnTimer = setTimeout(() => {
+    activeFnId = id;
+    activeFileId = null;
+
+    // ✅ v13.0.12: сначала синхронизируем LocationBar (silent —
+    // см. ast-analyzer-location-bar.js v1.6). Это предотвращает
+    // двойной renderTree: syncFromSelection → applyEntry → S.onChange
+    // → main.onChange → renderTree, который мог бы перезатереть
+    // текущий рендер.
+    LocationBar.syncFromSelection('fn', id, { replace: true });
+
+    renderTree();
+    renderFn(id);
+  }, 0);
 }
 
-function selectFile(fid) {
-  activeFnId = null;
-  activeFileId = fid;
-  renderTree();
-  renderFile(fid);
-  LocationBar.syncFromSelection('file', fid, { replace: true });
+/**
+ * selectFile — переключение на файл.
+ *
+ * @param {string} fid
+ * @param {object} [opts]
+ * @param {boolean} [opts.fromTree=false]
+ *   true  — вызов из клика по имени/иконке файла В ДЕРЕВЕ.
+ *           Дерево НЕ раскрывается до файла (expandActiveFile=false),
+ *           и НЕ сворачивает уже раскрытый файл — состояние раскрытия
+ *           не меняется (см. ast-analyzer-tree.js v1.11).
+ *   false — вызов из LocationBar / карточки / F5.
+ *           Дерево раскрывается до файла (expandActiveFile=true).
+ *
+ * v13.0.12:
+ *   - renderTree() обёрнут в try/finally, чтобы флаг _fromTreeClick
+ *     не «залип» в true при исключении (например, в Tree.renderProjectTree).
+ *   - LocationBar.syncFromSelection() вызывается ДО renderTree().
+ *     syncFromSelection теперь silent (v1.6) и не вызывает onChange,
+ *     поэтому нет второго renderTree с expandActiveFile=true,
+ *     который раньше перезатирал результат первого и раскрывал файл.
+ */
+let _selectFileTimer = null;
+function selectFile(fid, opts = {}) {
+  clearTimeout(_selectFileTimer);
+  _selectFileTimer = setTimeout(() => {
+    activeFnId = null;
+    activeFileId = fid;
+
+    // 1) Синхронизируем LocationBar (silent — onChange не вызовется).
+    LocationBar.syncFromSelection('file', fid, { replace: true });
+
+    // 2) Рендерим дерево. _fromTreeClick=true → expandActiveFile=false
+    //    → файл НЕ раскрывается и НЕ сворачивается (см. tree.js v1.11).
+    //
+    // v13.0.12: try/finally — гарантированный сброс флага.
+    _fromTreeClick = !!opts.fromTree;
+    try {
+      renderTree();
+    } finally {
+      _fromTreeClick = false;
+    }
+
+    // 3) Рендерим правую панель.
+    renderFile(fid);
+  }, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -927,60 +1121,68 @@ function renderFn(id) {
   // --- Навешиваем scroll-tracking для подсветки активной секции ---
   bindSectionsScrollTracking();
 
-  // --- Прокрутка к первой секции без анимации ---
+  // --- Прокрутка к первой секции без анимации + ленивый рендер тяжёлых секций ---
   requestAnimationFrame(() => {
     const first = document.querySelector('.mn-sections > [data-nav-section]');
     if (first) {
       first.scrollIntoView({ behavior: 'auto', block: 'start' });
     }
-  });
 
-  // --- Пути ДО ---
-  const pathsTo = Paths.findAllPathsTo(id, {
-    type: 'function',
-    maxDepth: 6,
-    maxPaths: 20,
-  });
-  const cntTo = $('pathsToCount');
-  if (cntTo) cntTo.textContent = pathsTo.length;
-  Paths.renderPathsList($('pathsToFnBody'), pathsTo, {
-    onNodeClick: selectFn,
-    label: 'путей до',
-  });
+    // === ЛЕНИВАЯ ОТРИСОВКА ТЯЖЁЛЫХ СЕКЦИЙ ===
+    // BFS-пути и SVG-графы выполняются только при попадании в viewport.
 
-  // --- Пути ОТ ---
-  const pathsFrom = Paths.findAllPathsFrom(id, {
-    type: 'function',
-    maxDepth: 6,
-    maxPaths: 20,
+    lazyRender($('pathsToFnBody'), () => {
+      const pathsTo = Paths.findAllPathsTo(id, {
+        type: 'function',
+        maxDepth: 6,
+        maxPaths: 20,
+      });
+      const cntTo = $('pathsToCount');
+      if (cntTo) cntTo.textContent = pathsTo.length;
+      Paths.renderPathsList($('pathsToFnBody'), pathsTo, {
+        onNodeClick: selectFn,
+        label: 'путей до',
+      });
+    });
+
+    lazyRender($('pathsFromFnBody'), () => {
+      const pathsFrom = Paths.findAllPathsFrom(id, {
+        type: 'function',
+        maxDepth: 6,
+        maxPaths: 20,
+      });
+      const cntFrom = $('pathsFromCount');
+      if (cntFrom) cntFrom.textContent = pathsFrom.length;
+      Paths.renderPathsList($('pathsFromFnBody'), pathsFrom, {
+        onNodeClick: selectFn,
+        label: 'путей от',
+      });
+    });
+
+    lazyRender($('callChainBody'), () => {
+      $('callChainBody').replaceChildren(                    // ← v13.0.10
+        Graph.renderCallChain(id, { direction: 'both', depth: 3 })
+      );
+    });
+
+    lazyRender($('callGraphBody'), () => {
+      $('callGraphBody').replaceChildren(                    // ← v13.0.10
+        Graph.renderCallGraph(id, {
+          onNodeClick: (nid, t) => {
+            if (t === 'fn') selectFn(nid);
+          },
+        })
+      );
+    });
+
+    lazyRender($('fileDepGraphBody'), () => {
+      if (file) {
+        $('fileDepGraphBody').replaceChildren(              // ← v13.0.10
+          Graph.renderFileDepGraph(file.id, { onNodeClick: selectFile })
+        );
+      }
+    });
   });
-  const cntFrom = $('pathsFromCount');
-  if (cntFrom) cntFrom.textContent = pathsFrom.length;
-  Paths.renderPathsList($('pathsFromFnBody'), pathsFrom, {
-    onNodeClick: selectFn,
-    label: 'путей от',
-  });
-
-  // --- Цепочка ---
-  $('callChainBody').appendChild(
-    Graph.renderCallChain(id, { direction: 'both', depth: 3 })
-  );
-
-  // --- Граф вызовов ---
-  $('callGraphBody').appendChild(
-    Graph.renderCallGraph(id, {
-      onNodeClick: (nid, t) => {
-        if (t === 'fn') selectFn(nid);
-      },
-    })
-  );
-
-  // --- Граф зависимостей ---
-  if (file) {
-    $('fileDepGraphBody').appendChild(
-      Graph.renderFileDepGraph(file.id, { onNodeClick: selectFile })
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1149,50 +1351,57 @@ function renderFile(fid) {
   // --- Навешиваем scroll-tracking ---
   bindSectionsScrollTracking();
 
-  // --- Прокрутка к первой секции без анимации ---
+  // --- Прокрутка к первой секции без анимации + ленивый рендер ---
   requestAnimationFrame(() => {
     const first = document.querySelector('.mn-sections > [data-nav-section]');
     if (first) {
       first.scrollIntoView({ behavior: 'auto', block: 'start' });
     }
-  });
 
-  // --- Пути ---
-  const pathsTo = Paths.findAllPathsTo(fid, {
-    type: 'file',
-    maxDepth: 5,
-    maxPaths: 20,
-  });
-  const cntTo = $('pathsToCount');
-  if (cntTo) cntTo.textContent = pathsTo.length;
-  Paths.renderPathsList($('pathsToFileBody'), pathsTo, {
-    onNodeClick: selectFile,
-    label: 'путей до',
-  });
+    lazyRender($('pathsToFileBody'), () => {
+      const pathsTo = Paths.findAllPathsTo(fid, {
+        type: 'file',
+        maxDepth: 5,
+        maxPaths: 20,
+      });
+      const cntTo = $('pathsToCount');
+      if (cntTo) cntTo.textContent = pathsTo.length;
+      Paths.renderPathsList($('pathsToFileBody'), pathsTo, {
+        onNodeClick: selectFile,
+        label: 'путей до',
+      });
+    });
 
-  const pathsFrom = Paths.findAllPathsFrom(fid, {
-    type: 'file',
-    maxDepth: 5,
-    maxPaths: 20,
-  });
-  const cntFrom = $('pathsFromCount');
-  if (cntFrom) cntFrom.textContent = pathsFrom.length;
-  Paths.renderPathsList($('pathsFromFileBody'), pathsFrom, {
-    onNodeClick: selectFile,
-    label: 'путей от',
-  });
+    lazyRender($('pathsFromFileBody'), () => {
+      const pathsFrom = Paths.findAllPathsFrom(fid, {
+        type: 'file',
+        maxDepth: 5,
+        maxPaths: 20,
+      });
+      const cntFrom = $('pathsFromCount');
+      if (cntFrom) cntFrom.textContent = pathsFrom.length;
+      Paths.renderPathsList($('pathsFromFileBody'), pathsFrom, {
+        onNodeClick: selectFile,
+        label: 'путей от',
+      });
+    });
 
-  // --- Графы ---
-  $('moduleGraphBody').appendChild(
-    Graph.renderModuleGraph({
-      onNodeClick: (id, t) => {
-        if (t === 'module') selectFile(id);
-      },
-    })
-  );
-  $('fileDepGraphBody').appendChild(
-    Graph.renderFileDepGraph(fid, { onNodeClick: selectFile })
-  );
+    lazyRender($('moduleGraphBody'), () => {
+      $('moduleGraphBody').replaceChildren(                // ← v13.0.10
+        Graph.renderModuleGraph({
+          onNodeClick: (id, t) => {
+            if (t === 'module') selectFile(id);
+          },
+        })
+      );
+    });
+
+    lazyRender($('fileDepGraphBody'), () => {
+      $('fileDepGraphBody').replaceChildren(               // ← v13.0.10
+        Graph.renderFileDepGraph(fid, { onNodeClick: selectFile })
+      );
+    });
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1422,6 +1631,7 @@ $('btnReload').addEventListener('click', async () => {
   Core.clearRootCache();
   Tree.invalidateTreeCache();
   Core.invalidateSectionCache();
+  Paths.invalidateAdjacency();
   UI.toast('Кэш очищен, перезагрузка…', 'info');
   await autoLoad();
 });
@@ -1765,11 +1975,11 @@ document.addEventListener('keydown', e => {
 // СТАРТ
 // ---------------------------------------------------------------------------
 console.log(
-  '%c🔍 AST Analyzer v13.0.7',
+  '%c🔍 AST Analyzer v13.0.12',
   'font-size:16px;font-weight:bold;color:#58a6ff;'
 );
 console.log(
-  'Модули: ast-analyzer-codec.js (v13.0.2), ast-analyzer-utils.js, ast-analyzer-core.js (v13.0.7), ast-analyzer-progress.js (v1.0), ast-analyzer-ui.js, ast-analyzer-graph.js, ast-analyzer-tree.js (v1.2), ast-analyzer-legend.js, ast-analyzer-paths.js, ast-analyzer-vscode.js, ast-analyzer-extensions.js (v1.0), ast-analyzer-nav.js (v1.4), ast-analyzer-location-bar.js (v1.4), ast-analyzer-groups.js (v1.0), ast-analyzer-groups-ui.js (v1.0), ast-analyzer-groups-styles.js (v1.0)'
+  'Модули: ast-analyzer-codec.js (v13.0.2), ast-analyzer-utils.js, ast-analyzer-core.js (v13.0.7), ast-analyzer-progress.js (v1.0), ast-analyzer-ui.js, ast-analyzer-graph.js, ast-analyzer-tree.js (v1.11), ast-analyzer-legend.js, ast-analyzer-paths.js, ast-analyzer-vscode.js, ast-analyzer-extensions.js (v1.0), ast-analyzer-nav.js (v1.4), ast-analyzer-location-bar.js (v1.6), ast-analyzer-groups.js (v1.0), ast-analyzer-groups-ui.js (v1.0), ast-analyzer-groups-styles.js (v1.0)'
 );
 
 await autoLoad();

@@ -1,5 +1,5 @@
 // ============================================================================
-// AST ANALYZER — PATHS v1.0
+// AST ANALYZER — PATHS v1.1
 // Поиск всех путей между узлами графа. Только для v13.0.2.
 // ============================================================================
 //
@@ -29,8 +29,13 @@
 // -----------
 //   - maxPaths (по умолчанию 20) — сколько путей показывать
 //   - maxDepth (по умолчанию 6)  — максимальная длина пути
-//   - Защита от циклов через path.includes(next)
+//   - Защита от циклов через Set (O(1) на проверку)
 //   - Кратчайшие пути имеют приоритет (BFS + отсечение по длине)
+//
+// v1.1 (УСКОРЕНИЕ):
+//   - ✅ Кэш adjacency на уровне модуля (_adjCache / _getAdjacency)
+//   - ✅ path.includes(next) → Set (O(1) вместо O(N))
+//   - ✅ Экспорт invalidateAdjacency() для сброса кэша при загрузке проекта
 //
 // ПУБЛИЧНЫЙ API
 // -------------
@@ -39,6 +44,8 @@
 //   findAllPathsFrom(fromId, opts?)     → PathResult[]
 //   findAllPathsTo(toId, opts?)         → PathResult[]
 //   renderPathsList(container, paths, opts?)
+//   renderPathsCompact(container, paths, opts?)
+//   invalidateAdjacency()               → сбросить кэш смежности
 //
 // PathResult = {
 //   path: string[],                 // ID узлов
@@ -59,6 +66,25 @@ const MAX_PATHS_DEFAULT = 20;
 const MAX_DEPTH_DEFAULT = 6;
 const MAX_NODES_IN_PATH = 50;
 const MAX_TOTAL_VISITS = 100000;
+
+// ---------------------------------------------------------------------------
+// КЭШ ADJACENCY (один граф на тип, инвалидация по требованию)
+// ---------------------------------------------------------------------------
+let _adjCache = null;
+let _adjCacheType = null;
+
+/** Инвалидировать кэш смежности (вызывать при загрузке нового проекта). */
+export function invalidateAdjacency() {
+  _adjCache = null;
+  _adjCacheType = null;
+}
+
+function _getAdjacency(type) {
+  if (_adjCache && _adjCacheType === type) return _adjCache;
+  _adjCache = buildAdjacency(type);
+  _adjCacheType = type;
+  return _adjCache;
+}
 
 // ---------------------------------------------------------------------------
 // ПОСТРОЕНИЕ ADJACENCY
@@ -244,7 +270,7 @@ export function findShortestPath(from, to, opts = {}) {
     return { found: false, reason: 'from/to не заданы' };
   }
   if (from === to) {
-    const { nodeInfo } = buildAdjacency(type);
+    const { nodeInfo } = _getAdjacency(type);
     return {
       found: true,
       path: [from],
@@ -253,7 +279,7 @@ export function findShortestPath(from, to, opts = {}) {
     };
   }
 
-  const { adj, nodeInfo } = buildAdjacency(type);
+  const { adj, nodeInfo } = _getAdjacency(type);
   if (!adj[from]) return { found: false, reason: `Узел ${from} не найден` };
   if (!adj[to]) return { found: false, reason: `Узел ${to} не найден` };
 
@@ -300,7 +326,7 @@ export function findShortestPath(from, to, opts = {}) {
  *   1. BFS с очередью путей.
  *   2. Отсечение по maxDepth и maxPaths.
  *   3. Отсечение путей длиннее найденного кратчайшего (shortestLen).
- *   4. Защита от циклов через path.includes(next).
+ *   4. Защита от циклов через Set (O(1)).
  *
  * @param {string} from
  * @param {string} to
@@ -315,7 +341,7 @@ export function findAllPaths(from, to, opts = {}) {
 
   if (!from || !to) return [];
   if (from === to) {
-    const { nodeInfo } = buildAdjacency(type);
+    const { nodeInfo } = _getAdjacency(type);
     return [
       {
         path: [from],
@@ -325,7 +351,7 @@ export function findAllPaths(from, to, opts = {}) {
     ];
   }
 
-  const { adj, nodeInfo } = buildAdjacency(type);
+  const { adj, nodeInfo } = _getAdjacency(type);
   if (!adj[from] || !adj[to]) return [];
 
   const results = [];
@@ -355,10 +381,11 @@ export function findAllPaths(from, to, opts = {}) {
       continue;
     }
 
-    // Обходим соседей
+    // Обходим соседей (Set — O(1) на проверку цикла)
     const neighbors = adj[node] || [];
+    const pathSet = new Set(path);
     for (const next of neighbors) {
-      if (path.includes(next)) continue; // защита от циклов
+      if (pathSet.has(next)) continue;
       queue.push({
         node: next,
         path: [...path, next],
@@ -390,7 +417,7 @@ export function findAllPathsFrom(fromId, opts = {}) {
   const { type = 'function', maxPaths = MAX_PATHS_DEFAULT, maxDepth = MAX_DEPTH_DEFAULT } = opts;
 
   if (!fromId) return [];
-  const { adj, nodeInfo } = buildAdjacency(type);
+  const { adj, nodeInfo } = _getAdjacency(type);
   if (!adj[fromId]) return [];
 
   const results = [];
@@ -415,10 +442,11 @@ export function findAllPathsFrom(fromId, opts = {}) {
       });
     }
 
-    // Обходим соседей
+    // Обходим соседей (Set — O(1) на проверку цикла)
     const neighbors = adj[node] || [];
+    const pathSet = new Set(path);
     for (const next of neighbors) {
-      if (path.includes(next)) continue;
+      if (pathSet.has(next)) continue;
       queue.push({
         node: next,
         path: [...path, next],
@@ -452,7 +480,7 @@ export function findAllPathsTo(toId, opts = {}) {
   const { type = 'function', maxPaths = MAX_PATHS_DEFAULT, maxDepth = MAX_DEPTH_DEFAULT } = opts;
 
   if (!toId) return [];
-  const { adj, nodeInfo } = buildAdjacency(type);
+  const { adj, nodeInfo } = _getAdjacency(type);
   if (!adj[toId]) return [];
 
   // Находим все корни (узлы без входящих рёбер)
@@ -720,4 +748,5 @@ export default {
   getPathsStats,
   renderPathsList,
   renderPathsCompact,
+  invalidateAdjacency,
 };

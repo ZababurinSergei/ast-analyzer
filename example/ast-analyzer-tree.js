@@ -1,10 +1,66 @@
 // ============================================================================
-// AST ANALYZER — TREE v1.5
+// AST ANALYZER — TREE v1.11
 // Двумерный кэш (глубина × ширина) + ленивый HTML + LRU.
-// Корень всегда раскрыт. Путь до активной ноды раскрывается перед рендером.
-// Открытые директории НЕ кэшируются.
-// Клик по файлу с функциями: 1-й — раскрыть, 2-й — выбрать.
-// Прокрутка к активной ноде через getBoundingClientRect.
+// Корень всегда раскрыт. Открытые директории НЕ кэшируются.
+//
+// v1.8:
+//   - ✅ Восстановлено автоматическое раскрытие пути до активного ФАЙЛА
+//        при загрузке (когда renderProjectTree вызывается с
+//        expandActiveFile=true — это дефолт).
+//   - ✅ Клик по файлу В ДЕРЕВЕ (onSelectFile) больше не раскрывает
+//        дерево — main.js вызывает renderTree с expandActiveFile=false
+//        через флаг _fromTreeClick.
+//   - ✅ Клик по caret (▸/▾) — только toggle.
+//   - ✅ Клик по иконке / имени / пустому месту строки файла — select-file.
+//   - ✅ Клик по строке директории (кроме caret) — toggle.
+//   - ✅ Клик по функции внутри файла — select-fn.
+//   - ✅ Раскрытие пути до активной ФУНКЦИИ — всегда (activeFnId).
+//   - ✅ Прокрутка к активной ноде через getBoundingClientRect.
+//
+// v1.9:
+//   - ✅ Добавлен флаг expandActiveFn (по аналогии с expandActiveFile).
+//      Если false — путь до активной функции НЕ раскрывается.
+//
+// v1.10:
+//   - ✅ ИСПРАВЛЕНО: недостаточно НЕ вызывать _expandPathToFn.
+//      _tc.expanded — глобальный Set, он сохраняет раскрытые пути между
+//      вызовами renderProjectTree. Если путь был раскрыт ранее (например
+//      при загрузке страницы), то при клике по функции В ДЕРЕВЕ дерево
+//      всё равно оставалось раскрытым.
+//   - ✅ Добавлены _collapsePathTo / _collapsePathToFile / _collapsePathToFn:
+//      при expandActiveFn=false / expandActiveFile=false путь принудительно
+//      УДАЛЯЕТСЯ из _tc.expanded перед рендером.
+//   - ✅ renderProjectTree: ветвление expand/collapse для активной ноды.
+//
+// v1.11 (ТЕКУЩАЯ):
+//   - ✅ УБРАНЫ вызовы _collapsePathTo* из renderProjectTree.
+//      Проблема: _collapsePathToFile ПРИНУДИТЕЛЬНО удалял путь файла из
+//      _tc.expanded. Это означало: если пользователь вручную раскрыл файл,
+//      то клик по нему в дереве — СВОРАЧИВАЛ его. Это противоречит ТЗ:
+//      «при клике по файлу его раскрытие не должно меняться».
+//      Теперь expandActiveFile=false означает «НЕ ТРОГАТЬ раскрытие».
+//   - ✅ _collapsePathTo / _collapsePathToFile / _collapsePathToFn
+//      помечены @deprecated и больше не вызываются. Оставлены для
+//      обратной совместимости (экспорт не ломается).
+//   - ✅ highlightFile(): убран вызов _openParents(el, container).
+//      При клике по файлу в дереве родительские директории НЕ должны
+//      раскрываться — файл просто подсвечивается (если он уже в DOM).
+//      Если файл в свёрнутой ветке — тихо выходим, не раскрываем.
+//   - ✅ highlightFn(): _openParents ОСТАВЛЕН — при выборе функции
+//      дерево должно раскрыться до неё (сценарий загрузки с путём
+//      до функции, LocationBar → fn).
+//
+// Поведение после v1.11:
+//
+//   | Сценарий                          | activeFnId | activeFileId | expandActiveFn | expandActiveFile | Действие                       |
+//   |-----------------------------------|------------|--------------|----------------|------------------|--------------------------------|
+//   | Загрузка с путём до функции       | ✓          | —            | true           | —                | Раскрыть путь до функции       |
+//   | LocationBar → fn                  | ✓          | —            | true           | —                | Раскрыть путь до функции       |
+//   | LocationBar → file                | —          | ✓            | —              | true             | Раскрыть путь до файла         |
+//   | Карточка файла (data-action)      | —          | ✓            | —              | true             | Раскрыть путь до файла         |
+//   | Клик по файлу В ДЕРЕВЕ            | —          | ✓            | —              | false            | НЕ трогать раскрытие, подсветить |
+//   | Клик по caret (▸/▾)               | —          | —            | —              | —                | Toggle раскрытия               |
+//   | Клик по функции В ДЕРЕВЕ          | ✓          | —            | true (деф.)    | —                | Раскрыть путь до функции       |
 // ============================================================================
 
 import { state, escapeHtml } from './ast-analyzer-core.js';
@@ -301,6 +357,47 @@ function _expandPathToFn(fnId) {
 }
 
 // ---------------------------------------------------------------------------
+// Сворачивание пути до активной ноды
+//
+// v1.11: @deprecated — больше НЕ вызываются из renderProjectTree.
+// Оставлены для обратной совместимости (экспорт).
+//
+// Причина отказа: _collapsePathToFile ПРИНУДИТЕЛЬНО удалял путь файла
+// из _tc.expanded. Это приводило к СВОРАЧИВАНИЮ файла при клике по нему
+// в дереве, если он был раскрыт. По ТЗ клик по файлу не должен менять
+// состояние раскрытия — только делать файл активным.
+// ---------------------------------------------------------------------------
+
+/** @deprecated v1.11 — не используется. */
+function _collapsePathTo(path) {
+  if (!path) return;
+  const parts = path.split('/').filter(Boolean);
+  let acc = '';
+  for (const p of parts) {
+    acc = acc ? `${acc}/${p}` : p;
+    _tc.expanded.delete(acc);
+  }
+}
+
+/** @deprecated v1.11 — не используется. */
+function _collapsePathToFile(fileId) {
+  if (!fileId) return;
+  const f = state.files[fileId];
+  if (!f || !f.path) return;
+  _collapsePathTo(normalizePath(f.path));
+}
+
+/** @deprecated v1.11 — не используется. */
+function _collapsePathToFn(fnId) {
+  if (!fnId) return;
+  const fn = state.fnById[fnId];
+  if (!fn) return;
+  const file = state.files[fn.fileId];
+  if (!file) return;
+  _collapsePathTo(normalizePath(file.path));
+}
+
+// ---------------------------------------------------------------------------
 // Рендер
 // ---------------------------------------------------------------------------
 
@@ -400,6 +497,8 @@ function renderDirCached(node, depth, ctx, isOpen) {
     }
   }
 
+  // Директория: caret — toggle, вся остальная строка — тоже toggle
+  // (у директорий нет отдельного действия «выбрать»).
   return `
     <div class="fs-dir ${isOpen ? 'open' : ''}" data-fs-path="${escapeHtml(
     node.path
@@ -409,7 +508,10 @@ function renderDirCached(node, depth, ctx, isOpen) {
            data-fs-path="${escapeHtml(node.path)}"
            data-fs-depth="${depth}"
            title="${escapeHtml(node.path)}">
-        <span class="fs-caret">${isOpen ? '▾' : '▸'}</span>
+        <span class="fs-caret"
+              data-fs-action="toggle-dir"
+              data-fs-path="${escapeHtml(node.path)}"
+              data-fs-depth="${depth}">${isOpen ? '▾' : '▸'}</span>
         <span class="fs-icon">📁</span>
         <span class="fs-name">${escapeHtml(label)}</span>
         <span class="fs-count">${node.fileCount}</span>
@@ -429,21 +531,31 @@ function renderFileCached(node, depth, ctx, isOpen) {
 
   const fnHtml = isOpen && hasFns ? renderFileFunctions(node, ctx) : '';
 
+  // Файл:
+  //   - caret  → toggle-dir (раскрыть/свернуть)
+  //   - icon/name/пустое место → select-file (переключение на файл)
+  //   - если функций нет — caret скрыт, вся строка select-file
+  const caretHtml = hasFns
+    ? `<span class="fs-caret"
+            data-fs-action="toggle-dir"
+            data-fs-path="${escapeHtml(node.path)}"
+            data-fs-depth="${depth}">${isOpen ? '▾' : '▸'}</span>`
+    : '<span class="fs-caret fs-caret-empty"></span>';
+
+  const rowAction = 'select-file';
+  const rowId = node.fileId || '';
+
   return `
     <div class="fs-file ${isOpen ? 'open' : ''}"
          data-fs-file-id="${escapeHtml(node.fileId || '')}"
          data-fs-path="${escapeHtml(node.path)}">
       <div class="fs-row fs-row-file"
-           data-fs-action="${hasFns ? 'toggle-dir' : 'select-file'}"
-           data-fs-id="${escapeHtml(node.fileId || '')}"
+           data-fs-action="${rowAction}"
+           data-fs-id="${escapeHtml(rowId)}"
            data-fs-path="${escapeHtml(node.path)}"
            data-fs-depth="${depth}"
            title="${escapeHtml(node.path)}">
-        ${
-    hasFns
-      ? `<span class="fs-caret">${isOpen ? '▾' : '▸'}</span>`
-      : '<span class="fs-caret fs-caret-empty"></span>'
-  }
+        ${caretHtml}
         <span class="fs-icon">📄</span>
         <span class="fs-name">${escapeHtml(node.name)}</span>
         ${hasFns ? `<span class="fs-count">${fns.length}</span>` : ''}
@@ -476,6 +588,14 @@ export function renderProjectTree(container, opts = {}) {
     onSelectFile = null,
     onSelectFn = null,
     pageSize = PAGE_SIZE,
+    // ✅ v1.8: по умолчанию дерево раскрывается до активного файла.
+    //    При клике по файлу в дереве main.js передаёт false,
+    //    чтобы не «прыгать» по дереву.
+    expandActiveFile = true,
+    // ✅ v1.9: аналогичный флаг для активной ФУНКЦИИ.
+    //    При клике по функции в дереве main.js передаёт false
+    //    (через _fromTreeClick), чтобы дерево не раскрывалось.
+    expandActiveFn = true,
   } = opts;
 
   const tree = buildTreeOnce();
@@ -507,10 +627,27 @@ export function renderProjectTree(container, opts = {}) {
     collect(filtered);
   }
 
+  // =========================================================================
+  // Раскрытие пути до активной ноды (v1.11)
+  //
+  // v1.11: убраны вызовы _collapsePathTo* — они ПРИНУДИТЕЛЬНО удаляли
+  // путь из _tc.expanded и тем самым СВОРАЧИВАЛИ активный файл, что
+  // противоречит ТЗ «клик по файлу не меняет раскрытие».
+  //
+  // Теперь:
+  //   expandActiveFn=true   → _expandPathToFn   (раскрыть путь до функции)
+  //   expandActiveFn=false  → НИЧЕГО НЕ ДЕЛАТЬ   (не трогать раскрытие)
+  //   expandActiveFile=true → _expandPathToFile (раскрыть путь до файла)
+  //   expandActiveFile=false→ НИЧЕГО НЕ ДЕЛАТЬ   (не трогать раскрытие)
+  //
+  // Флаги expandActive* управляются снаружи (main.js → _fromTreeClick).
+  // =========================================================================
   if (activeFnId) {
-    _expandPathToFn(activeFnId);
+    if (expandActiveFn) _expandPathToFn(activeFnId);
+    // else: НЕ трогаем _tc.expanded — состояние раскрытия сохраняется
   } else if (activeFileId) {
-    _expandPathToFile(activeFileId);
+    if (expandActiveFile) _expandPathToFile(activeFileId);
+    // else: НЕ трогаем _tc.expanded — состояние раскрытия сохраняется
   }
 
   _uid = 0;
@@ -539,11 +676,11 @@ export function renderProjectTree(container, opts = {}) {
     const id = t.dataset.fsId || '';
 
     if (action === 'toggle-dir') {
+      // Клик только по caret. Строка файла обрабатывается отдельно
+      // (data-fs-action="select-file").
       const dir = t.closest('.fs-dir, .fs-file');
       if (!dir) return;
 
-      const isFile = dir.classList.contains('fs-file');
-      const fileId = dir.dataset.fsFileId;
       const caret =
         dir.querySelector(':scope > .fs-row > .fs-caret') ||
         dir.querySelector(':scope > .fs-row-file > .fs-caret') ||
@@ -551,14 +688,8 @@ export function renderProjectTree(container, opts = {}) {
 
       const wasOpen = dir.classList.contains('open');
 
-      // ✅ Если это файл и он УЖЕ открыт — выбираем файл (переключаемся)
-      if (isFile && wasOpen) {
-        if (onSelectFile) onSelectFile(fileId);
-        return;
-      }
-
       if (wasOpen) {
-        // Закрываем директорию
+        // Закрываем директорию/файл
         dir.classList.remove('open');
         dir.querySelector(':scope > .fs-children')?.classList.remove('open');
         _tc.expanded.delete(path);
@@ -692,6 +823,13 @@ function _openParents(el, container) {
   }
 }
 
+/**
+ * Подсветка активной функции.
+ *
+ * v1.11: _openParents ОСТАВЛЕН — при выборе функции дерево должно
+ * раскрыться до неё (сценарий загрузки с путём до функции,
+ * LocationBar → fn).
+ */
 function highlightFn(container, fnId) {
   container
     .querySelectorAll('.fs-fn.active')
@@ -710,6 +848,21 @@ function highlightFn(container, fnId) {
   _scrollToElement(container, el);
 }
 
+/**
+ * Подсветка активного файла.
+ *
+ * v1.11: _openParents УБРАН.
+ *
+ * Причина: при клике по файлу В ДЕРЕВЕ родительские директории
+ * НЕ должны раскрываться. Если файл уже виден в DOM — значит его
+ * родители уже открыты; подсвечиваем и скроллим к нему.
+ * Если файл в свёрнутой ветке — тихо выходим, не раскрываем.
+ *
+ * При внешнем выборе (LocationBar → file, карточка файла) дерево
+ * раскрывается заранее через _expandPathToFile (см. renderProjectTree,
+ * ветка expandActiveFile=true), поэтому файл уже виден в DOM к моменту
+ * вызова highlightFile.
+ */
 function highlightFile(container, fileId) {
   container
     .querySelectorAll('.fs-file.active')
@@ -719,12 +872,17 @@ function highlightFile(container, fileId) {
     `.fs-file[data-fs-file-id="${cssEscape(fileId)}"]`
   );
   if (!el) {
-    console.warn('[Tree] highlightFile: не найден в DOM:', fileId);
+    // Файл в свёрнутой ветке — это нормально.
+    // При клике по файлу в дереве expandActiveFile=false,
+    // путь не раскрывается, дерево не «прыгает».
+    // При внешнем выборе expandActiveFile=true, путь раскрыт заранее,
+    // и файл будет найден.
     return;
   }
 
   el.classList.add('active');
-  _openParents(el, container);
+  // v1.11: НЕ вызываем _openParents — при клике по файлу
+  // родительские директории не должны раскрываться.
   _scrollToElement(container, el);
 }
 
@@ -799,15 +957,25 @@ export const TREE_STYLES = `
 .fs-row-file { color: var(--text2, #8b949e); }
 
 .fs-caret {
-  width: 10px;
-  display: inline-block;
+  width: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 8px;
   color: var(--text2, #8b949e);
   transition: transform 0.15s;
   flex-shrink: 0;
   text-align: center;
+  border-radius: 3px;
 }
-.fs-caret-empty { visibility: hidden; }
+.fs-caret:hover {
+  background: var(--bg4, #30363d);
+  color: var(--text, #e6edf3);
+}
+.fs-caret-empty {
+  visibility: hidden;
+  pointer-events: none;
+}
 
 .fs-icon { font-size: 11px; flex-shrink: 0; }
 

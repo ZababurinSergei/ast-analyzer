@@ -1,5 +1,5 @@
 // ============================================================================
-// AST ANALYZER — LOCATION BAR v1.4
+// AST ANALYZER — LOCATION BAR v1.6
 // Адресная строка как в браузере: путь, кнопки ◀ ▶ ⟳ ⌂, история переходов.
 //
 // Публичный API:
@@ -12,9 +12,10 @@
 //   LocationBar.getHistory() / getCurrent()
 //   LocationBar.buildStyles()
 //   LocationBar.getExtensionsSlot()               — DOM-элемент слота расширений
+//   LocationBar.clearLastPath() / getLastPath()   — управление сохранённым путём
 //
 // Модель пути:
-//   universe / module / <file.path без префикса module> / fn
+//   universe / module / <остаток file.path относительно module> / fn
 //
 // Особенности:
 //   - URL-подобная строка с inline-редактированием
@@ -57,7 +58,7 @@
 //   - Обновляется CSS-переменная --hdr-height при toggle (для Nav)
 //   - Состояние сохраняется в localStorage 'ast-analyzer:header-hidden'
 //
-// v1.4 (текущая):
+// v1.4:
 //   - ✅ Добавлен слот расширений #astLocExtSlot между кнопками
 //     vscode 🔗 и toggle-header ▾. Сюда монтируются кнопки из
 //     ast-analyzer-extensions.js (например, 🧭 навигация по секциям).
@@ -68,6 +69,31 @@
 //     Используется в main.js для Extensions.renderInto(slot).
 //   - ✅ renderShell() дополнен <span class="ast-loc-ext-slot"
 //     id="astLocExtSlot"></span>
+//
+// v1.5:
+//   - ✅ Персистентность пути: последний {kind, id} сохраняется в
+//     localStorage (LS_LAST_PATH) и восстанавливается при mount(),
+//     если он ещё валиден в текущем state.
+//   - ✅ Относительный ввод: stripBasePathFromInput() срезает basePath
+//     (с ведущим слэшем или без) и ведущие слэши — пользователь вводит
+//     путь относительно корня проекта.
+//   - ✅ modulePathFromFile(file) — модуль вычисляется как "путь от корня"
+//     (src/formal, а не formal). Используется в pathForFn / pathForFile /
+//     pathForModule.
+//   - ✅ displayFnName(name) — в отображении убирает префикс "Anonymous.".
+//   - ✅ parsePath(): fallback на "Anonymous.<name>" при поиске функции;
+//     fallback на поиск модуля по "пути от корня" через findModuleByPath.
+//   - ✅ clearLastPath() / getLastPath() — управление сохранённым путём.
+//
+// v1.6 (ТЕКУЩАЯ):
+//   - ✅ applyEntry(): учёт opts.silent — при silent НЕ вызывается S.onChange.
+//     Это устраняет двойной renderTree при клике по файлу в дереве:
+//     selectFile() → syncFromSelection() → applyEntry() → onChange() →
+//     renderTree() (второй раз, с expandActiveFile=true) → файл раскрывался.
+//   - ✅ syncFromSelection(): всегда передаёт silent: true в applyEntry.
+//     Внешний код (main.js) сам рендерит дерево/панель после вызова
+//     syncFromSelection — onChange здесь не нужен и вреден.
+//   - ✅ clearLastPath() / getLastPath() — без изменений.
 // ============================================================================
 
 import { state, escapeHtml, shortPath, middleEllipsis } from './ast-analyzer-core.js';
@@ -76,6 +102,7 @@ import * as Vscode from './ast-analyzer-vscode.js';
 const STYLE_ID = 'ast-location-styles';
 const ROOT_ID = 'astLocationBar';
 const LS_HEADER_HIDDEN = 'ast-analyzer:header-hidden';
+const LS_LAST_PATH = 'ast-analyzer:location-bar:last-path';
 
 // ---------------------------------------------------------------------------
 // СОСТОЯНИЕ
@@ -335,7 +362,7 @@ function injectStyles() {
 }
 
 // ---------------------------------------------------------------------------
-// ФОРМИРОВАНИЕ ПУТИ
+// ПУТИ И МОДУЛИ
 // ---------------------------------------------------------------------------
 
 /**
@@ -354,10 +381,6 @@ function getUniversePath() {
  *   stripModulePrefix('src/a/b.ts',   'src')   → 'a/b.ts'
  *   stripModulePrefix('src/utils.ts', 'utils') → 'src/utils.ts'  (не совпадает)
  *   stripModulePrefix('utils.ts',     'src')   → 'utils.ts'
- *
- * @param {string} filePath   — путь файла (например 'src/utils.ts')
- * @param {string} moduleName — имя модуля (например 'src')
- * @returns {string}
  */
 function stripModulePrefix(filePath, moduleName) {
   if (!filePath || !moduleName) return filePath || '';
@@ -369,51 +392,81 @@ function stripModulePrefix(filePath, moduleName) {
 }
 
 /**
+ * ✅ v1.5: Модуль — это "путь от корня проекта", т.е. директория файла.
+ *   file.path = "src/formal/FunctionBodyModeler.ts"
+ *   → "src/formal"
+ */
+function modulePathFromFile(file) {
+  if (!file || !file.path) return '';
+  const norm = String(file.path)
+    .replace(/\\/g, '/')
+    .replace(/^\.?\/+/, '');
+  const idx = norm.lastIndexOf('/');
+  if (idx < 0) return ''; // файл в корне — модуль пустой
+  return norm.slice(0, idx);
+}
+
+/**
+ * ✅ v1.5: Чистит имя функции для отображения:
+ *   "Anonymous.modelFunctionBody"  → "modelFunctionBody"
+ *   "Anonymous.constructor"        → "constructor"
+ *   "Anonymous"                    → "Anonymous"
+ *   "myFn"                         → "myFn"
+ */
+function displayFnName(name) {
+  if (!name) return '';
+  const s = String(name);
+  if (s.startsWith('Anonymous.')) return s.slice('Anonymous.'.length);
+  return s;
+}
+
+/**
  * Собирает путь по конкретной сущности.
- * Добавляет module, но file.path без префикса module.
+ * Модуль = "путь от корня" (modulePathFromFile).
+ * Файл = остаток file.path после module.
  */
 
 function pathForFn(fnId) {
   const fn = state.fnById[fnId];
   if (!fn) return null;
   const file = state.files[fn.fileId];
-  const mod = file ? state.modules[file.moduleId] : null;
   const universe = getUniversePath();
   const parts = [];
 
   if (universe) parts.push({ kind: 'universe', value: universe });
 
-  if (mod) {
-    parts.push({ kind: 'module', value: mod.name });
-    if (file) {
-      const stripped = stripModulePrefix(file.path, mod.name);
-      if (stripped) {
-        parts.push({ kind: 'file', value: stripped });
-      }
+  if (file) {
+    const modPath = modulePathFromFile(file);
+    if (modPath) {
+      parts.push({ kind: 'module', value: modPath });
+      const rest = file.path.startsWith(modPath + '/')
+        ? file.path.slice(modPath.length + 1)
+        : file.path;
+      if (rest) parts.push({ kind: 'file', value: rest });
+    } else {
+      parts.push({ kind: 'file', value: file.path });
     }
-  } else if (file) {
-    parts.push({ kind: 'file', value: file.path });
   }
 
-  parts.push({ kind: 'fn', value: fn.name });
+  parts.push({ kind: 'fn', value: displayFnName(fn.name) });
   return parts;
 }
 
 function pathForFile(fileId) {
   const file = state.files[fileId];
   if (!file) return null;
-  const mod = state.modules[file.moduleId];
   const universe = getUniversePath();
   const parts = [];
 
   if (universe) parts.push({ kind: 'universe', value: universe });
 
-  if (mod) {
-    parts.push({ kind: 'module', value: mod.name });
-    const stripped = stripModulePrefix(file.path, mod.name);
-    if (stripped) {
-      parts.push({ kind: 'file', value: stripped });
-    }
+  const modPath = modulePathFromFile(file);
+  if (modPath) {
+    parts.push({ kind: 'module', value: modPath });
+    const rest = file.path.startsWith(modPath + '/')
+      ? file.path.slice(modPath.length + 1)
+      : file.path;
+    if (rest) parts.push({ kind: 'file', value: rest });
   } else {
     parts.push({ kind: 'file', value: file.path });
   }
@@ -427,6 +480,19 @@ function pathForModule(moduleId) {
   const universe = getUniversePath();
   const parts = [];
   if (universe) parts.push({ kind: 'universe', value: universe });
+
+  // Пробуем вычислить полный путь модуля по первому файлу
+  const fileIds = state.moduleFiles?.[moduleId] || [];
+  const firstFile = fileIds.length ? state.files[fileIds[0]] : null;
+  if (firstFile) {
+    const modPath = modulePathFromFile(firstFile);
+    if (modPath) {
+      parts.push({ kind: 'module', value: modPath });
+      return parts;
+    }
+  }
+
+  // fallback — имя модуля как есть
   parts.push({ kind: 'module', value: mod.name });
   return parts;
 }
@@ -439,6 +505,25 @@ function pathForUniverse() {
 // ---------------------------------------------------------------------------
 // ПАРСИНГ ПУТИ
 // ---------------------------------------------------------------------------
+
+/**
+ * ✅ v1.5: Ищет модуль по "пути от корня" — сверяет modulePathFromFile
+ * у первого файла модуля.
+ */
+function findModuleByPath(path) {
+  const target = String(path || '')
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '');
+  if (!target) return null;
+  for (const mod of Object.values(state.modules)) {
+    const fileIds = state.moduleFiles?.[mod.id] || [];
+    if (!fileIds.length) continue;
+    const firstFile = state.files[fileIds[0]];
+    if (!firstFile) continue;
+    if (modulePathFromFile(firstFile) === target) return mod;
+  }
+  return null;
+}
 
 /**
  * Разбирает строку пути на сегменты и определяет тип каждой сущности.
@@ -485,19 +570,37 @@ export function parsePath(raw) {
   let modName = null;
   if (i < tokens.length) {
     const name = tokens[i];
-    const mod = state.moduleByName[name];
+
+    // 2a. Прямой поиск по state.moduleByName (короткое имя)
+    let mod = state.moduleByName[name];
+
+    // 2b. ✅ v1.5: Fallback — "путь от корня", может быть многосегментным
+    if (!mod) {
+      for (let take = 2; take <= tokens.length - i; take++) {
+        const candidate = tokens.slice(i, i + take).join('/');
+        const found = findModuleByPath(candidate);
+        if (found) {
+          mod = found;
+          i += take - 1; // поглощаем все токены кандидата
+          break;
+        }
+      }
+    }
+
     if (mod) {
       modId = mod.id;
-      modName = mod.name;
-      segments.push({ kind: 'module', value: mod.name });
+      // Показываем "путь от корня", если вычислимо
+      const fileIds = state.moduleFiles?.[mod.id] || [];
+      const firstFile = fileIds.length ? state.files[fileIds[0]] : null;
+      modName = (firstFile && modulePathFromFile(firstFile)) || mod.name;
+      segments.push({ kind: 'module', value: modName });
       i++;
     }
   }
 
   // 3. File
-  //    Если модуль известен, пробуем склеить: modName + '/' + rest
-  //    (потому что в path хранится stripped-версия).
-  //    Плюс fallback на rest как есть (файл мог быть введён полностью).
+  //    Если модуль известен, пробуем склеить: modName + '/' + rest,
+  //    плюс fallback на rest как есть.
   let fileId = null;
   if (i < tokens.length) {
     const rest = tokens.slice(i).join('/');
@@ -526,10 +629,15 @@ export function parsePath(raw) {
 
     if (file) {
       fileId = file.id;
-      const stripped = modName ? stripModulePrefix(file.path, modName) : file.path;
-      segments.push({ kind: 'file', value: stripped || file.path });
+      // Показываем остаток от модуля (или сам path, если модуль не вычислился)
+      const modPath = modName || '';
+      const shown =
+        modPath && file.path.startsWith(modPath + '/')
+          ? file.path.slice(modPath.length + 1)
+          : file.path;
+      segments.push({ kind: 'file', value: shown || file.path });
 
-      const strippedTokens = (stripped || file.path).split('/').filter(Boolean);
+      const strippedTokens = (shown || file.path).split('/').filter(Boolean);
       i += Math.max(1, strippedTokens.length);
     }
   }
@@ -539,16 +647,30 @@ export function parsePath(raw) {
   if (i < tokens.length) {
     const name = tokens.slice(i).join('/');
     let candidates = [];
+
+    // 4a. Точное имя
     if (fileId) {
       candidates = (state.fileFunctions[fileId] || []).filter(fn => fn.name === name);
     }
     if (!candidates.length) {
       candidates = (state.fnByName[name] || []).map(id => state.fnById[id]).filter(Boolean);
     }
+
+    // 4b. ✅ v1.5: Fallback — реальное имя может быть "Anonymous.<name>"
+    if (!candidates.length) {
+      const withAnon = 'Anonymous.' + name;
+      if (fileId) {
+        candidates = (state.fileFunctions[fileId] || []).filter(fn => fn.name === withAnon);
+      }
+      if (!candidates.length) {
+        candidates = (state.fnByName[withAnon] || []).map(id => state.fnById[id]).filter(Boolean);
+      }
+    }
+
     if (candidates.length) {
       const fn = candidates[0];
       fnId = fn.id;
-      segments.push({ kind: 'fn', value: fn.name });
+      segments.push({ kind: 'fn', value: displayFnName(fn.name) });
     } else {
       segments.push({ kind: 'unknown', value: name });
     }
@@ -606,6 +728,61 @@ function displayPathToText(segments) {
 }
 
 // ---------------------------------------------------------------------------
+// ПЕРСИСТЕНТНОСТЬ ПОСЛЕДНЕГО ПУТИ (v1.5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Сохраняет текущий путь в localStorage.
+ * Храним только { kind, id } — при загрузке state восстановит всё остальное.
+ */
+function saveLastPath(entry) {
+  if (!entry || !entry.kind) return;
+  try {
+    localStorage.setItem(LS_LAST_PATH, JSON.stringify({ kind: entry.kind, id: entry.id || null }));
+  } catch {}
+}
+
+/**
+ * Читает последний сохранённый путь.
+ * @returns {{kind: string, id: string|null}|null}
+ */
+function readLastPath() {
+  try {
+    const raw = localStorage.getItem(LS_LAST_PATH);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj !== 'object' || !obj.kind) return null;
+    return { kind: obj.kind, id: obj.id || null };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Проверяет, что сохранённый путь ещё валиден в текущем state.
+ */
+function isValidEntry(entry) {
+  if (!entry || !entry.kind) return false;
+  if (entry.kind === 'universe') return true;
+  if (entry.kind === 'module') return !!state.modules[entry.id];
+  if (entry.kind === 'file') return !!state.files[entry.id];
+  if (entry.kind === 'fn') return !!state.fnById[entry.id];
+  return false;
+}
+
+/** Удаляет сохранённый путь. */
+export function clearLastPath() {
+  try {
+    localStorage.removeItem(LS_LAST_PATH);
+  } catch {}
+}
+
+/** Возвращает последний сохранённый путь (или null). */
+export function getLastPath() {
+  return readLastPath();
+}
+
+// ---------------------------------------------------------------------------
 // ИСТОРИЯ
 // ---------------------------------------------------------------------------
 
@@ -635,6 +812,7 @@ function goToIndex(idx, opts = {}) {
   const entry = S.history[idx];
   updateInput(entry);
   updateButtons();
+  saveLastPath(entry);
   if (!opts.silent && S.onChange) S.onChange(entry);
 }
 
@@ -800,26 +978,30 @@ function collectSuggestions(query) {
     });
   }
 
-  // Модули
+  // Модули — показываем "путь от корня" (modulePathFromFile)
   for (const m of Object.values(state.modules)) {
+    const fileIds = state.moduleFiles?.[m.id] || [];
+    const firstFile = fileIds.length ? state.files[fileIds[0]] : null;
+    const modPath = (firstFile && modulePathFromFile(firstFile)) || m.name;
     out.push({
       kind: 'module',
       id: m.id,
-      label: m.name,
+      label: modPath,
       icon: '📦',
       meta: 'module',
-      text: (universe ? universe + '/' : '') + m.name,
+      text: (universe ? universe + '/' : '') + modPath,
     });
   }
 
-  // Файлы — text = universe/module/<stripped>
+  // Файлы — text = universe/module/<rest>
   for (const f of Object.values(state.files)) {
-    const mod = state.modules[f.moduleId];
-    const stripped = mod ? stripModulePrefix(f.path, mod.name) : f.path;
+    const modPath = modulePathFromFile(f);
+    const rest =
+      modPath && f.path.startsWith(modPath + '/') ? f.path.slice(modPath.length + 1) : f.path;
     const parts = [];
     if (universe) parts.push(universe);
-    if (mod) parts.push(mod.name);
-    if (stripped) parts.push(stripped);
+    if (modPath) parts.push(modPath);
+    if (rest) parts.push(rest);
     out.push({
       kind: 'file',
       id: f.id,
@@ -830,20 +1012,24 @@ function collectSuggestions(query) {
     });
   }
 
-  // Функции — text = universe/module/<stripped>/fn
+  // Функции — text = universe/module/<rest>/fn (с чисткой Anonymous.)
   for (const fn of Object.values(state.functions)) {
     const file = state.files[fn.fileId];
-    const mod = file ? state.modules[file.moduleId] : null;
-    const stripped = mod && file ? stripModulePrefix(file.path, mod.name) : file?.path || '';
+    const modPath = file ? modulePathFromFile(file) : '';
+    const rest =
+      file && modPath && file.path.startsWith(modPath + '/')
+        ? file.path.slice(modPath.length + 1)
+        : file?.path || '';
+    const fnDisplay = displayFnName(fn.name);
     const parts = [];
     if (universe) parts.push(universe);
-    if (mod) parts.push(mod.name);
-    if (stripped) parts.push(stripped);
-    parts.push(fn.name);
+    if (modPath) parts.push(modPath);
+    if (rest) parts.push(rest);
+    parts.push(fnDisplay);
     out.push({
       kind: 'fn',
       id: fn.id,
-      label: fn.name,
+      label: fnDisplay,
       icon: 'ƒ',
       meta: file?.path || '',
       text: parts.join('/'),
@@ -931,11 +1117,44 @@ function applySuggestion(sug) {
 }
 
 // ---------------------------------------------------------------------------
-// КОММИТ (Enter)
+// КОММИТ (Enter) — v1.5: срезаем basePath и ведущие слэши
 // ---------------------------------------------------------------------------
 
+/**
+ * Убирает basePath из введённой строки, если он там есть.
+ *   "/home/user/proj / module / file" → "module / file"
+ *   "home/user/proj/module/file"      → "module / file"
+ *   "/module/file"                    → "module/file"
+ *   "module/file"                     → "module/file"
+ */
+function stripBasePathFromInput(raw) {
+  let s = String(raw || '').trim();
+  if (!s) return s;
+
+  const base = getUniversePath();
+
+  if (base) {
+    const norm = base.replace(/\\/g, '/').replace(/\/+$/, '');
+    if (s === norm) return '';
+    if (s.startsWith(norm + '/')) {
+      s = s.slice(norm.length + 1);
+    }
+    // Также поддержка без ведущего слэша: "home/user/proj/module/file"
+    const noSlash = norm.startsWith('/') ? norm.slice(1) : norm;
+    if (s === noSlash) return '';
+    if (s.startsWith(noSlash + '/')) {
+      s = s.slice(noSlash.length + 1);
+    }
+  }
+
+  // Срезаем ведущие слэши — ввод всегда относительный
+  s = s.replace(/^\/+/, '');
+  return s;
+}
+
 function commit(raw) {
-  const { segments, entry } = parsePath(raw);
+  const relative = stripBasePathFromInput(raw);
+  const { segments, entry } = parsePath(relative);
 
   if (!entry) {
     updateStatus('не найдено', 'err');
@@ -948,11 +1167,20 @@ function commit(raw) {
   if (input) input.blur();
 }
 
+/**
+ * v1.6: applyEntry — общая точка для commit / applySuggestion / syncFromSelection.
+ *
+ * opts.silent — не вызывать S.onChange. Используется syncFromSelection,
+ * чтобы клик по дереву/карточке не порождал второй renderTree
+ * (иначе expandActiveFile=false из первого рендера перетирается
+ * вторым рендером с expandActiveFile=true, и файл раскрывается).
+ */
 function applyEntry(entry, opts = {}) {
   if (!entry) return;
   pushHistory(entry, opts);
   updateInput(entry);
-  if (S.onChange) S.onChange(entry);
+  saveLastPath(entry);
+  if (!opts.silent && S.onChange) S.onChange(entry);
 }
 
 // ---------------------------------------------------------------------------
@@ -1073,11 +1301,25 @@ export function mount(opts = {}) {
   attachHandlers();
   restoreHeaderState();
 
-  // Начальный путь — universe
+  // Восстанавливаем последний путь, если он валиден для текущего state.
+  // Home всегда кладём первым элементом истории.
   const home = { kind: 'universe', id: null };
   S.history = [home];
   S.index = 0;
-  updateInput(home);
+
+  const last = readLastPath();
+  if (last && last.kind !== 'universe' && isValidEntry(last)) {
+    S.history.push({ ...last, ts: Date.now() });
+    S.index = 1;
+    updateInput(last);
+    // Сообщаем внешнему коду, чтобы main.js отрисовал нужный экран.
+    // queueMicrotask даёт main.js возможность завершить mount().
+    if (S.onChange) {
+      queueMicrotask(() => S.onChange(last));
+    }
+  } else {
+    updateInput(home);
+  }
   updateStatus('', '');
 
   return S.root;
@@ -1102,10 +1344,15 @@ export function navigate(path, opts = {}) {
 /**
  * Обновить адресную строку в соответствии с текущим активным элементом.
  * Вызывается извне (main.js) при выборе функции/файла/модуля.
+ *
+ * v1.6: всегда silent — внешний код (main.js) сам рендерит дерево/панель
+ * после вызова syncFromSelection. Если здесь вызвать onChange, произойдёт
+ * второй renderTree с expandActiveFile=true, и файл раскроется, даже если
+ * пользователь просто кликнул по нему в дереве.
  */
 export function syncFromSelection(kind, id, opts = {}) {
   const entry = { kind, id };
-  applyEntry(entry, opts);
+  applyEntry(entry, { ...opts, silent: true });
 }
 
 export function setUniverse(basePath) {
@@ -1151,4 +1398,6 @@ export default {
   parsePath,
   buildStyles,
   getExtensionsSlot,
+  clearLastPath,
+  getLastPath,
 };

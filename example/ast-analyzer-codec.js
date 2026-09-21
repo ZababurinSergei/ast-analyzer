@@ -249,7 +249,7 @@ export function decodeStr(entry, tokens) {
 
 function tokenizeStr(str) {
   if (!str) return [];
-  return str.split(/(?=[A-Z])|[_\-/.0-9]+/).filter(Boolean);
+  return str.split(/(?=[A-Z])|[_\-\.0-9/]+/).filter(Boolean);
 }
 
 function buildTokenDict(strings) {
@@ -262,7 +262,7 @@ function buildTokenDict(strings) {
 
 function encodeStr(str, tokenIndex) {
   if (!str || str.length < 8) return str;
-  if (/[_\-/.:0-9]/.test(str)) return str;
+  if (/[_\-\.0-9/:]/.test(str)) return str;
   const tokens = tokenizeStr(str);
   if (!tokens.length) return str;
   const idx = [];
@@ -273,6 +273,124 @@ function encodeStr(str, tokenIndex) {
   }
   if (tokens.length * 2 >= str.length) return str;
   return idx;
+}
+
+// ---------------------------------------------------------------------------
+// КЛАССИФИКАЦИЯ ЗНАЧЕНИЙ (v13.0.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Эвристика категоризации значения.
+ *
+ * Возвращает:
+ *   - 'relation'    — примитивы, короткие строки, короткие массивы/объекты
+ *   - 'flag-array'  — длинные массивы (>50 элементов)
+ *   - 'config'      — большие объекты (JSON > 500 символов)
+ *   - 'template'    — строки 200..500 или HTML/Vue-шаблоны
+ *   - 'code'        — строки > 500 символов
+ *   - 'other'       — null/undefined/несериализуемое
+ */
+export function classifyValue(value) {
+  if (value === null || value === undefined) return 'other';
+
+  if (typeof value === 'number' || typeof value === 'boolean') return 'relation';
+
+  if (typeof value === 'string') {
+    if (value.length > 500) return 'code';
+    if (value.length > 200) return 'template';
+    return 'relation';
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length > 50) return 'flag-array';
+    return 'relation';
+  }
+
+  if (typeof value === 'object') {
+    try {
+      const json = JSON.stringify(value);
+      if (json.length > 500) return 'config';
+      if (json.includes('<style') || json.includes('<script') || json.includes('</html>')) {
+        return 'template';
+      }
+      return 'relation';
+    } catch {
+      return 'other';
+    }
+  }
+
+  return 'other';
+}
+
+// ---------------------------------------------------------------------------
+// ФИЛЬТРАЦИЯ VALUES (v13.0.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Фильтрует values + метаданные для режима 'relations'.
+ *
+ * Оставляет:
+ *   - kind === 'relation'    — всегда
+ *   - kind === 'flag-array'  — всегда
+ *   - kind === 'config'      — только если JSON ≤ 200 символов
+ *
+ * Выбрасывает:
+ *   - kind === 'template'
+ *   - kind === 'code'
+ *   - kind === 'other'
+ *
+ * @returns {{ values: unknown[], meta: object[], indexMap: Map<number, number> }}
+ */
+export function filterValues(values, meta) {
+  const keptIndices = new Set();
+
+  for (let i = 0; i < values.length; i++) {
+    const m = meta[i];
+    if (!m) continue;
+
+    if (m.kind === 'relation' || m.kind === 'flag-array') {
+      keptIndices.add(i);
+      continue;
+    }
+
+    if (m.kind === 'config') {
+      const v = values[i];
+      try {
+        const json = JSON.stringify(v);
+        if (json.length <= 200) keptIndices.add(i);
+      } catch {
+        // пропускаем
+      }
+      continue;
+    }
+
+    // template / code / other — выбрасываем
+  }
+
+  const newValues = [];
+  const newMeta = [];
+  const indexMap = new Map();
+
+  for (let i = 0; i < values.length; i++) {
+    if (keptIndices.has(i)) {
+      const newIdx = newValues.length;
+      newValues.push(values[i]);
+      newMeta.push(meta[i]);
+      indexMap.set(i, newIdx);
+    }
+  }
+
+  return { values: newValues, meta: newMeta, indexMap };
+}
+
+/**
+ * Переиндексирует один индекс через indexMap.
+ * Возвращает null, если индекс был отфильтрован или некорректен.
+ */
+export function remapIndex(idx, indexMap) {
+  if (idx === null || idx === undefined || idx < 0) return null;
+  const mapped = indexMap.get(idx);
+  return mapped === undefined ? null : mapped;
 }
 
 // ---------------------------------------------------------------------------
@@ -308,7 +426,7 @@ class ValueDictBuilder {
     const i = this.list.length;
     this.list.push(v);
     this.map.set(k, i);
-    this.meta.push({ key: key || `v_${i}`, kind: 'relation' });
+    this.meta.push({ key: key || `v_${i}`, kind: classifyValue(v) });
     return i;
   }
 }
@@ -733,6 +851,28 @@ export function encodeToCompactData(full, options = {}) {
     greTy.push(tc | (r.isTypeOnly ? 4 : 0));
   });
 
+  // --- ✅ v13.0.2: фильтрация values в режиме 'relations' ---
+  let finalValueDict = VD.list;
+  let valueIndexMap = null;
+
+  if (valuesMode === 'relations') {
+    const filtered = filterValues(VD.list, VD.meta);
+    finalValueDict = filtered.values;
+    valueIndexMap = filtered.indexMap;
+  }
+
+  // Переиндексация cn.nonEmptyV после фильтрации
+  const finalCnV = [];
+  for (const [cnIdx, valIdx] of cnV) {
+    if (valueIndexMap) {
+      const newValIdx = remapIndex(valIdx, valueIndexMap);
+      if (newValIdx === null) continue;
+      finalCnV.push([cnIdx, newValIdx]);
+    } else {
+      finalCnV.push([cnIdx, valIdx]);
+    }
+  }
+
   // --- tokens ---
   const allStrings = [...S.list, ...P.list, ...M.list];
   const tokens = buildTokenDict(allStrings);
@@ -747,7 +887,7 @@ export function encodeToCompactData(full, options = {}) {
     strs: S.list.map(s => encodeStr(s, tokenIndex)),
     params: P.list.map(s => encodeStr(s, tokenIndex)),
     methods: M.list.map(s => encodeStr(s, tokenIndex)),
-    values: VD.list,
+    values: finalValueDict,
     mi: { n: miN, f: miF },
     fl: { p: flP, m: rle(flM) },
     fns: {
@@ -773,7 +913,7 @@ export function encodeToCompactData(full, options = {}) {
       f: rle(cnF),
       l: cnL,
       fl: cnFl,
-      nonEmptyV: cnV,
+      nonEmptyV: finalCnV,
     },
     gr: {
       e: {
@@ -846,6 +986,25 @@ function buildLegend() {
         'deepSelectors',
         'slotsIdx',
       ],
+      'vt.eventHandlers': [
+        'eventNameIdx',
+        'handlerNameIdx',
+        'tagIdx',
+        'line',
+        'modifiersIdx',
+        'isExternal',
+      ],
+      'vt.dynamicComponents': ['isExpressionIdx', 'line', 'resolvedComponentsIdx'],
+      'vt.templateRefs': ['refValueIdx', 'tagIdx', 'line', 'exposedMethodsIdx'],
+      'vt.cssVariables': ['nameIdx', 'valueIdx', 'line', 'isMultiline'],
+      'vt.deepSelectors': ['selectorIdx', 'line'],
+      lc: ['hookCode', 'funcIdx', 'line', 'callbackFnIdx', 'flags'],
+      ef: ['effectCode', 'funcIdx', 'line', 'targetIdx', 'metaIdx'],
+      inj: ['kindCode', 'fileIdx', 'line', 'keyIdx', 'flags'],
+      rx: ['kindCode', 'funcIdx', 'line', 'readsIdx', 'writesIdx', 'flags'],
+      cd: ['directiveCode', 'fileIdx', 'line', 'condIdx', 'compIdx', 'flags'],
+      ty: ['kindCode', 'nameIdx', 'moduleIdx', 'fileIdx', 'line', 'membersIdx', 'extendsIdx'],
+      tr: ['typeNameIdx', 'moduleIdx', 'fileIdx', 'line', 'usageCode'],
     },
   };
 }
@@ -1065,6 +1224,9 @@ export const __internals = {
   tokenizeStr,
   buildTokenDict,
   encodeStr,
+  classifyValue,
+  filterValues,
+  remapIndex,
   deepEqual,
   diffObjects,
   arrayEq,

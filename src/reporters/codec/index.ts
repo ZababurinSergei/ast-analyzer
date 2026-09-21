@@ -310,7 +310,7 @@ export type {
  * ✅ v11.0.0: синхронизирована с codec-legend.ts,
  *    codec-encode.ts, codec-decode.ts и compact-reporter.ts.
  */
-export const CODEC_MODULE_VERSION = '11.0.0';
+export const CODEC_MODULE_VERSION = '13.0.2';
 
 /**
  * Имя модуля codec.
