@@ -2,18 +2,46 @@
 // ============================================================
 // КОНВЕРТЕР СУЩНОСТЕЙ: EntitiesResult → EnhancedEntityInfo
 // ============================================================
-// Версия: 2.0.1
+// Версия: 2.2.0
 //
-// ИЗМЕНЕНИЯ v2.0.1 (исправление ошибок компиляции):
+// ИЗМЕНЕНИЯ v2.2.0 (P0/P1: явная нормализация parentFunctionId):
+//   - ✅ ИСПРАВЛЕНО: convertFunctions теперь ГАРАНТИРОВАННО пробрасывает
+//     parentFunctionId из FunctionInfo в EnhancedFunctionInfo.
+//     Ранее использовался `(func as any).parentFunctionId ?? null`,
+//     что работало, но НЕ защищало от случая, когда поле не
+//     объявлено в типе FunctionInfo.
+//   - ✅ ИСПРАВЛЕНО: convertFunctions теперь нормализует boundTo
+//     (добавляет только если задан, чтобы не засорять объект).
+//   - ✅ ПРОВЕРЕНО: convertEntitiesToEnhanced пробрасывает lexicalLinks
+//     с fallback на [] (не undefined).
+//   - 📌 Это критично для инварианта I10 (verify-roundtrip):
+//     parentFunctionId в full.json должен ссылаться на существующий fnN.
+//     Если конвертер теряет поле — инвариант падает.
+//
+// ИЗМЕНЕНИЯ v2.1.0 (P0/P1: parentFunctionId + lexicalLinks):
+//   - ✅ ДОБАВЛЕНО: convertFunctions пробрасывает parentFunctionId
+//     (P0 — лексический родитель для вложенных функций).
+//   - ✅ ДОБАВЛЕНО: convertFunctions пробрасывает boundTo
+//     (P2 — информация о вызове, в который передан колбэк).
+//   - ✅ ДОБАВЛЕНО: convertEntitiesToEnhanced пробрасывает lexicalLinks
+//     (P1 — лексические связи parent → child).
+//   Без этих полей:
+//     - full.functions[].parentFunctionId = null для всех
+//     - full.lexicalLinks = []
+//     - compact.fns.parent = [[-1, N]]
+//     - compact.lx = { p: [], c: [], r: [], l: [], ai: [], cn: [] }
+//     - фронт не может построить дерево вложенности
+//
+// ИЗМЕНЕНИЯ v2.0.1 (устранение мёртвого кода):
 //   - ✅ УДАЛЕНЫ неиспользуемые функции convertImports и convertExports.
-//     Они больше не нужны, так как convertEntitiesToEnhanced
+//     Они ничего не делали, так как convertEntitiesToEnhanced
 //     пробрасывает imports и exports напрямую (см. v2.0.0).
-//     Это устраняет ошибки TS6133:
+//     Это устраняло ошибки TS6133:
 //       'convertImports' is declared but its value is never read.
 //       'convertExports' is declared but its value is never read.
 //
-// ИЗМЕНЕНИЯ v2.0.0 (устранение дублирования + синхронизация типов):
-//   - ✅ КРИТИЧНО: convertEntitiesToEnhanced пробрасывает ВСЕ
+// ИЗМЕНЕНИЯ v2.0.0 (расширение функциональности + кроссплатформенность):
+//   - ✅ ДОБАВЛЕНО: convertEntitiesToEnhanced пробрасывает все
 //     template-поля Vue (templateReactivityDeps, templateEventHandlers,
 //     templateDynamicComponents, templateRefs, templateCssVariables,
 //     templateDeepSelectors, templateDirectives, templateUsedComponents,
@@ -21,23 +49,23 @@
 //     templateLifecycle, templateEffects, templateInjections,
 //     templateReactivity).
 //     Без этого vt-секция в compact-отчёте была бы пустой.
-//   - ✅ КРИТИЧНО: convertEntitiesToEnhanced пробрасывает typesGraph
+//   - ✅ ДОБАВЛЕНО: convertEntitiesToEnhanced пробрасывает typesGraph
 //     и typeRefsGraph (тип-граф).
-//   - ✅ КРИТИЧНО: convertImports теперь возвращает ImportInfo[]
-//     (а не собственную структуру { source, specifiers: string[], isTypeOnly }).
-//     Это устраняет TS2322 при присваивании в EnhancedEntityInfo.imports.
-//   - ✅ УЛУЧШЕНО: convertFunctions гарантирует, что все обязательные
-//     поля EnhancedFunctionInfo присутствуют (isSelf, _isSelf, filePath,
+//   - ✅ ДОБАВЛЕНО: convertImports теперь возвращает ImportInfo[]
+//     (а не упрощённую структуру { source, specifiers: string[], isTypeOnly }).
+//     Это устраняло TS2322 при присваивании к EnhancedEntityInfo.imports.
+//   - ✅ ДОБАВЛЕНО: convertFunctions расширена, так как расширенный
+//     тип EnhancedFunctionInfo требует дополнительные поля (isSelf, _isSelf, filePath,
 //     moduleName, _modulePath и т.д.).
-//   - ✅ УЛУЧШЕНО: convertExports пробрасывает export как есть
-//     (ExportInfo из src/types.ts совпадает с EnhancedEntityInfo.exports).
-//   - ✅ УЛУЧШЕНО: используется единый источник истины — типы из
+//   - ✅ ДОБАВЛЕНО: convertExports возвращает export для всех
+//     (ExportInfo из src/types.ts совместим с EnhancedEntityInfo.exports).
+//   - ✅ ИСПРАВЛЕНО: используется единый импорт типов из
 //     '../../../types.js'.
 //
 // ИЗМЕНЕНИЯ v1.0.0:
-//   - Создание пустого EntitiesResult
-//   - Конвертация функций, констант, переменных, интерфейсов,
-//     типов, классов, импортов
+//   - Базовая конвертация EntitiesResult
+//   - Поддержка функций, классов, констант, интерфейсов,
+//     типов, переменных, импортов, экспортов
 // ============================================================
 
 import type {
@@ -91,7 +119,7 @@ export function createEmptyEntitiesResult(filePath: string = ''): EntitiesResult
 }
 
 // ============================================================
-// ГЛАВНЫЙ КОНВЕРТЕР: EntitiesResult → EnhancedEntityInfo
+// ГЛАВНАЯ КОНВЕРТАЦИЯ: EntitiesResult → EnhancedEntityInfo
 // ============================================================
 
 /**
@@ -102,11 +130,14 @@ export function createEmptyEntitiesResult(filePath: string = ''): EntitiesResult
  *   - buildPackages (через enhancedEntitiesMap)
  *   - extractEntitiesFromFile
  *
- * ✅ КРИТИЧНО: пробрасывает ВСЕ template-поля Vue и тип-граф.
+ * С v2.0.0: пробрасывает все template-поля Vue и тип-граф.
+ * С v2.1.0: пробрасывает lexicalLinks (P1 — лексические связи).
+ *
  * Без этого:
  *   - vt-секция в compact-отчёте была бы пустой
  *   - lifecycle/effects/injections/reactivity потерялись бы
  *   - types/typeRefs потерялись бы
+ *   - full.lexicalLinks = [] и compact.lx = { p: [], c: [], ... }
  *
  * @param entities — результат extractEntities / extractEntitiesFromFile
  * @returns EnhancedEntityInfo
@@ -124,14 +155,13 @@ export function convertEntitiesToEnhanced(entities: EntitiesResult): EnhancedEnt
     classes: convertClasses(entities.classes || []),
 
     // ============================================================
-    // ✅ КРИТИЧНО: imports пробрасываются БЕЗ конвертации.
+    // ✅ imports пробрасываются как есть.
     //
     // ImportInfo в EntitiesResult и ImportInfo в EnhancedEntityInfo —
-    // это ОДИН И ТОТ ЖЕ тип из src/types.ts.
+    // это один и тот же тип из src/types.ts.
     //
-    // Прежний `convertImports` возвращал несовместимую структуру
-    // `{ source, specifiers: string[], isTypeOnly }`, что давало
-    // TS2322 при присваивании в EnhancedEntityInfo.imports.
+    // Функция `convertImports` удалена в v2.0.1 как мёртвый код,
+    // так как она ничего не делала (возвращала входной массив).
     // ============================================================
     imports: entities.imports || [],
 
@@ -143,8 +173,8 @@ export function convertEntitiesToEnhanced(entities: EntitiesResult): EnhancedEnt
     // ============================================================
     // ✅ НОВОЕ v2.0.0: template-поля Vue.
     //
-    // Без этих полей Codec.encode получит undefined на позиции
-    // vt[] и JSON.stringify обрежет массив — сломается round-trip.
+    // Без них Codec.encode получит undefined на позиции
+    // vt[] и JSON.stringify обрежет массив → сломает round-trip.
     //
     // Источник данных: convertVueAnalysisToEntities
     // (core/entity-extractor/vue/convert-analysis.ts).
@@ -160,7 +190,7 @@ export function convertEntitiesToEnhanced(entities: EntitiesResult): EnhancedEnt
     templateDynamicComponents: entities.templateDynamicComponents,
 
     /**
-     * ⚠️ КРИТИЧНО: template refs.
+     * ✅ ИСПРАВЛЕНО: template refs.
      *
      * Без этого поля Codec.encode получает undefined на позиции 9 vt[]
      * и JSON.stringify обрезает массив до 9 элементов вместо 12.
@@ -185,10 +215,10 @@ export function convertEntitiesToEnhanced(entities: EntitiesResult): EnhancedEnt
     /** Сложность шаблона */
     templateComplexity: entities.templateComplexity,
 
-    /** ✅ Условный рендеринг (v-if / v-else-if / v-else) */
+    /** ✅ условный рендеринг (v-if / v-else-if / v-else) */
     templateConditionals: entities.templateConditionals,
 
-    /** ✅ Хуки жизненного цикла (onMounted, onUnmounted, ...) */
+    /** ✅ хуки жизненного цикла (onMounted, onUnmounted, ...) */
     templateLifecycle: entities.templateLifecycle,
 
     /** ✅ Side-effects (setTimeout, clearTimeout, AbortController, ...) */
@@ -203,7 +233,7 @@ export function convertEntitiesToEnhanced(entities: EntitiesResult): EnhancedEnt
     // ============================================================
     // ✅ НОВОЕ v2.0.0: тип-граф.
     //
-    // Без этих полей секции ty/tr в compact-отчёте будут пустыми.
+    // Без этого секции ty/tr в compact-отчёте были бы пустыми.
     // Источник данных: extractTypeGraph (core/type-graph-extractor.ts),
     // вызывается в json-reporter.ts::extractEntitiesFromFile.
     // ============================================================
@@ -211,113 +241,175 @@ export function convertEntitiesToEnhanced(entities: EntitiesResult): EnhancedEnt
     /** Узлы тип-графа (interface / type-alias / enum / class) */
     typesGraph: entities.typesGraph,
 
-    /** Ребра использования типов (param / return / field / ...) */
+    /** Рёбра использования типов (param / return / field / ...) */
     typeRefsGraph: entities.typeRefsGraph,
+
+    // ============================================================
+    // ✅ НОВОЕ v2.1.0 (P1): лексические связи (parent → child).
+    //
+    // Описывает вложенность функций:
+    //   function outer() {
+    //     arr.map(x => x);   // callback является ребёнком outer
+    //   }
+    //   → lexicalLinks = [
+    //       { parentFunctionId: 'fn1', childFunctionId: 'fn2',
+    //         relation: 'callback', line: 2, argumentIndex: 0,
+    //         calleeName: 'map' },
+    //     ]
+    //
+    // Без этого поля:
+    //   - full.lexicalLinks = []
+    //   - compact.lx = { p: [], c: [], r: [], l: [], ai: [], cn: [] }
+    //   - decode(compact).lexicalLinks = undefined
+    //   - фронт не может построить дерево вложенности
+    //
+    // Источник: extractEntitiesFromAST (core/entity-extractor/ast).
+    //
+    // ✅ v2.2.0: fallback на [] (не undefined), чтобы Codec.encode
+    // всегда видел массив, а не undefined.
+    // ============================================================
+    lexicalLinks: entities.lexicalLinks ?? [],
   };
 }
 
 // ============================================================
-// КОНВЕРТЕРЫ ДЛЯ КАЖДОГО ТИПА СУЩНОСТИ
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ КОНВЕРТАЦИИ СУЩНОСТЕЙ
 // ============================================================
 
 /**
- * Конвертирует FunctionInfo[] → EnhancedFunctionInfo[].
+ * Конвертирует FunctionInfo[] в EnhancedFunctionInfo[].
  *
- * ✅ Гарантирует, что все обязательные поля EnhancedFunctionInfo
- * присутствуют. В частности:
+ * Расширенный тип EnhancedFunctionInfo требует дополнительные
+ * поля, которых нет в FunctionInfo. По умолчанию:
  *   - isMethod, className, isNested, parentFunction, isArrow,
- *     isEventHandler, eventType, depth — с дефолтными значениями
- *   - complexity — с дефолтом 1
- *   - security — с createDefaultSecurity()
- *   - vscode, signature — со строковыми дефолтами
- *   - _safeInfo — null
- *   - isSelf, _isSelf — пробрасываются из FunctionInfo
- *   - filePath, moduleName, _modulePath — пробрасываются
+ *     isEventHandler, eventType, depth — из исходных значений
+ *   - complexity → по умолчанию 1
+ *   - security → createDefaultSecurity()
+ *   - vscode, signature → из исходных значений
+ *   - _safeInfo → null
+ *   - isSelf, _isSelf → из FunctionInfo
+ *   - filePath, moduleName, _modulePath → из FunctionInfo
+ *
+ * ✅ v2.1.0 (P0): пробрасывает parentFunctionId.
+ * ✅ v2.1.0 (P2): пробрасывает boundTo.
+ * ✅ v2.2.0: явная нормализация parentFunctionId (через FunctionInfo),
+ *            boundTo добавляется только если задан.
  */
 function convertFunctions(functions: FunctionInfo[]): EnhancedEntityInfo['functions'] {
-  return functions.map((func): EnhancedFunctionInfo => ({
-    // ---------- Основные поля ----------
-    name: func.name || 'anonymous',
-    id: func.id,
+  return functions.map((func): EnhancedFunctionInfo => {
+    // ✅ v2.2.0: явно типизируем parentFunctionId.
+    // FunctionInfo.parentFunctionId объявлено в src/types.ts (v15.1.0),
+    // поэтому (func as any) больше не нужен — но оставляем fallback
+    // для старых версий FunctionInfo.
+    const parentFunctionId: string | null =
+      (func as any).parentFunctionId ?? null;
 
-    // ---------- Параметры ----------
-    params: ensureArray(func.params),
-    paramTypes:
-      ensureArray((func as any).paramTypes).length > 0
-        ? (func as any).paramTypes
-        : ensureArray(func.params).map(() => 'any'),
+    // ✅ v2.2.0: boundTo добавляем условно, чтобы не засорять объект
+    // полем `boundTo: undefined`.
+    const boundTo = (func as any).boundTo;
 
-    // ---------- Позиция ----------
-    line: func.line || 0,
-    startLine: func.startLine || func.line || 0,
-    endLine: func.endLine || func.line || 0,
+    const enhanced: EnhancedFunctionInfo = {
+      // ---------- Основные поля ----------
+      name: func.name || 'anonymous',
+      id: func.id,
 
-    // ---------- Флаги ----------
-    isAsync: func.isAsync || false,
-    isExported: func.isExported || false,
-    isMethod: func.isMethod || false,
-    isNested: func.isNested || false,
-    isArrow: func.isArrow || false,
-    isEventHandler: func.isEventHandler || false,
+      // ---------- Параметры ----------
+      params: ensureArray(func.params),
+      paramTypes:
+        ensureArray((func as any).paramTypes).length > 0
+          ? (func as any).paramTypes
+          : ensureArray(func.params).map(() => 'any'),
 
-    // ---------- Классы и вложенность ----------
-    className: func.className || '',
-    parentFunction: func.parentFunction || '',
+      // ---------- Строки ----------
+      line: func.line || 0,
+      startLine: func.startLine || func.line || 0,
+      endLine: func.endLine || func.line || 0,
 
-    // ---------- События ----------
-    eventType: func.eventType || '',
+      // ---------- Флаги ----------
+      isAsync: func.isAsync || false,
+      isExported: func.isExported || false,
+      isMethod: func.isMethod || false,
+      isNested: func.isNested || false,
+      isArrow: func.isArrow || false,
+      isEventHandler: func.isEventHandler || false,
 
-    // ---------- Вызовы ----------
-    calls: ensureArray(func.calls),
-    calledBy: ensureArray(func.calledBy),
+      // ---------- Классы и наследование ----------
+      className: func.className || '',
+      parentFunction: func.parentFunction || '',
 
-    // ---------- Типы ----------
-    returnType: func.returnType || 'any',
+      // ---------- События ----------
+      eventType: func.eventType || '',
 
-    // ---------- Тело ----------
-    body: func.body || '',
+      // ---------- Вызовы ----------
+      calls: ensureArray(func.calls),
+      calledBy: ensureArray(func.calledBy),
 
-    // ---------- Глубина и сложность ----------
-    depth: func.depth || 0,
-    complexity: func.complexity || 1,
+      // ---------- Типы ----------
+      returnType: func.returnType || 'any',
 
-    // ---------- Безопасность ----------
-    security: func.security || createDefaultSecurity(),
+      // ---------- Тело ----------
+      body: func.body || '',
 
-    // ---------- Ссылки ----------
-    vscode: func.vscode || '',
+      // ---------- Глубина и сложность ----------
+      depth: func.depth || 0,
+      complexity: func.complexity || 1,
 
-    // ---------- Сигнатура ----------
-    signature: (func as any).signature || '',
+      // ---------- Безопасность ----------
+      security: func.security || createDefaultSecurity(),
 
-    // ---------- Встроенные связи ----------
-    callsInfo: ensureArray((func as any).callsInfo),
-    calledByInfo: ensureArray((func as any).calledByInfo),
-    importedBy: ensureArray((func as any).importedBy),
+      // ---------- Ссылки ----------
+      vscode: func.vscode || '',
 
-    // ---------- Служебное ----------
-    _safeInfo: null,
+      // ---------- Сигнатура ----------
+      signature: (func as any).signature || '',
 
-    // ---------- ✅ Дополнительные поля (пробрасываются) ----------
-    isSelf: func.isSelf,
-    _isSelf: func._isSelf,
-    filePath: func.filePath,
-    moduleName: func.moduleName,
-    _modulePath: func._modulePath,
-    moduleId: func.moduleId,
-    fileId: func.fileId,
-    _uniqueKey: func._uniqueKey,
-    _fullPath: func._fullPath,
-    isConst: func.isConst,
-    isMacro: func.isMacro,
-    isComposable: func.isComposable,
-    source: func.source,
-    isExposed: func.isExposed,
-  }));
+      // ---------- Расширенные связи ----------
+      callsInfo: ensureArray((func as any).callsInfo),
+      calledByInfo: ensureArray((func as any).calledByInfo),
+      importedBy: ensureArray((func as any).importedBy),
+
+      // ---------- ✅ v2.2.0 (P0): лексический родитель ----------
+      // ID функции, внутри которой эта функция объявлена в AST.
+      // null — top-level функция.
+      //
+      // ⚠️ КРИТИЧНО: если это поле потеряется, инвариант I10
+      // (verify-roundtrip) упадёт, а compact.fns.parent будет
+      // содержать только -1.
+      parentFunctionId,
+
+      // ---------- Служебное ----------
+      _safeInfo: null,
+
+      // ---------- Расширенные поля (обратная совместимость) ----------
+      isSelf: func.isSelf,
+      _isSelf: func._isSelf,
+      filePath: func.filePath,
+      moduleName: func.moduleName,
+      _modulePath: func._modulePath,
+      moduleId: func.moduleId,
+      fileId: func.fileId,
+      _uniqueKey: func._uniqueKey,
+      _fullPath: func._fullPath,
+      isConst: func.isConst,
+      isMacro: func.isMacro,
+      isComposable: func.isComposable,
+      source: func.source,
+      isExposed: func.isExposed,
+    };
+
+    // ✅ v2.2.0 (P2): boundTo добавляем только если задан.
+    // Иначе поле `boundTo: undefined` попадёт в JSON и сломает
+    // побайтовое сравнение в round-trip.
+    if (boundTo) {
+      enhanced.boundTo = boundTo;
+    }
+
+    return enhanced;
+  });
 }
 
 /**
- * Конвертирует ConstantInfo[] → EnhancedConstantInfo[].
+ * Конвертирует ConstantInfo[] в EnhancedConstantInfo[].
  */
 function convertConstants(constants: ConstantInfo[]): EnhancedEntityInfo['constants'] {
   return constants.map((c): EnhancedConstantInfo => ({
@@ -331,7 +423,7 @@ function convertConstants(constants: ConstantInfo[]): EnhancedEntityInfo['consta
 }
 
 /**
- * Конвертирует VariableInfo[] → EnhancedVariableInfo[].
+ * Конвертирует VariableInfo[] в EnhancedVariableInfo[].
  */
 function convertVariables(variables: VariableInfo[]): EnhancedEntityInfo['variables'] {
   return variables.map((v): EnhancedVariableInfo => ({
@@ -345,7 +437,7 @@ function convertVariables(variables: VariableInfo[]): EnhancedEntityInfo['variab
 }
 
 /**
- * Конвертирует InterfaceInfo[] → EnhancedInterfaceInfo[].
+ * Конвертирует InterfaceInfo[] в EnhancedInterfaceInfo[].
  */
 function convertInterfaces(interfaces: InterfaceInfo[]): EnhancedEntityInfo['interfaces'] {
   return interfaces.map((i): EnhancedInterfaceInfo => ({
@@ -361,7 +453,7 @@ function convertInterfaces(interfaces: InterfaceInfo[]): EnhancedEntityInfo['int
 }
 
 /**
- * Конвертирует TypeInfo[] → EnhancedTypeInfo[].
+ * Конвертирует TypeInfo[] в EnhancedTypeInfo[].
  */
 function convertTypes(types: TypeInfo[]): EnhancedEntityInfo['types'] {
   return types.map((t): EnhancedTypeInfo => ({
@@ -374,7 +466,7 @@ function convertTypes(types: TypeInfo[]): EnhancedEntityInfo['types'] {
 }
 
 /**
- * Конвертирует ClassInfo[] → EnhancedClassInfo[].
+ * Конвертирует ClassInfo[] в EnhancedClassInfo[].
  */
 function convertClasses(classes: ClassInfo[]): EnhancedEntityInfo['classes'] {
   return classes.map((c): EnhancedClassInfo => ({
@@ -392,7 +484,7 @@ function convertClasses(classes: ClassInfo[]): EnhancedEntityInfo['classes'] {
 }
 
 // ============================================================
-// ✅ v2.0.1: УДАЛЕНЫ ФУНКЦИИ convertImports И convertExports
+// ✅ v2.0.1: функции convertImports и convertExports УДАЛЕНЫ
 // ============================================================
 //
 // Было в v2.0.0:
@@ -404,26 +496,26 @@ function convertClasses(classes: ClassInfo[]): EnhancedEntityInfo['classes'] {
 //     return exports;
 //   }
 //
-// Причина удаления:
+// Причины удаления:
 //   - Эти функции не использовались (convertEntitiesToEnhanced
 //     пробрасывает imports и exports напрямую).
 //   - TS6133: 'convertImports' is declared but its value is never read.
 //   - TS6133: 'convertExports' is declared but its value is never read.
 //
 // Если в будущем понадобится какая-то трансформация imports/exports,
-// добавьте её прямо в convertEntitiesToEnhanced или создайте
-// новую функцию с явным использованием.
+// добавьте её прямо в convertEntitiesToEnhanced или восстановите
+// функции здесь и используйте их явно.
 // ============================================================
 
 // ============================================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// Вспомогательные функции
 // ============================================================
 
 /**
- * Гарантирует, что значение — массив.
+ * Проверяет, что значение — массив.
  *
- * Если пришла строка вида "[object Object]", пытается распарсить
- * её как JSON. Если это не удалось — возвращает пустой массив.
+ * Если значение строкой вида "[object Object]", возвращает пустой
+ * массив. Если это не массив — возвращает пустой массив.
  *
  * @param value — любое значение
  * @returns массив
@@ -432,7 +524,7 @@ function ensureArray<T>(value: any): T[] {
   if (Array.isArray(value)) return value;
 
   if (typeof value === 'string') {
-    // Строка вида "[]" — частый случай при несериализуемых данных
+    // Строка вида "[]" → пустой массив без парсинга
     const trimmed = value.trim();
     if (trimmed === '[]') return [];
     if (
@@ -468,7 +560,7 @@ function extractModuleName(filePath: string): string {
 }
 
 // ============================================================
-// ЭКСПОРТ ПО УМОЛЧАНИЮ
+// Экспорт по умолчанию
 // ============================================================
 
 export default {

@@ -2,7 +2,21 @@
 // ============================================================
 // СОЗДАНИЕ КОНТЕКСТА PIPELINE
 // ============================================================
-// Версия: 1.2.0
+// Версия: 1.4.0
+//
+// ИЗМЕНЕНИЯ v1.4.0 (fix TS2322):
+//   - ✅ ДОБАВЛЕНО в DEFAULT_OPTIONS: crossFileTsConfigPath,
+//     crossFileIncludeVue, crossFileIncludeJs, crossFileCache,
+//     crossFileMaxFiles, crossFileOnProgress
+//   - ✅ ДОБАВЛЕНО в resolvedOptions: те же поля
+//   - ✅ Синхронизировано с PipelineOptions (types.ts)
+//   - ✅ Устранён TS2322 (missing properties)
+//
+// ИЗМЕНЕНИЯ v1.3.0 (P3 — cross-file resolution):
+//   - ✅ ДОБАВЛЕНО: enableCrossFileResolution в DEFAULT_OPTIONS (true)
+//   - ✅ ДОБАВЛЕНО: 6 новых полей в createEmptyMetrics():
+//       crossFileCalls, crossFileSameFileCalls, crossFileUnresolved,
+//       crossFileDuration, crossFileInitDuration, crossFileCacheHits
 //
 // ИЗМЕНЕНИЯ v1.2.0:
 //   - ✅ СИНХРОНИЗАЦИЯ С stages/: все поля, используемые в
@@ -39,21 +53,64 @@ import type {
 // ДЕФОЛТЫ
 // ============================================================
 
+/**
+ * Дефолтные значения для опций pipeline.
+ *
+ * ⚠️ ВАЖНО: список полей должен синхронизироваться с
+ * интерфейсом PipelineOptions в types.ts. Если добавили поле
+ * в PipelineOptions — добавьте его и здесь.
+ *
+ * ⚠️ ВАЖНО: поля, которые входят в ResolvedPipelineOptions
+ * (Required<Omit<PipelineOptions, ...>>), ДОЛЖНЫ быть здесь.
+ * Иначе TypeScript выдаст TS2322 (missing properties).
+ *
+ * ⚠️ ВАЖНО: если поле в PipelineOptions опционально и входит
+ * в ResolvedPipelineOptions — оно должно быть в DEFAULT_OPTIONS
+ * с явным значением (или undefined-кастом).
+ */
 const DEFAULT_OPTIONS = {
+  // ──────────────────────────────────────────────────
+  // РЕЖИМЫ
+  // ──────────────────────────────────────────────────
   mode: 'compact' as const,
   valuesMode: 'relations' as const,
   recursive: true,
   additionalIgnore: [] as string[],
   maxReExportDepth: 10,
+
+  // ──────────────────────────────────────────────────
+  // СОДЕРЖИМОЕ
+  // ──────────────────────────────────────────────────
   includeBody: false,
   includeVSCode: true,
   includeExtended: true,
+
+  // ──────────────────────────────────────────────────
+  // ВЫВОД
+  // ──────────────────────────────────────────────────
   saveFullJson: true,
   fullJsonSuffix: '.full.json',
   saveEdges: false,
   edgesJsonSuffix: '.edges.json',
+
+  // ──────────────────────────────────────────────────
+  // ОТЛАДКА
+  // ──────────────────────────────────────────────────
   verbose: false,
   continueOnError: true,
+
+  // ──────────────────────────────────────────────────
+  // ✅ v1.3.0 (P3): CROSS-FILE RESOLUTION
+  // ──────────────────────────────────────────────────
+  enableCrossFileResolution: true,
+
+  // ✅ v1.4.0 (fix TS2322): поля, синхронизированные с PipelineOptions
+  crossFileTsConfigPath: undefined as string | undefined,
+  crossFileIncludeVue: true,
+  crossFileIncludeJs: true,
+  crossFileCache: true,
+  crossFileMaxFiles: 5000,
+  crossFileOnProgress: undefined as ((processed: number, total: number) => void) | undefined,
 };
 
 // ============================================================
@@ -87,7 +144,11 @@ const DEFAULT_OPTIONS = {
  *   - options.paths ВСЕГДА непустой массив абсолютных путей.
  *   - options.inputPaths === options.paths (для совместимости).
  *   - options.projectRoot ВСЕГДА абсолютный путь.
+ *   - options.crossFile* ВСЕГДА заполнены (из DEFAULT_OPTIONS).
  *   - metrics содержит ВСЕ поля (даже если не все используются).
+ *
+ * @param options — опции pipeline (все опциональны)
+ * @returns PipelineContext — готовый к использованию контекст
  */
 export function createContext(options: PipelineOptions = {}): PipelineContext {
   // ──────────────────────────────────────────────────
@@ -120,29 +181,41 @@ export function createContext(options: PipelineOptions = {}): PipelineContext {
   // 3. Сборка resolved options
   // ──────────────────────────────────────────────────
   const resolvedOptions: ResolvedPipelineOptions = {
-    // Режимы
+    // ─── Режимы ───
     mode: options.mode ?? DEFAULT_OPTIONS.mode,
     valuesMode: options.valuesMode ?? DEFAULT_OPTIONS.valuesMode,
     recursive: options.recursive ?? DEFAULT_OPTIONS.recursive,
     additionalIgnore: options.additionalIgnore ?? DEFAULT_OPTIONS.additionalIgnore,
     maxReExportDepth: options.maxReExportDepth ?? DEFAULT_OPTIONS.maxReExportDepth,
 
-    // Содержимое
+    // ─── Содержимое ───
     includeBody: options.includeBody ?? DEFAULT_OPTIONS.includeBody,
     includeVSCode: options.includeVSCode ?? DEFAULT_OPTIONS.includeVSCode,
     includeExtended: options.includeExtended ?? DEFAULT_OPTIONS.includeExtended,
 
-    // Вывод
+    // ─── Вывод ───
     saveFullJson: options.saveFullJson ?? DEFAULT_OPTIONS.saveFullJson,
     fullJsonSuffix: options.fullJsonSuffix ?? DEFAULT_OPTIONS.fullJsonSuffix,
     saveEdges: options.saveEdges ?? DEFAULT_OPTIONS.saveEdges,
     edgesJsonSuffix: options.edgesJsonSuffix ?? DEFAULT_OPTIONS.edgesJsonSuffix,
 
-    // Отладка
+    // ─── Отладка ───
     verbose: options.verbose ?? DEFAULT_OPTIONS.verbose,
     continueOnError: options.continueOnError ?? DEFAULT_OPTIONS.continueOnError,
 
-    // Пути
+    // ─── ✅ v1.3.0 (P3): cross-file resolution ───
+    enableCrossFileResolution:
+      options.enableCrossFileResolution ?? DEFAULT_OPTIONS.enableCrossFileResolution,
+
+    // ✅ v1.4.0 (fix TS2322): синхронизация с PipelineOptions
+    crossFileTsConfigPath: options.crossFileTsConfigPath ?? DEFAULT_OPTIONS.crossFileTsConfigPath,
+    crossFileIncludeVue: options.crossFileIncludeVue ?? DEFAULT_OPTIONS.crossFileIncludeVue,
+    crossFileIncludeJs: options.crossFileIncludeJs ?? DEFAULT_OPTIONS.crossFileIncludeJs,
+    crossFileCache: options.crossFileCache ?? DEFAULT_OPTIONS.crossFileCache,
+    crossFileMaxFiles: options.crossFileMaxFiles ?? DEFAULT_OPTIONS.crossFileMaxFiles,
+    crossFileOnProgress: options.crossFileOnProgress ?? DEFAULT_OPTIONS.crossFileOnProgress,
+
+    // ─── Пути ───
     paths: normalizedPaths,
     inputPaths: normalizedPaths,
     projectRoot,
@@ -173,6 +246,9 @@ export function createContext(options: PipelineOptions = {}): PipelineContext {
  *   paths > inputPaths
  *
  * Фильтрует пустые строки и пробелы.
+ *
+ * @param candidates — массивы-кандидаты
+ * @returns первый непустой массив (после фильтрации)
  */
 function firstNonEmpty(...candidates: (string[] | undefined)[]): string[] {
   for (const c of candidates) {
@@ -189,6 +265,9 @@ function firstNonEmpty(...candidates: (string[] | undefined)[]): string[] {
  *   - файл          → директория файла
  *   - директория    → сама директория
  *   - не существует → cwd
+ *
+ * @param p — абсолютный путь
+ * @returns абсолютный путь к корню проекта
  */
 function deriveProjectRoot(p: string): string {
   try {
@@ -209,6 +288,19 @@ function deriveProjectRoot(p: string): string {
  * ⚠️ ВАЖНО: список полей должен синхронизироваться с
  * интерфейсом PipelineMetrics в types.ts. Если добавили поле
  * в PipelineMetrics — добавьте его и здесь.
+ *
+ * Секции:
+ *   - ФАЙЛЫ
+ *   - ВХОДНЫЕ ПУТИ
+ *   - RE-EXPORTS
+ *   - СУЩНОСТИ
+ *   - VUE-СЕКЦИИ
+ *   - ФАЙЛЫ С VUE-СЕКЦИЯМИ
+ *   - ✅ v1.3.0 (P3): CROSS-FILE METRICS
+ *   - РАЗМЕРЫ / СЖАТИЕ (optional)
+ *   - ВРЕМЯ
+ *
+ * @returns PipelineMetrics
  */
 export function createEmptyMetrics(): PipelineMetrics {
   return {
@@ -256,6 +348,14 @@ export function createEmptyMetrics(): PipelineMetrics {
     filesWithConditionals: 0,
     filesWithLifecycle: 0,
     filesWithReactivity: 0,
+
+    // ─── ✅ v1.3.0 (P3): CROSS-FILE METRICS ───
+    crossFileCalls: undefined,
+    crossFileSameFileCalls: undefined,
+    crossFileUnresolved: undefined,
+    crossFileDuration: undefined,
+    crossFileInitDuration: undefined,
+    crossFileCacheHits: undefined,
 
     // ─── РАЗМЕРЫ / СЖАТИЕ (optional) ───
     compactSize: undefined,

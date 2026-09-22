@@ -2,7 +2,15 @@
 // ============================================================
 // ЕДИНАЯ ТОЧКА ВХОДА ДЛЯ ANALYSIS PIPELINE
 // ============================================================
-// Версия: 2.0.0
+// Версия: 2.1.0
+//
+// ИЗМЕНЕНИЯ v2.1.0 (P3 — cross-file resolution):
+//   - ✅ ДОБАВЛЕН реэкспорт ResolveCrossFileStage
+//     (новый stage для межфайловых вызовов через ts-morph)
+//   - ✅ ОБНОВЛЕНО: PIPELINE_MODULE_VERSION = '2.1.0'
+//   - ✅ ДОБАВЛЕНО: реэкспорт типов из cross-file-resolver
+//     (CrossFileCall, CrossFileResolverOptions, ResolveStats, ResolvedCallee)
+//   - ✅ ОБНОВЛЕНО: архитектурная схема (Stage 5 теперь ResolveCrossFile)
 //
 // ИЗМЕНЕНИЯ v2.0.0 (интеграция relation-resolver):
 //   - ✅ ДОБАВЛЕН реэкспорт ResolveRelationsStage
@@ -29,7 +37,7 @@
 //   - Типы, контекст, ошибки
 //
 // ============================================================
-// АРХИТЕКТУРА (v2.0.0)
+// АРХИТЕКТУРА (v2.1.0)
 // ============================================================
 //
 //                    ┌─────────────────────────┐
@@ -64,14 +72,21 @@
 //                    └─────────┬──────────┘
 //                              │
 //                    ┌─────────▼──────────┐
-//                    │ Stage 4: Resolve   │  ⬅ НОВЫЙ v2.0.0
+//                    │ Stage 4: Resolve   │
 //                    │  Relations         │
 //                    │  (refCalls, props, │
 //                    │   emits, stores...)│
 //                    └─────────┬──────────┘
 //                              │
 //                    ┌─────────▼──────────┐
-//                    │ Stage 5: Build     │
+//                    │ Stage 5: Resolve   │  ⬅ НОВЫЙ v2.1.0 (P3)
+//                    │  CrossFile         │
+//                    │  (ts-morph, symbols│
+//                    │   межфайловые)     │
+//                    └─────────┬──────────┘
+//                              │
+//                    ┌─────────▼──────────┐
+//                    │ Stage 6: Build     │
 //                    │  Report            │
 //                    └────────────────────┘
 //
@@ -86,13 +101,15 @@
 //     projectRoot: './src',
 //     mode: 'compact',
 //     valuesMode: 'relations',
+//     enableCrossFileResolution: true,  // ✅ v2.1.0 (P3)
 //     verbose: true,
 //   });
 //
-//   // result.compact  → CompactJSON
-//   // result.full     → FullJSON
-//   // result.metrics  → метрики pipeline
-//   // result.errors   → ошибки файлов
+//   // result.compact          → CompactJSON
+//   // result.full             → FullJSON
+//   // result.metrics          → метрики pipeline
+//   // result.metrics.crossFileCalls — ✅ v2.1.0 (P3)
+//   // result.errors           → ошибки файлов
 //
 // ============================================================
 // ЗАЧЕМ ЭТОТ МОДУЛЬ
@@ -109,12 +126,13 @@
 //   - трудности с тестированием отдельных этапов
 //   - потерю template-полей при normalize (баг с conditionals)
 //
-// Теперь (v2.0.0):
+// Теперь (v2.1.0):
 //   - единый `AnalysisPipeline.run()`
 //   - явный `ParseFileStage.dispatch()` для ветвления
 //   - каждый stage — отдельный класс (тестируемый)
 //   - явный проброс template-полей в NormalizeEntitiesStage
 //   - явный ResolveRelationsStage для кросс-файловых связей
+//   - явный ResolveCrossFileStage для межфайловых вызовов (P3)
 // ============================================================
 
 // ============================================================
@@ -136,7 +154,8 @@ export { AnalysisPipeline } from './AnalysisPipeline.js';
 //   - Stage 2: ctx.entitiesMap, ctx.metrics
 //   - Stage 3: ctx.enhancedMap
 //   - Stage 4: ctx.enhancedMap (обогащённый relation-связями)
-//   - Stage 5: ctx.full, ctx.compact
+//   - Stage 5: ctx.crossFileCalls (✅ v2.1.0, P3)
+//   - Stage 6: ctx.full, ctx.compact
 // ============================================================
 
 export { createContext } from './context.js';
@@ -172,6 +191,8 @@ export type {
 
   /**
    * Опции pipeline. Все опциональны, дефолты — в context.ts.
+   *
+   * ✅ v2.1.0 (P3): добавлено enableCrossFileResolution
    */
   PipelineOptions,
 
@@ -204,11 +225,15 @@ export type {
 
   /**
    * Метрики pipeline: количество файлов, функций, тайминги.
+   *
+   * ✅ v2.1.0 (P3): добавлены crossFileCalls, crossFileSameFileCalls,
+   *   crossFileUnresolved, crossFileDuration, crossFileInitDuration,
+   *   crossFileCacheHits
    */
   PipelineMetrics,
 
   /**
-   * ✅ НОВОЕ v2.0.0: метрики разрешённых связей
+   * ✅ v2.0.0: метрики разрешённых связей
    * (refCalls, eventHandlers, composables, ...).
    */
   RelationsResolvedMetrics,
@@ -228,7 +253,7 @@ export type {
   PipelineStage,
 
   /**
-   * ✅ НОВОЕ v2.0.0: тип TemplateRecord для контекста.
+   * ✅ v2.0.0: тип TemplateRecord для контекста.
    */
   TemplateRecord,
 } from './types.js';
@@ -263,18 +288,17 @@ export {
 //   - в кастомном pipeline (передать в конструктор)
 //   - в unit-тестах (запустить изолированно)
 //
-// ПОСЛЕДОВАТЕЛЬНОСТЬ ПО УМОЛЧАНИЮ (v2.0.0):
+// ПОСЛЕДОВАТЕЛЬНОСТЬ ПО УМОЛЧАНИЮ (v2.1.0):
 //
-//   1. DiscoverFilesStage     — собрать файлы
-//   2. ParseFileStage         — диспетчер: TS/JS или Vue
-//   3. NormalizeEntitiesStage — EntitiesResult → EnhancedEntityInfo
-//   4. ResolveRelationsStage  — кросс-файловые связи (refCalls, props, emits...)
-//   5. BuildReportStage       — FullJSON → CompactJSON
+//   1. DiscoverFilesStage      — собрать файлы
+//   2. ParseFileStage          — диспетчер: TS/JS или Vue
+//   3. NormalizeEntitiesStage  — EntitiesResult → EnhancedEntityInfo
+//   4. ResolveRelationsStage   — кросс-файловые связи (refCalls, props, emits...)
+//   5. ResolveCrossFileStage   — межфайловые вызовы через ts-morph (P3)
+//   6. BuildReportStage        — FullJSON → CompactJSON
 //
-// ⚠️ Изменения в v2.0.0:
-//   - УДАЛЁН EnrichReExportsStage — re-exports теперь
-//     разворачиваются внутри ParseFileStage
-//   - ДОБАВЛЕН ResolveRelationsStage — кросс-файловые связи
+// ⚠️ Изменения в v2.1.0:
+//   - ДОБАВЛЕН ResolveCrossFileStage — межфайловые вызовы (P3)
 // ============================================================
 
 // ------------------------------------------------------------
@@ -323,7 +347,7 @@ export { ParseFileStage } from './stages/parse-file.js';
 export { NormalizeEntitiesStage } from './stages/normalize-entities.js';
 
 // ------------------------------------------------------------
-// 5.4. Stage 4: ResolveRelations ✅ НОВЫЙ v2.0.0
+// 5.4. Stage 4: ResolveRelations ✅ v2.0.0
 // ------------------------------------------------------------
 // Запускает relation-resolver для кросс-файловых связей.
 //
@@ -341,24 +365,44 @@ export { NormalizeEntitiesStage } from './stages/normalize-entities.js';
 //
 // Это ЕДИНСТВЕННЫЙ stage, который знает о кросс-файловых
 // связях (использует global-index).
-//
-// Резолверы:
-//   - ref-call-resolver           → refCall → exposedMethod
-//   - event-handler-resolver      → @click → function.id
-//   - composable-resolver         → useXxx returnedKeys + bindings
-//   - props-resolver              → props.xxx → source
-//   - emits-resolver              → emit → parent handler
-//   - v-model-resolver            → v-model → model + localVar
-//   - dynamic-component-resolver  → <component :is> → import
-//   - store-resolver              → Pinia
-//   - router-resolver             → router.push → routes
-//   - directive-resolver          → v-my-directive → import/binding
 // ------------------------------------------------------------
 
 export { ResolveRelationsStage } from './stages/resolve-relations.js';
 
 // ------------------------------------------------------------
-// 5.5. Stage 5: BuildReport
+// 5.5. Stage 5: ResolveCrossFile ✅ НОВЫЙ v2.1.0 (P3)
+// ------------------------------------------------------------
+// Запускает cross-file resolver через ts-morph.
+//
+// Для каждого CallExpression/NewExpression во всех файлах:
+//   1. Резолвит callee через TypeScript-символы
+//   2. Находит точное объявление (file, line)
+//   3. Строит CrossFileCall[] с точными fromFunctionId/toFunctionId
+//
+// Результат сохраняется в ctx.crossFileCalls и обогащает
+// calls[] в compact-reporter (см. compact-reporter.ts).
+//
+// ПОДДЕРЖИВАЕМЫЕ СЛУЧАИ:
+//   - foo()                    — Identifier
+//   - obj.foo()                — PropertyAccessExpression
+//   - obj['foo']()             — ElementAccessExpression
+//   - new Foo()                — NewExpression
+//   - foo()()                  — CallExpression
+//   - (await foo()).bar()      — AwaitExpression + PropertyAccess
+//   - .vue через виртуальные SourceFile (<script setup>)
+//
+// ЧТО РЕШАЕТ:
+//   - Точные межфайловые вызовы (раньше — эвристика по имени)
+//   - Правильное разрешение алиасов из tsconfig
+//   - Работа с .vue SFC
+//
+// ⚠️ Отключается через options.enableCrossFileResolution = false.
+// ------------------------------------------------------------
+
+export { ResolveCrossFileStage } from './stages/resolve-cross-file.js';
+
+// ------------------------------------------------------------
+// 5.6. Stage 6: BuildReport
 // ------------------------------------------------------------
 // Генерирует финальный отчёт через `generateCompactReport`.
 //
@@ -420,7 +464,36 @@ export { parseTypeScriptFile } from './stages/parse-typescript.js';
 export { parseVueFile } from './stages/parse-vue.js';
 
 // ============================================================
-// 7. ЭКСПОРТ ПО УМОЛЧАНИЮ
+// 7. ✅ v2.1.0 (P3): CROSS-FILE RESOLVER — ТИПЫ И УТИЛИТЫ
+// ============================================================
+// Реэкспорт публичных типов и функций cross-file resolver.
+//
+// Используется для:
+//   - интеграции с CLI (для сохранения отчётов)
+//   - интеграции с reporters/compact-reporter (для обогащения calls)
+//   - unit-тестов
+// ============================================================
+
+export type {
+  /** Разрешённый межфайловый вызов */
+  CrossFileCall,
+  /** Опции cross-file resolver */
+  CrossFileResolverOptions,
+  /** Метрики cross-file resolver */
+  ResolveStats,
+  /** Результат разрешения callee */
+  ResolvedCallee,
+  /** Mapping .vue-файлов */
+  VueLineMapping,
+} from '../core/cross-file-resolver/types.js';
+
+export {
+  /** Главная функция: resolveCrossFileCalls */
+  resolveCrossFileCalls,
+} from '../core/cross-file-resolver/index.js';
+
+// ============================================================
+// 8. ЭКСПОРТ ПО УМОЛЧАНИЮ
 // ============================================================
 // Собираем все основные экспорты в один объект для удобства:
 //
@@ -437,17 +510,21 @@ import { DiscoverFilesStage } from './stages/discover-files.js';
 import { ParseFileStage } from './stages/parse-file.js';
 import { NormalizeEntitiesStage } from './stages/normalize-entities.js';
 import { ResolveRelationsStage } from './stages/resolve-relations.js';
+import { ResolveCrossFileStage } from './stages/resolve-cross-file.js';
 import { BuildReportStage } from './stages/build-report.js';
 import { parseTypeScriptFile } from './stages/parse-typescript.js';
 import { parseVueFile } from './stages/parse-vue.js';
+import { resolveCrossFileCalls } from '../core/cross-file-resolver/index.js';
 
 /**
  * Версия модуля pipeline.
  *
  * ⚠️ При изменении публичного API (добавлении/удалении
  * экспортов, изменении сигнатур) — поднимать версию.
+ *
+ * ✅ v2.1.0 (P3): 2.0.0 → 2.1.0 (добавлен ResolveCrossFileStage)
  */
-export const PIPELINE_MODULE_VERSION = '2.0.0';
+export const PIPELINE_MODULE_VERSION = '2.1.0';
 
 /**
  * Имя модуля pipeline.
@@ -472,12 +549,13 @@ export default {
   StageError,
 
   // ============================================
-  // Stages (5 штук в v2.0.0)
+  // Stages (6 штук в v2.1.0)
   // ============================================
   DiscoverFilesStage,
   ParseFileStage,
   NormalizeEntitiesStage,
-  ResolveRelationsStage, // ✅ НОВЫЙ v2.0.0
+  ResolveRelationsStage,
+  ResolveCrossFileStage, // ✅ v2.1.0 (P3)
   BuildReportStage,
 
   // ============================================
@@ -485,6 +563,11 @@ export default {
   // ============================================
   parseTypeScriptFile,
   parseVueFile,
+
+  // ============================================
+  // ✅ v2.1.0 (P3): Cross-file resolver
+  // ============================================
+  resolveCrossFileCalls,
 
   // ============================================
   // Константы

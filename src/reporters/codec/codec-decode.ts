@@ -1,86 +1,55 @@
 // src/reporters/codec/codec-decode.ts
 // ============================================
-// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v15.0.6)
+// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON
 // ============================================
-// Версия: 15.0.6
+// Версия: 15.4.0
 //
-// ИЗМЕНЕНИЯ v15.0.6 (gr.i.tf — индекс в fl.p):
-//   - ✅ ИЗМЕНЕНО: `gr.i.tf` читается как ИНДЕКС В `fl.p` (файлы),
-//     а не как индекс в `strs` (source-строка).
-//   - ✅ -1 = внешний/неразрешённый импорт:
-//       • isExternal → `external:${pkg}` (Вариант A)
-//       • !isExternal ∧ source → `unresolved:${source}` (Вариант C)
-//   - ✅ `gr.i.s` (source) — ПО-ПРЕЖНЕМУ читается как индекс в `strs`.
+// ════════════════════════════════════════════════════════════
+// СВОДКА ВЕРСИЙ
+// ════════════════════════════════════════════════════════════
 //
-// ИЗМЕНЕНИЯ v15.0.4 (проброс isReExport/isStarReExport):
-//   - ✅ ДОБАВЛЕНО: чтение битов 4 и 5 из `gr.i.ty`:
-//       бит 4 (16) = isReExport
-//       бит 5 (32) = isStarReExport
-//   - ✅ ДОБАВЛЕНО: проброс `isReExport` и `isStarReExport` в ImportData.
-//     Это позволяет фронту строить полные цепочки связей, включая
-//     `export * from './foo'` и `export { X } from './foo'`.
+// v15.4.0 (P3 — cross-file resolution):
+//   - ✅ CODEC_VERSION = '15.4.0'
 //
-// ИЗМЕНЕНИЯ v15.0.2 (устранение дублирования conditionals):
-//   - ✅ УБРАНО: чтение `compact.cd` через decodeSection.
-//     Причина: conditionals теперь живут ТОЛЬКО в
-//     `templates[].conditionals` — они восстанавливаются
-//     как часть TemplateData через `decodeSection<TemplateData>(compact.vt)`.
-//   - ✅ УБРАНО: поле `conditionals` из финального `FullJSON`.
+// v15.3.0 (P2 — расширенный CallData):
+//   - ✅ ДОБАВЛЕНО: CALL_KIND_BY_CODE
+//   - ✅ ДОБАВЛЕНО: чтение gr.c.col/ck/cn/ai
 //
-// ИЗМЕНЕНИЯ v15.0.1 (fix imports[].type):
-//   - ✅ ИСПРАВЛЕНО: восстановление `imports[].type` больше НЕ
-//     использует эвристику `isTypeOnly → type = 'type'`.
-//     Поле `type` теперь ВСЕГДА принимает только
-//     'named' | 'default' | 'namespace'.
-//   - ✅ УТОЧНЕНО: `imports[].isTypeOnly` читается из бита 8.
+// v15.2.0 (P1 — lexicalLinks):
+//   - ✅ ДОБАВЛЕНО: LEXICAL_RELATION_BY_CODE
+//   - ✅ ДОБАВЛЕНО: чтение compact.lx
+//   - ✅ ДОБАВЛЕНО: result.lexicalLinks
 //
-// ИЗМЕНЕНИЯ v15.0.0 (100% round-trip расширенных секций):
-//   - ✅ ИСПРАВЛЕНО: decodeSection читает и объект, и строку.
-//   - ✅ СОХРАНЕНО: imports[].isTypeOnly из бита 8 combinedTy.
-//   - ✅ СОХРАНЕНО: восстановление vt/lc/ef/inj/rx/ty/tr.
+// v15.1.0 (P0 — parentFunctionId):
+//   - ✅ ДОБАВЛЕНО: чтение fns.parent
 //
-// ИЗМЕНЕНИЯ v14.0.0 (100% round-trip):
-//   - ✅ ИСПРАВЛЕНО: imports[].isTypeOnly читается из бита 8.
-//   - ✅ ИСПРАВЛЕНО: восстановление секций vt/lc/ef/inj/rx/cd/ty/tr.
-//   - ✅ ИСПРАВЛЕНО: `version` = CODEC_VERSION ('15.0.4').
+// v15.0.6 (gr.i.tf — индекс в fl.p):
+//   - ✅ ИЗМЕНЕНО: tf читается как индекс в fl.p
+//   - ✅ -1 → external:* / unresolved:*
 //
-// ИЗМЕНЕНИЯ v13.0.2-fix (100% round-trip):
-//   - ✅ ИСПРАВЛЕНО: `modules[].fileIds` строятся через `fl.m`.
+// v15.0.4 (проброс isReExport/isStarReExport):
+//   - ✅ ДОБАВЛЕНО: чтение битов 4, 5 из gr.i.ty
 //
-// ИЗМЕНЕНИЯ v13.0.0-fix (100% round-trip):
-//   - ✅ ИСПРАВЛЕНО: `mi.f` читается как пары `[startFileIdx, fileCount]`.
-//   - ✅ ИСПРАВЛЕНО: `version` берётся из CODEC_VERSION.
+// v15.0.2 (устранение дублирования conditionals):
+//   - ✅ УБРАНО: чтение compact.cd через decodeSection
 //
-// ИЗМЕНЕНИЯ v12.0.0 (структурная оптимизация):
-//   - ✅ Columnar-структура для всех секций.
-//   - ✅ Распаковка RLE для moduleIdx/fileIdx.
-//   - ✅ Распаковка битовых масок.
-//   - ✅ Числовые коды → строковые.
-//   - ✅ Восстановление ID (m1, f1, fn1) из позиций.
-//   - ✅ Детокенизация строк (strs, params, methods).
-//   - ✅ nonEmptyV для констант.
+// v15.0.1 (fix imports[].type):
+//   - ✅ ИСПРАВЛЕНО: imports[].type больше не использует эвристику
 //
-// ИЗМЕНЕНИЯ v11.0.0 (компактнее):
-//   - fns/cls/cn: nameIdx → name, flagsNum → flags.
+// v15.0.0 (100% round-trip расширенных секций):
+//   - ✅ ИСПРАВЛЕНО: decodeSection читает и объект, и строку
 //
-// ИЗМЕНЕНИЯ v10.4.0 (единая легенда):
-//   - resolveDictionaries() поддерживает оба формата.
+// v14.0.0 (100% round-trip):
+//   - ✅ ИСПРАВЛЕНО: imports[].isTypeOnly читается из бита 8
 //
-// ИЗМЕНЕНИЯ v10.3 (v10.3 sync — full round-trip):
-//   - imports[].type для type-only импортов: 'type' (не 'type-only').
+// v13.0.2-fix (100% round-trip):
+//   - ✅ ИСПРАВЛЕНО: modules[].fileIds строятся через fl.m
 //
-// ИЗМЕНЕНИЯ v9.0.7 (round-trip fix):
-//   - readMethod: idx < 0 → null (а не '').
-//   - templates[].conditionals: при отсутствии данных → [].
+// v13.0.0-fix (100% round-trip):
+//   - ✅ ИСПРАВЛЕНО: mi.f читается как пары [startFileIdx, fileCount]
 //
-// ИЗМЕНЕНИЯ v9.0.4 (includeEdges default false):
-//   - decode, options.includeEdges по умолчанию false.
-//
-// ИЗМЕНЕНИЯ v9.0.3 (gr.c fix):
-//   - decode, секция calls: ветвление по isExternal.
-//
-// ИЗМЕНЕНИЯ v9.0.2 (reversibility):
-//   - decodeFlagsToObject: возвращает все 18 флагов.
+// v12.0.0 (структурная оптимизация):
+//   - ✅ Columnar-структура для всех секций
 // ============================================
 
 import type {
@@ -104,10 +73,57 @@ import type {
   ReactivityEdge,
   TypeNodeData,
   TypeRefData,
+  // ✅ v15.2.0 (P1)
+  LexicalLink,
+  LexicalRelation,
 } from './codec-types.js';
 
-// ✅ v13.0.0-fix: единая версия CODEC
+// ✅ v15.4.0: единая версия CODEC
 import { CODEC_VERSION } from './codec-types.js';
+
+// ============================================
+// ✅ v15.2.0 (P1): LEXICAL RELATION BY CODE
+// ============================================
+//
+// Обратная карта: код → relation.
+// Используется при чтении columnar-секции lx.
+//
+// ⚠️ Синхронизировано с LEXICAL_RELATION_CODES в codec-encode.ts.
+// ⚠️ Синхронизировано с legend.codes.lexicalRelation.
+// ============================================
+
+const LEXICAL_RELATION_BY_CODE: Record<number, LexicalRelation> = {
+  0: 'nested',
+  1: 'arrow-var',
+  2: 'callback',
+  3: 'iife',
+  4: 'class-method',
+  5: 'object-prop',
+  6: 'return',
+  7: 'default-export',
+};
+
+// ============================================
+// ✅ v15.3.0 (P2): CALL KIND BY CODE
+// ============================================
+//
+// Обратная карта: код → callKind.
+// Используется при чтении columnar-секции gr.c (поле ck).
+//
+// ⚠️ Синхронизировано с CALL_KIND_CODES в codec-encode.ts.
+// ⚠️ Синхронизировано с legend.codes.callKind.
+// ============================================
+
+const CALL_KIND_BY_CODE: Record<number, CallData['callKind']> = {
+  0: 'direct',
+  1: 'method',
+  2: 'callback',
+  3: 'constructor',
+  4: 'tagged-template',
+  5: 'optional-chain',
+  6: 'spread',
+  7: 'new',
+};
 
 // ============================================
 // ДЕКОДИРОВАНИЕ ФЛАГОВ
@@ -166,20 +182,7 @@ export function createEmptyFlags(): DecodedFlags {
 }
 
 /**
- * ✅ v11.0.0: декодирует ЧИСЛО флагов в объект с булевыми полями.
- *
- * Используется в decode() вместо `decodeFlagsToObject` (который
- * принимает строку). Формат флагов в compact.json v11.0.0+ —
- * число (битовая маска), а не строка.
- *
- * Примеры:
- *   0   → все флаги false
- *   2   → isExported=true
- *   7   → isAsync=true, isExported=true, isMethod=true
- *   67  → isAsync=true, isExported=true, isSelf=true
- *
- * @param num — число флагов (битовая маска)
- * @returns объект со всеми 18 флагами
+ * Декодирует ЧИСЛО флагов в объект с булевыми полями.
  */
 export function decodeFlagsFromNumber(num: number): DecodedFlags {
   const result = createEmptyFlags();
@@ -211,16 +214,7 @@ export function decodeFlagsFromNumber(num: number): DecodedFlags {
  * Декодирует строку символов в объект с булевыми полями.
  *
  * ⚠️ v11.0.0: сохранено для обратной совместимости с внутренними
- *   вызовами. В основном потоке v11.0.0+ используется
- *   `decodeFlagsFromNumber(num)` — флаги в compact.json хранятся
- *   как число.
- *
- * ✅ ИСПРАВЛЕНО (reversibility):
- *   Возвращает все 18 флагов.
- *
- * Символы соответствуют FLAG_CHAR_MAP из codec-encode.ts:
- *   a=1, e=2, m=4, r=8, v=16, n=32, s=64, d=128, c=256, x=512,
- *   t=1024, A=2048, l=4096, y=8192, g=16384, p=32768, P=65536, S=131072
+ * вызовами.
  */
 export function decodeFlagsToObject(flagStr: string): DecodedFlags {
   const result = createEmptyFlags();
@@ -259,8 +253,7 @@ export function decodeFlagsToObject(flagStr: string): DecodedFlags {
 /**
  * Декодирует строку символов в число флагов.
  *
- * ⚠️ v11.0.0: сохранено для обратной совместимости с внутренними
- *   вызовами (например, в тестах).
+ * ⚠️ v11.0.0: сохранено для обратной совместимости.
  */
 export function flagsStringToNumber(flagStr: string): number {
   if (!flagStr || flagStr === '0') return 0;
@@ -341,47 +334,25 @@ function safeJsonParse<T>(value: unknown): T | null {
 /**
  * Декодирует сжатый JSON обратно в полный.
  *
+ * ✅ v15.4.0 (P3):
+ *   - CODEC_VERSION = '15.4.0'
+ *
+ * ✅ v15.3.0 (P2 — расширенный CallData):
+ *   - Читает `gr.c.col/ck/cn/ai`
+ *   - Восстанавливает `CallData.column/callKind/calleeName/argumentIndex`
+ *
+ * ✅ v15.2.0 (P1 — lexicalLinks):
+ *   - Читает `compact.lx` (columnar)
+ *   - Восстанавливает `full.lexicalLinks`
+ *
+ * ✅ v15.1.0 (P0 — parentFunctionId):
+ *   - Читает `fns.parent` (RLE)
+ *   - Восстанавливает `FunctionData.parentFunctionId`
+ *
  * ✅ v15.0.6 (gr.i.tf — индекс в fl.p):
- *   - `tf[i] >= 0`  →  локальный разрешённый импорт, `toFileId = f${tf+1}`
- *   - `tf[i] = -1` ∧ isExternal  →  `toFileId = external:${pkg}`
- *   - `tf[i] = -1` ∧ !isExternal ∧ source  →  `toFileId = unresolved:${source}`
- *   - `tf[i] = -1` ∧ !isExternal ∧ !source  →  `toFileId = null`
- *
- *   Логика СИММЕТРИЧНА compact-reporter.ts::resolveToFileId.
- *
- * ✅ v15.0.4 (проброс isReExport/isStarReExport):
- *   - Читаются биты 4 и 5 из `gr.i.ty`:
- *       бит 4 (16) = isReExport
- *       бит 5 (32) = isStarReExport
- *   - Оба поля пробрасываются в ImportData.
- *
- * ✅ v15.0.2 (устранение дублирования conditionals):
- *   - `conditionals` больше НЕ восстанавливаются на верхнем уровне.
- *     Все conditionals живут ВНУТРИ `templates[].conditionals`.
- *
- * ✅ v15.0.1 (fix imports[].type):
- *   - `imports[].type` восстанавливается ТОЛЬКО из typeCode
- *     (0=named, 1=default, 2=namespace). Значение `'type'` больше
- *     не возвращается.
- *
- * ✅ v15.0.0 (100% round-trip расширенных секций):
- *   - decodeSection читает и объект, и строку из values[].
- *
- * ✅ v14.0.0 (100% round-trip):
- *   - imports[].isTypeOnly читается из бита 8 в combinedTy.
- *
- * ✅ v13.0.2-fix:
- *   - modules[].fileIds строятся через `fl.m`.
- *
- * ✅ v13.0.0-fix:
- *   - mi.f читается как пары [startFileIdx, fileCount].
- *   - version берётся из CODEC_VERSION.
- *
- * ✅ v12.0.0:
- *   - Columnar + RLE + битовые маски + токенизация.
- *
- * ✅ v9.0.4:
- *   - поле edges — производное, по умолчанию не добавляются.
+ *   - `tf >= 0` → локальный разрешённый импорт
+ *   - `tf = -1` ∧ isExternal → `external:${pkg}`
+ *   - `tf = -1` ∧ !isExternal ∧ source → `unresolved:${source}`
  *
  * @param compact — сжатый JSON с легендой
  * @param options — опции декодирования
@@ -453,14 +424,23 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   // ============================================
   // 3. Функции
   // ============================================
+  // ✅ v15.1.0 (P0): чтение fns.parent
+  // ============================================
   const fns = compact.fns || { n: [], m: [], f: [], l: [], fl: [], p: [], rt: [] };
   const fnsM = unrle(fns.m || []);
   const fnsF = unrle(fns.f || []);
+
+  // ✅ v15.1.0 (P0): parent — опционально (обратная совместимость)
+  const fnsParent = fns.parent ? unrle(fns.parent as [number, number][]) : [];
 
   const functions: FunctionData[] = [];
   for (let i = 0; i < (fns.n || []).length; i++) {
     const name = readStringOrEmpty(fns.n[i] ?? -1);
     const flags = decodeFlagsFromNumber(fns.fl[i] ?? 0);
+
+    // ✅ v15.1.0 (P0): parentFunctionId
+    const parentIdx = fnsParent[i] ?? -1;
+    const parentFunctionId = parentIdx >= 0 ? `fn${parentIdx + 1}` : null;
 
     const func: FunctionData = {
       id: `fn${i + 1}`,
@@ -474,6 +454,7 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
       isMethod: flags.isMethod,
       params: (fns.p[i] || []).map(readParam),
       returnType: readString(fns.rt[i] ?? -1),
+      parentFunctionId,
     };
 
     if (flags.isEventHandler) func.isEventHandler = true;
@@ -592,24 +573,7 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   // ============================================
   // 7. Импорты
   // ============================================
-  // ✅ v15.0.6: `tf` — ИНДЕКС В `fl.p` (файлы), а не в `strs`.
-  //   -1 = внешний/неразрешённый импорт:
-  //       • isExternal → `external:${pkg}` (Вариант A)
-  //       • !isExternal ∧ source → `unresolved:${source}` (Вариант C)
-  //   `s` — ПО-ПРЕЖНЕМУ индекс в `strs` (source-строка).
-  //
-  // Семантика полей:
-  //   - `type` ∈ {'named', 'default', 'namespace'}
-  //   - `isTypeOnly` — отдельный флаг
-  //   - `isReExport` — отдельный флаг
-  //   - `isStarReExport` — отдельный флаг
-  //
-  // БИТЫ combinedTy в gr.i.ty:
-  //   0-1 : typeCode (0=named, 1=default, 2=namespace)
-  //   2   : isExternal    (4)
-  //   3   : isTypeOnly    (8)
-  //   4   : isReExport    (16)
-  //   5   : isStarReExport(32)
+  // ✅ v15.0.6: tf — ИНДЕКС В fl.p, -1 = внешний/неразрешённый
   // ============================================
   const gi = compact.gr?.i || { ff: [], tf: [], s: [], im: [], ln: [], l: [], ty: [] };
   const imports: ImportData[] = [];
@@ -631,12 +595,6 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
     const source = readStringOrEmpty(gi.s[i] ?? -1);
 
     // ✅ v15.0.6: tf — индекс в fl.p, -1 = внешний/неразрешённый
-    //
-    // Семантика tf:
-    //   tf >= 0  →  локальный РАЗРЕШЁННЫЙ импорт, индекс в fl.p
-    //   tf = -1  →  импорт НЕ попал в fl.p:
-    //                • внешний пакет       → external:${pkg}
-    //                • неразрешённый локал → unresolved:${source}
     const toFileIdx = gi.tf[i] ?? -1;
     let toFileId: string | null = null;
 
@@ -645,29 +603,13 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
       toFileId = `f${toFileIdx + 1}`;
     } else if (isExternal) {
       // ✅ v15.0.6-fix (Вариант A): внешний импорт — восстанавливаем
-      //   toFileId из source: "external:fs", "external:commander",
-      //   "external:@scope/pkg", ...
-      //
-      //   Алгоритм вычисления packageName совпадает с compact-reporter.ts:
-      //     - scoped:     "@scope/pkg"    → "@scope/pkg"
-      //     - остальное:  "commander"      → "commander"
-      //                   "commander/sub"  → "commander"
+      // toFileId из source
       const pkg = source.startsWith('@')
         ? source.split('/').slice(0, 2).join('/')
         : source.split('/')[0];
       toFileId = pkg ? `external:${pkg}` : null;
     } else if (source) {
-      // ✅ v15.0.6-fix (Вариант C): НЕразрешённый локальный импорт.
-      //
-      //   Пример: "./entities.json" — JSON-файл, который не попал в fl.p
-      //   (потому что compact-reporter не добавляет .json в files[]).
-      //
-      //   В compact-reporter.ts такие импорты получают
-      //   toFileId = "unresolved:${source}". Восстанавливаем
-      //   его здесь, чтобы round-trip был 100%.
-      //
-      //   ⚠️ Ветка срабатывает ТОЛЬКО если source непустой.
-      //   Пустой source → toFileId остаётся null.
+      // ✅ v15.0.6-fix (Вариант C): НЕразрешённый локальный импорт
       toFileId = `unresolved:${source}`;
     }
     // else: source пустой → toFileId = null
@@ -706,8 +648,16 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   // ============================================
   // 8. Вызовы (gr.c)
   // ============================================
+  // ✅ v15.3.0 (P2): чтение col/ck/cn/ai
+  // ============================================
   const gc = compact.gr?.c || { f: [], t: [], l: [], ty: [] };
   const calls: CallData[] = [];
+
+  // ✅ v15.3.0 (P2): опциональные массивы
+  const gcCol = gc.col ?? [];
+  const gcCk = gc.ck ?? [];
+  const gcCn = gc.cn ?? [];
+  const gcAi = gc.ai ?? [];
 
   for (let i = 0; i < (gc.f || []).length; i++) {
     const combinedTy = gc.ty[i] ?? 0;
@@ -722,13 +672,29 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
 
     const toFunctionId = isExternal ? readStringOrEmpty(gc.t[i] ?? -1) : `fn${(gc.t[i] ?? 0) + 1}`;
 
-    calls.push({
+    const call: CallData = {
       id: `c${i + 1}`,
       fromFunctionId: `fn${(gc.f[i] ?? 0) + 1}`,
       toFunctionId,
       line: gc.l[i] ?? 0,
       type,
-    });
+    };
+
+    // ✅ v15.3.0 (P2): column / callKind / calleeName / argumentIndex
+    if (gcCol[i] !== undefined && gcCol[i]! >= 0) {
+      call.column = gcCol[i]!;
+    }
+    if (gcCk[i] !== undefined && gcCk[i]! >= 0) {
+      call.callKind = CALL_KIND_BY_CODE[gcCk[i]!];
+    }
+    if (gcCn[i] !== undefined && gcCn[i]! >= 0) {
+      call.calleeName = stringDict[gcCn[i]!];
+    }
+    if (gcAi[i] !== undefined && gcAi[i]! >= 0) {
+      call.argumentIndex = gcAi[i]!;
+    }
+
+    calls.push(call);
   }
 
   // ============================================
@@ -762,13 +728,44 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   }
 
   // ============================================
+  // 9.5. lexicalLinks (lx)
+  // ============================================
+  // ✅ v15.2.0 (P1): чтение columnar-секции lx
+  // ============================================
+  const lexicalLinks: LexicalLink[] = [];
+
+  if (compact.lx) {
+    const { p, c, r, l, ai, cn } = compact.lx;
+    const pUnrle = unrle(p as [number, number][]);
+    const cUnrle = unrle(c as [number, number][]);
+
+    for (let i = 0; i < r.length; i++) {
+      const parentIdx = pUnrle[i] ?? -1;
+      const childIdx = cUnrle[i] ?? -1;
+      const relCode = r[i] ?? 0;
+      const argIdx = ai?.[i] ?? -1;
+      const calleeIdx = cn?.[i] ?? -1;
+
+      lexicalLinks.push({
+        id: `lx${i + 1}`,
+        parentFunctionId: parentIdx >= 0 ? `fn${parentIdx + 1}` : null,
+        childFunctionId: `fn${childIdx + 1}`,
+        relation: LEXICAL_RELATION_BY_CODE[relCode] ?? 'nested',
+        line: l[i] ?? 0,
+        argumentIndex: argIdx >= 0 ? argIdx : undefined,
+        calleeName: calleeIdx >= 0 ? stringDict[calleeIdx] : undefined,
+      });
+    }
+  }
+
+  // ============================================
   // 10. Statistics
   // ============================================
   const statistics = includeStatistics ? compact.st : ({} as any);
 
   // ============================================
   // 10.5. Восстановление расширенных секций
-  // vt / lc / ef / inj / rx / ty / tr
+  //       vt / lc / ef / inj / rx / ty / tr
   // ============================================
   // ⚠️ v15.0.2: секция `cd` (conditionals) НЕ читается здесь.
   //    conditionals восстанавливаются как часть TemplateData
@@ -846,13 +843,24 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
         line: re.line,
       });
     }
+
+    // ✅ v15.2.0 (P1): лексические рёбра
+    for (const link of lexicalLinks) {
+      if (!link.parentFunctionId) continue;
+      edges.push({
+        from: link.parentFunctionId,
+        to: link.childFunctionId,
+        type: 'lexical',
+        symbol: link.relation,
+        line: link.line,
+      });
+    }
   }
 
   // ============================================
   // 12. Сборка результата
   // ============================================
-  // ✅ v15.0.6: version = CODEC_VERSION ('15.0.6')
-  // ✅ v15.0.2: conditionals живут ТОЛЬКО в templates[].conditionals.
+  // ✅ v15.4.0: version = CODEC_VERSION ('15.4.0')
   // ============================================
   const result: FullJSON = {
     version: CODEC_VERSION,
@@ -876,6 +884,9 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
     types,
     typeRefs,
     valuesMode: compact.valuesMode,
+
+    // ✅ v15.2.0 (P1): lexicalLinks
+    lexicalLinks: lexicalLinks.length > 0 ? lexicalLinks : undefined,
   };
 
   if (!includeEmptyArrays) {
@@ -888,6 +899,7 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
     if (imports.length === 0) delete (result as any).imports;
     if (calls.length === 0) delete (result as any).calls;
     if (reExports.length === 0) delete (result as any).reExports;
+    if (lexicalLinks.length === 0) delete (result as any).lexicalLinks;
   }
 
   if (shouldIncludeEdges && edges.length > 0) {

@@ -2,7 +2,31 @@
 // ============================================
 // ФАСАД КОДЕКА
 // ============================================
-// Версия: 15.0.6
+// Версия: 15.4.3
+//
+// ИЗМЕНЕНИЯ v15.4.3 (устранение дублирования classifyValue):
+//   - ✅ ИСПРАВЛЕНО: `classifyValue` теперь реэкспортируется
+//     из './values-filter.js', а НЕ из './codec-encode.js'.
+//
+//     ПРОБЛЕМА, КОТОРУЮ ЭТО РЕШАЕТ:
+//     В `codec-encode.ts` была СВОЯ локальная `classifyValue`,
+//     использующая `JSON.stringify(value)`. В
+//     `values-filter.ts` (v1.0.1) — уже `stableStringifyForClassify`.
+//
+//     `valuesMeta[].kind` заполняется в `codec-encode.ts`
+//     (через `classifyValue`), а `filterValues` в
+//     `values-filter.ts` читает этот `kind`. Из-за
+//     недетерминированности `JSON.stringify` (порядок ключей)
+//     `kind` мог быть РАЗНЫМ в разных прогонах → `filterValues`
+//     удаляла разные значения → `values.length` = 557 vs 558
+//     → L0/L3/RE в verify-roundtrip падали.
+//
+//     Теперь единственный источник истины — `classifyValue`
+//     из `values-filter.ts` (детерминированная через
+//     `stableStringifyForClassify`).
+//
+//   - ✅ ОБНОВЛЕНО: `CODEC_MODULE_VERSION = '15.4.3'`.
+//   - ✅ ОБНОВЛЕНО: заголовок v15.0.6 → v15.4.3.
 //
 // ИЗМЕНЕНИЯ v15.0.6 (gr.i.tf — индекс в fl.p):
 //   - ✅ ОБНОВЛЕНО: CODEC_MODULE_VERSION = '15.0.6'
@@ -66,6 +90,11 @@ import type { ValuesMode } from './values-filter.js';
 // ============================================
 // Публичный API сохранён для обратной совместимости.
 // Внутренне эти словари теперь используются в codec-legend.ts.
+//
+// ⚠️ v15.4.3-fix: `classifyValue` УБРАН из этого реэкспорта.
+//   Теперь он экспортируется из './values-filter.js' (см. ниже),
+//   чтобы был ЕДИНЫЙ источник истины (детерминированный через
+//   stableStringifyForClassify).
 // ============================================
 
 export {
@@ -109,15 +138,24 @@ export type { DecodedFlags } from './codec-decode.js';
 // ============================================
 // Публичный API для работы с режимом values.
 //
-// ВАЖНО: `filterFullJSONValues` НЕ реэкспортируется, потому что
-// она не экспортируется из './values-filter.js' (это внутренняя
-// заглушка). Если понадобится — добавьте её в values-filter.ts.
+// ⚠️ v15.4.3-fix: `classifyValue` теперь реэкспортируется
+//   ИМЕННО ЗДЕСЬ (из values-filter.ts), а не из codec-encode.ts.
 //
-// `ValueMeta` НЕ реэкспортируется, потому что это внутренний тип
-// для параллельного массива метаданных. Потребителям он не нужен.
+//   Это устраняет дублирование: единственная `classifyValue`
+//   живёт в values-filter.ts и использует
+//   `stableStringifyForClassify` (детерминирована).
 // ============================================
 
-export { filterValues, remapIndex, RELATION_KEYS } from './values-filter.js';
+export {
+  filterValues,
+  remapIndex,
+  remapNonEmptyV,
+  classifyValue, // ✅ v15.4.3-fix: единый источник истины
+  isValidValuesMode,
+  normalizeValuesMode,
+  getFilterStats,
+  RELATION_KEYS,
+} from './values-filter.js';
 
 export type { ValuesMode } from './values-filter.js';
 

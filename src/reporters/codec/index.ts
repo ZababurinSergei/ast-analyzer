@@ -2,7 +2,21 @@
 // ============================================
 // ЕДИНАЯ ТОЧКА ВХОДА ДЛЯ CODEC
 // ============================================
-// Версия: 15.0.6
+// Версия: 15.4.3
+//
+// ИЗМЕНЕНИЯ v15.4.3 (устранение дублирования classifyValue):
+//   - ✅ ИСПРАВЛЕНО: `classifyValue` теперь реэкспортируется из
+//     './values-filter.js', а НЕ из './codec-encode.js'.
+//     Причина: в codec-encode.ts осталась legacy-копия
+//     `classifyValue` с нативным JSON.stringify, которая
+//     давала недетерминированный результат и ломала
+//     round-trip (L0/L3/RE падали с values.length: 557 → 558).
+//     Теперь ЕДИНСТВЕННЫЙ источник истины — values-filter.ts
+//     (v1.0.1 с stableStringifyForClassify).
+//   - ✅ ОБНОВЛЕНО: CODEC_MODULE_VERSION = '15.4.3'
+//   - ✅ Синхронизировано с codec-encode.ts (v15.4.3),
+//     codec-decode.ts (v15.4.3), codec-legend.ts (v15.4.3)
+//     и codec-types.ts (CODEC_VERSION = '15.4.3').
 //
 // ИЗМЕНЕНИЯ v15.0.6 (gr.i.tf — индекс в fl.p):
 //   - ✅ ОБНОВЛЕНО: CODEC_MODULE_VERSION = '15.0.6'
@@ -49,6 +63,9 @@ export { Codec } from './codec.js';
 //    напрямую в compact.json. Вместо них используется
 //    legend.flags / legend.codes / legend.schemas
 //    (см. codec-legend.ts).
+//
+// ⚠️ v15.4.3: `classifyValue` УБРАН отсюда — он теперь
+//    реэкспортируется из './values-filter.js' (см. секцию 4.5).
 // ============================================
 
 export {
@@ -114,6 +131,39 @@ export {
 } from './codec-verify.js';
 
 export type { RoundTripDiff, LevelResult, ReversibilityReport } from './codec-verify.js';
+
+// ============================================
+// 4.5. ✅ v15.4.3: ФИЛЬТРАЦИЯ VALUES И classifyValue
+// ============================================
+// ЕДИНСТВЕННЫЙ ИСТОЧНИК ИСТИНЫ для classifyValue.
+//
+// Ранее `classifyValue` реэкспортировался из './codec-encode.js',
+// где оставалась legacy-копия с нативным JSON.stringify.
+// Это давало недетерминированный `kind` для объектов
+// (порядок ключей влиял на результат), из-за чего:
+//   • compact.values.length = 557
+//   • encode(full).values.length = 558
+//   • cn.nonEmptyV сдвигался на +1
+//   • L0/L3/RE в verify-roundtrip.ts падали
+//   • encode(full) ≟ compact в verify-consistency.ts падал
+//
+// Теперь classifyValue живёт ТОЛЬКО в values-filter.ts
+// (v1.0.1 с stableStringifyForClassify).
+// ============================================
+
+export {
+  // ✅ v15.4.3: classifyValue из values-filter.ts (единый источник истины)
+  classifyValue,
+  filterValues,
+  remapIndex,
+  remapNonEmptyV,
+  isValidValuesMode,
+  normalizeValuesMode,
+  getFilterStats,
+  RELATION_KEYS,
+} from './values-filter.js';
+
+export type { ValuesMode, ValueKind, ValueMeta, FilterValuesResult } from './values-filter.js';
 
 // ============================================
 // 5. ✅ v10.4.0: ЛЕГЕНДА ДЛЯ ИИ (из codec-legend.ts)
@@ -271,6 +321,28 @@ export type {
   TypeUsageKind,
 
   // ============================================
+  // ✅ v15.2.0 (P1): LEXICAL LINKS
+  // ============================================
+
+  /** Лексическая связь между функциями (parent → child) */
+  LexicalLink,
+  /** Вид лексической связи */
+  LexicalRelation,
+
+  // ============================================
+  // ✅ v15.4.0 (P3): CROSS-FILE TYPES (реэкспорт)
+  // ============================================
+
+  /** Разрешённый межфайловый вызов */
+  CrossFileCall,
+  /** Опции cross-file resolver */
+  CrossFileResolverOptions,
+  /** Метрики cross-file resolver */
+  ResolveStats,
+  /** Результат разрешения callee */
+  ResolvedCallee,
+
+  // ============================================
   // МЕТАДАННЫЕ
   // ============================================
 
@@ -311,10 +383,11 @@ export type {
 /**
  * Версия модуля codec.
  *
- * ✅ v15.0.6: синхронизирована с codec-legend.ts,
- *    codec-encode.ts, codec-decode.ts и compact-reporter.ts.
+ * ✅ v15.4.3: синхронизирована с codec-legend.ts,
+ *    codec-encode.ts, codec-decode.ts, codec-types.ts
+ *    (CODEC_VERSION = '15.4.3') и compact-reporter.ts.
  */
-export const CODEC_MODULE_VERSION = '15.0.6';
+export const CODEC_MODULE_VERSION = '15.4.3';
 
 /**
  * Имя модуля codec.
@@ -361,6 +434,18 @@ import {
   parse,
 } from './codec-verify.js';
 
+// ✅ v15.4.3: classifyValue из values-filter.js (единый источник истины)
+import {
+  classifyValue,
+  filterValues,
+  remapIndex,
+  remapNonEmptyV,
+  isValidValuesMode,
+  normalizeValuesMode,
+  getFilterStats,
+  RELATION_KEYS,
+} from './values-filter.js';
+
 export default {
   // ============================================
   // Основной класс
@@ -391,6 +476,18 @@ export default {
   FLAG_MAP,
   FLAG_CHAR_MAP,
   FLAG_NAMES,
+
+  // ============================================
+  // ✅ v15.4.3: Фильтрация values
+  // ============================================
+  classifyValue,
+  filterValues,
+  remapIndex,
+  remapNonEmptyV,
+  isValidValuesMode,
+  normalizeValuesMode,
+  getFilterStats,
+  RELATION_KEYS,
 
   // ============================================
   // Проверки

@@ -2,7 +2,51 @@
 // ============================================
 // Проверка согласованности index.json ↔ index.full.json
 // ============================================
-// Версия: 2.3.0
+// Версия: 2.6.0
+//
+// ИЗМЕНЕНИЯ v2.6.0 (fix: ложное срабатывание values[] consistency):
+//   - ✅ ИСПРАВЛЕНО: `checkValuesConsistency` больше НЕ сравнивает
+//     `expectedKept` с `compactValues.length` напрямую.
+//     Причина: `compact.values[]` — ДЕДУПЛИЦИРОВАННЫЙ словарь
+//     (см. `addValue` в codec-encode.ts, dedupKey по
+//     stableStringify). Если 100 констант имеют значение
+//     `"relation"`, в values[] оно попадёт 1 раз, а
+//     expectedKept посчитает 100.
+//
+//     СИМПТОМ (до фикса):
+//       expectedKept=1955 > compact.values.length=547 — рассинхрон
+//
+//   - ✅ ДОБАВЛЕНО: проверка по МНОЖЕСТВАМ уникальных значений:
+//       • `expectedUniqueKept` — множество уникальных значений
+//         из full.constants[], которые должны сохраниться
+//         (по isValueKept + canonicalizeForComparison).
+//       • `actualInCompact` — множество значений, фактически
+//         присутствующих в compact.values[].
+//       • Проверка: `expectedUniqueKept ⊆ actualInCompact`.
+//     Это корректно учитывает дедупликацию.
+//
+//   - ✅ ДОБАВЛЕНО: функция `canonicalizeForComparison(value)` —
+//     единый ключ для сравнения значений, синхронизированный
+//     с dedupKey в `addValue()` (codec-encode.ts v15.4.4).
+//
+//   - ✅ ДОБАВЛЕНО: диагностика `dedupRatio` —
+//     `expectedKept / uniqueCount`. Показывает, насколько
+//     активно работает дедупликация.
+//
+//   - ✅ СИНХРОНИЗИРОВАНО с codec-encode.ts v15.4.4
+//     (addValue + isValueKept) и values-filter.ts v1.2.0.
+//
+// ИЗМЕНЕНИЯ v2.5.0 (JSON-safe проверки):
+//   - ✅ ДОБАВЛЕНО: проверка, что full.constants[].value
+//     содержит только JSON-safe значения.
+//   - ✅ ДОБАВЛЕНО: проверка, что compact.values[]
+//     не теряет данные при JSON round-trip.
+//
+// ИЗМЕНЕНИЯ v2.4.0 (проверка values[]):
+//   - ✅ ДОБАВЛЕНО: проверка согласованности values[] между
+//     compact и full.
+//   - ✅ ДОБАВЛЕНО: функция checkValuesConsistency(compact, full).
+//   - ✅ ДОБАВЛЕНО: секция «СОГЛАСОВАННОСТЬ VALUES».
 //
 // ИЗМЕНЕНИЯ v2.3.0 (проверка инварианта isExternal ↔ toFileId):
 //   - ✅ ДОБАВЛЕНО: проверка `imports[].isExternal ↔ toFileId` —
@@ -10,47 +54,24 @@
 //     а isExternal=false (регрессия v15.0.6 в compact-reporter.ts).
 //   - ✅ ДОБАВЛЕНО: функция `checkImportsIsExternalConsistency(full)`.
 //   - ✅ ДОБАВЛЕНО: секция «СОГЛАСОВАННОСТЬ IMPORTS».
-//   - ✅ ОБНОВЛЕНО: заголовок v2.2.0 → v2.3.0.
-//   - ✅ ОБНОВЛЕНО: рекомендации — добавлен пункт 7 про
-//     isExternal ↔ toFileId.
 //
 // ИЗМЕНЕНИЯ v2.2.0 (устранение дублирования conditionals):
 //   - ✅ УБРАНО: 'conditionals' из sectionNames в compareSections.
-//     Раньше сравнивались full.conditionals и decoded.conditionals
-//     на верхнем уровне. Теперь этих полей не существует —
-//     conditionals живут ТОЛЬКО в templates[].conditionals
-//     и сравниваются как часть секции 'templates'.
 //   - ✅ ИСПРАВЛЕНО: checkConditionalsDedup — считает через
-//     countConditionals(full) / countConditionals(decoded),
-//     которые обходят full.templates[].conditionals.
+//     countConditionals(full) / countConditionals(decoded).
 //   - ✅ ДОБАВЛЕНО: helper countConditionals(full: FullJSON): number.
-//   - ✅ ИСПРАВЛЕНО: вывод "Что делать" — убран пункт 6 про
-//     дедупликацию conditionals (неактуально — conditionals
-//     больше не дублируются, теперь они в templates[]).
-//   - ✅ ОБНОВЛЕНО: заголовок и рекомендации под v15.0.2.
-//   - ✅ УБРАН пункт про imports[].type из "Что делать"
-//     (уже решено в v15.0.1).
 //
 // ИЗМЕНЕНИЯ v2.1.0 (под CODEC v15.0.1):
 //   - ✅ ДОБАВЛЕНО: проверка conditionals dedup (compact.cd).
-//   - ✅ ДОБАВЛЕНО: рекомендация №6 про дедупликацию conditionals.
 //
 // ИЗМЕНЕНИЯ v2.0.0 (под CODEC v14.0.0):
 //   - ✅ ДОБАВЛЕНО: проверка секций templates/lifecycle/effects/
 //     injections/reactivity/conditionals/types/typeRefs.
-//   - ✅ ДОБАВЛЕНО: проверка imports[].isTypeOnly.
 //
 // Назначение
 // ----------
 // Этот скрипт проверяет, что compact (index.json) и full
 // (index.full.json) собраны из ОДНИХ И ТЕХ ЖЕ исходников.
-//
-// Это НЕ проверка round-trip кодека. Round-trip проверяет,
-// что decode(encode(x)) === x для одного источника.
-//
-// Этот скрипт проверяет СОГЛАСОВАННОСТЬ ДВУХ АРТЕФАКТОВ
-// СБОРКИ. Если они собраны в разное время / из разных
-// исходников — скрипт покажет расхождения.
 //
 // Использование
 // -------------
@@ -65,6 +86,12 @@ import * as path from 'path';
 import { encode } from '../src/reporters/codec/codec-encode.js';
 import { decode } from '../src/reporters/codec/codec-decode.js';
 import { deepEqual, collectDiffs } from '../src/reporters/codec/codec-verify.js';
+
+// ✅ v2.4.0: импорт isValueKept для проверки values[]
+import { isValueKept } from '../src/reporters/codec/values-filter.js';
+
+// ✅ v2.5.0: импорт isJsonSafe для JSON-safe проверок
+import { isJsonSafe, stableStringify } from '../src/reporters/codec/stable-stringify.js';
 
 import type { FullJSON, CompactJSON } from '../src/reporters/codec/codec-types.js';
 
@@ -219,9 +246,6 @@ function stripForByteCompare(obj: any): any {
  *
  * ⚠️ v2.2.0: conditionals больше НЕ существуют на верхнем уровне
  * FullJSON. Единственное место хранения — templates[].conditionals.
- *
- * Эта функция заменяет прежние обращения к `full.conditionals`
- * и `decoded.conditionals` во всех проверках.
  */
 function countConditionals(full: FullJSON): number {
   let count = 0;
@@ -242,15 +266,6 @@ function countConditionals(full: FullJSON): number {
  *   toFileId.startsWith('unresolved:') →  isExternal === false
  *   /^f\d+$/.test(toFileId)            →  isExternal === false
  *   toFileId === null                  →  isExternal === false
- *
- * Ловит регрессию v15.0.6 в compact-reporter.ts, когда
- * `resolveToFileId('@/components/ui')` возвращал `external:@/components`,
- * а `isExternal` (производный от AST) оставался `false`. В результате
- * в full.json оказывалось:
- *   toFileId = "external:@/components"
- *   isExternal = false
- * Это ломало decode(compact): он видел isExternal=false и
- * восстанавливал `unresolved:@/components/ui` вместо `external:@/components`.
  *
  * @param full — FullJSON для проверки
  * @returns { ok, violations, detail }
@@ -312,6 +327,244 @@ function checkImportsIsExternalConsistency(full: FullJSON): {
 }
 
 // ============================================
+// ✅ v2.6.0: CANONICALIZE FOR COMPARISON
+// ============================================
+
+/**
+ * ✅ v2.6.0: канонизирует значение для сравнения по множеству.
+ *
+ * Использует stableStringify — порядко-независимую сериализацию.
+ * Это ТОТ ЖЕ ключ, что используется в `addValue` для дедупликации:
+ *   dedupKey = 'O:' + stableStringify(value)
+ *
+ * Поэтому сравнение «значение из full.constants[] присутствует
+ * в compact.values[]» корректно.
+ *
+ * Формат ключа (синхронизирован с `addValue` в codec-encode.ts):
+ *   null      → 'N'
+ *   undefined → 'U'
+ *   string    → 'S:' + value
+ *   number    → 'D:' + value
+ *   boolean   → 'B:' + value
+ *   bigint    → 'I:' + value.toString()
+ *   object    → 'O:' + stableStringify(value)
+ *   function  → 'X:' + String(value)
+ *   symbol    → 'X:' + String(value)
+ */
+function canonicalizeForComparison(value: unknown): string {
+  if (value === undefined) return 'U';
+  if (value === null) return 'N';
+
+  const t = typeof value;
+  if (t === 'string') return 'S:' + value;
+  if (t === 'number') return 'D:' + value;
+  if (t === 'boolean') return 'B:' + value;
+  if (t === 'bigint') return 'I:' + value.toString();
+  if (t === 'object') return 'O:' + stableStringify(value);
+  if (t === 'function') return 'X:' + String(value);
+  if (t === 'symbol') return 'X:' + String(value);
+
+  return 'X:' + String(value);
+}
+
+// ============================================
+// ✅ v2.6.0: ПРОВЕРКА СОГЛАСОВАННОСТИ VALUES
+// ============================================
+
+/**
+ * ✅ v2.6.0: проверяет согласованность values[] между compact и full.
+ *
+ * ════════════════════════════════════════════════════════════
+ * ЧТО ПРОВЕРЯЕТ
+ * ════════════════════════════════════════════════════════════
+ *
+ *   1. Каждое УНИКАЛЬНОЕ значение из full.constants[].value,
+ *      которое проходит `isValueKept(value, mode)`, должно
+ *      присутствовать в compact.values[] (по canonicalizeForComparison-ключу).
+ *
+ *      ⚠️ ВАЖНО: дедупликация учитывается. Если 100 констант
+ *      имеют значение `"relation"`, оно должно быть в
+ *      compact.values[] ОДИН раз (не 100).
+ *
+ *   2. Диагностика `dedupRatio` = expectedKept / uniqueCount
+ *      показывает, насколько активно работает дедупликация.
+ *
+ * ════════════════════════════════════════════════════════════
+ * ЧЕГО НЕ ПРОВЕРЯЕТ (в отличие от v2.5.0)
+ * ════════════════════════════════════════════════════════════
+ *
+ *   ❌ `expectedKept <= compact.values.length` — НЕВЕРНАЯ проверка.
+ *      Причина: `compact.values[]` — дедуплицированный словарь,
+ *      а `expectedKept` — количество констант (с повторами).
+ *
+ *      До v2.6.0 это давало ложное срабатывание:
+ *        expectedKept=1955 > compact.values.length=547
+ *
+ * @param compact — CompactJSON
+ * @param full    — FullJSON
+ * @param limit   — максимум примеров в violations
+ * @returns { ok, detail, violations, expectedKept, uniqueCount, actualUnique }
+ */
+function checkValuesConsistency(
+  compact: CompactJSON,
+  full: FullJSON,
+  limit: number = 20
+): {
+  ok: boolean;
+  detail: string;
+  violations: string[];
+  expectedKept: number;
+  uniqueCount: number;
+  actualUnique: number;
+} {
+  const violations: string[] = [];
+  const mode = full.valuesMode ?? 'relations';
+
+  const compactValues = compact.values || [];
+
+  // ✅ v2.6.0: множество УНИКАЛЬНЫХ значений в compact.values[]
+  const compactValueSet = new Set<string>();
+  for (const v of compactValues) {
+    compactValueSet.add(canonicalizeForComparison(v));
+  }
+
+  // ✅ v2.6.0: множество УНИКАЛЬНЫХ значений, которые ДОЛЖНЫ
+  // быть в compact (по full.constants[] + isValueKept)
+  const expectedUniqueKept = new Set<string>();
+
+  let expectedKeptTotal = 0; // счётчик констант (с повторами)
+  let expectedRemovedTotal = 0;
+
+  for (const cn of full.constants || []) {
+    if (cn.value === undefined) continue;
+
+    const kept = isValueKept(cn.value, mode);
+
+    if (kept) {
+      expectedKeptTotal++;
+      expectedUniqueKept.add(canonicalizeForComparison(cn.value));
+    } else {
+      expectedRemovedTotal++;
+    }
+  }
+
+  // ✅ v2.6.0: главная проверка — каждое ожидаемое уникальное
+  // значение должно присутствовать в compact.values[].
+  for (const expectedKey of expectedUniqueKept) {
+    if (!compactValueSet.has(expectedKey)) {
+      violations.push(`Уникальное значение ${expectedKey} отсутствует в compact.values[]`);
+      if (violations.length >= limit) break;
+    }
+  }
+
+  // ✅ v2.6.0: диагностика дедупликации
+  const expectedUniqueCount = expectedUniqueKept.size;
+  const actualUniqueCount = compactValueSet.size;
+  const dedupRatio =
+    expectedUniqueCount > 0 ? (expectedKeptTotal / expectedUniqueCount).toFixed(2) : '1.00';
+
+  const ok = violations.length === 0;
+
+  const detail = ok
+    ? `expectedKept=${expectedKeptTotal} (уникальных=${expectedUniqueCount}), ` +
+    `compact.values=${actualUniqueCount} (dedup=${dedupRatio}x), ` +
+    `removed=${expectedRemovedTotal}`
+    : `${violations.length} нарушений ` +
+    `(expectedKept=${expectedKeptTotal}, unique=${expectedUniqueCount}, ` +
+    `compact.values=${actualUniqueCount})`;
+
+  return {
+    ok,
+    detail,
+    violations,
+    expectedKept: expectedKeptTotal,
+    uniqueCount: expectedUniqueCount,
+    actualUnique: actualUniqueCount,
+  };
+}
+
+// ============================================
+// ✅ v2.5.0: JSON-SAFE ПРОВЕРКИ
+// ============================================
+
+/**
+ * ✅ v2.5.0: проверяет, что full не содержит не-JSON-значений.
+ *
+ * Set, Map, RegExp, Date, class instances — не JSON-safe,
+ * потому что JSON.stringify превращает их в '{}'.
+ */
+function checkJsonSafetyFull(
+  full: FullJSON,
+  limit: number
+): {
+  ok: boolean;
+  detail: string;
+  violations: string[];
+} {
+  const violations: string[] = [];
+
+  for (let i = 0; i < (full.constants || []).length; i++) {
+    const cn = full.constants[i];
+    if (!cn || cn.value === undefined) continue;
+
+    if (!isJsonSafe(cn.value)) {
+      const ctorName =
+        typeof cn.value === 'object' && cn.value !== null
+          ? (cn.value as any).constructor?.name ?? 'Object'
+          : typeof cn.value;
+      violations.push(`constants[${i}] (${cn.name}): ${ctorName}`);
+      if (violations.length >= limit) break;
+    }
+  }
+
+  return {
+    ok: violations.length === 0,
+    detail:
+      violations.length === 0
+        ? `${full.constants?.length ?? 0} констант JSON-safe`
+        : `${violations.length} не-JSON значений`,
+    violations,
+  };
+}
+
+/**
+ * ✅ v2.5.0: проверяет, что compact.values[] не теряет данные
+ * при JSON round-trip.
+ */
+function checkJsonRoundTripCompact(
+  compact: CompactJSON,
+  limit: number
+): {
+  ok: boolean;
+  detail: string;
+  violations: string[];
+} {
+  const violations: string[] = [];
+  const values = compact.values || [];
+
+  const beforeJson = JSON.stringify(values);
+  const afterParse = JSON.parse(beforeJson) as unknown[];
+
+  for (let i = 0; i < Math.min(values.length, afterParse.length); i++) {
+    const before = JSON.stringify(values[i]);
+    const after = JSON.stringify(afterParse[i]);
+    if (before !== after) {
+      violations.push(`values[${i}]: "${before}" → "${after}"`);
+      if (violations.length >= limit) break;
+    }
+  }
+
+  return {
+    ok: violations.length === 0,
+    detail:
+      violations.length === 0
+        ? `${values.length} значений JSON-safe`
+        : `${violations.length} значений теряют данные`,
+    violations,
+  };
+}
+
+// ============================================
 // СРАВНЕНИЕ СЛОВАРЕЙ
 // ============================================
 
@@ -367,14 +620,6 @@ function compareDictionaries(
  * Сравнивает секции full vs decoded.
  *
  * ⚠️ v2.2.0: 'conditionals' УБРАНЫ из sectionNames.
- *   Раньше сравнивались full.conditionals и decoded.conditionals
- *   на верхнем уровне. Теперь этого поля не существует —
- *   conditionals живут ТОЛЬКО в templates[].conditionals
- *   и сравниваются как часть секции 'templates'.
- *
- * Возвращает массив результатов — по одному на каждую секцию.
- * Пустые массивы и `undefined` считаются эквивалентными, чтобы
- * не падать на опциональных секциях.
  */
 function compareSections(
   decoded: FullJSON,
@@ -387,7 +632,6 @@ function compareSections(
     'effects',
     'injections',
     'reactivity',
-    // 'conditionals',  // ← v2.2.0: убрано, см. комментарий выше
     'types',
     'typeRefs',
   ] as const;
@@ -425,13 +669,6 @@ function compareSections(
 
 /**
  * Явная проверка imports[].isTypeOnly и isNamespace.
- *
- * Скрипт определяет вариант семантики автоматически по
- * фактическим данным full.json:
- *   • Вариант A: `type ∈ {named, default, namespace}` —
- *     `isTypeOnly` отдельный флаг, `'type'` НЕ встречается.
- *   • Вариант B (legacy): `type ∈ {named, default, namespace, type}` —
- *     `'type'` может встречаться.
  */
 function compareImportsTypeOnly(
   decoded: FullJSON,
@@ -480,17 +717,6 @@ function compareImportsTypeOnly(
 /**
  * Проверяет, что количество conditionals в compact.cd[],
  * decoded.templates[].conditionals и full.templates[].conditionals
- * совпадает.
- *
- * ⚠️ v2.2.0: считаем через countConditionals(full), который
- * обходит full.templates[].conditionals. Верхнеуровневого
- * full.conditionals больше не существует.
- *
- * Ловит регрессию дедупликации в `addAny` (codec-encode.ts):
- * если все conditionals имеют одинаковое содержимое, дедупликация
- * схлопывает их в один value, и `compact.cd = [380, 380, 380, ...]`.
- *
- * После исправления `compact.cd = [380, 381, 382, ...]` — длина
  * совпадает.
  */
 function checkConditionalsDedup(
@@ -567,7 +793,7 @@ interface CheckResult {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
-  printHeader('🔍 ПРОВЕРКА СОГЛАСОВАННОСТИ index.json ↔ index.full.json (v2.3.0)');
+  printHeader('🔍 ПРОВЕРКА СОГЛАСОВАННОСТИ index.json ↔ index.full.json (v2.6.0)');
   console.log(`  ${INFO} compact: ${C.cyan}${path.resolve(args.compact)}${C.reset}`);
   console.log(`  ${INFO} full:    ${C.cyan}${path.resolve(args.full)}${C.reset}`);
   console.log(`  ${INFO} verbose: ${args.verbose}`);
@@ -747,6 +973,77 @@ async function main(): Promise<void> {
       name: 'imports[].isExternal ↔ toFileId',
       ok: result.ok,
       detail: result.detail,
+    });
+  }
+
+  // ============================================
+  // ✅ v2.6.0: СОГЛАСОВАННОСТЬ VALUES (compact.values ↔ full.constants)
+  // ============================================
+  printSection('🔢 СОГЛАСОВАННОСТЬ VALUES (compact.values ↔ full.constants)');
+
+  {
+    const result = checkValuesConsistency(compact, full, args.maxDiffs);
+    printResult('values[] consistency', result.ok, result.detail);
+
+    if (!result.ok && args.verbose) {
+      for (const v of result.violations.slice(0, args.maxDiffs)) {
+        console.log(`     ${C.red}•${C.reset} ${v}`);
+      }
+      if (result.violations.length > args.maxDiffs) {
+        console.log(`     ${C.dim}... и ещё ${result.violations.length - args.maxDiffs}${C.reset}`);
+      }
+    }
+
+    // ✅ v2.6.0: диагностика дедупликации
+    if (args.verbose && result.ok) {
+      const dedupRatio =
+        result.uniqueCount > 0
+          ? (result.expectedKept / result.uniqueCount).toFixed(2)
+          : '1.00';
+      console.log(
+        `     ${C.dim}ℹ️  Дедупликация: ${result.expectedKept} → ${result.uniqueCount} (${dedupRatio}x)${C.reset}`
+      );
+    }
+
+    checks.push({
+      name: 'values[] consistency',
+      ok: result.ok,
+      detail: result.detail,
+    });
+  }
+
+  // ============================================
+  // ✅ v2.5.0: JSON-SAFE ПРОВЕРКИ
+  // ============================================
+  printSection('🔒 JSON-SAFE ПРОВЕРКИ');
+
+  {
+    const fullSafe = checkJsonSafetyFull(full, args.maxDiffs);
+    printResult('full.constants[].value JSON-safe', fullSafe.ok, fullSafe.detail);
+    if (!fullSafe.ok && args.verbose) {
+      for (const v of fullSafe.violations) {
+        console.log(`     ${C.red}•${C.reset} ${v}`);
+      }
+    }
+    checks.push({
+      name: 'full.constants[].value JSON-safe',
+      ok: fullSafe.ok,
+      detail: fullSafe.detail,
+    });
+  }
+
+  {
+    const compactSafe = checkJsonRoundTripCompact(compact, args.maxDiffs);
+    printResult('compact.values[] JSON round-trip', compactSafe.ok, compactSafe.detail);
+    if (!compactSafe.ok && args.verbose) {
+      for (const v of compactSafe.violations) {
+        console.log(`     ${C.red}•${C.reset} ${v}`);
+      }
+    }
+    checks.push({
+      name: 'compact.values[] JSON round-trip',
+      ok: compactSafe.ok,
+      detail: compactSafe.detail,
     });
   }
 
@@ -996,7 +1293,7 @@ async function main(): Promise<void> {
     console.log(`     Это гарантирует совпадение timestamp и version.`);
     console.log('');
     console.log(`  ${C.bold}2. Проверить CODEC_VERSION${C.reset} в обоих файлах — должен`);
-    console.log(`     быть ${C.cyan}'15.0.6'${C.reset} (или совпадать). Если full.json`);
+    console.log(`     быть ${C.cyan}'15.4.3'${C.reset} (или совпадать). Если full.json`);
     console.log(`     собирался старой версией кодека — его нужно`);
     console.log(`     пересобрать.`);
     console.log('');
@@ -1041,6 +1338,76 @@ async function main(): Promise<void> {
     console.log(`          как ПРОИЗВОДНОЕ от ${C.cyan}resolvedToFileId${C.reset},`);
     console.log(`          а не от ${C.cyan}imp.toFileId${C.reset}.`);
     console.log(`       3. Пересобрать index.json и index.full.json.`);
+    console.log('');
+    console.log(
+      `  ${C.bold}7. Если расхождение в values[]${C.reset} (симптом:`
+    );
+    console.log(
+      `     ${C.red}$.values.length: a: 206 b: 208${C.reset} или ${C.red}$.cn.nonEmptyV[N][1] сдвиг${C.reset}):`
+    );
+    console.log(`     ${C.cyan}shouldKeepValue()${C.reset} в compact-reporter.ts и`);
+    console.log(`     ${C.cyan}classifyValue()${C.reset} в values-filter.ts используют`);
+    console.log(`     РАЗНЫЕ пороги для классификации значений.`);
+    console.log(`     Если значение прошло ${C.cyan}shouldKeepValue${C.reset} (попало в`);
+    console.log(`     full.constants[].value), но не прошло ${C.cyan}classifyValue${C.reset}`);
+    console.log(`     (не попало в valueDict), то ${C.cyan}encode(full)${C.reset} даёт`);
+    console.log(`     на N значений больше, чем compact на диске.`);
+    console.log(`     Фикс:`);
+    console.log(`       1. Вынести пороги в единый модуль`);
+    console.log(`          ${C.cyan}src/reporters/codec/thresholds.ts${C.reset}`);
+    console.log(`          (VALUE_THRESHOLDS).`);
+    console.log(`       2. Использовать ${C.cyan}isValueKept()${C.reset} из`);
+    console.log(`          ${C.cyan}values-filter.ts${C.reset} в ОБОИХ местах:`);
+    console.log(`          • compact-reporter.ts::shouldKeepValue`);
+    console.log(`          • codec-encode.ts::addValue`);
+    console.log(`       3. Проверить, что classifyValue СОГЛАСОВАН с`);
+    console.log(`          isValueKept (I14 в verify-roundtrip.ts).`);
+    console.log(`       4. Пересобрать index.json и index.full.json.`);
+    console.log('');
+    console.log(
+      `  ${C.bold}8. Если расхождение в JSON-safe${C.reset} (симптом:`
+    );
+    console.log(
+      `     ${C.red}$.values.length: a: 703 b: 553${C.reset} или ${C.red}20 подряд {} в compact.values[]${C.reset}):`
+    );
+    console.log(`     В ${C.cyan}full.constants[].value${C.reset} или`);
+    console.log(`     ${C.cyan}compact.values[]${C.reset} попали НЕ-JSON-значения:`);
+    console.log(`       • Set, Map, RegExp, Date — ${C.red}JSON.stringify → '{}'${C.reset}`);
+    console.log(`       • BigInt — ${C.red}JSON.stringify падает с ошибкой${C.reset}`);
+    console.log(`       • class instances без toJSON → '{}'`);
+    console.log(`     При записи index.json на диск эти значения`);
+    console.log(`     теряются (превращаются в '{}'), и round-trip ломается.`);
+    console.log(`     Фикс:`);
+    console.log(`       1. В ${C.cyan}values-filter.ts::isValueKept${C.reset} вернуть`);
+    console.log(`          ${C.red}false${C.reset} для не-JSON-объектов (через ${C.cyan}isJsonSafe${C.reset}).`);
+    console.log(`       2. В ${C.cyan}stable-stringify.ts${C.reset} добавить`);
+    console.log(`          ${C.cyan}isJsonSafe()${C.reset}, ${C.cyan}sanitizeForJson()${C.reset},`);
+    console.log(`          ${C.cyan}jsonSafeStringify()${C.reset}.`);
+    console.log(`       3. В ${C.cyan}compact-reporter.ts::saveJsonFile${C.reset}`);
+    console.log(`          использовать ${C.cyan}jsonSafeStringify${C.reset} вместо`);
+    console.log(`          ${C.red}JSON.stringify${C.reset}.`);
+    console.log(`       4. Добавить инварианты ${C.cyan}I15/I16${C.reset} в`);
+    console.log(`          ${C.cyan}verify-roundtrip.ts${C.reset}.`);
+    console.log(`       5. Пересобрать index.json и index.full.json.`);
+    console.log('');
+    console.log(
+      `  ${C.bold}9. Если расхождение в values[] consistency${C.reset} (симптом:`
+    );
+    console.log(
+      `     ${C.red}expectedKept=1955 > compact.values.length=547${C.reset}):`
+    );
+    console.log(`     ${C.cyan}compact.values[]${C.reset} — ДЕДУПЛИЦИРОВАННЫЙ словарь.`);
+    console.log(`     Если 100 констант имеют значение ${C.cyan}"relation"${C.reset},`);
+    console.log(`     в values[] оно попадёт ${C.green}1 раз${C.reset}, а expectedKept`);
+    console.log(`     посчитает ${C.red}100${C.reset}. Проверка "expectedKept <="`);
+    console.log(`     "${C.red}compact.values.length${C.reset}" — НЕВЕРНА.`);
+    console.log(`     Фикс (v2.6.0): проверять по МНОЖЕСТВАМ:`);
+    console.log(`       1. ${C.cyan}expectedUniqueKept${C.reset} — Set уникальных`);
+    console.log(`          значений из full.constants[].value.`);
+    console.log(`       2. ${C.cyan}compactValueSet${C.reset} — Set значений из`);
+    console.log(`          compact.values[].`);
+    console.log(`       3. Проверка: ${C.cyan}expectedUniqueKept ⊆ compactValueSet${C.reset}.`);
+    console.log(`       4. Диагностика ${C.cyan}dedupRatio${C.reset} = expectedKept / unique.`);
     console.log('');
     console.log(
       `  ${C.dim}Подробнее: scripts/verify-roundtrip.ts проверяет round-trip кодека.${C.reset}`

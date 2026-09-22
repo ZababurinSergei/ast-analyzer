@@ -57,6 +57,7 @@
     "build:viewer": "tsx ./src/cli.ts compact-recursive ./ast-graph-viewer/main.js --config ./src/ast-analyzer.config.json -o ./ast-graph-viewer/index.json",
     "check:roundtrip": "tsx scripts/verify-roundtrip.ts -v --max-diffs 20",
     "check:consistency": "tsx scripts/verify-consistency.ts -v --max-diffs 20",
+    "check:crossFile": "tsx scripts/verify-cross-file.ts -v --max-diffs 20",
     "build": "tsc -p tsconfig.json",
     "build:watch": "tsc -p tsconfig.json --watch",
     "dev": "tsx ./src/cli.ts",

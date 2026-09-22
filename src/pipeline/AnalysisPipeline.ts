@@ -2,27 +2,35 @@
 // ============================================================
 // ЕДИНЫЙ АНАЛИЗ PIPELINE — ОРКЕСТРАТОР
 // ============================================================
-// Версия: 2.0.0
+// Версия: 2.1.0
 //
-// ИЗМЕНЕНИЯ v2.0.0 (интеграция relation-resolver):
-//   - ✅ ДОБАВЛЕН новый stage: ResolveRelationsStage
-//     Он запускается ПОСЛЕ NormalizeEntitiesStage и
-//     ДО BuildReportStage — обогащает templates
-//     кросс-файловыми связями
-//   - ✅ УБРАН EnrichReExportsStage из стандартного набора
-//     (re-exports разворачиваются внутри ParseFileStage,
-//      а не отдельным stage)
-//   - ✅ ОБНОВЛЁН стандартный набор stages:
+// ════════════════════════════════════════════════════════════
+// СВОДКА ВЕРСИЙ
+// ════════════════════════════════════════════════════════════
+//
+// v2.1.0 (P3 — cross-file resolution):
+//   - ✅ ДОБАВЛЕН ResolveCrossFileStage
+//     Он запускается ПОСЛЕ ResolveRelationsStage и
+//     ПЕРЕД BuildReportStage — резолвит межфайловые
+//     вызовы через ts-morph (P3).
+//   - ✅ ОБНОВЛЁН стандартный набор stages (6 штук):
 //       DiscoverFiles → ParseFile → NormalizeEntities →
-//       ResolveRelations → BuildReport
-//   - ✅ Версия модуля: 1.0.0 → 2.0.0
+//       ResolveRelations → ResolveCrossFile → BuildReport
+//   - ✅ ОБНОВЛЕНО: printHeader() — добавлена строка про
+//     cross-file resolution.
+//   - ✅ ОБНОВЛЕНО: printFooter() — добавлены метрики
+//     cross-file (crossFileCalls, crossFileDuration и др.).
+//   - ✅ Обновлён комментарий-заголовок: v2.0.0 → v2.1.0.
 //
-// ИЗМЕНЕНИЯ v1.0.0:
+// v2.0.0 (интеграция relation-resolver):
+//   - ✅ ДОБАВЛЕН ResolveRelationsStage (Vue-связи)
+//   - ✅ УБРАН EnrichReExportsStage
+//   - ✅ 5 стандартных stages
+//
+// v1.0.0:
 //   - Базовая реализация оркестратора
 //   - 5 стандартных stages: DiscoverFiles, ParseFile,
 //     EnrichReExports, NormalizeEntities, BuildReport
-//   - Единые метрики (PipelineMetrics)
-//   - Единая обработка ошибок (FileError[])
 //
 // ============================================================
 // НАЗНАЧЕНИЕ
@@ -32,13 +40,10 @@
 // последовательно, собирает метрики, обрабатывает ошибки.
 //
 // ЕДИНАЯ ТОЧКА ВХОДА для всех CLI-команд, тестов и внешних
-// потребителей. Заменяет разбросанную логику из:
-//   - cli.ts / CompactRecursiveCommand.ts
-//   - core/entity-extractor/extract-entities.ts (Vue-ветка)
-//   - reporters/compact-reporter.ts (enrich re-exports)
+// потребителей.
 //
 // ============================================================
-// АРХИТЕКТУРА (v2.0.0)
+// АРХИТЕКТУРА (v2.1.0)
 // ============================================================
 //
 //                       ┌───────────────────────┐
@@ -65,6 +70,13 @@
 //                                  │                        ▼
 //                                  │                  ┌───────────┐
 //                                  │                  │ Stage 5   │
+//                                  │                  │ Resolve   │  ← v2.1.0 (P3)
+//                                  │                  │ CrossFile │
+//                                  │                  └─────┬─────┘
+//                                  │                        │
+//                                  │                        ▼
+//                                  │                  ┌───────────┐
+//                                  │                  │ Stage 6   │
 //                                  │                  │ Build     │
 //                                  │                  │ Report    │
 //                                  │                  └───────────┘
@@ -83,35 +95,37 @@
 //
 //   1. ЕДИНЫЙ ИСТОЧНИК ИСТИНЫ
 //      Каждый stage делегирует в существующий модуль:
-//        - DiscoverFilesStage    → collectFilesForAnalysis
-//        - ParseFileStage        → parseFile / analyzeVueComponent
-//        - NormalizeEntitiesStage→ convertEntitiesToEnhanced
-//        - ResolveRelationsStage → runRelationResolver
-//        - BuildReportStage      → generateCompactReport
+//        - DiscoverFilesStage     → collectFilesForAnalysis
+//        - ParseFileStage         → parseFile / analyzeVueComponent
+//        - NormalizeEntitiesStage → convertEntitiesToEnhanced
+//        - ResolveRelationsStage  → runRelationResolver
+//        - ResolveCrossFileStage  → resolveCrossFileCalls   ← v2.1.0 (P3)
+//        - BuildReportStage       → generateCompactReport
 //
 //   2. ЯВНОЕ ВЕТВЛЕНИЕ
 //      Только ParseFileStage знает о существовании Vue.
-//      Остальные stages работают с EntitiesResult — единым
-//      форматом для обеих веток.
 //
 //   3. МУТИРУЕМЫЙ КОНТЕКСТ
-//      Stage.run(ctx) принимает контекст и возвращает его
-//      (возможно, мутированный).
+//      Stage.run(ctx) принимает контекст и возвращает его.
 //
 //   4. ТЕСТИРУЕМОСТЬ
 //      Каждый stage — отдельный класс.
 //
 //   5. ОБРАБОТКА ОШИБОК
 //      При `continueOnError: true` (по умолчанию) ошибки
-//      отдельных файлов собираются в `ctx.errors`, pipeline
-//      продолжает работу. При `false` — pipeline падает
-//      на первой ошибке.
+//      отдельных файлов собираются в `ctx.errors`.
+//
+//   6. ОПЦИОНАЛЬНЫЕ STAGES  ← v2.1.0 (P3)
+//      Некоторые stages можно отключать через опции:
+//        - ResolveRelationsStage  → всегда включён
+//        - ResolveCrossFileStage  → отключается через
+//                                    enableCrossFileResolution: false
 //
 // ============================================================
 // ИСПОЛЬЗОВАНИЕ
 // ============================================================
 //
-//   // 1. Базовое использование
+//   // 1. Базовое использование (все stages включены)
 //   const pipeline = new AnalysisPipeline();
 //   const result = await pipeline.run({
 //     projectRoot: './src',
@@ -119,7 +133,14 @@
 //     verbose: true,
 //   });
 //
-//   // 2. Кастомный pipeline (только 3 stages)
+//   // 2. Отключить cross-file resolution
+//   const pipeline = new AnalysisPipeline();
+//   const result = await pipeline.run({
+//     projectRoot: './src',
+//     enableCrossFileResolution: false,
+//   });
+//
+//   // 3. Кастомный pipeline (только 3 stages)
 //   const customPipeline = new AnalysisPipeline([
 //     new DiscoverFilesStage(),
 //     new ParseFileStage(),
@@ -127,7 +148,7 @@
 //   ]);
 //   const result = await customPipeline.run({ projectRoot: './src' });
 //
-//   // 3. Только сбор файлов (для отладки)
+//   // 4. Только сбор файлов (для отладки)
 //   const discover = new DiscoverFilesStage();
 //   const ctx = createContext({ projectRoot: './src' });
 //   const afterDiscover = await discover.run(ctx);
@@ -140,6 +161,8 @@ import { DiscoverFilesStage } from './stages/discover-files.js';
 import { ParseFileStage } from './stages/parse-file.js';
 import { NormalizeEntitiesStage } from './stages/normalize-entities.js';
 import { ResolveRelationsStage } from './stages/resolve-relations.js';
+// ✅ v2.1.0 (P3): cross-file resolution
+import { ResolveCrossFileStage } from './stages/resolve-cross-file.js';
 import { BuildReportStage } from './stages/build-report.js';
 import type { PipelineContext, PipelineOptions, PipelineResult, PipelineStage } from './types.js';
 
@@ -187,7 +210,7 @@ interface StageExecutionResult {
  *      await pipeline.run({ projectRoot: './b' }); // ✅ OK
  *
  * ════════════════════════════════════════════════════════════
- * STAGES ПО УМОЛЧАНИЮ (v2.0.0)
+ * STAGES ПО УМОЛЧАНИЮ (v2.1.0)
  * ════════════════════════════════════════════════════════════
  *
  *   1. DiscoverFilesStage
@@ -195,29 +218,34 @@ interface StageExecutionResult {
  *
  *   2. ParseFileStage
  *      → диспетчер: TS/JS или Vue
- *      → parseTypeScriptFile / parseVueFile
- *      → внутри ParseFileStage автоматически разворачиваются
- *        re-exports (export * from)
  *
  *   3. NormalizeEntitiesStage
  *      → convertEntitiesToEnhanced
  *      → ✅ ЯВНЫЙ проброс template-полей (фикс бага conditionals)
  *
- *   4. ResolveRelationsStage (НОВЫЙ в v2.0.0)
+ *   4. ResolveRelationsStage
  *      → runRelationResolver
- *      → Обогащает templates кросс-файловыми связями:
- *        • refCalls (contextMenu.value?.openContextMenu())
- *        • localBindings (const { data } = useDataState())
- *        • exposedMethods (defineExpose)
- *        • props (defineProps)
- *        • models (defineModel)
- *        • slotDefinitions (defineSlots)
- *        • options (defineOptions)
- *        • emits.consumers (emit → parent handler)
+ *      → Обогащает templates кросс-файловыми связями (Vue):
+ *        • refCalls
+ *        • localBindings
+ *        • exposedMethods
+ *        • props
+ *        • models
+ *        • slotDefinitions
+ *        • options
+ *        • emits.consumers
  *        • dynamicComponents.resolvedComponents
  *        • directives.definition
  *
- *   5. BuildReportStage
+ *   5. ResolveCrossFileStage  ← v2.1.0 (P3)
+ *      → resolveCrossFileCalls
+ *      → Резолвит межфайловые вызовы через ts-morph:
+ *        • SymbolResolver.resolveCallee для каждого CallExpression
+ *        • Заполняет ctx.crossFileCalls
+ *        • Обновляет ctx.metrics.crossFileCalls, crossFileDuration
+ *        • Отключается через enableCrossFileResolution: false
+ *
+ *   6. BuildReportStage
  *      → generateCompactReport
  *
  * ════════════════════════════════════════════════════════════
@@ -226,11 +254,7 @@ interface StageExecutionResult {
  *
  *   Класс НЕ потокобезопасен.
  *   Каждый вызов `run()` создаёт НОВЫЙ контекст
- *   через `createContext()`, поэтому параллельные запуски
- *   на одном экземпляре теоретически возможны, НО:
- *     - stages могут использовать общие ресурсы (ts-morph Project)
- *     - нет синхронизации доступа к `this.stages`
- *   Для параллельных запусков создавайте отдельные экземпляры.
+ *   через `createContext()`.
  */
 export class AnalysisPipeline {
   // ==========================================================
@@ -253,13 +277,14 @@ export class AnalysisPipeline {
    * Создаёт pipeline.
    *
    * @param customStages — кастомный список stages. Если не задан,
-   *                       используется стандартный набор из 5 stages
+   *                       используется стандартный набор из 6 stages
    *                       (DiscoverFiles → ParseFile → NormalizeEntities
-   *                        → ResolveRelations → BuildReport).
+   *                        → ResolveRelations → ResolveCrossFile
+   *                        → BuildReport).
    *
    * @example
    * ```typescript
-   * // Стандартный pipeline
+   * // Стандартный pipeline (все 6 stages)
    * const pipeline = new AnalysisPipeline();
    *
    * // Кастомный pipeline (только discover + parse + report)
@@ -278,7 +303,9 @@ export class AnalysisPipeline {
       new DiscoverFilesStage(),
       new ParseFileStage(),
       new NormalizeEntitiesStage(),
-      new ResolveRelationsStage(), // ✅ НОВЫЙ STAGE v2.0.0
+      new ResolveRelationsStage(),
+      // ✅ v2.1.0 (P3): cross-file resolution
+      new ResolveCrossFileStage(),
       new BuildReportStage(),
     ];
   }
@@ -319,6 +346,15 @@ export class AnalysisPipeline {
    *     metrics:        PipelineMetrics,
    *     errors:         FileError[],
    *   }
+   *
+   * ════════════════════════════════════════════════════════════
+   * ОПЦИИ
+   * ════════════════════════════════════════════════════════════
+   *
+   *   - `enableCrossFileResolution` (v2.1.0, P3) — включить/отключить
+   *     cross-file resolution (по умолчанию true).
+   *
+   *   - `continueOnError` — поведение при ошибке отдельного файла.
    *
    * @param options — опции pipeline (все опциональны)
    * @returns PipelineResult
@@ -442,7 +478,7 @@ export class AnalysisPipeline {
    *
    *   - Единообразная обработка ошибок
    *   - Единообразный замер времени
-   *   - Stage может быть sync или async (интерфейс не навязывает)
+   *   - Stage может быть sync или async
    *
    * @param stage — stage для выполнения
    * @param ctx   — текущий контекст
@@ -503,15 +539,25 @@ export class AnalysisPipeline {
    * Печатает заголовок pipeline.
    *
    * Вызывается только при `verbose: true`.
+   *
+   * ✅ v2.1.0 (P3): добавлена строка про cross-file resolution.
    */
   private printHeader(ctx: PipelineContext): void {
     console.log('\n' + '='.repeat(70));
-    console.log('🚀 ANALYSIS PIPELINE v2.0.0');
+    console.log('🚀 ANALYSIS PIPELINE v2.1.0');
     console.log('='.repeat(70));
     console.log(`   Режим:        ${ctx.options.mode}`);
     console.log(`   Values mode:  ${ctx.options.valuesMode}`);
     console.log(`   Vue:          ответвление активно`);
     console.log(`   Relations:    resolve-relations stage активен`);
+    // ✅ v2.1.0 (P3)
+    console.log(
+      `   Cross-file:   ${
+        (ctx.options as any).enableCrossFileResolution === false
+          ? 'ОТКЛЮЧЁН'
+          : 'resolve-cross-file stage активен'
+      }`
+    );
     console.log(`   Project root: ${ctx.options.projectRoot}`);
     console.log(`   Recursive:    ${ctx.options.recursive}`);
     console.log(`   Include body: ${ctx.options.includeBody}`);
@@ -535,6 +581,8 @@ export class AnalysisPipeline {
    * Печатает финальную сводку pipeline.
    *
    * Вызывается только при `verbose: true`.
+   *
+   * ✅ v2.1.0 (P3): добавлены метрики cross-file.
    */
   private printFooter(ctx: PipelineContext): void {
     const m = ctx.metrics;
@@ -558,7 +606,7 @@ export class AnalysisPipeline {
     console.log(`   Lifecycle:        ${m.totalLifecycle}`);
     console.log(`   Reactivity:       ${m.totalReactivity}`);
 
-    // ✅ Relation-метрики (новые в v2.0.0)
+    // ✅ v2.0.0: Relation-метрики
     const rel = (m as any).relationsResolved;
     if (rel) {
       console.log('');
@@ -574,6 +622,41 @@ export class AnalysisPipeline {
       console.log(`   stores:           ${rel.stores}`);
       console.log(`   routes:           ${rel.routes}`);
       console.log(`   directives:       ${rel.directives}`);
+    }
+
+    // ✅ v2.1.0 (P3): Cross-file-метрики
+    const crossFileCalls = (m as any).crossFileCalls;
+    const crossFileDuration = (m as any).crossFileDuration;
+    const crossFileInitDuration = (m as any).crossFileInitDuration;
+    const crossFileSameFileCalls = (m as any).crossFileSameFileCalls;
+    const crossFileUnresolved = (m as any).crossFileUnresolved;
+    const crossFileCacheHits = (m as any).crossFileCacheHits;
+
+    if (
+      crossFileCalls !== undefined ||
+      crossFileDuration !== undefined ||
+      crossFileInitDuration !== undefined
+    ) {
+      console.log('');
+      console.log('   🔗 CROSS-FILE RESOLUTION:');
+      if (crossFileCalls !== undefined) {
+        console.log(`   Межфайловых:      ${crossFileCalls}`);
+      }
+      if (crossFileSameFileCalls !== undefined) {
+        console.log(`   Внутрифайловых:   ${crossFileSameFileCalls}`);
+      }
+      if (crossFileUnresolved !== undefined) {
+        console.log(`   Не разрешено:     ${crossFileUnresolved}`);
+      }
+      if (crossFileInitDuration !== undefined) {
+        console.log(`   Init duration:    ${crossFileInitDuration}ms`);
+      }
+      if (crossFileDuration !== undefined) {
+        console.log(`   Общее время:      ${crossFileDuration}ms`);
+      }
+      if (crossFileCacheHits !== undefined && crossFileCacheHits > 0) {
+        console.log(`   Cache hits:       ${crossFileCacheHits}`);
+      }
     }
 
     // Тайминги stages

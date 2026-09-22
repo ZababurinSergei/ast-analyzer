@@ -1,44 +1,51 @@
 #!/usr/bin/env node
 // scripts/verify-roundtrip.ts
 // ============================================
-// Скрипт проверки Round-Trip для CODEC (v15.0.6)
+// Скрипт проверки Round-Trip для CODEC (v15.6.0)
 // ============================================
-// Версия: 15.0.6
+// Версия: 15.6.0
 //
-// ИЗМЕНЕНИЯ v15.0.6 (gr.i.tf — индекс в fl.p):
-//   - ✅ ДОБАВЛЕНО: инвариант I8 — gr.i.tf ∈ [-1, fl.p.length).
-//     Проверяет, что tf — валидный индекс в fl.p (или -1 для внешних).
-//   - ✅ ОБНОВЛЕНО: codecVersion в jsonReport = '15.0.6'.
-//   - ✅ ОБНОВЛЕНО: printHelp() — формат gr.i.tf описан как индекс в fl.p.
-//   - ✅ ОБНОВЛЕНО: заголовок и список инвариантов.
+// ════════════════════════════════════════════════════════════
+// СВОДКА ВЕРСИЙ
+// ════════════════════════════════════════════════════════════
 //
-// ИЗМЕНЕНИЯ v15.0.6-fix (round-trip внешних импортов):
-//   - ✅ ИСПРАВЛЕНО: I8 больше НЕ считает `ff === tf` нарушением.
-//     Самоимпорт бывает в barrel-файлах (`export * from './index'`
-//     внутри index.ts) и в side-effect импортах.
-//     I8 проверяет ТОЛЬКО: tf ∈ [-1, fl.p.length).
-//   - ✅ В codec-decode.ts добавлено восстановление `toFileId`
-//     для внешних импортов из `source` (см. codec-decode.ts).
+// v15.6.0 (JSON-safe проверки):
+//   - ✅ ДОБАВЛЕНО: инвариант I15 — compact.values[] содержит
+//     только JSON-safe значения (Set/Map/RegExp/Date/class
+//     instances ловятся здесь).
+//   - ✅ ДОБАВЛЕНО: инвариант I16 — full.constants[].value
+//     содержит только JSON-safe значения.
+//   - ✅ ДОБАВЛЕНО: структурная проверка checkJsonSafetyInFile —
+//     JSON.stringify(compact.values) ≟ JSON.parse(...).values
+//     (ловит потерю данных при записи на диск).
+//   - ✅ ОБНОВЛЕНО: заголовок v15.4.0 → v15.6.0.
 //
-// ИЗМЕНЕНИЯ v15.0.2 (устранение дублирования conditionals):
-//   - ✅ УБРАНО: 'conditionals' из sectionNames в compareSections.
-//     Раньше сравнивались full.conditionals и decoded.conditionals
-//     на верхнем уровне. Теперь эти поля не существуют —
-//     conditionals живут ТОЛЬКО в templates[].conditionals.
-//   - ✅ ИСПРАВЛЕНО: checkConditionalsDedup — считает через
-//     countConditionals(full) / countConditionals(decoded),
-//     которые обходят full.templates[].conditionals.
-//   - ✅ ДОБАВЛЕНО: helper countConditionals(full: FullJSON): number.
-//   - ✅ ИСПРАВЛЕНО: вывод статистики в main() — считает
-//     conditionals через countConditionals(full).
-//   - ✅ ОБНОВЛЕНО: codecVersion в jsonReport = '15.0.2'.
-//   - ✅ ОБНОВЛЁН заголовок и help.
+// v15.4.0 (P3 — cross-file resolution):
+//   - ✅ ОБНОВЛЕНО: codecVersion в jsonReport = '15.4.0'
 //
-// ИЗМЕНЕНИЯ v15.0.1:
-//   - ✅ ИСПРАВЛЕНО: инвариант I2 — imports[].type ∈ {named, default, namespace}.
-//   - ✅ ИСПРАВЛЕНО: checkTokenizedStrings — methods проверяется опционально.
-//   - ✅ ДОБАВЛЕНО: проверка isTypeOnly у импортов.
-//   - ✅ ДОБАВЛЕНО: явные проверки секций vt/lc/ef/inj/rx/cd/ty/tr.
+// v15.3.0 (P2 — расширенный CallData):
+//   - ✅ ДОБАВЛЕНО: инвариант I13 — gr.c.col/ck/cn/ai — согласованность длин
+//   - ✅ ДОБАВЛЕНО: spot-check для callKind/calleeName/argumentIndex
+//
+// v15.2.0 (P1 — lexicalLinks):
+//   - ✅ ДОБАВЛЕНО: инварианты I11, I12
+//   - ✅ ДОБАВЛЕНО: spot-check lexicalLinks
+//   - ✅ ДОБАВЛЕНО: countLexicalLinks(full)
+//
+// v15.1.0 (P0 — parentFunctionId):
+//   - ✅ ДОБАВЛЕНО: инварианты I9, I10
+//
+// v15.0.6 (gr.i.tf — индекс в fl.p):
+//   - ✅ ДОБАВЛЕНО: инвариант I8
+//
+// v15.0.2 (устранение дублирования conditionals):
+//   - ✅ УБРАНО: 'conditionals' из sectionNames в compareSections
+//   - ✅ ДОБАВЛЕНО: countConditionals(full)
+//
+// v15.0.1:
+//   - ✅ ИСПРАВЛЕНО: инвариант I2 — imports[].type ∈ {named, default, namespace}
+//   - ✅ ДОБАВЛЕНО: проверка isTypeOnly у импортов
+//   - ✅ ДОБАВЛЕНО: явные проверки секций vt/lc/ef/inj/rx/cd/ty/tr
 //
 // Уровни round-trip:
 //   L0  : encode(full) === compact          (семантически)
@@ -59,13 +66,19 @@
 //   I5  : external calls: сохранность типа (full vs decoded)
 //   I6  : functions[].*Flags ∈ {true, false, undefined}
 //   I7  : fns/cls/cn — columnar-структура
-//   I8  : gr.i.tf — индекс в fl.p (-1 для внешних) — НОВОЕ v15.0.6
-//         ⚠️ ff === tf — НЕ ошибка (самоимпорт в barrel-файлах допустим).
+//   I8  : gr.i.tf — индекс в fl.p (-1 для внешних) — v15.0.6
+//   I9  : fns.parent — валидный индекс или -1 — v15.1.0 (P0)
+//   I10 : parentFunctionId — целостность — v15.1.0 (P0)
+//   I11 : lx.p/lx.c — валидные индексы — v15.2.0 (P1)
+//   I12 : lexicalLinks — целостность — v15.2.0 (P1)
+//   I13 : gr.c.col/ck/cn/ai — согласованность длин — v15.3.0 (P2)
+//   I15 : compact.values[] — только JSON-safe значения — v15.6.0
+//   I16 : full.constants[].value — только JSON-safe значения — v15.6.0
 //
-// Проверки легенды (v15.0.2):
+// Проверки легенды:
 //   L1  : legend.codes.* присутствуют
 //   L2  : legend.flags.bits содержит 18 битов
-//   L3  : legend.schemas.* корректной длины (включая mi и fl)
+//   L3  : legend.schemas.* корректной длины
 //
 // Exit code 0 — всё ок, 1 — есть расхождения.
 // ============================================
@@ -74,7 +87,10 @@ import fs from 'fs';
 import path from 'path';
 import { Codec } from '../src/reporters/codec/codec.js';
 import { verifyRoundTripBoth } from '../src/reporters/codec/codec-verify.js';
-import type { CompactJSON, FullJSON } from '../src/reporters/codec/codec-types.js';
+import type { CompactJSON, FullJSON, CallData } from '../src/reporters/codec/codec-types.js';
+
+// ✅ v15.6.0: импорт isJsonSafe для I15/I16
+import { isJsonSafe } from '../src/reporters/codec/stable-stringify.js';
 
 // ============================================
 // КОНФИГУРАЦИЯ
@@ -316,6 +332,21 @@ function printLevelResult(name: string, result: LevelResult, maxDiffs: number): 
 }
 
 // ============================================
+// RLE HELPER (нужен для инвариантов P0/P1)
+// ============================================
+
+/**
+ * Распаковка RLE: [[value, count], ...] → [value, value, ...]
+ */
+function unrle(rle: [number, number][]): number[] {
+  const result: number[] = [];
+  for (const [value, count] of rle) {
+    for (let i = 0; i < count; i++) result.push(value);
+  }
+  return result;
+}
+
+// ============================================
 // ✅ v15.0.2: ПОДСЧЁТ CONDITIONALS ЧЕРЕЗ templates[]
 // ============================================
 
@@ -324,9 +355,6 @@ function printLevelResult(name: string, result: LevelResult, maxDiffs: number): 
  *
  * ⚠️ v15.0.2: conditionals больше НЕ существуют на верхнем уровне
  * FullJSON. Единственное место хранения — templates[].conditionals.
- *
- * Эта функция заменяет прежние обращения к `full.conditionals`
- * и `decoded.conditionals` во всех проверках.
  */
 function countConditionals(full: FullJSON): number {
   let count = 0;
@@ -337,7 +365,93 @@ function countConditionals(full: FullJSON): number {
 }
 
 // ============================================
-// ПРОВЕРКА ЛЕГЕНДЫ (v15.0.2)
+// ✅ v15.2.0 (P1): ПОДСЧЁТ LEXICAL LINKS
+// ============================================
+
+/**
+ * Считает количество lexicalLinks в full.json.
+ */
+function countLexicalLinks(full: FullJSON): number {
+  return (full.lexicalLinks ?? []).length;
+}
+
+// ============================================
+// ✅ v15.6.0: ДИАГНОСТИКА РАССИНХРОНА values[]
+// ============================================
+
+/**
+ * При расхождении в cn.nonEmptyV показывает, какие именно
+ * значения «лишние» в encode(full) по сравнению с compact.
+ *
+ * @param compact — compact на диске
+ * @param encoded — encode(full)
+ * @param limit   — максимум примеров
+ */
+function diagnoseValuesDesync(
+  compact: CompactJSON,
+  encoded: CompactJSON,
+  limit: number = 10
+): void {
+  const compactValues = compact.values || [];
+  const encodedValues = encoded.values || [];
+
+  if (compactValues.length === encodedValues.length) return;
+
+  console.log('');
+  console.log('  🔍 ДИАГНОСТИКА РАССИНХРОНА values[]:');
+  console.log(`     compact.values.length = ${compactValues.length}`);
+  console.log(`     encoded.values.length = ${encodedValues.length}`);
+
+  // Ищем первое расхождение
+  const minLen = Math.min(compactValues.length, encodedValues.length);
+  let firstDiffIdx = -1;
+
+  for (let i = 0; i < minLen; i++) {
+    const a = JSON.stringify(compactValues[i]);
+    const b = JSON.stringify(encodedValues[i]);
+    if (a !== b) {
+      firstDiffIdx = i;
+      break;
+    }
+  }
+
+  if (firstDiffIdx === -1) {
+    firstDiffIdx = minLen;
+  }
+
+  console.log(`     Первое расхождение на индексе: ${firstDiffIdx}`);
+
+  // Показываем контекст
+  const start = Math.max(0, firstDiffIdx - 3);
+  const end = Math.min(
+    Math.max(compactValues.length, encodedValues.length),
+    firstDiffIdx + limit
+  );
+
+  console.log('     Контекст:');
+  for (let i = start; i < end; i++) {
+    const cv = i < compactValues.length ? JSON.stringify(compactValues[i]) : '<missing>';
+    const ev = i < encodedValues.length ? JSON.stringify(encodedValues[i]) : '<missing>';
+    const mark = cv === ev ? '  ' : '❌';
+    console.log(`       ${mark} [${i}] compact: ${cv}`);
+    console.log(`       ${mark} [${i}] encoded: ${ev}`);
+  }
+
+  // Ищем «лишние» значения в encoded
+  const compactValueStrs = new Set(compactValues.map(v => JSON.stringify(v)));
+  const extraInEncoded = encodedValues.filter(v => !compactValueStrs.has(JSON.stringify(v)));
+
+  if (extraInEncoded.length > 0) {
+    console.log('');
+    console.log(`     Лишние значения в encoded (${extraInEncoded.length}):`);
+    for (const v of extraInEncoded.slice(0, limit)) {
+      console.log(`       • ${JSON.stringify(v)}`);
+    }
+  }
+}
+
+// ============================================
+// ПРОВЕРКА ЛЕГЕНДЫ (v15.6.0)
 // ============================================
 
 interface LegendCheck {
@@ -375,6 +489,28 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     });
   }
 
+  // ✅ v15.2.0 (P1): lexicalRelation
+  {
+    const dict = legend?.codes?.lexicalRelation;
+    const size = dict ? Object.keys(dict).length : 0;
+    checks.push({
+      name: 'legend.codes.lexicalRelation',
+      ok: size === 8,
+      note: dict ? `${size} кодов` : 'отсутствует',
+    });
+  }
+
+  // ✅ v15.3.0 (P2): callKind
+  {
+    const dict = legend?.codes?.callKind;
+    const size = dict ? Object.keys(dict).length : 0;
+    checks.push({
+      name: 'legend.codes.callKind',
+      ok: size === 8,
+      note: dict ? `${size} кодов` : 'отсутствует',
+    });
+  }
+
   // flags.bits
   const bitsCount = legend?.flags?.bits ? Object.keys(legend.flags.bits).length : 0;
   checks.push({
@@ -383,16 +519,18 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     note: legend?.flags?.bits ? `${bitsCount} битов` : 'отсутствует',
   });
 
-  // schemas — mi и fl + под-схемы vt.*, lc, ef, inj, rx, cd, ty, tr
+  // schemas
   const schemaChecks: Array<{ key: string; expectedLength: number }> = [
     { key: 'mi', expectedLength: 2 },
     { key: 'fl', expectedLength: 2 },
-    { key: 'fns', expectedLength: 7 },
+    // ✅ v15.1.0 (P0): +1 поле 'parent'
+    { key: 'fns', expectedLength: 8 },
     { key: 'cls', expectedLength: 6 },
     { key: 'cn', expectedLength: 6 },
     { key: 'gr.e', expectedLength: 9 },
     { key: 'gr.i', expectedLength: 7 },
-    { key: 'gr.c', expectedLength: 4 },
+    // ✅ v15.3.0 (P2): +4 поля col/ck/cn/ai
+    { key: 'gr.c', expectedLength: 8 },
     { key: 'gr.re', expectedLength: 6 },
     { key: 'vt.eventHandlers', expectedLength: 6 },
     { key: 'vt.dynamicComponents', expectedLength: 3 },
@@ -406,6 +544,8 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     { key: 'cd', expectedLength: 6 },
     { key: 'ty', expectedLength: 7 },
     { key: 'tr', expectedLength: 5 },
+    // ✅ v15.2.0 (P1)
+    { key: 'lx', expectedLength: 6 },
   ];
 
   for (const { key, expectedLength } of schemaChecks) {
@@ -419,6 +559,151 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
   }
 
   return checks;
+}
+
+// ============================================
+// ✅ v15.6.0: ИНВАРИАНТ I15
+// ============================================
+
+/**
+ * I15: compact.values[] содержит только JSON-safe значения.
+ *
+ * Если в values[] попадает Set, Map, RegExp, Date или
+ * class instance, при записи на диск JSON.stringify
+ * превратит их в '{}', и round-trip потеряет данные.
+ *
+ * ════════════════════════════════════════════════════════════
+ * СИМПТОМ В verify-roundtrip.ts (без этого инварианта)
+ * ════════════════════════════════════════════════════════════
+ *
+ *   $.values.length          a: 703  b: 553
+ *   $.cn.nonEmptyV[8][1]     a: 1    b: 5
+ *   L0/L1/L2/L3/RE — FAIL
+ *
+ * ════════════════════════════════════════════════════════════
+ * ФИКС
+ * ════════════════════════════════════════════════════════════
+ *
+ *   • `isValueKept` возвращает false для не-JSON-объектов
+ *     (см. values-filter.ts v1.2.0).
+ *   • `sanitizeForJson` превращает их в безопасные
+ *     представления перед записью (см. stable-stringify.ts v1.0.2).
+ *   • `jsonSafeStringify` используется в saveJsonFile.
+ */
+function invariantI15(compact: CompactJSON, limit: number): LevelResult {
+  const violations: string[] = [];
+  const values = compact.values || [];
+
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (v === undefined || v === null) continue;
+
+    if (!isJsonSafe(v)) {
+      const ctorName =
+        typeof v === 'object' && v !== null
+          ? (v as any).constructor?.name ?? 'Object'
+          : typeof v;
+      violations.push(
+        `values[${i}]: ${ctorName} (не JSON-safe) — при записи на диск превратится в '{}'`
+      );
+      if (violations.length >= limit) break;
+    }
+  }
+
+  return {
+    ok: violations.length === 0,
+    diffCount: violations.length,
+    diff: violations.map(v => ({ path: '$.values[]', a: v, b: 'JSON-safe expected' })),
+  };
+}
+
+// ============================================
+// ✅ v15.6.0: ИНВАРИАНТ I16
+// ============================================
+
+/**
+ * I16: full.constants[].value содержит только JSON-safe значения.
+ *
+ * Аналогично I15, но для full.constants[].
+ */
+function invariantI16(full: FullJSON, limit: number): LevelResult {
+  const violations: string[] = [];
+
+  for (let i = 0; i < (full.constants || []).length; i++) {
+    const cn = full.constants[i];
+    if (!cn || cn.value === undefined) continue;
+
+    if (!isJsonSafe(cn.value)) {
+      const ctorName =
+        typeof cn.value === 'object' && cn.value !== null
+          ? (cn.value as any).constructor?.name ?? 'Object'
+          : typeof cn.value;
+      violations.push(`constants[${i}] (${cn.name}): ${ctorName} (не JSON-safe)`);
+      if (violations.length >= limit) break;
+    }
+  }
+
+  return {
+    ok: violations.length === 0,
+    diffCount: violations.length,
+    diff: violations.map(v => ({
+      path: '$.constants[].value',
+      a: v,
+      b: 'JSON-safe expected',
+    })),
+  };
+}
+
+// ============================================
+// ✅ v15.6.0: ПРОВЕРКА JSON-SAFE "НА ДИСКЕ"
+// ============================================
+
+/**
+ * Проверяет, что JSON-сериализация compact не теряет данные.
+ *
+ * ════════════════════════════════════════════════════════════
+ * ЧТО ДЕЛАЕТ
+ * ════════════════════════════════════════════════════════════
+ *
+ *   1. Берёт `compact.values` (в памяти).
+ *   2. Прогоняет `JSON.stringify` → `JSON.parse`.
+ *   3. Сравнивает `values[]` до и после.
+ *   4. Если различаются — значит, есть не-JSON-объекты.
+ *
+ * Это ловит случай, когда `compact` в памяти содержит Set,
+ * а на диск записывается '{}'.
+ */
+function checkJsonSafetyInFile(compact: CompactJSON, limit: number): LevelResult {
+  const violations: string[] = [];
+  const values = compact.values || [];
+
+  // Сериализация через JSON (как при сохранении на диск)
+  const beforeJson = JSON.stringify(values);
+  const afterParse = JSON.parse(beforeJson) as unknown[];
+
+  // Сравниваем поэлементно
+  for (let i = 0; i < Math.min(values.length, afterParse.length); i++) {
+    const before = values[i];
+    const after = afterParse[i];
+
+    const beforeStr = JSON.stringify(before);
+    const afterStr = JSON.stringify(after);
+
+    if (beforeStr !== afterStr) {
+      violations.push(`values[${i}]: до JSON "${beforeStr}", после JSON "${afterStr}"`);
+      if (violations.length >= limit) break;
+    }
+  }
+
+  return {
+    ok: violations.length === 0,
+    diffCount: violations.length,
+    diff: violations.map(v => ({
+      path: '$.values[]',
+      a: v,
+      b: 'JSON round-trip expected',
+    })),
+  };
 }
 
 // ============================================
@@ -453,7 +738,7 @@ async function main(): Promise<void> {
     }
   }
 
-  section('🔬 ROUND-TRIP ВЕРИФИКАЦИЯ CODEC (v15.0.6)');
+  section('🔬 ROUND-TRIP ВЕРИФИКАЦИЯ CODEC (v15.6.0)');
   info(`Compact: ${path.resolve(options.compactPath)}`);
   info(`Full:    ${path.resolve(options.fullPath)}`);
   info(`Verbose: ${options.verbose}`);
@@ -486,8 +771,11 @@ async function main(): Promise<void> {
 
   section('🧱 БАЗОВАЯ СТРУКТУРА');
 
-  // ✅ v15.0.2: conditionals считаем через templates[]
+  // ✅ v15.0.2: conditionals через templates[]
   const conditionalsCount = countConditionals(full);
+
+  // ✅ v15.2.0 (P1): lexicalLinks
+  const lexicalLinksCount = countLexicalLinks(full);
 
   const sections: Record<string, number> = {
     modules: full.modules?.length ?? 0,
@@ -504,10 +792,12 @@ async function main(): Promise<void> {
     effects: full.effects?.length ?? 0,
     injections: full.injections?.length ?? 0,
     reactivity: full.reactivity?.length ?? 0,
-    // ✅ v15.0.2: считается через countConditionals(full)
+    // ✅ v15.0.2: через countConditionals(full)
     conditionals: conditionalsCount,
     types: full.types?.length ?? 0,
     typeRefs: full.typeRefs?.length ?? 0,
+    // ✅ v15.2.0 (P1)
+    lexicalLinks: lexicalLinksCount,
   };
 
   log('  FullJSON секции:');
@@ -524,7 +814,7 @@ async function main(): Promise<void> {
   let legendFailed = 0;
 
   if (options.checkLegend) {
-    section('📖 СТРУКТУРА ЛЕГЕНДЫ (v15.0.2)');
+    section('📖 СТРУКТУРА ЛЕГЕНДЫ (v15.6.0)');
 
     legendChecks = checkLegendStructure(compact);
 
@@ -564,6 +854,11 @@ async function main(): Promise<void> {
   subsection('L0: encode(full) === compact (семантически)');
   const l0 = semanticCompare(encoded, compact, options.maxDiffs);
   printLevelResult('L0', l0, options.maxDiffs);
+
+  // ✅ v15.6.0: если L0 упал — диагностируем values[] рассинхрон
+  if (!l0.ok) {
+    diagnoseValuesDesync(compact, encoded, options.maxDiffs);
+  }
 
   subsection('L1: decode(compact) === full (семантически)');
   const l1 = semanticCompare(decoded, full, options.maxDiffs);
@@ -606,6 +901,9 @@ async function main(): Promise<void> {
         log(`    ${C.gray}... и ещё ${diffs.length - options.maxDiffs}${C.reset}`);
       }
     }
+
+    // ✅ v15.6.0: диагностика рассинхрона values[]
+    diagnoseValuesDesync(compact, encoded, options.maxDiffs);
   }
 
   subsection('L4: encode(decode(encode(full))) === encode(full) (побайтово)');
@@ -654,6 +952,11 @@ async function main(): Promise<void> {
   const re = semanticCompare(reEncoded, compact, options.maxDiffs);
   printLevelResult('RE', re, options.maxDiffs);
 
+  // ✅ v15.6.0: если RE упал — диагностируем values[]
+  if (!re.ok) {
+    diagnoseValuesDesync(compact, reEncoded, options.maxDiffs);
+  }
+
   subsection('DL: decode(encode(full)) === full (семантически)');
   const dlDecoded = Codec.decode(encoded);
   const dl = semanticCompare(dlDecoded, full, options.maxDiffs);
@@ -682,27 +985,21 @@ async function main(): Promise<void> {
   }
 
   // ============================================
-  // 3.5. ПРОВЕРКА СЕКЦИЙ vt/lc/ef/inj/rx/cd/ty/tr (v15.0.2)
-  // ============================================
-  //
-  // ⚠️ v15.0.2: 'conditionals' УБРАНЫ из sectionNames.
-  //   Раньше сравнивались full.conditionals и decoded.conditionals
-  //   на верхнем уровне. Теперь этого поля не существует —
-  //   conditionals живут ТОЛЬКО в templates[].conditionals
-  //   и сравниваются как часть секции 'templates'.
+  // 3.5. ПРОВЕРКА СЕКЦИЙ vt/lc/ef/inj/rx/ty/tr
   // ============================================
 
   section('🎨 ПРОВЕРКА СЕКЦИЙ vt/lc/ef/inj/rx/ty/tr');
 
   const sectionNames = [
-    'templates', // включает conditionals внутри
+    'templates',
     'lifecycle',
     'effects',
     'injections',
     'reactivity',
-    // 'conditionals',  // ← v15.0.2: убрано, см. комментарий выше
     'types',
     'typeRefs',
+    // ✅ v15.2.0 (P1)
+    'lexicalLinks',
   ] as const;
 
   interface SectionResult {
@@ -776,6 +1073,29 @@ async function main(): Promise<void> {
     { name: 'functions[].*Flags', result: baseReport.spotChecks.functionsFlags },
     { name: 'external calls type', result: baseReport.spotChecks.externalCalls },
     { name: 'modules[].path', result: baseReport.spotChecks.modulesPath },
+    // ✅ v15.1.0 (P0)
+    {
+      name: 'functions[].parentFunctionId',
+      result: spotCheckParentFunctionId(decoded, full, options.maxDiffs),
+    },
+    // ✅ v15.2.0 (P1)
+    {
+      name: 'lexicalLinks',
+      result: spotCheckLexicalLinks(decoded, full, options.maxDiffs),
+    },
+    // ✅ v15.3.0 (P2)
+    {
+      name: 'calls[].callKind',
+      result: spotCheckCallKind(decoded, full, options.maxDiffs),
+    },
+    {
+      name: 'calls[].calleeName',
+      result: spotCheckCalleeName(decoded, full, options.maxDiffs),
+    },
+    {
+      name: 'calls[].argumentIndex',
+      result: spotCheckArgumentIndex(decoded, full, options.maxDiffs),
+    },
   ];
 
   for (const spot of spotChecks) {
@@ -799,10 +1119,15 @@ async function main(): Promise<void> {
 
   section('🏗️  СТРУКТУРНЫЕ ПРОВЕРКИ');
 
+  // ✅ v15.6.0: JSON-safe round-trip проверка
+  const jsonSafeCheck = checkJsonSafetyInFile(compact, options.maxDiffs);
+
   const structChecks: Array<{ name: string; result: LevelResult }> = [
     { name: 'columnar structure', result: baseReport.structuralChecks.columnarStructure },
     { name: 'RLE structure', result: baseReport.structuralChecks.rleStructure },
     { name: 'tokenized strings', result: checkTokenizedStrings(compact) },
+    // ✅ v15.6.0: JSON-safe round-trip
+    { name: 'JSON-safe round-trip значений', result: jsonSafeCheck },
   ];
 
   for (const sc of structChecks) {
@@ -1005,15 +1330,7 @@ async function main(): Promise<void> {
     });
   }
 
-  // ✅ v15.0.6: I8 — gr.i.tf — индекс в fl.p
-  //
-  // ⚠️ v15.0.6-fix: проверяем ТОЛЬКО tf ∈ [-1, fl.p.length).
-  //
-  // `ff === tf` НЕ считается нарушением: самоимпорт бывает
-  // в валидных случаях:
-  //   • barrel-файлы: `export * from './index'` внутри index.ts
-  //   • side-effect импорты: `import './styles.css'`
-  //   • циклические реэкспорты: `export { X } from './index'`
+  // I8 — gr.i.tf ∈ [-1, fl.p.length)
   {
     const violations: string[] = [];
     const flPLength = compact.fl?.p?.length ?? 0;
@@ -1022,7 +1339,6 @@ async function main(): Promise<void> {
     for (let i = 0; i < tf.length; i++) {
       const tfVal = tf[i]!;
 
-      // tf должен быть -1 или валидным индексом в fl.p
       if (tfVal !== -1 && (tfVal < 0 || tfVal >= flPLength)) {
         violations.push(`gr.i.tf[${i}] = ${tfVal} вне fl.p (length=${flPLength})`);
         if (violations.length >= 20) break;
@@ -1033,6 +1349,139 @@ async function main(): Promise<void> {
       name: 'I8: gr.i.tf — индекс в fl.p (-1 для внешних)',
       ok: violations.length === 0,
       violations,
+    });
+  }
+
+  // ✅ v15.1.0 (P0): I9 — fns.parent — валидный индекс или -1
+  {
+    const violations: string[] = [];
+    const fnsLength = (full.functions || []).length;
+    const parent = compact.fns?.parent;
+
+    if (parent !== undefined) {
+      const parentUnrle = unrle(parent as [number, number][]);
+      for (let i = 0; i < parentUnrle.length; i++) {
+        const p = parentUnrle[i]!;
+        if (p !== -1 && (p < 0 || p >= fnsLength)) {
+          violations.push(`fns.parent[${i}] = ${p} вне [0, ${fnsLength})`);
+          if (violations.length >= 20) break;
+        }
+      }
+    }
+
+    invariantResults.push({
+      name: 'I9: fns.parent — валидный индекс или -1',
+      ok: violations.length === 0,
+      violations,
+    });
+  }
+
+  // ✅ v15.1.0 (P0): I10 — parentFunctionId целостность
+  {
+    const violations: string[] = [];
+    const fnIds = new Set((full.functions || []).map(f => f.id));
+    for (const fn of full.functions || []) {
+      if (fn.parentFunctionId && !fnIds.has(fn.parentFunctionId)) {
+        violations.push(`${fn.id} (${fn.name}): parent=${fn.parentFunctionId} не найден`);
+        if (violations.length >= 20) break;
+      }
+    }
+    invariantResults.push({
+      name: 'I10: parentFunctionId ссылается на существующую функцию',
+      ok: violations.length === 0,
+      violations,
+    });
+  }
+
+  // ✅ v15.2.0 (P1): I11 — lx.p/lx.c — валидные индексы
+  {
+    const violations: string[] = [];
+    const fnsLength = (full.functions || []).length;
+    const lx = compact.lx;
+
+    if (lx) {
+      const pUnrle = unrle(lx.p);
+      const cUnrle = unrle(lx.c);
+
+      for (let i = 0; i < lx.r.length; i++) {
+        const p = pUnrle[i]!;
+        const c = cUnrle[i]!;
+        if (p !== -1 && (p < 0 || p >= fnsLength)) {
+          violations.push(`lx.p[${i}] = ${p} вне [0, ${fnsLength})`);
+        }
+        if (c < 0 || c >= fnsLength) {
+          violations.push(`lx.c[${i}] = ${c} вне [0, ${fnsLength})`);
+        }
+        if (violations.length >= 20) break;
+      }
+    }
+
+    invariantResults.push({
+      name: 'I11: lx.p/lx.c — валидные индексы',
+      ok: violations.length === 0,
+      violations,
+    });
+  }
+
+  // ✅ v15.2.0 (P1): I12 — lexicalLinks целостность
+  {
+    const violations: string[] = [];
+    const fnIds = new Set((full.functions || []).map(f => f.id));
+    for (const l of full.lexicalLinks ?? []) {
+      if (l.parentFunctionId && !fnIds.has(l.parentFunctionId)) {
+        violations.push(`${l.id}: parent=${l.parentFunctionId} не найден`);
+      }
+      if (!fnIds.has(l.childFunctionId)) {
+        violations.push(`${l.id}: child=${l.childFunctionId} не найден`);
+      }
+      if (violations.length >= 20) break;
+    }
+    invariantResults.push({
+      name: 'I12: lexicalLinks — целостность',
+      ok: violations.length === 0,
+      violations,
+    });
+  }
+
+  // ✅ v15.3.0 (P2): I13 — gr.c.col/ck/cn/ai — согласованность длин
+  {
+    const violations: string[] = [];
+    const gc = compact.gr?.c;
+    if (gc) {
+      const len = gc.f?.length ?? 0;
+      if (gc.col && gc.col.length !== len)
+        violations.push(`gc.col.length=${gc.col.length}, f.length=${len}`);
+      if (gc.ck && gc.ck.length !== len)
+        violations.push(`gc.ck.length=${gc.ck.length}, f.length=${len}`);
+      if (gc.cn && gc.cn.length !== len)
+        violations.push(`gc.cn.length=${gc.cn.length}, f.length=${len}`);
+      if (gc.ai && gc.ai.length !== len)
+        violations.push(`gc.ai.length=${gc.ai.length}, f.length=${len}`);
+    }
+    invariantResults.push({
+      name: 'I13: gr.c.col/ck/cn/ai — согласованность длин',
+      ok: violations.length === 0,
+      violations,
+    });
+  }
+
+  // ✅ v15.6.0: I15 — compact.values[] — только JSON-safe значения
+  {
+    const i15 = invariantI15(compact, options.maxDiffs);
+    invariantResults.push({
+      name: 'I15: compact.values[] — только JSON-safe значения',
+      ok: i15.ok,
+      violations: (i15.diff || []).map((d: any) => d.a),
+    });
+  }
+
+  // ✅ v15.6.0: I16 — full.constants[].value — только JSON-safe значения
+  {
+    const i16 = invariantI16(full, options.maxDiffs);
+    invariantResults.push({
+      name: 'I16: full.constants[].value — только JSON-safe значения',
+      ok: i16.ok,
+      violations: (i16.diff || []).map((d: any) => d.a),
     });
   }
 
@@ -1157,9 +1606,32 @@ async function main(): Promise<void> {
     { name: 'spotCheck: functions[].*Flags', ok: baseReport.spotChecks.functionsFlags.ok },
     { name: 'spotCheck: external calls', ok: baseReport.spotChecks.externalCalls.ok },
     { name: 'spotCheck: modules[].path', ok: baseReport.spotChecks.modulesPath.ok },
+    // ✅ v15.1.0 (P0)
+    {
+      name: 'spotCheck: functions[].parentFunctionId',
+      ok: spotChecks.find(s => s.name === 'functions[].parentFunctionId')!.result.ok,
+    },
+    // ✅ v15.2.0 (P1)
+    {
+      name: 'spotCheck: lexicalLinks',
+      ok: spotChecks.find(s => s.name === 'lexicalLinks')!.result.ok,
+    },
+    // ✅ v15.3.0 (P2)
+    {
+      name: 'spotCheck: calls[].callKind',
+      ok: spotChecks.find(s => s.name === 'calls[].callKind')!.result.ok,
+    },
+    {
+      name: 'spotCheck: calls[].calleeName',
+      ok: spotChecks.find(s => s.name === 'calls[].calleeName')!.result.ok,
+    },
+    {
+      name: 'spotCheck: calls[].argumentIndex',
+      ok: spotChecks.find(s => s.name === 'calls[].argumentIndex')!.result.ok,
+    },
   ];
 
-  // Добавляем проверки секций v15.0.2
+  // Секции
   for (const sr of sectionResults) {
     levels.push({ name: `section: ${sr.name}`, ok: sr.ok });
   }
@@ -1167,22 +1639,22 @@ async function main(): Promise<void> {
   // ✅ v15.0.2: отдельная проверка conditionals через templates[]
   levels.push({ name: 'section: conditionals (via templates[])', ok: conditionalsOk });
 
-  // Добавляем проверки легенды
+  // Легенда
   for (const check of legendChecks) {
     levels.push({ name: `legend: ${check.name}`, ok: check.ok });
   }
 
-  // Добавляем инварианты
+  // Инварианты
   for (const inv of invariantResults) {
     levels.push({ name: `invariant: ${inv.name}`, ok: inv.ok });
   }
 
-  // Добавляем структурные проверки
+  // Структурные проверки
   for (const sc of structChecks) {
     levels.push({ name: `struct: ${sc.name}`, ok: sc.result.ok });
   }
 
-  // Добавляем golden-проверки (только не-skipped)
+  // Golden
   for (const g of goldenResults) {
     if (!g.skipped) {
       levels.push({ name: `golden: ${g.name}`, ok: g.ok });
@@ -1232,7 +1704,8 @@ async function main(): Promise<void> {
 
   const jsonReport = {
     timestamp: new Date().toISOString(),
-    codecVersion: '15.0.6',
+    // ✅ v15.6.0
+    codecVersion: '15.6.0',
     originalFormat: 'compact',
     bothFormats: false,
 
@@ -1255,7 +1728,6 @@ async function main(): Promise<void> {
       decodedCount: sr.decodedCount,
       ok: sr.ok,
     })),
-    // ✅ v15.0.2: conditionals через templates[]
     conditionalsCheck: {
       fullCount: fullConditionals,
       decodedCount: decodedConditionals,
@@ -1296,13 +1768,11 @@ async function main(): Promise<void> {
 }
 
 // ============================================
-// ДОПОЛНИТЕЛЬНЫЕ ПРОВЕРКИ (v15.0.2)
+// ДОПОЛНИТЕЛЬНЫЕ ПРОВЕРКИ
 // ============================================
 
 /**
  * Явная проверка imports[].isTypeOnly.
- *
- * Ловит регрессию по биту 8 в gr.i.ty.
  */
 function spotCheckImportsIsTypeOnly(decoded: FullJSON, full: FullJSON, limit: number): LevelResult {
   const a = (decoded.imports || []).map((i: any, idx: number) => ({
@@ -1362,10 +1832,195 @@ function spotCheckImportsIsTypeOnly(decoded: FullJSON, full: FullJSON, limit: nu
 }
 
 /**
+ * ✅ v15.1.0 (P0): проверка functions[].parentFunctionId.
+ */
+function spotCheckParentFunctionId(decoded: FullJSON, full: FullJSON, limit: number): LevelResult {
+  const a = (decoded.functions || []).map((f: any) => ({
+    id: f.id,
+    parentFunctionId: f.parentFunctionId ?? null,
+  }));
+  const b = (full.functions || []).map((f: any) => ({
+    id: f.id,
+    parentFunctionId: f.parentFunctionId ?? null,
+  }));
+
+  const diffs: any[] = [];
+  const n = Math.min(a.length, b.length);
+
+  if (a.length !== b.length) {
+    diffs.push({ path: '$.functions.length', a: a.length, b: b.length });
+  }
+
+  for (let i = 0; i < n && diffs.length < limit; i++) {
+    const ai = a[i];
+    const bi = b[i];
+    if (!ai || !bi) continue;
+    if (ai.parentFunctionId !== bi.parentFunctionId) {
+      diffs.push({
+        path: `$.functions[${i}].parentFunctionId`,
+        a: ai.parentFunctionId,
+        b: bi.parentFunctionId,
+      });
+    }
+  }
+
+  return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
+}
+
+/**
+ * ✅ v15.2.0 (P1): проверка lexicalLinks.
+ */
+function spotCheckLexicalLinks(decoded: FullJSON, full: FullJSON, limit: number): LevelResult {
+  const a = decoded.lexicalLinks ?? [];
+  const b = full.lexicalLinks ?? [];
+
+  const diffs: any[] = [];
+
+  if (a.length !== b.length) {
+    diffs.push({ path: '$.lexicalLinks.length', a: a.length, b: b.length });
+    return { ok: false, diffCount: diffs.length, diff: diffs };
+  }
+
+  for (let i = 0; i < a.length && diffs.length < limit; i++) {
+    const ai = a[i];
+    const bi = b[i];
+    if (!ai || !bi) continue;
+    if (ai.parentFunctionId !== bi.parentFunctionId) {
+      diffs.push({
+        path: `$.lexicalLinks[${i}].parentFunctionId`,
+        a: ai.parentFunctionId,
+        b: bi.parentFunctionId,
+      });
+    }
+    if (ai.childFunctionId !== bi.childFunctionId) {
+      diffs.push({
+        path: `$.lexicalLinks[${i}].childFunctionId`,
+        a: ai.childFunctionId,
+        b: bi.childFunctionId,
+      });
+    }
+    if (ai.relation !== bi.relation) {
+      diffs.push({
+        path: `$.lexicalLinks[${i}].relation`,
+        a: ai.relation,
+        b: bi.relation,
+      });
+    }
+  }
+
+  return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
+}
+
+/**
+ * ✅ v15.3.0 (P2): проверка calls[].callKind.
+ */
+function spotCheckCallKind(decoded: FullJSON, full: FullJSON, limit: number): LevelResult {
+  const a = (decoded.calls || []).map((c: CallData) => ({
+    id: c.id,
+    callKind: c.callKind ?? null,
+  }));
+  const b = (full.calls || []).map((c: CallData) => ({
+    id: c.id,
+    callKind: c.callKind ?? null,
+  }));
+
+  const diffs: any[] = [];
+  const n = Math.min(a.length, b.length);
+
+  if (a.length !== b.length) {
+    diffs.push({ path: '$.calls.length', a: a.length, b: b.length });
+  }
+
+  for (let i = 0; i < n && diffs.length < limit; i++) {
+    const ai = a[i];
+    const bi = b[i];
+    if (!ai || !bi) continue;
+    if (ai.callKind !== bi.callKind) {
+      diffs.push({
+        path: `$.calls[${i}].callKind`,
+        a: ai.callKind,
+        b: bi.callKind,
+      });
+    }
+  }
+
+  return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
+}
+
+/**
+ * ✅ v15.3.0 (P2): проверка calls[].calleeName.
+ */
+function spotCheckCalleeName(decoded: FullJSON, full: FullJSON, limit: number): LevelResult {
+  const a = (decoded.calls || []).map((c: CallData) => ({
+    id: c.id,
+    calleeName: c.calleeName ?? null,
+  }));
+  const b = (full.calls || []).map((c: CallData) => ({
+    id: c.id,
+    calleeName: c.calleeName ?? null,
+  }));
+
+  const diffs: any[] = [];
+  const n = Math.min(a.length, b.length);
+
+  if (a.length !== b.length) {
+    diffs.push({ path: '$.calls.length', a: a.length, b: b.length });
+  }
+
+  for (let i = 0; i < n && diffs.length < limit; i++) {
+    const ai = a[i];
+    const bi = b[i];
+    if (!ai || !bi) continue;
+    if (ai.calleeName !== bi.calleeName) {
+      diffs.push({
+        path: `$.calls[${i}].calleeName`,
+        a: ai.calleeName,
+        b: bi.calleeName,
+      });
+    }
+  }
+
+  return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
+}
+
+/**
+ * ✅ v15.3.0 (P2): проверка calls[].argumentIndex.
+ */
+function spotCheckArgumentIndex(decoded: FullJSON, full: FullJSON, limit: number): LevelResult {
+  const a = (decoded.calls || []).map((c: CallData) => ({
+    id: c.id,
+    argumentIndex: c.argumentIndex ?? null,
+  }));
+  const b = (full.calls || []).map((c: CallData) => ({
+    id: c.id,
+    argumentIndex: c.argumentIndex ?? null,
+  }));
+
+  const diffs: any[] = [];
+  const n = Math.min(a.length, b.length);
+
+  if (a.length !== b.length) {
+    diffs.push({ path: '$.calls.length', a: a.length, b: b.length });
+  }
+
+  for (let i = 0; i < n && diffs.length < limit; i++) {
+    const ai = a[i];
+    const bi = b[i];
+    if (!ai || !bi) continue;
+    if (ai.argumentIndex !== bi.argumentIndex) {
+      diffs.push({
+        path: `$.calls[${i}].argumentIndex`,
+        a: ai.argumentIndex,
+        b: bi.argumentIndex,
+      });
+    }
+  }
+
+  return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
+}
+
+/**
  * Проверка tokenized strings.
- *
- * `methods` — опционален: проверяем, только если присутствует
- * и не является массивом.
  */
 function checkTokenizedStrings(compact: CompactJSON): LevelResult {
   const diffs: any[] = [];
@@ -1373,24 +2028,17 @@ function checkTokenizedStrings(compact: CompactJSON): LevelResult {
   if (!Array.isArray(compact.tokens)) {
     diffs.push({ path: '$.tokens', a: 'missing', b: 'array expected' });
   }
-
   if (!Array.isArray(compact.strs)) {
     diffs.push({ path: '$.strs', a: 'missing', b: 'array expected' });
   }
-
   if (!Array.isArray(compact.params)) {
     diffs.push({ path: '$.params', a: 'missing', b: 'array expected' });
   }
-
   if (compact.methods !== undefined && !Array.isArray(compact.methods)) {
     diffs.push({ path: '$.methods', a: 'not array', b: 'array expected' });
   }
 
-  return {
-    ok: diffs.length === 0,
-    diffCount: diffs.length,
-    diff: diffs,
-  };
+  return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
 }
 
 // ============================================
@@ -1399,7 +2047,7 @@ function checkTokenizedStrings(compact: CompactJSON): LevelResult {
 
 function printHelp(): void {
   log(
-    `\n${C.bold}Использование:${C.reset}\n  npx tsx scripts/verify-roundtrip.ts [options]\n\n${C.bold}Опции:${C.reset}\n  --compact <path>       Путь к compact JSON (по умолчанию ./ast-graph-viewer/index.json)\n  --full <path>          Путь к full JSON (по умолчанию ./ast-graph-viewer/index.full.json)\n  -v, --verbose          Подробный вывод с расхождениями\n  --max-diffs <n>        Максимум расхождений для вывода (по умолчанию 10)\n  --json-report <path>   Сохранить отчёт в JSON-файл\n  --golden <dir>         Директория с эталонами (по умолчанию ./scripts/fixtures)\n  --no-golden            Отключить проверку эталонов\n  --no-check-legend      Отключить проверку структуры легенды\n  -h, --help             Показать эту справку\n\n${C.bold}Уровни round-trip:${C.reset}\n  L0  : encode(full) === compact (семантически)\n  L1  : decode(compact) === full (семантически)\n  L2  : decode(compact) === full (побайтово, порядко-независимо)\n  L3  : compact на диске === encode(full) (побайтово, буквально)\n  L4  : encode(decode(encode(full))) === encode(full) (побайтово)\n  RE  : encode(decode(compact)) === compact\n  DL  : decode(encode(full)) === full\n  ENC : encode(full) === encode(decode(encode(full)))\n  DEC : decode(compact) === decode(encode(decode(compact)))\n\n${C.bold}Семантические инварианты:${C.reset}\n  I1  : calls[].type ∈ {direct, async, method, callback}\n  I2  : imports[].type ∈ {named, default, namespace}\n  I3  : exports[].type ∈ {named, default, type}\n  I4  : external calls → isExternal = 1 в compact.gr.c.ty\n  I5  : external calls: сохранность типа (full vs decoded)\n  I6  : functions[].*Flags ∈ {true, false, undefined}\n  I7  : fns/cls/cn — columnar-структура\n  I8  : gr.i.tf — индекс в fl.p (-1 для внешних) — НОВОЕ v15.0.6\n        ⚠️ ff === tf — НЕ ошибка (самоимпорт в barrel-файлах допустим).\n\n${C.bold}Проверки секций (v15.0.2):${C.reset}\n  templates, lifecycle, effects, injections, reactivity,\n  types, typeRefs — сравнение full vs decoded\n\n  ⚠️ conditionals НЕ входят в sectionNames.\n     Они живут ТОЛЬКО в templates[].conditionals\n     и сравниваются как часть секции 'templates',\n     плюс отдельная проверка через countConditionals().\n\n${C.bold}Структурные проверки:${C.reset}\n  columnar structure  — все секции имеют columnar-структуру\n  RLE structure       — fl.m, fns.m, fns.f, cls.m, cls.f, cn.m, cn.f\n  tokenized strings   — tokens, strs, params (methods — опционально)\n\n${C.bold}Проверки легенды:${C.reset}\n  legend.codes.*       — расшифровки кодов\n  legend.flags.bits    — 18 битов\n  legend.schemas.*     — позиционные схемы\n\n${C.bold}Эталоны (golden):${C.reset}\n  G1  : full ≈ scripts/fixtures/index.full.golden.json\n  G2  : compact ≈ scripts/fixtures/index.golden.json\n\n${C.bold}Формат compact.json v15.0.6:${C.reset}\n  mi:  { n: [...], f: [[startFileIdx, fileCount], ...] }\n  fl:  { p: [...], m: [[moduleIdx, count], ...] }\n  fns: { n: [...], m: [[...]], f: [[...]], l: [...], fl: [...], p: [...], rt: [...] }\n  cls: { n: [...], m: [[...]], f: [[...]], l: [...], fl: [...], methods: [...] }\n  cn:  { n: [...], m: [[...]], f: [[...]], l: [...], fl: [...], nonEmptyV: [[idx, valueIdx], ...] }\n  gr.e:  { m: [...], f: [...], fn: [...], l: [...], ty: [...], en: [...], ln: [...], s: [...], flags: [...] }\n  gr.i:  { ff: [...], tf: [...], s: [...], im: [...], ln: [...], l: [...], ty: [...] }\n          ff: индекс в fl.p (fromFileIdx)\n          tf: индекс в fl.p (toFileIdx), -1 = внешний/неразрешённый\n          s:  индекс в strs (source-строка) — БЕЗ ИЗМЕНЕНИЙ\n          ty: typeCode | (isExternal << 2) | (isTypeOnly << 3)\n              | (isReExport << 4) | (isStarReExport << 5)\n          ⚠️ typeCode ∈ {0=named, 1=default, 2=namespace}\n          ⚠️ v15.0.6: tf — НЕ индекс в strs (было в v15.0.4)\n  gr.c:  { f: [...], t: [...], l: [...], ty: [...] }\n  gr.re: { m: [...], fn: [...], s: [...], en: [...], l: [...], ty: [...] }\n  vt:  number[]  — индексы на values[] для templates[]\n  lc:  number[]  — индексы на values[] для lifecycle[]\n  ef:  number[]  — индексы на values[] для effects[]\n  inj: number[]  — индексы на values[] для injections[]\n  rx:  number[]  — индексы на values[] для reactivity[]\n  cd:  number[]  — индексы на values[] для conditionals[]\n                   ⚠️ conditionals восстанавливаются через templates[]\n  ty:  number[]  — индексы на values[] для types[]\n  tr:  number[]  — индексы на values[] для typeRefs[]\n\n${C.bold}Примеры:${C.reset}\n  npx tsx scripts/verify-roundtrip.ts\n  npx tsx scripts/verify-roundtrip.ts --json-report ./round-trip-report.json\n  npx tsx scripts/verify-roundtrip.ts -v --max-diffs 20\n  npx tsx scripts/verify-roundtrip.ts --no-golden\n  npx tsx scripts/verify-roundtrip.ts --no-check-legend\n  npx tsx scripts/verify-roundtrip.ts --golden ./my-fixtures\n`
+    `\n${C.bold}Использование:${C.reset}\n  npx tsx scripts/verify-roundtrip.ts [options]\n\n${C.bold}Опции:${C.reset}\n  --compact <path>       Путь к compact JSON (по умолчанию ./ast-graph-viewer/index.json)\n  --full <path>          Путь к full JSON (по умолчанию ./ast-graph-viewer/index.full.json)\n  -v, --verbose          Подробный вывод\n  --max-diffs <n>        Максимум расхождений для вывода (по умолчанию 10)\n  --json-report <path>   Сохранить отчёт в JSON-файл\n  --golden <dir>         Директория с эталонами (по умолчанию ./scripts/fixtures)\n  --no-golden            Отключить проверку эталонов\n  --no-check-legend      Отключить проверку структуры легенды\n  -h, --help             Показать эту справку\n\n${C.bold}Уровни round-trip:${C.reset}\n  L0  : encode(full) === compact (семантически)\n  L1  : decode(compact) === full (семантически)\n  L2  : decode(compact) === full (побайтово, порядко-независимо)\n  L3  : compact на диске === encode(full) (побайтово, буквально)\n  L4  : encode(decode(encode(full))) === encode(full) (побайтово)\n  RE  : encode(decode(compact)) === compact\n  DL  : decode(encode(full)) === full\n  ENC : encode(full) === encode(decode(encode(full)))\n  DEC : decode(compact) === decode(encode(decode(compact)))\n\n${C.bold}Семантические инварианты (v15.6.0):${C.reset}\n  I1  : calls[].type ∈ {direct, async, method, callback}\n  I2  : imports[].type ∈ {named, default, namespace}\n  I3  : exports[].type ∈ {named, default, type}\n  I4  : external calls → isExternal = 1 в compact.gr.c.ty\n  I5  : external calls: сохранность типа\n  I6  : functions[].*Flags ∈ {true, false, undefined}\n  I7  : fns/cls/cn — columnar-структура\n  I8  : gr.i.tf — индекс в fl.p (-1 для внешних)\n  I9  : fns.parent — валидный индекс или -1 (P0)\n  I10 : parentFunctionId — целостность (P0)\n  I11 : lx.p/lx.c — валидные индексы (P1)\n  I12 : lexicalLinks — целостность (P1)\n  I13 : gr.c.col/ck/cn/ai — согласованность длин (P2)\n  I15 : compact.values[] — только JSON-safe значения (v15.6.0)\n  I16 : full.constants[].value — только JSON-safe значения (v15.6.0)\n\n${C.bold}Проверки секций:${C.reset}\n  templates, lifecycle, effects, injections, reactivity,\n  types, typeRefs, lexicalLinks (P1)\n\n${C.bold}Структурные проверки:${C.reset}\n  columnar structure, RLE structure, tokenized strings,\n  JSON-safe round-trip значений (v15.6.0)\n\n${C.bold}Проверки легенды:${C.reset}\n  legend.codes.* (13 словарей, включая lexicalRelation и callKind)\n  legend.flags.bits (18 битов)\n  legend.schemas.* (22 схемы, включая lx и gr.c с 8 полями)\n\n${C.bold}Примеры:${C.reset}\n  npx tsx scripts/verify-roundtrip.ts\n  npx tsx scripts/verify-roundtrip.ts --json-report ./round-trip-report.json\n  npx tsx scripts/verify-roundtrip.ts -v --max-diffs 20\n  npx tsx scripts/verify-roundtrip.ts --no-golden\n  npx tsx scripts/verify-roundtrip.ts --golden ./my-fixtures\n`
   );
 }
 

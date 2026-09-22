@@ -2,8 +2,30 @@
 // ============================================================
 // STAGE 4: NORMALIZE ENTITIES
 // ============================================================
-// Версия: 1.1.0
+// Версия: 1.2.0
 //
+// ИЗМЕНЕНИЯ v1.2.0 (P0/P1: проброс parentFunctionId + lexicalLinks):
+//   - ✅ ДОБАВЛЕНО: явный проброс lexicalLinks в propagateTemplateFields.
+//     Ранее поле терялось, и Codec.encode получал undefined для lx[],
+//     что ломало round-trip (compact.lx = { p: [], c: [], r: [], l: [], ai: [], cn: [] }).
+//   - ✅ ПРОВЕРЕНО: parentFunctionId пробрасывается через convertEntitiesToEnhanced
+//     (см. entities-converter.ts v2.2.0). Здесь дополнительных действий не требуется.
+//   - ✅ ДОБАВЛЕНО: диагностика в verbose-режиме — сколько функций имеют
+//     parentFunctionId и сколько lexicalLinks собрано.
+//   - 📌 Это критично для инвариантов I10 и I12 в verify-roundtrip.
+//
+// ИЗМЕНЕНИЯ v1.1.0:
+//   - ✅ ЯВНЫЙ ПРОБРОС templateXxx-полей.
+//   - ✅ Расширенные метрики: totalVueFiles, filesWithConditionals,
+//     filesWithLifecycle, filesWithReactivity.
+//   - ✅ Логирование в verbose: сколько Vue-файлов с какими
+//     секциями.
+//   - ✅ Обработка ошибок через continueOnError.
+//
+// ИЗМЕНЕНИЯ v1.0.0:
+//   - Первая версия.
+//
+// ============================================================
 // НАЗНАЧЕНИЕ
 // ------------------------------------------------------------
 // Четвёртый этап единого pipeline. Преобразует
@@ -16,6 +38,10 @@
 // из-за которого `decode(compact)` возвращает `undefined`
 // для секции `conditionals` в Vue-проектах.
 //
+// Дополнительно здесь же пробрасываются:
+//   - `parentFunctionId` (P0) — через convertEntitiesToEnhanced
+//   - `lexicalLinks` (P1) — явно через propagateTemplateFields
+// ============================================================
 // СХЕМА
 // ------------------------------------------------------------
 //   EntitiesResult (от TS/JS-ветки или Vue-ветки)
@@ -27,7 +53,7 @@
 //   EnhancedEntityInfo (базовые секции)
 //              │
 //              ▼
-//   🎯 ЯВНЫЙ ПРОБРОС templateXxx (только для Vue)
+//   🎯 ЯВНЫЙ ПРОБРОС templateXxx + lexicalLinks (только для Vue)
 //              │
 //              ▼
 //   EnhancedEntityInfo (полный)
@@ -55,10 +81,10 @@
 //             • templateSlots
 //             • templateComplexity
 //
-//           Это ГАРАНТИРУЕТ, что Vue-данные не потеряются
-//           между `extractEntities` и `compact-reporter`.
+//        c. 🎯 ЯВНО ПРОБРАСЫВАЕТ `lexicalLinks` (P1):
+//             • parent → child связи между функциями
 //
-//        c. Кладёт результат в `ctx.enhancedMap[file]`.
+//        d. Кладёт результат в `ctx.enhancedMap[file]`.
 //
 //   2. Собирает ошибки в `ctx.errors` (при `continueOnError`).
 //
@@ -76,7 +102,10 @@
 // `full.conditionals`. Соответственно, `compact.cd` не
 // заполнялся или заполнялся пустыми ссылками.
 //
-// Теперь проброс `templateXxx` — ЯВНЫЙ и в одном месте.
+// Аналогично `lexicalLinks` терялись, если не пробрасывать их
+// явно — и compact.lx оставался пустым.
+//
+// Теперь проброс `templateXxx` и `lexicalLinks` — ЯВНЫЙ и в одном месте.
 //
 // ЗАВИСИМОСТИ
 // ------------------------------------------------------------
@@ -84,19 +113,6 @@
 //   • `PipelineContext`           — общий контекст.
 //   • `PipelineStage`             — интерфейс stage.
 //   • `StageError`                — единый тип ошибок.
-//
-// ИЗМЕНЕНИЯ
-// ------------------------------------------------------------
-// v1.1.0:
-//   • 🎯 ЯВНЫЙ ПРОБРОС templateXxx-полей.
-//   • Расширенные метрики: totalVueFiles, filesWithConditionals,
-//     filesWithLifecycle, filesWithReactivity.
-//   • Логирование в verbose: сколько Vue-файлов с какими
-//     секциями.
-//   • Обработка ошибок через continueOnError.
-//
-// v1.0.0:
-//   • Первая версия.
 // ============================================================
 
 import path from 'path';
@@ -124,7 +140,9 @@ import { StageError } from '../errors.js';
  *           (Vue-специфичные). Это исправляет баг с потерей
  *           `conditionals`, `lifecycle`, `reactivity` и т.д.
  *
- *        c. Сохраняет в `ctx.enhancedMap[file]`.
+ *        c. 🎯 ЯВНО ПРОБРАСЫВАЕТ `lexicalLinks` (P1).
+ *
+ *        d. Сохраняет в `ctx.enhancedMap[file]`.
  *
  *   2. Обновляет метрики:
  *        • `filesWithConditionals` — файлы с v-if/v-else
@@ -154,6 +172,7 @@ import { StageError } from '../errors.js';
  *   templateEffects          │ vue-analyzer/analyzers   │ compact-reporter
  *   templateInjections       │ vue-analyzer/analyzers   │ compact-reporter
  *   templateReactivity       │ vue-analyzer/analyzers   │ compact-reporter
+ *   lexicalLinks             │ entity-extractor/ast     │ compact-reporter  ← P1
  *
  * ════════════════════════════════════════════════════════════
  * ПОВЕДЕНИЕ ПРИ ОШИБКАХ
@@ -172,10 +191,10 @@ import { StageError } from '../errors.js';
  *   const ctx = createContext({ projectRoot: './src' });
  *   await new DiscoverFilesStage().run(ctx);
  *   await new ParseFileStage().run(ctx);
- *   await new EnrichReExportsStage().run(ctx);
  *   await new NormalizeEntitiesStage().run(ctx);
  *
  *   // ctx.enhancedMap['./src/App.vue'].templateConditionals.length > 0
+ *   // ctx.enhancedMap['./src/App.vue'].lexicalLinks.length > 0
  */
 export class NormalizeEntitiesStage implements PipelineStage {
   readonly name = 'normalize-entities';
@@ -207,20 +226,32 @@ export class NormalizeEntitiesStage implements PipelineStage {
     let filesWithLifecycle = 0;
     let filesWithReactivity = 0;
 
+    // ✅ v1.2.0: диагностика P0/P1
+    let totalFunctionsWithParent = 0;
+    let totalLexicalLinks = 0;
+
     for (const [filePath, entities] of Object.entries(entitiesMap)) {
       try {
         // ════════════════════════════════════════════════════
         // Шаг 2.1: Базовая конвертация
         // ════════════════════════════════════════════════════
+        // Конвертер v2.2.0 УЖЕ пробрасывает parentFunctionId
+        // (через convertFunctions) и lexicalLinks (напрямую).
+        //
+        // Здесь мы ДОПОЛНИТЕЛЬНО подстраховываемся: если
+        // по какой-то причине convertEntitiesToEnhanced не
+        // пробросил lexicalLinks — propagateTemplateFields
+        // восстановит их из source.
+        // ════════════════════════════════════════════════════
         const enhanced = convertEntitiesToEnhanced(entities);
 
         // ════════════════════════════════════════════════════
-        // Шаг 2.2: 🎯 ЯВНЫЙ ПРОБРОС templateXxx-полей
+        // Шаг 2.2: 🎯 ЯВНЫЙ ПРОБРОС templateXxx + lexicalLinks
         // ════════════════════════════════════════════════════
         //
         // Это ГЛАВНОЕ ИСПРАВЛЕНИЕ. convertEntitiesToEnhanced
-        // не знает о Vue-специфичных полях, поэтому мы
-        // прокидываем их явно.
+        // может не знать о Vue-специфичных полях (в зависимости
+        // от версии), поэтому мы прокидываем их явно.
         //
         // Используем `as any`, потому что EnhancedEntityInfo
         // может не содержать эти поля в типе (в зависимости
@@ -248,6 +279,16 @@ export class NormalizeEntitiesStage implements PipelineStage {
         if (conds > 0) filesWithConditionals++;
         if (lc > 0) filesWithLifecycle++;
         if (rx > 0) filesWithReactivity++;
+
+        // ✅ v1.2.0: считаем функции с parentFunctionId
+        for (const fn of entities.functions || []) {
+          if ((fn as any).parentFunctionId) {
+            totalFunctionsWithParent++;
+          }
+        }
+
+        // ✅ v1.2.0: считаем lexicalLinks
+        totalLexicalLinks += entities.lexicalLinks?.length ?? 0;
 
         // Логирование в verbose при небольшом количестве файлов
         if (options.verbose && fileCount <= 50) {
@@ -303,6 +344,14 @@ export class NormalizeEntitiesStage implements PipelineStage {
         console.log(`      • Файлов с reactivity:   ${filesWithReactivity}`);
       }
 
+      // ✅ v1.2.0: диагностика P0/P1
+      if (totalFunctionsWithParent > 0) {
+        console.log(`      • Функций с parentFunctionId: ${totalFunctionsWithParent}`);
+      }
+      if (totalLexicalLinks > 0) {
+        console.log(`      • Лексических связей:    ${totalLexicalLinks}`);
+      }
+
       console.log('');
     }
 
@@ -316,23 +365,22 @@ export class NormalizeEntitiesStage implements PipelineStage {
   /**
    * 🎯 ГЛАВНАЯ ФУНКЦИЯ ЭТОГО STAGE.
    *
-   * Явно копирует `templateXxx`-поля из `EntitiesResult`
-   * в `EnhancedEntityInfo`.
+   * Явно копирует `templateXxx`-поля и `lexicalLinks`
+   * из `EntitiesResult` в `EnhancedEntityInfo`.
    *
    * ════════════════════════════════════════════════════════════
    * ПОЧЕМУ ЭТО НУЖНО
    * ════════════════════════════════════════════════════════════
    *
    * `convertEntitiesToEnhanced` создан для базовых секций
-   * (functions, constants, imports) и НЕ ЗНАЕТ о Vue-специфичных
-   * полях. Если не пробросить их явно — `compact-reporter`
-   * не найдёт `entities.templateConditionals` и не создаст
-   * `full.conditionals`.
+   * (functions, constants, imports) и может НЕ ЗНАТЬ о
+   * Vue-специфичных полях. Если не пробросить их явно —
+   * `compact-reporter` не найдёт `entities.templateConditionals`
+   * и не создаст `full.conditionals`.
    *
-   * В результате:
-   *   • `compact.cd` (или его аналог) остаётся пустым.
-   *   • `decode(compact)` возвращает `undefined` для conditionals.
-   *   • Round-trip ломается — что мы и наблюдали.
+   * Аналогично с `lexicalLinks` — если поле потеряется,
+   * compact.lx останется пустым, и decode(compact) вернёт
+   * lexicalLinks = undefined.
    *
    * ════════════════════════════════════════════════════════════
    * ЧТО КОПИРУЕТСЯ
@@ -357,9 +405,12 @@ export class NormalizeEntitiesStage implements PipelineStage {
    *     • templateInjections
    *     • templateReactivity
    *
-   *   Группа C: type-граф (пока не заполняется, но структура есть)
+   *   Группа C: тип-граф (пока не заполняется)
    *     • typesGraph
    *     • typeRefsGraph
+   *
+   *   Группа D: ✅ v1.2.0 (P1) — лексические связи
+   *     • lexicalLinks
    *
    * ════════════════════════════════════════════════════════════
    * ПРАВИЛА
@@ -441,6 +492,29 @@ export class NormalizeEntitiesStage implements PipelineStage {
 
     t.typesGraph = source.typesGraph ?? [];
     t.typeRefsGraph = source.typeRefsGraph ?? [];
+
+    // ════════════════════════════════════════════════════════
+    // ✅ Группа D (v1.2.0, P1): лексические связи (parent → child)
+    // ════════════════════════════════════════════════════════
+    //
+    // Без этой строки:
+    //   - full.lexicalLinks = undefined
+    //   - compact.lx = { p: [], c: [], r: [], l: [], ai: [], cn: [] }
+    //   - decode(compact).lexicalLinks = undefined
+    //   - invariant I12 (lexicalLinks целостность) упадёт
+    //
+    // convertEntitiesToEnhanced v2.2.0 УЖЕ пробрасывает это поле,
+    // но мы дублируем его здесь для подстраховки — на случай,
+    // если кто-то откатит converter до версии 2.1.0 или раньше.
+    //
+    // ⚠️ Синхронизировано с:
+    //   - src/types.ts: EntitiesResult.lexicalLinks
+    //   - src/types.ts: EnhancedEntityInfo.lexicalLinks
+    //   - src/reporters/codec/codec-encode.ts: encodeExtendedSection
+    //   - src/reporters/codec/codec-decode.ts: LEXICAL_RELATION_BY_CODE
+    // ════════════════════════════════════════════════════════
+
+    t.lexicalLinks = source.lexicalLinks ?? [];
   }
 
   // ============================================================

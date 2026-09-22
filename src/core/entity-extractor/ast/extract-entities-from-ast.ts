@@ -1,19 +1,45 @@
 // packages/ast-analyzer/src/core/entity-extractor/ast/extract-entities-from-ast.ts
 // ============================================
-// ИЗВЛЕЧЕНИЕ СУЩНОСТЕЙ ИЗ AST — v15.0.0
+// ИЗВЛЕЧЕНИЕ СУЩНОСТЕЙ ИЗ AST — v17.0.0
 // ============================================
 //
-// ИЗМЕНЕНИЯ v15.0.0:
-//   - ✅ ИСПРАВЛЕНО: handleImportDeclaration теперь заполняет
-//     local/imported для ВСЕХ типов specifiers
-//   - ✅ ДОБАВЛЕНО: handleExportAllAsImport — экспорт * from './foo'
-//     создаёт запись в imports[]
-//   - ✅ ДОБАВЛЕНО: handleExportNamedAsImport — export { X } from './foo'
-//     создаёт запись в imports[]
-//   - ✅ ДОБАВЛЕНО: resolveImportPathSafe — попытка резолвить toFileId
-//     для реэкспортов через resolveFilePath
+// ════════════════════════════════════════════════════════════
+// СВОДКА ВЕРСИЙ
+// ════════════════════════════════════════════════════════════
+//
+// v17.0.0 (MVP P0/P1/P2 — минимальные изменения):
+//   - ✅ [P0] functionStack + enterFunction/exitFunction
+//   - ✅ [P0] parentFunctionId в registerFunction
+//   - ✅ [P0] try/finally в traverse для function-like узлов
+//   - ✅ [P1] lexicalLinks + addLexicalLink
+//   - ✅ [P1] обработка колбэков в traverse(CallExpression)
+//   - ✅ [P1] boundTo у колбэков
+//   - ✅ [P2] callsInfo + detectCallKind
+//   - ✅ [P2] ранний return в handleFunction/handleArrowFunction
+//     для колбэков (parent.type === 'CallExpression')
+//
+// v16.0.0 (P1 — lexicalLinks):
+//   - ✅ ДОБАВЛЕНО: сбор lexicalLinks
+//   - ✅ ДОБАВЛЕНО: обработка колбэков в traverse(CallExpression)
+//   - ✅ ДОБАВЛЕНО: boundTo у колбэков
+//   - ✅ ДОБАВЛЕНО: relation — для всех типов вложенности
+//   - ✅ ОБНОВЛЕНО: handleFunction пропускает колбэки (parent CallExpression)
+//   - ✅ ОБНОВЛЕНО: handleArrowFunction пропускает колбэки
+//
+// v15.1.0 (P0 — parentFunctionId):
+//   - ✅ ДОБАВЛЕНО: functionStack, enterFunction/exitFunction
+//   - ✅ ДОБАВЛЕНО: parentFunctionId в FunctionInfo
+//   - ✅ ИЗМЕНЕНО: traverse с try/finally
+//   - ✅ ИЗМЕНЕНО: handleFunction/handleArrowFunction возвращают FunctionInfo
+//
+// v15.0.0 (удаление callback-логики):
 //   - ✅ УДАЛЕНО: v14.0.0 callback-логика (перенесена в relation-resolver)
-//   - ✅ УДАЛЕНО: неиспользуемые импорты `walk` и `ASTExport`
+//
+// v7.1.0 (правильная обработка реэкспортов):
+//   - ✅ ИСПРАВЛЕНО: handleImportDeclaration заполняет local/imported
+//   - ✅ ДОБАВЛЕНО: handleExportAllAsImport
+//   - ✅ ДОБАВЛЕНО: handleExportNamedAsImport
+//   - ✅ ДОБАВЛЕНО: resolveImportPathSafe
 // ============================================
 
 import path from 'path';
@@ -28,6 +54,8 @@ import type {
   ImportInfo,
   ExportInfo,
   EntitiesResult,
+  LexicalLink,       // ✅ v15.2.0 (P1)
+  LexicalRelation,   // ✅ v15.2.0 (P1)
 } from '../../../types.js';
 import idManager from '../../IdManager.js';
 import { collectExportsFromAST, resolveFilePath } from '../../ast-parser.js';
@@ -43,6 +71,27 @@ import { inferFunctionName } from '../helpers/infer-function-name.js';
 import { findFunctionNode } from './find-function-node.js';
 import { collectAllCallsRecursive } from './collect-all-calls-recursive.js';
 import { processExports } from './process-exports.js';
+
+// ==========================================
+// ✅ [P2]: ExtendedCallInfo — расширенная информация о вызове
+// ==========================================
+
+export interface ExtendedCallInfo {
+  targetName: string;
+  line: number;
+  column?: number;
+  callKind?:
+    | 'direct'
+    | 'method'
+    | 'callback'
+    | 'constructor'
+    | 'tagged-template'
+    | 'optional-chain'
+    | 'spread'
+    | 'new';
+  calleeName?: string;
+  argumentIndex?: number;
+}
 
 // ==========================================
 // ОПЦИИ РЕКУРСИВНОГО ОБХОДА
@@ -96,6 +145,48 @@ export function extractEntitiesFromAST(
   const imports: ImportInfo[] = [];
   const exports: ExportInfo[] = [];
   const callGraph: Record<string, string[]> = {};
+
+  // ✅ [P0] Стек функций для parentFunctionId
+  const functionStack: FunctionInfo[] = [];
+
+  function currentParent(): FunctionInfo | null {
+    return functionStack[functionStack.length - 1] ?? null;
+  }
+
+  function enterFunction(fn: FunctionInfo): void {
+    functionStack.push(fn);
+  }
+
+  function exitFunction(): void {
+    functionStack.pop();
+  }
+
+  // ✅ [P1] Коллекция lexicalLinks
+  const lexicalLinks: LexicalLink[] = [];
+  let lexicalCounter = 0;
+
+  /**
+   * Добавляет лексическую связь.
+   */
+  function addLexicalLink(
+    parentFunctionId: string | null,
+    childFunctionId: string,
+    relation: LexicalRelation,
+    line: number,
+    argumentIndex?: number,
+    calleeName?: string
+  ): void {
+    lexicalCounter++;
+    lexicalLinks.push({
+      id: `lx${lexicalCounter}`,
+      parentFunctionId,
+      childFunctionId,
+      relation,
+      line,
+      argumentIndex,
+      calleeName,
+    });
+  }
 
   const moduleId = filePath && idManager.getModuleId ? idManager.getModuleId(filePath) : undefined;
   const fileId = filePath && idManager.getFileId ? idManager.getFileId(filePath) : undefined;
@@ -185,6 +276,10 @@ export function extractEntitiesFromAST(
 
   /**
    * Создаёт и регистрирует FunctionInfo.
+   *
+   * ✅ [P0] заполняет parentFunctionId
+   * ✅ [P1] добавляет lexicalLink и boundTo
+   * ✅ [P2] сохраняет callsInfo (заполняется позже в traverse)
    */
   function registerFunction(
     name: string,
@@ -200,8 +295,12 @@ export function extractEntitiesFromAST(
       depth: number;
       isEventHandler: boolean;
       eventType?: string;
+      // ✅ v15.2.0 (P1): опции для lexicalLink
+      relation?: LexicalRelation;
+      argumentIndex?: number;
+      calleeName?: string;
     }
-  ): void {
+  ): FunctionInfo {
     const params = extractParamNames(node.params);
     const bodyText = node.body ? extractBodyText(node.body) : undefined;
 
@@ -213,6 +312,9 @@ export function extractEntitiesFromAST(
       depth: opts.depth,
       type: 'function',
     });
+
+    // ✅ [P0]: лексический родитель
+    const lexParent = currentParent();
 
     const funcInfo: FunctionInfo = {
       name,
@@ -240,13 +342,98 @@ export function extractEntitiesFromAST(
       vscode: filePath ? `vscode://file/${filePath}:${node.loc?.start?.line || 1}` : '',
       moduleId,
       fileId,
-    };
+      // ✅ [P0] parentFunctionId
+      parentFunctionId: lexParent?.id ?? null,
+      // ✅ [P2] callsInfo будет заполнен позже в traverse
+      callsInfo: [],
+    } as FunctionInfo;
+
+    // ✅ [P1]: boundTo для колбэков
+    if (opts.calleeName !== undefined) {
+      (funcInfo as any).boundTo = {
+        calleeName: opts.calleeName,
+        argumentIndex: opts.argumentIndex,
+        line: node.loc?.start?.line || 1,
+      };
+    }
 
     functions.push(funcInfo);
+
+    // ✅ [P1]: лексическая связь
+    const relation: LexicalRelation =
+      opts.relation ?? (opts.isMethod ? 'class-method' : opts.isArrow ? 'arrow-var' : 'nested');
+
+    addLexicalLink(
+      lexParent?.id ?? null,
+      funcId,
+      relation,
+      node.loc?.start?.line || 1,
+      opts.argumentIndex,
+      opts.calleeName
+    );
 
     if (!callGraph[name]) {
       callGraph[name] = [];
     }
+
+    return funcInfo;
+  }
+
+  /**
+   * ✅ [P2]: определяет callKind по узлу CallExpression.
+   */
+  function detectCallKind(node: any): ExtendedCallInfo['callKind'] {
+    if (!node) return 'direct';
+
+    // new Foo()
+    if (node.type === 'NewExpression') return 'constructor';
+
+    // tagged template: tag`...`
+    if (node.type === 'TaggedTemplateExpression') return 'tagged-template';
+
+    // optional chaining: obj?.foo()
+    if (node.optional === true) return 'optional-chain';
+    if (node.callee?.optional === true) return 'optional-chain';
+
+    // spread: foo(...args)
+    if (Array.isArray(node.arguments) && node.arguments.some((a: any) => a?.type === 'SpreadElement')) {
+      return 'spread';
+    }
+
+    // callback: foo(() => {})
+    if (
+      Array.isArray(node.arguments) &&
+      node.arguments.some(
+        (a: any) => a?.type === 'ArrowFunctionExpression' || a?.type === 'FunctionExpression'
+      )
+    ) {
+      return 'callback';
+    }
+
+    // method: obj.foo()
+    if (node.callee?.type === 'MemberExpression') return 'method';
+
+    return 'direct';
+  }
+
+  /**
+   * ✅ [P2]: извлекает имя callee.
+   */
+  function getCalleeName(callee: any): string {
+    if (!callee) return 'unknown';
+
+    if (callee.type === 'Identifier') return callee.name || 'unknown';
+
+    if (callee.type === 'MemberExpression' && callee.property) {
+      if (callee.property.type === 'Identifier') return callee.property.name || 'unknown';
+      if (callee.property.type === 'Literal') return String(callee.property.value);
+    }
+
+    if (callee.type === 'ChainExpression' && callee.expression) {
+      return getCalleeName(callee.expression);
+    }
+
+    return 'unknown';
   }
 
   // ==========================================
@@ -255,6 +442,10 @@ export function extractEntitiesFromAST(
 
   /**
    * Рекурсивный обход дерева.
+   *
+   * ✅ [P0] заходит в стек функций через try/finally
+   * ✅ [P1] обрабатывает колбэки в CallExpression
+   * ✅ [P2] собирает callsInfo для CallExpression
    *
    * @param node   — текущий узел
    * @param parent — родительский узел
@@ -268,10 +459,139 @@ export function extractEntitiesFromAST(
     // Ограничение глубины
     if (depth > maxDepth) return;
 
-    // Обработка текущего узла
+    // ==========================================
+    // ✅ [P1][P2]: обработка CallExpression — колбэки + callsInfo
+    // ==========================================
+    if (node.type === 'CallExpression' || node.type === 'NewExpression') {
+      const calleeName = getCalleeName(node.callee);
+      const line = node.loc?.start?.line ?? 0;
+
+      // ✅ [P2]: сохраняем расширенную информацию о вызове
+      const currentFn = currentParent();
+      if (currentFn) {
+        const callInfo: ExtendedCallInfo = {
+          targetName: calleeName,
+          line,
+          column: node.loc?.start?.column,
+          callKind: detectCallKind(node),
+          calleeName,
+        };
+        (currentFn as any).callsInfo = (currentFn as any).callsInfo || [];
+        (currentFn as any).callsInfo.push(callInfo);
+      }
+
+      // ✅ [P1]: обходим аргументы — ищем колбэки
+      if (Array.isArray(node.arguments)) {
+        node.arguments.forEach((arg: any, index: number) => {
+          if (
+            arg &&
+            (arg.type === 'ArrowFunctionExpression' || arg.type === 'FunctionExpression')
+          ) {
+            const cbName = inferFunctionName(arg, node);
+
+            const cb = registerFunction(cbName, arg, {
+              isExported: false,
+              isAsync: arg.async || false,
+              isMethod: false,
+              isArrow: arg.type === 'ArrowFunctionExpression',
+              parentFunc: currentParent()?.name,
+              isNested: currentParent() !== null,
+              depth,
+              isEventHandler: false,
+              eventType: undefined,
+              relation: 'callback',      // ✅ [P1]
+              argumentIndex: index,      // ✅ [P1]
+              calleeName,                // ✅ [P1]
+            });
+
+            // Обход тела колбэка со стеком
+            enterFunction(cb);
+            try {
+              if (arg.body) {
+                traverse(arg.body, arg, depth + 1);
+              }
+              if (Array.isArray(arg.params)) {
+                for (const p of arg.params) {
+                  traverse(p, arg, depth + 1);
+                }
+              }
+            } finally {
+              exitFunction();
+            }
+          }
+        });
+      }
+
+      // Обходим callee
+      if (node.callee) {
+        traverse(node.callee, node, depth + 1);
+      }
+
+      // Обходим остальные аргументы (кроме колбэков)
+      if (Array.isArray(node.arguments)) {
+        for (const arg of node.arguments) {
+          if (
+            arg &&
+            (arg.type === 'ArrowFunctionExpression' || arg.type === 'FunctionExpression')
+          ) {
+            continue; // уже обработали
+          }
+          traverse(arg, node, depth + 1);
+        }
+      }
+
+      // Обходим typeArguments
+      if (node.typeArguments) {
+        traverse(node.typeArguments, node, depth + 1);
+      }
+
+      return;
+    }
+
+    // ==========================================
+    // Обработка текущего узла (диспетчер)
+    // ==========================================
     handleNode(node, parent, depth);
 
-    // Рекурсивный обход детей
+    // ==========================================
+    // ✅ [P0]: если функция — зайти в стек
+    // ==========================================
+    const isFunctionLike =
+      node.type === 'FunctionDeclaration' ||
+      node.type === 'FunctionExpression' ||
+      node.type === 'ArrowFunctionExpression' ||
+      (node.type === 'MethodDefinition' && node.value && node.value.type === 'FunctionExpression');
+
+    if (isFunctionLike) {
+      // Находим только что зарегистрированную функцию
+      const registered = functions[functions.length - 1];
+      if (registered && registered.id) {
+        enterFunction(registered);
+        try {
+          // Рекурсивный обход детей
+          for (const key of Object.keys(node)) {
+            if (key === 'parent' || key === 'loc' || key === 'range') continue;
+            const child = node[key];
+            if (!child || typeof child !== 'object') continue;
+
+            if (Array.isArray(child)) {
+              for (const item of child) {
+                traverse(item, node, depth + 1);
+              }
+            } else {
+              traverse(child, node, depth + 1);
+            }
+          }
+        } finally {
+          exitFunction();
+        }
+        return; // ← детей уже обошли внутри try
+      }
+    }
+
+    // ==========================================
+    // Обычный обход детей (не-функций)
+    // ==========================================
     for (const key of Object.keys(node)) {
       if (key === 'parent' || key === 'loc' || key === 'range') continue;
 
@@ -359,7 +679,6 @@ export function extractEntitiesFromAST(
         if (!spec) continue;
 
         if (spec.type === 'ImportSpecifier') {
-          // import { X } or import { X as Y }
           const importedName = spec.imported?.name ?? spec.local?.name;
           const localName = spec.local?.name ?? spec.imported?.name;
 
@@ -409,13 +728,9 @@ export function extractEntitiesFromAST(
   }
 
   // ==========================================
-  // ✅ НОВОЕ v15.0.0: RE-EXPORT as IMPORT
+  // ✅ v15.0.0: RE-EXPORT as IMPORT
   // ==========================================
 
-  /**
-   * Обрабатывает `export { X } from './foo'` и `export { default } from './foo'`.
-   * Добавляет запись в imports[] — чтобы граф содержал ребро файл→файл.
-   */
   function handleExportNamedAsImport(node: any): void {
     if (!node.source) return;
     if (!Array.isArray(node.specifiers) || node.specifiers.length === 0) return;
@@ -428,7 +743,6 @@ export function extractEntitiesFromAST(
       if (!spec) continue;
 
       if (spec.type === 'ExportSpecifier') {
-        // export { X as Y } from './foo'
         const importedName = spec.local?.name ?? spec.exported?.name;
         const localName = spec.exported?.name ?? spec.local?.name;
 
@@ -459,10 +773,6 @@ export function extractEntitiesFromAST(
     });
   }
 
-  /**
-   * Обрабатывает `export * from './foo'` и `export * as ns from './foo'`.
-   * Добавляет запись в imports[] — графовое ребро.
-   */
   function handleExportAllAsImport(node: any): void {
     if (!node.source) return;
 
@@ -473,7 +783,6 @@ export function extractEntitiesFromAST(
     let importedName = '*';
 
     if (node.exported?.name) {
-      // export * as ns from './foo'
       localName = node.exported.name;
       importedName = '*';
     }
@@ -505,14 +814,9 @@ export function extractEntitiesFromAST(
     });
   }
 
-  /**
-   * Безопасный резолвинг пути импорта.
-   * Возвращает абсолютный путь или null.
-   */
   function resolveImportPathSafe(source: string, baseDir: string): string | null {
     if (!source) return null;
 
-    // Относительные пути и абсолютные — резолвим через resolveFilePath
     if (source.startsWith('.') || source.startsWith('/')) {
       try {
         return resolveFilePath(baseDir, source) ?? null;
@@ -521,7 +825,6 @@ export function extractEntitiesFromAST(
       }
     }
 
-    // Алиасы (@/, ~/, #/) — тоже пробуем резолвить
     if (source.startsWith('@/') || source.startsWith('~') || source.startsWith('#')) {
       try {
         return resolveFilePath(baseDir, source) ?? null;
@@ -530,7 +833,6 @@ export function extractEntitiesFromAST(
       }
     }
 
-    // Внешние npm-пакеты — не резолвим
     return null;
   }
 
@@ -538,7 +840,15 @@ export function extractEntitiesFromAST(
   // ОБРАБОТЧИК: FUNCTION DECLARATION / EXPRESSION
   // ==========================================
 
+  /**
+   * ✅ [P1]: пропускаем колбэки — они уже обработаны в traverse(CallExpression)
+   */
   function handleFunction(node: any, parent: any, depth: number): void {
+    // ✅ [P1]: колбэки уже зарегистрированы в traverse(CallExpression)
+    if (parent && (parent.type === 'CallExpression' || parent.type === 'NewExpression')) {
+      return;
+    }
+
     const name = node.id?.name ?? inferFunctionName(node, parent);
 
     // Если имя всё равно анонимное и это не export default — пропускаем
@@ -573,6 +883,14 @@ export function extractEntitiesFromAST(
     const isNested = parentFunctions.length > 0 || depth > 0;
     const parentFunc = parentFunctions.length > 0 ? parentFunctions.join('.') : undefined;
 
+    // ✅ v15.2.0 (P1): определяем relation
+    let relation: LexicalRelation = 'nested';
+    if (isMethod) {
+      relation = 'class-method';
+    } else if (parent?.type === 'ExportDefaultDeclaration') {
+      relation = 'default-export';
+    }
+
     registerFunction(fullName, node, {
       isExported,
       isAsync: node.async || false,
@@ -584,6 +902,7 @@ export function extractEntitiesFromAST(
       depth,
       isEventHandler: isEventHandlerNode,
       eventType,
+      relation,
     });
   }
 
@@ -591,7 +910,15 @@ export function extractEntitiesFromAST(
   // ОБРАБОТЧИК: ARROW FUNCTION
   // ==========================================
 
+  /**
+   * ✅ [P1]: пропускаем колбэки
+   */
   function handleArrowFunction(node: any, parent: any, depth: number): void {
+    // ✅ [P1]: колбэки уже обработаны в traverse(CallExpression)
+    if (parent && (parent.type === 'CallExpression' || parent.type === 'NewExpression')) {
+      return;
+    }
+
     let name = inferFunctionName(node, parent);
     let isExported = false;
 
@@ -629,6 +956,19 @@ export function extractEntitiesFromAST(
     const isNested = parentFunctions.length > 0 || depth > 0;
     const parentFunc = parentFunctions.length > 0 ? parentFunctions.join('.') : undefined;
 
+    // ✅ v15.2.0 (P1): определяем relation по контексту
+    let relation: LexicalRelation = 'arrow-var';
+    if (parent?.type === 'Property' || parent?.type === 'PropertyDefinition') {
+      relation = 'object-prop';
+    } else if (parent?.type === 'ReturnStatement') {
+      relation = 'return';
+    } else if (parent?.type === 'ExportDefaultDeclaration') {
+      relation = 'default-export';
+    } else if (parent?.type === 'CallExpression' || parent?.type === 'NewExpression') {
+      // На самом деле сюда не дойдём (см. проверку выше), но на всякий случай
+      relation = 'callback';
+    }
+
     registerFunction(name, node, {
       isExported,
       isAsync: node.async || false,
@@ -640,6 +980,7 @@ export function extractEntitiesFromAST(
       depth,
       isEventHandler: isEventHandlerNode,
       eventType,
+      relation,
     });
   }
 
@@ -664,7 +1005,7 @@ export function extractEntitiesFromAST(
       classParent = classParent.parent;
     }
 
-    // ✅ v15.0.0: если класс анонимный — берём имя из контекста.
+    // ✅ v15.0.0: если класс анонимный — берём имя из контекста
     if (className === 'Anonymous') {
       let ctx: any = parent;
       let guard = 0;
@@ -717,6 +1058,7 @@ export function extractEntitiesFromAST(
       depth,
       isEventHandler: false,
       eventType: undefined,
+      relation: 'class-method',
     });
   }
 
@@ -924,6 +1266,18 @@ export function extractEntitiesFromAST(
   }
 
   // ==========================================
+  // ✅ [P1]: помечаем self-функции
+  // ==========================================
+
+  for (const func of functions) {
+    const hasCalls = (func.calls?.length ?? 0) > 0;
+    const hasCalledBy = (func.calledBy?.length ?? 0) > 0;
+    const isSelf = !hasCalls && !hasCalledBy;
+    (func as any).isSelf = isSelf;
+    (func as any)._isSelf = isSelf;
+  }
+
+  // ==========================================
   // ЗАПОЛНЕНИЕ РЕЗУЛЬТАТА
   // ==========================================
 
@@ -939,6 +1293,9 @@ export function extractEntitiesFromAST(
   result.moduleName = filePath ? path.basename(filePath) : 'unknown';
   result.filePath = filePath || 'unknown';
 
+  // ✅ [P1]: лексические связи
+  result.lexicalLinks = lexicalLinks;
+
   if (filePath) {
     (result as any)._moduleId = moduleId;
     (result as any)._fileId = fileId;
@@ -948,7 +1305,6 @@ export function extractEntitiesFromAST(
   // ЛОГИРОВАНИЕ
   // ==========================================
 
-  // ✅ ИСПРАВЛЕНО: console.log → console.debug
   console.debug(`📤 Экспортов собрано: ${exports.length}`);
   if (exports.length > 0) {
     const reExports = exports.filter(e => e.isReExport);
@@ -957,6 +1313,30 @@ export function extractEntitiesFromAST(
     console.debug(`   • Обычных экспортов: ${namedExports.length}`);
     console.debug(`   • Реэкспортов: ${reExports.length}`);
     console.debug(`   • Default экспортов: ${defaultExports.length}`);
+  }
+
+  // ✅ [P1]: логирование lexicalLinks
+  if (lexicalLinks.length > 0) {
+    console.debug(`🔗 Лексических связей: ${lexicalLinks.length}`);
+    const byRelation: Record<string, number> = {};
+    for (const link of lexicalLinks) {
+      byRelation[link.relation] = (byRelation[link.relation] ?? 0) + 1;
+    }
+    for (const [rel, count] of Object.entries(byRelation)) {
+      console.debug(`   • ${rel}: ${count}`);
+    }
+  }
+
+  // ✅ [P0]: логирование parentFunctionId
+  const withParent = functions.filter(f => f.parentFunctionId != null).length;
+  if (withParent > 0) {
+    console.debug(`🧬 Функций с parentFunctionId: ${withParent}/${functions.length}`);
+  }
+
+  // ✅ [P2]: логирование callsInfo
+  const withCallsInfo = functions.filter(f => ((f as any).callsInfo?.length ?? 0) > 0).length;
+  if (withCallsInfo > 0) {
+    console.debug(`📞 Функций с callsInfo: ${withCallsInfo}/${functions.length}`);
   }
 
   return result;

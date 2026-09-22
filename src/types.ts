@@ -180,14 +180,7 @@ export interface CallInfo {
   targetVscode: string;
   callLine: number;
   callType:
-    | 'direct'
-    | 'import'
-    | 'computed'
-    | 'watch'
-    | 'event'
-    | 'lifecycle'
-    | 'method'
-    | 'constructor';
+    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
 }
 
 export interface CalledByInfo {
@@ -198,14 +191,7 @@ export interface CalledByInfo {
   callerVscode: string;
   callLine: number;
   callType:
-    | 'direct'
-    | 'import'
-    | 'computed'
-    | 'watch'
-    | 'event'
-    | 'lifecycle'
-    | 'method'
-    | 'constructor';
+    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
 }
 
 export interface ImportedByInfo {
@@ -218,7 +204,119 @@ export interface ImportedByInfo {
 }
 
 // ==========================================
-// ОСНОВНОЙ ИНТЕРФЕЙС FunctionInfo С РАСШИРЕННЫМИ ПОЛЯМИ
+// ✅ v15.2.0 (P1): LEXICAL LINKS
+// ==========================================
+//
+// Лексические связи — статические связи между функциями,
+// описывающие вложенность в AST (кто внутри кого объявлен).
+//
+// ════════════════════════════════════════════════════════════
+// СИНХРОНИЗАЦИЯ С codec-types.ts
+// ════════════════════════════════════════════════════════════
+//
+//   LexicalRelation и LexicalLink дублируются в:
+//     - src/types.ts                     (этот файл)
+//     - src/reporters/codec/codec-types.ts
+//
+//   Причина: codec-types.ts использует свой набор для сериализации,
+//   а src/types.ts — для внутреннего представления.
+//
+//   Изменения в одном месте должны быть отражены в другом.
+// ==========================================
+
+/**
+ * Вид лексической связи между функциями.
+ *
+ * ════════════════════════════════════════════════════════════
+ * ЗНАЧЕНИЯ
+ * ════════════════════════════════════════════════════════════
+ *
+ *   - `'nested'`         — вложенная функция: `function outer() { function inner() {} }`
+ *   - `'arrow-var'`      — arrow в переменной: `const fn = () => {}`
+ *   - `'callback'`       — колбэк: `arr.map(x => x)`, `setTimeout(() => {}, 100)`
+ *   - `'iife'`           — IIFE: `(function() {})()`
+ *   - `'class-method'`   — метод класса: `class A { method() {} }`
+ *   - `'object-prop'`    — метод объекта: `{ onClick: () => {} }`
+ *   - `'return'`         — возврат функции: `return () => {}`
+ *   - `'default-export'` — `export default () => {}`
+ *
+ * ════════════════════════════════════════════════════════════
+ * СИНХРОНИЗАЦИЯ С inferFunctionName.ts
+ * ════════════════════════════════════════════════════════════
+ *
+ *   `LexicalRelation` синхронизирован с логикой
+ *   `helpers/infer-function-name.ts` (v2.1.0).
+ */
+export type LexicalRelation =
+  | 'nested'
+  | 'arrow-var'
+  | 'callback'
+  | 'iife'
+  | 'class-method'
+  | 'object-prop'
+  | 'return'
+  | 'default-export';
+
+/**
+ * Лексическая связь: parent → child.
+ *
+ * ════════════════════════════════════════════════════════════
+ * СЕМАНТИКА
+ * ════════════════════════════════════════════════════════════
+ *
+ *   Описывает **статическую** связь: `child` объявлен **внутри**
+ *   `parent` в AST. Это НЕ вызов — это вложенность.
+ *
+ *   Отличие от `CallInfo`:
+ *     - `CallInfo` — динамическая связь (кто кого вызывает).
+ *     - `LexicalLink` — статическая связь (кто внутри кого объявлен).
+ *
+ * ════════════════════════════════════════════════════════════
+ * ПРИМЕР
+ * ════════════════════════════════════════════════════════════
+ *
+ *   function outer() {
+ *     arr.map(x => x);
+ *   }
+ *
+ *   → {
+ *       id: 'lx1',
+ *       parentFunctionId: 'fn1',   // outer
+ *       childFunctionId: 'fn2',    // callback
+ *       relation: 'callback',
+ *       line: 2,
+ *       argumentIndex: 0,
+ *       calleeName: 'map',
+ *     }
+ */
+export interface LexicalLink {
+  /** Уникальный ID (lx1, lx2, ...) */
+  id: string;
+
+  /** ID функции-родителя (null для top-level) */
+  parentFunctionId: string | null;
+
+  /** ID вложенной функции (колбэк, nested, ...) */
+  childFunctionId: string;
+
+  /** Вид лексической связи */
+  relation: LexicalRelation;
+
+  /** Строка объявления child (1-based) */
+  line: number;
+
+  /** Индекс аргумента (только для relation='callback') */
+  argumentIndex?: number;
+
+  /** Имя callee (только для relation='callback') */
+  calleeName?: string;
+}
+
+// ==========================================
+// ОСНОВНОЙ ИНТЕРФЕЙС FunctionInfo
+// ==========================================
+//
+// ✅ v15.1.0 (P0): добавлено поле parentFunctionId.
 // ==========================================
 
 export interface FunctionInfo {
@@ -276,6 +374,54 @@ export interface FunctionInfo {
   isSelf?: boolean;
   /** Внутренний флаг для отладки — совпадает с isSelf */
   _isSelf?: boolean;
+
+  // ==========================================
+  // ✅ v15.1.0 (P0): лексический родитель
+  // ==========================================
+
+  /**
+   * ID функции, внутри которой эта функция объявлена в AST.
+   *
+   * ════════════════════════════════════════════════════════════
+   * ЗНАЧЕНИЯ
+   * ════════════════════════════════════════════════════════════
+   *
+   *   - `string` — ID родительской функции (fn1, fn2, ...)
+   *   - `null`   — top-level функция (объявлена на уровне модуля)
+   *   - `undefined` — функция не имеет лексического родителя
+   *     (не должно происходить в норме, но для совместимости)
+   */
+  parentFunctionId?: string | null;
+
+  // ==========================================
+  // ✅ v15.2.0 (P1): boundTo для колбэков
+  // ==========================================
+
+  /**
+   * Информация о вызове, в который передана колбэк.
+   *
+   * Заполняется только для колбэков (relation === 'callback').
+   *
+   * ════════════════════════════════════════════════════════════
+   * ПРИМЕР
+   * ════════════════════════════════════════════════════════════
+   *
+   *   arr.map(x => x)
+   *
+   *   → {
+   *       calleeName: 'map',
+   *       argumentIndex: 0,
+   *       line: 1,
+   *     }
+   */
+  boundTo?: {
+    /** Имя callee (`map`, `setTimeout`, `addEventListener`) */
+    calleeName: string;
+    /** Индекс аргумента в вызове */
+    argumentIndex?: number;
+    /** Строка вызова (1-based) */
+    line: number;
+  };
 }
 
 // ==========================================
@@ -283,8 +429,7 @@ export interface FunctionInfo {
 // ==========================================
 //
 // ✅ ОБНОВЛЕНО: добавлены поля calls, calledBy, importedBy
-// для совместимости с saveOptimizedPackageLockReport
-// (см. errors TS2353 в save-optimized.ts:184)
+// для совместимости с saveOptimizedPackageLockReport.
 // ==========================================
 
 export interface ExtendedFunctionInfo {
@@ -309,14 +454,17 @@ export interface ExtendedFunctionInfo {
   calls?: CallInfo[];
   /** Кто вызывает эту функцию */
   calledBy?: CalledByInfo[];
+
+  // ✅ v15.1.0 (P0): лексический родитель
+  parentFunctionId?: string | null;
 }
 
 // ==========================================
 // ✅ НОВОЕ v9.0.0: TEMPLATE-ПОЛЯ VUE
 // ==========================================
+//
 // Эти типы используются в EntitiesResult.templateXxx
 // и в EnhancedEntityInfo.templateXxx.
-// Хранят ТОЛЬКО ссылки (имена/примитивы), без дубликатов объектов.
 //
 // ⚠️ СИНХРОНИЗАЦИЯ С vue-analyzer/types.ts:
 //   - TemplateEventHandler       → EventHandlerUsage
@@ -357,8 +505,7 @@ export type TemplateDynamicComponent = VueDynamicComponentUsage;
  * ✅ СИНХРОНИЗИРОВАНО: type alias на TemplateRefUsage из vue-analyzer.
  *
  * ⚠️ КРИТИЧНО: без этого поля Codec.encode получает undefined
- * на позиции 9 vt[] и JSON.stringify обрезает массив до 9 элементов
- * вместо ожидаемых 12. Это ломает round-trip.
+ * на позиции 9 vt[] и JSON.stringify обрезает массив до 9 элементов.
  */
 export type TemplateRefUsage = VueTemplateRefUsage;
 
@@ -380,13 +527,7 @@ export type TemplateDeepSelector = VueDeepSelectorUsage;
  * ✅ НОВОЕ v9.0.0: Условный рендеринг (v-if / v-else-if / v-else).
  *
  * ⚠️ СИНХРОНИЗИРОВАНО: расширяет TemplateConditionalUsage из vue-analyzer
- * полями id и fileId, которые заполняются в compact-reporter.ts
- * на этапе сборки FullJSON.
- *
- * Это позволяет:
- *   - vue-analyzer создавать условия без id/fileId (внутренний формат)
- *   - compact-reporter обогащать их id/fileId (публичный формат)
- *   - codec корректно кодировать/декодировать (round-trip)
+ * полями id и fileId, которые заполняются в compact-reporter.ts.
  */
 export interface TemplateConditional extends VueTemplateConditional {
   /** Уникальный ID (cd1, cd2, ...). Заполняется в compact-reporter.ts */
@@ -518,6 +659,10 @@ export interface TypeRef {
 // ==========================================
 // ОСНОВНОЙ ИНТЕРФЕЙС EntitiesResult
 // ==========================================
+//
+// ✅ v15.1.0 (P0): FunctionInfo теперь содержит parentFunctionId.
+// ✅ v15.2.0 (P1): добавлено поле lexicalLinks.
+// ==========================================
 
 export interface EntitiesResult {
   functions: FunctionInfo[];
@@ -531,6 +676,18 @@ export interface EntitiesResult {
   callGraph: Record<string, string[]>;
   moduleName: string;
   filePath: string;
+
+  // ==========================================
+  // ✅ v15.2.0 (P1): лексические связи
+  // ==========================================
+
+  /**
+   * Лексические связи: parent → child.
+   *
+   * Опционально для обратной совместимости.
+   * Заполняется в `extractEntitiesFromAST`.
+   */
+  lexicalLinks?: LexicalLink[];
 
   // ==========================================
   // ✅ НОВОЕ v4.1.0: template-поля Vue
@@ -549,10 +706,6 @@ export interface EntitiesResult {
 
   /**
    * ✅ ИСПРАВЛЕНО: template refs (ref="dataTable" → exposedMethods).
-   *
-   * ⚠️ КРИТИЧНО: без этого поля Codec.encode получает undefined
-   * на позиции 9 vt[] и JSON.stringify обрезает массив до 9 элементов
-   * вместо ожидаемых 12. Это ломает round-trip.
    */
   templateRefs?: TemplateRefUsage[];
 
@@ -809,15 +962,7 @@ export interface ModuleGraph {
 export interface EntityGraphNode {
   id: string;
   name: string;
-  type:
-    | 'function'
-    | 'class'
-    | 'constant'
-    | 'interface'
-    | 'type'
-    | 'variable'
-    | 'enum'
-    | 'module';
+  type: 'function' | 'class' | 'constant' | 'interface' | 'type' | 'variable' | 'enum' | 'module';
   module: string;
   line: number;
   metadata: {
@@ -1333,8 +1478,8 @@ export interface AnalysisWarning {
 // ==========================================
 
 /**
- * Базовый тип для AST-узлов с type guard
- * Объединяет оригинальный интерфейс и улучшенные типы
+ * Базовый тип для AST-узлов с type guard.
+ * Объединяет оригинальный интерфейс и улучшенные типы.
  */
 export interface ASTNode {
   type: string;
@@ -1472,6 +1617,29 @@ export interface EnhancedFunctionInfo extends FunctionInfo {
   signature: string;
   _safeInfo: any;
   _uniqueKey?: string;
+
+  // ==========================================
+  // ✅ НОВОЕ (P0/P1): проброс лексических полей
+  // ==========================================
+  //
+  // Эти поля уже есть в FunctionInfo, но EnhancedEntityInfo —
+  // это отдельный тип, который собирается в convertFunctions.
+  // Без явного объявления здесь TypeScript выдаст ошибку
+  // при `parentFunctionId: func.parentFunctionId ?? null`.
+  //
+  // ⚠️ Фактически это дубликаты полей FunctionInfo, но нужны
+  // для type-safety в EnhancedEntityInfo.
+  // ==========================================
+
+  /** ✅ P0: ID лексического родителя (null для top-level) */
+  parentFunctionId?: string | null;
+
+  /** ✅ P1: информация о вызове, в который передан колбэк */
+  boundTo?: {
+    calleeName: string;
+    argumentIndex?: number;
+    line: number;
+  };
 }
 
 export interface EnhancedConstantInfo {
@@ -1579,13 +1747,6 @@ export interface EnhancedPackageLockReport {
    * ✅ ИСПРАВЛЕНО: callGraph может быть как простым словарём
    * (Record<string, string[]>), так и структурированным объектом
    * с полями from/to/path/found/nodes/edges.
-   *
-   * Причина: разные источники заполняют это поле по-разному:
-   *   - buildEnhancedPackageLockReport → Record<string, string[]>
-   *   - buildCallGraphBetweenFunctions   → структурированный объект
-   *
-   * Раньше тип требовал только структурированный объект, что давало
-   * TS2740 в enhanced-report.ts.
    */
   callGraph?:
     | Record<string, string[]>
@@ -1617,7 +1778,7 @@ export interface EnhancedPackageLockReport {
     totalCalls: number;
     totalExportedFunctions: number;
     totalAsyncFunctions: number;
-    /** ✅ ДОБАВЛЕНО: количество импортов (используется в project-graph.ts:273) */
+    /** ✅ ДОБАВЛЕНО: количество импортов */
     totalImports?: number;
   };
   fileStats: {
@@ -1634,9 +1795,8 @@ export interface EnhancedPackageLockReport {
 // ТИП ДЛЯ ENHANCED ENTITY INFO
 // ==========================================
 //
-// ✅ ОБНОВЛЕНО: добавлено поле exports
-// (см. errors TS2353 в extract-entities-from-file.ts:123
-//  и entities-converter.ts:135)
+// ✅ ОБНОВЛЕНО: добавлены поля imports и exports.
+// ✅ v15.2.0 (P1): добавлены template-поля + lexicalLinks.
 // ==========================================
 
 export interface EnhancedEntityInfo {
@@ -1650,33 +1810,16 @@ export interface EnhancedEntityInfo {
   /**
    * ✅ ИСПРАВЛЕНО: используем ImportInfo[] вместо устаревшего
    * `{ source: string; specifiers: string[]; isTypeOnly: boolean }[]`.
-   *
-   * Причина: `ImportInfo.specifiers` — это `ImportSpecifier[]`
-   * (объекты `{ local, imported, type }`), а не `string[]`.
-   * Прежнее определение давало TS2322 при присваивании
-   * `enhanced.imports = entities.imports.map(...)`.
    */
   imports?: ImportInfo[];
 
   /**
    * ✅ ДОБАВЛЕНО: экспорты.
-   *
-   * Используется в:
-   *   - extract-entities-from-file.ts:123
-   *   - entities-converter.ts:135
-   *   - CompactCommand.ts:561
-   *
-   * Дублирует `EntitiesResult.exports`, чтобы все потребители
-   * EnhancedEntityInfo могли обращаться к `entities.exports`
-   * без ошибок TS2339.
    */
   exports?: ExportInfo[];
 
   // ==========================================
   // ✅ НОВОЕ v4.1.0: template-поля Vue.
-  // Добавлены, чтобы `json-reporter.ts` мог обращаться к
-  // `result.templateEventHandlers` и `result.templateReactivityDeps`
-  // без ошибок TS2339.
   // ==========================================
 
   /** root-идентификаторы шаблона (user, items, isLoading) */
@@ -1688,13 +1831,7 @@ export interface EnhancedEntityInfo {
   /** <component :is="..."> и v-bind:is */
   templateDynamicComponents?: TemplateDynamicComponent[];
 
-  /**
-   * ✅ ИСПРАВЛЕНО: template refs (ref="dataTable" → exposedMethods).
-   *
-   * ⚠️ КРИТИЧНО: без этого поля Codec.encode получает undefined
-   * на позиции 9 vt[] и JSON.stringify обрезает массив до 9 элементов
-   * вместо ожидаемых 12. Это ломает round-trip.
-   */
+  /** template refs (ref="dataTable" → exposedMethods) */
   templateRefs?: TemplateRefUsage[];
 
   /** CSS-переменные из <style> */
@@ -1747,6 +1884,23 @@ export interface EnhancedEntityInfo {
 
   /** Ребра использования типов */
   typeRefsGraph?: TypeRef[];
+
+  // ==========================================
+  // ✅ НОВОЕ v15.2.0 (P1): лексические связи
+  // ==========================================
+  //
+  // Без этого поля:
+  //   - compact.lx = { p: [], c: [], r: [], l: [], ai: [], cn: [] }
+  //   - fns.parent RLE = [[-1, N]]
+  //   - decode(compact).lexicalLinks = undefined
+  //   - фронт не может построить дерево вложенности
+  //
+  // Источник: EntitiesResult.lexicalLinks
+  // (заполняется в extractEntitiesFromAST).
+  // ==========================================
+
+  /** ✅ P1: лексические связи (parent → child) */
+  lexicalLinks?: LexicalLink[];
 }
 
 // ==========================================
@@ -1830,24 +1984,16 @@ export interface CompactCall {
 
 /**
  * Импорт/экспорт связи: [fromFile, name, line]
- * fromFile: ID файла, null если внешний
- * name: имя импортируемой/экспортируемой сущности
- * line: строка в файле
  */
 export type UIImportTuple = [string | null, string, number];
 
 /**
  * Вызов функции: [callerFn, calleeFn, line, type]
- * callerFn: ID вызывающей функции (fn1, fn2, ...)
- * calleeFn: ID вызываемой функции (fn1, fn2, ...)
- * line: строка вызова
- * type: тип вызова (d, a, m, c)
  */
 export type UICallTuple = [string, string, number, string];
 
 /**
- * Данные для одного файла в UI
- * Все ключи короткие для минимального размера
+ * Данные для одного файла в UI.
  */
 export interface UIFileData {
   /** importedBy — кто импортирует этот файл (левая панель) */
@@ -1863,9 +2009,7 @@ export interface UIFileData {
 }
 
 /**
- * UI индекс для быстрой навигации по трём колонкам
- * a = active (активный файл)
- * f = files (данные по файлам)
+ * UI индекс для быстрой навигации по трём колонкам.
  */
 export interface UIIndex {
   /** activeFileId — текущий активный файл */

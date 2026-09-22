@@ -102,14 +102,124 @@ export function convertEntitiesToEnhanced(entities: EntitiesResult): EnhancedEnt
     }));
   }
 
+  // ============================================================
+  // ✅ P1-fix: проброс лексических связей (parent → child)
+  // ============================================================
+  // Без этого поля:
+  //   - compact.lx = { p: [], c: [], r: [], l: [], ai: [], cn: [] }
+  //   - fns.parent RLE = [[-1, N]]
+  //   - decode(compact).lexicalLinks = undefined
+  //   - фронт не может построить дерево вложенности
+  //
+  // Источник: EntitiesResult.lexicalLinks
+  // (заполняется в extractEntitiesFromAST).
+  // ============================================================
+  if (entities.lexicalLinks && entities.lexicalLinks.length > 0) {
+    enhanced.lexicalLinks = entities.lexicalLinks;
+  }
+
+  // ============================================================
+  // ✅ v9.0.0: проброс расширенных Vue-секций в EnhancedEntityInfo
+  // ============================================================
+  // Эти поля не входят в стандартный интерфейс EntitiesResult,
+  // но заполняются в convertVueAnalysisToEntities для .vue файлов.
+  //
+  // ⚠️ ВАЖНО: сохраняем их 1:1, потому что compact-reporter
+  // читает именно `entities.templateXxx` и ожидает их наличие.
+  // ============================================================
+  const e = entities as any;
+  if (e.templateReactivityDeps !== undefined) {
+    (enhanced as any).templateReactivityDeps = e.templateReactivityDeps;
+  }
+  if (e.templateEventHandlers !== undefined) {
+    (enhanced as any).templateEventHandlers = e.templateEventHandlers;
+  }
+  if (e.templateDynamicComponents !== undefined) {
+    (enhanced as any).templateDynamicComponents = e.templateDynamicComponents;
+  }
+  if (e.templateRefs !== undefined) {
+    (enhanced as any).templateRefs = e.templateRefs;
+  }
+  if (e.templateCssVariables !== undefined) {
+    (enhanced as any).templateCssVariables = e.templateCssVariables;
+  }
+  if (e.templateDeepSelectors !== undefined) {
+    (enhanced as any).templateDeepSelectors = e.templateDeepSelectors;
+  }
+  if (e.templateDirectives !== undefined) {
+    (enhanced as any).templateDirectives = e.templateDirectives;
+  }
+  if (e.templateUsedComponents !== undefined) {
+    (enhanced as any).templateUsedComponents = e.templateUsedComponents;
+  }
+  if (e.templateSlots !== undefined) {
+    (enhanced as any).templateSlots = e.templateSlots;
+  }
+  if (e.templateComplexity !== undefined) {
+    (enhanced as any).templateComplexity = e.templateComplexity;
+  }
+  if (e.templateConditionals !== undefined) {
+    (enhanced as any).templateConditionals = e.templateConditionals;
+  }
+  if (e.templateLifecycle !== undefined) {
+    (enhanced as any).templateLifecycle = e.templateLifecycle;
+  }
+  if (e.templateEffects !== undefined) {
+    (enhanced as any).templateEffects = e.templateEffects;
+  }
+  if (e.templateInjections !== undefined) {
+    (enhanced as any).templateInjections = e.templateInjections;
+  }
+  if (e.templateReactivity !== undefined) {
+    (enhanced as any).templateReactivity = e.templateReactivity;
+  }
+  if (e.typesGraph !== undefined) {
+    (enhanced as any).typesGraph = e.typesGraph;
+  }
+  if (e.typeRefsGraph !== undefined) {
+    (enhanced as any).typeRefsGraph = e.typeRefsGraph;
+  }
+
   return enhanced;
 }
 
+// ============================================================
+// ✅ P0-fix + P1-fix: ФУНКЦИИ
+// ============================================================
+
 /**
  * Конвертирует FunctionInfo в EnhancedFunctionInfo
+ *
+ * ════════════════════════════════════════════════════════════
+ * ИЗМЕНЕНИЯ (P0/P1)
+ * ════════════════════════════════════════════════════════════
+ *
+ *   ✅ P0: проброс `parentFunctionId` — лексического родителя.
+ *      Без этого поля compact-reporter.ts получает `undefined`
+ *      и записывает в `FunctionData.parentFunctionId` значение
+ *      `null`, из-за чего decode не может восстановить иерархию.
+ *
+ *   ✅ P1: проброс `boundTo` — информации о вызове, в который
+ *      передан колбэк (calleeName, argumentIndex, line).
+ *      Это опциональное поле — добавляем только если оно есть.
+ *
+ * ════════════════════════════════════════════════════════════
+ * ПОЧЕМУ ЭТО КРИТИЧНО
+ * ════════════════════════════════════════════════════════════
+ *
+ *   Без проброса `parentFunctionId`:
+ *     - `I10 (parentFunctionId ссылается на существующую функцию)`
+ *       падает в check:roundtrip;
+ *     - `check:consistency` падает на `decode(compact) ≟ full`;
+ *     - фронт показывает "висячие" корни (`map_callback`,
+ *       `_idle_callback`, `String.replace_callback`).
+ *
+ *   С пробросом — все колбэки становятся детьми своих
+ *   лексических родителей, и дерево вызовов корректно.
+ * ============================================================
  */
 export function convertFunctionToEnhanced(func: FunctionInfo): EnhancedFunctionInfo {
-  return {
+  const enhanced: EnhancedFunctionInfo = {
     name: func.name || 'anonymous',
     params: func.params || [],
     paramTypes: func.params?.map(() => 'any') || [],
@@ -135,8 +245,40 @@ export function convertFunctionToEnhanced(func: FunctionInfo): EnhancedFunctionI
     vscode: func.vscode || '',
     signature: func.signature || '',
     _safeInfo: null,
+
+    // ==========================================
+    // ✅ P0-fix: лексический родитель
+    // ==========================================
+    // `parentFunctionId` — это локальный ID из EntitiesResult
+    // (формат `f18_813`), который БУДЕТ преобразован в
+    // глобальный (`fn42`) в compact-reporter.ts
+    // через `localCompactIdToGlobalFnId`.
+    //
+    // Здесь мы просто гарантируем, что поле не потеряется
+    // при конвертации EntitiesResult → EnhancedEntityInfo.
+    // ==========================================
+    parentFunctionId: func.parentFunctionId ?? null,
   };
+
+  // ==========================================
+  // ✅ P1-fix: boundTo (только если есть)
+  // ==========================================
+  // boundTo описывает вызов, в который передан колбэк:
+  //   { calleeName: 'map', argumentIndex: 0, line: 147 }
+  //
+  // Добавляем только если поле реально задано, чтобы не
+  // засорять JSON `null`-ами для не-колбэков.
+  // ==========================================
+  if (func.boundTo) {
+    enhanced.boundTo = func.boundTo;
+  }
+
+  return enhanced;
 }
+
+// ============================================================
+// КОНСТАНТЫ
+// ============================================================
 
 /**
  * Конвертирует ConstantInfo в EnhancedConstantInfo
@@ -152,6 +294,10 @@ export function convertConstantToEnhanced(constItem: ConstantInfo): EnhancedCons
   };
 }
 
+// ============================================================
+// ПЕРЕМЕННЫЕ
+// ============================================================
+
 /**
  * Конвертирует VariableInfo в EnhancedVariableInfo
  */
@@ -165,6 +311,10 @@ export function convertVariableToEnhanced(varItem: VariableInfo): EnhancedVariab
     _safeInfo: null,
   };
 }
+
+// ============================================================
+// ИНТЕРФЕЙСЫ
+// ============================================================
 
 /**
  * Конвертирует InterfaceInfo в EnhancedInterfaceInfo
@@ -182,6 +332,10 @@ export function convertInterfaceToEnhanced(intf: InterfaceInfo): EnhancedInterfa
   };
 }
 
+// ============================================================
+// ТИПЫ
+// ============================================================
+
 /**
  * Конвертирует TypeInfo в EnhancedTypeInfo
  */
@@ -194,6 +348,10 @@ export function convertTypeToEnhanced(type: TypeInfo): EnhancedTypeInfo {
     _safeInfo: null,
   };
 }
+
+// ============================================================
+// КЛАССЫ
+// ============================================================
 
 /**
  * Конвертирует ClassInfo в EnhancedClassInfo
@@ -285,14 +443,41 @@ export function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): Entitie
     }));
   }
 
+  // ============================================================
+  // ✅ P1-fix (обратный проброс): lexicalLinks
+  // ============================================================
+  if ((enhanced as any).lexicalLinks !== undefined) {
+    entities.lexicalLinks = (enhanced as any).lexicalLinks;
+  }
+
   return entities;
 }
 
+// ============================================================
+// ✅ P0-fix (обратный проброс): EnhancedFunctionInfo → FunctionInfo
+// ============================================================
+
 /**
  * Конвертирует EnhancedFunctionInfo в FunctionInfo
+ *
+ * ════════════════════════════════════════════════════════════
+ * ИЗМЕНЕНИЯ (P0/P1)
+ * ════════════════════════════════════════════════════════════
+ *
+ *   ✅ P0: проброс `parentFunctionId` — при обратной конвертации
+ *      лексический родитель не должен теряться.
+ *
+ *   ✅ P1: проброс `boundTo` — информация о вызове колбэка.
+ *
+ *   Также пробрасываются поля `callsInfo`, `calledByInfo`,
+ *   `importedBy`, `isSelf`, `isExposed`, `isComposable`,
+ *   `isConst`, `isMacro`, `source`, `signature`, `filePath`,
+ *   `moduleName`, `moduleId`, `fileId` — чтобы round-trip
+ *   Enhanced → FunctionInfo → Enhanced не терял данные.
+ * ============================================================
  */
 export function convertEnhancedFunctionToFunction(enhanced: EnhancedFunctionInfo): FunctionInfo {
-  return {
+  const func: FunctionInfo = {
     name: enhanced.name,
     line: enhanced.line,
     isAsync: enhanced.isAsync,
@@ -316,8 +501,26 @@ export function convertEnhancedFunctionToFunction(enhanced: EnhancedFunctionInfo
     security: enhanced.security,
     vscode: enhanced.vscode,
     signature: enhanced.signature,
+
+    // ==========================================
+    // ✅ P0-fix: лексический родитель
+    // ==========================================
+    parentFunctionId: enhanced.parentFunctionId ?? null,
   };
+
+  // ==========================================
+  // ✅ P1-fix: boundTo (только если есть)
+  // ==========================================
+  if (enhanced.boundTo) {
+    func.boundTo = enhanced.boundTo;
+  }
+
+  return func;
 }
+
+// ============================================================
+// КОНВЕРТАЦИЯ: Enhanced → FunctionInfo (прочие сущности)
+// ============================================================
 
 /**
  * Конвертирует EnhancedClassInfo в ClassInfo

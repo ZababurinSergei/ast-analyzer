@@ -2,28 +2,36 @@
 // ============================================
 // ЛЕГЕНДА КОДЕКА
 // ============================================
-// Версия: 15.0.5
+// Версия: 15.4.0
+//
+// ИЗМЕНЕНИЯ v15.4.0 (P3 — cross-file):
+//   - ✅ ОБНОВЛЕНО: версия 15.3.0 → 15.4.0
+//
+// ИЗМЕНЕНИЯ v15.3.0 (P2 — расширенный CallData):
+//   - ✅ ДОБАВЛЕНО: schemas['gr.c'] += col/ck/cn/ai
+//   - ✅ ДОБАВЛЕНО: codes.callKind
+//
+// ИЗМЕНЕНИЯ v15.2.0 (P1 — lexicalLinks):
+//   - ✅ ДОБАВЛЕНО: schemas.lx
+//   - ✅ ДОБАВЛЕНО: codes.lexicalRelation
+//
+// ИЗМЕНЕНИЯ v15.1.0 (P0 — parentFunctionId):
+//   - ✅ ДОБАВЛЕНО: schemas.fns += 'parent'
 //
 // ИЗМЕНЕНИЯ v15.0.5 (gr.i.tf — индекс в fl.p):
 //   - ✅ ОБНОВЛЕНО: схема `gr.i` — `tf` теперь ИНДЕКС В `fl.p`,
 //     а не в `strs`. -1 = внешний/неразрешённый.
 //   - ✅ ОБНОВЛЕНО: `legend.codes.import` — добавлены пояснения
 //     про `tf` (индекс в fl.p) и `s` (индекс в strs).
-//   - ✅ ОБНОВЛЕНА версия: 15.0.4 → 15.0.5.
 //
 // ИЗМЕНЕНИЯ v15.0.4 (isReExport / isStarReExport в gr.i.ty):
 //   - ✅ ОБНОВЛЕНО: схема `gr.i` — комментарий про биты combinedTy
 //     теперь включает биты 4 (isReExport) и 5 (isStarReExport).
-//   - ✅ ОБНОВЛЕНО: `legend.codes.import` — добавлены пояснения
-//     про реэкспорты.
 //
 // ИЗМЕНЕНИЯ v15.0.2:
 //   - ✅ УБРАНО упоминание '@deprecated'.
 //   - ✅ ЯВНО указано, что conditionals живут ТОЛЬКО в
 //     `templates[].conditionals`.
-//
-// ИЗМЕНЕНИЯ v15.0.1:
-//   - ✅ УБРАН код 'to' из legend.codes.import.
 //
 // ИЗМЕНЕНИЯ v13.0.0:
 //   - ✅ ДОБАВЛЕНЫ схемы mi и fl в SCHEMAS.
@@ -33,18 +41,12 @@
 //   - ✅ flags.bits — простой словарь { "1": "isAsync", ... }.
 //   - ✅ schemas — обновлены под columnar-структуру.
 //   - ✅ УДАЛЕНО поле dictionaries.
-//
-// ИЗМЕНЕНИЯ v10.4.1:
-//   - Удалены 5 полей description.
-//
-// ИЗМЕНЕНИЯ v10.4.0:
-//   - Перестроена структура legend: how_to_read, flags, codes,
-//     dictionaries, schemas.
 // ============================================
 
 import type { CodecLegend, CodesDict } from './codec-types.js';
 
 import {
+  // ✅ Существующие словари
   FLAG_MAP,
   EXPORT_TYPES,
   CALL_TYPES,
@@ -56,6 +58,12 @@ import {
   CONDITIONAL_TYPES,
   TYPE_KINDS,
   TYPE_USAGE_KINDS,
+
+  // ✅ v15.2.0 (P1): единый источник истины для relation codes
+  LEXICAL_RELATION_CODES,
+
+  // ✅ v15.3.0 (P2): единый источник истины для callKind codes
+  CALL_KIND_CODES,
 } from './codec-encode.js';
 
 // ============================================
@@ -67,15 +75,16 @@ import {
 // соответствующего columnar-объекта.
 //
 // Пример:
-//   schemas.fns = ['n', 'm', 'f', 'l', 'fl', 'p', 'rt']
-//   кортеж fns имеет 7 параллельных массивов:
-//     fns.n[0]  — nameIdx
-//     fns.m[0]  — moduleIdx (в RLE)
-//     fns.f[0]  — fileIdx (в RLE)
-//     fns.l[0]  — line
-//     fns.fl[0] — flags
-//     fns.p[0]  — paramsIdx
-//     fns.rt[0] — returnTypeIdx
+//   schemas.fns = ['n', 'm', 'f', 'l', 'fl', 'p', 'rt', 'parent']
+//   кортеж fns имеет 8 параллельных массивов:
+//     fns.n[0]      — nameIdx
+//     fns.m[0]      — moduleIdx (в RLE)
+//     fns.f[0]      — fileIdx (в RLE)
+//     fns.l[0]      — line
+//     fns.fl[0]     — flags
+//     fns.p[0]      — paramsIdx
+//     fns.rt[0]     — returnTypeIdx
+//     fns.parent[0] — parentFunctionIdx (RLE), -1 = null  ← v15.1.0 (P0)
 //
 // ⚠️ ВАЖНО (v15.0.2): схема `cd` сохранена, потому что секция `cd`
 // по-прежнему кодируется в compact.json. НО в FullJSON верхнеуровневого
@@ -104,9 +113,12 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   fl: ['p', 'm'],
 
   // ==========================================
-  // fns — функции: 7 параллельных массивов
+  // fns — функции: 8 параллельных массивов
   // ==========================================
-  fns: ['n', 'm', 'f', 'l', 'fl', 'p', 'rt'],
+  // ✅ v15.1.0 (P0): добавлен 'parent'
+  //   parent: [parentFunctionIdx, count][] — RLE, -1 = null
+  // ==========================================
+  fns: ['n', 'm', 'f', 'l', 'fl', 'p', 'rt', 'parent'],
 
   // ==========================================
   // cls — классы: 6 параллельных массивов
@@ -156,13 +168,20 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   'gr.i': ['ff', 'tf', 's', 'im', 'ln', 'l', 'ty'],
 
   // ==========================================
-  // gr.c — вызовы: 4 параллельных массива
+  // gr.c — вызовы: 8 параллельных массивов
   // ==========================================
+  // ✅ v15.3.0 (P2): добавлены col/ck/cn/ai
+  //
   // ty = typeCode | (isExternal << 2)
   //   0-1 : typeCode (0=direct, 1=async, 2=method, 3=callback)
   //   2   : isExternal
+  //
+  // col: column, -1 = нет
+  // ck:  callKindCode, -1 = нет
+  // cn:  calleeNameIdx в strs, -1 = нет
+  // ai:  argumentIndex, -1 = нет
   // ==========================================
-  'gr.c': ['f', 't', 'l', 'ty'],
+  'gr.c': ['f', 't', 'l', 'ty', 'col', 'ck', 'cn', 'ai'],
 
   // ==========================================
   // gr.re — реэкспорты: 6 параллельных массивов
@@ -274,6 +293,29 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   // tr — typeRefs: 5 полей
   // ==========================================
   tr: ['typeNameIdx', 'moduleIdx', 'fileIdx', 'line', 'usageCode'],
+
+  // ==========================================
+  // ✅ v15.2.0 (P1): lx — lexicalLinks: 6 полей
+  // ==========================================
+  //
+  // Columnar-секция для лексических связей.
+  //
+  //   p:  RLE parentFunctionIdx, -1 = null
+  //   c:  RLE childFunctionIdx
+  //   r:  relationCode (см. codes.lexicalRelation)
+  //   l:  line
+  //   ai: argumentIndex, -1 = нет
+  //   cn: calleeNameIdx в strs, -1 = нет
+  //
+  // Пример:
+  //   lx.p = [[10, 3], [-1, 1]]   → parentIdx: 10,10,10,-1
+  //   lx.c = [[45, 4]]             → childIdx:  45,45,45,45
+  //   lx.r = [2, 2, 2, 0]          → callback, callback, callback, nested
+  //   lx.l = [147, 150, 155, 200]  → строки
+  //   lx.ai = [0, 0, 1, -1]        → argumentIndex
+  //   lx.cn = [-1, -1, 5, -1]      → calleeNameIdx
+  // ==========================================
+  lx: ['p', 'c', 'r', 'l', 'ai', 'cn'],
 };
 
 // ============================================
@@ -292,6 +334,11 @@ export const SCHEMAS: CodecLegend['schemas'] = {
 // они уже записаны ЧИСЛАМИ. ИИ должен использовать
 // legend.codes.<type>[String(num)], но т.к. в JSON ключи всегда
 // строки — ИИ сам преобразует число в строку для lookup.
+//
+// ✅ v15.2.0 (P1): lexicalRelation собирается из
+//   LEXICAL_RELATION_CODES (единый источник истины).
+// ✅ v15.3.0 (P2): callKind собирается из
+//   CALL_KIND_CODES (единый источник истины).
 // ============================================
 
 function mergeDict(base: Record<string, string>, overrides: CodesDict): CodesDict {
@@ -309,6 +356,22 @@ function mergeDict(base: Record<string, string>, overrides: CodesDict): CodesDic
     }
   }
 
+  return result;
+}
+
+/**
+ * Преобразует словарь { name: code } → { code: name }.
+ *
+ * Используется для lexicalRelation и callKind: в codec-encode.ts
+ * константы объявлены как `{ name: code }` (для быстрого lookup
+ * при encode), а в legend нужен обратный порядок `{ code: name }`
+ * (для decode).
+ */
+function reverseCodeDict(dict: Record<string, number>): CodesDict {
+  const result: CodesDict = {};
+  for (const [name, code] of Object.entries(dict)) {
+    result[String(code)] = name;
+  }
   return result;
 }
 
@@ -351,16 +414,6 @@ function buildCodesLegend(): CodecLegend['codes'] {
     //   бит 3 = isTypeOnly
     //   бит 4 = isReExport
     //   бит 5 = isStarReExport
-    //
-    // Примеры:
-    //   ty = 0   → named
-    //   ty = 1   → default
-    //   ty = 2   → namespace
-    //   ty = 4   → named + external
-    //   ty = 8   → named + type-only
-    //   ty = 16  → named + re-export
-    //   ty = 48  → named + re-export + star-re-export
-    //   ty = 56  → named + external + re-export + star-re-export
     //
     // ✅ v15.0.5: `gr.i.tf` — ИНДЕКС В `fl.p` (файлы), -1 = внешний.
     //   `gr.i.s`  — ПО-ПРЕЖНЕМУ индекс в `strs` (source-строка).
@@ -488,6 +541,40 @@ function buildCodesLegend(): CodecLegend['codes'] {
       u: 'union (union-тип)',
       x: 'extends (расширяемый тип)',
     }),
+
+    // ==========================================
+    // ✅ v15.2.0 (P1): LEXICAL RELATION
+    // ==========================================
+    // Коды для `lx.r[]`:
+    //   0 = nested        (function inner() {})
+    //   1 = arrow-var     (const fn = () => {})
+    //   2 = callback      (arr.map(x => x))
+    //   3 = iife          ((() => {})())
+    //   4 = class-method  (class A { method() {} })
+    //   5 = object-prop   ({ onClick: () => {} })
+    //   6 = return        (return () => {})
+    //   7 = default-export(export default () => {})
+    //
+    // Собирается из LEXICAL_RELATION_CODES (единый источник истины).
+    // ==========================================
+    lexicalRelation: reverseCodeDict(LEXICAL_RELATION_CODES),
+
+    // ==========================================
+    // ✅ v15.3.0 (P2): CALL KIND
+    // ==========================================
+    // Коды для `gr.c.ck[]`:
+    //   0 = direct
+    //   1 = method
+    //   2 = callback
+    //   3 = constructor
+    //   4 = tagged-template
+    //   5 = optional-chain
+    //   6 = spread
+    //   7 = new
+    //
+    // Собирается из CALL_KIND_CODES (единый источник истины).
+    // ==========================================
+    callKind: reverseCodeDict(CALL_KIND_CODES),
   };
 }
 
