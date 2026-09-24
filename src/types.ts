@@ -63,18 +63,18 @@ export interface ImportInfo {
 export interface ExportInfo {
   name: string;
   type:
-    | 'function'
-    | 'class'
-    | 'constant'
-    | 'value'
-    | 'default'
-    | 'interface'
-    | 'type'
-    | 'enum'
-    | 'object'
-    | 'all'
-    | 're-export'
-    | 'named';
+      | 'function'
+      | 'class'
+      | 'constant'
+      | 'value'
+      | 'default'
+      | 'interface'
+      | 'type'
+      | 'enum'
+      | 'object'
+      | 'all'
+      | 're-export'
+      | 'named';
   isDefault: boolean;
   loc: Location | null;
   params?: string[];
@@ -180,7 +180,7 @@ export interface CallInfo {
   targetVscode: string;
   callLine: number;
   callType:
-    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
+      'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
 }
 
 export interface CalledByInfo {
@@ -191,7 +191,7 @@ export interface CalledByInfo {
   callerVscode: string;
   callLine: number;
   callType:
-    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
+      'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
 }
 
 export interface ImportedByInfo {
@@ -248,14 +248,14 @@ export interface ImportedByInfo {
  *   `helpers/infer-function-name.ts` (v2.1.0).
  */
 export type LexicalRelation =
-  | 'nested'
-  | 'arrow-var'
-  | 'callback'
-  | 'iife'
-  | 'class-method'
-  | 'object-prop'
-  | 'return'
-  | 'default-export';
+    | 'nested'
+    | 'arrow-var'
+    | 'callback'
+    | 'iife'
+    | 'class-method'
+    | 'object-prop'
+    | 'return'
+    | 'default-export';
 
 /**
  * Лексическая связь: parent → child.
@@ -313,10 +313,62 @@ export interface LexicalLink {
 }
 
 // ==========================================
+// ✅ НОВОЕ v15.5.0: VUE KIND (классификация функций)
+// ==========================================
+//
+// ════════════════════════════════════════════════════════════
+// НАЗНАЧЕНИЕ
+// ════════════════════════════════════════════════════════════
+//
+//   Vue-классификация функции. Используется в:
+//     - fns.vk (RLE-массив кодов) в CompactJSON
+//     - legend.codes.vueKind в легенде
+//     - core/vue-entity-classifier.ts
+//
+// ════════════════════════════════════════════════════════════
+// КОДЫ (синхронизировано с legend.codes.vueKind)
+// ════════════════════════════════════════════════════════════
+//
+//   0 = function     — обычная функция
+//   1 = composable   — use[A-Z] (кроме VUE_BUILTINS)
+//   2 = macro        — define[A-Z]
+//   3 = hook         — onMounted, onUnmounted, watch, watchEffect, ...
+//   4 = reactivity   — computed, ref, reactive, shallowRef, readonly, toRef, toRefs
+//   5 = callback     — стрелка в аргументе вызова: arr.map(x => x)
+//   6 = arrow        — стрелка в переменной: const fn = () => {}
+// ==========================================
+
+export type VueKind =
+    | 'function'
+    | 'composable'
+    | 'macro'
+    | 'hook'
+    | 'reactivity'
+    | 'callback'
+    | 'arrow';
+
+/**
+ * Числовые коды для VueKind.
+ *
+ * ⚠️ Синхронизировано с legend.codes.vueKind
+ * ⚠️ Синхронизировано с fns.vk в codec-encode.ts
+ */
+export const VUE_KIND_CODES: Record<VueKind, number> = {
+  function: 0,
+  composable: 1,
+  macro: 2,
+  hook: 3,
+  reactivity: 4,
+  callback: 5,
+  arrow: 6,
+};
+
+// ==========================================
 // ОСНОВНОЙ ИНТЕРФЕЙС FunctionInfo
 // ==========================================
 //
 // ✅ v15.1.0 (P0): добавлено поле parentFunctionId.
+// ✅ v15.5.0: добавлено поле vueKind.
 // ==========================================
 
 export interface FunctionInfo {
@@ -422,6 +474,27 @@ export interface FunctionInfo {
     /** Строка вызова (1-based) */
     line: number;
   };
+
+  // ==========================================
+  // ✅ v15.5.0: Vue-классификация
+  // ==========================================
+
+  /**
+   * Vue-классификация функции.
+   *
+   * ════════════════════════════════════════════════════════════
+   * ЗНАЧЕНИЯ
+   * ════════════════════════════════════════════════════════════
+   *
+   *   - `'function'`    — обычная функция
+   *   - `'composable'`  — use[A-Z] (кроме VUE_BUILTINS)
+   *   - `'macro'`       — define[A-Z]
+   *   - `'hook'`        — onMounted, onUnmounted, watch, ...
+   *   - `'reactivity'`  — computed, ref, reactive, ...
+   *   - `'callback'`    — стрелка в аргументе вызова
+   *   - `'arrow'`       — стрелка в переменной
+   */
+  vueKind?: VueKind;
 }
 
 // ==========================================
@@ -430,6 +503,7 @@ export interface FunctionInfo {
 //
 // ✅ ОБНОВЛЕНО: добавлены поля calls, calledBy, importedBy
 // для совместимости с saveOptimizedPackageLockReport.
+// ✅ v15.5.0: добавлено поле vueKind.
 // ==========================================
 
 export interface ExtendedFunctionInfo {
@@ -457,6 +531,9 @@ export interface ExtendedFunctionInfo {
 
   // ✅ v15.1.0 (P0): лексический родитель
   parentFunctionId?: string | null;
+
+  // ✅ v15.5.0: Vue-классификация
+  vueKind?: VueKind;
 }
 
 // ==========================================
@@ -546,14 +623,14 @@ export interface TemplateConditional extends VueTemplateConditional {
 export interface TemplateLifecycle {
   /** Имя хука */
   hookName:
-    | 'onMounted'
-    | 'onUnmounted'
-    | 'onScopeDispose'
-    | 'onActivated'
-    | 'onDeactivated'
-    | 'watch'
-    | 'watchEffect'
-    | 'onErrorCaptured';
+      | 'onMounted'
+      | 'onUnmounted'
+      | 'onScopeDispose'
+      | 'onActivated'
+      | 'onDeactivated'
+      | 'watch'
+      | 'watchEffect'
+      | 'onErrorCaptured';
   /** Имя функции, в которой вызван хук */
   functionName: string;
   /** Номер строки */
@@ -654,6 +731,135 @@ export interface TypeRef {
   line: number;
   /** Вид использования */
   usageKind: 'param' | 'return' | 'field' | 'generic' | 'union' | 'extends';
+}
+
+// ==========================================
+// ✅ НОВОЕ v15.5.0: VUE-СУЩНОСТИ (секция vue)
+// ==========================================
+//
+// ════════════════════════════════════════════════════════════
+// НАЗНАЧЕНИЕ
+// ════════════════════════════════════════════════════════════
+//
+//   Агрегированные Vue-сущности для FullJSON.vue.
+//   Собираются в core/vue-entity-classifier.ts и
+//   кодируются в CompactJSON.vue (codec-encode.ts).
+//
+//   В отличие от templateXxx полей (которые уже есть),
+//   эта секция содержит именно КЛАССИФИЦИРОВАННЫЕ
+//   Vue-сущности с типами.
+// ==========================================
+
+/**
+ * SFC-компонент (Single File Component).
+ */
+export interface SFCComponent {
+  /** ID файла (путь) */
+  fileId: string;
+  /** ID модуля */
+  moduleId: string;
+  /** Имя компонента (из defineOptions.name или имени файла) */
+  name: string;
+  /** Битовая маска блоков: 1=script, 2=script-setup, 4=template, 8=style */
+  blocks: number;
+  /** Имена использованных composables */
+  composables: string[];
+  /** Имена props */
+  props: string[];
+  /** Имена emits */
+  emits: string[];
+  /** Имена exposed */
+  exposed: string[];
+}
+
+/**
+ * Composable-функция (use[A-Z]).
+ */
+export interface ComposableEntity {
+  /** ID (fn1, fn2, ...) */
+  id: string;
+  /** Имя (useDataState) */
+  name: string;
+  /** ID файла */
+  fileId: string;
+  /** Вид: composable | store | factory | utility */
+  kind: 'composable' | 'store' | 'factory' | 'utility';
+  /** Форма возврата */
+  returnShape: 'void' | 'object' | 'ref' | 'reactive' | 'function';
+  /** Ключи возвращаемого объекта */
+  returnedKeys: string[];
+  /** Файлы, где вызывается */
+  callers: string[];
+}
+
+/**
+ * Макрос компилятора Vue.
+ */
+export interface MacroEntity {
+  /** ID (mac1, mac2, ...) */
+  id: string;
+  /** ID файла */
+  fileId: string;
+  /** Вид макроса */
+  kind: 'props' | 'emits' | 'expose' | 'slots' | 'model' | 'options';
+  /** Номер строки */
+  line: number;
+}
+
+/**
+ * Lifecycle hook.
+ */
+export interface HookEntity {
+  /** ID (hk1, hk2, ...) */
+  id: string;
+  /** ID файла */
+  fileId: string;
+  /** Имя хука (onMounted, watch, ...) */
+  hookName: string;
+  /** Номер строки */
+  line: number;
+}
+
+/**
+ * Реактивный примитив.
+ */
+export interface ReactivityEntity {
+  /** ID (rx1, rx2, ...) */
+  id: string;
+  /** ID файла */
+  fileId: string;
+  /** Вид */
+  kind: 'computed' | 'ref' | 'reactive' | 'watch';
+  /** Номер строки */
+  line: number;
+  /** Имя переменной (может отсутствовать) */
+  name?: string;
+}
+
+/**
+ * Иконка-компонент.
+ */
+export interface IconEntity {
+  /** ID (ic1, ic2, ...) */
+  id: string;
+  /** ID файла */
+  fileId: string;
+  /** Имя (AiCrossIcon) */
+  name: string;
+  /** Категория */
+  category: 'base' | 'filter' | 'toolbar' | 'sort';
+}
+
+/**
+ * Агрегированная секция Vue-сущностей.
+ */
+export interface VueEntities {
+  sfc: SFCComponent[];
+  composables: ComposableEntity[];
+  macros: MacroEntity[];
+  hooks: HookEntity[];
+  reactivity: ReactivityEntity[];
+  icons: IconEntity[];
 }
 
 // ==========================================
@@ -1007,20 +1213,20 @@ export interface EntityGraphEdge {
   from: string;
   to: string;
   type:
-    | 'function_call'
-    | 'constant_reference'
-    | 'class_extends'
-    | 'class_implements'
-    | 'interface_extends'
-    | 'type_reference'
-    | 'method_call'
-    | 'property_access'
-    | 'import_binding'
-    | 'export_binding'
-    | 'parameter_type'
-    | 'return_type'
-    | 'variable_reference'
-    | 'enum_member';
+      | 'function_call'
+      | 'constant_reference'
+      | 'class_extends'
+      | 'class_implements'
+      | 'interface_extends'
+      | 'type_reference'
+      | 'method_call'
+      | 'property_access'
+      | 'import_binding'
+      | 'export_binding'
+      | 'parameter_type'
+      | 'return_type'
+      | 'variable_reference'
+      | 'enum_member';
   line?: number;
   count?: number;
 }
@@ -1268,24 +1474,24 @@ export interface HTMLReportOptions {
 // ==========================================
 
 export type CLIMode =
-  | 'project'
-  | 'file'
-  | 'minify'
-  | 'minify-folder'
-  | 'prompt-pack'
-  | 'split-module'
-  | 'split'
-  | 'impact'
-  | 'dead-code'
-  | 'hybrid-report'
-  | 'hybrid'
-  | 'semantic'
-  | 'verify'
-  | 'refactor'
-  | 'analyze'
-  | 'vue-analyze'
-  | 'vue'
-  | 'compact';
+    | 'project'
+    | 'file'
+    | 'minify'
+    | 'minify-folder'
+    | 'prompt-pack'
+    | 'split-module'
+    | 'split'
+    | 'impact'
+    | 'dead-code'
+    | 'hybrid-report'
+    | 'hybrid'
+    | 'semantic'
+    | 'verify'
+    | 'refactor'
+    | 'analyze'
+    | 'vue-analyze'
+    | 'vue'
+    | 'compact';
 
 export interface ProjectCLIArgs {
   mode: 'project';
@@ -1419,22 +1625,22 @@ export interface CompactCLIArgs {
 }
 
 export type CLIArgs =
-  | ProjectCLIArgs
-  | FileCLIArgs
-  | MinifyCLIArgs
-  | MinifyFolderCLIArgs
-  | PromptPackCLIArgs
-  | SplitModuleCLIArgs
-  | ImpactCLIArgs
-  | DeadCodeCLIArgs
-  | HybridReportCLIArgs
-  | SemanticCLIArgs
-  | VerifyCLIArgs
-  | RefactorCLIArgs
-  | AnalyzeCLIArgs
-  | VueAnalyzeCLIArgs
-  | CompactCLIArgs
-  | null;
+    | ProjectCLIArgs
+    | FileCLIArgs
+    | MinifyCLIArgs
+    | MinifyFolderCLIArgs
+    | PromptPackCLIArgs
+    | SplitModuleCLIArgs
+    | ImpactCLIArgs
+    | DeadCodeCLIArgs
+    | HybridReportCLIArgs
+    | SemanticCLIArgs
+    | VerifyCLIArgs
+    | RefactorCLIArgs
+    | AnalyzeCLIArgs
+    | VueAnalyzeCLIArgs
+    | CompactCLIArgs
+    | null;
 
 // ==========================================
 // ТИПЫ ДЛЯ ВНУТРЕННЕГО ИСПОЛЬЗОВАНИЯ
@@ -1640,6 +1846,9 @@ export interface EnhancedFunctionInfo extends FunctionInfo {
     argumentIndex?: number;
     line: number;
   };
+
+  /** ✅ v15.5.0: Vue-классификация */
+  vueKind?: VueKind;
 }
 
 export interface EnhancedConstantInfo {
@@ -1723,24 +1932,24 @@ export interface EnhancedPackageLockReport {
   };
   importExportFlow: {
     imports: Record<
-      string,
-      {
-        importsFrom: {
-          module: string;
-          type: 'named' | 'default' | 'namespace';
-          imports: string[];
-        }[];
-      }
+        string,
+        {
+          importsFrom: {
+            module: string;
+            type: 'named' | 'default' | 'namespace';
+            imports: string[];
+          }[];
+        }
     >;
     exports: Record<
-      string,
-      {
-        exportsTo: {
-          module: string;
-          type: 'named' | 'default';
-          exports: string[];
-        }[];
-      }
+        string,
+        {
+          exportsTo: {
+            module: string;
+            type: 'named' | 'default';
+            exports: string[];
+          }[];
+        }
     >;
   };
   /**
@@ -1749,8 +1958,8 @@ export interface EnhancedPackageLockReport {
    * с полями from/to/path/found/nodes/edges.
    */
   callGraph?:
-    | Record<string, string[]>
-    | {
+      | Record<string, string[]>
+      | {
     from: string;
     to: string;
     path: string[];
@@ -1901,6 +2110,17 @@ export interface EnhancedEntityInfo {
 
   /** ✅ P1: лексические связи (parent → child) */
   lexicalLinks?: LexicalLink[];
+
+  // ==========================================
+  // ✅ НОВОЕ v15.5.0: Vue-сущности
+  // ==========================================
+  //
+  // Агрегированные Vue-сущности для FullJSON.vue.
+  // Собираются в core/vue-entity-classifier.ts.
+  // ==========================================
+
+  /** ✅ v15.5.0: Vue-сущности (SFC/composables/macros/hooks/reactivity/icons) */
+  vue?: VueEntities;
 }
 
 // ==========================================
@@ -2056,4 +2276,6 @@ export type ReadonlyStats = Readonly<MutableStats>;
 
 export default {
   // Типы экспортируются автоматически
+  // Константы (VUE_KIND_CODES) экспортируются как значение
+  VUE_KIND_CODES,
 };

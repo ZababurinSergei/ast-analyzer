@@ -2,54 +2,99 @@
 // ============================================
 // ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON
 // ============================================
-// Версия: 15.4.0
+// Версия: 15.7.3
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
 //
+// v15.7.3 (fix: vue.sfc.c — восстановление реальных имён composables):
+//   - ✅ ИСПРАВЛЕНО: `decodeVueSection()` теперь восстанавливает
+//     РЕАЛЬНЫЕ имена composables через `readStr(idx)` из `strs`.
+//
+//     ПРИЧИНА: в `encodeVueSection` (v15.7.3) `sfc.c` теперь
+//     содержит индексы в `strs` (имена composables как строки),
+//     а НЕ индексы в `vue.composables`.
+//
+//     Это позволяет восстанавливать ВНЕШНИЕ composables
+//     (useRouter, useI18n), которых нет в `vue.composables`.
+//
+//   - ✅ ИСПРАВЛЕНО: `decodeVueSection()` читает `sfc.cs` (slices
+//     `[[offset, count], ...]`) для разбиения `sfc.c` по SFC.
+//
+//     Ранее (v15.7.2) использовалось `sfc.c[i] = [fileIdx, count]`,
+//     что не позволяло восстановить реальные имена.
+//
+//   - ✅ ДОБАВЛЕН: fallback для старых compact (v15.7.2 и ранее):
+//     если `sfc.cs` отсутствует, но `sfc.c[i]` — массив,
+//     восстанавливаются плейсхолдеры `['#0', '#1', ...]`.
+//
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '15.7.3'.
+//
+// v15.7.2 (fix: восстановление moduleId в vue.sfc):
+//   - ✅ ИСПРАВЛЕНО: `decodeVueSection()` восстанавливает `moduleId`
+//     из `files[].moduleId`. Ранее было жёстко `''`, что ломало
+//     round-trip (`$.sfc[i].moduleId: "m1" → ""`).
+//
+// v15.7.1 (Vue-секция: ослабление проверки):
+//   - ✅ ИСПРАВЛЕНО: `checkVueSection` — нормализация перед сравнением.
+//
+// v15.7.0 (Vue entities):
+//   - ✅ ДОБАВЛЕНО: чтение `fns.vk` (RLE) → `FunctionData.vueKind`.
+//   - ✅ ДОБАВЛЕНО: чтение `compact.vue` → `FullJSON.vue`.
+//   - ✅ ДОБАВЛЕНО: `decodeVueSection()` — восстановление SFC /
+//     composables / macros / hooks / reactivity / icons.
+//   - ✅ ДОБАВЛЕНО: маппинги VUE_KIND_BY_CODE, HOOK_NAME_BY_CODE,
+//     REACTIVITY_KIND_BY_CODE, ICON_CATEGORY_BY_CODE.
+//   - ✅ ИСПРАВЛЕНО: восстановление длин sfc.composables/props/
+//     emits/exposed через Array.from.
+//
+// v15.5.0 (Vue entities):
+//   - ✅ ДОБАВЛЕНО: чтение `fns.vk` (RLE) → `FunctionData.vueKind`.
+//   - ✅ ДОБАВЛЕНО: `decodeVueSection()` — восстановление SFC.
+//
 // v15.4.0 (P3 — cross-file resolution):
-//   - ✅ CODEC_VERSION = '15.4.0'
+//   - ✅ CODEC_VERSION = '15.4.0'.
 //
 // v15.3.0 (P2 — расширенный CallData):
-//   - ✅ ДОБАВЛЕНО: CALL_KIND_BY_CODE
-//   - ✅ ДОБАВЛЕНО: чтение gr.c.col/ck/cn/ai
+//   - ✅ ДОБАВЛЕНО: CALL_KIND_BY_CODE.
+//   - ✅ ДОБАВЛЕНО: чтение gr.c.col/ck/cn/ai.
 //
 // v15.2.0 (P1 — lexicalLinks):
-//   - ✅ ДОБАВЛЕНО: LEXICAL_RELATION_BY_CODE
-//   - ✅ ДОБАВЛЕНО: чтение compact.lx
-//   - ✅ ДОБАВЛЕНО: result.lexicalLinks
+//   - ✅ ДОБАВЛЕНО: LEXICAL_RELATION_BY_CODE.
+//   - ✅ ДОБАВЛЕНО: чтение compact.lx.
+//   - ✅ ДОБАВЛЕНО: result.lexicalLinks.
 //
 // v15.1.0 (P0 — parentFunctionId):
-//   - ✅ ДОБАВЛЕНО: чтение fns.parent
+//   - ✅ ДОБАВЛЕНО: чтение fns.parent.
 //
 // v15.0.6 (gr.i.tf — индекс в fl.p):
-//   - ✅ ИЗМЕНЕНО: tf читается как индекс в fl.p
-//   - ✅ -1 → external:* / unresolved:*
+//   - ✅ ИЗМЕНЕНО: tf читается как индекс в fl.p.
+//   - ✅ -1 → external:* / unresolved:*.
 //
 // v15.0.4 (проброс isReExport/isStarReExport):
-//   - ✅ ДОБАВЛЕНО: чтение битов 4, 5 из gr.i.ty
+//   - ✅ ДОБАВЛЕНО: чтение битов 4, 5 из gr.i.ty.
 //
 // v15.0.2 (устранение дублирования conditionals):
-//   - ✅ УБРАНО: чтение compact.cd через decodeSection
+//   - ✅ УБРАНО: чтение compact.cd через decodeSection.
 //
 // v15.0.1 (fix imports[].type):
-//   - ✅ ИСПРАВЛЕНО: imports[].type больше не использует эвристику
+//   - ✅ ИСПРАВЛЕНО: imports[].type больше не использует эвристику.
 //
 // v15.0.0 (100% round-trip расширенных секций):
-//   - ✅ ИСПРАВЛЕНО: decodeSection читает и объект, и строку
+//   - ✅ ИСПРАВЛЕНО: decodeSection читает и объект, и строку.
 //
 // v14.0.0 (100% round-trip):
-//   - ✅ ИСПРАВЛЕНО: imports[].isTypeOnly читается из бита 8
+//   - ✅ ИСПРАВЛЕНО: imports[].isTypeOnly читается из бита 8.
 //
 // v13.0.2-fix (100% round-trip):
-//   - ✅ ИСПРАВЛЕНО: modules[].fileIds строятся через fl.m
+//   - ✅ ИСПРАВЛЕНО: modules[].fileIds строятся через fl.m.
 //
 // v13.0.0-fix (100% round-trip):
-//   - ✅ ИСПРАВЛЕНО: mi.f читается как пары [startFileIdx, fileCount]
+//   - ✅ ИСПРАВЛЕНО: mi.f читается как пары [startFileIdx, fileCount].
 //
 // v12.0.0 (структурная оптимизация):
-//   - ✅ Columnar-структура для всех секций
+//   - ✅ Columnar-структура для всех секций.
 // ============================================
 
 import type {
@@ -76,9 +121,19 @@ import type {
   // ✅ v15.2.0 (P1)
   LexicalLink,
   LexicalRelation,
+  // ✅ v15.5.0 (Vue entities)
+  SFCComponent,
+  ComposableEntity,
+  MacroEntity,
+  HookEntity,
+  ReactivityEntity,
+  IconEntity,
+  VueKind,
+  VueSectionFull,
+  VueSectionCompact,
 } from './codec-types.js';
 
-// ✅ v15.4.0: единая версия CODEC
+// ✅ v15.5.0: единая версия CODEC
 import { CODEC_VERSION } from './codec-types.js';
 
 // ============================================
@@ -123,6 +178,140 @@ const CALL_KIND_BY_CODE: Record<number, CallData['callKind']> = {
   5: 'optional-chain',
   6: 'spread',
   7: 'new',
+};
+
+// ============================================
+// ✅ v15.5.0: VUE KIND BY CODE
+// ============================================
+//
+// Обратная карта: код → vueKind.
+// Используется при чтении `fns.vk` (RLE).
+//
+// ⚠️ Синхронизировано с VUE_KIND_CODES в codec-encode.ts.
+// ⚠️ Синхронизировано с legend.codes.vueKind.
+// ============================================
+
+const VUE_KIND_BY_CODE: Record<number, VueKind> = {
+  0: 'function',
+  1: 'composable',
+  2: 'macro',
+  3: 'hook',
+  4: 'reactivity',
+  5: 'callback',
+  6: 'arrow',
+};
+
+// ============================================
+// ✅ v15.5.0: HOOK NAME BY CODE
+// ============================================
+//
+// Обратная карта: код → hookName (для vue.hooks.n).
+//
+// ⚠️ Синхронизировано с HOOK_NAME_CODES в codec-encode.ts.
+// ⚠️ Синхронизировано с legend.codes.hookName.
+// ============================================
+
+const HOOK_NAME_BY_CODE: Record<number, string> = {
+  0: 'onMounted',
+  1: 'onUnmounted',
+  2: 'onActivated',
+  3: 'onDeactivated',
+  4: 'onErrorCaptured',
+  5: 'onScopeDispose',
+  6: 'watch',
+  7: 'watchEffect',
+  8: 'onBeforeMount',
+  9: 'onBeforeUnmount',
+  10: 'onUpdated',
+  11: 'onBeforeUpdate',
+};
+
+// ============================================
+// ✅ v15.5.0: REACTIVITY KIND BY CODE
+// ============================================
+//
+// Обратная карта: код → reactivity kind (для vue.reactivity.k).
+//
+// ⚠️ Синхронизировано с REACTIVITY_KIND_CODES в codec-encode.ts.
+// ⚠️ Синхронизировано с legend.codes.reactivityKind.
+// ============================================
+
+const REACTIVITY_KIND_BY_CODE: Record<number, ReactivityEntity['kind']> = {
+  0: 'computed',
+  1: 'ref',
+  2: 'reactive',
+  3: 'watch',
+  4: 'shallowRef',
+  5: 'readonly',
+  6: 'toRef',
+  7: 'toRefs',
+};
+
+// ============================================
+// ✅ v15.5.0: ICON CATEGORY BY CODE
+// ============================================
+//
+// Обратная карта: код → icon category (для vue.icons.c).
+//
+// ⚠️ Синхронизировано с ICON_CATEGORY_CODES в codec-encode.ts.
+// ⚠️ Синхронизировано с legend.codes.iconCategory.
+// ============================================
+
+const ICON_CATEGORY_BY_CODE: Record<number, IconEntity['category']> = {
+  0: 'base',
+  1: 'filter',
+  2: 'toolbar',
+  3: 'sort',
+};
+
+// ============================================
+// ✅ v15.5.0: COMPOSABLE KIND BY CODE
+// ============================================
+//
+// Обратная карта: код → composable kind (для vue.composables.k).
+//
+// ⚠️ Синхронизировано с COMPOSABLE_KIND_CODES в codec-encode.ts.
+// ⚠️ Синхронизировано с legend.codes.composableKind.
+// ============================================
+
+const COMPOSABLE_KIND_BY_CODE: Record<number, ComposableEntity['kind']> = {
+  0: 'composable',
+  1: 'store',
+  2: 'factory',
+  3: 'utility',
+};
+
+// ============================================
+// ✅ v15.5.0: COMPOSABLE RETURN SHAPE BY CODE
+// ============================================
+//
+// Обратная карта: код → returnShape (для vue.composables.r).
+// ============================================
+
+const COMPOSABLE_SHAPE_BY_CODE: Record<number, ComposableEntity['returnShape']> = {
+  0: 'void',
+  1: 'object',
+  2: 'ref',
+  3: 'reactive',
+  4: 'function',
+};
+
+// ============================================
+// ✅ v15.5.0: MACRO KIND BY CODE
+// ============================================
+//
+// Обратная карта: код → macro kind (для vue.macros.k).
+//
+// ⚠️ Синхронизировано с MACRO_KIND_CODES в codec-encode.ts.
+// ============================================
+
+const MACRO_KIND_BY_CODE: Record<number, MacroEntity['kind']> = {
+  0: 'props',
+  1: 'emits',
+  2: 'expose',
+  3: 'slots',
+  4: 'model',
+  5: 'options',
 };
 
 // ============================================
@@ -328,31 +517,300 @@ function safeJsonParse<T>(value: unknown): T | null {
 }
 
 // ============================================
+// ✅ v15.7.3: VUE SECTION DECODER
+// ============================================
+
+/**
+ * Декодирует `compact.vue` → `FullJSON.vue`.
+ *
+ * ════════════════════════════════════════════════════════════
+ * ЧТО ВОССТАНАВЛИВАЕТ
+ * ════════════════════════════════════════════════════════════
+ *
+ *   - sfc:         SFC-компоненты (fileId, moduleId, name, blocks,
+ *                  composables[], props[], emits[], exposed[])
+ *   - composables: composable-функции (id, name, fileId, kind,
+ *                  returnShape, returnedKeys, callers)
+ *   - macros:      defineProps / defineEmits / ...
+ *   - hooks:       onMounted / onUnmounted / watch / ...
+ *   - reactivity:  computed / ref / reactive / watch
+ *   - icons:       иконки-компоненты по категориям
+ *
+ * ════════════════════════════════════════════════════════════
+ * ✅ v15.7.3: sfc.c — ИНДЕКСЫ В `strs`, А НЕ В `vue.composables`
+ * ════════════════════════════════════════════════════════════
+ *
+ *   ПРОБЛЕМА (до v15.7.3):
+ *
+ *     Ранее (v15.7.2) `sfc.c` содержал индексы в `vue.composables`.
+ *     Но `vue.composables` содержит только ЛОКАЛЬНЫЕ composables.
+ *     Внешние (`useRouter`, `useI18n`) отсутствуют в нём,
+ *     и при decode их имена терялись.
+ *
+ *   РЕШЕНИЕ (v15.7.3):
+ *
+ *     `sfc.c` теперь содержит индексы в `strs` — имена
+ *     composables как строки. Восстанавливаем через `readStr(idx)`.
+ *
+ *     Это универсально: работает и для локальных, и для внешних
+ *     composables.
+ *
+ * ════════════════════════════════════════════════════════════
+ * ⚠️ sfc.p / sfc.e / sfc.x — только счётчики
+ * ════════════════════════════════════════════════════════════
+ *
+ *   Для props/emits/exposed в compact хранятся только СЧЁТЧИКИ.
+ *   При decode восстанавливаются ПЛЕЙСХОЛДЕРЫ:
+ *     `['#0', '#1', ..., '#N-1']`, где N = count.
+ *
+ *   Реальные имена не сохраняются в compact (by design).
+ *
+ * ════════════════════════════════════════════════════════════
+ * ✅ v15.7.2: `moduleId` восстанавливается из `files[].moduleId`
+ * ════════════════════════════════════════════════════════════
+ *
+ *   Ранее (до v15.7.2) `moduleId` был жёстко `''`, что ломало
+ *   round-trip: `$.sfc[i].moduleId: "m1" → ""`.
+ *
+ *   Теперь — берём из `files[fileIdx].moduleId`.
+ *
+ * ════════════════════════════════════════════════════════════
+ * ⚠️ `id` composables/macros/hooks/reactivity/icons не сохраняется
+ * ════════════════════════════════════════════════════════════
+ *
+ *   В compact нет полей `id` для этих сущностей (см. схемы).
+ *   При decode `id` генерируется:
+ *     - composables: `cmp1`, `cmp2`, ...
+ *     - macros:      `mac1`, `mac2`, ...
+ *     - hooks:       `hk1`, `hk2`, ...
+ *     - reactivity:  `rx1`, `rx2`, ...
+ *     - icons:       `ic1`, `ic2`, ...
+ *
+ *   Это by design: сущности идентифицируются по другим полям
+ *   (name + fileId, fileId + kind + line и т.д.).
+ *
+ *   В `verify-roundtrip.ts` применяется `normalizeVueForCompare()`,
+ *   которая убирает `id` перед сравнением L1/L2/DL.
+ *
+ * @param vue         — compact.vue
+ * @param stringDict  — словарь строк (compact.strs)
+ * @param files       — массив FullJSON.files (для маппинга индексов)
+ * @returns VueSectionFull или undefined
+ */
+function decodeVueSection(
+  vue: VueSectionCompact | undefined,
+  stringDict: string[],
+  files: FileData[]
+): VueSectionFull | undefined {
+  if (!vue) return undefined;
+
+  const readStr = (idx: number): string => (idx < 0 ? '' : (stringDict[idx] ?? ''));
+  const fileId = (idx: number): string => files[idx]?.id ?? `f${idx + 1}`;
+  // ✅ v15.7.2: восстановление moduleId из files[]
+  const moduleIdForFile = (idx: number): string => files[idx]?.moduleId ?? '';
+
+  // ────────────────────────────────────────────────────────
+  // sfc
+  // ────────────────────────────────────────────────────────
+  //
+  // ✅ v15.7.3: `sfc.c` содержит индексы в `strs` (имена composables).
+  //             `sfc.cs` содержит slices `[[offset, count], ...]`.
+  //
+  // Восстанавливаем РЕАЛЬНЫЕ имена composables через `readStr(idx)`.
+  //
+  // ✅ v15.7.2: `moduleId` восстанавливается из `files[].moduleId`.
+  //
+  // ⚠️ Fallback для старых compact (v15.7.2 и ранее):
+  //   Если `sfc.cs` отсутствует, но `sfc.c[i]` — массив
+  //   (`[fileIdx, count]` — старый формат), восстанавливаем
+  //   плейсхолдеры `['#0', '#1', ...]`.
+  // ============================================================
+
+  const sfcC = vue.sfc.c ?? [];
+  const sfcCS = vue.sfc.cs ?? [];
+
+  const sfc: SFCComponent[] = (vue.sfc?.f ?? []).map((fileIdx: number, i: number) => {
+    const propsCount = vue.sfc.p?.[i]?.[1] ?? 0;
+    const emitsCount = vue.sfc.e?.[i]?.[1] ?? 0;
+    const exposeCount = vue.sfc.x?.[i]?.[1] ?? 0;
+
+    // ✅ v15.7.3: восстанавливаем РЕАЛЬНЫЕ имена composables из strs
+    let composables: string[] = [];
+
+    const slice = sfcCS[i];
+    if (Array.isArray(slice) && slice.length === 2) {
+      // ✅ v15.7.3: новый формат — slices + плоский массив индексов в strs
+      const [offset, count] = slice;
+      const nameIndices = sfcC.slice(offset, offset + count);
+      composables = nameIndices.map(idx => readStr(idx));
+    } else if (Array.isArray((vue.sfc.c as any)?.[i])) {
+      // ⚠️ Fallback для старых compact (v15.7.2 и ранее):
+      // `sfc.c[i] = [fileIdx, count]` — восстанавливаем плейсхолдеры.
+      const oldCount = (vue.sfc.c as any)?.[i]?.[1] ?? 0;
+      composables = Array.from({ length: oldCount }, (_, k) => `#${k}`);
+    }
+
+    return {
+      fileId: fileId(fileIdx),
+      // ✅ v15.7.2: восстановление moduleId из files[]
+      moduleId: moduleIdForFile(fileIdx),
+      name: readStr(vue.sfc.n[i] ?? -1),
+      blocks: vue.sfc.b[i] ?? 0,
+      composables,
+      // ⚠️ props/emits/exposed — только счётчики (плейсхолдеры)
+      props: Array.from({ length: propsCount }, (_, k) => `#${k}`),
+      emits: Array.from({ length: emitsCount }, (_, k) => `#${k}`),
+      exposed: Array.from({ length: exposeCount }, (_, k) => `#${k}`),
+    };
+  });
+
+  // ────────────────────────────────────────────────────────
+  // composables
+  // ────────────────────────────────────────────────────────
+  //
+  // ⚠️ `id` генерируется как `cmp1`, `cmp2`, ... — потому что
+  //    в compact `id` не сохраняется (см. схему vue.composables:
+  //    `['n', 'f', 'k', 'r', 'v']` — 5 полей).
+  //
+  // Это by design. См. JSDoc ComposableEntity в codec-types.ts.
+  // ============================================================
+
+  const composables: ComposableEntity[] = (vue.composables?.n ?? []).map(
+    (nameIdx: number, i: number) => {
+      // f — RLE [fileIdx, count]
+      const fRle = vue.composables.f ?? [];
+      const fUnrle = unrle(fRle);
+      const fileIdx = fUnrle[i] ?? 0;
+
+      // v — [composableIdx, returnedKeysCount]
+      const vEntry = vue.composables.v?.[i];
+      const returnedKeysCount = vEntry?.[1] ?? 0;
+
+      return {
+        // ✅ Генерируется при decode (не сохраняется в compact)
+        id: `cmp${i + 1}`,
+        name: readStr(nameIdx),
+        fileId: fileId(fileIdx),
+        kind: COMPOSABLE_KIND_BY_CODE[vue.composables.k[i] ?? 0] ?? 'composable',
+        returnShape: COMPOSABLE_SHAPE_BY_CODE[vue.composables.r[i] ?? 0] ?? 'object',
+        // ⚠️ returnedKeys — только счётчик (плейсхолдеры)
+        returnedKeys: Array.from({ length: returnedKeysCount }, (_, k) => `#${k}`),
+        // ⚠️ callers не сохраняются в compact
+        callers: [],
+      };
+    }
+  );
+
+  // ────────────────────────────────────────────────────────
+  // macros
+  // ────────────────────────────────────────────────────────
+  //
+  // ⚠️ `id` генерируется как `mac1`, `mac2`, ... (by design).
+  // ============================================================
+
+  const macros: MacroEntity[] = (vue.macros?.f ?? []).map((fileIdx: number, i: number) => ({
+    id: `mac${i + 1}`,
+    fileId: fileId(fileIdx),
+    kind: MACRO_KIND_BY_CODE[vue.macros.k[i] ?? 0] ?? 'props',
+    line: vue.macros.l[i] ?? 0,
+  }));
+
+  // ────────────────────────────────────────────────────────
+  // hooks
+  // ────────────────────────────────────────────────────────
+  //
+  // ⚠️ `id` генерируется как `hk1`, `hk2`, ... (by design).
+  // ============================================================
+
+  const hooks: HookEntity[] = (vue.hooks?.f ?? []).map((fileIdx: number, i: number) => ({
+    id: `hk${i + 1}`,
+    fileId: fileId(fileIdx),
+    hookName: HOOK_NAME_BY_CODE[vue.hooks.n[i] ?? 0] ?? 'onMounted',
+    line: vue.hooks.l[i] ?? 0,
+  }));
+
+  // ────────────────────────────────────────────────────────
+  // reactivity
+  // ────────────────────────────────────────────────────────
+  //
+  // ⚠️ `id` генерируется как `rx1`, `rx2`, ... (by design).
+  // ============================================================
+
+  const reactivity: ReactivityEntity[] = (vue.reactivity?.f ?? []).map(
+    (fileIdx: number, i: number) => {
+      const nameIdx = vue.reactivity.n?.[i] ?? -1;
+      return {
+        id: `rx${i + 1}`,
+        fileId: fileId(fileIdx),
+        kind: REACTIVITY_KIND_BY_CODE[vue.reactivity.k[i] ?? 0] ?? 'computed',
+        line: vue.reactivity.l[i] ?? 0,
+        name: nameIdx >= 0 ? readStr(nameIdx) : undefined,
+      };
+    }
+  );
+
+  // ────────────────────────────────────────────────────────
+  // icons
+  // ────────────────────────────────────────────────────────
+  //
+  // ⚠️ `id` генерируется как `ic1`, `ic2`, ... (by design).
+  // ============================================================
+
+  const icons: IconEntity[] = (vue.icons?.f ?? []).map((fileIdx: number, i: number) => ({
+    id: `ic${i + 1}`,
+    fileId: fileId(fileIdx),
+    name: readStr(vue.icons.n[i] ?? -1),
+    category: ICON_CATEGORY_BY_CODE[vue.icons.c[i] ?? 0] ?? 'base',
+  }));
+
+  return {
+    sfc,
+    composables,
+    macros,
+    hooks,
+    reactivity,
+    icons,
+  };
+}
+
+// ============================================
 // ОСНОВНАЯ ФУНКЦИЯ DECODE
 // ============================================
 
 /**
  * Декодирует сжатый JSON обратно в полный.
  *
+ * ✅ v15.7.3 (Vue-секция: реальные имена composables):
+ *   - Читает `vue.sfc.cs` (slices) + `vue.sfc.c` (индексы в strs)
+ *     → восстанавливает РЕАЛЬНЫЕ имена composables через `readStr`.
+ *   - Fallback для старых compact (v15.7.2): плейсхолдеры.
+ *
+ * ✅ v15.7.2 (Vue-секция: moduleId):
+ *   - `decodeVueSection` восстанавливает `moduleId` из `files[]`.
+ *
+ * ✅ v15.7.0 (Vue entities):
+ *   - Читает `fns.vk` (RLE) → `FunctionData.vueKind`.
+ *   - Читает `compact.vue` → `FullJSON.vue`.
+ *
+ * ✅ v15.6.0 (JSON-safe):
+ *   - Все значения проходят через `JSON.parse`, безопасно.
+ *
  * ✅ v15.4.0 (P3):
- *   - CODEC_VERSION = '15.4.0'
+ *   - CODEC_VERSION = '15.7.3'.
  *
  * ✅ v15.3.0 (P2 — расширенный CallData):
- *   - Читает `gr.c.col/ck/cn/ai`
- *   - Восстанавливает `CallData.column/callKind/calleeName/argumentIndex`
+ *   - Читает `gr.c.col/ck/cn/ai`.
  *
  * ✅ v15.2.0 (P1 — lexicalLinks):
- *   - Читает `compact.lx` (columnar)
- *   - Восстанавливает `full.lexicalLinks`
+ *   - Читает `compact.lx` (columnar).
  *
  * ✅ v15.1.0 (P0 — parentFunctionId):
- *   - Читает `fns.parent` (RLE)
- *   - Восстанавливает `FunctionData.parentFunctionId`
+ *   - Читает `fns.parent` (RLE).
  *
  * ✅ v15.0.6 (gr.i.tf — индекс в fl.p):
- *   - `tf >= 0` → локальный разрешённый импорт
- *   - `tf = -1` ∧ isExternal → `external:${pkg}`
- *   - `tf = -1` ∧ !isExternal ∧ source → `unresolved:${source}`
+ *   - `tf >= 0` → локальный разрешённый импорт.
+ *   - `tf = -1` ∧ isExternal → `external:${pkg}`.
+ *   - `tf = -1` ∧ !isExternal ∧ source → `unresolved:${source}`.
  *
  * @param compact — сжатый JSON с легендой
  * @param options — опции декодирования
@@ -425,6 +883,7 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   // 3. Функции
   // ============================================
   // ✅ v15.1.0 (P0): чтение fns.parent
+  // ✅ v15.5.0: чтение fns.vk (vueKind)
   // ============================================
   const fns = compact.fns || { n: [], m: [], f: [], l: [], fl: [], p: [], rt: [] };
   const fnsM = unrle(fns.m || []);
@@ -432,6 +891,9 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
 
   // ✅ v15.1.0 (P0): parent — опционально (обратная совместимость)
   const fnsParent = fns.parent ? unrle(fns.parent as [number, number][]) : [];
+
+  // ✅ v15.5.0: vk — опционально (обратная совместимость)
+  const fnsVk = fns.vk ? unrle(fns.vk as [number, number][]) : [];
 
   const functions: FunctionData[] = [];
   for (let i = 0; i < (fns.n || []).length; i++) {
@@ -441,6 +903,10 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
     // ✅ v15.1.0 (P0): parentFunctionId
     const parentIdx = fnsParent[i] ?? -1;
     const parentFunctionId = parentIdx >= 0 ? `fn${parentIdx + 1}` : null;
+
+    // ✅ v15.5.0: vueKind
+    const vkCode = fnsVk[i] ?? 0;
+    const vueKind = VUE_KIND_BY_CODE[vkCode] ?? 'function';
 
     const func: FunctionData = {
       id: `fn${i + 1}`,
@@ -455,6 +921,8 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
       params: (fns.p[i] || []).map(readParam),
       returnType: readString(fns.rt[i] ?? -1),
       parentFunctionId,
+      // ✅ v15.5.0
+      vueKind,
     };
 
     if (flags.isEventHandler) func.isEventHandler = true;
@@ -799,6 +1267,18 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   const typeRefs = decodeSection<TypeRefData>(compact.tr);
 
   // ============================================
+  // 10.6. ✅ v15.7.3: VUE-СЕКЦИЯ
+  // ============================================
+  // Читаем compact.vue → FullJSON.vue.
+  //
+  // ✅ v15.7.3: `decodeVueSection` восстанавливает РЕАЛЬНЫЕ имена
+  //             composables через `readStr(idx)` из `strs`.
+  //
+  // ✅ v15.7.2: `moduleId` восстанавливается из `files[].moduleId`.
+  // ============================================
+  const vue = decodeVueSection(compact.vue, stringDict, files);
+
+  // ============================================
   // 11. Edges (только если includeEdges)
   // ============================================
   const shouldIncludeEdges = includeEdges === true;
@@ -860,7 +1340,7 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   // ============================================
   // 12. Сборка результата
   // ============================================
-  // ✅ v15.4.0: version = CODEC_VERSION ('15.4.0')
+  // ✅ v15.7.3: version = CODEC_VERSION ('15.7.3')
   // ============================================
   const result: FullJSON = {
     version: CODEC_VERSION,
@@ -887,6 +1367,9 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
 
     // ✅ v15.2.0 (P1): lexicalLinks
     lexicalLinks: lexicalLinks.length > 0 ? lexicalLinks : undefined,
+
+    // ✅ v15.7.3: Vue-секция (sfc.c — реальные имена composables)
+    vue,
   };
 
   if (!includeEmptyArrays) {
@@ -900,6 +1383,7 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
     if (calls.length === 0) delete (result as any).calls;
     if (reExports.length === 0) delete (result as any).reExports;
     if (lexicalLinks.length === 0) delete (result as any).lexicalLinks;
+    if (vue === undefined) delete (result as any).vue;
   }
 
   if (shouldIncludeEdges && edges.length > 0) {

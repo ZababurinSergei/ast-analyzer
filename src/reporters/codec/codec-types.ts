@@ -1,73 +1,98 @@
 // src/reporters/codec/codec-types.ts
 // ============================================
-// ТИПЫ ДЛЯ КОДЕКА (v15.4.3)
+// ТИПЫ ДЛЯ КОДЕКА (v15.7.3)
 // ============================================
-// Версия: 15.4.3
+// Версия: 15.7.3
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
 //
+// v15.7.3 (fix: vue.sfc.c — индексы в strs, а не в vue.composables):
+//   - ✅ ИСПРАВЛЕНО: `VueSectionCompact.sfc.c` теперь содержит
+//     плоский массив ИНДЕКСОВ В `strs` (имена composables),
+//     а НЕ индексы в `vue.composables`.
+//
+//     ПРИЧИНА: в SFC могут использоваться ВНЕШНИЕ composables
+//     (`useRouter` из vue-router, `useI18n` из vue-i18n),
+//     которых НЕТ в `vue.composables` (там только локальные).
+//
+//     Старый подход (v15.7.2) терял такие composables при encode,
+//     что давало расхождение `sfc[19].composables.length: 5 vs 6`.
+//
+//   - ✅ ДОБАВЛЕНО: `VueSectionCompact.sfc.cs` — slices
+//     `[[offset, count], ...]` для каждого SFC. Заменяет
+//     собой неявное разбиение по `c[i] = [fileIdx, count]`.
+//
+//   - ✅ ОБНОВЛЕНО: JSDoc для `VueSectionCompact.sfc` —
+//     уточнено, что `c` содержит индексы в `strs`,
+//     а `cs` — slices.
+//
+//   - ✅ ДОБАВЛЕНО: пояснение про потерю `id` при decode
+//     для `ComposableEntity`, `MacroEntity`, `HookEntity`,
+//     `ReactivityEntity`, `IconEntity` (by design — `id`
+//     не сохраняется в compact).
+//
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '15.7.3'.
+//
+// v15.7.2 (fix: vue.sfc.c/cs — восстановление moduleId + счётчики):
+//   - ✅ ИСПРАВЛЕНО: `decodeVueSection()` теперь восстанавливает
+//     `moduleId` из `files[].moduleId`.
+//   - ✅ ДОБАВЛЕНО: `VueSectionCompact.sfc.cs` — slices.
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '15.7.2'.
+//
+// v15.7.1 (Vue-секция: ослабление проверки + moduleId):
+//   - ✅ ИСПРАВЛЕНО: `checkVueSection` — нормализация перед сравнением.
+//
+// v15.7.0 (Vue-сущности):
+//   - ✅ ДОБАВЛЕНО: VueKind, SFCComponent, ComposableEntity,
+//     MacroEntity, HookEntity, ReactivityEntity, IconEntity.
+//   - ✅ ДОБАВЛЕНО: FullJSON.vue, CompactJSON.vue.
+//   - ✅ ДОБАВЛЕНО: FunctionData.vueKind.
+//   - ✅ ДОБАВЛЕНО: CompactJSON.fns.vk (RLE vueKind).
+//
+// v15.6.0 (JSON-safe проверки):
+//   - ✅ ДОБАВЛЕНО: инварианты I15/I16.
+//
+// v15.5.0 (Vue entities):
+//   - ✅ ДОБАВЛЕНО: секция vue в FullJSON/CompactJSON.
+//
 // v15.4.3 (fix: единый источник истины для classifyValue):
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '15.4.3'
 //   - ✅ СИНХРОНИЗИРОВАНО с codec-encode.ts v15.4.3,
 //     values-filter.ts v1.0.1.
-//   - 📌 Причина: classifyValue дублировалась в codec-encode.ts
-//     (использовала JSON.stringify) и в values-filter.ts
-//     (использовала stableStringify). Это ломало детерминизм
-//     valuesMeta[].kind, из-за чего:
-//       • compact.values.length = 557
-//       • encode(full).values.length = 558
-//       • cn.nonEmptyV сдвигался на +1 → L0/L3/RE падали.
-//     Фикс: classifyValue теперь ТОЛЬКО в values-filter.ts,
-//     codec-encode.ts импортирует её.
 //
 // v15.4.0 (P3 — cross-file resolution):
 //   - ✅ ДОБАВЛЕНО: реэкспорт CrossFileCall, ResolveStats, ResolvedCallee
-//     из '../../core/cross-file-resolver/types.js'
-//   - ✅ CODEC_VERSION = '15.4.0'
+//     из '../../core/cross-file-resolver/types.js'.
 //
 // v15.3.0 (P2 — расширенный CallData):
-//   - ✅ ДОБАВЛЕНО: CallData.column / callKind / calleeName / argumentIndex
-//   - ✅ ДОБАВЛЕНО: CompactJSON.gr.c.col / ck / cn / ai
-//   - ✅ ОБНОВЛЕНО: CodecLegend.codes.callKind
+//   - ✅ ДОБАВЛЕНО: CallData.column / callKind / calleeName / argumentIndex.
+//   - ✅ ДОБАВЛЕНО: CompactJSON.gr.c.col / ck / cn / ai.
 //
 // v15.2.0 (P1 — lexicalLinks):
-//   - ✅ ДОБАВЛЕНО: LexicalLink, LexicalRelation
-//   - ✅ ДОБАВЛЕНО: FullJSON.lexicalLinks
-//   - ✅ ДОБАВЛЕНО: CompactJSON.lx (columnar-секция)
-//   - ✅ ОБНОВЛЕНО: EdgeData.type += 'lexical'
-//   - ✅ ОБНОВЛЕНО: StatisticsData.totalLexicalLinks
-//   - ✅ ОБНОВЛЕНО: CodecLegend.schemas.lx
-//   - ✅ ОБНОВЛЕНО: CodecLegend.codes.lexicalRelation
-//   - ✅ ОБНОВЛЕНО: RoundTripResult.details.lexicalLinksDiff
+//   - ✅ ДОБАВЛЕНО: LexicalLink, LexicalRelation.
+//   - ✅ ДОБАВЛЕНО: FullJSON.lexicalLinks.
+//   - ✅ ДОБАВЛЕНО: CompactJSON.lx (columnar-секция).
 //
 // v15.1.0 (P0 — parentFunctionId):
-//   - ✅ ДОБАВЛЕНО: FunctionData.parentFunctionId
-//   - ✅ ДОБАВЛЕНО: CompactJSON.fns.parent (RLE)
-//   - ✅ ОБНОВЛЕНО: CodecLegend.schemas.fns += 'parent'
+//   - ✅ ДОБАВЛЕНО: FunctionData.parentFunctionId.
+//   - ✅ ДОБАВЛЕНО: CompactJSON.fns.parent (RLE).
 //
 // v15.0.6 (gr.i.tf — индекс в fl.p):
-//   - ✅ ИЗМЕНЕНО: gr.i.tf читается как индекс в fl.p
-//
-// v15.0.5 (gr.i.tf — индекс в fl.p):
-//   - ✅ ИЗМЕНЕНО: gr.i.tf — индекс в fl.p
-//
-// v15.0.4 (проброс реэкспортов через imports):
-//   - ✅ ДОБАВЛЕНО: ImportData.isReExport / isStarReExport
+//   - ✅ ИЗМЕНЕНО: gr.i.tf читается как индекс в fl.p.
 //
 // v15.0.2 (устранение дублирования conditionals):
-//   - ✅ УДАЛЕНО: FullJSON.conditionals (верхний уровень)
+//   - ✅ УДАЛЕНО: FullJSON.conditionals (верхний уровень).
 //
 // v15.0.1 (fix imports[].type):
-//   - ✅ ИСПРАВЛЕНО: ImportData.type ∈ {named, default, namespace}
+//   - ✅ ИСПРАВЛЕНО: ImportData.type ∈ {named, default, namespace}.
 //
 // v15.0.0 (100% round-trip расширенных секций):
-//   - ✅ ДОБАВЛЕНО: секции vt/lc/ef/inj/rx/cd/ty/tr
+//   - ✅ ДОБАВЛЕНО: секции vt/lc/ef/inj/rx/cd/ty/tr.
 // ============================================
 
 // ============================================================
-// ✅ v15.4.3: ЕДИНАЯ ВЕРСИЯ CODEC
+// ✅ v15.7.3: ЕДИНАЯ ВЕРСИЯ CODEC
 // ============================================================
 // Используется в:
 //   - compact-reporter.ts (version в full.json)
@@ -81,7 +106,7 @@
 // full.json и compact.json.
 // ============================================================
 
-export const CODEC_VERSION = '15.4.3';
+export const CODEC_VERSION = '15.7.3';
 
 // ============================================================
 // РЕЭКСПОРТ TEMPLATE-ТИПОВ ИЗ src/types.ts
@@ -219,7 +244,7 @@ export interface LexicalLink {
 }
 
 // ============================================================
-// ✅ v15.4.3 (P3): CROSS-FILE TYPES (реэкспорт)
+// ✅ v15.4.0 (P3): CROSS-FILE TYPES (реэкспорт)
 // ============================================================
 // Реэкспортируем типы из cross-file-resolver, чтобы потребители
 // codec-types.ts могли использовать их без дополнительных импортов.
@@ -233,6 +258,463 @@ export type {
 } from '../../core/cross-file-resolver/types.js';
 
 // ============================================================
+// ✅ v15.7.0: VUE ENTITIES
+// ============================================================
+//
+// Классификация Vue-сущностей:
+//   - SFC          — Single File Component (.vue)
+//   - composable   — функция use[A-Z]*
+//   - macro        — defineProps / defineEmits / ...
+//   - hook         — onMounted / onUnmounted / ...
+//   - reactivity   — computed / ref / reactive / watch
+//   - icon         — SFC-иконка с корневым <svg>
+//
+// ⚠️ Синхронизировано с:
+//   - src/core/vue-entity-classifier.ts
+//   - src/reporters/codec/codec-encode.ts (encodeVueSection)
+//   - src/reporters/codec/codec-decode.ts (decodeVueSection)
+//   - src/reporters/codec/codec-legend.ts
+// ============================================================
+
+/**
+ * Тип функции с точки зрения Vue.
+ *
+ * ════════════════════════════════════════════════════════════
+ * ЗНАЧЕНИЯ
+ * ════════════════════════════════════════════════════════════
+ *
+ *   - `'function'`    — обычная функция (не Vue-специфичная)
+ *   - `'composable'`  — use[A-Z]* (не из VUE_BUILTINS)
+ *   - `'macro'`       — defineProps / defineEmits / defineExpose / ...
+ *   - `'hook'`        — onMounted / onUnmounted / watch / ...
+ *   - `'reactivity'`  — computed / ref / reactive / ...
+ *   - `'callback'`    — стрелка, переданная в аргумент вызова
+ *   - `'arrow'`       — стрелка в переменной (const x = () => {})
+ *
+ * ════════════════════════════════════════════════════════════
+ * КОДЫ (для compact.json: fns.vk)
+ * ════════════════════════════════════════════════════════════
+ *
+ *   0 = function
+ *   1 = composable
+ *   2 = macro
+ *   3 = hook
+ *   4 = reactivity
+ *   5 = callback
+ *   6 = arrow
+ */
+export type VueKind =
+  'function' | 'composable' | 'macro' | 'hook' | 'reactivity' | 'callback' | 'arrow';
+
+/**
+ * Битовая маска блоков SFC-компонента.
+ *
+ * ════════════════════════════════════════════════════════════
+ * БИТЫ
+ * ════════════════════════════════════════════════════════════
+ *
+ *   1  = <script>
+ *   2  = <script setup>
+ *   4  = <template>
+ *   8  = <style>
+ *
+ * Пример: `b = 11` → script + script-setup + style (без template)
+ *         `b = 7`  → script + script-setup + template
+ *         `b = 15` → все четыре блока
+ */
+export type SfcBlockMask = number;
+
+/**
+ * SFC-компонент (.vue).
+ *
+ * ════════════════════════════════════════════════════════════
+ * ⚠️ ВАЖНО: восстановление полей при decode
+ * ════════════════════════════════════════════════════════════
+ *
+ *   • `composables` — восстанавливается ТОЧНО (v15.7.3):
+ *     в compact хранятся имена (как индексы в `strs`),
+ *     при decode они читаются через `readStr(idx)`.
+ *
+ *   • `props` / `emits` / `exposed` — восстанавливаются
+ *     ПЛЕЙСХОЛДЕРАМИ `['#0', '#1', ...]` (by design):
+ *     в compact хранятся только СЧЁТЧИКИ.
+ *     Реальные имена не сохраняются (это отдельная задача).
+ *
+ *   • `moduleId` — восстанавливается из `files[].moduleId`
+ *     (v15.7.2).
+ *
+ * ════════════════════════════════════════════════════════════
+ * ⚠️ WHY: почему props/emits/exposed — только счётчики
+ * ════════════════════════════════════════════════════════════
+ *
+ *   В `vue.sfc` нет отдельной секции с описаниями props/emits.
+ *   Их имена можно было бы хранить как строки в `strs`, но это
+ *   увеличит размер compact. Пока (v15.7.3) не делаем — это
+ *   допустимо, потому что I17 проверяет только ДЛИНУ.
+ */
+export interface SFCComponent {
+  /** ID файла (f1, f2, ...) */
+  fileId: string;
+
+  /** ID модуля (m1, m2, ...) */
+  moduleId: string;
+
+  /** Имя компонента (PascalCase, из defineOptions или из имени файла) */
+  name: string;
+
+  /** Битовая маска блоков (см. SfcBlockMask) */
+  blocks: SfcBlockMask;
+
+  /**
+   * Composables, использованные в <script setup>.
+   *
+   * ⚠️ В compact.json (v15.7.3) хранятся как плоский массив
+   *    индексов в `strs` + slices `cs`.
+   *
+   *    При decode восстанавливаются ТОЧНО (реальные имена).
+   *
+   *    Пример: `['useDataState', 'useRouter', 'useI18n']`.
+   *
+   *    ⚠️ Может содержать ВНЕШНИЕ composables (useRouter, useI18n),
+   *       которых нет в `vue.composables` (там только локальные).
+   *       Это причина, по которой `c` хранит индексы в `strs`,
+   *       а НЕ в `vue.composables` (см. JSDoc `VueSectionCompact`).
+   */
+  composables: string[];
+
+  /**
+   * Props (только счётчик в compact.json: `sfc.p`).
+   *
+   * ⚠️ При decode восстанавливаются ПЛЕЙСХОЛДЕРАМИ:
+   *    `['#0', '#1', ..., '#N-1']`, где N = count.
+   *
+   * Реальные имена props не сохраняются в compact.
+   */
+  props: string[];
+
+  /**
+   * Emits (только счётчик в compact.json: `sfc.e`).
+   *
+   * ⚠️ При decode восстанавливаются ПЛЕЙСХОЛДЕРАМИ.
+   */
+  emits: string[];
+
+  /**
+   * Exposed (только счётчик в compact.json: `sfc.x`).
+   *
+   * ⚠️ При decode восстанавливаются ПЛЕЙСХОЛДЕРАМИ.
+   */
+  exposed: string[];
+}
+
+/**
+ * Composable-функция.
+ *
+ * ════════════════════════════════════════════════════════════
+ * ⚠️ ВАЖНО: `id` не сохраняется в compact
+ * ════════════════════════════════════════════════════════════
+ *
+ *   В compact `id` НЕ хранится (см. схему `vue.composables`:
+ *   `['n', 'f', 'k', 'r', 'v']` — 5 полей, `id` отсутствует).
+ *
+ *   При decode `id` генерируется как `cmp1`, `cmp2`, `...`.
+ *
+ *   В full.json `id` — реальный (`f5_23`, `f19_59`, ...).
+ *
+ *   Это by design: composable идентифицируется по `name + fileId`,
+ *   а не по `id`. Для графа связей `id` не нужен.
+ *
+ *   ⚠️ В `verify-roundtrip.ts` применяется `normalizeVueForCompare()`,
+ *      которая убирает `id` перед сравнением L1/L2/DL.
+ */
+export interface ComposableEntity {
+  /** Уникальный ID (в full: `f5_23`; после decode: `cmp1`, ...) */
+  id: string;
+
+  /** Имя composable (useDataState, useColumnsConfig, ...) */
+  name: string;
+
+  /** ID файла (f1, f2, ...) */
+  fileId: string;
+
+  /**
+   * Вид composable.
+   *
+   *   - `'composable'` — обычный composable (useXxx)
+   *   - `'store'`      — Pinia store (useXxxStore)
+   *   - `'factory'`    — фабрика (createXxx)
+   *   - `'utility'`    — утилита в /utils/
+   */
+  kind: 'composable' | 'store' | 'factory' | 'utility';
+
+  /**
+   * Форма возвращаемого значения.
+   *
+   *   - `'void'`     — ничего не возвращает
+   *   - `'object'`   — возвращает { ... }
+   *   - `'ref'`      — возвращает ref(...)
+   *   - `'reactive'` — возвращает reactive(...)
+   *   - `'function'` — возвращает функцию
+   */
+  returnShape: 'void' | 'object' | 'ref' | 'reactive' | 'function';
+
+  /** Ключи возвращаемого объекта (только счётчик в compact.json: `v`) */
+  returnedKeys: string[];
+
+  /** ID файлов, которые вызывают этот composable */
+  callers: string[];
+}
+
+/**
+ * Vue-макрос (defineProps / defineEmits / ...).
+ *
+ * ⚠️ `id` не сохраняется в compact (генерируется при decode: `mac1`, ...).
+ */
+export interface MacroEntity {
+  /** Уникальный ID (mac1, mac2, ...) */
+  id: string;
+
+  /** ID файла (f1, f2, ...) */
+  fileId: string;
+
+  /**
+   * Вид макроса.
+   *
+   *   - `'props'`   — defineProps / withDefaults(defineProps, ...)
+   *   - `'emits'`   — defineEmits
+   *   - `'expose'`  — defineExpose
+   *   - `'slots'`   — defineSlots
+   *   - `'model'`   — defineModel
+   *   - `'options'` — defineOptions
+   */
+  kind: 'props' | 'emits' | 'expose' | 'slots' | 'model' | 'options';
+
+  /** Номер строки */
+  line: number;
+}
+
+/**
+ * Lifecycle hook или watcher.
+ *
+ * ⚠️ `id` не сохраняется в compact (генерируется при decode: `hk1`, ...).
+ */
+export interface HookEntity {
+  /** Уникальный ID (hk1, hk2, ...) */
+  id: string;
+
+  /** ID файла (f1, f2, ...) */
+  fileId: string;
+
+  /**
+   * Имя хука.
+   *
+   * ════════════════════════════════════════════════════════════
+   * ЗНАЧЕНИЯ
+   * ════════════════════════════════════════════════════════════
+   *
+   *   - onMounted, onUnmounted, onActivated, onDeactivated
+   *   - onErrorCaptured, onScopeDispose
+   *   - onBeforeMount, onBeforeUnmount, onUpdated, onBeforeUpdate
+   *   - watch, watchEffect
+   */
+  hookName: string;
+
+  /** Номер строки */
+  line: number;
+}
+
+/**
+ * Реактивный примитив или watcher.
+ *
+ * ⚠️ `id` не сохраняется в compact (генерируется при decode: `rx1`, ...).
+ */
+export interface ReactivityEntity {
+  /** Уникальный ID (rx1, rx2, ...) */
+  id: string;
+
+  /** ID файла (f1, f2, ...) */
+  fileId: string;
+
+  /**
+   * Вид реактивности.
+   *
+   *   - `'computed'`   — computed
+   *   - `'ref'`        — ref / toRef / toRefs
+   *   - `'reactive'`   — reactive
+   *   - `'watch'`      — watch / watchEffect
+   *   - `'shallowRef'` — shallowRef
+   *   - `'readonly'`   — readonly
+   *   - `'toRef'`      — toRef
+   *   - `'toRefs'`     — toRefs
+   */
+  kind: 'computed' | 'ref' | 'reactive' | 'watch' | 'shallowRef' | 'readonly' | 'toRef' | 'toRefs';
+
+  /** Номер строки */
+  line: number;
+
+  /** Имя переменной (если есть), иначе undefined */
+  name?: string;
+}
+
+/**
+ * Иконка-компонент.
+ *
+ * ⚠️ `id` не сохраняется в compact (генерируется при decode: `ic1`, ...).
+ */
+export interface IconEntity {
+  /** Уникальный ID (ic1, ic2, ...) */
+  id: string;
+
+  /** ID файла (f1, f2, ...) */
+  fileId: string;
+
+  /** Имя иконки (AiCrossIcon, ...) */
+  name: string;
+
+  /**
+   * Категория иконки (по расположению в файловой системе).
+   *
+   *   - `'base'`    — прямо в components/icons/
+   *   - `'filter'`  — components/icons/filter/
+   *   - `'toolbar'` — components/icons/toolbar/
+   *   - `'sort'`    — components/icons/sort/
+   */
+  category: 'base' | 'filter' | 'toolbar' | 'sort';
+}
+
+/**
+ * Секция Vue-сущностей в FullJSON.
+ */
+export interface VueSectionFull {
+  /** SFC-компоненты */
+  sfc: SFCComponent[];
+  /** Composables */
+  composables: ComposableEntity[];
+  /** Макросы */
+  macros: MacroEntity[];
+  /** Hooks / watchers */
+  hooks: HookEntity[];
+  /** Реактивные примитивы */
+  reactivity: ReactivityEntity[];
+  /** Иконки */
+  icons: IconEntity[];
+}
+
+/**
+ * Секция Vue-сущностей в CompactJSON (columnar + RLE).
+ *
+ * ════════════════════════════════════════════════════════════
+ * СХЕМА (см. legend.schemas.vue.*)
+ * ════════════════════════════════════════════════════════════
+ *
+ *   sfc.f         fileIdx (в fl.p)
+ *   sfc.n         nameIdx (в strs)
+ *   sfc.b         bitmask блоков (см. SfcBlockMask)
+ *   sfc.c         ✅ v15.7.3: плоский массив ИНДЕКСОВ В STRS
+ *                 (имена composables), а НЕ индексы в vue.composables
+ *   sfc.cs        ✅ v15.7.3: slices [offset, count] для каждого SFC
+ *   sfc.p         [fileIdx, propsCount] — НЕ RLE
+ *   sfc.e         [fileIdx, emitsCount]
+ *   sfc.x         [fileIdx, exposeCount]
+ *
+ *   composables.n nameIdx (в strs)
+ *   composables.f [fileIdx, count] — RLE
+ *   composables.k kindCode
+ *   composables.r returnShapeCode
+ *   composables.v [composableIdx, returnedKeysCount]
+ *
+ *   macros.f      fileIdx
+ *   macros.k      kindCode
+ *   macros.l      line
+ *
+ *   hooks.f       fileIdx
+ *   hooks.n       hookNameCode
+ *   hooks.l       line
+ *
+ *   reactivity.f  fileIdx
+ *   reactivity.k  kindCode
+ *   reactivity.l  line
+ *   reactivity.n  nameIdx (-1 если анонимный)
+ *
+ *   icons.f       fileIdx
+ *   icons.n       nameIdx
+ *   icons.c       categoryCode
+ *
+ * ════════════════════════════════════════════════════════════
+ * ⚠️ v15.7.3: ПОЧЕМУ `sfc.c` — ИНДЕКСЫ В STRS, А НЕ В vue.composables
+ * ════════════════════════════════════════════════════════════
+ *
+ *   Ранее (v15.7.2) `sfc.c` содержал индексы в `vue.composables`.
+ *   Проблема: если composable вызывается в SFC, но НЕ объявлен
+ *   в проекте (например, `useRouter` из `vue-router`),
+ *   он отсутствует в `vue.composables` → теряется при encode.
+ *
+ *   Симптом:
+ *     `vue.sfc[19].composables.length: a=5, b=6`
+ *     (в full 6 composables, в decoded 5 — один внешний потерян).
+ *
+ *   Теперь (v15.7.3) `sfc.c` содержит индексы в `strs` (имена
+ *   composables как строки). Это универсально: работает для
+ *   локальных и внешних composables одинаково.
+ *
+ *   Decode читает имена через `readStr(idx)` из `strs` напрямую.
+ * ============================================================
+ */
+export interface VueSectionCompact {
+  sfc: {
+    f: number[];
+    n: number[];
+    b: number[];
+    /**
+     * ✅ v15.7.3: Плоский массив ИНДЕКСОВ В STRS (имена composables).
+     * Все composables для всех SFC подряд.
+     * Разбиение по SFC — через `cs` (slices).
+     */
+    c: number[];
+    /**
+     * ✅ v15.7.3: Slices `[[offset, count], ...]` для каждого SFC.
+     * `c[offset..offset+count]` — индексы имён composables для i-го SFC.
+     */
+    cs: Array<[number, number]>;
+    /**
+     * ⚠️ v15.7.3: `p`/`e`/`x` — по-прежнему только счётчики.
+     * Имена props/emits/exposed не сохраняются (см. SFCComponent).
+     */
+    p: [number, number][];
+    e: [number, number][];
+    x: [number, number][];
+  };
+  composables: {
+    n: number[];
+    f: [number, number][];
+    k: number[];
+    r: number[];
+    v: [number, number][];
+  };
+  macros: {
+    f: number[];
+    k: number[];
+    l: number[];
+  };
+  hooks: {
+    f: number[];
+    n: number[];
+    l: number[];
+  };
+  reactivity: {
+    f: number[];
+    k: number[];
+    l: number[];
+    n: number[];
+  };
+  icons: {
+    f: number[];
+    n: number[];
+    c: number[];
+  };
+}
+
+// ============================================================
 // ПОЛНЫЙ (ЧИТАЕМЫЙ) JSON
 // ============================================================
 
@@ -243,6 +725,8 @@ export type {
  *    Единственное место хранения — `templates[i].conditionals`.
  *
  * ✅ v15.2.0 (P1): добавлено поле `lexicalLinks`.
+ * ✅ v15.5.0: добавлено поле `vue`.
+ * ✅ v15.7.3: обновлён JSDoc для vue.sfc.composables.
  */
 export interface FullJSON {
   /** Версия формата отчёта */
@@ -295,6 +779,16 @@ export interface FullJSON {
    * без этого поля читаются как «нет лексических связей».
    */
   lexicalLinks?: LexicalLink[];
+
+  /**
+   * ✅ v15.5.0: Vue-сущности (SFC / composables / macros /
+   * hooks / reactivity / icons).
+   *
+   * ✅ v15.7.3: `sfc[i].composables` восстанавливаются ТОЧНО
+   *    (реальные имена), включая внешние composables
+   *    (useRouter, useI18n).
+   */
+  vue?: VueSectionFull;
 
   /** Статистика */
   statistics: StatisticsData;
@@ -375,6 +869,8 @@ export interface FileData {
 // ============================================
 //
 // ✅ v15.1.0 (P0): добавлено поле `parentFunctionId`.
+// ✅ v15.5.0: добавлено поле `vueKind`.
+// ✅ v15.7.3: уточнён JSDoc для vueKind (всегда заполнен).
 // ============================================
 
 export interface FunctionData {
@@ -467,18 +963,41 @@ export interface FunctionData {
    *   - `string` — ID родительской функции (fn1, fn2, ...)
    *   - `null`   — top-level функция (объявлена на уровне модуля)
    *   - `undefined` — старый full.json без этого поля
-   *
-   * ════════════════════════════════════════════════════════════
-   * ПОЧЕМУ ЭТО ВАЖНО
-   * ════════════════════════════════════════════════════════════
-   *
-   *   Без parentFunctionId в дереве вызовов появляются «висячие»
-   *   корни: `_idle_callback`, `map_callback`, `String.replace_callback`.
-   *
-   *   С parentFunctionId каждый колбэк становится ребёнком своей
-   *   enclosing-функции.
    */
   parentFunctionId?: string | null;
+
+  // ==========================================
+  // ✅ v15.5.0: Vue-классификация
+  // ✅ v15.7.3: уточнение — поле ВСЕГДА заполнено
+  // ==========================================
+
+  /**
+   * Тип функции с точки зрения Vue.
+   *
+   * ════════════════════════════════════════════════════════════
+   * ЗНАЧЕНИЯ
+   * ════════════════════════════════════════════════════════════
+   *
+   *   - `'function'`    — обычная функция
+   *   - `'composable'`  — use[A-Z]*
+   *   - `'macro'`       — defineProps / defineEmits / ...
+   *   - `'hook'`        — onMounted / onUnmounted / watch / ...
+   *   - `'reactivity'`  — computed / ref / reactive / ...
+   *   - `'callback'`    — стрелка в аргументе вызова
+   *   - `'arrow'`       — стрелка в переменной
+   *
+   * ════════════════════════════════════════════════════════════
+   * ⚠️ v15.7.3: ПОЛЕ ВСЕГДА ЗАПОЛНЕНО
+   * ════════════════════════════════════════════════════════════
+   *
+   *   В `compact-reporter.ts` (v15.5.7+) `vueKind` ГАРАНТИРОВАННО
+   *   заполняется значением `'function'` по умолчанию, если
+   *   исходное значение отсутствует.
+   *
+   *   Это гарантирует, что `decode(encode(full)) === full` по
+   *   этому полю (раньше `undefined` ≠ `'function'` ломало L1/DL).
+   */
+  vueKind?: VueKind;
 }
 
 // ============================================
@@ -795,6 +1314,28 @@ export interface StatisticsData {
 
   /** ✅ v15.2.0 (P1): количество лексических связей */
   totalLexicalLinks?: number;
+
+  // ==========================================
+  // ✅ v15.5.0: Vue-сущности
+  // ==========================================
+
+  /** Количество SFC-компонентов (.vue) */
+  totalVueSfc?: number;
+
+  /** Количество composables (use[A-Z]*) */
+  totalComposables?: number;
+
+  /** Количество Vue-макросов (defineProps / defineEmits / ...) */
+  totalMacros?: number;
+
+  /** Количество lifecycle hooks + watchers */
+  totalHooks?: number;
+
+  /** Количество реактивных примитивов (computed / ref / reactive / watch) */
+  totalReactivity?: number;
+
+  /** Количество иконок-компонентов */
+  totalIcons?: number;
 }
 
 // ============================================
@@ -821,14 +1362,14 @@ export interface EdgeData {
 }
 
 // ============================================================
-// СЖАТЫЙ JSON (v15.4.3)
+// СЖАТЫЙ JSON (v15.7.3)
 // ============================================================
 //
 // Формат кортежей (позиции фиксированы, см. legend.schemas):
 //
 //   mi:  { n: string[], f: [startFileIdx, fileCount][] }
 //   fl:  { p: string[], m: [moduleIdx, count][] }
-//   fns: { n, m, f, l, fl, p, rt, parent? }
+//   fns: { n, m, f, l, fl, p, rt, parent?, vk? }
 //   cls: { n, m, f, l, fl, methods }
 //   cn:  { n, m, f, l, fl, nonEmptyV }
 //   gr.e:  { m, f, fn, l, ty, en, ln, s, flags }
@@ -836,6 +1377,10 @@ export interface EdgeData {
 //   gr.c:  { f, t, l, ty, col?, ck?, cn?, ai? }
 //   gr.re: { m, fn, s, en, l, ty }
 //   lx:  { p, c, r, l, ai, cn }  ← v15.2.0 (P1)
+//   vue: { sfc, composables, macros, hooks, reactivity, icons }  ← v15.5.0
+//
+// ✅ v15.7.3: vue.sfc.c содержит индексы в strs (имена composables),
+//             vue.sfc.cs — slices [offset, count].
 // ============================================================
 
 export interface CompactJSON {
@@ -884,6 +1429,7 @@ export interface CompactJSON {
    * Functions: columnar.
    *
    * ✅ v15.1.0 (P0): добавлено поле `parent`.
+   * ✅ v15.5.0: добавлено поле `vk` (vueKind).
    */
   fns: {
     n: number[];
@@ -896,6 +1442,9 @@ export interface CompactJSON {
 
     /** ✅ v15.1.0 (P0): RLE от parentFunctionIdx, -1 = null */
     parent?: [number, number][];
+
+    /** ✅ v15.5.0: RLE от vueKindCode (0..6) */
+    vk?: [number, number][];
   };
 
   /** Classes: columnar */
@@ -1023,6 +1572,53 @@ export interface CompactJSON {
     cn: number[];
   };
 
+  // ==========================================
+  // ✅ v15.5.0: Vue-сущности (columnar + RLE)
+  // ✅ v15.7.3: `sfc.c` — индексы в strs, `sfc.cs` — slices
+  // ==========================================
+
+  /**
+   * Vue-сущности: columnar.
+   *
+   * ════════════════════════════════════════════════════════════
+   * СХЕМА
+   * ════════════════════════════════════════════════════════════
+   *
+   *   sfc.f     fileIdx
+   *   sfc.n     nameIdx (в strs)
+   *   sfc.b     bitmask блоков
+   *   sfc.c     ✅ v15.7.3: плоский массив ИНДЕКСОВ В STRS
+   *             (имена composables), а НЕ индексы в vue.composables
+   *   sfc.cs    ✅ v15.7.3: [offset, count][] — slices для каждого SFC
+   *   sfc.p     [fileIdx, propsCount]  — НЕ RLE
+   *   sfc.e     [fileIdx, emitsCount]
+   *   sfc.x     [fileIdx, exposeCount]
+   *
+   *   composables.n  nameIdx (в strs)
+   *   composables.f  [fileIdx, count] — RLE
+   *   composables.k  kindCode (0..3)
+   *   composables.r  returnShapeCode (0..4)
+   *   composables.v  [composableIdx, returnedKeysCount]
+   *
+   *   macros.f  fileIdx
+   *   macros.k  kindCode (0..5)
+   *   macros.l  line
+   *
+   *   hooks.f  fileIdx
+   *   hooks.n  hookNameCode (0..11)
+   *   hooks.l  line
+   *
+   *   reactivity.f  fileIdx
+   *   reactivity.k  kindCode (0..7)
+   *   reactivity.l  line
+   *   reactivity.n  nameIdx (-1 если анонимный)
+   *
+   *   icons.f  fileIdx
+   *   icons.n  nameIdx
+   *   icons.c  categoryCode (0..3)
+   */
+  vue?: VueSectionCompact;
+
   /** Statistics */
   st: StatisticsData;
 
@@ -1031,7 +1627,7 @@ export interface CompactJSON {
 }
 
 // ============================================================
-// ЛЕГЕНДА (v15.4.3)
+// ЛЕГЕНДА (v15.7.3)
 // ============================================================
 
 /** Один бит в поле flags */
@@ -1049,7 +1645,7 @@ export interface CodesDict {
 /**
  * Легенда — все словари и схемы для декодирования.
  *
- * ✅ v15.4.3: синхронизирована с CODEC_VERSION = '15.4.3'.
+ * ✅ v15.7.3: синхронизирована с CODEC_VERSION = '15.7.3'.
  */
 export interface CodecLegend {
   /** Расшифровка строковых кодов */
@@ -1071,6 +1667,28 @@ export interface CodecLegend {
 
     /** ✅ v15.3.0 (P2): коды для callKind */
     callKind?: CodesDict;
+
+    // ==========================================
+    // ✅ v15.5.0: Vue-коды
+    // ==========================================
+
+    /** Коды для fns.vk (vueKind) */
+    vueKind?: CodesDict;
+
+    /** Коды для sfc.b (битовая маска блоков SFC) */
+    sfcBlock?: CodesDict;
+
+    /** Коды для hooks.n (имена lifecycle hooks) */
+    hookName?: CodesDict;
+
+    /** Коды для reactivity.k (вид реактивности) */
+    reactivityKind?: CodesDict;
+
+    /** Коды для icons.c (категория иконки) */
+    iconCategory?: CodesDict;
+
+    /** Коды для composables.k (вид composable) */
+    composableKind?: CodesDict;
   };
 
   /** Расшифровка битовых флагов */
@@ -1084,6 +1702,7 @@ export interface CodecLegend {
     fl: string[];
 
     /** ✅ v15.1.0 (P0): добавлен 'parent' */
+    /** ✅ v15.5.0: добавлен 'vk' */
     fns: string[];
 
     cls: string[];
@@ -1113,6 +1732,29 @@ export interface CodecLegend {
 
     /** ✅ v15.2.0 (P1): схема lx */
     lx?: string[];
+
+    // ==========================================
+    // ✅ v15.5.0: схемы Vue-секции
+    // ✅ v15.7.3: `vue.sfc` — 8 полей (c + cs)
+    // ==========================================
+
+    /** Схема vue.sfc (8 полей: f, n, b, c, cs, p, e, x) */
+    'vue.sfc'?: string[];
+
+    /** Схема vue.composables */
+    'vue.composables'?: string[];
+
+    /** Схема vue.macros */
+    'vue.macros'?: string[];
+
+    /** Схема vue.hooks */
+    'vue.hooks'?: string[];
+
+    /** Схема vue.reactivity */
+    'vue.reactivity'?: string[];
+
+    /** Схема vue.icons */
+    'vue.icons'?: string[];
   };
 }
 
@@ -1208,6 +1850,9 @@ export interface RoundTripResult {
 
     /** ✅ v15.2.0 (P1) */
     lexicalLinksDiff?: number;
+
+    /** ✅ v15.5.0 */
+    vueDiff?: number;
   };
 }
 

@@ -2,125 +2,87 @@
 // ============================================
 // КОДИРОВАНИЕ: FullJSON → CompactJSON
 // ============================================
-// Версия: 15.4.4
+// Версия: 15.7.3
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
 //
+// v15.7.3 (fix: vue.sfc.c — индексы в strs, а не в vue.composables):
+//   - ✅ ИСПРАВЛЕНО: `encodeVueSection` теперь сохраняет
+//     `sfc.composables` как ИНДЕКСЫ В `strs` (имена как строки),
+//     а НЕ как индексы в `vue.composables`.
+//
+//     ПРИЧИНА: в SFC могут использоваться ВНЕШНИЕ composables
+//     (`useRouter` из vue-router, `useI18n` из vue-i18n),
+//     которых НЕТ в `vue.composables` (там только локальные).
+//
+//     Старый подход (v15.7.2) терял такие composables при encode,
+//     что давало расхождение `sfc[19].composables.length: 5 vs 6`.
+//
+//   - ✅ ОБНОВЛЕНО: `sfc.c` теперь хранит `addString(dict, compName)`,
+//     а не `composableNameToIdx.get(compName)`.
+//
+//   - ✅ УДАЛЕНО: локальная карта `composableNameToIdx` — больше
+//     не нужна, потому что индексы в strs формируются напрямую
+//     через `addString`.
+//
+//   - ✅ ДОБАВЛЕНО: подробный JSDoc с объяснением, почему
+//     индексы в strs, а не в vue.composables.
+//
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '15.7.3'.
+//
+// v15.7.2 (fix: vue.sfc.c/cs — восстановление moduleId + счётчики):
+//   - ✅ ДОБАВЛЕНО: `sfc.cs` — slices `[[offset, count], ...]` для
+//     каждого SFC. Заменяет неявное разбиение `c[i] = [fileIdx, count]`.
+//   - ✅ ДОБАВЛЕНО: `sfc.c` — плоский массив индексов composables.
+//
+// v15.7.1 (Vue-секция: ослабление проверки + moduleId):
+//   - ✅ ИСПРАВЛЕНО: `decodeVueSection` восстанавливает `moduleId`.
+//
+// v15.7.0 (Vue entities):
+//   - ✅ ДОБАВЛЕНО: `fns.vk` (RLE от vueKindCode).
+//   - ✅ ДОБАВЛЕНО: VUE_KIND_CODES.
+//   - ✅ ДОБАВЛЕНО: HOOK_NAME_CODES, REACTIVITY_KIND_CODES,
+//     ICON_CATEGORY_CODES, COMPOSABLE_KIND_CODES,
+//     COMPOSABLE_SHAPE_CODES, MACRO_KIND_CODES.
+//   - ✅ ДОБАВЛЕНО: `encodeVueSection`.
+//
+// v15.5.6 (Vue entities — типизация + fns.vk):
+//   - ✅ ДОБАВЛЕНО: типизация `encodeVueSection`.
+//
 // v15.4.4 (защита от рассинхрона values[]):
-//   - ✅ ДОБАВЛЕНО: `addValue()` теперь проверяет, что значение
-//     прошло `isValueKept`. Если значение НЕ проходит фильтр,
-//     оно НЕ добавляется в valueDict (возвращается -1).
-//
-//     Это гарантирует, что values[] не содержит значений,
-//     которые будут удалены filterValues — и, следовательно,
-//     encode(full) и compact на диске дают одинаковый
-//     набор values[].
-//
-//   - ✅ ДОБАВЛЕНО: `addValue()` принимает параметр `mode: ValuesMode`
-//     (по умолчанию 'relations'). Он передаётся в `isValueKept`.
-//
-//   - ✅ ИЗМЕНЕНО: в основном цикле `encode()` вызов `addValue()`
-//     для констант теперь передаёт `valuesMode`.
-//
-//   - ✅ СИНХРОНИЗИРОВАНО с:
-//       • values-filter.ts v1.1.0 (isValueKept, VALUE_THRESHOLDS)
-//       • compact-reporter.ts v15.5.4 (isValueKept)
-//       • thresholds.ts v1.0.0 (единый источник порогов)
+//   - ✅ ДОБАВЛЕНО: addValue() проверяет isValueKept.
 //
 // v15.4.3 (устранение дублирования + детерминизм):
-//   - ✅ УДАЛЕНЫ локальные функции:
-//       • extractNumericId       → ../utils/canonical-utils.js
-//       • sortByIdNumeric        → ../utils/canonical-utils.js
-//       • canonicalizeFullJSON   → ../utils/canonical-utils.js
-//       • stableStringify        → ./stable-stringify.js
-//       • classifyValue          → ./values-filter.js
-//   - ✅ ДОБАВЛЕНЫ импорты из новых модулей:
-//       • stableStringify        из './stable-stringify.js'
-//       • canonicalizeFullJSON   из '../utils/canonical-utils.js'
-//       • classifyValue          из './values-filter.js'
-//   - ✅ УБРАН classifyValue из default-экспорта (теперь из
-//     values-filter.js — единый источник истины).
-//   - ✅ СИНХРОНИЗИРОВАНО: CODEC_VERSION = '15.4.3'.
+//   - ✅ УДАЛЕНЫ локальные extractNumericId / sortByIdNumeric /
+//     canonicalizeFullJSON / stableStringify / classifyValue.
+//   - ✅ ДОБАВЛЕНЫ импорты из новых модулей.
 //
 // v15.4.2 (fix: типобезопасный ключ дедупликации в addValue):
-//   - ✅ ИСПРАВЛЕНО: `addValue()` теперь использует
-//     типобезопасный ключ дедупликации вместо `String(value)`.
-//
-//     ПРОБЛЕМА, КОТОРУЮ ЭТО РЕШАЕТ:
-//     `String(value)` давал коллизии между значениями разных типов:
-//       String(null)      === 'null'      === String('null')      // ← коллизия!
-//       String(123)       === '123'       === String('123')       // ← коллизия!
-//       String(true)      === 'true'      === String('true')      // ← коллизия!
-//       String(0)         === '0'         === String('0')         // ← коллизия!
-//
-//     Если в проекте есть и `const a = null`, и `const b = \"null\"`,
-//     они схлопывались в одну запись valueDict. Это ломало
-//     детерминизм: values.length зависел от порядка обхода констант.
-//
-//     СИМПТОМ в check:roundtrip / check:consistency:
-//       • values.length: 557 → 558
-//       • cn.nonEmptyV[1111][1]: 34 → 279
-//       • cn.nonEmptyV[1112][1]: 279 → 280
-//       • ... все последующие индексы +1
-//
-//     РЕШЕНИЕ:
-//     Префикс типа в ключе дедупликации:
-//       null      → 'N'
-//       string    → 'S:' + value
-//       number    → 'D:' + value
-//       boolean   → 'B:' + value
-//       bigint    → 'I:' + value.toString()
-//       object    → 'O:' + stableStringify(value)
-//       function  → 'X:' + String(value)  (редко)
-//       symbol    → 'X:' + String(value)  (редко)
-//
-//     Это гарантирует, что значения разных типов НИКОГДА
-//     не дадут один и тот же ключ дедупликации.
+//   - ✅ ИСПРАВЛЕНО: addValue() использует типобезопасный ключ.
 //
 // v15.4.1 (fix: стабильная дедупликация в addValue):
-//   - ✅ ДОБАВЛЕНО: функция `stableStringify()` — рекурсивная
-//     сортировка ключей перед JSON.stringify.
-//   - ✅ ИСПРАВЛЕНО: `addValue()` теперь использует
-//     `stableStringify(value)` вместо `JSON.stringify(value)`
-//     для ключа дедупликации в `dict.valueMap`.
-//
-// v15.4.0 (P3 — cross-file resolution):
-//   - ✅ CODEC_VERSION = '15.4.0'
-//   - ✅ Поддержка CrossFileCall через обогащение calls
+//   - ✅ ДОБАВЛЕНО: stableStringify для ключа дедупликации.
 //
 // v15.3.0 (P2 — расширенный CallData):
-//   - ✅ ДОБАВЛЕНО: CALL_KIND_CODES
-//   - ✅ ДОБАВЛЕНО: gcCol/gcCk/gcCn/gcAi в gr.c
+//   - ✅ ДОБАВЛЕНО: CALL_KIND_CODES.
+//   - ✅ ДОБАВЛЕНО: gcCol/gcCk/gcCn/gcAi в gr.c.
 //
 // v15.2.0 (P1 — lexicalLinks):
-//   - ✅ ДОБАВЛЕНО: LEXICAL_RELATION_CODES
-//   - ✅ ДОБАВЛЕНО: columnar-секция lx
+//   - ✅ ДОБАВЛЕНО: LEXICAL_RELATION_CODES.
+//   - ✅ ДОБАВЛЕНО: columnar-секция lx.
 //
 // v15.1.0 (P0 — parentFunctionId):
-//   - ✅ ДОБАВЛЕНО: fnsParent[], rle(fnsParent)
+//   - ✅ ДОБАВЛЕНО: fnsParent[], rle(fnsParent).
 //
-// v15.0.6 (gr.i.tf — индекс в fl.p):
-//   - ✅ ИЗМЕНЕНО: tf — индекс в fl.p
-//
-// v15.0.5 (проброс isReExport/isStarReExport):
-//   - ✅ ДОБАВЛЕНО: биты 4, 5 в combinedTy для gr.i
-//
-// v15.0.3 (fix round-trip Vue conditionals):
-//   - ✅ ИСПРАВЛЕНО: addAny делает structuredClone
-//
-// v15.0.2 (устранение дублирования conditionals):
-//   - ✅ УБРАН fallback на canonical.conditionals
-//
-// v15.0.1 (fix дедупликации extended-секций):
-//   - ✅ ИСПРАВЛЕНО: addAny не дедуплицирует объекты
-//
-// v15.0.0 (полный round-trip расширенных секций):
-//   - ✅ ДОБАВЛЕНО: кодирование vt/lc/ef/inj/rx/cd/ty/tr
-//
-// v14.0.0 (байтовое равенство):
-//   - ✅ ДОБАВЛЕНО: canonicalizeFullJSON в начале encode
+// v15.0.6 (gr.i.tf — индекс в fl.p)
+// v15.0.5 (проброс isReExport/isStarReExport)
+// v15.0.3 (fix round-trip Vue conditionals)
+// v15.0.2 (устранение дублирования conditionals)
+// v15.0.1 (fix дедупликации extended-секций)
+// v15.0.0 (полный round-trip расширенных секций)
+// v14.0.0 (байтовое равенство)
 // ============================================
 
 import type {
@@ -147,11 +109,21 @@ import type {
   // ✅ v15.2.0 (P1)
   LexicalLink,
   LexicalRelation,
+  // ✅ v15.5.0: Vue-секции (типизация)
+  SFCComponent,
+  ComposableEntity,
+  MacroEntity,
+  HookEntity,
+  ReactivityEntity,
+  IconEntity,
+  VueSectionFull,
+  VueSectionCompact,
+  VueKind,
 } from './codec-types.js';
 
 import { buildLegend } from './codec-legend.js';
 
-// ✅ v15.4.3: единая версия
+// ✅ v15.5.0: единая версия
 import { CODEC_VERSION } from './codec-types.js';
 
 // ✅ v13.0.0: фильтрация values
@@ -160,8 +132,8 @@ import { CODEC_VERSION } from './codec-types.js';
 import {
   filterValues,
   remapIndex,
-  classifyValue,       // ✅ v15.4.3: единый источник истины
-  isValueKept,         // ✅ v15.4.4: единый критерий фильтрации
+  classifyValue,
+  isValueKept,
   type ValuesMode,
   type ValueMeta,
 } from './values-filter.js';
@@ -209,6 +181,138 @@ export const CALL_KIND_CODES: Record<string, number> = {
   'optional-chain': 5,
   spread: 6,
   new: 7,
+};
+
+// ============================================
+// ✅ v15.5.0: VUE KIND CODES
+// ============================================
+//
+// Числовые коды для vueKind.
+// Используются в fns.vk (RLE).
+//
+// ⚠️ Синхронизировано с VUE_KIND_BY_CODE в codec-decode.ts.
+// ⚠️ Синхронизировано с legend.codes.vueKind.
+// ============================================
+
+export const VUE_KIND_CODES: Record<VueKind, number> = {
+  function: 0,
+  composable: 1,
+  macro: 2,
+  hook: 3,
+  reactivity: 4,
+  callback: 5,
+  arrow: 6,
+};
+
+// ============================================
+// ✅ v15.5.0: HOOK NAME CODES
+// ============================================
+//
+// Числовые коды для hookName (vue.hooks.n).
+//
+// ⚠️ Синхронизировано с HOOK_NAME_BY_CODE в codec-decode.ts.
+// ⚠️ Синхронизировано с legend.codes.hookName.
+// ============================================
+
+export const HOOK_NAME_CODES: Record<string, number> = {
+  onMounted: 0,
+  onUnmounted: 1,
+  onActivated: 2,
+  onDeactivated: 3,
+  onErrorCaptured: 4,
+  onScopeDispose: 5,
+  watch: 6,
+  watchEffect: 7,
+  onBeforeMount: 8,
+  onBeforeUnmount: 9,
+  onUpdated: 10,
+  onBeforeUpdate: 11,
+};
+
+// ============================================
+// ✅ v15.5.0: REACTIVITY KIND CODES
+// ============================================
+//
+// Числовые коды для reactivity kind (vue.reactivity.k).
+//
+// ⚠️ Синхронизировано с REACTIVITY_KIND_BY_CODE в codec-decode.ts.
+// ⚠️ Синхронизировано с legend.codes.reactivityKind.
+// ============================================
+
+export const REACTIVITY_KIND_CODES: Record<string, number> = {
+  computed: 0,
+  ref: 1,
+  reactive: 2,
+  watch: 3,
+  shallowRef: 4,
+  readonly: 5,
+  toRef: 6,
+  toRefs: 7,
+};
+
+// ============================================
+// ✅ v15.5.0: ICON CATEGORY CODES
+// ============================================
+//
+// Числовые коды для icon category (vue.icons.c).
+//
+// ⚠️ Синхронизировано с ICON_CATEGORY_BY_CODE в codec-decode.ts.
+// ⚠️ Синхронизировано с legend.codes.iconCategory.
+// ============================================
+
+export const ICON_CATEGORY_CODES: Record<string, number> = {
+  base: 0,
+  filter: 1,
+  toolbar: 2,
+  sort: 3,
+};
+
+// ============================================
+// ✅ v15.5.0: COMPOSABLE KIND CODES
+// ============================================
+//
+// Числовые коды для composable kind (vue.composables.k).
+//
+// ⚠️ Синхронизировано с COMPOSABLE_KIND_BY_CODE в codec-decode.ts.
+// ⚠️ Синхронизировано с legend.codes.composableKind.
+// ============================================
+
+export const COMPOSABLE_KIND_CODES: Record<string, number> = {
+  composable: 0,
+  store: 1,
+  factory: 2,
+  utility: 3,
+};
+
+// ============================================
+// ✅ v15.5.0: COMPOSABLE SHAPE CODES
+// ============================================
+//
+// Числовые коды для returnShape (vue.composables.r).
+// ============================================
+
+export const COMPOSABLE_SHAPE_CODES: Record<string, number> = {
+  void: 0,
+  object: 1,
+  ref: 2,
+  reactive: 3,
+  function: 4,
+};
+
+// ============================================
+// ✅ v15.5.0: MACRO KIND CODES
+// ============================================
+//
+// Числовые коды для macro kind (vue.macros.k).
+// ============================================
+
+export const MACRO_KIND_CODES: Record<string, number> = {
+  props: 0,
+  emits: 1,
+  expose: 2,
+  slots: 3,
+  model: 4,
+  options: 5,
 };
 
 // ============================================
@@ -517,45 +621,6 @@ export function addMethod(dict: DictBuilder, method: string): number {
 // ADD VALUE — ТИПОБЕЗОПАСНЫЙ КЛЮЧ (v15.4.2)
 // + ЗАЩИТА ОТ РАССИНХРОНА (v15.4.4)
 // ============================================
-//
-// Проблема (v15.4.2):
-//   String(value) даёт коллизии между разными типами:
-//     String(null)      === 'null'      === String('null')       // ← коллизия!
-//     String(123)       === '123'       === String('123')        // ← коллизия!
-//     String(true)      === 'true'      === String('true')       // ← коллизия!
-//     String(0)         === '0'         === String('0')          // ← коллизия!
-//
-//   Если в проекте есть и `const a = null`, и `const b = \"null\"`,
-//   они схлопываются в одну запись valueDict. Это ломает
-//   детерминизм: values.length зависел от порядка обхода констант.
-//
-// Решение (v15.4.2):
-//   Префикс типа в ключе дедупликации:
-//     null      → 'N'                   (сам null, без значения)
-//     string    → 'S:' + value
-//     number    → 'D:' + value
-//     boolean   → 'B:' + value
-//     bigint    → 'I:' + value.toString()
-//     object    → 'O:' + stableStringify(value)
-//     function  → 'X:' + String(value)  (редко, но на всякий случай)
-//     symbol    → 'X:' + String(value)  (редко)
-//
-// Проблема (v15.4.4):
-//   `shouldKeepValue` в compact-reporter.ts и `classifyValue` в
-//   values-filter.ts использовали РАЗНЫЕ пороги. Значение могло
-//   пройти shouldKeepValue (попасть в full.constants[].value),
-//   но НЕ пройти classifyValue (не попасть в valueDict).
-//
-//   Это давало рассинхрон values[]:
-//     $.values.length          a: 206  b: 208
-//     $.cn.nonEmptyV[180][1]   a: 3    b: 54
-//
-// Решение (v15.4.4):
-//   `addValue()` теперь проверяет `isValueKept(value, mode)`.
-//   Если значение НЕ проходит фильтр — возвращается -1.
-//   Это гарантирует, что values[] не содержит значений,
-//   которые будут удалены filterValues.
-// ============================================
 
 /**
  * Добавить значение в valueDict, вернуть индекс.
@@ -572,8 +637,6 @@ export function addMethod(dict: DictBuilder, method: string): number {
  * @param kind  — категория (если не задана, вычисляется через classifyValue)
  * @param mode  — режим values (по умолчанию 'relations'). Влияет на isValueKept.
  * @returns индекс в valueDict или -1
- *
- * @see addAny() — для extended-секций, где дедупликация ЗАПРЕЩЕНА.
  */
 export function addValue(
   dict: DictBuilder,
@@ -585,36 +648,28 @@ export function addValue(
   if (value === undefined) return -1;
 
   // ✅ v15.4.4-fix: пропускаем значения, которые не пройдут фильтр
-  // (isValueKept синхронизирован с classifyValue через VALUE_THRESHOLDS)
   if (!isValueKept(value, mode)) return -1;
 
   // ✅ v15.4.2-fix: типобезопасный ключ дедупликации
   let dedupKey: string;
 
   if (value === null) {
-    // null — единственный ключ без ':'
     dedupKey = 'N';
   } else if (typeof value === 'string') {
-    // Строка: префикс 'S:'
     dedupKey = 'S:' + value;
   } else if (typeof value === 'number') {
-    // Число: префикс 'D:' (D = Digit)
     dedupKey = 'D:' + value;
   } else if (typeof value === 'boolean') {
-    // Boolean: префикс 'B:'
     dedupKey = 'B:' + value;
   } else if (typeof value === 'bigint') {
-    // BigInt: префикс 'I:' (I = Integer big)
     dedupKey = 'I:' + value.toString();
   } else if (typeof value === 'object') {
-    // Объект/массив: префикс 'O:' + stableStringify
     dedupKey = 'O:' + stableStringify(value);
   } else if (typeof value === 'function') {
     dedupKey = 'X:' + String(value);
   } else if (typeof value === 'symbol') {
     dedupKey = 'X:' + String(value);
   } else {
-    // Fallback (не должно происходить, но для type-safety)
     dedupKey = 'X:' + String(value);
   }
 
@@ -636,16 +691,6 @@ export function addValue(
 // ============================================
 // addAny — БЕЗ ДЕДУПЛИКАЦИИ + structuredClone (v15.0.3)
 // ============================================
-//
-// Extended-секции (vt/lc/ef/inj/rx/cd/ty/tr) — это СТРУКТУРНЫЕ
-// СУЩНОСТИ. Каждая запись — отдельная сущность. Их НЕЛЬЗЯ
-// дедуплицировать, даже если они структурно совпадают.
-//
-// ✅ v15.0.3: `addAny` делает `structuredClone(value)`.
-// Это разрывает общую ссылку между `templates[].conditionals`
-// и `values[]`, из-за которой `safeJsonStringify` заменял второй
-// экземпляр на \"[Circular]\".
-// ============================================
 
 /**
  * Добавить произвольный объект/массив/примитив в valueDict.
@@ -654,21 +699,13 @@ export function addValue(
  *   - НЕ дедуплицирует. Каждый вызов = новый value с новым индексом.
  *   - НЕ применяет фильтрацию values (kind = 'relation').
  *   - ✅ v15.0.3: делает `structuredClone(value)` перед push.
- *   - Используется ТОЛЬКО для extended-секций (vt/lc/ef/inj/rx/cd/ty/tr).
- *
- * @param dict  — словарь
- * @param value — произвольное значение
- * @param key   — строковый ключ для отладки
- * @returns индекс в valueDict
+ *   - Используется ТОЛЬКО для extended-секций (vt/lc/ef/inj/rx/cd/ty/tr/vue).
  */
 function addAny(dict: DictBuilder, value: unknown, key: string): number {
   if (value === undefined) return -1;
 
   const idx = dict.valueDict.length;
 
-  // ✅ v15.0.3 (fix round-trip Vue conditionals):
-  // structuredClone разрывает общую ссылку, сохраняя все данные,
-  // включая undefined-поля (важно для v-else).
   const stored: unknown =
     value !== null && typeof value === 'object' ? structuredClone(value) : value;
 
@@ -759,10 +796,8 @@ function buildTokenDict(strings: string[]): string[] {
 function encodeStr(str: string, tokenIndex: Map<string, number>): string | number[] {
   if (!str) return str;
 
-  // ✅ v13.0.0-fix: не токенизируем короткие строки
   if (str.length < 8) return str;
 
-  // ✅ v13.0.2-fix: не токенизируем строки с разделителями и цифрами
   if (/[_\-/.:0-9]/.test(str)) return str;
 
   const tokens = tokenizeStr(str);
@@ -781,11 +816,288 @@ function encodeStr(str: string, tokenIndex: Map<string, number>): string | numbe
 }
 
 // ============================================
+// ✅ v15.7.3: VUE SECTION ENCODER
+// ============================================
+
+/**
+ * Кодирует `full.vue` → `compact.vue`.
+ *
+ * ════════════════════════════════════════════════════════════
+ * ЧТО ДЕЛАЕТ
+ * ════════════════════════════════════════════════════════════
+ *
+ *   - sfc:         columnar + slices `cs` для composables
+ *   - composables: columnar + RLE для f
+ *   - macros:      columnar
+ *   - hooks:       columnar
+ *   - reactivity:  columnar
+ *   - icons:       columnar
+ *
+ * ════════════════════════════════════════════════════════════
+ * ✅ v15.7.3: `sfc.c` — ИНДЕКСЫ В `strs`, а НЕ В `vue.composables`
+ * ════════════════════════════════════════════════════════════
+ *
+ *   ПРОБЛЕМА (до v15.7.3):
+ *
+ *     Ранее (v15.7.2) `sfc.c` содержал индексы в `vue.composables`.
+ *     Но `vue.composables` содержит только ЛОКАЛЬНЫЕ composables —
+ *     те, что объявлены в проекте (`useDataState`, `useColumnsConfig`).
+ *
+ *     А `sfc.composables` может содержать ВНЕШНИЕ:
+ *       • useRouter (vue-router)
+ *       • useI18n (vue-i18n)
+ *       • useStore (vuex)
+ *       • и т.д.
+ *
+ *     Такие внешние composables НЕ находятся в `vue.composables`,
+ *     и при encode терялись.
+ *
+ *     Симптом:
+ *       `vue.sfc[19].composables.length: a=5, b=6`
+ *       (в full 6 composables, в decoded 5 — один внешний потерян)
+ *
+ *   РЕШЕНИЕ (v15.7.3):
+ *
+ *     `sfc.c` теперь содержит индексы в `strs` — то есть
+ *     имена composables как строки. Это универсально:
+ *     работает и для локальных, и для внешних composables.
+ *
+ *     Decode читает имена через `readStr(idx)` из `strs` напрямую,
+ *     не обращаясь к `vue.composables`.
+ *
+ * ════════════════════════════════════════════════════════════
+ * ⚠️ ВАЖНО ДЛЯ ROUND-TRIP: sfc.c / sfc.cs
+ * ════════════════════════════════════════════════════════════
+ *
+ *   Для SFC пишутся:
+ *     sfc.c   = [nameIdx1, nameIdx2, ..., nameIdxN]  — плоский массив
+ *     sfc.cs  = [[offset, count], ...]                — slices
+ *
+ *   Где nameIdx — индексы в `strs` (имена composables).
+ *
+ *   Гарантирует корректный round-trip:
+ *     encode(full) → compact.vue.sfc.c = [idx1, idx2, ...]
+ *                    compact.vue.sfc.cs = [[off1, cnt1], ...]
+ *     decode(compact) → full.vue.sfc[i].composables = [name1, name2, ...]
+ *     encode(decode(compact)) → compact.vue.sfc.c = [idx1, idx2, ...] ✅
+ *
+ * ════════════════════════════════════════════════════════════
+ * ⚠️ props / emits / exposed — только счётчики
+ * ════════════════════════════════════════════════════════════
+ *
+ *   Для props/emits/exposed в compact пишутся ТОЛЬКО СЧЁТЧИКИ:
+ *     sfc.p[i] = [fileIdx, propsCount]
+ *     sfc.e[i] = [fileIdx, emitsCount]
+ *     sfc.x[i] = [fileIdx, exposeCount]
+ *
+ *   Реальные имена не сохраняются (это отдельная задача).
+ *   При decode восстанавливаются плейсхолдеры `['#0', '#1', ...]`.
+ *
+ * @param vue         — FullJSON.vue
+ * @param dict        — словарь строк
+ * @param fileReverse — карта fileId → fileIdx
+ * @returns VueSectionCompact
+ */
+export function encodeVueSection(
+  vue: VueSectionFull,
+  dict: DictBuilder,
+  fileReverse: Map<string, number>
+): VueSectionCompact {
+  // ────────────────────────────────────────────────────────
+  // sfc
+  // ────────────────────────────────────────────────────────
+  //
+  // ✅ v15.7.3: `sfc.c` — плоский массив ИНДЕКСОВ В STRS (имена composables).
+  //
+  // ════════════════════════════════════════════════════════════
+  // ПОЧЕМУ НЕ ИНДЕКСЫ В `vue.composables`
+  // ════════════════════════════════════════════════════════════
+  //
+  //   Ранее (v15.7.2) `sfc.c` содержал индексы в `vue.composables`.
+  //   Проблема: если composable вызывается в SFC, но НЕ объявлен
+  //   в проекте (например, `useRouter` из `vue-router`),
+  //   он отсутствует в `vue.composables` → теряется при encode.
+  //
+  //   Теперь `sfc.c` содержит индексы в `strs` (имена как строки).
+  //   Это универсально: работает для локальных и внешних
+  //   composables одинаково.
+  // ============================================================
+
+  const sfcF: number[] = [];
+  const sfcN: number[] = [];
+  const sfcB: number[] = [];
+
+  // ✅ v15.7.3: плоский массив индексов в strs (имена composables)
+  const sfcC: number[] = [];
+  // ✅ v15.7.3: slices [offset, count] для каждого SFC
+  const sfcCS: Array<[number, number]> = [];
+
+  const sfcP: [number, number][] = [];
+  const sfcE: [number, number][] = [];
+  const sfcX: [number, number][] = [];
+
+  for (const s of vue.sfc ?? []) {
+    const sfc: SFCComponent = s;
+    const fileIdx = fileReverse.get(sfc.fileId) ?? 0;
+
+    sfcF.push(fileIdx);
+    sfcN.push(addString(dict, sfc.name));
+    sfcB.push(sfc.blocks ?? 0);
+
+    // ✅ v15.7.3: сохраняем ИМЯ (индекс в strs), а не индекс в vue.composables
+    //
+    // Для каждого имени composable в SFC добавляем его в `strs`
+    // и получаем индекс. Это работает и для локальных composables
+    // (которые есть в `vue.composables`), и для внешних
+    // (useRouter, useI18n), которых там нет.
+    const composables = sfc.composables ?? [];
+    const startOffset = sfcC.length;
+
+    for (const compName of composables) {
+      const nameIdx = addString(dict, compName);
+      if (nameIdx >= 0) {
+        sfcC.push(nameIdx);
+      }
+    }
+
+    sfcCS.push([startOffset, sfcC.length - startOffset]);
+
+    // props/emits/exposed — только счётчики
+    sfcP.push([fileIdx, (sfc.props ?? []).length]);
+    sfcE.push([fileIdx, (sfc.emits ?? []).length]);
+    sfcX.push([fileIdx, (sfc.exposed ?? []).length]);
+  }
+
+  // ────────────────────────────────────────────────────────
+  // composables
+  // ────────────────────────────────────────────────────────
+  const compN: number[] = [];
+  const compF: number[] = [];
+  const compK: number[] = [];
+  const compR: number[] = [];
+  const compV: [number, number][] = [];
+
+  for (let i = 0; i < (vue.composables ?? []).length; i++) {
+    const c: ComposableEntity = vue.composables[i]!;
+
+    compN.push(addString(dict, c.name));
+    compF.push(fileReverse.get(c.fileId) ?? 0);
+    compK.push(COMPOSABLE_KIND_CODES[c.kind] ?? 0);
+    compR.push(COMPOSABLE_SHAPE_CODES[c.returnShape] ?? 0);
+    compV.push([i, (c.returnedKeys ?? []).length]);
+  }
+
+  // ────────────────────────────────────────────────────────
+  // macros
+  // ────────────────────────────────────────────────────────
+  const macroF: number[] = [];
+  const macroK: number[] = [];
+  const macroL: number[] = [];
+
+  for (const m of vue.macros ?? []) {
+    const macro: MacroEntity = m;
+
+    macroF.push(fileReverse.get(macro.fileId) ?? 0);
+    macroK.push(MACRO_KIND_CODES[macro.kind] ?? 0);
+    macroL.push(macro.line ?? 0);
+  }
+
+  // ────────────────────────────────────────────────────────
+  // hooks
+  // ────────────────────────────────────────────────────────
+  const hookF: number[] = [];
+  const hookN: number[] = [];
+  const hookL: number[] = [];
+
+  for (const h of vue.hooks ?? []) {
+    const hook: HookEntity = h;
+
+    hookF.push(fileReverse.get(hook.fileId) ?? 0);
+    hookN.push(HOOK_NAME_CODES[hook.hookName] ?? 0);
+    hookL.push(hook.line ?? 0);
+  }
+
+  // ────────────────────────────────────────────────────────
+  // reactivity
+  // ────────────────────────────────────────────────────────
+  const rxVueF: number[] = [];
+  const rxVueK: number[] = [];
+  const rxVueL: number[] = [];
+  const rxVueN: number[] = [];
+
+  for (const r of vue.reactivity ?? []) {
+    const rx: ReactivityEntity = r;
+
+    rxVueF.push(fileReverse.get(rx.fileId) ?? 0);
+    rxVueK.push(REACTIVITY_KIND_CODES[rx.kind] ?? 0);
+    rxVueL.push(rx.line ?? 0);
+    rxVueN.push(rx.name ? addString(dict, rx.name) : -1);
+  }
+
+  // ────────────────────────────────────────────────────────
+  // icons
+  // ────────────────────────────────────────────────────────
+  const iconF: number[] = [];
+  const iconN: number[] = [];
+  const iconC: number[] = [];
+
+  for (const ic of vue.icons ?? []) {
+    const icon: IconEntity = ic;
+
+    iconF.push(fileReverse.get(icon.fileId) ?? 0);
+    iconN.push(addString(dict, icon.name));
+    iconC.push(ICON_CATEGORY_CODES[icon.category] ?? 0);
+  }
+
+  return {
+    sfc: {
+      f: sfcF,
+      n: sfcN,
+      b: sfcB,
+      // ✅ v15.7.3: плоский массив индексов в strs + slices
+      c: sfcC,
+      cs: sfcCS,
+      p: sfcP,
+      e: sfcE,
+      x: sfcX,
+    },
+    composables: {
+      n: compN,
+      f: rle(compF),
+      k: compK,
+      r: compR,
+      v: compV,
+    },
+    macros: {
+      f: macroF,
+      k: macroK,
+      l: macroL,
+    },
+    hooks: {
+      f: hookF,
+      n: hookN,
+      l: hookL,
+    },
+    reactivity: {
+      f: rxVueF,
+      k: rxVueK,
+      l: rxVueL,
+      n: rxVueN,
+    },
+    icons: {
+      f: iconF,
+      n: iconN,
+      c: iconC,
+    },
+  };
+}
+
+// ============================================
 // ОСНОВНАЯ ФУНКЦИЯ ENCODE
 // ============================================
 
 /**
- * Кодирует полный JSON в сжатый (v15.4.4).
+ * Кодирует полный JSON в сжатый (v15.7.3).
  *
  * @param payload    — Полный JSON
  * @param valuesMode — Режим сериализации values ('full' | 'relations')
@@ -875,7 +1187,8 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   // ============================================
   // 6. fns — columnar
   // ============================================
-  // ✅ v15.1.0 (P0): добавлено поле parent
+  // ✅ v15.1.0 (P0): parent
+  // ✅ v15.5.0: vk (vueKind)
   // ============================================
   const fnsN: number[] = [];
   const fnsM: number[] = [];
@@ -884,7 +1197,8 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   const fnsFl: number[] = [];
   const fnsP: number[][] = [];
   const fnsRt: number[] = [];
-  const fnsParent: number[] = []; // ✅ v15.1.0 (P0)
+  const fnsParent: number[] = [];
+  const fnsVk: number[] = [];
 
   for (const func of functions) {
     if (!func) continue;
@@ -906,11 +1220,16 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
     const parentId = func.parentFunctionId;
     const parentIdx = parentId ? (functionReverse.get(parentId) ?? -1) : -1;
     fnsParent.push(parentIdx);
+
+    // ✅ v15.5.0: vueKind → код
+    const vk = func.vueKind ?? 'function';
+    fnsVk.push(VUE_KIND_CODES[vk] ?? 0);
   }
 
   const fnsMRle = rle(fnsM);
   const fnsFRle = rle(fnsF);
-  const fnsParentRle = rle(fnsParent); // ✅ v15.1.0 (P0)
+  const fnsParentRle = rle(fnsParent);
+  const fnsVkRle = rle(fnsVk);
 
   // ============================================
   // 7. cls — columnar
@@ -959,9 +1278,6 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
     const nameIdx = addString(dict, cn.name);
     const flags = encodeFlags(cn);
 
-    // ✅ v15.4.1-fix: stableStringify для объектов
-    // ✅ v15.4.2-fix: типобезопасный ключ для примитивов
-    // ✅ v15.4.4-fix: передаём valuesMode в addValue (защита от рассинхрона)
     const valueIdx = addValue(
       dict,
       cn.value,
@@ -1036,7 +1352,6 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
 
     const typeCode = imp.isDefault ? 1 : imp.isNamespace ? 2 : 0;
 
-    // ✅ v15.0.5: собираем combinedTy со всеми битами
     const combinedTy =
       typeCode |
       (imp.isExternal ? 4 : 0) |
@@ -1044,7 +1359,6 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
       (imp.isReExport ? 16 : 0) |
       (imp.isStarReExport ? 32 : 0);
 
-    // ✅ v15.0.6: tf — индекс в fl.p (файлы), -1 = внешний/неразрешённый
     const toFileIdx = imp.toFileId ? (fileReverse.get(imp.toFileId) ?? -1) : -1;
 
     giFf.push(fileReverse.get(imp.fromFileId) ?? 0);
@@ -1070,17 +1384,17 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   // ============================================
   // 11. gr.c — columnar
   // ============================================
-  // ✅ v15.3.0 (P2): добавлены col/ck/cn/ai
+  // ✅ v15.3.0 (P2): col/ck/cn/ai
   // ============================================
   const calls = asArray<CallData>(canonical.calls);
   const gcF: number[] = [];
   const gcT: number[] = [];
   const gcL: number[] = [];
   const gcTy: number[] = [];
-  const gcCol: number[] = []; // ✅ v15.3.0 (P2)
-  const gcCk: number[] = []; // ✅ v15.3.0 (P2)
-  const gcCn: number[] = []; // ✅ v15.3.0 (P2)
-  const gcAi: number[] = []; // ✅ v15.3.0 (P2)
+  const gcCol: number[] = [];
+  const gcCk: number[] = [];
+  const gcCn: number[] = [];
+  const gcAi: number[] = [];
 
   for (const call of calls) {
     if (!call) continue;
@@ -1099,7 +1413,6 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
     gcL.push(call.line);
     gcTy.push(combinedTy);
 
-    // ✅ v15.3.0 (P2): column / callKind / calleeName / argumentIndex
     gcCol.push(call.column ?? -1);
     gcCk.push(call.callKind ? (CALL_KIND_CODES[call.callKind] ?? -1) : -1);
     gcCn.push(call.calleeName ? addString(dict, call.calleeName) : -1);
@@ -1168,16 +1481,16 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   // ============================================
   // 12.6. lx — lexical links (columnar)
   // ============================================
-  // ✅ v15.2.0 (P1): columnar-секция для лексических связей
+  // ✅ v15.2.0 (P1)
   // ============================================
   const lexicalLinks = asArray<LexicalLink>((canonical as any).lexicalLinks);
 
-  const lxP: number[] = []; // parentFunctionIdx, -1 = null
-  const lxC: number[] = []; // childFunctionIdx
-  const lxR: number[] = []; // relationCode
-  const lxL: number[] = []; // line
-  const lxAi: number[] = []; // argumentIndex, -1 = нет
-  const lxCn: number[] = []; // calleeNameIdx, -1 = нет
+  const lxP: number[] = [];
+  const lxC: number[] = [];
+  const lxR: number[] = [];
+  const lxL: number[] = [];
+  const lxAi: number[] = [];
+  const lxCn: number[] = [];
 
   for (const link of lexicalLinks) {
     if (!link) continue;
@@ -1187,7 +1500,6 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
       : -1;
     const childIdx = functionReverse.get(link.childFunctionId) ?? -1;
 
-    // Битый линк — пропускаем
     if (childIdx < 0) continue;
 
     const relCode = LEXICAL_RELATION_CODES[link.relation] ?? 0;
@@ -1206,6 +1518,19 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   const lxC_Rle = rle(lxC);
 
   // ============================================
+  // 12.7. ✅ v15.7.3: vue — Vue-сущности (columnar)
+  // ============================================
+  //
+  // ✅ v15.7.3: `sfc.c` — индексы в `strs` (имена composables),
+  //             `sfc.cs` — slices [offset, count].
+  //             Работает и для локальных, и для внешних composables.
+  // ============================================
+  let vue: VueSectionCompact | undefined;
+  if (canonical.vue) {
+    vue = encodeVueSection(canonical.vue, dict, fileReverse);
+  }
+
+  // ============================================
   // 13. ФИЛЬТРАЦИЯ VALUES
   // ============================================
   let finalValueDict: unknown[] = dict.valueDict;
@@ -1219,10 +1544,10 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
     if (process.env.AST_DEBUG_CODEC === 'true') {
       console.log(
         `   🗜️  values-mode=relations: ${dict.valueDict.length} → ${finalValueDict.length} значений ` +
-        `(${(
-          ((dict.valueDict.length - finalValueDict.length) / dict.valueDict.length) *
-          100
-        ).toFixed(1)}% сжатие)`
+          `(${(
+            ((dict.valueDict.length - finalValueDict.length) / dict.valueDict.length) *
+            100
+          ).toFixed(1)}% сжатие)`
       );
     }
   }
@@ -1289,7 +1614,8 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
     mi: { n: miN, f: miF },
     fl: { p: flP, m: flMRle },
 
-    // ✅ v15.1.0 (P0): добавлено parent
+    // ✅ v15.1.0 (P0): parent
+    // ✅ v15.5.0: vk
     fns: {
       n: fnsN,
       m: fnsMRle,
@@ -1299,6 +1625,7 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
       p: fnsP,
       rt: fnsRt,
       parent: fnsParentRle,
+      vk: fnsVkRle,
     },
     cls: { n: clsN, m: clsMRle, f: clsFRle, l: clsL, fl: clsFl, methods: clsMethods },
     cn: { n: cnN, m: cnMRle, f: cnFRle, l: cnL, fl: cnFl, nonEmptyV: finalNonEmptyV },
@@ -1316,7 +1643,6 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
         flags: geFlags,
       },
       i: { ff: giFf, tf: giTf, s: giS, im: giIm, ln: giLn, l: giL, ty: giTy },
-      // ✅ v15.3.0 (P2): добавлены col/ck/cn/ai
       c: {
         f: gcF,
         t: gcT,
@@ -1350,6 +1676,9 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
       cn: lxCn,
     },
 
+    // ✅ v15.7.3: Vue-секция (sfc.c — индексы в strs, sfc.cs — slices)
+    vue,
+
     st: canonical.statistics,
     legend,
   };
@@ -1369,9 +1698,6 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
   // ============================================
   // Удаляем пустые опциональные секции
   // ============================================
-  // ⚠️ v15.2.0 (P1): lx НЕ удаляем как пустой — оставляем
-  // пустой объект { p: [], c: [], r: [], l: [], ai: [], cn: [] },
-  // чтобы decode мог корректно обработать.
   const OPTIONAL_SECTIONS: (keyof CompactJSON)[] = [
     'vt',
     'lc',
@@ -1381,12 +1707,31 @@ export function encode(payload: FullJSON, valuesMode: ValuesMode = 'relations'):
     'cd',
     'ty',
     'tr',
+    'vue',
   ];
 
   for (const key of OPTIONAL_SECTIONS) {
     const v = (compact as any)[key];
+    if (v === undefined || v === null) continue;
+
+    // Для массивов: удаляем, если пустой
     if (Array.isArray(v) && v.length === 0) {
       delete (compact as any)[key];
+      continue;
+    }
+
+    // Для vue: удаляем, если все подсекции пусты
+    if (key === 'vue' && typeof v === 'object') {
+      const allEmpty =
+        (v.sfc?.f?.length ?? 0) === 0 &&
+        (v.composables?.n?.length ?? 0) === 0 &&
+        (v.macros?.f?.length ?? 0) === 0 &&
+        (v.hooks?.f?.length ?? 0) === 0 &&
+        (v.reactivity?.f?.length ?? 0) === 0 &&
+        (v.icons?.f?.length ?? 0) === 0;
+      if (allEmpty) {
+        delete (compact as any)[key];
+      }
     }
   }
 
@@ -1412,4 +1757,13 @@ export default {
   LEXICAL_RELATION_CODES,
   // ✅ v15.3.0 (P2)
   CALL_KIND_CODES,
+  // ✅ v15.5.0
+  VUE_KIND_CODES,
+  HOOK_NAME_CODES,
+  REACTIVITY_KIND_CODES,
+  ICON_CATEGORY_CODES,
+  COMPOSABLE_KIND_CODES,
+  COMPOSABLE_SHAPE_CODES,
+  MACRO_KIND_CODES,
+  encodeVueSection,
 };

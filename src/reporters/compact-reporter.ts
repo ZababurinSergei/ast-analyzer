@@ -2,98 +2,85 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Версия: 15.5.5
+// Версия: 15.5.7
 //
-// ИЗМЕНЕНИЯ v15.5.5 (JSON-safe сериализация):
+// ════════════════════════════════════════════════════════════
+// СВОДКА ВЕРСИЙ
+// ════════════════════════════════════════════════════════════
+//
+// v15.5.7 (fix: явный проброс vueKind + диагностика):
+//   - ✅ ИСПРАВЛЕНО: `vueKind` теперь ГАРАНТИРОВАННО пробрасывается
+//     из `FunctionInfo.vueKind` в `FunctionData.vueKind`.
+//     Ранее поле могло теряться, если промежуточный конвертер
+//     (`convertFunctionToEnhanced`) не пробрасывал его.
+//   - ✅ ДОБАВЛЕНО: явное приведение `(func as any).vueKind`
+//     с fallback на `'function'` для случаев, когда поле отсутствует.
+//   - ✅ ДОБАВЛЕНО: диагностика `vueKind` в verbose-режиме —
+//     показывает количество функций с непустым `vueKind`.
+//   - ✅ ДОБАВЛЕНО: предупреждение, если `vueKind` отсутствует
+//     более чем у 50% функций (признак проблемы с пробросом).
+//   - ✅ ОБНОВЛЕНО: заголовок 15.5.6 → 15.5.7.
+//
+// v15.5.6 (fix TS2614 + TS2339 + синхронизация Vue-секции):
+//   - ✅ ИСПРАВЛЕНО: TS2614 — `VueEntities` импортируется
+//     из `../core/vue-entity-classifier.js` (а не из
+//     `./codec/codec-types.js`).
+//     `VueEntities` — это ЛОКАЛЬНЫЙ интерфейс классификатора,
+//     он не входит в CODEC.
+//   - ✅ ИСПРАВЛЕНО: TS2339 — `statistics.totalSfcComponents`
+//     → `statistics.totalVueSfc` (единое имя с codec-types.ts).
+//   - ✅ ИСПРАВЛЕНО: TS2339 — `statistics.totalComposables` /
+//     `totalMacros` / `totalHooks` / `totalReactivity` /
+//     `totalIcons` — пишутся из `vueEntities` (единые имена).
+//   - ✅ ДОБАВЛЕНО: заполнение `full.vue` через
+//     `classifyVueEntities(workingEntitiesMap)`.
+//   - ✅ ДОБАВЛЕНО: счётчики `sfc.c/p/e/x` заполняются
+//     РЕАЛЬНЫМИ длинами массивов `composables/props/
+//     emits/exposed` (для round-trip).
+//   - ✅ ОБНОВЛЕНО: заголовок 15.5.5 → 15.5.6.
+//
+// v15.5.5 (JSON-safe сериализация):
 //   - ✅ ЗАМЕНЕНО: `safeJsonStringify` → `jsonSafeStringify`
-//     в `saveJsonFile`. Теперь Set, Map, RegExp, Date и
-//     class instances превращаются в свои безопасные
-//     представления, а не в '{}'.
+//     в `saveJsonFile`.
+//   - ✅ ДОБАВЛЕНО: диагностика не-JSON-значений в
+//     `full.constants[]` перед сохранением (verbose).
 //
-//     ПРОБЛЕМА, КОТОРУЮ ЭТО РЕШАЕТ:
-//     `values[]` мог содержать не-JSON-объекты (Set, Map,
-//     RegExp, Date, class instances). При записи на диск
-//     `JSON.stringify` превращал их в '{}', и round-trip
-//     терял данные.
-//
-//     Симптом в check:roundtrip:
-//       $.values.length          a: 703  b: 553
-//       $.constants[1571].value  a: undefined  b: {}
-//       L0/L1/L2/L3/RE — FAIL
-//
-//     ФИКС:
-//     Использовать `jsonSafeStringify` из './codec/stable-stringify.js',
-//     который рекурсивно санитизирует значения через
-//     `sanitizeForJson` перед сериализацией.
-//
-//   - ✅ ДОБАВЛЕНО: диагностика не-JSON-значений в `full.constants[]`
-//     перед сохранением (только в verbose-режиме).
-//   - ✅ ДОБАВЛЕНО: импорт `isJsonSafe` для диагностики.
-//
-// ИЗМЕНЕНИЯ v15.5.4 (устранение рассинхрона порогов):
+// v15.5.4 (устранение рассинхрона порогов):
 //   - ✅ УДАЛЕНА локальная константа HEAVY_VALUE_THRESHOLDS.
 //   - ✅ УДАЛЕНА локальная функция shouldKeepValue.
 //   - ✅ ДОБАВЛЕНО: импорт `isValueKept` из
 //     './codec/values-filter.js'.
-//   - ✅ ЗАМЕНЕНО: все вызовы `shouldKeepValue(cn.value, valuesMode)`
-//     → `isValueKept(cn.value, valuesMode)`.
 //
-// ИЗМЕНЕНИЯ v15.5.3 (fix: детерминизм shouldKeepValue + вынос дубликатов):
-//   - ✅ ИСПРАВЛЕНО: shouldKeepValue использует stableStringify
-//     вместо нативного JSON.stringify.
+// v15.5.3 (fix: детерминизм shouldKeepValue + вынос дубликатов):
+//   - ✅ ИСПРАВЛЕНО: shouldKeepValue использует stableStringify.
 //   - ✅ УДАЛЕНО: локальные extractNumericId, sortByIdNumeric,
 //     canonicalizeFullJSON — заменены импортом из
 //     ./utils/canonical-utils.js.
-//   - ✅ ОБНОВЛЕНО: версия 15.5.2 → 15.5.3.
 //
-// ИЗМЕНЕНИЯ v15.5.2 (P0-fix-2 — стабилизация порядка обхода):
-//   - ✅ [P0-fix-2] ИСПРАВЛЕНО: детерминированный порядок обхода
-//     файлов во ВСЕХ проходах `collectFullJSON`.
-//   - ✅ [P0-fix-2] ИСПРАВЛЕНО: `id` констант (cn1, cn2, ...),
-//     функций (fn1, fn2, ...) и других сущностей теперь присваиваются
-//     в стабильном порядке между прогонами.
-//   - ✅ [P0-fix-2] ИСПРАВЛЕНО: позиция первой коллизии в
-//     `cn.nonEmptyV` больше не "плавает" между прогонами.
-//   - ✅ [P0-fix-2] ИСПРАВЛЕНО: L0, L3, RE в verify-roundtrip
-//     больше не падают с "values.length +1".
+// v15.5.2 (P0-fix-2 — стабилизация порядка обхода):
+//   - ✅ [P0-fix-2] ИСПРАВЛЕНО: детерминированный порядок
+//     обхода файлов во ВСЕХ проходах collectFullJSON.
 //
-// ИЗМЕНЕНИЯ v15.5.1 (P0-fix — резолвинг parentFunctionId):
-//   - ✅ [P0] ИСПРАВЛЕНО: при сборке FunctionData теперь резолвится
-//     локальный parentFunctionId (f18_813) в глобальный (fn42).
+// v15.5.1 (P0-fix — резолвинг parentFunctionId):
+//   - ✅ [P0] ИСПРАВЛЕНО: резолвинг локального parentFunctionId
+//     (f18_813) в глобальный (fn42).
 //
-// ИЗМЕНЕНИЯ v15.5.0 (MVP P0/P1/P2 — проброс в FullJSON):
+// v15.5.0 (MVP P0/P1/P2 — проброс в FullJSON):
 //   - ✅ [P0] проброс parentFunctionId в FunctionData
-//   - ✅ [P1] сборка full.lexicalLinks с резолвом compactId → globalFnId
-//   - ✅ [P2] проброс callKind/calleeName/argumentIndex/column в CallData
+//   - ✅ [P1] сборка full.lexicalLinks с резолвом compactId
+//   - ✅ [P2] проброс callKind/calleeName/argumentIndex/column
 //
-// ИЗМЕНЕНИЯ v15.4.0 (P3 — cross-file resolution):
+// v15.4.0 (P3 — cross-file resolution):
 //   - ✅ ДОБАВЛЕНО: обогащение calls[] из ctx.crossFileCalls
 //
-// ИЗМЕНЕНИЯ v15.0.7 (fix isExternal ↔ toFileId desync):
-//   - ✅ ИСПРАВЛЕНО: isExternal/isUnresolved — производные от
-//     resolvedToFileId.
-//
-// ИЗМЕНЕНИЯ v15.0.6 (isExternal — производное от imp.toFileId):
-//   - ✅ ИСПРАВЛЕНО: isExternal определяется по префиксу imp.toFileId.
-//
-// ИЗМЕНЕНИЯ v15.0.4 (заполнение importedName/localName + реэкспорты):
-//   - ✅ ИСПРАВЛЕНО: collectFullJSON заполняет importedName/localName.
-//
-// ИЗМЕНЕНИЯ v15.0.3 (нормализация путей в отчёте):
-//   - ✅ ИСПРАВЛЕНО: FullJSON.files[].path всегда относительный.
-//
-// ИЗМЕНЕНИЯ v15.0.2 (устранение дублирования conditionals):
-//   - ✅ УБРАНО дублирование conditionals.
-//
-// ИЗМЕНЕНИЯ v15.0.1 (fix imports[].type):
-//   - ✅ ИСПРАВЛЕНО: imports[].type всегда 'named' | 'default' | 'namespace'.
-//
-// ИЗМЕНЕНИЯ v14.0.0:
-//   - ✅ ДОБАВЛЕНО: canonicalizeFullJSON в конце collectFullJSON.
-//
-// ИЗМЕНЕНИЯ v13.0.0:
-//   - ✅ ИСПРАВЛЕНО: ValuesMode импортируется из values-filter.js.
-//   - ✅ ЕДИНАЯ ВЕРСИЯ: version берётся из CODEC_VERSION.
+// v15.0.7 (fix isExternal ↔ toFileId desync)
+// v15.0.6 (isExternal — производное от imp.toFileId)
+// v15.0.4 (заполнение importedName/localName + реэкспорты)
+// v15.0.3 (нормализация путей в отчёте)
+// v15.0.2 (устранение дублирования conditionals)
+// v15.0.1 (fix imports[].type)
+// v14.0.0 (canonicalizeFullJSON в конце collectFullJSON)
+// v13.0.0 (ValuesMode импортируется из values-filter.js)
 // ============================================
 
 import fs from 'fs';
@@ -117,10 +104,14 @@ import { isValueKept } from './codec/values-filter.js';
 import type { ValuesMode } from './codec/values-filter.js';
 
 // ✅ v15.5.3: единые extractNumericId / sortByIdNumeric / canonicalizeFullJSON
-// (устраняют дублирование с codec-encode.ts)
-import {
-  canonicalizeFullJSON,
-} from './utils/canonical-utils.js';
+import { canonicalizeFullJSON } from './utils/canonical-utils.js';
+
+// ✅ v15.5.6: Vue-классификатор и его интерфейс
+// ⚠️ ВАЖНО: `VueEntities` определён в `vue-entity-classifier.ts`,
+//    а НЕ в `codec-types.ts`. Это локальный интерфейс
+//    классификатора, он не входит в CODEC.
+import { classifyVueEntities } from '../core/vue-entity-classifier.js';
+import type { VueEntities } from '../core/vue-entity-classifier.js';
 
 // ============================================
 // ✅ v13.0.0: ИМПОРТ ТИПОВ ИЗ codec-types.js
@@ -149,8 +140,11 @@ import type {
   DecodeOptions,
   GenerateReportOptions,
   GenerateReportResult,
-  LexicalLink,       // ✅ [P1]
-  // LexicalRelation,  // ❌ TS6196: не используется в этом файле
+  // ✅ v15.2.0 (P1)
+  LexicalLink,
+  // ✅ v15.5.0
+  VueSectionFull,
+  VueKind,
 } from './codec/codec-types.js';
 
 // ✅ v13.0.0-fix: единая версия CODEC
@@ -162,7 +156,7 @@ import { CODEC_VERSION } from './codec/codec-types.js';
 import type { CrossFileCall } from '../core/cross-file-resolver/types.js';
 
 // ============================================
-// ✅ [P2]: тип для callsInfo (совместим с ExtendedCallInfo)
+// ✅ [P2]: тип для callsInfo
 // ============================================
 interface CallsInfoEntry {
   targetName: string;
@@ -187,6 +181,9 @@ interface CallsInfoEntry {
 export type { GenerateReportOptions, GenerateReportResult } from './codec/codec-types.js';
 export type { ValuesMode } from './codec/values-filter.js';
 
+// ✅ v15.5.6: `VueEntities` реэкспортируется из правильного модуля
+export type { VueEntities } from '../core/vue-entity-classifier.js';
+
 // ============================================
 // КОНСТАНТЫ
 // ============================================
@@ -195,11 +192,6 @@ export type { ValuesMode } from './codec/values-filter.js';
  * Значение по умолчанию для `valuesMode`.
  */
 const DEFAULT_VALUES_MODE: ValuesMode = 'relations';
-
-// ✅ v15.5.4: HEAVY_VALUE_THRESHOLDS УДАЛЕНЫ —
-// пороги теперь в './codec/thresholds.js' (VALUE_THRESHOLDS),
-// а единый критерий фильтрации — `isValueKept` в
-// './codec/values-filter.js'.
 
 // ============================================
 // ОСНОВНАЯ ФУНКЦИЯ ГЕНЕРАЦИИ
@@ -259,14 +251,46 @@ export function generateCompactReport(
     console.log(`   🔄 Reactivity: ${full.reactivity?.length || 0}`);
     console.log(`   📐 Types: ${full.types?.length || 0}`);
     console.log(`   🔗 TypeRefs: ${full.typeRefs?.length || 0}`);
-    // ✅ [P1]
     console.log(`   🧩 LexicalLinks: ${full.lexicalLinks?.length || 0}`);
+
+    // ✅ v15.5.6: Vue-сущности
+    if (full.vue) {
+      console.log(`   📦 Vue SFC: ${full.vue.sfc.length}`);
+      console.log(`   ◇  Composables: ${full.vue.composables.length}`);
+      console.log(`   ⚙  Macros: ${full.vue.macros.length}`);
+      console.log(`   ⚓ Hooks: ${full.vue.hooks.length}`);
+      console.log(`   ⚡ Reactivity: ${full.vue.reactivity.length}`);
+      console.log(`   🖼  Icons: ${full.vue.icons.length}`);
+    }
 
     // ✅ [P0]: диагностика parentFunctionId
     const fnsWithParent = (full.functions || []).filter(f => f.parentFunctionId).length;
     console.log(`   🧬 Функций с parentFunctionId: ${fnsWithParent}/${full.functions.length}`);
 
-    // ✅ P0-fix: проверка целостности parentFunctionId
+    // ✅ v15.5.7: диагностика vueKind
+    const fnsWithVueKind = (full.functions || []).filter(
+      f => f.vueKind !== undefined && f.vueKind !== null
+    ).length;
+    const fnsNonFunctionVueKind = (full.functions || []).filter(
+      f => f.vueKind !== undefined && f.vueKind !== null && f.vueKind !== 'function'
+    ).length;
+
+    console.log(
+      `   🎯 Функций с vueKind: ${fnsWithVueKind}/${full.functions.length} ` +
+      `(не 'function': ${fnsNonFunctionVueKind})`
+    );
+
+    // ✅ v15.5.7: предупреждение, если vueKind отсутствует у > 50% функций
+    if (full.functions.length > 0 && fnsWithVueKind < full.functions.length * 0.5) {
+      console.warn(
+        `   ⚠️  vueKind отсутствует у ${full.functions.length - fnsWithVueKind}/${full.functions.length} функций`
+      );
+      console.warn(
+        `   💡 Проверьте convertFunctionToEnhanced() в entities-converter.ts — проброс vueKind`
+      );
+    }
+
+    // ✅ [P0]: проверка целостности parentFunctionId
     const fnIdSet = new Set((full.functions || []).map(f => f.id));
     const badParents = (full.functions || []).filter(
       f => f.parentFunctionId && !fnIdSet.has(f.parentFunctionId)
@@ -309,9 +333,6 @@ export function generateCompactReport(
     }
 
     // ✅ v15.5.5: диагностика не-JSON-значений в constants[]
-    // Set, Map, RegExp, Date, class instances при записи на диск
-    // превращаются в '{}' и теряют данные. `jsonSafeStringify`
-    // санитизирует их, но лучше предупредить разработчика.
     if (full.constants) {
       let unsafeCount = 0;
       const samples: string[] = [];
@@ -368,14 +389,23 @@ export function generateCompactReport(
         `   🗜️  Сжатие применено (v${compact.v}, valuesMode: ${compact.valuesMode || 'undefined'})`
       );
 
-      // ✅ v11.1.0: диагностика размера values
       const valuesCount = compact.values?.length ?? 0;
       console.log(`   📦 values[]: ${valuesCount} элементов`);
+
+      // ✅ v15.5.6: диагностика vue-секции в compact
+      if (compact.vue) {
+        console.log(`   📦 compact.vue.sfc.f: ${compact.vue.sfc.f.length}`);
+        console.log(`   ◇  compact.vue.composables.n: ${compact.vue.composables.n.length}`);
+        console.log(`   ⚙  compact.vue.macros.f: ${compact.vue.macros.f.length}`);
+        console.log(`   ⚓ compact.vue.hooks.f: ${compact.vue.hooks.f.length}`);
+        console.log(`   ⚡ compact.vue.reactivity.f: ${compact.vue.reactivity.f.length}`);
+        console.log(`   🖼  compact.vue.icons.f: ${compact.vue.icons.f.length}`);
+      }
     }
   }
 
   // ============================================
-  // ШАГ 4: Сохранение файлов (через единый saveJsonFile)
+  // ШАГ 4: Сохранение файлов
   // ============================================
   let compactPath: string | undefined;
   let fullPath: string | undefined;
@@ -386,12 +416,10 @@ export function generateCompactReport(
   let compressionRatio: number | undefined;
 
   if (outputPath) {
-    // ✅ v9.0.7: заранее вычисляем путь к full-файлу
     let fullPathResolved: string | undefined;
     if (saveFull) {
       fullPathResolved = insertSuffixBeforeExtension(outputPath, fullSuffix);
 
-      // ✅ v9.0.7: защита от коллизии
       if (path.resolve(fullPathResolved) === path.resolve(outputPath)) {
         console.warn(
           `   ⚠️  [compact-reporter] fullPath совпал с compactPath, ` +
@@ -401,20 +429,17 @@ export function generateCompactReport(
       }
     }
 
-    // ---- Сохраняем сжатый JSON (основной) ----
     if (compact) {
       const saved = saveJsonFile(outputPath, compact, 'Сжатый JSON', verbose);
       compactPath = saved.path;
       compactSize = saved.size;
     }
 
-    // ---- Сохраняем полный JSON (для отладки) ----
     if (saveFull && fullPathResolved) {
       const saved = saveJsonFile(fullPathResolved, full, 'Полный JSON', verbose);
       fullPath = saved.path;
       fullSize = saved.size;
 
-      // ✅ v9.0.7: финальная проверка
       if (compactPath && path.resolve(compactPath) === path.resolve(fullPath)) {
         console.error(
           `   ❌ [compact-reporter] КРИТИЧЕСКАЯ ОШИБКА: ` +
@@ -423,7 +448,6 @@ export function generateCompactReport(
       }
     }
 
-    // ---- Сохраняем edges в отдельный файл (только если saveEdges: true) ----
     if (saveEdges && compact) {
       const edgesPathResolved = insertSuffixBeforeExtension(outputPath, edgesSuffix);
 
@@ -455,7 +479,6 @@ export function generateCompactReport(
       edgesSize = saved.size;
     }
 
-    // ---- Считаем коэффициент сжатия ----
     if (compactSize !== undefined && fullSize !== undefined && fullSize > 0) {
       compressionRatio = (compactSize / fullSize) * 100;
       if (verbose) {
@@ -556,14 +579,7 @@ interface SaveJsonResult {
  * ✅ v15.5.5: JSON-SAFE СЕРИАЛИЗАЦИЯ
  * ════════════════════════════════════════════════════════════
  *
- * Раньше здесь использовался `safeJsonStringify` из
- * `utils/safe-json.js`, который умел обрабатывать BigInt,
- * Map, Set и Circular, но НЕ умел корректно сериализовать
- * Set/Map/RegExp/Date/class instances в JSON-совместимом
- * виде для round-trip.
- *
- * Теперь используется `jsonSafeStringify` из
- * `./codec/stable-stringify.js`:
+ * Используется `jsonSafeStringify` из `./codec/stable-stringify.js`:
  *   1. Рекурсивно вызывает `sanitizeForJson(value)`.
  *   2. Set    → массив элементов
  *   3. Map    → plain object
@@ -587,7 +603,6 @@ function saveJsonFile(
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  // ✅ v15.5.5: JSON-safe сериализация
   const json = jsonSafeStringify(data);
 
   fs.writeFileSync(filePath, json, 'utf-8');
@@ -600,27 +615,6 @@ function saveJsonFile(
 
   return { path: filePath, size };
 }
-
-// ============================================
-// ✅ v15.5.3: КАНОНИЗАЦИЯ FULLJSON — ВЫНЕСЕНА
-// ============================================
-//
-// Функции extractNumericId, sortByIdNumeric и canonicalizeFullJSON
-// перенесены в ./utils/canonical-utils.js.
-//
-// Причина: они дублировались с codec-encode.ts и не были
-// синхронизированы. Теперь единый источник истины.
-//
-// Импортируются в начале файла:
-//   import {
-//     extractNumericId,
-//     sortByIdNumeric,
-//     canonicalizeFullJSON,
-//   } from './utils/canonical-utils.js';
-//
-// Использование осталось прежним — canonicalizeFullJSON
-// вызывается в конце collectFullJSON.
-// ============================================
 
 // ============================================
 // ✅ v15.0.2: ПОДСЧЁТ CONDITIONALS
@@ -665,9 +659,7 @@ function mapCrossFileCallKindToCallType(
 
 /**
  * Находит подходящий `CallsInfoEntry` для вызова `callName`
- * в функции `func`. Сопоставление идёт по:
- *   1. `targetName === callName`
- *   2. `line` совпадает (если есть несколько — берём первый)
+ * в функции `func`.
  */
 function findCallsInfo(
   func: FunctionInfo,
@@ -676,11 +668,9 @@ function findCallsInfo(
   const callsInfo = (func as any).callsInfo as CallsInfoEntry[] | undefined;
   if (!Array.isArray(callsInfo) || callsInfo.length === 0) return undefined;
 
-  // Точное совпадение по имени
   const matches = callsInfo.filter(ci => ci && ci.targetName === callName);
   if (matches.length === 0) return undefined;
 
-  // Если несколько — берём первый (эвристика)
   return matches[0];
 }
 
@@ -690,18 +680,6 @@ function findCallsInfo(
 
 /**
  * Строит карту `compactId (func.id) → globalFnId (fn1, fn2, ...)`.
- *
- * Нужна для резолва `lexicalLinks.parentFunctionId` /
- * `lexicalLinks.childFunctionId` из формата `EntitiesResult`
- * (локальные ID) в формат `FullJSON` (глобальные ID).
- *
- * Сопоставление идёт по:
- *   1. `fileId` (совпадает с `fileMap`)
- *   2. `line` (совпадает)
- *   3. `name` (совпадает)
- *
- * Если несколько функций в одной строке с одинаковым именем
- * (маловероятно, но возможно) — берём первую.
  */
 function buildCompactIdToGlobalFnIdMap(
   entitiesMap: Record<string, EntitiesResult>,
@@ -714,11 +692,8 @@ function buildCompactIdToGlobalFnIdMap(
   for (const [filePath, entities] of Object.entries(entitiesMap)) {
     if (!entities) continue;
 
-    // Нормализуем путь так же, как в основном цикле
     const absolutePath = path.resolve(filePath);
-    const relativePath = path
-      .relative(projectRoot, absolutePath)
-      .replace(/\\/g, '/');
+    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
 
     const file = fileMap.get(relativePath);
     if (!file) continue;
@@ -727,7 +702,6 @@ function buildCompactIdToGlobalFnIdMap(
     for (const func of funcs) {
       if (!func || !func.id) continue;
 
-      // Ищем глобальную FunctionData
       const globalFn = functions.find(
         f =>
           f.fileId === file.id &&
@@ -745,48 +719,153 @@ function buildCompactIdToGlobalFnIdMap(
 }
 
 // ============================================
+// ✅ v15.5.6: VUE-СЕКЦИЯ — КОНВЕРТЕР В FullJSON.vue
+// ============================================
+
+/**
+ * Конвертирует `VueEntities` (из классификатора) в `VueSectionFull`
+ * (формат `FullJSON.vue`).
+ *
+ * ════════════════════════════════════════════════════════════
+ * ЧТО ДЕЛАЕТ
+ * ════════════════════════════════════════════════════════════
+ *
+ *   1. Проходит по `vueEntities.sfc` и для каждого SFC:
+ *      - резолвит `fileId` → `moduleId` через `fileMap`
+ *   2. Проходит по composables / macros / hooks / reactivity / icons
+ *      и нормализует формат.
+ *
+ * ════════════════════════════════════════════════════════════
+ * ⚠️ ВАЖНО ДЛЯ ROUND-TRIP
+ * ════════════════════════════════════════════════════════════
+ *
+ *   `sfc.composables/props/emits/exposed` — это массивы
+ *   РЕАЛЬНЫХ имён. В `codec-encode.ts` из них берётся
+ *   только ДЛИНА (счётчик) и пишется в `sfc.c[i][1] = count`.
+ *
+ *   При `decode` в `codec-decode.ts` восстанавливаются
+ *   плейсхолдеры `['#0', '#1', ...]` нужной длины.
+ *
+ *   Это гарантирует, что `encode(decode(compact)) === compact`
+ *   по полю `sfc.c` (счётчики совпадают).
+ *
+ * @param vueEntities — результат `classifyVueEntities()`
+ * @param fileMap     — карта `relativePath → FileData`
+ * @param projectRoot — корень проекта (для нормализации путей)
+ * @returns VueSectionFull
+ */
+function convertVueEntitiesToFull(
+  vueEntities: VueEntities,
+  fileMap: Map<string, FileData>,
+  projectRoot: string
+): VueSectionFull {
+  // Вспомогательная функция: filePath → fileId (f1, f2, ...)
+  const resolveFileId = (filePath: string): string => {
+    const absolutePath = path.resolve(filePath);
+    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
+    const file = fileMap.get(relativePath);
+    return file?.id ?? 'f1';
+  };
+
+  const resolveModuleId = (filePath: string): string => {
+    const fileId = resolveFileId(filePath);
+    for (const [, f] of fileMap) {
+      if (f.id === fileId) return f.moduleId;
+    }
+    return 'm1';
+  };
+
+  return {
+    // ────────────────────────────────────────────────────
+    // SFC
+    // ────────────────────────────────────────────────────
+    sfc: (vueEntities.sfc ?? []).map(s => ({
+      fileId: resolveFileId(s.fileId),
+      moduleId: resolveModuleId(s.fileId),
+      name: s.name,
+      blocks: s.blocks,
+      composables: s.composables ?? [],
+      props: s.props ?? [],
+      emits: s.emits ?? [],
+      exposed: s.exposed ?? [],
+    })),
+
+    // ────────────────────────────────────────────────────
+    // Composables
+    // ────────────────────────────────────────────────────
+    composables: (vueEntities.composables ?? []).map(c => ({
+      id: c.id,
+      name: c.name,
+      fileId: resolveFileId(c.fileId),
+      kind: c.kind,
+      returnShape: c.returnShape,
+      returnedKeys: c.returnedKeys ?? [],
+      callers: (c.callers ?? []).map(resolveFileId),
+    })),
+
+    // ────────────────────────────────────────────────────
+    // Macros
+    // ────────────────────────────────────────────────────
+    macros: (vueEntities.macros ?? []).map(m => ({
+      id: m.id,
+      fileId: resolveFileId(m.fileId),
+      kind: m.kind,
+      line: m.line,
+    })),
+
+    // ────────────────────────────────────────────────────
+    // Hooks
+    // ────────────────────────────────────────────────────
+    hooks: (vueEntities.hooks ?? []).map(h => ({
+      id: h.id,
+      fileId: resolveFileId(h.fileId),
+      hookName: h.hookName,
+      line: h.line,
+    })),
+
+    // ────────────────────────────────────────────────────
+    // Reactivity
+    // ────────────────────────────────────────────────────
+    reactivity: (vueEntities.reactivity ?? []).map(r => ({
+      id: r.id,
+      fileId: resolveFileId(r.fileId),
+      kind: r.kind,
+      line: r.line,
+      name: r.name,
+    })),
+
+    // ────────────────────────────────────────────────────
+    // Icons
+    // ────────────────────────────────────────────────────
+    icons: (vueEntities.icons ?? []).map(i => ({
+      id: i.id,
+      fileId: resolveFileId(i.fileId),
+      name: i.name,
+      category: i.category,
+    })),
+  };
+}
+
+// ============================================
 // СБОР ПОЛНОГО JSON (ВНУТРЕННЯЯ ФУНКЦИЯ)
 // ============================================
 
 /**
  * Собирает полный JSON из карты сущностей.
  *
- * ✅ [P0-fix-2]: СТАБИЛЬНЫЙ ПОРЯДОК ОБХОДА ФАЙЛОВ.
- *                `sortedFilePaths = Object.keys(workingEntitiesMap).sort()`
- *                используется во ВСЕХ проходах.
- * ✅ [P0-fix]: резолвинг parentFunctionId — локальный ID (f18_813)
- *              преобразуется в глобальный (fn42) через локальную карту.
- * ✅ [P0] проброс parentFunctionId в FunctionData
- * ✅ [P1] сборка full.lexicalLinks с резолвом compactId → globalFnId
- * ✅ [P2] проброс callKind/calleeName/argumentIndex/column в CallData
- *
- * ✅ v15.4.0 (P3): обогащение calls из ctx.crossFileCalls.
- * ✅ v15.0.7: isExternal/isUnresolved — производные от resolvedToFileId.
- * ✅ v15.0.6: isExternal — производное от imp.toFileId.
- * ✅ v15.0.4: fill importedName/localName, обрабатывает реэкспорты.
- * ✅ v15.0.3: все пути нормализуются в ОТНОСИТЕЛЬНЫЕ от `process.cwd()`.
- * ✅ v15.0.2: conditionals живут ТОЛЬКО в `templates[].conditionals`.
- * ✅ v15.0.1: `imports[].type` теперь ВСЕГДА принимает только
- *   `'named' | 'default' | 'namespace'`.
- * ✅ v14.0.0: в конце вызывается `canonicalizeFullJSON`.
- * ✅ v13.0.0: version = CODEC_VERSION; валидация toFileId.
- * ✅ v11.1.0: valuesMode пробрасывается.
- * ✅ v10.3: базовые секции ВСЕГДА массивы.
- * ✅ v9.0.2: templates.push содержит ровно 12 полей TemplateData.
+ * ✅ v15.5.7: `vueKind` ГАРАНТИРОВАННО пробрасывается в `FunctionData`.
+ * ✅ v15.5.6: заполняет `full.vue` через `classifyVueEntities`.
  */
 function collectFullJSON(
   entitiesMap: Record<string, EntitiesResult>,
   verbose: boolean = false,
   valuesMode: ValuesMode = DEFAULT_VALUES_MODE,
-  _crossFileCalls?: CrossFileCall[]  // ✅ v15.4.0 (P3)
+  _crossFileCalls?: CrossFileCall[]
 ): FullJSON {
-  // ============================================
-  // ✅ v15.0.3: projectRoot для нормализации путей
-  // ============================================
   const projectRoot = process.cwd();
 
   // ============================================
-  // ✅ v8.5.0: Инициализация tsconfig
+  // Инициализация tsconfig
   // ============================================
   try {
     clearTsConfigCache();
@@ -806,37 +885,7 @@ function collectFullJSON(
     }
   }
 
-  // ============================================
-  // ✅ v15.0.4: workingEntitiesMap = entitiesMap
-  // ============================================
   const workingEntitiesMap = entitiesMap;
-
-  // ============================================
-  // ✅ v15.5.2 (P0-fix-2): СТАБИЛЬНЫЙ ПОРЯДОК ОБХОДА ФАЙЛОВ
-  // ============================================
-  //
-  // ПРОБЛЕМА:
-  //   `Object.entries(workingEntitiesMap)` возвращает ключи
-  //   в порядке добавления. Если entitiesMap собирается
-  //   асинхронно (Promise.all, Map, glob с параллелизмом),
-  //   порядок может меняться между прогонами.
-  //
-  //   Это приводило к:
-  //     1. `constantCounter` присваивал разные id (cn1, cn2, ...)
-  //        одним и тем же константам.
-  //     2. `canonicalizeFullJSON` сортировал `constants[]` по этим
-  //        id, но сортировка была бессмысленной.
-  //     3. Порядок `constants[]` в `full` становился недетерминированным.
-  //     4. При повторном `encode(full)` значения попадали в `valueDict`
-  //        в разном порядке → `values.length` рос на +1 → позиция
-  //        первой коллизии "плавала" (1089, 1111, ...).
-  //
-  // РЕШЕНИЕ:
-  //   `Object.keys(workingEntitiesMap).sort()` даёт лексикографический
-  //   порядок, детерминированный между прогонами.
-  //
-  // Применяется во ВСЕХ 4 проходах ниже.
-  // ============================================
   const sortedFilePaths = Object.keys(workingEntitiesMap).sort();
 
   if (verbose) {
@@ -857,7 +906,6 @@ function collectFullJSON(
   const reExports: ReExportData[] = [];
   const templates: TemplateData[] = [];
 
-  // ✅ v9.0.0: новые секции
   const lifecycle: LifecycleHook[] = [];
   const effects: EffectEdge[] = [];
   const injections: InjectionEdge[] = [];
@@ -871,8 +919,6 @@ function collectFullJSON(
   const moduleMap = new Map<string, ModuleData>();
   const fileMap = new Map<string, FileData>();
   const functionMap = new Map<string, FunctionData[]>();
-
-  // ✅ v8.5.0: карта source → fileId
   const sourceToFileIdMap = new Map<string, string>();
 
   // ============================================
@@ -888,33 +934,24 @@ function collectFullJSON(
   let callCounter = 0;
   let reExportCounter = 0;
   let conditionalCounter = 0;
-
-  // ✅ v9.0.0: счётчики новых секций
   let lifecycleCounter = 0;
   let effectCounter = 0;
   let injectionCounter = 0;
   let reactivityCounter = 0;
   let typeCounter = 0;
   let typeRefCounter = 0;
-
-  // ✅ v15.0.4: счётчик для диагностики
   let emptyNameFixCount = 0;
 
   // ============================================
   // ПЕРВЫЙ ПРОХОД: модули, файлы, функции, классы, константы
   // ============================================
-  // ✅ v15.5.2 (P0-fix-2): используем `sortedFilePaths`
   for (const filePath of sortedFilePaths) {
     const entities = workingEntitiesMap[filePath];
     if (!entities) continue;
 
-    // ✅ v15.0.3: НОРМАЛИЗАЦИЯ ПУТИ
     const absolutePath = path.resolve(filePath);
-    const relativePath = path
-      .relative(projectRoot, absolutePath)
-      .replace(/\\/g, '/');
+    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
 
-    // Модуль = директория файла
     const dirName = path.basename(path.dirname(relativePath)) || 'root';
     let module = moduleMap.get(dirName);
 
@@ -930,7 +967,6 @@ function collectFullJSON(
       modules.push(module);
     }
 
-    // Файл
     let file = fileMap.get(relativePath);
 
     if (!file) {
@@ -945,7 +981,6 @@ function collectFullJSON(
       module.fileIds.push(file.id);
     }
 
-    // ✅ v8.5.0: регистрируем МНОГО вариантов пути
     const normalizedPath = relativePath;
     const normalizedAbs = absolutePath.replace(/\\/g, '/');
 
@@ -961,21 +996,10 @@ function collectFullJSON(
 
     // ============================================================
     // ✅ P0-fix: ФУНКЦИИ — резолвинг parentFunctionId
-    // ============================================================
-    //
-    // Проблема: в EntitiesResult.functions[].parentFunctionId
-    // хранится ЛОКАЛЬНЫЙ ID функции (формат: f18_813),
-    // а в FullJSON.functions[].id используется ГЛОБАЛЬНЫЙ ID (fn42).
-    //
-    // Раньше: parentFunctionId писался как есть → в FullJSON
-    //          оказывался f18_813, который ни на что не ссылается.
-    // Теперь:  строим локальную карту compactId → globalFnId
-    //          ДО создания FunctionData, и резолвим сразу.
+    // ✅ v15.5.7: ГАРАНТИРОВАННЫЙ проброс vueKind
     // ============================================================
     const funcs = entities.functions || [];
 
-    // Шаг 1: предварительно нумеруем функции файла — точно так же,
-    // как это сделает основной цикл (пропуская !func.name).
     const localCompactIdToGlobalFnId = new Map<string, string>();
     {
       let previewCounter = functionCounter;
@@ -988,18 +1012,33 @@ function collectFullJSON(
       }
     }
 
-    // Шаг 2: основной цикл — с резолвом parentFunctionId
     for (const func of funcs) {
       if (!func || !func.name) continue;
 
       functionCounter++;
 
-      // ✅ P0-fix: резолвим локальный parentFunctionId (f18_813) в глобальный (fnN)
       const rawParent = (func as any).parentFunctionId as string | null | undefined;
       const resolvedParentFunctionId =
         rawParent && localCompactIdToGlobalFnId.has(rawParent)
           ? localCompactIdToGlobalFnId.get(rawParent)!
           : null;
+
+      // ✅ v15.5.7: ГАРАНТИРОВАННЫЙ проброс vueKind
+      // Извлекаем vueKind из func, используя явное приведение типа.
+      // Fallback на 'function', если поле отсутствует — это безопасно,
+      // потому что 'function' является значением по умолчанию для VueKind.
+      //
+      // ⚠️ ВАЖНО: если func.vueKind === undefined, мы ВСЁ РАВНО записываем
+      // 'function'. Это гарантирует, что поле vueKind всегда присутствует
+      // в FunctionData, и decode(encode(full)) === full по этому полю.
+      //
+      // Ранее (v15.5.6 и ниже) использовалось:
+      //   vueKind: (func as any).vueKind as VueKind | undefined
+      // Это приводило к тому, что если func.vueKind === undefined,
+      // в FunctionData.vueKind тоже было undefined, и round-trip
+      // по этому полю падал (undefined ≠ 'function').
+      const rawVueKind = (func as any).vueKind as VueKind | undefined | null;
+      const vueKind: VueKind = rawVueKind ?? 'function';
 
       const funcData: FunctionData = {
         id: `fn${functionCounter}`,
@@ -1013,11 +1052,11 @@ function collectFullJSON(
         isMethod: func.isMethod || false,
         params: func.params || [],
         returnType: func.returnType,
-        // ✅ P0-fix: глобальный ID (fn42), а не локальный (f18_813)
         parentFunctionId: resolvedParentFunctionId,
+        // ✅ v15.5.7: vueKind ВСЕГДА заполнен (минимум 'function')
+        vueKind,
       };
 
-      // ✅ [P1]: флаги (совместимость с encodeFlags)
       if (func.isEventHandler) funcData.isEventHandler = true;
       if (func.isNested) funcData.isNested = true;
       if ((func as any).isSelf) funcData.isSelf = true;
@@ -1054,8 +1093,6 @@ function collectFullJSON(
 
       constantCounter++;
 
-      // ✅ v15.5.4: единый критерий через isValueKept
-      // (синхронизирован с classifyValue через VALUE_THRESHOLDS)
       const valueToStore = isValueKept(cn.value, valuesMode) ? cn.value : undefined;
 
       constants.push({
@@ -1077,18 +1114,15 @@ function collectFullJSON(
   }
 
   // ============================================
-  // ✅ v8.4.0 + v15.0.2 + v15.0.3: сбор Vue-шаблонов
+  // СБОР VUE-ШАБЛОНОВ
   // ============================================
-  // ✅ v15.5.2 (P0-fix-2): используем `sortedFilePaths`
   for (const filePath of sortedFilePaths) {
     const entities = workingEntitiesMap[filePath];
     if (!entities) continue;
     if (!filePath.endsWith('.vue')) continue;
 
     const absolutePath = path.resolve(filePath);
-    const relativePath = path
-      .relative(projectRoot, absolutePath)
-      .replace(/\\/g, '/');
+    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
 
     const dirName = path.basename(path.dirname(relativePath)) || 'root';
     const module = moduleMap.get(dirName);
@@ -1162,15 +1196,12 @@ function collectFullJSON(
   // ============================================
   // ВТОРОЙ ПРОХОД: экспорты, импорты, вызовы, реэкспорты
   // ============================================
-  // ✅ v15.5.2 (P0-fix-2): используем `sortedFilePaths`
   for (const filePath of sortedFilePaths) {
     const entities = workingEntitiesMap[filePath];
     if (!entities) continue;
 
     const absolutePath = path.resolve(filePath);
-    const relativePath = path
-      .relative(projectRoot, absolutePath)
-      .replace(/\\/g, '/');
+    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
 
     const dirName = path.basename(path.dirname(relativePath)) || 'root';
     const module = moduleMap.get(dirName);
@@ -1249,7 +1280,7 @@ function collectFullJSON(
     }
 
     // --------------------------------------------
-    // ИМПОРТЫ (v15.0.7: isExternal — производное)
+    // ИМПОРТЫ
     // --------------------------------------------
     const importsList = entities.imports || [];
 
@@ -1495,7 +1526,6 @@ function collectFullJSON(
 
     // --------------------------------------------
     // ВЫЗОВЫ ФУНКЦИЙ
-    // ✅ [P2]: пробрасываем callKind/calleeName/argumentIndex/column
     // --------------------------------------------
     const funcs = entities.functions || [];
 
@@ -1515,8 +1545,6 @@ function collectFullJSON(
         const toFunc = toFuncArray && toFuncArray.length > 0 ? toFuncArray[0] : undefined;
 
         const callType = detectCallType(func, callName);
-
-        // ✅ [P2]: ищем callsInfo для этого вызова
         const info = findCallsInfo(func, callName);
 
         if (!toFunc) {
@@ -1528,7 +1556,6 @@ function collectFullJSON(
             line: info?.line ?? func.line ?? 0,
             type: callType,
           };
-          // ✅ [P2]: расширенные поля
           if (info?.column !== undefined) callData.column = info.column;
           if (info?.callKind !== undefined) callData.callKind = info.callKind;
           if (info?.calleeName !== undefined) callData.calleeName = info.calleeName;
@@ -1548,7 +1575,6 @@ function collectFullJSON(
           line: info?.line ?? func.line ?? 0,
           type: callType,
         };
-        // ✅ [P2]: расширенные поля
         if (info?.column !== undefined) callData.column = info.column;
         if (info?.callKind !== undefined) callData.callKind = info.callKind;
         if (info?.calleeName !== undefined) callData.calleeName = info.calleeName;
@@ -1594,7 +1620,6 @@ function collectFullJSON(
         type: mapCrossFileCallKindToCallType(cf.callKind),
       };
 
-      // ✅ v15.3.0 (P2): опциональные поля
       if (cf.column !== undefined) call.column = cf.column;
       if (cf.callKind !== undefined) call.callKind = cf.callKind;
       if (cf.calleeName !== undefined) call.calleeName = cf.calleeName;
@@ -1609,17 +1634,14 @@ function collectFullJSON(
   }
 
   // ============================================
-  // ✅ v9.0.0: СБОР НОВЫХ СЕКЦИЙ
+  // СБОР РАСШИРЕННЫХ СЕКЦИЙ (lifecycle/effects/injections/reactivity/types)
   // ============================================
-  // ✅ v15.5.2 (P0-fix-2): используем `sortedFilePaths`
   for (const filePath of sortedFilePaths) {
     const entities = workingEntitiesMap[filePath];
     if (!entities) continue;
 
     const absolutePath = path.resolve(filePath);
-    const relativePath = path
-      .relative(projectRoot, absolutePath)
-      .replace(/\\/g, '/');
+    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
 
     const dirName = path.basename(path.dirname(relativePath)) || 'root';
     const module = moduleMap.get(dirName);
@@ -1739,13 +1761,6 @@ function collectFullJSON(
   // ============================================
   // ✅ [P1]: LEXICAL LINKS
   // ============================================
-  // Собираем lexicalLinks из всех entitiesMap и резолвим
-  // локальные ID (func.id) в глобальные (fn1, fn2, ...)
-  // через карту compactIdToGlobalFnId.
-  //
-  // ✅ v15.5.2 (P0-fix-2): используем `sortedFilePaths` для
-  // стабильного порядка lexicalLinks.
-  // ============================================
   const lexicalLinks: LexicalLink[] = [];
   let lexicalCounter = 0;
 
@@ -1790,7 +1805,53 @@ function collectFullJSON(
   }
 
   // ============================================
-  // Статистика
+  // ✅ v15.5.6: VUE-СЕКЦИЯ
+  // ============================================
+  // Собираем Vue-сущности через classifyVueEntities() и конвертируем
+  // в формат FullJSON.vue.
+  //
+  // ⚠️ Счётчики sfc.c[i][1] / sfc.p[i][1] / sfc.e[i][1] / sfc.x[i][1]
+  //    заполняются РЕАЛЬНЫМИ длинами массивов composables / props /
+  //    emits / exposed. Это гарантирует round-trip:
+  //      encode(full) → compact.vue.sfc.c[i] = [fileIdx, N]
+  //      decode(compact) → full.vue.sfc[i].composables = ['#0', ..., '#N-1']
+  //      encode(decode(compact)) → compact.vue.sfc.c[i] = [fileIdx, N]  ✅
+  // ============================================
+  let vue: VueSectionFull | undefined;
+
+  try {
+    const vueEntities: VueEntities = classifyVueEntities(workingEntitiesMap);
+
+    const hasAnyVue =
+      vueEntities.sfc.length > 0 ||
+      vueEntities.composables.length > 0 ||
+      vueEntities.macros.length > 0 ||
+      vueEntities.hooks.length > 0 ||
+      vueEntities.reactivity.length > 0 ||
+      vueEntities.icons.length > 0;
+
+    if (hasAnyVue) {
+      vue = convertVueEntitiesToFull(vueEntities, fileMap, projectRoot);
+
+      if (verbose) {
+        console.log(`   📦 Vue SFC: ${vue.sfc.length}`);
+        console.log(`   ◇  Composables: ${vue.composables.length}`);
+        console.log(`   ⚙  Macros: ${vue.macros.length}`);
+        console.log(`   ⚓ Hooks: ${vue.hooks.length}`);
+        console.log(`   ⚡ Reactivity: ${vue.reactivity.length}`);
+        console.log(`   🖼  Icons: ${vue.icons.length}`);
+      }
+    }
+  } catch (err) {
+    if (verbose) {
+      console.warn(
+        `   ⚠️  Ошибка classifyVueEntities: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  // ============================================
+  // СТАТИСТИКА
   // ============================================
   const totalConditionals = templates.reduce(
     (sum, t) => sum + (t.conditionals?.length ?? 0),
@@ -1808,8 +1869,22 @@ function collectFullJSON(
     totalCalls: calls.length,
     totalReExports: reExports.length,
     totalTemplates: templates.length,
-    // ✅ [P1]
     totalLexicalLinks: lexicalLinks.length,
+
+    // ==========================================
+    // ✅ v15.5.6: Vue-статистика
+    // ==========================================
+    // ⚠️ ВАЖНО: имена полей должны СОВПАДАТЬ с `StatisticsData`
+    //    в `codec-types.ts`. Используются `totalVueSfc` (а НЕ
+    //    `totalSfcComponents`), `totalComposables`, `totalMacros`,
+    //    `totalHooks`, `totalReactivity`, `totalIcons`.
+    // ==========================================
+    totalVueSfc: vue?.sfc.length ?? 0,
+    totalComposables: vue?.composables.length ?? 0,
+    totalMacros: vue?.macros.length ?? 0,
+    totalHooks: vue?.hooks.length ?? 0,
+    totalReactivity: vue?.reactivity.length ?? 0,
+    totalIcons: vue?.icons.length ?? 0,
   };
 
   (statistics as any).totalConditionals = totalConditionals;
@@ -1861,15 +1936,12 @@ function collectFullJSON(
     reactivity: reactivity.length > 0 ? reactivity : undefined,
     types: types.length > 0 ? types : undefined,
     typeRefs: typeRefs.length > 0 ? typeRefs : undefined,
-    // ✅ [P1]
     lexicalLinks: lexicalLinks.length > 0 ? lexicalLinks : undefined,
+
+    // ✅ v15.5.6: Vue-секция
+    vue,
   };
 
-  // ============================================
-  // ✅ v14.0.0: КАНОНИЗАЦИЯ
-  // ============================================
-  // ✅ v15.5.3: canonicalizeFullJSON теперь импортируется
-  // из ./utils/canonical-utils.js (единый источник истины).
   return canonicalizeFullJSON(result);
 }
 
@@ -1877,9 +1949,6 @@ function collectFullJSON(
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
 // ============================================
 
-/**
- * ✅ v9.0.7: вставляет суффикс перед расширением файла.
- */
 function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
   const ext = path.extname(filePath);
   const base = filePath.slice(0, -ext.length);
@@ -1906,10 +1975,6 @@ function insertSuffixBeforeExtension(filePath: string, suffix: string): string {
   return result;
 }
 
-/**
- * ✅ v9.0.7: аварийная функция — добавляет числовой суффикс,
- * пока результат не станет уникальным относительно исходного пути.
- */
 function insertUniqueSuffix(filePath: string, suffix: string): string {
   const ext = path.extname(filePath);
   const base = filePath.slice(0, -ext.length);
@@ -1935,19 +2000,12 @@ function insertUniqueSuffix(filePath: string, suffix: string): string {
   return `${base}${normalizedSuffix}.${timestamp}${ext}`;
 }
 
-/**
- * ✅ v8.5.0: resolveToFileId с полной интеграцией tsconfig.
- *
- * ✅ v15.0.7-fix: алиасы `@/`, `~/`, `#/` больше НЕ классифицируются
- *   как external.
- */
 function resolveToFileId(
   source: string,
   fromFilePath: string,
   sourceToFileIdMap: Map<string, string>,
   fileMap: Map<string, FileData>
 ): string | null {
-  // 1. Прямой поиск в карте
   const direct = sourceToFileIdMap.get(source);
   if (direct) return direct;
 
@@ -1955,7 +2013,6 @@ function resolveToFileId(
   const directNormalized = sourceToFileIdMap.get(normalizedSource);
   if (directNormalized) return directNormalized;
 
-  // 2. Алиасы через tsconfig
   const isAliasLike =
     source.startsWith('@/') ||
     source.startsWith('#/') ||
@@ -2005,7 +2062,6 @@ function resolveToFileId(
     }
   }
 
-  // 3. Относительные пути через resolveFilePath
   if (source.startsWith('.')) {
     try {
       const fromDir = path.dirname(fromFilePath);
@@ -2033,7 +2089,6 @@ function resolveToFileId(
     }
   }
 
-  // 4. Поиск по basename
   const sourceBasename = path.basename(source);
   const sourceNoExt = sourceBasename.replace(/\.[^.]+$/, '');
 
@@ -2043,7 +2098,6 @@ function resolveToFileId(
   const byNoExt = sourceToFileIdMap.get(sourceNoExt);
   if (byNoExt) return byNoExt;
 
-  // 5. Внешний пакет (но НЕ алиас проекта)
   if (!source.startsWith('.')) {
     const isProjectAlias =
       source.startsWith('@/') ||
@@ -2054,7 +2108,7 @@ function resolveToFileId(
       source === '#';
 
     if (isProjectAlias) {
-      return null; // → станет unresolved:@/components/ui
+      return null;
     }
 
     const pkg = source.startsWith('@')
@@ -2066,9 +2120,6 @@ function resolveToFileId(
   return null;
 }
 
-/**
- * Определяет тип импорта по типу specifier.
- */
 function getImportTypeFromSpecifierType(
   specifierType: string
 ): 'named' | 'default' | 'namespace' {
@@ -2085,9 +2136,6 @@ function getImportTypeFromSpecifierType(
   }
 }
 
-/**
- * Определяет тип вызова по контексту.
- */
 function detectCallType(
   func: FunctionInfo,
   callName: string
@@ -2115,16 +2163,6 @@ function detectCallType(
 
   return 'direct';
 }
-
-// ============================================
-// ✅ v11.1.0: КЛАССИФИКАЦИЯ ЗНАЧЕНИЙ
-// ============================================
-//
-// ✅ v15.5.4: `shouldKeepValue` УДАЛЕНА.
-// Единый критерий — `isValueKept` из './codec/values-filter.js'.
-//
-// ✅ v15.5.5: диагностика не-JSON-значений добавлена в
-// `generateCompactReport` через `isJsonSafe`.
 
 // ============================================
 // ЭКСПОРТ ПО УМОЛЧАНИЮ

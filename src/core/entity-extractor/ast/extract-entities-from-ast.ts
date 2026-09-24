@@ -1,11 +1,16 @@
 // packages/ast-analyzer/src/core/entity-extractor/ast/extract-entities-from-ast.ts
 // ============================================
-// ИЗВЛЕЧЕНИЕ СУЩНОСТЕЙ ИЗ AST — v17.0.0
+// ИЗВЛЕЧЕНИЕ СУЩНОСТЕЙ ИЗ AST — v17.1.0
 // ============================================
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
+//
+// v17.1.0 (Vue-сущности — минимальные изменения):
+//   - ✅ ДОБАВЛЕНО: вызов classifyVueKind() в registerFunction
+//   - ✅ ДОБАВЛЕНО: поле vueKind в FunctionInfo
+//   - ✅ ДОБАВЛЕНО: импорт classifyVueKind из helpers/
 //
 // v17.0.0 (MVP P0/P1/P2 — минимальные изменения):
 //   - ✅ [P0] functionStack + enterFunction/exitFunction
@@ -68,6 +73,10 @@ import { calculateComplexity } from '../helpers/calculate-complexity.js';
 import { analyzeSecurity } from '../helpers/analyze-security.js';
 import { createEmptyEntitiesResult } from '../helpers/create-empty-result.js';
 import { inferFunctionName } from '../helpers/infer-function-name.js';
+
+// ✅ v17.1.0: классификация Vue-сущностей
+import { classifyVueKind } from '../helpers/classify-vue-kind.js';
+
 import { findFunctionNode } from './find-function-node.js';
 import { collectAllCallsRecursive } from './collect-all-calls-recursive.js';
 import { processExports } from './process-exports.js';
@@ -81,14 +90,14 @@ export interface ExtendedCallInfo {
   line: number;
   column?: number;
   callKind?:
-    | 'direct'
-    | 'method'
-    | 'callback'
-    | 'constructor'
-    | 'tagged-template'
-    | 'optional-chain'
-    | 'spread'
-    | 'new';
+      | 'direct'
+      | 'method'
+      | 'callback'
+      | 'constructor'
+      | 'tagged-template'
+      | 'optional-chain'
+      | 'spread'
+      | 'new';
   calleeName?: string;
   argumentIndex?: number;
 }
@@ -117,14 +126,16 @@ export interface TraverseOptions {
  * Всё состояние (контекст, глубина, обработчики) инкапсулировано
  * внутри замыкания этой функции. Потокобезопасно.
  *
+ * ✅ v17.1.0: добавлена Vue-классификация через classifyVueKind().
+ *
  * @param ast      — AST-дерево
  * @param filePath — путь к файлу
  * @param options  — опции обхода (по умолчанию: всё дерево)
  */
 export function extractEntitiesFromAST(
-  ast: any,
-  filePath?: string,
-  options: TraverseOptions = {}
+    ast: any,
+    filePath?: string,
+    options: TraverseOptions = {}
 ): EntitiesResult {
   const result = createEmptyEntitiesResult(filePath);
 
@@ -169,12 +180,12 @@ export function extractEntitiesFromAST(
    * Добавляет лексическую связь.
    */
   function addLexicalLink(
-    parentFunctionId: string | null,
-    childFunctionId: string,
-    relation: LexicalRelation,
-    line: number,
-    argumentIndex?: number,
-    calleeName?: string
+      parentFunctionId: string | null,
+      childFunctionId: string,
+      relation: LexicalRelation,
+      line: number,
+      argumentIndex?: number,
+      calleeName?: string
   ): void {
     lexicalCounter++;
     lexicalLinks.push({
@@ -235,8 +246,8 @@ export function extractEntitiesFromAST(
 
     while (current && current.type !== 'Program' && depthCount < 50) {
       if (
-        (current.type === 'FunctionDeclaration' || current.type === 'FunctionExpression') &&
-        current.id
+          (current.type === 'FunctionDeclaration' || current.type === 'FunctionExpression') &&
+          current.id
       ) {
         parentFunctions.unshift(current.id.name);
         depthCount++;
@@ -280,26 +291,27 @@ export function extractEntitiesFromAST(
    * ✅ [P0] заполняет parentFunctionId
    * ✅ [P1] добавляет lexicalLink и boundTo
    * ✅ [P2] сохраняет callsInfo (заполняется позже в traverse)
+   * ✅ v17.1.0: заполняет vueKind через classifyVueKind()
    */
   function registerFunction(
-    name: string,
-    node: any,
-    opts: {
-      isExported: boolean;
-      isAsync: boolean;
-      isMethod: boolean;
-      isArrow: boolean;
-      className?: string;
-      parentFunc?: string;
-      isNested: boolean;
-      depth: number;
-      isEventHandler: boolean;
-      eventType?: string;
-      // ✅ v15.2.0 (P1): опции для lexicalLink
-      relation?: LexicalRelation;
-      argumentIndex?: number;
-      calleeName?: string;
-    }
+      name: string,
+      node: any,
+      opts: {
+        isExported: boolean;
+        isAsync: boolean;
+        isMethod: boolean;
+        isArrow: boolean;
+        className?: string;
+        parentFunc?: string;
+        isNested: boolean;
+        depth: number;
+        isEventHandler: boolean;
+        eventType?: string;
+        // ✅ v15.2.0 (P1): опции для lexicalLink
+        relation?: LexicalRelation;
+        argumentIndex?: number;
+        calleeName?: string;
+      }
   ): FunctionInfo {
     const params = extractParamNames(node.params);
     const bodyText = node.body ? extractBodyText(node.body) : undefined;
@@ -315,6 +327,11 @@ export function extractEntitiesFromAST(
 
     // ✅ [P0]: лексический родитель
     const lexParent = currentParent();
+
+    // ✅ v17.1.0: Vue-классификация
+    // parentType — тип родительского узла (для определения callback)
+    const parentType = node.parent?.type;
+    const vueKind = classifyVueKind(name, opts.isArrow, parentType);
 
     const funcInfo: FunctionInfo = {
       name,
@@ -346,6 +363,8 @@ export function extractEntitiesFromAST(
       parentFunctionId: lexParent?.id ?? null,
       // ✅ [P2] callsInfo будет заполнен позже в traverse
       callsInfo: [],
+      // ✅ v17.1.0: Vue-классификация
+      vueKind,
     } as FunctionInfo;
 
     // ✅ [P1]: boundTo для колбэков
@@ -361,15 +380,15 @@ export function extractEntitiesFromAST(
 
     // ✅ [P1]: лексическая связь
     const relation: LexicalRelation =
-      opts.relation ?? (opts.isMethod ? 'class-method' : opts.isArrow ? 'arrow-var' : 'nested');
+        opts.relation ?? (opts.isMethod ? 'class-method' : opts.isArrow ? 'arrow-var' : 'nested');
 
     addLexicalLink(
-      lexParent?.id ?? null,
-      funcId,
-      relation,
-      node.loc?.start?.line || 1,
-      opts.argumentIndex,
-      opts.calleeName
+        lexParent?.id ?? null,
+        funcId,
+        relation,
+        node.loc?.start?.line || 1,
+        opts.argumentIndex,
+        opts.calleeName
     );
 
     if (!callGraph[name]) {
@@ -396,16 +415,19 @@ export function extractEntitiesFromAST(
     if (node.callee?.optional === true) return 'optional-chain';
 
     // spread: foo(...args)
-    if (Array.isArray(node.arguments) && node.arguments.some((a: any) => a?.type === 'SpreadElement')) {
+    if (
+        Array.isArray(node.arguments) &&
+        node.arguments.some((a: any) => a?.type === 'SpreadElement')
+    ) {
       return 'spread';
     }
 
     // callback: foo(() => {})
     if (
-      Array.isArray(node.arguments) &&
-      node.arguments.some(
-        (a: any) => a?.type === 'ArrowFunctionExpression' || a?.type === 'FunctionExpression'
-      )
+        Array.isArray(node.arguments) &&
+        node.arguments.some(
+            (a: any) => a?.type === 'ArrowFunctionExpression' || a?.type === 'FunctionExpression'
+        )
     ) {
       return 'callback';
     }
@@ -484,8 +506,8 @@ export function extractEntitiesFromAST(
       if (Array.isArray(node.arguments)) {
         node.arguments.forEach((arg: any, index: number) => {
           if (
-            arg &&
-            (arg.type === 'ArrowFunctionExpression' || arg.type === 'FunctionExpression')
+              arg &&
+              (arg.type === 'ArrowFunctionExpression' || arg.type === 'FunctionExpression')
           ) {
             const cbName = inferFunctionName(arg, node);
 
@@ -531,8 +553,8 @@ export function extractEntitiesFromAST(
       if (Array.isArray(node.arguments)) {
         for (const arg of node.arguments) {
           if (
-            arg &&
-            (arg.type === 'ArrowFunctionExpression' || arg.type === 'FunctionExpression')
+              arg &&
+              (arg.type === 'ArrowFunctionExpression' || arg.type === 'FunctionExpression')
           ) {
             continue; // уже обработали
           }
@@ -557,10 +579,10 @@ export function extractEntitiesFromAST(
     // ✅ [P0]: если функция — зайти в стек
     // ==========================================
     const isFunctionLike =
-      node.type === 'FunctionDeclaration' ||
-      node.type === 'FunctionExpression' ||
-      node.type === 'ArrowFunctionExpression' ||
-      (node.type === 'MethodDefinition' && node.value && node.value.type === 'FunctionExpression');
+        node.type === 'FunctionDeclaration' ||
+        node.type === 'FunctionExpression' ||
+        node.type === 'ArrowFunctionExpression' ||
+        (node.type === 'MethodDefinition' && node.value && node.value.type === 'FunctionExpression');
 
     if (isFunctionLike) {
       // Находим только что зарегистрированную функцию
@@ -618,7 +640,7 @@ export function extractEntitiesFromAST(
         handleImportDeclaration(node);
         break;
 
-      // ✅ НОВОЕ v15.0.0: реэкспорты дают рёбра в imports[]
+        // ✅ НОВОЕ v15.0.0: реэкспорты дают рёбра в imports[]
       case 'ExportNamedDeclaration':
         if (node.source && Array.isArray(node.specifiers) && node.specifiers.length > 0) {
           handleExportNamedAsImport(node);
@@ -842,6 +864,7 @@ export function extractEntitiesFromAST(
 
   /**
    * ✅ [P1]: пропускаем колбэки — они уже обработаны в traverse(CallExpression)
+   * ✅ v17.1.0: vueKind теперь заполняется в registerFunction
    */
   function handleFunction(node: any, parent: any, depth: number): void {
     // ✅ [P1]: колбэки уже зарегистрированы в traverse(CallExpression)
@@ -912,6 +935,7 @@ export function extractEntitiesFromAST(
 
   /**
    * ✅ [P1]: пропускаем колбэки
+   * ✅ v17.1.0: vueKind заполняется в registerFunction
    */
   function handleArrowFunction(node: any, parent: any, depth: number): void {
     // ✅ [P1]: колбэки уже обработаны в traverse(CallExpression)
@@ -927,8 +951,8 @@ export function extractEntitiesFromAST(
       let exportParent = parent.parent;
       while (exportParent && exportParent.type !== 'Program') {
         if (
-          exportParent.type === 'ExportNamedDeclaration' ||
-          exportParent.type === 'ExportDefaultDeclaration'
+            exportParent.type === 'ExportNamedDeclaration' ||
+            exportParent.type === 'ExportDefaultDeclaration'
         ) {
           isExported = true;
           break;
@@ -942,9 +966,9 @@ export function extractEntitiesFromAST(
 
     // Не префиксуем, если имя уже получено из Property/PropertyDefinition/VariableDeclarator
     const alreadyNamed =
-      parent?.type === 'Property' ||
-      parent?.type === 'PropertyDefinition' ||
-      parent?.type === 'VariableDeclarator';
+        parent?.type === 'Property' ||
+        parent?.type === 'PropertyDefinition' ||
+        parent?.type === 'VariableDeclarator';
 
     if (parentFunctions.length > 0 && !alreadyNamed) {
       name = parentFunctions.join('.') + '.' + name;
@@ -1019,8 +1043,8 @@ export function extractEntitiesFromAST(
           break;
         }
         if (
-          (ctx.type === 'FunctionDeclaration' || ctx.type === 'FunctionExpression') &&
-          ctx.id?.name
+            (ctx.type === 'FunctionDeclaration' || ctx.type === 'FunctionExpression') &&
+            ctx.id?.name
         ) {
           className = ctx.id.name;
           break;
@@ -1124,8 +1148,8 @@ export function extractEntitiesFromAST(
 
       // Пропускаем стрелочные функции — они обрабатываются в handleArrowFunction
       if (
-        decl.init &&
-        (decl.init.type === 'ArrowFunctionExpression' || decl.init.type === 'FunctionExpression')
+          decl.init &&
+          (decl.init.type === 'ArrowFunctionExpression' || decl.init.type === 'FunctionExpression')
       ) {
         continue;
       }
@@ -1337,6 +1361,24 @@ export function extractEntitiesFromAST(
   const withCallsInfo = functions.filter(f => ((f as any).callsInfo?.length ?? 0) > 0).length;
   if (withCallsInfo > 0) {
     console.debug(`📞 Функций с callsInfo: ${withCallsInfo}/${functions.length}`);
+  }
+
+  // ✅ v17.1.0: логирование vueKind
+  if (functions.length > 0) {
+    const vueKindCounts: Record<string, number> = {};
+    for (const func of functions) {
+      const kind = func.vueKind ?? 'function';
+      vueKindCounts[kind] = (vueKindCounts[kind] ?? 0) + 1;
+    }
+    const nonFunctionKinds = Object.entries(vueKindCounts).filter(
+        ([kind]) => kind !== 'function'
+    );
+    if (nonFunctionKinds.length > 0) {
+      console.debug(`🎯 Vue-классификация функций:`);
+      for (const [kind, count] of nonFunctionKinds) {
+        console.debug(`   • ${kind}: ${count}`);
+      }
+    }
   }
 
   return result;

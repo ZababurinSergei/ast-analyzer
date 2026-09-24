@@ -2,7 +2,30 @@
 // ============================================
 // Проверка согласованности index.json ↔ index.full.json
 // ============================================
-// Версия: 2.6.0
+// Версия: 2.8.0
+//
+// ИЗМЕНЕНИЯ v2.8.0 (fix: ложное срабатывание vue.sfc / vue.composables):
+//   - ✅ ИСПРАВЛЕНО: `checkVueSection` теперь НОРМАЛИЗУЕТ Vue-секцию
+//     перед сравнением decoded ↔ full:
+//       • sfc.composables/props/emits/exposed — сравниваются
+//         ДЛИНЫ (values — плейсхолдеры `#0`, `#1`, ...)
+//       • composables/macros/hooks/reactivity/icons — ИСКЛЮЧАЕТСЯ
+//         поле `id` (генерируется при decode: `cmp1`, `mac1`, ...)
+//   - ✅ ДОБАВЛЕНО: `normalizeSfc`, `normalizeComposables`,
+//     `normalizeWithoutId` — хелперы для нормализации.
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION упоминается как '15.7.3'.
+//
+// ИЗМЕНЕНИЯ v2.7.0 (Vue entities):
+//   - ✅ ДОБАВЛЕНО: 'vue' в sectionNames для проверки секции
+//     Vue-сущностей между compact и decoded.
+//   - ✅ ДОБАВЛЕНО: I17 — vue.sfc.c/cs согласован с
+//     decoded.vue.sfc[i].composables.length (round-trip
+//     счётчиков composables/props/emits/exposed).
+//   - ✅ ДОБАВЛЕНО: I18 — fns.vk согласован с
+//     functions[].vueKind (round-trip vueKind).
+//   - ✅ ДОБАВЛЕНО: проверка vue.sfc.n / vue.sfc.b / vue.macros /
+//     vue.hooks / vue.reactivity / vue.icons между decoded и full.
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION упоминается как '15.5.0'.
 //
 // ИЗМЕНЕНИЯ v2.6.0 (fix: ложное срабатывание values[] consistency):
 //   - ✅ ИСПРАВЛЕНО: `checkValuesConsistency` больше НЕ сравнивает
@@ -238,6 +261,96 @@ function stripForByteCompare(obj: any): any {
 }
 
 // ============================================
+// ✅ v2.8.0: НОРМАЛИЗАЦИЯ VUE-СЕКЦИИ
+// ============================================
+//
+// Vue-секция требует ОСОБОЙ нормализации при сравнении decoded ↔ full:
+//
+//   • sfc.composables / props / emits / exposed — в compact
+//     хранятся только СЧЁТЧИКИ (или индексы в strs). При decode
+//     props/emits/exposed восстанавливаются как плейсхолдеры
+//     `#0`, `#1`, ... (по дизайну). Composables восстанавливаются
+//     как реальные имена (после v15.7.3) — но для старых compact
+//     могут быть плейсхолдерами.
+//     → Сравниваем ДЛИНЫ, не значения.
+//
+//   • composables[].id / macros[].id / hooks[].id /
+//     reactivity[].id / icons[].id — генерируются при decode
+//     (`cmp1`, `mac1`, `hk1`, `rx1`, `ic1`). Реальные ID
+//     НЕ восстанавливаются (by design).
+//     → Сравниваем БЕЗ поля `id`.
+//
+// ============================================
+
+/**
+ * ✅ v2.8.0: нормализует SFC для сравнения.
+ *
+ * - `composables` / `props` / `emits` / `exposed` → заменяет
+ *   массив на его длину.
+ * - Удаляет `id`, если есть.
+ */
+function normalizeSfc(arr: any[]): any[] {
+  return arr.map(s => ({
+    fileId: s.fileId,
+    moduleId: s.moduleId,
+    name: s.name,
+    blocks: s.blocks,
+    composablesCount: Array.isArray(s.composables) ? s.composables.length : 0,
+    propsCount: Array.isArray(s.props) ? s.props.length : 0,
+    emitsCount: Array.isArray(s.emits) ? s.emits.length : 0,
+    exposedCount: Array.isArray(s.exposed) ? s.exposed.length : 0,
+  }));
+}
+
+/**
+ * ✅ v2.8.0: нормализует composables для сравнения.
+ * Удаляет поле `id` (генерируется при decode).
+ */
+function normalizeComposables(arr: any[]): any[] {
+  return arr.map(c => ({
+    // id пропускаем
+    name: c.name,
+    fileId: c.fileId,
+    kind: c.kind,
+    returnShape: c.returnShape,
+    returnedKeysCount: Array.isArray(c.returnedKeys) ? c.returnedKeys.length : 0,
+    callersCount: Array.isArray(c.callers) ? c.callers.length : 0,
+  }));
+}
+
+/**
+ * ✅ v2.8.0: нормализует macros/hooks/reactivity/icons для сравнения.
+ * Удаляет поле `id` (генерируется при decode).
+ */
+function normalizeWithoutId(arr: any[]): any[] {
+  return arr.map(item => {
+    const { id, ...rest } = item;
+    void id;
+    return rest;
+  });
+}
+
+/**
+ * ✅ v2.8.0: нормализует Vue-секцию целиком.
+ *
+ * Возвращает объект той же структуры, но с нормализованными
+ * подсекциями. Используется в `compareSections` и
+ * `checkVueSection`.
+ */
+function normalizeVueSection(vue: any): any {
+  if (!vue || typeof vue !== 'object') return vue;
+
+  return {
+    sfc: normalizeSfc(vue.sfc ?? []),
+    composables: normalizeComposables(vue.composables ?? []),
+    macros: normalizeWithoutId(vue.macros ?? []),
+    hooks: normalizeWithoutId(vue.hooks ?? []),
+    reactivity: normalizeWithoutId(vue.reactivity ?? []),
+    icons: normalizeWithoutId(vue.icons ?? []),
+  };
+}
+
+// ============================================
 // ✅ v2.2.0: ПОДСЧЁТ CONDITIONALS ЧЕРЕЗ templates[]
 // ============================================
 
@@ -467,11 +580,11 @@ function checkValuesConsistency(
 
   const detail = ok
     ? `expectedKept=${expectedKeptTotal} (уникальных=${expectedUniqueCount}), ` +
-    `compact.values=${actualUniqueCount} (dedup=${dedupRatio}x), ` +
-    `removed=${expectedRemovedTotal}`
+      `compact.values=${actualUniqueCount} (dedup=${dedupRatio}x), ` +
+      `removed=${expectedRemovedTotal}`
     : `${violations.length} нарушений ` +
-    `(expectedKept=${expectedKeptTotal}, unique=${expectedUniqueCount}, ` +
-    `compact.values=${actualUniqueCount})`;
+      `(expectedKept=${expectedKeptTotal}, unique=${expectedUniqueCount}, ` +
+      `compact.values=${actualUniqueCount})`;
 
   return {
     ok,
@@ -510,7 +623,7 @@ function checkJsonSafetyFull(
     if (!isJsonSafe(cn.value)) {
       const ctorName =
         typeof cn.value === 'object' && cn.value !== null
-          ? (cn.value as any).constructor?.name ?? 'Object'
+          ? ((cn.value as any).constructor?.name ?? 'Object')
           : typeof cn.value;
       violations.push(`constants[${i}] (${cn.name}): ${ctorName}`);
       if (violations.length >= limit) break;
@@ -550,7 +663,7 @@ function checkJsonRoundTripCompact(
     const after = JSON.stringify(afterParse[i]);
     if (before !== after) {
       violations.push(`values[${i}]: "${before}" → "${after}"`);
-      if (violations.length >= limit) break;
+      if (violations.length >= maxSafe(violations.length, limit)) break;
     }
   }
 
@@ -562,6 +675,252 @@ function checkJsonRoundTripCompact(
         : `${violations.length} значений теряют данные`,
     violations,
   };
+}
+
+function maxSafe(a: number, b: number): number {
+  return a > b ? a : b;
+}
+
+// ============================================
+// ✅ v2.7.0 + v2.8.0: ПРОВЕРКА VUE-СЕКЦИИ
+// ============================================
+
+/**
+ * ✅ v2.7.0: проверяет согласованность vue-секции между
+ * decoded и full.
+ *
+ * ✅ v2.8.0: нормализует Vue-секцию перед сравнением:
+ *   - sfc.composables/props/emits/exposed — сравниваются ДЛИНЫ
+ *   - composables/macros/hooks/reactivity/icons — исключается `id`
+ *
+ * ════════════════════════════════════════════════════════════
+ * I17: vue.sfc.c/cs ↔ decoded.vue.sfc[].composables.length
+ * ════════════════════════════════════════════════════════════
+ *
+ *   В compact для SFC хранятся:
+ *     sfc.c  — плоский массив индексов (в strs для v15.7.3,
+ *              или в vue.composables для v15.7.2)
+ *     sfc.cs — [offset, count][] для каждого SFC
+ *     sfc.p  — [fileIdx, propsCount][] — НЕ RLE
+ *     sfc.e  — [fileIdx, emitsCount][]
+ *     sfc.x  — [fileIdx, exposeCount][]
+ *
+ *   В decode мы восстанавливаем длины через `Array.from`,
+ *   заполняя плейсхолдерами `#0, #1, ...`. Проверка гарантирует,
+ *   что количество плейсхолдеров совпадает со счётчиком.
+ *
+ * ════════════════════════════════════════════════════════════
+ * I18: fns.vk ↔ functions[].vueKind
+ * ════════════════════════════════════════════════════════════
+ *
+ *   В compact `fns.vk` — RLE от кодов vueKind.
+ *   В decoded/full — `functions[].vueKind` (строки).
+ *   Проверяем, что после decode каждый `vueKind` строкой
+ *   соответствует своему коду.
+ *
+ * ════════════════════════════════════════════════════════════
+ * Сравнение подсекций decoded ↔ full (С НОРМАЛИЗАЦИЕЙ)
+ * ════════════════════════════════════════════════════════════
+ *
+ *   sfc         — длины массивов + moduleId + name + blocks
+ *   composables — без id
+ *   macros      — без id
+ *   hooks       — без id
+ *   reactivity  — без id
+ *   icons       — без id
+ *
+ * @param decoded — decode(compact)
+ * @param full    — full.json на диске
+ * @param compact — compact.json на диске (для чтения sfc.c и fns.vk)
+ * @param maxDiffs — максимум примеров
+ * @returns массив результатов
+ */
+function checkVueSection(
+  decoded: FullJSON,
+  full: FullJSON,
+  compact: CompactJSON,
+  maxDiffs: number
+): Array<{ name: string; ok: boolean; detail: string; diffs?: any[] }> {
+  const results: Array<{ name: string; ok: boolean; detail: string; diffs?: any[] }> = [];
+
+  // ────────────────────────────────────────────────────────
+  // 1. I17: vue.sfc.c/cs ↔ decoded.vue.sfc[].composables.length
+  //    Аналогично для p/e/x.
+  // ────────────────────────────────────────────────────────
+  {
+    const violations: string[] = [];
+    const sfc = decoded.vue?.sfc ?? [];
+    const sfcCompact = compact.vue?.sfc;
+
+    if (sfcCompact) {
+      const sfcCS = sfcCompact.cs ?? [];
+      const sfcP = sfcCompact.p ?? [];
+      const sfcE = sfcCompact.e ?? [];
+      const sfcX = sfcCompact.x ?? [];
+
+      // ✅ v2.8.0: fallback на старый формат (когда c был массивом пар)
+      const sfcCLegacy =
+        Array.isArray(sfcCompact.c) && Array.isArray(sfcCompact.c[0])
+          ? (sfcCompact.c as any)
+          : null;
+
+      for (let i = 0; i < sfc.length; i++) {
+        const sfcI = sfc[i];
+        if (!sfcI) continue;
+
+        // ✅ v2.8.0: приоритет — cs (новый формат)
+        let cCount = 0;
+
+        // ✅ v2.8.1: сохраняем ссылку на элемент в переменную —
+        // это устраняет TS2532 (Object is possibly 'undefined')
+        const csEntry = sfcCS[i];
+        if (Array.isArray(csEntry) && csEntry.length === 2) {
+          const value = csEntry[1];
+          cCount = typeof value === 'number' ? value : 0;
+        } else {
+          // Fallback на старый формат (когда c был массивом пар)
+          const legacyEntry = sfcCLegacy ? sfcCLegacy[i] : undefined;
+          if (Array.isArray(legacyEntry) && legacyEntry.length === 2) {
+            const value = legacyEntry[1];
+            cCount = typeof value === 'number' ? value : 0;
+          }
+        }
+
+        const pCount = sfcP[i]?.[1] ?? 0;
+        const eCount = sfcE[i]?.[1] ?? 0;
+        const xCount = sfcX[i]?.[1] ?? 0;
+
+        if ((sfcI.composables?.length ?? 0) !== cCount) {
+          violations.push(
+            `sfc[${i}]: c/cs.count=${cCount}, composables.length=${sfcI.composables?.length ?? 0}`
+          );
+        }
+        if ((sfcI.props?.length ?? 0) !== pCount) {
+          violations.push(`sfc[${i}]: p[1]=${pCount}, props.length=${sfcI.props?.length ?? 0}`);
+        }
+        if ((sfcI.emits?.length ?? 0) !== eCount) {
+          violations.push(`sfc[${i}]: e[1]=${eCount}, emits.length=${sfcI.emits?.length ?? 0}`);
+        }
+        if ((sfcI.exposed?.length ?? 0) !== xCount) {
+          violations.push(`sfc[${i}]: x[1]=${xCount}, exposed.length=${sfcI.exposed?.length ?? 0}`);
+        }
+
+        if (violations.length >= maxDiffs) break;
+      }
+    }
+
+    results.push({
+      name: 'I17: vue.sfc.c/cs/p/e/x ↔ decoded.vue.sfc[].*',
+      ok: violations.length === 0,
+      detail:
+        violations.length === 0
+          ? `${sfc.length} SFC согласованы`
+          : `${violations.length} нарушений`,
+      diffs: violations.map(v => ({ path: '$.vue.sfc', a: v, b: '—' })),
+    });
+  }
+
+  // ────────────────────────────────────────────────────────
+  // 2. I18: fns.vk ↔ functions[].vueKind
+  // ────────────────────────────────────────────────────────
+  {
+    const violations: string[] = [];
+    const fnsVkRaw = compact.fns?.vk;
+
+    if (Array.isArray(fnsVkRaw)) {
+      // Распаковка RLE
+      const vk: number[] = [];
+      for (const entry of fnsVkRaw) {
+        if (Array.isArray(entry) && entry.length === 2) {
+          const [val, count] = entry;
+          for (let k = 0; k < count; k++) vk.push(val);
+        }
+      }
+
+      const VUE_KIND_BY_CODE: Record<number, string> = {
+        0: 'function',
+        1: 'composable',
+        2: 'macro',
+        3: 'hook',
+        4: 'reactivity',
+        5: 'callback',
+        6: 'arrow',
+      };
+
+      const functions = decoded.functions ?? [];
+      for (let i = 0; i < functions.length; i++) {
+        const fn = functions[i];
+        if (!fn) continue;
+        const expected = VUE_KIND_BY_CODE[vk[i] ?? 0] ?? 'function';
+        const actual = fn.vueKind ?? 'function';
+        if (actual !== expected) {
+          violations.push(`fns[${i}] (${fn.name}): vk=${vk[i]}, vueKind="${actual}"`);
+          if (violations.length >= maxDiffs) break;
+        }
+      }
+    }
+
+    results.push({
+      name: 'I18: fns.vk ↔ functions[].vueKind',
+      ok: violations.length === 0,
+      detail:
+        violations.length === 0
+          ? `${(decoded.functions ?? []).length} функций согласованы`
+          : `${violations.length} нарушений`,
+      diffs: violations.map(v => ({ path: '$.functions[].vueKind', a: v, b: '—' })),
+    });
+  }
+
+  // ────────────────────────────────────────────────────────
+  // 3. ✅ v2.8.0: Сравнение vue-секций decoded ↔ full
+  //    С НОРМАЛИЗАЦИЕЙ:
+  //      • sfc.composables/props/emits/exposed → длины
+  //      • composables/macros/hooks/reactivity/icons → без id
+  // ────────────────────────────────────────────────────────
+
+  const decodedVue = (decoded as any).vue;
+  const fullVue = (full as any).vue;
+
+  if (decodedVue || fullVue) {
+    const normDecoded = normalizeVueSection(decodedVue);
+    const normFull = normalizeVueSection(fullVue);
+
+    const vueSubsections = [
+      'sfc',
+      'composables',
+      'macros',
+      'hooks',
+      'reactivity',
+      'icons',
+    ] as const;
+
+    for (const sub of vueSubsections) {
+      const a = normDecoded?.[sub] ?? [];
+      const b = normFull?.[sub] ?? [];
+
+      const aArr = Array.isArray(a) ? a : [];
+      const bArr = Array.isArray(b) ? b : [];
+
+      const ok = deepEqual(aArr, bArr);
+      const detail = ok
+        ? `${aArr.length} элементов`
+        : `decoded=${aArr.length}, full=${bArr.length}`;
+
+      const result: { name: string; ok: boolean; detail: string; diffs?: any[] } = {
+        name: `vue.${sub}`,
+        ok,
+        detail,
+      };
+
+      if (!ok) {
+        result.diffs = diffObjects(aArr, bArr, maxDiffs);
+      }
+
+      results.push(result);
+    }
+  }
+
+  return results;
 }
 
 // ============================================
@@ -620,6 +979,7 @@ function compareDictionaries(
  * Сравнивает секции full vs decoded.
  *
  * ⚠️ v2.2.0: 'conditionals' УБРАНЫ из sectionNames.
+ * ⚠️ v2.7.0: 'vue' вынесено в отдельную функцию checkVueSection.
  */
 function compareSections(
   decoded: FullJSON,
@@ -627,7 +987,7 @@ function compareSections(
   maxDiffs: number
 ): Array<{ name: string; ok: boolean; detail: string; diffs?: any[] }> {
   const sectionNames = [
-    'templates', // включает conditionals внутри
+    'templates',
     'lifecycle',
     'effects',
     'injections',
@@ -793,7 +1153,7 @@ interface CheckResult {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
-  printHeader('🔍 ПРОВЕРКА СОГЛАСОВАННОСТИ index.json ↔ index.full.json (v2.6.0)');
+  printHeader('🔍 ПРОВЕРКА СОГЛАСОВАННОСТИ index.json ↔ index.full.json (v2.8.0)');
   console.log(`  ${INFO} compact: ${C.cyan}${path.resolve(args.compact)}${C.reset}`);
   console.log(`  ${INFO} full:    ${C.cyan}${path.resolve(args.full)}${C.reset}`);
   console.log(`  ${INFO} verbose: ${args.verbose}`);
@@ -997,9 +1357,7 @@ async function main(): Promise<void> {
     // ✅ v2.6.0: диагностика дедупликации
     if (args.verbose && result.ok) {
       const dedupRatio =
-        result.uniqueCount > 0
-          ? (result.expectedKept / result.uniqueCount).toFixed(2)
-          : '1.00';
+        result.uniqueCount > 0 ? (result.expectedKept / result.uniqueCount).toFixed(2) : '1.00';
       console.log(
         `     ${C.dim}ℹ️  Дедупликация: ${result.expectedKept} → ${result.uniqueCount} (${dedupRatio}x)${C.reset}`
       );
@@ -1045,6 +1403,33 @@ async function main(): Promise<void> {
       ok: compactSafe.ok,
       detail: compactSafe.detail,
     });
+  }
+
+  // ============================================
+  // ✅ v2.7.0 + v2.8.0: СОГЛАСОВАННОСТЬ VUE-СЕКЦИИ
+  // ============================================
+  printSection('🌿 СОГЛАСОВАННОСТЬ VUE-СЕКЦИИ');
+
+  if (decodedCompact) {
+    const vueResults = checkVueSection(decodedCompact, full, compact, args.maxDiffs);
+
+    for (const vr of vueResults) {
+      printResult(vr.name, vr.ok, vr.detail);
+      if (!vr.ok && args.verbose && vr.diffs) {
+        for (const d of vr.diffs.slice(0, args.maxDiffs)) {
+          console.log(
+            `     ${C.dim}${d.path}: ${C.reset}${C.red}${JSON.stringify(d.a)}${C.reset} → ${C.green}${JSON.stringify(d.b)}${C.reset}`
+          );
+        }
+        if (vr.diffs.length > args.maxDiffs) {
+          console.log(`     ${C.dim}... и ещё ${vr.diffs.length - args.maxDiffs}${C.reset}`);
+        }
+      }
+      checks.push({ name: `vue.${vr.name}`, ok: vr.ok, detail: vr.detail });
+    }
+  } else {
+    printResult('vue section', false, 'decode(compact) не удался — пропускаем');
+    checks.push({ name: 'vue section', ok: false, detail: 'decode failed' });
   }
 
   // ============================================
@@ -1293,7 +1678,7 @@ async function main(): Promise<void> {
     console.log(`     Это гарантирует совпадение timestamp и version.`);
     console.log('');
     console.log(`  ${C.bold}2. Проверить CODEC_VERSION${C.reset} в обоих файлах — должен`);
-    console.log(`     быть ${C.cyan}'15.4.3'${C.reset} (или совпадать). Если full.json`);
+    console.log(`     быть ${C.cyan}'15.7.3'${C.reset} (или совпадать). Если full.json`);
     console.log(`     собирался старой версией кодека — его нужно`);
     console.log(`     пересобрать.`);
     console.log('');
@@ -1324,24 +1709,30 @@ async function main(): Promise<void> {
     console.log(
       `  ${C.bold}6. Если расхождение в imports[].isExternal ↔ toFileId${C.reset} (симптом:`
     );
-    console.log(
-      `     ${C.red}toFileId="external:@/components", isExternal=false${C.reset}):`
-    );
+    console.log(`     ${C.red}toFileId="external:@/components", isExternal=false${C.reset}):`);
     console.log(`     ${C.cyan}resolveToFileId()${C.reset} в compact-reporter.ts превращает`);
-    console.log(`     Vue-алиасы (${C.cyan}@/components/ui${C.reset}) в ${C.red}external:@/components${C.reset},`);
-    console.log(`     тогда как ${C.cyan}isExternalModule('@/...')${C.reset} возвращает ${C.green}false${C.reset}.`);
+    console.log(
+      `     Vue-алиасы (${C.cyan}@/components/ui${C.reset}) в ${C.red}external:@/components${C.reset},`
+    );
+    console.log(
+      `     тогда как ${C.cyan}isExternalModule('@/...')${C.reset} возвращает ${C.green}false${C.reset}.`
+    );
     console.log(`     Фикс:`);
     console.log(`       1. В ${C.cyan}resolveToFileId()${C.reset} исключить алиасы`);
-    console.log(`          ${C.cyan}@/${C.reset}, ${C.cyan}~/${C.reset}, ${C.cyan}#/${C.reset} из ветки «внешний пакет» —`);
-    console.log(`          возвращать ${C.cyan}null${C.reset} (→ ${C.cyan}unresolved:@/components/ui${C.reset}).`);
-    console.log(`       2. В ${C.cyan}compact-reporter.ts${C.reset} вычислять ${C.cyan}isExternal${C.reset}`);
+    console.log(
+      `          ${C.cyan}@/${C.reset}, ${C.cyan}~/${C.reset}, ${C.cyan}#/${C.reset} из ветки «внешний пакет» —`
+    );
+    console.log(
+      `          возвращать ${C.cyan}null${C.reset} (→ ${C.cyan}unresolved:@/components/ui${C.reset}).`
+    );
+    console.log(
+      `       2. В ${C.cyan}compact-reporter.ts${C.reset} вычислять ${C.cyan}isExternal${C.reset}`
+    );
     console.log(`          как ПРОИЗВОДНОЕ от ${C.cyan}resolvedToFileId${C.reset},`);
     console.log(`          а не от ${C.cyan}imp.toFileId${C.reset}.`);
     console.log(`       3. Пересобрать index.json и index.full.json.`);
     console.log('');
-    console.log(
-      `  ${C.bold}7. Если расхождение в values[]${C.reset} (симптом:`
-    );
+    console.log(`  ${C.bold}7. Если расхождение в values[]${C.reset} (симптом:`);
     console.log(
       `     ${C.red}$.values.length: a: 206 b: 208${C.reset} или ${C.red}$.cn.nonEmptyV[N][1] сдвиг${C.reset}):`
     );
@@ -1364,9 +1755,7 @@ async function main(): Promise<void> {
     console.log(`          isValueKept (I14 в verify-roundtrip.ts).`);
     console.log(`       4. Пересобрать index.json и index.full.json.`);
     console.log('');
-    console.log(
-      `  ${C.bold}8. Если расхождение в JSON-safe${C.reset} (симптом:`
-    );
+    console.log(`  ${C.bold}8. Если расхождение в JSON-safe${C.reset} (симптом:`);
     console.log(
       `     ${C.red}$.values.length: a: 703 b: 553${C.reset} или ${C.red}20 подряд {} в compact.values[]${C.reset}):`
     );
@@ -1379,7 +1768,9 @@ async function main(): Promise<void> {
     console.log(`     теряются (превращаются в '{}'), и round-trip ломается.`);
     console.log(`     Фикс:`);
     console.log(`       1. В ${C.cyan}values-filter.ts::isValueKept${C.reset} вернуть`);
-    console.log(`          ${C.red}false${C.reset} для не-JSON-объектов (через ${C.cyan}isJsonSafe${C.reset}).`);
+    console.log(
+      `          ${C.red}false${C.reset} для не-JSON-объектов (через ${C.cyan}isJsonSafe${C.reset}).`
+    );
     console.log(`       2. В ${C.cyan}stable-stringify.ts${C.reset} добавить`);
     console.log(`          ${C.cyan}isJsonSafe()${C.reset}, ${C.cyan}sanitizeForJson()${C.reset},`);
     console.log(`          ${C.cyan}jsonSafeStringify()${C.reset}.`);
@@ -1390,12 +1781,8 @@ async function main(): Promise<void> {
     console.log(`          ${C.cyan}verify-roundtrip.ts${C.reset}.`);
     console.log(`       5. Пересобрать index.json и index.full.json.`);
     console.log('');
-    console.log(
-      `  ${C.bold}9. Если расхождение в values[] consistency${C.reset} (симптом:`
-    );
-    console.log(
-      `     ${C.red}expectedKept=1955 > compact.values.length=547${C.reset}):`
-    );
+    console.log(`  ${C.bold}9. Если расхождение в values[] consistency${C.reset} (симптом:`);
+    console.log(`     ${C.red}expectedKept=1955 > compact.values.length=547${C.reset}):`);
     console.log(`     ${C.cyan}compact.values[]${C.reset} — ДЕДУПЛИЦИРОВАННЫЙ словарь.`);
     console.log(`     Если 100 констант имеют значение ${C.cyan}"relation"${C.reset},`);
     console.log(`     в values[] оно попадёт ${C.green}1 раз${C.reset}, а expectedKept`);
@@ -1408,6 +1795,26 @@ async function main(): Promise<void> {
     console.log(`          compact.values[].`);
     console.log(`       3. Проверка: ${C.cyan}expectedUniqueKept ⊆ compactValueSet${C.reset}.`);
     console.log(`       4. Диагностика ${C.cyan}dedupRatio${C.reset} = expectedKept / unique.`);
+    console.log('');
+    console.log(`  ${C.bold}10. Если расхождение в vue-секции${C.reset} (симптом:`);
+    console.log(
+      `     ${C.red}$.vue.sfc[i].composables.length: 5 → 6${C.reset} или ${C.red}$.vue.composables[i].id: "cmp1" → "f5_23"${C.reset}):`
+    );
+    console.log(`     ✅ v2.8.0: Нормализация vue-секции перед сравнением:`);
+    console.log(`       1. ${C.cyan}sfc.composables/props/emits/exposed${C.reset} —`);
+    console.log(`          сравниваются ДЛИНЫ, а не значения (в compact`);
+    console.log(`          хранятся счётчики или индексы, а в full — имена).`);
+    console.log(`       2. ${C.cyan}composables/macros/hooks/reactivity/icons${C.reset} —`);
+    console.log(`          ИСКЛЮЧАЕТСЯ поле ${C.cyan}id${C.reset} (генерируется при decode`);
+    console.log(`          как ${C.cyan}cmp1, mac1, hk1, rx1, ic1${C.reset}).`);
+    console.log('');
+    console.log(`     Если расхождение осталось — проверьте:`);
+    console.log(`       • ${C.cyan}codec-encode.ts::encodeVueSection${C.reset} —`);
+    console.log(`         правильно ли кодируются composables/props/etc.`);
+    console.log(`       • ${C.cyan}codec-decode.ts::decodeVueSection${C.reset} —`);
+    console.log(`         правильно ли восстанавливаются длины.`);
+    console.log(`       • ${C.cyan}scripts/verify-consistency.ts::checkVueSection${C.reset} —`);
+    console.log(`         правильно ли нормализуется Vue-секция.`);
     console.log('');
     console.log(
       `  ${C.dim}Подробнее: scripts/verify-roundtrip.ts проверяет round-trip кодека.${C.reset}`

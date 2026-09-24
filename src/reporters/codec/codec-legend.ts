@@ -1,8 +1,40 @@
 // src/reporters/codec/codec-legend.ts
 // ============================================
-// ЛЕГЕНДА КОДЕКА
+// ЛЕГЕНДА КОДЕКА (v15.7.3)
 // ============================================
-// Версия: 15.4.0
+// Версия: 15.7.3
+//
+// ИЗМЕНЕНИЯ v15.7.3 (уточнение семантики vue.sfc.c):
+//   - ✅ ОБНОВЛЕНО: комментарий к схеме `vue.sfc` — явно указано,
+//     что `c` содержит ИНДЕКСЫ В STRS (имена composables),
+//     а НЕ индексы в `vue.composables`.
+//   - ✅ ОБНОВЛЕНО: заголовок v15.7.2 → v15.7.3.
+//   - ✅ ОБНОВЛЕНО: схема `vue.sfc` — 8 полей
+//     (добавлено поле `cs` в v15.7.2, семантика `c` уточнена в v15.7.3).
+//
+// ИЗМЕНЕНИЯ v15.7.2 (fix round-trip vue.sfc.composables):
+//   - ✅ ДОБАВЛЕНО: поле `cs` в схеме `vue.sfc` — slices
+//     `[[offset, count], ...]` для каждого SFC.
+//     Это нужно, чтобы `decode` мог восстановить РЕАЛЬНЫЕ
+//     имена composables из `strs`.
+//   - ✅ ОБНОВЛЕНО: схема `vue.sfc` — 7 → 8 полей:
+//     `['f', 'n', 'b', 'c', 'cs', 'p', 'e', 'x']`.
+//
+// ИЗМЕНЕНИЯ v15.5.0 (Vue-сущности):
+//   - ✅ ДОБАВЛЕНО: codes.vueKind (7 кодов)
+//   - ✅ ДОБАВЛЕНО: codes.sfcBlock (4 кода)
+//   - ✅ ДОБАВЛЕНО: codes.hookName (12 кодов)
+//   - ✅ ДОБАВЛЕНО: codes.reactivityKind (8 кодов)
+//   - ✅ ДОБАВЛЕНО: codes.iconCategory (4 кода)
+//   - ✅ ДОБАВЛЕНО: codes.composableKind (4 кода)
+//   - ✅ ДОБАВЛЕНО: schemas.fns += 'vk'
+//   - ✅ ДОБАВЛЕНО: schemas['vue.sfc'] (7 полей)
+//   - ✅ ДОБАВЛЕНО: schemas['vue.composables'] (5 полей)
+//   - ✅ ДОБАВЛЕНО: schemas['vue.macros'] (3 поля)
+//   - ✅ ДОБАВЛЕНО: schemas['vue.hooks'] (3 поля)
+//   - ✅ ДОБАВЛЕНО: schemas['vue.reactivity'] (4 поля)
+//   - ✅ ДОБАВЛЕНО: schemas['vue.icons'] (3 поля)
+//   - ✅ ОБНОВЛЕНО: версия 15.4.0 → 15.5.0
 //
 // ИЗМЕНЕНИЯ v15.4.0 (P3 — cross-file):
 //   - ✅ ОБНОВЛЕНО: версия 15.3.0 → 15.4.0
@@ -66,17 +98,133 @@ import {
   CALL_KIND_CODES,
 } from './codec-encode.js';
 
-// ============================================
+// ============================================================
+// ✅ v15.5.0: ЕДИНЫЙ ИСТОЧНИК ИСТИНЫ ДЛЯ VUE-КОДОВ
+// ============================================================
+//
+// Определяем константы здесь, чтобы не дублировать их
+// в codec-encode.ts и codec-decode.ts.
+//
+// ⚠️ ВАЖНО: эти константы должны быть СИНХРОНИЗИРОВАНЫ с:
+//   - types.ts:VueKind (для vueKind)
+//   - core/entity-extractor/helpers/classify-vue-kind.ts
+//   - codec-encode.ts (при encodeVueSection)
+//   - codec-decode.ts (при decodeVueSection)
+// ============================================================
+
+/**
+ * Коды для vueKind: 0..6.
+ *
+ * ⚠️ Синхронизировано с types.ts:VueKind.
+ */
+export const VUE_KIND_CODES: Record<string, number> = {
+  function: 0,
+  composable: 1,
+  macro: 2,
+  hook: 3,
+  reactivity: 4,
+  callback: 5,
+  arrow: 6,
+};
+
+/**
+ * Коды для SFC-блоков: 1=script, 2=script-setup, 4=template, 8=style.
+ *
+ * ⚠️ Это битовая маска, а не последовательность 0..3.
+ */
+export const SFC_BLOCK_CODES: Record<string, number> = {
+  script: 1,
+  'script-setup': 2,
+  template: 4,
+  style: 8,
+};
+
+/**
+ * Коды для hookName: 0..11.
+ */
+export const HOOK_NAME_CODES: Record<string, number> = {
+  onMounted: 0,
+  onUnmounted: 1,
+  onActivated: 2,
+  onDeactivated: 3,
+  onErrorCaptured: 4,
+  onScopeDispose: 5,
+  watch: 6,
+  watchEffect: 7,
+  onBeforeMount: 8,
+  onBeforeUnmount: 9,
+  onUpdated: 10,
+  onBeforeUpdate: 11,
+};
+
+/**
+ * Коды для reactivityKind: 0..7.
+ */
+export const REACTIVITY_KIND_CODES: Record<string, number> = {
+  computed: 0,
+  ref: 1,
+  reactive: 2,
+  watch: 3,
+  shallowRef: 4,
+  readonly: 5,
+  toRef: 6,
+  toRefs: 7,
+};
+
+/**
+ * Коды для iconCategory: 0..3.
+ */
+export const ICON_CATEGORY_CODES: Record<string, number> = {
+  base: 0,
+  filter: 1,
+  toolbar: 2,
+  sort: 3,
+};
+
+/**
+ * Коды для composableKind: 0..3.
+ */
+export const COMPOSABLE_KIND_CODES: Record<string, number> = {
+  composable: 0,
+  store: 1,
+  factory: 2,
+  utility: 3,
+};
+
+/**
+ * Коды для composableReturnShape: 0..4.
+ */
+export const COMPOSABLE_RETURN_SHAPE_CODES: Record<string, number> = {
+  void: 0,
+  object: 1,
+  ref: 2,
+  reactive: 3,
+  function: 4,
+};
+
+/**
+ * Коды для macroKind: 0..5.
+ */
+export const MACRO_KIND_CODES: Record<string, number> = {
+  props: 0,
+  emits: 1,
+  expose: 2,
+  slots: 3,
+  model: 4,
+  options: 5,
+};
+
+// ============================================================
 // SCHEMAS — ПОЗИЦИОННЫЕ СХЕМЫ КОРТЕЖЕЙ
-// ============================================
+// ============================================================
 //
 // Схемы отражают columnar-структуру compact.json.
 // Каждое имя в массиве — это имя поля-массива внутри
 // соответствующего columnar-объекта.
 //
 // Пример:
-//   schemas.fns = ['n', 'm', 'f', 'l', 'fl', 'p', 'rt', 'parent']
-//   кортеж fns имеет 8 параллельных массивов:
+//   schemas.fns = ['n', 'm', 'f', 'l', 'fl', 'p', 'rt', 'parent', 'vk']
+//   кортеж fns имеет 9 параллельных массивов:
 //     fns.n[0]      — nameIdx
 //     fns.m[0]      — moduleIdx (в RLE)
 //     fns.f[0]      — fileIdx (в RLE)
@@ -85,12 +233,13 @@ import {
 //     fns.p[0]      — paramsIdx
 //     fns.rt[0]     — returnTypeIdx
 //     fns.parent[0] — parentFunctionIdx (RLE), -1 = null  ← v15.1.0 (P0)
+//     fns.vk[0]     — vueKindCode (RLE), 0 = function     ← v15.5.0
 //
 // ⚠️ ВАЖНО (v15.0.2): схема `cd` сохранена, потому что секция `cd`
 // по-прежнему кодируется в compact.json. НО в FullJSON верхнеуровневого
 // `conditionals` больше нет — все conditionals живут ТОЛЬКО в
 // `templates[].conditionals`, и `cd` собирается из них при encode.
-// ============================================
+// ============================================================
 
 export const SCHEMAS: CodecLegend['schemas'] = {
   // ==========================================
@@ -113,12 +262,17 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   fl: ['p', 'm'],
 
   // ==========================================
-  // fns — функции: 8 параллельных массивов
+  // fns — функции: 9 параллельных массивов
   // ==========================================
   // ✅ v15.1.0 (P0): добавлен 'parent'
   //   parent: [parentFunctionIdx, count][] — RLE, -1 = null
+  //
+  // ✅ v15.5.0: добавлен 'vk'
+  //   vk: [vueKindCode, count][] — RLE, 0 = function
+  //   0 = function, 1 = composable, 2 = macro, 3 = hook,
+  //   4 = reactivity, 5 = callback, 6 = arrow
   // ==========================================
-  fns: ['n', 'm', 'f', 'l', 'fl', 'p', 'rt', 'parent'],
+  fns: ['n', 'm', 'f', 'l', 'fl', 'p', 'rt', 'parent', 'vk'],
 
   // ==========================================
   // cls — классы: 6 параллельных массивов
@@ -316,6 +470,171 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   //   lx.cn = [-1, -1, 5, -1]      → calleeNameIdx
   // ==========================================
   lx: ['p', 'c', 'r', 'l', 'ai', 'cn'],
+
+  // ==========================================
+  // ✅ v15.7.2: vue.sfc — SFC-компоненты: 8 полей
+  // ✅ v15.7.3: уточнена семантика поля `c`
+  // ==========================================
+  //
+  // Columnar-секция для SFC-компонентов.
+  //
+  //   f:  fileIdx (в fl.p)
+  //   n:  nameIdx (в strs) — 'AiDataTable'
+  //   b:  bitmask блоков: 1=script, 2=script-setup, 4=template, 8=style
+  //   c:  плоский массив ИНДЕКСОВ В STRS (имена composables)  ← v15.7.3
+  //   cs: [offset, count][] — slices для каждого SFC           ← v15.7.2
+  //   p:  [fileIdx, propsCount] RLE
+  //   e:  [fileIdx, emitsCount] RLE
+  //   x:  [fileIdx, exposeCount] RLE
+  //
+  // ════════════════════════════════════════════════════════════
+  // ⚠️ v15.7.3: `c` содержит ИМЕНА composables (как индексы в strs),
+  //    а НЕ индексы в vue.composables.
+  // ════════════════════════════════════════════════════════════
+  //
+  //   Почему не индексы в `vue.composables`:
+  //     Если composable вызывается в SFC, но НЕ объявлен
+  //     в проекте (например, `useRouter` из `vue-router`),
+  //     он отсутствует в `vue.composables` → теряется при encode.
+  //
+  //   Хранение имён через `strs` универсально: работает для
+  //   локальных и внешних composables одинаково.
+  //
+  // ════════════════════════════════════════════════════════════
+  // ⚠️ v15.7.2: `cs` — slices для `c`.
+  // ════════════════════════════════════════════════════════════
+  //
+  //   `c` — плоский массив ВСЕХ имён composables для ВСЕХ SFC.
+  //   `cs[i] = [offset, count]` — где для i-го SFC начинается
+  //   его кусок в `c` и сколько имён.
+  //
+  // ════════════════════════════════════════════════════════════
+  // ⚠️ `p`/`e`/`x` — по-прежнему только счётчики.
+  // ════════════════════════════════════════════════════════════
+  //
+  //   Имена props/emits/exposed не сохраняются (это отдельная
+  //   задача). При decode восстанавливаются плейсхолдеры
+  //   `['#0', '#1', ...]` нужной длины.
+  //
+  // Пример:
+  //   vue.sfc.f = [60, 61, 62]
+  //   vue.sfc.n = [42, 43, 44]
+  //   vue.sfc.b = [3, 3, 11]
+  //   vue.sfc.c = [10, 11, 12, 10, 11, 12, 13]   ← плоский
+  //   vue.sfc.cs = [[0, 3], [3, 4], [7, 0]]      ← slices
+  //   vue.sfc.p = [[60, 7], [61, 4], [62, 2]]
+  //   vue.sfc.e = [[60, 4], [61, 3], [62, 1]]
+  //   vue.sfc.x = [[60, 9], [61, 6], [62, 0]]
+  // ==========================================
+  'vue.sfc': ['f', 'n', 'b', 'c', 'cs', 'p', 'e', 'x'],
+
+  // ==========================================
+  // ✅ v15.5.0: vue.composables — Composables: 5 полей
+  // ==========================================
+  //
+  // Columnar-секция для composables.
+  //
+  //   n: nameIdx (в strs) — 'useDataState'
+  //   f: [fileIdx, count] RLE — где вызывается
+  //   k: kindCode: 0=composable, 1=store, 2=factory, 3=utility
+  //   r: returnShape: 0=void, 1=object, 2=ref, 3=reactive, 4=function
+  //   v: [composableIdx, returnedKeysCount] RLE
+  //
+  // ⚠️ v15.7.3: `id` composable НЕ сохраняется в compact
+  //    (он генерируется при decode как `cmp1`, `cmp2`, ...).
+  //    Это by design: `id` не нужен для графа связей,
+  //    composable идентифицируется по `name + fileId`.
+  //
+  // Пример:
+  //   vue.composables.n = [10, 11, 12, 13, 14]
+  //   vue.composables.f = [[60, 5]]         → все 5 в fileIdx=60
+  //   vue.composables.k = [0, 0, 0, 0, 0]   → все composable
+  //   vue.composables.r = [1, 1, 1, 1, 1]   → все возвращают object
+  //   vue.composables.v = [[0, 4], [1, 5], [2, 9], [3, 2], [4, 6]]
+  // ==========================================
+  'vue.composables': ['n', 'f', 'k', 'r', 'v'],
+
+  // ==========================================
+  // ✅ v15.5.0: vue.macros — Макросы: 3 поля
+  // ==========================================
+  //
+  // Columnar-секция для макросов.
+  //
+  //   f: fileIdx
+  //   k: 0=props, 1=emits, 2=expose, 3=slots, 4=model, 5=options
+  //   l: line
+  //
+  // ⚠️ v15.7.3: `id` макроса НЕ сохраняется в compact
+  //    (генерируется при decode как `mac1`, `mac2`, ...).
+  //
+  // Пример:
+  //   vue.macros.f = [60, 60, 60]
+  //   vue.macros.k = [0, 1, 2]     → defineProps, defineEmits, defineExpose
+  //   vue.macros.l = [19, 20, 180]
+  // ==========================================
+  'vue.macros': ['f', 'k', 'l'],
+
+  // ==========================================
+  // ✅ v15.5.0: vue.hooks — Lifecycle hooks: 3 поля
+  // ==========================================
+  //
+  // Columnar-секция для hooks.
+  //
+  //   f: fileIdx
+  //   n: hookNameCode (см. codes.hookName)
+  //   l: line
+  //
+  // ⚠️ v15.7.3: `id` hook НЕ сохраняется в compact
+  //    (генерируется при decode как `hk1`, `hk2`, ...).
+  //
+  // Пример:
+  //   vue.hooks.f = [60, 60, 60]
+  //   vue.hooks.n = [0, 1, 6]      → onMounted, onUnmounted, watch
+  //   vue.hooks.l = [203, 215, 220]
+  // ==========================================
+  'vue.hooks': ['f', 'n', 'l'],
+
+  // ==========================================
+  // ✅ v15.5.0: vue.reactivity — Реактивные примитивы: 4 поля
+  // ==========================================
+  //
+  // Columnar-секция для reactivity.
+  //
+  //   f: fileIdx
+  //   k: 0=computed, 1=ref, 2=reactive, 3=watch
+  //   l: line
+  //   n: nameIdx, -1 если анонимный
+  //
+  // ⚠️ v15.7.3: `id` reactivity НЕ сохраняется в compact
+  //    (генерируется при decode как `rx1`, `rx2`, ...).
+  //
+  // Пример:
+  //   vue.reactivity.f = [60, 60, 60]
+  //   vue.reactivity.k = [0, 0, 0]  → все computed
+  //   vue.reactivity.l = [88, 89, 90]
+  //   vue.reactivity.n = [-1, -1, -1] → анонимные
+  // ==========================================
+  'vue.reactivity': ['f', 'k', 'l', 'n'],
+
+  // ==========================================
+  // ✅ v15.5.0: vue.icons — Иконки: 3 поля
+  // ==========================================
+  //
+  // Columnar-секция для иконок.
+  //
+  //   f: fileIdx
+  //   n: nameIdx (в strs) — 'AiCrossIcon'
+  //   c: 0=base, 1=filter, 2=toolbar, 3=sort
+  //
+  // ⚠️ v15.7.3: `id` иконки НЕ сохраняется в compact
+  //    (генерируется при decode как `ic1`, `ic2`, ...).
+  //
+  // Пример:
+  //   vue.icons.f = [50, 51, 52]
+  //   vue.icons.n = [0, 1, 2]
+  //   vue.icons.c = [0, 1, 2]      → base, filter, toolbar
+  // ==========================================
+  'vue.icons': ['f', 'n', 'c'],
 };
 
 // ============================================
@@ -339,6 +658,9 @@ export const SCHEMAS: CodecLegend['schemas'] = {
 //   LEXICAL_RELATION_CODES (единый источник истины).
 // ✅ v15.3.0 (P2): callKind собирается из
 //   CALL_KIND_CODES (единый источник истины).
+// ✅ v15.5.0: vueKind, sfcBlock, hookName, reactivityKind,
+//   iconCategory, composableKind собираются из соответствующих
+//   констант выше.
 // ============================================
 
 function mergeDict(base: Record<string, string>, overrides: CodesDict): CodesDict {
@@ -575,6 +897,102 @@ function buildCodesLegend(): CodecLegend['codes'] {
     // Собирается из CALL_KIND_CODES (единый источник истины).
     // ==========================================
     callKind: reverseCodeDict(CALL_KIND_CODES),
+
+    // ==========================================
+    // ✅ v15.5.0: VUE KIND
+    // ==========================================
+    // Коды для `fns.vk[]` (RLE):
+    //   0 = function
+    //   1 = composable
+    //   2 = macro
+    //   3 = hook
+    //   4 = reactivity
+    //   5 = callback
+    //   6 = arrow
+    //
+    // Собирается из VUE_KIND_CODES (единый источник истины).
+    // ==========================================
+    vueKind: reverseCodeDict(VUE_KIND_CODES),
+
+    // ==========================================
+    // ✅ v15.5.0: SFC BLOCK
+    // ==========================================
+    // Коды для `vue.sfc.b[]` (bitmask):
+    //   1 = script
+    //   2 = script-setup
+    //   4 = template
+    //   8 = style
+    //
+    // ⚠️ Это битовая маска, а не последовательность.
+    // Значение может быть суммой: 3 = script|script-setup.
+    //
+    // Собирается из SFC_BLOCK_CODES (единый источник истины).
+    // ==========================================
+    sfcBlock: reverseCodeDict(SFC_BLOCK_CODES),
+
+    // ==========================================
+    // ✅ v15.5.0: HOOK NAME
+    // ==========================================
+    // Коды для `vue.hooks.n[]`:
+    //   0 = onMounted
+    //   1 = onUnmounted
+    //   2 = onActivated
+    //   3 = onDeactivated
+    //   4 = onErrorCaptured
+    //   5 = onScopeDispose
+    //   6 = watch
+    //   7 = watchEffect
+    //   8 = onBeforeMount
+    //   9 = onBeforeUnmount
+    //   10 = onUpdated
+    //   11 = onBeforeUpdate
+    //
+    // Собирается из HOOK_NAME_CODES (единый источник истины).
+    // ==========================================
+    hookName: reverseCodeDict(HOOK_NAME_CODES),
+
+    // ==========================================
+    // ✅ v15.5.0: REACTIVITY KIND
+    // ==========================================
+    // Коды для `vue.reactivity.k[]`:
+    //   0 = computed
+    //   1 = ref
+    //   2 = reactive
+    //   3 = watch
+    //   4 = shallowRef
+    //   5 = readonly
+    //   6 = toRef
+    //   7 = toRefs
+    //
+    // Собирается из REACTIVITY_KIND_CODES (единый источник истины).
+    // ==========================================
+    reactivityKind: reverseCodeDict(REACTIVITY_KIND_CODES),
+
+    // ==========================================
+    // ✅ v15.5.0: ICON CATEGORY
+    // ==========================================
+    // Коды для `vue.icons.c[]`:
+    //   0 = base
+    //   1 = filter
+    //   2 = toolbar
+    //   3 = sort
+    //
+    // Собирается из ICON_CATEGORY_CODES (единый источник истины).
+    // ==========================================
+    iconCategory: reverseCodeDict(ICON_CATEGORY_CODES),
+
+    // ==========================================
+    // ✅ v15.5.0: COMPOSABLE KIND
+    // ==========================================
+    // Коды для `vue.composables.k[]`:
+    //   0 = composable
+    //   1 = store
+    //   2 = factory
+    //   3 = utility
+    //
+    // Собирается из COMPOSABLE_KIND_CODES (единый источник истины).
+    // ==========================================
+    composableKind: reverseCodeDict(COMPOSABLE_KIND_CODES),
   };
 }
 
@@ -660,4 +1078,13 @@ export default {
   buildLegend,
   buildEmptyLegend,
   SCHEMAS,
+  // ✅ v15.5.0: экспорт констант для внешних потребителей
+  VUE_KIND_CODES,
+  SFC_BLOCK_CODES,
+  HOOK_NAME_CODES,
+  REACTIVITY_KIND_CODES,
+  ICON_CATEGORY_CODES,
+  COMPOSABLE_KIND_CODES,
+  COMPOSABLE_RETURN_SHAPE_CODES,
+  MACRO_KIND_CODES,
 };
