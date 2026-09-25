@@ -2,15 +2,24 @@
 // ============================================
 // Проверка согласованности index.json ↔ index.full.json
 // ============================================
-// Версия: 2.8.0
+// Версия: 2.8.1
+//
+// ИЗМЕНЕНИЯ v2.8.1 (fix: ложное срабатывание decode(compact) ≟ full):
+//   - ✅ ИСПРАВЛЕНО: в проверке `decode(compact) ≟ full` теперь
+//     применяется нормализация Vue-секции через `normalizeVueSection`:
+//       • sfc.composables/props/emits/exposed — сравниваются ДЛИНЫ
+//       • composables/macros/hooks/reactivity/icons — исключается `id`
+//     Это устраняет ложное расхождение вида:
+//       $.vue.composables[0].id: "cmp1" → "f5_23"
+//     Поле `id` НЕ сохраняется в compact (by design), генерируется
+//     при decode как `cmp1`, `mac1`, `hk1`, `rx1`, `ic1`.
+//   - ✅ ОБНОВЛЕНО: заголовок v2.8.0 → v2.8.1.
+//   - ✅ СИНХРОНИЗИРОВАНО с verify-roundtrip.ts v15.7.3,
+//     где `normalizeVueForCompare` применяется в L1/L2/DL.
 //
 // ИЗМЕНЕНИЯ v2.8.0 (fix: ложное срабатывание vue.sfc / vue.composables):
 //   - ✅ ИСПРАВЛЕНО: `checkVueSection` теперь НОРМАЛИЗУЕТ Vue-секцию
-//     перед сравнением decoded ↔ full:
-//       • sfc.composables/props/emits/exposed — сравниваются
-//         ДЛИНЫ (values — плейсхолдеры `#0`, `#1`, ...)
-//       • composables/macros/hooks/reactivity/icons — ИСКЛЮЧАЕТСЯ
-//         поле `id` (генерируется при decode: `cmp1`, `mac1`, ...)
+//     перед сравнением decoded ↔ full.
 //   - ✅ ДОБАВЛЕНО: `normalizeSfc`, `normalizeComposables`,
 //     `normalizeWithoutId` — хелперы для нормализации.
 //   - ✅ ОБНОВЛЕНО: CODEC_VERSION упоминается как '15.7.3'.
@@ -19,45 +28,16 @@
 //   - ✅ ДОБАВЛЕНО: 'vue' в sectionNames для проверки секции
 //     Vue-сущностей между compact и decoded.
 //   - ✅ ДОБАВЛЕНО: I17 — vue.sfc.c/cs согласован с
-//     decoded.vue.sfc[i].composables.length (round-trip
-//     счётчиков composables/props/emits/exposed).
+//     decoded.vue.sfc[i].composables.length.
 //   - ✅ ДОБАВЛЕНО: I18 — fns.vk согласован с
-//     functions[].vueKind (round-trip vueKind).
-//   - ✅ ДОБАВЛЕНО: проверка vue.sfc.n / vue.sfc.b / vue.macros /
-//     vue.hooks / vue.reactivity / vue.icons между decoded и full.
+//     functions[].vueKind.
 //   - ✅ ОБНОВЛЕНО: CODEC_VERSION упоминается как '15.5.0'.
 //
 // ИЗМЕНЕНИЯ v2.6.0 (fix: ложное срабатывание values[] consistency):
 //   - ✅ ИСПРАВЛЕНО: `checkValuesConsistency` больше НЕ сравнивает
 //     `expectedKept` с `compactValues.length` напрямую.
-//     Причина: `compact.values[]` — ДЕДУПЛИЦИРОВАННЫЙ словарь
-//     (см. `addValue` в codec-encode.ts, dedupKey по
-//     stableStringify). Если 100 констант имеют значение
-//     `"relation"`, в values[] оно попадёт 1 раз, а
-//     expectedKept посчитает 100.
-//
-//     СИМПТОМ (до фикса):
-//       expectedKept=1955 > compact.values.length=547 — рассинхрон
-//
-//   - ✅ ДОБАВЛЕНО: проверка по МНОЖЕСТВАМ уникальных значений:
-//       • `expectedUniqueKept` — множество уникальных значений
-//         из full.constants[], которые должны сохраниться
-//         (по isValueKept + canonicalizeForComparison).
-//       • `actualInCompact` — множество значений, фактически
-//         присутствующих в compact.values[].
-//       • Проверка: `expectedUniqueKept ⊆ actualInCompact`.
-//     Это корректно учитывает дедупликацию.
-//
-//   - ✅ ДОБАВЛЕНО: функция `canonicalizeForComparison(value)` —
-//     единый ключ для сравнения значений, синхронизированный
-//     с dedupKey в `addValue()` (codec-encode.ts v15.4.4).
-//
-//   - ✅ ДОБАВЛЕНО: диагностика `dedupRatio` —
-//     `expectedKept / uniqueCount`. Показывает, насколько
-//     активно работает дедупликация.
-//
-//   - ✅ СИНХРОНИЗИРОВАНО с codec-encode.ts v15.4.4
-//     (addValue + isValueKept) и values-filter.ts v1.2.0.
+//   - ✅ ДОБАВЛЕНО: функция `canonicalizeForComparison(value)`.
+//   - ✅ ДОБАВЛЕНО: диагностика `dedupRatio`.
 //
 // ИЗМЕНЕНИЯ v2.5.0 (JSON-safe проверки):
 //   - ✅ ДОБАВЛЕНО: проверка, что full.constants[].value
@@ -68,28 +48,14 @@
 // ИЗМЕНЕНИЯ v2.4.0 (проверка values[]):
 //   - ✅ ДОБАВЛЕНО: проверка согласованности values[] между
 //     compact и full.
-//   - ✅ ДОБАВЛЕНО: функция checkValuesConsistency(compact, full).
-//   - ✅ ДОБАВЛЕНО: секция «СОГЛАСОВАННОСТЬ VALUES».
 //
 // ИЗМЕНЕНИЯ v2.3.0 (проверка инварианта isExternal ↔ toFileId):
-//   - ✅ ДОБАВЛЕНО: проверка `imports[].isExternal ↔ toFileId` —
-//     ловит рассинхрон, когда toFileId="external:@/components",
-//     а isExternal=false (регрессия v15.0.6 в compact-reporter.ts).
-//   - ✅ ДОБАВЛЕНО: функция `checkImportsIsExternalConsistency(full)`.
-//   - ✅ ДОБАВЛЕНО: секция «СОГЛАСОВАННОСТЬ IMPORTS».
+//   - ✅ ДОБАВЛЕНО: проверка `imports[].isExternal ↔ toFileId`.
 //
 // ИЗМЕНЕНИЯ v2.2.0 (устранение дублирования conditionals):
 //   - ✅ УБРАНО: 'conditionals' из sectionNames в compareSections.
 //   - ✅ ИСПРАВЛЕНО: checkConditionalsDedup — считает через
 //     countConditionals(full) / countConditionals(decoded).
-//   - ✅ ДОБАВЛЕНО: helper countConditionals(full: FullJSON): number.
-//
-// ИЗМЕНЕНИЯ v2.1.0 (под CODEC v15.0.1):
-//   - ✅ ДОБАВЛЕНО: проверка conditionals dedup (compact.cd).
-//
-// ИЗМЕНЕНИЯ v2.0.0 (под CODEC v14.0.0):
-//   - ✅ ДОБАВЛЕНО: проверка секций templates/lifecycle/effects/
-//     injections/reactivity/conditionals/types/typeRefs.
 //
 // Назначение
 // ----------
@@ -261,7 +227,7 @@ function stripForByteCompare(obj: any): any {
 }
 
 // ============================================
-// ✅ v2.8.0: НОРМАЛИЗАЦИЯ VUE-СЕКЦИИ
+// ✅ v2.8.1: НОРМАЛИЗАЦИЯ VUE-СЕКЦИИ
 // ============================================
 //
 // Vue-секция требует ОСОБОЙ нормализации при сравнении decoded ↔ full:
@@ -270,8 +236,7 @@ function stripForByteCompare(obj: any): any {
 //     хранятся только СЧЁТЧИКИ (или индексы в strs). При decode
 //     props/emits/exposed восстанавливаются как плейсхолдеры
 //     `#0`, `#1`, ... (по дизайну). Composables восстанавливаются
-//     как реальные имена (после v15.7.3) — но для старых compact
-//     могут быть плейсхолдерами.
+//     как реальные имена (после v15.7.3).
 //     → Сравниваем ДЛИНЫ, не значения.
 //
 //   • composables[].id / macros[].id / hooks[].id /
@@ -334,8 +299,8 @@ function normalizeWithoutId(arr: any[]): any[] {
  * ✅ v2.8.0: нормализует Vue-секцию целиком.
  *
  * Возвращает объект той же структуры, но с нормализованными
- * подсекциями. Используется в `compareSections` и
- * `checkVueSection`.
+ * подсекциями. Используется в `compareSections`, `checkVueSection`
+ * и — с v2.8.1 — в `decode(compact) ≟ full`.
  */
 function normalizeVueSection(vue: any): any {
   if (!vue || typeof vue !== 'object') return vue;
@@ -450,9 +415,6 @@ function checkImportsIsExternalConsistency(full: FullJSON): {
  * Это ТОТ ЖЕ ключ, что используется в `addValue` для дедупликации:
  *   dedupKey = 'O:' + stableStringify(value)
  *
- * Поэтому сравнение «значение из full.constants[] присутствует
- * в compact.values[]» корректно.
- *
  * Формат ключа (синхронизирован с `addValue` в codec-encode.ts):
  *   null      → 'N'
  *   undefined → 'U'
@@ -501,17 +463,6 @@ function canonicalizeForComparison(value: unknown): string {
  *
  *   2. Диагностика `dedupRatio` = expectedKept / uniqueCount
  *      показывает, насколько активно работает дедупликация.
- *
- * ════════════════════════════════════════════════════════════
- * ЧЕГО НЕ ПРОВЕРЯЕТ (в отличие от v2.5.0)
- * ════════════════════════════════════════════════════════════
- *
- *   ❌ `expectedKept <= compact.values.length` — НЕВЕРНАЯ проверка.
- *      Причина: `compact.values[]` — дедуплицированный словарь,
- *      а `expectedKept` — количество констант (с повторами).
- *
- *      До v2.6.0 это давало ложное срабатывание:
- *        expectedKept=1955 > compact.values.length=547
  *
  * @param compact — CompactJSON
  * @param full    — FullJSON
@@ -580,11 +531,11 @@ function checkValuesConsistency(
 
   const detail = ok
     ? `expectedKept=${expectedKeptTotal} (уникальных=${expectedUniqueCount}), ` +
-      `compact.values=${actualUniqueCount} (dedup=${dedupRatio}x), ` +
-      `removed=${expectedRemovedTotal}`
+    `compact.values=${actualUniqueCount} (dedup=${dedupRatio}x), ` +
+    `removed=${expectedRemovedTotal}`
     : `${violations.length} нарушений ` +
-      `(expectedKept=${expectedKeptTotal}, unique=${expectedUniqueCount}, ` +
-      `compact.values=${actualUniqueCount})`;
+    `(expectedKept=${expectedKeptTotal}, unique=${expectedUniqueCount}, ` +
+    `compact.values=${actualUniqueCount})`;
 
   return {
     ok,
@@ -663,7 +614,7 @@ function checkJsonRoundTripCompact(
     const after = JSON.stringify(afterParse[i]);
     if (before !== after) {
       violations.push(`values[${i}]: "${before}" → "${after}"`);
-      if (violations.length >= maxSafe(violations.length, limit)) break;
+      if (violations.length >= limit) break;
     }
   }
 
@@ -675,10 +626,6 @@ function checkJsonRoundTripCompact(
         : `${violations.length} значений теряют данные`,
     violations,
   };
-}
-
-function maxSafe(a: number, b: number): number {
-  return a > b ? a : b;
 }
 
 // ============================================
@@ -705,10 +652,6 @@ function maxSafe(a: number, b: number): number {
  *     sfc.e  — [fileIdx, emitsCount][]
  *     sfc.x  — [fileIdx, exposeCount][]
  *
- *   В decode мы восстанавливаем длины через `Array.from`,
- *   заполняя плейсхолдерами `#0, #1, ...`. Проверка гарантирует,
- *   что количество плейсхолдеров совпадает со счётчиком.
- *
  * ════════════════════════════════════════════════════════════
  * I18: fns.vk ↔ functions[].vueKind
  * ════════════════════════════════════════════════════════════
@@ -717,17 +660,6 @@ function maxSafe(a: number, b: number): number {
  *   В decoded/full — `functions[].vueKind` (строки).
  *   Проверяем, что после decode каждый `vueKind` строкой
  *   соответствует своему коду.
- *
- * ════════════════════════════════════════════════════════════
- * Сравнение подсекций decoded ↔ full (С НОРМАЛИЗАЦИЕЙ)
- * ════════════════════════════════════════════════════════════
- *
- *   sfc         — длины массивов + moduleId + name + blocks
- *   composables — без id
- *   macros      — без id
- *   hooks       — без id
- *   reactivity  — без id
- *   icons       — без id
  *
  * @param decoded — decode(compact)
  * @param full    — full.json на диске
@@ -1153,7 +1085,7 @@ interface CheckResult {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
-  printHeader('🔍 ПРОВЕРКА СОГЛАСОВАННОСТИ index.json ↔ index.full.json (v2.8.0)');
+  printHeader('🔍 ПРОВЕРКА СОГЛАСОВАННОСТИ index.json ↔ index.full.json (v2.8.1)');
   console.log(`  ${INFO} compact: ${C.cyan}${path.resolve(args.compact)}${C.reset}`);
   console.log(`  ${INFO} full:    ${C.cyan}${path.resolve(args.full)}${C.reset}`);
   console.log(`  ${INFO} verbose: ${args.verbose}`);
@@ -1256,8 +1188,18 @@ async function main(): Promise<void> {
   {
     try {
       decodedCompact = decode(compact);
-      const a = stripServiceFields(decodedCompact);
-      const b = stripServiceFields(full);
+      const aRaw = stripServiceFields(decodedCompact);
+      const bRaw = stripServiceFields(full);
+
+      // ✅ v2.8.1: Нормализуем Vue-секцию (убираем id) перед сравнением.
+      // Это устраняет ложное срабатывание вида:
+      //   $.vue.composables[0].id: "cmp1" → "f5_23"
+      //
+      // Поле `id` НЕ сохраняется в compact (by design), генерируется
+      // при decode как `cmp1`, `mac1`, `hk1`, `rx1`, `ic1`.
+      const a = { ...aRaw, vue: normalizeVueSection(aRaw.vue) };
+      const b = { ...bRaw, vue: normalizeVueSection(bRaw.vue) };
+
       const ok = deepEqual(a, b);
       const diffs = ok ? [] : diffObjects(a, b, args.maxDiffs);
       checks.push({ name: 'decode(compact) ≟ full', ok, diffs });
@@ -1800,7 +1742,7 @@ async function main(): Promise<void> {
     console.log(
       `     ${C.red}$.vue.sfc[i].composables.length: 5 → 6${C.reset} или ${C.red}$.vue.composables[i].id: "cmp1" → "f5_23"${C.reset}):`
     );
-    console.log(`     ✅ v2.8.0: Нормализация vue-секции перед сравнением:`);
+    console.log(`     ✅ v2.8.1: Нормализация vue-секции перед сравнением:`);
     console.log(`       1. ${C.cyan}sfc.composables/props/emits/exposed${C.reset} —`);
     console.log(`          сравниваются ДЛИНЫ, а не значения (в compact`);
     console.log(`          хранятся счётчики или индексы, а в full — имена).`);
