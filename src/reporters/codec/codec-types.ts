@@ -1,100 +1,80 @@
 // src/reporters/codec/codec-types.ts
 // ============================================
-// ТИПЫ ДЛЯ КОДЕКА (v15.7.3)
+// ТИПЫ ДЛЯ КОДЕКА (v16.0.1)
 // ============================================
-// Версия: 15.7.3
+// Версия: 16.0.1
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
 //
+// v16.0.1 (fix: экспорт PropUsage, DomApiHandlerUsage + hv в fns):
+//   - ✅ FIX: добавлен экспорт `PropUsage` (был только в теле FullJSON,
+//     но не как отдельный именованный экспорт — из-за этого
+//     `compact-reporter.ts` не мог его импортировать).
+//   - ✅ FIX: `DomApiHandlerUsage` уже был объявлен через `export interface`,
+//     проверено — экспорт присутствует.
+//   - ✅ FIX: `HtmlUsage` уже был объявлен через `export interface`,
+//     проверено — экспорт присутствует.
+//   - ✅ FIX: `SourceChainItem` уже был объявлен через `export interface`,
+//     проверено — экспорт присутствует.
+//   - ✅ NEW: добавлено поле `hv?: [number, number][]` в `CompactJSON.fns`
+//     для RLE-кодирования `isHtmlVisible` (0/1). Это устраняет
+//     расхождение L1/L2/DL: `decode(compact).functions[].isHtmlVisible`
+//     теперь восстанавливается как `false`, а не `undefined`.
+//   - ✅ NEW: `schemas.fns` расширена до 10 полей: добавлено `'hv'`.
+//     Синхронизировано с `codec-legend.ts` и `verify-roundtrip.ts`.
+//
+// v16.0.0 (Component Usage + DOM API + sourceChains):
+//   - ✅ CODEC_VERSION = '16.0.0' (breaking change)
+//   - ✅ LEGEND_VERSION = '2.0.0' (новое поле legend.version)
+//   - ✅ ДОБАВЛЕНО: ComponentUsage, ComponentProp, ComponentEvent,
+//     ComponentDirective, ComponentSlot, SourceChainItem
+//   - ✅ ДОБАВЛЕНО: HtmlElementUsage, HtmlInterpolation
+//   - ✅ ДОБАВЛЕНО: HtmlUsage, HtmlOutputKind, PropUsage
+//   - ✅ ДОБАВЛЕНО: DomApiCategory, DomApiEffect, DomApiTargetKind,
+//     DomApiCall, DomApiArg, DomApiContext, DomApiHandlerUsage
+//   - ✅ ДОБАВЛЕНО: FunctionData.htmlUsage / isHtmlVisible /
+//     usagesAsPropSource / domApiCalls / domApiUsagesAsHandler
+//   - ✅ ДОБАВЛЕНО: SFCComponent.componentUsages / htmlElements
+//   - ✅ ДОБАВЛЕНО: VueSectionFull.componentProps / componentEvents /
+//     componentDirectives / componentSlots / htmlInterpolations /
+//     fnHtmlUsage / domApiCalls / domApiArgs / ids / sourceChains
+//   - ✅ ДОБАВЛЕНО: FullJSON top-level поля (fnHtmlUsage, componentProps,
+//     ..., domApiCalls, domApiArgs, sourceChains, ids)
+//   - ✅ ДОБАВЛЕНО: CompactJSON top-level поля
+//   - ✅ ОБНОВЛЕНО: VueSectionCompact.sfc — 30 полей (было 8)
+//     Breaking change: p/e/x → pn/ps/en/es/xn/xs + cu_* / he_*
+//   - ✅ ОБНОВЛЕНО: CompactJSON.params → (string | number[])[]
+//   - ✅ ОБНОВЛЕНО: StatisticsData +8 счётчиков
+//   - ✅ ОБНОВЛЕНО: CodecLegend.version (новое поле)
+//   - ✅ ОБНОВЛЕНО: CodecLegend.codes +10 словарей
+//   - ✅ ОБНОВЛЕНО: CodecLegend.schemas +11 схем
+//
 // v15.7.3 (fix: vue.sfc.c — индексы в strs, а не в vue.composables):
-//   - ✅ ИСПРАВЛЕНО: `VueSectionCompact.sfc.c` теперь содержит
-//     плоский массив ИНДЕКСОВ В `strs` (имена composables),
-//     а НЕ индексы в `vue.composables`.
+//   - ИСПРАВЛЕНО: VueSectionCompact.sfc.c — индексы в strs
+//   - ДОБАВЛЕНО: VueSectionCompact.sfc.cs — slices
 //
-//     ПРИЧИНА: в SFC могут использоваться ВНЕШНИЕ composables
-//     (`useRouter` из vue-router, `useI18n` из vue-i18n),
-//     которых НЕТ в `vue.composables` (там только локальные).
-//
-//     Старый подход (v15.7.2) терял такие composables при encode,
-//     что давало расхождение `sfc[19].composables.length: 5 vs 6`.
-//
-//   - ✅ ДОБАВЛЕНО: `VueSectionCompact.sfc.cs` — slices
-//     `[[offset, count], ...]` для каждого SFC. Заменяет
-//     собой неявное разбиение по `c[i] = [fileIdx, count]`.
-//
-//   - ✅ ОБНОВЛЕНО: JSDoc для `VueSectionCompact.sfc` —
-//     уточнено, что `c` содержит индексы в `strs`,
-//     а `cs` — slices.
-//
-//   - ✅ ДОБАВЛЕНО: пояснение про потерю `id` при decode
-//     для `ComposableEntity`, `MacroEntity`, `HookEntity`,
-//     `ReactivityEntity`, `IconEntity` (by design — `id`
-//     не сохраняется в compact).
-//
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '15.7.3'.
-//
-// v15.7.2 (fix: vue.sfc.c/cs — восстановление moduleId + счётчики):
-//   - ✅ ИСПРАВЛЕНО: `decodeVueSection()` теперь восстанавливает
-//     `moduleId` из `files[].moduleId`.
-//   - ✅ ДОБАВЛЕНО: `VueSectionCompact.sfc.cs` — slices.
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '15.7.2'.
-//
-// v15.7.1 (Vue-секция: ослабление проверки + moduleId):
-//   - ✅ ИСПРАВЛЕНО: `checkVueSection` — нормализация перед сравнением.
-//
-// v15.7.0 (Vue-сущности):
-//   - ✅ ДОБАВЛЕНО: VueKind, SFCComponent, ComposableEntity,
-//     MacroEntity, HookEntity, ReactivityEntity, IconEntity.
-//   - ✅ ДОБАВЛЕНО: FullJSON.vue, CompactJSON.vue.
-//   - ✅ ДОБАВЛЕНО: FunctionData.vueKind.
-//   - ✅ ДОБАВЛЕНО: CompactJSON.fns.vk (RLE vueKind).
-//
-// v15.6.0 (JSON-safe проверки):
-//   - ✅ ДОБАВЛЕНО: инварианты I15/I16.
-//
-// v15.5.0 (Vue entities):
-//   - ✅ ДОБАВЛЕНО: секция vue в FullJSON/CompactJSON.
-//
-// v15.4.3 (fix: единый источник истины для classifyValue):
-//   - ✅ СИНХРОНИЗИРОВАНО с codec-encode.ts v15.4.3,
-//     values-filter.ts v1.0.1.
-//
-// v15.4.0 (P3 — cross-file resolution):
-//   - ✅ ДОБАВЛЕНО: реэкспорт CrossFileCall, ResolveStats, ResolvedCallee
-//     из '../../core/cross-file-resolver/types.js'.
-//
-// v15.3.0 (P2 — расширенный CallData):
-//   - ✅ ДОБАВЛЕНО: CallData.column / callKind / calleeName / argumentIndex.
-//   - ✅ ДОБАВЛЕНО: CompactJSON.gr.c.col / ck / cn / ai.
-//
-// v15.2.0 (P1 — lexicalLinks):
-//   - ✅ ДОБАВЛЕНО: LexicalLink, LexicalRelation.
-//   - ✅ ДОБАВЛЕНО: FullJSON.lexicalLinks.
-//   - ✅ ДОБАВЛЕНО: CompactJSON.lx (columnar-секция).
-//
-// v15.1.0 (P0 — parentFunctionId):
-//   - ✅ ДОБАВЛЕНО: FunctionData.parentFunctionId.
-//   - ✅ ДОБАВЛЕНО: CompactJSON.fns.parent (RLE).
-//
-// v15.0.6 (gr.i.tf — индекс в fl.p):
-//   - ✅ ИЗМЕНЕНО: gr.i.tf читается как индекс в fl.p.
-//
-// v15.0.2 (устранение дублирования conditionals):
-//   - ✅ УДАЛЕНО: FullJSON.conditionals (верхний уровень).
-//
-// v15.0.1 (fix imports[].type):
-//   - ✅ ИСПРАВЛЕНО: ImportData.type ∈ {named, default, namespace}.
-//
-// v15.0.0 (100% round-trip расширенных секций):
-//   - ✅ ДОБАВЛЕНО: секции vt/lc/ef/inj/rx/cd/ty/tr.
+// v15.7.2 (fix: vue.sfc.c/cs — восстановление moduleId + счётчики)
+// v15.7.1 (Vue-секция: ослабление проверки + moduleId)
+// v15.7.0 (Vue-сущности)
+// v15.6.0 (JSON-safe проверки)
+// v15.5.0 (Vue entities)
+// v15.4.3 (fix: единый источник истины для classifyValue)
+// v15.4.0 (P3 — cross-file resolution)
+// v15.3.0 (P2 — расширенный CallData)
+// v15.2.0 (P1 — lexicalLinks)
+// v15.1.0 (P0 — parentFunctionId)
+// v15.0.6 (gr.i.tf — индекс в fl.p)
+// v15.0.2 (устранение дублирования conditionals)
+// v15.0.1 (fix imports[].type)
+// v15.0.0 (100% round-trip расширенных секций)
 // ============================================
 
 // ============================================================
-// ✅ v15.7.3: ЕДИНАЯ ВЕРСИЯ CODEC
+// ✅ v16.0.0: ВЕРСИИ CODEC И LEGEND
 // ============================================================
-// Используется в:
+// CODEC_VERSION используется в:
 //   - compact-reporter.ts (version в full.json)
 //   - codec-encode.ts     (v в compact.json)
 //   - codec-decode.ts     (version в full.json при decode)
@@ -102,11 +82,12 @@
 //   - verify-roundtrip.ts (codecVersion в jsonReport)
 //   - verify-consistency.ts (заголовок)
 //
-// Единый источник истины — устраняет расхождение версий между
-// full.json и compact.json.
+// LEGEND_VERSION — новое поле legend.version (в 15.7.3 отсутствовало).
+// Инвариант I40 проверяет его значение.
 // ============================================================
 
-export const CODEC_VERSION = '15.7.3';
+export const CODEC_VERSION = '16.0.1';
+export const LEGEND_VERSION = '2.0.0';
 
 // ============================================================
 // РЕЭКСПОРТ TEMPLATE-ТИПОВ ИЗ src/types.ts
@@ -152,31 +133,6 @@ export type ConditionalDirective = TemplateConditional['directive'];
 
 /**
  * Вид лексической связи между функциями.
- *
- * ════════════════════════════════════════════════════════════
- * ЗНАЧЕНИЯ
- * ════════════════════════════════════════════════════════════
- *
- *   - `'nested'`         — вложенная функция: `function outer() { function inner() {} }`
- *   - `'arrow-var'`      — arrow в переменной: `const fn = () => {}`
- *   - `'callback'`       — колбэк: `arr.map(x => x)`, `setTimeout(() => {}, 100)`
- *   - `'iife'`           — IIFE: `(function() {})()`
- *   - `'class-method'`   — метод класса: `class A { method() {} }`
- *   - `'object-prop'`    — метод объекта: `{ onClick: () => {} }`
- *   - `'return'`         — возврат функции: `return () => {}`
- *   - `'default-export'` — `export default () => {}`
- *
- * ════════════════════════════════════════════════════════════
- * СИНХРОНИЗАЦИЯ С inferFunctionName
- * ════════════════════════════════════════════════════════════
- *
- *   `LexicalRelation` синхронизирован с логикой `inferFunctionName.ts`
- *   (helpers/infer-function-name.ts v2.1.0).
- *
- *   Любое расширение этого enum должно быть отражено в:
- *     - `LEXICAL_RELATION_CODES` (codec-encode.ts)
- *     - `LEXICAL_RELATION_BY_CODE` (codec-decode.ts)
- *     - `legend.codes.lexicalRelation` (codec-legend.ts)
  */
 export type LexicalRelation =
   | 'nested'
@@ -190,64 +146,19 @@ export type LexicalRelation =
 
 /**
  * Лексическая связь: parent → child.
- *
- * ════════════════════════════════════════════════════════════
- * СЕМАНТИКА
- * ════════════════════════════════════════════════════════════
- *
- *   Описывает **статическую** связь: `child` объявлен **внутри**
- *   `parent` в AST. Это НЕ вызов — это вложенность.
- *
- *   Отличие от `CallData`:
- *     - `CallData` — динамическая связь (кто кого вызывает).
- *     - `LexicalLink` — статическая связь (кто внутри кого объявлен).
- *
- * ════════════════════════════════════════════════════════════
- * ПРИМЕР
- * ════════════════════════════════════════════════════════════
- *
- *   function outer() {
- *     arr.map(x => x);
- *   }
- *
- *   → {
- *       id: 'lx1',
- *       parentFunctionId: 'fn1',   // outer
- *       childFunctionId: 'fn2',    // callback
- *       relation: 'callback',
- *       line: 2,
- *       argumentIndex: 0,          // arr.map(callback) — 0-й аргумент
- *       calleeName: 'map',
- *     }
  */
 export interface LexicalLink {
-  /** Уникальный ID (lx1, lx2, ...) */
   id: string;
-
-  /** ID функции-родителя (null для top-level) */
   parentFunctionId: string | null;
-
-  /** ID вложенной функции (колбэк, nested, ...) */
   childFunctionId: string;
-
-  /** Вид лексической связи */
   relation: LexicalRelation;
-
-  /** Строка объявления child (1-based) */
   line: number;
-
-  /** Индекс аргумента (только для relation='callback') */
   argumentIndex?: number;
-
-  /** Имя callee (только для relation='callback') */
   calleeName?: string;
 }
 
 // ============================================================
 // ✅ v15.4.0 (P3): CROSS-FILE TYPES (реэкспорт)
-// ============================================================
-// Реэкспортируем типы из cross-file-resolver, чтобы потребители
-// codec-types.ts могли использовать их без дополнительных импортов.
 // ============================================================
 
 export type {
@@ -258,50 +169,11 @@ export type {
 } from '../../core/cross-file-resolver/types.js';
 
 // ============================================================
-// ✅ v15.7.0: VUE ENTITIES
-// ============================================================
-//
-// Классификация Vue-сущностей:
-//   - SFC          — Single File Component (.vue)
-//   - composable   — функция use[A-Z]*
-//   - macro        — defineProps / defineEmits / ...
-//   - hook         — onMounted / onUnmounted / ...
-//   - reactivity   — computed / ref / reactive / watch
-//   - icon         — SFC-иконка с корневым <svg>
-//
-// ⚠️ Синхронизировано с:
-//   - src/core/vue-entity-classifier.ts
-//   - src/reporters/codec/codec-encode.ts (encodeVueSection)
-//   - src/reporters/codec/codec-decode.ts (decodeVueSection)
-//   - src/reporters/codec/codec-legend.ts
+// ✅ v15.5.0: VUE ENTITIES
 // ============================================================
 
 /**
  * Тип функции с точки зрения Vue.
- *
- * ════════════════════════════════════════════════════════════
- * ЗНАЧЕНИЯ
- * ════════════════════════════════════════════════════════════
- *
- *   - `'function'`    — обычная функция (не Vue-специфичная)
- *   - `'composable'`  — use[A-Z]* (не из VUE_BUILTINS)
- *   - `'macro'`       — defineProps / defineEmits / defineExpose / ...
- *   - `'hook'`        — onMounted / onUnmounted / watch / ...
- *   - `'reactivity'`  — computed / ref / reactive / ...
- *   - `'callback'`    — стрелка, переданная в аргумент вызова
- *   - `'arrow'`       — стрелка в переменной (const x = () => {})
- *
- * ════════════════════════════════════════════════════════════
- * КОДЫ (для compact.json: fns.vk)
- * ════════════════════════════════════════════════════════════
- *
- *   0 = function
- *   1 = composable
- *   2 = macro
- *   3 = hook
- *   4 = reactivity
- *   5 = callback
- *   6 = arrow
  */
 export type VueKind =
   'function' | 'composable' | 'macro' | 'hook' | 'reactivity' | 'callback' | 'arrow';
@@ -309,48 +181,17 @@ export type VueKind =
 /**
  * Битовая маска блоков SFC-компонента.
  *
- * ════════════════════════════════════════════════════════════
- * БИТЫ
- * ════════════════════════════════════════════════════════════
- *
  *   1  = <script>
  *   2  = <script setup>
  *   4  = <template>
  *   8  = <style>
- *
- * Пример: `b = 11` → script + script-setup + style (без template)
- *         `b = 7`  → script + script-setup + template
- *         `b = 15` → все четыре блока
  */
 export type SfcBlockMask = number;
 
 /**
  * SFC-компонент (.vue).
  *
- * ════════════════════════════════════════════════════════════
- * ⚠️ ВАЖНО: восстановление полей при decode
- * ════════════════════════════════════════════════════════════
- *
- *   • `composables` — восстанавливается ТОЧНО (v15.7.3):
- *     в compact хранятся имена (как индексы в `strs`),
- *     при decode они читаются через `readStr(idx)`.
- *
- *   • `props` / `emits` / `exposed` — восстанавливаются
- *     ПЛЕЙСХОЛДЕРАМИ `['#0', '#1', ...]` (by design):
- *     в compact хранятся только СЧЁТЧИКИ.
- *     Реальные имена не сохраняются (это отдельная задача).
- *
- *   • `moduleId` — восстанавливается из `files[].moduleId`
- *     (v15.7.2).
- *
- * ════════════════════════════════════════════════════════════
- * ⚠️ WHY: почему props/emits/exposed — только счётчики
- * ════════════════════════════════════════════════════════════
- *
- *   В `vue.sfc` нет отдельной секции с описаниями props/emits.
- *   Их имена можно было бы хранить как строки в `strs`, но это
- *   увеличит размер compact. Пока (v15.7.3) не делаем — это
- *   допустимо, потому что I17 проверяет только ДЛИНУ.
+ * ✅ v16.0.0: добавлены componentUsages и htmlElements.
  */
 export interface SFCComponent {
   /** ID файла (f1, f2, ...) */
@@ -359,231 +200,568 @@ export interface SFCComponent {
   /** ID модуля (m1, m2, ...) */
   moduleId: string;
 
-  /** Имя компонента (PascalCase, из defineOptions или из имени файла) */
+  /** Имя компонента */
   name: string;
 
-  /** Битовая маска блоков (см. SfcBlockMask) */
+  /** Битовая маска блоков */
   blocks: SfcBlockMask;
 
-  /**
-   * Composables, использованные в <script setup>.
-   *
-   * ⚠️ В compact.json (v15.7.3) хранятся как плоский массив
-   *    индексов в `strs` + slices `cs`.
-   *
-   *    При decode восстанавливаются ТОЧНО (реальные имена).
-   *
-   *    Пример: `['useDataState', 'useRouter', 'useI18n']`.
-   *
-   *    ⚠️ Может содержать ВНЕШНИЕ composables (useRouter, useI18n),
-   *       которых нет в `vue.composables` (там только локальные).
-   *       Это причина, по которой `c` хранит индексы в `strs`,
-   *       а НЕ в `vue.composables` (см. JSDoc `VueSectionCompact`).
-   */
+  /** Composables, использованные в <script setup> */
   composables: string[];
 
-  /**
-   * Props (только счётчик в compact.json: `sfc.p`).
-   *
-   * ⚠️ При decode восстанавливаются ПЛЕЙСХОЛДЕРАМИ:
-   *    `['#0', '#1', ..., '#N-1']`, где N = count.
-   *
-   * Реальные имена props не сохраняются в compact.
-   */
+  /** Props (реальные имена — v16.0.0) */
   props: string[];
 
-  /**
-   * Emits (только счётчик в compact.json: `sfc.e`).
-   *
-   * ⚠️ При decode восстанавливаются ПЛЕЙСХОЛДЕРАМИ.
-   */
+  /** Emits (реальные имена — v16.0.0) */
   emits: string[];
 
-  /**
-   * Exposed (только счётчик в compact.json: `sfc.x`).
-   *
-   * ⚠️ При decode восстанавливаются ПЛЕЙСХОЛДЕРАМИ.
-   */
+  /** Exposed (реальные имена — v16.0.0) */
   exposed: string[];
+
+  // ==========================================
+  // ✅ v16.0.0: Vue-шаблон
+  // ==========================================
+
+  /** Использования компонентов в <template> */
+  componentUsages?: ComponentUsage[];
+
+  /** Использования HTML-элементов в <template> */
+  htmlElements?: HtmlElementUsage[];
 }
 
 /**
  * Composable-функция.
- *
- * ════════════════════════════════════════════════════════════
- * ⚠️ ВАЖНО: `id` не сохраняется в compact
- * ════════════════════════════════════════════════════════════
- *
- *   В compact `id` НЕ хранится (см. схему `vue.composables`:
- *   `['n', 'f', 'k', 'r', 'v']` — 5 полей, `id` отсутствует).
- *
- *   При decode `id` генерируется как `cmp1`, `cmp2`, `...`.
- *
- *   В full.json `id` — реальный (`f5_23`, `f19_59`, ...).
- *
- *   Это by design: composable идентифицируется по `name + fileId`,
- *   а не по `id`. Для графа связей `id` не нужен.
- *
- *   ⚠️ В `verify-roundtrip.ts` применяется `normalizeVueForCompare()`,
- *      которая убирает `id` перед сравнением L1/L2/DL.
  */
 export interface ComposableEntity {
-  /** Уникальный ID (в full: `f5_23`; после decode: `cmp1`, ...) */
   id: string;
-
-  /** Имя composable (useDataState, useColumnsConfig, ...) */
   name: string;
-
-  /** ID файла (f1, f2, ...) */
   fileId: string;
-
-  /**
-   * Вид composable.
-   *
-   *   - `'composable'` — обычный composable (useXxx)
-   *   - `'store'`      — Pinia store (useXxxStore)
-   *   - `'factory'`    — фабрика (createXxx)
-   *   - `'utility'`    — утилита в /utils/
-   */
   kind: 'composable' | 'store' | 'factory' | 'utility';
-
-  /**
-   * Форма возвращаемого значения.
-   *
-   *   - `'void'`     — ничего не возвращает
-   *   - `'object'`   — возвращает { ... }
-   *   - `'ref'`      — возвращает ref(...)
-   *   - `'reactive'` — возвращает reactive(...)
-   *   - `'function'` — возвращает функцию
-   */
   returnShape: 'void' | 'object' | 'ref' | 'reactive' | 'function';
-
-  /** Ключи возвращаемого объекта (только счётчик в compact.json: `v`) */
   returnedKeys: string[];
-
-  /** ID файлов, которые вызывают этот composable */
   callers: string[];
 }
 
 /**
- * Vue-макрос (defineProps / defineEmits / ...).
- *
- * ⚠️ `id` не сохраняется в compact (генерируется при decode: `mac1`, ...).
+ * Vue-макрос.
  */
 export interface MacroEntity {
-  /** Уникальный ID (mac1, mac2, ...) */
   id: string;
-
-  /** ID файла (f1, f2, ...) */
   fileId: string;
-
-  /**
-   * Вид макроса.
-   *
-   *   - `'props'`   — defineProps / withDefaults(defineProps, ...)
-   *   - `'emits'`   — defineEmits
-   *   - `'expose'`  — defineExpose
-   *   - `'slots'`   — defineSlots
-   *   - `'model'`   — defineModel
-   *   - `'options'` — defineOptions
-   */
   kind: 'props' | 'emits' | 'expose' | 'slots' | 'model' | 'options';
-
-  /** Номер строки */
   line: number;
 }
 
 /**
  * Lifecycle hook или watcher.
- *
- * ⚠️ `id` не сохраняется в compact (генерируется при decode: `hk1`, ...).
  */
 export interface HookEntity {
-  /** Уникальный ID (hk1, hk2, ...) */
   id: string;
-
-  /** ID файла (f1, f2, ...) */
   fileId: string;
-
-  /**
-   * Имя хука.
-   *
-   * ════════════════════════════════════════════════════════════
-   * ЗНАЧЕНИЯ
-   * ════════════════════════════════════════════════════════════
-   *
-   *   - onMounted, onUnmounted, onActivated, onDeactivated
-   *   - onErrorCaptured, onScopeDispose
-   *   - onBeforeMount, onBeforeUnmount, onUpdated, onBeforeUpdate
-   *   - watch, watchEffect
-   */
   hookName: string;
-
-  /** Номер строки */
   line: number;
 }
 
 /**
  * Реактивный примитив или watcher.
- *
- * ⚠️ `id` не сохраняется в compact (генерируется при decode: `rx1`, ...).
  */
 export interface ReactivityEntity {
-  /** Уникальный ID (rx1, rx2, ...) */
   id: string;
-
-  /** ID файла (f1, f2, ...) */
   fileId: string;
-
-  /**
-   * Вид реактивности.
-   *
-   *   - `'computed'`   — computed
-   *   - `'ref'`        — ref / toRef / toRefs
-   *   - `'reactive'`   — reactive
-   *   - `'watch'`      — watch / watchEffect
-   *   - `'shallowRef'` — shallowRef
-   *   - `'readonly'`   — readonly
-   *   - `'toRef'`      — toRef
-   *   - `'toRefs'`     — toRefs
-   */
   kind: 'computed' | 'ref' | 'reactive' | 'watch' | 'shallowRef' | 'readonly' | 'toRef' | 'toRefs';
-
-  /** Номер строки */
   line: number;
-
-  /** Имя переменной (если есть), иначе undefined */
   name?: string;
 }
 
 /**
  * Иконка-компонент.
- *
- * ⚠️ `id` не сохраняется в compact (генерируется при decode: `ic1`, ...).
  */
 export interface IconEntity {
-  /** Уникальный ID (ic1, ic2, ...) */
   id: string;
-
-  /** ID файла (f1, f2, ...) */
   fileId: string;
-
-  /** Имя иконки (AiCrossIcon, ...) */
   name: string;
-
-  /**
-   * Категория иконки (по расположению в файловой системе).
-   *
-   *   - `'base'`    — прямо в components/icons/
-   *   - `'filter'`  — components/icons/filter/
-   *   - `'toolbar'` — components/icons/toolbar/
-   *   - `'sort'`    — components/icons/sort/
-   */
   category: 'base' | 'filter' | 'toolbar' | 'sort';
 }
 
+// ============================================================
+// ✅ v16.0.0: COMPONENT USAGE (Vue-шаблон)
+// ============================================================
+
+/**
+ * Использование компонента в <template>.
+ */
+export interface ComponentUsage {
+  /** Уникальный ID (cu1, cu2, ...) — глобальный счётчик */
+  id: string;
+
+  /** ID файла-родителя (f1, f2, ...) */
+  parentFileId: string;
+
+  /** Тег компонента (AiToolbar) */
+  tag: string;
+
+  /** ID файла-компонента (f87) или null */
+  componentFileId: string | null;
+
+  /** Источник: локальный, глобальный, встроенный, динамический */
+  source: 'local' | 'global' | 'builtin' | 'dynamic' | 'unknown';
+
+  /** Имя пакета (для внешних) */
+  packageName?: string;
+
+  /** Номер строки */
+  line: number;
+
+  /** Номер колонки (отсутствует → -1 в CompactJSON) */
+  column?: number;
+
+  /** Props, переданные в компонент */
+  props: ComponentProp[];
+
+  /** Events, обработанные на компоненте */
+  events: ComponentEvent[];
+
+  /** Директивы на компоненте */
+  directives: ComponentDirective[];
+
+  /** Слоты, определённые на компоненте */
+  slots: ComponentSlot[];
+}
+
+/**
+ * Prop, переданный в компонент или HTML-элемент.
+ */
+export interface ComponentProp {
+  /** ID: `${usageId}:cp${n}` (например, cu1:cp6) */
+  id: string;
+
+  /** ID использования (cu1, he5) */
+  usageId: string;
+
+  /** Имя prop ('user-toolbar-items') */
+  name: string;
+
+  /** Значение ('props.toolbarItems') */
+  value: string;
+
+  /** Вид prop */
+  kind: 'static' | 'dynamic' | 'boolean' | 'spread';
+
+  /** Номер строки */
+  line: number;
+
+  /** Идентификатор (первый в цепочке) или null */
+  identifier: string | null;
+
+  /** Цепочка member-доступов ['props', 'toolbarItems'] */
+  memberChain?: string[];
+
+  /** Литеральное значение (если prop — литерал) */
+  literalValue?: string | number | boolean | null;
+
+  /** Цепочка источников */
+  sourceChain: SourceChainItem[];
+}
+
+/**
+ * Элемент цепочки источников.
+ */
+export interface SourceChainItem {
+  kind: 'local' | 'import' | 'prop' | 'emit' | 'global' | 'literal' | 'member' | 'call' | 'unknown';
+  symbol: string;
+  functionId?: string;
+  subkind?: 'ref' | 'computed' | 'watch' | 'function' | 'method' | 'constant' | 'composable';
+  sourceFileId?: string;
+}
+
+/**
+ * Обработчик события на компоненте/элементе.
+ */
+export interface ComponentEvent {
+  /** ID: `${usageId}:ce${n}` */
+  id: string;
+
+  /** ID использования */
+  usageId: string;
+
+  /** Имя события ('column-chooser-change') */
+  eventName: string;
+
+  /** Обработчик из шаблона ('setColumnsVisibility') */
+  handler: string;
+
+  /** ID функции-обработчика или null */
+  handlerFunctionId: string | null;
+
+  /** Источник обработчика */
+  handlerSource: 'local' | 'import' | 'global' | 'inline' | 'unknown';
+
+  /** Модификаторы (.stop, .prevent, ...) */
+  modifiers: string[];
+
+  /** Номер строки */
+  line: number;
+
+  /** Цепочка источников обработчика */
+  handlerChain: SourceChainItem[];
+}
+
+/**
+ * Директива Vue на компоненте/элементе.
+ */
+export interface ComponentDirective {
+  /** ID: `${usageId}:cd${n}` */
+  id: string;
+
+  /** ID использования */
+  usageId: string;
+
+  /** Имя директивы ('v-if') */
+  name: string;
+
+  /** Аргумент (для v-model:title → 'title') */
+  argument?: string;
+
+  /** Модификаторы */
+  modifiers: string[];
+
+  /** Значение директивы */
+  value: string;
+
+  /** Номер строки */
+  line: number;
+}
+
+/**
+ * Слот, определённый на компоненте.
+ */
+export interface ComponentSlot {
+  /** ID: `${usageId}:csl${n}` */
+  id: string;
+
+  /** ID использования */
+  usageId: string;
+
+  /** Имя слота ('header', 'default') */
+  slotName: string;
+
+  /** Есть ли scope у слота */
+  isScoped: boolean;
+
+  /** Имена scope-переменных */
+  scopeNames: string[];
+
+  /** Номер строки */
+  line: number;
+}
+
+// ============================================================
+// ✅ v16.0.0: HTML ELEMENTS + INTERPOLATIONS
+// ============================================================
+
+/**
+ * Использование HTML-элемента в <template>.
+ */
+export interface HtmlElementUsage {
+  /** Уникальный ID (he1, he2, ...) — глобальный счётчик */
+  id: string;
+
+  /** ID файла-родителя */
+  parentFileId: string;
+
+  /** Тег элемента ('div', 'span') */
+  tag: string;
+
+  /** Номер строки */
+  line: number;
+
+  /** Номер колонки */
+  column?: number;
+
+  /** Props на элементе */
+  props: ComponentProp[];
+
+  /** Директивы на элементе */
+  directives: ComponentDirective[];
+
+  /** Events на элементе */
+  events: ComponentEvent[];
+
+  /** Интерполяции внутри элемента */
+  interpolations: HtmlInterpolation[];
+}
+
+/**
+ * Интерполяция `{{ expr }}` внутри HTML-элемента.
+ */
+export interface HtmlInterpolation {
+  /** ID: `${usageId}:hi${n}` */
+  id: string;
+
+  /** ID использования (he5) */
+  usageId: string;
+
+  /** Выражение ('count', 'user.name') */
+  expression: string;
+
+  /** Цепочка источников */
+  sourceChain: SourceChainItem[];
+
+  /** Номер строки */
+  line: number;
+}
+
+// ============================================================
+// ✅ v16.0.0: HTML OUTPUT USAGE
+// ============================================================
+
+/**
+ * Категория UI-вывода.
+ *
+ * kind='none' УБРАН — мёртвый enum.
+ */
+export type HtmlOutputKind =
+  // Vue-шаблон
+  | 'rendered-text'
+  | 'rendered-attr'
+  | 'rendered-cond'
+  | 'rendered-list'
+  | 'rendered-class'
+  | 'rendered-style'
+  | 'passed-to-component'
+  | 'event-handler'
+  | 'slot-content'
+  // DOM API (TS/JS)
+  | 'dom-api';
+
+/**
+ * Использование функции в UI-выводе.
+ */
+export interface HtmlUsage {
+  kind: HtmlOutputKind;
+  usageId: string | null;
+  tag: string;
+  target: string;
+  line: number;
+  column?: number;
+
+  // ⭐ Для kind === 'dom-api'
+  domApiCategory?: DomApiCategory;
+  domApiMethod?: string;
+  domApiTarget?: string;
+  domApiContext?: DomApiContext;
+}
+
+/**
+ * Обратная связь: функция как источник prop.
+ *
+ * ✅ FIX v16.0.1: этот интерфейс теперь экспортируется как
+ * отдельный именованный экспорт. Ранее он был доступен только
+ * внутри FullJSON, из-за чего `compact-reporter.ts` не мог его
+ * импортировать (TS2305 / TS6133).
+ */
+export interface PropUsage {
+  usageId: string;
+  propId: string;
+  propName: string;
+  tag: string;
+  targetFileId: string | null;
+}
+
+// ============================================================
+// ✅ v16.0.0: DOM API
+// ============================================================
+
+/**
+ * Категория DOM API-вызова.
+ *
+ * 50 кодов (см. legend.codes.domApiCategory).
+ */
+export type DomApiCategory =
+  // Слушатели событий (P0)
+  | 'add-event-listener'
+  | 'remove-event-listener'
+  | 'dispatch-event'
+  // Создание / вставка (P1)
+  | 'create-element'
+  | 'append-child'
+  | 'insert-before'
+  | 'remove-child'
+  | 'replace-child'
+  | 'clone-node'
+  | 'import-node'
+  | 'adopt-node'
+  // Содержимое (P1)
+  | 'inner-html'
+  | 'outer-html'
+  | 'text-content'
+  | 'inner-text'
+  | 'insert-adjacent-html'
+  | 'insert-adjacent-element'
+  | 'insert-adjacent-text'
+  // Атрибуты (P1)
+  | 'set-attribute'
+  | 'remove-attribute'
+  | 'get-attribute'
+  | 'has-attribute'
+  | 'toggle-attribute'
+  // Стили (P1)
+  | 'class-list'
+  | 'class-list-add'
+  | 'class-list-remove'
+  | 'class-list-toggle'
+  | 'dataset'
+  | 'set-property'
+  | 'style-set'
+  | 'style-remove'
+  // Запросы (P2)
+  | 'query-selector'
+  | 'query-selector-all'
+  | 'get-element-by-id'
+  | 'get-elements-by-class'
+  | 'get-elements-by-tag'
+  | 'get-elements-by-name'
+  | 'closest'
+  | 'matches'
+  | 'get-root-node'
+  // Наблюдатели (P2)
+  | 'mutation-observer'
+  | 'resize-observer'
+  | 'intersection-observer'
+  | 'performance-observer'
+  // Прочее (P3)
+  | 'focus'
+  | 'blur'
+  | 'scroll-into-view'
+  | 'scroll-to'
+  | 'click-programmatic'
+  | 'other';
+
+/**
+ * Эффект DOM API-вызова:
+ *   - write — UI-вывод
+ *   - read  — не UI-вывод
+ *   - mixed — комбинированный
+ */
+export type DomApiEffect = 'write' | 'read' | 'mixed';
+
+/**
+ * Вид target DOM API-вызова.
+ */
+export type DomApiTargetKind =
+  'document' | 'window' | 'element' | 'query' | 'ref' | 'variable' | 'unknown';
+
+/**
+ * Вид аргумента DOM API-вызова.
+ */
+export type DomApiArgKind =
+  | 'literal-string'
+  | 'literal-number'
+  | 'literal-bool'
+  | 'identifier'
+  | 'member'
+  | 'call'
+  | 'arrow'
+  | 'object';
+
+/**
+ * Источник разрешения аргумента.
+ */
+export type DomApiArgSource = 'local' | 'import' | 'global' | 'unknown';
+
+/**
+ * DOM API-вызов.
+ */
+export interface DomApiCall {
+  /** Уникальный ID (d1, d2, ...) — глобальный */
+  id: string;
+
+  /** ID функции-источника */
+  functionId: string;
+
+  /** ID файла */
+  fileId: string;
+
+  /** Категория вызова */
+  category: DomApiCategory;
+
+  /** Эффект (write/read/mixed) */
+  effect: DomApiEffect;
+
+  /** Имя метода (appendChild, addEventListener) */
+  method: string;
+
+  /** Target (document, window, ref:btn, ...) */
+  target: string;
+
+  /** Вид target */
+  targetKind: DomApiTargetKind;
+
+  /** Аргументы (сырые строки) */
+  args: string[];
+
+  /** Разрешённые аргументы */
+  argResolutions: DomApiArg[];
+
+  /** Номер строки */
+  line: number;
+
+  /** Номер колонки */
+  column?: number;
+
+  /** Контекст вызова */
+  context: DomApiContext;
+}
+
+/**
+ * Разрешённый аргумент DOM API-вызова.
+ */
+export interface DomApiArg {
+  index: number;
+  raw: string;
+  kind: DomApiArgKind;
+  resolvedFunctionId?: string;
+  resolvedSource?: DomApiArgSource;
+}
+
+/**
+ * Контекст DOM API-вызова.
+ *
+ * ⚠️ v16.0.0: handlerSource расширен 'global'.
+ */
+export interface DomApiContext {
+  eventName?: string;
+  handlerFunctionId?: string | null;
+  handlerSource?: 'local' | 'import' | 'global' | 'inline' | 'unknown';
+  cssSelector?: string;
+  htmlValue?: string;
+  className?: string;
+  styleProp?: string;
+  attributeName?: string;
+  observeOptions?: string[];
+}
+
+/**
+ * Обратная связь: функция как обработчик DOM-события.
+ */
+export interface DomApiHandlerUsage {
+  callId: string;
+  category: DomApiCategory;
+  eventName: string;
+  target: string;
+  line: number;
+}
+
+// ============================================================
+// ✅ v16.0.0: VUE SECTION (FullJSON)
+// ============================================================
+
 /**
  * Секция Vue-сущностей в FullJSON.
+ *
+ * ✅ v16.0.0: добавлены componentProps, componentEvents,
+ * componentDirectives, componentSlots, htmlInterpolations,
+ * fnHtmlUsage, domApiCalls, domApiArgs, ids, sourceChains.
  */
 export interface VueSectionFull {
   /** SFC-компоненты */
@@ -598,91 +776,89 @@ export interface VueSectionFull {
   reactivity: ReactivityEntity[];
   /** Иконки */
   icons: IconEntity[];
+
+  // ==========================================
+  // ✅ v16.0.0: обратные связи и DOM API
+  // ==========================================
+
+  /** Component props (обратная связь) */
+  componentProps?: ComponentProp[];
+  /** Component events (обратная связь) */
+  componentEvents?: ComponentEvent[];
+  /** Component directives */
+  componentDirectives?: ComponentDirective[];
+  /** Component slots */
+  componentSlots?: ComponentSlot[];
+  /** HTML interpolations */
+  htmlInterpolations?: HtmlInterpolation[];
+  /** Function → html usage */
+  fnHtmlUsage?: HtmlUsage[];
+  /** DOM API calls */
+  domApiCalls?: DomApiCall[];
+  /** DOM API args */
+  domApiArgs?: DomApiArg[];
+  /** Сгенерированные id */
+  ids?: string[];
+  /** Сериализованные sourceChain */
+  sourceChains?: string[];
 }
 
-/**
- * Секция Vue-сущностей в CompactJSON (columnar + RLE).
- *
- * ════════════════════════════════════════════════════════════
- * СХЕМА (см. legend.schemas.vue.*)
- * ════════════════════════════════════════════════════════════
- *
- *   sfc.f         fileIdx (в fl.p)
- *   sfc.n         nameIdx (в strs)
- *   sfc.b         bitmask блоков (см. SfcBlockMask)
- *   sfc.c         ✅ v15.7.3: плоский массив ИНДЕКСОВ В STRS
- *                 (имена composables), а НЕ индексы в vue.composables
- *   sfc.cs        ✅ v15.7.3: slices [offset, count] для каждого SFC
- *   sfc.p         [fileIdx, propsCount] — НЕ RLE
- *   sfc.e         [fileIdx, emitsCount]
- *   sfc.x         [fileIdx, exposeCount]
- *
- *   composables.n nameIdx (в strs)
- *   composables.f [fileIdx, count] — RLE
- *   composables.k kindCode
- *   composables.r returnShapeCode
- *   composables.v [composableIdx, returnedKeysCount]
- *
- *   macros.f      fileIdx
- *   macros.k      kindCode
- *   macros.l      line
- *
- *   hooks.f       fileIdx
- *   hooks.n       hookNameCode
- *   hooks.l       line
- *
- *   reactivity.f  fileIdx
- *   reactivity.k  kindCode
- *   reactivity.l  line
- *   reactivity.n  nameIdx (-1 если анонимный)
- *
- *   icons.f       fileIdx
- *   icons.n       nameIdx
- *   icons.c       categoryCode
- *
- * ════════════════════════════════════════════════════════════
- * ⚠️ v15.7.3: ПОЧЕМУ `sfc.c` — ИНДЕКСЫ В STRS, А НЕ В vue.composables
- * ════════════════════════════════════════════════════════════
- *
- *   Ранее (v15.7.2) `sfc.c` содержал индексы в `vue.composables`.
- *   Проблема: если composable вызывается в SFC, но НЕ объявлен
- *   в проекте (например, `useRouter` из `vue-router`),
- *   он отсутствует в `vue.composables` → теряется при encode.
- *
- *   Симптом:
- *     `vue.sfc[19].composables.length: a=5, b=6`
- *     (в full 6 composables, в decoded 5 — один внешний потерян).
- *
- *   Теперь (v15.7.3) `sfc.c` содержит индексы в `strs` (имена
- *   composables как строки). Это универсально: работает для
- *   локальных и внешних composables одинаково.
- *
- *   Decode читает имена через `readStr(idx)` из `strs` напрямую.
- * ============================================================
- */
+// ============================================================
+// ✅ v16.0.0: VUE SECTION (CompactJSON)
+// ============================================================
+//
+// СХЕМА (см. legend.schemas['vue.*'])
+//
+// ✅ v16.0.0: vue.sfc — 30 полей (было 8):
+//   f, n, b, c, cs, pn, ps, en, es, xn, xs,
+//   cu_sfc, cu_tag, cu_file, cu_src, cu_pkg, cu_l, cu_col,
+//   cu_cp, cu_ce, cu_cd, cu_csl,
+//   he_sfc, he_tag, he_l, he_col, he_cp, he_cd, he_ce, he_ci
+//
+// Breaking change:
+//   p (props placeholders)   → pn + ps
+//   e (emits placeholders)   → en + es
+//   x (exposed placeholders) → xn + xs
+// ============================================
+
 export interface VueSectionCompact {
   sfc: {
     f: number[];
     n: number[];
     b: number[];
-    /**
-     * ✅ v15.7.3: Плоский массив ИНДЕКСОВ В STRS (имена composables).
-     * Все composables для всех SFC подряд.
-     * Разбиение по SFC — через `cs` (slices).
-     */
     c: number[];
-    /**
-     * ✅ v15.7.3: Slices `[[offset, count], ...]` для каждого SFC.
-     * `c[offset..offset+count]` — индексы имён composables для i-го SFC.
-     */
     cs: Array<[number, number]>;
-    /**
-     * ⚠️ v15.7.3: `p`/`e`/`x` — по-прежнему только счётчики.
-     * Имена props/emits/exposed не сохраняются (см. SFCComponent).
-     */
-    p: [number, number][];
-    e: [number, number][];
-    x: [number, number][];
+
+    // ⭐ v16.0.0: реальные имена (замена старых p/e/x)
+    pn?: number[];
+    ps?: Array<[number, number]>;
+    en?: number[];
+    es?: Array<[number, number]>;
+    xn?: number[];
+    xs?: Array<[number, number]>;
+
+    // ⭐ v16.0.0: component usages — RLE
+    cu_sfc?: [number, number, number?][];
+    cu_tag?: number[];
+    cu_file?: number[];
+    cu_src?: number[];
+    cu_pkg?: number[];
+    cu_l?: number[];
+    cu_col?: number[];
+    cu_cp?: Array<[number, number]>;
+    cu_ce?: Array<[number, number]>;
+    cu_cd?: Array<[number, number]>;
+    cu_csl?: Array<[number, number]>;
+
+    // ⭐ v16.0.0: html elements — RLE
+    he_sfc?: [number, number, number?][];
+    he_tag?: number[];
+    he_l?: number[];
+    he_col?: number[];
+    he_cp?: Array<[number, number]>;
+    he_cd?: Array<[number, number]>;
+    he_ce?: Array<[number, number]>;
+    he_ci?: Array<[number, number]>;
   };
   composables: {
     n: number[];
@@ -712,6 +888,46 @@ export interface VueSectionCompact {
     n: number[];
     c: number[];
   };
+
+  // ✅ v16.0.0: обратные связи (в CompactJSON они также на top-level)
+  componentProps?: {
+    n: number[];
+    v: number[];
+    k: number[];
+    l: number[];
+    id: number[];
+    mc: number[];
+    lv: number[];
+    sc: [number, number, number?][];
+    fns: number[];
+  };
+  componentEvents?: {
+    n: number[];
+    h: number[];
+    fn: number[];
+    s: number[];
+    m: number[];
+    l: number[];
+    sc: [number, number, number?][];
+  };
+  componentDirectives?: {
+    n: number[];
+    a: number[];
+    m: number[];
+    v: number[];
+    l: number[];
+  };
+  componentSlots?: {
+    n: number[];
+    sc: number[];
+    sn: number[];
+    l: number[];
+  };
+  htmlInterpolations?: {
+    e: number[];
+    sc: [number, number, number?][];
+    l: number[];
+  };
 }
 
 // ============================================================
@@ -721,12 +937,10 @@ export interface VueSectionCompact {
 /**
  * Полный (читаемый) JSON отчёта.
  *
- * ⚠️ v15.0.2: поле `conditionals` УДАЛЕНО с верхнего уровня.
- *    Единственное место хранения — `templates[i].conditionals`.
- *
- * ✅ v15.2.0 (P1): добавлено поле `lexicalLinks`.
- * ✅ v15.5.0: добавлено поле `vue`.
- * ✅ v15.7.3: обновлён JSDoc для vue.sfc.composables.
+ * ✅ v15.0.2: поле conditionals УДАЛЕНО с верхнего уровня.
+ * ✅ v15.2.0 (P1): добавлено поле lexicalLinks.
+ * ✅ v15.5.0: добавлено поле vue.
+ * ✅ v16.0.0: добавлены top-level поля для обратных связей и DOM API.
  */
 export interface FullJSON {
   /** Версия формата отчёта */
@@ -765,29 +979,13 @@ export interface FullJSON {
   /** Список реэкспортов */
   reExports: ReExportData[];
 
-  /**
-   * Vue-шаблоны — отдельные сущности.
-   *
-   * ⚠️ v15.0.2: `conditionals` живут ВНУТРИ каждого TemplateData.
-   */
+  /** Vue-шаблоны — отдельные сущности */
   templates?: TemplateData[];
 
-  /**
-   * ✅ v15.2.0 (P1): лексические связи (parent → child).
-   *
-   * Опционально для обратной совместимости: старые full.json
-   * без этого поля читаются как «нет лексических связей».
-   */
+  /** ✅ v15.2.0 (P1): лексические связи (parent → child) */
   lexicalLinks?: LexicalLink[];
 
-  /**
-   * ✅ v15.5.0: Vue-сущности (SFC / composables / macros /
-   * hooks / reactivity / icons).
-   *
-   * ✅ v15.7.3: `sfc[i].composables` восстанавливаются ТОЧНО
-   *    (реальные имена), включая внешние composables
-   *    (useRouter, useI18n).
-   */
+  /** ✅ v15.5.0: Vue-сущности */
   vue?: VueSectionFull;
 
   /** Статистика */
@@ -800,35 +998,55 @@ export interface FullJSON {
   // РАСШИРЕННЫЕ СЕКЦИИ (v9.0.0+)
   // ==========================================
 
-  /** Хуки жизненного цикла (onMounted, onUnmounted, ...) */
+  /** Хуки жизненного цикла */
   lifecycle?: LifecycleHook[];
 
-  /** Side-effects (timer, cleanup, promise, event, subscription) */
+  /** Side-effects */
   effects?: EffectEdge[];
 
   /** Provide/Inject рёбра */
   injections?: InjectionEdge[];
 
-  /** Реактивные связи (computed/watch/ref/...) */
+  /** Реактивные связи */
   reactivity?: ReactivityEdge[];
 
-  /** Узлы тип-графа (interface / type-alias / enum / class) */
+  /** Узлы тип-графа */
   types?: TypeNodeData[];
 
-  /** Рёбра использования типов (param / return / field / ...) */
+  /** Рёбра использования типов */
   typeRefs?: TypeRefData[];
 
   // ==========================================
   // ✅ v12.0.0: values mode
   // ==========================================
 
-  /**
-   * Режим сериализации values, использованный при генерации.
-   *
-   * - `'full'`      — все значения сохранены
-   * - `'relations'` — только значения, нужные для восстановления связей
-   */
+  /** Режим сериализации values */
   valuesMode?: 'full' | 'relations';
+
+  // ==========================================
+  // ✅ v16.0.0: top-level обратные связи
+  // ==========================================
+
+  /** Function → html usage */
+  fnHtmlUsage?: HtmlUsage[];
+  /** Component props (top-level) */
+  componentProps?: ComponentProp[];
+  /** Component events (top-level) */
+  componentEvents?: ComponentEvent[];
+  /** Component directives (top-level) */
+  componentDirectives?: ComponentDirective[];
+  /** Component slots (top-level) */
+  componentSlots?: ComponentSlot[];
+  /** HTML interpolations (top-level) */
+  htmlInterpolations?: HtmlInterpolation[];
+  /** DOM API calls (top-level) */
+  domApiCalls?: DomApiCall[];
+  /** DOM API args (top-level) */
+  domApiArgs?: DomApiArg[];
+  /** Сериализованные sourceChain (интернированные) */
+  sourceChains?: string[];
+  /** Сгенерированные id (cu1, he1, d1, cu1:cp6, ...) */
+  ids?: string[];
 }
 
 // ============================================
@@ -838,13 +1056,10 @@ export interface FullJSON {
 export interface ModuleData {
   /** Уникальный ID модуля (m1, m2, ...) */
   id: string;
-
   /** Имя модуля (например, 'core') */
   name: string;
-
-  /** Путь к модулю (например, 'src/core') */
+  /** Путь к модулю */
   path: string;
-
   /** ID файлов, входящих в этот модуль */
   fileIds: string[];
 }
@@ -856,10 +1071,8 @@ export interface ModuleData {
 export interface FileData {
   /** Уникальный ID файла (f1, f2, ...) */
   id: string;
-
   /** Относительный путь к файлу */
   path: string;
-
   /** ID модуля, которому принадлежит файл */
   moduleId: string;
 }
@@ -868,136 +1081,75 @@ export interface FileData {
 // ФУНКЦИЯ
 // ============================================
 //
-// ✅ v15.1.0 (P0): добавлено поле `parentFunctionId`.
-// ✅ v15.5.0: добавлено поле `vueKind`.
-// ✅ v15.7.3: уточнён JSDoc для vueKind (всегда заполнен).
+// ✅ v15.1.0 (P0): добавлено поле parentFunctionId.
+// ✅ v15.5.0: добавлено поле vueKind.
+// ✅ v16.0.0: добавлены htmlUsage, isHtmlVisible, usagesAsPropSource,
+//            domApiCalls, domApiUsagesAsHandler.
 // ============================================
 
 export interface FunctionData {
   /** Уникальный ID (fn1, fn2, ...) */
   id: string;
-
   /** Имя функции */
   name: string;
-
   /** ID модуля */
   moduleId: string;
-
   /** ID файла */
   fileId: string;
-
   /** Строка объявления (1-based) */
   line: number;
 
-  /** Экспортируется ли функция */
+  // Флаги
   isExported: boolean;
-
-  /** Асинхронная ли функция */
   isAsync: boolean;
-
-  /** Стрелочная ли функция */
   isArrow: boolean;
-
-  /** Метод класса */
   isMethod: boolean;
 
   /** Параметры */
   params: string[];
-
   /** Тип возвращаемого значения */
   returnType?: string;
 
-  /** Обработчик события */
+  // Дополнительные флаги (опциональные)
   isEventHandler?: boolean;
-
-  /** Вложенная функция */
   isNested?: boolean;
-
-  /** Изолированная функция (никого не вызывает и не вызывается) */
   isSelf?: boolean;
-
-  /** Динамическая функция */
   isDynamic?: boolean;
-
-  /** Конфигурационная функция */
   isConfig?: boolean;
-
-  /** Внешняя функция */
   isExternal?: boolean;
-
-  /** Vue-template функция */
   isVueTemplate?: boolean;
-
-  /** В асинхронной цепочке */
   isAsyncChain?: boolean;
-
-  /** Замыкание */
   isClosure?: boolean;
-
-  /** Зависимость по типу */
   isTypeDep?: boolean;
-
-  /** Генератор */
   isGenerator?: boolean;
-
-  /** Приватный член */
   isPrivate?: boolean;
-
-  /** Protected член */
   isProtected?: boolean;
-
-  /** Статический член */
   isStatic?: boolean;
 
-  // ==========================================
-  // ✅ v15.1.0 (P0): лексический родитель
-  // ==========================================
-
-  /**
-   * ID функции, внутри которой эта функция объявлена в AST.
-   *
-   * ════════════════════════════════════════════════════════════
-   * ЗНАЧЕНИЯ
-   * ════════════════════════════════════════════════════════════
-   *
-   *   - `string` — ID родительской функции (fn1, fn2, ...)
-   *   - `null`   — top-level функция (объявлена на уровне модуля)
-   *   - `undefined` — старый full.json без этого поля
-   */
+  /** ✅ v15.1.0 (P0): ID лексического родителя */
   parentFunctionId?: string | null;
 
+  /** ✅ v15.5.0: Vue-классификация */
+  vueKind?: VueKind;
+
   // ==========================================
-  // ✅ v15.5.0: Vue-классификация
-  // ✅ v15.7.3: уточнение — поле ВСЕГДА заполнено
+  // ✅ v16.0.0: HTML / DOM API
   // ==========================================
 
-  /**
-   * Тип функции с точки зрения Vue.
-   *
-   * ════════════════════════════════════════════════════════════
-   * ЗНАЧЕНИЯ
-   * ════════════════════════════════════════════════════════════
-   *
-   *   - `'function'`    — обычная функция
-   *   - `'composable'`  — use[A-Z]*
-   *   - `'macro'`       — defineProps / defineEmits / ...
-   *   - `'hook'`        — onMounted / onUnmounted / watch / ...
-   *   - `'reactivity'`  — computed / ref / reactive / ...
-   *   - `'callback'`    — стрелка в аргументе вызова
-   *   - `'arrow'`       — стрелка в переменной
-   *
-   * ════════════════════════════════════════════════════════════
-   * ⚠️ v15.7.3: ПОЛЕ ВСЕГДА ЗАПОЛНЕНО
-   * ════════════════════════════════════════════════════════════
-   *
-   *   В `compact-reporter.ts` (v15.5.7+) `vueKind` ГАРАНТИРОВАННО
-   *   заполняется значением `'function'` по умолчанию, если
-   *   исходное значение отсутствует.
-   *
-   *   Это гарантирует, что `decode(encode(full)) === full` по
-   *   этому полю (раньше `undefined` ≠ `'function'` ломало L1/DL).
-   */
-  vueKind?: VueKind;
+  /** HTML-вывод функции */
+  htmlUsage?: HtmlUsage[];
+
+  /** Влияет ли функция на UI */
+  isHtmlVisible?: boolean;
+
+  /** Обратная связь: функция как источник props */
+  usagesAsPropSource?: PropUsage[];
+
+  /** DOM API-вызовы (ID) */
+  domApiCalls?: string[];
+
+  /** Обратная связь: функция как обработчик DOM-события */
+  domApiUsagesAsHandler?: DomApiHandlerUsage[];
 }
 
 // ============================================
@@ -1052,21 +1204,12 @@ export interface ExportData {
 // ============================================
 // ИМПОРТ
 // ============================================
-//
-// ✅ v15.0.1: `type` — только {named, default, namespace}.
-// ✅ v15.0.4: добавлены флаги реэкспорта.
-// ============================================
 
 export interface ImportData {
   id: string;
   fromFileId: string;
-
-  /**
-   * ID файла-цели (f1, f2, ...).
-   * null — если импорт внешний или не разрешён.
-   */
+  /** ID файла-цели (f1, f2, ...) или null */
   toFileId: string | null;
-
   source: string;
   importedName: string;
   localName: string;
@@ -1080,26 +1223,13 @@ export interface ImportData {
   isExternal: boolean;
   packageName?: string;
 
-  // ==========================================
-  // ✅ v15.0.4: признаки реэкспорта
-  // ==========================================
-
-  /**
-   * Является ли этот импорт частью `export ... from`.
-   */
+  /** ✅ v15.0.4: признаки реэкспорта */
   isReExport?: boolean;
-
-  /**
-   * Является ли `export * from './foo'` или `export * as ns from './foo'`.
-   */
   isStarReExport?: boolean;
 }
 
 // ============================================
 // ВЫЗОВ
-// ============================================
-//
-// ✅ v15.3.0 (P2): добавлены column/callKind/calleeName/argumentIndex.
 // ============================================
 
 export interface CallData {
@@ -1108,32 +1238,13 @@ export interface CallData {
   toFunctionId: string;
   line: number;
 
-  /** Вид вызова (старое поле, для совместимости) */
+  /** Вид вызова (старое поле) */
   type: 'direct' | 'async' | 'method' | 'callback';
 
-  // ==========================================
-  // ✅ v15.3.0 (P2)
-  // ==========================================
-
-  /** Точная колонка вызова (1-based) */
+  /** ✅ v15.3.0 (P2): точная колонка */
   column?: number;
 
-  /**
-   * Вид вызова (расширенный).
-   *
-   * ════════════════════════════════════════════════════════════
-   * ЗНАЧЕНИЯ
-   * ════════════════════════════════════════════════════════════
-   *
-   *   - `'direct'`          — прямой вызов `foo()`
-   *   - `'method'`          — метод `obj.foo()`
-   *   - `'callback'`        — колбэк
-   *   - `'constructor'`     — `new Foo()`
-   *   - `'tagged-template'` — `` tag`...` ``
-   *   - `'optional-chain'`  — `obj?.foo()`
-   *   - `'spread'`          — `foo(...args)`
-   *   - `'new'`             — синоним `'constructor'`
-   */
+  /** ✅ v15.3.0 (P2): расширенный вид вызова */
   callKind?:
     | 'direct'
     | 'method'
@@ -1144,10 +1255,10 @@ export interface CallData {
     | 'spread'
     | 'new';
 
-  /** Имя callee (`foo`, `map`, `setTimeout`) */
+  /** ✅ v15.3.0 (P2): имя callee */
   calleeName?: string;
 
-  /** Индекс аргумента (для колбэков: 0, 1, ...) */
+  /** ✅ v15.3.0 (P2): индекс аргумента */
   argumentIndex?: number;
 }
 
@@ -1186,16 +1297,12 @@ export interface TemplateData {
   slots: string[];
   complexity: number;
 
-  /**
-   * ✅ v15.0.2: условный рендеринг (v-if / v-else-if / v-else).
-   *
-   * ЕДИНСТВЕННОЕ место хранения conditionals в FullJSON.
-   */
+  /** ✅ v15.0.2: условный рендеринг */
   conditionals?: TemplateConditional[];
 }
 
 // ============================================
-// ✅ LIFECYCLE
+// LIFECYCLE
 // ============================================
 
 export type LifecycleHookName =
@@ -1218,7 +1325,7 @@ export interface LifecycleHook {
 }
 
 // ============================================
-// ✅ EFFECTS
+// EFFECTS
 // ============================================
 
 export type EffectType = 'timer' | 'cleanup' | 'promise' | 'event' | 'subscription';
@@ -1233,7 +1340,7 @@ export interface EffectEdge {
 }
 
 // ============================================
-// ✅ INJECTIONS
+// INJECTIONS
 // ============================================
 
 export type InjectionKind = 'provide' | 'inject';
@@ -1249,7 +1356,7 @@ export interface InjectionEdge {
 }
 
 // ============================================
-// ✅ REACTIVITY
+// REACTIVITY
 // ============================================
 
 export type ReactivityKind =
@@ -1266,7 +1373,7 @@ export interface ReactivityEdge {
 }
 
 // ============================================
-// ✅ TYPES
+// TYPES
 // ============================================
 
 export type TypeKind = 'interface' | 'type-alias' | 'enum' | 'class';
@@ -1297,7 +1404,13 @@ export interface TypeRefData {
 // СТАТИСТИКА
 // ============================================
 
+/**
+ * Статистика.
+ *
+ * ✅ v16.0.0: добавлены 8 новых счётчиков.
+ */
 export interface StatisticsData {
+  // Существующие 18 (15.7.3)
   totalModules: number;
   totalFiles: number;
   totalFunctions: number;
@@ -1308,34 +1421,24 @@ export interface StatisticsData {
   totalCalls: number;
   totalReExports: number;
   totalTemplates?: number;
-
-  /** ✅ v15.0.2: количество conditionals (через templates[]) */
   totalConditionals?: number;
-
-  /** ✅ v15.2.0 (P1): количество лексических связей */
   totalLexicalLinks?: number;
-
-  // ==========================================
-  // ✅ v15.5.0: Vue-сущности
-  // ==========================================
-
-  /** Количество SFC-компонентов (.vue) */
   totalVueSfc?: number;
-
-  /** Количество composables (use[A-Z]*) */
   totalComposables?: number;
-
-  /** Количество Vue-макросов (defineProps / defineEmits / ...) */
   totalMacros?: number;
-
-  /** Количество lifecycle hooks + watchers */
   totalHooks?: number;
-
-  /** Количество реактивных примитивов (computed / ref / reactive / watch) */
   totalReactivity?: number;
-
-  /** Количество иконок-компонентов */
   totalIcons?: number;
+
+  // ✅ v16.0.0: новые 8 счётчиков
+  totalComponentUsages?: number;
+  totalHtmlElements?: number;
+  totalComponentProps?: number;
+  totalComponentEvents?: number;
+  totalDomApiCalls?: number;
+  totalSourceChains?: number;
+  totalHtmlVisibleFns?: number;
+  totalDomApiVisibleFns?: number;
 }
 
 // ============================================
@@ -1345,42 +1448,13 @@ export interface StatisticsData {
 export interface EdgeData {
   from: string;
   to: string;
-
-  /**
-   * ✅ v15.2.0 (P1): добавлен 'lexical'.
-   *
-   * - `'import'`    — импорт
-   * - `'export'`    — экспорт
-   * - `'call'`      — вызов
-   * - `'re-export'` — реэкспорт
-   * - `'lexical'`   — лексическая связь (P1)
-   */
   type: 'import' | 'export' | 'call' | 're-export' | 'lexical';
-
   symbol?: string;
   line?: number;
 }
 
 // ============================================================
-// СЖАТЫЙ JSON (v15.7.3)
-// ============================================================
-//
-// Формат кортежей (позиции фиксированы, см. legend.schemas):
-//
-//   mi:  { n: string[], f: [startFileIdx, fileCount][] }
-//   fl:  { p: string[], m: [moduleIdx, count][] }
-//   fns: { n, m, f, l, fl, p, rt, parent?, vk? }
-//   cls: { n, m, f, l, fl, methods }
-//   cn:  { n, m, f, l, fl, nonEmptyV }
-//   gr.e:  { m, f, fn, l, ty, en, ln, s, flags }
-//   gr.i:  { ff, tf, s, im, ln, l, ty }
-//   gr.c:  { f, t, l, ty, col?, ck?, cn?, ai? }
-//   gr.re: { m, fn, s, en, l, ty }
-//   lx:  { p, c, r, l, ai, cn }  ← v15.2.0 (P1)
-//   vue: { sfc, composables, macros, hooks, reactivity, icons }  ← v15.5.0
-//
-// ✅ v15.7.3: vue.sfc.c содержит индексы в strs (имена composables),
-//             vue.sfc.cs — slices [offset, count].
+// СЖАТЫЙ JSON (v16.0.1)
 // ============================================================
 
 export interface CompactJSON {
@@ -1397,12 +1471,18 @@ export interface CompactJSON {
   valuesMode?: 'full' | 'relations';
 
   /** Токены для словарей строк */
-  tokens: string[];
+  tokens: (string | number)[];
 
   /** Токенизированный stringDict */
   strs: (string | number[])[];
 
-  /** Токенизированный paramDict */
+  /**
+   * Токенизированный paramDict.
+   *
+   * ✅ v16.0.1: тип `(string | number[])[]` — массив может содержать
+   * либо строку, либо массив индексов токенов произвольной длины
+   * (encodeStr возвращает массив индексов, а не пару [number, number]).
+   */
   params: (string | number[])[];
 
   /** Токенизированный methodDict */
@@ -1411,9 +1491,7 @@ export interface CompactJSON {
   /** valueDict — без изменений */
   values: unknown[];
 
-  /**
-   * Module index: columnar.
-   */
+  /** Module index: columnar */
   mi: {
     n: string[];
     f: [number, number][];
@@ -1428,8 +1506,11 @@ export interface CompactJSON {
   /**
    * Functions: columnar.
    *
-   * ✅ v15.1.0 (P0): добавлено поле `parent`.
-   * ✅ v15.5.0: добавлено поле `vk` (vueKind).
+   * ✅ v16.0.1: добавлено поле `hv` — RLE для `isHtmlVisible` (0/1).
+   * Это устраняет расхождение L1/L2/DL: `decode(compact).functions[].isHtmlVisible`
+   * теперь восстанавливается как `false`, а не `undefined`.
+   *
+   * Схема (10 полей): n, m, f, l, fl, p, rt, parent, vk, hv
    */
   fns: {
     n: number[];
@@ -1439,12 +1520,10 @@ export interface CompactJSON {
     fl: number[];
     p: number[][];
     rt: number[];
-
-    /** ✅ v15.1.0 (P0): RLE от parentFunctionIdx, -1 = null */
     parent?: [number, number][];
-
-    /** ✅ v15.5.0: RLE от vueKindCode (0..6) */
     vk?: [number, number][];
+    /** ✅ v16.0.1: isHtmlVisible (0 | 1), RLE */
+    hv?: [number, number][];
   };
 
   /** Classes: columnar */
@@ -1469,7 +1548,6 @@ export interface CompactJSON {
 
   /** Graph — все связи в одном месте */
   gr: {
-    /** Exports: columnar */
     e: {
       m: number[];
       f: number[];
@@ -1481,10 +1559,6 @@ export interface CompactJSON {
       s: number[];
       flags: number[];
     };
-
-    /**
-     * Imports: columnar.
-     */
     i: {
       ff: number[];
       tf: number[];
@@ -1494,32 +1568,16 @@ export interface CompactJSON {
       l: number[];
       ty: number[];
     };
-
-    /**
-     * Calls: columnar.
-     *
-     * ✅ v15.3.0 (P2): добавлены col/ck/cn/ai.
-     */
     c: {
       f: number[];
       t: number[];
       l: number[];
       ty: number[];
-
-      /** ✅ v15.3.0 (P2): column */
       col?: number[];
-
-      /** ✅ v15.3.0 (P2): callKind code */
       ck?: number[];
-
-      /** ✅ v15.3.0 (P2): calleeNameIdx в strs */
       cn?: number[];
-
-      /** ✅ v15.3.0 (P2): argumentIndex */
       ai?: number[];
     };
-
-    /** Re-exports: columnar */
     re: {
       m: number[];
       fn: number[];
@@ -1530,10 +1588,7 @@ export interface CompactJSON {
     };
   };
 
-  // ==========================================
-  // ✅ v15.0.0: расширенные секции vt/lc/ef/inj/rx/cd/ty/tr
-  // ==========================================
-
+  // Расширенные секции
   vt?: number[];
   lc?: number[];
   ef?: number[];
@@ -1543,26 +1598,7 @@ export interface CompactJSON {
   ty?: number[];
   tr?: number[];
 
-  // ==========================================
-  // ✅ v15.2.0 (P1): columnar-секция lx
-  // ==========================================
-
-  /**
-   * Лексические связи: columnar.
-   *
-   * Все массивы параллельны: длина совпадает.
-   *
-   * ════════════════════════════════════════════════════════════
-   * СХЕМА
-   * ════════════════════════════════════════════════════════════
-   *
-   *   p  — RLE parentFunctionIdx, -1 = null
-   *   c  — RLE childFunctionIdx
-   *   r  — relationCode (0..7, см. legend.codes.lexicalRelation)
-   *   l  — line
-   *   ai — argumentIndex, -1 = нет
-   *   cn — calleeNameIdx в strs, -1 = нет
-   */
+  /** ✅ v15.2.0 (P1): columnar-секция lx */
   lx?: {
     p: [number, number][];
     c: [number, number][];
@@ -1572,62 +1608,120 @@ export interface CompactJSON {
     cn: number[];
   };
 
+  /** ✅ v15.5.0: Vue-сущности (columnar + RLE) */
+  vue?: VueSectionCompact;
+
   // ==========================================
-  // ✅ v15.5.0: Vue-сущности (columnar + RLE)
-  // ✅ v15.7.3: `sfc.c` — индексы в strs, `sfc.cs` — slices
+  // ✅ v16.0.0: НОВЫЕ TOP-LEVEL СЕКЦИИ
   // ==========================================
 
-  /**
-   * Vue-сущности: columnar.
-   *
-   * ════════════════════════════════════════════════════════════
-   * СХЕМА
-   * ════════════════════════════════════════════════════════════
-   *
-   *   sfc.f     fileIdx
-   *   sfc.n     nameIdx (в strs)
-   *   sfc.b     bitmask блоков
-   *   sfc.c     ✅ v15.7.3: плоский массив ИНДЕКСОВ В STRS
-   *             (имена composables), а НЕ индексы в vue.composables
-   *   sfc.cs    ✅ v15.7.3: [offset, count][] — slices для каждого SFC
-   *   sfc.p     [fileIdx, propsCount]  — НЕ RLE
-   *   sfc.e     [fileIdx, emitsCount]
-   *   sfc.x     [fileIdx, exposeCount]
-   *
-   *   composables.n  nameIdx (в strs)
-   *   composables.f  [fileIdx, count] — RLE
-   *   composables.k  kindCode (0..3)
-   *   composables.r  returnShapeCode (0..4)
-   *   composables.v  [composableIdx, returnedKeysCount]
-   *
-   *   macros.f  fileIdx
-   *   macros.k  kindCode (0..5)
-   *   macros.l  line
-   *
-   *   hooks.f  fileIdx
-   *   hooks.n  hookNameCode (0..11)
-   *   hooks.l  line
-   *
-   *   reactivity.f  fileIdx
-   *   reactivity.k  kindCode (0..7)
-   *   reactivity.l  line
-   *   reactivity.n  nameIdx (-1 если анонимный)
-   *
-   *   icons.f  fileIdx
-   *   icons.n  nameIdx
-   *   icons.c  categoryCode (0..3)
-   */
-  vue?: VueSectionCompact;
+  /** Function → html usage */
+  fnHtmlUsage?: {
+    fn: number[];
+    k: number[];
+    u: number[];
+    t: number[];
+    tg: number[];
+    l: number[];
+    col: number[];
+    dcat: number[];
+    dctx: number[];
+  };
+
+  /** Component props */
+  componentProps?: {
+    n: number[];
+    v: number[];
+    k: number[];
+    l: number[];
+    id: number[];
+    mc: number[];
+    lv: number[];
+    sc: [number, number, number?][];
+    fns: number[];
+  };
+
+  /** Component events */
+  componentEvents?: {
+    n: number[];
+    h: number[];
+    fn: number[];
+    s: number[];
+    m: number[];
+    l: number[];
+    sc: [number, number, number?][];
+  };
+
+  /** Component directives */
+  componentDirectives?: {
+    n: number[];
+    a: number[];
+    m: number[];
+    v: number[];
+    l: number[];
+  };
+
+  /** Component slots */
+  componentSlots?: {
+    n: number[];
+    sc: number[];
+    sn: number[];
+    l: number[];
+  };
+
+  /** HTML interpolations */
+  htmlInterpolations?: {
+    e: number[];
+    sc: [number, number, number?][];
+    l: number[];
+  };
+
+  /** DOM API calls */
+  domApiCalls?: {
+    fn: number[];
+    f: [number, number, number?][];
+    cat: number[];
+    eff: number[];
+    m: number[];
+    t: number[];
+    tk: number[];
+    l: number[];
+    col: number[];
+    argSlices: [number, number][];
+    en: number[];
+    hfn: number[];
+    hs: number[];
+    sel: number[];
+    hv: number[];
+    cn: number[];
+    sp: number[];
+    an: number[];
+    oo: number[];
+  };
+
+  /** DOM API args */
+  domApiArgs?: {
+    r: number[];
+    k: number[];
+    fn: number[];
+    s: number[];
+  };
+
+  /** ✅ v16.0.0: сгенерированные id (append-only) */
+  ids?: string[];
+
+  /** ✅ v16.0.0: сериализованные sourceChain (append-only) */
+  sourceChains?: string[];
 
   /** Statistics */
   st: StatisticsData;
 
-  /** Legend (codes + flags + schemas) */
+  /** Legend (version + codes + flags + schemas) */
   legend: CodecLegend;
 }
 
 // ============================================================
-// ЛЕГЕНДА (v15.7.3)
+// ЛЕГЕНДА (v16.0.1)
 // ============================================================
 
 /** Один бит в поле flags */
@@ -1645,11 +1739,17 @@ export interface CodesDict {
 /**
  * Легенда — все словари и схемы для декодирования.
  *
- * ✅ v15.7.3: синхронизирована с CODEC_VERSION = '15.7.3'.
+ * ✅ v16.0.0: добавлено поле `version` (в 15.7.3 отсутствовало).
+ * ✅ v16.0.0: +10 словарей в codes, +11 схем.
+ * ✅ v16.0.1: `schemas.fns` расширена до 10 полей (добавлено 'hv').
  */
 export interface CodecLegend {
+  /** ✅ v16.0.0: версия legend */
+  version?: string;
+
   /** Расшифровка строковых кодов */
   codes: {
+    // Существующие 19 (15.7.3)
     export: CodesDict;
     import: CodesDict;
     call: CodesDict;
@@ -1661,34 +1761,26 @@ export interface CodecLegend {
     conditional: CodesDict;
     typeKind: CodesDict;
     typeUsage: CodesDict;
-
-    /** ✅ v15.2.0 (P1): коды для relation в lexicalLinks */
     lexicalRelation?: CodesDict;
-
-    /** ✅ v15.3.0 (P2): коды для callKind */
     callKind?: CodesDict;
-
-    // ==========================================
-    // ✅ v15.5.0: Vue-коды
-    // ==========================================
-
-    /** Коды для fns.vk (vueKind) */
     vueKind?: CodesDict;
-
-    /** Коды для sfc.b (битовая маска блоков SFC) */
     sfcBlock?: CodesDict;
-
-    /** Коды для hooks.n (имена lifecycle hooks) */
     hookName?: CodesDict;
-
-    /** Коды для reactivity.k (вид реактивности) */
     reactivityKind?: CodesDict;
-
-    /** Коды для icons.c (категория иконки) */
     iconCategory?: CodesDict;
-
-    /** Коды для composables.k (вид composable) */
     composableKind?: CodesDict;
+
+    // ✅ v16.0.0: новые 10 словарей
+    componentSource?: CodesDict;
+    propKind?: CodesDict;
+    eventHandlerSource?: CodesDict;
+    htmlOutputKind?: CodesDict;
+    sourceChainKind?: CodesDict;
+    domApiCategory?: CodesDict;
+    domApiEffect?: CodesDict;
+    domApiTargetKind?: CodesDict;
+    domApiArgKind?: CodesDict;
+    domApiArgSource?: CodesDict;
   };
 
   /** Расшифровка битовых флагов */
@@ -1701,18 +1793,18 @@ export interface CodecLegend {
     mi: string[];
     fl: string[];
 
-    /** ✅ v15.1.0 (P0): добавлен 'parent' */
-    /** ✅ v15.5.0: добавлен 'vk' */
+    /**
+     * ✅ v16.0.1: 10 полей: n, m, f, l, fl, p, rt, parent, vk, hv.
+     * Ранее было 9 полей (без 'hv'). Изменение связано с добавлением
+     * RLE-массива для `isHtmlVisible` в CompactJSON.fns.
+     */
     fns: string[];
 
     cls: string[];
     cn: string[];
     'gr.e': string[];
     'gr.i': string[];
-
-    /** ✅ v15.3.0 (P2): добавлены col/ck/cn/ai */
     'gr.c': string[];
-
     'gr.re': string[];
 
     vt: string[];
@@ -1734,27 +1826,29 @@ export interface CodecLegend {
     lx?: string[];
 
     // ==========================================
-    // ✅ v15.5.0: схемы Vue-секции
-    // ✅ v15.7.3: `vue.sfc` — 8 полей (c + cs)
+    // ✅ v15.5.0 + v16.0.0: схемы Vue-секции
     // ==========================================
 
-    /** Схема vue.sfc (8 полей: f, n, b, c, cs, p, e, x) */
+    /** ✅ v16.0.0: 30 полей (было 8) */
     'vue.sfc'?: string[];
 
-    /** Схема vue.composables */
     'vue.composables'?: string[];
-
-    /** Схема vue.macros */
     'vue.macros'?: string[];
-
-    /** Схема vue.hooks */
     'vue.hooks'?: string[];
-
-    /** Схема vue.reactivity */
     'vue.reactivity'?: string[];
-
-    /** Схема vue.icons */
     'vue.icons'?: string[];
+
+    // ✅ v16.0.0: новые схемы
+    'vue.componentProps'?: string[];
+    'vue.componentEvents'?: string[];
+    'vue.componentDirectives'?: string[];
+    'vue.componentSlots'?: string[];
+    'vue.htmlInterpolations'?: string[];
+    'vue.fnHtmlUsage'?: string[];
+    domApiCalls?: string[];
+    domApiArgs?: string[];
+    ids?: string[];
+    // sourceChains НЕ включается — это массив строк, а не объект
   };
 }
 
@@ -1847,11 +1941,7 @@ export interface RoundTripResult {
     conditionalsDiff?: number;
     typesDiff?: number;
     typeRefsDiff?: number;
-
-    /** ✅ v15.2.0 (P1) */
     lexicalLinksDiff?: number;
-
-    /** ✅ v15.5.0 */
     vueDiff?: number;
   };
 }
@@ -1892,9 +1982,23 @@ export interface ExtendedImportData extends ImportData {
 }
 
 // ============================================
+// RLE ТИП
+// ============================================
+
+/**
+ * RLE-массив.
+ *
+ * Формат: [start, length, value?]
+ *   - value определён  → RLE повторяющегося значения
+ *   - value отсутствует → RLE последовательности индексов
+ */
+export type RleArray = Array<[number, number, number?]>;
+
+// ============================================
 // ЭКСПОРТ ПО УМОЛЧАНИЮ
 // ============================================
 
 export default {
   CODEC_VERSION,
+  LEGEND_VERSION,
 };

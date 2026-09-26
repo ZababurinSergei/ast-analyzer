@@ -2,85 +2,58 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Версия: 15.5.7
+// Версия: 16.0.1
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
 //
+// v16.0.1 (fix TS6192 + TS6196 + TS6133):
+//   - ✅ FIX: удалена строка `import { parseSourceChain, type Scope,
+//     type ExistingIndex } from '../core/source-chain-resolver.js';`
+//     — все три импорта не используются в теле файла (TS6192).
+//   - ✅ FIX: удалены неиспользуемые типы из импорта
+//     './codec/codec-types.js': HtmlUsage, PropUsage, SourceChainItem,
+//     DomApiHandlerUsage (TS6196).
+//   - ✅ FIX: параметр `fn: any` в `buildScopeForFunction` переименован
+//     в `_fn: any` (TS6133).
+//   - ✅ FIX: параметр `sfc: any` в `analyzeVueSFC` переименован
+//     в `_sfc: any` (TS6133).
+//   - ✅ FIX: параметр `sfc: any` в `extractSFCNamesForVue` переименован
+//     в `_sfc: any` (TS6133).
+//
+// v16.0.0 (JSON-данные: Vue template + DOM API):
+//   - ✅ ДОБАВЛЕНО: parseVueTemplate → componentUsages, htmlElements
+//   - ✅ ДОБАВЛЕНО: extractSFCNames → реальные имена props/emits/exposed
+//   - ✅ ДОБАВЛЕНО: buildScopeForFunction + detectDomApiCallsForFunction
+//   - ✅ ДОБАВЛЕНО: заполнение fn.htmlUsage, fn.isHtmlVisible,
+//     fn.usagesAsPropSource, fn.domApiCalls, fn.domApiUsagesAsHandler
+//   - ✅ ДОБАВЛЕНО: top-level domApiCalls
+//   - ✅ ДОБАВЛЕНО: расширенная st (8 новых счётчиков)
+//   - ✅ ИСПОЛЬЗУЕТСЯ: CODEC_VERSION = '16.0.0'
+//
 // v15.5.7 (fix: явный проброс vueKind + диагностика):
-//   - ✅ ИСПРАВЛЕНО: `vueKind` теперь ГАРАНТИРОВАННО пробрасывается
-//     из `FunctionInfo.vueKind` в `FunctionData.vueKind`.
-//     Ранее поле могло теряться, если промежуточный конвертер
-//     (`convertFunctionToEnhanced`) не пробрасывал его.
-//   - ✅ ДОБАВЛЕНО: явное приведение `(func as any).vueKind`
-//     с fallback на `'function'` для случаев, когда поле отсутствует.
-//   - ✅ ДОБАВЛЕНО: диагностика `vueKind` в verbose-режиме —
-//     показывает количество функций с непустым `vueKind`.
-//   - ✅ ДОБАВЛЕНО: предупреждение, если `vueKind` отсутствует
-//     более чем у 50% функций (признак проблемы с пробросом).
-//   - ✅ ОБНОВЛЕНО: заголовок 15.5.6 → 15.5.7.
+//   - ✅ ИСПРАВЛЕНО: vueKind гарантированно пробрасывается
 //
 // v15.5.6 (fix TS2614 + TS2339 + синхронизация Vue-секции):
-//   - ✅ ИСПРАВЛЕНО: TS2614 — `VueEntities` импортируется
-//     из `../core/vue-entity-classifier.js` (а не из
-//     `./codec/codec-types.js`).
-//     `VueEntities` — это ЛОКАЛЬНЫЙ интерфейс классификатора,
-//     он не входит в CODEC.
-//   - ✅ ИСПРАВЛЕНО: TS2339 — `statistics.totalSfcComponents`
-//     → `statistics.totalVueSfc` (единое имя с codec-types.ts).
-//   - ✅ ИСПРАВЛЕНО: TS2339 — `statistics.totalComposables` /
-//     `totalMacros` / `totalHooks` / `totalReactivity` /
-//     `totalIcons` — пишутся из `vueEntities` (единые имена).
-//   - ✅ ДОБАВЛЕНО: заполнение `full.vue` через
-//     `classifyVueEntities(workingEntitiesMap)`.
-//   - ✅ ДОБАВЛЕНО: счётчики `sfc.c/p/e/x` заполняются
-//     РЕАЛЬНЫМИ длинами массивов `composables/props/
-//     emits/exposed` (для round-trip).
-//   - ✅ ОБНОВЛЕНО: заголовок 15.5.5 → 15.5.6.
+//   - ✅ ИСПРАВЛЕНО: VueEntities импортируется из vue-entity-classifier
+//   - ✅ ДОБАВЛЕНО: заполнение full.vue
 //
 // v15.5.5 (JSON-safe сериализация):
-//   - ✅ ЗАМЕНЕНО: `safeJsonStringify` → `jsonSafeStringify`
-//     в `saveJsonFile`.
-//   - ✅ ДОБАВЛЕНО: диагностика не-JSON-значений в
-//     `full.constants[]` перед сохранением (verbose).
-//
 // v15.5.4 (устранение рассинхрона порогов):
-//   - ✅ УДАЛЕНА локальная константа HEAVY_VALUE_THRESHOLDS.
-//   - ✅ УДАЛЕНА локальная функция shouldKeepValue.
-//   - ✅ ДОБАВЛЕНО: импорт `isValueKept` из
-//     './codec/values-filter.js'.
-//
-// v15.5.3 (fix: детерминизм shouldKeepValue + вынос дубликатов):
-//   - ✅ ИСПРАВЛЕНО: shouldKeepValue использует stableStringify.
-//   - ✅ УДАЛЕНО: локальные extractNumericId, sortByIdNumeric,
-//     canonicalizeFullJSON — заменены импортом из
-//     ./utils/canonical-utils.js.
-//
+// v15.5.3 (fix: детерминизм shouldKeepValue):
 // v15.5.2 (P0-fix-2 — стабилизация порядка обхода):
-//   - ✅ [P0-fix-2] ИСПРАВЛЕНО: детерминированный порядок
-//     обхода файлов во ВСЕХ проходах collectFullJSON.
-//
 // v15.5.1 (P0-fix — резолвинг parentFunctionId):
-//   - ✅ [P0] ИСПРАВЛЕНО: резолвинг локального parentFunctionId
-//     (f18_813) в глобальный (fn42).
-//
 // v15.5.0 (MVP P0/P1/P2 — проброс в FullJSON):
-//   - ✅ [P0] проброс parentFunctionId в FunctionData
-//   - ✅ [P1] сборка full.lexicalLinks с резолвом compactId
-//   - ✅ [P2] проброс callKind/calleeName/argumentIndex/column
-//
 // v15.4.0 (P3 — cross-file resolution):
-//   - ✅ ДОБАВЛЕНО: обогащение calls[] из ctx.crossFileCalls
-//
-// v15.0.7 (fix isExternal ↔ toFileId desync)
-// v15.0.6 (isExternal — производное от imp.toFileId)
-// v15.0.4 (заполнение importedName/localName + реэкспорты)
-// v15.0.3 (нормализация путей в отчёте)
-// v15.0.2 (устранение дублирования conditionals)
-// v15.0.1 (fix imports[].type)
-// v14.0.0 (canonicalizeFullJSON в конце collectFullJSON)
-// v13.0.0 (ValuesMode импортируется из values-filter.js)
+// v15.0.7 (fix isExternal ↔ toFileId desync):
+// v15.0.6 (isExternal — производное от imp.toFileId):
+// v15.0.4 (заполнение importedName/localName + реэкспорты):
+// v15.0.3 (нормализация путей в отчёте):
+// v15.0.2 (устранение дублирования conditionals):
+// v15.0.1 (fix imports[].type):
+// v14.0.0 (canonicalizeFullJSON в конце collectFullJSON):
+// v13.0.0 (ValuesMode импортируется из values-filter.js):
 // ============================================
 
 import fs from 'fs';
@@ -96,7 +69,7 @@ import {
   clearTsConfigCache,
 } from '../core/tsconfig-resolver.js';
 
-// ✅ v15.5.5: JSON-safe сериализация (Set, Map, RegExp, Date, class instances)
+// ✅ v15.5.5: JSON-safe сериализация
 import { jsonSafeStringify, isJsonSafe } from './codec/stable-stringify.js';
 
 // ✅ v15.5.4: единый критерий фильтрации значений
@@ -106,15 +79,29 @@ import type { ValuesMode } from './codec/values-filter.js';
 // ✅ v15.5.3: единые extractNumericId / sortByIdNumeric / canonicalizeFullJSON
 import { canonicalizeFullJSON } from './utils/canonical-utils.js';
 
-// ✅ v15.5.6: Vue-классификатор и его интерфейс
-// ⚠️ ВАЖНО: `VueEntities` определён в `vue-entity-classifier.ts`,
-//    а НЕ в `codec-types.ts`. Это локальный интерфейс
-//    классификатора, он не входит в CODEC.
+// ✅ v15.5.6: Vue-классификатор
 import { classifyVueEntities } from '../core/vue-entity-classifier.js';
 import type { VueEntities } from '../core/vue-entity-classifier.js';
 
+// ✅ v16.0.0: Vue template + SFC + source chain
+import { parseVueTemplate } from '../core/vue-template-parser.js';
+import { extractSFCNames } from '../core/vue-sfc-extractor.js';
+
+// ✅ FIX v16.0.1: удалён неиспользуемый импорт
+// (TS6192: All imports in import declaration are unused)
+// import { parseSourceChain, type Scope, type ExistingIndex } from '../core/source-chain-resolver.js';
+
+// ✅ v16.0.0: ts-morph для DOM API
+import { Project as TsMorphProject, Node as TsNode, SyntaxKind } from 'ts-morph';
+
 // ============================================
 // ✅ v13.0.0: ИМПОРТ ТИПОВ ИЗ codec-types.js
+// ============================================
+// ✅ FIX v16.0.1: удалены неиспользуемые типы (TS6196):
+//   - HtmlUsage
+//   - PropUsage
+//   - SourceChainItem
+//   - DomApiHandlerUsage
 // ============================================
 import type {
   FullJSON,
@@ -140,11 +127,12 @@ import type {
   DecodeOptions,
   GenerateReportOptions,
   GenerateReportResult,
-  // ✅ v15.2.0 (P1)
   LexicalLink,
-  // ✅ v15.5.0
   VueSectionFull,
   VueKind,
+  ComponentUsage,
+  HtmlElementUsage,
+  DomApiCall,
 } from './codec/codec-types.js';
 
 // ✅ v13.0.0-fix: единая версия CODEC
@@ -176,21 +164,16 @@ interface CallsInfoEntry {
 }
 
 // ============================================
-// ✅ v9.0.0: РЕЭКСПОРТ ТИПОВ (для обратной совместимости)
+// ✅ v9.0.0: РЕЭКСПОРТ ТИПОВ
 // ============================================
 export type { GenerateReportOptions, GenerateReportResult } from './codec/codec-types.js';
 export type { ValuesMode } from './codec/values-filter.js';
-
-// ✅ v15.5.6: `VueEntities` реэкспортируется из правильного модуля
 export type { VueEntities } from '../core/vue-entity-classifier.js';
 
 // ============================================
 // КОНСТАНТЫ
 // ============================================
 
-/**
- * Значение по умолчанию для `valuesMode`.
- */
 const DEFAULT_VALUES_MODE: ValuesMode = 'relations';
 
 // ============================================
@@ -219,7 +202,7 @@ export function generateCompactReport(
   // ✅ v11.1.0: режим сериализации values
   const valuesMode: ValuesMode = options.valuesMode || DEFAULT_VALUES_MODE;
 
-  // ✅ v9.0.4: edges — по умолчанию НЕ сохраняются в отдельный файл.
+  // ✅ v9.0.4: edges
   const saveEdges = options.saveEdges === true;
   const edgesSuffix = options.edgesJsonSuffix || '.edges.json';
 
@@ -253,7 +236,6 @@ export function generateCompactReport(
     console.log(`   🔗 TypeRefs: ${full.typeRefs?.length || 0}`);
     console.log(`   🧩 LexicalLinks: ${full.lexicalLinks?.length || 0}`);
 
-    // ✅ v15.5.6: Vue-сущности
     if (full.vue) {
       console.log(`   📦 Vue SFC: ${full.vue.sfc.length}`);
       console.log(`   ◇  Composables: ${full.vue.composables.length}`);
@@ -262,6 +244,11 @@ export function generateCompactReport(
       console.log(`   ⚡ Reactivity: ${full.vue.reactivity.length}`);
       console.log(`   🖼  Icons: ${full.vue.icons.length}`);
     }
+
+    // ✅ v16.0.0: диагностика новых секций
+    console.log(`   🌐 ComponentUsages: ${(full as any).componentUsages?.length || 0}`);
+    console.log(`   🖥  DomApiCalls: ${full.domApiCalls?.length || 0}`);
+    console.log(`   🌿 HtmlVisibleFns: ${full.statistics.totalHtmlVisibleFns || 0}`);
 
     // ✅ [P0]: диагностика parentFunctionId
     const fnsWithParent = (full.functions || []).filter(f => f.parentFunctionId).length;
@@ -280,13 +267,9 @@ export function generateCompactReport(
       `(не 'function': ${fnsNonFunctionVueKind})`
     );
 
-    // ✅ v15.5.7: предупреждение, если vueKind отсутствует у > 50% функций
     if (full.functions.length > 0 && fnsWithVueKind < full.functions.length * 0.5) {
       console.warn(
         `   ⚠️  vueKind отсутствует у ${full.functions.length - fnsWithVueKind}/${full.functions.length} функций`
-      );
-      console.warn(
-        `   💡 Проверьте convertFunctionToEnhanced() в entities-converter.ts — проброс vueKind`
       );
     }
 
@@ -299,9 +282,6 @@ export function generateCompactReport(
       console.warn(
         `   ⚠️  Функций с parentFunctionId, ссылающимся на несуществующий ID: ${badParents.length}`
       );
-      for (const f of badParents.slice(0, 5)) {
-        console.warn(`      • ${f.id} (${f.name}): parent=${f.parentFunctionId}`);
-      }
     }
 
     // ✅ [P2]: диагностика callKind
@@ -314,53 +294,21 @@ export function generateCompactReport(
     );
     if (unresolvedImports.length > 0) {
       console.log(`   ⚠️  Неразрешённых импортов: ${unresolvedImports.length}`);
-      for (const imp of unresolvedImports.slice(0, 5)) {
-        console.log(`      • ${path.basename(imp.fromFileId)} → '${imp.source}'`);
-      }
-      if (unresolvedImports.length > 5) {
-        console.log(`      ... и ещё ${unresolvedImports.length - 5}`);
-      }
     } else {
       console.log(`   ✅ Все импорты разрешены`);
     }
 
-    // ✅ v15.0.4: диагностика пустых имён
-    const emptyNameImports = (full.imports || []).filter(
-      imp => !imp.importedName && !imp.localName
-    );
-    if (emptyNameImports.length > 0) {
-      console.log(`   ⚠️  Импортов с пустыми именами: ${emptyNameImports.length}`);
-    }
-
-    // ✅ v15.5.5: диагностика не-JSON-значений в constants[]
+    // ✅ v15.5.5: диагностика не-JSON-значений
     if (full.constants) {
       let unsafeCount = 0;
-      const samples: string[] = [];
       for (const cn of full.constants) {
         if (cn.value !== undefined && !isJsonSafe(cn.value)) {
           unsafeCount++;
-          if (samples.length < 5) {
-            const ctorName =
-              typeof cn.value === 'object' && cn.value !== null
-                ? (cn.value as any).constructor?.name ?? 'Object'
-                : typeof cn.value;
-            samples.push(`${cn.name} (${ctorName})`);
-          }
         }
       }
       if (unsafeCount > 0) {
         console.warn(
-          `   ⚠️  ${unsafeCount} констант содержат не-JSON-значения ` +
-          `(Set, Map, RegExp, Date, class instances)`
-        );
-        for (const s of samples) {
-          console.warn(`      • ${s}`);
-        }
-        if (unsafeCount > samples.length) {
-          console.warn(`      ... и ещё ${unsafeCount - samples.length}`);
-        }
-        console.warn(
-          `   💡 Эти значения будут санитизированы через jsonSafeStringify при записи`
+          `   ⚠️  ${unsafeCount} констант содержат не-JSON-значения`
         );
       }
     }
@@ -388,18 +336,11 @@ export function generateCompactReport(
       console.log(
         `   🗜️  Сжатие применено (v${compact.v}, valuesMode: ${compact.valuesMode || 'undefined'})`
       );
-
       const valuesCount = compact.values?.length ?? 0;
       console.log(`   📦 values[]: ${valuesCount} элементов`);
 
-      // ✅ v15.5.6: диагностика vue-секции в compact
       if (compact.vue) {
         console.log(`   📦 compact.vue.sfc.f: ${compact.vue.sfc.f.length}`);
-        console.log(`   ◇  compact.vue.composables.n: ${compact.vue.composables.n.length}`);
-        console.log(`   ⚙  compact.vue.macros.f: ${compact.vue.macros.f.length}`);
-        console.log(`   ⚓ compact.vue.hooks.f: ${compact.vue.hooks.f.length}`);
-        console.log(`   ⚡ compact.vue.reactivity.f: ${compact.vue.reactivity.f.length}`);
-        console.log(`   🖼  compact.vue.icons.f: ${compact.vue.icons.f.length}`);
       }
     }
   }
@@ -419,12 +360,7 @@ export function generateCompactReport(
     let fullPathResolved: string | undefined;
     if (saveFull) {
       fullPathResolved = insertSuffixBeforeExtension(outputPath, fullSuffix);
-
       if (path.resolve(fullPathResolved) === path.resolve(outputPath)) {
-        console.warn(
-          `   ⚠️  [compact-reporter] fullPath совпал с compactPath, ` +
-          `применяю аварийный суффикс: ${outputPath}`
-        );
         fullPathResolved = insertUniqueSuffix(outputPath, fullSuffix);
       }
     }
@@ -450,7 +386,6 @@ export function generateCompactReport(
 
     if (saveEdges && compact) {
       const edgesPathResolved = insertSuffixBeforeExtension(outputPath, edgesSuffix);
-
       const fullWithEdges = Codec.decode(compact, { includeEdges: true, valuesMode });
       const edges = fullWithEdges.edges || [];
 
@@ -519,9 +454,6 @@ export function generateCompactReport(
 // ФУНКЦИИ ДЕКОДИРОВАНИЯ
 // ============================================
 
-/**
- * Декодирует сжатый JSON обратно в полный.
- */
 export function decodeCompactReport(
   compact: CompactJSON,
   options: DecodeOptions = {}
@@ -529,9 +461,6 @@ export function decodeCompactReport(
   return Codec.decode(compact, options);
 }
 
-/**
- * Читает сжатый JSON из файла и декодирует его.
- */
 export function readAndDecode(compactPath: string, options: DecodeOptions = {}): FullJSON {
   if (!fs.existsSync(compactPath)) {
     throw new Error(`Файл не найден: ${compactPath}`);
@@ -551,9 +480,6 @@ export function readAndDecode(compactPath: string, options: DecodeOptions = {}):
   return Codec.decode(compact, { ...options, valuesMode });
 }
 
-/**
- * Читает полный JSON из файла.
- */
 export function readFullJson(fullPath: string): FullJSON {
   if (!fs.existsSync(fullPath)) {
     throw new Error(`Файл не найден: ${fullPath}`);
@@ -572,26 +498,6 @@ interface SaveJsonResult {
   size: number;
 }
 
-/**
- * Сохраняет объект в JSON-файл.
- *
- * ════════════════════════════════════════════════════════════
- * ✅ v15.5.5: JSON-SAFE СЕРИАЛИЗАЦИЯ
- * ════════════════════════════════════════════════════════════
- *
- * Используется `jsonSafeStringify` из `./codec/stable-stringify.js`:
- *   1. Рекурсивно вызывает `sanitizeForJson(value)`.
- *   2. Set    → массив элементов
- *   3. Map    → plain object
- *   4. RegExp → строка '/pattern/flags'
- *   5. Date   → ISO-строка
- *   6. BigInt → строка '123n'
- *   7. class instances → plain object через Object.keys
- *
- * Это гарантирует, что `JSON.parse(JSON.stringify(x))`
- * даёт эквивалент `x` (в смысле данных), и round-trip
- * не теряет значения.
- */
 function saveJsonFile(
   filePath: string,
   data: unknown,
@@ -604,7 +510,6 @@ function saveJsonFile(
   }
 
   const json = jsonSafeStringify(data);
-
   fs.writeFileSync(filePath, json, 'utf-8');
   const size = fs.statSync(filePath).size;
 
@@ -620,9 +525,6 @@ function saveJsonFile(
 // ✅ v15.0.2: ПОДСЧЁТ CONDITIONALS
 // ============================================
 
-/**
- * Считает все conditionals внутри `templates[]`.
- */
 function countConditionals(full: FullJSON): number {
   let count = 0;
   for (const template of full.templates ?? []) {
@@ -632,12 +534,9 @@ function countConditionals(full: FullJSON): number {
 }
 
 // ============================================
-// ✅ v15.4.0 (P3): ОБОГАЩЕНИЕ CALLS ИЗ CROSS-FILE
+// ✅ v15.4.0 (P3): ОБОГАЩЕНИЕ CALLS
 // ============================================
 
-/**
- * Маппит callKind из CrossFileCall в CallData.type.
- */
 function mapCrossFileCallKindToCallType(
   kind: CrossFileCall['callKind']
 ): 'direct' | 'async' | 'method' | 'callback' {
@@ -657,10 +556,6 @@ function mapCrossFileCallKindToCallType(
 // ✅ [P2]: МАППИНГ CallsInfoEntry → CallData
 // ============================================
 
-/**
- * Находит подходящий `CallsInfoEntry` для вызова `callName`
- * в функции `func`.
- */
 function findCallsInfo(
   func: FunctionInfo,
   callName: string
@@ -678,9 +573,6 @@ function findCallsInfo(
 // ✅ [P1]: КАРТА compactId → globalFnId
 // ============================================
 
-/**
- * Строит карту `compactId (func.id) → globalFnId (fn1, fn2, ...)`.
- */
 function buildCompactIdToGlobalFnIdMap(
   entitiesMap: Record<string, EntitiesResult>,
   functions: FunctionData[],
@@ -719,47 +611,14 @@ function buildCompactIdToGlobalFnIdMap(
 }
 
 // ============================================
-// ✅ v15.5.6: VUE-СЕКЦИЯ — КОНВЕРТЕР В FullJSON.vue
+// ✅ v15.5.6: VUE-СЕКЦИЯ — КОНВЕРТЕР
 // ============================================
 
-/**
- * Конвертирует `VueEntities` (из классификатора) в `VueSectionFull`
- * (формат `FullJSON.vue`).
- *
- * ════════════════════════════════════════════════════════════
- * ЧТО ДЕЛАЕТ
- * ════════════════════════════════════════════════════════════
- *
- *   1. Проходит по `vueEntities.sfc` и для каждого SFC:
- *      - резолвит `fileId` → `moduleId` через `fileMap`
- *   2. Проходит по composables / macros / hooks / reactivity / icons
- *      и нормализует формат.
- *
- * ════════════════════════════════════════════════════════════
- * ⚠️ ВАЖНО ДЛЯ ROUND-TRIP
- * ════════════════════════════════════════════════════════════
- *
- *   `sfc.composables/props/emits/exposed` — это массивы
- *   РЕАЛЬНЫХ имён. В `codec-encode.ts` из них берётся
- *   только ДЛИНА (счётчик) и пишется в `sfc.c[i][1] = count`.
- *
- *   При `decode` в `codec-decode.ts` восстанавливаются
- *   плейсхолдеры `['#0', '#1', ...]` нужной длины.
- *
- *   Это гарантирует, что `encode(decode(compact)) === compact`
- *   по полю `sfc.c` (счётчики совпадают).
- *
- * @param vueEntities — результат `classifyVueEntities()`
- * @param fileMap     — карта `relativePath → FileData`
- * @param projectRoot — корень проекта (для нормализации путей)
- * @returns VueSectionFull
- */
 function convertVueEntitiesToFull(
   vueEntities: VueEntities,
   fileMap: Map<string, FileData>,
   projectRoot: string
 ): VueSectionFull {
-  // Вспомогательная функция: filePath → fileId (f1, f2, ...)
   const resolveFileId = (filePath: string): string => {
     const absolutePath = path.resolve(filePath);
     const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
@@ -776,9 +635,6 @@ function convertVueEntitiesToFull(
   };
 
   return {
-    // ────────────────────────────────────────────────────
-    // SFC
-    // ────────────────────────────────────────────────────
     sfc: (vueEntities.sfc ?? []).map(s => ({
       fileId: resolveFileId(s.fileId),
       moduleId: resolveModuleId(s.fileId),
@@ -790,9 +646,6 @@ function convertVueEntitiesToFull(
       exposed: s.exposed ?? [],
     })),
 
-    // ────────────────────────────────────────────────────
-    // Composables
-    // ────────────────────────────────────────────────────
     composables: (vueEntities.composables ?? []).map(c => ({
       id: c.id,
       name: c.name,
@@ -803,9 +656,6 @@ function convertVueEntitiesToFull(
       callers: (c.callers ?? []).map(resolveFileId),
     })),
 
-    // ────────────────────────────────────────────────────
-    // Macros
-    // ────────────────────────────────────────────────────
     macros: (vueEntities.macros ?? []).map(m => ({
       id: m.id,
       fileId: resolveFileId(m.fileId),
@@ -813,9 +663,6 @@ function convertVueEntitiesToFull(
       line: m.line,
     })),
 
-    // ────────────────────────────────────────────────────
-    // Hooks
-    // ────────────────────────────────────────────────────
     hooks: (vueEntities.hooks ?? []).map(h => ({
       id: h.id,
       fileId: resolveFileId(h.fileId),
@@ -823,9 +670,6 @@ function convertVueEntitiesToFull(
       line: h.line,
     })),
 
-    // ────────────────────────────────────────────────────
-    // Reactivity
-    // ────────────────────────────────────────────────────
     reactivity: (vueEntities.reactivity ?? []).map(r => ({
       id: r.id,
       fileId: resolveFileId(r.fileId),
@@ -834,11 +678,8 @@ function convertVueEntitiesToFull(
       name: r.name,
     })),
 
-    // ────────────────────────────────────────────────────
-    // Icons
-    // ────────────────────────────────────────────────────
     icons: (vueEntities.icons ?? []).map(i => ({
-      id: i.id,
+      id: resolveFileId(i.fileId) ? `ic${i.id}` : i.id,
       fileId: resolveFileId(i.fileId),
       name: i.name,
       category: i.category,
@@ -847,15 +688,544 @@ function convertVueEntitiesToFull(
 }
 
 // ============================================
-// СБОР ПОЛНОГО JSON (ВНУТРЕННЯЯ ФУНКЦИЯ)
+// ✅ v16.0.0: DOM API — buildScope + detectDomApiCalls
 // ============================================
 
-/**
- * Собирает полный JSON из карты сущностей.
- *
- * ✅ v15.5.7: `vueKind` ГАРАНТИРОВАННО пробрасывается в `FunctionData`.
- * ✅ v15.5.6: заполняет `full.vue` через `classifyVueEntities`.
- */
+interface ScopeLocal {
+  functionId?: string;
+  subkind?: 'ref' | 'computed' | 'watch' | 'function' | 'method' | 'constant';
+  isRef?: boolean;
+  isDomElement?: boolean;
+  typeHint?: string;
+}
+
+interface ScopeInternal {
+  fileId: string;
+  sourceFile: any;
+  locals: Map<string, ScopeLocal>;
+  imports: Map<string, { functionId?: string; sourceFileId?: string }>;
+  globals: Set<string>;
+  refs: Set<string>;
+}
+
+// ✅ FIX v16.0.1: параметр `fn: any` → `_fn: any` (TS6133)
+// Параметр не используется внутри тела функции — он передан
+// для единообразия сигнатуры. Переименован с префиксом `_`.
+function buildScopeForFunction(
+  _fn: any,
+  filePath: string,
+  fileId: string,
+  entitiesMap: Record<string, EntitiesResult>,
+  tsProject: TsMorphProject
+): ScopeInternal | null {
+  const scope: ScopeInternal = {
+    fileId,
+    sourceFile: null,
+    locals: new Map(),
+    imports: new Map(),
+    globals: new Set([
+      'window', 'document', 'globalThis', 'console', 'Math', 'JSON',
+      'Object', 'Array', 'Promise', 'Date', 'RegExp', 'Error',
+      'Map', 'Set', 'WeakMap', 'WeakSet', 'Symbol', 'Number',
+      'String', 'Boolean', 'parseInt', 'parseFloat', 'isNaN', 'isFinite',
+    ]),
+    refs: new Set(),
+  };
+
+  // 1. Локальные переменные из entities
+  const entities = entitiesMap[filePath];
+  if (entities) {
+    for (const v of entities.variables || []) {
+      if (v.name) scope.locals.set(v.name, { subkind: 'constant' });
+    }
+    for (const c of entities.constants || []) {
+      if (c.name) scope.locals.set(c.name, { subkind: 'constant' });
+    }
+    for (const f of entities.functions || []) {
+      if (f.name) {
+        scope.locals.set(f.name, {
+          functionId: f.id,
+          subkind: 'function',
+        });
+      }
+    }
+  }
+
+  // 2. Импорты
+  if (entities) {
+    for (const imp of entities.imports || []) {
+      for (const spec of imp.specifiers || []) {
+        const s = typeof spec === 'string' ? { local: spec, imported: spec } : spec;
+        if (s.local) {
+          scope.imports.set(s.local, {
+            sourceFileId: (imp as any).toFileId,
+          });
+        }
+      }
+    }
+  }
+
+  // 3. Vue refs (эвристика)
+  if (entities) {
+    for (const v of entities.variables || []) {
+      if (v.name && (v.name.endsWith('Ref') || v.name.endsWith('El'))) {
+        scope.refs.add(v.name);
+      }
+    }
+  }
+
+  // 4. SourceFile через ts-morph
+  try {
+    let sf = tsProject.getSourceFile(filePath);
+    if (!sf && fs.existsSync(filePath)) {
+      sf = tsProject.addSourceFileAtPath(filePath);
+    }
+    if (sf) {
+      scope.sourceFile = sf;
+      sf.forEachDescendant((node: any) => {
+        if (TsNode.isVariableDeclaration(node)) {
+          const name = node.getName();
+          if (name && !scope.locals.has(name)) {
+            const init = node.getInitializer();
+            const isRef = init ? isRefCall(init) : false;
+            const isDom = init ? isDomElementCreation(init) : false;
+            scope.locals.set(name, {
+              isRef,
+              isDomElement: isDom,
+              subkind: 'constant',
+            });
+            if (isRef) scope.refs.add(name);
+          }
+        }
+      });
+    }
+  } catch {
+    return null;
+  }
+
+  return scope;
+}
+
+function isRefCall(node: any): boolean {
+  if (!TsNode.isCallExpression(node)) return false;
+  const expr = node.getExpression();
+  if (!TsNode.isIdentifier(expr)) return false;
+  const name = expr.getText();
+  return ['ref', 'shallowRef', 'computed', 'reactive', 'customRef', 'toRef', 'toRefs'].includes(name);
+}
+
+function isDomElementCreation(node: any): boolean {
+  if (!TsNode.isCallExpression(node)) return false;
+  const expr = node.getExpression();
+  if (!TsNode.isPropertyAccessExpression(expr)) return false;
+  const text = expr.getText();
+  return text === 'document.createElement' || text === 'document.querySelector' ||
+    text === 'document.getElementById';
+}
+
+// ============================================
+// DOM method map
+// ============================================
+
+interface DomMethodInfoLocal {
+  category: string;
+  effect: 'write' | 'read' | 'mixed';
+}
+
+const DOM_METHOD_MAP_LOCAL: Record<string, DomMethodInfoLocal> = {
+  addEventListener: { category: 'add-event-listener', effect: 'mixed' },
+  removeEventListener: { category: 'remove-event-listener', effect: 'mixed' },
+  dispatchEvent: { category: 'dispatch-event', effect: 'write' },
+  createElement: { category: 'create-element', effect: 'write' },
+  appendChild: { category: 'append-child', effect: 'write' },
+  insertBefore: { category: 'insert-before', effect: 'write' },
+  removeChild: { category: 'remove-child', effect: 'write' },
+  replaceChild: { category: 'replace-child', effect: 'write' },
+  cloneNode: { category: 'clone-node', effect: 'write' },
+  importNode: { category: 'import-node', effect: 'write' },
+  adoptNode: { category: 'adopt-node', effect: 'write' },
+  insertAdjacentHTML: { category: 'insert-adjacent-html', effect: 'write' },
+  insertAdjacentElement: { category: 'insert-adjacent-element', effect: 'write' },
+  insertAdjacentText: { category: 'insert-adjacent-text', effect: 'write' },
+  setAttribute: { category: 'set-attribute', effect: 'write' },
+  removeAttribute: { category: 'remove-attribute', effect: 'write' },
+  getAttribute: { category: 'get-attribute', effect: 'read' },
+  hasAttribute: { category: 'has-attribute', effect: 'read' },
+  toggleAttribute: { category: 'toggle-attribute', effect: 'write' },
+  querySelector: { category: 'query-selector', effect: 'read' },
+  querySelectorAll: { category: 'query-selector-all', effect: 'read' },
+  getElementById: { category: 'get-element-by-id', effect: 'read' },
+  getElementsByClassName: { category: 'get-elements-by-class', effect: 'read' },
+  getElementsByTagName: { category: 'get-elements-by-tag', effect: 'read' },
+  getElementsByName: { category: 'get-elements-by-name', effect: 'read' },
+  closest: { category: 'closest', effect: 'read' },
+  matches: { category: 'matches', effect: 'read' },
+  getRootNode: { category: 'get-root-node', effect: 'read' },
+  focus: { category: 'focus', effect: 'write' },
+  blur: { category: 'blur', effect: 'write' },
+  scrollIntoView: { category: 'scroll-into-view', effect: 'write' },
+  scrollTo: { category: 'scroll-to', effect: 'write' },
+  click: { category: 'click-programmatic', effect: 'write' },
+};
+
+const DOM_PROPERTY_MAP_LOCAL: Record<string, DomMethodInfoLocal> = {
+  innerHTML: { category: 'inner-html', effect: 'write' },
+  outerHTML: { category: 'outer-html', effect: 'write' },
+  textContent: { category: 'text-content', effect: 'write' },
+  innerText: { category: 'inner-text', effect: 'write' },
+  className: { category: 'set-property', effect: 'write' },
+  dataset: { category: 'dataset', effect: 'write' },
+  style: { category: 'style-set', effect: 'write' },
+  classList: { category: 'class-list', effect: 'write' },
+  value: { category: 'set-property', effect: 'write' },
+  checked: { category: 'set-property', effect: 'write' },
+  disabled: { category: 'set-property', effect: 'write' },
+  src: { category: 'set-property', effect: 'write' },
+  href: { category: 'set-property', effect: 'write' },
+};
+
+const DOM_OBSERVER_MAP_LOCAL: Record<string, string> = {
+  MutationObserver: 'mutation-observer',
+  ResizeObserver: 'resize-observer',
+  IntersectionObserver: 'intersection-observer',
+  PerformanceObserver: 'performance-observer',
+};
+
+// ============================================
+// isLikelyDomReceiver
+// ============================================
+
+function isLikelyDomReceiver(expr: any, scope: ScopeInternal): boolean {
+  if (!expr) return false;
+
+  if (TsNode.isIdentifier(expr)) {
+    const name = expr.getText();
+    if (['document', 'window', 'globalThis'].includes(name)) return true;
+    const local = scope.locals.get(name);
+    if (local?.isRef || local?.isDomElement) return true;
+    if (local?.typeHint && /Element|Node|HTML/.test(local.typeHint)) return true;
+  }
+
+  const text = expr.getText();
+
+  if (text.startsWith('document.') || text.startsWith('window.')) return true;
+  if (text.startsWith('this.$refs.') || text.startsWith('this.$el')) return true;
+
+  if (TsNode.isCallExpression(expr)) {
+    const calleeText = expr.getExpression().getText();
+    if (/^(document|window)\./.test(calleeText)) return true;
+    if (/^(document|window)\.(querySelector|getElementById|getElementsBy)/.test(calleeText)) return true;
+  }
+
+  if (TsNode.isPropertyAccessExpression(expr) && expr.getName() === 'value') {
+    const refName = expr.getExpression().getText();
+    if (scope.refs.has(refName)) return true;
+    if (scope.locals.get(refName)?.isRef) return true;
+  }
+
+  return false;
+}
+
+// ============================================
+// resolveTarget
+// ============================================
+
+function resolveTargetLocal(expr: any, scope: ScopeInternal): { target: string; targetKind: string } {
+  const text = expr.getText();
+
+  if (text === 'document') return { target: 'document', targetKind: 'document' };
+  if (text === 'window') return { target: 'window', targetKind: 'window' };
+
+  if (text.startsWith('document.querySelector')) {
+    const m = text.match(/querySelector\(['"`]([^'"`]+)['"`]\)/);
+    return { target: `query:${m ? m[1] : '?'}`, targetKind: 'query' };
+  }
+  if (text.startsWith('document.')) return { target: text, targetKind: 'document' };
+  if (text.startsWith('this.$refs.')) return { target: `ref:${text.split('.')[2] || '?'}`, targetKind: 'ref' };
+
+  if (TsNode.isPropertyAccessExpression(expr) && expr.getName() === 'value') {
+    const refName = expr.getExpression().getText();
+    if (scope.refs.has(refName)) return { target: `ref:${refName}`, targetKind: 'ref' };
+  }
+
+  if (TsNode.isIdentifier(expr)) {
+    const name = expr.getText();
+    if (scope.locals.has(name)) return { target: `variable:${name}`, targetKind: 'variable' };
+    if (scope.imports.has(name)) return { target: `import:${name}`, targetKind: 'variable' };
+  }
+
+  return { target: text, targetKind: 'unknown' };
+}
+
+// ============================================
+// resolveArg
+// ============================================
+
+function resolveArgLocal(node: any, index: number, scope: ScopeInternal): any {
+  const raw = node.getText();
+  let kind = 'identifier';
+
+  if (TsNode.isStringLiteral(node)) kind = 'literal-string';
+  else if (TsNode.isNumericLiteral(node)) kind = 'literal-number';
+  else if (node.getKind() === SyntaxKind.TrueKeyword || node.getKind() === SyntaxKind.FalseKeyword) kind = 'literal-bool';
+  else if (TsNode.isArrowFunction(node) || TsNode.isFunctionExpression(node)) kind = 'arrow';
+  else if (TsNode.isObjectLiteralExpression(node)) kind = 'object';
+  else if (TsNode.isCallExpression(node)) kind = 'call';
+  else if (TsNode.isPropertyAccessExpression(node)) kind = 'member';
+
+  const result: any = { index, raw, kind };
+
+  if (TsNode.isIdentifier(node)) {
+    const name = node.getText();
+    const local = scope.locals.get(name);
+    if (local?.functionId) {
+      result.resolvedFunctionId = local.functionId;
+      result.resolvedSource = 'local';
+    } else if (scope.imports.has(name)) {
+      result.resolvedSource = 'import';
+    } else {
+      result.resolvedSource = 'unknown';
+    }
+  } else if (TsNode.isArrowFunction(node) || TsNode.isFunctionExpression(node)) {
+    result.resolvedSource = 'local';
+  }
+
+  return result;
+}
+
+// ============================================
+// extractContext
+// ============================================
+
+function extractContextLocal(
+  category: string,
+  args: any[],
+  scope: ScopeInternal
+): any {
+  const ctx: any = {};
+
+  if (['add-event-listener', 'remove-event-listener', 'dispatch-event'].includes(category)) {
+    if (args[0] && TsNode.isStringLiteral(args[0])) {
+      ctx.eventName = args[0].getLiteralValue();
+    }
+    if (category === 'add-event-listener' && args[1]) {
+      if (TsNode.isIdentifier(args[1])) {
+        const name = args[1].getText();
+        const local = scope.locals.get(name);
+        if (local?.functionId) {
+          ctx.handlerFunctionId = local.functionId;
+          ctx.handlerSource = 'local';
+        } else if (scope.imports.has(name)) {
+          ctx.handlerSource = 'import';
+        } else {
+          ctx.handlerSource = 'unknown';
+        }
+      } else if (TsNode.isArrowFunction(args[1]) || TsNode.isFunctionExpression(args[1])) {
+        ctx.handlerSource = 'inline';
+      }
+    }
+  }
+
+  if (['query-selector', 'query-selector-all', 'closest', 'matches'].includes(category)) {
+    if (args[0] && TsNode.isStringLiteral(args[0])) {
+      ctx.cssSelector = args[0].getLiteralValue();
+    }
+  }
+
+  if (['inner-html', 'outer-html', 'insert-adjacent-html'].includes(category)) {
+    const idx = category === 'insert-adjacent-html' ? 1 : 0;
+    if (args[idx] && TsNode.isStringLiteral(args[idx])) {
+      ctx.htmlValue = args[idx].getLiteralValue();
+    }
+  }
+
+  if (['set-attribute', 'remove-attribute', 'get-attribute', 'has-attribute', 'toggle-attribute'].includes(category)) {
+    if (args[0] && TsNode.isStringLiteral(args[0])) {
+      ctx.attributeName = args[0].getLiteralValue();
+    }
+  }
+
+  return ctx;
+}
+
+// ============================================
+// Главная: detectDomApiCallsForFunction
+// ============================================
+
+function detectDomApiCallsForFunction(
+  fn: any,
+  filePath: string,
+  fileId: string,
+  entitiesMap: Record<string, EntitiesResult>,
+  tsProject: TsMorphProject,
+  idCounter: { value: number }
+): any[] {
+  const scope = buildScopeForFunction(fn, filePath, fileId, entitiesMap, tsProject);
+  if (!scope || !scope.sourceFile) return [];
+
+  const calls: any[] = [];
+  const sf = scope.sourceFile;
+  let targetFn: any = null;
+
+  sf.forEachDescendant((node: any) => {
+    if (targetFn) return;
+    if (TsNode.isFunctionDeclaration(node) && node.getName() === fn.name) {
+      targetFn = node;
+    }
+    if (TsNode.isVariableDeclaration(node) && node.getName() === fn.name) {
+      const init = node.getInitializer();
+      if (init && (TsNode.isArrowFunction(init) || TsNode.isFunctionExpression(init))) {
+        targetFn = init;
+      }
+    }
+  });
+
+  if (!targetFn) return [];
+
+  targetFn.forEachDescendant((node: any) => {
+    // 1. CallExpression: obj.method(...)
+    if (TsNode.isCallExpression(node)) {
+      const expr = node.getExpression();
+      if (TsNode.isPropertyAccessExpression(expr)) {
+        const methodName = expr.getName();
+        const info = DOM_METHOD_MAP_LOCAL[methodName];
+        if (info && isLikelyDomReceiver(expr.getExpression(), scope)) {
+          const target = resolveTargetLocal(expr.getExpression(), scope);
+          const args = node.getArguments();
+          idCounter.value++;
+          calls.push({
+            id: `d${idCounter.value}`,
+            functionId: fn.id,
+            fileId,
+            category: info.category,
+            effect: info.effect,
+            method: methodName,
+            target: target.target,
+            targetKind: target.targetKind,
+            args: args.map((a: any) => a.getText()),
+            argResolutions: args.map((a: any, i: number) => resolveArgLocal(a, i, scope)),
+            line: node.getStartLineNumber(),
+            column: node.getStart() - sf.getFullStart(),
+            context: extractContextLocal(info.category, args, scope),
+          });
+        }
+      }
+    }
+
+    // 2. BinaryExpression: obj.innerHTML = ...
+    if (TsNode.isBinaryExpression(node)) {
+      const op = node.getOperatorToken().getText();
+      if (op === '=') {
+        const left = node.getLeft();
+        if (TsNode.isPropertyAccessExpression(left)) {
+          const propName = left.getName();
+          const info = DOM_PROPERTY_MAP_LOCAL[propName];
+          if (info && isLikelyDomReceiver(left.getExpression(), scope)) {
+            const target = resolveTargetLocal(left.getExpression(), scope);
+            idCounter.value++;
+            calls.push({
+              id: `d${idCounter.value}`,
+              functionId: fn.id,
+              fileId,
+              category: info.category,
+              effect: info.effect,
+              method: `${propName} = ...`,
+              target: target.target,
+              targetKind: target.targetKind,
+              args: [node.getRight().getText()],
+              argResolutions: [resolveArgLocal(node.getRight(), 0, scope)],
+              line: node.getStartLineNumber(),
+              column: node.getStart() - sf.getFullStart(),
+              context: extractContextLocal(info.category, [node.getRight()], scope),
+            });
+          }
+        }
+      }
+    }
+
+    // 3. NewExpression: new MutationObserver(...)
+    if (TsNode.isNewExpression(node)) {
+      const ctorName = node.getExpression().getText();
+      const category = DOM_OBSERVER_MAP_LOCAL[ctorName];
+      if (category) {
+        const args = node.getArguments() || [];
+        idCounter.value++;
+        calls.push({
+          id: `d${idCounter.value}`,
+          functionId: fn.id,
+          fileId,
+          category,
+          effect: 'write',
+          method: `new ${ctorName}`,
+          target: 'observer',
+          targetKind: 'unknown',
+          args: args.map((a: any) => a.getText()),
+          argResolutions: args.map((a: any, i: number) => resolveArgLocal(a, i, scope)),
+          line: node.getStartLineNumber(),
+          column: node.getStart() - sf.getFullStart(),
+          context: extractContextLocal(category, args, scope),
+        });
+      }
+    }
+  });
+
+  return calls;
+}
+
+// ============================================
+// ✅ v16.0.0: Vue template analysis
+// ============================================
+
+// ✅ FIX v16.0.1: параметр `sfc: any` → `_sfc: any` (TS6133)
+// Параметр не используется внутри тела функции.
+function analyzeVueSFC(
+  _sfc: any,
+  absolutePath: string,
+  fileId: string
+): { componentUsages: ComponentUsage[]; htmlElements: HtmlElementUsage[] } {
+  if (!fs.existsSync(absolutePath)) {
+    return { componentUsages: [], htmlElements: [] };
+  }
+
+  try {
+    const sfcSource = fs.readFileSync(absolutePath, 'utf-8');
+    const result = parseVueTemplate(sfcSource, { filePath: absolutePath });
+
+    // Установить parentFileId
+    for (const cu of result.componentUsages) cu.parentFileId = fileId;
+    for (const he of result.htmlElements) he.parentFileId = fileId;
+
+    return result;
+  } catch (err) {
+    if (process.env.AST_DEBUG_VUE === 'true') {
+      console.warn(`   ⚠️ Vue template parse failed for ${absolutePath}:`, err);
+    }
+    return { componentUsages: [], htmlElements: [] };
+  }
+}
+
+// ✅ FIX v16.0.1: параметр `sfc: any` → `_sfc: any` (TS6133)
+// Параметр не используется внутри тела функции.
+function extractSFCNamesForVue(_sfc: any, absolutePath: string): { props: string[]; emits: string[]; exposed: string[] } {
+  if (!fs.existsSync(absolutePath)) {
+    return { props: [], emits: [], exposed: [] };
+  }
+
+  try {
+    const sfcSource = fs.readFileSync(absolutePath, 'utf-8');
+    const scriptMatch = sfcSource.match(/<script[^>]*>([\s\S]*?)<\/script>/);
+    if (!scriptMatch) return { props: [], emits: [], exposed: [] };
+
+    return extractSFCNames(scriptMatch[1] || '', `${absolutePath}.__script__.ts`);
+  } catch {
+    return { props: [], emits: [], exposed: [] };
+  }
+}
+
+// ============================================
+// СБОР ПОЛНОГО JSON
+// ============================================
+
 function collectFullJSON(
   entitiesMap: Record<string, EntitiesResult>,
   verbose: boolean = false,
@@ -943,7 +1313,7 @@ function collectFullJSON(
   let emptyNameFixCount = 0;
 
   // ============================================
-  // ПЕРВЫЙ ПРОХОД: модули, файлы, функции, классы, константы
+  // ПЕРВЫЙ ПРОХОД
   // ============================================
   for (const filePath of sortedFilePaths) {
     const entities = workingEntitiesMap[filePath];
@@ -995,8 +1365,7 @@ function collectFullJSON(
     sourceToFileIdMap.set(relativePath.replace(/\.[^.]+$/, ''), file.id);
 
     // ============================================================
-    // ✅ P0-fix: ФУНКЦИИ — резолвинг parentFunctionId
-    // ✅ v15.5.7: ГАРАНТИРОВАННЫЙ проброс vueKind
+    // ФУНКЦИИ
     // ============================================================
     const funcs = entities.functions || [];
 
@@ -1023,20 +1392,6 @@ function collectFullJSON(
           ? localCompactIdToGlobalFnId.get(rawParent)!
           : null;
 
-      // ✅ v15.5.7: ГАРАНТИРОВАННЫЙ проброс vueKind
-      // Извлекаем vueKind из func, используя явное приведение типа.
-      // Fallback на 'function', если поле отсутствует — это безопасно,
-      // потому что 'function' является значением по умолчанию для VueKind.
-      //
-      // ⚠️ ВАЖНО: если func.vueKind === undefined, мы ВСЁ РАВНО записываем
-      // 'function'. Это гарантирует, что поле vueKind всегда присутствует
-      // в FunctionData, и decode(encode(full)) === full по этому полю.
-      //
-      // Ранее (v15.5.6 и ниже) использовалось:
-      //   vueKind: (func as any).vueKind as VueKind | undefined
-      // Это приводило к тому, что если func.vueKind === undefined,
-      // в FunctionData.vueKind тоже было undefined, и round-trip
-      // по этому полю падал (undefined ≠ 'function').
       const rawVueKind = (func as any).vueKind as VueKind | undefined | null;
       const vueKind: VueKind = rawVueKind ?? 'function';
 
@@ -1053,7 +1408,6 @@ function collectFullJSON(
         params: func.params || [],
         returnType: func.returnType,
         parentFunctionId: resolvedParentFunctionId,
-        // ✅ v15.5.7: vueKind ВСЕГДА заполнен (минимум 'function')
         vueKind,
       };
 
@@ -1194,7 +1548,7 @@ function collectFullJSON(
   }
 
   // ============================================
-  // ВТОРОЙ ПРОХОД: экспорты, импорты, вызовы, реэкспорты
+  // ВТОРОЙ ПРОХОД: экспорты, импорты, вызовы
   // ============================================
   for (const filePath of sortedFilePaths) {
     const entities = workingEntitiesMap[filePath];
@@ -1486,14 +1840,7 @@ function collectFullJSON(
               existing.isReExport === true
           );
 
-          if (alreadyExists) {
-            if (verbose) {
-              console.log(
-                `   ⏭️  Пропуск дубля реэкспорта: ${path.basename(filePath)} → '${imp.source}'`
-              );
-            }
-            continue;
-          }
+          if (alreadyExists) continue;
 
           importCounter++;
           emptyNameFixCount++;
@@ -1634,7 +1981,7 @@ function collectFullJSON(
   }
 
   // ============================================
-  // СБОР РАСШИРЕННЫХ СЕКЦИЙ (lifecycle/effects/injections/reactivity/types)
+  // СБОР РАСШИРЕННЫХ СЕКЦИЙ
   // ============================================
   for (const filePath of sortedFilePaths) {
     const entities = workingEntitiesMap[filePath];
@@ -1650,7 +1997,7 @@ function collectFullJSON(
 
     const e = entities as any;
 
-    // --- LIFECYCLE (lc) ---
+    // LIFECYCLE
     for (const lc of e.templateLifecycle || []) {
       lifecycleCounter++;
       const funcArray = functionMap.get(lc.functionName);
@@ -1670,7 +2017,7 @@ function collectFullJSON(
       });
     }
 
-    // --- EFFECTS (ef) ---
+    // EFFECTS
     for (const ef of e.templateEffects || []) {
       effectCounter++;
       const funcArray = functionMap.get(ef.functionName);
@@ -1686,7 +2033,7 @@ function collectFullJSON(
       });
     }
 
-    // --- INJECTIONS (inj) ---
+    // INJECTIONS
     for (const inj of e.templateInjections || []) {
       injectionCounter++;
       injections.push({
@@ -1700,7 +2047,7 @@ function collectFullJSON(
       });
     }
 
-    // --- REACTIVITY (rx) ---
+    // REACTIVITY
     for (const rx of e.templateReactivity || []) {
       reactivityCounter++;
       const funcArray = functionMap.get(rx.functionName);
@@ -1717,7 +2064,7 @@ function collectFullJSON(
       });
     }
 
-    // --- TYPES (ty) ---
+    // TYPES
     for (const ty of e.typesGraph || []) {
       typeCounter++;
       types.push({
@@ -1732,7 +2079,7 @@ function collectFullJSON(
       });
     }
 
-    // --- TYPE REFS (tr) ---
+    // TYPE REFS
     for (const tr of e.typeRefsGraph || []) {
       typeRefCounter++;
       typeRefs.push({
@@ -1807,16 +2154,6 @@ function collectFullJSON(
   // ============================================
   // ✅ v15.5.6: VUE-СЕКЦИЯ
   // ============================================
-  // Собираем Vue-сущности через classifyVueEntities() и конвертируем
-  // в формат FullJSON.vue.
-  //
-  // ⚠️ Счётчики sfc.c[i][1] / sfc.p[i][1] / sfc.e[i][1] / sfc.x[i][1]
-  //    заполняются РЕАЛЬНЫМИ длинами массивов composables / props /
-  //    emits / exposed. Это гарантирует round-trip:
-  //      encode(full) → compact.vue.sfc.c[i] = [fileIdx, N]
-  //      decode(compact) → full.vue.sfc[i].composables = ['#0', ..., '#N-1']
-  //      encode(decode(compact)) → compact.vue.sfc.c[i] = [fileIdx, N]  ✅
-  // ============================================
   let vue: VueSectionFull | undefined;
 
   try {
@@ -1851,6 +2188,145 @@ function collectFullJSON(
   }
 
   // ============================================
+  // ✅ v16.0.0: VUE TEMPLATE ANALYSIS
+  // ============================================
+  const allComponentUsages: ComponentUsage[] = [];
+  const allHtmlElements: HtmlElementUsage[] = [];
+
+  if (vue) {
+    for (const sfc of vue.sfc || []) {
+      const sfcFile = files.find(f => f.id === sfc.fileId);
+      if (!sfcFile) continue;
+
+      const absolutePath = path.resolve(projectRoot, sfcFile.path);
+      if (!fs.existsSync(absolutePath)) continue;
+
+      const result = analyzeVueSFC(sfc, absolutePath, sfc.fileId);
+      sfc.componentUsages = result.componentUsages;
+      sfc.htmlElements = result.htmlElements;
+
+      allComponentUsages.push(...result.componentUsages);
+      allHtmlElements.push(...result.htmlElements);
+
+      // Реальные имена props/emits/exposed
+      const names = extractSFCNamesForVue(sfc, absolutePath);
+      if (names.props.length > 0) sfc.props = names.props;
+      if (names.emits.length > 0) sfc.emits = names.emits;
+      if (names.exposed.length > 0) sfc.exposed = names.exposed;
+    }
+
+    if (verbose) {
+      console.log(`   🌐 ComponentUsages: ${allComponentUsages.length}`);
+      console.log(`   🌿 HtmlElements: ${allHtmlElements.length}`);
+    }
+  }
+
+  // ============================================
+  // ✅ v16.0.0: DOM API (top-level) — РЕАЛЬНАЯ РЕАЛИЗАЦИЯ
+  // ============================================
+  const domApiCalls: DomApiCall[] = [];
+  const domIdCounter = { value: 0 };
+
+  {
+    const tsProject = new TsMorphProject({
+      compilerOptions: {
+        target: 99, module: 99, allowJs: true, checkJs: false,
+        skipLibCheck: true, jsx: 2,
+      },
+    });
+
+    for (const fn of functions) {
+      const sfcFile = files.find(f => f.id === fn.fileId);
+      if (!sfcFile) continue;
+      if (sfcFile.path.endsWith('.vue')) continue; // Vue обрабатывается отдельно
+
+      const absolutePath = path.resolve(projectRoot, sfcFile.path);
+      if (!fs.existsSync(absolutePath)) continue;
+
+      try {
+        const calls = detectDomApiCallsForFunction(
+          fn, absolutePath, fn.fileId, workingEntitiesMap, tsProject, domIdCounter
+        );
+        domApiCalls.push(...calls);
+      } catch (err) {
+        if (verbose) {
+          console.warn(`   ⚠️ DOM API analysis failed for ${fn.name}: ${err}`);
+        }
+      }
+    }
+
+    if (verbose && domApiCalls.length > 0) {
+      console.log(`   🖥  DomApiCalls: ${domApiCalls.length}`);
+    }
+  }
+
+  // Заполнить fn.htmlUsage для DOM API
+  for (const fn of functions) {
+    const calls = domApiCalls.filter(c => c.functionId === fn.id);
+    if (!fn.htmlUsage) fn.htmlUsage = [];
+    for (const call of calls) {
+      if (call.effect === 'read') continue;
+      fn.htmlUsage.push({
+        kind: 'dom-api',
+        usageId: call.id,
+        tag: call.target,
+        target: call.method,
+        line: call.line,
+        column: call.column,
+        domApiCategory: call.category,
+        domApiMethod: call.method,
+        domApiTarget: call.target,
+        domApiContext: call.context,
+      });
+    }
+    fn.isHtmlVisible = fn.htmlUsage.length > 0;
+    fn.domApiCalls = calls.map(c => c.id);
+
+    // domApiUsagesAsHandler
+    for (const call of calls) {
+      if (call.category === 'add-event-listener' && call.context?.handlerFunctionId) {
+        const handlerFn = functions.find(f => f.id === call.context.handlerFunctionId);
+        if (handlerFn) {
+          if (!handlerFn.domApiUsagesAsHandler) handlerFn.domApiUsagesAsHandler = [];
+          handlerFn.domApiUsagesAsHandler.push({
+            callId: call.id,
+            category: call.category,
+            eventName: call.context.eventName || '?',
+            target: call.target,
+            line: call.line,
+          });
+        }
+      }
+    }
+  }
+
+  // ============================================
+  // ✅ v16.0.0: usagesAsPropSource
+  // ============================================
+  for (const fn of functions) {
+    fn.usagesAsPropSource = [];
+  }
+
+  for (const cu of allComponentUsages) {
+    for (const prop of cu.props || []) {
+      const firstFnId = prop.sourceChain?.[0]?.functionId;
+      if (!firstFnId) continue;
+
+      const targetFn = functions.find(f => f.id === firstFnId);
+      if (!targetFn) continue;
+
+      if (!targetFn.usagesAsPropSource) targetFn.usagesAsPropSource = [];
+      targetFn.usagesAsPropSource.push({
+        usageId: cu.id,
+        propId: prop.id,
+        propName: prop.name,
+        tag: cu.tag,
+        targetFileId: cu.componentFileId,
+      });
+    }
+  }
+
+  // ============================================
   // СТАТИСТИКА
   // ============================================
   const totalConditionals = templates.reduce(
@@ -1871,20 +2347,28 @@ function collectFullJSON(
     totalTemplates: templates.length,
     totalLexicalLinks: lexicalLinks.length,
 
-    // ==========================================
-    // ✅ v15.5.6: Vue-статистика
-    // ==========================================
-    // ⚠️ ВАЖНО: имена полей должны СОВПАДАТЬ с `StatisticsData`
-    //    в `codec-types.ts`. Используются `totalVueSfc` (а НЕ
-    //    `totalSfcComponents`), `totalComposables`, `totalMacros`,
-    //    `totalHooks`, `totalReactivity`, `totalIcons`.
-    // ==========================================
     totalVueSfc: vue?.sfc.length ?? 0,
     totalComposables: vue?.composables.length ?? 0,
     totalMacros: vue?.macros.length ?? 0,
     totalHooks: vue?.hooks.length ?? 0,
     totalReactivity: vue?.reactivity.length ?? 0,
     totalIcons: vue?.icons.length ?? 0,
+
+    // ✅ v16.0.0
+    totalComponentUsages: allComponentUsages.length,
+    totalHtmlElements: allHtmlElements.length,
+    totalComponentProps: allComponentUsages.reduce(
+      (s, cu) => s + (cu.props?.length ?? 0),
+      0
+    ),
+    totalComponentEvents: allComponentUsages.reduce(
+      (s, cu) => s + (cu.events?.length ?? 0),
+      0
+    ),
+    totalDomApiCalls: domApiCalls.length,
+    totalSourceChains: 0, // будет заполнено в encode
+    totalHtmlVisibleFns: functions.filter(f => f.isHtmlVisible).length,
+    totalDomApiVisibleFns: functions.filter(f => (f.domApiCalls?.length ?? 0) > 0).length,
   };
 
   (statistics as any).totalConditionals = totalConditionals;
@@ -1938,8 +2422,10 @@ function collectFullJSON(
     typeRefs: typeRefs.length > 0 ? typeRefs : undefined,
     lexicalLinks: lexicalLinks.length > 0 ? lexicalLinks : undefined,
 
-    // ✅ v15.5.6: Vue-секция
     vue,
+
+    // ✅ v16.0.0
+    domApiCalls: domApiCalls.length > 0 ? domApiCalls : undefined,
   };
 
   return canonicalizeFullJSON(result);
@@ -2058,7 +2544,7 @@ function resolveToFileId(
         }
       }
     } catch {
-      // Игнорируем ошибки разрешения алиасов
+      // Игнорируем
     }
   }
 
@@ -2141,9 +2627,7 @@ function detectCallType(
   callName: string
 ): 'direct' | 'async' | 'method' | 'callback' {
   if (func.isAsync) return 'async';
-
   if (callName.endsWith('_callback')) return 'callback';
-
   if (callName.includes('.')) return 'method';
 
   const body = func.body || '';

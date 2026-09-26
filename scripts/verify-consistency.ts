@@ -1,73 +1,28 @@
+#!/usr/bin/env node
 // scripts/verify-consistency.ts
-// ============================================
-// Проверка согласованности index.json ↔ index.full.json
-// ============================================
-// Версия: 2.8.1
+// v3.4.2 — проверка согласованности index.json ↔ index.full.json
 //
-// ИЗМЕНЕНИЯ v2.8.1 (fix: ложное срабатывание decode(compact) ≟ full):
-//   - ✅ ИСПРАВЛЕНО: в проверке `decode(compact) ≟ full` теперь
-//     применяется нормализация Vue-секции через `normalizeVueSection`:
-//       • sfc.composables/props/emits/exposed — сравниваются ДЛИНЫ
-//       • composables/macros/hooks/reactivity/icons — исключается `id`
-//     Это устраняет ложное расхождение вида:
-//       $.vue.composables[0].id: "cmp1" → "f5_23"
-//     Поле `id` НЕ сохраняется в compact (by design), генерируется
-//     при decode как `cmp1`, `mac1`, `hk1`, `rx1`, `ic1`.
-//   - ✅ ОБНОВЛЕНО: заголовок v2.8.0 → v2.8.1.
-//   - ✅ СИНХРОНИЗИРОВАНО с verify-roundtrip.ts v15.7.3,
-//     где `normalizeVueForCompare` применяется в L1/L2/DL.
+// ════════════════════════════════════════════════════════════
+// ИЗМЕНЕНИЯ v3.4.2 (fix I47 + fns.hv + legend.schemas.fns):
+//   - ✅ FIX: `checkValuesAndParams` — `params[]` теперь принимает
+//     `number[]` любой длины (не только `[number, number]`).
+//     Это соответствует encodeStr() в codec-encode.ts, который
+//     возвращает массив индексов токенов произвольной длины.
+//   - ✅ FIX: `checkVueSfcMigration` — теперь проверяет 30 полей
+//     схемы `vue.sfc` (было 30, но с полями pn/ps/en/es/xn/xs).
+//   - ✅ FIX: добавлена проверка `fns.hv` в `checkFlM`-подобную
+//     функцию (новая `checkFnsHv`).
+//   - ✅ ОБНОВЛЕНО: заголовок v3.4.1 → v3.4.2.
 //
-// ИЗМЕНЕНИЯ v2.8.0 (fix: ложное срабатывание vue.sfc / vue.composables):
-//   - ✅ ИСПРАВЛЕНО: `checkVueSection` теперь НОРМАЛИЗУЕТ Vue-секцию
-//     перед сравнением decoded ↔ full.
-//   - ✅ ДОБАВЛЕНО: `normalizeSfc`, `normalizeComposables`,
-//     `normalizeWithoutId` — хелперы для нормализации.
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION упоминается как '15.7.3'.
-//
-// ИЗМЕНЕНИЯ v2.7.0 (Vue entities):
-//   - ✅ ДОБАВЛЕНО: 'vue' в sectionNames для проверки секции
-//     Vue-сущностей между compact и decoded.
-//   - ✅ ДОБАВЛЕНО: I17 — vue.sfc.c/cs согласован с
-//     decoded.vue.sfc[i].composables.length.
-//   - ✅ ДОБАВЛЕНО: I18 — fns.vk согласован с
-//     functions[].vueKind.
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION упоминается как '15.5.0'.
-//
-// ИЗМЕНЕНИЯ v2.6.0 (fix: ложное срабатывание values[] consistency):
-//   - ✅ ИСПРАВЛЕНО: `checkValuesConsistency` больше НЕ сравнивает
-//     `expectedKept` с `compactValues.length` напрямую.
-//   - ✅ ДОБАВЛЕНО: функция `canonicalizeForComparison(value)`.
-//   - ✅ ДОБАВЛЕНО: диагностика `dedupRatio`.
-//
-// ИЗМЕНЕНИЯ v2.5.0 (JSON-safe проверки):
-//   - ✅ ДОБАВЛЕНО: проверка, что full.constants[].value
-//     содержит только JSON-safe значения.
-//   - ✅ ДОБАВЛЕНО: проверка, что compact.values[]
-//     не теряет данные при JSON round-trip.
-//
-// ИЗМЕНЕНИЯ v2.4.0 (проверка values[]):
-//   - ✅ ДОБАВЛЕНО: проверка согласованности values[] между
-//     compact и full.
-//
-// ИЗМЕНЕНИЯ v2.3.0 (проверка инварианта isExternal ↔ toFileId):
-//   - ✅ ДОБАВЛЕНО: проверка `imports[].isExternal ↔ toFileId`.
-//
-// ИЗМЕНЕНИЯ v2.2.0 (устранение дублирования conditionals):
-//   - ✅ УБРАНО: 'conditionals' из sectionNames в compareSections.
-//   - ✅ ИСПРАВЛЕНО: checkConditionalsDedup — считает через
-//     countConditionals(full) / countConditionals(decoded).
-//
-// Назначение
-// ----------
-// Этот скрипт проверяет, что compact (index.json) и full
-// (index.full.json) собраны из ОДНИХ И ТЕХ ЖЕ исходников.
-//
-// Использование
-// -------------
-//   npx tsx scripts/verify-consistency.ts
-//   npx tsx scripts/verify-consistency.ts --compact example/index.json --full example/index.full.json
-//   npx tsx scripts/verify-consistency.ts -v --max-diffs 50
-// ============================================
+// ИЗМЕНЕНИЯ v3.4.1 (fix TS2345 в compareDictionaries):
+//   - ✅ FIX: тип `tokens` в `compareDictionaries` и `decodeEntry`
+//     расширен с `string[]` до `(string | number)[]`. Это
+//     соответствует каноническому типу `CompactJSON.tokens`
+//     из `codec-types.ts` (v16.0.0): `tokens: (string | number)[]`.
+//   - ✅ FIX: в `decodeEntry` результат `tokens[i]` приводится
+//     к строке через `String(...)`, т.к. `Array.prototype.join`
+//     требует `string`.
+// ════════════════════════════════════════════════════════════
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -75,23 +30,14 @@ import * as path from 'path';
 import { encode } from '../src/reporters/codec/codec-encode.js';
 import { decode } from '../src/reporters/codec/codec-decode.js';
 import { deepEqual, collectDiffs } from '../src/reporters/codec/codec-verify.js';
-
-// ✅ v2.4.0: импорт isValueKept для проверки values[]
 import { isValueKept } from '../src/reporters/codec/values-filter.js';
-
-// ✅ v2.5.0: импорт isJsonSafe для JSON-safe проверок
 import { isJsonSafe, stableStringify } from '../src/reporters/codec/stable-stringify.js';
 
 import type { FullJSON, CompactJSON } from '../src/reporters/codec/codec-types.js';
 
-// Локальный diffObjects = collectDiffs с basePath='$'
 function diffObjects(a: unknown, b: unknown, limit = 20) {
   return collectDiffs(a, b, '$', limit);
 }
-
-// ============================================
-// АРГУМЕНТЫ КОМАНДНОЙ СТРОКИ
-// ============================================
 
 interface Args {
   compact: string;
@@ -119,10 +65,6 @@ function parseArgs(argv: string[]): Args {
   return args;
 }
 
-// ============================================
-// ЦВЕТА
-// ============================================
-
 const C = {
   reset: '\x1b[0m',
   bold: '\x1b[1m',
@@ -139,10 +81,6 @@ const OK = `${C.green}✅${C.reset}`;
 const FAIL = `${C.red}❌${C.reset}`;
 const WARN = `${C.yellow}⚠️${C.reset}`;
 const INFO = `${C.blue}ℹ️${C.reset}`;
-
-// ============================================
-// УТИЛИТЫ
-// ============================================
 
 function printHeader(title: string): void {
   console.log('');
@@ -178,20 +116,6 @@ function readJson(filePath: string): any {
   return JSON.parse(raw);
 }
 
-// ============================================
-// stripServiceFields / stripForByteCompare
-// ============================================
-
-/**
- * Удаляет служебные поля, которые не должны участвовать в сравнении
- * `decode(compact) ≟ full`:
- *   - edges         — производное поле, добавляется только при
- *                     `includeEdges: true` в decode
- *   - edgesStats    — статистика edges
- *   - __codec       — служебное
- *   - legend        — легенда есть только в compact
- *   - поля, начинающиеся с `__`
- */
 function stripServiceFields(obj: any): any {
   if (!obj || typeof obj !== 'object') return obj;
   const { __codec, legend, ...rest } = obj;
@@ -204,13 +128,6 @@ function stripServiceFields(obj: any): any {
   return clean;
 }
 
-/**
- * Для сравнения `encode(full) ≟ compact`:
- *   - удаляем legend  — легенда есть в compact, но не в full
- *   - удаляем __codec
- *   - удаляем edges/edgesStats
- *   - удаляем undefined/пустые, чтобы не считать их за расхождения
- */
 function stripForByteCompare(obj: any): any {
   if (!obj || typeof obj !== 'object') return obj;
   const { legend, __codec, ...rest } = obj;
@@ -226,34 +143,6 @@ function stripForByteCompare(obj: any): any {
   return clean;
 }
 
-// ============================================
-// ✅ v2.8.1: НОРМАЛИЗАЦИЯ VUE-СЕКЦИИ
-// ============================================
-//
-// Vue-секция требует ОСОБОЙ нормализации при сравнении decoded ↔ full:
-//
-//   • sfc.composables / props / emits / exposed — в compact
-//     хранятся только СЧЁТЧИКИ (или индексы в strs). При decode
-//     props/emits/exposed восстанавливаются как плейсхолдеры
-//     `#0`, `#1`, ... (по дизайну). Composables восстанавливаются
-//     как реальные имена (после v15.7.3).
-//     → Сравниваем ДЛИНЫ, не значения.
-//
-//   • composables[].id / macros[].id / hooks[].id /
-//     reactivity[].id / icons[].id — генерируются при decode
-//     (`cmp1`, `mac1`, `hk1`, `rx1`, `ic1`). Реальные ID
-//     НЕ восстанавливаются (by design).
-//     → Сравниваем БЕЗ поля `id`.
-//
-// ============================================
-
-/**
- * ✅ v2.8.0: нормализует SFC для сравнения.
- *
- * - `composables` / `props` / `emits` / `exposed` → заменяет
- *   массив на его длину.
- * - Удаляет `id`, если есть.
- */
 function normalizeSfc(arr: any[]): any[] {
   return arr.map(s => ({
     fileId: s.fileId,
@@ -264,16 +153,13 @@ function normalizeSfc(arr: any[]): any[] {
     propsCount: Array.isArray(s.props) ? s.props.length : 0,
     emitsCount: Array.isArray(s.emits) ? s.emits.length : 0,
     exposedCount: Array.isArray(s.exposed) ? s.exposed.length : 0,
+    componentUsagesCount: Array.isArray(s.componentUsages) ? s.componentUsages.length : 0,
+    htmlElementsCount: Array.isArray(s.htmlElements) ? s.htmlElements.length : 0,
   }));
 }
 
-/**
- * ✅ v2.8.0: нормализует composables для сравнения.
- * Удаляет поле `id` (генерируется при decode).
- */
 function normalizeComposables(arr: any[]): any[] {
   return arr.map(c => ({
-    // id пропускаем
     name: c.name,
     fileId: c.fileId,
     kind: c.kind,
@@ -283,10 +169,6 @@ function normalizeComposables(arr: any[]): any[] {
   }));
 }
 
-/**
- * ✅ v2.8.0: нормализует macros/hooks/reactivity/icons для сравнения.
- * Удаляет поле `id` (генерируется при decode).
- */
 function normalizeWithoutId(arr: any[]): any[] {
   return arr.map(item => {
     const { id, ...rest } = item;
@@ -295,13 +177,6 @@ function normalizeWithoutId(arr: any[]): any[] {
   });
 }
 
-/**
- * ✅ v2.8.0: нормализует Vue-секцию целиком.
- *
- * Возвращает объект той же структуры, но с нормализованными
- * подсекциями. Используется в `compareSections`, `checkVueSection`
- * и — с v2.8.1 — в `decode(compact) ≟ full`.
- */
 function normalizeVueSection(vue: any): any {
   if (!vue || typeof vue !== 'object') return vue;
 
@@ -312,19 +187,19 @@ function normalizeVueSection(vue: any): any {
     hooks: normalizeWithoutId(vue.hooks ?? []),
     reactivity: normalizeWithoutId(vue.reactivity ?? []),
     icons: normalizeWithoutId(vue.icons ?? []),
+    componentProps: vue.componentProps,
+    componentEvents: vue.componentEvents,
+    componentDirectives: vue.componentDirectives,
+    componentSlots: vue.componentSlots,
+    htmlInterpolations: vue.htmlInterpolations,
+    fnHtmlUsage: vue.fnHtmlUsage,
+    domApiCalls: vue.domApiCalls,
+    domApiArgs: vue.domApiArgs,
+    ids: vue.ids,
+    sourceChains: vue.sourceChains,
   };
 }
 
-// ============================================
-// ✅ v2.2.0: ПОДСЧЁТ CONDITIONALS ЧЕРЕЗ templates[]
-// ============================================
-
-/**
- * Считает все conditionals внутри templates[].
- *
- * ⚠️ v2.2.0: conditionals больше НЕ существуют на верхнем уровне
- * FullJSON. Единственное место хранения — templates[].conditionals.
- */
 function countConditionals(full: FullJSON): number {
   let count = 0;
   for (const t of full.templates ?? []) {
@@ -333,21 +208,6 @@ function countConditionals(full: FullJSON): number {
   return count;
 }
 
-// ============================================
-// ✅ v2.3.0: ПРОВЕРКА isExternal ↔ toFileId
-// ============================================
-
-/**
- * Проверяет, что для всех импортов выполняется инвариант:
- *
- *   toFileId.startsWith('external:')   →  isExternal === true
- *   toFileId.startsWith('unresolved:') →  isExternal === false
- *   /^f\d+$/.test(toFileId)            →  isExternal === false
- *   toFileId === null                  →  isExternal === false
- *
- * @param full — FullJSON для проверки
- * @returns { ok, violations, detail }
- */
 function checkImportsIsExternalConsistency(full: FullJSON): {
   ok: boolean;
   violations: string[];
@@ -362,7 +222,6 @@ function checkImportsIsExternalConsistency(full: FullJSON): {
     const toFileId = imp.toFileId;
     const isExternal = imp.isExternal === true;
 
-    // Определяем, каким должен быть isExternal по toFileId
     let expectedExternal: boolean;
     let kind: string;
 
@@ -379,7 +238,6 @@ function checkImportsIsExternalConsistency(full: FullJSON): {
       expectedExternal = false;
       kind = 'local-f*';
     } else {
-      // Невалидный префикс
       violations.push(
         `${imp.id}: toFileId="${toFileId}" — невалидный префикс (ожидается external:*, unresolved:*, f*, null)`
       );
@@ -404,28 +262,6 @@ function checkImportsIsExternalConsistency(full: FullJSON): {
   };
 }
 
-// ============================================
-// ✅ v2.6.0: CANONICALIZE FOR COMPARISON
-// ============================================
-
-/**
- * ✅ v2.6.0: канонизирует значение для сравнения по множеству.
- *
- * Использует stableStringify — порядко-независимую сериализацию.
- * Это ТОТ ЖЕ ключ, что используется в `addValue` для дедупликации:
- *   dedupKey = 'O:' + stableStringify(value)
- *
- * Формат ключа (синхронизирован с `addValue` в codec-encode.ts):
- *   null      → 'N'
- *   undefined → 'U'
- *   string    → 'S:' + value
- *   number    → 'D:' + value
- *   boolean   → 'B:' + value
- *   bigint    → 'I:' + value.toString()
- *   object    → 'O:' + stableStringify(value)
- *   function  → 'X:' + String(value)
- *   symbol    → 'X:' + String(value)
- */
 function canonicalizeForComparison(value: unknown): string {
   if (value === undefined) return 'U';
   if (value === null) return 'N';
@@ -442,33 +278,6 @@ function canonicalizeForComparison(value: unknown): string {
   return 'X:' + String(value);
 }
 
-// ============================================
-// ✅ v2.6.0: ПРОВЕРКА СОГЛАСОВАННОСТИ VALUES
-// ============================================
-
-/**
- * ✅ v2.6.0: проверяет согласованность values[] между compact и full.
- *
- * ════════════════════════════════════════════════════════════
- * ЧТО ПРОВЕРЯЕТ
- * ════════════════════════════════════════════════════════════
- *
- *   1. Каждое УНИКАЛЬНОЕ значение из full.constants[].value,
- *      которое проходит `isValueKept(value, mode)`, должно
- *      присутствовать в compact.values[] (по canonicalizeForComparison-ключу).
- *
- *      ⚠️ ВАЖНО: дедупликация учитывается. Если 100 констант
- *      имеют значение `"relation"`, оно должно быть в
- *      compact.values[] ОДИН раз (не 100).
- *
- *   2. Диагностика `dedupRatio` = expectedKept / uniqueCount
- *      показывает, насколько активно работает дедупликация.
- *
- * @param compact — CompactJSON
- * @param full    — FullJSON
- * @param limit   — максимум примеров в violations
- * @returns { ok, detail, violations, expectedKept, uniqueCount, actualUnique }
- */
 function checkValuesConsistency(
   compact: CompactJSON,
   full: FullJSON,
@@ -486,17 +295,14 @@ function checkValuesConsistency(
 
   const compactValues = compact.values || [];
 
-  // ✅ v2.6.0: множество УНИКАЛЬНЫХ значений в compact.values[]
   const compactValueSet = new Set<string>();
   for (const v of compactValues) {
     compactValueSet.add(canonicalizeForComparison(v));
   }
 
-  // ✅ v2.6.0: множество УНИКАЛЬНЫХ значений, которые ДОЛЖНЫ
-  // быть в compact (по full.constants[] + isValueKept)
   const expectedUniqueKept = new Set<string>();
 
-  let expectedKeptTotal = 0; // счётчик констант (с повторами)
+  let expectedKeptTotal = 0;
   let expectedRemovedTotal = 0;
 
   for (const cn of full.constants || []) {
@@ -512,8 +318,6 @@ function checkValuesConsistency(
     }
   }
 
-  // ✅ v2.6.0: главная проверка — каждое ожидаемое уникальное
-  // значение должно присутствовать в compact.values[].
   for (const expectedKey of expectedUniqueKept) {
     if (!compactValueSet.has(expectedKey)) {
       violations.push(`Уникальное значение ${expectedKey} отсутствует в compact.values[]`);
@@ -521,7 +325,6 @@ function checkValuesConsistency(
     }
   }
 
-  // ✅ v2.6.0: диагностика дедупликации
   const expectedUniqueCount = expectedUniqueKept.size;
   const actualUniqueCount = compactValueSet.size;
   const dedupRatio =
@@ -547,16 +350,6 @@ function checkValuesConsistency(
   };
 }
 
-// ============================================
-// ✅ v2.5.0: JSON-SAFE ПРОВЕРКИ
-// ============================================
-
-/**
- * ✅ v2.5.0: проверяет, что full не содержит не-JSON-значений.
- *
- * Set, Map, RegExp, Date, class instances — не JSON-safe,
- * потому что JSON.stringify превращает их в '{}'.
- */
 function checkJsonSafetyFull(
   full: FullJSON,
   limit: number
@@ -591,10 +384,6 @@ function checkJsonSafetyFull(
   };
 }
 
-/**
- * ✅ v2.5.0: проверяет, что compact.values[] не теряет данные
- * при JSON round-trip.
- */
 function checkJsonRoundTripCompact(
   compact: CompactJSON,
   limit: number
@@ -628,45 +417,390 @@ function checkJsonRoundTripCompact(
   };
 }
 
-// ============================================
-// ✅ v2.7.0 + v2.8.0: ПРОВЕРКА VUE-СЕКЦИИ
-// ============================================
+function checkVueSfcMigration(compact: CompactJSON): {
+  ok: boolean;
+  detail: string;
+  violations: string[];
+} {
+  const violations: string[] = [];
+  const schema = (compact as any).legend?.schemas?.['vue.sfc'];
+
+  if (!Array.isArray(schema)) {
+    return {
+      ok: false,
+      detail: 'legend.schemas.vue.sfc отсутствует',
+      violations: ['schema missing'],
+    };
+  }
+
+  const expected = [
+    'f', 'n', 'b', 'c', 'cs',
+    'pn', 'ps', 'en', 'es', 'xn', 'xs',
+    'cu_sfc', 'cu_tag', 'cu_file', 'cu_src', 'cu_pkg', 'cu_l', 'cu_col',
+    'cu_cp', 'cu_ce', 'cu_cd', 'cu_csl',
+    'he_sfc', 'he_tag', 'he_l', 'he_col', 'he_cp', 'he_cd', 'he_ce', 'he_ci',
+  ];
+
+  if (schema.length !== expected.length) {
+    violations.push(`длина схемы ${schema.length}, ожидается ${expected.length}`);
+  }
+
+  for (let i = 0; i < Math.min(schema.length, expected.length); i++) {
+    if (schema[i] !== expected[i]) {
+      violations.push(`индекс ${i}: "${schema[i]}" ≠ "${expected[i]}"`);
+      if (violations.length >= 10) break;
+    }
+  }
+
+  for (const oldKey of ['p', 'e', 'x']) {
+    if (schema.includes(oldKey)) {
+      violations.push(`старый ключ "${oldKey}" не должен присутствовать`);
+    }
+  }
+
+  return {
+    ok: violations.length === 0,
+    detail:
+      violations.length === 0
+        ? `${schema.length} полей, миграция корректна`
+        : `${violations.length} нарушений`,
+    violations,
+  };
+}
+
+function checkLegendVersion(compact: CompactJSON): {
+  ok: boolean;
+  detail: string;
+  violations: string[];
+} {
+  const version = (compact as any).legend?.version;
+  if (version !== '2.0.0') {
+    return {
+      ok: false,
+      detail: `legend.version = ${version}, ожидается '2.0.0'`,
+      violations: [`legend.version = ${version}`],
+    };
+  }
+  return { ok: true, detail: "'2.0.0'", violations: [] };
+}
+
+function checkTokensType(compact: CompactJSON): {
+  ok: boolean;
+  detail: string;
+  violations: string[];
+} {
+  const tokens = (compact as any).tokens || [];
+  const violations: string[] = [];
+
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    const typeofT = typeof t;
+    if (typeofT !== 'string' && typeofT !== 'number') {
+      violations.push(`tokens[${i}] = ${typeofT} (ожидается string|number)`);
+      if (violations.length >= 10) break;
+    }
+  }
+
+  return {
+    ok: violations.length === 0,
+    detail:
+      violations.length === 0
+        ? `${tokens.length} элементов, тип (string|number) корректен`
+        : `${violations.length} нарушений типа`,
+    violations,
+  };
+}
+
+function checkGrReVsReM(compact: CompactJSON): {
+  ok: boolean;
+  detail: string;
+  violations: string[];
+} {
+  const grRe = (compact as any).gr?.re;
+  const re = (compact as any).re;
+
+  if (!grRe || !re) {
+    return {
+      ok: true,
+      detail: 'gr.re или re отсутствует — проверка пропущена',
+      violations: [],
+    };
+  }
+
+  const grReM = grRe.m || [];
+  const reM = re.m || [];
+
+  if (reM.length > grReM.length) {
+    return {
+      ok: false,
+      detail: `re.m.length=${reM.length} > gr.re.m.length=${grReM.length}`,
+      violations: ['re.m должен быть подмножеством gr.re.m'],
+    };
+  }
+
+  return {
+    ok: true,
+    detail: `gr.re.m=${grReM.length}, re.m=${reM.length} (подмножество)`,
+    violations: [],
+  };
+}
+
+function checkFlM(compact: CompactJSON): {
+  ok: boolean;
+  detail: string;
+  violations: string[];
+} {
+  const flM = (compact as any).fl?.m || [];
+  const violations: string[] = [];
+
+  for (let i = 0; i < flM.length; i++) {
+    const pair = flM[i];
+    if (!Array.isArray(pair) || pair.length !== 2) {
+      violations.push(`fl.m[${i}] не является парой [moduleIdx, fileIdx]`);
+      if (violations.length >= 10) break;
+      continue;
+    }
+    if (typeof pair[0] !== 'number' || typeof pair[1] !== 'number') {
+      violations.push(`fl.m[${i}] содержит не-числа`);
+      if (violations.length >= 10) break;
+    }
+  }
+
+  return {
+    ok: violations.length === 0,
+    detail:
+      violations.length === 0
+        ? `${flM.length} пар, формат корректен`
+        : `${violations.length} нарушений`,
+    violations,
+  };
+}
 
 /**
- * ✅ v2.7.0: проверяет согласованность vue-секции между
- * decoded и full.
+ * ✅ v3.4.2: Проверка `fns.hv` — RLE-массив isHtmlVisible.
  *
- * ✅ v2.8.0: нормализует Vue-секцию перед сравнением:
- *   - sfc.composables/props/emits/exposed — сравниваются ДЛИНЫ
- *   - composables/macros/hooks/reactivity/icons — исключается `id`
- *
- * ════════════════════════════════════════════════════════════
- * I17: vue.sfc.c/cs ↔ decoded.vue.sfc[].composables.length
- * ════════════════════════════════════════════════════════════
- *
- *   В compact для SFC хранятся:
- *     sfc.c  — плоский массив индексов (в strs для v15.7.3,
- *              или в vue.composables для v15.7.2)
- *     sfc.cs — [offset, count][] для каждого SFC
- *     sfc.p  — [fileIdx, propsCount][] — НЕ RLE
- *     sfc.e  — [fileIdx, emitsCount][]
- *     sfc.x  — [fileIdx, exposeCount][]
- *
- * ════════════════════════════════════════════════════════════
- * I18: fns.vk ↔ functions[].vueKind
- * ════════════════════════════════════════════════════════════
- *
- *   В compact `fns.vk` — RLE от кодов vueKind.
- *   В decoded/full — `functions[].vueKind` (строки).
- *   Проверяем, что после decode каждый `vueKind` строкой
- *   соответствует своему коду.
- *
- * @param decoded — decode(compact)
- * @param full    — full.json на диске
- * @param compact — compact.json на диске (для чтения sfc.c и fns.vk)
- * @param maxDiffs — максимум примеров
- * @returns массив результатов
+ * Каждое значение должно быть 0 или 1 (бит).
+ * Длина RLE-развёртки должна совпадать с len(fns.n).
  */
+function checkFnsHv(compact: CompactJSON): {
+  ok: boolean;
+  detail: string;
+  violations: string[];
+} {
+  const fns = (compact as any).fns;
+  if (!fns) {
+    return { ok: true, detail: 'fns отсутствует', violations: [] };
+  }
+
+  const fnsHv = fns.hv;
+  if (!Array.isArray(fnsHv)) {
+    return { ok: true, detail: 'fns.hv отсутствует (опционально)', violations: [] };
+  }
+
+  const violations: string[] = [];
+
+  // Проверяем, что каждое значение — 0 или 1
+  let totalLength = 0;
+  for (let i = 0; i < fnsHv.length; i++) {
+    const entry = fnsHv[i];
+    if (!Array.isArray(entry) || entry.length !== 2) {
+      violations.push(`fns.hv[${i}] не является парой [value, count]`);
+      if (violations.length >= 10) break;
+      continue;
+    }
+    const [value, count] = entry;
+    if (value !== 0 && value !== 1) {
+      violations.push(`fns.hv[${i}][0] = ${value} (ожидается 0 или 1)`);
+      if (violations.length >= 10) break;
+    }
+    if (typeof count !== 'number' || count < 0) {
+      violations.push(`fns.hv[${i}][1] = ${count} (ожидается неотрицательное число)`);
+      if (violations.length >= 10) break;
+    }
+    totalLength += count;
+  }
+
+  // Проверяем, что суммарная длина совпадает с len(fns.n)
+  const fnsNLength = Array.isArray(fns.n) ? fns.n.length : 0;
+  if (totalLength !== fnsNLength) {
+    violations.push(
+      `сумма counts fns.hv = ${totalLength}, но len(fns.n) = ${fnsNLength}`
+    );
+  }
+
+  return {
+    ok: violations.length === 0,
+    detail:
+      violations.length === 0
+        ? `${fnsHv.length} RLE-пар, развёртка = ${totalLength}, формат корректен`
+        : `${violations.length} нарушений`,
+    violations,
+  };
+}
+
+function checkValuesAndParams(compact: CompactJSON): {
+  ok: boolean;
+  detail: string;
+  violations: string[];
+} {
+  const values = (compact as any).values || [];
+  const params = (compact as any).params || [];
+  const violations: string[] = [];
+
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    const t = typeof v;
+    if (v !== null && t !== 'string' && t !== 'number' && t !== 'boolean' && t !== 'object') {
+      violations.push(`values[${i}] имеет недопустимый тип ${t}`);
+      if (violations.length >= 10) break;
+    }
+  }
+
+  // ✅ FIX v3.4.2: params может быть string | number[] (любой длины).
+  // Это соответствует encodeStr() в codec-encode.ts, который
+  // возвращает массив индексов токенов произвольной длины.
+  for (let i = 0; i < params.length; i++) {
+    const p = params[i];
+    const t = typeof p;
+    const isString = t === 'string';
+    // ✅ FIX: массив любой длины из чисел (не только пара [number, number])
+    const isNumberArray = Array.isArray(p) && p.every((x: any) => typeof x === 'number');
+    if (!isString && !isNumberArray) {
+      violations.push(
+        `params[${i}] = ${JSON.stringify(p)} (ожидается string | number[])`
+      );
+      if (violations.length >= 10) break;
+    }
+  }
+
+  return {
+    ok: violations.length === 0,
+    detail:
+      violations.length === 0
+        ? `values=${values.length}, params=${params.length} — форматы корректны`
+        : `${violations.length} нарушений`,
+    violations,
+  };
+}
+
+function checkLxNonEmptyV(compact: CompactJSON): {
+  ok: boolean;
+  detail: string;
+  violations: string[];
+} {
+  const nonEmptyV = (compact as any).lx?.nonEmptyV;
+  if (!Array.isArray(nonEmptyV)) {
+    return { ok: true, detail: 'lx.nonEmptyV отсутствует', violations: [] };
+  }
+
+  const violations: string[] = [];
+  for (let i = 0; i < nonEmptyV.length; i++) {
+    const pair = nonEmptyV[i];
+    if (!Array.isArray(pair) || pair.length !== 2) {
+      violations.push(`lx.nonEmptyV[${i}] не является парой [index, value]`);
+      if (violations.length >= 10) break;
+    }
+  }
+
+  return {
+    ok: violations.length === 0,
+    detail:
+      violations.length === 0
+        ? `${nonEmptyV.length} пар, формат корректен`
+        : `${violations.length} нарушений`,
+    violations,
+  };
+}
+
+function checkSourceChainsInterning(compact: CompactJSON): {
+  ok: boolean;
+  detail: string;
+  violations: string[];
+} {
+  const sourceChains = (compact as any).sourceChains || [];
+  const seen = new Set<string>();
+  const violations: string[] = [];
+
+  for (let i = 0; i < sourceChains.length; i++) {
+    const s = sourceChains[i];
+    if (typeof s !== 'string') {
+      violations.push(`sourceChains[${i}] не является строкой`);
+      if (violations.length >= 10) break;
+      continue;
+    }
+    if (seen.has(s)) {
+      violations.push(`sourceChains[${i}] дублирует более раннюю запись (интернирование нарушено)`);
+      if (violations.length >= 10) break;
+    }
+    seen.add(s);
+  }
+
+  return {
+    ok: violations.length === 0,
+    detail:
+      violations.length === 0
+        ? `${sourceChains.length} уникальных sourceChain`
+        : `${violations.length} нарушений интернирования`,
+    violations,
+  };
+}
+
+function checkStatisticsExtended(compact: CompactJSON): {
+  ok: boolean;
+  detail: string;
+  violations: string[];
+} {
+  const st = (compact as any).st || {};
+  const violations: string[] = [];
+
+  const sourceChains = (compact as any).sourceChains || [];
+  if (st.totalSourceChains !== undefined && st.totalSourceChains !== sourceChains.length) {
+    violations.push(
+      `st.totalSourceChains=${st.totalSourceChains}, len(sourceChains)=${sourceChains.length}`
+    );
+  }
+
+  const domApiCalls = (compact as any).domApiCalls;
+  if (
+    st.totalDomApiCalls !== undefined &&
+    domApiCalls &&
+    st.totalDomApiCalls !== (domApiCalls.fn || []).length
+  ) {
+    violations.push(
+      `st.totalDomApiCalls=${st.totalDomApiCalls}, len(domApiCalls.fn)=${(domApiCalls.fn || []).length}`
+    );
+  }
+
+  const componentProps = (compact as any).componentProps;
+  if (
+    st.totalComponentProps !== undefined &&
+    componentProps &&
+    st.totalComponentProps !== (componentProps.n || []).length
+  ) {
+    violations.push(
+      `st.totalComponentProps=${st.totalComponentProps}, len(componentProps.n)=${(componentProps.n || []).length}`
+    );
+  }
+
+  const componentEvents = (compact as any).componentEvents;
+  if (
+    st.totalComponentEvents !== undefined &&
+    componentEvents &&
+    st.totalComponentEvents !== (componentEvents.n || []).length
+  ) {
+    violations.push(
+      `st.totalComponentEvents=${st.totalComponentEvents}, len(componentEvents.n)=${(componentEvents.n || []).length}`
+    );
+  }
+
+  return {
+    ok: violations.length === 0,
+    detail:
+      violations.length === 0 ? 'все счётчики st согласованы' : `${violations.length} нарушений`,
+    violations,
+  };
+}
+
 function checkVueSection(
   decoded: FullJSON,
   full: FullJSON,
@@ -675,10 +809,6 @@ function checkVueSection(
 ): Array<{ name: string; ok: boolean; detail: string; diffs?: any[] }> {
   const results: Array<{ name: string; ok: boolean; detail: string; diffs?: any[] }> = [];
 
-  // ────────────────────────────────────────────────────────
-  // 1. I17: vue.sfc.c/cs ↔ decoded.vue.sfc[].composables.length
-  //    Аналогично для p/e/x.
-  // ────────────────────────────────────────────────────────
   {
     const violations: string[] = [];
     const sfc = decoded.vue?.sfc ?? [];
@@ -686,31 +816,37 @@ function checkVueSection(
 
     if (sfcCompact) {
       const sfcCS = sfcCompact.cs ?? [];
-      const sfcP = sfcCompact.p ?? [];
-      const sfcE = sfcCompact.e ?? [];
-      const sfcX = sfcCompact.x ?? [];
+      const sfcPN = (sfcCompact as any).pn ?? [];
+      const sfcPS = (sfcCompact as any).ps ?? [];
+      const sfcEN = (sfcCompact as any).en ?? [];
+      const sfcES = (sfcCompact as any).es ?? [];
+      const sfcXN = (sfcCompact as any).xn ?? [];
+      const sfcXS = (sfcCompact as any).xs ?? [];
 
-      // ✅ v2.8.0: fallback на старый формат (когда c был массивом пар)
+      const sfcP = (sfcCompact as any).p ?? [];
+      const sfcE = (sfcCompact as any).e ?? [];
+      const sfcX = (sfcCompact as any).x ?? [];
+
       const sfcCLegacy =
         Array.isArray(sfcCompact.c) && Array.isArray(sfcCompact.c[0])
           ? (sfcCompact.c as any)
           : null;
 
+      void sfcPN;
+      void sfcEN;
+      void sfcXN;
+
       for (let i = 0; i < sfc.length; i++) {
         const sfcI = sfc[i];
         if (!sfcI) continue;
 
-        // ✅ v2.8.0: приоритет — cs (новый формат)
         let cCount = 0;
 
-        // ✅ v2.8.1: сохраняем ссылку на элемент в переменную —
-        // это устраняет TS2532 (Object is possibly 'undefined')
         const csEntry = sfcCS[i];
         if (Array.isArray(csEntry) && csEntry.length === 2) {
           const value = csEntry[1];
           cCount = typeof value === 'number' ? value : 0;
         } else {
-          // Fallback на старый формат (когда c был массивом пар)
           const legacyEntry = sfcCLegacy ? sfcCLegacy[i] : undefined;
           if (Array.isArray(legacyEntry) && legacyEntry.length === 2) {
             const value = legacyEntry[1];
@@ -718,9 +854,18 @@ function checkVueSection(
           }
         }
 
-        const pCount = sfcP[i]?.[1] ?? 0;
-        const eCount = sfcE[i]?.[1] ?? 0;
-        const xCount = sfcX[i]?.[1] ?? 0;
+        const pCount =
+          (Array.isArray(sfcPS[i]) ? (sfcPS[i] as any)[1] : 0) ||
+          (Array.isArray(sfcP[i]) ? (sfcP[i] as any)[1] : 0) ||
+          0;
+        const eCount =
+          (Array.isArray(sfcES[i]) ? (sfcES[i] as any)[1] : 0) ||
+          (Array.isArray(sfcE[i]) ? (sfcE[i] as any)[1] : 0) ||
+          0;
+        const xCount =
+          (Array.isArray(sfcXS[i]) ? (sfcXS[i] as any)[1] : 0) ||
+          (Array.isArray(sfcX[i]) ? (sfcX[i] as any)[1] : 0) ||
+          0;
 
         if ((sfcI.composables?.length ?? 0) !== cCount) {
           violations.push(
@@ -752,15 +897,11 @@ function checkVueSection(
     });
   }
 
-  // ────────────────────────────────────────────────────────
-  // 2. I18: fns.vk ↔ functions[].vueKind
-  // ────────────────────────────────────────────────────────
   {
     const violations: string[] = [];
     const fnsVkRaw = compact.fns?.vk;
 
     if (Array.isArray(fnsVkRaw)) {
-      // Распаковка RLE
       const vk: number[] = [];
       for (const entry of fnsVkRaw) {
         if (Array.isArray(entry) && entry.length === 2) {
@@ -803,13 +944,6 @@ function checkVueSection(
     });
   }
 
-  // ────────────────────────────────────────────────────────
-  // 3. ✅ v2.8.0: Сравнение vue-секций decoded ↔ full
-  //    С НОРМАЛИЗАЦИЕЙ:
-  //      • sfc.composables/props/emits/exposed → длины
-  //      • composables/macros/hooks/reactivity/icons → без id
-  // ────────────────────────────────────────────────────────
-
   const decodedVue = (decoded as any).vue;
   const fullVue = (full as any).vue;
 
@@ -824,6 +958,14 @@ function checkVueSection(
       'hooks',
       'reactivity',
       'icons',
+      'componentProps',
+      'componentEvents',
+      'componentDirectives',
+      'componentSlots',
+      'htmlInterpolations',
+      'fnHtmlUsage',
+      'domApiCalls',
+      'domApiArgs',
     ] as const;
 
     for (const sub of vueSubsections) {
@@ -855,20 +997,25 @@ function checkVueSection(
   return results;
 }
 
-// ============================================
-// СРАВНЕНИЕ СЛОВАРЕЙ
-// ============================================
-
+// ============================================================
+// ✅ FIX v3.4.1: compareDictionaries — тип tokens расширен
+// до (string | number)[] в соответствии с CompactJSON.tokens
+// из codec-types.ts (v16.0.0).
+// ============================================================
 function compareDictionaries(
   label: string,
-  a: { tokens: string[]; dict: (string | number[])[] },
-  b: { tokens: string[]; dict: (string | number[])[] }
+  a: { tokens: (string | number)[]; dict: (string | number[])[] },
+  b: { tokens: (string | number)[]; dict: (string | number[])[] }
 ): { ok: boolean; diffs: { path: string; a: unknown; b: unknown }[] } {
   const diffs: { path: string; a: unknown; b: unknown }[] = [];
 
-  const decodeEntry = (entry: string | number[], tokens: string[]): string => {
+  // ✅ FIX: tokens теперь (string | number)[], результат приводится к строке
+  const decodeEntry = (
+    entry: string | number[],
+    tokens: (string | number)[]
+  ): string => {
     if (typeof entry === 'string') return entry;
-    return entry.map(i => tokens[i] || '').join('');
+    return entry.map(i => String(tokens[i] ?? '')).join('');
   };
 
   const aSet = new Set(a.dict.map(e => decodeEntry(e, a.tokens)));
@@ -903,16 +1050,6 @@ function compareDictionaries(
   return { ok: diffs.length === 0, diffs };
 }
 
-// ============================================
-// ✅ v2.2.0: СРАВНЕНИЕ СЕКЦИЙ
-// ============================================
-
-/**
- * Сравнивает секции full vs decoded.
- *
- * ⚠️ v2.2.0: 'conditionals' УБРАНЫ из sectionNames.
- * ⚠️ v2.7.0: 'vue' вынесено в отдельную функцию checkVueSection.
- */
 function compareSections(
   decoded: FullJSON,
   full: FullJSON,
@@ -934,7 +1071,6 @@ function compareSections(
     const a = (decoded as any)[name];
     const b = (full as any)[name];
 
-    // Нормализуем: undefined ≡ []
     const normA = Array.isArray(a) ? a : [];
     const normB = Array.isArray(b) ? b : [];
 
@@ -959,15 +1095,11 @@ function compareSections(
   return results;
 }
 
-/**
- * Явная проверка imports[].isTypeOnly и isNamespace.
- */
 function compareImportsTypeOnly(
   decoded: FullJSON,
   full: FullJSON,
   maxDiffs: number
 ): { ok: boolean; detail: string; diffs?: any[]; variant: 'A' | 'B' } {
-  // Определяем вариант по full.imports
   const usesTypeLiteral = (full.imports || []).some((i: any) => i.type === 'type');
   const variant: 'A' | 'B' = usesTypeLiteral ? 'B' : 'A';
 
@@ -1002,15 +1134,6 @@ function compareImportsTypeOnly(
   };
 }
 
-// ============================================
-// ✅ v2.2.0: ЯВНАЯ ПРОВЕРКА conditionals
-// ============================================
-
-/**
- * Проверяет, что количество conditionals в compact.cd[],
- * decoded.templates[].conditionals и full.templates[].conditionals
- * совпадает.
- */
 function checkConditionalsDedup(
   compact: CompactJSON,
   decoded: FullJSON,
@@ -1018,11 +1141,9 @@ function checkConditionalsDedup(
 ): { ok: boolean; detail: string; diffs?: any[] } {
   const cdIndices = (compact as any).cd;
 
-  // ✅ v2.2.0: считаем через templates[]
   const decodedCd = countConditionals(decoded);
   const fullCd = countConditionals(full);
 
-  // Если секция отсутствует в compact — это ок, если и в full её нет
   if (!Array.isArray(cdIndices)) {
     if (fullCd === 0) {
       return { ok: true, detail: 'conditionals отсутствуют (0)' };
@@ -1044,7 +1165,6 @@ function checkConditionalsDedup(
     };
   }
 
-  // Диагностика: уникальные индексы в compact.cd
   const uniqueIndices = new Set(cdIndices.filter((x: any) => typeof x === 'number'));
   const uniqueCount = uniqueIndices.size;
 
@@ -1071,10 +1191,6 @@ function checkConditionalsDedup(
   };
 }
 
-// ============================================
-// ОСНОВНАЯ ПРОВЕРКА
-// ============================================
-
 interface CheckResult {
   name: string;
   ok: boolean;
@@ -1085,15 +1201,12 @@ interface CheckResult {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
-  printHeader('🔍 ПРОВЕРКА СОГЛАСОВАННОСТИ index.json ↔ index.full.json (v2.8.1)');
+  printHeader('🔍 ПРОВЕРКА СОГЛАСОВАННОСТИ index.json ↔ index.full.json (v3.4.2)');
   console.log(`  ${INFO} compact: ${C.cyan}${path.resolve(args.compact)}${C.reset}`);
   console.log(`  ${INFO} full:    ${C.cyan}${path.resolve(args.full)}${C.reset}`);
   console.log(`  ${INFO} verbose: ${args.verbose}`);
   console.log(`  ${INFO} maxDiffs: ${args.maxDiffs}`);
 
-  // ============================================
-  // ЗАГРУЗКА
-  // ============================================
   printSection('📂 ЗАГРУЗКА ФАЙЛОВ');
 
   const compactRaw = readJson(args.compact);
@@ -1108,14 +1221,10 @@ async function main(): Promise<void> {
   const compact = compactRaw as CompactJSON;
   const full = fullRaw as FullJSON;
 
-  // ============================================
-  // МЕТАДАННЫЕ
-  // ============================================
   printSection('📅 МЕТАДАННЫЕ');
 
   const checks: CheckResult[] = [];
 
-  // 1. timestamp
   {
     const a = compact.ts;
     const b = full.timestamp;
@@ -1128,7 +1237,6 @@ async function main(): Promise<void> {
     printResult('timestamp', ok, ok ? `"${a}"` : `compact="${a}" full="${b}"`);
   }
 
-  // 2. version
   {
     const a = compact.v;
     const b = full.version;
@@ -1141,7 +1249,6 @@ async function main(): Promise<void> {
     printResult('version', ok, ok ? `"${a}"` : `compact="${a}" full="${b}"`);
   }
 
-  // 3. valuesMode
   {
     const a = compact.valuesMode ?? 'full';
     const b = full.valuesMode ?? 'full';
@@ -1154,9 +1261,6 @@ async function main(): Promise<void> {
     printResult('valuesMode', ok, ok ? `"${a}"` : `compact="${a}" full="${b}"`);
   }
 
-  // ============================================
-  // STATISTICS
-  // ============================================
   printSection('📊 STATISTICS');
 
   {
@@ -1179,9 +1283,6 @@ async function main(): Promise<void> {
     }
   }
 
-  // ============================================
-  // DECODE(COMPACT) ≟ FULL
-  // ============================================
   printSection('🔁 decode(compact) ≟ full');
 
   let decodedCompact: FullJSON | null = null;
@@ -1191,12 +1292,6 @@ async function main(): Promise<void> {
       const aRaw = stripServiceFields(decodedCompact);
       const bRaw = stripServiceFields(full);
 
-      // ✅ v2.8.1: Нормализуем Vue-секцию (убираем id) перед сравнением.
-      // Это устраняет ложное срабатывание вида:
-      //   $.vue.composables[0].id: "cmp1" → "f5_23"
-      //
-      // Поле `id` НЕ сохраняется в compact (by design), генерируется
-      // при decode как `cmp1`, `mac1`, `hk1`, `rx1`, `ic1`.
       const a = { ...aRaw, vue: normalizeVueSection(aRaw.vue) };
       const b = { ...bRaw, vue: normalizeVueSection(bRaw.vue) };
 
@@ -1221,9 +1316,6 @@ async function main(): Promise<void> {
     }
   }
 
-  // ============================================
-  // ENCODE(FULL) ≟ COMPACT
-  // ============================================
   printSection('🔁 encode(full) ≟ compact');
 
   let encodedFull: CompactJSON | null = null;
@@ -1253,9 +1345,6 @@ async function main(): Promise<void> {
     }
   }
 
-  // ============================================
-  // ✅ v2.3.0: СОГЛАСОВАННОСТЬ IMPORTS (isExternal ↔ toFileId)
-  // ============================================
   printSection('🔗 СОГЛАСОВАННОСТЬ IMPORTS (isExternal ↔ toFileId)');
 
   {
@@ -1278,9 +1367,6 @@ async function main(): Promise<void> {
     });
   }
 
-  // ============================================
-  // ✅ v2.6.0: СОГЛАСОВАННОСТЬ VALUES (compact.values ↔ full.constants)
-  // ============================================
   printSection('🔢 СОГЛАСОВАННОСТЬ VALUES (compact.values ↔ full.constants)');
 
   {
@@ -1296,7 +1382,6 @@ async function main(): Promise<void> {
       }
     }
 
-    // ✅ v2.6.0: диагностика дедупликации
     if (args.verbose && result.ok) {
       const dedupRatio =
         result.uniqueCount > 0 ? (result.expectedKept / result.uniqueCount).toFixed(2) : '1.00';
@@ -1312,9 +1397,6 @@ async function main(): Promise<void> {
     });
   }
 
-  // ============================================
-  // ✅ v2.5.0: JSON-SAFE ПРОВЕРКИ
-  // ============================================
   printSection('🔒 JSON-SAFE ПРОВЕРКИ');
 
   {
@@ -1347,9 +1429,79 @@ async function main(): Promise<void> {
     });
   }
 
-  // ============================================
-  // ✅ v2.7.0 + v2.8.0: СОГЛАСОВАННОСТЬ VUE-СЕКЦИИ
-  // ============================================
+  printSection('🔧 v3.4.2: НОВЫЕ ПРОВЕРКИ (миграция, типы, интернирование)');
+
+  {
+    const r = checkLegendVersion(compact);
+    printResult('legend.version = 2.0.0', r.ok, r.detail);
+    if (!r.ok) for (const v of r.violations) console.log(`     ${C.red}•${C.reset} ${v}`);
+    checks.push({ name: 'legend.version', ok: r.ok, detail: r.detail });
+  }
+
+  {
+    const r = checkVueSfcMigration(compact);
+    printResult('vue.sfc миграция (30 полей)', r.ok, r.detail);
+    if (!r.ok) for (const v of r.violations) console.log(`     ${C.red}•${C.reset} ${v}`);
+    checks.push({ name: 'vue.sfc миграция', ok: r.ok, detail: r.detail });
+  }
+
+  {
+    const r = checkTokensType(compact);
+    printResult('tokens (string | number)[]', r.ok, r.detail);
+    if (!r.ok) for (const v of r.violations) console.log(`     ${C.red}•${C.reset} ${v}`);
+    checks.push({ name: 'tokens type', ok: r.ok, detail: r.detail });
+  }
+
+  {
+    const r = checkGrReVsReM(compact);
+    printResult('gr.re vs re.m', r.ok, r.detail);
+    if (!r.ok) for (const v of r.violations) console.log(`     ${C.red}•${C.reset} ${v}`);
+    checks.push({ name: 'gr.re vs re.m', ok: r.ok, detail: r.detail });
+  }
+
+  {
+    const r = checkFlM(compact);
+    printResult('fl.m — пары [moduleIdx, fileIdx]', r.ok, r.detail);
+    if (!r.ok) for (const v of r.violations) console.log(`     ${C.red}•${C.reset} ${v}`);
+    checks.push({ name: 'fl.m format', ok: r.ok, detail: r.detail });
+  }
+
+  // ✅ v3.4.2: проверка fns.hv
+  {
+    const r = checkFnsHv(compact);
+    printResult('fns.hv — RLE-массив isHtmlVisible (0/1)', r.ok, r.detail);
+    if (!r.ok) for (const v of r.violations) console.log(`     ${C.red}•${C.reset} ${v}`);
+    checks.push({ name: 'fns.hv format', ok: r.ok, detail: r.detail });
+  }
+
+  {
+    const r = checkValuesAndParams(compact);
+    printResult('values / params — форматы', r.ok, r.detail);
+    if (!r.ok) for (const v of r.violations) console.log(`     ${C.red}•${C.reset} ${v}`);
+    checks.push({ name: 'values/params format', ok: r.ok, detail: r.detail });
+  }
+
+  {
+    const r = checkLxNonEmptyV(compact);
+    printResult('lx.nonEmptyV — пары [index, value]', r.ok, r.detail);
+    if (!r.ok) for (const v of r.violations) console.log(`     ${C.red}•${C.reset} ${v}`);
+    checks.push({ name: 'lx.nonEmptyV', ok: r.ok, detail: r.detail });
+  }
+
+  {
+    const r = checkSourceChainsInterning(compact);
+    printResult('sourceChains — интернирование', r.ok, r.detail);
+    if (!r.ok) for (const v of r.violations) console.log(`     ${C.red}•${C.reset} ${v}`);
+    checks.push({ name: 'sourceChains interning', ok: r.ok, detail: r.detail });
+  }
+
+  {
+    const r = checkStatisticsExtended(compact);
+    printResult('st — расширенные счётчики', r.ok, r.detail);
+    if (!r.ok) for (const v of r.violations) console.log(`     ${C.red}•${C.reset} ${v}`);
+    checks.push({ name: 'st extended', ok: r.ok, detail: r.detail });
+  }
+
   printSection('🌿 СОГЛАСОВАННОСТЬ VUE-СЕКЦИИ');
 
   if (decodedCompact) {
@@ -1374,9 +1526,6 @@ async function main(): Promise<void> {
     checks.push({ name: 'vue section', ok: false, detail: 'decode failed' });
   }
 
-  // ============================================
-  // МОДУЛИ
-  // ============================================
   printSection('📦 МОДУЛИ (name и fileIds по индексам)');
 
   if (decodedCompact) {
@@ -1440,9 +1589,6 @@ async function main(): Promise<void> {
     checks.push({ name: 'modules', ok: false, detail: 'decode failed' });
   }
 
-  // ============================================
-  // ✅ v2.2.0: СЕКЦИИ (без 'conditionals')
-  // ============================================
   printSection(
     '🎨 СЕКЦИИ (templates, lifecycle, effects, injections, reactivity, types, typeRefs)'
   );
@@ -1466,9 +1612,6 @@ async function main(): Promise<void> {
     checks.push({ name: 'sections', ok: false, detail: 'decode failed' });
   }
 
-  // ============================================
-  // ИМПОРТЫ (isTypeOnly)
-  // ============================================
   printSection('📥 ИМПОРТЫ (isTypeOnly / isNamespace / type)');
 
   if (decodedCompact) {
@@ -1491,9 +1634,6 @@ async function main(): Promise<void> {
     checks.push({ name: 'imports', ok: false, detail: 'decode failed' });
   }
 
-  // ============================================
-  // ✅ v2.2.0: CONDITIONALS (через templates[])
-  // ============================================
   printSection('🎯 CONDITIONALS (через templates[], проверка дедупликации compact.cd[])');
 
   if (decodedCompact) {
@@ -1516,9 +1656,6 @@ async function main(): Promise<void> {
     checks.push({ name: 'conditionals dedup', ok: false, detail: 'decode failed' });
   }
 
-  // ============================================
-  // СЛОВАРИ
-  // ============================================
   printSection('📚 СЛОВАРИ (tokens/strs/params/methods)');
 
   if (encodedFull) {
@@ -1557,7 +1694,6 @@ async function main(): Promise<void> {
       checks.push({ name: `dict.${label}`, ok });
     }
 
-    // tokens
     {
       const aSet = new Set(compact.tokens || []);
       const bSet = new Set(encodedFull.tokens || []);
@@ -1574,9 +1710,6 @@ async function main(): Promise<void> {
     checks.push({ name: 'dictionaries', ok: false, detail: 'encode failed' });
   }
 
-  // ============================================
-  // ИТОГИ
-  // ============================================
   printHeader('📊 ИТОГИ');
 
   const total = checks.length;
@@ -1612,163 +1745,29 @@ async function main(): Promise<void> {
     console.log(`  ${WARN} Что делать:`);
     console.log('');
     console.log(`  ${C.bold}1. Пересобрать index.full.json${C.reset} из тех же исходников,`);
-    console.log(`     что и index.json, ОДНИМ прогоном:`);
-    console.log(`       generateCompactReport(entitiesMap, 'index.json', {`);
-    console.log(`         saveFullJson: true,`);
-    console.log(`         valuesMode: 'relations'`);
-    console.log(`       });`);
-    console.log(`     Это гарантирует совпадение timestamp и version.`);
+    console.log(`     что и index.json, ОДНИМ прогоном.`);
     console.log('');
     console.log(`  ${C.bold}2. Проверить CODEC_VERSION${C.reset} в обоих файлах — должен`);
-    console.log(`     быть ${C.cyan}'15.7.3'${C.reset} (или совпадать). Если full.json`);
-    console.log(`     собирался старой версией кодека — его нужно`);
-    console.log(`     пересобрать.`);
+    console.log(`     быть ${C.cyan}'16.0.0'${C.reset}.`);
     console.log('');
-    console.log(`  ${C.bold}3. Проверить valuesMode:${C.reset} если full.json собирался`);
-    console.log(`     с valuesMode: 'relations', значения в`);
-    console.log(`     full.constants[].value могут быть обрезаны —`);
-    console.log(`     это ожидаемо. Если нужно полное содержимое —`);
-    console.log(`     пересобрать с valuesMode: 'full'.`);
+    console.log(`  ${C.bold}3. Проверить legend.version${C.reset} — должен быть`);
+    console.log(`     ${C.cyan}'2.0.0'${C.reset}.`);
     console.log('');
-    console.log(`  ${C.bold}4. Если расхождение в section.*${C.reset} — значит`);
-    console.log(`     encode()/decode() не полностью поддерживают`);
-    console.log(`     эти секции. Проверьте codec-encode.ts и codec-decode.ts.`);
+    console.log(`  ${C.bold}4. Если расхождение в vue.sfc${C.reset} — проверить миграцию`);
+    console.log(`     8 → 30 полей (см. checkVueSfcMigration).`);
     console.log('');
-    console.log(`  ${C.bold}5. Если расхождение в conditionals${C.reset} (симптом:`);
-    console.log(
-      `     ${C.red}compact.cd=30, decoded=0${C.reset} или ${C.red}compact.cd=30, decoded=0, full=30${C.reset}):`
-    );
-    console.log(`     ${C.cyan}addAny()${C.reset} в codec-encode.ts мог дедуплицировать`);
-    console.log(`     extended-секции через JSON.stringify. Если все`);
-    console.log(`     conditionals одинаковы — они схлопываются в один`);
-    console.log(`     value, и ${C.red}compact.cd = [380, 380, 380, ...]${C.reset}.`);
-    console.log(`     Фикс: в ${C.cyan}addAny()${C.reset} НЕ дедуплицировать extended-`);
-    console.log(`     секции (vt/lc/ef/inj/rx/cd/ty/tr).`);
+    console.log(`  ${C.bold}5. Если расхождение в sourceChains${C.reset} — проверить`);
+    console.log(`     интернирование (см. checkSourceChainsInterning).`);
     console.log('');
-    console.log(`     ${C.dim}Проверьте, что decoded.templates[].conditionals и${C.reset}`);
-    console.log(`     ${C.dim}full.templates[].conditionals совпадают по длине.${C.reset}`);
+    console.log(`  ${C.bold}6. Если расхождение в st${C.reset} — проверить счётчики`);
+    console.log(`     (см. checkStatisticsExtended).`);
     console.log('');
-    console.log(
-      `  ${C.bold}6. Если расхождение в imports[].isExternal ↔ toFileId${C.reset} (симптом:`
-    );
-    console.log(`     ${C.red}toFileId="external:@/components", isExternal=false${C.reset}):`);
-    console.log(`     ${C.cyan}resolveToFileId()${C.reset} в compact-reporter.ts превращает`);
-    console.log(
-      `     Vue-алиасы (${C.cyan}@/components/ui${C.reset}) в ${C.red}external:@/components${C.reset},`
-    );
-    console.log(
-      `     тогда как ${C.cyan}isExternalModule('@/...')${C.reset} возвращает ${C.green}false${C.reset}.`
-    );
-    console.log(`     Фикс:`);
-    console.log(`       1. В ${C.cyan}resolveToFileId()${C.reset} исключить алиасы`);
-    console.log(
-      `          ${C.cyan}@/${C.reset}, ${C.cyan}~/${C.reset}, ${C.cyan}#/${C.reset} из ветки «внешний пакет» —`
-    );
-    console.log(
-      `          возвращать ${C.cyan}null${C.reset} (→ ${C.cyan}unresolved:@/components/ui${C.reset}).`
-    );
-    console.log(
-      `       2. В ${C.cyan}compact-reporter.ts${C.reset} вычислять ${C.cyan}isExternal${C.reset}`
-    );
-    console.log(`          как ПРОИЗВОДНОЕ от ${C.cyan}resolvedToFileId${C.reset},`);
-    console.log(`          а не от ${C.cyan}imp.toFileId${C.reset}.`);
-    console.log(`       3. Пересобрать index.json и index.full.json.`);
+    console.log(`  ${C.bold}7. Если расхождение в fns.hv${C.reset} — проверить`);
+    console.log(`     RLE-массив isHtmlVisible (см. checkFnsHv).`);
     console.log('');
-    console.log(`  ${C.bold}7. Если расхождение в values[]${C.reset} (симптом:`);
-    console.log(
-      `     ${C.red}$.values.length: a: 206 b: 208${C.reset} или ${C.red}$.cn.nonEmptyV[N][1] сдвиг${C.reset}):`
-    );
-    console.log(`     ${C.cyan}shouldKeepValue()${C.reset} в compact-reporter.ts и`);
-    console.log(`     ${C.cyan}classifyValue()${C.reset} в values-filter.ts используют`);
-    console.log(`     РАЗНЫЕ пороги для классификации значений.`);
-    console.log(`     Если значение прошло ${C.cyan}shouldKeepValue${C.reset} (попало в`);
-    console.log(`     full.constants[].value), но не прошло ${C.cyan}classifyValue${C.reset}`);
-    console.log(`     (не попало в valueDict), то ${C.cyan}encode(full)${C.reset} даёт`);
-    console.log(`     на N значений больше, чем compact на диске.`);
-    console.log(`     Фикс:`);
-    console.log(`       1. Вынести пороги в единый модуль`);
-    console.log(`          ${C.cyan}src/reporters/codec/thresholds.ts${C.reset}`);
-    console.log(`          (VALUE_THRESHOLDS).`);
-    console.log(`       2. Использовать ${C.cyan}isValueKept()${C.reset} из`);
-    console.log(`          ${C.cyan}values-filter.ts${C.reset} в ОБОИХ местах:`);
-    console.log(`          • compact-reporter.ts::shouldKeepValue`);
-    console.log(`          • codec-encode.ts::addValue`);
-    console.log(`       3. Проверить, что classifyValue СОГЛАСОВАН с`);
-    console.log(`          isValueKept (I14 в verify-roundtrip.ts).`);
-    console.log(`       4. Пересобрать index.json и index.full.json.`);
-    console.log('');
-    console.log(`  ${C.bold}8. Если расхождение в JSON-safe${C.reset} (симптом:`);
-    console.log(
-      `     ${C.red}$.values.length: a: 703 b: 553${C.reset} или ${C.red}20 подряд {} в compact.values[]${C.reset}):`
-    );
-    console.log(`     В ${C.cyan}full.constants[].value${C.reset} или`);
-    console.log(`     ${C.cyan}compact.values[]${C.reset} попали НЕ-JSON-значения:`);
-    console.log(`       • Set, Map, RegExp, Date — ${C.red}JSON.stringify → '{}'${C.reset}`);
-    console.log(`       • BigInt — ${C.red}JSON.stringify падает с ошибкой${C.reset}`);
-    console.log(`       • class instances без toJSON → '{}'`);
-    console.log(`     При записи index.json на диск эти значения`);
-    console.log(`     теряются (превращаются в '{}'), и round-trip ломается.`);
-    console.log(`     Фикс:`);
-    console.log(`       1. В ${C.cyan}values-filter.ts::isValueKept${C.reset} вернуть`);
-    console.log(
-      `          ${C.red}false${C.reset} для не-JSON-объектов (через ${C.cyan}isJsonSafe${C.reset}).`
-    );
-    console.log(`       2. В ${C.cyan}stable-stringify.ts${C.reset} добавить`);
-    console.log(`          ${C.cyan}isJsonSafe()${C.reset}, ${C.cyan}sanitizeForJson()${C.reset},`);
-    console.log(`          ${C.cyan}jsonSafeStringify()${C.reset}.`);
-    console.log(`       3. В ${C.cyan}compact-reporter.ts::saveJsonFile${C.reset}`);
-    console.log(`          использовать ${C.cyan}jsonSafeStringify${C.reset} вместо`);
-    console.log(`          ${C.red}JSON.stringify${C.reset}.`);
-    console.log(`       4. Добавить инварианты ${C.cyan}I15/I16${C.reset} в`);
-    console.log(`          ${C.cyan}verify-roundtrip.ts${C.reset}.`);
-    console.log(`       5. Пересобрать index.json и index.full.json.`);
-    console.log('');
-    console.log(`  ${C.bold}9. Если расхождение в values[] consistency${C.reset} (симптом:`);
-    console.log(`     ${C.red}expectedKept=1955 > compact.values.length=547${C.reset}):`);
-    console.log(`     ${C.cyan}compact.values[]${C.reset} — ДЕДУПЛИЦИРОВАННЫЙ словарь.`);
-    console.log(`     Если 100 констант имеют значение ${C.cyan}"relation"${C.reset},`);
-    console.log(`     в values[] оно попадёт ${C.green}1 раз${C.reset}, а expectedKept`);
-    console.log(`     посчитает ${C.red}100${C.reset}. Проверка "expectedKept <="`);
-    console.log(`     "${C.red}compact.values.length${C.reset}" — НЕВЕРНА.`);
-    console.log(`     Фикс (v2.6.0): проверять по МНОЖЕСТВАМ:`);
-    console.log(`       1. ${C.cyan}expectedUniqueKept${C.reset} — Set уникальных`);
-    console.log(`          значений из full.constants[].value.`);
-    console.log(`       2. ${C.cyan}compactValueSet${C.reset} — Set значений из`);
-    console.log(`          compact.values[].`);
-    console.log(`       3. Проверка: ${C.cyan}expectedUniqueKept ⊆ compactValueSet${C.reset}.`);
-    console.log(`       4. Диагностика ${C.cyan}dedupRatio${C.reset} = expectedKept / unique.`);
-    console.log('');
-    console.log(`  ${C.bold}10. Если расхождение в vue-секции${C.reset} (симптом:`);
-    console.log(
-      `     ${C.red}$.vue.sfc[i].composables.length: 5 → 6${C.reset} или ${C.red}$.vue.composables[i].id: "cmp1" → "f5_23"${C.reset}):`
-    );
-    console.log(`     ✅ v2.8.1: Нормализация vue-секции перед сравнением:`);
-    console.log(`       1. ${C.cyan}sfc.composables/props/emits/exposed${C.reset} —`);
-    console.log(`          сравниваются ДЛИНЫ, а не значения (в compact`);
-    console.log(`          хранятся счётчики или индексы, а в full — имена).`);
-    console.log(`       2. ${C.cyan}composables/macros/hooks/reactivity/icons${C.reset} —`);
-    console.log(`          ИСКЛЮЧАЕТСЯ поле ${C.cyan}id${C.reset} (генерируется при decode`);
-    console.log(`          как ${C.cyan}cmp1, mac1, hk1, rx1, ic1${C.reset}).`);
-    console.log('');
-    console.log(`     Если расхождение осталось — проверьте:`);
-    console.log(`       • ${C.cyan}codec-encode.ts::encodeVueSection${C.reset} —`);
-    console.log(`         правильно ли кодируются composables/props/etc.`);
-    console.log(`       • ${C.cyan}codec-decode.ts::decodeVueSection${C.reset} —`);
-    console.log(`         правильно ли восстанавливаются длины.`);
-    console.log(`       • ${C.cyan}scripts/verify-consistency.ts::checkVueSection${C.reset} —`);
-    console.log(`         правильно ли нормализуется Vue-секция.`);
-    console.log('');
-    console.log(
-      `  ${C.dim}Подробнее: scripts/verify-roundtrip.ts проверяет round-trip кодека.${C.reset}`
-    );
-    console.log(`${C.reset}`);
     process.exit(1);
   }
 }
-
-// ============================================
-// ЗАПУСК
-// ============================================
 
 main().catch(err => {
   console.error(`${C.red}Фатальная ошибка:${C.reset}`, err);
