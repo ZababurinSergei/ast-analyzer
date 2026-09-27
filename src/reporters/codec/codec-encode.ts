@@ -189,9 +189,6 @@ export const VUE_KIND_CODES_LOCAL: Record<VueKind, number> = {
 // СЛОВАРИ ФЛАГОВ
 // ============================================
 
-/**
- * Карта флагов: бит → имя.
- */
 export const FLAG_MAP: Record<number, string> = {
   1: 'isAsync',
   2: 'isExported',
@@ -213,23 +210,14 @@ export const FLAG_MAP: Record<number, string> = {
   131072: 'isStatic',
 };
 
-/**
- * Обратная карта: имя → бит.
- */
 export const FLAG_CHAR_MAP: Record<string, number> = Object.fromEntries(
   Object.entries(FLAG_MAP).map(([bit, name]) => [name, parseInt(bit, 10)])
 );
 
-/**
- * Имена флагов: бит → имя.
- */
 export const FLAG_NAMES: Record<number, string> = Object.fromEntries(
   Object.entries(FLAG_MAP).map(([bit, name]) => [parseInt(bit, 10), name])
 );
 
-/**
- * Типы связей.
- */
 export const RELATION_TYPES: Record<string, string> = {
   d: 'direct',
   a: 'async',
@@ -247,9 +235,6 @@ export const RELATION_TYPES: Record<string, string> = {
   all: 'all',
 };
 
-/**
- * Типы экспортов.
- */
 export const EXPORT_TYPES: Record<string, string> = {
   ne: 'named',
   de: 'default',
@@ -257,9 +242,6 @@ export const EXPORT_TYPES: Record<string, string> = {
   re: 're-export',
 };
 
-/**
- * Типы импортов.
- */
 export const IMPORT_TYPES: Record<string, string> = {
   n: 'named',
   df: 'default',
@@ -267,9 +249,6 @@ export const IMPORT_TYPES: Record<string, string> = {
   to: 'type',
 };
 
-/**
- * Типы вызовов.
- */
 export const CALL_TYPES: Record<string, string> = {
   d: 'direct',
   a: 'async',
@@ -277,18 +256,12 @@ export const CALL_TYPES: Record<string, string> = {
   c: 'callback',
 };
 
-/**
- * Типы реэкспортов.
- */
 export const RE_EXPORT_TYPES: Record<string, string> = {
   n: 'named',
   df: 'default',
   all: 'all',
 };
 
-/**
- * Хуки жизненного цикла Vue.
- */
 export const LIFECYCLE_TYPES: Record<string, string> = {
   m: 'onMounted',
   u: 'onUnmounted',
@@ -300,9 +273,6 @@ export const LIFECYCLE_TYPES: Record<string, string> = {
   e: 'onErrorCaptured',
 };
 
-/**
- * Типы side-эффектов.
- */
 export const EFFECT_TYPES: Record<string, string> = {
   t: 'timer',
   c: 'cleanup',
@@ -311,17 +281,11 @@ export const EFFECT_TYPES: Record<string, string> = {
   s: 'subscription',
 };
 
-/**
- * Типы provide/inject.
- */
 export const INJECTION_TYPES: Record<string, string> = {
   p: 'provide',
   i: 'inject',
 };
 
-/**
- * Типы реактивности Vue.
- */
 export const REACTIVITY_TYPES: Record<string, string> = {
   c: 'computed',
   w: 'watch',
@@ -332,18 +296,12 @@ export const REACTIVITY_TYPES: Record<string, string> = {
   o: 'readonly',
 };
 
-/**
- * Типы условных директив.
- */
 export const CONDITIONAL_TYPES: Record<string, string> = {
   i: 'v-if',
   e: 'v-else-if',
   E: 'v-else',
 };
 
-/**
- * Виды type-узлов.
- */
 export const TYPE_KINDS: Record<string, string> = {
   i: 'interface',
   t: 'type-alias',
@@ -351,9 +309,6 @@ export const TYPE_KINDS: Record<string, string> = {
   c: 'class',
 };
 
-/**
- * Виды использования типов.
- */
 export const TYPE_USAGE_KINDS: Record<string, string> = {
   p: 'param',
   r: 'return',
@@ -367,9 +322,6 @@ export const TYPE_USAGE_KINDS: Record<string, string> = {
 // КОДИРОВАНИЕ ФЛАГОВ
 // ============================================
 
-/**
- * Кодирует булевы флаги функции в число.
- */
 export function encodeFlags(obj: Partial<FunctionData & ClassData & ConstantData>): number {
   let flags = 0;
   for (const [bitStr, name] of Object.entries(FLAG_MAP)) {
@@ -380,9 +332,6 @@ export function encodeFlags(obj: Partial<FunctionData & ClassData & ConstantData
   return flags;
 }
 
-/**
- * Кодирует число флагов в строку символов.
- */
 export function flagsToString(flags: number): string {
   if (flags === 0) return '0';
   let result = '';
@@ -679,15 +628,13 @@ function encodeStr(str: string, tokenIndex: Map<string, number>): string | numbe
 // ============================================
 // ✅ v16.0.0: VUE SECTION ENCODER (расширена)
 // ============================================
+//
+// ⚠️ КЛЮЧЕВОЕ: `componentProps`, `componentEvents`, `componentDirectives`,
+//              `componentSlots`, `htmlInterpolations` — СОСЕДИ `sfc`,
+//              а не вложены в него. Это устраняет расхождение L2:
+//              `decode(compact).vue.componentProps` читается именно отсюда.
+// ============================================
 
-/**
- * Кодирует `full.vue` → `compact.vue`.
- *
- * ✅ v16.0.0: sfc расширена до 30 полей:
- *   - реальные имена props/emits/exposed (pn/ps/en/es/xn/xs)
- *   - component usages (cu_*)
- *   - html elements (he_*)
- */
 export function encodeVueSection(
   vue: VueSectionFull,
   dict: DictBuilder,
@@ -860,7 +807,7 @@ export function encodeVueSection(
   }
 
   // ────────────────────────────────────────────────────────
-  // composables — остаётся как было
+  // composables
   // ────────────────────────────────────────────────────────
   const compN: number[] = [];
   const compF: number[] = [];
@@ -1000,6 +947,7 @@ export function encodeVueSection(
       c: iconC,
     },
     // ✅ v16.0.0: component props/events/directives/slots/interpolations
+    // ⚠️ СОСЕДИ sfc, а не вложены в него.
     componentProps: encodeComponentPropsInline(allComponentProps, dict),
     componentEvents: encodeComponentEventsInline(allComponentEvents, dict),
     componentDirectives: encodeComponentDirectivesInline(allComponentDirectives, dict),
@@ -1011,7 +959,7 @@ export function encodeVueSection(
 }
 
 // ============================================
-// ✅ v16.0.0: inline-энкодеры подсекций vue.sfc
+// ✅ v16.0.0: inline-энкодеры подсекций vue
 // ============================================
 
 function encodeComponentPropsInline(
@@ -1379,14 +1327,7 @@ export function encode(
   const flMRle = rle(flM);
 
   // ============================================
-  // 6. fns — columnar
-  // ============================================
-  //
-  // ✅ v16.0.1: добавлен массив `fnsHv` — RLE для `isHtmlVisible` (0|1).
-  // Это устраняет расхождение L1/L2/DL:
-  //   $.functions[0].isHtmlVisible  a: undefined  b: false
-  //
-  // Схема (10 полей): n, m, f, l, fl, p, rt, parent, vk, hv
+  // 6. fns — columnar (10 полей, включая hv)
   // ============================================
   const fnsN: number[] = [];
   const fnsM: number[] = [];

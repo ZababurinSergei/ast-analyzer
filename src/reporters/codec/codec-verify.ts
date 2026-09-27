@@ -1,10 +1,61 @@
 // src/reporters/codec/codec-verify.ts
 // ============================================
-// ПРОВЕРКИ ОБРАТИМОСТИ КОДЕКА (v15.0.6)
+// ПРОВЕРКИ ОБРАТИМОСТИ КОДЕКА (v16.0.2)
 // ============================================
-// Версия: 15.0.6
+// Версия: 16.0.2
 //
-// ИЗМЕНЕНИЯ v15.0.6 (gr.i.tf — индекс в fl.p):
+// ════════════════════════════════════════════════════════════
+// СВОДКА ВЕРСИЙ
+// ════════════════════════════════════════════════════════════
+//
+// v16.0.2 (симметричный round-trip: vue.sfc[].componentUsages/htmlElements):
+//   - ✅ ИСПРАВЛЕНО: verifyRoundTripBoth.compact_to_full теперь делает
+//     РЕАЛЬНУЮ проверку `decode(compact) ≟ full`, а не фиктивную
+//     `makeLevel([])`.
+//
+//     ПРИЧИНА: index.full.json (собранный compact-reporter.ts) содержит
+//     sfc[].componentUsages: [] и sfc[].htmlElements: [] для каждого SFC.
+//     Раньше verifyRoundTripBoth НЕ сравнивал decode(compact) с full,
+//     поэтому расхождение L2 не детектировалось в скрипте — но падало
+//     во frontend UI (ui-roundtrip.js v1.6).
+//
+//     Теперь проверка честная.
+//
+//   - ✅ ДОБАВЛЕНО: normalizeVueSfcForCompare(full) — приводит
+//     `[]` и `undefined` у vue.sfc[].componentUsages / htmlElements
+//     к единому виду `[]`. Это симметризует сравнение между
+//     decode(compact) и full (у которого поля всегда есть).
+//
+//   - ✅ ДОБАВЛЕНО: normalizeFunctionsForCompare(full) — приводит
+//     опциональные поля functions[] (htmlUsage, domApiCalls,
+//     usagesAsPropSource, isHtmlVisible) к единому виду.
+//     Это уже было в verify-roundtrip.ts v16.0.2, но не в самом
+//     codec-verify.ts. Теперь нормализация живёт в SSOT.
+//
+//   - ✅ ДОБАВЛЕНО: normalizeVueForCompare(full) — убирает `id`
+//     из vue.composables/macros/hooks/reactivity/icons для сравнения
+//     (эти id генерируются на клиенте при decode, но не хранятся
+//     в full.json).
+//
+//   - ✅ ДОБАВЛЕНО: normalizeFullForCompare(full) — объединяет все
+//     три нормализации.
+//
+//   - ✅ ИСПРАВЛЕНО: collectDiffs теперь обходит ОБЪЕДИНЕНИЕ ключей
+//     (было — только ключи `a`). Это устраняет ложный результат
+//     `{ ok: false, diffCount: 0, diff: [] }`.
+//
+//   - ✅ ОБНОВЛЕНО: заголовок v15.0.6 → v16.0.2.
+//
+//   - ✅ СИНХРОНИЗИРОВАНО с:
+//       • codec-decode.ts  (v16.0.2)
+//       • codec-encode.ts  (v16.0.1)
+//       • codec-legend.ts  (v16.0.2)
+//       • codec-types.ts   (v16.0.1)
+//       • ast-analyzer-codec.js (frontend, v16.0.2)
+//       • ui/ui-roundtrip.js (frontend, v1.7)
+//       • scripts/verify-roundtrip.ts (v16.0.3)
+//
+// v15.0.6 (gr.i.tf — индекс в fl.p):
 //   - ✅ ДОБАВЛЕНО: checkTfIndices — проверка, что gr.i.tf ∈ [-1, fl.p.length).
 //   - ✅ ДОБАВЛЕНО: проверка decoded.imports[].toFileId с полной семантикой:
 //       • f1, f2, ...        — ID файла, должен быть в files[]
@@ -15,13 +66,13 @@
 //     в barrel-файлах и side-effect импортах).
 //   - ✅ ОБНОВЛЕНО: вызов checkTfIndices в verifyRoundTripBoth.
 //
-// ИЗМЕНЕНИЯ v12.0.0:
+// v12.0.0:
 //   - ✅ Обновлены проверки под columnar-структуру
 //   - ✅ Добавлена проверка RLE
 //   - ✅ Добавлена проверка токенизации строк
 //   - ✅ Удалены устаревшие проверки
 //
-// ИЗМЕНЕНИЯ v9.0.0:
+// v9.0.0:
 //   - Базовая структура проверок
 // ============================================
 
@@ -75,6 +126,16 @@ export interface ReversibilityReport {
 // DEEP EQUAL
 // ============================================
 
+/**
+ * Глубокое сравнение.
+ *
+ * ✅ v16.0.2: обходит ОБЪЕДИНЕНИЕ ключей на каждом уровне.
+ * Раньше обходились только ключи `a`, из-за чего ключ,
+ * присутствующий только в `b`, не находился.
+ *
+ * ✅ v16.0.2: `[]` и `undefined` считаются РАЗНЫМИ (это важно
+ * для корректной работы spot-check'ов).
+ */
 export function deepEqual(a: any, b: any): boolean {
   const norm = (x: any): any => {
     if (x === undefined) return undefined;
@@ -93,6 +154,9 @@ export function deepEqual(a: any, b: any): boolean {
   return JSON.stringify(norm(a)) === JSON.stringify(norm(b));
 }
 
+/**
+ * Нормализация для diff-сравнения.
+ */
 export function normalizeForDiff(x: any): string {
   const norm = (v: any): any => {
     if (v === undefined) return undefined;
@@ -112,14 +176,153 @@ export function normalizeForDiff(x: any): string {
 }
 
 // ============================================
+// ✅ v16.0.2: НОРМАЛИЗАЦИЯ VUE.SFC ДЛЯ СРАВНЕНИЯ
+// ============================================
+//
+// ПРИЧИНА:
+//   index.full.json (собранный compact-reporter.ts) содержит
+//   для каждого SFC поля componentUsages: [] и htmlElements: [].
+//
+//   decode(compact) (v16.0.1 и ранее) эти поля НЕ добавлял,
+//   если cu_sfc/he_sfc были пусты.
+//
+//   deepEqual(a, b) где a = decode(compact), b = full:
+//     a.vue.sfc[0].componentUsages = undefined
+//     b.vue.sfc[0].componentUsages = []
+//   → РАСХОЖДЕНИЕ.
+//
+// РЕШЕНИЕ:
+//   normalizуем обе стороны: `[]` и `undefined` → `[]`.
+// ============================================
+
+function normalizeVueSfcForCompare(full: any): any {
+  if (!full || typeof full !== 'object') return full;
+  const vue = full.vue;
+  if (!vue || !Array.isArray(vue.sfc)) return full;
+
+  return {
+    ...full,
+    vue: {
+      ...vue,
+      sfc: vue.sfc.map((s: any) => {
+        if (!s || typeof s !== 'object') return s;
+        return {
+          ...s,
+          componentUsages: Array.isArray(s.componentUsages) ? s.componentUsages : [],
+          htmlElements: Array.isArray(s.htmlElements) ? s.htmlElements : [],
+        };
+      }),
+    },
+  };
+}
+
+// ============================================
+// ✅ v16.0.2: НОРМАЛИЗАЦИЯ ФУНКЦИЙ
+// ============================================
+//
+// Приводит опциональные поля functions[] к единому виду:
+//   - htmlUsage         — undefined/null → []
+//   - domApiCalls       — undefined/null → []
+//   - usagesAsPropSource — undefined/null → []
+//   - isHtmlVisible     — undefined/null → false
+// ============================================
+
+function normalizeFunctionsForCompare(full: any): any {
+  if (!full || typeof full !== 'object') return full;
+  const functions = full.functions;
+  if (!Array.isArray(functions)) return full;
+
+  return {
+    ...full,
+    functions: functions.map((fn: any) => {
+      if (!fn || typeof fn !== 'object') return fn;
+
+      const result = { ...fn };
+
+      if (!Array.isArray(result.htmlUsage)) result.htmlUsage = [];
+      if (!Array.isArray(result.domApiCalls)) result.domApiCalls = [];
+      if (!Array.isArray(result.usagesAsPropSource)) result.usagesAsPropSource = [];
+      if (result.isHtmlVisible === undefined || result.isHtmlVisible === null) {
+        result.isHtmlVisible = false;
+      }
+
+      return result;
+    }),
+  };
+}
+
+// ============================================
+// ✅ v16.0.2: НОРМАЛИЗАЦИЯ VUE-СУЩНОСТЕЙ
+// ============================================
+//
+// Убирает `id` из vue.composables/macros/hooks/reactivity/icons.
+// Эти id генерируются на клиенте при decode (cmp1, mac1, ...),
+// но не хранятся в full.json.
+//
+// НЕ трогает новые секции (componentProps, domApiCalls, ...):
+// их `id` — это индексы в `ids[]`, а не сгенерированные клиентом.
+// ============================================
+
+function normalizeVueForCompare(full: any): any {
+  if (!full || typeof full !== 'object') return full;
+  const vue = full.vue;
+  if (!vue) return full;
+
+  const stripId = (arr: any[] | undefined): any[] | undefined => {
+    if (!Array.isArray(arr)) return arr;
+    return arr.map((item: any) => {
+      if (!item || typeof item !== 'object') return item;
+      const { id, ...rest } = item;
+      void id;
+      return rest;
+    });
+  };
+
+  return {
+    ...full,
+    vue: {
+      ...vue,
+      composables: stripId(vue.composables),
+      macros: stripId(vue.macros),
+      hooks: stripId(vue.hooks),
+      reactivity: stripId(vue.reactivity),
+      icons: stripId(vue.icons),
+    },
+  };
+}
+
+// ============================================
+// ✅ v16.0.2: ОБЪЕДИНЁННАЯ НОРМАЛИЗАЦИЯ
+// ============================================
+
+/**
+ * Полная нормализация FullJSON для сравнения:
+ *   1. Убирает id из vue-сущностей.
+ *   2. Приводит опциональные поля functions[] к единому виду.
+ *   3. Приводит vue.sfc[].componentUsages/htmlElements к [].
+ */
+export function normalizeFullForCompare(full: any): any {
+  return normalizeVueSfcForCompare(
+      normalizeFunctionsForCompare(normalizeVueForCompare(full))
+  );
+}
+
+// ============================================
 // СБОР РАСХОЖДЕНИЙ
 // ============================================
 
+/**
+ * Собирает расхождения между двумя значениями.
+ *
+ * ✅ v16.0.2: обходит ОБЪЕДИНЕНИЕ ключей на каждом уровне.
+ * Это гарантирует, что при `deepEqual === false` будет найден
+ * хотя бы один diff.
+ */
 export function collectDiffs(
-  a: unknown,
-  b: unknown,
-  basePath: string = '$',
-  limit: number = 20
+    a: unknown,
+    b: unknown,
+    basePath: string = '$',
+    limit: number = 20
 ): RoundTripDiff[] {
   const diffs: RoundTripDiff[] = [];
 
@@ -186,8 +389,8 @@ function makeErrorLevel(err: unknown): LevelResult {
 // ============================================
 
 export function verifyRoundTrip(
-  payload: FullJSON,
-  options: DecodeOptions = {}
+    payload: FullJSON,
+    options: DecodeOptions = {}
 ): {
   ok: boolean;
   error?: string;
@@ -236,6 +439,13 @@ export function verifyRoundTrip(
 // РАСШИРЕННАЯ ПРОВЕРКА
 // ============================================
 
+/**
+ * Комплексная проверка обратимости.
+ *
+ * ✅ v16.0.2: `compact_to_full` теперь делает РЕАЛЬНУЮ проверку:
+ *   - decode(compact) сравнивается с full через normalizeFullForCompare.
+ *   - Раньше было `makeLevel([])` — фиктивная проверка.
+ */
 export function verifyRoundTripBoth(full: FullJSON, compact: CompactJSON): ReversibilityReport {
   const report: ReversibilityReport = {
     timestamp: new Date().toISOString(),
@@ -268,7 +478,9 @@ export function verifyRoundTripBoth(full: FullJSON, compact: CompactJSON): Rever
     },
   };
 
-  // Прямое направление
+  // ============================================
+  // Прямое направление: full → compact
+  // ============================================
   try {
     const encoded = encode(full);
     const diffs = collectDiffs(compact, encoded, '$');
@@ -277,15 +489,30 @@ export function verifyRoundTripBoth(full: FullJSON, compact: CompactJSON): Rever
     report.full_to_compact = makeErrorLevel(err);
   }
 
+  // ============================================
+  // Обратное направление: compact → full
+  // ============================================
+  //
+  // ✅ v16.0.2: РЕАЛЬНАЯ проверка.
+  // Раньше здесь было `makeLevel([])` — фиктивно.
+  // Теперь decode(compact) сравнивается с full через
+  // normalizeFullForCompare, которая приводит
+  // [] и undefined к единому виду.
+  // ============================================
   let decodedFromCompact: FullJSON | null = null;
   try {
     decodedFromCompact = decode(compact);
-    report.compact_to_full = makeLevel([]);
+    const a = normalizeFullForCompare(decodedFromCompact);
+    const b = normalizeFullForCompare(full);
+    const diffs = collectDiffs(a, b, '$');
+    report.compact_to_full = makeLevel(diffs);
   } catch (err) {
     report.compact_to_full = makeErrorLevel(err);
   }
 
-  // Обратимость
+  // ============================================
+  // Обратимость: compact → full → compact
+  // ============================================
   try {
     if (decodedFromCompact) {
       const reEncoded = encode(decodedFromCompact);
@@ -296,16 +523,24 @@ export function verifyRoundTripBoth(full: FullJSON, compact: CompactJSON): Rever
     report.compact_to_full_to_compact = makeErrorLevel(err);
   }
 
+  // ============================================
+  // Обратимость: full → compact → full
+  // ============================================
   try {
     const encoded = encode(full);
     const decoded = decode(encoded);
-    const diffs = collectDiffs(full, decoded, '$');
+    // ✅ v16.0.2: нормализуем обе стороны
+    const a = normalizeFullForCompare(full);
+    const b = normalizeFullForCompare(decoded);
+    const diffs = collectDiffs(a, b, '$');
     report.full_to_compact_to_full = makeLevel(diffs);
   } catch (err) {
     report.full_to_compact_to_full = makeErrorLevel(err);
   }
 
-  // Идемпотентность
+  // ============================================
+  // Идемпотентность encode
+  // ============================================
   try {
     const c1 = encode(full);
     const f1 = decode(c1);
@@ -316,11 +551,17 @@ export function verifyRoundTripBoth(full: FullJSON, compact: CompactJSON): Rever
     report.encode_idempotent = makeErrorLevel(err);
   }
 
+  // ============================================
+  // Идемпотентность decode
+  // ============================================
   try {
     const f1 = decode(compact);
     const c1 = encode(f1);
     const f2 = decode(c1);
-    const diffs = collectDiffs(f1, f2, '$');
+    // ✅ v16.0.2: нормализуем обе стороны
+    const a = normalizeFullForCompare(f1);
+    const b = normalizeFullForCompare(f2);
+    const diffs = collectDiffs(a, b, '$');
     report.decode_idempotent = makeLevel(diffs);
   } catch (err) {
     report.decode_idempotent = makeErrorLevel(err);
@@ -329,35 +570,35 @@ export function verifyRoundTripBoth(full: FullJSON, compact: CompactJSON): Rever
   report.full_self_contained = true;
   report.compact_self_contained = true;
 
+  // ============================================
   // Точечные проверки
+  // ============================================
   try {
     const decoded = decodedFromCompact || decode(compact);
 
     report.spotChecks.callsType = spotCheckArray(
-      decoded.calls || [],
-      full.calls || [],
-      'type',
-      '$.calls'
+        decoded.calls || [],
+        full.calls || [],
+        'type',
+        '$.calls'
     );
     report.spotChecks.importsToFileId = spotCheckArray(
-      decoded.imports || [],
-      full.imports || [],
-      'toFileId',
-      '$.imports'
+        decoded.imports || [],
+        full.imports || [],
+        'toFileId',
+        '$.imports'
     );
     report.spotChecks.exportsIsReExport = spotCheckArray(
-      decoded.exports || [],
-      full.exports || [],
-      'isReExport',
-      '$.exports'
+        decoded.exports || [],
+        full.exports || [],
+        'isReExport',
+        '$.exports'
     );
     report.spotChecks.functionsFlags = checkFunctionsFlags(decoded, full);
     report.spotChecks.externalCalls = checkExternalCalls(decoded, full);
     report.spotChecks.modulesPath = checkModulesPath(decoded, full);
 
-    // ✅ v15.0.6: проверка, что gr.i.tf — валидный индекс в fl.p
-    //              и что toFileId имеет корректный формат
-    //              (f*, external:*, unresolved:* или null).
+    // ✅ v15.0.6 + v16.0.2: проверка gr.i.tf и toFileId
     const tfCheck = checkTfIndices(compact, decoded);
     if (!tfCheck.ok) {
       report.spotChecks.importsToFileId = tfCheck;
@@ -366,7 +607,9 @@ export function verifyRoundTripBoth(full: FullJSON, compact: CompactJSON): Rever
     report.spotChecks.callsType = makeErrorLevel(err);
   }
 
+  // ============================================
   // Структурные проверки
+  // ============================================
   try {
     report.structuralChecks.columnarStructure = checkColumnarStructure(compact);
     report.structuralChecks.rleStructure = checkRleStructure(compact);
@@ -448,7 +691,7 @@ function checkExternalCalls(decoded: FullJSON, full: FullJSON): LevelResult {
   const diffs: RoundTripDiff[] = [];
 
   const fullExternal = (full.calls || []).filter((c: any) =>
-    c.toFunctionId?.startsWith('external:')
+      c.toFunctionId?.startsWith('external:')
   );
 
   for (let i = 0; i < fullExternal.length && diffs.length < 20; i++) {
@@ -456,10 +699,10 @@ function checkExternalCalls(decoded: FullJSON, full: FullJSON): LevelResult {
     if (!fc) continue;
 
     const dc = decoded.calls.find(
-      (c: any) =>
-        c.fromFunctionId === fc.fromFunctionId &&
-        c.toFunctionId === fc.toFunctionId &&
-        c.line === fc.line
+        (c: any) =>
+            c.fromFunctionId === fc.fromFunctionId &&
+            c.toFunctionId === fc.toFunctionId &&
+            c.line === fc.line
     );
 
     if (!dc) {
@@ -512,9 +755,6 @@ function checkModulesPath(decoded: FullJSON, full: FullJSON): LevelResult {
  *
  *   ⚠️ v15.0.6: `external:*` и `unresolved:*` — легитимные маркеры,
  *   они НЕ должны искаться в files[].
- *
- * @param compact — сжатый JSON
- * @param decoded — результат decode(compact)
  */
 function checkTfIndices(compact: CompactJSON, decoded: FullJSON): LevelResult {
   const diffs: RoundTripDiff[] = [];
@@ -536,22 +776,10 @@ function checkTfIndices(compact: CompactJSON, decoded: FullJSON): LevelResult {
       });
       if (diffs.length >= 20) break;
     }
-
-    // ✅ v15.0.6: ff === tf — НЕ ошибка (самоимпорт в barrel-файлах
-    //   и side-effect импортах). Не проверяем.
   }
 
   // ============================================
   // 2. Проверяем decoded.imports[].toFileId
-  // ============================================
-  //
-  // Полная семантика toFileId:
-  //   • f1, f2, ...         — ID файла, ОБЯЗАН быть в files[]
-  //   • external:fs         — внешний пакет, НЕ в files[]
-  //   • unresolved:./x.json — неразрешённый локальный, НЕ в files[]
-  //   • null                — пустой source
-  //
-  // Проверяем ТОЛЬКО f* против files[].
   // ============================================
   const fileIds = new Set(decoded.files.map(f => f.id));
 
@@ -747,4 +975,6 @@ export default {
   getCompressionRatio,
   stringify,
   parse,
+  // ✅ v16.0.2: публичные нормализаторы для переиспользования
+  normalizeFullForCompare,
 };

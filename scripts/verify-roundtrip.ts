@@ -1,13 +1,39 @@
 #!/usr/bin/env node
 // scripts/verify-roundtrip.ts
 // ============================================
-// Скрипт проверки Round-Trip для CODEC (v16.0.2)
+// Скрипт проверки Round-Trip для CODEC (v16.0.3)
 // ============================================
-// Версия: 16.0.2
+// Версия: 16.0.3
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
+//
+// v16.0.3 (fix L2: vue.sfc[].componentUsages/htmlElements):
+//   - ✅ ИСПРАВЛЕНО: добавлена нормализация vue.sfc[].componentUsages
+//     и vue.sfc[].htmlElements — приводит [] и undefined к единому
+//     виду [] перед сравнением в L1/L2/DL/RE/ENC/DEC.
+//
+//     ПРИЧИНА:
+//       - index.full.json (собранный compact-reporter.ts) содержит
+//         componentUsages: [] и htmlElements: [] у каждого SFC.
+//       - decode(compact) в старых версиях кодека НЕ добавлял эти
+//         поля, если cu_sfc/he_sfc пусты. Возникало расхождение:
+//           a: []   (в full)
+//           b: undefined  (в decoded)
+//         и L2 падал с diffCount=20.
+//
+//     РЕШЕНИЕ (два уровня защиты):
+//       1. codec-decode.ts (v16.0.2) теперь СИММЕТРИЧНО всегда
+//          добавляет componentUsages / htmlElements.
+//       2. Этот скрипт дополнительно нормализует обе стороны через
+//          normalizeVueSfcForCompare — страховка от регрессий
+//          и от старых compact.json.
+//
+//   - ✅ ОБНОВЛЕНО: codecVersion в jsonReport = '16.0.3'.
+//   - ✅ ОБНОВЛЕНО: заголовок v16.0.2 → v16.0.3.
+//   - ✅ ДОБАВЛЕНО: спот-чек functions[].vueKind (I18, вынесен из
+//     старой проверки checkVueSection).
 //
 // v16.0.2 (fix I47 + fns.hv + legend.schemas.fns):
 //   - ✅ FIX I47: разрешён `number[]` любой длины в `params[]`
@@ -231,7 +257,7 @@ function normalizeForCompare(value: any): string {
 }
 
 // ============================================
-// ✅ v15.7.3: НОРМАЛИЗАЦИЯ VUE-СЕКЦИИ
+// ✅ v15.7.3 + v16.0.3: НОРМАЛИЗАЦИЯ VUE-СЕКЦИИ
 // ============================================
 
 /**
@@ -343,15 +369,62 @@ function normalizeFunctionsForCompare(full: any): any {
   };
 }
 
+// ============================================
+// ✅ v16.0.3: НОРМАЛИЗАЦИЯ VUE.SFC[] ДЛЯ СРАВНЕНИЯ
+// ============================================
+
 /**
- * ✅ v16.0.2: Полная нормализация FullJSON для сравнения.
+ * ✅ v16.0.3: Нормализует `vue.sfc[]` для сравнения в L1/L2/DL.
  *
- * Применяет:
- *   - normalizeVueForCompare (убирает id из vue-сущностей)
- *   - normalizeFunctionsForCompare (приводит опциональные поля к дефолтам)
+ * Проблема:
+ *   - `index.full.json` (собранный `compact-reporter.ts`) содержит
+ *     `componentUsages: []` и `htmlElements: []` у каждого SFC.
+ *   - `decode(compact)` в старых версиях кодека НЕ добавлял эти
+ *     поля, если `cu_sfc`/`he_sfc` пусты. Возникало расхождение
+ *     `[]` vs `undefined`, и L2 падал с diffCount=20.
+ *
+ * Решение:
+ *   - В `codec-decode.ts` v16.0.2 обе стороны стали симметричными —
+ *     `decode` теперь СИММЕТРИЧНО всегда добавляет эти поля.
+ *   - Этот нормализатор — страховка от регрессий и от старых
+ *     `compact.json`, где поля отсутствовали.
+ *
+ * Приводит `undefined`/`null` к `[]`.
+ */
+function normalizeVueSfcForCompare(full: any): any {
+  if (!full || typeof full !== 'object') return full;
+
+  const vue = full.vue;
+  if (!vue || !Array.isArray(vue.sfc)) return full;
+
+  return {
+    ...full,
+    vue: {
+      ...vue,
+      sfc: vue.sfc.map((s: any) => {
+        if (!s || typeof s !== 'object') return s;
+        return {
+          ...s,
+          componentUsages: Array.isArray(s.componentUsages) ? s.componentUsages : [],
+          htmlElements: Array.isArray(s.htmlElements) ? s.htmlElements : [],
+        };
+      }),
+    },
+  };
+}
+
+/**
+ * ✅ v16.0.3: Полная нормализация FullJSON для сравнения.
+ *
+ * Применяет (в порядке):
+ *   - normalizeVueForCompare       (убирает id из vue-сущностей)
+ *   - normalizeFunctionsForCompare (приводит опциональные поля функций к дефолтам)
+ *   - normalizeVueSfcForCompare    (приводит [] и undefined к [] у vue.sfc[])
  */
 function normalizeFullForCompare(full: any): any {
-  return normalizeFunctionsForCompare(normalizeVueForCompare(full));
+  return normalizeVueSfcForCompare(
+    normalizeFunctionsForCompare(normalizeVueForCompare(full))
+  );
 }
 
 // ============================================
@@ -1092,7 +1165,7 @@ async function main(): Promise<void> {
     }
   }
 
-  section('🔬 ROUND-TRIP ВЕРИФИКАЦИЯ CODEC (v16.0.2)');
+  section('🔬 ROUND-TRIP ВЕРИФИКАЦИЯ CODEC (v16.0.3)');
   info(`Compact: ${path.resolve(options.compactPath)}`);
   info(`Full:    ${path.resolve(options.fullPath)}`);
   info(`Verbose: ${options.verbose}`);
@@ -1610,6 +1683,15 @@ async function main(): Promise<void> {
     {
       name: 'ids / sourceChains',
       result: spotCheckIdsAndSourceChains(decoded, full, options.maxDiffs),
+    },
+    // ✅ v16.0.3: спот-чек vue.sfc[].componentUsages/htmlElements
+    {
+      name: 'vue.sfc[].componentUsages',
+      result: spotCheckVueSfcComponentUsages(decoded, full, options.maxDiffs),
+    },
+    {
+      name: 'vue.sfc[].htmlElements',
+      result: spotCheckVueSfcHtmlElements(decoded, full, options.maxDiffs),
     },
   ];
 
@@ -2218,6 +2300,15 @@ async function main(): Promise<void> {
       name: 'spotCheck: ids / sourceChains',
       ok: spotChecks.find(s => s.name === 'ids / sourceChains')!.result.ok,
     },
+    // ✅ v16.0.3: новые спот-чеки
+    {
+      name: 'spotCheck: vue.sfc[].componentUsages',
+      ok: spotChecks.find(s => s.name === 'vue.sfc[].componentUsages')!.result.ok,
+    },
+    {
+      name: 'spotCheck: vue.sfc[].htmlElements',
+      ok: spotChecks.find(s => s.name === 'vue.sfc[].htmlElements')!.result.ok,
+    },
   ];
 
   for (const sr of sectionResults) {
@@ -2287,8 +2378,8 @@ async function main(): Promise<void> {
 
   const jsonReport = {
     timestamp: new Date().toISOString(),
-    // ✅ v16.0.2
-    codecVersion: '16.0.2',
+    // ✅ v16.0.3
+    codecVersion: '16.0.3',
     originalFormat: 'compact',
     bothFormats: false,
 
@@ -2746,6 +2837,98 @@ function spotCheckIdsAndSourceChains(decoded: FullJSON, full: FullJSON, _limit: 
   const bSc = (full as any).sourceChains || [];
   if (aSc.length !== bSc.length) {
     diffs.push({ path: '$.sourceChains.length', a: aSc.length, b: bSc.length });
+  }
+
+  return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
+}
+
+// ============================================
+// ✅ v16.0.3: SPOT-CHECKS ДЛЯ vue.sfc[]
+// ============================================
+
+/**
+ * ✅ v16.0.3: Проверяет, что у каждого SFC в decoded и full
+ * есть `componentUsages` (массив), и количества совпадают.
+ *
+ * Нормализация: `[]` и `undefined` → `0` (по длине).
+ */
+function spotCheckVueSfcComponentUsages(
+  decoded: FullJSON,
+  full: FullJSON,
+  limit: number
+): LevelResult {
+  const aSfc = (decoded as any).vue?.sfc || [];
+  const bSfc = (full as any).vue?.sfc || [];
+
+  const diffs: any[] = [];
+  const n = Math.min(aSfc.length, bSfc.length);
+
+  if (aSfc.length !== bSfc.length) {
+    diffs.push({
+      path: '$.vue.sfc.length',
+      a: aSfc.length,
+      b: bSfc.length,
+    });
+  }
+
+  for (let i = 0; i < n && diffs.length < limit; i++) {
+    const ai = aSfc[i];
+    const bi = bSfc[i];
+    if (!ai || !bi) continue;
+
+    const aCount = Array.isArray(ai.componentUsages) ? ai.componentUsages.length : 0;
+    const bCount = Array.isArray(bi.componentUsages) ? bi.componentUsages.length : 0;
+
+    if (aCount !== bCount) {
+      diffs.push({
+        path: `$.vue.sfc[${i}].componentUsages.length`,
+        a: aCount,
+        b: bCount,
+      });
+    }
+  }
+
+  return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
+}
+
+/**
+ * ✅ v16.0.3: Проверяет, что у каждого SFC в decoded и full
+ * есть `htmlElements` (массив), и количества совпадают.
+ */
+function spotCheckVueSfcHtmlElements(
+  decoded: FullJSON,
+  full: FullJSON,
+  limit: number
+): LevelResult {
+  const aSfc = (decoded as any).vue?.sfc || [];
+  const bSfc = (full as any).vue?.sfc || [];
+
+  const diffs: any[] = [];
+  const n = Math.min(aSfc.length, bSfc.length);
+
+  if (aSfc.length !== bSfc.length) {
+    diffs.push({
+      path: '$.vue.sfc.length',
+      a: aSfc.length,
+      b: bSfc.length,
+    });
+  }
+
+  for (let i = 0; i < n && diffs.length < limit; i++) {
+    const ai = aSfc[i];
+    const bi = bSfc[i];
+    if (!ai || !bi) continue;
+
+    const aCount = Array.isArray(ai.htmlElements) ? ai.htmlElements.length : 0;
+    const bCount = Array.isArray(bi.htmlElements) ? bi.htmlElements.length : 0;
+
+    if (aCount !== bCount) {
+      diffs.push({
+        path: `$.vue.sfc[${i}].htmlElements.length`,
+        a: aCount,
+        b: bCount,
+      });
+    }
   }
 
   return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };

@@ -1,26 +1,42 @@
 // src/reporters/codec/codec-legend.ts
 // ============================================
-// ЛЕГЕНДА КОДЕКА (v16.0.1)
+// ЛЕГЕНДА КОДЕКА (v16.0.2)
 // ============================================
-// Версия: 16.0.1
+// Версия: 16.0.2
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
 //
+// v16.0.2 (синхронизация с симметричным round-trip):
+//   - ✅ ОБНОВЛЕНО: schemas.fns — 10 полей (n, m, f, l, fl, p, rt,
+//     parent, vk, hv). Поле 'hv' добавлено в v16.0.1, схема
+//     синхронизирована с codec-decode.ts / codec-encode.ts /
+//     compact-reporter.ts.
+//   - ✅ ОБНОВЛЕНО: комментарий к схеме vue.sfc — 30 полей.
+//   - ✅ ОБНОВЛЕНО: комментарий к vue.sfc.cu_sfc / he_sfc —
+//     RLE [start, length, value?].
+//   - ✅ СИНХРОНИЗИРОВАНО с:
+//       • codec-types.ts   (CODEC_VERSION = '16.0.2', LEGEND_VERSION = '2.0.0')
+//       • codec-encode.ts  (v16.0.1)
+//       • codec-decode.ts  (v16.0.2)
+//       • scripts/verify-roundtrip.ts (v16.0.3)
+//       • scripts/verify-consistency.ts (v3.4.2)
+//
 // v16.0.1 (fix: schemas.fns — 10 полей):
-//   - ✅ ИСПРАВЛЕНО: `SCHEMAS.fns` расширена до 10 полей.
-//     Добавлено поле `'hv'` в конец массива.
+//   - ✅ ИСПРАВЛЕНО: SCHEMAS.fns расширена до 10 полей.
+//     Добавлено поле 'hv' в конец массива.
 //     Причина: в v16.0.0 было добавлено поле `isHtmlVisible`
 //     в `FunctionData`, но оно НЕ кодировалось в CompactJSON.
-//     В v16.0.1 добавлено RLE-поле `fns.hv`, поэтому схема
-//     должна содержать 10 полей, а не 9.
+//     В v16.0.1 добавлено RLE-поле `fns.hv`.
 //
 //     Было: ['n','m','f','l','fl','p','rt','parent','vk']       (9)
 //     Стало: ['n','m','f','l','fl','p','rt','parent','vk','hv']  (10)
 //
 //     Синхронизировано с:
 //       - src/reporters/codec/codec-types.ts (CompactJSON.fns.hv)
+//       - src/reporters/codec/codec-encode.ts (fnsHv + fns.hv)
+//       - src/reporters/codec/codec-decode.ts (чтение fns.hv)
 //       - scripts/verify-roundtrip.ts (checkLegendStructure: fns → 10)
 //
 // v16.0.0 (major — несовместимое расширение схем):
@@ -370,7 +386,8 @@ export const HTML_OUTPUT_KIND_CODES: Record<string, number> = {
 // Схемы отражают columnar-структуру compact.json.
 //
 // ✅ v16.0.0: добавлены 11 новых схем (итого 28+11=39+).
-// ✅ v16.0.1: schemas.fns расширена до 10 полей (добавлено 'hv').
+// ✅ v16.0.2: schemas.fns расширена до 10 полей (добавлено 'hv').
+//            Схема vue.sfc — 30 полей (было 8 в v15.7.3).
 // ============================================================
 
 export const SCHEMAS: CodecLegend['schemas'] = {
@@ -388,7 +405,7 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   // fns — функции: 10 параллельных массивов
   // ==========================================
   //
-  // ✅ v16.0.1: добавлено поле 'hv' (isHtmlVisible, RLE 0/1).
+  // ✅ v16.0.2: добавлено поле 'hv' (isHtmlVisible, RLE 0/1).
   // Раньше было 9 полей, теперь 10.
   //
   // Синхронизировано с:
@@ -396,6 +413,17 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   //   - src/reporters/codec/codec-encode.ts (fnsHv + fns.hv)
   //   - src/reporters/codec/codec-decode.ts (чтение fns.hv)
   //   - scripts/verify-roundtrip.ts (checkLegendStructure: 10)
+  //
+  //   n     — nameIdx в strs (имя функции)
+  //   m     — moduleIdx (RLE)
+  //   f     — fileIdx (RLE)
+  //   l     — line
+  //   fl    — flags (битовая маска)
+  //   p     — paramsIdx[] (индексы в params)
+  //   rt    — returnTypeIdx в strs (-1 = нет)
+  //   parent — parentFunctionIdx (RLE, -1 = top-level)
+  //   vk    — vueKindCode (RLE)
+  //   hv    — isHtmlVisible (RLE 0/1)  ⭐ v16.0.2
   // ==========================================
   fns: ['n', 'm', 'f', 'l', 'fl', 'p', 'rt', 'parent', 'vk', 'hv'],
 
@@ -520,7 +548,7 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   lx: ['p', 'c', 'r', 'l', 'ai', 'cn'],
 
   // ==========================================
-  // ✅ v16.0.0: vue.sfc — 30 полей
+  // ✅ v16.0.2: vue.sfc — 30 полей
   // ==========================================
   //
   // ⚠️ BREAKING CHANGE относительно 15.7.3:
@@ -534,6 +562,38 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   // ⚠️ Индексы 5, 6, 7 СДВИГАЮТСЯ. Клиенты, использующие
   //    числовые литералы, ОБЯЗАНЫ перейти на именованные ключи
   //    через legend.schemas['vue.sfc'].indexOf(...).
+  //
+  // Схема:
+  //   f       — fileIdx в fl.p
+  //   n       — nameIdx в strs
+  //   b       — bitmask блоков SFC
+  //   c       — индексы в strs (имена composables)
+  //   cs      — slices [offset, count] для разбиения c по SFC
+  //   pn      — nameIdx для props
+  //   ps      — slices [offset, count] для props
+  //   en      — nameIdx для emits
+  //   es      — slices [offset, count] для emits
+  //   xn      — nameIdx для exposed
+  //   xs      — slices [offset, count] для exposed
+  //   cu_sfc  — RLE [start, length, value?] → SFC-индекс
+  //   cu_tag  — индексы в strs
+  //   cu_file — индексы в fl.p (-1 = null)
+  //   cu_src  — коды COMPONENT_SOURCE_BY_CODE
+  //   cu_pkg  — индексы в strs (-1 = нет пакета)
+  //   cu_l    — line
+  //   cu_col  — column (-1 = нет)
+  //   cu_cp   — slices [offset, count] для props
+  //   cu_ce   — slices [offset, count] для events
+  //   cu_cd   — slices [offset, count] для directives
+  //   cu_csl  — slices [offset, count] для slots
+  //   he_sfc  — RLE [start, length, value?] → SFC-индекс
+  //   he_tag  — индексы в strs
+  //   he_l    — line
+  //   he_col  — column (-1 = нет)
+  //   he_cp   — slices [offset, count] для props
+  //   he_cd   — slices [offset, count] для directives
+  //   he_ce   — slices [offset, count] для events
+  //   he_ci   — slices [offset, count] для interpolations
   // ==========================================
   'vue.sfc': [
     'f',
@@ -571,40 +631,154 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   // ==========================================
   // vue.composables
   // ==========================================
+  //
+  //   n — nameIdx в strs
+  //   f — fileIdx в fl.p (RLE)
+  //   k — composableKindCode
+  //   r — composableReturnShapeCode
+  //   v — [index, returnedKeysCount]
+  // ==========================================
   'vue.composables': ['n', 'f', 'k', 'r', 'v'],
 
   // ==========================================
   // vue.macros
+  // ==========================================
+  //
+  //   f — fileIdx
+  //   k — macroKindCode
+  //   l — line
   // ==========================================
   'vue.macros': ['f', 'k', 'l'],
 
   // ==========================================
   // vue.hooks
   // ==========================================
+  //
+  //   f — fileIdx
+  //   n — hookNameCode
+  //   l — line
+  // ==========================================
   'vue.hooks': ['f', 'n', 'l'],
 
   // ==========================================
   // vue.reactivity
+  // ==========================================
+  //
+  //   f — fileIdx
+  //   k — reactivityKindCode
+  //   l — line
+  //   n — nameIdx в strs (-1 = нет)
   // ==========================================
   'vue.reactivity': ['f', 'k', 'l', 'n'],
 
   // ==========================================
   // vue.icons
   // ==========================================
+  //
+  //   f — fileIdx
+  //   n — nameIdx в strs
+  //   c — iconCategoryCode
+  // ==========================================
   'vue.icons': ['f', 'n', 'c'],
 
   // ==========================================
   // ✅ v16.0.0: component props / events / directives / slots
+  // ==========================================
+  //
+  // ⚠️ v16.0.2: эти секции — соседи sfc, не вложены в него.
+  // Их значения сгруппированы по usageId через cu_cp/cu_ce/...
+  // slices.
+  //
+  // componentProps:
+  //   n   — nameIdx в strs
+  //   v   — valueIdx в strs
+  //   k   — propKindCode
+  //   l   — line
+  //   id  — idIdx в ids[] (генерированный id 'cu1:cp6')
+  //   mc  — memberChainIdx в strs (разделитель \u0002)
+  //   lv  — literalValueIdx в strs
+  //   sc  — RLE [start, length, value?] → sourceChainIdx
+  //   fns — reserved (всегда -1)
+  //
+  // componentEvents:
+  //   n   — eventNameIdx в strs
+  //   h   — handlerIdx в strs
+  //   fn  — reserved (всегда -1)
+  //   s   — eventHandlerSourceCode
+  //   m   — modifiersIdx в strs (разделитель \u0002)
+  //   l   — line
+  //   sc  — RLE [start, length, value?] → sourceChainIdx
+  //
+  // componentDirectives:
+  //   n   — nameIdx в strs
+  //   a   — argumentIdx в strs (-1 = нет)
+  //   m   — modifiersIdx в strs (разделитель \u0002)
+  //   v   — valueIdx в strs
+  //   l   — line
+  //
+  // componentSlots:
+  //   n   — slotNameIdx в strs
+  //   sc  — isScoped (0/1)
+  //   sn  — scopeNamesIdx в strs (разделитель \u0002)
+  //   l   — line
+  //
+  // htmlInterpolations:
+  //   e   — expressionIdx в strs
+  //   sc  — RLE [start, length, value?] → sourceChainIdx
+  //   l   — line
   // ==========================================
   'vue.componentProps': ['n', 'v', 'k', 'l', 'id', 'mc', 'lv', 'sc', 'fns'],
   'vue.componentEvents': ['n', 'h', 'fn', 's', 'm', 'l', 'sc'],
   'vue.componentDirectives': ['n', 'a', 'm', 'v', 'l'],
   'vue.componentSlots': ['n', 'sc', 'sn', 'l'],
   'vue.htmlInterpolations': ['e', 'sc', 'l'],
+
+  // ==========================================
+  // vue.fnHtmlUsage — обратная связь
+  // ==========================================
+  //
+  //   fn   — functionIdx в functions[]
+  //   k    — htmlOutputKindCode
+  //   u    — usageIdIdx в ids[]
+  //   t    — tagIdx в strs
+  //   tg   — targetIdx в strs
+  //   l    — line
+  //   col  — column (-1 = нет)
+  //   dcat — domApiCategoryCode (-1 = нет)
+  //   dctx — domApiContextIdx в strs (JSON)
+  // ==========================================
   'vue.fnHtmlUsage': ['fn', 'k', 'u', 't', 'tg', 'l', 'col', 'dcat', 'dctx'],
 
   // ==========================================
   // ✅ v16.0.0: DOM API
+  // ==========================================
+  //
+  // domApiCalls:
+  //   fn        — functionIdx
+  //   f         — fileIdx (RLE, не используется — [0,0])
+  //   cat       — domApiCategoryCode (0..49)
+  //   eff       — domApiEffectCode (0..2)
+  //   m         — methodIdx в strs
+  //   t         — targetIdx в ids[]
+  //   tk        — domApiTargetKindCode (0..6)
+  //   l         — line
+  //   col       — column (-1 = нет)
+  //   argSlices — slices [start, count] для domApiArgs
+  //   en        — eventNameIdx в strs
+  //   hfn       — handlerFunctionIdx
+  //   hs        — eventHandlerSourceCode
+  //   sel       — cssSelectorIdx в strs
+  //   hv        — htmlValueIdx в strs
+  //   cn        — classNameIdx в strs
+  //   sp        — stylePropIdx в strs
+  //   an        — attributeNameIdx в strs
+  //   oo        — observeOptionsIdx в strs (разделитель \u0002)
+  //
+  // domApiArgs:
+  //   r  — rawIdx в strs
+  //   k  — domApiArgKindCode (0..7)
+  //   fn — resolvedFunctionIdIdx в ids[]
+  //   s  — domApiArgSourceCode (0..3)
   // ==========================================
   domApiCalls: [
     'fn',
@@ -687,7 +861,7 @@ function reverseCodeDict(dict: Record<string, number>): CodesDict {
 /**
  * Собирает все словари кодов.
  *
- * ✅ v16.0.0: 29 словарей (было 19 в 15.7.3).
+ * ✅ v16.0.2: 29 словарей (было 19 в 15.7.3).
  */
 function buildCodesLegend(): CodecLegend['codes'] {
   return {
@@ -930,6 +1104,7 @@ export interface LegendDictionaries {
  * Собирает полную легенду.
  *
  * ✅ v16.0.0: добавлено поле `version` = '2.0.0'.
+ * ✅ v16.0.2: schemas.fns — 10 полей.
  */
 export function buildLegend(_dict: LegendDictionaries): CodecLegend {
   return {
