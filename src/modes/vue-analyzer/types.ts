@@ -2,7 +2,27 @@
 // ============================================
 // ТИПЫ ДЛЯ VUE-АНАЛИЗАТОРА
 // ============================================
-// Версия: 5.1.0
+// Версия: 5.2.0
+//
+// ИЗМЕНЕНИЯ v5.2.0 (v16.0.8: Component Usage + HTML Elements):
+//   - ✅ ДОБАВЛЕНО: импорт ComponentUsage, HtmlElementUsage
+//     из '../../types-vue-template.js' (разрыв циклического импорта
+//     types.ts ↔ codec-types.ts).
+//   - ✅ ДОБАВЛЕНО: поля componentUsages и htmlElements
+//     в интерфейс VueComponentAnalysis.
+//   - 📌 Назначение: analyzeVueComponent вызывает parseVueTemplate
+//     ОДИН РАЗ и заполняет эти поля. Затем они пробрасываются:
+//       VueComponentAnalysis
+//         → convertVueAnalysisToEntities
+//         → EntitiesResult.templateComponentUsages
+//         → convertEntitiesToEnhanced
+//         → EnhancedEntityInfo.templateComponentUsages
+//         → compact-reporter.ts (ЧИТАЕТ, НЕ ПАРСИТ)
+//   - 🐛 Причина: ранее compact-reporter.ts перезапускал
+//     analyzeVueSFC для каждого SFC, что приводило к:
+//       • двойному парсингу <template> (~8 сек лишней работы);
+//       • рассинхрону projectRoot (баг с Vue SFC);
+//       • дублированию логики extractSFCNamesForVue.
 //
 // ИЗМЕНЕНИЯ v5.1.0:
 //   - ✅ ДОБАВЛЕНО: LifecycleHookInfo — хуки жизненного цикла
@@ -34,6 +54,11 @@
 
 // ✅ ИСПРАВЛЕНО: top-level import type вместо inline import()
 import type { GlobalComponentMap } from './global-component-map.js';
+
+// ✅ v5.2.0 (v16.0.8): типы Vue-шаблона вынесены в отдельный файл
+// для разрыва циклического импорта types.ts ↔ codec-types.ts.
+// ЕДИНСТВЕННЫЙ ИСТОЧНИК ИСТИНЫ — src/types-vue-template.ts.
+import type { ComponentUsage, HtmlElementUsage } from '../../types-vue-template.js';
 
 // ============================================
 // ОСНОВНОЙ ИНТЕРФЕЙС
@@ -173,6 +198,33 @@ export interface VueComponentAnalysis {
 
   /** Реактивные связи (computed, watch, watchEffect, ref, reactive, ...) */
   reactivity: ReactivityInfo[];
+
+  // ==========================================
+  // ✅ НОВОЕ v5.2.0 (v16.0.8): Component Usage + HTML Elements
+  // ==========================================
+  //
+  // ⚠️ КРИТИЧНО: эти поля заполняются ОДИН РАЗ в analyzeVueComponent
+  // (modes/vue-analyzer/index.ts) через parseVueTemplate.
+  //
+  // РАНЬШЕ: compact-reporter.ts перезапускал analyzeVueSFC для каждого
+  // SFC, что приводило к двойному парсингу <template>.
+  //
+  // ТЕПЕРЬ: данные уже собраны в pipeline и проброшены через:
+  //   VueComponentAnalysis.componentUsages/htmlElements
+  //     → convertVueAnalysisToEntities
+  //     → EntitiesResult.templateComponentUsages/templateHtmlElements
+  //     → convertEntitiesToEnhanced
+  //     → EnhancedEntityInfo.templateComponentUsages/templateHtmlElements
+  //     → compact-reporter.ts (ЧИТАЕТ, НЕ ПАРСИТ)
+  //
+  // Источник: src/core/vue-template-parser.js::parseVueTemplate()
+  // ==========================================
+
+  /** Использования компонентов в <template> */
+  componentUsages?: ComponentUsage[];
+
+  /** Использования HTML-элементов в <template> */
+  htmlElements?: HtmlElementUsage[];
 }
 
 // ============================================

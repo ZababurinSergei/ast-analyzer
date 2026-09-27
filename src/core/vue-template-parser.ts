@@ -2,7 +2,27 @@
 // ============================================================
 // VUE TEMPLATE PARSER
 // ============================================================
-// Версия: 1.0.0
+// Версия: 1.1.0
+//
+// ИЗМЕНЕНИЯ v1.1.0 (FIX: пустые componentUsages/htmlElements):
+//   - ✅ ИСПРАВЛЕНО: descriptor.template.ast в @vue/compiler-sfc
+//     версии 3.4+ НЕ заполняется автоматически. Добавлен fallback
+//     через compileTemplate() — официальный API для получения AST.
+//   - ✅ ИСПРАВЛЕНО: walk() теперь корректно обрабатывает NODE_ROOT
+//     (type === 0). Ранее корневой узел мог попадать в блок
+//     «Прочее» и обходить children без правильной классификации.
+//   - ✅ ДОБАВЛЕНО: диагностика в result.errors с точной причиной
+//     (parseSFC errors, compileTemplate errors, ast === null).
+//   - ✅ ДОБАВЛЕНО: экспорт функции getTemplateAst() для переиспользования.
+//   - ✅ УТОЧНЕНО: NODE_ROOT = 0 обрабатывается как контейнер.
+//   - ✅ ДОБАВЛЕНО: NODE_TEXT и NODE_COMMENT обрабатываются явно.
+//
+// ИЗМЕНЕНИЯ v1.0.0:
+//   - Первая версия. Парсинг <template> через @vue/compiler-sfc.
+//   - Извлечение ComponentUsage[] и HtmlElementUsage[].
+//   - Извлечение props, events, directives, slots, interpolations.
+//   - Классификация тегов: компонент (PascalCase / kebab-case) vs
+//     HTML-элемент (нижний регистр без дефисов).
 //
 // НАЗНАЧЕНИЕ
 // ----------
@@ -11,48 +31,48 @@
 //   - HtmlElementUsage[]  — использования HTML-элементов
 //
 // Каждый usage содержит:
-//   - props (ComponentProp[])        — атрибуты и :bind
-//   - events (ComponentEvent[])      — @event
-//   - directives (ComponentDirective[]) — v-if / v-for / v-model / ...
-//   - slots (ComponentSlot[])        — <template #slot> (только для компонентов)
+//   - props (ComponentProp[])             — атрибуты и :bind
+//   - events (ComponentEvent[])           — @event
+//   - directives (ComponentDirective[])   — v-if / v-for / v-model / ...
+//   - slots (ComponentSlot[])             — <template #slot> (только для компонентов)
 //   - interpolations (HtmlInterpolation[]) — {{ }} (только для HTML-элементов)
 //
 // ════════════════════════════════════════════════════════════
 // ИСТОЧНИКИ ДАННЫХ
 // ════════════════════════════════════════════════════════════
 //
-//   @vue/compiler-sfc — уже в зависимостях 15.7.3.
+//   @vue/compiler-sfc — уже в зависимостях.
 //   parse(sfcSource) → SFCDescriptor с .template.ast.
 //
-//   Используется именно .template.ast (не @vue/compiler-dom).
+//   ⚠️ ВАЖНО: в @vue/compiler-sfc 3.4+ поле `.template.ast`
+//   может быть undefined, если parse() не передан
+//   compilerOptions.template. Тогда используется fallback
+//   через compileTemplate().
 //
 // ════════════════════════════════════════════════════════════
 // ТИПЫ УЗЛОВ VUE AST
 // ════════════════════════════════════════════════════════════
 //
+//   NODE_ROOT          = 0   — корень шаблона
 //   NODE_ELEMENT       = 1   — <div>, <Comp>
-//   NODE_TEXT          = 2   — текст (не используется)
-//   NODE_COMMENT       = 3   — комментарий (не используется)
+//   NODE_TEXT          = 2   — текст
+//   NODE_COMMENT       = 3   — комментарий
 //   NODE_INTERPOLATION = 5   — {{ expr }}
 //   NODE_ATTRIBUTE     = 6   — статический атрибут: name="value"
 //   NODE_DIRECTIVE     = 7   — v-bind / v-on / v-if / ...
-//
-//   @vue/compiler-sfc использует структуру NodeTypes:
-//     prop.type === 6  → ATTRIBUTE
-//     prop.type === 7  → DIRECTIVE
 //
 // ════════════════════════════════════════════════════════════
 // СОГЛАШЕНИЯ ОБ ID
 // ════════════════════════════════════════════════════════════
 //
-//   ComponentUsage.id — глобальный: `cu1`, `cu2`, ...
-//   HtmlElementUsage.id — глобальный: `he1`, `he2`, ...
+//   ComponentUsage.id       — глобальный: `cu1`, `cu2`, ...
+//   HtmlElementUsage.id     — глобальный: `he1`, `he2`, ...
 //
-//   ComponentProp.id      — локальный: `${usageId}:cp${n}`
-//   ComponentEvent.id     — локальный: `${usageId}:ce${n}`
-//   ComponentDirective.id — локальный: `${usageId}:cd${n}`
-//   ComponentSlot.id      — локальный: `${usageId}:csl${n}`
-//   HtmlInterpolation.id  — локальный: `${elementId}:hi${n}`
+//   ComponentProp.id        — локальный: `${usageId}:cp${n}`
+//   ComponentEvent.id       — локальный: `${usageId}:ce${n}`
+//   ComponentDirective.id   — локальный: `${usageId}:cd${n}`
+//   ComponentSlot.id        — локальный: `${usageId}:csl${n}`
+//   HtmlInterpolation.id    — локальный: `${elementId}:hi${n}`
 //
 // ════════════════════════════════════════════════════════════
 // КЛАССИФИКАЦИЯ ТЕГОВ
@@ -110,19 +130,20 @@
 //       {
 //         id: 'he1',
 //         tag: 'div',
-//         interpolations: [
-//           { id: 'he2:hi1', expression: 'title' },
-//         ],
+//         interpolations: [],
 //       },
 //       {
 //         id: 'he2',
 //         tag: 'span',
+//         interpolations: [
+//           { id: 'he2:hi1', expression: 'title' },
+//         ],
 //       },
 //     ]
 //
 // ============================================================
 
-import { parse as parseSFC } from '@vue/compiler-sfc';
+import { parse as parseSFC, compileTemplate } from '@vue/compiler-sfc';
 import type {
   ComponentUsage,
   HtmlElementUsage,
@@ -137,8 +158,17 @@ import type {
 // КОНСТАНТЫ
 // ============================================================
 
+/** Тип узла Vue AST: ROOT (корень шаблона) */
+const NODE_ROOT = 0;
+
 /** Тип узла Vue AST: <div>, <Comp> */
 const NODE_ELEMENT = 1;
+
+/** Тип узла Vue AST: текст */
+const NODE_TEXT = 2;
+
+/** Тип узла Vue AST: комментарий */
+const NODE_COMMENT = 3;
 
 /** Тип узла Vue AST: {{ expr }} */
 const NODE_INTERPOLATION = 5;
@@ -287,6 +317,7 @@ const HTML_TAGS = new Set<string>([
  * Директивы, которые попадают в ComponentDirective / HtmlElementUsage.directives.
  *
  * НЕ включают v-bind / v-on — они обрабатываются отдельно (props/events).
+ * НЕ включают v-slot — обрабатывается отдельно (slots).
  */
 const TRACKED_DIRECTIVES = new Set<string>([
   'if',
@@ -333,6 +364,120 @@ export interface ParseResult {
   errors: string[];
 }
 
+/**
+ * ✅ v1.1.0: Результат получения AST шаблона.
+ */
+export interface TemplateAstResult {
+  /** AST шаблона или null */
+  ast: any | null;
+
+  /** Ошибки парсинга */
+  errors: string[];
+}
+
+// ============================================================
+// ✅ v1.1.0: ПОЛУЧЕНИЕ AST ШАБЛОНА
+// ============================================================
+//
+// КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ:
+//   В @vue/compiler-sfc 3.4+ descriptor.template.ast может быть
+//   undefined, если parse() не передан compilerOptions.template
+//   или если parse() был вызван без template-секции.
+//
+//   Решение: fallback через compileTemplate() — официальный API
+//   для получения AST шаблона.
+//
+// АЛГОРИТМ:
+//   1. Парсим SFC через parse().
+//   2. Если descriptor.template.ast — есть, используем его.
+//   3. Иначе — вызываем compileTemplate() для получения AST.
+//   4. Если и там пусто — возвращаем null + диагностику.
+// ============================================================
+
+/**
+ * Получает AST шаблона из SFC-источника.
+ *
+ * @param sfcSource — содержимое .vue файла
+ * @param filePath  — путь к файлу (для диагностики)
+ * @returns { ast, errors }
+ */
+export function getTemplateAst(sfcSource: string, filePath: string): TemplateAstResult {
+  const errors: string[] = [];
+
+  // ────────────────────────────────────────────────────────
+  // Защита от пустого входа
+  // ────────────────────────────────────────────────────────
+  if (!sfcSource || typeof sfcSource !== 'string') {
+    return { ast: null, errors: ['Empty sfcSource'] };
+  }
+
+  // ────────────────────────────────────────────────────────
+  // Шаг 1: parseSFC
+  // ────────────────────────────────────────────────────────
+  let descriptor: any;
+  try {
+    const parsed = parseSFC(sfcSource, { filename: filePath });
+    descriptor = parsed.descriptor;
+
+    if (parsed.errors && parsed.errors.length > 0) {
+      for (const err of parsed.errors) {
+        errors.push(`parseSFC: ${String(err)}`);
+      }
+    }
+  } catch (err) {
+    errors.push(
+      `parseSFC exception: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return { ast: null, errors };
+  }
+
+  if (!descriptor) {
+    errors.push('parseSFC: descriptor is null');
+    return { ast: null, errors };
+  }
+
+  if (!descriptor.template) {
+    errors.push('parseSFC: no <template> in SFC');
+    return { ast: null, errors };
+  }
+
+  // ────────────────────────────────────────────────────────
+  // Шаг 2: пробуем descriptor.template.ast
+  // ────────────────────────────────────────────────────────
+  if (descriptor.template.ast) {
+    return { ast: descriptor.template.ast, errors };
+  }
+
+  // ────────────────────────────────────────────────────────
+  // Шаг 3: fallback — compileTemplate()
+  // ────────────────────────────────────────────────────────
+  try {
+    const compiled = compileTemplate({
+      source: descriptor.template.content,
+      filename: filePath,
+      id: filePath,
+    });
+
+    if (compiled.errors && compiled.errors.length > 0) {
+      for (const err of compiled.errors) {
+        errors.push(`compileTemplate: ${String(err)}`);
+      }
+    }
+
+    if (!compiled.ast) {
+      errors.push('compileTemplate: ast is null');
+      return { ast: null, errors };
+    }
+
+    return { ast: compiled.ast, errors };
+  } catch (err) {
+    errors.push(
+      `compileTemplate exception: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return { ast: null, errors };
+  }
+}
+
 // ============================================================
 // ГЛАВНАЯ ФУНКЦИЯ
 // ============================================================
@@ -344,22 +489,22 @@ export interface ParseResult {
  * АЛГОРИТМ
  * ════════════════════════════════════════════════════════════
  *
- *   1. parseSFC(sfcSource) → SFCDescriptor
- *   2. Если descriptor.template отсутствует → вернуть пустой результат
- *   3. Обход descriptor.template.ast:
- *      a. NODE_ELEMENT:
- *         - классификация (isComponentTag)
- *         - extractUsage → ComponentUsage | HtmlElementUsage
- *      b. NODE_INTERPOLATION:
- *         - добавить в parent.interpolations (если parent — HtmlElementUsage)
- *      c. рекурсивный обход children
+ *   1. getTemplateAst(sfcSource, filePath) → templateAst
+ *   2. Если templateAst === null → вернуть пустой результат + errors
+ *   3. Обход templateAst:
+ *      a. NODE_ROOT — обходим children
+ *      b. NODE_ELEMENT:
+ *         - isComponentTag(tag) → ComponentUsage | HtmlElementUsage
+ *      c. NODE_INTERPOLATION — добавить в parent.interpolations
+ *      d. NODE_TEXT / NODE_COMMENT — пропустить
+ *      e. рекурсивный обход children
  *   4. Возврат { componentUsages, htmlElements, errors }
  *
  * ════════════════════════════════════════════════════════════
  * ОБРАБОТКА ОШИБОК
  * ════════════════════════════════════════════════════════════
  *
- *   - Ошибки parseSFC — собираются в result.errors, не бросаются.
+ *   - Ошибки getTemplateAst — собираются в result.errors.
  *   - Некорректные узлы — пропускаются.
  *   - Пустой шаблон — возвращается пустой результат.
  *
@@ -379,37 +524,27 @@ export function parseVueTemplate(sfcSource: string, ctx: ParseCtx): ParseResult 
   }
 
   // ────────────────────────────────────────────────────────
-  // 1. Парсинг SFC
+  // Шаг 1: получаем AST шаблона
   // ────────────────────────────────────────────────────────
-  let descriptor: any;
-  try {
-    const parsed = parseSFC(sfcSource, { filename: ctx.filePath });
-    descriptor = parsed.descriptor;
+  const { ast: templateAst, errors } = getTemplateAst(sfcSource, ctx.filePath);
 
-    if (parsed.errors && parsed.errors.length > 0) {
-      for (const err of parsed.errors) {
-        result.errors.push(String(err));
-      }
-    }
-  } catch (err) {
-    result.errors.push(`parseSFC error: ${err instanceof Error ? err.message : String(err)}`);
+  if (errors.length > 0) {
+    result.errors.push(...errors);
+  }
+
+  if (!templateAst) {
+    result.errors.push('templateAst is null — no componentUsages/htmlElements extracted');
     return result;
   }
 
-  if (!descriptor || !descriptor.template || !descriptor.template.ast) {
-    return result;
-  }
-
-  const templateAst = descriptor.template.ast;
-
   // ────────────────────────────────────────────────────────
-  // 2. Счётчики для id
+  // Шаг 2: счётчики для id
   // ────────────────────────────────────────────────────────
   let usageCounter = 0;
   let elementCounter = 0;
 
   // ────────────────────────────────────────────────────────
-  // 3. Рекурсивный обход
+  // Шаг 3: рекурсивный обход
   // ────────────────────────────────────────────────────────
   const walk = (
     node: any,
@@ -417,6 +552,19 @@ export function parseVueTemplate(sfcSource: string, ctx: ParseCtx): ParseResult 
     parentElement: HtmlElementUsage | null
   ): void => {
     if (!node || typeof node !== 'object') return;
+
+    // ───── ROOT (type === 0): контейнер, обходим детей ─────
+    if (node.type === NODE_ROOT && Array.isArray(node.children)) {
+      for (const child of node.children) {
+        walk(child, parentTag, parentElement);
+      }
+      return;
+    }
+
+    // ───── TEXT / COMMENT: пропускаем ─────
+    if (node.type === NODE_TEXT || node.type === NODE_COMMENT) {
+      return;
+    }
 
     // ───── ELEMENT ─────
     if (node.type === NODE_ELEMENT && node.tag) {
@@ -428,8 +576,8 @@ export function parseVueTemplate(sfcSource: string, ctx: ParseCtx): ParseResult 
         const usage = extractComponentUsage(node, id, ctx);
         result.componentUsages.push(usage);
 
-        // Обход детей — parentElement не передаём, т.к. children компонента
-        // обрабатываются отдельно (слоты и т.д.)
+        // Обход детей компонента — parentElement не передаём,
+        // т.к. children компонента обрабатываются как слоты
         for (const child of node.children || []) {
           walk(child, node.tag, null);
         }
@@ -447,7 +595,7 @@ export function parseVueTemplate(sfcSource: string, ctx: ParseCtx): ParseResult 
       return;
     }
 
-    // ───── INTERPOLATION ─────
+    // ───── INTERPOLATION {{ expr }} ─────
     if (node.type === NODE_INTERPOLATION && parentElement) {
       const interp = extractInterpolation(node, parentElement);
       if (interp) {
@@ -457,12 +605,26 @@ export function parseVueTemplate(sfcSource: string, ctx: ParseCtx): ParseResult 
     }
 
     // ───── Прочее: рекурсивный обход ─────
-    for (const child of node.children || []) {
-      walk(child, parentTag, parentElement);
+    if (Array.isArray(node.children)) {
+      for (const child of node.children) {
+        walk(child, parentTag, parentElement);
+      }
     }
   };
 
   walk(templateAst, null, null);
+
+  // ────────────────────────────────────────────────────────
+  // Шаг 4: диагностика — если ast был, но ничего не нашли
+  // ────────────────────────────────────────────────────────
+  if (result.componentUsages.length === 0 && result.htmlElements.length === 0) {
+    const astChildren = Array.isArray(templateAst.children)
+      ? templateAst.children.length
+      : 'n/a';
+    result.errors.push(
+      `templateAst present (type=${templateAst.type}, children=${astChildren}) but 0 usages extracted`
+    );
+  }
 
   return result;
 }
@@ -608,10 +770,14 @@ function extractHtmlElement(node: any, id: string, _ctx: ParseCtx): HtmlElementU
  * @param parent  — родительский HtmlElementUsage
  * @returns HtmlInterpolation или null
  */
-function extractInterpolation(node: any, parent: HtmlElementUsage): HtmlInterpolation | null {
+function extractInterpolation(
+  node: any,
+  parent: HtmlElementUsage
+): HtmlInterpolation | null {
   if (!node || !node.content) return null;
 
-  const expression = typeof node.content === 'string' ? node.content : node.content.content || '';
+  const expression =
+    typeof node.content === 'string' ? node.content : node.content.content || '';
 
   if (!expression) return null;
 
@@ -685,7 +851,7 @@ function processProp(
   }
 
   // ────────────────────────────────────────────────────────
-  // DIRECTIVE (v-bind / v-on / v-if / ...)
+  // DIRECTIVE (v-bind / v-on / v-if / v-slot / ...)
   // ────────────────────────────────────────────────────────
   if (prop.type === NODE_DIRECTIVE) {
     const dirName = prop.name || '';
@@ -697,7 +863,7 @@ function processProp(
 
     // ───── v-bind (props) ─────
     if (dirName === 'bind') {
-      // Динамический слот: v-bind:#slot или :#slot
+      // Динамический слот: v-bind:#slot
       if (argName && argName.startsWith('#')) {
         slots.push({
           id: `${baseId}:csl${slots.length + 1}`,
@@ -759,9 +925,9 @@ function processProp(
       const slotName = argName || 'default';
       const scopeNames = expValue
         ? expValue
-            .split(',')
-            .map((s: string) => s.trim())
-            .filter(Boolean)
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter(Boolean)
         : [];
 
       slots.push({
@@ -820,7 +986,11 @@ function processProp(
  * @param baseId   — базовый id (cu1)
  * @param slots    — массив slots (мутируется)
  */
-function extractSlotsFromChildren(children: any[], baseId: string, slots: ComponentSlot[]): void {
+function extractSlotsFromChildren(
+  children: any[],
+  baseId: string,
+  slots: ComponentSlot[]
+): void {
   for (const child of children) {
     if (!child || child.type !== NODE_ELEMENT) continue;
     if (child.tag !== 'template') continue;
@@ -851,9 +1021,9 @@ function extractSlotsFromChildren(children: any[], baseId: string, slots: Compon
         const expValue = prop.exp?.content || '';
         const scopeNames = expValue
           ? expValue
-              .split(',')
-              .map((s: string) => s.trim())
-              .filter(Boolean)
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean)
           : [];
 
         const exists = slots.some(s => s.slotName === slotName);
@@ -878,6 +1048,7 @@ function extractSlotsFromChildren(children: any[], baseId: string, slots: Compon
 
 export default {
   parseVueTemplate,
+  getTemplateAst,
   isComponentTag,
   isHtmlElementTag,
   isVueBuiltinTag,

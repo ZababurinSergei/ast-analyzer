@@ -1,4 +1,30 @@
 // src/reporters/modules/converters.ts
+// ============================================
+// КОНВЕРТЕРЫ ENTITIES ↔ ENHANCED
+// ============================================
+// Версия: 2.3.0
+//
+// ИЗМЕНЕНИЯ v2.3.0 (v16.0.8: Component Usage + HTML Elements):
+//   - ✅ ДОБАВЛЕНО: проброс templateComponentUsages / templateHtmlElements
+//     из EntitiesResult в EnhancedEntityInfo (функция convertEntitiesToEnhanced).
+//   - ✅ ДОБАВЛЕНО: обратный проброс templateComponentUsages /
+//     templateHtmlElements из EnhancedEntityInfo в EntitiesResult
+//     (функция convertEnhancedToEntities) — для полноты round-trip.
+//   - 📌 Назначение: enhancedMap должен содержать эти поля, чтобы
+//     compact-reporter.ts мог ЧИТАТЬ их, а НЕ перезапускать
+//     analyzeVueSFC. Это устраняет двойной парсинг <template>.
+//
+// ИЗМЕНЕНИЯ v2.2.0:
+//   - ✅ ДОБАВЛЕНО: проброс parentFunctionId (P0)
+//   - ✅ ДОБАВЛЕНО: проброс boundTo (P1)
+//   - ✅ ДОБАВЛЕНО: проброс lexicalLinks (P1)
+//
+// ИЗМЕНЕНИЯ v2.1.0:
+//   - ✅ ДОБАВЛЕНО: проброс templateXxx полей Vue
+//
+// ИЗМЕНЕНИЯ v2.0.0:
+//   - Базовая реализация
+// ============================================
 
 import type {
   EnhancedEntityInfo,
@@ -178,6 +204,36 @@ export function convertEntitiesToEnhanced(entities: EntitiesResult): EnhancedEnt
   }
   if (e.typeRefsGraph !== undefined) {
     (enhanced as any).typeRefsGraph = e.typeRefsGraph;
+  }
+
+  // ============================================================
+  // ✅ v16.0.8: Component Usage + HTML Elements (Vue template)
+  // ============================================================
+  //
+  // ⚠️ КРИТИЧНО: эти поля заполнены в convertVueAnalysisToEntities
+  // (pipeline, ParseFileStage). Они содержат ComponentUsage[] и
+  // HtmlElementUsage[], собранные ОДИН РАЗ через parseVueTemplate.
+  //
+  // compact-reporter.ts ЧИТАЕТ их из enhancedMap напрямую,
+  // а НЕ перезапускает analyzeVueSFC.
+  //
+  // Это устраняет:
+  //   - двойной парсинг <template> (экономия ~8 сек на 75 SFC);
+  //   - рассинхрон projectRoot (второй проход не нужен);
+  //   - дублирование логики extractSFCNamesForVue.
+  //
+  // Источник:
+  //   - VueComponentAnalysis.componentUsages (analyzeVueComponent)
+  //   - VueComponentAnalysis.htmlElements  (analyzeVueComponent)
+  //     → convertVueAnalysisToEntities
+  //     → EntitiesResult.templateComponentUsages
+  //     → EntitiesResult.templateHtmlElements
+  // ============================================================
+  if (e.templateComponentUsages !== undefined) {
+    (enhanced as any).templateComponentUsages = e.templateComponentUsages;
+  }
+  if (e.templateHtmlElements !== undefined) {
+    (enhanced as any).templateHtmlElements = e.templateHtmlElements;
   }
 
   return enhanced;
@@ -448,6 +504,20 @@ export function convertEnhancedToEntities(enhanced: EnhancedEntityInfo): Entitie
   // ============================================================
   if ((enhanced as any).lexicalLinks !== undefined) {
     entities.lexicalLinks = (enhanced as any).lexicalLinks;
+  }
+
+  // ============================================================
+  // ✅ v16.0.8 (обратный проброс): templateComponentUsages / templateHtmlElements
+  // ============================================================
+  // Обратная конвертация EnhancedEntityInfo → EntitiesResult.
+  // Используется для полноты round-trip, если понадобится.
+  // ============================================================
+  const e = enhanced as any;
+  if (e.templateComponentUsages !== undefined) {
+    (entities as any).templateComponentUsages = e.templateComponentUsages;
+  }
+  if (e.templateHtmlElements !== undefined) {
+    (entities as any).templateHtmlElements = e.templateHtmlElements;
   }
 
   return entities;

@@ -2,7 +2,28 @@
 // ============================================
 // ОСНОВНАЯ ФУНКЦИЯ АНАЛИЗА VUE КОМПОНЕНТА
 // ============================================
-// Версия: 5.0.1
+// Версия: 5.1.0 (v16.0.8)
+//
+// ИЗМЕНЕНИЯ v5.1.0 (v16.0.8: Component Usage + HTML Elements):
+//   - ✅ ДОБАВЛЕНО: статический импорт parseVueTemplate из
+//     '../../core/vue-template-parser.js'.
+//   - ✅ ДОБАВЛЕНО: вызов parseVueTemplate ОДИН РАЗ в analyzeVueComponent
+//     для заполнения VueComponentAnalysis.componentUsages/htmlElements.
+//   - ✅ ДОБАВЛЕНО: диагностика в verbose-режиме — сколько cu/he
+//     найдено для каждого файла.
+//   - ✅ ДОБАВЛЕНО: обработка ошибок parseVueTemplate через try/catch
+//     (не валит pipeline, если шаблон битый).
+//   - 🐛 ПРИЧИНА: ранее compact-reporter.ts перезапускал analyzeVueSFC
+//     для каждого SFC, что приводило к двойному парсингу <template>
+//     (~8 сек лишней работы) и рассинхрону projectRoot.
+//   - 📌 Теперь данные собираются ОДИН РАЗ здесь и пробрасываются:
+//       analyzeVueComponent
+//         → VueComponentAnalysis.componentUsages/htmlElements
+//         → convertVueAnalysisToEntities
+//         → EntitiesResult.templateComponentUsages/templateHtmlElements
+//         → convertEntitiesToEnhanced
+//         → EnhancedEntityInfo.templateComponentUsages/templateHtmlElements
+//         → compact-reporter.ts (ЧИТАЕТ, НЕ ПАРСИТ)
 //
 // ИЗМЕНЕНИЯ v5.0.1 (fix TS6133):
 //   - ✅ ИСПРАВЛЕНО: убрана неиспользуемая переменная `compiledScript`
@@ -104,6 +125,12 @@ import {
   extractInjections,
   extractReactivity,
 } from '../../analyzers/index.js';
+
+// ✅ v5.1.0 (v16.0.8): parseVueTemplate — ЕДИНСТВЕННЫЙ вызов
+// для заполнения componentUsages/htmlElements.
+// Вызывается ОДИН РАЗ в analyzeVueComponent.
+// compact-reporter.ts больше НЕ вызывает эту функцию.
+import { parseVueTemplate } from '../../core/vue-template-parser.js';
 
 // ============================================
 // РАСШИРЕННЫЕ ОПЦИИ АНАЛИЗА
@@ -330,6 +357,63 @@ export function analyzeVueComponent(
     }
   }
 
+  // ============================================
+  // ✅ v5.1.0 (v16.0.8): Component Usage + HTML Elements
+  // ============================================
+  //
+  // parseVueTemplate вызывается ЗДЕСЬ, ОДИН РАЗ на этапе pipeline.
+  //
+  // Это устраняет двойной парсинг <template> в compact-reporter.ts
+  // и, как следствие:
+  //   - экономит ~8 сек на проекте из 75 SFC;
+  //   - устраняет рассинхрон projectRoot (второй проход не нужен);
+  //   - устраняет дублирование логики extractSFCNamesForVue.
+  //
+  // ⚠️ ВАЖНО: для Vue-файлов без <template> вернёт пустые массивы.
+  //    Ошибки parseVueTemplate НЕ валят pipeline — просто пустые
+  //    массивы и warning в verbose-режиме.
+  //
+  // ⚠️ ВАЖНО: parseVueTemplate принимает ИСХОДНЫЙ файл (.vue),
+  //    а не script-блок. Внутри он сам вызовет parseSFC.
+  // ============================================
+
+  let componentUsages: VueComponentAnalysis['componentUsages'] = [];
+  let htmlElements: VueComponentAnalysis['htmlElements'] = [];
+
+  const hasTemplate = /<template[\s>]/i.test(fileContent);
+
+  if (hasTemplate) {
+    try {
+      const parsedTemplate = parseVueTemplate(fileContent, { filePath });
+      componentUsages = parsedTemplate.componentUsages;
+      htmlElements = parsedTemplate.htmlElements;
+
+      if (options.verbose) {
+        console.log(
+          `   🌐 ${path.basename(filePath)}: cu=${componentUsages.length}, ` +
+            `he=${htmlElements.length}, errors=${parsedTemplate.errors.length}`
+        );
+        if (parsedTemplate.errors.length > 0) {
+          for (const e of parsedTemplate.errors.slice(0, 3)) {
+            console.warn(`      ⚠️ ${e}`);
+          }
+        }
+      }
+    } catch (error) {
+      if (options.verbose) {
+        console.warn(
+          `   ⚠️ parseVueTemplate failed for ${path.basename(filePath)}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+      componentUsages = [];
+      htmlElements = [];
+    }
+  } else if (options.verbose) {
+    console.log(`   ⏭️ ${path.basename(filePath)}: нет <template> — пропускаем`);
+  }
+
   // === СТАТИСТИКА ===
   const allSlots = [...new Set([...templateAnalysis.slots, ...slotDefinitions])];
 
@@ -381,12 +465,17 @@ export function analyzeVueComponent(
     effects,
     injections,
     reactivity,
+
+    // ✅ v5.1.0 (v16.0.8): Component Usage + HTML Elements
+    componentUsages,
+    htmlElements,
   };
 
   if (options.verbose) {
     console.log(
       `   🔬 Vue-анализ ${path.basename(filePath)}: lifecycle=${lifecycle.length}, ` +
-        `effects=${effects.length}, injections=${injections.length}, reactivity=${reactivity.length}`
+        `effects=${effects.length}, injections=${injections.length}, reactivity=${reactivity.length}, ` +
+        `cu=${componentUsages.length}, he=${htmlElements.length}`
     );
   }
 
@@ -539,6 +628,14 @@ export async function analyzeVueComponentCli(
     console.log(`🎯 Conditionals: ${analysis.template.conditionals.length}`);
   }
 
+  // ✅ v5.1.0: Component Usage + HTML Elements
+  if (analysis.componentUsages && analysis.componentUsages.length > 0) {
+    console.log(`🌐 Component Usages: ${analysis.componentUsages.length}`);
+  }
+  if (analysis.htmlElements && analysis.htmlElements.length > 0) {
+    console.log(`🖥  HTML Elements: ${analysis.htmlElements.length}`);
+  }
+
   const report = generateVueComponentReport(analysis);
   console.log(report);
 
@@ -549,7 +646,7 @@ export async function analyzeVueComponentCli(
   const jsonOutput = {
     analysis,
     timestamp: new Date().toISOString(),
-    version: '5.0.1',
+    version: '5.1.0',
   };
   const jsonFile = `${analysis.componentName}-analysis.json`;
   fs.writeFileSync(jsonFile, JSON.stringify(jsonOutput, null, 2));
@@ -609,6 +706,9 @@ export function enhanceWithVueAnalysis(
       injectionsCount: vueAnalysis.injections.length,
       reactivityCount: vueAnalysis.reactivity.length,
       conditionalsCount: vueAnalysis.template.conditionals.length,
+      // ✅ v5.1.0: Component Usage + HTML Elements
+      componentUsagesCount: vueAnalysis.componentUsages?.length ?? 0,
+      htmlElementsCount: vueAnalysis.htmlElements?.length ?? 0,
     },
   };
 }

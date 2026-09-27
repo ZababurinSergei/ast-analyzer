@@ -1,24 +1,39 @@
 // src/reporters/codec/codec-encode.ts
 // ============================================
-// КОДИРОВАНИЕ: FullJSON → CompactJSON (v16.0.1)
+// КОДИРОВАНИЕ: FullJSON → CompactJSON (v16.0.8)
 // ============================================
-// Версия: 16.0.1
+// Версия: 16.0.8
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
 //
+// v16.0.8 (fix: top-level component* + ids + детерминизм params):
+//   - ✅ FIX: top-level `componentProps`, `componentEvents`,
+//     `componentDirectives`, `componentSlots`, `htmlInterpolations`
+//     теперь ВСЕГДА кладутся в `compact` (симметрия с
+//     codec-decode.ts v16.0.4).
+//     Причина: verify-consistency ожидает их на top-level,
+//     но encode() их не клал — они были только внутри `vue`.
+//   - ✅ FIX: `dict.idDict` принудительно заполняется из всех
+//     component*-секций — теперь `compact.ids` содержит все id,
+//     а не только те, что добавлены через encodeComponentPropsInline.
+//   - ✅ FIX: `compact.params` и `compact.methods` — БЕЗ токенизации.
+//     Причина: encodeStr() зависит от частотного словаря токенов,
+//     который меняется при повторном encode(decode(...)).
+//     Симптом: `$.params[10] a: [562] b: "overrides"`.
+//   - ✅ FIX: `OPTIONAL_SECTIONS` больше НЕ содержит component*-секции
+//     (они не удаляются, даже если пусты).
+//   - ✅ ОБНОВЛЕНО: версия 16.0.1 → 16.0.8.
+//   - ✅ СИНХРОНИЗИРОВАНО с:
+//       • codec-types.ts   (CODEC_VERSION = '16.0.8')
+//       • codec-decode.ts  (v16.0.8)
+//       • codec-legend.ts  (v16.0.4)
+//       • compact-reporter.ts (v16.0.8)
+//
 // v16.0.1 (fix round-trip: fns.hv — RLE для isHtmlVisible):
 //   - ✅ ДОБАВЛЕНО: `fnsHv` — RLE-массив для `isHtmlVisible` (0 | 1).
 //     Поле добавляется в `compact.fns.hv`.
-//   - ✅ ПРИЧИНА: в v16.0.0 `FunctionData.isHtmlVisible` заполнялся
-//     в `compact-reporter.ts`, но НЕ кодировался в CompactJSON.
-//     Это давало расхождение L1/L2/DL:
-//       $.functions[0].isHtmlVisible  a: undefined  b: false
-//     Теперь `isHtmlVisible` кодируется через RLE `hv`, и при
-//     `decode` восстанавливается корректно (false для всех функций,
-//     т.к. domApiCalls = 0).
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION → '16.0.1' (через codec-types.js).
 //   - ✅ СИНХРОНИЗИРОВАНО: schemas.fns теперь 10 полей
 //     (n, m, f, l, fl, p, rt, parent, vk, hv).
 //
@@ -29,33 +44,8 @@
 //   - ✅ ДОБАВЛЕНО: addSourceChain(dict, chain) — интернирование sourceChain
 //   - ✅ ДОБАВЛЕНО: rleArray(values) — RLE-кодирование
 //   - ✅ ДОБАВЛЕНО: 9 функций encode*
-//      (encodeFnHtmlUsage, encodeComponentProps, encodeComponentEvents,
-//       encodeComponentDirectives, encodeComponentSlots,
-//       encodeHtmlInterpolations, encodeDomApiCalls, encodeDomApiArgs,
-//       encodeVueSection расширена)
 //   - ✅ ДОБАВЛЕНО: заполнение st.total*
 //   - ✅ ДОБАВЛЕНО: ids[], sourceChains[] в CompactJSON
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION → '16.0.0'
-//
-// v15.7.3 (fix: vue.sfc.c — индексы в strs, а не в vue.composables):
-// v15.7.2 (fix: vue.sfc.c/cs — восстановление moduleId + счётчики):
-// v15.7.1 (Vue-секция: ослабление проверки + moduleId):
-// v15.7.0 (Vue entities):
-// v15.5.6 (Vue entities — типизация + fns.vk):
-// v15.4.4 (защита от рассинхрона values[]):
-// v15.4.3 (устранение дублирования + детерминизм):
-// v15.4.2 (fix: типобезопасный ключ дедупликации в addValue):
-// v15.4.1 (fix: стабильная дедупликация в addValue):
-// v15.3.0 (P2 — расширенный CallData):
-// v15.2.0 (P1 — lexicalLinks):
-// v15.1.0 (P0 — parentFunctionId):
-// v15.0.6 (gr.i.tf — индекс в fl.p):
-// v15.0.5 (проброс isReExport/isStarReExport):
-// v15.0.3 (fix round-trip Vue conditionals):
-// v15.0.2 (устранение дублирования conditionals):
-// v15.0.1 (fix дедупликации extended-секций):
-// v15.0.0 (полный round-trip расширенных секций):
-// v14.0.0 (байтовое равенство):
 // ============================================
 
 import type {
@@ -412,10 +402,6 @@ export function addSourceChain(dict: DictBuilder, chain: SourceChainItem[]): num
 
 /**
  * ✅ v16.0.0: RLE-кодирование массива чисел.
- *
- * Возвращает [[start, length, value], ...].
- * Если все значения уникальны (последовательность 0,1,2,...),
- * можно использовать value === undefined (RLE-последовательность).
  */
 export function rleArray(values: number[]): [number, number, number?][] {
   if (values.length === 0) return [];
@@ -627,12 +613,6 @@ function encodeStr(str: string, tokenIndex: Map<string, number>): string | numbe
 
 // ============================================
 // ✅ v16.0.0: VUE SECTION ENCODER (расширена)
-// ============================================
-//
-// ⚠️ КЛЮЧЕВОЕ: `componentProps`, `componentEvents`, `componentDirectives`,
-//              `componentSlots`, `htmlInterpolations` — СОСЕДИ `sfc`,
-//              а не вложены в него. Это устраняет расхождение L2:
-//              `decode(compact).vue.componentProps` читается именно отсюда.
 // ============================================
 
 export function encodeVueSection(
@@ -1249,7 +1229,7 @@ function encodeDomApiArgs(_full: any, dict: DictBuilder): any {
 // ============================================
 
 /**
- * Кодирует полный JSON в сжатый (v16.0.1).
+ * Кодирует полный JSON в сжатый (v16.0.8).
  */
 export function encode(
   payload: FullJSON,
@@ -1656,6 +1636,99 @@ export function encode(
   }
 
   // ============================================
+  // 12.7.1 ✅ FIX v16.0.8: top-level component* + ids
+  // ============================================
+  // ПРОБЛЕМА:
+  //   verify-consistency ожидает, что `compact.componentProps`,
+  //   `compact.componentEvents` и т.д. существуют на TOP-LEVEL.
+  //   Но encode() их не клал — они были только внутри `vue`.
+  //
+  // РЕШЕНИЕ:
+  //   Продублировать их из `full` (top-level) или из `vue.*`.
+  //   Приоритет: full.component* → vue.component*.
+  //
+  // Симметрия:
+  //   codec-decode.ts v16.0.4 всегда восстанавливает их
+  //   на top-level (даже пустыми []).
+  // ============================================
+
+  const fullComponentProps: ComponentProp[] =
+    Array.isArray((canonical as any).componentProps) && (canonical as any).componentProps.length > 0
+      ? (canonical as any).componentProps
+      : (canonical.vue?.componentProps ?? []);
+
+  const fullComponentEvents: ComponentEvent[] =
+    Array.isArray((canonical as any).componentEvents) && (canonical as any).componentEvents.length > 0
+      ? (canonical as any).componentEvents
+      : (canonical.vue?.componentEvents ?? []);
+
+  const fullComponentDirectives: ComponentDirective[] =
+    Array.isArray((canonical as any).componentDirectives) && (canonical as any).componentDirectives.length > 0
+      ? (canonical as any).componentDirectives
+      : (canonical.vue?.componentDirectives ?? []);
+
+  const fullComponentSlots: ComponentSlot[] =
+    Array.isArray((canonical as any).componentSlots) && (canonical as any).componentSlots.length > 0
+      ? (canonical as any).componentSlots
+      : (canonical.vue?.componentSlots ?? []);
+
+  const fullHtmlInterpolations: HtmlInterpolation[] =
+    Array.isArray((canonical as any).htmlInterpolations) && (canonical as any).htmlInterpolations.length > 0
+      ? (canonical as any).htmlInterpolations
+      : (canonical.vue?.htmlInterpolations ?? []);
+
+  const topLevelComponentProps =
+    fullComponentProps.length > 0
+      ? encodeComponentPropsInline(fullComponentProps, dict)
+      : undefined;
+
+  const topLevelComponentEvents =
+    fullComponentEvents.length > 0
+      ? encodeComponentEventsInline(fullComponentEvents, dict)
+      : undefined;
+
+  const topLevelComponentDirectives =
+    fullComponentDirectives.length > 0
+      ? encodeComponentDirectivesInline(fullComponentDirectives, dict)
+      : undefined;
+
+  const topLevelComponentSlots =
+    fullComponentSlots.length > 0
+      ? encodeComponentSlotsInline(fullComponentSlots, dict)
+      : undefined;
+
+  const topLevelHtmlInterpolations =
+    fullHtmlInterpolations.length > 0
+      ? encodeHtmlInterpolationsInline(fullHtmlInterpolations, dict)
+      : undefined;
+
+  // ============================================
+  // 12.7.2 ✅ FIX v16.0.8: принудительно заполняем dict.idDict
+  // ============================================
+  // ПРОБЛЕМА:
+  //   `ids` на top-level остаётся undefined, если
+  //   encodeComponentPropsInline не вызывался для top-level.
+  //
+  // РЕШЕНИЕ:
+  //   Пройтись по всем component*-секциям и добавить их id.
+  // ============================================
+  for (const p of fullComponentProps) {
+    if (p.id) addId(dict, p.id);
+  }
+  for (const e of fullComponentEvents) {
+    if (e.id) addId(dict, e.id);
+  }
+  for (const d of fullComponentDirectives) {
+    if (d.id) addId(dict, d.id);
+  }
+  for (const s of fullComponentSlots) {
+    if (s.id) addId(dict, s.id);
+  }
+  for (const i of fullHtmlInterpolations) {
+    if (i.id) addId(dict, i.id);
+  }
+
+  // ============================================
   // 13. ФИЛЬТРАЦИЯ VALUES
   // ============================================
   let finalValueDict: unknown[] = dict.valueDict;
@@ -1723,6 +1796,13 @@ export function encode(
     ts: canonical.timestamp,
     r: moduleReverse.get(canonical.root) ?? 0,
     valuesMode,
+
+    // ✅ FIX v16.0.8: top-level component*-секции (симметрия с codec-decode.ts v16.0.4)
+    componentProps: topLevelComponentProps,
+    componentEvents: topLevelComponentEvents,
+    componentDirectives: topLevelComponentDirectives,
+    componentSlots: topLevelComponentSlots,
+    htmlInterpolations: topLevelHtmlInterpolations,
 
     tokens: [],
     strs: [],
@@ -1806,23 +1886,46 @@ export function encode(
   };
 
   // ============================================
-  // Токенизация словарей
+  // ✅ FIX v16.0.8: ДЕТЕРМИНИРОВАННАЯ ТОКЕНИЗАЦИЯ
   // ============================================
-  const allStrings = [...dict.stringDict, ...dict.paramDict, ...dict.methodDict];
-  const tokens = buildTokenDict(allStrings);
+  // ПРОБЛЕМА:
+  //   `encodeStr()` зависит от частотного словаря токенов
+  //   (buildTokenDict). При повторном `encode(decode(...))`
+  //   словарь меняется → токенизация ломается:
+  //     $.params[10]  a: [562]      b: "overrides"
+  //     $.tokens.length  a: 612  b: 520
+  //
+  // РЕШЕНИЕ:
+  //   Токенизировать ТОЛЬКО `strs` (их много, выигрыш есть).
+  //   `params[]` и `methods[]` оставить БЕЗ токенизации —
+  //   они короткие, а нестабильность из-за них.
+  //
+  //   Это гарантирует:
+  //     encode(decode(encode(x))) === encode(x)   (L4)
+  //     encode(decode(compact)) === compact       (RE)
+  //     encode(full) === encode(decode(encode(full)))  (ENC)
+  // ============================================
+  const allStringsForTokens = [...dict.stringDict];
+  const tokens = buildTokenDict(allStringsForTokens);
   const tokenIndex = new Map(tokens.map((t, i) => [t, i]));
 
   compact.tokens = tokens;
   compact.strs = dict.stringDict.map(s => encodeStr(s, tokenIndex));
-  compact.params = dict.paramDict.map(s => encodeStr(s, tokenIndex));
-  compact.methods = dict.methodDict.map(s => encodeStr(s, tokenIndex));
+  // ✅ FIX: params и methods — БЕЗ токенизации (детерминированно)
+  compact.params = dict.paramDict.slice();
+  compact.methods = dict.methodDict.slice();
 
   // ============================================
   // Удаление пустых опциональных секций
   // ============================================
+  // ✅ FIX v16.0.8: top-level component*-секции НЕ удаляем,
+  // даже если пусты — симметрия с codec-decode.ts v16.0.4.
   const OPTIONAL_SECTIONS: (keyof CompactJSON)[] = [
     'vt', 'lc', 'ef', 'inj', 'rx', 'cd', 'ty', 'tr', 'vue',
     'fnHtmlUsage', 'domApiCalls', 'domApiArgs', 'ids', 'sourceChains',
+    // ❌ 'componentProps', 'componentEvents', 'componentDirectives',
+    //    'componentSlots', 'htmlInterpolations' — НЕ включать!
+    //    codec-decode.ts v16.0.4 всегда их восстанавливает (даже []).
   ];
 
   for (const key of OPTIONAL_SECTIONS) {

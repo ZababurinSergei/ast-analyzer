@@ -1,68 +1,58 @@
 // src/reporters/codec/codec-decode.ts
 // ============================================
-// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v16.0.4)
+// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v16.0.8)
 // ============================================
-// Версия: 16.0.4
+// Версия: 16.0.8
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
 //
+// v16.0.8 (fix: симметрия vue.sfc[].htmlElements/componentUsages + top-level component*):
+//   - ✅ ИСПРАВЛЕНО: decodeVueSection теперь корректно разворачивает
+//     slices he_cp/he_ce/he_cd/he_ci и cu_cp/cu_ce/cu_cd/cu_csl.
+//     Раньше props/events/directives/slots/interpolations для
+//     htmlElements и componentUsages восстанавливались через
+//     propsByUsage.get(usageId) — это не работало, потому что
+//     slices хранятся в he_cp[k]/cu_cp[k], а не в propsByUsage.
+//   - ✅ ИСПРАВЛЕНО: глобальные счётчики globalCuCounter /
+//     globalHeCounter — для восстановления id (he1, he2, ...)
+//     в том же порядке, что и compact-reporter.ts.
+//   - ✅ ДОБАВЛЕНО: top-level componentProps/componentEvents/
+//     componentDirectives/componentSlots/htmlInterpolations
+//     принимаются явными параметрами в decodeVueSection.
+//   - ✅ ДОБАВЛЕНО: helper-функции sliceToComponentProps,
+//     sliceToComponentEvents, sliceToComponentDirectives,
+//     sliceToComponentSlots, sliceToHtmlInterpolations.
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION импорт → '16.0.8'.
+//
 // v16.0.4 (симметрия top-level component* с compact-reporter.ts):
 //   - ✅ ИСПРАВЛЕНО: в конце `decode` в блоке `if (!includeEmptyArrays)`
 //     УДАЛЕНЫ 5 строк `delete (result as any).componentProps/...`.
-//
 //     ПРИЧИНА: `compact-reporter.ts` (v16.0.4) ВСЕГДА кладёт в FullJSON
 //     top-level поля `componentProps`, `componentEvents`,
 //     `componentDirectives`, `componentSlots`, `htmlInterpolations` —
 //     даже пустыми []. Раньше `decode(compact)` удалял их, если они
 //     пустые, и L1/L2/DL падали с расхождением `[]` vs `undefined`.
-//
 //   - ✅ ГАРАНТИРОВАНО: top-level `(result as any).componentProps = ...`
 //     и т.д. — ВСЕГДА кладутся в `result` (даже []). Симметрия с
 //     `compact-reporter.ts` v16.0.4.
-//
 //   - ✅ ОБНОВЛЕНО: версия 16.0.2 → 16.0.4.
-//   - ✅ СИНХРОНИЗИРОВАНО с:
-//       • codec-encode.ts  (v16.0.4)
-//       • codec-types.ts   (CODEC_VERSION = '16.0.4')
-//       • codec-legend.ts  (v16.0.4)
-//       • compact-reporter.ts (v16.0.4)
 //
 // v16.0.3 (fix L2: vue.sfc[].componentUsages/htmlElements):
 //   - ✅ ИСПРАВЛЕНО: decodeVueSection теперь ВСЕГДА добавляет
 //     sfc[].componentUsages и sfc[].htmlElements (даже пустыми []).
-//     Причина: index.full.json (собранный compact-reporter.ts) содержит
-//     эти поля для каждого SFC. Раньше decode(compact) их НЕ добавлял,
-//     если cu_sfc/he_sfc были пусты → расхождение L2:
-//       $.vue.sfc[0].componentUsages   a: []   b: undefined
 //   - ✅ ДОБАВЛЕНО: RLE-развёртка cu_sfc / he_sfc.
-//   - ✅ ДОБАВЛЕНО: правильный резолвинг props/events/directives/slots/
-//     interpolations из общих columnar-структур по usageId.
-//   - ✅ ДОБАВЛЕНО: правильное чтение реальных имён props/emits/exposed
-//     из pn/ps/en/es/xn/xs (fallback на старые p/e/x).
-//   - ✅ ДОБАВЛЕНО: top-level componentProps/componentEvents/
-//     componentDirectives/componentSlots/htmlInterpolations в результате
-//     decodeVueSection (дублируют sfc[].*).
-//   - ✅ ИСПРАВЛЕНО: soft-ignore пустых cu_sfc/he_sfc.
 //
-// v16.0.2 (fix round-trip: vue.sfc[].componentUsages/htmlElements):
-//   - ✅ ДОБАВЛЕНО: RLE-развёртка cu_sfc / he_sfc.
-//   - ✅ ДОБАВЛЕНО: ВСЕГДА добавляются sfc[].componentUsages и
-//     sfc[].htmlElements (даже []).
-//
-// v16.0.1 (fix round-trip: fns.hv → isHtmlVisible):
+// v16.0.2 (fix round-trip: fns.hv → isHtmlVisible):
 //   - ✅ ДОБАВЛЕНО: чтение `compact.fns.hv` (RLE 0|1).
 //   - ✅ ДОБАВЛЕНО: заполнение `func.isHtmlVisible = (hvCode === 1)`.
-//   - ✅ ДОБАВЛЕНО: инициализация `func.htmlUsage = []`,
-//     `func.domApiCalls = []`, `func.usagesAsPropSource = []`.
 //
-// v16.0.0 (Component Usage + DOM API + sourceChains):
+// v16.0.1 (Component Usage + DOM API + sourceChains):
 //   - ✅ ДОБАВЛЕНО: decodeFnHtmlUsage, decodeComponentProps,
 //     decodeComponentEvents, decodeComponentDirectives,
 //     decodeComponentSlots, decodeHtmlInterpolations.
 //   - ✅ ДОБАВЛЕНО: decodeIds, decodeSourceChains.
-//   - ✅ ОБНОВЛЕНО: decodeVueSection — принимает ids/sourceChains.
 //
 // v15.7.3 (fix: vue.sfc.c — восстановление реальных имён composables)
 // v15.7.2 (fix: восстановление moduleId в vue.sfc)
@@ -605,6 +595,67 @@ function decodeSourceChainAt(idx: number, sourceChains: string[]): SourceChainIt
 }
 
 // ============================================
+// ✅ v16.0.8: helpers для разворачивания slices
+// ============================================
+//
+// he_cp / he_ce / he_cd / he_ci и cu_cp / cu_ce / cu_cd / cu_csl —
+// это slices [offset, count] в общие массивы componentProps /
+// componentEvents / componentDirectives / componentSlots /
+// htmlInterpolations. Разворачиваем их ПО ИНДЕКСУ k.
+//
+// ⚠️ НЕ используем propsByUsage.get(usageId), потому что:
+//   1. usageId в compact-reporter.ts генерируется иначе
+//      (`he${глобальный_счётчик}`), чем k в he_sfc.
+//   2. propsByUsage строится по usageId из componentProps
+//      top-level, а не из he_cp.
+// ============================================
+
+function sliceToComponentProps(
+  slice: [number, number] | undefined,
+  all: ComponentProp[]
+): ComponentProp[] {
+  if (!Array.isArray(slice) || slice.length !== 2) return [];
+  const [start, count] = slice;
+  return all.slice(start, start + count);
+}
+
+function sliceToComponentEvents(
+  slice: [number, number] | undefined,
+  all: ComponentEvent[]
+): ComponentEvent[] {
+  if (!Array.isArray(slice) || slice.length !== 2) return [];
+  const [start, count] = slice;
+  return all.slice(start, start + count);
+}
+
+function sliceToComponentDirectives(
+  slice: [number, number] | undefined,
+  all: ComponentDirective[]
+): ComponentDirective[] {
+  if (!Array.isArray(slice) || slice.length !== 2) return [];
+  const [start, count] = slice;
+  return all.slice(start, start + count);
+}
+
+function sliceToComponentSlots(
+  slice: [number, number] | undefined,
+  all: ComponentSlot[]
+): ComponentSlot[] {
+  if (!Array.isArray(slice) || slice.length !== 2) return [];
+  const [start, count] = slice;
+  return all.slice(start, start + count);
+}
+
+function sliceToHtmlInterpolations(
+  slice: [number, number] | undefined,
+  all: HtmlInterpolation[]
+): HtmlInterpolation[] {
+  if (!Array.isArray(slice) || slice.length !== 2) return [];
+  const [start, count] = slice;
+  return all.slice(start, start + count);
+}
+
+// ============================================
 // ✅ v16.0.0: DECODERS НОВЫХ СЕКЦИЙ
 // ============================================
 
@@ -638,7 +689,7 @@ function decodeComponentProps(
       kind: PROP_KIND_BY_CODE[data.k[i] ?? 0] ?? 'static',
       line: data.l[i] ?? 0,
       identifier: null,
-      memberChain: mcArr[i] >= 0 ? (stringDict[mcArr[i]] || '').split('\\u0002') : undefined,
+      memberChain: mcArr[i] >= 0 ? (stringDict[mcArr[i]] || '').split('\u0002') : undefined,
       literalValue: lvArr[i] >= 0 ? stringDict[lvArr[i]] : undefined,
       sourceChain,
     });
@@ -663,7 +714,7 @@ function decodeComponentEvents(
 
     const mIdx = data.m?.[i] ?? -1;
     const modifiers =
-      mIdx >= 0 && stringDict[mIdx] ? stringDict[mIdx]!.split('\\u0002') : [];
+      mIdx >= 0 && stringDict[mIdx] ? stringDict[mIdx]!.split('\u0002') : [];
 
     const hsIdx = data.s?.[i];
     const hsValue: any =
@@ -779,7 +830,7 @@ function decodeDomApiCalls(
     if (data.sp?.[i] >= 0) ctx.styleProp = stringDict[data.sp[i]];
     if (data.an?.[i] >= 0) ctx.attributeName = stringDict[data.an[i]];
     if (data.oo?.[i] >= 0) {
-      ctx.observeOptions = (stringDict[data.oo[i]] || '').split('\\u0002');
+      ctx.observeOptions = (stringDict[data.oo[i]] || '').split('\u0002');
     }
 
     result.push({
@@ -856,25 +907,22 @@ function decodeFnHtmlUsage(
 }
 
 // ============================================
-// ✅ v16.0.4: VUE SECTION DECODER (симметричный)
+// ✅ v16.0.8: VUE SECTION DECODER
 // ============================================
+//
+// КЛЮЧЕВЫЕ ИЗМЕНЕНИЯ v16.0.8:
+//   - ✅ decodeVueSection принимает top-level component*-секции
+//     явными параметрами (compact.componentProps и т.д.).
+//   - ✅ he_cp/he_ce/he_cd/he_ci и cu_cp/cu_ce/cu_cd/cu_csl
+//     разворачиваются через sliceTo* helpers ПО ИНДЕКСУ k.
+//   - ✅ Глобальные счётчики globalCuCounter / globalHeCounter
+//     для восстановления id (he1, he2, ...).
 //
 // КЛЮЧЕВЫЕ ИЗМЕНЕНИЯ v16.0.4:
 //   - ✅ decodeVueSection ВСЕГДА возвращает componentProps,
 //     componentEvents, componentDirectives, componentSlots,
 //     htmlInterpolations (даже пустыми []).
 //     Это симметризует decode(compact) с compact-reporter.ts v16.0.4.
-//
-// КЛЮЧЕВЫЕ ИЗМЕНЕНИЯ v16.0.3:
-//   - ✅ sfc[].componentUsages и sfc[].htmlElements ВСЕГДА
-//     присутствуют (даже []).
-//
-// КЛЮЧЕВЫЕ ИЗМЕНЕНИЯ v16.0.2:
-//   - ✅ RLE-развёртка cu_sfc / he_sfc.
-//   - ✅ Правильный резолвинг props/events/directives/slots/
-//     interpolations из общих columnar-структур по usageId.
-//   - ✅ Правильное чтение реальных имён props/emits/exposed из
-//     pn/ps/en/es/xn/xs (fallback на старые p/e/x).
 // ============================================
 
 function decodeVueSection(
@@ -882,7 +930,13 @@ function decodeVueSection(
   stringDict: string[],
   files: FileData[],
   ids: string[] = [],
-  sourceChains: string[] = []
+  sourceChains: string[] = [],
+  // ✅ FIX v16.0.8: top-level секции compact.json
+  topLevelComponentProps?: any,
+  topLevelComponentEvents?: any,
+  topLevelComponentDirectives?: any,
+  topLevelComponentSlots?: any,
+  topLevelHtmlInterpolations?: any
 ): VueSectionFull | undefined {
   if (!vue) return undefined;
 
@@ -895,23 +949,33 @@ function decodeVueSection(
   // ────────────────────────────────────────────────────────
   // 1. Общие массивы для componentUsages / htmlElements
   // ────────────────────────────────────────────────────────
-  const allComponentProps = sfcAny.componentProps
-    ? decodeComponentProps(sfcAny.componentProps, stringDict, ids, sourceChains)
+  //
+  // ✅ FIX v16.0.8: приоритет top-level → sfc.
+  // Потому что codec-encode.ts v16.0.8 кладёт их именно на top-level.
+  // Fallback на sfcAny — для обратной совместимости со старыми compact.json.
+  const propsSource = topLevelComponentProps ?? sfcAny.componentProps;
+  const eventsSource = topLevelComponentEvents ?? sfcAny.componentEvents;
+  const directivesSource = topLevelComponentDirectives ?? sfcAny.componentDirectives;
+  const slotsSource = topLevelComponentSlots ?? sfcAny.componentSlots;
+  const interpolationsSource = topLevelHtmlInterpolations ?? sfcAny.htmlInterpolations;
+
+  const allComponentProps = propsSource
+    ? decodeComponentProps(propsSource, stringDict, ids, sourceChains)
     : [];
-  const allComponentEvents = sfcAny.componentEvents
-    ? decodeComponentEvents(sfcAny.componentEvents, stringDict, ids, sourceChains)
+  const allComponentEvents = eventsSource
+    ? decodeComponentEvents(eventsSource, stringDict, ids, sourceChains)
     : [];
-  const allComponentDirectives = sfcAny.componentDirectives
-    ? decodeComponentDirectives(sfcAny.componentDirectives, stringDict)
+  const allComponentDirectives = directivesSource
+    ? decodeComponentDirectives(directivesSource, stringDict)
     : [];
-  const allComponentSlots = sfcAny.componentSlots
-    ? decodeComponentSlots(sfcAny.componentSlots, stringDict)
+  const allComponentSlots = slotsSource
+    ? decodeComponentSlots(slotsSource, stringDict)
     : [];
-  const allHtmlInterpolations = sfcAny.htmlInterpolations
-    ? decodeHtmlInterpolations(sfcAny.htmlInterpolations, stringDict, sourceChains)
+  const allHtmlInterpolations = interpolationsSource
+    ? decodeHtmlInterpolations(interpolationsSource, stringDict, sourceChains)
     : [];
 
-  // Индексация по usageId
+  // Индексация по usageId (используется для обратной совместимости)
   const groupBy = <T extends { usageId: string }>(arr: T[]): Map<string, T[]> => {
     const m = new Map<string, T[]>();
     for (const item of arr) {
@@ -944,8 +1008,29 @@ function decodeVueSection(
   const heL = sfcAny.he_l ?? [];
   const heCol = sfcAny.he_col ?? [];
 
+  // ✅ FIX v16.0.8: slices для componentUsages и htmlElements
+  const cuCpArr = (sfcAny.cu_cp ?? []) as Array<[number, number]>;
+  const cuCeArr = (sfcAny.cu_ce ?? []) as Array<[number, number]>;
+  const cuCdArr = (sfcAny.cu_cd ?? []) as Array<[number, number]>;
+  const cuCslArr = (sfcAny.cu_csl ?? []) as Array<[number, number]>;
+
+  const heCpArr = (sfcAny.he_cp ?? []) as Array<[number, number]>;
+  const heCeArr = (sfcAny.he_ce ?? []) as Array<[number, number]>;
+  const heCdArr = (sfcAny.he_cd ?? []) as Array<[number, number]>;
+  const heCiArr = (sfcAny.he_ci ?? []) as Array<[number, number]>;
+
   // ────────────────────────────────────────────────────────
-  // 3. sfc[] — с componentUsages / htmlElements ВСЕГДА
+  // 3. ✅ FIX v16.0.8: глобальные счётчики для id
+  // ────────────────────────────────────────────────────────
+  //
+  // compact-reporter.ts генерирует id глобально (he1, he2, ...),
+  // не сбрасывая счётчик между SFC. Значит, decode должен
+  // восстанавливать id ТОЧНО ТАК ЖЕ.
+  let globalCuCounter = 0;
+  let globalHeCounter = 0;
+
+  // ────────────────────────────────────────────────────────
+  // 4. sfc[] — с componentUsages / htmlElements ВСЕГДА
   // ────────────────────────────────────────────────────────
   const sfc: SFCComponent[] = (vue.sfc?.f ?? []).map((fileIdx: number, i: number) => {
     // --- props/emits/exposed (pn/ps/en/es/xn/xs с fallback на p/e/x) ---
@@ -1016,8 +1101,25 @@ function decodeVueSection(
     const componentUsages: ComponentUsage[] = [];
     for (let k = 0; k < cuSfcArr.length; k++) {
       if (cuSfcArr[k] !== i) continue;
-      const usageId = `cu${k + 1}`;
+
+      // ✅ FIX v16.0.8: глобальный счётчик
+      globalCuCounter++;
+      const usageId = `cu${globalCuCounter}`;
       const compFileIdx = cuFile[k];
+
+      // ✅ FIX v16.0.8: разворачиваем slices по k
+      const cuProps = sliceToComponentProps(cuCpArr[k], allComponentProps);
+      const cuEvents = sliceToComponentEvents(cuCeArr[k], allComponentEvents);
+      const cuDirectives = sliceToComponentDirectives(cuCdArr[k], allComponentDirectives);
+      const cuSlots = sliceToComponentSlots(cuCslArr[k], allComponentSlots);
+
+      // Fallback: если slices пусты, пробуем через propsByUsage
+      // (обратная совместимость со старыми compact.json).
+      const finalProps = cuProps.length > 0 ? cuProps : (propsByUsage.get(usageId) || []);
+      const finalEvents = cuEvents.length > 0 ? cuEvents : (eventsByUsage.get(usageId) || []);
+      const finalDirectives = cuDirectives.length > 0 ? cuDirectives : (dirsByUsage.get(usageId) || []);
+      const finalSlots = cuSlots.length > 0 ? cuSlots : (slotsByUsage.get(usageId) || []);
+
       componentUsages.push({
         id: usageId,
         parentFileId: fileId(fileIdx),
@@ -1027,10 +1129,10 @@ function decodeVueSection(
         packageName: cuPkg[k] >= 0 ? readStr(cuPkg[k]) : undefined,
         line: cuL[k] ?? 0,
         column: cuCol[k] >= 0 ? cuCol[k] : undefined,
-        props: propsByUsage.get(usageId) || [],
-        events: eventsByUsage.get(usageId) || [],
-        directives: dirsByUsage.get(usageId) || [],
-        slots: slotsByUsage.get(usageId) || [],
+        props: finalProps,
+        events: finalEvents,
+        directives: finalDirectives,
+        slots: finalSlots,
       });
     }
 
@@ -1038,17 +1140,33 @@ function decodeVueSection(
     const htmlElements: HtmlElementUsage[] = [];
     for (let k = 0; k < heSfcArr.length; k++) {
       if (heSfcArr[k] !== i) continue;
-      const usageId = `he${k + 1}`;
+
+      // ✅ FIX v16.0.8: глобальный счётчик
+      globalHeCounter++;
+      const usageId = `he${globalHeCounter}`;
+
+      // ✅ FIX v16.0.8: разворачиваем slices по k
+      const heProps = sliceToComponentProps(heCpArr[k], allComponentProps);
+      const heEvents = sliceToComponentEvents(heCeArr[k], allComponentEvents);
+      const heDirectives = sliceToComponentDirectives(heCdArr[k], allComponentDirectives);
+      const heInterps = sliceToHtmlInterpolations(heCiArr[k], allHtmlInterpolations);
+
+      // Fallback: обратная совместимость
+      const finalProps = heProps.length > 0 ? heProps : (propsByUsage.get(usageId) || []);
+      const finalEvents = heEvents.length > 0 ? heEvents : (eventsByUsage.get(usageId) || []);
+      const finalDirectives = heDirectives.length > 0 ? heDirectives : (dirsByUsage.get(usageId) || []);
+      const finalInterps = heInterps.length > 0 ? heInterps : (interpByUsage.get(usageId) || []);
+
       htmlElements.push({
         id: usageId,
         parentFileId: fileId(fileIdx),
         tag: readStr(heTag[k]),
         line: heL[k] ?? 0,
         column: heCol[k] >= 0 ? heCol[k] : undefined,
-        props: propsByUsage.get(usageId) || [],
-        directives: dirsByUsage.get(usageId) || [],
-        events: eventsByUsage.get(usageId) || [],
-        interpolations: interpByUsage.get(usageId) || [],
+        props: finalProps,
+        directives: finalDirectives,
+        events: finalEvents,
+        interpolations: finalInterps,
       });
     }
 
@@ -1068,7 +1186,7 @@ function decodeVueSection(
   });
 
   // ────────────────────────────────────────────────────────
-  // 4. composables / macros / hooks / reactivity / icons
+  // 5. composables / macros / hooks / reactivity / icons
   // ────────────────────────────────────────────────────────
   const composables: ComposableEntity[] = (vue.composables?.n ?? []).map(
     (nameIdx: number, i: number) => {
@@ -1126,22 +1244,7 @@ function decodeVueSection(
   }));
 
   // ────────────────────────────────────────────────────────
-  // 5. ✅ v16.0.4: Возврат — все секции ВСЕГДА присутствуют
-  // ────────────────────────────────────────────────────────
-  //
-  // ⚠️ КЛЮЧЕВОЕ ИЗМЕНЕНИЕ v16.0.4:
-  //   componentProps/componentEvents/componentDirectives/
-  //   componentSlots/htmlInterpolations ВСЕГДА возвращаются,
-  //   даже пустыми [].
-  //
-  //   ПРИЧИНА: compact-reporter.ts (v16.0.4) ВСЕГДА кладёт эти
-  //   поля в full.vue и в top-level FullJSON. Если decode(compact)
-  //   их не вернёт (или вернёт undefined), L1/L2/DL падают с
-  //   расхождением `[]` vs `undefined`.
-  //
-  //   Симметрия с:
-  //     • compact-reporter.ts::convertVueEntitiesToFull (v16.0.4)
-  //     • compact-reporter.ts::collectFullJSON (v16.0.4)
+  // 6. ✅ v16.0.4: Возврат — все секции ВСЕГДА присутствуют
   // ────────────────────────────────────────────────────────
   return {
     sfc,
@@ -1232,11 +1335,6 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
 
   // ============================================
   // 3. Функции (v16.0.2: +hv, +htmlUsage, +domApiCalls, +usagesAsPropSource)
-  // ============================================
-  //
-  // ✅ v16.0.2: читаем `fns.hv` — RLE для `isHtmlVisible` (0|1).
-  // Также инициализируем `htmlUsage`, `domApiCalls`, `usagesAsPropSource`
-  // пустыми массивами сразу при создании функции.
   // ============================================
   const fns = compact.fns || { n: [], m: [], f: [], l: [], fl: [], p: [], rt: [] };
   const fnsM = unrle(fns.m || []);
@@ -1605,7 +1703,22 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   // ============================================
   // 10.6. VUE-СЕКЦИЯ
   // ============================================
-  const vue = decodeVueSection(compact.vue, stringDict, files, ids, sourceChains);
+  //
+  // ✅ FIX v16.0.8: передаём top-level component*-секции явно.
+  // compact-reporter.ts v16.0.8 кладёт их на top-level
+  // CompactJSON, а не внутри vue.sfc.
+  const vue = decodeVueSection(
+    compact.vue,
+    stringDict,
+    files,
+    ids,
+    sourceChains,
+    (compact as any).componentProps,
+    (compact as any).componentEvents,
+    (compact as any).componentDirectives,
+    (compact as any).componentSlots,
+    (compact as any).htmlInterpolations
+  );
 
   // ============================================
   // 10.7. ✅ v16.0.0: DOM API
@@ -1626,10 +1739,6 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
 
   // ============================================
   // 10.9. ✅ v16.0.2: usagesAsPropSource
-  // ============================================
-  //
-  // Заполняется из vue.componentProps, если они есть. Если нет —
-  // остаётся пустым массивом (инициализирован при создании функции).
   // ============================================
   if (vue?.componentProps && vue.componentProps.length > 0) {
     for (const prop of vue.componentProps) {
@@ -1750,18 +1859,6 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   // ============================================
   // ✅ v16.0.4: Top-level component* — ВСЕГДА
   // ============================================
-  //
-  // ⚠️ КЛЮЧЕВОЕ ИЗМЕНЕНИЕ v16.0.4:
-  //   Эти поля ВСЕГДА кладутся в result (даже пустыми []).
-  //   Симметрия с compact-reporter.ts v16.0.4.
-  //
-  //   ПРИЧИНА: compact-reporter.ts ВСЕГДА добавляет их в full.
-  //   Если decode(compact) их не вернёт, L1/L2/DL падают с
-  //   расхождением `[]` vs `undefined`.
-  //
-  //   Источник данных: vue.componentProps и т.д. из decodeVueSection
-  //   (которые тоже ВСЕГДА возвращаются — см. v16.0.4 в decodeVueSection).
-  // ============================================
   (result as any).domApiCalls = domApiCalls.length > 0 ? domApiCalls : undefined;
   (result as any).domApiArgs = domApiArgs.length > 0 ? domApiArgs : undefined;
   (result as any).ids = ids.length > 0 ? ids : undefined;
@@ -1786,8 +1883,6 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   //   УДАЛЕНЫ 5 строк `delete (result as any).componentProps/...`.
   //   Эти поля НЕ должны удаляться, даже если пустые — иначе
   //   нарушается симметрия с compact-reporter.ts v16.0.4.
-  //
-  //   Всё остальное удаляется как и раньше.
   // ============================================
   if (!includeEmptyArrays) {
     if (modules.length === 0) delete (result as any).modules;

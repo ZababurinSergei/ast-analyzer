@@ -2,7 +2,15 @@
 // ============================================================
 // STAGE 5: BUILD REPORT
 // ============================================================
-// Версия: 2.0.0
+// Версия: 2.1.0
+//
+// ИЗМЕНЕНИЯ v2.1.0 (fix: проброс projectRoot):
+//   - ✅ ДОБАВЛЕНО: `projectRoot: options.projectRoot` в вызов
+//     `generateCompactReport`. Без этого `compact-reporter.ts`
+//     использовал `process.cwd()` для резолва относительных путей
+//     Vue SFC, что приводило к их ненахождению на диске
+//     (см. диагностику `❌ SFC fN (Name.vue): файл не найден`).
+//   - ✅ ОБНОВЛЕНО: версия stage 2.0.0 → 2.1.0.
 //
 // ИЗМЕНЕНИЯ v2.0.0 (удаление enrich re-exports + relations):
 //   - ✅ УДАЛЕНО упоминание EnrichReExportsStage из шапки —
@@ -53,7 +61,7 @@
 //   3. Обновления метрик pipeline
 //
 // ============================================================
-// СХЕМА (v2.0.0)
+// СХЕМА (v2.1.0)
 // ============================================================
 //
 //   ctx.enhancedMap  ──►  generateCompactReport()  ──►  ctx.full
@@ -137,6 +145,7 @@ import { StageError } from '../errors.js';
  *        • `includeVSCode`= ctx.options.includeVSCode
  *        • `saveEdges`    = ctx.options.saveEdges
  *        • `verbose`      = ctx.options.verbose
+ *        • `projectRoot`  = ctx.options.projectRoot  ← v2.1.0
  *
  *   3. Сохраняет результаты в контекст:
  *        • ctx.full       = report.full
@@ -166,6 +175,32 @@ import { StageError } from '../errors.js';
  *
  * Поэтому этот stage — «тонкий»: он только вызывает
  * `generateCompactReport` и обновляет метрики.
+ *
+ * ════════════════════════════════════════════════════════════
+ * ✅ v2.1.0: ПОЧЕМУ ПРОБРАСЫВАЕТСЯ projectRoot
+ * ════════════════════════════════════════════════════════════
+ *
+ * `compact-reporter.ts` резолвит относительные пути Vue SFC
+ * (например, `components/icons/AiCrossIcon.vue` из `ctx.files`)
+ * через `path.resolve(projectRoot, sfcFile.path)`.
+ *
+ * Раньше `projectRoot` брался как `process.cwd()` — это корень
+ * пакета `ast-analyzer`. Если пользователь запускает анализ
+ * из корня пакета:
+ *
+ *   cd packages/ast-analyzer
+ *   tsx ./src/cli.ts compact-recursive ./infoenergo-ui/src/index.ts
+ *
+ * то `process.cwd()` = `.../packages/ast-analyzer`, а Vue SFC
+ * лежат в `.../packages/ast-analyzer/infoenergo-ui/src/...`.
+ * В результате все 75 SFC не находились на диске:
+ *
+ *   ❌ SFC f9 (DatePickerArrow.vue): файл не найден ни по одному пути
+ *      • .../ast-analyzer/components/icons/DatePickerArrow.vue
+ *
+ * Теперь `projectRoot` берётся из `ctx.options.projectRoot`
+ * (= `.../infoenergo-ui/src`, вычисляется в `pipeline/context.ts`
+ * из первого входного пути), и SFC находятся корректно.
  *
  * ════════════════════════════════════════════════════════════
  * ПРИМЕРЫ
@@ -249,6 +284,7 @@ export class BuildReportStage implements PipelineStage {
       console.log(`      • Body:     ${options.includeBody ? 'ВКЛ' : 'ВЫКЛ'}`);
       console.log(`      • VSCode:   ${options.includeVSCode ? 'ВКЛ' : 'ВЫКЛ'}`);
       console.log(`      • Edges:    ${options.saveEdges ? 'ВКЛ' : 'ВЫКЛ'}`);
+      console.log(`      • Root:     ${options.projectRoot}`);
       if (options.outputPath) {
         console.log(`      • Output:   ${options.outputPath}`);
       }
@@ -300,6 +336,24 @@ export class BuildReportStage implements PipelineStage {
         // Подробный вывод
         // ────────────────────────────────────────────────
         verbose: options.verbose,
+
+        // ────────────────────────────────────────────────
+        // ✅ v2.1.0: ИСПРАВЛЕНО — проброс projectRoot.
+        //
+        // Без этого compact-reporter.ts использует
+        // process.cwd() для резолва относительных путей
+        // Vue SFC (например, `components/icons/AiCrossIcon.vue`),
+        // что приводит к поиску файлов в корне пакета
+        // ast-analyzer вместо анализируемого проекта:
+        //
+        //   ❌ SFC f1 (AiCreateFilter.vue): файл не найден
+        //      • .../ast-analyzer/components/icons/AiCreateFilter.vue
+        //
+        // Теперь пути резолвятся относительно реального
+        // корня проекта (infoenergo-ui/src), и все 75 SFC
+        // находятся на диске.
+        // ────────────────────────────────────────────────
+        projectRoot: options.projectRoot,
       });
     } catch (error) {
       throw new StageError(

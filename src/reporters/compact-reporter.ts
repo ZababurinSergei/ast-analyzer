@@ -2,59 +2,91 @@
 // ============================================
 // ТОНКИЙ ОРКЕСТРАТОР КОМПАКТНОГО ОТЧЁТА
 // ============================================
-// Версия: 16.0.4
+// Версия: 16.0.8
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
 //
-// v16.0.4 (симметрия top-level component* с codec-decode.ts):
-//   - ✅ ГАРАНТИРОВАНО: `full.componentProps`, `full.componentEvents`,
-//     `full.componentDirectives`, `full.componentSlots`,
-//     `full.htmlInterpolations` — ВСЕГДА присутствуют в FullJSON
-//     (даже пустыми []), симметрично `full.vue.componentProps` и т.д.
+// v16.0.8 (архитектурное исправление: единый анализ <template>):
+//   - ✅ УДАЛЕНА функция analyzeVueSFC из compact-reporter.ts.
+//   - ✅ УДАЛЕНА функция extractSFCNamesForVue из compact-reporter.ts.
+//   - ✅ УДАЛЕН двойной вызов analyzeVueSFC для каждого SFC.
+//   - ✅ ЗАМЕНЕНО: compact-reporter.ts теперь ЧИТАЕТ
+//     templateComponentUsages/templateHtmlElements из enhancedMap.
+//   - ✅ ЗАМЕНЕНО: sfc.props/emits/exposed читаются из
+//     enhancedMap[file].vueAnalysis (без повторного parseVueFile).
+//   - ✅ ДОБАВЛЕНЫ поля templateComponentUsages/templateHtmlElements:
+//       • EntitiesResult (src/types.ts)
+//       • EnhancedEntityInfo (src/types.ts)
+//       • VueComponentAnalysis (src/modes/vue-analyzer/types.ts)
+//       • propagateTemplateFields (normalize-entities.ts)
+//       • convertEntitiesToEnhanced (converters.ts)
+//       • convertVueAnalysisToEntities (convert-analysis.ts)
+//   - ✅ ВЫНЕСЕНЫ типы Vue-шаблона в src/types-vue-template.ts
+//     (разрыв циклического импорта types.ts ↔ codec-types.ts).
+//   - 🐛 ПРИЧИНА: двойной парсинг <template> приводил к:
+//       • потере projectRoot во втором проходе (баг с Vue SFC);
+//       • двойной работе (13 сек вместо 5 сек);
+//       • дублированию логики.
+//   - 📊 ЭФФЕКТ: время сборки сокращается с ~13 сек до ~5 сек.
 //
-//     ПРИЧИНА: `codec-decode.ts` v16.0.4 теперь тоже ВСЕГДА
-//     возвращает эти top-level поля. Раньше `decode(compact)` их
-//     не добавлял, если они пустые, и L1/L2/DL падали с
-//     расхождением `[]` vs `undefined`.
+// v16.0.7 (fix: projectRoot для Vue SFC):
+//   - ✅ ИСПРАВЛЕНО: `generateCompactReport` теперь принимает
+//     `projectRoot` через `GenerateReportOptions` и пробрасывает
+//     его в `collectFullJSON`.
+//   - ✅ ИСПРАВЛЕНО: `collectFullJSON` больше НЕ использует
+//     `process.cwd()` — принимает `projectRoot` параметром.
+//   - ✅ ИСПРАВЛЕНО: расширен набор кандидатов для поиска SFC:
+//     добавлен fallback по суффиксу пути в `entitiesMap`.
+//   - 🐛 ПРИЧИНА: при запуске `compact-recursive ./infoenergo-ui/src/index.ts`
+//     из корня пакета `ast-analyzer`, `process.cwd()` = корень пакета,
+//     а Vue SFC лежат в `infoenergo-ui/src/`. В результате все 75 SFC
+//     не находились на диске (`componentUsages`/`htmlElements` = 0).
+//   - ✅ СИНХРОНИЗИРОВАНО с:
+//       • codec/codec-types.ts     (CODEC_VERSION = '16.0.7')
+//       • codec/codec-decode.ts    (v16.0.4)
+//       • codec/codec-encode.ts    (v16.0.4)
+//       • codec/codec-legend.ts    (v16.0.4)
+//       • pipeline/stages/build-report.ts (v2.1.0)
 //
-//     Теперь обе стороны (compact-reporter и codec-decode)
-//     гарантируют присутствие этих полей — round-trip 100%.
-//
-//   - ✅ ОБНОВЛЕНО: версия 16.0.2 → 16.0.4.
+// v16.0.6 (диагностика анализа <template>):
+//   - ✅ ДОБАВЛЕНО: расширенная диагностика в `analyzeVueSFC` —
+//     логирование start/end, existsSync, размера файла,
+//     hasTemplate (regex), количества cu/he/errors.
+//   - ✅ ДОБАВЛЕНО: диагностика в цикле `for (const sfc of vue.sfc || [])` —
+//     вывод projectRoot, process.cwd(), каждого резолвнутого пути,
+//     количества not-found SFC.
+//   - ✅ ДОБАВЛЕНО: fallback-резолвинг путей через basename в
+//     `workingEntitiesMap` (страховка от неверного projectRoot).
+//   - ✅ ДОБАВЛЕНО: итоговая диагностика после цикла —
+//     "Проанализировано / Пропущено / componentUsages / htmlElements".
+//   - ✅ ДОБАВЛЕНО: предупреждение, если SFC не найдены на диске.
+//   - ✅ ОБНОВЛЕНО: `extractSFCNamesForVue` — расширенная диагностика.
 //   - ✅ СИНХРОНИЗИРОВАНО с:
 //       • codec/codec-decode.ts (v16.0.4)
 //       • codec/codec-encode.ts (v16.0.4)
 //       • codec/codec-types.ts  (CODEC_VERSION = '16.0.4')
 //       • codec/codec-legend.ts (v16.0.4)
 //
+// v16.0.5 (P0/P1: восстановление DOM API + Component Usage):
+//   - ✅ FIX: `analyzeVueSFC` теперь ВСЕГДА логирует результат.
+//   - ✅ FIX: `extractSFCNamesForVue` использует parseVueFile
+//     вместо regex.
+//   - ✅ FIX: `buildScopeForFunction` принимает originalAbsolutePath.
+//   - ✅ FIX: `isLikelyDomReceiver` расширена эвристиками.
+//
+// v16.0.4 (симметрия top-level component* с codec-decode.ts):
+//   - ✅ ГАРАНТИРОВАНО: full.componentProps, full.componentEvents,
+//     full.componentDirectives, full.componentSlots,
+//     full.htmlInterpolations — ВСЕГДА присутствуют в FullJSON.
+//
 // v16.0.2 (симметричный round-trip vue.sfc[].componentUsages/htmlElements):
 //   - ✅ ГАРАНТИРОВАНО: sfc[].componentUsages и sfc[].htmlElements
 //     ВСЕГДА добавляются в FullJSON, даже если пусты [].
-//   - ✅ ИСПРАВЛЕНО: analyzeVueSFC возвращает `{componentUsages: [],
-//     htmlElements: []}`, если файл не найден.
-//   - ✅ ИСПРАВЛЕНО: в `convertVueEntitiesToFull` sfc[].componentUsages
-//     и sfc[].htmlElements заполняются даже когда vue-template-parser
-//     вернул пустые массивы.
 //
 // v16.0.1 (fix TS6192 + TS6196 + TS6133):
-//   - ✅ FIX: удалена строка `import { parseSourceChain, ... }`.
-//   - ✅ FIX: удалены неиспользуемые типы из импорта codec-types.js.
-//   - ✅ FIX: параметр `fn: any` в `buildScopeForFunction` → `_fn: any`.
-//   - ✅ FIX: параметр `sfc: any` в `analyzeVueSFC` → `_sfc: any`.
-//   - ✅ FIX: параметр `sfc: any` в `extractSFCNamesForVue` → `_sfc: any`.
-//
-// v16.0.0 (JSON-данные: Vue template + DOM API):
-//   - ✅ ДОБАВЛЕНО: parseVueTemplate → componentUsages, htmlElements
-//   - ✅ ДОБАВЛЕНО: extractSFCNames → реальные имена props/emits/exposed
-//   - ✅ ДОБАВЛЕНО: buildScopeForFunction + detectDomApiCallsForFunction
-//   - ✅ ДОБАВЛЕНО: заполнение fn.htmlUsage, fn.isHtmlVisible,
-//     fn.usagesAsPropSource, fn.domApiCalls, fn.domApiUsagesAsHandler
-//   - ✅ ДОБАВЛЕНО: top-level domApiCalls
-//   - ✅ ДОБАВЛЕНО: расширенная st (8 новых счётчиков)
-//   - ✅ ИСПОЛЬЗУЕТСЯ: CODEC_VERSION = '16.0.0'
-//
+// v16.0.0 (Component Usage + DOM API + sourceChains):
 // v15.5.7 (fix: явный проброс vueKind + диагностика):
 // v15.5.6 (fix TS2614 + TS2339 + синхронизация Vue-секции):
 // v15.5.5 (JSON-safe сериализация):
@@ -86,7 +118,7 @@ import {
   getTsConfigDir,
   clearTsConfigCache,
 } from '../core/tsconfig-resolver.js';
-
+import { parseVueFile } from '../modes/vue-analyzer/parser.js';
 // ✅ v15.5.5: JSON-safe сериализация
 import { jsonSafeStringify, isJsonSafe } from './codec/stable-stringify.js';
 
@@ -101,25 +133,18 @@ import { canonicalizeFullJSON } from './utils/canonical-utils.js';
 import { classifyVueEntities } from '../core/vue-entity-classifier.js';
 import type { VueEntities } from '../core/vue-entity-classifier.js';
 
-// ✅ v16.0.0: Vue template + SFC + source chain
-import { parseVueTemplate } from '../core/vue-template-parser.js';
-import { extractSFCNames } from '../core/vue-sfc-extractor.js';
-
-// ✅ FIX v16.0.1: удалён неиспользуемый импорт
-// (TS6192: All imports in import declaration are unused)
-// import { parseSourceChain, type Scope, type ExistingIndex } from '../core/source-chain-resolver.js';
+// ✅ v16.0.8: parseVueTemplate / extractSFCNames / parseVueFile УДАЛЕНЫ —
+// они больше не используются в compact-reporter.ts. Вся логика анализа
+// <template> перенесена в pipeline (ParseFileStage → analyzeVueComponent).
 
 // ✅ v16.0.0: ts-morph для DOM API
 import { Project as TsMorphProject, Node as TsNode, SyntaxKind } from 'ts-morph';
 
+// ✅ FIX v16.0.8: сериализация sourceChain для full.ids/full.sourceChains
+import { serializeSourceChain } from '../core/source-chain-resolver.js';
+
 // ============================================
 // ✅ v13.0.0: ИМПОРТ ТИПОВ ИЗ codec-types.js
-// ============================================
-// ✅ FIX v16.0.1: удалены неиспользуемые типы (TS6196):
-//   - HtmlUsage
-//   - PropUsage
-//   - SourceChainItem
-//   - DomApiHandlerUsage
 // ============================================
 import type {
   FullJSON,
@@ -154,7 +179,7 @@ import type {
 } from './codec/codec-types.js';
 
 // ✅ v13.0.0-fix: единая версия CODEC
-// ✅ v16.0.4: CODEC_VERSION = '16.0.4' (синхронизировано с codec-types.ts)
+// ✅ v16.0.8: CODEC_VERSION = '16.0.8' (синхронизировано с codec-types.ts)
 import { CODEC_VERSION } from './codec/codec-types.js';
 
 // ============================================
@@ -170,14 +195,14 @@ interface CallsInfoEntry {
   line: number;
   column?: number;
   callKind?:
-      | 'direct'
-      | 'method'
-      | 'callback'
-      | 'constructor'
-      | 'tagged-template'
-      | 'optional-chain'
-      | 'spread'
-      | 'new';
+    | 'direct'
+    | 'method'
+    | 'callback'
+    | 'constructor'
+    | 'tagged-template'
+    | 'optional-chain'
+    | 'spread'
+    | 'new';
   calleeName?: string;
   argumentIndex?: number;
 }
@@ -208,9 +233,9 @@ const DEFAULT_VALUES_MODE: ValuesMode = 'relations';
  * @returns Результат генерации с полным и сжатым JSON
  */
 export function generateCompactReport(
-    entitiesMap: Record<string, EntitiesResult>,
-    outputPath?: string,
-    options: GenerateReportOptions = {}
+  entitiesMap: Record<string, EntitiesResult>,
+  outputPath?: string,
+  options: GenerateReportOptions = {}
 ): GenerateReportResult {
   const startTime = Date.now();
   const verbose = options.verbose === true;
@@ -221,6 +246,24 @@ export function generateCompactReport(
   // ✅ v11.1.0: режим сериализации values
   const valuesMode: ValuesMode = options.valuesMode || DEFAULT_VALUES_MODE;
 
+  // ✅ v16.0.7: ИСПРАВЛЕНО
+  //
+  // КРИТИЧНО: projectRoot — реальный корень анализируемого проекта.
+  //
+  // Без этого Vue SFC ищутся относительно process.cwd() (корень
+  // пакета ast-analyzer), а не относительно анализируемого проекта
+  // (infoenergo-ui). Это приводит к тому, что все 75 SFC не
+  // находятся на диске, и componentUsages/htmlElements = 0.
+  //
+  // Если options.projectRoot не задан — fallback на process.cwd()
+  // для обратной совместимости (например, при прямом вызове
+  // generateCompactReport без pipeline).
+  const projectRoot = options.projectRoot || process.cwd();
+
+  if (verbose) {
+    console.log(`   🏠 projectRoot: ${projectRoot}`);
+  }
+
   // ✅ v9.0.4: edges
   const saveEdges = options.saveEdges === true;
   const edgesSuffix = options.edgesJsonSuffix || '.edges.json';
@@ -229,11 +272,12 @@ export function generateCompactReport(
   // ШАГ 1: Сбор полного JSON
   // ============================================
   if (verbose) {
-    console.log('\n📦 [compact-reporter] Сбор полного JSON...');
+    console.log('\\n📦 [compact-reporter] Сбор полного JSON...');
     console.log(`   🎛️  valuesMode: ${valuesMode}`);
   }
 
-  const full = collectFullJSON(entitiesMap, verbose, valuesMode);
+  // ✅ v16.0.7: проброс projectRoot в collectFullJSON
+  const full = collectFullJSON(entitiesMap, verbose, valuesMode, undefined, projectRoot);
 
   if (verbose) {
     console.log(`   📊 Модулей: ${full.modules.length}`);
@@ -275,31 +319,31 @@ export function generateCompactReport(
 
     // ✅ v15.5.7: диагностика vueKind
     const fnsWithVueKind = (full.functions || []).filter(
-        f => f.vueKind !== undefined && f.vueKind !== null
+      f => f.vueKind !== undefined && f.vueKind !== null
     ).length;
     const fnsNonFunctionVueKind = (full.functions || []).filter(
-        f => f.vueKind !== undefined && f.vueKind !== null && f.vueKind !== 'function'
+      f => f.vueKind !== undefined && f.vueKind !== null && f.vueKind !== 'function'
     ).length;
 
     console.log(
-        `   🎯 Функций с vueKind: ${fnsWithVueKind}/${full.functions.length} ` +
-        `(не 'function': ${fnsNonFunctionVueKind})`
+      `   🎯 Функций с vueKind: ${fnsWithVueKind}/${full.functions.length} ` +
+      `(не 'function': ${fnsNonFunctionVueKind})`
     );
 
     if (full.functions.length > 0 && fnsWithVueKind < full.functions.length * 0.5) {
       console.warn(
-          `   ⚠️  vueKind отсутствует у ${full.functions.length - fnsWithVueKind}/${full.functions.length} функций`
+        `   ⚠️  vueKind отсутствует у ${full.functions.length - fnsWithVueKind}/${full.functions.length} функций`
       );
     }
 
     // ✅ [P0]: проверка целостности parentFunctionId
     const fnIdSet = new Set((full.functions || []).map(f => f.id));
     const badParents = (full.functions || []).filter(
-        f => f.parentFunctionId && !fnIdSet.has(f.parentFunctionId)
+      f => f.parentFunctionId && !fnIdSet.has(f.parentFunctionId)
     );
     if (badParents.length > 0) {
       console.warn(
-          `   ⚠️  Функций с parentFunctionId, ссылающимся на несуществующий ID: ${badParents.length}`
+        `   ⚠️  Функций с parentFunctionId, ссылающимся на несуществующий ID: ${badParents.length}`
       );
     }
 
@@ -309,7 +353,7 @@ export function generateCompactReport(
 
     // ✅ v8.5.0: диагностика неразрешённых импортов
     const unresolvedImports = (full.imports || []).filter(
-        imp => !imp.isExternal && imp.toFileId?.startsWith('unresolved:')
+      imp => !imp.isExternal && imp.toFileId?.startsWith('unresolved:')
     );
     if (unresolvedImports.length > 0) {
       console.log(`   ⚠️  Неразрешённых импортов: ${unresolvedImports.length}`);
@@ -327,7 +371,7 @@ export function generateCompactReport(
       }
       if (unsafeCount > 0) {
         console.warn(
-            `   ⚠️  ${unsafeCount} констант содержат не-JSON-значения`
+          `   ⚠️  ${unsafeCount} констант содержат не-JSON-значения`
         );
       }
     }
@@ -353,7 +397,7 @@ export function generateCompactReport(
     compact = Codec.encode(full, valuesMode);
     if (verbose) {
       console.log(
-          `   🗜️  Сжатие применено (v${compact.v}, valuesMode: ${compact.valuesMode || 'undefined'})`
+        `   🗜️  Сжатие применено (v${compact.v}, valuesMode: ${compact.valuesMode || 'undefined'})`
       );
       const valuesCount = compact.values?.length ?? 0;
       console.log(`   📦 values[]: ${valuesCount} элементов`);
@@ -397,8 +441,8 @@ export function generateCompactReport(
 
       if (compactPath && path.resolve(compactPath) === path.resolve(fullPath)) {
         console.error(
-            `   ❌ [compact-reporter] КРИТИЧЕСКАЯ ОШИБКА: ` +
-            `compactPath и fullPath совпадают: ${compactPath}`
+          `   ❌ [compact-reporter] КРИТИЧЕСКАЯ ОШИБКА: ` +
+          `compactPath и fullPath совпадают: ${compactPath}`
         );
       }
     }
@@ -424,10 +468,10 @@ export function generateCompactReport(
       };
 
       const saved = saveJsonFile(
-          edgesPathResolved,
-          edgesPayload,
-          `Edges JSON (${edges.length} edges)`,
-          verbose
+        edgesPathResolved,
+        edgesPayload,
+        `Edges JSON (${edges.length} edges)`,
+        verbose
       );
       edgesPath = saved.path;
       edgesSize = saved.size;
@@ -448,7 +492,7 @@ export function generateCompactReport(
 
   if (verbose) {
     console.log(`   ⏱️  Время: ${(duration / 1000).toFixed(2)}s`);
-    console.log('✅ [compact-reporter] Готово\n');
+    console.log('✅ [compact-reporter] Готово\\n');
   }
 
   return {
@@ -474,8 +518,8 @@ export function generateCompactReport(
 // ============================================
 
 export function decodeCompactReport(
-    compact: CompactJSON,
-    options: DecodeOptions = {}
+  compact: CompactJSON,
+  options: DecodeOptions = {}
 ): FullJSON {
   return Codec.decode(compact, options);
 }
@@ -518,10 +562,10 @@ interface SaveJsonResult {
 }
 
 function saveJsonFile(
-    filePath: string,
-    data: unknown,
-    label: string,
-    verbose: boolean
+  filePath: string,
+  data: unknown,
+  label: string,
+  verbose: boolean
 ): SaveJsonResult {
   const outputDir = path.dirname(filePath);
   if (!fs.existsSync(outputDir)) {
@@ -557,7 +601,7 @@ function countConditionals(full: FullJSON): number {
 // ============================================
 
 function mapCrossFileCallKindToCallType(
-    kind: CrossFileCall['callKind']
+  kind: CrossFileCall['callKind']
 ): 'direct' | 'async' | 'method' | 'callback' {
   switch (kind) {
     case 'method':
@@ -576,8 +620,8 @@ function mapCrossFileCallKindToCallType(
 // ============================================
 
 function findCallsInfo(
-    func: FunctionInfo,
-    callName: string
+  func: FunctionInfo,
+  callName: string
 ): CallsInfoEntry | undefined {
   const callsInfo = (func as any).callsInfo as CallsInfoEntry[] | undefined;
   if (!Array.isArray(callsInfo) || callsInfo.length === 0) return undefined;
@@ -593,10 +637,10 @@ function findCallsInfo(
 // ============================================
 
 function buildCompactIdToGlobalFnIdMap(
-    entitiesMap: Record<string, EntitiesResult>,
-    functions: FunctionData[],
-    fileMap: Map<string, FileData>,
-    projectRoot: string
+  entitiesMap: Record<string, EntitiesResult>,
+  functions: FunctionData[],
+  fileMap: Map<string, FileData>,
+  projectRoot: string
 ): Map<string, string> {
   const map = new Map<string, string>();
 
@@ -604,7 +648,7 @@ function buildCompactIdToGlobalFnIdMap(
     if (!entities) continue;
 
     const absolutePath = path.resolve(filePath);
-    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
+    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\\\/g, '/');
 
     const file = fileMap.get(relativePath);
     if (!file) continue;
@@ -614,10 +658,10 @@ function buildCompactIdToGlobalFnIdMap(
       if (!func || !func.id) continue;
 
       const globalFn = functions.find(
-          f =>
-              f.fileId === file.id &&
-              f.line === (func.line || 0) &&
-              f.name === func.name
+        f =>
+          f.fileId === file.id &&
+          f.line === (func.line || 0) &&
+          f.name === func.name
       );
 
       if (globalFn) {
@@ -642,13 +686,13 @@ function buildCompactIdToGlobalFnIdMap(
 // ============================================
 
 function convertVueEntitiesToFull(
-    vueEntities: VueEntities,
-    fileMap: Map<string, FileData>,
-    projectRoot: string
+  vueEntities: VueEntities,
+  fileMap: Map<string, FileData>,
+  projectRoot: string
 ): VueSectionFull {
   const resolveFileId = (filePath: string): string => {
     const absolutePath = path.resolve(filePath);
-    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
+    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\\\/g, '/');
     const file = fileMap.get(relativePath);
     return file?.id ?? 'f1';
   };
@@ -672,7 +716,7 @@ function convertVueEntitiesToFull(
       emits: s.emits ?? [],
       exposed: s.exposed ?? [],
       // ✅ v16.0.2: ВСЕГДА добавляем пустые массивы.
-      // Они будут заполнены ниже в analyzeVueSFC.
+      // Они будут заполнены ниже в блоке "Component Usage".
       componentUsages: [],
       htmlElements: [],
     })),
@@ -719,7 +763,7 @@ function convertVueEntitiesToFull(
     // ✅ v16.0.4: симметрия с codec-decode.ts v16.0.4 —
     // ВСЕГДА инициализируем top-level component*-поля (даже []).
     // Реальные значения заполняются в collectFullJSON после
-    // analyzeVueSFC.
+    // блока "Component Usage".
     componentProps: [],
     componentEvents: [],
     componentDirectives: [],
@@ -749,15 +793,23 @@ interface ScopeInternal {
   refs: Set<string>;
 }
 
-// ✅ FIX v16.0.1: параметр `fn: any` → `_fn: any` (TS6133)
-// Параметр не используется внутри тела функции — он передан
-// для единообразия сигнатуры. Переименован с префиксом `_`.
+/**
+ * ✅ v16.0.5: Строит scope для функции.
+ *
+ * Ключевое изменение: параметр `originalAbsolutePath` — реальный
+ * путь к .vue или .ts файлу. Используется как fallback для поиска
+ * SourceFile, если виртуальный `scriptPath` не найден в Project.
+ *
+ * НЕ возвращает null при ошибке — продолжает с тем, что есть
+ * (scope.locals/imports/refs заполнены из entitiesMap).
+ */
 function buildScopeForFunction(
-    _fn: any,
-    filePath: string,
-    fileId: string,
-    entitiesMap: Record<string, EntitiesResult>,
-    tsProject: TsMorphProject
+  _fn: any,
+  scriptPath: string,
+  fileId: string,
+  entitiesMap: Record<string, EntitiesResult>,
+  tsProject: TsMorphProject,
+  originalAbsolutePath?: string
 ): ScopeInternal | null {
   const scope: ScopeInternal = {
     fileId,
@@ -774,7 +826,7 @@ function buildScopeForFunction(
   };
 
   // 1. Локальные переменные из entities
-  const entities = entitiesMap[filePath];
+  const entities = entitiesMap[scriptPath] ?? entitiesMap[originalAbsolutePath ?? ''] ?? null;
   if (entities) {
     for (const v of entities.variables || []) {
       if (v.name) scope.locals.set(v.name, { subkind: 'constant' });
@@ -816,11 +868,38 @@ function buildScopeForFunction(
   }
 
   // 4. SourceFile через ts-morph
+  //
+  // ✅ v16.0.5: Ищем SourceFile по scriptPath (виртуальному).
+  // Если не найден — пробуем originalAbsolutePath (реальный).
+  // Если и там нет — возвращаем scope БЕЗ sourceFile (не null!),
+  // чтобы DOM-детектор мог использовать scope.locals/imports/refs
+  // из entitiesMap.
   try {
-    let sf = tsProject.getSourceFile(filePath);
-    if (!sf && fs.existsSync(filePath)) {
-      sf = tsProject.addSourceFileAtPath(filePath);
+    let sf = tsProject.getSourceFile(scriptPath);
+
+    // Fallback 1: virtual path мог быть создан с другим ключом
+    if (!sf && originalAbsolutePath) {
+      sf = tsProject.getSourceFile(originalAbsolutePath);
     }
+
+    // Fallback 2: реальный файл на диске
+    if (!sf && originalAbsolutePath && fs.existsSync(originalAbsolutePath)) {
+      try {
+        sf = tsProject.addSourceFileAtPath(originalAbsolutePath);
+      } catch {
+        // ignore
+      }
+    }
+
+    // Fallback 3: scriptPath (если виртуальный файл на диске — маловероятно, но возможно)
+    if (!sf && fs.existsSync(scriptPath)) {
+      try {
+        sf = tsProject.addSourceFileAtPath(scriptPath);
+      } catch {
+        // ignore
+      }
+    }
+
     if (sf) {
       scope.sourceFile = sf;
       sf.forEachDescendant((node: any) => {
@@ -839,9 +918,18 @@ function buildScopeForFunction(
           }
         }
       });
+    } else if (process.env.AST_DEBUG_VUE === 'true') {
+      console.warn(
+        `   ⚠️ buildScopeForFunction: SourceFile не найден ни по scriptPath, ни по originalAbsolutePath`
+      );
+      console.warn(`      scriptPath: ${scriptPath}`);
+      console.warn(`      originalAbsolutePath: ${originalAbsolutePath ?? '<не задан>'}`);
     }
-  } catch {
-    return null;
+  } catch (err) {
+    if (process.env.AST_DEBUG_VUE === 'true') {
+      console.warn(`   ⚠️ buildScopeForFunction: exception:`, err);
+    }
+    // ❌ НЕ возвращаем null — продолжаем с тем, что есть
   }
 
   return scope;
@@ -861,7 +949,7 @@ function isDomElementCreation(node: any): boolean {
   if (!TsNode.isPropertyAccessExpression(expr)) return false;
   const text = expr.getText();
   return text === 'document.createElement' || text === 'document.querySelector' ||
-      text === 'document.getElementById';
+    text === 'document.getElementById';
 }
 
 // ============================================
@@ -933,35 +1021,112 @@ const DOM_OBSERVER_MAP_LOCAL: Record<string, string> = {
 };
 
 // ============================================
-// isLikelyDomReceiver
+// ✅ v16.0.5: isLikelyDomReceiver — расширенная эвристика
 // ============================================
 
+/**
+ * ✅ v16.0.5: Эвристика "является ли receiver DOM-элементом".
+ */
 function isLikelyDomReceiver(expr: any, scope: ScopeInternal): boolean {
   if (!expr) return false;
 
+  // ─────────────────────────────────────────────
+  // 1. Identifier
+  // ─────────────────────────────────────────────
   if (TsNode.isIdentifier(expr)) {
     const name = expr.getText();
-    if (['document', 'window', 'globalThis'].includes(name)) return true;
+
+    // 1.1. Глобальные объекты
+    if (['document', 'window', 'globalThis', 'navigator', 'location'].includes(name)) {
+      return true;
+    }
+
+    // 1.2. Из scope.locals
     const local = scope.locals.get(name);
     if (local?.isRef || local?.isDomElement) return true;
-    if (local?.typeHint && /Element|Node|HTML/.test(local.typeHint)) return true;
+    if (local?.typeHint && /Element|Node|HTML|HTMLElement|SVGElement/.test(local.typeHint)) {
+      return true;
+    }
+
+    // 1.3. Эвристика по имени (templateRefs, DOM-элементы)
+    if (
+      name.endsWith('Ref') ||
+      name.endsWith('El') ||
+      name.endsWith('Element') ||
+      name.endsWith('Node') ||
+      name === 'el' ||
+      name === 'root'
+    ) {
+      return true;
+    }
   }
 
-  const text = expr.getText();
+  // ─────────────────────────────────────────────
+  // 2. Текстовые префиксы
+  // ─────────────────────────────────────────────
+  let text: string;
+  try {
+    text = expr.getText();
+  } catch {
+    return false;
+  }
 
   if (text.startsWith('document.') || text.startsWith('window.')) return true;
   if (text.startsWith('this.$refs.') || text.startsWith('this.$el')) return true;
-
-  if (TsNode.isCallExpression(expr)) {
-    const calleeText = expr.getExpression().getText();
-    if (/^(document|window)\\./.test(calleeText)) return true;
-    if (/^(document|window)\\.(querySelector|getElementById|getElementsBy)/.test(calleeText)) return true;
+  if (text.startsWith('this.')) {
+    if (/^this\\.[\\w$]+(?:Ref|El|Element|Node)\\b/.test(text)) return true;
   }
 
+  // ─────────────────────────────────────────────
+  // 3. CallExpression: document.querySelector(...)
+  // ─────────────────────────────────────────────
+  if (TsNode.isCallExpression(expr)) {
+    let calleeText: string;
+    try {
+      calleeText = expr.getExpression().getText();
+    } catch {
+      return false;
+    }
+
+    if (/^(document|window)\\./.test(calleeText)) return true;
+    if (/^(document|window)\\.(querySelector|querySelectorAll|getElementById|getElementsBy)/.test(calleeText)) {
+      return true;
+    }
+
+    if (TsNode.isPropertyAccessExpression(expr.getExpression())) {
+      const inner = expr.getExpression() as any;
+      const innerText = inner.getText();
+      if (/\\bquerySelector\\b|\\bgetElementById\\b/.test(innerText)) return true;
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // 4. PropertyAccess: *.value
+  // ─────────────────────────────────────────────
   if (TsNode.isPropertyAccessExpression(expr) && expr.getName() === 'value') {
-    const refName = expr.getExpression().getText();
+    const refExpr = expr.getExpression();
+    let refName: string;
+    try {
+      refName = refExpr.getText();
+    } catch {
+      return false;
+    }
+
     if (scope.refs.has(refName)) return true;
     if (scope.locals.get(refName)?.isRef) return true;
+
+    if (
+      refName.endsWith('Ref') ||
+      refName.endsWith('El') ||
+      refName.endsWith('Element') ||
+      refName.endsWith('Node')
+    ) {
+      return true;
+    }
+
+    if (/^this\\.[\\w$]+$/.test(refName)) {
+      if (/Ref|El|Element|Node/.test(refName)) return true;
+    }
   }
 
   return false;
@@ -1039,9 +1204,9 @@ function resolveArgLocal(node: any, index: number, scope: ScopeInternal): any {
 // ============================================
 
 function extractContextLocal(
-    category: string,
-    args: any[],
-    scope: ScopeInternal
+  category: string,
+  args: any[],
+  scope: ScopeInternal
 ): any {
   const ctx: any = {};
 
@@ -1090,22 +1255,44 @@ function extractContextLocal(
 }
 
 // ============================================
-// Главная: detectDomApiCallsForFunction
+// ✅ v16.0.5: detectDomApiCallsForFunction
 // ============================================
 
+/**
+ * ✅ v16.0.5: Детектор DOM API-вызовов для одной функции.
+ */
 function detectDomApiCallsForFunction(
-    fn: any,
-    filePath: string,
-    fileId: string,
-    entitiesMap: Record<string, EntitiesResult>,
-    tsProject: TsMorphProject,
-    idCounter: { value: number }
+  fn: any,
+  scriptPath: string,
+  fileId: string,
+  entitiesMap: Record<string, EntitiesResult>,
+  tsProject: TsMorphProject,
+  idCounter: { value: number },
+  originalAbsolutePath?: string
 ): any[] {
-  const scope = buildScopeForFunction(fn, filePath, fileId, entitiesMap, tsProject);
-  if (!scope || !scope.sourceFile) return [];
+  const scope = buildScopeForFunction(
+    fn,
+    scriptPath,
+    fileId,
+    entitiesMap,
+    tsProject,
+    originalAbsolutePath
+  );
+
+  if (!scope) return [];
 
   const calls: any[] = [];
   const sf = scope.sourceFile;
+
+  if (!sf) {
+    if (process.env.AST_DEBUG_VUE === 'true') {
+      console.warn(
+        `   ⚠️ detectDomApiCallsForFunction: scope.sourceFile is null для ${fn.name}`
+      );
+    }
+    return [];
+  }
+
   let targetFn: any = null;
 
   sf.forEachDescendant((node: any) => {
@@ -1121,7 +1308,14 @@ function detectDomApiCallsForFunction(
     }
   });
 
-  if (!targetFn) return [];
+  if (!targetFn) {
+    if (process.env.AST_DEBUG_VUE === 'true') {
+      console.warn(
+        `   ⚠️ detectDomApiCallsForFunction: targetFn не найден для ${fn.name} в ${sf.getFilePath()}`
+      );
+    }
+    return [];
+  }
 
   targetFn.forEachDescendant((node: any) => {
     // 1. CallExpression: obj.method(...)
@@ -1213,74 +1407,76 @@ function detectDomApiCallsForFunction(
   return calls;
 }
 
-// ============================================
-// ✅ v16.0.2: Vue template analysis (симметричный)
-// ============================================
+// ════════════════════════════════════════════════════════════
+// ✅ v16.0.8: analyzeVueSFC УДАЛЕНА
+// ════════════════════════════════════════════════════════════
 //
-// ✅ ИСПРАВЛЕНО v16.0.2: если файл не найден или парсинг упал —
-// возвращаем `{componentUsages: [], htmlElements: []}`, а не
-// падаем. Это гарантирует, что sfc[].componentUsages и
-// sfc[].htmlElements ВСЕГДА присутствуют (даже пустыми).
-// ============================================
+// РАНЬШЕ: compact-reporter.ts вызывал analyzeVueSFC для каждого
+// SFC, что приводило к двойному парсингу <template>
+// (один раз в pipeline, второй раз здесь).
+//
+// ТЕПЕРЬ: данные уже собраны в pipeline:
+//   ParseFileStage → parseVueFile → analyzeVueComponent
+//   → convertVueAnalysisToEntities → EntitiesResult.templateComponentUsages
+//   → NormalizeEntitiesStage → propagateTemplateFields
+//   → EnhancedEntityInfo.templateComponentUsages
+//
+// compact-reporter.ts ЧИТАЕТ их напрямую.
+//
+// См.:
+//   - src/types.ts: EntitiesResult.templateComponentUsages
+//   - src/types-vue-template.ts
+//   - src/core/entity-extractor/vue/convert-analysis.ts
+//   - src/reporters/modules/converters.ts
+//   - src/pipeline/stages/normalize-entities.ts
+// ════════════════════════════════════════════════════════════
 
-// ✅ FIX v16.0.1: параметр `sfc: any` → `_sfc: any` (TS6133)
-// Параметр не используется внутри тела функции.
-function analyzeVueSFC(
-    _sfc: any,
-    absolutePath: string,
-    fileId: string
-): { componentUsages: ComponentUsage[]; htmlElements: HtmlElementUsage[] } {
-  if (!fs.existsSync(absolutePath)) {
-    return { componentUsages: [], htmlElements: [] };
-  }
-
-  try {
-    const sfcSource = fs.readFileSync(absolutePath, 'utf-8');
-    const result = parseVueTemplate(sfcSource, { filePath: absolutePath });
-
-    // Установить parentFileId
-    for (const cu of result.componentUsages) cu.parentFileId = fileId;
-    for (const he of result.htmlElements) he.parentFileId = fileId;
-
-    return result;
-  } catch (err) {
-    if (process.env.AST_DEBUG_VUE === 'true') {
-      console.warn(`   ⚠️ Vue template parse failed for ${absolutePath}:`, err);
-    }
-    // ✅ v16.0.2: ВСЕГДА возвращаем массивы, даже при ошибке
-    return { componentUsages: [], htmlElements: [] };
-  }
-}
-
-// ✅ FIX v16.0.1: параметр `sfc: any` → `_sfc: any` (TS6133)
-// Параметр не используется внутри тела функции.
-function extractSFCNamesForVue(_sfc: any, absolutePath: string): { props: string[]; emits: string[]; exposed: string[] } {
-  if (!fs.existsSync(absolutePath)) {
-    return { props: [], emits: [], exposed: [] };
-  }
-
-  try {
-    const sfcSource = fs.readFileSync(absolutePath, 'utf-8');
-    const scriptMatch = sfcSource.match(/<script[^>]*>([\s\S]*?)<\/script>/);
-    if (!scriptMatch) return { props: [], emits: [], exposed: [] };
-
-    return extractSFCNames(scriptMatch[1] || '', `${absolutePath}.__script__.ts`);
-  } catch {
-    return { props: [], emits: [], exposed: [] };
-  }
-}
+// ════════════════════════════════════════════════════════════
+// ✅ v16.0.8: extractSFCNamesForVue УДАЛЕНА
+// ════════════════════════════════════════════════════════════
+//
+// РАНЬШЕ: compact-reporter.ts вызывал extractSFCNamesForVue
+// для каждого SFC, чтобы получить реальные имена props/emits/exposed
+// для vue.sfc[].
+//
+// ТЕПЕРЬ: эти имена УЖЕ извлечены в pipeline:
+//   - VueComponentAnalysis.props.names   (analyzeVueComponent)
+//   - VueComponentAnalysis.emits.names   (analyzeVueComponent)
+//   - VueComponentAnalysis.expose        (analyzeVueComponent)
+//
+// При формировании vue.sfc[] в collectFullJSON берём имена
+// из workingEntitiesMap[filePath].vueAnalysis.
+//
+// См. ниже: блок "Vue.sfc[] props/emits/exposed".
+// ════════════════════════════════════════════════════════════
 
 // ============================================
 // СБОР ПОЛНОГО JSON
 // ============================================
+//
+// ✅ v16.0.7: ИСПРАВЛЕНО
+//
+// Параметр `projectRoot` теперь передаётся явно (из
+// `generateCompactReport`), а не берётся из `process.cwd()`.
+//
+// Это гарантирует, что все относительные пути (из DiscoverFilesStage)
+// резолвятся относительно реального корня проекта.
+// ============================================
 
 function collectFullJSON(
-    entitiesMap: Record<string, EntitiesResult>,
-    verbose: boolean = false,
-    valuesMode: ValuesMode = DEFAULT_VALUES_MODE,
-    _crossFileCalls?: CrossFileCall[]
+  entitiesMap: Record<string, EntitiesResult>,
+  verbose: boolean = false,
+  valuesMode: ValuesMode = DEFAULT_VALUES_MODE,
+  _crossFileCalls?: CrossFileCall[],
+  projectRoot: string = process.cwd()
 ): FullJSON {
-  const projectRoot = process.cwd();
+  // ✅ v16.0.7: projectRoot теперь параметр, а не process.cwd().
+  //
+  // Это гарантирует, что все относительные пути (из DiscoverFilesStage)
+  // резолвятся относительно реального корня проекта.
+  //
+  // Если параметр не передан — fallback на process.cwd() для
+  // обратной совместимости (прямой вызов collectFullJSON).
 
   // ============================================
   // Инициализация tsconfig
@@ -1288,7 +1484,7 @@ function collectFullJSON(
   try {
     clearTsConfigCache();
     const firstTsFile = Object.keys(entitiesMap).find(
-        f => f.endsWith('.ts') || f.endsWith('.tsx')
+      f => f.endsWith('.ts') || f.endsWith('.tsx')
     );
     const startDir = firstTsFile ? path.dirname(path.resolve(firstTsFile)) : process.cwd();
     loadTsConfig(startDir);
@@ -1298,7 +1494,7 @@ function collectFullJSON(
   } catch (error) {
     if (verbose) {
       console.warn(
-          `   ⚠️ tsconfig не загружен: ${error instanceof Error ? error.message : String(error)}`
+        `   ⚠️ tsconfig не загружен: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }
@@ -1361,6 +1557,15 @@ function collectFullJSON(
   let emptyNameFixCount = 0;
 
   // ============================================
+  // ✅ v16.0.4: аккумуляторы для обратных связей
+  // ============================================
+  const allComponentProps: any[] = [];
+  const allComponentEvents: any[] = [];
+  const allComponentDirectives: any[] = [];
+  const allComponentSlots: any[] = [];
+  const allHtmlInterpolations: any[] = [];
+
+  // ============================================
   // ПЕРВЫЙ ПРОХОД
   // ============================================
   for (const filePath of sortedFilePaths) {
@@ -1368,7 +1573,7 @@ function collectFullJSON(
     if (!entities) continue;
 
     const absolutePath = path.resolve(filePath);
-    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
+    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\\\/g, '/');
 
     const dirName = path.basename(path.dirname(relativePath)) || 'root';
     let module = moduleMap.get(dirName);
@@ -1400,7 +1605,7 @@ function collectFullJSON(
     }
 
     const normalizedPath = relativePath;
-    const normalizedAbs = absolutePath.replace(/\\/g, '/');
+    const normalizedAbs = absolutePath.replace(/\\\\/g, '/');
 
     sourceToFileIdMap.set(filePath, file.id);
     sourceToFileIdMap.set(relativePath, file.id);
@@ -1436,9 +1641,9 @@ function collectFullJSON(
 
       const rawParent = (func as any).parentFunctionId as string | null | undefined;
       const resolvedParentFunctionId =
-          rawParent && localCompactIdToGlobalFnId.has(rawParent)
-              ? localCompactIdToGlobalFnId.get(rawParent)!
-              : null;
+        rawParent && localCompactIdToGlobalFnId.has(rawParent)
+          ? localCompactIdToGlobalFnId.get(rawParent)!
+          : null;
 
       const rawVueKind = (func as any).vueKind as VueKind | undefined | null;
       const vueKind: VueKind = rawVueKind ?? 'function';
@@ -1511,7 +1716,7 @@ function collectFullJSON(
 
   if (verbose) {
     console.log(
-        `   ✅ Первый проход: ${modules.length} модулей, ${files.length} файлов, ${functions.length} функций`
+      `   ✅ Первый проход: ${modules.length} модулей, ${files.length} файлов, ${functions.length} функций`
     );
   }
 
@@ -1524,7 +1729,7 @@ function collectFullJSON(
     if (!filePath.endsWith('.vue')) continue;
 
     const absolutePath = path.resolve(filePath);
-    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
+    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\\\/g, '/');
 
     const dirName = path.basename(path.dirname(relativePath)) || 'root';
     const module = moduleMap.get(dirName);
@@ -1534,18 +1739,18 @@ function collectFullJSON(
     const e = entities as any;
 
     const hasTemplate =
-        (e.templateReactivityDeps?.length || 0) +
-        (e.templateEventHandlers?.length || 0) +
-        (e.templateDynamicComponents?.length || 0) +
-        (e.templateRefs?.length || 0) +
-        (e.templateCssVariables?.length || 0) +
-        (e.templateDeepSelectors?.length || 0) +
-        (e.templateUsedComponents?.length || 0) +
-        (e.templateSlots?.length || 0) +
-        (e.templateDirectives?.length || 0) +
-        (e.templateConditionals?.length || 0) +
-        (e.templateComplexity || 0) >
-        0;
+      (e.templateReactivityDeps?.length || 0) +
+      (e.templateEventHandlers?.length || 0) +
+      (e.templateDynamicComponents?.length || 0) +
+      (e.templateRefs?.length || 0) +
+      (e.templateCssVariables?.length || 0) +
+      (e.templateDeepSelectors?.length || 0) +
+      (e.templateUsedComponents?.length || 0) +
+      (e.templateSlots?.length || 0) +
+      (e.templateDirectives?.length || 0) +
+      (e.templateConditionals?.length || 0) +
+      (e.templateComplexity || 0) >
+      0;
 
     if (!hasTemplate) continue;
 
@@ -1603,7 +1808,7 @@ function collectFullJSON(
     if (!entities) continue;
 
     const absolutePath = path.resolve(filePath);
-    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
+    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\\\/g, '/');
 
     const dirName = path.basename(path.dirname(relativePath)) || 'root';
     const module = moduleMap.get(dirName);
@@ -1699,8 +1904,8 @@ function collectFullJSON(
       let resolvedToFileId: string | null = null;
 
       if (
-          toFileIdFromAst?.startsWith('external:') ||
-          toFileIdFromAst?.startsWith('unresolved:')
+        toFileIdFromAst?.startsWith('external:') ||
+        toFileIdFromAst?.startsWith('unresolved:')
       ) {
         resolvedToFileId = toFileIdFromAst;
       } else {
@@ -1721,10 +1926,10 @@ function collectFullJSON(
       }
 
       if (
-          resolvedToFileId &&
-          !/^f\\d+$/.test(resolvedToFileId) &&
-          !resolvedToFileId.startsWith('external:') &&
-          !resolvedToFileId.startsWith('unresolved:')
+        resolvedToFileId &&
+        !/^f\\d+$/.test(resolvedToFileId) &&
+        !resolvedToFileId.startsWith('external:') &&
+        !resolvedToFileId.startsWith('unresolved:')
       ) {
         resolvedToFileId = `unresolved:${imp.source}`;
       }
@@ -1775,8 +1980,8 @@ function collectFullJSON(
             type: importType,
             isDefault: spec.type === 'ImportDefaultSpecifier',
             isNamespace:
-                spec.type === 'ImportNamespaceSpecifier' ||
-                spec.type === 'ExportAllSpecifier',
+              spec.type === 'ImportNamespaceSpecifier' ||
+              spec.type === 'ExportAllSpecifier',
             isTypeOnly: imp.isTypeOnly || false,
             isExternal,
             packageName,
@@ -1882,10 +2087,10 @@ function collectFullJSON(
       } else {
         if (isReExport) {
           const alreadyExists = imports.some(
-              existing =>
-                  existing.fromFileId === file.id &&
-                  existing.source === imp.source &&
-                  existing.isReExport === true
+            existing =>
+              existing.fromFileId === file.id &&
+              existing.source === imp.source &&
+              existing.isReExport === true
           );
 
           if (alreadyExists) continue;
@@ -1982,7 +2187,7 @@ function collectFullJSON(
 
   if (verbose) {
     console.log(
-        `   ✅ Второй проход: ${exports.length} экспортов, ${reExports.length} реэкспортов, ${calls.length} вызовов, ${imports.length} импортов`
+      `   ✅ Второй проход: ${exports.length} экспортов, ${reExports.length} реэкспортов, ${calls.length} вызовов, ${imports.length} импортов`
     );
     if (emptyNameFixCount > 0) {
       console.log(`   🔧 Исправлено пустых имён импортов: ${emptyNameFixCount}`);
@@ -1994,7 +2199,7 @@ function collectFullJSON(
   // ============================================
   if (_crossFileCalls && _crossFileCalls.length > 0) {
     const existingCalls = new Set<string>(
-        calls.map(c => `${c.fromFunctionId}|${c.toFunctionId}|${c.line}`)
+      calls.map(c => `${c.fromFunctionId}|${c.toFunctionId}|${c.line}`)
     );
 
     let crossFileAdded = 0;
@@ -2036,7 +2241,7 @@ function collectFullJSON(
     if (!entities) continue;
 
     const absolutePath = path.resolve(filePath);
-    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
+    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\\\/g, '/');
 
     const dirName = path.basename(path.dirname(relativePath)) || 'root';
     const module = moduleMap.get(dirName);
@@ -2051,8 +2256,8 @@ function collectFullJSON(
       const funcArray = functionMap.get(lc.functionName);
       const func = funcArray?.[0];
       const callbackFuncArray = lc.callbackFunctionName
-          ? functionMap.get(lc.callbackFunctionName)
-          : undefined;
+        ? functionMap.get(lc.callbackFunctionName)
+        : undefined;
       const callbackFunc = callbackFuncArray?.[0];
 
       lifecycle.push({
@@ -2142,8 +2347,8 @@ function collectFullJSON(
   }
 
   if (
-      verbose &&
-      lifecycle.length + effects.length + injections.length + reactivity.length + types.length + typeRefs.length > 0
+    verbose &&
+    lifecycle.length + effects.length + injections.length + reactivity.length + types.length + typeRefs.length > 0
   ) {
     console.log(`   🧬 Lifecycle: ${lifecycle.length}`);
     console.log(`   ⚡ Effects: ${effects.length}`);
@@ -2161,10 +2366,10 @@ function collectFullJSON(
 
   {
     const compactIdToGlobalFnId = buildCompactIdToGlobalFnIdMap(
-        workingEntitiesMap,
-        functions,
-        fileMap,
-        projectRoot
+      workingEntitiesMap,
+      functions,
+      fileMap,
+      projectRoot
     );
 
     for (const filePath of sortedFilePaths) {
@@ -2176,8 +2381,8 @@ function collectFullJSON(
         if (!link) continue;
 
         const parentGlobalId = link.parentFunctionId
-            ? compactIdToGlobalFnId.get(link.parentFunctionId) ?? null
-            : null;
+          ? compactIdToGlobalFnId.get(link.parentFunctionId) ?? null
+          : null;
         const childGlobalId = compactIdToGlobalFnId.get(link.childFunctionId);
         if (!childGlobalId) continue;
 
@@ -2208,12 +2413,12 @@ function collectFullJSON(
     const vueEntities: VueEntities = classifyVueEntities(workingEntitiesMap);
 
     const hasAnyVue =
-        vueEntities.sfc.length > 0 ||
-        vueEntities.composables.length > 0 ||
-        vueEntities.macros.length > 0 ||
-        vueEntities.hooks.length > 0 ||
-        vueEntities.reactivity.length > 0 ||
-        vueEntities.icons.length > 0;
+      vueEntities.sfc.length > 0 ||
+      vueEntities.composables.length > 0 ||
+      vueEntities.macros.length > 0 ||
+      vueEntities.hooks.length > 0 ||
+      vueEntities.reactivity.length > 0 ||
+      vueEntities.icons.length > 0;
 
     if (hasAnyVue) {
       vue = convertVueEntitiesToFull(vueEntities, fileMap, projectRoot);
@@ -2230,61 +2435,262 @@ function collectFullJSON(
   } catch (err) {
     if (verbose) {
       console.warn(
-          `   ⚠️  Ошибка classifyVueEntities: ${err instanceof Error ? err.message : String(err)}`
+        `   ⚠️  Ошибка classifyVueEntities: ${err instanceof Error ? err.message : String(err)}`
       );
     }
   }
 
   // ============================================
-  // ✅ v16.0.2: VUE TEMPLATE ANALYSIS
+  // ✅ v16.0.8: Component Usage + HTML Elements
   // ============================================
   //
-  // КЛЮЧЕВОЕ: sfc[].componentUsages и sfc[].htmlElements ВСЕГДА
-  // присутствуют в FullJSON (даже пустые []). Это симметризует
-  // compact-reporter с codec-decode.ts v16.0.2.
+  // ⚠️ ГЛАВНОЕ ИЗМЕНЕНИЕ v16.0.8:
+  //   РАНЬШЕ здесь вызывался analyzeVueSFC для каждого SFC,
+  //   что приводило к двойному парсингу <template>.
   //
-  // Аналогично, top-level componentUsages/htmlElements собираются
-  // для статистики, но в FullJSON они не выводятся (живут внутри
-  // vue.sfc[]).
+  //   ТЕПЕРЬ данные УЖЕ СОБРАНЫ в pipeline:
+  //     ParseFileStage → parseVueFile → analyzeVueComponent
+  //     → convertVueAnalysisToEntities → templateComponentUsages
+  //     → NormalizeEntitiesStage → propagateTemplateFields
+  //     → enhancedMap[file].templateComponentUsages
+  //
+  //   Здесь мы только АГРЕГИРУЕМ их в плоские массивы
+  //   и заполняем vue.sfc[].
+  //
+  // ЭТО УСТРАНЯЕТ:
+  //   - двойной парсинг (экономия ~8 сек на 75 SFC);
+  //   - рассинхрон projectRoot (второй проход не нужен);
+  //   - дублирование логики extractSFCNamesForVue.
   // ============================================
   const allComponentUsages: ComponentUsage[] = [];
   const allHtmlElements: HtmlElementUsage[] = [];
 
   if (vue) {
+    let totalCu = 0;
+    let totalHe = 0;
+    let notFoundCount = 0;
+
     for (const sfc of vue.sfc || []) {
-      // ✅ v16.0.2: гарантируем, что поля есть (даже пустые)
+      // ✅ Гарантируем, что поля есть (даже пустые)
       if (!Array.isArray(sfc.componentUsages)) sfc.componentUsages = [];
       if (!Array.isArray(sfc.htmlElements)) sfc.htmlElements = [];
 
+      // ✅ v16.0.8: НЕ анализируем заново.
+      // Ищем соответствующий enhancedMap[filePath].
+      //
+      // sfc.fileId — это 'f1', 'f2', ... (ID файла из files[]).
+      // Находим filePath по fileId через files[].
       const sfcFile = files.find(f => f.id === sfc.fileId);
-      if (!sfcFile) continue;
+      if (!sfcFile) {
+        notFoundCount++;
+        continue;
+      }
 
-      const absolutePath = path.resolve(projectRoot, sfcFile.path);
-      if (!fs.existsSync(absolutePath)) continue;
+      const sfcPath = sfcFile.path; // относительный от projectRoot
+      const normalizedSfcPath = sfcPath.replace(/\\\\/g, '/');
+      const targetBasename = path.basename(normalizedSfcPath);
 
-      const result = analyzeVueSFC(sfc, absolutePath, sfc.fileId);
-      // ✅ v16.0.2: analyzeVueSFC ВСЕГДА возвращает массивы
-      sfc.componentUsages = result.componentUsages;
-      sfc.htmlElements = result.htmlElements;
+      // Пробуем несколько вариантов ключа enhancedMap
+      let enhanced: any = workingEntitiesMap[sfcPath];
+      if (!enhanced) enhanced = workingEntitiesMap[normalizedSfcPath];
+      if (!enhanced) {
+        // Fallback 1: поиск по basename
+        for (const [key, value] of Object.entries(workingEntitiesMap)) {
+          if (path.basename(key) === targetBasename) {
+            enhanced = value;
+            break;
+          }
+        }
+      }
+      if (!enhanced) {
+        // Fallback 2: поиск по суффиксу пути
+        for (const [key, value] of Object.entries(workingEntitiesMap)) {
+          const normalizedKey = key.replace(/\\\\/g, '/');
+          if (
+            normalizedKey.endsWith('/' + normalizedSfcPath) ||
+            normalizedSfcPath.endsWith('/' + normalizedKey)
+          ) {
+            enhanced = value;
+            break;
+          }
+        }
+      }
 
-      allComponentUsages.push(...result.componentUsages);
-      allHtmlElements.push(...result.htmlElements);
+      if (!enhanced) {
+        notFoundCount++;
+        if (verbose) {
+          console.warn(
+            `   ⚠️ v16.0.8: enhancedMap не содержит данных для SFC ${sfc.fileId} (${sfcPath})`
+          );
+        }
+        continue;
+      }
 
-      // Реальные имена props/emits/exposed
-      const names = extractSFCNamesForVue(sfc, absolutePath);
-      if (names.props.length > 0) sfc.props = names.props;
-      if (names.emits.length > 0) sfc.emits = names.emits;
-      if (names.exposed.length > 0) sfc.exposed = names.exposed;
+      // ✅ Читаем уже готовые данные из pipeline
+      const cu: ComponentUsage[] = (enhanced as any).templateComponentUsages || [];
+      const he: HtmlElementUsage[] = (enhanced as any).templateHtmlElements || [];
+
+      sfc.componentUsages = cu;
+      sfc.htmlElements = he;
+
+      allComponentUsages.push(...cu);
+      allHtmlElements.push(...he);
+
+      totalCu += cu.length;
+      totalHe += he.length;
+
+      // ============================================
+      // ✅ v16.0.8: реальные имена props/emits/exposed
+      // ============================================
+      //
+      // РАНЬШЕ: extractSFCNamesForVue вызывал parseVueFile и
+      // extractSFCNames — второй парсинг <script setup>.
+      //
+      // ТЕПЕРЬ: имена уже извлечены в pipeline и лежат в
+      // enhanced.vueAnalysis (или enhanced.templateProps и т.п.).
+      //
+      // Источник — analyzeVueComponent → VueComponentAnalysis.
+      // ============================================
+      const vueAnalysis = (enhanced as any).vueAnalysis;
+      if (vueAnalysis) {
+        if (Array.isArray(vueAnalysis.props?.names) && vueAnalysis.props.names.length > 0) {
+          sfc.props = vueAnalysis.props.names;
+        }
+        if (Array.isArray(vueAnalysis.emits?.names) && vueAnalysis.emits.names.length > 0) {
+          sfc.emits = vueAnalysis.emits.names;
+        }
+        if (Array.isArray(vueAnalysis.expose) && vueAnalysis.expose.length > 0) {
+          sfc.exposed = vueAnalysis.expose;
+        }
+      }
     }
 
     if (verbose) {
-      console.log(`   🌐 ComponentUsages: ${allComponentUsages.length}`);
-      console.log(`   🌿 HtmlElements: ${allHtmlElements.length}`);
+      console.log('');
+      console.log('   📊 Component Usage из pipeline:');
+      console.log(`      SFC:              ${vue.sfc.length}`);
+      console.log(`      componentUsages:  ${totalCu}`);
+      console.log(`      htmlElements:     ${totalHe}`);
+      if (notFoundCount > 0) {
+        console.warn(`      ⚠️ SFC без данных: ${notFoundCount}`);
+      }
     }
   }
 
   // ============================================
-  // ✅ v16.0.0: DOM API (top-level) — РЕАЛЬНАЯ РЕАЛИЗАЦИЯ
+  // ✅ v16.0.4: top-level component*-поля из componentUsages
+  // ============================================
+  //
+  // Теперь, когда allComponentUsages / allHtmlElements собраны
+  // из pipeline (без analyzeVueSFC), заполняем top-level
+  // аккумуляторы allComponentProps/Events/Directives/Slots/
+  // HtmlInterpolations.
+  // ============================================
+  if (allComponentUsages.length > 0 || allHtmlElements.length > 0) {
+    for (const cu of allComponentUsages) {
+      for (const p of cu.props ?? []) {
+        allComponentProps.push({
+          id: p.id,
+          usageId: cu.id,
+          name: p.name,
+          value: p.value,
+          kind: p.kind,
+          line: p.line,
+          identifier: extractIdentifierFromValue(p.value),
+          memberChain: extractMemberChainFromValue(p.value),
+          literalValue: extractLiteralFromValue(p.value),
+          sourceChain: p.sourceChain ?? [],
+        });
+      }
+      for (const e of cu.events ?? []) {
+        allComponentEvents.push({
+          id: e.id,
+          usageId: cu.id,
+          eventName: e.eventName,
+          handler: e.handler,
+          handlerFunctionId: e.handlerFunctionId ?? null,
+          handlerSource: e.handlerSource ?? 'unknown',
+          modifiers: e.modifiers ?? [],
+          line: e.line,
+          handlerChain: e.handlerChain ?? [],
+        });
+      }
+      for (const d of cu.directives ?? []) {
+        allComponentDirectives.push({
+          id: d.id,
+          usageId: cu.id,
+          name: d.name,
+          argument: d.argument,
+          modifiers: d.modifiers ?? [],
+          value: d.value,
+          line: d.line,
+        });
+      }
+      for (const s of cu.slots ?? []) {
+        allComponentSlots.push({
+          id: s.id,
+          usageId: cu.id,
+          slotName: s.slotName,
+          isScoped: s.isScoped,
+          scopeNames: s.scopeNames ?? [],
+          line: s.line,
+        });
+      }
+    }
+
+    for (const he of allHtmlElements) {
+      for (const p of he.props ?? []) {
+        allComponentProps.push({
+          id: p.id,
+          usageId: he.id,
+          name: p.name,
+          value: p.value,
+          kind: p.kind,
+          line: p.line,
+          identifier: extractIdentifierFromValue(p.value),
+          memberChain: extractMemberChainFromValue(p.value),
+          literalValue: extractLiteralFromValue(p.value),
+          sourceChain: p.sourceChain ?? [],
+        });
+      }
+      for (const e of he.events ?? []) {
+        allComponentEvents.push({
+          id: e.id,
+          usageId: he.id,
+          eventName: e.eventName,
+          handler: e.handler,
+          handlerFunctionId: e.handlerFunctionId ?? null,
+          handlerSource: e.handlerSource ?? 'unknown',
+          modifiers: e.modifiers ?? [],
+          line: e.line,
+          handlerChain: e.handlerChain ?? [],
+        });
+      }
+      for (const d of he.directives ?? []) {
+        allComponentDirectives.push({
+          id: d.id,
+          usageId: he.id,
+          name: d.name,
+          argument: d.argument,
+          modifiers: d.modifiers ?? [],
+          value: d.value,
+          line: d.line,
+        });
+      }
+      for (const i of he.interpolations ?? []) {
+        allHtmlInterpolations.push({
+          id: i.id,
+          usageId: he.id,
+          expression: i.expression,
+          sourceChain: i.sourceChain ?? [],
+          line: i.line,
+        });
+      }
+    }
+  }
+
+  // ============================================
+  // ✅ v16.0.5: DOM API (top-level)
   // ============================================
   const domApiCalls: DomApiCall[] = [];
   const domIdCounter = { value: 0 };
@@ -2297,28 +2703,100 @@ function collectFullJSON(
       },
     });
 
+    if (verbose) {
+      console.log(`   🔧 DOM API: анализ ${functions.length} функций...`);
+    }
+
+    let analyzedFns = 0;
+    let skippedFns = 0;
+
     for (const fn of functions) {
       const sfcFile = files.find(f => f.id === fn.fileId);
       if (!sfcFile) continue;
-      if (sfcFile.path.endsWith('.vue')) continue; // Vue обрабатывается отдельно
 
       const absolutePath = path.resolve(projectRoot, sfcFile.path);
       if (!fs.existsSync(absolutePath)) continue;
 
+      // ✅ v16.0.5: для Vue-файлов извлекаем <script setup> через parseVueFile
+      // (а не через regex, который ломается на generic="T extends Record<string, unknown>")
+      let scriptPath = absolutePath;
+      if (absolutePath.endsWith('.vue')) {
+        try {
+          // ✅ v16.0.8: parseVueFile теперь используется ТОЛЬКО здесь
+          // (в DOM API). Раньше он также вызывался в extractSFCNamesForVue.
+          const parsed = parseVueFile(absolutePath);
+          if (!parsed) {
+            if (verbose) {
+              console.warn(`   ⚠️ parseVueFile вернул null для ${sfcFile.path}`);
+            }
+            skippedFns++;
+            continue;
+          }
+
+          const script =
+            parsed.descriptor.scriptSetup?.content ||
+            parsed.descriptor.script?.content ||
+            '';
+
+          if (!script.trim()) {
+            if (verbose) {
+              console.warn(`   ⚠️ Пустой <script> в ${sfcFile.path}`);
+            }
+            skippedFns++;
+            continue;
+          }
+
+          scriptPath = `${absolutePath}.__dom__.ts`;
+          tsProject.createSourceFile(scriptPath, script, { overwrite: true });
+
+          if (process.env.AST_DEBUG_VUE === 'true') {
+            const hasDefineProps = /\\bdefineProps\\b/.test(script);
+            const hasDefineEmits = /\\bdefineEmits\\b/.test(script);
+            const hasDefineExpose = /\\bdefineExpose\\b/.test(script);
+            console.log(
+              `   📜 ${path.basename(absolutePath)}: script ${script.length} chars, ` +
+              `defineProps=${hasDefineProps}, defineEmits=${hasDefineEmits}, defineExpose=${hasDefineExpose}`
+            );
+          }
+        } catch (err) {
+          if (verbose) {
+            console.warn(`   ⚠️ Не удалось извлечь script из ${sfcFile.path}: ${err}`);
+          }
+          skippedFns++;
+          continue;
+        }
+      }
+
       try {
         const calls = detectDomApiCallsForFunction(
-            fn, absolutePath, fn.fileId, workingEntitiesMap, tsProject, domIdCounter
+          fn,
+          scriptPath,
+          fn.fileId,
+          workingEntitiesMap,
+          tsProject,
+          domIdCounter,
+          absolutePath  // ✅ v16.0.5: передаём оригинальный путь
         );
         domApiCalls.push(...calls);
+        analyzedFns++;
       } catch (err) {
         if (verbose) {
           console.warn(`   ⚠️ DOM API analysis failed for ${fn.name}: ${err}`);
         }
+        skippedFns++;
       }
     }
 
-    if (verbose && domApiCalls.length > 0) {
-      console.log(`   🖥  DomApiCalls: ${domApiCalls.length}`);
+    if (verbose) {
+      console.log(`   📊 DOM API: проанализировано ${analyzedFns}, пропущено ${skippedFns}`);
+      if (domApiCalls.length > 0) {
+        console.log(`   🖥  DomApiCalls: ${domApiCalls.length}`);
+      } else {
+        console.warn(
+          `   ⚠️ DOM API: 0 вызовов при ${analyzedFns} проанализированных функциях — ` +
+          `проверьте isLikelyDomReceiver`
+        );
+      }
     }
   }
 
@@ -2344,7 +2822,6 @@ function collectFullJSON(
     fn.isHtmlVisible = fn.htmlUsage.length > 0;
     fn.domApiCalls = calls.map(c => c.id);
 
-    // domApiUsagesAsHandler
     for (const call of calls) {
       if (call.category === 'add-event-listener' && call.context?.handlerFunctionId) {
         const handlerFn = functions.find(f => f.id === call.context.handlerFunctionId);
@@ -2392,8 +2869,8 @@ function collectFullJSON(
   // СТАТИСТИКА
   // ============================================
   const totalConditionals = templates.reduce(
-      (sum, t) => sum + (t.conditionals?.length ?? 0),
-      0
+    (sum, t) => sum + (t.conditionals?.length ?? 0),
+    0
   );
 
   const statistics: StatisticsData = {
@@ -2419,16 +2896,10 @@ function collectFullJSON(
     // ✅ v16.0.0
     totalComponentUsages: allComponentUsages.length,
     totalHtmlElements: allHtmlElements.length,
-    totalComponentProps: allComponentUsages.reduce(
-        (s, cu) => s + (cu.props?.length ?? 0),
-        0
-    ),
-    totalComponentEvents: allComponentUsages.reduce(
-        (s, cu) => s + (cu.events?.length ?? 0),
-        0
-    ),
+    totalComponentProps: allComponentProps.length,
+    totalComponentEvents: allComponentEvents.length,
     totalDomApiCalls: domApiCalls.length,
-    totalSourceChains: 0, // будет заполнено в encode
+    totalSourceChains: 0,
     totalHtmlVisibleFns: functions.filter(f => f.isHtmlVisible).length,
     totalDomApiVisibleFns: functions.filter(f => (f.domApiCalls?.length ?? 0) > 0).length,
   };
@@ -2456,23 +2927,6 @@ function collectFullJSON(
       root = firstModule.id;
     }
   }
-
-  // ============================================
-  // ✅ v16.0.4: Top-level component* — ВСЕГДА (симметрия с decode)
-  // ============================================
-  //
-  // Эти поля ВСЕГДА присутствуют в FullJSON, даже пустыми [].
-  // Это гарантирует симметрию с codec-decode.ts v16.0.4, который
-  // теперь тоже всегда добавляет их (см. фикс v16.0.4).
-  //
-  // Источник данных: те же массивы, что идут в vue.componentProps
-  // и т.д. (см. convertVueEntitiesToFull).
-  // ============================================
-  const topLevelComponentProps: any[] = (vue as any)?.componentProps ?? [];
-  const topLevelComponentEvents: any[] = (vue as any)?.componentEvents ?? [];
-  const topLevelComponentDirectives: any[] = (vue as any)?.componentDirectives ?? [];
-  const topLevelComponentSlots: any[] = (vue as any)?.componentSlots ?? [];
-  const topLevelHtmlInterpolations: any[] = (vue as any)?.htmlInterpolations ?? [];
 
   // ============================================
   // Финальный объект
@@ -2508,12 +2962,120 @@ function collectFullJSON(
   };
 
   // ✅ v16.0.4: top-level component*-поля ВСЕГДА (даже пустые []).
-  // Симметрия с codec-decode.ts v16.0.4 (см. фикс).
-  (result as any).componentProps = topLevelComponentProps;
-  (result as any).componentEvents = topLevelComponentEvents;
-  (result as any).componentDirectives = topLevelComponentDirectives;
-  (result as any).componentSlots = topLevelComponentSlots;
-  (result as any).htmlInterpolations = topLevelHtmlInterpolations;
+  (result as any).componentProps = allComponentProps;
+  (result as any).componentEvents = allComponentEvents;
+  (result as any).componentDirectives = allComponentDirectives;
+  (result as any).componentSlots = allComponentSlots;
+  (result as any).htmlInterpolations = allHtmlInterpolations;
+
+  // ✅ v16.0.4: прокидываем те же поля в vue-секцию
+  if (vue) {
+    (vue as any).componentProps = allComponentProps;
+    (vue as any).componentEvents = allComponentEvents;
+    (vue as any).componentDirectives = allComponentDirectives;
+    (vue as any).componentSlots = allComponentSlots;
+    (vue as any).htmlInterpolations = allHtmlInterpolations;
+  }
+
+  // ============================================================
+  // ✅ FIX v16.0.8: top-level ids и sourceChains
+  // ============================================================
+  // ПРОБЛЕМА:
+  //   `compact.ids` заполняется в codec-encode.ts (84 записи),
+  //   но `full.ids` остаётся undefined. При сравнении
+  //   `decode(compact)` с `full` — расхождение:
+  //     $.ids.length  a: 84  b: 0
+  //
+  // РЕШЕНИЕ:
+  //   Собираем уникальные id из всех component*-секций
+  //   в том же порядке, что и codec-encode.ts::addId.
+  //
+  // Симметрия:
+  //   codec-decode.ts восстанавливает ids из compact.ids
+  //   на top-level (симметрично).
+  // ============================================================
+
+  const allIds: string[] = [];
+
+  for (const p of allComponentProps) {
+    if (p && p.id) allIds.push(p.id);
+  }
+  for (const e of allComponentEvents) {
+    if (e && e.id) allIds.push(e.id);
+  }
+  for (const d of allComponentDirectives) {
+    if (d && d.id) allIds.push(d.id);
+  }
+  for (const s of allComponentSlots) {
+    if (s && s.id) allIds.push(s.id);
+  }
+  for (const i of allHtmlInterpolations) {
+    if (i && i.id) allIds.push(i.id);
+  }
+
+  // Дедупликация с сохранением порядка (как в codec-encode.ts::addId)
+  const uniqueIds: string[] = [];
+  const seenIds = new Set<string>();
+  for (const id of allIds) {
+    if (!seenIds.has(id)) {
+      seenIds.add(id);
+      uniqueIds.push(id);
+    }
+  }
+
+  (result as any).ids = uniqueIds.length > 0 ? uniqueIds : undefined;
+
+  // ============================================================
+  // ✅ FIX v16.0.8: sourceChains
+  // ============================================================
+  // Сериализуем все sourceChain из component*-секций
+  // и интернируем их (как в codec-encode.ts::addSourceChain).
+  //
+  // Источники:
+  //   - ComponentProp.sourceChain
+  //   - ComponentEvent.handlerChain
+  //   - HtmlInterpolation.sourceChain
+  //
+  // Формат сериализации: см. serializeSourceChain()
+  // в core/source-chain-resolver.ts.
+  // ============================================================
+
+  const allSourceChains: string[] = [];
+
+  const safeSerializeChain = (chain: unknown): string | null => {
+    if (!Array.isArray(chain) || chain.length === 0) return null;
+    try {
+      return serializeSourceChain(chain as any);
+    } catch {
+      return null;
+    }
+  };
+
+  for (const p of allComponentProps) {
+    const s = safeSerializeChain(p?.sourceChain);
+    if (s) allSourceChains.push(s);
+  }
+  for (const e of allComponentEvents) {
+    const s = safeSerializeChain(e?.handlerChain);
+    if (s) allSourceChains.push(s);
+  }
+  for (const i of allHtmlInterpolations) {
+    const s = safeSerializeChain(i?.sourceChain);
+    if (s) allSourceChains.push(s);
+  }
+
+  // Интернирование (уникальные с сохранением порядка)
+  const uniqueSourceChains: string[] = [];
+  const seenSc = new Set<string>();
+  for (const sc of allSourceChains) {
+    if (!seenSc.has(sc)) {
+      seenSc.add(sc);
+      uniqueSourceChains.push(sc);
+    }
+  }
+
+  (result as any).sourceChains =
+    uniqueSourceChains.length > 0 ? uniqueSourceChains : undefined;
 
   return canonicalizeFullJSON(result);
 }
@@ -2574,25 +3136,25 @@ function insertUniqueSuffix(filePath: string, suffix: string): string {
 }
 
 function resolveToFileId(
-    source: string,
-    fromFilePath: string,
-    sourceToFileIdMap: Map<string, string>,
-    fileMap: Map<string, FileData>
+  source: string,
+  fromFilePath: string,
+  sourceToFileIdMap: Map<string, string>,
+  fileMap: Map<string, FileData>
 ): string | null {
   const direct = sourceToFileIdMap.get(source);
   if (direct) return direct;
 
-  const normalizedSource = source.replace(/\\/g, '/');
+  const normalizedSource = source.replace(/\\\\/g, '/');
   const directNormalized = sourceToFileIdMap.get(normalizedSource);
   if (directNormalized) return directNormalized;
 
   const isAliasLike =
-      source.startsWith('@/') ||
-      source.startsWith('#/') ||
-      source.startsWith('~/') ||
-      source.startsWith('@') ||
-      source.startsWith('~') ||
-      source.startsWith('#');
+    source.startsWith('@/') ||
+    source.startsWith('#/') ||
+    source.startsWith('~/') ||
+    source.startsWith('@') ||
+    source.startsWith('~') ||
+    source.startsWith('#');
 
   if (isAliasLike) {
     try {
@@ -2604,10 +3166,10 @@ function resolveToFileId(
       const resolved = resolveAliasPath(source, baseDir, tsConfig);
 
       if (resolved) {
-        const resolvedNormalized = resolved.replace(/\\/g, '/');
+        const resolvedNormalized = resolved.replace(/\\\\/g, '/');
 
         const byAbs =
-            sourceToFileIdMap.get(resolved) || sourceToFileIdMap.get(resolvedNormalized);
+          sourceToFileIdMap.get(resolved) || sourceToFileIdMap.get(resolvedNormalized);
         if (byAbs) return byAbs;
 
         const resolvedBase = path.basename(resolved);
@@ -2620,11 +3182,11 @@ function resolveToFileId(
         if (byNoExt) return byNoExt;
 
         for (const [fp, fd] of fileMap) {
-          const fpNormalized = fp.replace(/\\/g, '/');
+          const fpNormalized = fp.replace(/\\\\/g, '/');
           if (
-              fpNormalized === resolvedNormalized ||
-              fpNormalized.endsWith('/' + resolvedNormalized) ||
-              resolvedNormalized.endsWith('/' + fpNormalized)
+            fpNormalized === resolvedNormalized ||
+            fpNormalized.endsWith('/' + resolvedNormalized) ||
+            resolvedNormalized.endsWith('/' + fpNormalized)
           ) {
             return fd.id;
           }
@@ -2640,18 +3202,18 @@ function resolveToFileId(
       const fromDir = path.dirname(fromFilePath);
       const resolved = resolveFilePath(fromDir, source);
       if (resolved) {
-        const resolvedNormalized = resolved.replace(/\\/g, '/');
+        const resolvedNormalized = resolved.replace(/\\\\/g, '/');
 
         const byAbs =
-            sourceToFileIdMap.get(resolved) || sourceToFileIdMap.get(resolvedNormalized);
+          sourceToFileIdMap.get(resolved) || sourceToFileIdMap.get(resolvedNormalized);
         if (byAbs) return byAbs;
 
         for (const [fp, fd] of fileMap) {
-          const fpNormalized = fp.replace(/\\/g, '/');
+          const fpNormalized = fp.replace(/\\\\/g, '/');
           if (
-              fpNormalized === resolvedNormalized ||
-              fpNormalized.endsWith('/' + resolvedNormalized) ||
-              resolvedNormalized.endsWith('/' + fpNormalized)
+            fpNormalized === resolvedNormalized ||
+            fpNormalized.endsWith('/' + resolvedNormalized) ||
+            resolvedNormalized.endsWith('/' + fpNormalized)
           ) {
             return fd.id;
           }
@@ -2673,20 +3235,20 @@ function resolveToFileId(
 
   if (!source.startsWith('.')) {
     const isProjectAlias =
-        source.startsWith('@/') ||
-        source.startsWith('~/') ||
-        source.startsWith('#/') ||
-        source === '@' ||
-        source === '~' ||
-        source === '#';
+      source.startsWith('@/') ||
+      source.startsWith('~/') ||
+      source.startsWith('#/') ||
+      source === '@' ||
+      source === '~' ||
+      source === '#';
 
     if (isProjectAlias) {
       return null;
     }
 
     const pkg = source.startsWith('@')
-        ? source.split('/').slice(0, 2).join('/')
-        : source.split('/')[0];
+      ? source.split('/').slice(0, 2).join('/')
+      : source.split('/')[0];
     if (pkg) return `external:${pkg}`;
   }
 
@@ -2694,7 +3256,7 @@ function resolveToFileId(
 }
 
 function getImportTypeFromSpecifierType(
-    specifierType: string
+  specifierType: string
 ): 'named' | 'default' | 'namespace' {
   switch (specifierType) {
     case 'ImportDefaultSpecifier':
@@ -2710,8 +3272,8 @@ function getImportTypeFromSpecifierType(
 }
 
 function detectCallType(
-    func: FunctionInfo,
-    callName: string
+  func: FunctionInfo,
+  callName: string
 ): 'direct' | 'async' | 'method' | 'callback' {
   if (func.isAsync) return 'async';
   if (callName.endsWith('_callback')) return 'callback';
@@ -2723,8 +3285,8 @@ function detectCallType(
 
     try {
       const cbPattern = new RegExp(
-          String.raw`${escapedCallName}\\s*\\([^)]*(?:=>|function)`,
-          'i'
+        String.raw`${escapedCallName}\\s*\\([^)]*(?:=>|function)`,
+        'i'
       );
       if (cbPattern.test(body)) return 'callback';
     } catch {
@@ -2733,6 +3295,33 @@ function detectCallType(
   }
 
   return 'direct';
+}
+
+// ============================================================
+// ✅ v16.0.4: УТИЛИТЫ ДЛЯ РАЗБОРА ЗНАЧЕНИЙ PROPS
+// ============================================================
+
+function extractIdentifierFromValue(value: string): string | null {
+  if (!value) return null;
+  const m = value.match(/^([A-Za-z_$][\\w$]*)/);
+  return m?.[1] ?? null;
+}
+
+function extractMemberChainFromValue(value: string): string[] | undefined {
+  if (!value || !value.includes('.')) return undefined;
+  const parts = value.split('.').filter(s => /^[A-Za-z_$][\\w$]*$/.test(s));
+  return parts.length > 1 ? parts : undefined;
+}
+
+function extractLiteralFromValue(value: string): string | number | boolean | null | undefined {
+  if (!value) return undefined;
+  const t = value.trim();
+  if (t === 'true') return true;
+  if (t === 'false') return false;
+  if (t === 'null') return null;
+  if (/^-?\\d+(\\.\\d+)?$/.test(t)) return parseFloat(t);
+  if (/^['"].*['"]$/.test(t)) return t.slice(1, -1);
+  return undefined;
 }
 
 // ============================================

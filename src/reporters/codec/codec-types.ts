@@ -1,12 +1,50 @@
 // src/reporters/codec/codec-types.ts
 // ============================================
-// ТИПЫ ДЛЯ КОДЕКА (v16.0.4)
+// ТИПЫ ДЛЯ КОДЕКА (v16.0.8)
 // ============================================
-// Версия: 16.0.4
+// Версия: 16.0.8
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
+//
+// v16.0.8 (вынос типов Vue-шаблона + fix TS2304 + TS6196):
+//   - ✅ ВЫНЕСЕНЫ типы ComponentUsage, HtmlElementUsage, ComponentProp,
+//     ComponentEvent, ComponentDirective, ComponentSlot,
+//     HtmlInterpolation, SourceChainItem, DomApi* в
+//     src/types-vue-template.ts (разрыв циклического импорта
+//     types.ts ↔ codec-types.ts).
+//   - ✅ Реэкспорт из codec-types.ts сохранён для обратной совместимости.
+//   - ✅ FIX TS2304: добавлен ЛОКАЛЬНЫЙ `import type` для типов,
+//     которые реально используются ВНУТРИ файла (DomApiCall,
+//     SFCComponent, HtmlUsage, FullJSON и т.д.). Без него
+//     TypeScript не видит имена.
+//     `export type { X } from '...'` НЕ вводит X в локальную
+//     область видимости — нужны ДВА блока: import + export.
+//   - ✅ FIX TS6196: из `import type` УБРАНЫ типы, которые
+//     НЕ используются локально (только реэкспортируются):
+//       • SourceChainItem   (используется в types-vue-template.ts)
+//       • DomApiArgKind     (используется в types-vue-template.ts)
+//       • DomApiArgSource   (используется в types-vue-template.ts)
+//     Они остаются в `export type { ... }` для внешних потребителей.
+//   - ✅ CODEC_VERSION = '16.0.8'.
+//
+// v16.0.7 (fix: projectRoot в GenerateReportOptions):
+//   - ✅ ДОБАВЛЕНО: `projectRoot?: string` в `GenerateReportOptions`.
+//     ПРИЧИНА: при запуске `compact-recursive ./infoenergo-ui/src/index.ts`
+//     из корня пакета `ast-analyzer`, `process.cwd()` = корень пакета,
+//     а Vue SFC лежат в `infoenergo-ui/src/`. В результате все 75 SFC
+//     не находились на диске (`componentUsages`/`htmlElements` = 0).
+//     РЕШЕНИЕ: проброс `projectRoot` из pipeline (ctx.options.projectRoot)
+//     через `GenerateReportOptions` → `generateCompactReport` →
+//     `collectFullJSON`.
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '16.0.7' (было '16.0.4').
+//   - ✅ СИНХРОНИЗИРОВАНО с:
+//       • codec-decode.ts     (v16.0.4)
+//       • codec-encode.ts     (v16.0.4)
+//       • codec-legend.ts     (v16.0.4)
+//       • compact-reporter.ts (v16.0.7)
+//       • pipeline/stages/build-report.ts (v2.1.0)
 //
 // v16.0.4 (fix: симметрия decode(compact) ↔ full по vue.componentProps*):
 //   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '16.0.4' (было '16.0.1').
@@ -93,7 +131,7 @@
 // ============================================
 
 // ============================================================
-// ✅ v16.0.4: ВЕРСИИ CODEC И LEGEND
+// ✅ v16.0.8: ВЕРСИИ CODEC И LEGEND
 // ============================================================
 // CODEC_VERSION используется в:
 //   - compact-reporter.ts (version в full.json)
@@ -107,13 +145,222 @@
 // Инвариант I40 проверяет его значение.
 // ============================================================
 
-export const CODEC_VERSION = '16.0.4';
+export const CODEC_VERSION = '16.0.8';
 export const LEGEND_VERSION = '2.0.0';
+
+// ============================================================
+// ✅ v16.0.8: ИМПОРТ И РЕЭКСПОРТ ТИПОВ VUE-ШАБЛОНА
+// ============================================================
+//
+// ════════════════════════════════════════════════════════════
+// ЗАЧЕМ ЭТОТ БЛОК
+// ════════════════════════════════════════════════════════════
+//
+// Раньше типы ComponentUsage, HtmlElementUsage, ComponentProp,
+// ComponentEvent, ComponentDirective, ComponentSlot,
+// HtmlInterpolation, SourceChainItem, DomApi* были ОПРЕДЕЛЕНЫ
+// прямо в этом файле.
+//
+// Но это создавало ЦИКЛИЧЕСКИЙ ИМПОРТ:
+//
+//   types.ts → codec-types.ts → types.ts
+//
+// Потому что:
+//   - types.ts (v16.0.8) хочет импортировать ComponentUsage
+//     из codec-types.ts (для EntitiesResult.templateComponentUsages)
+//   - codec-types.ts импортирует TemplateEventHandler и др.
+//     из types.ts (для реэкспорта)
+//
+// TypeScript такое не любит: типы могут стать `any`,
+// ломается автодополнение, vitest/ts-node падают.
+//
+// ════════════════════════════════════════════════════════════
+// РЕШЕНИЕ
+// ════════════════════════════════════════════════════════════
+//
+// Все типы Vue-шаблона вынесены в `src/types-vue-template.ts` —
+// отдельный файл БЕЗ зависимостей от types.ts и codec-types.ts.
+//
+// Теперь:
+//   - `types.ts`        импортирует из types-vue-template.ts
+//   - `codec-types.ts`  импортирует из types-vue-template.ts
+//   - `codec-types.ts`  РЕЭКСПОРТИРУЕТ их для обратной совместимости
+//
+// Цикл разорван.
+//
+// ════════════════════════════════════════════════════════════
+// ⚠️ ВАЖНО: ТРИ ПРАВИЛА
+// ════════════════════════════════════════════════════════════
+//
+//   1. `import type { X } from '...'` — вводит X в ЛОКАЛЬНУЮ
+//      область видимости. Нужен, если X используется внутри
+//      этого файла (в объявлениях интерфейсов, type aliases).
+//      Без него TypeScript выдаст TS2304.
+//
+//   2. `export type { X } from '...'` — РЕЭКСПОРТИРУЕТ X для
+//      внешних потребителей. НЕ вводит X в локальную область
+//      видимости. НЕ помогает против TS2304.
+//
+//   3. Если X НЕ используется локально — НЕ добавляйте его
+//      в `import type`. Иначе TypeScript выдаст TS6196
+//      (`X is declared but never used`).
+//
+//   Правильная комбинация:
+//     • X используется локально  →  `import type` + `export type`
+//     • X только реэкспортируется →  только `export type`
+//     • X только локальный       →  только `import type`
+//
+// ════════════════════════════════════════════════════════════
+// ОБРАТНАЯ СОВМЕСТИМОСТЬ
+// ════════════════════════════════════════════════════════════
+//
+// Все, кто импортировал:
+//   import type { ComponentUsage } from './codec-types.js';
+//
+// продолжают работать без изменений.
+//
+// ════════════════════════════════════════════════════════════
+// ⚠️ ЕДИНСТВЕННЫЙ ИСТОЧНИК ИСТИНЫ
+// ════════════════════════════════════════════════════════════
+//
+// `src/types-vue-template.ts`. НЕ дублируйте определения здесь!
+// ============================================================
+
+// ────────────────────────────────────────────────────────────
+// 1. Локальный импорт (для использования внутри файла)
+// ────────────────────────────────────────────────────────────
+//
+// ⚠️ ВАЖНО: импортируем ТОЛЬКО те типы, которые реально
+// используются в объявлениях этого файла (DomApiCall,
+// SFCComponent, HtmlUsage, FullJSON, VueSectionFull и т.д.).
+//
+// Типы, которые НЕ используются локально (только реэкспортируются),
+// НЕ включаем сюда — иначе TS6196:
+//
+//   ❌ SourceChainItem
+//      Используется только в types-vue-template.ts:
+//        ComponentProp.sourceChain, ComponentEvent.handlerChain,
+//        HtmlInterpolation.sourceChain
+//
+//   ❌ DomApiArgKind
+//      Используется только в types-vue-template.ts:
+//        DomApiArg.kind
+//
+//   ❌ DomApiArgSource
+//      Используется только в types-vue-template.ts:
+//        DomApiArg.resolvedSource
+//
+// Все перечисленные типы (включая SourceChainItem, DomApiArgKind,
+// DomApiArgSource) реэкспортируются ниже через `export type { ... }`
+// для внешних потребителей.
+//
+// А те, что ниже — используются локально:
+//   ✅ ComponentProp        — SFCComponent.componentUsages[].props,
+//                             VueSectionFull.componentProps,
+//                             FullJSON.componentProps
+//   ✅ ComponentEvent       — VueSectionFull.componentEvents,
+//                             FullJSON.componentEvents
+//   ✅ ComponentDirective   — VueSectionFull.componentDirectives,
+//                             FullJSON.componentDirectives
+//   ✅ ComponentSlot        — VueSectionFull.componentSlots,
+//                             FullJSON.componentSlots
+//   ✅ HtmlInterpolation    — VueSectionFull.htmlInterpolations,
+//                             FullJSON.htmlInterpolations
+//   ✅ ComponentUsage       — SFCComponent.componentUsages
+//   ✅ HtmlElementUsage     — SFCComponent.htmlElements
+//   ✅ DomApiEffect         — DomApiCall.effect
+//   ✅ DomApiTargetKind     — DomApiCall.targetKind
+//   ✅ DomApiArg            — DomApiCall.argResolutions,
+//                             VueSectionFull.domApiArgs,
+//                             FullJSON.domApiArgs
+//   ✅ DomApiContext        — DomApiCall.context, HtmlUsage.domApiContext
+// ────────────────────────────────────────────────────────────
+import type {
+  // === Component Prop / Event / Directive / Slot ===
+  ComponentProp,
+  ComponentEvent,
+  ComponentDirective,
+  ComponentSlot,
+  HtmlInterpolation,
+
+  // === Component Usage / Html Element Usage ===
+  ComponentUsage,
+  HtmlElementUsage,
+
+  // === DOM API types (только те, что используются локально) ===
+  DomApiEffect,
+  DomApiTargetKind,
+  DomApiArg,
+  DomApiContext,
+} from '../../types-vue-template.js';
+
+// ────────────────────────────────────────────────────────────
+// 2. Реэкспорт (для внешних потребителей codec-types.ts)
+// ────────────────────────────────────────────────────────────
+//
+// Реэкспортируем ВСЕ типы из types-vue-template.ts, включая
+// те, что не используются локально (SourceChainItem,
+// DomApiArgKind, DomApiArgSource). Это сохраняет обратную
+// совместимость для тех, кто импортировал их из codec-types.ts
+// в версиях ≤ 16.0.7.
+// ────────────────────────────────────────────────────────────
+export type {
+  SourceChainItem,
+  ComponentProp,
+  ComponentEvent,
+  ComponentDirective,
+  ComponentSlot,
+  HtmlInterpolation,
+  ComponentUsage,
+  HtmlElementUsage,
+  DomApiEffect,
+  DomApiTargetKind,
+  DomApiArgKind,
+  DomApiArgSource,
+  DomApiArg,
+  DomApiContext,
+} from '../../types-vue-template.js';
 
 // ============================================================
 // РЕЭКСПОРТ TEMPLATE-ТИПОВ ИЗ src/types.ts
 // ============================================================
+//
+// Эти типы — Vue-специфичные, но определены в src/types.ts.
+// Реэкспортируем их из codec-types.ts для обратной совместимости:
+// потребители codec-types.ts могут импортировать их отсюда.
+//
+// ⚠️ НЕ ПУТАТЬ с типами из types-vue-template.ts:
+//   - TemplateEventHandler       → EventHandlerUsage (vue-analyzer)
+//   - TemplateDynamicComponent   → DynamicComponentUsage (vue-analyzer)
+//   - TemplateRefUsage           → TemplateRefUsage (vue-analyzer)
+//   - TemplateCssVariable        → CssVariableUsage (vue-analyzer)
+//   - TemplateDeepSelector       → DeepSelectorUsage (vue-analyzer)
+//   - TemplateConditional        → расширяет TemplateConditionalUsage
+//
+// А типы из types-vue-template.ts — это ComponentUsage, ComponentProp
+// и т.д. — они описывают РЕЗУЛЬТАТ парсинга <template>.
+//
+// ⚠️ По той же причине, что и выше (TS2304/TS6196), здесь нужны
+// ОБА блока: import type + export type. Все шесть типов ниже
+// реально используются внутри файла (см. TemplateData,
+// ConditionalDirective), поэтому TS6196 здесь не сработает.
+// ============================================================
 
+// ────────────────────────────────────────────────────────────
+// 1. Локальный импорт (для использования внутри файла)
+// ────────────────────────────────────────────────────────────
+import type {
+  TemplateEventHandler,
+  TemplateDynamicComponent,
+  TemplateRefUsage,
+  TemplateCssVariable,
+  TemplateDeepSelector,
+  TemplateConditional,
+} from '../../types.js';
+
+// ────────────────────────────────────────────────────────────
+// 2. Реэкспорт (для внешних потребителей codec-types.ts)
+// ────────────────────────────────────────────────────────────
 export type {
   /** Обработчик события из шаблона Vue (type alias на vue-analyzer) */
   TemplateEventHandler,
@@ -126,16 +373,6 @@ export type {
   /** :deep() селектор (type alias на vue-analyzer) */
   TemplateDeepSelector,
   /** Условный рендеринг (расширяет vue-analyzer + id?/fileId?) */
-  TemplateConditional,
-} from '../../types.js';
-
-// Импортируем их локально, чтобы использовать в интерфейсах ниже
-import type {
-  TemplateEventHandler,
-  TemplateDynamicComponent,
-  TemplateRefUsage,
-  TemplateCssVariable,
-  TemplateDeepSelector,
   TemplateConditional,
 } from '../../types.js';
 
@@ -213,6 +450,10 @@ export type SfcBlockMask = number;
  * SFC-компонент (.vue).
  *
  * ✅ v16.0.0: добавлены componentUsages и htmlElements.
+ * ✅ v16.0.8: componentUsages/htmlElements заполняются в
+ *   compact-reporter.ts ИЗ enhancedMap (поля
+ *   templateComponentUsages/templateHtmlElements),
+ *   а НЕ через analyzeVueSFC.
  */
 export interface SFCComponent {
   /** ID файла (f1, f2, ...) */
@@ -243,10 +484,20 @@ export interface SFCComponent {
   // ✅ v16.0.0: Vue-шаблон
   // ==========================================
 
-  /** Использования компонентов в <template> */
+  /**
+   * Использования компонентов в <template>.
+   *
+   * ⚠️ v16.0.8: заполняется в compact-reporter.ts ИЗ enhancedMap
+   * (поле templateComponentUsages), а НЕ через analyzeVueSFC.
+   */
   componentUsages?: ComponentUsage[];
 
-  /** Использования HTML-элементов в <template> */
+  /**
+   * Использования HTML-элементов в <template>.
+   *
+   * ⚠️ v16.0.8: заполняется в compact-reporter.ts ИЗ enhancedMap
+   * (поле templateHtmlElements), а НЕ через analyzeVueSFC.
+   */
   htmlElements?: HtmlElementUsage[];
 }
 
@@ -302,234 +553,6 @@ export interface IconEntity {
   fileId: string;
   name: string;
   category: 'base' | 'filter' | 'toolbar' | 'sort';
-}
-
-// ============================================================
-// ✅ v16.0.0: COMPONENT USAGE (Vue-шаблон)
-// ============================================================
-
-/**
- * Использование компонента в <template>.
- */
-export interface ComponentUsage {
-  /** Уникальный ID (cu1, cu2, ...) — глобальный счётчик */
-  id: string;
-
-  /** ID файла-родителя (f1, f2, ...) */
-  parentFileId: string;
-
-  /** Тег компонента (AiToolbar) */
-  tag: string;
-
-  /** ID файла-компонента (f87) или null */
-  componentFileId: string | null;
-
-  /** Источник: локальный, глобальный, встроенный, динамический */
-  source: 'local' | 'global' | 'builtin' | 'dynamic' | 'unknown';
-
-  /** Имя пакета (для внешних) */
-  packageName?: string;
-
-  /** Номер строки */
-  line: number;
-
-  /** Номер колонки (отсутствует → -1 в CompactJSON) */
-  column?: number;
-
-  /** Props, переданные в компонент */
-  props: ComponentProp[];
-
-  /** Events, обработанные на компоненте */
-  events: ComponentEvent[];
-
-  /** Директивы на компоненте */
-  directives: ComponentDirective[];
-
-  /** Слоты, определённые на компоненте */
-  slots: ComponentSlot[];
-}
-
-/**
- * Prop, переданный в компонент или HTML-элемент.
- */
-export interface ComponentProp {
-  /** ID: `${usageId}:cp${n}` (например, cu1:cp6) */
-  id: string;
-
-  /** ID использования (cu1, he5) */
-  usageId: string;
-
-  /** Имя prop ('user-toolbar-items') */
-  name: string;
-
-  /** Значение ('props.toolbarItems') */
-  value: string;
-
-  /** Вид prop */
-  kind: 'static' | 'dynamic' | 'boolean' | 'spread';
-
-  /** Номер строки */
-  line: number;
-
-  /** Идентификатор (первый в цепочке) или null */
-  identifier: string | null;
-
-  /** Цепочка member-доступов ['props', 'toolbarItems'] */
-  memberChain?: string[];
-
-  /** Литеральное значение (если prop — литерал) */
-  literalValue?: string | number | boolean | null;
-
-  /** Цепочка источников */
-  sourceChain: SourceChainItem[];
-}
-
-/**
- * Элемент цепочки источников.
- */
-export interface SourceChainItem {
-  kind: 'local' | 'import' | 'prop' | 'emit' | 'global' | 'literal' | 'member' | 'call' | 'unknown';
-  symbol: string;
-  functionId?: string;
-  subkind?: 'ref' | 'computed' | 'watch' | 'function' | 'method' | 'constant' | 'composable';
-  sourceFileId?: string;
-}
-
-/**
- * Обработчик события на компоненте/элементе.
- */
-export interface ComponentEvent {
-  /** ID: `${usageId}:ce${n}` */
-  id: string;
-
-  /** ID использования */
-  usageId: string;
-
-  /** Имя события ('column-chooser-change') */
-  eventName: string;
-
-  /** Обработчик из шаблона ('setColumnsVisibility') */
-  handler: string;
-
-  /** ID функции-обработчика или null */
-  handlerFunctionId: string | null;
-
-  /** Источник обработчика */
-  handlerSource: 'local' | 'import' | 'global' | 'inline' | 'unknown';
-
-  /** Модификаторы (.stop, .prevent, ...) */
-  modifiers: string[];
-
-  /** Номер строки */
-  line: number;
-
-  /** Цепочка источников обработчика */
-  handlerChain: SourceChainItem[];
-}
-
-/**
- * Директива Vue на компоненте/элементе.
- */
-export interface ComponentDirective {
-  /** ID: `${usageId}:cd${n}` */
-  id: string;
-
-  /** ID использования */
-  usageId: string;
-
-  /** Имя директивы ('v-if') */
-  name: string;
-
-  /** Аргумент (для v-model:title → 'title') */
-  argument?: string;
-
-  /** Модификаторы */
-  modifiers: string[];
-
-  /** Значение директивы */
-  value: string;
-
-  /** Номер строки */
-  line: number;
-}
-
-/**
- * Слот, определённый на компоненте.
- */
-export interface ComponentSlot {
-  /** ID: `${usageId}:csl${n}` */
-  id: string;
-
-  /** ID использования */
-  usageId: string;
-
-  /** Имя слота ('header', 'default') */
-  slotName: string;
-
-  /** Есть ли scope у слота */
-  isScoped: boolean;
-
-  /** Имена scope-переменных */
-  scopeNames: string[];
-
-  /** Номер строки */
-  line: number;
-}
-
-// ============================================================
-// ✅ v16.0.0: HTML ELEMENTS + INTERPOLATIONS
-// ============================================================
-
-/**
- * Использование HTML-элемента в <template>.
- */
-export interface HtmlElementUsage {
-  /** Уникальный ID (he1, he2, ...) — глобальный счётчик */
-  id: string;
-
-  /** ID файла-родителя */
-  parentFileId: string;
-
-  /** Тег элемента ('div', 'span') */
-  tag: string;
-
-  /** Номер строки */
-  line: number;
-
-  /** Номер колонки */
-  column?: number;
-
-  /** Props на элементе */
-  props: ComponentProp[];
-
-  /** Директивы на элементе */
-  directives: ComponentDirective[];
-
-  /** Events на элементе */
-  events: ComponentEvent[];
-
-  /** Интерполяции внутри элемента */
-  interpolations: HtmlInterpolation[];
-}
-
-/**
- * Интерполяция `{{ expr }}` внутри HTML-элемента.
- */
-export interface HtmlInterpolation {
-  /** ID: `${usageId}:hi${n}` */
-  id: string;
-
-  /** ID использования (he5) */
-  usageId: string;
-
-  /** Выражение ('count', 'user.name') */
-  expression: string;
-
-  /** Цепочка источников */
-  sourceChain: SourceChainItem[];
-
-  /** Номер строки */
-  line: number;
 }
 
 // ============================================================
@@ -597,6 +620,10 @@ export interface PropUsage {
  * Категория DOM API-вызова.
  *
  * 50 кодов (см. legend.codes.domApiCategory).
+ *
+ * ⚠️ DomApiCategory НЕ выносился в types-vue-template.ts:
+ *    он не участвует в циклическом импорте и используется
+ *    только внутри codec-types.ts.
  */
 export type DomApiCategory =
   // Слушатели событий (P0)
@@ -659,38 +686,6 @@ export type DomApiCategory =
   | 'other';
 
 /**
- * Эффект DOM API-вызова:
- *   - write — UI-вывод
- *   - read  — не UI-вывод
- *   - mixed — комбинированный
- */
-export type DomApiEffect = 'write' | 'read' | 'mixed';
-
-/**
- * Вид target DOM API-вызова.
- */
-export type DomApiTargetKind =
-  'document' | 'window' | 'element' | 'query' | 'ref' | 'variable' | 'unknown';
-
-/**
- * Вид аргумента DOM API-вызова.
- */
-export type DomApiArgKind =
-  | 'literal-string'
-  | 'literal-number'
-  | 'literal-bool'
-  | 'identifier'
-  | 'member'
-  | 'call'
-  | 'arrow'
-  | 'object';
-
-/**
- * Источник разрешения аргумента.
- */
-export type DomApiArgSource = 'local' | 'import' | 'global' | 'unknown';
-
-/**
  * DOM API-вызов.
  */
 export interface DomApiCall {
@@ -732,34 +727,6 @@ export interface DomApiCall {
 
   /** Контекст вызова */
   context: DomApiContext;
-}
-
-/**
- * Разрешённый аргумент DOM API-вызова.
- */
-export interface DomApiArg {
-  index: number;
-  raw: string;
-  kind: DomApiArgKind;
-  resolvedFunctionId?: string;
-  resolvedSource?: DomApiArgSource;
-}
-
-/**
- * Контекст DOM API-вызова.
- *
- * ⚠️ v16.0.0: handlerSource расширен 'global'.
- */
-export interface DomApiContext {
-  eventName?: string;
-  handlerFunctionId?: string | null;
-  handlerSource?: 'local' | 'import' | 'global' | 'inline' | 'unknown';
-  cssSelector?: string;
-  htmlValue?: string;
-  className?: string;
-  styleProp?: string;
-  attributeName?: string;
-  observeOptions?: string[];
 }
 
 /**
@@ -840,7 +807,7 @@ export interface VueSectionFull {
 //   p (props placeholders)   → pn + ps
 //   e (emits placeholders)   → en + es
 //   x (exposed placeholders) → xn + xs
-// ============================================
+// ============================================================
 
 export interface VueSectionCompact {
   sfc: {
@@ -1475,7 +1442,7 @@ export interface EdgeData {
 }
 
 // ============================================================
-// СЖАТЫЙ JSON (v16.0.4)
+// СЖАТЫЙ JSON (v16.0.8)
 // ============================================================
 
 export interface CompactJSON {
@@ -1742,7 +1709,7 @@ export interface CompactJSON {
 }
 
 // ============================================================
-// ЛЕГЕНДА (v16.0.4)
+// ЛЕГЕНДА (v16.0.8)
 // ============================================================
 
 /** Один бит в поле flags */
@@ -1897,6 +1864,58 @@ export interface GenerateReportOptions {
 
   /** Включать VSCode-ссылки */
   includeVSCode?: boolean;
+
+  /**
+   * ✅ v16.0.7: корень проекта (абсолютный путь).
+   *
+   * ════════════════════════════════════════════════════════════
+   * ЗАЧЕМ ЭТО ПОЛЕ
+   * ════════════════════════════════════════════════════════════
+   *
+   * ПРИЧИНА БАГА v16.0.6:
+   *   При запуске `compact-recursive ./infoenergo-ui/src/index.ts`
+   *   из корня пакета `ast-analyzer`, `process.cwd()` = корень
+   *   пакета. Но Vue SFC лежат в `infoenergo-ui/src/`.
+   *
+   *   `DiscoverFilesStage` v1.1.0 нормализует пути относительно
+   *   `ctx.options.projectRoot` (например, `infoenergo-ui/src/`),
+   *   поэтому `sfcFile.path` = `components/icons/AiCrossIcon.vue`.
+   *
+   *   Но `compact-reporter.ts::collectFullJSON` использовал
+   *   `process.cwd()` для резолвинга, и получалось:
+   *     path.resolve('/.../ast-analyzer', 'components/icons/AiCrossIcon.vue')
+   *     = '/.../ast-analyzer/components/icons/AiCrossIcon.vue'
+   *
+   *   Файл не находился → все 75 SFC пропускались →
+   *   `componentUsages`/`htmlElements` = 0.
+   *
+   * ════════════════════════════════════════════════════════════
+   * РЕШЕНИЕ
+   * ════════════════════════════════════════════════════════════
+   *
+   *   Пробрасываем `ctx.options.projectRoot` из pipeline в
+   *   `generateCompactReport` через это поле. `collectFullJSON`
+   *   использует переданное значение вместо `process.cwd()`.
+   *
+   * ════════════════════════════════════════════════════════════
+   * ГДЕ УСТАНАВЛИВАЕТСЯ
+   * ════════════════════════════════════════════════════════════
+   *
+   *   - `pipeline/stages/build-report.ts`:
+   *       generateCompactReport(ctx.enhancedMap, outputPath, {
+   *         ...
+   *         projectRoot: options.projectRoot,
+   *       });
+   *
+   * ════════════════════════════════════════════════════════════
+   * ПОВЕДЕНИЕ ПО УМОЛЧАНИЮ
+   * ════════════════════════════════════════════════════════════
+   *
+   *   Если поле не задано — используется `process.cwd()`
+   *   (обратная совместимость). Но при работе через pipeline
+   *   это поле ВСЕГДА будет заполнено.
+   */
+  projectRoot?: string;
 }
 
 // ============================================

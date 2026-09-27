@@ -63,18 +63,18 @@ export interface ImportInfo {
 export interface ExportInfo {
   name: string;
   type:
-      | 'function'
-      | 'class'
-      | 'constant'
-      | 'value'
-      | 'default'
-      | 'interface'
-      | 'type'
-      | 'enum'
-      | 'object'
-      | 'all'
-      | 're-export'
-      | 'named';
+    | 'function'
+    | 'class'
+    | 'constant'
+    | 'value'
+    | 'default'
+    | 'interface'
+    | 'type'
+    | 'enum'
+    | 'object'
+    | 'all'
+    | 're-export'
+    | 'named';
   isDefault: boolean;
   loc: Location | null;
   params?: string[];
@@ -180,7 +180,7 @@ export interface CallInfo {
   targetVscode: string;
   callLine: number;
   callType:
-      'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
+    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
 }
 
 export interface CalledByInfo {
@@ -191,7 +191,7 @@ export interface CalledByInfo {
   callerVscode: string;
   callLine: number;
   callType:
-      'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
+    'direct' | 'import' | 'computed' | 'watch' | 'event' | 'lifecycle' | 'method' | 'constructor';
 }
 
 export interface ImportedByInfo {
@@ -248,14 +248,14 @@ export interface ImportedByInfo {
  *   `helpers/infer-function-name.ts` (v2.1.0).
  */
 export type LexicalRelation =
-    | 'nested'
-    | 'arrow-var'
-    | 'callback'
-    | 'iife'
-    | 'class-method'
-    | 'object-prop'
-    | 'return'
-    | 'default-export';
+  | 'nested'
+  | 'arrow-var'
+  | 'callback'
+  | 'iife'
+  | 'class-method'
+  | 'object-prop'
+  | 'return'
+  | 'default-export';
 
 /**
  * Лексическая связь: parent → child.
@@ -339,13 +339,13 @@ export interface LexicalLink {
 // ==========================================
 
 export type VueKind =
-    | 'function'
-    | 'composable'
-    | 'macro'
-    | 'hook'
-    | 'reactivity'
-    | 'callback'
-    | 'arrow';
+  | 'function'
+  | 'composable'
+  | 'macro'
+  | 'hook'
+  | 'reactivity'
+  | 'callback'
+  | 'arrow';
 
 /**
  * Числовые коды для VueKind.
@@ -562,6 +562,10 @@ import type {
   TemplateConditional as VueTemplateConditional,
 } from './modes/vue-analyzer/types.js';
 
+// ✅ v16.0.8: типы Vue-шаблона вынесены в отдельный файл
+// для разрыва циклического импорта types.ts ↔ codec-types.ts.
+import type { ComponentUsage, HtmlElementUsage } from './types-vue-template.js';
+
 /**
  * Обработчик события из шаблона Vue.
  *
@@ -623,14 +627,14 @@ export interface TemplateConditional extends VueTemplateConditional {
 export interface TemplateLifecycle {
   /** Имя хука */
   hookName:
-      | 'onMounted'
-      | 'onUnmounted'
-      | 'onScopeDispose'
-      | 'onActivated'
-      | 'onDeactivated'
-      | 'watch'
-      | 'watchEffect'
-      | 'onErrorCaptured';
+    | 'onMounted'
+    | 'onUnmounted'
+    | 'onScopeDispose'
+    | 'onActivated'
+    | 'onDeactivated'
+    | 'watch'
+    | 'watchEffect'
+    | 'onErrorCaptured';
   /** Имя функции, в которой вызван хук */
   functionName: string;
   /** Номер строки */
@@ -868,6 +872,7 @@ export interface VueEntities {
 //
 // ✅ v15.1.0 (P0): FunctionInfo теперь содержит parentFunctionId.
 // ✅ v15.2.0 (P1): добавлено поле lexicalLinks.
+// ✅ v16.0.8: добавлены поля templateComponentUsages/templateHtmlElements.
 // ==========================================
 
 export interface EntitiesResult {
@@ -965,6 +970,27 @@ export interface EntitiesResult {
 
   /** Ребра использования типов */
   typeRefsGraph?: TypeRef[];
+
+  // ==========================================
+  // ✅ НОВОЕ v16.0.8: Component Usage (Vue template)
+  // ==========================================
+  //
+  // ⚠️ КРИТИЧНО: эти поля заполняются ОДИН РАЗ в pipeline
+  // (ParseFileStage → parseVueFile → analyzeVueComponent).
+  //
+  // compact-reporter.ts ЧИТАЕТ их, а НЕ перезапускает analyzeVueSFC.
+  //
+  // Это устраняет:
+  //   - двойной парсинг <template> (экономия ~8 сек);
+  //   - рассинхрон projectRoot (второй проход не нужен);
+  //   - дублирование логики extractSFCNamesForVue.
+  // ==========================================
+
+  /** Использования компонентов в <template> */
+  templateComponentUsages?: ComponentUsage[];
+
+  /** Использования HTML-элементов в <template> */
+  templateHtmlElements?: HtmlElementUsage[];
 }
 
 // ==========================================
@@ -1213,20 +1239,20 @@ export interface EntityGraphEdge {
   from: string;
   to: string;
   type:
-      | 'function_call'
-      | 'constant_reference'
-      | 'class_extends'
-      | 'class_implements'
-      | 'interface_extends'
-      | 'type_reference'
-      | 'method_call'
-      | 'property_access'
-      | 'import_binding'
-      | 'export_binding'
-      | 'parameter_type'
-      | 'return_type'
-      | 'variable_reference'
-      | 'enum_member';
+    | 'function_call'
+    | 'constant_reference'
+    | 'class_extends'
+    | 'class_implements'
+    | 'interface_extends'
+    | 'type_reference'
+    | 'method_call'
+    | 'property_access'
+    | 'import_binding'
+    | 'export_binding'
+    | 'parameter_type'
+    | 'return_type'
+    | 'variable_reference'
+    | 'enum_member';
   line?: number;
   count?: number;
 }
@@ -1474,24 +1500,24 @@ export interface HTMLReportOptions {
 // ==========================================
 
 export type CLIMode =
-    | 'project'
-    | 'file'
-    | 'minify'
-    | 'minify-folder'
-    | 'prompt-pack'
-    | 'split-module'
-    | 'split'
-    | 'impact'
-    | 'dead-code'
-    | 'hybrid-report'
-    | 'hybrid'
-    | 'semantic'
-    | 'verify'
-    | 'refactor'
-    | 'analyze'
-    | 'vue-analyze'
-    | 'vue'
-    | 'compact';
+  | 'project'
+  | 'file'
+  | 'minify'
+  | 'minify-folder'
+  | 'prompt-pack'
+  | 'split-module'
+  | 'split'
+  | 'impact'
+  | 'dead-code'
+  | 'hybrid-report'
+  | 'hybrid'
+  | 'semantic'
+  | 'verify'
+  | 'refactor'
+  | 'analyze'
+  | 'vue-analyze'
+  | 'vue'
+  | 'compact';
 
 export interface ProjectCLIArgs {
   mode: 'project';
@@ -1625,22 +1651,22 @@ export interface CompactCLIArgs {
 }
 
 export type CLIArgs =
-    | ProjectCLIArgs
-    | FileCLIArgs
-    | MinifyCLIArgs
-    | MinifyFolderCLIArgs
-    | PromptPackCLIArgs
-    | SplitModuleCLIArgs
-    | ImpactCLIArgs
-    | DeadCodeCLIArgs
-    | HybridReportCLIArgs
-    | SemanticCLIArgs
-    | VerifyCLIArgs
-    | RefactorCLIArgs
-    | AnalyzeCLIArgs
-    | VueAnalyzeCLIArgs
-    | CompactCLIArgs
-    | null;
+  | ProjectCLIArgs
+  | FileCLIArgs
+  | MinifyCLIArgs
+  | MinifyFolderCLIArgs
+  | PromptPackCLIArgs
+  | SplitModuleCLIArgs
+  | ImpactCLIArgs
+  | DeadCodeCLIArgs
+  | HybridReportCLIArgs
+  | SemanticCLIArgs
+  | VerifyCLIArgs
+  | RefactorCLIArgs
+  | AnalyzeCLIArgs
+  | VueAnalyzeCLIArgs
+  | CompactCLIArgs
+  | null;
 
 // ==========================================
 // ТИПЫ ДЛЯ ВНУТРЕННЕГО ИСПОЛЬЗОВАНИЯ
@@ -1932,24 +1958,24 @@ export interface EnhancedPackageLockReport {
   };
   importExportFlow: {
     imports: Record<
-        string,
-        {
-          importsFrom: {
-            module: string;
-            type: 'named' | 'default' | 'namespace';
-            imports: string[];
-          }[];
-        }
+      string,
+      {
+        importsFrom: {
+          module: string;
+          type: 'named' | 'default' | 'namespace';
+          imports: string[];
+        }[];
+      }
     >;
     exports: Record<
-        string,
-        {
-          exportsTo: {
-            module: string;
-            type: 'named' | 'default';
-            exports: string[];
-          }[];
-        }
+      string,
+      {
+        exportsTo: {
+          module: string;
+          type: 'named' | 'default';
+          exports: string[];
+        }[];
+      }
     >;
   };
   /**
@@ -1958,8 +1984,8 @@ export interface EnhancedPackageLockReport {
    * с полями from/to/path/found/nodes/edges.
    */
   callGraph?:
-      | Record<string, string[]>
-      | {
+    | Record<string, string[]>
+    | {
     from: string;
     to: string;
     path: string[];
@@ -2006,6 +2032,7 @@ export interface EnhancedPackageLockReport {
 //
 // ✅ ОБНОВЛЕНО: добавлены поля imports и exports.
 // ✅ v15.2.0 (P1): добавлены template-поля + lexicalLinks.
+// ✅ v16.0.8: добавлены templateComponentUsages/templateHtmlElements.
 // ==========================================
 
 export interface EnhancedEntityInfo {
@@ -2121,6 +2148,19 @@ export interface EnhancedEntityInfo {
 
   /** ✅ v15.5.0: Vue-сущности (SFC/composables/macros/hooks/reactivity/icons) */
   vue?: VueEntities;
+
+  // ==========================================
+  // ✅ НОВОЕ v16.0.8: Component Usage (Vue template)
+  // ==========================================
+  // Проброшены из EntitiesResult через convertEntitiesToEnhanced.
+  // compact-reporter.ts ЧИТАЕТ их напрямую.
+  // ==========================================
+
+  /** Использования компонентов в <template> */
+  templateComponentUsages?: ComponentUsage[];
+
+  /** Использования HTML-элементов в <template> */
+  templateHtmlElements?: HtmlElementUsage[];
 }
 
 // ==========================================
