@@ -8,6 +8,15 @@
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
 //
+// v16.0.8-FIX (round-trip: identifier + id для component*):
+//   - ✅ ИСПРАВЛЕНО: в VueSectionCompact.componentProps добавлено
+//     опциональное поле 'idn' (индекс в strs, -1 = нет).
+//   - ✅ ИСПРАВЛЕНО: в VueSectionCompact.componentEvents,
+//     componentDirectives, componentSlots, htmlInterpolations
+//     добавлено опциональное поле 'id' (индекс в ids[]).
+//   - ✅ СИНХРОНИЗИРОВАНО с codec-legend.ts (FIX), codec-encode.ts
+//     (FIX), codec-decode.ts (FIX).
+//
 // v16.0.8 (вынос типов Vue-шаблона + fix TS2304 + TS6196):
 //   - ✅ ВЫНЕСЕНЫ типы ComponentUsage, HtmlElementUsage, ComponentProp,
 //     ComponentEvent, ComponentDirective, ComponentSlot,
@@ -363,17 +372,17 @@ import type {
 // ────────────────────────────────────────────────────────────
 export type {
   /** Обработчик события из шаблона Vue (type alias на vue-analyzer) */
-  TemplateEventHandler,
+    TemplateEventHandler,
   /** Динамический компонент (type alias на vue-analyzer) */
-  TemplateDynamicComponent,
+    TemplateDynamicComponent,
   /** Template ref (type alias на vue-analyzer) */
-  TemplateRefUsage,
+    TemplateRefUsage,
   /** CSS-переменная из <style> (type alias на vue-analyzer) */
-  TemplateCssVariable,
+    TemplateCssVariable,
   /** :deep() селектор (type alias на vue-analyzer) */
-  TemplateDeepSelector,
+    TemplateDeepSelector,
   /** Условный рендеринг (расширяет vue-analyzer + id?/fileId?) */
-  TemplateConditional,
+    TemplateConditional,
 } from '../../types.js';
 
 // ============================================================
@@ -565,7 +574,7 @@ export interface IconEntity {
  * kind='none' УБРАН — мёртвый enum.
  */
 export type HtmlOutputKind =
-  // Vue-шаблон
+// Vue-шаблон
   | 'rendered-text'
   | 'rendered-attr'
   | 'rendered-cond'
@@ -626,7 +635,7 @@ export interface PropUsage {
  *    только внутри codec-types.ts.
  */
 export type DomApiCategory =
-  // Слушатели событий (P0)
+// Слушатели событий (P0)
   | 'add-event-listener'
   | 'remove-event-listener'
   | 'dispatch-event'
@@ -807,6 +816,8 @@ export interface VueSectionFull {
 //   p (props placeholders)   → pn + ps
 //   e (emits placeholders)   → en + es
 //   x (exposed placeholders) → xn + xs
+//
+// ✅ v16.0.8-FIX: schemas vue.component* — +1 поле (idn / id)
 // ============================================================
 
 export interface VueSectionCompact {
@@ -888,6 +899,8 @@ export interface VueSectionCompact {
     lv: number[];
     sc: [number, number, number?][];
     fns: number[];
+    // ✅ v16.0.8-FIX: identifier (индекс в strs, -1 = нет)
+    idn?: number[];
   };
   componentEvents?: {
     n: number[];
@@ -897,6 +910,8 @@ export interface VueSectionCompact {
     m: number[];
     l: number[];
     sc: [number, number, number?][];
+    // ✅ v16.0.8-FIX: id (индекс в ids[])
+    id?: number[];
   };
   componentDirectives?: {
     n: number[];
@@ -904,17 +919,23 @@ export interface VueSectionCompact {
     m: number[];
     v: number[];
     l: number[];
+    // ✅ v16.0.8-FIX: id (индекс в ids[])
+    id?: number[];
   };
   componentSlots?: {
     n: number[];
     sc: number[];
     sn: number[];
     l: number[];
+    // ✅ v16.0.8-FIX: id (индекс в ids[])
+    id?: number[];
   };
   htmlInterpolations?: {
     e: number[];
     sc: [number, number, number?][];
     l: number[];
+    // ✅ v16.0.8-FIX: id (индекс в ids[])
+    id?: number[];
   };
 }
 
@@ -1627,6 +1648,8 @@ export interface CompactJSON {
     lv: number[];
     sc: [number, number, number?][];
     fns: number[];
+    // ✅ v16.0.8-FIX: identifier (индекс в strs, -1 = нет)
+    idn?: number[];
   };
 
   /** Component events */
@@ -1638,6 +1661,8 @@ export interface CompactJSON {
     m: number[];
     l: number[];
     sc: [number, number, number?][];
+    // ✅ v16.0.8-FIX: id (индекс в ids[])
+    id?: number[];
   };
 
   /** Component directives */
@@ -1647,6 +1672,8 @@ export interface CompactJSON {
     m: number[];
     v: number[];
     l: number[];
+    // ✅ v16.0.8-FIX: id (индекс в ids[])
+    id?: number[];
   };
 
   /** Component slots */
@@ -1655,6 +1682,8 @@ export interface CompactJSON {
     sc: number[];
     sn: number[];
     l: number[];
+    // ✅ v16.0.8-FIX: id (индекс в ids[])
+    id?: number[];
   };
 
   /** HTML interpolations */
@@ -1662,6 +1691,8 @@ export interface CompactJSON {
     e: number[];
     sc: [number, number, number?][];
     l: number[];
+    // ✅ v16.0.8-FIX: id (индекс в ids[])
+    id?: number[];
   };
 
   /** DOM API calls */
@@ -1730,6 +1761,11 @@ export interface CodesDict {
  * ✅ v16.0.0: добавлено поле `version` (в 15.7.3 отсутствовало).
  * ✅ v16.0.0: +10 словарей в codes, +11 схем.
  * ✅ v16.0.1: `schemas.fns` расширена до 10 полей (добавлено 'hv').
+ * ✅ v16.0.8-FIX: `schemas['vue.componentProps']` — 10 полей (добавлено 'idn').
+ *                `schemas['vue.componentEvents']` — 8 полей (добавлено 'id').
+ *                `schemas['vue.componentDirectives']` — 6 полей (добавлено 'id').
+ *                `schemas['vue.componentSlots']` — 5 полей (добавлено 'id').
+ *                `schemas['vue.htmlInterpolations']` — 4 поля (добавлено 'id').
  */
 export interface CodecLegend {
   /** ✅ v16.0.0: версия legend */
@@ -1827,6 +1863,7 @@ export interface CodecLegend {
     'vue.icons'?: string[];
 
     // ✅ v16.0.0: новые схемы
+    // ✅ v16.0.8-FIX: длины увеличены на 1 (добавлены idn / id)
     'vue.componentProps'?: string[];
     'vue.componentEvents'?: string[];
     'vue.componentDirectives'?: string[];

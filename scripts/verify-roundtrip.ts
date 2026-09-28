@@ -746,6 +746,7 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
 
   // ✅ v16.0.0: расширенный список schemas (37 схем)
   // ✅ v16.0.2: fns теперь 10 полей (добавлено hv)
+  // ✅ FIX: обновлены длины для 5 схем vue.component* (добавлены idn/id)
   const schemaChecks: Array<{ key: string; expectedLength: number }> = [
     { key: 'mi', expectedLength: 2 },
     { key: 'fl', expectedLength: 2 },
@@ -777,11 +778,12 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     { key: 'vue.reactivity', expectedLength: 4 },
     { key: 'vue.icons', expectedLength: 3 },
     // ✅ v16.0.0: новые схемы
-    { key: 'vue.componentProps', expectedLength: 9 },
-    { key: 'vue.componentEvents', expectedLength: 7 },
-    { key: 'vue.componentDirectives', expectedLength: 5 },
-    { key: 'vue.componentSlots', expectedLength: 4 },
-    { key: 'vue.htmlInterpolations', expectedLength: 3 },
+    // ✅ FIX: длины увеличены на 1 (добавлены idn / id)
+    { key: 'vue.componentProps', expectedLength: 10 },
+    { key: 'vue.componentEvents', expectedLength: 8 },
+    { key: 'vue.componentDirectives', expectedLength: 6 },
+    { key: 'vue.componentSlots', expectedLength: 5 },
+    { key: 'vue.htmlInterpolations', expectedLength: 4 },
     { key: 'vue.fnHtmlUsage', expectedLength: 9 },
     { key: 'domApiCalls', expectedLength: 19 },
     { key: 'domApiArgs', expectedLength: 4 },

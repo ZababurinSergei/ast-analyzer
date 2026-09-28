@@ -75,6 +75,20 @@
 // v15.0.2 (устранение дублирования conditionals):
 // v13.0.0 (columnar-структура):
 // v12.0.0 (структурная оптимизация):
+//
+// ════════════════════════════════════════════════════════════
+// v16.0.2-FIX (round-trip: identifier + id для top-level component*):
+//   - ✅ ИСПРАВЛЕНО: схема `vue.componentProps` расширена полем 'idn'
+//     (identifier — первый идентификатор в value). Ранее identifier
+//     кодировался, но не восстанавливался при decode → L1/L2/DL
+//     падали с `null → "a"`.
+//   - ✅ ИСПРАВЛЕНО: схемы `vue.componentEvents`, `vue.componentDirectives`,
+//     `vue.componentSlots`, `vue.htmlInterpolations` расширены полем 'id'
+//     (индекс в ids[]). Ранее id/usageId не восстанавливались → decode
+//     возвращал `''`, а full содержал реальные `cu1:ce1` / `he2:hi1`.
+//   - ✅ СИНХРОНИЗИРОВАНО с codec-encode.ts (FIX), codec-decode.ts (FIX),
+//     codec-types.ts (FIX), scripts/verify-roundtrip.ts (FIX),
+//     scripts/verify-wild-card.ts (FIX).
 // ============================================
 
 import type { CodecLegend, CodesDict } from './codec-types.js';
@@ -388,6 +402,10 @@ export const HTML_OUTPUT_KIND_CODES: Record<string, number> = {
 // ✅ v16.0.0: добавлены 11 новых схем (итого 28+11=39+).
 // ✅ v16.0.2: schemas.fns расширена до 10 полей (добавлено 'hv').
 //            Схема vue.sfc — 30 полей (было 8 в v15.7.3).
+// ✅ v16.0.2-FIX: схемы vue.componentProps/Events/Directives/Slots/
+//    htmlInterpolations расширены полем 'idn' (identifier) и 'id'
+//    (индекс в ids[]). Ранее при decode терялись identifier и id/usageId,
+//    что ломало L1/L2/DL/RE/ENC/DEC.
 // ============================================================
 
 export const SCHEMAS: CodecLegend['schemas'] = {
@@ -689,6 +707,10 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   // Их значения сгруппированы по usageId через cu_cp/cu_ce/...
   // slices.
   //
+  // ✅ v16.0.2-FIX: добавлено поле 'idn' (identifier) в componentProps
+  //    и поле 'id' (индекс в ids[]) в componentEvents/Directives/
+  //    Slots/Interpolations.
+  //
   // componentProps:
   //   n   — nameIdx в strs
   //   v   — valueIdx в strs
@@ -699,6 +721,7 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   //   lv  — literalValueIdx в strs
   //   sc  — RLE [start, length, value?] → sourceChainIdx
   //   fns — reserved (всегда -1)
+  //   idn — identifierIdx в strs (первый идентификатор в value)
   //
   // componentEvents:
   //   n   — eventNameIdx в strs
@@ -708,6 +731,7 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   //   m   — modifiersIdx в strs (разделитель \u0002)
   //   l   — line
   //   sc  — RLE [start, length, value?] → sourceChainIdx
+  //   id  — idIdx в ids[] ('cu1:ce1')
   //
   // componentDirectives:
   //   n   — nameIdx в strs
@@ -715,23 +739,26 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   //   m   — modifiersIdx в strs (разделитель \u0002)
   //   v   — valueIdx в strs
   //   l   — line
+  //   id  — idIdx в ids[] ('cu1:cd1')
   //
   // componentSlots:
   //   n   — slotNameIdx в strs
   //   sc  — isScoped (0/1)
   //   sn  — scopeNamesIdx в strs (разделитель \u0002)
   //   l   — line
+  //   id  — idIdx в ids[] ('cu1:csl1')
   //
   // htmlInterpolations:
   //   e   — expressionIdx в strs
   //   sc  — RLE [start, length, value?] → sourceChainIdx
   //   l   — line
+  //   id  — idIdx в ids[] ('he2:hi1')
   // ==========================================
-  'vue.componentProps': ['n', 'v', 'k', 'l', 'id', 'mc', 'lv', 'sc', 'fns'],
-  'vue.componentEvents': ['n', 'h', 'fn', 's', 'm', 'l', 'sc'],
-  'vue.componentDirectives': ['n', 'a', 'm', 'v', 'l'],
-  'vue.componentSlots': ['n', 'sc', 'sn', 'l'],
-  'vue.htmlInterpolations': ['e', 'sc', 'l'],
+  'vue.componentProps': ['n', 'v', 'k', 'l', 'id', 'mc', 'lv', 'sc', 'fns', 'idn'],
+  'vue.componentEvents': ['n', 'h', 'fn', 's', 'm', 'l', 'sc', 'id'],
+  'vue.componentDirectives': ['n', 'a', 'm', 'v', 'l', 'id'],
+  'vue.componentSlots': ['n', 'sc', 'sn', 'l', 'id'],
+  'vue.htmlInterpolations': ['e', 'sc', 'l', 'id'],
 
   // ==========================================
   // vue.fnHtmlUsage — обратная связь
@@ -1105,6 +1132,7 @@ export interface LegendDictionaries {
  *
  * ✅ v16.0.0: добавлено поле `version` = '2.0.0'.
  * ✅ v16.0.2: schemas.fns — 10 полей.
+ * ✅ v16.0.2-FIX: schemas vue.component* — +1 поле (idn / id).
  */
 export function buildLegend(_dict: LegendDictionaries): CodecLegend {
   return {

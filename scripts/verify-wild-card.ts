@@ -3,7 +3,19 @@
 // ============================================================
 // ПРОВЕРКА НОВЫХ СЕКЦИЙ CODEC v16.0.8
 // ============================================================
-// Версия: 1.2.3
+// Версия: 1.2.4
+//
+// ИЗМЕНЕНИЯ v1.2.4 (синхронизация схем с codec-legend v16.0.8-fix):
+//   - ✅ ОБНОВЛЕНО: длины схем в schemaChecks для 5 top-level секций
+//     увеличены на 1 (добавлены поля idn / id):
+//       • vue.componentProps:        9 → 10  (+idn)
+//       • vue.componentEvents:       7 → 8   (+id)
+//       • vue.componentDirectives:   5 → 6   (+id)
+//       • vue.componentSlots:        4 → 5   (+id)
+//       • vue.htmlInterpolations:    3 → 4   (+id)
+//   - ✅ ПРИЧИНА: codec-legend.ts расширил схемы, чтобы decode(compact)
+//     восстанавливал identifier / id / usageId симметрично full.json.
+//     Без этого L1/L2/DL/DEC падали с расхождениями.
 //
 // ИЗМЕНЕНИЯ v1.2.3 (обновление до CODEC v16.0.8):
 //   - ✅ ОБНОВЛЕНО: EXPECTED_CODEC_VERSION = '16.0.8'
@@ -228,6 +240,7 @@ function checkCompactSchemas(compact: any): void {
   subsection('Схемы в legend.schemas');
 
   const schemas = compact.legend?.schemas ?? {};
+  // ✅ FIX v1.2.4: длины 5 схем увеличены на 1 (добавлены idn / id)
   const schemaChecks: Array<{ key: string; expected: number }> = [
     { key: 'mi', expected: 2 },
     { key: 'fl', expected: 2 },
@@ -252,11 +265,12 @@ function checkCompactSchemas(compact: any): void {
     { key: 'vue.hooks', expected: 3 },
     { key: 'vue.reactivity', expected: 4 },
     { key: 'vue.icons', expected: 3 },
-    { key: 'vue.componentProps', expected: 9 },
-    { key: 'vue.componentEvents', expected: 7 },
-    { key: 'vue.componentDirectives', expected: 5 },
-    { key: 'vue.componentSlots', expected: 4 },
-    { key: 'vue.htmlInterpolations', expected: 3 },
+    // ✅ FIX v1.2.4: было 9/7/5/4/3 → стало 10/8/6/5/4
+    { key: 'vue.componentProps', expected: 10 },
+    { key: 'vue.componentEvents', expected: 8 },
+    { key: 'vue.componentDirectives', expected: 6 },
+    { key: 'vue.componentSlots', expected: 5 },
+    { key: 'vue.htmlInterpolations', expected: 4 },
     { key: 'vue.fnHtmlUsage', expected: 9 },
     { key: 'domApiCalls', expected: 19 },
     { key: 'domApiArgs', expected: 4 },

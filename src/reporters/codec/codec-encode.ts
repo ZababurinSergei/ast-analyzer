@@ -1,51 +1,64 @@
 // src/reporters/codec/codec-encode.ts
 // ============================================
-// КОДИРОВАНИЕ: FullJSON → CompactJSON (v16.0.8)
+// КОДИРОВАНИЕ: FullJSON → CompactJSON (v16.0.9)
 // ============================================
-// Версия: 16.0.8
+// Версия: 16.0.9
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
+//
+// v16.0.9-FIX (round-trip: literalValue + ids):
+//   - ✅ ИСПРАВЛЕНО: `encodeComponentPropsInline` — добавлена
+//     функция `encodeLiteralValue()`, которая сохраняет ТИП
+//     literalValue (boolean / number / null / string).
+//     Раньше `String(false)` → `"false"` (строка), при decode
+//     получалось `"false"`, а не `false`. Ломало L1/L2/DL/DEC
+//     и verify-consistency:
+//       $.vue.componentProps[38].literalValue: "false" → false
+//
+//   - ✅ ИСПРАВЛЕНО: `encode()` — предзаполнение `dict.idDict`
+//     из `full.ids` ДО `encodeVueSection`. Раньше compact.ids
+//     формировался в порядке первого `addId` внутри
+//     `encodeVueSection` (interleaved cu → he на каждом SFC),
+//     а `full.ids` — в порядке `compact-reporter.ts` (batched
+//     cu → he). Отсюда рассинхрон:
+//       $.ids[0]: "he1:cp1" → "cu1:cp1"
+//
+//   - ✅ ИСПРАВЛЕНО: `compact.ids = fullIds` (приоритет full.ids).
+//     Гарантирует симметрию compact ↔ full.
+//
+// v16.0.8-FIX (round-trip: identifier + id для component*):
+//   - ✅ ИСПРАВЛЕНО: encodeComponentPropsInline — добавлено поле
+//     'idn' (identifier, индекс в strs). Ранее identifier не
+//     кодировался, при decode выставлялся null, L1/L2/DL падали
+//     с `null → "a"`.
+//   - ✅ ИСПРАВЛЕНО: encodeComponentEventsInline — добавлено поле
+//     'id' (индекс в ids[]).
+//   - ✅ ИСПРАВЛЕНО: encodeComponentDirectivesInline — добавлено
+//     поле 'id'.
+//   - ✅ ИСПРАВЛЕНО: encodeComponentSlotsInline — добавлено поле 'id'.
+//   - ✅ ИСПРАВЛЕНО: encodeHtmlInterpolationsInline — добавлено
+//     поле 'id'.
 //
 // v16.0.8 (fix: top-level component* + ids + детерминизм params):
 //   - ✅ FIX: top-level `componentProps`, `componentEvents`,
 //     `componentDirectives`, `componentSlots`, `htmlInterpolations`
 //     теперь ВСЕГДА кладутся в `compact` (симметрия с
 //     codec-decode.ts v16.0.4).
-//     Причина: verify-consistency ожидает их на top-level,
-//     но encode() их не клал — они были только внутри `vue`.
 //   - ✅ FIX: `dict.idDict` принудительно заполняется из всех
-//     component*-секций — теперь `compact.ids` содержит все id,
-//     а не только те, что добавлены через encodeComponentPropsInline.
+//     component*-секций.
 //   - ✅ FIX: `compact.params` и `compact.methods` — БЕЗ токенизации.
-//     Причина: encodeStr() зависит от частотного словаря токенов,
-//     который меняется при повторном encode(decode(...)).
-//     Симптом: `$.params[10] a: [562] b: "overrides"`.
-//   - ✅ FIX: `OPTIONAL_SECTIONS` больше НЕ содержит component*-секции
-//     (они не удаляются, даже если пусты).
-//   - ✅ ОБНОВЛЕНО: версия 16.0.1 → 16.0.8.
-//   - ✅ СИНХРОНИЗИРОВАНО с:
-//       • codec-types.ts   (CODEC_VERSION = '16.0.8')
-//       • codec-decode.ts  (v16.0.8)
-//       • codec-legend.ts  (v16.0.4)
-//       • compact-reporter.ts (v16.0.8)
+//   - ✅ FIX: `OPTIONAL_SECTIONS` больше НЕ содержит component*-секции.
 //
 // v16.0.1 (fix round-trip: fns.hv — RLE для isHtmlVisible):
 //   - ✅ ДОБАВЛЕНО: `fnsHv` — RLE-массив для `isHtmlVisible` (0 | 1).
-//     Поле добавляется в `compact.fns.hv`.
-//   - ✅ СИНХРОНИЗИРОВАНО: schemas.fns теперь 10 полей
-//     (n, m, f, l, fl, p, rt, parent, vk, hv).
 //
 // v16.0.0 (major — несовместимое расширение схем):
 //   - ✅ BREAKING: vue.sfc — 8 → 30 полей
 //   - ✅ BREAKING: +10 top-level секций CompactJSON
-//   - ✅ ДОБАВЛЕНО: addId(dict, id) — интернирование сгенерированных id
-//   - ✅ ДОБАВЛЕНО: addSourceChain(dict, chain) — интернирование sourceChain
-//   - ✅ ДОБАВЛЕНО: rleArray(values) — RLE-кодирование
+//   - ✅ ДОБАВЛЕНО: addId, addSourceChain, rleArray
 //   - ✅ ДОБАВЛЕНО: 9 функций encode*
-//   - ✅ ДОБАВЛЕНО: заполнение st.total*
-//   - ✅ ДОБАВЛЕНО: ids[], sourceChains[] в CompactJSON
 // ============================================
 
 import type {
@@ -940,7 +953,43 @@ export function encodeVueSection(
 
 // ============================================
 // ✅ v16.0.0: inline-энкодеры подсекций vue
+// ✅ v16.0.8-FIX: добавлены 'idn' и 'id'
+// ✅ v16.0.9-FIX: literalValue сохраняет тип (boolean/number/null/string)
 // ============================================
+
+/**
+ * ✅ v16.0.9-FIX: кодирует literalValue с префиксом типа.
+ *
+ * ПРОБЛЕМА (v16.0.8):
+ *   `String(p.literalValue)` превращает boolean `false` в строку `"false"`,
+ *   а `true` — в `"true"`. При decode(compact) возвращается строка,
+ *   а не boolean. Это ломает L1/L2/DL/DEC и verify-consistency:
+ *     $.vue.componentProps[38].literalValue: "false" → false
+ *
+ * РЕШЕНИЕ:
+ *   Кодируем `${typeof}:${String(value)}`:
+ *     - boolean:true   → decode → true
+ *     - boolean:false  → decode → false
+ *     - number:42      → decode → 42
+ *     - null:null      → decode → null
+ *     - string:foo     → decode → 'foo'
+ *
+ *   Для legacy-совместимости: если префикса нет — decode вернёт строку как есть.
+ */
+function encodeLiteralValue(
+  value: string | number | boolean | null | undefined,
+  dict: DictBuilder
+): number {
+  if (value === undefined) return -1;
+  if (value === null) return addString(dict, 'null:null');
+
+  const t = typeof value;
+  if (t === 'boolean') return addString(dict, `boolean:${String(value)}`);
+  if (t === 'number') return addString(dict, `number:${String(value)}`);
+  if (t === 'string') return addString(dict, `string:${String(value)}`);
+
+  return addString(dict, `unknown:${String(value)}`);
+}
 
 function encodeComponentPropsInline(
   props: ComponentProp[],
@@ -957,6 +1006,10 @@ function encodeComponentPropsInline(
   const lv: number[] = [];
   const sc: [number, number, number?][] = [];
   const fns: number[] = [];
+  // ✅ FIX: identifier (первый идентификатор в value) — кодируется явно,
+  // иначе decode(compact) выставляет identifier = null, а full содержит
+  // реальное значение ('a', 'b', 'props', ...). Это ломало L1/L2/DL.
+  const idn: number[] = [];
 
   for (const p of props) {
     n.push(addString(dict, p.name || ''));
@@ -965,16 +1018,21 @@ function encodeComponentPropsInline(
     l.push(p.line ?? 0);
     id.push(addId(dict, p.id || ''));
     mc.push(p.memberChain ? addString(dict, p.memberChain.join('\u0002')) : -1);
-    lv.push(p.literalValue !== undefined ? addString(dict, String(p.literalValue)) : -1);
+
+    // ✅ v16.0.9-FIX: literalValue сохраняет тип (boolean / number / null / string)
+    lv.push(encodeLiteralValue(p.literalValue, dict));
 
     const scIdx = addSourceChain(dict, p.sourceChain || []);
     sc.push(scIdx >= 0 ? [scIdx, 1, 1] : [0, 0]);
 
     const firstFn = p.sourceChain?.[0]?.functionId;
     fns.push(firstFn ? -1 : -1); // резолвинг fn-id делает compact-reporter
+
+    // ✅ FIX: identifier
+    idn.push(p.identifier ? addString(dict, p.identifier) : -1);
   }
 
-  return { n, v, k, l, id, mc, lv, sc, fns };
+  return { n, v, k, l, id, mc, lv, sc, fns, idn };
 }
 
 function encodeComponentEventsInline(
@@ -990,6 +1048,8 @@ function encodeComponentEventsInline(
   const m: number[] = [];
   const l: number[] = [];
   const sc: [number, number, number?][] = [];
+  // ✅ FIX: id (cu1:ce1) — чтобы decode восстанавливал id/usageId.
+  const id: number[] = [];
 
   for (const e of events) {
     n.push(addString(dict, e.eventName || ''));
@@ -1001,9 +1061,12 @@ function encodeComponentEventsInline(
 
     const scIdx = addSourceChain(dict, e.handlerChain || []);
     sc.push(scIdx >= 0 ? [scIdx, 1, 1] : [0, 0]);
+
+    // ✅ FIX: id
+    id.push(e.id ? addId(dict, e.id) : -1);
   }
 
-  return { n, h, fn, s, m, l, sc };
+  return { n, h, fn, s, m, l, sc, id };
 }
 
 function encodeComponentDirectivesInline(
@@ -1017,6 +1080,8 @@ function encodeComponentDirectivesInline(
   const m: number[] = [];
   const v: number[] = [];
   const l: number[] = [];
+  // ✅ FIX: id (cu1:cd1)
+  const id: number[] = [];
 
   for (const d of dirs) {
     n.push(addString(dict, d.name || ''));
@@ -1024,9 +1089,12 @@ function encodeComponentDirectivesInline(
     m.push(d.modifiers?.length ? addString(dict, d.modifiers.join('\u0002')) : -1);
     v.push(addString(dict, d.value || ''));
     l.push(d.line ?? 0);
+
+    // ✅ FIX: id
+    id.push(d.id ? addId(dict, d.id) : -1);
   }
 
-  return { n, a, m, v, l };
+  return { n, a, m, v, l, id };
 }
 
 function encodeComponentSlotsInline(
@@ -1039,15 +1107,20 @@ function encodeComponentSlotsInline(
   const sc: number[] = [];
   const sn: number[] = [];
   const l: number[] = [];
+  // ✅ FIX: id (cu1:csl1)
+  const id: number[] = [];
 
   for (const sl of slots) {
     n.push(addString(dict, sl.slotName || ''));
     sc.push(sl.isScoped ? 1 : 0);
     sn.push(sl.scopeNames?.length ? addString(dict, sl.scopeNames.join('\u0002')) : -1);
     l.push(sl.line ?? 0);
+
+    // ✅ FIX: id
+    id.push(sl.id ? addId(dict, sl.id) : -1);
   }
 
-  return { n, sc, sn, l };
+  return { n, sc, sn, l, id };
 }
 
 function encodeHtmlInterpolationsInline(
@@ -1059,15 +1132,20 @@ function encodeHtmlInterpolationsInline(
   const e: number[] = [];
   const sc: [number, number, number?][] = [];
   const l: number[] = [];
+  // ✅ FIX: id (he2:hi1)
+  const id: number[] = [];
 
   for (const i of interps) {
     e.push(addString(dict, i.expression || ''));
     const scIdx = addSourceChain(dict, i.sourceChain || []);
     sc.push(scIdx >= 0 ? [scIdx, 1, 1] : [0, 0]);
     l.push(i.line ?? 0);
+
+    // ✅ FIX: id
+    id.push(i.id ? addId(dict, i.id) : -1);
   }
 
-  return { e, sc, l };
+  return { e, sc, l, id };
 }
 
 // ============================================
@@ -1229,7 +1307,7 @@ function encodeDomApiArgs(_full: any, dict: DictBuilder): any {
 // ============================================
 
 /**
- * Кодирует полный JSON в сжатый (v16.0.8).
+ * Кодирует полный JSON в сжатый (v16.0.9).
  */
 export function encode(
   payload: FullJSON,
@@ -1240,6 +1318,34 @@ export function encode(
 
   // v14.0.0: канонизация
   const canonical = canonicalizeFullJSON(payload);
+
+  // ✅ v16.0.9-FIX: предзаполняем dict.idDict из full.ids
+  //
+  // ПРОБЛЕМА (v16.0.8):
+  //   compact.ids формируется в порядке ПЕРВОГО вызова addId.
+  //   Первый вызов происходит в encodeVueSection() — он идёт
+  //   по vue.sfc[] ПО КАЖДОМУ SFC и добавляет id в порядке
+  //   cu → he на каждом SFC (interleaved).
+  //
+  //   А full.ids в compact-reporter.ts собирается в порядке
+  //   все cu → все he (batched). Отсюда рассинхрон:
+  //     $.ids[0]: "he1:cp1" → "cu1:cp1"
+  //
+  // РЕШЕНИЕ:
+  //   Если full.ids уже есть — предзаполняем dict.idDict в том же
+  //   порядке. Тогда encodeVueSection и top-level encoders будут
+  //   возвращать те же индексы, что и full.ids.
+  const fullIds: string[] = Array.isArray((canonical as any).ids)
+    ? (canonical as any).ids
+    : [];
+
+  if (fullIds.length > 0) {
+    for (const id of fullIds) {
+      if (typeof id === 'string' && id) {
+        addId(dict, id);
+      }
+    }
+  }
 
   // ============================================
   // 1. Индексы модулей
@@ -1878,7 +1984,17 @@ export function encode(
     fnHtmlUsage: fnHtmlUsageData,
     domApiCalls: domApiCallsData,
     domApiArgs: domApiArgsData,
-    ids: dict.idDict.length > 0 ? dict.idDict : undefined,
+
+    // ✅ v16.0.9-FIX: приоритет full.ids (гарантия симметрии compact ↔ full)
+    //
+    // Без этого compact.ids формируется в порядке первого addId
+    // (encodeVueSection, interleaved cu → he на каждом SFC),
+    // а full.ids — в порядке compact-reporter.ts (batched cu → he).
+    // Это вызывало расхождения в L1/L2/RE/ENC/DEC.
+    ids: fullIds.length > 0
+      ? fullIds
+      : (dict.idDict.length > 0 ? dict.idDict : undefined),
+
     sourceChains: dict.sourceChainDict.length > 0 ? dict.sourceChainDict : undefined,
 
     st: canonical.statistics,

@@ -1,20 +1,50 @@
 // src/reporters/codec/codec-decode.ts
 // ============================================
-// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v16.0.8)
+// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v16.0.9)
 // ============================================
-// Версия: 16.0.8
+// Версия: 16.0.9
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
 //
+// v16.0.9-FIX (round-trip: literalValue с типом):
+//   - ✅ ИСПРАВЛЕНО: decodeComponentProps — literalValue теперь
+//     парсится через `decodeLiteralValue()`, которая восстанавливает
+//     тип (boolean / number / null / string) из префикса.
+//
+//     ПРИЧИНА:
+//       codec-encode.ts v16.0.8 кодировал literalValue как
+//       `String(value)`, из-за чего boolean `false` → `"false"`
+//       (строка), а `true` → `"true"`. При decode получалась
+//       строка, а не boolean. Это ломало L1/L2/DL/DEC и
+//       verify-consistency:
+//         $.vue.componentProps[38].literalValue: "false" → false
+//
+//     РЕШЕНИЕ:
+//       encodeLiteralValue() пишет `${typeof}:${String(value)}`.
+//       decodeLiteralValue() парсит этот формат.
+//
+//     LEGACY:
+//       Если префикса нет — возвращаем строку как есть
+//       (обратная совместимость со старыми compact.json).
+//
+// v16.0.8-FIX (round-trip: identifier + id для component*):
+//   - ✅ ИСПРАВЛЕНО: decodeComponentProps — читает `idn` (identifier).
+//     Ранее identifier всегда был null, L1/L2/DL падали с `null → "a"`.
+//   - ✅ ИСПРАВЛЕНО: decodeComponentEvents — читает `id` (индекс в ids[])
+//     и восстанавливает id/usageId.
+//   - ✅ ИСПРАВЛЕНО: decodeComponentDirectives — читает `id`.
+//   - ✅ ИСПРАВЛЕНО: decodeComponentSlots — читает `id` + `sn` (scopeNames).
+//   - ✅ ИСПРАВЛЕНО: decodeHtmlInterpolations — читает `id`.
+//   - ✅ ИСПРАВЛЕНО: decodeVueSection — при разворачивании cu_*/he_*
+//     переустанавливает id/usageId для props/events/directives/slots/
+//     interpolations, чтобы они соответствовали фактическому usageId
+//     ('cu1', 'he1'), а не значению из общего массива.
+//
 // v16.0.8 (fix: симметрия vue.sfc[].htmlElements/componentUsages + top-level component*):
 //   - ✅ ИСПРАВЛЕНО: decodeVueSection теперь корректно разворачивает
 //     slices he_cp/he_ce/he_cd/he_ci и cu_cp/cu_ce/cu_cd/cu_csl.
-//     Раньше props/events/directives/slots/interpolations для
-//     htmlElements и componentUsages восстанавливались через
-//     propsByUsage.get(usageId) — это не работало, потому что
-//     slices хранятся в he_cp[k]/cu_cp[k], а не в propsByUsage.
 //   - ✅ ИСПРАВЛЕНО: глобальные счётчики globalCuCounter /
 //     globalHeCounter — для восстановления id (he1, he2, ...)
 //     в том же порядке, что и compact-reporter.ts.
@@ -24,7 +54,6 @@
 //   - ✅ ДОБАВЛЕНО: helper-функции sliceToComponentProps,
 //     sliceToComponentEvents, sliceToComponentDirectives,
 //     sliceToComponentSlots, sliceToHtmlInterpolations.
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION импорт → '16.0.8'.
 //
 // v16.0.4 (симметрия top-level component* с compact-reporter.ts):
 //   - ✅ ИСПРАВЛЕНО: в конце `decode` в блоке `if (!includeEmptyArrays)`
@@ -37,7 +66,6 @@
 //   - ✅ ГАРАНТИРОВАНО: top-level `(result as any).componentProps = ...`
 //     и т.д. — ВСЕГДА кладутся в `result` (даже []). Симметрия с
 //     `compact-reporter.ts` v16.0.4.
-//   - ✅ ОБНОВЛЕНО: версия 16.0.2 → 16.0.4.
 //
 // v16.0.3 (fix L2: vue.sfc[].componentUsages/htmlElements):
 //   - ✅ ИСПРАВЛЕНО: decodeVueSection теперь ВСЕГДА добавляет
@@ -595,6 +623,56 @@ function decodeSourceChainAt(idx: number, sourceChains: string[]): SourceChainIt
 }
 
 // ============================================
+// ✅ v16.0.9-FIX: decode literalValue с типом
+// ============================================
+//
+// ПРОБЛЕМА (v16.0.8):
+//   codec-encode.ts кодировал literalValue как String(value),
+//   из-за чего boolean false → "false" (строка), а не false.
+//
+// РЕШЕНИЕ:
+//   encodeLiteralValue пишет `${typeof}:${String(value)}`.
+//   decodeLiteralValue парсит этот формат.
+//
+// LEGACY:
+//   Если префикса нет — возвращаем строку как есть
+//   (обратная совместимость со старыми compact.json).
+// ============================================
+
+function decodeLiteralValue(
+  raw: string | undefined
+): string | number | boolean | null | undefined {
+  if (raw === undefined) return undefined;
+
+  const colonIdx = raw.indexOf(':');
+  if (colonIdx <= 0) {
+    // Legacy: строка без префикса
+    return raw;
+  }
+
+  const typePrefix = raw.slice(0, colonIdx);
+  const valueStr = raw.slice(colonIdx + 1);
+
+  switch (typePrefix) {
+    case 'boolean':
+      return valueStr === 'true';
+    case 'number': {
+      const n = Number(valueStr);
+      return Number.isFinite(n) ? n : valueStr;
+    }
+    case 'null':
+      return null;
+    case 'string':
+      return valueStr;
+    case 'unknown':
+      return valueStr;
+    default:
+      // Legacy: не знаем префикса — возвращаем как есть
+      return raw;
+  }
+}
+
+// ============================================
 // ✅ v16.0.8: helpers для разворачивания slices
 // ============================================
 //
@@ -657,6 +735,8 @@ function sliceToHtmlInterpolations(
 
 // ============================================
 // ✅ v16.0.0: DECODERS НОВЫХ СЕКЦИЙ
+// ✅ v16.0.8-FIX: + idn (identifier) в props, + id в events/directives/slots/interps
+// ✅ v16.0.9-FIX: literalValue восстанавливает тип (boolean / number / null / string)
 // ============================================
 
 function decodeComponentProps(
@@ -671,6 +751,8 @@ function decodeComponentProps(
   const scRle = data.sc || [];
   const mcArr = data.mc || [];
   const lvArr = data.lv || [];
+  // ✅ FIX: identifier
+  const idnArr = data.idn || [];
 
   for (let i = 0; i < n; i++) {
     const idIdx = data.id?.[i] ?? -1;
@@ -681,6 +763,14 @@ function decodeComponentProps(
     const scIdx = Array.isArray(scEntry) ? scEntry[0] : -1;
     const sourceChain = decodeSourceChainAt(scIdx, sourceChains);
 
+    // ✅ FIX: identifier — восстанавливаем из idn
+    const idnIdx = idnArr[i] ?? -1;
+    const identifier = idnIdx >= 0 ? (stringDict[idnIdx] ?? null) : null;
+
+    // ✅ v16.0.9-FIX: literalValue с типом (boolean / number / null / string)
+    const literalValue =
+      lvArr[i] >= 0 ? decodeLiteralValue(stringDict[lvArr[i]]) : undefined;
+
     result.push({
       id: idStr,
       usageId,
@@ -688,9 +778,9 @@ function decodeComponentProps(
       value: stringDict[data.v[i]] || '',
       kind: PROP_KIND_BY_CODE[data.k[i] ?? 0] ?? 'static',
       line: data.l[i] ?? 0,
-      identifier: null,
+      identifier,
       memberChain: mcArr[i] >= 0 ? (stringDict[mcArr[i]] || '').split('\u0002') : undefined,
-      literalValue: lvArr[i] >= 0 ? stringDict[lvArr[i]] : undefined,
+      literalValue,
       sourceChain,
     });
   }
@@ -700,12 +790,14 @@ function decodeComponentProps(
 function decodeComponentEvents(
   data: any,
   stringDict: string[],
-  _ids: string[],
+  ids: string[],
   sourceChains: string[] = []
 ): ComponentEvent[] {
   if (!data) return [];
   const result: ComponentEvent[] = [];
   const scRle = data.sc || [];
+  // ✅ FIX: id
+  const idArr = data.id || [];
 
   for (let i = 0; i < (data.n || []).length; i++) {
     const scEntry = scRle[i];
@@ -722,9 +814,14 @@ function decodeComponentEvents(
         ? (EVENT_HANDLER_SOURCE_BY_CODE[hsIdx] ?? 'unknown')
         : 'unknown';
 
+    // ✅ FIX: восстанавливаем id/usageId
+    const idIdx = idArr[i] ?? -1;
+    const idStr = idIdx >= 0 ? (ids[idIdx] ?? '') : '';
+    const usageId = idStr.includes(':') ? (idStr.split(':')[0] ?? '') : '';
+
     result.push({
-      id: '',
-      usageId: '',
+      id: idStr,
+      usageId,
       eventName: stringDict[data.n[i]] || '',
       handler: stringDict[data.h[i]] || '',
       handlerFunctionId: data.fn[i] >= 0 ? `fn${data.fn[i] + 1}` : null,
@@ -737,16 +834,32 @@ function decodeComponentEvents(
   return result;
 }
 
-function decodeComponentDirectives(data: any, stringDict: string[]): ComponentDirective[] {
+function decodeComponentDirectives(
+  data: any,
+  stringDict: string[],
+  ids: string[] = []
+): ComponentDirective[] {
   if (!data) return [];
   const result: ComponentDirective[] = [];
+  // ✅ FIX: id
+  const idArr = data.id || [];
+
   for (let i = 0; i < (data.n || []).length; i++) {
+    const mIdx = data.m?.[i] ?? -1;
+    const modifiers =
+      mIdx >= 0 && stringDict[mIdx] ? stringDict[mIdx]!.split('\u0002') : [];
+
+    // ✅ FIX: восстанавливаем id/usageId
+    const idIdx = idArr[i] ?? -1;
+    const idStr = idIdx >= 0 ? (ids[idIdx] ?? '') : '';
+    const usageId = idStr.includes(':') ? (idStr.split(':')[0] ?? '') : '';
+
     result.push({
-      id: '',
-      usageId: '',
+      id: idStr,
+      usageId,
       name: stringDict[data.n[i]] || '',
       argument: data.a[i] >= 0 ? stringDict[data.a[i]] : undefined,
-      modifiers: [],
+      modifiers,
       value: stringDict[data.v[i]] || '',
       line: data.l[i] ?? 0,
     });
@@ -754,16 +867,35 @@ function decodeComponentDirectives(data: any, stringDict: string[]): ComponentDi
   return result;
 }
 
-function decodeComponentSlots(data: any, stringDict: string[]): ComponentSlot[] {
+function decodeComponentSlots(
+  data: any,
+  stringDict: string[],
+  ids: string[] = []
+): ComponentSlot[] {
   if (!data) return [];
   const result: ComponentSlot[] = [];
+  // ✅ FIX: id
+  const idArr = data.id || [];
+
   for (let i = 0; i < (data.n || []).length; i++) {
+    // ✅ FIX: восстанавливаем id/usageId
+    const idIdx = idArr[i] ?? -1;
+    const idStr = idIdx >= 0 ? (ids[idIdx] ?? '') : '';
+    const usageId = idStr.includes(':') ? (idStr.split(':')[0] ?? '') : '';
+
+    // ✅ FIX: scopeNames
+    const snIdx = data.sn?.[i] ?? -1;
+    const scopeNames =
+      snIdx >= 0 && stringDict[snIdx]
+        ? stringDict[snIdx]!.split('\u0002').filter(Boolean)
+        : [];
+
     result.push({
-      id: '',
-      usageId: '',
+      id: idStr,
+      usageId,
       slotName: stringDict[data.n[i]] || '',
       isScoped: data.sc[i] === 1,
-      scopeNames: [],
+      scopeNames,
       line: data.l[i] ?? 0,
     });
   }
@@ -773,20 +905,28 @@ function decodeComponentSlots(data: any, stringDict: string[]): ComponentSlot[] 
 function decodeHtmlInterpolations(
   data: any,
   stringDict: string[],
-  sourceChains: string[]
+  sourceChains: string[],
+  ids: string[] = []
 ): HtmlInterpolation[] {
   if (!data) return [];
   const result: HtmlInterpolation[] = [];
   const scRle = data.sc || [];
+  // ✅ FIX: id
+  const idArr = data.id || [];
 
   for (let i = 0; i < (data.e || []).length; i++) {
     const scEntry = scRle[i];
     const scIdx = Array.isArray(scEntry) ? scEntry[0] : -1;
     const sourceChain = decodeSourceChainAt(scIdx, sourceChains);
 
+    // ✅ FIX: восстанавливаем id/usageId
+    const idIdx = idArr[i] ?? -1;
+    const idStr = idIdx >= 0 ? (ids[idIdx] ?? '') : '';
+    const usageId = idStr.includes(':') ? (idStr.split(':')[0] ?? '') : '';
+
     result.push({
-      id: '',
-      usageId: '',
+      id: idStr,
+      usageId,
       expression: stringDict[data.e[i]] || '',
       sourceChain,
       line: data.l[i] ?? 0,
@@ -918,11 +1058,8 @@ function decodeFnHtmlUsage(
 //   - ✅ Глобальные счётчики globalCuCounter / globalHeCounter
 //     для восстановления id (he1, he2, ...).
 //
-// КЛЮЧЕВЫЕ ИЗМЕНЕНИЯ v16.0.4:
-//   - ✅ decodeVueSection ВСЕГДА возвращает componentProps,
-//     componentEvents, componentDirectives, componentSlots,
-//     htmlInterpolations (даже пустыми []).
-//     Это симметризует decode(compact) с compact-reporter.ts v16.0.4.
+// ✅ v16.0.8-FIX: переустанавливаем id/usageId для props/events/
+//    directives/slots/interpolations при разворачивании cu_*/he_*.
 // ============================================
 
 function decodeVueSection(
@@ -965,14 +1102,15 @@ function decodeVueSection(
   const allComponentEvents = eventsSource
     ? decodeComponentEvents(eventsSource, stringDict, ids, sourceChains)
     : [];
+  // ✅ FIX: прокидываем ids в directives/slots/interpolations
   const allComponentDirectives = directivesSource
-    ? decodeComponentDirectives(directivesSource, stringDict)
+    ? decodeComponentDirectives(directivesSource, stringDict, ids)
     : [];
   const allComponentSlots = slotsSource
-    ? decodeComponentSlots(slotsSource, stringDict)
+    ? decodeComponentSlots(slotsSource, stringDict, ids)
     : [];
   const allHtmlInterpolations = interpolationsSource
-    ? decodeHtmlInterpolations(interpolationsSource, stringDict, sourceChains)
+    ? decodeHtmlInterpolations(interpolationsSource, stringDict, sourceChains, ids)
     : [];
 
   // Индексация по usageId (используется для обратной совместимости)
@@ -1114,11 +1252,34 @@ function decodeVueSection(
       const cuSlots = sliceToComponentSlots(cuCslArr[k], allComponentSlots);
 
       // Fallback: если slices пусты, пробуем через propsByUsage
-      // (обратная совместимость со старыми compact.json).
-      const finalProps = cuProps.length > 0 ? cuProps : (propsByUsage.get(usageId) || []);
-      const finalEvents = cuEvents.length > 0 ? cuEvents : (eventsByUsage.get(usageId) || []);
-      const finalDirectives = cuDirectives.length > 0 ? cuDirectives : (dirsByUsage.get(usageId) || []);
-      const finalSlots = cuSlots.length > 0 ? cuSlots : (slotsByUsage.get(usageId) || []);
+      const rawProps = cuProps.length > 0 ? cuProps : (propsByUsage.get(usageId) || []);
+      const rawEvents = cuEvents.length > 0 ? cuEvents : (eventsByUsage.get(usageId) || []);
+      const rawDirectives = cuDirectives.length > 0 ? cuDirectives : (dirsByUsage.get(usageId) || []);
+      const rawSlots = cuSlots.length > 0 ? cuSlots : (slotsByUsage.get(usageId) || []);
+
+      // ✅ FIX v16.0.8-FIX: переустанавливаем id/usageId, чтобы они
+      // соответствовали фактическому usageId ('cu1'), а не значению
+      // из общего массива (где мог оказаться id от другого usage).
+      const finalProps = rawProps.map((p, idx) => ({
+        ...p,
+        id: `${usageId}:cp${idx + 1}`,
+        usageId,
+      }));
+      const finalEvents = rawEvents.map((e, idx) => ({
+        ...e,
+        id: `${usageId}:ce${idx + 1}`,
+        usageId,
+      }));
+      const finalDirectives = rawDirectives.map((d, idx) => ({
+        ...d,
+        id: `${usageId}:cd${idx + 1}`,
+        usageId,
+      }));
+      const finalSlots = rawSlots.map((s, idx) => ({
+        ...s,
+        id: `${usageId}:csl${idx + 1}`,
+        usageId,
+      }));
 
       componentUsages.push({
         id: usageId,
@@ -1152,10 +1313,32 @@ function decodeVueSection(
       const heInterps = sliceToHtmlInterpolations(heCiArr[k], allHtmlInterpolations);
 
       // Fallback: обратная совместимость
-      const finalProps = heProps.length > 0 ? heProps : (propsByUsage.get(usageId) || []);
-      const finalEvents = heEvents.length > 0 ? heEvents : (eventsByUsage.get(usageId) || []);
-      const finalDirectives = heDirectives.length > 0 ? heDirectives : (dirsByUsage.get(usageId) || []);
-      const finalInterps = heInterps.length > 0 ? heInterps : (interpByUsage.get(usageId) || []);
+      const rawHeProps = heProps.length > 0 ? heProps : (propsByUsage.get(usageId) || []);
+      const rawHeEvents = heEvents.length > 0 ? heEvents : (eventsByUsage.get(usageId) || []);
+      const rawHeDirectives = heDirectives.length > 0 ? heDirectives : (dirsByUsage.get(usageId) || []);
+      const rawHeInterps = heInterps.length > 0 ? heInterps : (interpByUsage.get(usageId) || []);
+
+      // ✅ FIX v16.0.8-FIX: переустанавливаем id/usageId для he*
+      const finalHeProps = rawHeProps.map((p, idx) => ({
+        ...p,
+        id: `${usageId}:cp${idx + 1}`,
+        usageId,
+      }));
+      const finalHeEvents = rawHeEvents.map((e, idx) => ({
+        ...e,
+        id: `${usageId}:ce${idx + 1}`,
+        usageId,
+      }));
+      const finalHeDirectives = rawHeDirectives.map((d, idx) => ({
+        ...d,
+        id: `${usageId}:cd${idx + 1}`,
+        usageId,
+      }));
+      const finalHeInterps = rawHeInterps.map((i, idx) => ({
+        ...i,
+        id: `${usageId}:hi${idx + 1}`,
+        usageId,
+      }));
 
       htmlElements.push({
         id: usageId,
@@ -1163,10 +1346,10 @@ function decodeVueSection(
         tag: readStr(heTag[k]),
         line: heL[k] ?? 0,
         column: heCol[k] >= 0 ? heCol[k] : undefined,
-        props: finalProps,
-        directives: finalDirectives,
-        events: finalEvents,
-        interpolations: finalInterps,
+        props: finalHeProps,
+        directives: finalHeDirectives,
+        events: finalHeEvents,
+        interpolations: finalHeInterps,
       });
     }
 
