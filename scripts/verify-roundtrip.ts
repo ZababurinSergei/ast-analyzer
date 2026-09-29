@@ -1,72 +1,54 @@
 #!/usr/bin/env node
 // scripts/verify-roundtrip.ts
 // ============================================
-// Скрипт проверки Round-Trip для CODEC (v16.0.3)
+// Скрипт проверки Round-Trip для CODEC (v16.1.0)
 // ============================================
-// Версия: 16.0.3
+// Версия: 16.1.0
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
+//
+// v16.1.0 (round-trip 100%: глобально уникальные he.id/cu.id):
+//   - ✅ ОБНОВЛЕНО: codecVersion в jsonReport = '16.1.0'.
+//   - ✅ ОБНОВЛЕНО: legend.version проверка '2.0.0' → '2.1.0'.
+//   - ✅ ОБНОВЛЕНО: vue.sfc schema length 30 → 34 (добавлены
+//     cu_id, cu_pf, he_id, he_pf).
+//   - ✅ ДОБАВЛЕНО: спот-чек 'vue.sfc[].htmlElements[].parentFileId'.
+//   - ✅ ДОБАВЛЕНО: спот-чек 'vue.sfc[].htmlElements[].id uniqueness'.
+//   - ✅ ДОБАВЛЕНО: спот-чек 'vue.sfc[].componentUsages[].id uniqueness'.
+//   - ✅ ДОБАВЛЕНО: диагностика рассинхрона he_id/he_pf при verbose.
 //
 // v16.0.3 (fix L2: vue.sfc[].componentUsages/htmlElements):
 //   - ✅ ИСПРАВЛЕНО: добавлена нормализация vue.sfc[].componentUsages
 //     и vue.sfc[].htmlElements — приводит [] и undefined к единому
 //     виду [] перед сравнением в L1/L2/DL/RE/ENC/DEC.
 //
-//     ПРИЧИНА:
-//       - index.full.json (собранный compact-reporter.ts) содержит
-//         componentUsages: [] и htmlElements: [] у каждого SFC.
-//       - decode(compact) в старых версиях кодека НЕ добавлял эти
-//         поля, если cu_sfc/he_sfc пусты. Возникало расхождение:
-//           a: []   (в full)
-//           b: undefined  (в decoded)
-//         и L2 падал с diffCount=20.
-//
-//     РЕШЕНИЕ (два уровня защиты):
-//       1. codec-decode.ts (v16.0.2) теперь СИММЕТРИЧНО всегда
-//          добавляет componentUsages / htmlElements.
-//       2. Этот скрипт дополнительно нормализует обе стороны через
-//          normalizeVueSfcForCompare — страховка от регрессий
-//          и от старых compact.json.
-//
-//   - ✅ ОБНОВЛЕНО: codecVersion в jsonReport = '16.0.3'.
-//   - ✅ ОБНОВЛЕНО: заголовок v16.0.2 → v16.0.3.
-//   - ✅ ДОБАВЛЕНО: спот-чек functions[].vueKind (I18, вынесен из
-//     старой проверки checkVueSection).
-//
 // v16.0.2 (fix I47 + fns.hv + legend.schemas.fns):
-//   - ✅ FIX I47: разрешён `number[]` любой длины в `params[]`
-//     (encodeStr возвращает массив индексов токенов произвольной
-//     длины, а не строго пару [number, number]).
-//   - ✅ FIX: `checkValuesAndParams` — та же логика для params.
-//   - ✅ FIX: `checkLegendStructure` — `fns` теперь 10 полей
-//     (добавлено `hv` для `isHtmlVisible`).
-//   - ✅ FIX: `spotCheckIsHtmlVisible` — корректное сравнение
-//     `null`/`undefined`/`false` как эквивалентных.
-//   - ✅ ОБНОВЛЕНО: codecVersion в jsonReport = '16.0.2'.
+//   - ✅ FIX I47: разрешён `number[]` любой длины в `params[]`.
+//   - ✅ FIX: `checkLegendStructure` — `fns` теперь 10 полей.
+//   - ✅ FIX: `spotCheckIsHtmlVisible` — корректное сравнение.
 //
 // v16.0.1 (fix TS6133):
 //   - ✅ FIX: удалён неиспользуемый импорт `deserializeSourceChain`.
 //
 // v16.0.0 (Component Usage + DOM API + sourceChains):
-//   - ✅ ДОБАВЛЕНО: I45–I50 (6 инвариантов)
-//   - ✅ ОБНОВЛЕНО: legend.version проверка
-//   - ✅ ОБНОВЛЕНО: vue.sfc — 30 полей
-//   - ✅ ДОБАВЛЕНО: 5 новых codes, 9 новых schemas
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION → '16.0.0'
+//   - ✅ ДОБАВЛЕНО: I45–I50 (6 инвариантов).
+//   - ✅ ОБНОВЛЕНО: legend.version проверка.
+//   - ✅ ОБНОВЛЕНО: vue.sfc — 30 полей.
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION → '16.0.0'.
 //
-// v15.7.3 (Vue-секция: нормализация id + семантика sfc.c):
-// v15.7.2 (Vue-секция: slices + новая схема vue.sfc):
-// v15.7.1 (Vue-секция: ослабление проверки + moduleId):
-// v15.7.0 (Vue-сущности):
-// v15.6.0 (JSON-safe проверки):
-// v15.4.0 (P3 — cross-file resolution):
-// v15.3.0 (P2 — расширенный CallData):
-// v15.2.0 (P1 — lexicalLinks):
-// v15.1.0 (P0 — parentFunctionId):
-// v15.0.6 (gr.i.tf — индекс в fl.p):
-// v15.0.2 (устранение дублирования conditionals):
+// v15.7.3 (Vue-секция: нормализация id + семантика sfc.c)
+// v15.7.2 (Vue-секция: slices + новая схема vue.sfc)
+// v15.7.1 (Vue-секция: ослабление проверки + moduleId)
+// v15.7.0 (Vue-сущности)
+// v15.6.0 (JSON-safe проверки)
+// v15.4.0 (P3 — cross-file resolution)
+// v15.3.0 (P2 — расширенный CallData)
+// v15.2.0 (P1 — lexicalLinks)
+// v15.1.0 (P0 — parentFunctionId)
+// v15.0.6 (gr.i.tf — индекс в fl.p)
+// v15.0.2 (устранение дублирования conditionals)
 //
 // Уровни round-trip:
 //   L0  : encode(full) === compact          (семантически)
@@ -103,12 +85,15 @@
 //   I48 : legend.schemas.vue.sfc содержит pn/ps/en/es/xn/xs — v16.0.0
 //   I49 : legend.schemas.ids присутствует — v16.0.0
 //   I50 : RLE sc-массивов — max(start+length) < sourceChains.length — v16.0.0
+//   I51 : he.id — глобально уникальны (v16.1.0)
+//   I52 : cu.id — глобально уникальны (v16.1.0)
+//   I53 : he.parentFileId — непустой или '' для top-level (v16.1.0)
 //
 // Проверки легенды:
 //   L1  : legend.codes.* присутствуют (29 словарей) — v16.0.0
 //   L2  : legend.flags.bits содержит 18 битов
 //   L3  : legend.schemas.* корректной длины (37 схем) — v16.0.0
-//   L4  : legend.version === '2.0.0' — v16.0.0
+//   L4  : legend.version === '2.1.0' — v16.1.0
 //
 // Exit code 0 — всё ок, 1 — есть расхождения.
 // ============================================
@@ -145,6 +130,13 @@ const DEFAULT_OPTIONS: ScriptOptions = {
   goldenDir: './scripts/fixtures',
   checkLegend: true,
 };
+
+// ============================================
+// ✅ v16.1.0: ВЕРСИИ CODEC И LEGEND
+// ============================================
+
+const EXPECTED_CODEC_VERSION = '16.1.0';
+const EXPECTED_LEGEND_VERSION = '2.1.0';
 
 // ============================================
 // ANSI-ЦВЕТА
@@ -320,16 +312,6 @@ function normalizeVueForCompare(full: any): any {
 
 /**
  * ✅ v16.0.2: Нормализует функции для сравнения в L1/L2/DL.
- *
- * Проблема: `compact-reporter.ts` v16.0.0 заполняет в `full.functions[]`
- * поля `htmlUsage`, `isHtmlVisible`, `domApiCalls`, `usagesAsPropSource`,
- * но `codec-encode.ts` (v16.0.0) их НЕ кодирует в CompactJSON.
- *
- * Поэтому `decode(compact)` не может их восстановить, и L1/L2/DL падают
- * с `undefined` vs `[]`/`false`.
- *
- * Решение: нормализуем обе стороны перед сравнением — приводим
- * `undefined`/`null`/`[]`/`false` к эквивалентным значениям.
  */
 function normalizeFunctionsForCompare(full: any): any {
   if (!full || typeof full !== 'object') return full;
@@ -376,19 +358,6 @@ function normalizeFunctionsForCompare(full: any): any {
 /**
  * ✅ v16.0.3: Нормализует `vue.sfc[]` для сравнения в L1/L2/DL.
  *
- * Проблема:
- *   - `index.full.json` (собранный `compact-reporter.ts`) содержит
- *     `componentUsages: []` и `htmlElements: []` у каждого SFC.
- *   - `decode(compact)` в старых версиях кодека НЕ добавлял эти
- *     поля, если `cu_sfc`/`he_sfc` пусты. Возникало расхождение
- *     `[]` vs `undefined`, и L2 падал с diffCount=20.
- *
- * Решение:
- *   - В `codec-decode.ts` v16.0.2 обе стороны стали симметричными —
- *     `decode` теперь СИММЕТРИЧНО всегда добавляет эти поля.
- *   - Этот нормализатор — страховка от регрессий и от старых
- *     `compact.json`, где поля отсутствовали.
- *
  * Приводит `undefined`/`null` к `[]`.
  */
 function normalizeVueSfcForCompare(full: any): any {
@@ -415,11 +384,6 @@ function normalizeVueSfcForCompare(full: any): any {
 
 /**
  * ✅ v16.0.3: Полная нормализация FullJSON для сравнения.
- *
- * Применяет (в порядке):
- *   - normalizeVueForCompare       (убирает id из vue-сущностей)
- *   - normalizeFunctionsForCompare (приводит опциональные поля функций к дефолтам)
- *   - normalizeVueSfcForCompare    (приводит [] и undefined к [] у vue.sfc[])
  */
 function normalizeFullForCompare(full: any): any {
   return normalizeVueSfcForCompare(
@@ -668,7 +632,7 @@ function diagnoseValuesDesync(
 }
 
 // ============================================
-// ✅ v15.7.0: ПРОВЕРКА ЛЕГЕНДЫ
+// ✅ v15.7.0 + v16.1.0: ПРОВЕРКА ЛЕГЕНДЫ
 // ============================================
 
 interface LegendCheck {
@@ -729,10 +693,10 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     });
   }
 
-  // ✅ v16.0.0: legend.version
+  // ✅ v16.1.0: legend.version
   checks.push({
-    name: 'legend.version = 2.0.0',
-    ok: legend?.version === '2.0.0',
+    name: `legend.version = ${EXPECTED_LEGEND_VERSION}`,
+    ok: legend?.version === EXPECTED_LEGEND_VERSION,
     note: legend?.version ? `"${legend.version}"` : 'отсутствует',
   });
 
@@ -744,13 +708,12 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     note: legend?.flags?.bits ? `${bitsCount} битов` : 'отсутствует',
   });
 
-  // ✅ v16.0.0: расширенный список schemas (37 схем)
-  // ✅ v16.0.2: fns теперь 10 полей (добавлено hv)
-  // ✅ FIX: обновлены длины для 5 схем vue.component* (добавлены idn/id)
+  // ✅ v16.1.0: расширенный список schemas (37 схем)
+  // ✅ v16.1.0: fns — 10 полей, vue.sfc — 34 поля
   const schemaChecks: Array<{ key: string; expectedLength: number }> = [
     { key: 'mi', expectedLength: 2 },
     { key: 'fl', expectedLength: 2 },
-    { key: 'fns', expectedLength: 10 },   // ✅ v16.0.2: было 9
+    { key: 'fns', expectedLength: 10 },   // ✅ v16.0.2
     { key: 'cls', expectedLength: 6 },
     { key: 'cn', expectedLength: 6 },
     { key: 'gr.e', expectedLength: 9 },
@@ -770,15 +733,14 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     { key: 'ty', expectedLength: 7 },
     { key: 'tr', expectedLength: 5 },
     { key: 'lx', expectedLength: 6 },
-    // ✅ v16.0.0: vue.sfc — 30 полей (breaking change)
-    { key: 'vue.sfc', expectedLength: 30 },
+    // ✅ v16.1.0: vue.sfc — 34 поля (было 30)
+    { key: 'vue.sfc', expectedLength: 34 },
     { key: 'vue.composables', expectedLength: 5 },
     { key: 'vue.macros', expectedLength: 3 },
     { key: 'vue.hooks', expectedLength: 3 },
     { key: 'vue.reactivity', expectedLength: 4 },
     { key: 'vue.icons', expectedLength: 3 },
     // ✅ v16.0.0: новые схемы
-    // ✅ FIX: длины увеличены на 1 (добавлены idn / id)
     { key: 'vue.componentProps', expectedLength: 10 },
     { key: 'vue.componentEvents', expectedLength: 8 },
     { key: 'vue.componentDirectives', expectedLength: 6 },
@@ -959,6 +921,128 @@ function invariantI17(compact: CompactJSON, decoded: FullJSON, limit: number): L
 }
 
 // ============================================
+// ✅ v16.1.0: ИНВАРИАНТ I51 — he.id глобально уникальны
+// ============================================
+
+function invariantI51(full: FullJSON, limit: number): LevelResult {
+  const violations: string[] = [];
+  const vue = (full as any).vue;
+
+  if (!vue || !Array.isArray(vue.sfc)) {
+    return { ok: true, diffCount: 0, diff: null };
+  }
+
+  const seen = new Map<string, string>(); // id → fileId
+
+  for (const sfc of vue.sfc) {
+    if (!sfc || !Array.isArray(sfc.htmlElements)) continue;
+    const fileId = sfc.fileId ?? '<unknown>';
+
+    for (const he of sfc.htmlElements) {
+      if (!he || !he.id) continue;
+      const existing = seen.get(he.id);
+      if (existing) {
+        violations.push(
+          `he.id="${he.id}" повторяется в SFC "${existing}" и "${fileId}"`
+        );
+        if (violations.length >= limit) break;
+      } else {
+        seen.set(he.id, fileId);
+      }
+    }
+    if (violations.length >= limit) break;
+  }
+
+  return {
+    ok: violations.length === 0,
+    diffCount: violations.length,
+    diff: violations.map(v => ({ path: '$.vue.sfc[].htmlElements[].id', a: v, b: 'unique' })),
+  };
+}
+
+// ============================================
+// ✅ v16.1.0: ИНВАРИАНТ I52 — cu.id глобально уникальны
+// ============================================
+
+function invariantI52(full: FullJSON, limit: number): LevelResult {
+  const violations: string[] = [];
+  const vue = (full as any).vue;
+
+  if (!vue || !Array.isArray(vue.sfc)) {
+    return { ok: true, diffCount: 0, diff: null };
+  }
+
+  const seen = new Map<string, string>();
+
+  for (const sfc of vue.sfc) {
+    if (!sfc || !Array.isArray(sfc.componentUsages)) continue;
+    const fileId = sfc.fileId ?? '<unknown>';
+
+    for (const cu of sfc.componentUsages) {
+      if (!cu || !cu.id) continue;
+      const existing = seen.get(cu.id);
+      if (existing) {
+        violations.push(
+          `cu.id="${cu.id}" повторяется в SFC "${existing}" и "${fileId}"`
+        );
+        if (violations.length >= limit) break;
+      } else {
+        seen.set(cu.id, fileId);
+      }
+    }
+    if (violations.length >= limit) break;
+  }
+
+  return {
+    ok: violations.length === 0,
+    diffCount: violations.length,
+    diff: violations.map(v => ({ path: '$.vue.sfc[].componentUsages[].id', a: v, b: 'unique' })),
+  };
+}
+
+// ============================================
+// ✅ v16.1.0: ИНВАРИАНТ I53 — he.parentFileId согласован
+// ============================================
+
+function invariantI53(full: FullJSON, limit: number): LevelResult {
+  const violations: string[] = [];
+  const vue = (full as any).vue;
+
+  if (!vue || !Array.isArray(vue.sfc)) {
+    return { ok: true, diffCount: 0, diff: null };
+  }
+
+  const fileIdSet = new Set<string>(
+    (full.files ?? []).map(f => f.id)
+  );
+
+  for (const sfc of vue.sfc) {
+    if (!sfc || !Array.isArray(sfc.htmlElements)) continue;
+    const sfcFileId = sfc.fileId;
+
+    for (const he of sfc.htmlElements) {
+      if (!he) continue;
+      const pf = he.parentFileId;
+
+      // parentFileId должен быть либо '', либо валидным fileId
+      if (pf !== '' && pf !== sfcFileId && !fileIdSet.has(pf)) {
+        violations.push(
+          `he.id="${he.id}" в SFC "${sfcFileId}": parentFileId="${pf}" не найден в files[]`
+        );
+        if (violations.length >= limit) break;
+      }
+    }
+    if (violations.length >= limit) break;
+  }
+
+  return {
+    ok: violations.length === 0,
+    diffCount: violations.length,
+    diff: violations.map(v => ({ path: '$.vue.sfc[].htmlElements[].parentFileId', a: v, b: 'valid fileId' })),
+  };
+}
+
+// ============================================
 // ✅ v15.6.0: ПРОВЕРКА JSON-SAFE "НА ДИСКЕ"
 // ============================================
 
@@ -1036,15 +1120,6 @@ function invariantI46(compact: CompactJSON): LevelResult {
 
 /**
  * I47: params[] — (string | number[])[]
- *
- * ✅ v16.0.2: РАСШИРЕНО — теперь разрешён массив ЛЮБОЙ длины,
- * состоящий из чисел. Это исправляет ложные срабатывания, когда
- * `encodeStr()` возвращает массив индексов токенов произвольной
- * длины (например, [302,27,421] — 3 токена).
- *
- * Раньше требовалось ровно [number, number], но это было
- * ошибочно: encodeStr() токенизирует строку и возвращает
- * массив индексов, длина которого равна количеству токенов.
  */
 function invariantI47(compact: CompactJSON): LevelResult {
   const params = compact.params || [];
@@ -1167,7 +1242,7 @@ async function main(): Promise<void> {
     }
   }
 
-  section('🔬 ROUND-TRIP ВЕРИФИКАЦИЯ CODEC (v16.0.3)');
+  section(`🔬 ROUND-TRIP ВЕРИФИКАЦИЯ CODEC (v${EXPECTED_CODEC_VERSION})`);
   info(`Compact: ${path.resolve(options.compactPath)}`);
   info(`Full:    ${path.resolve(options.fullPath)}`);
   info(`Verbose: ${options.verbose}`);
@@ -1256,7 +1331,7 @@ async function main(): Promise<void> {
   let legendFailed = 0;
 
   if (options.checkLegend) {
-    section('📖 СТРУКТУРА ЛЕГЕНДЫ (v16.0.0)');
+    section(`📖 СТРУКТУРА ЛЕГЕНДЫ (v${EXPECTED_CODEC_VERSION})`);
 
     legendChecks = checkLegendStructure(compact);
 
@@ -1694,6 +1769,19 @@ async function main(): Promise<void> {
     {
       name: 'vue.sfc[].htmlElements',
       result: spotCheckVueSfcHtmlElements(decoded, full, options.maxDiffs),
+    },
+    // ✅ v16.1.0: новые спот-чеки
+    {
+      name: 'vue.sfc[].htmlElements[].parentFileId',
+      result: spotCheckVueSfcHtmlElementsParentFileId(decoded, full, options.maxDiffs),
+    },
+    {
+      name: 'vue.sfc[].htmlElements[].id uniqueness',
+      result: spotCheckVueSfcHtmlElementsIdUnique(decoded, full, options.maxDiffs),
+    },
+    {
+      name: 'vue.sfc[].componentUsages[].id uniqueness',
+      result: spotCheckVueSfcComponentUsagesIdUnique(decoded, full, options.maxDiffs),
     },
   ];
 
@@ -2142,6 +2230,32 @@ async function main(): Promise<void> {
     });
   }
 
+  // ✅ v16.1.0: I51–I53
+  {
+    const r = invariantI51(full, options.maxDiffs);
+    invariantResults.push({
+      name: 'I51: he.id — глобально уникальны',
+      ok: r.ok,
+      violations: (r.diff || []).map((d: any) => d.a),
+    });
+  }
+  {
+    const r = invariantI52(full, options.maxDiffs);
+    invariantResults.push({
+      name: 'I52: cu.id — глобально уникальны',
+      ok: r.ok,
+      violations: (r.diff || []).map((d: any) => d.a),
+    });
+  }
+  {
+    const r = invariantI53(full, options.maxDiffs);
+    invariantResults.push({
+      name: 'I53: he.parentFileId — валидный fileId или пустая строка',
+      ok: r.ok,
+      violations: (r.diff || []).map((d: any) => d.a),
+    });
+  }
+
   for (const inv of invariantResults) {
     if (inv.ok) {
       ok(`${inv.name} — PASS`);
@@ -2302,7 +2416,7 @@ async function main(): Promise<void> {
       name: 'spotCheck: ids / sourceChains',
       ok: spotChecks.find(s => s.name === 'ids / sourceChains')!.result.ok,
     },
-    // ✅ v16.0.3: новые спот-чеки
+    // ✅ v16.0.3
     {
       name: 'spotCheck: vue.sfc[].componentUsages',
       ok: spotChecks.find(s => s.name === 'vue.sfc[].componentUsages')!.result.ok,
@@ -2310,6 +2424,19 @@ async function main(): Promise<void> {
     {
       name: 'spotCheck: vue.sfc[].htmlElements',
       ok: spotChecks.find(s => s.name === 'vue.sfc[].htmlElements')!.result.ok,
+    },
+    // ✅ v16.1.0: новые спот-чеки
+    {
+      name: 'spotCheck: vue.sfc[].htmlElements[].parentFileId',
+      ok: spotChecks.find(s => s.name === 'vue.sfc[].htmlElements[].parentFileId')!.result.ok,
+    },
+    {
+      name: 'spotCheck: vue.sfc[].htmlElements[].id uniqueness',
+      ok: spotChecks.find(s => s.name === 'vue.sfc[].htmlElements[].id uniqueness')!.result.ok,
+    },
+    {
+      name: 'spotCheck: vue.sfc[].componentUsages[].id uniqueness',
+      ok: spotChecks.find(s => s.name === 'vue.sfc[].componentUsages[].id uniqueness')!.result.ok,
     },
   ];
 
@@ -2380,8 +2507,9 @@ async function main(): Promise<void> {
 
   const jsonReport = {
     timestamp: new Date().toISOString(),
-    // ✅ v16.0.3
-    codecVersion: '16.0.3',
+    // ✅ v16.1.0
+    codecVersion: EXPECTED_CODEC_VERSION,
+    legendVersion: EXPECTED_LEGEND_VERSION,
     originalFormat: 'compact',
     bothFormats: false,
 
@@ -2851,8 +2979,6 @@ function spotCheckIdsAndSourceChains(decoded: FullJSON, full: FullJSON, _limit: 
 /**
  * ✅ v16.0.3: Проверяет, что у каждого SFC в decoded и full
  * есть `componentUsages` (массив), и количества совпадают.
- *
- * Нормализация: `[]` и `undefined` → `0` (по длине).
  */
 function spotCheckVueSfcComponentUsages(
   decoded: FullJSON,
@@ -2932,6 +3058,132 @@ function spotCheckVueSfcHtmlElements(
       });
     }
   }
+
+  return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
+}
+
+// ============================================
+// ✅ v16.1.0: SPOT-CHECKS ДЛЯ vue.sfc[].htmlElements[].parentFileId
+// ============================================
+
+/**
+ * ✅ v16.1.0: Проверяет, что `parentFileId` совпадает между
+ * decoded и full для каждого htmlElement.
+ */
+function spotCheckVueSfcHtmlElementsParentFileId(
+  decoded: FullJSON,
+  full: FullJSON,
+  limit: number
+): LevelResult {
+  const aSfc = (decoded as any).vue?.sfc || [];
+  const bSfc = (full as any).vue?.sfc || [];
+
+  const diffs: any[] = [];
+  const n = Math.min(aSfc.length, bSfc.length);
+
+  for (let i = 0; i < n && diffs.length < limit; i++) {
+    const ai = aSfc[i];
+    const bi = bSfc[i];
+    if (!ai || !bi) continue;
+
+    const aHe = Array.isArray(ai.htmlElements) ? ai.htmlElements : [];
+    const bHe = Array.isArray(bi.htmlElements) ? bi.htmlElements : [];
+    const m = Math.min(aHe.length, bHe.length);
+
+    for (let j = 0; j < m && diffs.length < limit; j++) {
+      const aPf = aHe[j]?.parentFileId ?? '';
+      const bPf = bHe[j]?.parentFileId ?? '';
+      if (aPf !== bPf) {
+        diffs.push({
+          path: `$.vue.sfc[${i}].htmlElements[${j}].parentFileId`,
+          a: aPf,
+          b: bPf,
+        });
+      }
+    }
+  }
+
+  return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
+}
+
+// ============================================
+// ✅ v16.1.0: SPOT-CHECKS ДЛЯ УНИКАЛЬНОСТИ id
+// ============================================
+
+/**
+ * ✅ v16.1.0: Проверяет, что `htmlElements[].id` глобально уникальны
+ * в decoded и full.
+ */
+function spotCheckVueSfcHtmlElementsIdUnique(
+  decoded: FullJSON,
+  full: FullJSON,
+  limit: number
+): LevelResult {
+  const diffs: any[] = [];
+
+  const checkUnique = (sfcList: any[], label: string): void => {
+    const seen = new Map<string, string>();
+    for (const sfc of sfcList) {
+      if (!sfc || !Array.isArray(sfc.htmlElements)) continue;
+      const fileId = sfc.fileId ?? '<unknown>';
+      for (const he of sfc.htmlElements) {
+        if (!he || !he.id) continue;
+        const existing = seen.get(he.id);
+        if (existing) {
+          diffs.push({
+            path: `${label}.htmlElements[].id`,
+            a: `"${he.id}" в "${existing}"`,
+            b: `"${he.id}" в "${fileId}"`,
+          });
+          if (diffs.length >= limit) return;
+        } else {
+          seen.set(he.id, fileId);
+        }
+      }
+    }
+  };
+
+  checkUnique((decoded as any).vue?.sfc || [], 'decoded.vue.sfc');
+  checkUnique((full as any).vue?.sfc || [], 'full.vue.sfc');
+
+  return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
+}
+
+/**
+ * ✅ v16.1.0: Проверяет, что `componentUsages[].id` глобально
+ * уникальны в decoded и full.
+ */
+function spotCheckVueSfcComponentUsagesIdUnique(
+  decoded: FullJSON,
+  full: FullJSON,
+  limit: number
+): LevelResult {
+  const diffs: any[] = [];
+
+  const checkUnique = (sfcList: any[], label: string): void => {
+    const seen = new Map<string, string>();
+    for (const sfc of sfcList) {
+      if (!sfc || !Array.isArray(sfc.componentUsages)) continue;
+      const fileId = sfc.fileId ?? '<unknown>';
+      for (const cu of sfc.componentUsages) {
+        if (!cu || !cu.id) continue;
+        const existing = seen.get(cu.id);
+        if (existing) {
+          diffs.push({
+            path: `${label}.componentUsages[].id`,
+            a: `"${cu.id}" в "${existing}"`,
+            b: `"${cu.id}" в "${fileId}"`,
+          });
+          if (diffs.length >= limit) return;
+        } else {
+          seen.set(cu.id, fileId);
+        }
+      }
+    }
+  };
+
+  checkUnique((decoded as any).vue?.sfc || [], 'decoded.vue.sfc');
+  checkUnique((full as any).vue?.sfc || [], 'full.vue.sfc');
 
   return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
 }

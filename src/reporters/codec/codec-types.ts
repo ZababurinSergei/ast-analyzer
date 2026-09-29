@@ -1,12 +1,31 @@
 // src/reporters/codec/codec-types.ts
 // ============================================
-// ТИПЫ ДЛЯ КОДЕКА (v16.0.8)
+// ТИПЫ ДЛЯ КОДЕКА (v16.1.0)
 // ============================================
-// Версия: 16.0.8
+// Версия: 16.1.0
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
+//
+// v16.1.0 (BREAKING: глобально уникальные cu.id/he.id):
+//   - ✅ ДОБАВЛЕНО: `cu_id`, `cu_pf`, `he_id`, `he_pf` в
+//     `VueSectionCompact.sfc`. Это массивы индексов в `ids[]`:
+//       • cu_id[k] — id k-го componentUsage
+//       • cu_pf[k] — parentFileId k-го componentUsage
+//                    (-1 = пусто, -2 = не закодировано)
+//       • he_id[k] — id k-го htmlElement
+//       • he_pf[k] — parentFileId k-го htmlElement
+//                    (-1 = пусто, -2 = не закодировано)
+//   - ✅ ПРИЧИНА: до v16.1.0 `he.id`/`cu.id` генерировались
+//     локально (сброс счётчика в каждом SFC), из-за чего
+//     `propsByUsage.get("he1")` возвращал props из разных SFC.
+//     Это ломало L1/L2/DL/DEC.
+//   - ✅ ПРИЧИНА 2: `he.parentFileId`/`cu.parentFileId` не
+//     кодировались — decode не мог восстановить их.
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '16.1.0'
+//   - ✅ ОБНОВЛЕНО: LEGEND_VERSION = '2.1.0'
+//   - ✅ ОБНОВЛЕНО: схема `vue.sfc` — 30 → 34 поля
 //
 // v16.0.8-FIX (round-trip: identifier + id для component*):
 //   - ✅ ИСПРАВЛЕНО: в VueSectionCompact.componentProps добавлено
@@ -36,7 +55,6 @@
 //       • DomApiArgKind     (используется в types-vue-template.ts)
 //       • DomApiArgSource   (используется в types-vue-template.ts)
 //     Они остаются в `export type { ... }` для внешних потребителей.
-//   - ✅ CODEC_VERSION = '16.0.8'.
 //
 // v16.0.7 (fix: projectRoot в GenerateReportOptions):
 //   - ✅ ДОБАВЛЕНО: `projectRoot?: string` в `GenerateReportOptions`.
@@ -140,7 +158,7 @@
 // ============================================
 
 // ============================================================
-// ✅ v16.0.8: ВЕРСИИ CODEC И LEGEND
+// ✅ v16.1.0: ВЕРСИИ CODEC И LEGEND
 // ============================================================
 // CODEC_VERSION используется в:
 //   - compact-reporter.ts (version в full.json)
@@ -150,12 +168,12 @@
 //   - verify-roundtrip.ts (codecVersion в jsonReport)
 //   - verify-consistency.ts (заголовок)
 //
-// LEGEND_VERSION — новое поле legend.version (в 15.7.3 отсутствовало).
+// LEGEND_VERSION — новое поле legend.version.
 // Инвариант I40 проверяет его значение.
 // ============================================================
 
-export const CODEC_VERSION = '16.0.8';
-export const LEGEND_VERSION = '2.0.0';
+export const CODEC_VERSION = '16.1.0';
+export const LEGEND_VERSION = '2.1.0';
 
 // ============================================================
 // ✅ v16.0.8: ИМПОРТ И РЕЭКСПОРТ ТИПОВ VUE-ШАБЛОНА
@@ -801,23 +819,34 @@ export interface VueSectionFull {
 }
 
 // ============================================================
-// ✅ v16.0.0: VUE SECTION (CompactJSON)
+// ✅ v16.1.0: VUE SECTION (CompactJSON)
 // ============================================================
 //
 // СХЕМА (см. legend.schemas['vue.*'])
 //
-// ✅ v16.0.0: vue.sfc — 30 полей (было 8):
-//   f, n, b, c, cs, pn, ps, en, es, xn, xs,
+// ✅ v16.1.0: vue.sfc — 34 поля (было 30):
+//   f, n, b, c, cs,
+//   pn, ps, en, es, xn, xs,
+//   cu_id, cu_pf,                       ← NEW v16.1.0
 //   cu_sfc, cu_tag, cu_file, cu_src, cu_pkg, cu_l, cu_col,
 //   cu_cp, cu_ce, cu_cd, cu_csl,
-//   he_sfc, he_tag, he_l, he_col, he_cp, he_cd, he_ce, he_ci
+//   he_id, he_pf,                       ← NEW v16.1.0
+//   he_sfc, he_tag, he_l, he_col,
+//   he_cp, he_cd, he_ce, he_ci
 //
-// Breaking change:
+// Breaking change v16.0.0:
 //   p (props placeholders)   → pn + ps
 //   e (emits placeholders)   → en + es
 //   x (exposed placeholders) → xn + xs
 //
-// ✅ v16.0.8-FIX: schemas vue.component* — +1 поле (idn / id)
+// Breaking change v16.1.0:
+//   + cu_id, cu_pf — id и parentFileId для componentUsages
+//   + he_id, he_pf — id и parentFileId для htmlElements
+//
+// ⚠️ Формат cu_pf/he_pf:
+//   -1  = пусто (parentFileId === '')
+//   -2  = не закодировано (использовать fileId(fileIdx))
+//   >=0 = индекс в ids[]
 // ============================================================
 
 export interface VueSectionCompact {
@@ -836,6 +865,12 @@ export interface VueSectionCompact {
     xn?: number[];
     xs?: Array<[number, number]>;
 
+    // ⭐ v16.1.0: явные id и parentFileId для componentUsages
+    /** Индексы в ids[] (id k-го componentUsage) */
+    cu_id?: number[];
+    /** Индексы в ids[] (-1 = пусто, -2 = не закодировано, >=0 = ids[]) */
+    cu_pf?: number[];
+
     // ⭐ v16.0.0: component usages — RLE
     cu_sfc?: [number, number, number?][];
     cu_tag?: number[];
@@ -848,6 +883,12 @@ export interface VueSectionCompact {
     cu_ce?: Array<[number, number]>;
     cu_cd?: Array<[number, number]>;
     cu_csl?: Array<[number, number]>;
+
+    // ⭐ v16.1.0: явные id и parentFileId для htmlElements
+    /** Индексы в ids[] (id k-го htmlElement) */
+    he_id?: number[];
+    /** Индексы в ids[] (-1 = пусто, -2 = не закодировано, >=0 = ids[]) */
+    he_pf?: number[];
 
     // ⭐ v16.0.0: html elements — RLE
     he_sfc?: [number, number, number?][];
@@ -1463,7 +1504,7 @@ export interface EdgeData {
 }
 
 // ============================================================
-// СЖАТЫЙ JSON (v16.0.8)
+// СЖАТЫЙ JSON (v16.1.0)
 // ============================================================
 
 export interface CompactJSON {
@@ -1740,7 +1781,7 @@ export interface CompactJSON {
 }
 
 // ============================================================
-// ЛЕГЕНДА (v16.0.8)
+// ЛЕГЕНДА (v16.1.0)
 // ============================================================
 
 /** Один бит в поле flags */
@@ -1766,6 +1807,7 @@ export interface CodesDict {
  *                `schemas['vue.componentDirectives']` — 6 полей (добавлено 'id').
  *                `schemas['vue.componentSlots']` — 5 полей (добавлено 'id').
  *                `schemas['vue.htmlInterpolations']` — 4 поля (добавлено 'id').
+ * ✅ v16.1.0: `schemas['vue.sfc']` — 34 поля (добавлено cu_id/cu_pf/he_id/he_pf).
  */
 export interface CodecLegend {
   /** ✅ v16.0.0: версия legend */
@@ -1850,10 +1892,10 @@ export interface CodecLegend {
     lx?: string[];
 
     // ==========================================
-    // ✅ v15.5.0 + v16.0.0: схемы Vue-секции
+    // ✅ v15.5.0 + v16.0.0 + v16.1.0: схемы Vue-секции
     // ==========================================
 
-    /** ✅ v16.0.0: 30 полей (было 8) */
+    /** ✅ v16.1.0: 34 поля (было 30) */
     'vue.sfc'?: string[];
 
     'vue.composables'?: string[];

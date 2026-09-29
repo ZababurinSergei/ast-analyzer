@@ -1,71 +1,8 @@
-// src/reporters/codec/codec.ts
+// src/reporters/codec/codec.ts 
 // ============================================
 // ФАСАД КОДЕКА
 // ============================================
-// Версия: 15.4.3
-//
-// ИЗМЕНЕНИЯ v15.4.3 (устранение дублирования classifyValue):
-//   - ✅ ИСПРАВЛЕНО: `classifyValue` теперь реэкспортируется
-//     из './values-filter.js', а НЕ из './codec-encode.js'.
-//
-//     ПРОБЛЕМА, КОТОРУЮ ЭТО РЕШАЕТ:
-//     В `codec-encode.ts` была СВОЯ локальная `classifyValue`,
-//     использующая `JSON.stringify(value)`. В
-//     `values-filter.ts` (v1.0.1) — уже `stableStringifyForClassify`.
-//
-//     `valuesMeta[].kind` заполняется в `codec-encode.ts`
-//     (через `classifyValue`), а `filterValues` в
-//     `values-filter.ts` читает этот `kind`. Из-за
-//     недетерминированности `JSON.stringify` (порядок ключей)
-//     `kind` мог быть РАЗНЫМ в разных прогонах → `filterValues`
-//     удаляла разные значения → `values.length` = 557 vs 558
-//     → L0/L3/RE в verify-roundtrip падали.
-//
-//     Теперь единственный источник истины — `classifyValue`
-//     из `values-filter.ts` (детерминированная через
-//     `stableStringifyForClassify`).
-//
-//   - ✅ ОБНОВЛЕНО: `CODEC_MODULE_VERSION = '15.4.3'`.
-//   - ✅ ОБНОВЛЕНО: заголовок v15.0.6 → v15.4.3.
-//
-// ИЗМЕНЕНИЯ v15.0.6 (gr.i.tf — индекс в fl.p):
-//   - ✅ ОБНОВЛЕНО: CODEC_MODULE_VERSION = '15.0.6'
-//   - ✅ ОБНОВЛЕНО: комментарии-заголовки синхронизированы с
-//     codec-encode.ts / codec-decode.ts / codec-types.ts
-//
-// ИЗМЕНЕНИЯ v13.0.0 (values-mode):
-//   - ✅ ДОБАВЛЕН реэкспорт из './values-filter.js':
-//       • filterValues        — фильтрация values + метаданных
-//       • remapIndex          — переиндексация одной ссылки
-//       • RELATION_KEYS       — whitelist ключей, относящихся к связям
-//   - ✅ ДОБАВЛЕН тип ValuesMode (реэкспорт из './values-filter.js')
-//   - ✅ ДОБАВЛЕН тип ValueMeta (реэкспорт из './values-filter.js')
-//   - ✅ ОБНОВЛЕНО: Codec.encode теперь принимает второй аргумент
-//     `valuesMode?: ValuesMode` (default: 'relations')
-//   - ✅ ОБНОВЛЕНО: Codec.decode пробрасывает `valuesMode` в DecodeOptions
-//   - ✅ УБРАНЫ неиспользуемые импорты (ValueMeta, filterFullJSONValues)
-//     для устранения TS6196 и TS2614.
-//
-// ИЗМЕНЕНИЯ v11.0.0 (компактнее):
-//   - ✅ ДОБАВЛЕН реэкспорт `decodeFlagsFromNumber` из './codec-decode.js'
-//     (новая функция для парсинга флагов-чисел в compact.json v11.0.0).
-//   - ✅ default-экспорт включает decodeFlagsFromNumber
-//
-// ИЗМЕНЕНИЯ v10.4.0 (легенда для ИИ):
-//   - ✅ getLegend() делегирует в buildEmptyLegend() из './codec-legend.js'
-//   - ✅ УДАЛЕНЫ прямые импорты словарей
-//   - ✅ РЕЭКСПОРТ словарей из './codec-encode.js' СОХРАНЁН
-//
-// Модуль разбит на пять частей:
-//   - codec-encode.ts   — кодирование (FullJSON → CompactJSON)
-//   - codec-decode.ts   — декодирование (CompactJSON → FullJSON)
-//   - codec-verify.ts   — проверки обратимости
-//   - codec-legend.ts   — сборка legend
-//   - values-filter.ts  — фильтрация секции values (v12.0.0)
-//
-// Этот файл сохраняет обратную совместимость: `Codec.encode`,
-// `Codec.decode`, `Codec.verifyRoundTrip` работают как раньше.
-// ============================================
+// Версия: 16.1.0
 
 import type { FullJSON, CompactJSON, DecodeOptions, CodecLegend } from './codec-types.js';
 import { encode } from './codec-encode.js';

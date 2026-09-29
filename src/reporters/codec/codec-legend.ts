@@ -1,12 +1,29 @@
 // src/reporters/codec/codec-legend.ts
 // ============================================
-// ЛЕГЕНДА КОДЕКА (v16.0.2)
+// ЛЕГЕНДА КОДЕКА (v16.1.0)
 // ============================================
-// Версия: 16.0.2
+// Версия: 16.1.0
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
+//
+// v16.1.0 (BREAKING: глобально уникальные cu.id/he.id):
+//   - ✅ ОБНОВЛЕНО: schemas['vue.sfc'] — 34 поля (было 30).
+//     Добавлены cu_id, cu_pf (после xs) и he_id, he_pf
+//     (после cu_csl).
+//   - ✅ ОБНОВЛЕНО: legend.version = '2.1.0'.
+//   - ✅ ПРИЧИНА: в codec-types.ts добавлены 4 новых поля для
+//     явного кодирования id и parentFileId у componentUsages
+//     и htmlElements. Без этого round-trip L1/L2/DL/DEC падал.
+//   - ✅ СИНХРОНИЗИРОВАНО с:
+//       • codec-types.ts   (CODEC_VERSION = '16.1.0',
+//                           LEGEND_VERSION = '2.1.0')
+//       • codec-encode.ts  (заполняет cu_id/cu_pf/he_id/he_pf)
+//       • codec-decode.ts  (читает cu_id/cu_pf/he_id/he_pf)
+//       • verify-roundtrip.ts    (ожидает 34 поля для vue.sfc)
+//       • verify-consistency.ts  (ожидает 34 поля)
+//       • verify-new-sections.ts (ожидает 34 поля)
 //
 // v16.0.2 (синхронизация с симметричным round-trip):
 //   - ✅ ОБНОВЛЕНО: schemas.fns — 10 полей (n, m, f, l, fl, p, rt,
@@ -43,7 +60,7 @@
 //   - ✅ BREAKING: vue.sfc — 8 → 30 полей
 //   - ✅ BREAKING: +10 новых словарей в legend.codes (итого 29)
 //   - ✅ BREAKING: +11 новых схем в legend.schemas
-//   - ✅ ВВЕДЕНО: legend.version = '2.0.0' (в 15.7.3 отсутствовало)
+//   - ✅ ВВЕДЕНО: legend.version = '2.0.0'
 //   - ✅ ДОБАВЛЕНО: DOM_* константы (9 штук)
 //   - ✅ ДОБАВЛЕНО: COMPONENT_SOURCE_CODES, PROP_KIND_CODES,
 //      EVENT_HANDLER_SOURCE_CODES, SOURCE_CHAIN_KIND_CODES,
@@ -406,6 +423,12 @@ export const HTML_OUTPUT_KIND_CODES: Record<string, number> = {
 //    htmlInterpolations расширены полем 'idn' (identifier) и 'id'
 //    (индекс в ids[]). Ранее при decode терялись identifier и id/usageId,
 //    что ломало L1/L2/DL/RE/ENC/DEC.
+// ✅ v16.1.0: схема vue.sfc расширена до 34 полей:
+//    + cu_id, cu_pf (после xs)
+//    + he_id, he_pf (после cu_csl)
+//    Причина: без явного кодирования id и parentFileId
+//    у componentUsages/htmlElements ломается round-trip
+//    (props/events/directives перепутываются между SFC).
 // ============================================================
 
 export const SCHEMAS: CodecLegend['schemas'] = {
@@ -566,20 +589,37 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   lx: ['p', 'c', 'r', 'l', 'ai', 'cn'],
 
   // ==========================================
-  // ✅ v16.0.2: vue.sfc — 30 полей
+  // ✅ v16.1.0: vue.sfc — 34 поля
   // ==========================================
   //
-  // ⚠️ BREAKING CHANGE относительно 15.7.3:
-  //   Старая схема: ['f','n','b','c','cs','p','e','x']   (8 полей)
-  //   Новая схема:  30 полей (см. ниже)
+  // ⚠️ BREAKING CHANGE относительно 16.0.9:
+  //   Старая схема (v16.0.0): 30 полей
+  //   Новая схема (v16.1.0):  34 поля
   //
-  //   p → pn + ps
-  //   e → en + es
-  //   x → xn + xs
+  //   + cu_id, cu_pf — id и parentFileId для componentUsages
+  //   + he_id, he_pf — id и parentFileId для htmlElements
   //
-  // ⚠️ Индексы 5, 6, 7 СДВИГАЮТСЯ. Клиенты, использующие
-  //    числовые литералы, ОБЯЗАНЫ перейти на именованные ключи
-  //    через legend.schemas['vue.sfc'].indexOf(...).
+  // ⚠️ Формат cu_pf/he_pf:
+  //   -1  = пусто (parentFileId === '')
+  //   -2  = не закодировано (использовать fileId(fileIdx))
+  //   >=0 = индекс в ids[]
+  //
+  // ⚠️ Зачем cu_id/he_id:
+  //   До v16.1.0 `cu.id`/`he.id` генерировались ЛОКАЛЬНО
+  //   (сброс счётчика в каждом SFC). Это приводило к тому, что
+  //   `propsByUsage.get("he1")` возвращал props из РАЗНЫХ SFC.
+  //   Симптомы: L1/L2/DL/DEC падали с перепутанными
+  //   props/directives/events у htmlElements.
+  //
+  //   Теперь cu.id/he.id — глобально уникальные (cu1, cu2, ...
+  //   и he1, he2, ... без сброса между SFC). Это гарантирует,
+  //   что propsByUsage.get(usageId) возвращает props только
+  //   одного he/cu.
+  //
+  // ⚠️ Зачем cu_pf/he_pf:
+  //   parentFileId (`f9`, `f12`, ...) не кодировался вообще —
+  //   decode не мог его восстановить. Симптом: `parentFileId`
+  //   в decoded отличался от full.
   //
   // Схема:
   //   f       — fileIdx в fl.p
@@ -593,6 +633,8 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   //   es      — slices [offset, count] для emits
   //   xn      — nameIdx для exposed
   //   xs      — slices [offset, count] для exposed
+  //   cu_id   — индексы в ids[] (глобально уникальные cu.id)
+  //   cu_pf   — индексы в ids[] или -1/-2 (parentFileId)
   //   cu_sfc  — RLE [start, length, value?] → SFC-индекс
   //   cu_tag  — индексы в strs
   //   cu_file — индексы в fl.p (-1 = null)
@@ -604,6 +646,8 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   //   cu_ce   — slices [offset, count] для events
   //   cu_cd   — slices [offset, count] для directives
   //   cu_csl  — slices [offset, count] для slots
+  //   he_id   — индексы в ids[] (глобально уникальные he.id)
+  //   he_pf   — индексы в ids[] или -1/-2 (parentFileId)
   //   he_sfc  — RLE [start, length, value?] → SFC-индекс
   //   he_tag  — индексы в strs
   //   he_l    — line
@@ -625,6 +669,8 @@ export const SCHEMAS: CodecLegend['schemas'] = {
     'es',
     'xn',
     'xs',
+    'cu_id',   // ✅ v16.1.0
+    'cu_pf',   // ✅ v16.1.0
     'cu_sfc',
     'cu_tag',
     'cu_file',
@@ -636,6 +682,8 @@ export const SCHEMAS: CodecLegend['schemas'] = {
     'cu_ce',
     'cu_cd',
     'cu_csl',
+    'he_id',   // ✅ v16.1.0
+    'he_pf',   // ✅ v16.1.0
     'he_sfc',
     'he_tag',
     'he_l',
@@ -644,7 +692,7 @@ export const SCHEMAS: CodecLegend['schemas'] = {
     'he_cd',
     'he_ce',
     'he_ci',
-  ],
+  ],  // → 34 поля
 
   // ==========================================
   // vue.composables
@@ -888,7 +936,7 @@ function reverseCodeDict(dict: Record<string, number>): CodesDict {
 /**
  * Собирает все словари кодов.
  *
- * ✅ v16.0.2: 29 словарей (было 19 в 15.7.3).
+ * ✅ v16.0.0: 29 словарей (было 19 в 15.7.3).
  */
 function buildCodesLegend(): CodecLegend['codes'] {
   return {
@@ -1133,10 +1181,13 @@ export interface LegendDictionaries {
  * ✅ v16.0.0: добавлено поле `version` = '2.0.0'.
  * ✅ v16.0.2: schemas.fns — 10 полей.
  * ✅ v16.0.2-FIX: schemas vue.component* — +1 поле (idn / id).
+ * ✅ v16.1.0: legend.version = '2.1.0'.
+ *            schemas['vue.sfc'] — 34 поля (было 30).
+ *            + cu_id, cu_pf, he_id, he_pf.
  */
 export function buildLegend(_dict: LegendDictionaries): CodecLegend {
   return {
-    version: '2.0.0',
+    version: '2.1.0',   // ✅ v16.1.0
     codes: buildCodesLegend(),
     flags: buildFlagsLegend(),
     schemas: SCHEMAS,
