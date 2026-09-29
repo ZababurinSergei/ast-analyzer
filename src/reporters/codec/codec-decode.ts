@@ -1,53 +1,45 @@
 // src/reporters/codec/codec-decode.ts
 // ============================================
-// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v16.2.0)
+// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v16.2.1)
 // ============================================
-// Версия: 16.2.0
+// Версия: 16.2.1
 //
+// ИЗМЕНЕНИЯ v16.2.1 (FIX round-trip L1/L2/DL: identifier + literalValue):
+//   - ✅ ИСПРАВЛЕНО: `decodeComponentProps` теперь защищён от
+//     `lvArr[i]`/`idnArr[i]`, выходящих за пределы `stringDict`,
+//     а также от `undefined` (когда массив короче `n`).
+//   - ✅ ИСПРАВЛЕНО: `decodeVueSection` теперь выбирает источник
+//     `componentProps` (и остальных `component*`) через `pickSource()`:
+//     если в `vue.componentProps` НЕТ `idn`/`lv`, но в top-level
+//     `componentProps` они ЕСТЬ — берётся top-level.
+//
+//     ПРИЧИНА:
+//       В v16.1.0 `encodeVueSection` и top-level encoder могли
+//       сформировать РАЗНЫЕ объекты для `componentProps`:
+//         • `compact.vue.componentProps` — без `idn`/`lv`
+//         • `compact.componentProps`     — с `idn`/`lv`
+//       decode отдавал приоритет `vue.componentProps`, теряя
+//       `identifier` и `literalValue`.
+//
+//     СИМПТОМ В verify-roundtrip.ts (L1/L2/DL):
+//       $.vue.componentProps[0].identifier: null → "ai"
+//       $.vue.componentProps[1].literalValue: undefined → 25
+//
+//   - ✅ СИНХРОНИЗИРОВАНО с codec-encode.ts v16.2.1.
+//
+// ════════════════════════════════════════════════════════════
 // ИЗМЕНЕНИЯ v16.2.0 (FIX round-trip: parentFileId + usageId):
+// ════════════════════════════════════════════════════════════
+//
 //   - ✅ ИСПРАВЛЕНО: `usageId` вложенных элементов (props/events/
 //     directives/slots/interpolations) теперь ГАРАНТИРОВАННО
 //     совпадает с `cu.id`/`he.id` родителя.
-//
-//     ПРИЧИНА БАГА (v16.1.0):
-//       В verify-consistency было:
-//         $.vue.componentProps[28].usageId: "he1" → "he6"
-//       Причина: `decodeComponentProps` читал `usageId` из
-//       `p.id` (`idStr.split(':')[0]`), но `p.id` формировался
-//       из `ids[idArr[i]]`, а `idArr[i]` — из `componentProps.id`
-//       (top-level), который ссылается на ГЛОБАЛЬНО уникальные id
-//       (`he6:cp1`). Но `he_id[k]` (в `vue.sfc.he_id`) содержал
-//       СВОЙ индекс, потому что encoder писал его независимо.
-//
-//       Итог: `propsByUsage.get("he1")` находил props с
-//       `id="he1:cp1"`, но у `he1` в `vue.sfc[0]` реальный
-//       usageId был `he6` (глобальный). props "перепутывались".
-//
-//     РЕШЕНИЕ:
-//       1. В `decodeVueSection` группировка props/events/...
-//          делается по `usageId`, извлечённому из `p.id`
-//          (`idStr.split(':')[0]`) — как было.
-//       2. Но `usageId` самого `cu`/`he` теперь берётся
-//          ТОЛЬКО из `cu_id`/`he_id` (не из глобального счётчика).
-//       3. Дополнительно: props/events/... переустанавливаются
-//          с реальным `usageId` родителя — это защита от
-//          рассинхрона.
 //
 //   - ✅ ИСПРАВЛЕНО: `parentFileId` в `cu`/`he` теперь
 //     восстанавливается корректно:
 //       • `cu_pf[k]`/`he_pf[k]` = -1  → parentFileId = ''
 //       • = -2                        → parentFileId = fileId(fileIdx)
 //       • >= 0                        → parentFileId = ids[idx]
-//     Раньше при `-1` (что означало «пусто») decode возвращал
-//     '', но encoder при этом писал реальный `f1` — рассинхрон.
-//
-//     Синхронно с `component-usage.ts` v1.1.0, где `parentFileId`
-//     теперь ВСЕГДА валидный fileId.
-//
-//   - ✅ ИСПРАВЛЕНО: при разборе `vue.sfc[].htmlElements` и
-//     `vue.sfc[].componentUsages` props/events/directives/
-//     slots/interpolations переустанавливают `usageId` явно —
-//     симметрично encoder.
 //
 //   - ✅ ДОБАВЛЕНО: если `cu_pf`/`he_pf` не задан (undefined),
 //     используется fileId(fileIdx) — симметрично encoder.
@@ -56,7 +48,7 @@
 // СВОДКА ПРЕДЫДУЩИХ ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
 //
-// v16.1.0-FIX (round-trip: глобально уникальные cu.id/he.id):
+// v16.1.0 (BREAKING: глобально уникальные cu.id/he.id):
 //   - Переписан блок sfc[] в decodeVueSection.
 //   - Удалены глобальные счётчики globalCuCounter/globalHeCounter.
 //
@@ -683,11 +675,25 @@ function decodeComponentProps(
     const scIdx = Array.isArray(scEntry) ? scEntry[0] : -1;
     const sourceChain = decodeSourceChainAt(scIdx, sourceChains);
 
-    const idnIdx = idnArr[i] ?? -1;
-    const identifier = idnIdx >= 0 ? (stringDict[idnIdx] ?? null) : null;
+    // ✅ v16.2.1-FIX: защита от -1, undefined и out-of-range
+    //   для identifier (idn)
+    const idnIdxRaw = idnArr[i];
+    const idnIdx =
+      typeof idnIdxRaw === 'number' && idnIdxRaw >= 0 ? idnIdxRaw : -1;
+    const identifier =
+      idnIdx >= 0 && idnIdx < stringDict.length
+        ? (stringDict[idnIdx] ?? null)
+        : null;
 
+    // ✅ v16.2.1-FIX: защита от -1, undefined и out-of-range
+    //   для literalValue (lv)
+    const lvIdxRaw = lvArr[i];
+    const lvIdx =
+      typeof lvIdxRaw === 'number' && lvIdxRaw >= 0 ? lvIdxRaw : -1;
     const literalValue =
-      lvArr[i] >= 0 ? decodeLiteralValue(stringDict[lvArr[i]]) : undefined;
+      lvIdx >= 0 && lvIdx < stringDict.length
+        ? decodeLiteralValue(stringDict[lvIdx])
+        : undefined;
 
     result.push({
       id: idStr,
@@ -955,33 +961,22 @@ function decodeFnHtmlUsage(
 }
 
 // ============================================
-// ✅ v16.2.0: VUE SECTION DECODER (FIX round-trip)
+// ✅ v16.2.0: VUE SECTION DECODER
 // ============================================
 //
-// КЛЮЧЕВЫЕ ИСПРАВЛЕНИЯ v16.2.0:
+// ⚠️ v16.2.1-FIX (round-trip L1/L2/DL):
+//   Источник `component*` выбирается через `pickSource()`.
 //
-//   1. `usageId` вложенных элементов (props/events/directives/
-//      slots/interpolations) теперь ПЕРЕУСТАНАВЛИВАЕТСЯ
-//      после нахождения родительского `cu.id`/`he.id`.
+//   ПРИЧИНА:
+//     В v16.1.0 `compact.vue.componentProps` мог не содержать
+//     полей `idn`/`lv`, если encoder заполнял их только в
+//     top-level `compact.componentProps`. decode отдавал
+//     приоритет `vue.componentProps` и терял identifier/literalValue.
 //
-//      ПРИЧИНА: в full.json `usageId` = глобально уникальный
-//      `he6`, а в `p.id` был записан `he6:cp1`. Но encoder мог
-//      записать `p.id = "he6:cp1"` с индексом в `ids[]`, а
-//      `he_id[k]` — с ДРУГИМ индексом (из-за разного порядка
-//      addId). В результате `p.usageId` (извлечённый из `p.id`)
-//      мог быть `he1`, а реальный `he.id` — `he6`.
-//
-//      ФИКС: props/events/... переустанавливаются с реальным
-//      `usageId` родителя после его определения.
-//
-//   2. `parentFileId` восстанавливается по формату:
-//        -1  → ''
-//        -2  → fileId(fileIdx)
-//        >=0 → ids[idx]
-//
-//   3. Если `cu_pf`/`he_pf` не задан (undefined) — используется
-//      fileId(fileIdx). Это симметрично encoder, который в
-//      v1.1.0 всегда ставит валидный parentFileId.
+//   РЕШЕНИЕ:
+//     Для каждого component*-массива проверяем наличие
+//     характерного поля (`idn` для props, `id` для остальных).
+//     Если в `vue.*` поля НЕТ, а в top-level ЕСТЬ — берём top-level.
 
 function decodeVueSection(
   vue: VueSectionCompact | undefined,
@@ -1007,13 +1002,37 @@ function decodeVueSection(
   // 1. Общие массивы для componentUsages / htmlElements
   // ────────────────────────────────────────────────────────
   //
-  // ✅ v16.2.0: приоритет ВСТРОЕННЫХ в vue.sfc, а не top-level.
-  // Top-level используется только как fallback.
-  const propsSource = sfcAny.componentProps ?? topLevelComponentProps;
-  const eventsSource = sfcAny.componentEvents ?? topLevelComponentEvents;
-  const directivesSource = sfcAny.componentDirectives ?? topLevelComponentDirectives;
-  const slotsSource = sfcAny.componentSlots ?? topLevelComponentSlots;
-  const interpolationsSource = sfcAny.htmlInterpolations ?? topLevelHtmlInterpolations;
+  // ✅ v16.2.1-FIX: выбираем источник через pickSource().
+  //
+  // Логика:
+  //   • Если в `vue.*` есть характерное поле (idn / id) — берём `vue.*`.
+  //   • Иначе, если в top-level есть — берём top-level.
+  //   • Иначе — что есть (для обратной совместимости).
+  //
+  // Это гарантирует, что identifier/literalValue НЕ теряются.
+  // ────────────────────────────────────────────────────────
+  const pickSource = (top: any, sfcAnyVal: any, requiredField: string): any => {
+    const topHas = top && Array.isArray(top[requiredField]);
+    const sfcHas = sfcAnyVal && Array.isArray(sfcAnyVal[requiredField]);
+
+    if (sfcHas) return sfcAnyVal;        // sfc содержит — приоритет (v16.1.0-путь)
+    if (topHas) return top;              // top содержит, sfc нет — берём top
+    return sfcAnyVal ?? top;             // fallback (обратная совместимость)
+  };
+
+  const propsSource = pickSource(topLevelComponentProps, sfcAny.componentProps, 'idn');
+  const eventsSource = pickSource(topLevelComponentEvents, sfcAny.componentEvents, 'id');
+  const directivesSource = pickSource(
+    topLevelComponentDirectives,
+    sfcAny.componentDirectives,
+    'id'
+  );
+  const slotsSource = pickSource(topLevelComponentSlots, sfcAny.componentSlots, 'id');
+  const interpolationsSource = pickSource(
+    topLevelHtmlInterpolations,
+    sfcAny.htmlInterpolations,
+    'id'
+  );
 
   const allComponentProps = propsSource
     ? decodeComponentProps(propsSource, stringDict, ids, sourceChains)

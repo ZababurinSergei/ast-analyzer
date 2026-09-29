@@ -2,7 +2,42 @@
 // ============================================================
 // VUE TEMPLATE PARSER
 // ============================================================
-// Версия: 1.1.0
+// Версия: 1.2.0
+//
+// ИЗМЕНЕНИЯ v1.2.0 (FIX: identifier/literalValue/memberChain для props):
+//   - ✅ ИСПРАВЛЕНО: `extractComponentUsage` и `extractHtmlElement` теперь
+//     заполняют `identifier`, `memberChain`, `literalValue` для каждого
+//     prop через `extractIdentifierFromValue`, `extractMemberChainFromValue`,
+//     `extractLiteralFromValue` (из `../reporters/compact/ids/value-extractors.js`).
+//
+//     ПРИЧИНА:
+//       До v1.2.0 поля `identifier` и `literalValue` ВСЕГДА были `null`/
+//       `undefined`, потому что `parseVueTemplate` ставил `identifier: null`.
+//
+//       Дальше по цепочке:
+//         parseVueTemplate → EntitiesResult.templateComponentUsages
+//           → processComponentUsage (присваивает новые id, НЕ трогает idn/lv)
+//           → encodeVueSection (в codec-encode.ts)
+//           → encodeComponentPropsInline (пишет idn=-1, lv=-1)
+//
+//       В результате в `index.json` (compact) массивы `idn[]` и `lv[]`
+//       были все `-1` для 866 элементов, а `index.full.json` содержал
+//       реальные значения (`identifier: "ai"`, `literalValue: 25`).
+//       Round-trip L1/L2/DL падали с diffCount=20.
+//
+//     РЕШЕНИЕ:
+//       Заполнять `identifier`/`literalValue`/`memberChain` ПРЯМО в
+//       `parseVueTemplate` при создании `ComponentProp`. Это ЕДИНСТВЕННЫЙ
+//       источник, откуда props попадают в `allComponentProps` в
+//       `encodeVueSection`, и, следовательно, в `compact.componentProps.idn/lv`.
+//
+//     СИМПТОМ ДО ФИКСА (verify-roundtrip.ts):
+//       $.vue.componentProps[0].identifier  a: null  b: "ai"
+//       $.vue.componentProps[1].literalValue a: undefined  b: 25
+//       L1/L2/DL — FAIL (diffCount=20)
+//
+//     СИМПТОМ ПОСЛЕ ФИКСА:
+//       L1/L2/DL — PASS (diffCount=0)
 //
 // ИЗМЕНЕНИЯ v1.1.0 (FIX: пустые componentUsages/htmlElements):
 //   - ✅ ИСПРАВЛЕНО: descriptor.template.ast в @vue/compiler-sfc
@@ -111,11 +146,16 @@
 //         id: 'cu1',
 //         tag: 'AiToolbar',
 //         props: [
-//           { id: 'cu1:cp1', name: 'user-toolbar-items', value: 'props.toolbarItems', kind: 'dynamic' },
-//           { id: 'cu1:cp2', name: 'is-data-modified',   value: 'isDirty',             kind: 'dynamic' },
+//           { id: 'cu1:cp1', name: 'user-toolbar-items', value: 'props.toolbarItems',
+//             kind: 'dynamic', identifier: 'props',
+//             memberChain: ['props', 'toolbarItems'], literalValue: undefined },
+//           { id: 'cu1:cp2', name: 'is-data-modified',   value: 'isDirty',
+//             kind: 'dynamic', identifier: 'isDirty',
+//             memberChain: undefined,          literalValue: undefined },
 //         ],
 //         events: [
-//           { id: 'cu1:ce1', eventName: 'column-chooser-change', handler: 'setColumnsVisibility' },
+//           { id: 'cu1:ce1', eventName: 'column-chooser-change',
+//             handler: 'setColumnsVisibility' },
 //         ],
 //         directives: [
 //           { id: 'cu1:cd1', name: 'v-if', value: '!props.isPopover' },
@@ -153,6 +193,13 @@ import type {
   ComponentSlot,
   HtmlInterpolation,
 } from '../reporters/codec/codec-types.js';
+
+// ✅ v1.2.0: импорт extract*FromValue для заполнения identifier/memberChain/literalValue
+import {
+  extractIdentifierFromValue,
+  extractMemberChainFromValue,
+  extractLiteralFromValue,
+} from '../reporters/compact/ids/value-extractors.js';
 
 // ============================================================
 // КОНСТАНТЫ
@@ -425,9 +472,7 @@ export function getTemplateAst(sfcSource: string, filePath: string): TemplateAst
       }
     }
   } catch (err) {
-    errors.push(
-      `parseSFC exception: ${err instanceof Error ? err.message : String(err)}`
-    );
+    errors.push(`parseSFC exception: ${err instanceof Error ? err.message : String(err)}`);
     return { ast: null, errors };
   }
 
@@ -471,9 +516,7 @@ export function getTemplateAst(sfcSource: string, filePath: string): TemplateAst
 
     return { ast: compiled.ast, errors };
   } catch (err) {
-    errors.push(
-      `compileTemplate exception: ${err instanceof Error ? err.message : String(err)}`
-    );
+    errors.push(`compileTemplate exception: ${err instanceof Error ? err.message : String(err)}`);
     return { ast: null, errors };
   }
 }
@@ -618,9 +661,7 @@ export function parseVueTemplate(sfcSource: string, ctx: ParseCtx): ParseResult 
   // Шаг 4: диагностика — если ast был, но ничего не нашли
   // ────────────────────────────────────────────────────────
   if (result.componentUsages.length === 0 && result.htmlElements.length === 0) {
-    const astChildren = Array.isArray(templateAst.children)
-      ? templateAst.children.length
-      : 'n/a';
+    const astChildren = Array.isArray(templateAst.children) ? templateAst.children.length : 'n/a';
     result.errors.push(
       `templateAst present (type=${templateAst.type}, children=${astChildren}) but 0 usages extracted`
     );
@@ -770,14 +811,10 @@ function extractHtmlElement(node: any, id: string, _ctx: ParseCtx): HtmlElementU
  * @param parent  — родительский HtmlElementUsage
  * @returns HtmlInterpolation или null
  */
-function extractInterpolation(
-  node: any,
-  parent: HtmlElementUsage
-): HtmlInterpolation | null {
+function extractInterpolation(node: any, parent: HtmlElementUsage): HtmlInterpolation | null {
   if (!node || !node.content) return null;
 
-  const expression =
-    typeof node.content === 'string' ? node.content : node.content.content || '';
+  const expression = typeof node.content === 'string' ? node.content : node.content.content || '';
 
   if (!expression) return null;
 
@@ -837,6 +874,7 @@ function processProp(
       return;
     }
 
+    // ✅ v1.2.0: заполняем identifier/memberChain/literalValue
     props.push({
       id: `${baseId}:cp${props.length + 1}`,
       usageId: baseId,
@@ -844,7 +882,9 @@ function processProp(
       value,
       kind: prop.value ? 'static' : 'boolean',
       line: prop.loc?.start?.line ?? 0,
-      identifier: null,
+      identifier: extractIdentifierFromValue(value),
+      memberChain: extractMemberChainFromValue(value),
+      literalValue: extractLiteralFromValue(value),
       sourceChain: [],
     });
     return;
@@ -878,6 +918,7 @@ function processProp(
 
       // v-bind="obj" (spread)
       if (!argName) {
+        // ✅ v1.2.0: для spread значение — объект, identifier = переменная объекта
         props.push({
           id: `${baseId}:cp${props.length + 1}`,
           usageId: baseId,
@@ -885,12 +926,15 @@ function processProp(
           value: expValue,
           kind: 'spread',
           line: prop.loc?.start?.line ?? 0,
-          identifier: null,
+          identifier: extractIdentifierFromValue(expValue),
+          memberChain: extractMemberChainFromValue(expValue),
+          literalValue: extractLiteralFromValue(expValue),
           sourceChain: [],
         });
         return;
       }
 
+      // ✅ v1.2.0: заполняем identifier/memberChain/literalValue
       props.push({
         id: `${baseId}:cp${props.length + 1}`,
         usageId: baseId,
@@ -898,7 +942,9 @@ function processProp(
         value: expValue,
         kind: 'dynamic',
         line: prop.loc?.start?.line ?? 0,
-        identifier: null,
+        identifier: extractIdentifierFromValue(expValue),
+        memberChain: extractMemberChainFromValue(expValue),
+        literalValue: extractLiteralFromValue(expValue),
         sourceChain: [],
       });
       return;
@@ -925,9 +971,9 @@ function processProp(
       const slotName = argName || 'default';
       const scopeNames = expValue
         ? expValue
-          .split(',')
-          .map((s: string) => s.trim())
-          .filter(Boolean)
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean)
         : [];
 
       slots.push({
@@ -986,11 +1032,7 @@ function processProp(
  * @param baseId   — базовый id (cu1)
  * @param slots    — массив slots (мутируется)
  */
-function extractSlotsFromChildren(
-  children: any[],
-  baseId: string,
-  slots: ComponentSlot[]
-): void {
+function extractSlotsFromChildren(children: any[], baseId: string, slots: ComponentSlot[]): void {
   for (const child of children) {
     if (!child || child.type !== NODE_ELEMENT) continue;
     if (child.tag !== 'template') continue;
@@ -1021,9 +1063,9 @@ function extractSlotsFromChildren(
         const expValue = prop.exp?.content || '';
         const scopeNames = expValue
           ? expValue
-            .split(',')
-            .map((s: string) => s.trim())
-            .filter(Boolean)
+              .split(',')
+              .map((s: string) => s.trim())
+              .filter(Boolean)
           : [];
 
         const exists = slots.some(s => s.slotName === slotName);

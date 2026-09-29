@@ -1,12 +1,71 @@
 // src/reporters/codec/codec-encode.ts
 // ============================================
-// КОДИРОВАНИЕ: FullJSON → CompactJSON (v16.2.0)
+// КОДИРОВАНИЕ: FullJSON → CompactJSON (v16.2.2)
 // ============================================
-// Версия: 16.2.0
+// Версия: 16.2.2
 //
 // ════════════════════════════════════════════════════════════
-// СВОДКА ВЕРСИЙ
+// ИЗМЕНЕНИЯ v16.2.2 (FIX: identifier / literalValue в componentProps):
+//   - ✅ ИСПРАВЛЕНО: в `encodeVueSection` при сборе `allComponentProps`
+//     из `sfc.componentUsages[].props` и `sfc.htmlElements[].props`
+//     теперь ДОЗАПОЛНЯЮТСЯ поля `identifier`, `memberChain`,
+//     `literalValue`, если они не заполнены (через `??`).
+//
+//     ПРИЧИНА:
+//       `parseVueTemplate` (vue-template-parser.ts) при создании
+//       ComponentProp ставит `identifier: null` и НЕ заполняет
+//       `literalValue` / `memberChain`. Поля должны были
+//       заполняться в `fillComponentAccumulators`
+//       (compact/vue/component-usage.ts), но эта функция наполняет
+//       ТОЛЬКО top-level `full.componentProps`,
+//       а `vue.componentProps` в `encodeVueSection` собирается
+//       НАПРЯМУЮ из `sfc.componentUsages[].props` — там
+//       `identifier === null`, `literalValue === undefined`.
+//
+//       В результате `encodeComponentPropsInline` писал `idn[i] = -1`
+//       и `lv[i] = -1` для ВСЕХ 866 elements → decoder не мог
+//       восстановить `identifier` / `literalValue` → L1/L2/DL падали
+//       с расхождениями вида:
+//         $.vue.componentProps[0].identifier: null → "ai"
+//         $.vue.componentProps[1].literalValue: undefined → 25
+//
+//     РЕШЕНИЕ:
+//       В `encodeVueSection` применяем ту же нормализацию,
+//       что делает `fillComponentAccumulators`:
+//         identifier:  p.identifier  ?? extractIdentifierFromValue(p.value)
+//         memberChain: p.memberChain ?? extractMemberChainFromValue(p.value)
+//         literalValue: p.literalValue ?? extractLiteralFromValue(p.value)
+//
+//       Если поля УЖЕ заполнены (например, для top-level
+//       componentProps, которые прошли через fillComponentAccumulators),
+//       они НЕ перезаписываются (благодаря `??`).
+//
+//     СИМПТОМ ДО ФИКСА (verify-roundtrip.ts v16.1.0):
+//       L1:  $.vue.componentProps[0].identifier    a: null       b: "ai"
+//       L1:  $.vue.componentProps[1].literalValue  a: undefined  b: 25
+//       L2:  то же самое
+//       DL:  то же самое
+//
+//     ПОСЛЕ ФИКСА:
+//       L1/L2/DL — PASS.
+//
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION → '16.2.2' в codec-types.ts
+//     (см. связанные файлы).
+//   - ✅ СИНХРОНИЗИРОВАНО с:
+//       • codec-types.ts   (CODEC_VERSION = '16.2.2')
+//       • codec-decode.ts  (без изменений — он уже читает idn/lv)
+//       • codec-legend.ts  (без изменений)
+//       • verify-roundtrip.ts (без изменений)
+//
 // ════════════════════════════════════════════════════════════
+// СВОДКА ПРЕДЫДУЩИХ ВЕРСИЙ
+// ════════════════════════════════════════════════════════════
+//
+// v16.2.1 (FIX: fallback-кодирование top-level component*):
+//   - ✅ ДОБАВЛЕНО: если `vue.componentProps` (и др.) отсутствует
+//     в canonical.vue, но `canonical.componentProps` (top-level)
+//     содержит данные — кодируем их через
+//     `encodeComponentPropsInline(canonical.componentProps, dict)`.
 //
 // v16.2.0 (FIX: устранено двойное кодирование top-level component*):
 //   - ✅ ИСПРАВЛЕНО: top-level `componentProps`, `componentEvents`,
@@ -14,40 +73,13 @@
 //     больше НЕ кодируются повторно. Используется уже готовый
 //     результат из `encodeVueSection` (vue.componentProps и т.д.).
 //
-//     ПРИЧИНА:
-//       Раньше `encodeComponentPropsInline(fullComponentProps, dict)`
-//       вызывался ВТОРОЙ раз после `encodeVueSection`, и в процессе
-//       повторных `addString`/`addId` порядок в `dict.stringDict` /
-//       `dict.idDict` сдвигался. Это ломало round-trip:
-//         • L4 — `componentProps.n` расходился на +2..+78
-//         • RE — `encode(decode(compact))` давал другой порядок строк
-//         • ENC — encode(full) ≠ encode(decode(encode(full)))
-//         • DEC — `ids.length` 531 vs 1419
-//
-//     РЕШЕНИЕ:
-//       `vue.componentProps` — уже закодированный массив. Присваиваем
-//       его в top-level напрямую, БЕЗ повторного вызова encoder-ов.
-//
-//   - ✅ УДАЛЕНО: принудительный `addId(dict, p.id)` для top-level
-//     component*-секций. Он добавлял id в `dict.idDict` ПОСЛЕ
-//     `encodeVueSection`, сдвигая индексы относительно `compact.ids`.
-//
-//   - ✅ УДАЛЕНО: предзаполнение `dict.idDict` из `full.ids`.
-//     `compact.ids = dict.idDict` в естественном порядке `addId`.
-//     `full.ids` будет перезаписан значением `compact.ids` в
-//     `collect-full-json.ts` (единый источник истины).
-//
 // v16.1.0 (BREAKING: глобально уникальные cu.id/he.id):
 //   - ✅ ДОБАВЛЕНО: в `encodeVueSection` заполняются массивы
 //     `cu_id`, `cu_pf`, `he_id`, `he_pf`.
-//   - ✅ ПРИЧИНА: до v16.1.0 `he.id`/`cu.id` генерировались локально
-//     в каждом SFC, что ломало L1/L2/DL/DEC.
 //
 // v16.0.9-FIX (round-trip: literalValue + ids):
 //   - ✅ ИСПРАВЛЕНО: `encodeComponentPropsInline` — добавлена
 //     функция `encodeLiteralValue()` (boolean/number/null/string).
-//   - ✅ ИСПРАВЛЕНО: `encode()` — предзаполнение `dict.idDict`
-//     из `full.ids` ДО `encodeVueSection`. (в v16.2.0 УДАЛЕНО)
 //
 // v16.0.8-FIX (round-trip: identifier + id для component*):
 //   - ✅ ИСПРАВЛЕНО: `encodeComponentPropsInline` — поле `idn`.
@@ -55,14 +87,6 @@
 //   - ✅ ИСПРАВЛЕНО: `encodeComponentDirectivesInline` — поле `id`.
 //   - ✅ ИСПРАВЛЕНО: `encodeComponentSlotsInline` — поле `id`.
 //   - ✅ ИСПРАВЛЕНО: `encodeHtmlInterpolationsInline` — поле `id`.
-//
-// v16.0.8 (fix: top-level component* + ids + детерминизм params):
-//   - ✅ top-level `component*` — всегда в compact.
-//   - ✅ `dict.idDict` заполняется из всех component*-секций.
-//   - ✅ `compact.params` и `compact.methods` — БЕЗ токенизации.
-//
-// v16.0.1 (fix round-trip: fns.hv — RLE для isHtmlVisible):
-//   - ✅ ДОБАВЛЕНО: `fnsHv` — RLE-массив для `isHtmlVisible` (0 | 1).
 //
 // v16.0.0 (major — несовместимое расширение схем):
 //   - ✅ BREAKING: vue.sfc — 8 → 30 полей
@@ -153,11 +177,16 @@ import {
 
 // ✅ v16.0.0: сериализация sourceChain
 import { serializeSourceChain } from '../../core/source-chain-resolver.js';
+
+// ✅ v16.2.2: извлечение identifier / memberChain / literalValue
+// Нужно для дозаполнения полей у ComponentProp, пришедших из
+// parseVueTemplate (там они null/undefined).
 import {
   extractIdentifierFromValue,
   extractMemberChainFromValue,
   extractLiteralFromValue,
 } from '../compact/ids/value-extractors.js';
+
 // ============================================
 // ✅ v15.2.0 (P1): LEXICAL RELATION CODES
 // ============================================
@@ -651,6 +680,12 @@ function encodeStr(str: string, tokenIndex: Map<string, number>): string | numbe
 //   2. Для `cu.parentFileId` и `he.parentFileId` используем
 //      специальное значение -1 для пустой строки.
 //   3. В `result.sfc` добавлены поля: cu_id, cu_pf, he_id, he_pf.
+//
+// ⚠️ ИЗМЕНЕНИЯ v16.2.2:
+//   В блоках сбора `allComponentProps` (для cu.props и he.props)
+//   дозаполняем `identifier` / `memberChain` / `literalValue`,
+//   если они не заполнены. Это устраняет потерю этих полей
+//   при кодировании `vue.componentProps`.
 // ============================================
 
 export function encodeVueSection(
@@ -771,7 +806,25 @@ export function encodeVueSection(
       // Props
       const cpStart = allComponentProps.length;
       for (const p of cu.props ?? []) {
-        allComponentProps.push(p);
+        // ✅ v16.2.2: дозаполняем identifier / memberChain / literalValue,
+        // если они не заполнены (например, пришли из parseVueTemplate
+        // как null / undefined). Если уже заполнены (например,
+        // прошли через fillComponentAccumulators) — не трогаем.
+        allComponentProps.push({
+          ...p,
+          identifier:
+            p.identifier !== null && p.identifier !== undefined
+              ? p.identifier
+              : extractIdentifierFromValue(p.value),
+          memberChain:
+            p.memberChain !== undefined
+              ? p.memberChain
+              : extractMemberChainFromValue(p.value),
+          literalValue:
+            p.literalValue !== undefined
+              ? p.literalValue
+              : extractLiteralFromValue(p.value),
+        });
       }
       cuCp.push([cpStart, allComponentProps.length - cpStart]);
 
@@ -812,7 +865,23 @@ export function encodeVueSection(
       // Props
       const hcpStart = allComponentProps.length;
       for (const p of he.props ?? []) {
-        allComponentProps.push(p);
+        // ✅ v16.2.2: аналогично cu.props — дозаполняем
+        // identifier / memberChain / literalValue.
+        allComponentProps.push({
+          ...p,
+          identifier:
+            p.identifier !== null && p.identifier !== undefined
+              ? p.identifier
+              : extractIdentifierFromValue(p.value),
+          memberChain:
+            p.memberChain !== undefined
+              ? p.memberChain
+              : extractMemberChainFromValue(p.value),
+          literalValue:
+            p.literalValue !== undefined
+              ? p.literalValue
+              : extractLiteralFromValue(p.value),
+        });
       }
       heCp.push([hcpStart, allComponentProps.length - hcpStart]);
 
@@ -1009,6 +1078,7 @@ export function encodeVueSection(
 // ✅ v16.0.0: inline-энкодеры подсекций vue
 // ✅ v16.0.8-FIX: добавлены 'idn' и 'id'
 // ✅ v16.0.9-FIX: literalValue сохраняет тип (boolean/number/null/string)
+// ✅ v16.2.1-FIX: функции экспортированы (для fallback-блока 12.7.1)
 // ============================================
 
 /**
@@ -1045,7 +1115,7 @@ function encodeLiteralValue(
   return addString(dict, `unknown:${String(value)}`);
 }
 
-function encodeComponentPropsInline(
+export function encodeComponentPropsInline(
   props: ComponentProp[],
   dict: DictBuilder
 ): VueSectionCompact['componentProps'] {
@@ -1089,7 +1159,7 @@ function encodeComponentPropsInline(
   return { n, v, k, l, id, mc, lv, sc, fns, idn };
 }
 
-function encodeComponentEventsInline(
+export function encodeComponentEventsInline(
   events: ComponentEvent[],
   dict: DictBuilder
 ): VueSectionCompact['componentEvents'] {
@@ -1123,7 +1193,7 @@ function encodeComponentEventsInline(
   return { n, h, fn, s, m, l, sc, id };
 }
 
-function encodeComponentDirectivesInline(
+export function encodeComponentDirectivesInline(
   dirs: ComponentDirective[],
   dict: DictBuilder
 ): VueSectionCompact['componentDirectives'] {
@@ -1151,7 +1221,7 @@ function encodeComponentDirectivesInline(
   return { n, a, m, v, l, id };
 }
 
-function encodeComponentSlotsInline(
+export function encodeComponentSlotsInline(
   slots: ComponentSlot[],
   dict: DictBuilder
 ): VueSectionCompact['componentSlots'] {
@@ -1177,7 +1247,7 @@ function encodeComponentSlotsInline(
   return { n, sc, sn, l, id };
 }
 
-function encodeHtmlInterpolationsInline(
+export function encodeHtmlInterpolationsInline(
   interps: HtmlInterpolation[],
   dict: DictBuilder
 ): VueSectionCompact['htmlInterpolations'] {
@@ -1361,7 +1431,7 @@ function encodeDomApiArgs(_full: any, dict: DictBuilder): any {
 // ============================================
 
 /**
- * Кодирует полный JSON в сжатый (v16.2.0).
+ * Кодирует полный JSON в сжатый (v16.2.2).
  */
 export function encode(
   payload: FullJSON,
@@ -1767,7 +1837,7 @@ export function encode(
   }
 
   // ============================================================
-  // 12.7.1 ✅ v16.2.0-FIX: top-level component* = vue.*
+  // 12.7.1 ✅ v16.2.2-FIX: top-level component* = vue.* (+ fallback)
   // ============================================================
   //
   // ПРОБЛЕМА (v16.0.8):
@@ -1781,22 +1851,60 @@ export function encode(
   //     • приводил к расхождению `componentProps.n` на +2..+78
   //       между encode(full) и encode(decode(encode(full))).
   //
-  // РЕШЕНИЕ:
+  // РЕШЕНИЕ v16.2.0:
   //   Используем уже готовый результат из `vue` без повторного
   //   кодирования. `vue.componentProps` идентичен тому, что было
   //   бы в top-level.
   //
-  // СИММЕТРИЯ:
-  //   codec-decode.ts v16.0.4 всегда восстанавливает top-level
-  //   component*-секции (даже пустыми []).
+  // ⚠️ v16.2.1-FIX (round-trip L1/L2/DL):
+  //   Если `vue.componentProps` ОТСУТСТВУЕТ (например, vue-секция
+  //   не содержит component*, но top-level содержит) — кодируем
+  //   из `canonical.componentProps` как fallback.
+  //
+  //   Это гарантирует, что данные не потеряются ни при каком
+  //   порядке сборки FullJSON.
+  //
+  // ⚠️ v16.2.2-FIX (identifier / literalValue):
+  //   Основное исправление находится в `encodeVueSection`:
+  //   теперь `allComponentProps` дозаполняются `identifier`,
+  //   `memberChain`, `literalValue`. Здесь ничего менять не нужно —
+  //   top-level получает уже готовый результат из vue.
   // ============================================================
 
-  // ✅ v16.2.0-FIX: единый источник — vue.*
-  const topLevelComponentProps = vue?.componentProps;
-  const topLevelComponentEvents = vue?.componentEvents;
-  const topLevelComponentDirectives = vue?.componentDirectives;
-  const topLevelComponentSlots = vue?.componentSlots;
-  const topLevelHtmlInterpolations = vue?.htmlInterpolations;
+  const topLevelComponentProps =
+    vue?.componentProps ??
+    (Array.isArray((canonical as any).componentProps) &&
+    (canonical as any).componentProps.length > 0
+      ? encodeComponentPropsInline((canonical as any).componentProps, dict)
+      : undefined);
+
+  const topLevelComponentEvents =
+    vue?.componentEvents ??
+    (Array.isArray((canonical as any).componentEvents) &&
+    (canonical as any).componentEvents.length > 0
+      ? encodeComponentEventsInline((canonical as any).componentEvents, dict)
+      : undefined);
+
+  const topLevelComponentDirectives =
+    vue?.componentDirectives ??
+    (Array.isArray((canonical as any).componentDirectives) &&
+    (canonical as any).componentDirectives.length > 0
+      ? encodeComponentDirectivesInline((canonical as any).componentDirectives, dict)
+      : undefined);
+
+  const topLevelComponentSlots =
+    vue?.componentSlots ??
+    (Array.isArray((canonical as any).componentSlots) &&
+    (canonical as any).componentSlots.length > 0
+      ? encodeComponentSlotsInline((canonical as any).componentSlots, dict)
+      : undefined);
+
+  const topLevelHtmlInterpolations =
+    vue?.htmlInterpolations ??
+    (Array.isArray((canonical as any).htmlInterpolations) &&
+    (canonical as any).htmlInterpolations.length > 0
+      ? encodeHtmlInterpolationsInline((canonical as any).htmlInterpolations, dict)
+      : undefined);
 
   // ============================================
   // 13. ФИЛЬТРАЦИЯ VALUES
@@ -1867,7 +1975,7 @@ export function encode(
     r: moduleReverse.get(canonical.root) ?? 0,
     valuesMode,
 
-    // ✅ v16.2.0-FIX: top-level component*-секции = vue.*
+    // ✅ v16.2.2: top-level component*-секции = vue.* (+ fallback)
     componentProps: topLevelComponentProps,
     componentEvents: topLevelComponentEvents,
     componentDirectives: topLevelComponentDirectives,
@@ -2051,4 +2159,10 @@ export default {
   // ✅ v15.5.0
   VUE_KIND_CODES_LOCAL,
   encodeVueSection,
+  // ✅ v16.2.1-FIX: inline-энкодеры для fallback-блока 12.7.1
+  encodeComponentPropsInline,
+  encodeComponentEventsInline,
+  encodeComponentDirectivesInline,
+  encodeComponentSlotsInline,
+  encodeHtmlInterpolationsInline,
 };

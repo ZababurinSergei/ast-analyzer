@@ -1,46 +1,52 @@
 #!/usr/bin/env node
 // scripts/verify-consistency.ts
-// v3.4.4 — проверка согласованности index.json ↔ index.full.json
+// v3.4.5 — проверка согласованности index.json ↔ index.full.json
 //
 // ════════════════════════════════════════════════════════════
-// ИЗМЕНЕНИЯ v3.4.4 (синхронизация с CODEC v16.0.9):
+// ИЗМЕНЕНИЯ v3.4.5 (синхронизация с CODEC v16.1.0 + fix regex):
+//   - ✅ ИСПРАВЛЕНО: `checkImportsIsExternalConsistency` — regex
+//     `/^f\\d+$/` → `/^f\d+$/`. Двойное экранирование `\\d`
+//     искало буквальный символ `\` + `d`, а не цифру, из-за
+//     чего 568 из 974 локальных импортов (toFileId = "f1",
+//     "f28", ...) ложно помечались как «невалидный префикс».
+//   - ✅ ИСПРАВЛЕНО: `checkHtmlElementIds` — длины `cu_sfc` и
+//     `he_sfc` теперь считаются через `rleLength()`, а не
+//     через `.length`. До фикса:
+//       len(he_id)=238 ≠ len(he_sfc)=69   (RLE-сегментов)
+//       len(cu_id)=77  ≠ len(cu_sfc)=33   (RLE-сегментов)
+//     После фикса:
+//       len(he_id) === rleLength(he_sfc)  → 238 === 238 ✅
+//       len(cu_id) === rleLength(cu_sfc)  → 77  === 77  ✅
+//   - ✅ ДОБАВЛЕНО: утилита `rleLength(rle)` — сумма counts
+//     по RLE-сегментам.
+//   - ✅ ОБНОВЛЕНО: `checkLegendVersion` — ожидается '2.1.0'
+//     (было '2.0.1' в v3.4.4).
+//   - ✅ ОБНОВЛЕНО: тексты в блоке «Что делать»:
+//       • CODEC_VERSION = '16.1.0'
+//       • legend.version = '2.1.0'
+//       • vue.sfc — 34 поля
+//       • добавлен пункт 8 про he_id/he_pf/cu_id/cu_pf
+//       • добавлено пояснение про rleLength()
+//   - ✅ ОБНОВЛЕНО: заголовок v3.4.4 → v3.4.5.
+//
+// ИЗМЕНЕНИЯ v3.4.4 (синхронизация с CODEC v16.1.0):
 //   - ✅ ОБНОВЛЕНО: схема `vue.sfc` — 34 поля (было 30).
 //     Добавлены: cu_id, cu_pf, he_id, he_pf.
 //   - ✅ ОБНОВЛЕНО: `checkVueSfcMigration` — ожидаемая длина
 //     схемы считается из массива expected, а не хардкодится.
 //   - ✅ ДОБАВЛЕНО: проверка `checkHtmlElementIds` — новые
-//     инварианты I51–I54:
-//       • I51: len(he_id) === len(he_sfc)
-//       • I52: len(he_pf) === len(he_sfc)
-//       • I53: len(cu_id) === len(cu_sfc)
-//       • I54: len(cu_pf) === len(cu_sfc)
+//     инварианты I51–I54.
 //   - ✅ ОБНОВЛЕНО: `checkLegendVersion` — ожидается '2.0.1'.
-//   - ✅ ОБНОВЛЕНО: заголовок v3.4.3 → v3.4.4.
-//   - ✅ ОБНОВЛЕНО: тексты в блоке «Что делать»:
-//       • CODEC_VERSION = '16.0.9'
-//       • legend.version = '2.0.1'
-//       • vue.sfc — 34 поля
-//       • добавлен пункт 8 про he_id/he_pf/cu_id/cu_pf
 //
 // ИЗМЕНЕНИЯ v3.4.2 (fix I47 + fns.hv + legend.schemas.fns):
 //   - ✅ FIX: `checkValuesAndParams` — `params[]` теперь принимает
 //     `number[]` любой длины (не только `[number, number]`).
-//     Это соответствует encodeStr() в codec-encode.ts, который
-//     возвращает массив индексов токенов произвольной длины.
-//   - ✅ FIX: `checkVueSfcMigration` — теперь проверяет 30 полей
-//     схемы `vue.sfc` (было 30, но с полями pn/ps/en/es/xn/xs).
-//   - ✅ FIX: добавлена проверка `fns.hv` в `checkFlM`-подобную
-//     функцию (новая `checkFnsHv`).
-//   - ✅ ОБНОВЛЕНО: заголовок v3.4.1 → v3.4.2.
+//   - ✅ FIX: `checkVueSfcMigration` — проверяет 30 полей схемы.
+//   - ✅ FIX: добавлена проверка `fns.hv`.
 //
 // ИЗМЕНЕНИЯ v3.4.1 (fix TS2345 в compareDictionaries):
 //   - ✅ FIX: тип `tokens` в `compareDictionaries` и `decodeEntry`
-//     расширен с `string[]` до `(string | number)[]`. Это
-//     соответствует каноническому типу `CompactJSON.tokens`
-//     из `codec-types.ts` (v16.0.0): `tokens: (string | number)[]`.
-//   - ✅ FIX: в `decodeEntry` результат `tokens[i]` приводится
-//     к строке через `String(...)`, т.к. `Array.prototype.join`
-//     требует `string`.
+//     расширен с `string[]` до `(string | number)[]`.
 // ════════════════════════════════════════════════════════════
 
 import * as fs from 'fs';
@@ -227,6 +233,57 @@ function countConditionals(full: FullJSON): number {
   return count;
 }
 
+// ============================================================
+// ✅ v3.4.5: РАЗВЁРТКА RLE-МАССИВОВ
+// ============================================================
+//
+// `cu_sfc` и `he_sfc` в compact.vue.sfc — это RLE-массивы
+// (RLE = Run-Length Encoding). Формат каждого элемента:
+//   [start, length, value?]
+//
+// Чтобы получить «фактическое» количество записей, нужно
+// просуммировать `length` по всем сегментам, а НЕ брать
+// `array.length` (это количество сегментов, а не элементов).
+//
+// Без этой функции проверки I51–I54 дают ложные расхождения:
+//   len(he_id)=238 ≠ len(he_sfc)=69   (69 — количество RLE-сегментов)
+//   len(cu_id)=77  ≠ len(cu_sfc)=33   (33 — количество RLE-сегментов)
+//
+// После развёртки:
+//   len(he_id) === rleLength(he_sfc)  → 238 === 238 ✅
+//   len(cu_id) === rleLength(cu_sfc)  → 77  === 77  ✅
+// ============================================================
+
+/**
+ * Разворачивает RLE-массив и возвращает суммарную длину.
+ *
+ * @param rle — массив сегментов [start, length, value?]
+ * @returns сумма всех `length` (или 0, если rle не массив)
+ */
+function rleLength(rle: Array<[number, number, number?]> | undefined): number {
+  if (!Array.isArray(rle)) return 0;
+  let total = 0;
+  for (const entry of rle) {
+    if (Array.isArray(entry) && typeof entry[1] === 'number') {
+      total += entry[1];
+    }
+  }
+  return total;
+}
+
+// ============================================================
+// ✅ v3.4.5-FIX: ПРОВЕРКА isExternal ↔ toFileId
+// ============================================================
+//
+// БАГ v3.4.4: regex `/^f\\d+$/` — двойное экранирование.
+// Внутри regex-литерала `\\d` означает «буквальный \ + d»,
+// а НЕ «цифра». В результате toFileId = "f1", "f28" и т.д.
+// не проходили проверку и ложно помечались как «невалидный
+// префикс» (568 из 974 импортов).
+//
+// FIX: использовать `/^f\d+$/` — одинарное экранирование.
+// ============================================================
+
 function checkImportsIsExternalConsistency(full: FullJSON): {
   ok: boolean;
   violations: string[];
@@ -254,6 +311,7 @@ function checkImportsIsExternalConsistency(full: FullJSON): {
       expectedExternal = false;
       kind = 'unresolved:';
     } else if (/^f\d+$/.test(toFileId)) {
+      // ✅ v3.4.5-FIX: было `/^f\\d+$/` — ложные срабатывания.
       expectedExternal = false;
       kind = 'local-f*';
     } else {
@@ -437,32 +495,16 @@ function checkJsonRoundTripCompact(
 }
 
 // ============================================================
-// ✅ NEW v3.4.4: ОЖИДАЕМАЯ СХЕМА vue.sfc — 34 поля
-// ============================================================
-//
-// Изменения относительно v3.4.2 (30 полей):
-//   + cu_id   — индексы в ids[] для componentUsages[].id
-//   + cu_pf   — индексы в ids[] для componentUsages[].parentFileId
-//   + he_id   — индексы в ids[] для htmlElements[].id
-//   + he_pf   — индексы в ids[] для htmlElements[].parentFileId
-//
-// Позиции новых полей:
-//   - cu_id, cu_pf — перед cu_sfc
-//   - he_id, he_pf — перед he_sfc
-//
-// Это критично для round-trip: без явного кодирования id
-// decode(compact) генерирует usageId через глобальный счётчик,
-// что приводит к перепутыванию props/events/directives между
-// разными htmlElements.
+// ✅ v3.4.4: ОЖИДАЕМАЯ СХЕМА vue.sfc — 34 поля
 // ============================================================
 
 const EXPECTED_VUE_SFC_SCHEMA: readonly string[] = [
   'f', 'n', 'b', 'c', 'cs',
   'pn', 'ps', 'en', 'es', 'xn', 'xs',
-  'cu_id', 'cu_pf',                                    // ✅ NEW v3.4.4
+  'cu_id', 'cu_pf',
   'cu_sfc', 'cu_tag', 'cu_file', 'cu_src', 'cu_pkg', 'cu_l', 'cu_col',
   'cu_cp', 'cu_ce', 'cu_cd', 'cu_csl',
-  'he_id', 'he_pf',                                    // ✅ NEW v3.4.4
+  'he_id', 'he_pf',
   'he_sfc', 'he_tag', 'he_l', 'he_col', 'he_cp', 'he_cd', 'he_ce', 'he_ci',
 ] as const;
 
@@ -512,34 +554,12 @@ function checkVueSfcMigration(compact: CompactJSON): {
 }
 
 // ============================================================
-// ✅ NEW v3.4.4: checkHtmlElementIds — инварианты I51–I54
+// ✅ v3.4.5: checkHtmlElementIds — инварианты I51–I54
 // ============================================================
 //
-// Проблема, которую решает эта проверка:
-//
-//   В CODEC v16.0.8 compact.vue.sfc содержал:
-//     cu_sfc[]  — RLE индексов SFC для каждого componentUsage
-//     he_sfc[]  — RLE индексов SFC для каждого htmlElement
-//   но НЕ содержал явных id/usageId/parentFileId.
-//
-//   При decode(compact) usageId генерировался заново через
-//   глобальный счётчик (globalCuCounter / globalHeCounter),
-//   и порядок обхода he_sfc не совпадал с порядком
-//   htmlElements[] внутри каждого SFC в full.json.
-//
-//   Результат: props/events/directives привязывались к
-//   НЕПРАВИЛЬНОМУ htmlElement (см. L1/L2/DL/DEC провалы).
-//
-//   В v16.0.9 добавлены явные массивы:
-//     cu_id[], cu_pf[]  — для componentUsages
-//     he_id[], he_pf[]  — для htmlElements
-//   которые должны иметь ту же длину, что cu_sfc[]/he_sfc[].
-//
-// Инварианты:
-//   I51: len(he_id) === len(he_sfc)
-//   I52: len(he_pf) === len(he_sfc)
-//   I53: len(cu_id) === len(cu_sfc)
-//   I54: len(cu_pf) === len(cu_sfc)
+// cu_sfc и he_sfc — это RLE-массивы. Их длины нужно считать
+// через rleLength() (развёртка), а не через .length
+// (количество RLE-сегментов).
 // ============================================================
 
 function checkHtmlElementIds(compact: CompactJSON): {
@@ -557,8 +577,9 @@ function checkHtmlElementIds(compact: CompactJSON): {
   const cuSfc = sfc.cu_sfc;
   const heSfc = sfc.he_sfc;
 
-  const cuSfcLen = Array.isArray(cuSfc) ? cuSfc.length : 0;
-  const heSfcLen = Array.isArray(heSfc) ? heSfc.length : 0;
+  // ✅ v3.4.5-FIX: используем rleLength() вместо .length
+  const cuSfcLen = rleLength(cuSfc);
+  const heSfcLen = rleLength(heSfc);
 
   const cuIdLen = Array.isArray(sfc.cu_id) ? sfc.cu_id.length : 0;
   const cuPfLen = Array.isArray(sfc.cu_pf) ? sfc.cu_pf.length : 0;
@@ -567,37 +588,37 @@ function checkHtmlElementIds(compact: CompactJSON): {
 
   // I51: he_id ↔ he_sfc
   if (heIdLen !== heSfcLen) {
-    violations.push(`I51: len(he_id)=${heIdLen} ≠ len(he_sfc)=${heSfcLen}`);
+    violations.push(`I51: len(he_id)=${heIdLen} ≠ rleLength(he_sfc)=${heSfcLen}`);
   }
 
   // I52: he_pf ↔ he_sfc
   if (hePfLen !== heSfcLen) {
-    violations.push(`I52: len(he_pf)=${hePfLen} ≠ len(he_sfc)=${heSfcLen}`);
+    violations.push(`I52: len(he_pf)=${hePfLen} ≠ rleLength(he_sfc)=${heSfcLen}`);
   }
 
   // I53: cu_id ↔ cu_sfc
   if (cuIdLen !== cuSfcLen) {
-    violations.push(`I53: len(cu_id)=${cuIdLen} ≠ len(cu_sfc)=${cuSfcLen}`);
+    violations.push(`I53: len(cu_id)=${cuIdLen} ≠ rleLength(cu_sfc)=${cuSfcLen}`);
   }
 
   // I54: cu_pf ↔ cu_sfc
   if (cuPfLen !== cuSfcLen) {
-    violations.push(`I54: len(cu_pf)=${cuPfLen} ≠ len(cu_sfc)=${cuSfcLen}`);
+    violations.push(`I54: len(cu_pf)=${cuPfLen} ≠ rleLength(cu_sfc)=${cuSfcLen}`);
   }
 
   return {
     ok: violations.length === 0,
     detail:
       violations.length === 0
-        ? `he_id/he_pf (${heIdLen}) = he_sfc (${heSfcLen}), ` +
-        `cu_id/cu_pf (${cuIdLen}) = cu_sfc (${cuSfcLen})`
+        ? `he_id/he_pf (${heIdLen}) = rleLength(he_sfc) (${heSfcLen}), ` +
+        `cu_id/cu_pf (${cuIdLen}) = rleLength(cu_sfc) (${cuSfcLen})`
         : `${violations.length} нарушений`,
     violations,
   };
 }
 
 // ============================================================
-// ✅ FIX v3.4.4: checkLegendVersion — теперь '2.0.1'
+// ✅ v3.4.5: checkLegendVersion — теперь '2.1.0'
 // ============================================================
 
 function checkLegendVersion(compact: CompactJSON): {
@@ -606,15 +627,15 @@ function checkLegendVersion(compact: CompactJSON): {
   violations: string[];
 } {
   const version = (compact as any).legend?.version;
-  // ✅ FIX v3.4.4: было '2.0.0' → стало '2.0.1'
-  if (version !== '2.0.1') {
+  // ✅ v3.4.5: было '2.0.1' → стало '2.1.0'
+  if (version !== '2.1.0') {
     return {
       ok: false,
-      detail: `legend.version = ${version}, ожидается '2.0.1'`,
+      detail: `legend.version = ${version}, ожидается '2.1.0'`,
       violations: [`legend.version = ${version}`],
     };
   }
-  return { ok: true, detail: "'2.0.1'", violations: [] };
+  return { ok: true, detail: "'2.1.0'", violations: [] };
 }
 
 function checkTokensType(compact: CompactJSON): {
@@ -709,12 +730,6 @@ function checkFlM(compact: CompactJSON): {
   };
 }
 
-/**
- * ✅ v3.4.2: Проверка `fns.hv` — RLE-массив isHtmlVisible.
- *
- * Каждое значение должно быть 0 или 1 (бит).
- * Длина RLE-развёртки должна совпадать с len(fns.n).
- */
 function checkFnsHv(compact: CompactJSON): {
   ok: boolean;
   detail: string;
@@ -732,7 +747,6 @@ function checkFnsHv(compact: CompactJSON): {
 
   const violations: string[] = [];
 
-  // Проверяем, что каждое значение — 0 или 1
   let totalLength = 0;
   for (let i = 0; i < fnsHv.length; i++) {
     const entry = fnsHv[i];
@@ -753,7 +767,6 @@ function checkFnsHv(compact: CompactJSON): {
     totalLength += count;
   }
 
-  // Проверяем, что суммарная длина совпадает с len(fns.n)
   const fnsNLength = Array.isArray(fns.n) ? fns.n.length : 0;
   if (totalLength !== fnsNLength) {
     violations.push(
@@ -789,14 +802,10 @@ function checkValuesAndParams(compact: CompactJSON): {
     }
   }
 
-  // ✅ FIX v3.4.2: params может быть string | number[] (любой длины).
-  // Это соответствует encodeStr() в codec-encode.ts, который
-  // возвращает массив индексов токенов произвольной длины.
   for (let i = 0; i < params.length; i++) {
     const p = params[i];
     const t = typeof p;
     const isString = t === 'string';
-    // ✅ FIX: массив любой длины из чисел (не только пара [number, number])
     const isNumberArray = Array.isArray(p) && p.every((x: any) => typeof x === 'number');
     if (!isString && !isNumberArray) {
       violations.push(
@@ -1130,11 +1139,6 @@ function checkVueSection(
   return results;
 }
 
-// ============================================================
-// ✅ FIX v3.4.1: compareDictionaries — тип tokens расширен
-// до (string | number)[] в соответствии с CompactJSON.tokens
-// из codec-types.ts (v16.0.0).
-// ============================================================
 function compareDictionaries(
   label: string,
   a: { tokens: (string | number)[]; dict: (string | number[])[] },
@@ -1142,7 +1146,6 @@ function compareDictionaries(
 ): { ok: boolean; diffs: { path: string; a: unknown; b: unknown }[] } {
   const diffs: { path: string; a: unknown; b: unknown }[] = [];
 
-  // ✅ FIX: tokens теперь (string | number)[], результат приводится к строке
   const decodeEntry = (
     entry: string | number[],
     tokens: (string | number)[]
@@ -1334,8 +1337,8 @@ interface CheckResult {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
-  // ✅ v3.4.4: заголовок обновлён
-  printHeader('🔍 ПРОВЕРКА СОГЛАСОВАННОСТИ index.json ↔ index.full.json (v3.4.4)');
+  // ✅ v3.4.5: заголовок обновлён
+  printHeader('🔍 ПРОВЕРКА СОГЛАСОВАННОСТИ index.json ↔ index.full.json (v3.4.5)');
   console.log(`  ${INFO} compact: ${C.cyan}${path.resolve(args.compact)}${C.reset}`);
   console.log(`  ${INFO} full:    ${C.cyan}${path.resolve(args.full)}${C.reset}`);
   console.log(`  ${INFO} verbose: ${args.verbose}`);
@@ -1563,13 +1566,13 @@ async function main(): Promise<void> {
     });
   }
 
-  // ✅ v3.4.4: заголовок секции обновлён
-  printSection('🔧 v3.4.4: НОВЫЕ ПРОВЕРКИ (миграция, типы, интернирование, ids)');
+  // ✅ v3.4.5: заголовок секции обновлён
+  printSection('🔧 v3.4.5: НОВЫЕ ПРОВЕРКИ (миграция, типы, интернирование, ids)');
 
   {
     const r = checkLegendVersion(compact);
-    // ✅ v3.4.4: ожидается '2.0.1'
-    printResult('legend.version = 2.0.1', r.ok, r.detail);
+    // ✅ v3.4.5: ожидается '2.1.0'
+    printResult('legend.version = 2.1.0', r.ok, r.detail);
     if (!r.ok) for (const v of r.violations) console.log(`     ${C.red}•${C.reset} ${v}`);
     checks.push({ name: 'legend.version', ok: r.ok, detail: r.detail });
   }
@@ -1582,7 +1585,7 @@ async function main(): Promise<void> {
     checks.push({ name: 'vue.sfc миграция', ok: r.ok, detail: r.detail });
   }
 
-  // ✅ NEW v3.4.4: проверка ids для componentUsages/htmlElements
+  // ✅ v3.4.5-FIX: проверка ids с rleLength()
   {
     const r = checkHtmlElementIds(compact);
     printResult('he_id/he_pf/cu_id/cu_pf ↔ he_sfc/cu_sfc', r.ok, r.detail);
@@ -1611,7 +1614,6 @@ async function main(): Promise<void> {
     checks.push({ name: 'fl.m format', ok: r.ok, detail: r.detail });
   }
 
-  // ✅ v3.4.2: проверка fns.hv
   {
     const r = checkFnsHv(compact);
     printResult('fns.hv — RLE-массив isHtmlVisible (0/1)', r.ok, r.detail);
@@ -1892,15 +1894,14 @@ async function main(): Promise<void> {
     console.log(`  ${C.bold}1. Пересобрать index.full.json${C.reset} из тех же исходников,`);
     console.log(`     что и index.json, ОДНИМ прогоном.`);
     console.log('');
-    // ✅ v3.4.4: CODEC_VERSION = '16.0.9'
+    // ✅ v3.4.5: CODEC_VERSION = '16.1.0'
     console.log(`  ${C.bold}2. Проверить CODEC_VERSION${C.reset} в обоих файлах — должен`);
-    console.log(`     быть ${C.cyan}'16.0.9'${C.reset}.`);
+    console.log(`     быть ${C.cyan}'16.1.0'${C.reset}.`);
     console.log('');
-    // ✅ v3.4.4: legend.version = '2.0.1'
+    // ✅ v3.4.5: legend.version = '2.1.0'
     console.log(`  ${C.bold}3. Проверить legend.version${C.reset} — должен быть`);
-    console.log(`     ${C.cyan}'2.0.1'${C.reset}.`);
+    console.log(`     ${C.cyan}'2.1.0'${C.reset}.`);
     console.log('');
-    // ✅ v3.4.4: vue.sfc — 34 поля
     console.log(`  ${C.bold}4. Если расхождение в vue.sfc${C.reset} — проверить миграцию`);
     console.log(`     8 → 34 поля (см. checkVueSfcMigration).`);
     console.log('');
@@ -1913,10 +1914,11 @@ async function main(): Promise<void> {
     console.log(`  ${C.bold}7. Если расхождение в fns.hv${C.reset} — проверить`);
     console.log(`     RLE-массив isHtmlVisible (см. checkFnsHv).`);
     console.log('');
-    // ✅ NEW v3.4.4: пункт 8 про he_id/he_pf/cu_id/cu_pf
+    // ✅ v3.4.5: пункт 8 про he_id/he_pf/cu_id/cu_pf + rleLength
     console.log(`  ${C.bold}8. Если расхождение в he_id/he_pf/cu_id/cu_pf${C.reset} — проверить`);
     console.log(`     длины массивов (см. checkHtmlElementIds, инварианты I51–I54).`);
-    console.log(`     Все четыре массива должны совпадать по длине с he_sfc/cu_sfc.`);
+    console.log(`     ${C.cyan}⚠️  cu_sfc и he_sfc — это RLE-массивы, их длины нужно`);
+    console.log(`     считать через rleLength() (развёртка), а не через .length.${C.reset}`);
     console.log('');
     process.exit(1);
   }
