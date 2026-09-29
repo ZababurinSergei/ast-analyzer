@@ -1,54 +1,5 @@
 #!/usr/bin/env node
 // scripts/verify-consistency.ts
-// v3.4.5 — проверка согласованности index.json ↔ index.full.json
-//
-// ════════════════════════════════════════════════════════════
-// ИЗМЕНЕНИЯ v3.4.5 (синхронизация с CODEC v16.1.0 + fix regex):
-//   - ✅ ИСПРАВЛЕНО: `checkImportsIsExternalConsistency` — regex
-//     `/^f\\d+$/` → `/^f\d+$/`. Двойное экранирование `\\d`
-//     искало буквальный символ `\` + `d`, а не цифру, из-за
-//     чего 568 из 974 локальных импортов (toFileId = "f1",
-//     "f28", ...) ложно помечались как «невалидный префикс».
-//   - ✅ ИСПРАВЛЕНО: `checkHtmlElementIds` — длины `cu_sfc` и
-//     `he_sfc` теперь считаются через `rleLength()`, а не
-//     через `.length`. До фикса:
-//       len(he_id)=238 ≠ len(he_sfc)=69   (RLE-сегментов)
-//       len(cu_id)=77  ≠ len(cu_sfc)=33   (RLE-сегментов)
-//     После фикса:
-//       len(he_id) === rleLength(he_sfc)  → 238 === 238 ✅
-//       len(cu_id) === rleLength(cu_sfc)  → 77  === 77  ✅
-//   - ✅ ДОБАВЛЕНО: утилита `rleLength(rle)` — сумма counts
-//     по RLE-сегментам.
-//   - ✅ ОБНОВЛЕНО: `checkLegendVersion` — ожидается '2.1.0'
-//     (было '2.0.1' в v3.4.4).
-//   - ✅ ОБНОВЛЕНО: тексты в блоке «Что делать»:
-//       • CODEC_VERSION = '16.1.0'
-//       • legend.version = '2.1.0'
-//       • vue.sfc — 34 поля
-//       • добавлен пункт 8 про he_id/he_pf/cu_id/cu_pf
-//       • добавлено пояснение про rleLength()
-//   - ✅ ОБНОВЛЕНО: заголовок v3.4.4 → v3.4.5.
-//
-// ИЗМЕНЕНИЯ v3.4.4 (синхронизация с CODEC v16.1.0):
-//   - ✅ ОБНОВЛЕНО: схема `vue.sfc` — 34 поля (было 30).
-//     Добавлены: cu_id, cu_pf, he_id, he_pf.
-//   - ✅ ОБНОВЛЕНО: `checkVueSfcMigration` — ожидаемая длина
-//     схемы считается из массива expected, а не хардкодится.
-//   - ✅ ДОБАВЛЕНО: проверка `checkHtmlElementIds` — новые
-//     инварианты I51–I54.
-//   - ✅ ОБНОВЛЕНО: `checkLegendVersion` — ожидается '2.0.1'.
-//
-// ИЗМЕНЕНИЯ v3.4.2 (fix I47 + fns.hv + legend.schemas.fns):
-//   - ✅ FIX: `checkValuesAndParams` — `params[]` теперь принимает
-//     `number[]` любой длины (не только `[number, number]`).
-//   - ✅ FIX: `checkVueSfcMigration` — проверяет 30 полей схемы.
-//   - ✅ FIX: добавлена проверка `fns.hv`.
-//
-// ИЗМЕНЕНИЯ v3.4.1 (fix TS2345 в compareDictionaries):
-//   - ✅ FIX: тип `tokens` в `compareDictionaries` и `decodeEntry`
-//     расширен с `string[]` до `(string | number)[]`.
-// ════════════════════════════════════════════════════════════
-
 import * as fs from 'fs';
 import * as path from 'path';
 

@@ -1,103 +1,5 @@
 #!/usr/bin/env node
 // scripts/verify-roundtrip.ts
-// ============================================
-// Скрипт проверки Round-Trip для CODEC (v16.1.0)
-// ============================================
-// Версия: 16.1.0
-//
-// ════════════════════════════════════════════════════════════
-// СВОДКА ВЕРСИЙ
-// ════════════════════════════════════════════════════════════
-//
-// v16.1.0 (round-trip 100%: глобально уникальные he.id/cu.id):
-//   - ✅ ОБНОВЛЕНО: codecVersion в jsonReport = '16.1.0'.
-//   - ✅ ОБНОВЛЕНО: legend.version проверка '2.0.0' → '2.1.0'.
-//   - ✅ ОБНОВЛЕНО: vue.sfc schema length 30 → 34 (добавлены
-//     cu_id, cu_pf, he_id, he_pf).
-//   - ✅ ДОБАВЛЕНО: спот-чек 'vue.sfc[].htmlElements[].parentFileId'.
-//   - ✅ ДОБАВЛЕНО: спот-чек 'vue.sfc[].htmlElements[].id uniqueness'.
-//   - ✅ ДОБАВЛЕНО: спот-чек 'vue.sfc[].componentUsages[].id uniqueness'.
-//   - ✅ ДОБАВЛЕНО: диагностика рассинхрона he_id/he_pf при verbose.
-//
-// v16.0.3 (fix L2: vue.sfc[].componentUsages/htmlElements):
-//   - ✅ ИСПРАВЛЕНО: добавлена нормализация vue.sfc[].componentUsages
-//     и vue.sfc[].htmlElements — приводит [] и undefined к единому
-//     виду [] перед сравнением в L1/L2/DL/RE/ENC/DEC.
-//
-// v16.0.2 (fix I47 + fns.hv + legend.schemas.fns):
-//   - ✅ FIX I47: разрешён `number[]` любой длины в `params[]`.
-//   - ✅ FIX: `checkLegendStructure` — `fns` теперь 10 полей.
-//   - ✅ FIX: `spotCheckIsHtmlVisible` — корректное сравнение.
-//
-// v16.0.1 (fix TS6133):
-//   - ✅ FIX: удалён неиспользуемый импорт `deserializeSourceChain`.
-//
-// v16.0.0 (Component Usage + DOM API + sourceChains):
-//   - ✅ ДОБАВЛЕНО: I45–I50 (6 инвариантов).
-//   - ✅ ОБНОВЛЕНО: legend.version проверка.
-//   - ✅ ОБНОВЛЕНО: vue.sfc — 30 полей.
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION → '16.0.0'.
-//
-// v15.7.3 (Vue-секция: нормализация id + семантика sfc.c)
-// v15.7.2 (Vue-секция: slices + новая схема vue.sfc)
-// v15.7.1 (Vue-секция: ослабление проверки + moduleId)
-// v15.7.0 (Vue-сущности)
-// v15.6.0 (JSON-safe проверки)
-// v15.4.0 (P3 — cross-file resolution)
-// v15.3.0 (P2 — расширенный CallData)
-// v15.2.0 (P1 — lexicalLinks)
-// v15.1.0 (P0 — parentFunctionId)
-// v15.0.6 (gr.i.tf — индекс в fl.p)
-// v15.0.2 (устранение дублирования conditionals)
-//
-// Уровни round-trip:
-//   L0  : encode(full) === compact          (семантически)
-//   L1  : decode(compact) === full          (семантически)
-//   L2  : decode(compact) === full          (побайтово, порядко-независимо)
-//   L3  : compact на диске === encode(full) (побайтово, буквально)
-//   L4  : encode(decode(encode(full))) === encode(full) (побайтово)
-//   RE  : encode(decode(compact)) === compact
-//   DL  : decode(encode(full)) === full
-//   ENC : encode(full) === encode(decode(encode(full)))
-//   DEC : decode(compact) === decode(encode(decode(compact)))
-//
-// Семантические инварианты:
-//   I1  : calls[].type ∈ {direct, async, method, callback}
-//   I2  : imports[].type ∈ {named, default, namespace}
-//   I3  : exports[].type ∈ {named, default, type}
-//   I4  : external calls → isExternal = 1 в compact.gr.c
-//   I5  : external calls: сохранность типа (full vs decoded)
-//   I6  : functions[].*Flags ∈ {true, false, undefined}
-//   I7  : fns/cls/cn — columnar-структура
-//   I8  : gr.i.tf — индекс в fl.p (-1 для внешних) — v15.0.6
-//   I9  : fns.parent — валидный индекс или -1 — v15.1.0 (P0)
-//   I10 : parentFunctionId — целостность — v15.1.0 (P0)
-//   I11 : lx.p/lx.c — валидные индексы — v15.2.0 (P1)
-//   I12 : lexicalLinks — целостность — v15.2.0 (P1)
-//   I13 : gr.c.col/ck/cn/ai — согласованность длин — v15.3.0 (P2)
-//   I15 : compact.values[] — только JSON-safe значения — v15.6.0
-//   I16 : full.constants[].value — только JSON-safe значения — v15.6.0
-//   I17 : vue.sfc.c/cs — согласованность с decoded — v15.7.3
-//   I18 : fns.vk — согласованность с functions[].vueKind — v15.7.0
-//   I45 : len(ids) >= max(id-индексы) — v16.0.0
-//   I46 : values[] — JSON-safe — v16.0.0
-//   I47 : params[] — (string | number[]) — v16.0.2 (ослаблено)
-//   I48 : legend.schemas.vue.sfc содержит pn/ps/en/es/xn/xs — v16.0.0
-//   I49 : legend.schemas.ids присутствует — v16.0.0
-//   I50 : RLE sc-массивов — max(start+length) < sourceChains.length — v16.0.0
-//   I51 : he.id — глобально уникальны (v16.1.0)
-//   I52 : cu.id — глобально уникальны (v16.1.0)
-//   I53 : he.parentFileId — непустой или '' для top-level (v16.1.0)
-//
-// Проверки легенды:
-//   L1  : legend.codes.* присутствуют (29 словарей) — v16.0.0
-//   L2  : legend.flags.bits содержит 18 битов
-//   L3  : legend.schemas.* корректной длины (37 схем) — v16.0.0
-//   L4  : legend.version === '2.1.0' — v16.1.0
-//
-// Exit code 0 — всё ок, 1 — есть расхождения.
-// ============================================
-
 import fs from 'fs';
 import path from 'path';
 import { Codec } from '../src/reporters/codec/codec.js';
@@ -131,11 +33,7 @@ const DEFAULT_OPTIONS: ScriptOptions = {
   checkLegend: true,
 };
 
-// ============================================
-// ✅ v16.1.0: ВЕРСИИ CODEC И LEGEND
-// ============================================
-
-const EXPECTED_CODEC_VERSION = '16.1.0';
+const EXPECTED_CODEC_VERSION = '16.2.2';
 const EXPECTED_LEGEND_VERSION = '2.1.0';
 
 // ============================================

@@ -1,11 +1,11 @@
 // src/reporters/codec/codec-encode.ts
 // ============================================
-// КОДИРОВАНИЕ: FullJSON → CompactJSON (v16.2.2)
+// КОДИРОВАНИЕ: FullJSON → CompactJSON (v16.1.0)
 // ============================================
 // Версия: 16.2.2
 //
 // ════════════════════════════════════════════════════════════
-// ИЗМЕНЕНИЯ v16.2.2 (FIX: identifier / literalValue в componentProps):
+// ИЗМЕНЕНИЯ v16.1.0 (FIX: identifier / literalValue в componentProps):
 //   - ✅ ИСПРАВЛЕНО: в `encodeVueSection` при сборе `allComponentProps`
 //     из `sfc.componentUsages[].props` и `sfc.htmlElements[].props`
 //     теперь ДОЗАПОЛНЯЮТСЯ поля `identifier`, `memberChain`,
@@ -178,7 +178,7 @@ import {
 // ✅ v16.0.0: сериализация sourceChain
 import { serializeSourceChain } from '../../core/source-chain-resolver.js';
 
-// ✅ v16.2.2: извлечение identifier / memberChain / literalValue
+// ✅ v16.1.0: извлечение identifier / memberChain / literalValue
 // Нужно для дозаполнения полей у ComponentProp, пришедших из
 // parseVueTemplate (там они null/undefined).
 import {
@@ -681,7 +681,7 @@ function encodeStr(str: string, tokenIndex: Map<string, number>): string | numbe
 //      специальное значение -1 для пустой строки.
 //   3. В `result.sfc` добавлены поля: cu_id, cu_pf, he_id, he_pf.
 //
-// ⚠️ ИЗМЕНЕНИЯ v16.2.2:
+// ⚠️ ИЗМЕНЕНИЯ v16.1.0:
 //   В блоках сбора `allComponentProps` (для cu.props и he.props)
 //   дозаполняем `identifier` / `memberChain` / `literalValue`,
 //   если они не заполнены. Это устраняет потерю этих полей
@@ -806,7 +806,7 @@ export function encodeVueSection(
       // Props
       const cpStart = allComponentProps.length;
       for (const p of cu.props ?? []) {
-        // ✅ v16.2.2: дозаполняем identifier / memberChain / literalValue,
+        // ✅ v16.1.0: дозаполняем identifier / memberChain / literalValue,
         // если они не заполнены (например, пришли из parseVueTemplate
         // как null / undefined). Если уже заполнены (например,
         // прошли через fillComponentAccumulators) — не трогаем.
@@ -865,7 +865,7 @@ export function encodeVueSection(
       // Props
       const hcpStart = allComponentProps.length;
       for (const p of he.props ?? []) {
-        // ✅ v16.2.2: аналогично cu.props — дозаполняем
+        // ✅ v16.1.0: аналогично cu.props — дозаполняем
         // identifier / memberChain / literalValue.
         allComponentProps.push({
           ...p,
@@ -1431,7 +1431,7 @@ function encodeDomApiArgs(_full: any, dict: DictBuilder): any {
 // ============================================
 
 /**
- * Кодирует полный JSON в сжатый (v16.2.2).
+ * Кодирует полный JSON в сжатый (v16.1.0).
  */
 export function encode(
   payload: FullJSON,
@@ -1837,7 +1837,7 @@ export function encode(
   }
 
   // ============================================================
-  // 12.7.1 ✅ v16.2.2-FIX: top-level component* = vue.* (+ fallback)
+  // 12.7.1 ✅ v16.1.0-FIX: top-level component* = vue.* (+ fallback)
   // ============================================================
   //
   // ПРОБЛЕМА (v16.0.8):
@@ -1864,7 +1864,7 @@ export function encode(
   //   Это гарантирует, что данные не потеряются ни при каком
   //   порядке сборки FullJSON.
   //
-  // ⚠️ v16.2.2-FIX (identifier / literalValue):
+  // ⚠️ v16.1.0-FIX (identifier / literalValue):
   //   Основное исправление находится в `encodeVueSection`:
   //   теперь `allComponentProps` дозаполняются `identifier`,
   //   `memberChain`, `literalValue`. Здесь ничего менять не нужно —
@@ -1975,7 +1975,7 @@ export function encode(
     r: moduleReverse.get(canonical.root) ?? 0,
     valuesMode,
 
-    // ✅ v16.2.2: top-level component*-секции = vue.* (+ fallback)
+    // ✅ v16.1.0: top-level component*-секции = vue.* (+ fallback)
     componentProps: topLevelComponentProps,
     componentEvents: topLevelComponentEvents,
     componentDirectives: topLevelComponentDirectives,
