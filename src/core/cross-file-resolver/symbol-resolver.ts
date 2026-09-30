@@ -2,7 +2,28 @@
 // ============================================================
 // РЕЗОЛВИНГ СИМВОЛОВ (P3)
 // ============================================================
-// Версия: 1.0.1
+// Версия: 1.0.3
+//
+// ИЗМЕНЕНИЯ v1.0.3 (имя класса → имя модуля):
+//   - ✅ УДАЛЕНО: локальная inferAnonymousClassName (module-level)
+//   - ✅ ДОБАВЛЕНО: импорт inferClassName из
+//     '../entity-extractor/helpers/infer-class-name.js'
+//   - ✅ ИЗМЕНЕНО: resolveNewExpression (×2) → inferClassName(
+//     decl, decl.getSourceFile().getFilePath()
+//   )
+//   - ✅ ИЗМЕНЕНО: resolveDeclaration (ClassDeclaration) → inferClassName(
+//     decl, decl.getSourceFile().getFilePath()
+//   )
+//     Теперь для анонимных классов выводится ИМЯ МОДУЛЯ
+//     (например, 'auto-fixer') вместо 'AnonymousClass'.
+//
+// ИЗМЕНЕНИЯ v1.0.2 (устранение Anonymous.*):
+//   - ✅ ДОБАВЛЕНО: inferAnonymousClassName() — вывод имени анонимного
+//     класса из контекста (VariableDeclarator / ExportDefaultDeclaration)
+//   - ✅ ИЗМЕНЕНО: resolveNewExpression — 'Anonymous' → inferAnonymousClassName()
+//     ?? 'AnonymousClass' (2 места: new Foo() и new obj.Foo())
+//   - ✅ ИЗМЕНЕНО: resolveDeclaration — 'Anonymous' → inferAnonymousClassName()
+//     ?? 'AnonymousClass' (ClassDeclaration)
 //
 // ИЗМЕНЕНИЯ v1.0.1 (fix TS2306):
 //   - ✅ ИСПРАВЛЕНО: `export class SymbolResolver` теперь ГАРАНТИРОВАННО
@@ -62,6 +83,10 @@ import type { Project } from 'ts-morph';
 // циклических импортов во время выполнения.
 import type { ResolvedCallee } from './types.js';
 
+// ✅ v1.0.3: единый helper для имени класса
+// (имя класса → контекст → имя модуля → 'AnonymousClass')
+import { inferClassName } from '../entity-extractor/helpers/infer-class-name.js';
+
 // ============================================================
 // ОСНОВНОЙ КЛАСС
 // ============================================================
@@ -117,7 +142,7 @@ export class SymbolResolver {
   // ============================================================
 
   constructor(private project: Project) {}
-  
+
   /**
    * Возвращает Project, с которым работает резолвер.
    * Полезно для отладки и внешних потребителей.
@@ -405,11 +430,14 @@ export class SymbolResolver {
           if (!nameNode) continue;
           const { line, column } = sf.getLineAndColumnAtPos(nameNode.getStart());
 
+          // ✅ v1.0.3: имя класса → контекст → имя модуля → 'AnonymousClass'
+          const safeName = inferClassName(decl, sf.getFilePath());
+
           return {
             filePath: sf.getFilePath(),
             line,
             column,
-            name: decl.getName() ?? 'Anonymous',
+            name: safeName,
             kind: 'constructor',
             symbolId: this.safeFqn(symbol),
           };
@@ -429,11 +457,14 @@ export class SymbolResolver {
           const sf = decl.getSourceFile();
           const { line, column } = sf.getLineAndColumnAtPos(decl.getStart());
 
+          // ✅ v1.0.3: имя класса → контекст → имя модуля → 'AnonymousClass'
+          const safeName = inferClassName(decl, sf.getFilePath());
+
           return {
             filePath: sf.getFilePath(),
             line,
             column,
-            name: decl.getName() ?? 'Anonymous',
+            name: safeName,
             kind: 'constructor',
             symbolId: this.safeFqn(symbol),
           };
@@ -514,7 +545,9 @@ export class SymbolResolver {
 
       // ClassDeclaration
       if (Node.isClassDeclaration(decl)) {
-        return this.makeResolved(decl, decl.getName() ?? 'Anonymous', 'constructor', symbol);
+        // ✅ v1.0.3: имя класса → контекст → имя модуля → 'AnonymousClass'
+        const safeName = inferClassName(decl, decl.getSourceFile().getFilePath());
+        return this.makeResolved(decl, safeName, 'constructor', symbol);
       }
 
       // PropertyDeclaration (метод в классе через arrow)

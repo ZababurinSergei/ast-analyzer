@@ -1,5 +1,5 @@
 // src/core/ast-parser.ts
-// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ v7.2.0
+// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ v7.3.0
 // ✅ ИСПРАВЛЕНО: isExternalModule — @scope/pkg теперь external
 // ✅ ИСПРАВЛЕНО: collectImportsFromAST — сохраняется line + loc
 // ✅ ИСПРАВЛЕНО: collectExportsFromAST — localName, isTypeOnly, isStarReExport, isDefaultReExport
@@ -8,6 +8,9 @@
 // ✅ ОБНОВЛЕНО v7.2.0: логирование Vue без <script> понижено до console.debug
 // ✅ ОБНОВЛЕНО v7.2.0: логирование алиасов понижено до console.debug (флаг AST_DEBUG_PATHS)
 // ✅ ОБНОВЛЕНО v7.2.0: логирование парсинга понижено до console.debug (флаг AST_DEBUG_PARSE)
+// ✅ ОБНОВЛЕНО v7.3.0: extractFunctionsFromAST использует
+//     единый helper inferClassName() из helpers/infer-class-name.js
+//     (имя класса → контекст → имя модуля → 'AnonymousClass')
 
 import fs from 'fs';
 import path from 'path';
@@ -16,6 +19,10 @@ import { walk } from 'estree-walker';
 import { parse as parseVueSFC } from '@vue/compiler-sfc';
 import { loadTsConfig, resolveAliasPath, getTsConfigDir } from './tsconfig-resolver.js';
 import type { TsConfig } from './tsconfig-resolver.js';
+
+// ✅ v7.3.0: единый helper для имени класса
+// (имя класса → контекст → имя модуля → 'AnonymousClass')
+import { inferClassName } from './entity-extractor/helpers/infer-class-name.js';
 
 // ==========================================
 // ФЛАГИ ОТЛАДКИ (v7.2.0)
@@ -106,7 +113,11 @@ let tsConfigBaseDirCache: string | null = null;
 // ФУНКЦИИ ДЛЯ РАБОТЫ С ПУТЯМИ
 // ==========================================
 
-import { resolveAbsolutePath, validateAndResolvePath, normalizePathForOS } from '../utils/path-utils.js';
+import {
+  resolveAbsolutePath,
+  validateAndResolvePath,
+  normalizePathForOS,
+} from '../utils/path-utils.js';
 
 export { resolveAbsolutePath, validateAndResolvePath, normalizePathForOS };
 
@@ -166,17 +177,12 @@ export function isExternalModule(importTarget: string, filePath?: string): boole
     // @scope/name — минимум 2 части
     if (parts.length >= 2 && parts[0] && parts[1]) {
       // Проверяем, не является ли это алиасом из tsconfig
-      const tsConfig = filePath
-        ? getTsConfigForFile(filePath)
-        : getTsConfigForFile(process.cwd());
+      const tsConfig = filePath ? getTsConfigForFile(filePath) : getTsConfigForFile(process.cwd());
 
       if (tsConfig?.compilerOptions?.paths) {
         const isAlias = Object.keys(tsConfig.compilerOptions.paths).some(alias => {
           const aliasPrefix = alias.replace('/*', '').replace('*', '');
-          return (
-            importTarget === aliasPrefix ||
-            importTarget.startsWith(aliasPrefix + '/')
-          );
+          return importTarget === aliasPrefix || importTarget.startsWith(aliasPrefix + '/');
         });
         if (isAlias) return false;
       }
@@ -494,7 +500,7 @@ export function collectExportsFromAST(ast: any): {
         if (decl.type === 'FunctionDeclaration' && decl.id) {
           exports.push({
             name: decl.id.name,
-            localName: decl.id.name,           // ✅
+            localName: decl.id.name, // ✅
             type: 'function',
             isDefault: false,
             line: node.loc?.start?.line || decl.loc?.start?.line,
@@ -505,7 +511,7 @@ export function collectExportsFromAST(ast: any): {
         } else if (decl.type === 'ClassDeclaration' && decl.id) {
           exports.push({
             name: decl.id.name,
-            localName: decl.id.name,           // ✅
+            localName: decl.id.name, // ✅
             type: 'class',
             isDefault: false,
             line: node.loc?.start?.line || decl.loc?.start?.line,
@@ -518,7 +524,7 @@ export function collectExportsFromAST(ast: any): {
             if (d.id?.name) {
               exports.push({
                 name: d.id.name,
-                localName: d.id.name,         // ✅
+                localName: d.id.name, // ✅
                 type: 'variable',
                 isDefault: false,
                 line: d.loc?.start?.line || node.loc?.start?.line,
@@ -531,29 +537,29 @@ export function collectExportsFromAST(ast: any): {
         } else if (decl.type === 'TSInterfaceDeclaration' && decl.id) {
           exports.push({
             name: decl.id.name,
-            localName: decl.id.name,           // ✅
+            localName: decl.id.name, // ✅
             type: 'interface',
             isDefault: false,
             line: node.loc?.start?.line || decl.loc?.start?.line,
             isReExport: false,
-            isTypeOnly: true,                  // ✅ interface → type-only
+            isTypeOnly: true, // ✅ interface → type-only
             loc: node.loc,
           });
         } else if (decl.type === 'TSTypeAliasDeclaration' && decl.id) {
           exports.push({
             name: decl.id.name,
-            localName: decl.id.name,           // ✅
+            localName: decl.id.name, // ✅
             type: 'type',
             isDefault: false,
             line: node.loc?.start?.line || decl.loc?.start?.line,
             isReExport: false,
-            isTypeOnly: true,                  // ✅ type alias → type-only
+            isTypeOnly: true, // ✅ type alias → type-only
             loc: node.loc,
           });
         } else if (decl.type === 'TSEnumDeclaration' && decl.id) {
           exports.push({
             name: decl.id.name,
-            localName: decl.id.name,           // ✅
+            localName: decl.id.name, // ✅
             type: 'enum',
             isDefault: false,
             line: node.loc?.start?.line || decl.loc?.start?.line,
@@ -571,11 +577,7 @@ export function collectExportsFromAST(ast: any): {
       //    export type { T }             — type-only named
       //    export { default } from '...' — default re-export
       // ============================================
-      if (
-        node.type === 'ExportNamedDeclaration' &&
-        node.specifiers &&
-        node.specifiers.length > 0
-      ) {
+      if (node.type === 'ExportNamedDeclaration' && node.specifiers && node.specifiers.length > 0) {
         const isReExport = !!node.source;
         const sourceModule = node.source?.value;
         const isTypeOnly = node.exportKind === 'type' || false;
@@ -590,27 +592,22 @@ export function collectExportsFromAST(ast: any): {
 
             specifierNames.push(exportedName);
 
-            const isDefault =
-              exportedName === 'default' || localName === 'default';
+            const isDefault = exportedName === 'default' || localName === 'default';
 
             const isDefaultReExport = isReExport && isDefault;
 
             exports.push({
               name: exportedName,
-              localName,                       // ✅ ЛОКАЛЬНОЕ ИМЯ
-              type: isReExport
-                ? isDefault
-                  ? 'default'
-                  : 're-export'
-                : 'named',
+              localName, // ✅ ЛОКАЛЬНОЕ ИМЯ
+              type: isReExport ? (isDefault ? 'default' : 're-export') : 'named',
               isDefault,
-              isDefaultReExport,               // ✅
+              isDefaultReExport, // ✅
               line: node.loc?.start?.line,
               isReExport,
               source: sourceModule,
               specifiers: [localName],
               isTypeOnly,
-              isStarReExport: false,           // ✅
+              isStarReExport: false, // ✅
               loc: node.loc,
             });
           }
@@ -620,16 +617,16 @@ export function collectExportsFromAST(ast: any): {
         if (isReExport && specifierNames.length > 0) {
           exports.push({
             name: `{ ${specifierNames.join(', ')} }`,
-            localName: `{ ${specifierNames.join(', ')} }`,  // ✅
+            localName: `{ ${specifierNames.join(', ')} }`, // ✅
             type: 're-export-group',
             isDefault: false,
-            isDefaultReExport: false,          // ✅
+            isDefaultReExport: false, // ✅
             line: node.loc?.start?.line,
             isReExport: true,
             source: sourceModule,
             specifiers: specifierNames,
             isTypeOnly,
-            isStarReExport: false,             // ✅
+            isStarReExport: false, // ✅
             loc: node.loc,
           });
         }
@@ -641,7 +638,7 @@ export function collectExportsFromAST(ast: any): {
       if (node.type === 'ExportDefaultDeclaration' && node.declaration) {
         const decl = node.declaration;
         let name = 'default';
-        let localName = 'default';             // ✅
+        let localName = 'default'; // ✅
         let type = 'default';
 
         if (decl.type === 'FunctionDeclaration' && decl.id) {
@@ -668,14 +665,14 @@ export function collectExportsFromAST(ast: any): {
 
         exports.push({
           name,
-          localName,                           // ✅
+          localName, // ✅
           type,
           isDefault: true,
-          isDefaultReExport: false,            // ✅ default export — НЕ re-export
+          isDefaultReExport: false, // ✅ default export — НЕ re-export
           line: node.loc?.start?.line,
           isReExport: false,
           isTypeOnly: false,
-          isStarReExport: false,               // ✅
+          isStarReExport: false, // ✅
           loc: node.loc,
         });
       }
@@ -691,15 +688,15 @@ export function collectExportsFromAST(ast: any): {
 
         exports.push({
           name: exportedName,
-          localName: '*',                      // ✅
+          localName: '*', // ✅
           type: 'all',
           isDefault: false,
-          isDefaultReExport: false,            // ✅
+          isDefaultReExport: false, // ✅
           line: node.loc?.start?.line,
           isReExport: true,
           source: node.source.value,
           isTypeOnly: node.exportKind === 'type' || false,
-          isStarReExport: true,                // ✅
+          isStarReExport: true, // ✅
           specifiers: isNamespace ? [node.exported.name] : undefined,
           loc: node.loc,
         });
@@ -733,7 +730,10 @@ export function collectExportsFromAST(ast: any): {
  *   - Все console.log чтения/парсинга понижены до logParse (флаг AST_DEBUG_PARSE)
  *   - Предупреждение "не найден script блок" понижено до logVue (флаг AST_DEBUG_VUE)
  */
-export function parseFile(filePath: string, _options?: { extractTemplate?: boolean }): ParsedFileInfo | null {
+export function parseFile(
+  filePath: string,
+  _options?: { extractTemplate?: boolean }
+): ParsedFileInfo | null {
   try {
     const resolvedPath = validateAndResolvePath(filePath);
     if (!resolvedPath) return null;
@@ -744,8 +744,22 @@ export function parseFile(filePath: string, _options?: { extractTemplate?: boole
     }
 
     const unsupportedExtensions = [
-      '.css', '.scss', '.less', '.html', '.json', '.xml', '.svg',
-      '.png', '.jpg', '.jpeg', '.gif', '.ico', '.woff', '.woff2', '.ttf', '.eot',
+      '.css',
+      '.scss',
+      '.less',
+      '.html',
+      '.json',
+      '.xml',
+      '.svg',
+      '.png',
+      '.jpg',
+      '.jpeg',
+      '.gif',
+      '.ico',
+      '.woff',
+      '.woff2',
+      '.ttf',
+      '.eot',
     ];
     const ext = path.extname(filePath);
     if (unsupportedExtensions.includes(ext)) {
@@ -1108,7 +1122,7 @@ export function getAllProjectFiles(
 // ✅ НОВЫЕ ФУНКЦИИ ДЛЯ ИЗВЛЕЧЕНИЯ СУЩНОСТЕЙ
 // ==========================================
 
-export function extractFunctionsFromAST(ast: any): any[] {
+export function extractFunctionsFromAST(ast: any, filePath?: string): any[] {
   const functions: any[] = [];
   if (!ast || !ast.body) return functions;
 
@@ -1135,7 +1149,21 @@ export function extractFunctionsFromAST(ast: any): any[] {
 
       if (node.type === 'MethodDefinition' && node.key) {
         const methodName = node.key.name;
-        const className = parent?.id?.name || 'Anonymous';
+
+        // ✅ v7.3.0: выводим имя класса из контекста или модуля.
+        // ВАЖНО: `parent` для MethodDefinition — это ClassBody, а не сам класс,
+        // поэтому идём вверх по цепочке родителей до ClassDeclaration/ClassExpression.
+        let className: string | null = null;
+        let clsNode: any = parent;
+        while (clsNode && clsNode.type !== 'Program') {
+          if (clsNode.type === 'ClassDeclaration' || clsNode.type === 'ClassExpression') {
+            // inferClassName: имя класса → контекст → имя модуля → 'AnonymousClass'
+            className = inferClassName(clsNode, filePath);
+            break;
+          }
+          clsNode = clsNode.parent;
+        }
+        const safeClassName = className || 'AnonymousClass';
 
         if (methodName) {
           const isExported = isNodeExported(node, parent);
@@ -1153,7 +1181,7 @@ export function extractFunctionsFromAST(ast: any): any[] {
             startLine: node.loc?.start?.line || 1,
             endLine: node.loc?.end?.line || 1,
             isMethod: true,
-            className,
+            className: safeClassName,
           });
         }
       }
