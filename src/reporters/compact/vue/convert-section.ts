@@ -2,7 +2,19 @@
 // ============================================================
 // КОНВЕРТЕР VUE-СУЩНОСТЕЙ
 // ============================================================
-// Версия: 1.0.0
+// Версия: 1.1.0
+//
+// ИЗМЕНЕНИЯ v1.1.0 (v16.2.0: usedInTemplate для reactivity):
+//   - ✅ ДОБАВЛЕНО: проброс `usedInTemplate` в reactivity[].
+//     Поле заполняется в convert-analysis.ts на основе
+//     template.reactivityDeps.
+//   - 📌 ЗАЧЕМ: дать UI возможность отрисовать иконку 👁️
+//     только для тех reactivity, которые реально участвуют
+//     в рендеринге.
+//   - 📌 СИНХРОНИЗИРОВАНО С:
+//       • src/types.ts::ReactivityEntity
+//       • src/reporters/codec/codec-types.ts::ReactivityEntity
+//       • src/core/vue-entity-classifier.ts::VueReactivityEntity
 //
 // НАЗНАЧЕНИЕ
 // ----------
@@ -129,7 +141,7 @@ import type { VueEntities } from '../../../core/vue-entity-classifier.js';
  *      b. composables[] — резолв fileId/callers[]
  *      c. macros[]      — резолв fileId
  *      d. hooks[]       — резолв fileId
- *      e. reactivity[]  — резолв fileId
+ *      e. reactivity[]  — резолв fileId (+ usedInTemplate v16.2.0)
  *      f. icons[]       — резолв fileId + специальная обработка id
  *
  *   3. Инициализировать 5 top-level секций пустыми []:
@@ -166,138 +178,146 @@ import type { VueEntities } from '../../../core/vue-entity-classifier.js';
  *   поведение 1:1 для 100% совместимости.
  */
 export function convertVueEntitiesToFull(
-    vueEntities: VueEntities,
-    fileMap: Map<string, FileData>,
-    projectRoot: string
+  vueEntities: VueEntities,
+  fileMap: Map<string, FileData>,
+  projectRoot: string
 ): VueSectionFull {
-    // ────────────────────────────────────────────────────────
-    // 1. Вспомогательные функции
-    // ────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────
+  // 1. Вспомогательные функции
+  // ────────────────────────────────────────────────────────
 
-    /**
-     * Резолвит абсолютный путь в короткий fileId (f1, f2, ...).
-     * Fallback — 'f1', если файл не найден в fileMap.
-     */
-    const resolveFileId = (filePath: string): string => {
-        const absolutePath = path.resolve(filePath);
-        const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
-        const file = fileMap.get(relativePath);
-        return file?.id ?? 'f1';
-    };
+  /**
+   * Резолвит абсолютный путь в короткий fileId (f1, f2, ...).
+   * Fallback — 'f1', если файл не найден в fileMap.
+   */
+  const resolveFileId = (filePath: string): string => {
+    const absolutePath = path.resolve(filePath);
+    const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
+    const file = fileMap.get(relativePath);
+    return file?.id ?? 'f1';
+  };
 
-    /**
-     * Резолвит абсолютный путь в moduleId (m1, m2, ...).
-     * Fallback — 'm1'.
-     *
-     * Использует resolveFileId для получения fileId, затем ищет
-     * соответствующий FileData в fileMap.
-     */
-    const resolveModuleId = (filePath: string): string => {
-        const fileId = resolveFileId(filePath);
-        for (const [, f] of fileMap) {
-            if (f.id === fileId) return f.moduleId;
-        }
-        return 'm1';
-    };
+  /**
+   * Резолвит абсолютный путь в moduleId (m1, m2, ...).
+   * Fallback — 'm1'.
+   *
+   * Использует resolveFileId для получения fileId, затем ищет
+   * соответствующий FileData в fileMap.
+   */
+  const resolveModuleId = (filePath: string): string => {
+    const fileId = resolveFileId(filePath);
+    for (const [, f] of fileMap) {
+      if (f.id === fileId) return f.moduleId;
+    }
+    return 'm1';
+  };
 
-    // ────────────────────────────────────────────────────────
-    // 2. Конвертация секций
-    // ────────────────────────────────────────────────────────
+  // ────────────────────────────────────────────────────────
+  // 2. Конвертация секций
+  // ────────────────────────────────────────────────────────
 
-    return {
-        // ======================================================
-        // 2a. SFC
-        // ======================================================
-        // Для каждого SFC:
-        //   • резолвим fileId/moduleId
-        //   • сохраняем name, blocks, composables, props, emits, exposed
-        //   • инициализируем componentUsages и htmlElements как []
-        //     (заполняются в processComponentUsage)
-        sfc: (vueEntities.sfc ?? []).map(s => ({
-            fileId: resolveFileId(s.fileId),
-            moduleId: resolveModuleId(s.fileId),
-            name: s.name,
-            blocks: s.blocks,
-            composables: s.composables ?? [],
-            props: s.props ?? [],
-            emits: s.emits ?? [],
-            exposed: s.exposed ?? [],
-            componentUsages: [],
-            htmlElements: [],
-        })),
+  return {
+    // ======================================================
+    // 2a. SFC
+    // ======================================================
+    // Для каждого SFC:
+    //   • резолвим fileId/moduleId
+    //   • сохраняем name, blocks, composables, props, emits, exposed
+    //   • инициализируем componentUsages и htmlElements как []
+    //     (заполняются в processComponentUsage)
+    sfc: (vueEntities.sfc ?? []).map(s => ({
+      fileId: resolveFileId(s.fileId),
+      moduleId: resolveModuleId(s.fileId),
+      name: s.name,
+      blocks: s.blocks,
+      composables: s.composables ?? [],
+      props: s.props ?? [],
+      emits: s.emits ?? [],
+      exposed: s.exposed ?? [],
+      componentUsages: [],
+      htmlElements: [],
+    })),
 
-        // ======================================================
-        // 2b. Composables
-        // ======================================================
-        // Для каждого composable:
-        //   • резолвим fileId
-        //   • резолвим callers[] через resolveFileId
-        composables: (vueEntities.composables ?? []).map(c => ({
-            id: c.id,
-            name: c.name,
-            fileId: resolveFileId(c.fileId),
-            kind: c.kind,
-            returnShape: c.returnShape,
-            returnedKeys: c.returnedKeys ?? [],
-            callers: (c.callers ?? []).map(resolveFileId),
-        })),
+    // ======================================================
+    // 2b. Composables
+    // ======================================================
+    // Для каждого composable:
+    //   • резолвим fileId
+    //   • резолвим callers[] через resolveFileId
+    composables: (vueEntities.composables ?? []).map(c => ({
+      id: c.id,
+      name: c.name,
+      fileId: resolveFileId(c.fileId),
+      kind: c.kind,
+      returnShape: c.returnShape,
+      returnedKeys: c.returnedKeys ?? [],
+      callers: (c.callers ?? []).map(resolveFileId),
+    })),
 
-        // ======================================================
-        // 2c. Macros
-        // ======================================================
-        macros: (vueEntities.macros ?? []).map(m => ({
-            id: m.id,
-            fileId: resolveFileId(m.fileId),
-            kind: m.kind,
-            line: m.line,
-        })),
+    // ======================================================
+    // 2c. Macros
+    // ======================================================
+    macros: (vueEntities.macros ?? []).map(m => ({
+      id: m.id,
+      fileId: resolveFileId(m.fileId),
+      kind: m.kind,
+      line: m.line,
+    })),
 
-        // ======================================================
-        // 2d. Hooks
-        // ======================================================
-        hooks: (vueEntities.hooks ?? []).map(h => ({
-            id: h.id,
-            fileId: resolveFileId(h.fileId),
-            hookName: h.hookName,
-            line: h.line,
-        })),
+    // ======================================================
+    // 2d. Hooks
+    // ======================================================
+    hooks: (vueEntities.hooks ?? []).map(h => ({
+      id: h.id,
+      fileId: resolveFileId(h.fileId),
+      hookName: h.hookName,
+      line: h.line,
+    })),
 
-        // ======================================================
-        // 2e. Reactivity
-        // ======================================================
-        reactivity: (vueEntities.reactivity ?? []).map(r => ({
-            id: r.id,
-            fileId: resolveFileId(r.fileId),
-            kind: r.kind,
-            line: r.line,
-            name: r.name,
-        })),
+    // ======================================================
+    // 2e. Reactivity
+    // ======================================================
+    // ✅ v16.2.0: пробрасываем usedInTemplate.
+    //
+    // Поле уже заполнено в convert-analysis.ts:
+    //   usedInTemplate = template.reactivityDeps.includes(name)
+    //
+    // На этом уровне мы просто передаём его дальше —
+    // в codec-encode.ts оно превратится в колонку 0/1.
+    reactivity: (vueEntities.reactivity ?? []).map(r => ({
+      id: r.id,
+      fileId: resolveFileId(r.fileId),
+      kind: r.kind,
+      line: r.line,
+      name: r.name,
+      usedInTemplate: r.usedInTemplate, // ✅ v16.2.0
+    })),
 
-        // ======================================================
-        // 2f. Icons
-        // ======================================================
-        // ⚠️ Сохраняем оригинальное поведение: id = `ic${i.id}`,
-        //    потому что resolveFileId всегда возвращает непустую
-        //    строку (в том числе fallback 'f1').
-        icons: (vueEntities.icons ?? []).map(i => ({
-            id: resolveFileId(i.fileId) ? `ic${i.id}` : i.id,
-            fileId: resolveFileId(i.fileId),
-            name: i.name,
-            category: i.category,
-        })),
+    // ======================================================
+    // 2f. Icons
+    // ======================================================
+    // ⚠️ Сохраняем оригинальное поведение: id = `ic${i.id}`,
+    //    потому что resolveFileId всегда возвращает непустую
+    //    строку (в том числе fallback 'f1').
+    icons: (vueEntities.icons ?? []).map(i => ({
+      id: resolveFileId(i.fileId) ? `ic${i.id}` : i.id,
+      fileId: resolveFileId(i.fileId),
+      name: i.name,
+      category: i.category,
+    })),
 
-        // ======================================================
-        // 3. Top-level component*-секции (v16.0.4)
-        // ======================================================
-        // ВСЕГДА присутствуют (даже пустые []), симметрично
-        // codec-decode.ts v16.0.4.
-        //
-        // Реальные значения заполняются в pass-5-vue.ts
-        // через fillComponentAccumulators.
-        componentProps: [],
-        componentEvents: [],
-        componentDirectives: [],
-        componentSlots: [],
-        htmlInterpolations: [],
-    };
+    // ======================================================
+    // 3. Top-level component*-секции (v16.0.4)
+    // ======================================================
+    // ВСЕГДА присутствуют (даже пустые []), симметрично
+    // codec-decode.ts v16.0.4.
+    //
+    // Реальные значения заполняются в pass-5-vue.ts
+    // через fillComponentAccumulators.
+    componentProps: [],
+    componentEvents: [],
+    componentDirectives: [],
+    componentSlots: [],
+    htmlInterpolations: [],
+  };
 }

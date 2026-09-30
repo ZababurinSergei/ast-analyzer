@@ -495,4 +495,5 @@ export interface ReactivityInfo {
   writes: string[];
   /** Является ли computed writeable ({ get, set }) */
   isWriteable: boolean;
+  name?: string;
 }

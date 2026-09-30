@@ -1,12 +1,27 @@
 // src/reporters/codec/codec-types.ts
 // ============================================
-// ТИПЫ ДЛЯ КОДЕКА (v16.1.0)
+// ТИПЫ ДЛЯ КОДЕКА (v16.2.0)
 // ============================================
-// Версия: 16.1.0
+// Версия: 16.2.0
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
+//
+// v16.2.0 (usedInTemplate для reactivity):
+//   - ✅ ДОБАВЛЕНО: `usedInTemplate?: boolean` в `ReactivityEntity`.
+//     Показывает, используется ли переменная в <template>.
+//     Вычисляется в convert-analysis.ts на основе
+//     template.reactivityDeps.
+//   - ✅ ДОБАВЛЕНО: `usedInTemplate?: number[]` в
+//     `VueSectionCompact.reactivity`. Колонка 0/1.
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '16.2.0'
+//   - ✅ ОБНОВЛЕНО: схема `vue.reactivity` — 4 → 5 полей
+//   - ✅ СИНХРОНИЗИРОВАНО с:
+//       • codec-encode.ts     (v16.2.0)
+//       • codec-decode.ts     (v16.2.0)
+//       • codec-legend.ts     (v16.2.0)
+//       • verify-roundtrip.ts (v16.2.0)
 //
 // v16.1.0 (BREAKING: глобально уникальные cu.id/he.id):
 //   - ✅ ДОБАВЛЕНО: `cu_id`, `cu_pf`, `he_id`, `he_pf` в
@@ -158,7 +173,7 @@
 // ============================================
 
 // ============================================================
-// ✅ v16.1.0: ВЕРСИИ CODEC И LEGEND
+// ✅ v16.2.0: ВЕРСИИ CODEC И LEGEND
 // ============================================================
 // CODEC_VERSION используется в:
 //   - compact-reporter.ts (version в full.json)
@@ -172,7 +187,7 @@
 // Инвариант I40 проверяет его значение.
 // ============================================================
 
-export const CODEC_VERSION = '16.1.0';
+export const CODEC_VERSION = '16.2.0';
 export const LEGEND_VERSION = '2.1.0';
 
 // ============================================================
@@ -390,17 +405,17 @@ import type {
 // ────────────────────────────────────────────────────────────
 export type {
   /** Обработчик события из шаблона Vue (type alias на vue-analyzer) */
-    TemplateEventHandler,
+  TemplateEventHandler,
   /** Динамический компонент (type alias на vue-analyzer) */
-    TemplateDynamicComponent,
+  TemplateDynamicComponent,
   /** Template ref (type alias на vue-analyzer) */
-    TemplateRefUsage,
+  TemplateRefUsage,
   /** CSS-переменная из <style> (type alias на vue-analyzer) */
-    TemplateCssVariable,
+  TemplateCssVariable,
   /** :deep() селектор (type alias на vue-analyzer) */
-    TemplateDeepSelector,
+  TemplateDeepSelector,
   /** Условный рендеринг (расширяет vue-analyzer + id?/fileId?) */
-    TemplateConditional,
+  TemplateConditional,
 } from '../../types.js';
 
 // ============================================================
@@ -563,6 +578,14 @@ export interface HookEntity {
 
 /**
  * Реактивный примитив или watcher.
+ *
+ * ✅ v16.2.0: добавлено поле usedInTemplate.
+ *   Показывает, используется ли переменная в <template>.
+ *   Вычисляется в convert-analysis.ts на основе
+ *   template.reactivityDeps.
+ *
+ * ⚠️ СИНХРОНИЗИРОВАНО С src/types.ts::ReactivityEntity.
+ *   При изменении полей — синхронизировать оба файла.
  */
 export interface ReactivityEntity {
   id: string;
@@ -570,6 +593,33 @@ export interface ReactivityEntity {
   kind: 'computed' | 'ref' | 'reactive' | 'watch' | 'shallowRef' | 'readonly' | 'toRef' | 'toRefs';
   line: number;
   name?: string;
+
+  /**
+   * ✅ v16.2.0: используется ли переменная в <template>.
+   *
+   * ════════════════════════════════════════════════════════════
+   * ЛОГИКА
+   * ════════════════════════════════════════════════════════════
+   *
+   *   Заполняется в convert-analysis.ts:
+   *     usedInTemplate = template.reactivityDeps.includes(name)
+   *
+   *   ПРИМЕР:
+   *     const count = ref(0);                    // reactivity, name='count'
+   *     const displayText = computed(...);       // reactivity, name='displayText'
+   *     <template>{{ displayText }}</template>   // reactivityDeps=['displayText']
+   *     →
+   *       { name: 'count',       usedInTemplate: false }
+   *       { name: 'displayText', usedInTemplate: true  }
+   *
+   * ════════════════════════════════════════════════════════════
+   * ЗАЧЕМ
+   * ════════════════════════════════════════════════════════════
+   *
+   *   UI может отрисовать иконку 👁️ только для тех reactivity,
+   *   которые реально участвуют в рендеринге.
+   */
+  usedInTemplate?: boolean;
 }
 
 /**
@@ -592,7 +642,7 @@ export interface IconEntity {
  * kind='none' УБРАН — мёртвый enum.
  */
 export type HtmlOutputKind =
-// Vue-шаблон
+  // Vue-шаблон
   | 'rendered-text'
   | 'rendered-attr'
   | 'rendered-cond'
@@ -653,7 +703,7 @@ export interface PropUsage {
  *    только внутри codec-types.ts.
  */
 export type DomApiCategory =
-// Слушатели событий (P0)
+  // Слушатели событий (P0)
   | 'add-event-listener'
   | 'remove-event-listener'
   | 'dispatch-event'
@@ -819,7 +869,7 @@ export interface VueSectionFull {
 }
 
 // ============================================================
-// ✅ v16.1.0: VUE SECTION (CompactJSON)
+// ✅ v16.2.0: VUE SECTION (CompactJSON)
 // ============================================================
 //
 // СХЕМА (см. legend.schemas['vue.*'])
@@ -842,6 +892,9 @@ export interface VueSectionFull {
 // Breaking change v16.1.0:
 //   + cu_id, cu_pf — id и parentFileId для componentUsages
 //   + he_id, he_pf — id и parentFileId для htmlElements
+//
+// Breaking change v16.2.0:
+//   + reactivity.usedInTemplate — 0/1 флаг использования в template
 //
 // ⚠️ Формат cu_pf/he_pf:
 //   -1  = пусто (parentFileId === '')
@@ -917,11 +970,21 @@ export interface VueSectionCompact {
     n: number[];
     l: number[];
   };
+  /**
+   * ⭐ v16.2.0: 5 полей (было 4).
+   *   f  — fileId (индекс в fl.p)
+   *   k  — kind код
+   *   l  — строка
+   *   n  — имя (индекс в strs)
+   *   usedInTemplate — 0/1 флаг использования в <template>
+   */
   reactivity: {
     f: number[];
     k: number[];
     l: number[];
     n: number[];
+    /** ✅ v16.2.0: 0/1 флаг использования в <template> */
+    usedInTemplate?: number[];
   };
   icons: {
     f: number[];
@@ -1504,7 +1567,7 @@ export interface EdgeData {
 }
 
 // ============================================================
-// СЖАТЫЙ JSON (v16.1.0)
+// СЖАТЫЙ JSON (v16.2.0)
 // ============================================================
 
 export interface CompactJSON {
@@ -1781,7 +1844,7 @@ export interface CompactJSON {
 }
 
 // ============================================================
-// ЛЕГЕНДА (v16.1.0)
+// ЛЕГЕНДА (v16.2.0)
 // ============================================================
 
 /** Один бит в поле flags */
@@ -1808,6 +1871,7 @@ export interface CodesDict {
  *                `schemas['vue.componentSlots']` — 5 полей (добавлено 'id').
  *                `schemas['vue.htmlInterpolations']` — 4 поля (добавлено 'id').
  * ✅ v16.1.0: `schemas['vue.sfc']` — 34 поля (добавлено cu_id/cu_pf/he_id/he_pf).
+ * ✅ v16.2.0: `schemas['vue.reactivity']` — 5 полей (добавлено 'usedInTemplate').
  */
 export interface CodecLegend {
   /** ✅ v16.0.0: версия legend */
@@ -1892,7 +1956,7 @@ export interface CodecLegend {
     lx?: string[];
 
     // ==========================================
-    // ✅ v15.5.0 + v16.0.0 + v16.1.0: схемы Vue-секции
+    // ✅ v15.5.0 + v16.0.0 + v16.1.0 + v16.2.0: схемы Vue-секции
     // ==========================================
 
     /** ✅ v16.1.0: 34 поля (было 30) */
@@ -1901,7 +1965,14 @@ export interface CodecLegend {
     'vue.composables'?: string[];
     'vue.macros'?: string[];
     'vue.hooks'?: string[];
+
+    /**
+     * ✅ v16.2.0: 5 полей (было 4).
+     *   f, k, l, n — существующие
+     *   usedInTemplate — NEW v16.2.0
+     */
     'vue.reactivity'?: string[];
+
     'vue.icons'?: string[];
 
     // ✅ v16.0.0: новые схемы

@@ -33,7 +33,8 @@ const DEFAULT_OPTIONS: ScriptOptions = {
   checkLegend: true,
 };
 
-const EXPECTED_CODEC_VERSION = '16.2.2';
+// ✅ v16.2.0: обновлено с 16.2.2 на 16.2.0 (CODEC_VERSION в codec-types.ts)
+const EXPECTED_CODEC_VERSION = '16.2.0';
 const EXPECTED_LEGEND_VERSION = '2.1.0';
 
 // ============================================
@@ -163,6 +164,9 @@ function normalizeForCompare(value: any): string {
  * ⚠️ v16.0.0: НЕ трогает новые секции (componentProps, domApiCalls, ...),
  * потому что их `id` — это индексы в `ids[]`, а не сгенерированные
  * клиентом значения.
+ *
+ * ⚠️ v16.2.0: `usedInTemplate` теперь присутствует в reactivity —
+ * нормализация НЕ удаляет это поле (оно часть данных).
  */
 function normalizeVueForCompare(full: any): any {
   if (!full || typeof full !== 'object') return full;
@@ -187,6 +191,8 @@ function normalizeVueForCompare(full: any): any {
       composables: stripId(vue.composables),
       macros: stripId(vue.macros),
       hooks: stripId(vue.hooks),
+      // ✅ v16.2.0: reactivity теперь содержит usedInTemplate
+      // — не удаляем, это часть данных.
       reactivity: stripId(vue.reactivity),
       icons: stripId(vue.icons),
       // ✅ v16.0.0: новые секции — как есть
@@ -530,7 +536,7 @@ function diagnoseValuesDesync(
 }
 
 // ============================================
-// ✅ v15.7.0 + v16.1.0: ПРОВЕРКА ЛЕГЕНДЫ
+// ✅ v15.7.0 + v16.1.0 + v16.2.0: ПРОВЕРКА ЛЕГЕНДЫ
 // ============================================
 
 interface LegendCheck {
@@ -606,8 +612,9 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     note: legend?.flags?.bits ? `${bitsCount} битов` : 'отсутствует',
   });
 
-  // ✅ v16.1.0: расширенный список schemas (37 схем)
+  // ✅ v16.1.0 + v16.2.0: расширенный список schemas
   // ✅ v16.1.0: fns — 10 полей, vue.sfc — 34 поля
+  // ✅ v16.2.0: vue.reactivity — 5 полей (было 4)
   const schemaChecks: Array<{ key: string; expectedLength: number }> = [
     { key: 'mi', expectedLength: 2 },
     { key: 'fl', expectedLength: 2 },
@@ -636,7 +643,8 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     { key: 'vue.composables', expectedLength: 5 },
     { key: 'vue.macros', expectedLength: 3 },
     { key: 'vue.hooks', expectedLength: 3 },
-    { key: 'vue.reactivity', expectedLength: 4 },
+    // ✅ v16.2.0: vue.reactivity — 5 полей (было 4)
+    { key: 'vue.reactivity', expectedLength: 5 },
     { key: 'vue.icons', expectedLength: 3 },
     // ✅ v16.0.0: новые схемы
     { key: 'vue.componentProps', expectedLength: 10 },
@@ -1555,6 +1563,9 @@ async function main(): Promise<void> {
     { name: 'composables', normalize: normalizeWithoutId },
     { name: 'macros', normalize: normalizeWithoutId },
     { name: 'hooks', normalize: normalizeWithoutId },
+    // ✅ v16.2.0: reactivity теперь содержит usedInTemplate —
+    // это часть данных, но comparison идёт через normalizeWithoutId
+    // (удаляется только id, usedInTemplate сохраняется)
     { name: 'reactivity', normalize: normalizeWithoutId },
     { name: 'icons', normalize: normalizeWithoutId },
   ];
@@ -1680,6 +1691,11 @@ async function main(): Promise<void> {
     {
       name: 'vue.sfc[].componentUsages[].id uniqueness',
       result: spotCheckVueSfcComponentUsagesIdUnique(decoded, full, options.maxDiffs),
+    },
+    // ✅ v16.2.0: спот-чек reactivity[].usedInTemplate
+    {
+      name: 'vue.reactivity[].usedInTemplate',
+      result: spotCheckUsedInTemplate(decoded, full, options.maxDiffs),
     },
   ];
 
@@ -2336,6 +2352,11 @@ async function main(): Promise<void> {
       name: 'spotCheck: vue.sfc[].componentUsages[].id uniqueness',
       ok: spotChecks.find(s => s.name === 'vue.sfc[].componentUsages[].id uniqueness')!.result.ok,
     },
+    // ✅ v16.2.0: спот-чек reactivity[].usedInTemplate
+    {
+      name: 'spotCheck: vue.reactivity[].usedInTemplate',
+      ok: spotChecks.find(s => s.name === 'vue.reactivity[].usedInTemplate')!.result.ok,
+    },
   ];
 
   for (const sr of sectionResults) {
@@ -2405,7 +2426,7 @@ async function main(): Promise<void> {
 
   const jsonReport = {
     timestamp: new Date().toISOString(),
-    // ✅ v16.1.0
+    // ✅ v16.2.0
     codecVersion: EXPECTED_CODEC_VERSION,
     legendVersion: EXPECTED_LEGEND_VERSION,
     originalFormat: 'compact',
@@ -3082,6 +3103,64 @@ function spotCheckVueSfcComponentUsagesIdUnique(
 
   checkUnique((decoded as any).vue?.sfc || [], 'decoded.vue.sfc');
   checkUnique((full as any).vue?.sfc || [], 'full.vue.sfc');
+
+  return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
+}
+
+// ============================================
+// ✅ v16.2.0: SPOT-CHECK ДЛЯ vue.reactivity[].usedInTemplate
+// ============================================
+
+/**
+ * ✅ v16.2.0: Проверяет, что `usedInTemplate` совпадает между
+ * decoded и full для каждого reactivity.
+ *
+ * ⚠️ Нормализация:
+ *   - undefined, null, 0, false  → false
+ *   - 1, true                    → true
+ *
+ * Это устраняет разницу между "поле отсутствует" и "false",
+ * которая может возникнуть при обратной совместимости.
+ */
+function spotCheckUsedInTemplate(
+  decoded: FullJSON,
+  full: FullJSON,
+  limit: number
+): LevelResult {
+  const aReact = (decoded as any).vue?.reactivity || [];
+  const bReact = (full as any).vue?.reactivity || [];
+
+  const diffs: any[] = [];
+  const n = Math.min(aReact.length, bReact.length);
+
+  if (aReact.length !== bReact.length) {
+    diffs.push({
+      path: '$.vue.reactivity.length',
+      a: aReact.length,
+      b: bReact.length,
+    });
+  }
+
+  const normalizeUsedInTemplate = (v: any): boolean => {
+    return v === true || v === 1;
+  };
+
+  for (let i = 0; i < n && diffs.length < limit; i++) {
+    const ai = aReact[i];
+    const bi = bReact[i];
+    if (!ai || !bi) continue;
+
+    const aVal = normalizeUsedInTemplate(ai.usedInTemplate);
+    const bVal = normalizeUsedInTemplate(bi.usedInTemplate);
+
+    if (aVal !== bVal) {
+      diffs.push({
+        path: `$.vue.reactivity[${i}].usedInTemplate`,
+        a: aVal,
+        b: bVal,
+      });
+    }
+  }
 
   return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
 }

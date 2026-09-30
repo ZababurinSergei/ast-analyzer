@@ -15,6 +15,36 @@ import { convertVueImportsToImportInfo } from './convert-imports.js';
  * compact-reporter и Codec.
  *
  * ════════════════════════════════════════════════════════════
+ * ИЗМЕНЕНИЯ v16.2.0 (usedInTemplate для reactivity)
+ * ════════════════════════════════════════════════════════════
+ *
+ *   - ✅ ДОБАВЛЕНО: заполнение `usedInTemplate` для каждой
+ *     reactivity-сущности на основе `template.reactivityDeps`.
+ *
+ *   - 📌 ЛОГИКА: reactivity[i].name — это имя переменной
+ *     (например, 'count', 'displayText'), полученное в
+ *     analyzeVueComponent путём обогащения из constants.
+ *     Если это имя есть в template.reactivityDeps — значит,
+ *     переменная используется в <template>.
+ *
+ *   - 📌 ПРИМЕР:
+ *       const displayText = computed(...)   // reactivity, name='displayText'
+ *       <template>{{ displayText }}</template>  // reactivityDeps=['displayText']
+ *       → usedInTemplate = true
+ *
+ *       const count = ref(0)                // reactivity, name='count'
+ *       <template>...</template>            // reactivityDeps не содержит 'count'
+ *       → usedInTemplate = false
+ *
+ *   - 📌 Проброс:
+ *       vueAnalysis.reactivity[].name
+ *         + template.reactivityDeps
+ *         → (result as any).templateReactivity[].usedInTemplate
+ *         → convert-section.ts
+ *         → codec-encode.ts (колонка usedInTemplate)
+ *         → index.json
+ *
+ * ════════════════════════════════════════════════════════════
  * ИЗМЕНЕНИЯ v16.0.8 (Component Usage + HTML Elements)
  * ════════════════════════════════════════════════════════════
  *
@@ -101,7 +131,7 @@ export function convertVueAnalysisToEntities(
   (result as any).templateConditionals = template?.conditionals || [];
 
   // ==========================================
-  // 0.2 ✅ НОВОЕ v9.0.0: РАСШИРЕННЫЕ СЕКЦИИ
+  // 0.2 ✅ НОВОЕ v9.0.0 / ОБНОВЛЕНО v16.2.0: РАСШИРЕННЫЕ СЕКЦИИ
   // ==========================================
   // Пробрасываем lifecycle, effects, injections, reactivity
   // из VueComponentAnalysis в EntitiesResult.
@@ -111,6 +141,7 @@ export function convertVueAnalysisToEntities(
   //   - vueAnalysis.effects       → extractEffects(content)
   //   - vueAnalysis.injections    → extractInjections(content)
   //   - vueAnalysis.reactivity    → extractReactivity(content)
+  //                                 + обогащение именами (v16.2.0)
   //
   // Эти поля заполняются в analyzeVueComponent (vue-analyzer/index.ts).
   //
@@ -119,11 +150,33 @@ export function convertVueAnalysisToEntities(
   //   - e.templateEffects     → gr.ef (effects секция)
   //   - e.templateInjections  → gr.inj (injections секция)
   //   - e.templateReactivity  → gr.rx (reactivity секция)
+  //
+  // ✅ v16.2.0: для reactivity дополнительно вычисляем usedInTemplate —
+  //   сравниваем reactivity[i].name с template.reactivityDeps.
+  //   Если имя переменной есть в reactivityDeps — значит, она
+  //   используется в <template> и попадёт в рендер.
+  //
+  //   ПРИМЕР:
+  //     const count = ref(0);                    // reactivity name='count'
+  //     const displayText = computed(...);       // reactivity name='displayText'
+  //     <template>{{ displayText }}</template>   // reactivityDeps=['displayText']
+  //     →
+  //       { name: 'count',       usedInTemplate: false }
+  //       { name: 'displayText', usedInTemplate: true  }
   // ==========================================
   (result as any).templateLifecycle = vueAnalysis.lifecycle || [];
   (result as any).templateEffects = vueAnalysis.effects || [];
   (result as any).templateInjections = vueAnalysis.injections || [];
-  (result as any).templateReactivity = vueAnalysis.reactivity || [];
+
+  // ✅ v16.2.0: обогащаем reactivity флагом usedInTemplate.
+  //   Используем templateReactivityDeps (уже вычислен выше, строка ~86).
+  //   Проверка по name — только если name определён (после обогащения
+  //   в analyzeVueComponent он должен быть заполнен).
+  const depsSet = new Set(templateReactivityDeps);
+  (result as any).templateReactivity = (vueAnalysis.reactivity || []).map(rx => ({
+    ...rx,
+    usedInTemplate: rx.name ? depsSet.has(rx.name) : false,
+  }));
 
   // ==========================================
   // 0.3 ✅ НОВОЕ v16.0.8: Component Usage + HTML Elements
@@ -422,7 +475,7 @@ export function convertVueAnalysisToEntities(
   }
 
   // ==========================================
-  // 10.1 ✅ НОВОЕ v9.0.0: ЛОГИРОВАНИЕ РАСШИРЕННЫХ СЕКЦИЙ
+  // 10.1 ✅ НОВОЕ v9.0.0 / ОБНОВЛЕНО v16.2.0: ЛОГИРОВАНИЕ РАСШИРЕННЫХ СЕКЦИЙ
   // ==========================================
   const lifecycleCount = vueAnalysis.lifecycle?.length || 0;
   const effectsCount = vueAnalysis.effects?.length || 0;
@@ -435,7 +488,13 @@ export function convertVueAnalysisToEntities(
     if (lifecycleCount) console.log(`      • lifecycle: ${lifecycleCount}`);
     if (effectsCount) console.log(`      • effects: ${effectsCount}`);
     if (injectionsCount) console.log(`      • injections: ${injectionsCount}`);
-    if (reactivityCount) console.log(`      • reactivity: ${reactivityCount}`);
+    if (reactivityCount) {
+      // ✅ v16.2.0: дополнительно показываем, сколько из них используется в template
+      const usedInTemplateCount = ((result as any).templateReactivity || []).filter(
+        (rx: any) => rx.usedInTemplate === true
+      ).length;
+      console.log(`      • reactivity: ${reactivityCount} (в template: ${usedInTemplateCount})`);
+    }
     if (conditionalsCount) console.log(`      • conditionals: ${conditionalsCount}`);
   }
 

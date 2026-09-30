@@ -2,7 +2,18 @@
 // ============================================
 // ОСНОВНАЯ ФУНКЦИЯ АНАЛИЗА VUE КОМПОНЕНТА
 // ============================================
-// Версия: 5.1.0 (v16.0.8)
+// Версия: 5.2.0 (v16.2.0)
+//
+// ИЗМЕНЕНИЯ v5.2.0 (v16.2.0: usedInTemplate для reactivity):
+//   - ✅ ДОБАВЛЕНО: обогащение reactivity именами из constants.
+//     extractReactivity (regex-based) не заполняет name — теперь
+//     сопоставляем результат с constants по порядку + проверке kind.
+//   - ✅ ПРИЧИНА: template.reactivityDeps содержит имена переменных
+//     из шаблона, а reactivity[].name — имена функций. Без обогащения
+//     нельзя определить, используется ли reactivity в template.
+//   - 📌 Теперь reactivity[].name содержит имя переменной:
+//       const count = ref(0);           → name: 'count',      kind: 'ref'
+//       const displayText = computed()  → name: 'displayText', kind: 'computed'
 //
 // ИЗМЕНЕНИЯ v5.1.0 (v16.0.8: Component Usage + HTML Elements):
 //   - ✅ ДОБАВЛЕНО: статический импорт parseVueTemplate из
@@ -140,6 +151,17 @@ export interface AnalyzeVueOptions extends AnalysisOptions {
   globalMap?: GlobalComponentMap;
   verbose?: boolean;
 }
+
+// ============================================
+// ✅ v5.2.0 (v16.2.0): КОНСТАНТЫ ДЛЯ ОБОГАЩЕНИЯ REACTIVITY
+// ============================================
+
+/**
+ * Regex для проверки, что value константы — это вызов reactivity-функции.
+ * Используется для фильтрации constants при обогащении reactivity именами.
+ */
+const REACTIVITY_VALUE_REGEX =
+  /^(ref|computed|reactive|watch|watchEffect|shallowRef|readonly|toRef|toRefs)\s*\(/;
 
 // ============================================
 // ОСНОВНАЯ ФУНКЦИЯ
@@ -343,8 +365,51 @@ export function analyzeVueComponent(
       injections = [];
     }
 
+    // ✅ v5.2.0 (v16.2.0): обогащаем reactivity именами из constants.
+    //
+    // ПРИЧИНА: extractReactivity (regex-based, analyzers/index.ts) НЕ
+    //   заполняет name — он лишь находит вызовы ref()/computed()/etc.
+    //   А extractConstantsFromScript (AST-based) знает имена переменных:
+    //     const count = ref(0);           → { name: 'count', value: 'ref(0)' }
+    //     const displayText = computed()  → { name: 'displayText', value: 'computed(...)' }
+    //
+    // АЛГОРИТМ:
+    //   1. Фильтруем constants, оставляя только те, чей value — вызов
+    //      reactivity-функции (ref/computed/reactive/watch/...).
+    //   2. Сопоставляем с rawReactivity по ИНДЕКСУ (оба массива
+    //      отсортированы по строкам — extractReactivity сортирует,
+    //      extractConstantsFromScript сохраняет порядок AST).
+    //   3. Проверяем совпадение kind — защита от рассинхрона.
+    //
+    // ⚠️ ПОЧЕМУ НЕ ПО line: line в rawReactivity и constants НЕ совпадают
+    //   (проверено на тестах: +2 для файла с import). Сопоставление по
+    //   индексу надёжнее и не зависит от offset-ов.
     try {
-      reactivity = extractReactivity(originalScriptContent);
+      const rawReactivity = extractReactivity(originalScriptContent);
+
+      // Шаг 1: фильтруем constants — только reactivity-вызовы
+      const reactivityConstants = constants.filter(
+        c => c.value && REACTIVITY_VALUE_REGEX.test(c.value)
+      );
+
+      // Шаг 2 + 3: сопоставляем по индексу с проверкой kind
+      reactivity = rawReactivity.map((rx, i) => {
+        const constant = reactivityConstants[i];
+        if (constant && constant.value?.includes(rx.kind + '(')) {
+          return { ...rx, name: constant.name };
+        }
+        return rx;
+      });
+
+      // Диагностика в verbose-режиме
+      if (options.verbose && reactivity.length > 0) {
+        const named = reactivity.filter(r => r.name).length;
+        if (named < reactivity.length) {
+          console.warn(
+            `   ⚠️ ${path.basename(filePath)}: reactivity — ${named}/${reactivity.length} с именами`
+          );
+        }
+      }
     } catch (error) {
       if (options.verbose) {
         console.warn(
@@ -391,7 +456,7 @@ export function analyzeVueComponent(
       if (options.verbose) {
         console.log(
           `   🌐 ${path.basename(filePath)}: cu=${componentUsages.length}, ` +
-            `he=${htmlElements.length}, errors=${parsedTemplate.errors.length}`
+          `he=${htmlElements.length}, errors=${parsedTemplate.errors.length}`
         );
         if (parsedTemplate.errors.length > 0) {
           for (const e of parsedTemplate.errors.slice(0, 3)) {
@@ -474,8 +539,8 @@ export function analyzeVueComponent(
   if (options.verbose) {
     console.log(
       `   🔬 Vue-анализ ${path.basename(filePath)}: lifecycle=${lifecycle.length}, ` +
-        `effects=${effects.length}, injections=${injections.length}, reactivity=${reactivity.length}, ` +
-        `cu=${componentUsages.length}, he=${htmlElements.length}`
+      `effects=${effects.length}, injections=${injections.length}, reactivity=${reactivity.length}, ` +
+      `cu=${componentUsages.length}, he=${htmlElements.length}`
     );
   }
 
@@ -646,7 +711,7 @@ export async function analyzeVueComponentCli(
   const jsonOutput = {
     analysis,
     timestamp: new Date().toISOString(),
-    version: '5.1.0',
+    version: '5.2.0',
   };
   const jsonFile = `${analysis.componentName}-analysis.json`;
   fs.writeFileSync(jsonFile, JSON.stringify(jsonOutput, null, 2));

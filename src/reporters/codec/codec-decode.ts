@@ -1,8 +1,21 @@
 // src/reporters/codec/codec-decode.ts
 // ============================================
-// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v16.2.1)
+// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v16.2.0)
 // ============================================
-// Версия: 16.2.1
+// Версия: 16.2.2
+//
+// ИЗМЕНЕНИЯ v16.2.2 (v16.2.0: usedInTemplate для reactivity):
+//   - ✅ ДОБАВЛЕНО: `decodeVueSection` → `reactivity[]` теперь
+//     читает `vue.reactivity.usedInTemplate[i] === 1` → true/false.
+//   - 📌 ЗАЧЕМ: дать UI возможность отрисовать иконку 👁️
+//     только для тех reactivity, которые реально участвуют
+//     в рендеринге.
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '16.2.0' (в codec-types.ts)
+//   - ✅ СИНХРОНИЗИРОВАНО с:
+//       • codec-types.ts   (CODEC_VERSION = '16.2.0')
+//       • codec-encode.ts  (пишет usedInTemplate)
+//       • codec-legend.ts  (схема vue.reactivity — 5 полей)
+//       • verify-roundtrip.ts (expectedLength = 5)
 //
 // ИЗМЕНЕНИЯ v16.2.1 (FIX round-trip L1/L2/DL: identifier + literalValue):
 //   - ✅ ИСПРАВЛЕНО: `decodeComponentProps` теперь защищён от
@@ -977,6 +990,10 @@ function decodeFnHtmlUsage(
 //     Для каждого component*-массива проверяем наличие
 //     характерного поля (`idn` для props, `id` для остальных).
 //     Если в `vue.*` поля НЕТ, а в top-level ЕСТЬ — берём top-level.
+//
+// ⚠️ v16.2.2 (NEW): `reactivity[].usedInTemplate` читается из
+//   `vue.reactivity.usedInTemplate[i] === 1` → true.
+// ============================================
 
 function decodeVueSection(
   vue: VueSectionCompact | undefined,
@@ -1334,6 +1351,21 @@ function decodeVueSection(
     line: vue.hooks.l[i] ?? 0,
   }));
 
+  // ✅ v16.2.2: читаем usedInTemplate из vue.reactivity.usedInTemplate
+  //
+  // ЛОГИКА:
+  //   usedInTemplate[i] === 1  → true
+  //   usedInTemplate[i] === 0  → false
+  //   usedInTemplate отсутствует или undefined  → false (обратная совместимость)
+  //
+  // ПРИМЕР:
+  //   compact.vue.reactivity.usedInTemplate = [0, 1]
+  //   name[0]='count', name[1]='displayText'
+  //   →
+  //     { name: 'count',       usedInTemplate: false }
+  //     { name: 'displayText', usedInTemplate: true  }
+  const rxUsedInTemplate = vue.reactivity?.usedInTemplate ?? [];
+
   const reactivity: ReactivityEntity[] = (vue.reactivity?.f ?? []).map(
     (fileIdx: number, i: number) => {
       const nameIdx = vue.reactivity.n?.[i] ?? -1;
@@ -1343,6 +1375,7 @@ function decodeVueSection(
         kind: REACTIVITY_KIND_BY_CODE[vue.reactivity.k[i] ?? 0] ?? 'computed',
         line: vue.reactivity.l[i] ?? 0,
         name: nameIdx >= 0 ? readStr(nameIdx) : undefined,
+        usedInTemplate: rxUsedInTemplate[i] === 1,   // ✅ v16.2.2
       };
     }
   );

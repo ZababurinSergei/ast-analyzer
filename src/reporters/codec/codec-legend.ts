@@ -1,12 +1,26 @@
 // src/reporters/codec/codec-legend.ts
 // ============================================
-// ЛЕГЕНДА КОДЕКА (v16.1.0)
+// ЛЕГЕНДА КОДЕКА (v16.2.0)
 // ============================================
-// Версия: 16.1.0
+// Версия: 16.2.0
 //
 // ════════════════════════════════════════════════════════════
 // СВОДКА ВЕРСИЙ
 // ════════════════════════════════════════════════════════════
+//
+// v16.2.0 (usedInTemplate для reactivity):
+//   - ✅ ОБНОВЛЕНО: schemas['vue.reactivity'] — 5 полей (было 4).
+//     Добавлено поле `usedInTemplate` (0/1 флаг использования
+//     переменной в <template>).
+//   - ✅ ПРИЧИНА: в codec-types.ts добавлено поле
+//     `usedInTemplate?: number[]` в VueSectionCompact.reactivity.
+//     Без него UI не может отрисовать иконку 👁️ для reactivity,
+//     которые реально участвуют в рендеринге.
+//   - ✅ СИНХРОНИЗИРОВАНО с:
+//       • codec-types.ts   (CODEC_VERSION = '16.2.0')
+//       • codec-encode.ts  (v16.2.3 — пишет usedInTemplate)
+//       • codec-decode.ts  (v16.2.2 — читает usedInTemplate)
+//       • verify-roundtrip.ts (ожидает 5 полей для vue.reactivity)
 //
 // v16.1.0 (BREAKING: глобально уникальные cu.id/he.id):
 //   - ✅ ОБНОВЛЕНО: schemas['vue.sfc'] — 34 поля (было 30).
@@ -429,6 +443,10 @@ export const HTML_OUTPUT_KIND_CODES: Record<string, number> = {
 //    Причина: без явного кодирования id и parentFileId
 //    у componentUsages/htmlElements ломается round-trip
 //    (props/events/directives перепутываются между SFC).
+// ✅ v16.2.0: схема vue.reactivity расширена до 5 полей:
+//    + usedInTemplate (0/1 флаг использования в <template>)
+//    Причина: UI должен отрисовать иконку 👁️ для reactivity,
+//    которые реально участвуют в рендеринге.
 // ============================================================
 
 export const SCHEMAS: CodecLegend['schemas'] = {
@@ -669,8 +687,8 @@ export const SCHEMAS: CodecLegend['schemas'] = {
     'es',
     'xn',
     'xs',
-    'cu_id',   // ✅ v16.1.0
-    'cu_pf',   // ✅ v16.1.0
+    'cu_id', // ✅ v16.1.0
+    'cu_pf', // ✅ v16.1.0
     'cu_sfc',
     'cu_tag',
     'cu_file',
@@ -682,8 +700,8 @@ export const SCHEMAS: CodecLegend['schemas'] = {
     'cu_ce',
     'cu_cd',
     'cu_csl',
-    'he_id',   // ✅ v16.1.0
-    'he_pf',   // ✅ v16.1.0
+    'he_id', // ✅ v16.1.0
+    'he_pf', // ✅ v16.1.0
     'he_sfc',
     'he_tag',
     'he_l',
@@ -692,7 +710,7 @@ export const SCHEMAS: CodecLegend['schemas'] = {
     'he_cd',
     'he_ce',
     'he_ci',
-  ],  // → 34 поля
+  ], // → 34 поля
 
   // ==========================================
   // vue.composables
@@ -727,15 +745,44 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   'vue.hooks': ['f', 'n', 'l'],
 
   // ==========================================
-  // vue.reactivity
+  // ✅ v16.2.0: vue.reactivity — 5 полей
   // ==========================================
   //
-  //   f — fileIdx
-  //   k — reactivityKindCode
-  //   l — line
-  //   n — nameIdx в strs (-1 = нет)
+  // ⚠️ BREAKING CHANGE относительно 16.1.0:
+  //   Старая схема (v16.0.0): 4 поля
+  //   Новая схема (v16.2.0):  5 полей
+  //
+  //   + usedInTemplate — 0/1 флаг использования переменной в <template>
+  //
+  // ⚠️ Зачем usedInTemplate:
+  //   UI должен иметь возможность отрисовать иконку 👁️ только
+  //   для тех reactivity, которые реально участвуют в рендеринге.
+  //
+  //   Вычисляется в convert-analysis.ts:
+  //     usedInTemplate = template.reactivityDeps.includes(name)
+  //
+  //   ПРИМЕР:
+  //     const count = ref(0);                    // name='count'
+  //     const displayText = computed(...);       // name='displayText'
+  //     <template>{{ displayText }}</template>   // reactivityDeps=['displayText']
+  //     →
+  //       { name: 'count',       usedInTemplate: 0 }
+  //       { name: 'displayText', usedInTemplate: 1 }
+  //
+  // ⚠️ Формат:
+  //   usedInTemplate[i] = 0  → НЕ используется в template
+  //   usedInTemplate[i] = 1  → используется в template
+  //   Массив может отсутствовать (обратная совместимость) —
+  //   decode трактует как 0/false.
+  //
+  // Схема:
+  //   f              — fileIdx в fl.p
+  //   k              — reactivityKindCode
+  //   l              — line
+  //   n              — nameIdx в strs (-1 = нет)
+  //   usedInTemplate — 0/1 флаг (⭐ v16.2.0)
   // ==========================================
-  'vue.reactivity': ['f', 'k', 'l', 'n'],
+  'vue.reactivity': ['f', 'k', 'l', 'n', 'usedInTemplate'], // → 5 полей
 
   // ==========================================
   // vue.icons
@@ -1184,10 +1231,12 @@ export interface LegendDictionaries {
  * ✅ v16.1.0: legend.version = '2.1.0'.
  *            schemas['vue.sfc'] — 34 поля (было 30).
  *            + cu_id, cu_pf, he_id, he_pf.
+ * ✅ v16.2.0: schemas['vue.reactivity'] — 5 полей (было 4).
+ *            + usedInTemplate.
  */
 export function buildLegend(_dict: LegendDictionaries): CodecLegend {
   return {
-    version: '2.1.0',   // ✅ v16.1.0
+    version: '2.1.0', // ✅ v16.1.0 (LEGEND_VERSION не меняется в v16.2.0)
     codes: buildCodesLegend(),
     flags: buildFlagsLegend(),
     schemas: SCHEMAS,

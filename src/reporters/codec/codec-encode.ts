@@ -1,8 +1,24 @@
 // src/reporters/codec/codec-encode.ts
 // ============================================
-// КОДИРОВАНИЕ: FullJSON → CompactJSON (v16.1.0)
+// КОДИРОВАНИЕ: FullJSON → CompactJSON (v16.2.0)
 // ============================================
-// Версия: 16.2.2
+// Версия: 16.2.3
+//
+// ════════════════════════════════════════════════════════════
+// ИЗМЕНЕНИЯ v16.2.3 (v16.2.0: usedInTemplate для reactivity):
+//   - ✅ ДОБАВЛЕНО: в `encodeVueSection` собирается массив
+//     `rxVueT` — 0/1 флаг для `usedInTemplate`.
+//   - ✅ ДОБАВЛЕНО: в `vue.reactivity` записывается поле
+//     `usedInTemplate: rxVueT`.
+//   - 📌 ЗАЧЕМ: дать UI возможность отрисовать иконку 👁️
+//     только для тех reactivity, которые реально участвуют
+//     в рендеринге.
+//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '16.2.0' (в codec-types.ts)
+//   - ✅ СИНХРОНИЗИРОВАНО с:
+//       • codec-types.ts   (CODEC_VERSION = '16.2.0')
+//       • codec-decode.ts  (читает usedInTemplate[i])
+//       • codec-legend.ts  (схема vue.reactivity — 5 полей)
+//       • verify-roundtrip.ts (expectedLength = 5)
 //
 // ════════════════════════════════════════════════════════════
 // ИЗМЕНЕНИЯ v16.1.0 (FIX: identifier / literalValue в componentProps):
@@ -672,8 +688,13 @@ function encodeStr(str: string, tokenIndex: Map<string, number>): string | numbe
 }
 
 // ============================================
-// ✅ v16.1.0: VUE SECTION ENCODER
+// ✅ v16.2.0: VUE SECTION ENCODER
 // ============================================
+//
+// ⚠️ ИЗМЕНЕНИЯ v16.2.0:
+//   1. В блоке `reactivity` добавлен массив `rxVueT` — 0/1 флаг
+//      для `usedInTemplate`.
+//   2. В `result.reactivity` записывается поле `usedInTemplate: rxVueT`.
 //
 // ⚠️ ИЗМЕНЕНИЯ v16.1.0:
 //   1. Добавлены массивы `cuId`, `cuPf`, `heId`, `hePf`.
@@ -957,10 +978,22 @@ export function encodeVueSection(
   // ────────────────────────────────────────────────────────
   // reactivity
   // ────────────────────────────────────────────────────────
+  //
+  // ✅ v16.2.0: добавлен массив rxVueT — 0/1 флаг usedInTemplate.
+  //
+  // ⚠️ ПОЧЕМУ 0/1, А НЕ boolean:
+  //   CompactJSON — это columnar-формат. Массивы здесь числовые
+  //   для компактности. decode() превратит 1 → true, 0 → false.
+  //
+  // ⚠️ ПОЧЕМУ МАССИВ ВСЕГДА ЗАПОЛНЯЕТСЯ:
+  //   Даже если все значения false, массив записывается —
+  //   симметрия с decode() важнее экономии байтов.
+  //   decode() проверяет `vue.reactivity.usedInTemplate?.[i] === 1`.
   const rxVueF: number[] = [];
   const rxVueK: number[] = [];
   const rxVueL: number[] = [];
   const rxVueN: number[] = [];
+  const rxVueT: number[] = [];  // ✅ v16.2.0
 
   for (const r of vue.reactivity ?? []) {
     const rx: ReactivityEntity = r;
@@ -968,6 +1001,7 @@ export function encodeVueSection(
     rxVueK.push(REACTIVITY_KIND_CODES[rx.kind] ?? 0);
     rxVueL.push(rx.line ?? 0);
     rxVueN.push(rx.name ? addString(dict, rx.name) : -1);
+    rxVueT.push(rx.usedInTemplate ? 1 : 0);  // ✅ v16.2.0
   }
 
   // ────────────────────────────────────────────────────────
@@ -1056,6 +1090,7 @@ export function encodeVueSection(
       k: rxVueK,
       l: rxVueL,
       n: rxVueN,
+      usedInTemplate: rxVueT,  // ✅ v16.2.0
     },
     icons: {
       f: iconF,
@@ -1431,7 +1466,7 @@ function encodeDomApiArgs(_full: any, dict: DictBuilder): any {
 // ============================================
 
 /**
- * Кодирует полный JSON в сжатый (v16.1.0).
+ * Кодирует полный JSON в сжатый (v16.2.0).
  */
 export function encode(
   payload: FullJSON,

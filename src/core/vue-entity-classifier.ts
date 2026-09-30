@@ -2,7 +2,18 @@
 // ============================================
 // КЛАССИФИКАЦИЯ VUE-СУЩНОСТЕЙ
 // ============================================
-// Версия: 1.0.1
+// Версия: 1.1.0
+//
+// ИЗМЕНЕНИЯ v1.1.0 (v16.2.0: usedInTemplate для reactivity):
+//   - ✅ ДОБАВЛЕНО: `usedInTemplate?: boolean` в `VueReactivityEntity`.
+//     Показывает, используется ли переменная в <template>.
+//     Заполняется позже — в convert-analysis.ts.
+//   - 📌 НАЗНАЧЕНИЕ: дать UI возможность отрисовать иконку 👁️
+//     только для тех reactivity, которые реально участвуют
+//     в рендеринге.
+//   - 📌 СИНХРОНИЗИРОВАНО С:
+//       • src/types.ts::ReactivityEntity
+//       • src/reporters/codec/codec-types.ts::ReactivityEntity
 //
 // ИЗМЕНЕНИЯ v1.0.1 (round-trip fix: стабильный порядок обхода):
 //   - ✅ FIX: обход `entitiesMap` теперь идёт по ОТСОРТИРОВАННЫМ
@@ -165,6 +176,15 @@ export interface VueHookEntity {
 
 /**
  * Реактивный примитив.
+ *
+ * ✅ v16.2.0: добавлено поле usedInTemplate.
+ *   Показывает, используется ли переменная в <template>.
+ *   Заполняется в convert-analysis.ts на основе
+ *   template.reactivityDeps.
+ *
+ * ⚠️ СИНХРОНИЗИРОВАНО С:
+ *   • src/types.ts::ReactivityEntity
+ *   • src/reporters/codec/codec-types.ts::ReactivityEntity
  */
 export interface VueReactivityEntity {
   /** ID (rx1, rx2, ...) */
@@ -177,6 +197,33 @@ export interface VueReactivityEntity {
   line: number;
   /** Имя переменной (может отсутствовать для анонимных) */
   name?: string;
+
+  /**
+   * ✅ v16.2.0: используется ли переменная в <template>.
+   *
+   * ════════════════════════════════════════════════════════════
+   * ЛОГИКА
+   * ════════════════════════════════════════════════════════════
+   *
+   *   Заполняется в convert-analysis.ts:
+   *     usedInTemplate = template.reactivityDeps.includes(name)
+   *
+   *   ПРИМЕР:
+   *     const count = ref(0);                    // reactivity, name='count'
+   *     const displayText = computed(...);       // reactivity, name='displayText'
+   *     <template>{{ displayText }}</template>   // reactivityDeps=['displayText']
+   *     →
+   *       { name: 'count',       usedInTemplate: false }
+   *       { name: 'displayText', usedInTemplate: true  }
+   *
+   * ════════════════════════════════════════════════════════════
+   * ЗАЧЕМ
+   * ════════════════════════════════════════════════════════════
+   *
+   *   UI может отрисовать иконку 👁️ только для тех reactivity,
+   *   которые реально участвуют в рендеринге.
+   */
+  usedInTemplate?: boolean;
 }
 
 /**
@@ -487,6 +534,14 @@ export function classifyVueEntities(entitiesMap: Record<string, EntitiesResult>)
       }
 
       // --- Реактивные примитивы ---
+      //
+      // ✅ v16.2.0: `usedInTemplate` здесь НЕ заполняется —
+      //   оно будет проставлено позже, в convert-analysis.ts,
+      //   на основе template.reactivityDeps.
+      //
+      // ⚠️ ВАЖНО: здесь `name` — это имя функции ('computed', 'ref'),
+      //   а не имя переменной. Реальные имена переменных появляются
+      //   в reactivity только после обогащения в vue-analyzer/index.ts.
       if (REACTIVITY_NAMES.has(func.name)) {
         reactivityCounter++;
         const rxKind = REACTIVITY_KIND_MAP.get(func.name) ?? 'ref';

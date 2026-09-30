@@ -222,7 +222,7 @@ export interface ImportedByInfo {
 //   а src/types.ts — для внутреннего представления.
 //
 //   Изменения в одном месте должны быть отражены в другом.
-// ==========================================
+// ============================================================
 
 /**
  * Вид лексической связи между функциями.
@@ -339,13 +339,7 @@ export interface LexicalLink {
 // ==========================================
 
 export type VueKind =
-  | 'function'
-  | 'composable'
-  | 'macro'
-  | 'hook'
-  | 'reactivity'
-  | 'callback'
-  | 'arrow';
+  'function' | 'composable' | 'macro' | 'hook' | 'reactivity' | 'callback' | 'arrow';
 
 /**
  * Числовые коды для VueKind.
@@ -826,6 +820,13 @@ export interface HookEntity {
 
 /**
  * Реактивный примитив.
+ *
+ * ✅ v16.2.0: добавлено поле usedInTemplate.
+ *   Показывает, используется ли переменная в <template>.
+ *   Вычисляется в convert-analysis.ts на основе template.reactivityDeps.
+ *
+ * ⚠️ СИНХРОНИЗИРОВАНО С codec-types.ts::ReactivityEntity.
+ *   При изменении полей — синхронизировать оба файла.
  */
 export interface ReactivityEntity {
   /** ID (rx1, rx2, ...) */
@@ -838,6 +839,33 @@ export interface ReactivityEntity {
   line: number;
   /** Имя переменной (может отсутствовать) */
   name?: string;
+
+  /**
+   * ✅ v16.2.0: используется ли переменная в <template>.
+   *
+   * ════════════════════════════════════════════════════════════
+   * ЛОГИКА
+   * ════════════════════════════════════════════════════════════
+   *
+   *   Заполняется в convert-analysis.ts:
+   *     usedInTemplate = template.reactivityDeps.includes(name)
+   *
+   *   ПРИМЕР:
+   *     const count = ref(0);                    // reactivity, name='count'
+   *     const displayText = computed(...);       // reactivity, name='displayText'
+   *     <template>{{ displayText }}</template>   // reactivityDeps=['displayText']
+   *     →
+   *       { name: 'count',       usedInTemplate: false }
+   *       { name: 'displayText', usedInTemplate: true  }
+   *
+   * ════════════════════════════════════════════════════════════
+   * ЗАЧЕМ
+   * ════════════════════════════════════════════════════════════
+   *
+   *   UI может отрисовать иконку 👁️ только для тех reactivity,
+   *   которые реально участвуют в рендеринге.
+   */
+  usedInTemplate?: boolean;
 }
 
 /**
@@ -1986,23 +2014,23 @@ export interface EnhancedPackageLockReport {
   callGraph?:
     | Record<string, string[]>
     | {
-    from: string;
-    to: string;
-    path: string[];
-    found: boolean;
-    reason?: string;
-    nodes: {
-      function: string;
-      module: string;
-      line: number;
-      isAsync: boolean;
-    }[];
-    edges: {
-      from: string;
-      to: string;
-      line?: number;
-    }[];
-  };
+        from: string;
+        to: string;
+        path: string[];
+        found: boolean;
+        reason?: string;
+        nodes: {
+          function: string;
+          module: string;
+          line: number;
+          isAsync: boolean;
+        }[];
+        edges: {
+          from: string;
+          to: string;
+          line?: number;
+        }[];
+      };
   entityStats: {
     totalFunctions: number;
     totalConstants: number;
