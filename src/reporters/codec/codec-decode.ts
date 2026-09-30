@@ -2,7 +2,32 @@
 // ============================================
 // ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v16.2.0)
 // ============================================
-// Версия: 16.2.2
+// Версия: 16.2.3
+//
+// ИЗМЕНЕНИЯ v16.2.3 (v16.2.0 PATCH: usedInTemplate optional):
+//   - ✅ ИСПРАВЛЕНО: `decodeVueSection` теперь корректно
+//     обрабатывает отсутствие колонки `usedInTemplate`
+//     в compact.vue.reactivity.
+//
+//     ПРИЧИНА:
+//       Раньше `vue.reactivity.usedInTemplate?.[i] === 1`
+//       давал `false`, если колонки нет. Это создавало
+//       рассинхрон с `full.json`, где поля `usedInTemplate`
+//       вообще НЕ было (undefined).
+//
+//       Симптом в verify-roundtrip.ts (L1/L2/DL):
+//         $.vue.reactivity[0].usedInTemplate
+//           a: false          (decoded)
+//           b: undefined      (full)
+//
+//     РЕШЕНИЕ:
+//       Теперь если `usedInTemplate` колонка ЕСТЬ — читаем
+//       `=== 1` → true/false. Если колонки НЕТ — возвращаем
+//       `undefined` (не создаём поле).
+//
+//     СИНХРОНИЗИРОВАНО С:
+//       • codec-encode.ts  (пишет usedInTemplate опционально)
+//       • codec-types.ts   (VueSectionCompact.reactivity.usedInTemplate?: number[])
 //
 // ИЗМЕНЕНИЯ v16.2.2 (v16.2.0: usedInTemplate для reactivity):
 //   - ✅ ДОБАВЛЕНО: `decodeVueSection` → `reactivity[]` теперь
@@ -993,6 +1018,11 @@ function decodeFnHtmlUsage(
 //
 // ⚠️ v16.2.2 (NEW): `reactivity[].usedInTemplate` читается из
 //   `vue.reactivity.usedInTemplate[i] === 1` → true.
+//
+// ⚠️ v16.2.3 (NEW, PATCH): `reactivity[].usedInTemplate` —
+//   ОПЦИОНАЛЬНЫЙ. Если колонка отсутствует — `undefined`
+//   (а не `false`). Симметрично `codec-encode.ts`, который
+//   пишет колонку опционально.
 // ============================================
 
 function decodeVueSection(
@@ -1351,12 +1381,19 @@ function decodeVueSection(
     line: vue.hooks.l[i] ?? 0,
   }));
 
-  // ✅ v16.2.2: читаем usedInTemplate из vue.reactivity.usedInTemplate
+  // ✅ v16.2.3 PATCH: usedInTemplate — ОПЦИОНАЛЬНЫЙ.
   //
   // ЛОГИКА:
-  //   usedInTemplate[i] === 1  → true
-  //   usedInTemplate[i] === 0  → false
-  //   usedInTemplate отсутствует или undefined  → false (обратная совместимость)
+  //   ЕСЛИ колонка usedInTemplate ЕСТЬ в compact.vue.reactivity:
+  //     usedInTemplate[i] === 1  → true
+  //     usedInTemplate[i] === 0  → false
+  //   ЕСЛИ колонки НЕТ:
+  //     undefined  (не создаём поле — симметрично full.json без поля)
+  //
+  // ПОЧЕМУ:
+  //   Раньше `vue.reactivity.usedInTemplate?.[i] === 1` давал `false`,
+  //   если колонки нет. Это создавало рассинхрон с full.json, где
+  //   поля usedInTemplate вообще НЕ было (undefined).
   //
   // ПРИМЕР:
   //   compact.vue.reactivity.usedInTemplate = [0, 1]
@@ -1364,18 +1401,30 @@ function decodeVueSection(
   //   →
   //     { name: 'count',       usedInTemplate: false }
   //     { name: 'displayText', usedInTemplate: true  }
-  const rxUsedInTemplate = vue.reactivity?.usedInTemplate ?? [];
+  //
+  //   compact.vue.reactivity.usedInTemplate = undefined
+  //   →
+  //     { name: 'count',       usedInTemplate: undefined }
+  //     { name: 'displayText', usedInTemplate: undefined }
+  const rxUsedInTemplateRaw = vue.reactivity?.usedInTemplate;
+  const rxHasUsedInTemplate = Array.isArray(rxUsedInTemplateRaw);
 
   const reactivity: ReactivityEntity[] = (vue.reactivity?.f ?? []).map(
     (fileIdx: number, i: number) => {
       const nameIdx = vue.reactivity.n?.[i] ?? -1;
+
+      // ✅ v16.2.3 PATCH: опциональное чтение usedInTemplate
+      const usedInTemplate = rxHasUsedInTemplate
+        ? rxUsedInTemplateRaw![i] === 1
+        : undefined;
+
       return {
         id: `rx${i + 1}`,
         fileId: fileId(fileIdx),
         kind: REACTIVITY_KIND_BY_CODE[vue.reactivity.k[i] ?? 0] ?? 'computed',
         line: vue.reactivity.l[i] ?? 0,
         name: nameIdx >= 0 ? readStr(nameIdx) : undefined,
-        usedInTemplate: rxUsedInTemplate[i] === 1,   // ✅ v16.2.2
+        usedInTemplate,
       };
     }
   );

@@ -2,7 +2,36 @@
 // ============================================
 // КЛАССИФИКАЦИЯ VUE-СУЩНОСТЕЙ
 // ============================================
-// Версия: 1.1.0
+// Версия: 1.2.0
+//
+// ИЗМЕНЕНИЯ v1.2.0 (v16.2.0 PATCH: reactivity через templateReactivity):
+//   - ✅ УДАЛЁН блок `if (REACTIVITY_NAMES.has(func.name))` из цикла
+//     по `entities.functions` — он формировал reactivity БЕЗ
+//     usedInTemplate и с `name` = имя функции ('computed', 'ref'),
+//     а не имя переменной.
+//
+//   - ✅ ДОБАВЛЕН блок `templateReactivity` перед закрытием внешнего
+//     цикла `for (const filePath of sortedFilePaths)`. Читает
+//     `entities.templateReactivity` (заполняется в convert-analysis.ts),
+//     где:
+//       • name          — имя переменной ('count', 'displayText')
+//       • usedInTemplate — флаг использования в шаблоне
+//
+//   - 📌 ЦЕПОЧКА ДАННЫХ:
+//       vue-analyzer/index.ts
+//         → reactivity[].name (обогащение из constants)
+//         → convert-analysis.ts
+//         → entities.templateReactivity[].usedInTemplate
+//         → classifyVueEntities (эта функция)
+//         → vueEntities.reactivity[].usedInTemplate
+//
+//   - 📌 ПРИЧИНА:
+//       `const count = ref(0)` НЕ попадает в `entities.functions`
+//       как функция. Анализатор Vue SFC извлекает reactivity
+//       через extractReactivity + extractConstantsFromScript
+//       (см. convert-analysis.ts). Поэтому старый блок
+//       `if (REACTIVITY_NAMES.has(func.name))` давал пустой
+//       reactivity для `<script setup>`.
 //
 // ИЗМЕНЕНИЯ v1.1.0 (v16.2.0: usedInTemplate для reactivity):
 //   - ✅ ДОБАВЛЕНО: `usedInTemplate?: boolean` в `VueReactivityEntity`.
@@ -274,38 +303,6 @@ const HOOK_NAMES = new Set<string>([
   'watchEffect',
 ]);
 
-/**
- * Реактивные примитивы.
- */
-const REACTIVITY_NAMES = new Set<string>([
-  'computed',
-  'ref',
-  'shallowRef',
-  'reactive',
-  'readonly',
-  'toRef',
-  'toRefs',
-  'customRef',
-  'triggerRef',
-]);
-
-/**
- * Соответствие имени реактивности → виду.
- */
-const REACTIVITY_KIND_MAP = new Map<string, VueReactivityEntity['kind']>([
-  ['computed', 'computed'],
-  ['ref', 'ref'],
-  ['shallowRef', 'ref'],
-  ['reactive', 'reactive'],
-  ['readonly', 'reactive'],
-  ['toRef', 'ref'],
-  ['toRefs', 'ref'],
-  ['customRef', 'ref'],
-  ['triggerRef', 'ref'],
-  ['watch', 'watch'],
-  ['watchEffect', 'watch'],
-]);
-
 // ============================================
 // ГЛАВНАЯ ФУНКЦИЯ
 // ============================================
@@ -329,8 +326,9 @@ const REACTIVITY_KIND_MAP = new Map<string, VueReactivityEntity['kind']>([
  *        a. use[A-Z]* → composables
  *        b. define[A-Z]* → macros
  *        c. on* / watch* → hooks
- *        d. computed/ref/reactive → reactivity
- *   5. Возвращаем VueEntities.
+ *   5. ✅ v1.2.0: reactivity берётся из entities.templateReactivity
+ *      (name = имя переменной, usedInTemplate = флаг).
+ *   6. Возвращаем VueEntities.
  *
  * ════════════════════════════════════════════════════════════
  * ПОЧЕМУ СОРТИРОВКА КЛЮЧЕЙ КРИТИЧНА (v1.0.1)
@@ -485,8 +483,30 @@ export function classifyVueEntities(entitiesMap: Record<string, EntitiesResult>)
     }
 
     // ============================================================
-    // 3. ФУНКЦИИ (composables, macros, hooks, reactivity)
+    // 3. ФУНКЦИИ (composables, macros, hooks)
     // ============================================================
+    //
+    // ✅ v16.2.0 PATCH: из этого цикла УДАЛЁН блок
+    //   `if (REACTIVITY_NAMES.has(func.name))`.
+    //
+    // ПРИЧИНА:
+    //   `const count = ref(0)` НЕ попадает в `entities.functions`
+    //   как функция. Поэтому блок никогда не срабатывал для
+    //   <script setup>. А если срабатывал (для редких случаев,
+    //   когда `computed` — реально функция), то `name` было
+    //   равно 'computed'/'ref', а не имени переменной.
+    //
+    // ЧТО ВМЕСТО:
+    //   Новый блок 4. REACTIVITY (см. ниже) читает
+    //   `entities.templateReactivity`, где:
+    //     • name          — имя переменной ('count', 'displayText')
+    //     • usedInTemplate — флаг использования в шаблоне
+    //
+    //   Данные заполняются в convert-analysis.ts:
+    //     (result as any).templateReactivity = vueAnalysis.reactivity.map(...)
+    //
+    //   vueAnalysis.reactivity обогащается именами в vue-analyzer/index.ts
+    //   на основе constants (const count = ref(0)).
     for (const func of entities.functions ?? []) {
       if (!func || !func.name) continue;
 
@@ -533,27 +553,48 @@ export function classifyVueEntities(entitiesMap: Record<string, EntitiesResult>)
         continue;
       }
 
-      // --- Реактивные примитивы ---
-      //
-      // ✅ v16.2.0: `usedInTemplate` здесь НЕ заполняется —
-      //   оно будет проставлено позже, в convert-analysis.ts,
-      //   на основе template.reactivityDeps.
-      //
-      // ⚠️ ВАЖНО: здесь `name` — это имя функции ('computed', 'ref'),
-      //   а не имя переменной. Реальные имена переменных появляются
-      //   в reactivity только после обогащения в vue-analyzer/index.ts.
-      if (REACTIVITY_NAMES.has(func.name)) {
-        reactivityCounter++;
-        const rxKind = REACTIVITY_KIND_MAP.get(func.name) ?? 'ref';
-        result.reactivity.push({
-          id: `rx${reactivityCounter}`,
-          fileId: filePath,
-          kind: rxKind,
-          line: func.line ?? 0,
-          name: func.name,
-        });
-        continue;
-      }
+      // ✅ v16.2.0 PATCH: блок `if (REACTIVITY_NAMES.has(func.name))`
+      //   удалён. См. блок 4. REACTIVITY ниже.
+    }
+
+    // ============================================================
+    // 4. REACTIVITY (v16.2.0 PATCH)
+    // ============================================================
+    //
+    // ✅ Реактивные примитивы (computed/ref/reactive/watch) берём
+    //    из templateReactivity, где:
+    //      • name          — имя переменной ('count', 'displayText')
+    //      • usedInTemplate — флаг использования в шаблоне
+    //
+    //    Заполняется в convert-analysis.ts:
+    //      (result as any).templateReactivity = vueAnalysis.reactivity.map(...)
+    //
+    //    vueAnalysis.reactivity обогащается именами в vue-analyzer/index.ts
+    //    на основе constants (const count = ref(0)).
+    //
+    //    ⚠️ ПОЧЕМУ НЕ entities.functions:
+    //      `const count = ref(0)` НЕ является функцией в AST,
+    //      поэтому не попадает в entities.functions. Реактивные
+    //      переменные извлекаются отдельно (extractReactivity +
+    //      extractConstantsFromScript) и обогащаются именами.
+    //
+    //    ⚠️ FALLBACK:
+    //      Если по какой-то причине templateReactivity пуст
+    //      (старый формат EntitiesResult, или вызов из другого
+    //      места), reactivity просто не будет заполнен. Это
+    //      допустимо — поле не критичное.
+    const templateReactivity = (entities as any).templateReactivity || [];
+
+    for (const rx of templateReactivity) {
+      reactivityCounter++;
+      result.reactivity.push({
+        id: `rx${reactivityCounter}`,
+        fileId: filePath,
+        kind: rx.kind,
+        line: rx.line ?? 0,
+        name: rx.name,
+        usedInTemplate: rx.usedInTemplate,
+      });
     }
   }
 
