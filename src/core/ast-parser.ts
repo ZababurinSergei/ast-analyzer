@@ -1,5 +1,8 @@
 // src/core/ast-parser.ts
-// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ v7.3.0
+// ПОЛНАЯ ВЕРСИЯ С ОБНОВЛЕНИЯМИ v7.4.2
+// ✅ ИСПРАВЛЕНО v7.4.2: jsx=false для .ts (generics ломались с jsx=true)
+// ✅ ИСПРАВЛЕНО v7.4.1: пропуск .d.ts (декларации типов, не код)
+// ✅ ИСПРАВЛЕНО v7.4.0: jsx=true для .js/.jsx/.tsx/.mjs/.cjs (React в .js файлах)
 // ✅ ИСПРАВЛЕНО: isExternalModule — @scope/pkg теперь external
 // ✅ ИСПРАВЛЕНО: collectImportsFromAST — сохраняется line + loc
 // ✅ ИСПРАВЛЕНО: collectExportsFromAST — localName, isTypeOnly, isStarReExport, isDefaultReExport
@@ -729,6 +732,19 @@ export function collectExportsFromAST(ast: any): {
  * ✅ ОБНОВЛЕНО v7.2.0:
  *   - Все console.log чтения/парсинга понижены до logParse (флаг AST_DEBUG_PARSE)
  *   - Предупреждение "не найден script блок" понижено до logVue (флаг AST_DEBUG_VUE)
+ *
+ * ✅ ОБНОВЛЕНО v7.4.0:
+ *   - jsx=true для .js/.jsx/.tsx/.mjs/.cjs (React в .js файлах)
+ *
+ * ✅ ОБНОВЛЕНО v7.4.1:
+ *   - .d.ts файлы пропускаются (декларации типов, не код)
+ *   - Причина: в mkb/src попадаются битые .d.ts из сборок
+ *
+ * ✅ ОБНОВЛЕНО v7.4.2:
+ *   - jsx=false для .ts файлов (иначе ломаются generic-параметры)
+ *   - Причина: `const groupBy = <T extends {...}>(arr: T[]) => ...`
+ *     парсится как JSX-элемент при jsx=true.
+ *   - В .ts файлах JSX не бывает по определению (для этого .tsx).
  */
 export function parseFile(
   filePath: string,
@@ -740,6 +756,22 @@ export function parseFile(
 
     if (filePath.endsWith('.css')) {
       logParse(`⏭️ Пропуск CSS файла: ${path.basename(filePath)}`);
+      return null;
+    }
+
+    // ✅ v7.4.1: .d.ts — декларации типов, не код.
+    //
+    // ПРИЧИНА:
+    //   path.extname('foo.d.ts') → '.ts', поэтому .d.ts проходит
+    //   фильтр SUPPORTED_EXTENSIONS. Но внутри — только декларации
+    //   типов (без реализации), иногда битые (сборки tsc).
+    //
+    //   Пример: mkb/src/components/react-toc/dist/__tests__/utils.test.d.ts
+    //   содержит 'wexport {};' — парсер падает.
+    //
+    //   В mkb таких .d.ts — 142, из них 121 в dist/ (мусор сборки).
+    if (filePath.endsWith('.d.ts')) {
+      logParse(`⏭️ Пропуск .d.ts файла: ${path.basename(filePath)}`);
       return null;
     }
 
@@ -836,6 +868,24 @@ export function parseFile(
       isTypeScript = filePath.endsWith('.ts') || filePath.endsWith('.tsx');
     }
 
+    // ✅ v7.4.2: jsx только для .tsx/.jsx/.js/.mjs/.cjs.
+    //
+    // ПРИЧИНА:
+    //   jsx:true в .ts-файлах ЛОМАЕТ generic-параметры:
+    //     const groupBy = <T extends { id: string }>(arr: T[]) => ...
+    //   Парсер видит `<T extends ...>` как JSX-элемент
+    //   → "Unexpected token. Did you mean '>'"?
+    //
+    //   В .ts-файлах JSX не бывает по определению (для этого .tsx).
+    //
+    //   Для .js/.mjs/.cjs — jsx:true нужен (React-компоненты
+    //   могут лежать в .js с JSX-синтаксисом).
+    //
+    //   Для .vue — не нужно (парсится как <script setup lang="ts">,
+    //   и isVue=true — флаг не влияет, потому что код уже внутри).
+    const isTsFile = filePath.endsWith('.ts') && !filePath.endsWith('.d.ts');
+    const useJsx = !isTsFile;
+
     const parserOptions: ParserOptions = {
       ecmaVersion: 2026 as const,
       sourceType: 'module',
@@ -844,7 +894,7 @@ export function parseFile(
       comment: true,
       tokens: true,
       ecmaFeatures: {
-        jsx: filePath.endsWith('.tsx') || filePath.endsWith('.jsx'),
+        jsx: useJsx, // ✅ v7.4.2: только для .tsx/.jsx/.js/.mjs/.cjs
         globalReturn: false,
         impliedStrict: true,
       },
@@ -857,15 +907,8 @@ export function parseFile(
       };
     }
 
-    if (isTypeScript) {
-      parserOptions.ecmaFeatures = {
-        ...parserOptions.ecmaFeatures,
-        jsx: filePath.endsWith('.tsx') || filePath.endsWith('.jsx'),
-      };
-    }
-
     logParse(
-      `🔧 Парсинг с опциями: sourceType=${parserOptions.sourceType}, ecmaVersion=${parserOptions.ecmaVersion}`
+      `🔧 Парсинг с опциями: sourceType=${parserOptions.sourceType}, ecmaVersion=${parserOptions.ecmaVersion}, jsx=${useJsx}`
     );
 
     const fallbackOptions: ParserOptions = {
@@ -873,6 +916,10 @@ export function parseFile(
       sourceType: 'module',
       loc: true,
       range: true,
+      ecmaFeatures: {
+        // ✅ v7.4.2: jsx в fallback тоже только для не-.ts
+        jsx: useJsx,
+      },
     };
 
     let ast;

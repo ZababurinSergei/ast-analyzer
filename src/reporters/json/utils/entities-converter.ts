@@ -2,70 +2,55 @@
 // ============================================================
 // КОНВЕРТЕР СУЩНОСТЕЙ: EntitiesResult → EnhancedEntityInfo
 // ============================================================
-// Версия: 2.2.0
+// Версия: 2.3.0
+//
+// ИЗМЕНЕНИЯ v2.3.0 (v17.0.0: React-сущности):
+//   - ✅ ДОБАВЛЕНО: convertEntitiesToEnhanced пробрасывает
+//     React-поля из EntitiesResult в EnhancedEntityInfo:
+//       • reactComponents
+//       • reactHooks
+//       • reactEffects
+//       • reactContexts
+//       • reactMemoization
+//       • reactRefs
+//       • reactJsxElements
+//       • reactJsxEvents
+//       • reactConditionals
+//       • reactComponentUsages
+//   - 🎯 Без этих полей pass7React не видит React-данные:
+//     collectFullJSON получает enhancedMap, а не оригинальный
+//     entitiesMap.
+//   - 📌 Синхронизировано с:
+//       • src/types.ts::EnhancedEntityInfo (расширен)
+//       • src/pipeline/stages/normalize-entities.ts
+//         ::propagateTemplateFields (дублирует для подстраховки)
 //
 // ИЗМЕНЕНИЯ v2.2.0 (P0/P1: явная нормализация parentFunctionId):
 //   - ✅ ИСПРАВЛЕНО: convertFunctions теперь ГАРАНТИРОВАННО пробрасывает
 //     parentFunctionId из FunctionInfo в EnhancedFunctionInfo.
-//     Ранее использовался `(func as any).parentFunctionId ?? null`,
-//     что работало, но НЕ защищало от случая, когда поле не
-//     объявлено в типе FunctionInfo.
 //   - ✅ ИСПРАВЛЕНО: convertFunctions теперь нормализует boundTo
 //     (добавляет только если задан, чтобы не засорять объект).
 //   - ✅ ПРОВЕРЕНО: convertEntitiesToEnhanced пробрасывает lexicalLinks
 //     с fallback на [] (не undefined).
-//   - 📌 Это критично для инварианта I10 (verify-roundtrip):
-//     parentFunctionId в full.json должен ссылаться на существующий fnN.
-//     Если конвертер теряет поле — инвариант падает.
 //
 // ИЗМЕНЕНИЯ v2.1.0 (P0/P1: parentFunctionId + lexicalLinks):
-//   - ✅ ДОБАВЛЕНО: convertFunctions пробрасывает parentFunctionId
-//     (P0 — лексический родитель для вложенных функций).
-//   - ✅ ДОБАВЛЕНО: convertFunctions пробрасывает boundTo
-//     (P2 — информация о вызове, в который передан колбэк).
-//   - ✅ ДОБАВЛЕНО: convertEntitiesToEnhanced пробрасывает lexicalLinks
-//     (P1 — лексические связи parent → child).
-//   Без этих полей:
-//     - full.functions[].parentFunctionId = null для всех
-//     - full.lexicalLinks = []
-//     - compact.fns.parent = [[-1, N]]
-//     - compact.lx = { p: [], c: [], r: [], l: [], ai: [], cn: [] }
-//     - фронт не может построить дерево вложенности
+//   - ✅ ДОБАВЛЕНО: convertFunctions пробрасывает parentFunctionId.
+//   - ✅ ДОБАВЛЕНО: convertFunctions пробрасывает boundTo.
+//   - ✅ ДОБАВЛЕНО: convertEntitiesToEnhanced пробрасывает lexicalLinks.
 //
 // ИЗМЕНЕНИЯ v2.0.1 (устранение мёртвого кода):
-//   - ✅ УДАЛЕНЫ неиспользуемые функции convertImports и convertExports.
-//     Они ничего не делали, так как convertEntitiesToEnhanced
-//     пробрасывает imports и exports напрямую (см. v2.0.0).
-//     Это устраняло ошибки TS6133:
-//       'convertImports' is declared but its value is never read.
-//       'convertExports' is declared but its value is never read.
+//   - ✅ УДАЛЕНЫ неиспользуемые convertImports и convertExports.
 //
 // ИЗМЕНЕНИЯ v2.0.0 (расширение функциональности + кроссплатформенность):
 //   - ✅ ДОБАВЛЕНО: convertEntitiesToEnhanced пробрасывает все
-//     template-поля Vue (templateReactivityDeps, templateEventHandlers,
-//     templateDynamicComponents, templateRefs, templateCssVariables,
-//     templateDeepSelectors, templateDirectives, templateUsedComponents,
-//     templateSlots, templateComplexity, templateConditionals,
-//     templateLifecycle, templateEffects, templateInjections,
-//     templateReactivity).
-//     Без этого vt-секция в compact-отчёте была бы пустой.
+//     template-поля Vue (templateReactivityDeps, ...).
 //   - ✅ ДОБАВЛЕНО: convertEntitiesToEnhanced пробрасывает typesGraph
-//     и typeRefsGraph (тип-граф).
-//   - ✅ ДОБАВЛЕНО: convertImports теперь возвращает ImportInfo[]
-//     (а не упрощённую структуру { source, specifiers: string[], isTypeOnly }).
-//     Это устраняло TS2322 при присваивании к EnhancedEntityInfo.imports.
-//   - ✅ ДОБАВЛЕНО: convertFunctions расширена, так как расширенный
-//     тип EnhancedFunctionInfo требует дополнительные поля (isSelf, _isSelf, filePath,
-//     moduleName, _modulePath и т.д.).
-//   - ✅ ДОБАВЛЕНО: convertExports возвращает export для всех
-//     (ExportInfo из src/types.ts совместим с EnhancedEntityInfo.exports).
-//   - ✅ ИСПРАВЛЕНО: используется единый импорт типов из
-//     '../../../types.js'.
+//     и typeRefsGraph.
+//   - ✅ ДОБАВЛЕНО: convertFunctions расширена.
+//   - ✅ ДОБАВЛЕНО: convertExports возвращает export для всех.
 //
 // ИЗМЕНЕНИЯ v1.0.0:
 //   - Базовая конвертация EntitiesResult
-//   - Поддержка функций, классов, констант, интерфейсов,
-//     типов, переменных, импортов, экспортов
 // ============================================================
 
 import type {
@@ -132,12 +117,14 @@ export function createEmptyEntitiesResult(filePath: string = ''): EntitiesResult
  *
  * С v2.0.0: пробрасывает все template-поля Vue и тип-граф.
  * С v2.1.0: пробрасывает lexicalLinks (P1 — лексические связи).
+ * С v2.3.0: пробрасывает все React-поля (v17.0.0).
  *
  * Без этого:
  *   - vt-секция в compact-отчёте была бы пустой
  *   - lifecycle/effects/injections/reactivity потерялись бы
  *   - types/typeRefs потерялись бы
  *   - full.lexicalLinks = [] и compact.lx = { p: [], c: [], ... }
+ *   - pass7React не видит React-сущности (нет react-секции в JSON)
  *
  * @param entities — результат extractEntities / extractEntitiesFromFile
  * @returns EnhancedEntityInfo
@@ -156,12 +143,6 @@ export function convertEntitiesToEnhanced(entities: EntitiesResult): EnhancedEnt
 
     // ============================================================
     // ✅ imports пробрасываются как есть.
-    //
-    // ImportInfo в EntitiesResult и ImportInfo в EnhancedEntityInfo —
-    // это один и тот же тип из src/types.ts.
-    //
-    // Функция `convertImports` удалена в v2.0.1 как мёртвый код,
-    // так как она ничего не делала (возвращала входной массив).
     // ============================================================
     imports: entities.imports || [],
 
@@ -171,13 +152,7 @@ export function convertEntitiesToEnhanced(entities: EntitiesResult): EnhancedEnt
     exports: entities.exports || [],
 
     // ============================================================
-    // ✅ НОВОЕ v2.0.0: template-поля Vue.
-    //
-    // Без них Codec.encode получит undefined на позиции
-    // vt[] и JSON.stringify обрежет массив → сломает round-trip.
-    //
-    // Источник данных: convertVueAnalysisToEntities
-    // (core/entity-extractor/vue/convert-analysis.ts).
+    // ✅ v2.0.0: template-поля Vue.
     // ============================================================
 
     /** root-идентификаторы шаблона (user, items, isLoading) */
@@ -189,12 +164,7 @@ export function convertEntitiesToEnhanced(entities: EntitiesResult): EnhancedEnt
     /** <component :is="..."> и v-bind:is */
     templateDynamicComponents: entities.templateDynamicComponents,
 
-    /**
-     * ✅ ИСПРАВЛЕНО: template refs.
-     *
-     * Без этого поля Codec.encode получает undefined на позиции 9 vt[]
-     * и JSON.stringify обрезает массив до 9 элементов вместо 12.
-     */
+    /** template refs (ref="dataTable" → exposedMethods) */
     templateRefs: entities.templateRefs,
 
     /** CSS-переменные из <style> */
@@ -231,11 +201,7 @@ export function convertEntitiesToEnhanced(entities: EntitiesResult): EnhancedEnt
     templateReactivity: entities.templateReactivity,
 
     // ============================================================
-    // ✅ НОВОЕ v2.0.0: тип-граф.
-    //
-    // Без этого секции ty/tr в compact-отчёте были бы пустыми.
-    // Источник данных: extractTypeGraph (core/type-graph-extractor.ts),
-    // вызывается в json-reporter.ts::extractEntitiesFromFile.
+    // ✅ v2.0.0: тип-граф.
     // ============================================================
 
     /** Узлы тип-графа (interface / type-alias / enum / class) */
@@ -245,30 +211,55 @@ export function convertEntitiesToEnhanced(entities: EntitiesResult): EnhancedEnt
     typeRefsGraph: entities.typeRefsGraph,
 
     // ============================================================
-    // ✅ НОВОЕ v2.1.0 (P1): лексические связи (parent → child).
-    //
-    // Описывает вложенность функций:
-    //   function outer() {
-    //     arr.map(x => x);   // callback является ребёнком outer
-    //   }
-    //   → lexicalLinks = [
-    //       { parentFunctionId: 'fn1', childFunctionId: 'fn2',
-    //         relation: 'callback', line: 2, argumentIndex: 0,
-    //         calleeName: 'map' },
-    //     ]
-    //
-    // Без этого поля:
-    //   - full.lexicalLinks = []
-    //   - compact.lx = { p: [], c: [], r: [], l: [], ai: [], cn: [] }
-    //   - decode(compact).lexicalLinks = undefined
-    //   - фронт не может построить дерево вложенности
-    //
-    // Источник: extractEntitiesFromAST (core/entity-extractor/ast).
+    // ✅ v2.1.0 (P1): лексические связи (parent → child).
     //
     // ✅ v2.2.0: fallback на [] (не undefined), чтобы Codec.encode
     // всегда видел массив, а не undefined.
     // ============================================================
     lexicalLinks: entities.lexicalLinks ?? [],
+
+    // ============================================================
+    // ✅ v2.3.0 (v17.0.0): React-сущности
+    // ============================================================
+    //
+    // Без этих полей pass7React не видит React-данные:
+    // collectFullJSON получает enhancedMap, а не entitiesMap.
+    //
+    // Все поля — опциональные. Для .ts/.js/.vue они undefined.
+    // Для .tsx/.jsx — заполнены в parse-typescript.ts.
+    //
+    // Симметрично пробросу templateXxx-полей выше.
+    // ============================================================
+
+    /** React-компоненты (function/arrow/class/memo/forwardRef/lazy) */
+    reactComponents: entities.reactComponents,
+
+    /** React-хуки (useState/useEffect/...) */
+    reactHooks: entities.reactHooks,
+
+    /** React-эффекты (useEffect/useLayoutEffect) */
+    reactEffects: entities.reactEffects,
+
+    /** React-контексты (createContext/useContext) */
+    reactContexts: entities.reactContexts,
+
+    /** React-мемоизация (useMemo/useCallback/React.memo) */
+    reactMemoization: entities.reactMemoization,
+
+    /** React-refs (useRef/forwardRef) */
+    reactRefs: entities.reactRefs,
+
+    /** JSX-элементы */
+    reactJsxElements: entities.reactJsxElements,
+
+    /** JSX-события (onClick/onChange/...) */
+    reactJsxEvents: entities.reactJsxEvents,
+
+    /** Условный рендеринг в JSX (&&/||/?:) */
+    reactConditionals: entities.reactConditionals,
+
+    /** Использования React-компонентов */
+    reactComponentUsages: entities.reactComponentUsages,
   };
 }
 
@@ -279,17 +270,6 @@ export function convertEntitiesToEnhanced(entities: EntitiesResult): EnhancedEnt
 /**
  * Конвертирует FunctionInfo[] в EnhancedFunctionInfo[].
  *
- * Расширенный тип EnhancedFunctionInfo требует дополнительные
- * поля, которых нет в FunctionInfo. По умолчанию:
- *   - isMethod, className, isNested, parentFunction, isArrow,
- *     isEventHandler, eventType, depth — из исходных значений
- *   - complexity → по умолчанию 1
- *   - security → createDefaultSecurity()
- *   - vscode, signature → из исходных значений
- *   - _safeInfo → null
- *   - isSelf, _isSelf → из FunctionInfo
- *   - filePath, moduleName, _modulePath → из FunctionInfo
- *
  * ✅ v2.1.0 (P0): пробрасывает parentFunctionId.
  * ✅ v2.1.0 (P2): пробрасывает boundTo.
  * ✅ v2.2.0: явная нормализация parentFunctionId (через FunctionInfo),
@@ -298,14 +278,9 @@ export function convertEntitiesToEnhanced(entities: EntitiesResult): EnhancedEnt
 function convertFunctions(functions: FunctionInfo[]): EnhancedEntityInfo['functions'] {
   return functions.map((func): EnhancedFunctionInfo => {
     // ✅ v2.2.0: явно типизируем parentFunctionId.
-    // FunctionInfo.parentFunctionId объявлено в src/types.ts (v15.1.0),
-    // поэтому (func as any) больше не нужен — но оставляем fallback
-    // для старых версий FunctionInfo.
-    const parentFunctionId: string | null =
-      (func as any).parentFunctionId ?? null;
+    const parentFunctionId: string | null = (func as any).parentFunctionId ?? null;
 
-    // ✅ v2.2.0: boundTo добавляем условно, чтобы не засорять объект
-    // полем `boundTo: undefined`.
+    // ✅ v2.2.0: boundTo добавляем условно.
     const boundTo = (func as any).boundTo;
 
     const enhanced: EnhancedFunctionInfo = {
@@ -369,12 +344,6 @@ function convertFunctions(functions: FunctionInfo[]): EnhancedEntityInfo['functi
       importedBy: ensureArray((func as any).importedBy),
 
       // ---------- ✅ v2.2.0 (P0): лексический родитель ----------
-      // ID функции, внутри которой эта функция объявлена в AST.
-      // null — top-level функция.
-      //
-      // ⚠️ КРИТИЧНО: если это поле потеряется, инвариант I10
-      // (verify-roundtrip) упадёт, а compact.fns.parent будет
-      // содержать только -1.
       parentFunctionId,
 
       // ---------- Служебное ----------
@@ -398,8 +367,6 @@ function convertFunctions(functions: FunctionInfo[]): EnhancedEntityInfo['functi
     };
 
     // ✅ v2.2.0 (P2): boundTo добавляем только если задан.
-    // Иначе поле `boundTo: undefined` попадёт в JSON и сломает
-    // побайтовое сравнение в round-trip.
     if (boundTo) {
       enhanced.boundTo = boundTo;
     }
@@ -486,26 +453,6 @@ function convertClasses(classes: ClassInfo[]): EnhancedEntityInfo['classes'] {
 // ============================================================
 // ✅ v2.0.1: функции convertImports и convertExports УДАЛЕНЫ
 // ============================================================
-//
-// Было в v2.0.0:
-//   function convertImports(imports: ImportInfo[]): ImportInfo[] {
-//     return imports;
-//   }
-//
-//   function convertExports(exports: ExportInfo[]): ExportInfo[] {
-//     return exports;
-//   }
-//
-// Причины удаления:
-//   - Эти функции не использовались (convertEntitiesToEnhanced
-//     пробрасывает imports и exports напрямую).
-//   - TS6133: 'convertImports' is declared but its value is never read.
-//   - TS6133: 'convertExports' is declared but its value is never read.
-//
-// Если в будущем понадобится какая-то трансформация imports/exports,
-// добавьте её прямо в convertEntitiesToEnhanced или восстановите
-// функции здесь и используйте их явно.
-// ============================================================
 
 // ============================================================
 // Вспомогательные функции
@@ -513,18 +460,11 @@ function convertClasses(classes: ClassInfo[]): EnhancedEntityInfo['classes'] {
 
 /**
  * Проверяет, что значение — массив.
- *
- * Если значение строкой вида "[object Object]", возвращает пустой
- * массив. Если это не массив — возвращает пустой массив.
- *
- * @param value — любое значение
- * @returns массив
  */
 function ensureArray<T>(value: any): T[] {
   if (Array.isArray(value)) return value;
 
   if (typeof value === 'string') {
-    // Строка вида "[]" → пустой массив без парсинга
     const trimmed = value.trim();
     if (trimmed === '[]') return [];
     if (
@@ -549,9 +489,6 @@ function ensureArray<T>(value: any): T[] {
 
 /**
  * Извлекает имя модуля из пути к файлу (basename без расширения).
- *
- * @param filePath — путь к файлу
- * @returns имя модуля
  */
 function extractModuleName(filePath: string): string {
   const normalized = filePath.replace(/\\/g, '/');

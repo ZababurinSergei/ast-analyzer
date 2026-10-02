@@ -2,62 +2,37 @@
 // ============================================
 // ПУБЛИЧНЫЙ API ПОДСИСТЕМЫ PIPELINE
 // ============================================
-// Версия: 16.1.0
+// Версия: 17.0.0 (v17.0.0: React-секция)
 //
 // ════════════════════════════════════════════════════════════
 // НАЗНАЧЕНИЕ
 // ════════════════════════════════════════════════════════════
 //
-// Единая точка входа для всех модулей подсистемы `pipeline`.
-// Здесь собраны:
-//   • collectFullJSON       — главный оркестратор сбора FullJSON
-//   • createCollectContext  — фабрика контекста сбора
-//   • CollectContext        — тип контекста (мутируемый)
-//   • getRelativePath       — утилита нормализации пути
+//   Единая точка входа для подсистемы `pipeline`.
+//   Экспортирует:
+//     • collectFullJSON       — главный оркестратор сбора FullJSON
+//     • createCollectContext  — фабрика контекста
+//     • CollectContext        — тип контекста (интерфейс)
+//     • getRelativePath       — утилита относительного пути
+//     • pass1Modules...pass7React — отдельные проходы
 //
 // ════════════════════════════════════════════════════════════
-// АРХИТЕКТУРА (v16.1.0)
+// ПОРЯДОК ПРОХОДОВ (v17.0.0)
 // ════════════════════════════════════════════════════════════
 //
-//   collectFullJSON() — оркестратор, последовательно вызывает:
+//   collectFullJSON() вызывает проходы в порядке:
 //
-//     pass1Modules(ctx)      — модули + файлы + функции + классы + константы
-//     pass4Extended(ctx)     — templates + lifecycle/effects/injections/
+//     pass1Modules(ctx)      → модули + файлы + функции + классы + константы
+//     pass4Extended(ctx)     → templates + lifecycle/effects/injections/
 //                              reactivity/types/typeRefs + lexicalLinks
-//     pass2Exports(ctx)      — экспорты, реэкспорты, импорты
-//     pass3Calls(ctx)        — вызовы + merge cross-file
-//     pass5Vue(ctx)          — vue-секция + component usage
-//     pass6DomApi(ctx)       — DOM API
-//
-//     + сборка ids/sourceChains
-//     + сборка statistics
-//     + canonicalizeFullJSON
-//
-// ⚠️ ПОРЯДОК ПРОХОДОВ КРИТИЧЕН:
-//   1. pass1 заполняет moduleMap/fileMap/functionMap/sourceToFileIdMap
-//   2. pass4 использует fileMap для templates
-//   3. pass2 использует functionMap для exports/imports
-//   4. pass3 использует functionMap для calls
-//   5. pass5 использует allComponent* (заполненные в pass5)
-//   6. pass6 использует files/functions для DOM API
-//
-//   Нарушение порядка ломает round-trip.
+//     pass2Exports(ctx)      → экспорты, импорты, реэкспорты
+//     pass3Calls(ctx)        → вызовы + merge cross-file
+//     pass5Vue(ctx)          → vue-секция + component usage
+//     pass6DomApi(ctx)       → DOM API
+//     pass7React(ctx)        → react-секция (v17.0.0)
 //
 // ════════════════════════════════════════════════════════════
-// СВЯЗАННЫЕ ФАЙЛЫ
-// ════════════════════════════════════════════════════════════
-//
-//   • ./collect-full-json.ts   — главный оркестратор
-//   • ./context.ts             — тип CollectContext + фабрика
-//   • ./pass-1-modules.ts      — первый проход
-//   • ./pass-2-exports.ts      — второй проход
-//   • ./pass-3-calls.ts        — третий проход
-//   • ./pass-4-extended.ts     — четвёртый проход
-//   • ./pass-5-vue.ts          — пятый проход
-//   • ./pass-6-dom-api.ts      — шестой проход
-//
-// ════════════════════════════════════════════════════════════
-// ИСПОЛЬЗОВАНИЕ
+// ИМПОРТЫ
 // ════════════════════════════════════════════════════════════
 //
 //   import { collectFullJSON } from './pipeline/index.js';
@@ -71,58 +46,41 @@
 //   );
 //
 // ════════════════════════════════════════════════════════════
-// ЭКСПОРТЫ
+// ⚠️ ВАЖНО
 // ════════════════════════════════════════════════════════════
+//
+//   pass7React вызывается ПОСЛЕ pass6DomApi — не ломает
+//   существующий pipeline. React-секция опциональна.
+//
+//   Если в проекте нет .tsx/.jsx файлов, pass7React сразу
+//   выходит, ctx.react остаётся undefined, FullJSON.react
+//   остаётся undefined — обратная совместимость.
+// ============================================
 
 // ────────────────────────────────────────────────────────────
 // 1. ГЛАВНЫЙ ОРКЕСТРАТОР
 // ────────────────────────────────────────────────────────────
-// Собирает FullJSON из entitiesMap через 6 проходов.
+// Экспорт функции collectFullJSON из ./collect-full-json.js.
 //
-// Сигнатура:
-//   collectFullJSON(
-//     entitiesMap: Record<string, EntitiesResult>,
-//     verbose?: boolean,
-//     valuesMode?: ValuesMode,
-//     crossFileCalls?: CrossFileCall[],
-//     projectRoot?: string
-//   ): FullJSON
-//
-// Возвращает canonicalized FullJSON (через canonicalizeFullJSON).
+// Она собирает FullJSON из entitiesMap, вызывая 7 проходов
+// в фиксированном порядке (см. выше).
 // ────────────────────────────────────────────────────────────
 export { collectFullJSON } from './collect-full-json.js';
 
 // ────────────────────────────────────────────────────────────
 // 2. КОНТЕКСТ СБОРА
 // ────────────────────────────────────────────────────────────
-// Мутируемый объект, который передаётся между проходами.
+// Экспорт фабрики контекста и утилиты пути.
 //
-// Содержит:
-//   • entitiesMap / verbose / valuesMode / crossFileCalls / projectRoot
-//   • sortedFilePaths — стабильный порядок обхода
-//   • результирующие массивы (modules, files, functions, ...)
-//   • индексы (moduleMap, fileMap, functionMap, sourceToFileIdMap)
-//   • счётчики (module, file, function, ..., lexical)
-//   • аккумуляторы allComponent* (props/events/directives/slots/htmlInterpolations)
-//   • vue / domApiCalls / lexicalLinks
+// CollectContext — мутируемый объект, в котором проходы
+// накапливают результаты.
 // ────────────────────────────────────────────────────────────
-export {
-    createCollectContext,
-    getRelativePath,
-    type CollectContext,
-} from './context.js';
+export { createCollectContext, getRelativePath, type CollectContext } from './context.js';
 
 // ────────────────────────────────────────────────────────────
-// 3. ПРОХОДЫ (для тестов и внешних потребителей)
+// 3. ПРОХОДЫ
 // ────────────────────────────────────────────────────────────
-// Экспортируются отдельно, чтобы можно было:
-//   • запускать в unit-тестах изолированно
-//   • строить кастомный pipeline
-//   • отлаживать отдельные этапы
-//
-// ⚠️ В обычном использовании НЕ вызывайте их напрямую —
-//    используйте collectFullJSON(), который гарантирует
-//    правильный порядок и финальную канонизацию.
+// Экспорт отдельных проходов для юнит-тестов и переиспользования.
 // ────────────────────────────────────────────────────────────
 export { pass1Modules } from './pass-1-modules.js';
 export { pass2Exports } from './pass-2-exports.js';
@@ -130,6 +88,7 @@ export { pass3Calls } from './pass-3-calls.js';
 export { pass4Extended } from './pass-4-extended.js';
 export { pass5Vue } from './pass-5-vue.js';
 export { pass6DomApi } from './pass-6-dom-api.js';
+export { pass7React } from './pass-7-react.js'; // ✅ v17.0.0
 
 // ────────────────────────────────────────────────────────────
 // 4. ЭКСПОРТ ПО УМОЛЧАНИЮ
@@ -141,30 +100,29 @@ export { pass6DomApi } from './pass-6-dom-api.js';
 // ────────────────────────────────────────────────────────────
 
 import { collectFullJSON } from './collect-full-json.js';
-import {
-    createCollectContext,
-    getRelativePath,
-} from './context.js';
+import { createCollectContext, getRelativePath } from './context.js';
 import { pass1Modules } from './pass-1-modules.js';
 import { pass2Exports } from './pass-2-exports.js';
 import { pass3Calls } from './pass-3-calls.js';
 import { pass4Extended } from './pass-4-extended.js';
 import { pass5Vue } from './pass-5-vue.js';
 import { pass6DomApi } from './pass-6-dom-api.js';
+import { pass7React } from './pass-7-react.js'; // ✅ v17.0.0
 
 export default {
-    // Оркестратор
-    collectFullJSON,
+  // Оркестратор
+  collectFullJSON,
 
-    // Контекст
-    createCollectContext,
-    getRelativePath,
+  // Контекст
+  createCollectContext,
+  getRelativePath,
 
-    // Проходы
-    pass1Modules,
-    pass2Exports,
-    pass3Calls,
-    pass4Extended,
-    pass5Vue,
-    pass6DomApi,
+  // Проходы
+  pass1Modules,
+  pass2Exports,
+  pass3Calls,
+  pass4Extended,
+  pass5Vue,
+  pass6DomApi,
+  pass7React, // ✅ v17.0.0
 };

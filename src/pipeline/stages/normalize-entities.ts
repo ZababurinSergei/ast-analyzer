@@ -2,140 +2,22 @@
 // ============================================================
 // STAGE 4: NORMALIZE ENTITIES
 // ============================================================
-// Версия: 1.3.0
+// Версия: 1.4.0
 //
-// ИЗМЕНЕНИЯ v1.3.0 (v16.0.8: Component Usage + HTML Elements):
-//   - ✅ ДОБАВЛЕНО: явный проброс templateComponentUsages /
-//     templateHtmlElements в propagateTemplateFields.
-//     Это гарантирует, что compact-reporter.ts получит их через
-//     enhancedMap и НЕ будет перезапускать analyzeVueSFC.
-//   - ✅ ДОБАВЛЕНО: диагностика в verbose-режиме — сколько
-//     componentUsages/htmlElements проброшено.
-//   - 🐛 ПРИЧИНА: без этого проброса compact-reporter.ts вынужден
-//     перезапускать analyzeVueSFC — что приводило к двойному
-//     парсингу <template> и рассинхрону projectRoot.
-//   - 📊 ЭФФЕКТ: время сборки сокращается с ~13 сек до ~5 сек.
-//
-// ИЗМЕНЕНИЯ v1.2.0 (P0/P1: проброс parentFunctionId + lexicalLinks):
-//   - ✅ ДОБАВЛЕНО: явный проброс lexicalLinks в propagateTemplateFields.
-//     Ранее поле терялось, и Codec.encode получал undefined для lx[],
-//     что ломало round-trip (compact.lx = { p: [], c: [], r: [], l: [], ai: [], cn: [] }).
-//   - ✅ ПРОВЕРЕНО: parentFunctionId пробрасывается через convertEntitiesToEnhanced
-//     (см. entities-converter.ts v2.2.0). Здесь дополнительных действий не требуется.
-//   - ✅ ДОБАВЛЕНО: диагностика в verbose-режиме — сколько функций имеют
-//     parentFunctionId и сколько lexicalLinks собрано.
-//   - 📌 Это критично для инвариантов I10 и I12 в verify-roundtrip.
-//
-// ИЗМЕНЕНИЯ v1.1.0:
-//   - ✅ ЯВНЫЙ ПРОБРОС templateXxx-полей.
-//   - ✅ Расширенные метрики: totalVueFiles, filesWithConditionals,
-//     filesWithLifecycle, filesWithReactivity.
-//   - ✅ Логирование в verbose: сколько Vue-файлов с какими
-//     секциями.
-//   - ✅ Обработка ошибок через continueOnError.
-//
-// ИЗМЕНЕНИЯ v1.0.0:
-//   - Первая версия.
-//
-// ============================================================
-// НАЗНАЧЕНИЕ
-// ------------------------------------------------------------
-// Четвёртый этап единого pipeline. Преобразует
-// `EntitiesResult` (внутренний формат обеих веток —
-// TS/JS и Vue) в `EnhancedEntityInfo` (публичный формат
-// для репортёров и Codec).
-//
-// ⚠️ КРИТИЧНО: именно здесь исправляется баг с потерей
-// `templateConditionals` (и других `templateXxx`-полей),
-// из-за которого `decode(compact)` возвращает `undefined`
-// для секции `conditionals` в Vue-проектах.
-//
-// Дополнительно здесь же пробрасываются:
-//   - `parentFunctionId` (P0) — через convertEntitiesToEnhanced
-//   - `lexicalLinks` (P1) — явно через propagateTemplateFields
-//   - `templateComponentUsages` / `templateHtmlElements` (v16.0.8)
-//     — явно через propagateTemplateFields
-// ============================================================
-// СХЕМА
-// ------------------------------------------------------------
-//   EntitiesResult (от TS/JS-ветки или Vue-ветки)
-//              │
-//              ▼
-//   convertEntitiesToEnhanced(entities)
-//              │
-//              ▼
-//   EnhancedEntityInfo (базовые секции)
-//              │
-//              ▼
-//   🎯 ЯВНЫЙ ПРОБРОС templateXxx + lexicalLinks + cu/he (только для Vue)
-//              │
-//              ▼
-//   EnhancedEntityInfo (полный)
-//              │
-//              ▼
-//   ctx.enhancedMap[file] = enhanced
-//
-// ЧТО ДЕЛАЕТ
-// ------------------------------------------------------------
-//   1. Для каждого файла из `ctx.entitiesMap`:
-//        a. Вызывает `convertEntitiesToEnhanced(entities)`
-//           — базовые секции: functions, constants, imports...
-//
-//        b. 🎯 ЯВНО ПРОБРАСЫВАЕТ `templateXxx`-поля:
-//             • templateConditionals
-//             • templateLifecycle
-//             • templateEffects
-//             • templateInjections
-//             • templateReactivity
-//             • templateRefs
-//             • templateCssVariables
-//             • templateDeepSelectors
-//             • templateDirectives
-//             • templateUsedComponents
-//             • templateSlots
-//             • templateComplexity
-//             • ✅ v16.0.8: templateComponentUsages
-//             • ✅ v16.0.8: templateHtmlElements
-//
-//        c. 🎯 ЯВНО ПРОБРАСЫВАЕТ `lexicalLinks` (P1):
-//             • parent → child связи между функциями
-//
-//        d. Кладёт результат в `ctx.enhancedMap[file]`.
-//
-//   2. Собирает ошибки в `ctx.errors` (при `continueOnError`).
-//
-//   3. Логирует статистику в verbose-режиме.
-//
-// ПОЧЕМУ ЭТО ВАЖНО
-// ------------------------------------------------------------
-// Ранее (до появления pipeline) логика была размазана:
-//   • extractEntitiesFromFile → convertEntitiesToEnhanced
-//   • Но Vue-поля терялись, потому что convertEntitiesToEnhanced
-//     не знал о `templateConditionals`.
-//
-// В результате `compact-reporter.ts` при сборе `FullJSON`
-// не находил `entities.templateConditionals` и не создавал
-// `full.conditionals`. Соответственно, `compact.cd` не
-// заполнялся или заполнялся пустыми ссылками.
-//
-// Аналогично `lexicalLinks` терялись, если не пробрасывать их
-// явно — и compact.lx оставался пустым.
-//
-// Аналогично `templateComponentUsages`/`templateHtmlElements`
-// терялись, если не пробрасывать их явно — и compact-reporter.ts
-// был вынужден перезапускать analyzeVueSFC для каждого SFC,
-// что приводило к двойному парсингу <template>.
-//
-// Теперь проброс `templateXxx`, `lexicalLinks` и cu/he — ЯВНЫЙ
-// и в одном месте.
-//
-// ЗАВИСИМОСТИ
-// ------------------------------------------------------------
-//   • `convertEntitiesToEnhanced` — базовый конвертер.
-//   • `PipelineContext`           — общий контекст.
-//   • `PipelineStage`             — интерфейс stage.
-//   • `StageError`                — единый тип ошибок.
-// ============================================================
+// ✅ v1.4.0: проброс React-полей
+//   - Добавлен проброс react* полей в propagateTemplateFields:
+//       • reactComponents
+//       • reactHooks
+//       • reactEffects
+//       • reactContexts
+//       • reactMemoization
+//       • reactRefs
+//       • reactJsxElements
+//       • reactJsxEvents
+//       • reactConditionals
+//       • reactComponentUsages
+//   - Без этого pass7React не видит React-данные, потому что
+//     pipeline передаёт в collectFullJSON именно enhancedMap.
 
 import path from 'path';
 
@@ -168,7 +50,9 @@ import { StageError } from '../errors.js';
  *           `templateHtmlElements` (v16.0.8). Это устраняет
  *           двойной парсинг <template> в compact-reporter.ts.
  *
- *        e. Сохраняет в `ctx.enhancedMap[file]`.
+ *        e. ✅ v1.4.0: ЯВНО ПРОБРАСЫВАЕТ `react*` поля.
+ *
+ *        f. Сохраняет в `ctx.enhancedMap[file]`.
  *
  *   2. Обновляет метрики:
  *        • `filesWithConditionals` — файлы с v-if/v-else
@@ -201,6 +85,16 @@ import { StageError } from '../errors.js';
  *   lexicalLinks             │ entity-extractor/ast     │ compact-reporter  ← P1
  *   templateComponentUsages  │ vue-analyzer/index       │ compact-reporter  ← v16.0.8
  *   templateHtmlElements     │ vue-analyzer/index       │ compact-reporter  ← v16.0.8
+ *   reactComponents          │ parse-typescript         │ pass7React        ← v1.4.0
+ *   reactHooks               │ parse-typescript         │ pass7React        ← v1.4.0
+ *   reactEffects             │ parse-typescript         │ pass7React        ← v1.4.0
+ *   reactContexts            │ parse-typescript         │ pass7React        ← v1.4.0
+ *   reactMemoization         │ parse-typescript         │ pass7React        ← v1.4.0
+ *   reactRefs                │ parse-typescript         │ pass7React        ← v1.4.0
+ *   reactJsxElements         │ parse-typescript         │ pass7React        ← v1.4.0
+ *   reactJsxEvents           │ parse-typescript         │ pass7React        ← v1.4.0
+ *   reactConditionals        │ parse-typescript         │ pass7React        ← v1.4.0
+ *   reactComponentUsages     │ parse-typescript         │ pass7React        ← v1.4.0
  *
  * ════════════════════════════════════════════════════════════
  * ПОВЕДЕНИЕ ПРИ ОШИБКАХ
@@ -225,6 +119,7 @@ import { StageError } from '../errors.js';
  *   // ctx.enhancedMap['./src/App.vue'].lexicalLinks.length > 0
  *   // ctx.enhancedMap['./src/App.vue'].templateComponentUsages.length > 0
  *   // ctx.enhancedMap['./src/App.vue'].templateHtmlElements.length > 0
+ *   // ctx.enhancedMap['./src/App.tsx'].reactComponents.length > 0
  */
 export class NormalizeEntitiesStage implements PipelineStage {
   readonly name = 'normalize-entities';
@@ -265,6 +160,12 @@ export class NormalizeEntitiesStage implements PipelineStage {
     let totalHtmlElements = 0;
     let filesWithComponentUsages = 0;
 
+    // ✅ v1.4.0: диагностика React
+    let totalReactComponents = 0;
+    let totalReactHooks = 0;
+    let totalReactJsxElements = 0;
+    let filesWithReact = 0;
+
     for (const [filePath, entities] of Object.entries(entitiesMap)) {
       try {
         // ════════════════════════════════════════════════════
@@ -280,25 +181,29 @@ export class NormalizeEntitiesStage implements PipelineStage {
         //
         // ✅ v16.0.8: то же самое для templateComponentUsages /
         //    templateHtmlElements.
+        //
+        // ✅ v1.4.0: то же самое для react* полей.
         // ════════════════════════════════════════════════════
         const enhanced = convertEntitiesToEnhanced(entities);
 
         // ════════════════════════════════════════════════════
-        // Шаг 2.2: 🎯 ЯВНЫЙ ПРОБРОС templateXxx + lexicalLinks + cu/he
+        // Шаг 2.2: 🎯 ЯВНЫЙ ПРОБРОС templateXxx + lexicalLinks + cu/he + react*
         // ════════════════════════════════════════════════════
         //
         // Это ГЛАВНОЕ ИСПРАВЛЕНИЕ. convertEntitiesToEnhanced
-        // может не знать о Vue-специфичных полях (в зависимости
-        // от версии), поэтому мы прокидываем их явно.
+        // может не знать о Vue-специфичных или React-специфичных
+        // полях (в зависимости от версии), поэтому мы прокидываем
+        // их явно.
         //
         // Используем `as any`, потому что EnhancedEntityInfo
         // может не содержать эти поля в типе (в зависимости
         // от версии types.ts). Если вы обновите тип —
         // уберите `as any`.
         //
-        // ВАЖНО: даже если поля пустые — сохраняем их как
-        // пустые массивы, а не `undefined`. Это гарантирует,
-        // что `compact-reporter` всегда найдёт поле.
+        // ВАЖНО: для Vue-полей сохраняем их как пустые массивы
+        // (а не undefined) — так требует compact-reporter.
+        // Для React-полей — сохраняем `undefined`, если поля
+        // нет (это чище для не-React файлов).
         // ════════════════════════════════════════════════════
         this.propagateTemplateFields(entities, enhanced);
 
@@ -337,9 +242,21 @@ export class NormalizeEntitiesStage implements PipelineStage {
           filesWithComponentUsages++;
         }
 
+        // ✅ v1.4.0: считаем React-сущности
+        const e = entities as any;
+        const rcCount = Array.isArray(e.reactComponents) ? e.reactComponents.length : 0;
+        const rhCount = Array.isArray(e.reactHooks) ? e.reactHooks.length : 0;
+        const rjCount = Array.isArray(e.reactJsxElements) ? e.reactJsxElements.length : 0;
+        if (rcCount > 0 || rhCount > 0 || rjCount > 0) {
+          filesWithReact++;
+          totalReactComponents += rcCount;
+          totalReactHooks += rhCount;
+          totalReactJsxElements += rjCount;
+        }
+
         // Логирование в verbose при небольшом количестве файлов
         if (options.verbose && fileCount <= 50) {
-          this.logFile(filePath, conds, lc, rx, cuCount, heCount);
+          this.logFile(filePath, conds, lc, rx, cuCount, heCount, rcCount, rhCount, rjCount);
         }
       } catch (error) {
         // ════════════════════════════════════════════════════
@@ -408,6 +325,14 @@ export class NormalizeEntitiesStage implements PipelineStage {
         console.log(`      • Component Usages:      0 (нет Vue-файлов с <template>)`);
       }
 
+      // ✅ v1.4.0: диагностика React
+      if (filesWithReact > 0) {
+        console.log(`      ⚛️  React Components:     ${totalReactComponents}`);
+        console.log(`      ⚛️  React Hooks:          ${totalReactHooks}`);
+        console.log(`      ⚛️  JSX Elements:         ${totalReactJsxElements}`);
+        console.log(`      ⚛️  Файлов с React:       ${filesWithReact}`);
+      }
+
       console.log('');
     }
 
@@ -421,9 +346,9 @@ export class NormalizeEntitiesStage implements PipelineStage {
   /**
    * 🎯 ГЛАВНАЯ ФУНКЦИЯ ЭТОГО STAGE.
    *
-   * Явно копирует `templateXxx`-поля, `lexicalLinks` и
-   * `templateComponentUsages`/`templateHtmlElements`
-   * из `EntitiesResult` в `EnhancedEntityInfo`.
+   * Явно копирует `templateXxx`-поля, `lexicalLinks`,
+   * `templateComponentUsages`/`templateHtmlElements` и
+   * React-поля (`react*`) из `EntitiesResult` в `EnhancedEntityInfo`.
    *
    * ════════════════════════════════════════════════════════════
    * ПОЧЕМУ ЭТО НУЖНО
@@ -431,18 +356,18 @@ export class NormalizeEntitiesStage implements PipelineStage {
    *
    * `convertEntitiesToEnhanced` создан для базовых секций
    * (functions, constants, imports) и может НЕ ЗНАТЬ о
-   * Vue-специфичных полях. Если не пробросить их явно —
-   * `compact-reporter` не найдёт `entities.templateConditionals`
-   * и не создаст `full.conditionals`.
+   * Vue-специфичных или React-специфичных полях. Если не
+   * пробросить их явно — `compact-reporter` не найдёт их,
+   * и pipeline потеряет данные.
    *
    * Аналогично с `lexicalLinks` — если поле потеряется,
    * compact.lx останется пустым, и decode(compact) вернёт
    * lexicalLinks = undefined.
    *
-   * ✅ v16.0.8: то же самое для `templateComponentUsages` /
-   * `templateHtmlElements`. Без этого проброса compact-reporter.ts
-   * вынужден перезапускать analyzeVueSFC — что приводило к
-   * двойному парсингу <template> и рассинхрону projectRoot.
+   * ✅ v1.4.0: то же самое для React-полей.
+   * Без этого проброса pass7React получает enhancedMap,
+   * в котором нет `reactComponents`, `reactHooks` и т.д.,
+   * поэтому React-секция в full.json остаётся пустой.
    *
    * ════════════════════════════════════════════════════════════
    * ЧТО КОПИРУЕТСЯ
@@ -478,24 +403,35 @@ export class NormalizeEntitiesStage implements PipelineStage {
    *     • templateComponentUsages
    *     • templateHtmlElements
    *
+   *   ✅ Группа F (v1.4.0): React-сущности
+   *     • reactComponents
+   *     • reactHooks
+   *     • reactEffects
+   *     • reactContexts
+   *     • reactMemoization
+   *     • reactRefs
+   *     • reactJsxElements
+   *     • reactJsxEvents
+   *     • reactConditionals
+   *     • reactComponentUsages
+   *
    * ════════════════════════════════════════════════════════════
    * ПРАВИЛА
    * ════════════════════════════════════════════════════════════
    *
-   *   1. Если поле задано в entities — копируем как есть.
-   *   2. Если поле не задано — устанавливаем ПУСТОЙ массив
-   *      (а не `undefined`). Это важно: `compact-reporter`
-   *      проверяет `entities.templateXxx?.length > 0`,
-   *      но некоторые места могут обращаться напрямую.
-   *   3. Для `templateComplexity` — устанавливаем `0`,
-   *      если не задано.
+   *   1. Для Vue-полей: если поле не задано — устанавливаем
+   *      ПУСТОЙ массив (а не `undefined`). Так требует compact-reporter.
+   *   2. Для React-полей: если поле не задано — оставляем
+   *      `undefined`. Это чище для не-React файлов, и React-поля
+   *      всегда проверяются через `Array.isArray()`.
+   *   3. Для `templateComplexity` — устанавливаем `0`, если не задано.
    *
    * @param source  — исходный EntitiesResult
    * @param target  — целевой EnhancedEntityInfo (мутируется)
    */
   private propagateTemplateFields(source: EntitiesResult, target: EnhancedEntityInfo): void {
     // Приводим к `any` — потому что EnhancedEntityInfo
-    // может не содержать templateXxx в типе.
+    // может не содержать templateXxx/reactXxx в типе.
     const t = target as any;
 
     // ════════════════════════════════════════════════════════
@@ -605,6 +541,48 @@ export class NormalizeEntitiesStage implements PipelineStage {
 
     t.templateComponentUsages = source.templateComponentUsages ?? [];
     t.templateHtmlElements = source.templateHtmlElements ?? [];
+
+    // ════════════════════════════════════════════════════════
+    // ✅ Группа F (v1.4.0): React-сущности
+    // ════════════════════════════════════════════════════════
+    //
+    // Без этого проброса pass7React не видит React-данные:
+    // pipeline передаёт в collectFullJSON именно enhancedMap,
+    // а не оригинальный entitiesMap.
+    //
+    // Для Vue/TS/JS файлов эти поля будут `undefined` —
+    // это нормально. Для .tsx/.jsx — заполнены в
+    // parse-typescript.ts::parseTypeScriptFile().
+    //
+    // ⚠️ Используем `undefined` (а не `?? []`), чтобы
+    // не засорять JSON пустыми массивами у не-React файлов.
+    //
+    // ⚠️ Синхронизировано с:
+    //   - src/types.ts: EntitiesResult.reactComponents
+    //   - src/types.ts: EntitiesResult.reactHooks
+    //   - src/types.ts: EntitiesResult.reactEffects
+    //   - src/types.ts: EntitiesResult.reactContexts
+    //   - src/types.ts: EntitiesResult.reactMemoization
+    //   - src/types.ts: EntitiesResult.reactRefs
+    //   - src/types.ts: EntitiesResult.reactJsxElements
+    //   - src/types.ts: EntitiesResult.reactJsxEvents
+    //   - src/types.ts: EntitiesResult.reactConditionals
+    //   - src/types.ts: EntitiesResult.reactComponentUsages
+    //   - src/types.ts: EnhancedEntityInfo.reactComponents (v17.0.0)
+    //   - src/pipeline/stages/parse-typescript.ts (заполняет react*)
+    //   - src/reporters/compact/pipeline/pass-7-react.ts (читает)
+    // ════════════════════════════════════════════════════════
+
+    t.reactComponents = (source as any).reactComponents;
+    t.reactHooks = (source as any).reactHooks;
+    t.reactEffects = (source as any).reactEffects;
+    t.reactContexts = (source as any).reactContexts;
+    t.reactMemoization = (source as any).reactMemoization;
+    t.reactRefs = (source as any).reactRefs;
+    t.reactJsxElements = (source as any).reactJsxElements;
+    t.reactJsxEvents = (source as any).reactJsxEvents;
+    t.reactConditionals = (source as any).reactConditionals;
+    t.reactComponentUsages = (source as any).reactComponentUsages;
   }
 
   // ============================================================
@@ -616,6 +594,7 @@ export class NormalizeEntitiesStage implements PipelineStage {
    *
    * Формат:
    *   📦 App.vue (cd=2, lc=3, rx=6, cu=3, he=12)
+   *   📦 App.tsx (rc=3, rh=4, rj=15)
    *   📦 utils.ts (—)
    *
    * Показываются только непустые секции — чтобы не было
@@ -627,6 +606,9 @@ export class NormalizeEntitiesStage implements PipelineStage {
    * @param rx       — количество reactivity
    * @param cu       — количество componentUsages (v16.0.8)
    * @param he       — количество htmlElements (v16.0.8)
+   * @param rc       — количество reactComponents (v1.4.0)
+   * @param rh       — количество reactHooks (v1.4.0)
+   * @param rj       — количество reactJsxElements (v1.4.0)
    */
   private logFile(
     filePath: string,
@@ -634,7 +616,10 @@ export class NormalizeEntitiesStage implements PipelineStage {
     lc: number,
     rx: number,
     cu: number = 0,
-    he: number = 0
+    he: number = 0,
+    rc: number = 0,
+    rh: number = 0,
+    rj: number = 0
   ): void {
     const name = path.basename(filePath);
     const parts: string[] = [];
@@ -645,6 +630,10 @@ export class NormalizeEntitiesStage implements PipelineStage {
     // ✅ v16.0.8: Component Usage
     if (cu > 0) parts.push(`cu=${cu}`);
     if (he > 0) parts.push(`he=${he}`);
+    // ✅ v1.4.0: React
+    if (rc > 0) parts.push(`rc=${rc}`);
+    if (rh > 0) parts.push(`rh=${rh}`);
+    if (rj > 0) parts.push(`rj=${rj}`);
 
     const suffix = parts.length > 0 ? ` (${parts.join(', ')})` : ' (—)';
     console.log(`   📦 ${name}${suffix}`);

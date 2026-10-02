@@ -2,133 +2,7 @@
 // ============================================
 // ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v16.2.0)
 // ============================================
-// Версия: 16.2.3
-//
-// ИЗМЕНЕНИЯ v16.2.3 (v16.2.0 PATCH: usedInTemplate optional):
-//   - ✅ ИСПРАВЛЕНО: `decodeVueSection` теперь корректно
-//     обрабатывает отсутствие колонки `usedInTemplate`
-//     в compact.vue.reactivity.
-//
-//     ПРИЧИНА:
-//       Раньше `vue.reactivity.usedInTemplate?.[i] === 1`
-//       давал `false`, если колонки нет. Это создавало
-//       рассинхрон с `full.json`, где поля `usedInTemplate`
-//       вообще НЕ было (undefined).
-//
-//       Симптом в verify-roundtrip.ts (L1/L2/DL):
-//         $.vue.reactivity[0].usedInTemplate
-//           a: false          (decoded)
-//           b: undefined      (full)
-//
-//     РЕШЕНИЕ:
-//       Теперь если `usedInTemplate` колонка ЕСТЬ — читаем
-//       `=== 1` → true/false. Если колонки НЕТ — возвращаем
-//       `undefined` (не создаём поле).
-//
-//     СИНХРОНИЗИРОВАНО С:
-//       • codec-encode.ts  (пишет usedInTemplate опционально)
-//       • codec-types.ts   (VueSectionCompact.reactivity.usedInTemplate?: number[])
-//
-// ИЗМЕНЕНИЯ v16.2.2 (v16.2.0: usedInTemplate для reactivity):
-//   - ✅ ДОБАВЛЕНО: `decodeVueSection` → `reactivity[]` теперь
-//     читает `vue.reactivity.usedInTemplate[i] === 1` → true/false.
-//   - 📌 ЗАЧЕМ: дать UI возможность отрисовать иконку 👁️
-//     только для тех reactivity, которые реально участвуют
-//     в рендеринге.
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '16.2.0' (в codec-types.ts)
-//   - ✅ СИНХРОНИЗИРОВАНО с:
-//       • codec-types.ts   (CODEC_VERSION = '16.2.0')
-//       • codec-encode.ts  (пишет usedInTemplate)
-//       • codec-legend.ts  (схема vue.reactivity — 5 полей)
-//       • verify-roundtrip.ts (expectedLength = 5)
-//
-// ИЗМЕНЕНИЯ v16.2.1 (FIX round-trip L1/L2/DL: identifier + literalValue):
-//   - ✅ ИСПРАВЛЕНО: `decodeComponentProps` теперь защищён от
-//     `lvArr[i]`/`idnArr[i]`, выходящих за пределы `stringDict`,
-//     а также от `undefined` (когда массив короче `n`).
-//   - ✅ ИСПРАВЛЕНО: `decodeVueSection` теперь выбирает источник
-//     `componentProps` (и остальных `component*`) через `pickSource()`:
-//     если в `vue.componentProps` НЕТ `idn`/`lv`, но в top-level
-//     `componentProps` они ЕСТЬ — берётся top-level.
-//
-//     ПРИЧИНА:
-//       В v16.1.0 `encodeVueSection` и top-level encoder могли
-//       сформировать РАЗНЫЕ объекты для `componentProps`:
-//         • `compact.vue.componentProps` — без `idn`/`lv`
-//         • `compact.componentProps`     — с `idn`/`lv`
-//       decode отдавал приоритет `vue.componentProps`, теряя
-//       `identifier` и `literalValue`.
-//
-//     СИМПТОМ В verify-roundtrip.ts (L1/L2/DL):
-//       $.vue.componentProps[0].identifier: null → "ai"
-//       $.vue.componentProps[1].literalValue: undefined → 25
-//
-//   - ✅ СИНХРОНИЗИРОВАНО с codec-encode.ts v16.2.1.
-//
-// ════════════════════════════════════════════════════════════
-// ИЗМЕНЕНИЯ v16.2.0 (FIX round-trip: parentFileId + usageId):
-// ════════════════════════════════════════════════════════════
-//
-//   - ✅ ИСПРАВЛЕНО: `usageId` вложенных элементов (props/events/
-//     directives/slots/interpolations) теперь ГАРАНТИРОВАННО
-//     совпадает с `cu.id`/`he.id` родителя.
-//
-//   - ✅ ИСПРАВЛЕНО: `parentFileId` в `cu`/`he` теперь
-//     восстанавливается корректно:
-//       • `cu_pf[k]`/`he_pf[k]` = -1  → parentFileId = ''
-//       • = -2                        → parentFileId = fileId(fileIdx)
-//       • >= 0                        → parentFileId = ids[idx]
-//
-//   - ✅ ДОБАВЛЕНО: если `cu_pf`/`he_pf` не задан (undefined),
-//     используется fileId(fileIdx) — симметрично encoder.
-//
-// ════════════════════════════════════════════════════════════
-// СВОДКА ПРЕДЫДУЩИХ ВЕРСИЙ
-// ════════════════════════════════════════════════════════════
-//
-// v16.1.0 (BREAKING: глобально уникальные cu.id/he.id):
-//   - Переписан блок sfc[] в decodeVueSection.
-//   - Удалены глобальные счётчики globalCuCounter/globalHeCounter.
-//
-// v16.0.9-FIX (round-trip: literalValue с типом):
-//   - decodeLiteralValue восстанавливает тип (boolean/number/null/string).
-//
-// v16.0.8-FIX (round-trip: identifier + id для component*):
-//   - decodeComponentProps читает 'idn' (identifier).
-//   - decodeComponentEvents/Directives/Slots/Interpolations читают 'id'.
-//
-// v16.0.8 (fix: симметрия vue.sfc[] + top-level component*):
-//   - Разворачивание he_cp/he_ce/he_cd/he_ci и cu_cp/cu_ce/cu_cd/cu_csl.
-//   - Принимает top-level component*-секции явными параметрами.
-//
-// v16.0.4 (симметрия top-level component* с compact-reporter.ts):
-//   - top-level componentProps/componentEvents/... ВСЕГДА кладутся.
-//
-// v16.0.3 (fix L2: vue.sfc[].componentUsages/htmlElements):
-//   - decodeVueSection ВСЕГДА добавляет sfc[].componentUsages/htmlElements.
-//
-// v16.0.2 (fix round-trip: fns.hv → isHtmlVisible):
-//   - Чтение compact.fns.hv (RLE 0|1).
-//
-// v16.0.1 (Component Usage + DOM API + sourceChains):
-//   - decodeFnHtmlUsage, decodeComponentProps, decodeComponentEvents,
-//     decodeComponentDirectives, decodeComponentSlots,
-//     decodeHtmlInterpolations, decodeIds, decodeSourceChains.
-//
-// v15.7.3 (fix: vue.sfc.c — восстановление реальных имён composables)
-// v15.7.2 (fix: восстановление moduleId в vue.sfc)
-// v15.7.1 (Vue-секция: ослабление проверки)
-// v15.7.0 (Vue entities)
-// v15.5.0 (Vue entities)
-// v15.4.0 (P3 — cross-file resolution)
-// v15.3.0 (P2 — расширенный CallData)
-// v15.2.0 (P1 — lexicalLinks)
-// v15.1.0 (P0 — parentFunctionId)
-// v15.0.6 (gr.i.tf — индекс в fl.p)
-// v15.0.4 (проброс isReExport/isStarReExport)
-// v15.0.2 (устранение дублирования conditionals)
-// v15.0.1 (fix imports[].type)
-// v15.0.0 (100% round-trip расширенных секций)
+// Версия: 16.2.3 (v17.0.0: React-секция)
 // ============================================
 
 import type {
@@ -454,6 +328,28 @@ const HTML_OUTPUT_KIND_BY_CODE: Record<number, HtmlUsage['kind']> = {
 };
 
 // ============================================
+// ✅ v17.0.0: REACT CODES
+// ============================================
+
+const REACT_COMPONENT_KIND_NAMES = [
+  'function', 'arrow', 'class', 'memo', 'forwardRef', 'lazy',
+];
+
+const REACT_HOOK_KIND_NAMES = [
+  'useState', 'useReducer', 'useEffect', 'useLayoutEffect', 'useInsertionEffect',
+  'useMemo', 'useCallback', 'useRef', 'useContext', 'useImperativeHandle',
+  'useTransition', 'useDeferredValue', 'useActionState', 'useOptimistic',
+  'useFormStatus', 'use',
+];
+
+const REACT_EFFECT_KIND_NAMES = ['mount', 'update', 'every', 'layout', 'insertion'];
+const REACT_CONTEXT_KIND_NAMES = ['create', 'provide', 'consume'];
+const REACT_MEMO_KIND_NAMES = ['memo', 'useMemo', 'useCallback'];
+const REACT_JSX_KIND_NAMES = ['element', 'component', 'fragment', 'text', 'expression', 'spread', 'conditional'];
+const REACT_SOURCE_KIND_NAMES = ['local', 'import', 'global', 'inline', 'unknown'];
+const REACT_COND_KIND_NAMES: Array<'&&' | '||' | '?:'> = ['&&', '||', '?:'];
+
+// ============================================
 // ДЕКОДИРОВАНИЕ ФЛАГОВ
 // ============================================
 
@@ -609,10 +505,6 @@ function unrle(rle: [number, number][]): number[] {
 
 /**
  * ✅ v16.0.2: RLE-развёртка для [start, length, value?].
- *
- * Если value === undefined — используется RLE-последовательность
- * индексов (start, start+1, ...).
- * Если value задан — RLE повторяющегося значения.
  */
 function unrleSequence(rle: Array<[number, number, number?]>): number[] {
   if (!Array.isArray(rle)) return [];
@@ -713,8 +605,6 @@ function decodeComponentProps(
     const scIdx = Array.isArray(scEntry) ? scEntry[0] : -1;
     const sourceChain = decodeSourceChainAt(scIdx, sourceChains);
 
-    // ✅ v16.2.1-FIX: защита от -1, undefined и out-of-range
-    //   для identifier (idn)
     const idnIdxRaw = idnArr[i];
     const idnIdx =
       typeof idnIdxRaw === 'number' && idnIdxRaw >= 0 ? idnIdxRaw : -1;
@@ -723,8 +613,6 @@ function decodeComponentProps(
         ? (stringDict[idnIdx] ?? null)
         : null;
 
-    // ✅ v16.2.1-FIX: защита от -1, undefined и out-of-range
-    //   для literalValue (lv)
     const lvIdxRaw = lvArr[i];
     const lvIdx =
       typeof lvIdxRaw === 'number' && lvIdxRaw >= 0 ? lvIdxRaw : -1;
@@ -999,30 +887,301 @@ function decodeFnHtmlUsage(
 }
 
 // ============================================
-// ✅ v16.2.0: VUE SECTION DECODER
+// ✅ v17.0.0: DECODE REACT SECTION
 // ============================================
-//
-// ⚠️ v16.2.1-FIX (round-trip L1/L2/DL):
-//   Источник `component*` выбирается через `pickSource()`.
-//
-//   ПРИЧИНА:
-//     В v16.1.0 `compact.vue.componentProps` мог не содержать
-//     полей `idn`/`lv`, если encoder заполнял их только в
-//     top-level `compact.componentProps`. decode отдавал
-//     приоритет `vue.componentProps` и терял identifier/literalValue.
-//
-//   РЕШЕНИЕ:
-//     Для каждого component*-массива проверяем наличие
-//     характерного поля (`idn` для props, `id` для остальных).
-//     Если в `vue.*` поля НЕТ, а в top-level ЕСТЬ — берём top-level.
-//
-// ⚠️ v16.2.2 (NEW): `reactivity[].usedInTemplate` читается из
-//   `vue.reactivity.usedInTemplate[i] === 1` → true.
-//
-// ⚠️ v16.2.3 (NEW, PATCH): `reactivity[].usedInTemplate` —
-//   ОПЦИОНАЛЬНЫЙ. Если колонка отсутствует — `undefined`
-//   (а не `false`). Симметрично `codec-encode.ts`, который
-//   пишет колонку опционально.
+
+function decodeReactSection(
+  react: any,
+  stringDict: string[],
+  ids: string[] = []
+): any {
+  if (!react) return undefined;
+
+  const readStr = (idx: number): string => (idx < 0 || idx == null ? '' : (stringDict[idx] ?? ''));
+  const readId = (idx: number): string => (idx < 0 || idx == null ? '' : (ids[idx] ?? ''));
+  const readIdOrUndef = (idx: number): string | undefined =>
+    idx < 0 || idx == null ? undefined : ids[idx];
+  const splitParts = (s: string): string[] => (s ? s.split('\u0002').filter(Boolean) : []);
+
+  // ────────────────────────────────────────────────────────
+  // 1. COMPONENTS
+  // ────────────────────────────────────────────────────────
+  const components: any[] = [];
+  const c = react.components ?? {};
+  const cLen = c.f?.length ?? 0;
+
+  for (let i = 0; i < cLen; i++) {
+    const [pStart, pLen] = c.p?.[i] ?? [0, 0];
+    void pStart;
+    const [, hLen] = c.h?.[i] ?? [0, 0];
+    const [, jLen] = c.j?.[i] ?? [0, 0];
+    void pLen;
+
+    const flags = c.fl?.[i] ?? 0;
+
+    components.push({
+      id: `rc${i + 1}`,
+      fileId: '',
+      moduleId: c.m?.[i] >= 0 ? readStr(c.m[i]) : '',
+      name: readStr(c.n?.[i] ?? -1),
+      kind: REACT_COMPONENT_KIND_NAMES[c.k?.[i] ?? 0] ?? 'function',
+      line: c.l?.[i] ?? 0,
+      props: [] as string[],
+      hooks: new Array(hLen).fill('') as string[],
+      jsxElements: new Array(jLen).fill('') as string[],
+      isMemoized: (flags & 1) !== 0,
+      isForwardRef: (flags & 2) !== 0,
+      isDefaultExport: (flags & 4) !== 0,
+      isExported: (flags & 8) !== 0,
+    });
+  }
+
+  // ────────────────────────────────────────────────────────
+  // 2. HOOKS
+  // ────────────────────────────────────────────────────────
+  const hooks: any[] = [];
+  const h = react.hooks ?? {};
+  const hLen = h.f?.length ?? 0;
+
+  for (let i = 0; i < hLen; i++) {
+    const flags = h.fl?.[i] ?? 0;
+    const depsRaw = readStr(h.d?.[i] ?? -1);
+    hooks.push({
+      id: `rh${i + 1}`,
+      fileId: '',
+      componentId: readId(h.c?.[i] ?? -1),
+      kind: REACT_HOOK_KIND_NAMES[h.k?.[i] ?? 0] ?? 'useState',
+      line: h.l?.[i] ?? 0,
+      stateName: h.sn?.[i] >= 0 ? readStr(h.sn[i]) : undefined,
+      setterName: h.tn?.[i] >= 0 ? readStr(h.tn[i]) : undefined,
+      initialValue: h.iv?.[i] >= 0 ? readStr(h.iv[i]) : undefined,
+      deps: depsRaw ? splitParts(depsRaw) : [],
+      hasCleanup: (flags & 1) !== 0,
+      usedInRender: (flags & 2) !== 0,
+    });
+  }
+
+  // ────────────────────────────────────────────────────────
+  // 3. EFFECTS
+  // ────────────────────────────────────────────────────────
+  const effects: any[] = [];
+  const e = react.effects ?? {};
+  const eLen = e.f?.length ?? 0;
+
+  for (let i = 0; i < eLen; i++) {
+    const depsRaw = readStr(e.d?.[i] ?? -1);
+    const readsRaw = readStr(e.r?.[i] ?? -1);
+    const mutatesRaw = readStr(e.mu?.[i] ?? -1);
+    effects.push({
+      id: `re${i + 1}`,
+      fileId: '',
+      componentId: readId(e.c?.[i] ?? -1),
+      hookId: readId(e.hk?.[i] ?? -1),
+      kind: REACT_EFFECT_KIND_NAMES[e.k?.[i] ?? 0] ?? 'mount',
+      line: e.l?.[i] ?? 0,
+      deps: depsRaw ? splitParts(depsRaw) : [],
+      hasCleanup: (e.fl?.[i] ?? 0) !== 0,
+      reads: readsRaw ? splitParts(readsRaw) : [],
+      mutates: mutatesRaw ? splitParts(mutatesRaw) : [],
+    });
+  }
+
+  // ────────────────────────────────────────────────────────
+  // 4. CONTEXTS
+  // ────────────────────────────────────────────────────────
+  const contexts: any[] = [];
+  const ctx = react.contexts ?? {};
+  const ctxLen = ctx.f?.length ?? 0;
+
+  for (let i = 0; i < ctxLen; i++) {
+    contexts.push({
+      id: `rctx${i + 1}`,
+      fileId: '',
+      componentId: readId(ctx.c?.[i] ?? -1),
+      kind: REACT_CONTEXT_KIND_NAMES[ctx.k?.[i] ?? 0] ?? 'create',
+      line: ctx.l?.[i] ?? 0,
+      name: ctx.n?.[i] >= 0 ? readStr(ctx.n[i]) : undefined,
+    });
+  }
+
+  // ────────────────────────────────────────────────────────
+  // 5. MEMOIZATION
+  // ────────────────────────────────────────────────────────
+  const memoization: any[] = [];
+  const m = react.memoization ?? {};
+  const mLen = m.f?.length ?? 0;
+
+  for (let i = 0; i < mLen; i++) {
+    const depsRaw = readStr(m.d?.[i] ?? -1);
+    memoization.push({
+      id: `rm${i + 1}`,
+      fileId: '',
+      componentId: readId(m.c?.[i] ?? -1),
+      kind: REACT_MEMO_KIND_NAMES[m.k?.[i] ?? 0] ?? 'memo',
+      line: m.l?.[i] ?? 0,
+      deps: depsRaw ? splitParts(depsRaw) : [],
+    });
+  }
+
+  // ────────────────────────────────────────────────────────
+  // 6. REFS
+  // ────────────────────────────────────────────────────────
+  const refs: any[] = [];
+  const r = react.refs ?? {};
+  const rLen = r.f?.length ?? 0;
+
+  for (let i = 0; i < rLen; i++) {
+    refs.push({
+      id: `rr${i + 1}`,
+      fileId: '',
+      componentId: readId(r.c?.[i] ?? -1),
+      line: r.l?.[i] ?? 0,
+      name: r.n?.[i] >= 0 ? readStr(r.n[i]) : undefined,
+      isForwardRef: (r.fl?.[i] ?? 0) !== 0,
+    });
+  }
+
+  // ────────────────────────────────────────────────────────
+  // 7. JSX ELEMENTS
+  // ────────────────────────────────────────────────────────
+  const jsxElements: any[] = [];
+  const j = react.jsxElements ?? {};
+  const jLen = j.f?.length ?? 0;
+
+  for (let i = 0; i < jLen; i++) {
+    let attrs: any[] = [];
+    const attrsRaw = readStr(j.a?.[i] ?? -1);
+    if (attrsRaw) {
+      try {
+        const parsed = JSON.parse(attrsRaw);
+        if (Array.isArray(parsed)) {
+          attrs = parsed.map((a: any) => ({
+            name: a.n ?? '',
+            rawValue: a.v ?? '',
+            value: a.v ?? '',
+            kind: a.k ?? 'expression',
+            refs: a.r ?? [],
+          }));
+        }
+      } catch {
+        attrs = [];
+      }
+    }
+
+    const childrenRaw = readStr(j.ch?.[i] ?? -1);
+    const children = childrenRaw ? splitParts(childrenRaw) : [];
+
+    jsxElements.push({
+      id: `rj${i + 1}`,
+      fileId: '',
+      componentId: readId(j.c?.[i] ?? -1),
+      kind: REACT_JSX_KIND_NAMES[j.k?.[i] ?? 0] ?? 'element',
+      tagName: readStr(j.n?.[i] ?? -1),
+      line: j.l?.[i] ?? 0,
+      column: undefined,
+      attrs,
+      children,
+      textContent: j.tx?.[i] >= 0 ? readStr(j.tx[i]) : undefined,
+      expression: j.ex?.[i] >= 0 ? readStr(j.ex[i]) : undefined,
+      expressionRefs: [] as string[],
+      parentElementId: j.pa?.[i] >= 0 ? readIdOrUndef(j.pa[i]) ?? null : null,
+      conditionalKind: j.ck?.[i] >= 0 ? REACT_COND_KIND_NAMES[j.ck[i]] : undefined,
+      eventIds: [] as string[],
+      stateUsages: [] as string[],
+      propUsages: [] as string[],
+      callExpressions: [] as string[],
+    });
+  }
+
+  // ────────────────────────────────────────────────────────
+  // 8. JSX EVENTS
+  // ────────────────────────────────────────────────────────
+  const jsxEvents: any[] = [];
+  const ev = react.jsxEvents ?? {};
+  const evLen = ev.f?.length ?? 0;
+
+  for (let i = 0; i < evLen; i++) {
+    jsxEvents.push({
+      id: `rje${i + 1}`,
+      fileId: '',
+      elementId: readId(ev.e?.[i] ?? -1),
+      eventName: readStr(ev.n?.[i] ?? -1),
+      line: ev.l?.[i] ?? 0,
+      handler: readStr(ev.h?.[i] ?? -1),
+      handlerFunctionId: ev.hf?.[i] >= 0 ? readIdOrUndef(ev.hf[i]) : undefined,
+      source: REACT_SOURCE_KIND_NAMES[ev.s?.[i] ?? 4] ?? 'unknown',
+    });
+  }
+
+  // ────────────────────────────────────────────────────────
+  // 9. CONDITIONALS
+  // ────────────────────────────────────────────────────────
+  const conditionals: any[] = [];
+  const cd = react.conditionals ?? {};
+  const cdLen = cd.f?.length ?? 0;
+
+  for (let i = 0; i < cdLen; i++) {
+    const refsRaw = readStr(cd.r?.[i] ?? -1);
+    const guardsRaw = readStr(cd.g?.[i] ?? -1);
+    conditionals.push({
+      id: `rcd${i + 1}`,
+      fileId: '',
+      componentId: readId(cd.c?.[i] ?? -1),
+      kind: REACT_COND_KIND_NAMES[cd.k?.[i] ?? 0] ?? '&&',
+      condition: readStr(cd.cd?.[i] ?? -1),
+      refs: refsRaw ? splitParts(refsRaw) : [],
+      line: cd.l?.[i] ?? 0,
+      guards: guardsRaw ? splitParts(guardsRaw) : [],
+    });
+  }
+
+  // ────────────────────────────────────────────────────────
+  // 10. COMPONENT USAGES
+  // ────────────────────────────────────────────────────────
+  const componentUsages: any[] = [];
+  const u = react.componentUsages ?? {};
+  const uLen = u.n?.length ?? 0;
+
+  for (let i = 0; i < uLen; i++) {
+    const propsRaw = readStr(u.p?.[i] ?? -1);
+    const eventsRaw = readStr(u.e?.[i] ?? -1);
+    const slotsRaw = readStr(u.s?.[i] ?? -1);
+    componentUsages.push({
+      id: `rcu${i + 1}`,
+      usageId: readId(u.u?.[i] ?? -1),
+      tagName: readStr(u.n?.[i] ?? -1),
+      parentComponentId: readId(u.c?.[i] ?? -1),
+      line: u.l?.[i] ?? 0,
+      targetComponentId: u.t?.[i] >= 0 ? readIdOrUndef(u.t[i]) : undefined,
+      importedFrom: u.im?.[i] >= 0 ? readIdOrUndef(u.im[i]) : undefined,
+      isExternal: (u.fl?.[i] ?? 0) !== 0,
+      props: propsRaw ? splitParts(propsRaw) : [],
+      events: eventsRaw ? splitParts(eventsRaw) : [],
+      slots: slotsRaw ? splitParts(slotsRaw) : [],
+    });
+  }
+
+  // ────────────────────────────────────────────────────────
+  // Результат
+  // ────────────────────────────────────────────────────────
+  return {
+    components,
+    hooks,
+    effects,
+    contexts,
+    memoization,
+    refs,
+    jsxElements,
+    jsxEvents,
+    conditionals,
+    componentUsages,
+    ids: [],
+    sourceChains: [],
+  };
+}
+
+// ============================================
+// ✅ v16.2.0: VUE SECTION DECODER
 // ============================================
 
 function decodeVueSection(
@@ -1045,26 +1204,13 @@ function decodeVueSection(
 
   const sfcAny = vue.sfc as any;
 
-  // ────────────────────────────────────────────────────────
-  // 1. Общие массивы для componentUsages / htmlElements
-  // ────────────────────────────────────────────────────────
-  //
-  // ✅ v16.2.1-FIX: выбираем источник через pickSource().
-  //
-  // Логика:
-  //   • Если в `vue.*` есть характерное поле (idn / id) — берём `vue.*`.
-  //   • Иначе, если в top-level есть — берём top-level.
-  //   • Иначе — что есть (для обратной совместимости).
-  //
-  // Это гарантирует, что identifier/literalValue НЕ теряются.
-  // ────────────────────────────────────────────────────────
   const pickSource = (top: any, sfcAnyVal: any, requiredField: string): any => {
     const topHas = top && Array.isArray(top[requiredField]);
     const sfcHas = sfcAnyVal && Array.isArray(sfcAnyVal[requiredField]);
 
-    if (sfcHas) return sfcAnyVal;        // sfc содержит — приоритет (v16.1.0-путь)
-    if (topHas) return top;              // top содержит, sfc нет — берём top
-    return sfcAnyVal ?? top;             // fallback (обратная совместимость)
+    if (sfcHas) return sfcAnyVal;
+    if (topHas) return top;
+    return sfcAnyVal ?? top;
   };
 
   const propsSource = pickSource(topLevelComponentProps, sfcAny.componentProps, 'idn');
@@ -1097,7 +1243,6 @@ function decodeVueSection(
     ? decodeHtmlInterpolations(interpolationsSource, stringDict, sourceChains, ids)
     : [];
 
-  // Индексация по usageId
   const groupBy = <T extends { usageId: string }>(arr: T[]): Map<string, T[]> => {
     const m = new Map<string, T[]>();
     for (const item of arr) {
@@ -1113,9 +1258,6 @@ function decodeVueSection(
   const slotsByUsage = groupBy(allComponentSlots);
   const interpByUsage = groupBy(allHtmlInterpolations);
 
-  // ────────────────────────────────────────────────────────
-  // 2. RLE-развёртка cu_sfc / he_sfc
-  // ────────────────────────────────────────────────────────
   const cuSfcArr = unrleSequence(sfcAny.cu_sfc ?? []);
   const heSfcArr = unrleSequence(sfcAny.he_sfc ?? []);
 
@@ -1130,17 +1272,12 @@ function decodeVueSection(
   const heL = sfcAny.he_l ?? [];
   const heCol = sfcAny.he_col ?? [];
 
-  // ✅ v16.2.0: id и parentFileId массивы
   const cuIdArr = (sfcAny.cu_id ?? []) as number[];
   const cuPfArr = (sfcAny.cu_pf ?? []) as number[];
   const heIdArr = (sfcAny.he_id ?? []) as number[];
   const hePfArr = (sfcAny.he_pf ?? []) as number[];
 
-  // ────────────────────────────────────────────────────────
-  // 3. sfc[] — с componentUsages / htmlElements
-  // ────────────────────────────────────────────────────────
   const sfc: SFCComponent[] = (vue.sfc?.f ?? []).map((fileIdx: number, i: number) => {
-    // --- props/emits/exposed (pn/ps/en/es/xn/xs с fallback на p/e/x) ---
     const readSliceFn = (
       nameArr: number[] | undefined,
       slicesArr: Array<[number, number]> | undefined,
@@ -1194,7 +1331,6 @@ function decodeVueSection(
       ? exposedList
       : Array.from({ length: exposeCount }, (_, k) => `#${k}`);
 
-    // --- composables ---
     const sfcC = vue.sfc.c ?? [];
     const sfcCS = vue.sfc.cs ?? [];
     let composables: string[] = [];
@@ -1204,16 +1340,13 @@ function decodeVueSection(
       composables = sfcC.slice(offset, offset + count).map(idx => readStr(idx));
     }
 
-    // --- componentUsages для этого SFC ---
     const componentUsages: ComponentUsage[] = [];
     for (let k = 0; k < cuSfcArr.length; k++) {
       if (cuSfcArr[k] !== i) continue;
 
-      // ✅ v16.2.0: id из cu_id
       const cuIdIdx = cuIdArr[k] ?? -1;
       const usageId = cuIdIdx >= 0 ? (ids[cuIdIdx] ?? `cu${k + 1}`) : `cu${k + 1}`;
 
-      // ✅ v16.2.0: parentFileId по формату
       const cuPfIdx = cuPfArr[k];
       let parentFileId: string;
       if (cuPfIdx === -1 || cuPfIdx === undefined) {
@@ -1226,8 +1359,6 @@ function decodeVueSection(
 
       const compFileIdx = cuFile[k];
 
-      // ✅ v16.2.0: props/events/directives/slots ищем по usageId,
-      // но переустанавливаем usageId с реальным значением.
       const rawCuProps = propsByUsage.get(usageId) || [];
       const rawCuEvents = eventsByUsage.get(usageId) || [];
       const rawCuDirectives = dirsByUsage.get(usageId) || [];
@@ -1270,16 +1401,13 @@ function decodeVueSection(
       });
     }
 
-    // --- htmlElements для этого SFC ---
     const htmlElements: HtmlElementUsage[] = [];
     for (let k = 0; k < heSfcArr.length; k++) {
       if (heSfcArr[k] !== i) continue;
 
-      // ✅ v16.2.0: id из he_id
       const heIdIdx = heIdArr[k] ?? -1;
       const usageId = heIdIdx >= 0 ? (ids[heIdIdx] ?? `he${k + 1}`) : `he${k + 1}`;
 
-      // ✅ v16.2.0: parentFileId по формату
       const hePfIdx = hePfArr[k];
       let parentFileId: string;
       if (hePfIdx === -1 || hePfIdx === undefined) {
@@ -1343,9 +1471,6 @@ function decodeVueSection(
     };
   });
 
-  // ────────────────────────────────────────────────────────
-  // 5. composables / macros / hooks / reactivity / icons
-  // ────────────────────────────────────────────────────────
   const composables: ComposableEntity[] = (vue.composables?.n ?? []).map(
     (nameIdx: number, i: number) => {
       const fRle = vue.composables.f ?? [];
@@ -1381,31 +1506,6 @@ function decodeVueSection(
     line: vue.hooks.l[i] ?? 0,
   }));
 
-  // ✅ v16.2.3 PATCH: usedInTemplate — ОПЦИОНАЛЬНЫЙ.
-  //
-  // ЛОГИКА:
-  //   ЕСЛИ колонка usedInTemplate ЕСТЬ в compact.vue.reactivity:
-  //     usedInTemplate[i] === 1  → true
-  //     usedInTemplate[i] === 0  → false
-  //   ЕСЛИ колонки НЕТ:
-  //     undefined  (не создаём поле — симметрично full.json без поля)
-  //
-  // ПОЧЕМУ:
-  //   Раньше `vue.reactivity.usedInTemplate?.[i] === 1` давал `false`,
-  //   если колонки нет. Это создавало рассинхрон с full.json, где
-  //   поля usedInTemplate вообще НЕ было (undefined).
-  //
-  // ПРИМЕР:
-  //   compact.vue.reactivity.usedInTemplate = [0, 1]
-  //   name[0]='count', name[1]='displayText'
-  //   →
-  //     { name: 'count',       usedInTemplate: false }
-  //     { name: 'displayText', usedInTemplate: true  }
-  //
-  //   compact.vue.reactivity.usedInTemplate = undefined
-  //   →
-  //     { name: 'count',       usedInTemplate: undefined }
-  //     { name: 'displayText', usedInTemplate: undefined }
   const rxUsedInTemplateRaw = vue.reactivity?.usedInTemplate;
   const rxHasUsedInTemplate = Array.isArray(rxUsedInTemplateRaw);
 
@@ -1413,7 +1513,6 @@ function decodeVueSection(
     (fileIdx: number, i: number) => {
       const nameIdx = vue.reactivity.n?.[i] ?? -1;
 
-      // ✅ v16.2.3 PATCH: опциональное чтение usedInTemplate
       const usedInTemplate = rxHasUsedInTemplate
         ? rxUsedInTemplateRaw![i] === 1
         : undefined;
@@ -1436,9 +1535,6 @@ function decodeVueSection(
     category: ICON_CATEGORY_BY_CODE[vue.icons.c[i] ?? 0] ?? 'base',
   }));
 
-  // ────────────────────────────────────────────────────────
-  // 6. Возврат — все секции ВСЕГДА присутствуют
-  // ────────────────────────────────────────────────────────
   return {
     sfc,
     composables,
@@ -1904,6 +2000,15 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   );
 
   // ============================================
+  // 10.6.1. ✅ v17.0.0: REACT-СЕКЦИЯ
+  // ============================================
+  const react = decodeReactSection(
+    (compact as any).react,
+    stringDict,
+    ids
+  );
+
+  // ============================================
   // 10.7. ✅ v16.0.0: DOM API
   // ============================================
   const domApiArgs = compact.domApiArgs
@@ -2037,6 +2142,7 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
     valuesMode: compact.valuesMode,
     lexicalLinks: lexicalLinks.length > 0 ? lexicalLinks : undefined,
     vue,
+    react,
   };
 
   // ============================================
@@ -2070,13 +2176,12 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
     if (reExports.length === 0) delete (result as any).reExports;
     if (lexicalLinks.length === 0) delete (result as any).lexicalLinks;
     if (vue === undefined) delete (result as any).vue;
+    if (react === undefined) delete (result as any).react;
     if (domApiCalls.length === 0) delete (result as any).domApiCalls;
     if (domApiArgs.length === 0) delete (result as any).domApiArgs;
     if (ids.length === 0) delete (result as any).ids;
     if (sourceChains.length === 0) delete (result as any).sourceChains;
     if (fnHtmlUsageTopLevel.length === 0) delete (result as any).fnHtmlUsage;
-    // ✅ v16.0.4: НЕ удаляем componentProps/componentEvents/... —
-    // они должны быть всегда, даже пустыми.
   }
 
   if (shouldIncludeEdges && edges.length > 0) {

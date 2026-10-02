@@ -1,126 +1,19 @@
 // src/reporters/codec/codec-legend.ts
 // ============================================
-// ЛЕГЕНДА КОДЕКА (v16.2.0)
+// ЛЕГЕНДА КОДЕКА (v17.0.0)
 // ============================================
-// Версия: 16.2.0
+// Версия: 17.0.0
 //
-// ════════════════════════════════════════════════════════════
-// СВОДКА ВЕРСИЙ
-// ════════════════════════════════════════════════════════════
-//
-// v16.2.0 (usedInTemplate для reactivity):
-//   - ✅ ОБНОВЛЕНО: schemas['vue.reactivity'] — 5 полей (было 4).
-//     Добавлено поле `usedInTemplate` (0/1 флаг использования
-//     переменной в <template>).
-//   - ✅ ПРИЧИНА: в codec-types.ts добавлено поле
-//     `usedInTemplate?: number[]` в VueSectionCompact.reactivity.
-//     Без него UI не может отрисовать иконку 👁️ для reactivity,
-//     которые реально участвуют в рендеринге.
-//   - ✅ СИНХРОНИЗИРОВАНО с:
-//       • codec-types.ts   (CODEC_VERSION = '16.2.0')
-//       • codec-encode.ts  (v16.2.3 — пишет usedInTemplate)
-//       • codec-decode.ts  (v16.2.2 — читает usedInTemplate)
-//       • verify-roundtrip.ts (ожидает 5 полей для vue.reactivity)
-//
-// v16.1.0 (BREAKING: глобально уникальные cu.id/he.id):
-//   - ✅ ОБНОВЛЕНО: schemas['vue.sfc'] — 34 поля (было 30).
-//     Добавлены cu_id, cu_pf (после xs) и he_id, he_pf
-//     (после cu_csl).
-//   - ✅ ОБНОВЛЕНО: legend.version = '2.1.0'.
-//   - ✅ ПРИЧИНА: в codec-types.ts добавлены 4 новых поля для
-//     явного кодирования id и parentFileId у componentUsages
-//     и htmlElements. Без этого round-trip L1/L2/DL/DEC падал.
-//   - ✅ СИНХРОНИЗИРОВАНО с:
-//       • codec-types.ts   (CODEC_VERSION = '16.1.0',
-//                           LEGEND_VERSION = '2.1.0')
-//       • codec-encode.ts  (заполняет cu_id/cu_pf/he_id/he_pf)
-//       • codec-decode.ts  (читает cu_id/cu_pf/he_id/he_pf)
-//       • verify-roundtrip.ts    (ожидает 34 поля для vue.sfc)
-//       • verify-consistency.ts  (ожидает 34 поля)
-//       • verify-new-sections.ts (ожидает 34 поля)
-//
-// v16.0.2 (синхронизация с симметричным round-trip):
-//   - ✅ ОБНОВЛЕНО: schemas.fns — 10 полей (n, m, f, l, fl, p, rt,
-//     parent, vk, hv). Поле 'hv' добавлено в v16.0.1, схема
-//     синхронизирована с codec-decode.ts / codec-encode.ts /
-//     compact-reporter.ts.
-//   - ✅ ОБНОВЛЕНО: комментарий к схеме vue.sfc — 30 полей.
-//   - ✅ ОБНОВЛЕНО: комментарий к vue.sfc.cu_sfc / he_sfc —
-//     RLE [start, length, value?].
-//   - ✅ СИНХРОНИЗИРОВАНО с:
-//       • codec-types.ts   (CODEC_VERSION = '16.0.2', LEGEND_VERSION = '2.0.0')
-//       • codec-encode.ts  (v16.0.1)
-//       • codec-decode.ts  (v16.0.2)
-//       • scripts/verify-roundtrip.ts (v16.0.3)
-//       • scripts/verify-consistency.ts (v3.4.2)
-//
-// v16.0.1 (fix: schemas.fns — 10 полей):
-//   - ✅ ИСПРАВЛЕНО: SCHEMAS.fns расширена до 10 полей.
-//     Добавлено поле 'hv' в конец массива.
-//     Причина: в v16.0.0 было добавлено поле `isHtmlVisible`
-//     в `FunctionData`, но оно НЕ кодировалось в CompactJSON.
-//     В v16.0.1 добавлено RLE-поле `fns.hv`.
-//
-//     Было: ['n','m','f','l','fl','p','rt','parent','vk']       (9)
-//     Стало: ['n','m','f','l','fl','p','rt','parent','vk','hv']  (10)
-//
-//     Синхронизировано с:
-//       - src/reporters/codec/codec-types.ts (CompactJSON.fns.hv)
-//       - src/reporters/codec/codec-encode.ts (fnsHv + fns.hv)
-//       - src/reporters/codec/codec-decode.ts (чтение fns.hv)
-//       - scripts/verify-roundtrip.ts (checkLegendStructure: fns → 10)
-//
-// v16.0.0 (major — несовместимое расширение схем):
-//   - ✅ BREAKING: vue.sfc — 8 → 30 полей
-//   - ✅ BREAKING: +10 новых словарей в legend.codes (итого 29)
-//   - ✅ BREAKING: +11 новых схем в legend.schemas
-//   - ✅ ВВЕДЕНО: legend.version = '2.0.0'
-//   - ✅ ДОБАВЛЕНО: DOM_* константы (9 штук)
-//   - ✅ ДОБАВЛЕНО: COMPONENT_SOURCE_CODES, PROP_KIND_CODES,
-//      EVENT_HANDLER_SOURCE_CODES, SOURCE_CHAIN_KIND_CODES,
-//      HTML_OUTPUT_KIND_CODES
-//
-// v15.7.3 (уточнение семантики vue.sfc.c):
-//   - ✅ ОБНОВЛЕНО: комментарий к схеме `vue.sfc`
-//   - ✅ ОБНОВЛЕНО: заголовок v15.7.2 → v15.7.3
-//
-// v15.7.2 (fix round-trip vue.sfc.composables):
-//   - ✅ ДОБАВЛЕНО: поле `cs` в схеме `vue.sfc`
-//
-// v15.5.0 (Vue-сущности):
-//   - ✅ ДОБАВЛЕНО: codes.vueKind (7 кодов)
-//   - ✅ ДОБАВЛЕНО: codes.sfcBlock (4 кода)
-//   - ✅ ДОБАВЛЕНО: codes.hookName (12 кодов)
-//   - ✅ ДОБАВЛЕНО: codes.reactivityKind (8 кодов)
-//   - ✅ ДОБАВЛЕНО: codes.iconCategory (4 кода)
-//   - ✅ ДОБАВЛЕНО: codes.composableKind (4 кода)
-//   - ✅ ДОБАВЛЕНО: schemas.fns += 'vk'
-//   - ✅ ДОБАВЛЕНО: schemas vue.*
-//
-// v15.4.0 (P3 — cross-file):
-// v15.3.0 (P2 — расширенный CallData):
-// v15.2.0 (P1 — lexicalLinks):
-// v15.1.0 (P0 — parentFunctionId):
-// v15.0.5 (gr.i.tf — индекс в fl.p):
-// v15.0.4 (isReExport / isStarReExport в gr.i.ty):
-// v15.0.2 (устранение дублирования conditionals):
-// v13.0.0 (columnar-структура):
-// v12.0.0 (структурная оптимизация):
-//
-// ════════════════════════════════════════════════════════════
-// v16.0.2-FIX (round-trip: identifier + id для top-level component*):
-//   - ✅ ИСПРАВЛЕНО: схема `vue.componentProps` расширена полем 'idn'
-//     (identifier — первый идентификатор в value). Ранее identifier
-//     кодировался, но не восстанавливался при decode → L1/L2/DL
-//     падали с `null → "a"`.
-//   - ✅ ИСПРАВЛЕНО: схемы `vue.componentEvents`, `vue.componentDirectives`,
-//     `vue.componentSlots`, `vue.htmlInterpolations` расширены полем 'id'
-//     (индекс в ids[]). Ранее id/usageId не восстанавливались → decode
-//     возвращал `''`, а full содержал реальные `cu1:ce1` / `he2:hi1`.
-//   - ✅ СИНХРОНИЗИРОВАНО с codec-encode.ts (FIX), codec-decode.ts (FIX),
-//     codec-types.ts (FIX), scripts/verify-roundtrip.ts (FIX),
-//     scripts/verify-wild-card.ts (FIX).
-// ============================================
+// v17.0.0: добавлены React-коды и схемы:
+//   • REACT_COMPONENT_KIND_CODES (0..5)
+//   • REACT_HOOK_KIND_CODES (0..15)
+//   • REACT_EFFECT_KIND_CODES (0..4)
+//   • REACT_CONTEXT_KIND_CODES (0..2)
+//   • REACT_MEMO_KIND_CODES (0..2)
+//   • JSX_NODE_KIND_CODES (0..6)
+//   • REACT_CONDITIONAL_KIND_CODES (0..2)
+//   • ELEMENT_ATTR_KIND_CODES (0..4)
+//   • 10 схем 'react.*'
 
 import type { CodecLegend, CodesDict } from './codec-types.js';
 
@@ -425,6 +318,106 @@ export const HTML_OUTPUT_KIND_CODES: Record<string, number> = {
 };
 
 // ============================================================
+// ✅ v17.0.0: REACT CODES
+// ============================================================
+
+/**
+ * Коды для reactComponentKind: 0..5.
+ */
+export const REACT_COMPONENT_KIND_CODES: Record<string, number> = {
+  function: 0,
+  arrow: 1,
+  class: 2,
+  memo: 3,
+  forwardRef: 4,
+  lazy: 5,
+};
+
+/**
+ * Коды для reactHookKind: 0..15.
+ */
+export const REACT_HOOK_KIND_CODES: Record<string, number> = {
+  useState: 0,
+  useReducer: 1,
+  useEffect: 2,
+  useLayoutEffect: 3,
+  useInsertionEffect: 4,
+  useMemo: 5,
+  useCallback: 6,
+  useRef: 7,
+  useContext: 8,
+  useImperativeHandle: 9,
+  useTransition: 10,
+  useDeferredValue: 11,
+  useActionState: 12,
+  useOptimistic: 13,
+  useFormStatus: 14,
+  use: 15,
+};
+
+/**
+ * Коды для reactEffectKind: 0..4.
+ */
+export const REACT_EFFECT_KIND_CODES: Record<string, number> = {
+  mount: 0,
+  update: 1,
+  every: 2,
+  layout: 3,
+  insertion: 4,
+};
+
+/**
+ * Коды для reactContextKind: 0..2.
+ */
+export const REACT_CONTEXT_KIND_CODES: Record<string, number> = {
+  create: 0,
+  provide: 1,
+  consume: 2,
+};
+
+/**
+ * Коды для reactMemoKind: 0..2.
+ */
+export const REACT_MEMO_KIND_CODES: Record<string, number> = {
+  memo: 0,
+  useMemo: 1,
+  useCallback: 2,
+};
+
+/**
+ * Коды для jsxNodeKind: 0..6.
+ */
+export const JSX_NODE_KIND_CODES: Record<string, number> = {
+  element: 0,
+  component: 1,
+  fragment: 2,
+  text: 3,
+  expression: 4,
+  spread: 5,
+  conditional: 6,
+};
+
+/**
+ * Коды для reactConditionalKind: 0..2.
+ */
+export const REACT_CONDITIONAL_KIND_CODES: Record<string, number> = {
+  '&&': 0,
+  '||': 1,
+  '?:': 2,
+};
+
+/**
+ * Коды для elementAttrKind: 0..4.
+ */
+export const ELEMENT_ATTR_KIND_CODES: Record<string, number> = {
+  string: 0,
+  expression: 1,
+  handler: 2,
+  boolean: 3,
+  spread: 4,
+};
+
+// ============================================================
 // SCHEMAS — ПОЗИЦИОННЫЕ СХЕМЫ КОРТЕЖЕЙ
 // ============================================================
 //
@@ -435,18 +428,10 @@ export const HTML_OUTPUT_KIND_CODES: Record<string, number> = {
 //            Схема vue.sfc — 30 полей (было 8 в v15.7.3).
 // ✅ v16.0.2-FIX: схемы vue.componentProps/Events/Directives/Slots/
 //    htmlInterpolations расширены полем 'idn' (identifier) и 'id'
-//    (индекс в ids[]). Ранее при decode терялись identifier и id/usageId,
-//    что ломало L1/L2/DL/RE/ENC/DEC.
-// ✅ v16.1.0: схема vue.sfc расширена до 34 полей:
-//    + cu_id, cu_pf (после xs)
-//    + he_id, he_pf (после cu_csl)
-//    Причина: без явного кодирования id и parentFileId
-//    у componentUsages/htmlElements ломается round-trip
-//    (props/events/directives перепутываются между SFC).
-// ✅ v16.2.0: схема vue.reactivity расширена до 5 полей:
-//    + usedInTemplate (0/1 флаг использования в <template>)
-//    Причина: UI должен отрисовать иконку 👁️ для reactivity,
-//    которые реально участвуют в рендеринге.
+//    (индекс в ids[]).
+// ✅ v16.1.0: схема vue.sfc расширена до 34 полей.
+// ✅ v16.2.0: схема vue.reactivity расширена до 5 полей.
+// ✅ v17.0.0: добавлены 10 схем 'react.*'.
 // ============================================================
 
 export const SCHEMAS: CodecLegend['schemas'] = {
@@ -462,27 +447,6 @@ export const SCHEMAS: CodecLegend['schemas'] = {
 
   // ==========================================
   // fns — функции: 10 параллельных массивов
-  // ==========================================
-  //
-  // ✅ v16.0.2: добавлено поле 'hv' (isHtmlVisible, RLE 0/1).
-  // Раньше было 9 полей, теперь 10.
-  //
-  // Синхронизировано с:
-  //   - src/reporters/codec/codec-types.ts (CompactJSON.fns.hv)
-  //   - src/reporters/codec/codec-encode.ts (fnsHv + fns.hv)
-  //   - src/reporters/codec/codec-decode.ts (чтение fns.hv)
-  //   - scripts/verify-roundtrip.ts (checkLegendStructure: 10)
-  //
-  //   n     — nameIdx в strs (имя функции)
-  //   m     — moduleIdx (RLE)
-  //   f     — fileIdx (RLE)
-  //   l     — line
-  //   fl    — flags (битовая маска)
-  //   p     — paramsIdx[] (индексы в params)
-  //   rt    — returnTypeIdx в strs (-1 = нет)
-  //   parent — parentFunctionIdx (RLE, -1 = top-level)
-  //   vk    — vueKindCode (RLE)
-  //   hv    — isHtmlVisible (RLE 0/1)  ⭐ v16.0.2
   // ==========================================
   fns: ['n', 'm', 'f', 'l', 'fl', 'p', 'rt', 'parent', 'vk', 'hv'],
 
@@ -607,73 +571,7 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   lx: ['p', 'c', 'r', 'l', 'ai', 'cn'],
 
   // ==========================================
-  // ✅ v16.1.0: vue.sfc — 34 поля
-  // ==========================================
-  //
-  // ⚠️ BREAKING CHANGE относительно 16.0.9:
-  //   Старая схема (v16.0.0): 30 полей
-  //   Новая схема (v16.1.0):  34 поля
-  //
-  //   + cu_id, cu_pf — id и parentFileId для componentUsages
-  //   + he_id, he_pf — id и parentFileId для htmlElements
-  //
-  // ⚠️ Формат cu_pf/he_pf:
-  //   -1  = пусто (parentFileId === '')
-  //   -2  = не закодировано (использовать fileId(fileIdx))
-  //   >=0 = индекс в ids[]
-  //
-  // ⚠️ Зачем cu_id/he_id:
-  //   До v16.1.0 `cu.id`/`he.id` генерировались ЛОКАЛЬНО
-  //   (сброс счётчика в каждом SFC). Это приводило к тому, что
-  //   `propsByUsage.get("he1")` возвращал props из РАЗНЫХ SFC.
-  //   Симптомы: L1/L2/DL/DEC падали с перепутанными
-  //   props/directives/events у htmlElements.
-  //
-  //   Теперь cu.id/he.id — глобально уникальные (cu1, cu2, ...
-  //   и he1, he2, ... без сброса между SFC). Это гарантирует,
-  //   что propsByUsage.get(usageId) возвращает props только
-  //   одного he/cu.
-  //
-  // ⚠️ Зачем cu_pf/he_pf:
-  //   parentFileId (`f9`, `f12`, ...) не кодировался вообще —
-  //   decode не мог его восстановить. Симптом: `parentFileId`
-  //   в decoded отличался от full.
-  //
-  // Схема:
-  //   f       — fileIdx в fl.p
-  //   n       — nameIdx в strs
-  //   b       — bitmask блоков SFC
-  //   c       — индексы в strs (имена composables)
-  //   cs      — slices [offset, count] для разбиения c по SFC
-  //   pn      — nameIdx для props
-  //   ps      — slices [offset, count] для props
-  //   en      — nameIdx для emits
-  //   es      — slices [offset, count] для emits
-  //   xn      — nameIdx для exposed
-  //   xs      — slices [offset, count] для exposed
-  //   cu_id   — индексы в ids[] (глобально уникальные cu.id)
-  //   cu_pf   — индексы в ids[] или -1/-2 (parentFileId)
-  //   cu_sfc  — RLE [start, length, value?] → SFC-индекс
-  //   cu_tag  — индексы в strs
-  //   cu_file — индексы в fl.p (-1 = null)
-  //   cu_src  — коды COMPONENT_SOURCE_BY_CODE
-  //   cu_pkg  — индексы в strs (-1 = нет пакета)
-  //   cu_l    — line
-  //   cu_col  — column (-1 = нет)
-  //   cu_cp   — slices [offset, count] для props
-  //   cu_ce   — slices [offset, count] для events
-  //   cu_cd   — slices [offset, count] для directives
-  //   cu_csl  — slices [offset, count] для slots
-  //   he_id   — индексы в ids[] (глобально уникальные he.id)
-  //   he_pf   — индексы в ids[] или -1/-2 (parentFileId)
-  //   he_sfc  — RLE [start, length, value?] → SFC-индекс
-  //   he_tag  — индексы в strs
-  //   he_l    — line
-  //   he_col  — column (-1 = нет)
-  //   he_cp   — slices [offset, count] для props
-  //   he_cd   — slices [offset, count] для directives
-  //   he_ce   — slices [offset, count] для events
-  //   he_ci   — slices [offset, count] для interpolations
+  // vue.sfc — 34 поля
   // ==========================================
   'vue.sfc': [
     'f',
@@ -687,8 +585,8 @@ export const SCHEMAS: CodecLegend['schemas'] = {
     'es',
     'xn',
     'xs',
-    'cu_id', // ✅ v16.1.0
-    'cu_pf', // ✅ v16.1.0
+    'cu_id',
+    'cu_pf',
     'cu_sfc',
     'cu_tag',
     'cu_file',
@@ -700,8 +598,8 @@ export const SCHEMAS: CodecLegend['schemas'] = {
     'cu_ce',
     'cu_cd',
     'cu_csl',
-    'he_id', // ✅ v16.1.0
-    'he_pf', // ✅ v16.1.0
+    'he_id',
+    'he_pf',
     'he_sfc',
     'he_tag',
     'he_l',
@@ -710,197 +608,65 @@ export const SCHEMAS: CodecLegend['schemas'] = {
     'he_cd',
     'he_ce',
     'he_ci',
-  ], // → 34 поля
+  ],
 
   // ==========================================
   // vue.composables
-  // ==========================================
-  //
-  //   n — nameIdx в strs
-  //   f — fileIdx в fl.p (RLE)
-  //   k — composableKindCode
-  //   r — composableReturnShapeCode
-  //   v — [index, returnedKeysCount]
   // ==========================================
   'vue.composables': ['n', 'f', 'k', 'r', 'v'],
 
   // ==========================================
   // vue.macros
   // ==========================================
-  //
-  //   f — fileIdx
-  //   k — macroKindCode
-  //   l — line
-  // ==========================================
   'vue.macros': ['f', 'k', 'l'],
 
   // ==========================================
   // vue.hooks
   // ==========================================
-  //
-  //   f — fileIdx
-  //   n — hookNameCode
-  //   l — line
-  // ==========================================
   'vue.hooks': ['f', 'n', 'l'],
 
   // ==========================================
-  // ✅ v16.2.0: vue.reactivity — 5 полей
+  // vue.reactivity — 5 полей
   // ==========================================
-  //
-  // ⚠️ BREAKING CHANGE относительно 16.1.0:
-  //   Старая схема (v16.0.0): 4 поля
-  //   Новая схема (v16.2.0):  5 полей
-  //
-  //   + usedInTemplate — 0/1 флаг использования переменной в <template>
-  //
-  // ⚠️ Зачем usedInTemplate:
-  //   UI должен иметь возможность отрисовать иконку 👁️ только
-  //   для тех reactivity, которые реально участвуют в рендеринге.
-  //
-  //   Вычисляется в convert-analysis.ts:
-  //     usedInTemplate = template.reactivityDeps.includes(name)
-  //
-  //   ПРИМЕР:
-  //     const count = ref(0);                    // name='count'
-  //     const displayText = computed(...);       // name='displayText'
-  //     <template>{{ displayText }}</template>   // reactivityDeps=['displayText']
-  //     →
-  //       { name: 'count',       usedInTemplate: 0 }
-  //       { name: 'displayText', usedInTemplate: 1 }
-  //
-  // ⚠️ Формат:
-  //   usedInTemplate[i] = 0  → НЕ используется в template
-  //   usedInTemplate[i] = 1  → используется в template
-  //   Массив может отсутствовать (обратная совместимость) —
-  //   decode трактует как 0/false.
-  //
-  // Схема:
-  //   f              — fileIdx в fl.p
-  //   k              — reactivityKindCode
-  //   l              — line
-  //   n              — nameIdx в strs (-1 = нет)
-  //   usedInTemplate — 0/1 флаг (⭐ v16.2.0)
-  // ==========================================
-  'vue.reactivity': ['f', 'k', 'l', 'n', 'usedInTemplate'], // → 5 полей
+  'vue.reactivity': ['f', 'k', 'l', 'n', 'usedInTemplate'],
 
   // ==========================================
   // vue.icons
   // ==========================================
-  //
-  //   f — fileIdx
-  //   n — nameIdx в strs
-  //   c — iconCategoryCode
-  // ==========================================
   'vue.icons': ['f', 'n', 'c'],
 
   // ==========================================
-  // ✅ v16.0.0: component props / events / directives / slots
-  // ==========================================
-  //
-  // ⚠️ v16.0.2: эти секции — соседи sfc, не вложены в него.
-  // Их значения сгруппированы по usageId через cu_cp/cu_ce/...
-  // slices.
-  //
-  // ✅ v16.0.2-FIX: добавлено поле 'idn' (identifier) в componentProps
-  //    и поле 'id' (индекс в ids[]) в componentEvents/Directives/
-  //    Slots/Interpolations.
-  //
-  // componentProps:
-  //   n   — nameIdx в strs
-  //   v   — valueIdx в strs
-  //   k   — propKindCode
-  //   l   — line
-  //   id  — idIdx в ids[] (генерированный id 'cu1:cp6')
-  //   mc  — memberChainIdx в strs (разделитель \u0002)
-  //   lv  — literalValueIdx в strs
-  //   sc  — RLE [start, length, value?] → sourceChainIdx
-  //   fns — reserved (всегда -1)
-  //   idn — identifierIdx в strs (первый идентификатор в value)
-  //
-  // componentEvents:
-  //   n   — eventNameIdx в strs
-  //   h   — handlerIdx в strs
-  //   fn  — reserved (всегда -1)
-  //   s   — eventHandlerSourceCode
-  //   m   — modifiersIdx в strs (разделитель \u0002)
-  //   l   — line
-  //   sc  — RLE [start, length, value?] → sourceChainIdx
-  //   id  — idIdx в ids[] ('cu1:ce1')
-  //
-  // componentDirectives:
-  //   n   — nameIdx в strs
-  //   a   — argumentIdx в strs (-1 = нет)
-  //   m   — modifiersIdx в strs (разделитель \u0002)
-  //   v   — valueIdx в strs
-  //   l   — line
-  //   id  — idIdx в ids[] ('cu1:cd1')
-  //
-  // componentSlots:
-  //   n   — slotNameIdx в strs
-  //   sc  — isScoped (0/1)
-  //   sn  — scopeNamesIdx в strs (разделитель \u0002)
-  //   l   — line
-  //   id  — idIdx в ids[] ('cu1:csl1')
-  //
-  // htmlInterpolations:
-  //   e   — expressionIdx в strs
-  //   sc  — RLE [start, length, value?] → sourceChainIdx
-  //   l   — line
-  //   id  — idIdx в ids[] ('he2:hi1')
+  // vue.componentProps
   // ==========================================
   'vue.componentProps': ['n', 'v', 'k', 'l', 'id', 'mc', 'lv', 'sc', 'fns', 'idn'],
+
+  // ==========================================
+  // vue.componentEvents
+  // ==========================================
   'vue.componentEvents': ['n', 'h', 'fn', 's', 'm', 'l', 'sc', 'id'],
+
+  // ==========================================
+  // vue.componentDirectives
+  // ==========================================
   'vue.componentDirectives': ['n', 'a', 'm', 'v', 'l', 'id'],
+
+  // ==========================================
+  // vue.componentSlots
+  // ==========================================
   'vue.componentSlots': ['n', 'sc', 'sn', 'l', 'id'],
+
+  // ==========================================
+  // vue.htmlInterpolations
+  // ==========================================
   'vue.htmlInterpolations': ['e', 'sc', 'l', 'id'],
 
   // ==========================================
-  // vue.fnHtmlUsage — обратная связь
-  // ==========================================
-  //
-  //   fn   — functionIdx в functions[]
-  //   k    — htmlOutputKindCode
-  //   u    — usageIdIdx в ids[]
-  //   t    — tagIdx в strs
-  //   tg   — targetIdx в strs
-  //   l    — line
-  //   col  — column (-1 = нет)
-  //   dcat — domApiCategoryCode (-1 = нет)
-  //   dctx — domApiContextIdx в strs (JSON)
+  // vue.fnHtmlUsage
   // ==========================================
   'vue.fnHtmlUsage': ['fn', 'k', 'u', 't', 'tg', 'l', 'col', 'dcat', 'dctx'],
 
   // ==========================================
-  // ✅ v16.0.0: DOM API
-  // ==========================================
-  //
-  // domApiCalls:
-  //   fn        — functionIdx
-  //   f         — fileIdx (RLE, не используется — [0,0])
-  //   cat       — domApiCategoryCode (0..49)
-  //   eff       — domApiEffectCode (0..2)
-  //   m         — methodIdx в strs
-  //   t         — targetIdx в ids[]
-  //   tk        — domApiTargetKindCode (0..6)
-  //   l         — line
-  //   col       — column (-1 = нет)
-  //   argSlices — slices [start, count] для domApiArgs
-  //   en        — eventNameIdx в strs
-  //   hfn       — handlerFunctionIdx
-  //   hs        — eventHandlerSourceCode
-  //   sel       — cssSelectorIdx в strs
-  //   hv        — htmlValueIdx в strs
-  //   cn        — classNameIdx в strs
-  //   sp        — stylePropIdx в strs
-  //   an        — attributeNameIdx в strs
-  //   oo        — observeOptionsIdx в strs (разделитель \u0002)
-  //
-  // domApiArgs:
-  //   r  — rawIdx в strs
-  //   k  — domApiArgKindCode (0..7)
-  //   fn — resolvedFunctionIdIdx в ids[]
-  //   s  — domApiArgSourceCode (0..3)
+  // domApiCalls
   // ==========================================
   domApiCalls: [
     'fn',
@@ -923,21 +689,66 @@ export const SCHEMAS: CodecLegend['schemas'] = {
     'an',
     'oo',
   ],
+
+  // ==========================================
+  // domApiArgs
+  // ==========================================
   domApiArgs: ['r', 'k', 'fn', 's'],
 
   // ==========================================
-  // ✅ v16.0.0: служебные
-  // ==========================================
-  //
-  // ids — append-only массив сгенерированных id
-  // (cu1, he1, d1, cu1:cp6, cu1:ce3, ...).
-  // Отличается от strs (те — интернированные строки из кода).
-  //
-  // ⚠️ sourceChains НЕ включён в schemas, потому что это
-  //    МАССИВ СТРОК (как tokens/strs/params/values), а не
-  //    объект с параллельными массивами.
+  // ids
   // ==========================================
   ids: ['(string[])'],
+
+  // ==========================================
+  // ✅ v17.0.0: react.components
+  // ==========================================
+  'react.components': ['f', 'm', 'n', 'k', 'l', 'p', 'h', 'j', 'fl'],
+
+  // ==========================================
+  // ✅ v17.0.0: react.hooks
+  // ==========================================
+  'react.hooks': ['f', 'c', 'k', 'l', 'sn', 'tn', 'iv', 'd', 'fl'],
+
+  // ==========================================
+  // ✅ v17.0.0: react.effects
+  // ==========================================
+  'react.effects': ['f', 'c', 'hk', 'k', 'l', 'd', 'fl', 'r', 'mu'],
+
+  // ==========================================
+  // ✅ v17.0.0: react.contexts
+  // ==========================================
+  'react.contexts': ['f', 'c', 'k', 'l', 'n'],
+
+  // ==========================================
+  // ✅ v17.0.0: react.memoization
+  // ==========================================
+  'react.memoization': ['f', 'c', 'k', 'l', 'd'],
+
+  // ==========================================
+  // ✅ v17.0.0: react.refs
+  // ==========================================
+  'react.refs': ['f', 'c', 'l', 'n', 'fl'],
+
+  // ==========================================
+  // ✅ v17.0.0: react.jsxElements
+  // ==========================================
+  'react.jsxElements': ['f', 'c', 'k', 'n', 'l', 'a', 'ch', 'tx', 'ex', 'pa', 'ck'],
+
+  // ==========================================
+  // ✅ v17.0.0: react.jsxEvents
+  // ==========================================
+  'react.jsxEvents': ['f', 'e', 'n', 'l', 'h', 'hf', 's'],
+
+  // ==========================================
+  // ✅ v17.0.0: react.conditionals
+  // ==========================================
+  'react.conditionals': ['f', 'c', 'k', 'cd', 'r', 'l', 'g'],
+
+  // ==========================================
+  // ✅ v17.0.0: react.componentUsages
+  // ==========================================
+  'react.componentUsages': ['u', 'n', 'c', 'l', 't', 'im', 'fl', 'p', 'e', 's'],
 };
 
 // ============================================================
@@ -983,7 +794,8 @@ function reverseCodeDict(dict: Record<string, number>): CodesDict {
 /**
  * Собирает все словари кодов.
  *
- * ✅ v16.0.0: 29 словарей (было 19 в 15.7.3).
+ * ✅ v16.0.0: 29 словарей.
+ * ✅ v17.0.0: +9 словарей React.
  */
 function buildCodesLegend(): CodecLegend['codes'] {
   return {
@@ -1191,6 +1003,18 @@ function buildCodesLegend(): CodecLegend['codes'] {
     // ✅ v16.0.0: DOM API ARG SOURCE
     // ==========================================
     domApiArgSource: reverseCodeDict(DOM_ARG_SOURCE_CODES),
+
+    // ==========================================
+    // ✅ v17.0.0: REACT CODES
+    // ==========================================
+    reactComponentKind: reverseCodeDict(REACT_COMPONENT_KIND_CODES),
+    reactHookKind: reverseCodeDict(REACT_HOOK_KIND_CODES),
+    reactEffectKind: reverseCodeDict(REACT_EFFECT_KIND_CODES),
+    reactContextKind: reverseCodeDict(REACT_CONTEXT_KIND_CODES),
+    reactMemoKind: reverseCodeDict(REACT_MEMO_KIND_CODES),
+    jsxNodeKind: reverseCodeDict(JSX_NODE_KIND_CODES),
+    reactConditionalKind: reverseCodeDict(REACT_CONDITIONAL_KIND_CODES),
+    elementAttrKind: reverseCodeDict(ELEMENT_ATTR_KIND_CODES),
   };
 }
 
@@ -1230,13 +1054,13 @@ export interface LegendDictionaries {
  * ✅ v16.0.2-FIX: schemas vue.component* — +1 поле (idn / id).
  * ✅ v16.1.0: legend.version = '2.1.0'.
  *            schemas['vue.sfc'] — 34 поля (было 30).
- *            + cu_id, cu_pf, he_id, he_pf.
  * ✅ v16.2.0: schemas['vue.reactivity'] — 5 полей (было 4).
- *            + usedInTemplate.
+ * ✅ v17.0.0: добавлены 10 схем 'react.*', 8 кодов React.
+ *            legend.version = '3.0.0'.
  */
 export function buildLegend(_dict: LegendDictionaries): CodecLegend {
   return {
-    version: '2.1.0', // ✅ v16.1.0 (LEGEND_VERSION не меняется в v16.2.0)
+    version: '3.0.0', // ✅ v17.0.0
     codes: buildCodesLegend(),
     flags: buildFlagsLegend(),
     schemas: SCHEMAS,
@@ -1283,4 +1107,13 @@ export default {
   EVENT_HANDLER_SOURCE_CODES,
   SOURCE_CHAIN_KIND_CODES,
   HTML_OUTPUT_KIND_CODES,
+  // ✅ v17.0.0
+  REACT_COMPONENT_KIND_CODES,
+  REACT_HOOK_KIND_CODES,
+  REACT_EFFECT_KIND_CODES,
+  REACT_CONTEXT_KIND_CODES,
+  REACT_MEMO_KIND_CODES,
+  JSX_NODE_KIND_CODES,
+  REACT_CONDITIONAL_KIND_CODES,
+  ELEMENT_ATTR_KIND_CODES,
 };

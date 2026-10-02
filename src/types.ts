@@ -901,6 +901,7 @@ export interface VueEntities {
 // ✅ v15.1.0 (P0): FunctionInfo теперь содержит parentFunctionId.
 // ✅ v15.2.0 (P1): добавлено поле lexicalLinks.
 // ✅ v16.0.8: добавлены поля templateComponentUsages/templateHtmlElements.
+// ✅ v17.0.0: добавлены React-поля (reactComponents, reactHooks, ...).
 // ==========================================
 
 export interface EntitiesResult {
@@ -1019,6 +1020,50 @@ export interface EntitiesResult {
 
   /** Использования HTML-элементов в <template> */
   templateHtmlElements?: HtmlElementUsage[];
+
+  // ==========================================
+  // ✅ v17.0.0: React-сущности
+  // ==========================================
+  //
+  // Заполняются в pipeline/stages/parse-typescript.ts
+  // для файлов .tsx/.jsx через analyzeReactComponent.
+  //
+  // Читаются в core/react-entity-classifier.ts
+  // (classifyReactEntities) → pass7React → ctx.react.
+  //
+  // Тип `any[]` — временно, чтобы не тянуть типы из
+  // modes/react-analyzer/types.ts (иначе циклический импорт).
+  // ==========================================
+
+  /** React-компоненты (function/arrow/class/memo/forwardRef/lazy) */
+  reactComponents?: any[];
+
+  /** React-хуки (useState/useEffect/useMemo/useCallback/useRef/useContext/...) */
+  reactHooks?: any[];
+
+  /** React-эффекты (useEffect/useLayoutEffect с deps и cleanup) */
+  reactEffects?: any[];
+
+  /** React-контексты (createContext/useContext) */
+  reactContexts?: any[];
+
+  /** React-мемоизация (useMemo/useCallback/React.memo) */
+  reactMemoization?: any[];
+
+  /** React-refs (useRef/forwardRef) */
+  reactRefs?: any[];
+
+  /** JSX-элементы (со структурированными ElementAttr[]) */
+  reactJsxElements?: any[];
+
+  /** JSX-события (onClick/onChange/... с handler) */
+  reactJsxEvents?: any[];
+
+  /** Условный рендеринг в JSX (&&/||/?:) */
+  reactConditionals?: any[];
+
+  /** Использования React-компонентов (обратный индекс) */
+  reactComponentUsages?: any[];
 }
 
 // ==========================================
@@ -1168,6 +1213,18 @@ export interface EntitiesResultLegacy {
   callGraph: Record<string, string[]>;
   moduleName: string;
   filePath: string;
+
+  // ✅ v17.0.0: React-поля (для обратной совместимости)
+  reactComponents?: any[];
+  reactHooks?: any[];
+  reactEffects?: any[];
+  reactContexts?: any[];
+  reactMemoization?: any[];
+  reactRefs?: any[];
+  reactJsxElements?: any[];
+  reactJsxEvents?: any[];
+  reactConditionals?: any[];
+  reactComponentUsages?: any[];
 }
 
 // ==========================================
@@ -2014,23 +2071,23 @@ export interface EnhancedPackageLockReport {
   callGraph?:
     | Record<string, string[]>
     | {
-        from: string;
-        to: string;
-        path: string[];
-        found: boolean;
-        reason?: string;
-        nodes: {
-          function: string;
-          module: string;
-          line: number;
-          isAsync: boolean;
-        }[];
-        edges: {
-          from: string;
-          to: string;
-          line?: number;
-        }[];
-      };
+    from: string;
+    to: string;
+    path: string[];
+    found: boolean;
+    reason?: string;
+    nodes: {
+      function: string;
+      module: string;
+      line: number;
+      isAsync: boolean;
+    }[];
+    edges: {
+      from: string;
+      to: string;
+      line?: number;
+    }[];
+  };
   entityStats: {
     totalFunctions: number;
     totalConstants: number;
@@ -2061,6 +2118,7 @@ export interface EnhancedPackageLockReport {
 // ✅ ОБНОВЛЕНО: добавлены поля imports и exports.
 // ✅ v15.2.0 (P1): добавлены template-поля + lexicalLinks.
 // ✅ v16.0.8: добавлены templateComponentUsages/templateHtmlElements.
+// ✅ v17.0.0: добавлены React-поля (reactComponents, reactHooks, ...).
 // ==========================================
 
 export interface EnhancedEntityInfo {
@@ -2189,6 +2247,51 @@ export interface EnhancedEntityInfo {
 
   /** Использования HTML-элементов в <template> */
   templateHtmlElements?: HtmlElementUsage[];
+
+  // ==========================================
+  // ✅ НОВОЕ v17.0.0: React-сущности
+  // ==========================================
+  //
+  // Пробрасываются из EntitiesResult через convertEntitiesToEnhanced.
+  // Без этого pipeline не видит React-данные, потому что
+  // collectFullJSON получает enhancedMap, а не entitiesMap.
+  //
+  // Источник: pipeline/stages/parse-typescript.ts
+  //           (заполняет entities.react* для .tsx/.jsx).
+  //
+  // Тип `any[]` — временно, для избежания циклических импортов
+  // с modes/react-analyzer/types.ts и core/react-entity-classifier.ts.
+  // ==========================================
+
+  /** React-компоненты (function/arrow/class/memo/forwardRef/lazy) */
+  reactComponents?: any[];
+
+  /** React-хуки (useState/useEffect/useMemo/useCallback/useRef/useContext/...) */
+  reactHooks?: any[];
+
+  /** React-эффекты (useEffect/useLayoutEffect с deps и cleanup) */
+  reactEffects?: any[];
+
+  /** React-контексты (createContext/useContext) */
+  reactContexts?: any[];
+
+  /** React-мемоизация (useMemo/useCallback/React.memo) */
+  reactMemoization?: any[];
+
+  /** React-refs (useRef/forwardRef) */
+  reactRefs?: any[];
+
+  /** JSX-элементы (со структурированными ElementAttr[]) */
+  reactJsxElements?: any[];
+
+  /** JSX-события (onClick/onChange/... с handler) */
+  reactJsxEvents?: any[];
+
+  /** Условный рендеринг в JSX (&&/||/?:) */
+  reactConditionals?: any[];
+
+  /** Использования React-компонентов (обратный индекс) */
+  reactComponentUsages?: any[];
 }
 
 // ==========================================

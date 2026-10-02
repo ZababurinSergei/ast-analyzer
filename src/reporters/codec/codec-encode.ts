@@ -1,115 +1,8 @@
 // src/reporters/codec/codec-encode.ts
 // ============================================
-// КОДИРОВАНИЕ: FullJSON → CompactJSON (v16.2.0)
+// КОДИРОВАНИЕ: FullJSON → CompactJSON (v16.2.0 → v17.0.0)
 // ============================================
-// Версия: 16.2.3
-//
-// ════════════════════════════════════════════════════════════
-// ИЗМЕНЕНИЯ v16.2.3 (v16.2.0: usedInTemplate для reactivity):
-//   - ✅ ДОБАВЛЕНО: в `encodeVueSection` собирается массив
-//     `rxVueT` — 0/1 флаг для `usedInTemplate`.
-//   - ✅ ДОБАВЛЕНО: в `vue.reactivity` записывается поле
-//     `usedInTemplate: rxVueT`.
-//   - 📌 ЗАЧЕМ: дать UI возможность отрисовать иконку 👁️
-//     только для тех reactivity, которые реально участвуют
-//     в рендеринге.
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '16.2.0' (в codec-types.ts)
-//   - ✅ СИНХРОНИЗИРОВАНО с:
-//       • codec-types.ts   (CODEC_VERSION = '16.2.0')
-//       • codec-decode.ts  (читает usedInTemplate[i])
-//       • codec-legend.ts  (схема vue.reactivity — 5 полей)
-//       • verify-roundtrip.ts (expectedLength = 5)
-//
-// ════════════════════════════════════════════════════════════
-// ИЗМЕНЕНИЯ v16.1.0 (FIX: identifier / literalValue в componentProps):
-//   - ✅ ИСПРАВЛЕНО: в `encodeVueSection` при сборе `allComponentProps`
-//     из `sfc.componentUsages[].props` и `sfc.htmlElements[].props`
-//     теперь ДОЗАПОЛНЯЮТСЯ поля `identifier`, `memberChain`,
-//     `literalValue`, если они не заполнены (через `??`).
-//
-//     ПРИЧИНА:
-//       `parseVueTemplate` (vue-template-parser.ts) при создании
-//       ComponentProp ставит `identifier: null` и НЕ заполняет
-//       `literalValue` / `memberChain`. Поля должны были
-//       заполняться в `fillComponentAccumulators`
-//       (compact/vue/component-usage.ts), но эта функция наполняет
-//       ТОЛЬКО top-level `full.componentProps`,
-//       а `vue.componentProps` в `encodeVueSection` собирается
-//       НАПРЯМУЮ из `sfc.componentUsages[].props` — там
-//       `identifier === null`, `literalValue === undefined`.
-//
-//       В результате `encodeComponentPropsInline` писал `idn[i] = -1`
-//       и `lv[i] = -1` для ВСЕХ 866 elements → decoder не мог
-//       восстановить `identifier` / `literalValue` → L1/L2/DL падали
-//       с расхождениями вида:
-//         $.vue.componentProps[0].identifier: null → "ai"
-//         $.vue.componentProps[1].literalValue: undefined → 25
-//
-//     РЕШЕНИЕ:
-//       В `encodeVueSection` применяем ту же нормализацию,
-//       что делает `fillComponentAccumulators`:
-//         identifier:  p.identifier  ?? extractIdentifierFromValue(p.value)
-//         memberChain: p.memberChain ?? extractMemberChainFromValue(p.value)
-//         literalValue: p.literalValue ?? extractLiteralFromValue(p.value)
-//
-//       Если поля УЖЕ заполнены (например, для top-level
-//       componentProps, которые прошли через fillComponentAccumulators),
-//       они НЕ перезаписываются (благодаря `??`).
-//
-//     СИМПТОМ ДО ФИКСА (verify-roundtrip.ts v16.1.0):
-//       L1:  $.vue.componentProps[0].identifier    a: null       b: "ai"
-//       L1:  $.vue.componentProps[1].literalValue  a: undefined  b: 25
-//       L2:  то же самое
-//       DL:  то же самое
-//
-//     ПОСЛЕ ФИКСА:
-//       L1/L2/DL — PASS.
-//
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION → '16.2.2' в codec-types.ts
-//     (см. связанные файлы).
-//   - ✅ СИНХРОНИЗИРОВАНО с:
-//       • codec-types.ts   (CODEC_VERSION = '16.2.2')
-//       • codec-decode.ts  (без изменений — он уже читает idn/lv)
-//       • codec-legend.ts  (без изменений)
-//       • verify-roundtrip.ts (без изменений)
-//
-// ════════════════════════════════════════════════════════════
-// СВОДКА ПРЕДЫДУЩИХ ВЕРСИЙ
-// ════════════════════════════════════════════════════════════
-//
-// v16.2.1 (FIX: fallback-кодирование top-level component*):
-//   - ✅ ДОБАВЛЕНО: если `vue.componentProps` (и др.) отсутствует
-//     в canonical.vue, но `canonical.componentProps` (top-level)
-//     содержит данные — кодируем их через
-//     `encodeComponentPropsInline(canonical.componentProps, dict)`.
-//
-// v16.2.0 (FIX: устранено двойное кодирование top-level component*):
-//   - ✅ ИСПРАВЛЕНО: top-level `componentProps`, `componentEvents`,
-//     `componentDirectives`, `componentSlots`, `htmlInterpolations`
-//     больше НЕ кодируются повторно. Используется уже готовый
-//     результат из `encodeVueSection` (vue.componentProps и т.д.).
-//
-// v16.1.0 (BREAKING: глобально уникальные cu.id/he.id):
-//   - ✅ ДОБАВЛЕНО: в `encodeVueSection` заполняются массивы
-//     `cu_id`, `cu_pf`, `he_id`, `he_pf`.
-//
-// v16.0.9-FIX (round-trip: literalValue + ids):
-//   - ✅ ИСПРАВЛЕНО: `encodeComponentPropsInline` — добавлена
-//     функция `encodeLiteralValue()` (boolean/number/null/string).
-//
-// v16.0.8-FIX (round-trip: identifier + id для component*):
-//   - ✅ ИСПРАВЛЕНО: `encodeComponentPropsInline` — поле `idn`.
-//   - ✅ ИСПРАВЛЕНО: `encodeComponentEventsInline` — поле `id`.
-//   - ✅ ИСПРАВЛЕНО: `encodeComponentDirectivesInline` — поле `id`.
-//   - ✅ ИСПРАВЛЕНО: `encodeComponentSlotsInline` — поле `id`.
-//   - ✅ ИСПРАВЛЕНО: `encodeHtmlInterpolationsInline` — поле `id`.
-//
-// v16.0.0 (major — несовместимое расширение схем):
-//   - ✅ BREAKING: vue.sfc — 8 → 30 полей
-//   - ✅ BREAKING: +10 top-level секций CompactJSON
-//   - ✅ ДОБАВЛЕНО: addId, addSourceChain, rleArray
-//   - ✅ ДОБАВЛЕНО: 9 функций encode*
-// ============================================
+// Версия: 17.0.0
 
 import type {
   FullJSON,
@@ -141,6 +34,8 @@ import type {
   IconEntity,
   VueSectionFull,
   VueSectionCompact,
+  ReactSectionFull,
+  ReactSectionCompact,
   VueKind,
   // ✅ v16.0.0
   ComponentProp,
@@ -189,6 +84,14 @@ import {
   REACTIVITY_KIND_CODES,
   ICON_CATEGORY_CODES,
   VUE_KIND_CODES,
+  // ✅ v17.0.0: React коды
+  REACT_COMPONENT_KIND_CODES,
+  REACT_HOOK_KIND_CODES,
+  REACT_EFFECT_KIND_CODES,
+  REACT_CONTEXT_KIND_CODES,
+  REACT_MEMO_KIND_CODES,
+  JSX_NODE_KIND_CODES,
+  REACT_CONDITIONAL_KIND_CODES,
 } from './codec-legend.js';
 
 // ✅ v16.0.0: сериализация sourceChain
@@ -409,7 +312,7 @@ export function flagsToString(flags: number): string {
 // ХЕЛПЕРЫ СЛОВАРЕЙ
 // ============================================
 
-interface DictBuilder {
+export interface DictBuilder {
   stringDict: string[];
   stringMap: Map<string, number>;
   paramDict: string[];
@@ -1118,22 +1021,6 @@ export function encodeVueSection(
 
 /**
  * ✅ v16.0.9-FIX: кодирует literalValue с префиксом типа.
- *
- * ПРОБЛЕМА (v16.0.8):
- *   `String(p.literalValue)` превращает boolean `false` в строку `"false"`,
- *   а `true` — в `"true"`. При decode(compact) возвращается строка,
- *   а не boolean. Это ломает L1/L2/DL/DEC и verify-consistency:
- *     $.vue.componentProps[38].literalValue: "false" → false
- *
- * РЕШЕНИЕ:
- *   Кодируем `${typeof}:${String(value)}`:
- *     - boolean:true   → decode → true
- *     - boolean:false  → decode → false
- *     - number:42      → decode → 42
- *     - null:null      → decode → null
- *     - string:foo     → decode → 'foo'
- *
- *   Для legacy-совместимости: если префикса нет — decode вернёт строку как есть.
  */
 function encodeLiteralValue(
   value: string | number | boolean | null | undefined,
@@ -1165,9 +1052,6 @@ export function encodeComponentPropsInline(
   const lv: number[] = [];
   const sc: [number, number, number?][] = [];
   const fns: number[] = [];
-  // ✅ v16.0.8-FIX: identifier (первый идентификатор в value) — кодируется явно,
-  // иначе decode(compact) выставляет identifier = null, а full содержит
-  // реальное значение ('a', 'b', 'props', ...). Это ломало L1/L2/DL.
   const idn: number[] = [];
 
   for (const p of props) {
@@ -1178,16 +1062,14 @@ export function encodeComponentPropsInline(
     id.push(addId(dict, p.id || ''));
     mc.push(p.memberChain ? addString(dict, p.memberChain.join('\u0002')) : -1);
 
-    // ✅ v16.0.9-FIX: literalValue сохраняет тип (boolean / number / null / string)
     lv.push(encodeLiteralValue(p.literalValue, dict));
 
     const scIdx = addSourceChain(dict, p.sourceChain || []);
     sc.push(scIdx >= 0 ? [scIdx, 1, 1] : [0, 0]);
 
     const firstFn = p.sourceChain?.[0]?.functionId;
-    fns.push(firstFn ? -1 : -1); // резолвинг fn-id делает compact-reporter
+    fns.push(firstFn ? -1 : -1);
 
-    // ✅ v16.0.8-FIX: identifier
     idn.push(p.identifier ? addString(dict, p.identifier) : -1);
   }
 
@@ -1207,13 +1089,12 @@ export function encodeComponentEventsInline(
   const m: number[] = [];
   const l: number[] = [];
   const sc: [number, number, number?][] = [];
-  // ✅ v16.0.8-FIX: id (cu1:ce1) — чтобы decode восстанавливал id/usageId.
   const id: number[] = [];
 
   for (const e of events) {
     n.push(addString(dict, e.eventName || ''));
     h.push(addString(dict, e.handler || ''));
-    fn.push(-1); // резолвинг fn-id делает compact-reporter
+    fn.push(-1);
     s.push(EVENT_HANDLER_SOURCE_CODES[e.handlerSource] ?? 4);
     m.push(e.modifiers?.length ? addString(dict, e.modifiers.join('\u0002')) : -1);
     l.push(e.line ?? 0);
@@ -1221,7 +1102,6 @@ export function encodeComponentEventsInline(
     const scIdx = addSourceChain(dict, e.handlerChain || []);
     sc.push(scIdx >= 0 ? [scIdx, 1, 1] : [0, 0]);
 
-    // ✅ v16.0.8-FIX: id
     id.push(e.id ? addId(dict, e.id) : -1);
   }
 
@@ -1239,7 +1119,6 @@ export function encodeComponentDirectivesInline(
   const m: number[] = [];
   const v: number[] = [];
   const l: number[] = [];
-  // ✅ v16.0.8-FIX: id (cu1:cd1)
   const id: number[] = [];
 
   for (const d of dirs) {
@@ -1249,7 +1128,6 @@ export function encodeComponentDirectivesInline(
     v.push(addString(dict, d.value || ''));
     l.push(d.line ?? 0);
 
-    // ✅ v16.0.8-FIX: id
     id.push(d.id ? addId(dict, d.id) : -1);
   }
 
@@ -1266,7 +1144,6 @@ export function encodeComponentSlotsInline(
   const sc: number[] = [];
   const sn: number[] = [];
   const l: number[] = [];
-  // ✅ v16.0.8-FIX: id (cu1:csl1)
   const id: number[] = [];
 
   for (const sl of slots) {
@@ -1275,7 +1152,6 @@ export function encodeComponentSlotsInline(
     sn.push(sl.scopeNames?.length ? addString(dict, sl.scopeNames.join('\u0002')) : -1);
     l.push(sl.line ?? 0);
 
-    // ✅ v16.0.8-FIX: id
     id.push(sl.id ? addId(dict, sl.id) : -1);
   }
 
@@ -1291,7 +1167,6 @@ export function encodeHtmlInterpolationsInline(
   const e: number[] = [];
   const sc: [number, number, number?][] = [];
   const l: number[] = [];
-  // ✅ v16.0.8-FIX: id (he2:hi1)
   const id: number[] = [];
 
   for (const i of interps) {
@@ -1300,11 +1175,315 @@ export function encodeHtmlInterpolationsInline(
     sc.push(scIdx >= 0 ? [scIdx, 1, 1] : [0, 0]);
     l.push(i.line ?? 0);
 
-    // ✅ v16.0.8-FIX: id
     id.push(i.id ? addId(dict, i.id) : -1);
   }
 
   return { e, sc, l, id };
+}
+
+// ============================================
+// ✅ v17.0.0: REACT SECTION ENCODER
+// ============================================
+
+/**
+ * Кодирует ReactSectionFull → ReactSectionCompact.
+ *
+ * Симметрична encodeVueSection.
+ *
+ * ⚠️ v17.0.0: упрощённая версия.
+ *   Компоненты, хуки, JSX, события, conditionals кодируются
+ *   как columnar-массивы. Поля componentId, hookId, elementId и
+ *   parentElementId пока кодируются как -1 (разрешатся позже,
+ *   когда будет Фаза 2 flow-графа).
+ *
+ * @param react       — ReactSectionFull
+ * @param dict        — словарь
+ * @param fileReverse — Map<fileId, fileIdx>
+ */
+export function encodeReactSection(
+  react: ReactSectionFull | undefined,
+  dict: DictBuilder,
+  fileReverse: Map<string, number>
+): ReactSectionCompact | undefined {
+  if (!react) return undefined;
+
+  // Ранний выход, если всё пусто
+  const hasAny =
+    (react.components?.length ?? 0) > 0 ||
+    (react.hooks?.length ?? 0) > 0 ||
+    (react.effects?.length ?? 0) > 0 ||
+    (react.contexts?.length ?? 0) > 0 ||
+    (react.memoization?.length ?? 0) > 0 ||
+    (react.refs?.length ?? 0) > 0 ||
+    (react.jsxElements?.length ?? 0) > 0 ||
+    (react.jsxEvents?.length ?? 0) > 0 ||
+    (react.conditionals?.length ?? 0) > 0 ||
+    (react.componentUsages?.length ?? 0) > 0;
+
+  if (!hasAny) return undefined;
+
+  const fileIdx = (fid: string | undefined): number => {
+    if (!fid) return -1;
+    return fileReverse.get(fid) ?? -1;
+  };
+
+  // ── components ──
+  const cF: number[] = [];
+  const cM: number[] = [];
+  const cN: number[] = [];
+  const cK: number[] = [];
+  const cL: number[] = [];
+  const cP: [number, number][] = [];
+  const cH: [number, number][] = [];
+  const cJ: [number, number][] = [];
+  const cFl: number[] = [];
+
+  // ── hooks ──
+  const hF: number[] = [];
+  const hC: number[] = [];
+  const hK: number[] = [];
+  const hL: number[] = [];
+  const hSn: number[] = [];
+  const hTn: number[] = [];
+  const hIv: number[] = [];
+  const hD: number[] = [];
+  const hFl: number[] = [];
+
+  // ── effects ──
+  const eF: number[] = [];
+  const eC: number[] = [];
+  const eHk: number[] = [];
+  const eK: number[] = [];
+  const eL: number[] = [];
+  const eD: number[] = [];
+  const eFl: number[] = [];
+  const eR: number[] = [];
+  const eMu: number[] = [];
+
+  // ── contexts ──
+  const ctxF: number[] = [];
+  const ctxC: number[] = [];
+  const ctxK: number[] = [];
+  const ctxL: number[] = [];
+  const ctxN: number[] = [];
+
+  // ── memoization ──
+  const mF: number[] = [];
+  const mC: number[] = [];
+  const mK: number[] = [];
+  const mL: number[] = [];
+  const mD: number[] = [];
+
+  // ── refs ──
+  const rF: number[] = [];
+  const rC: number[] = [];
+  const rL: number[] = [];
+  const rN: number[] = [];
+  const rFl: number[] = [];
+
+  // ── jsxElements ──
+  const jF: number[] = [];
+  const jC: number[] = [];
+  const jK: number[] = [];
+  const jN: number[] = [];
+  const jL: number[] = [];
+  const jA: number[] = [];
+  const jCh: number[] = [];
+  const jTx: number[] = [];
+  const jEx: number[] = [];
+  const jPa: number[] = [];
+  const jCk: number[] = [];
+
+  // ── jsxEvents ──
+  const evF: number[] = [];
+  const evE: number[] = [];
+  const evN: number[] = [];
+  const evL: number[] = [];
+  const evH: number[] = [];
+  const evHf: number[] = [];
+  const evS: number[] = [];
+
+  // ── conditionals ──
+  const cdF: number[] = [];
+  const cdC: number[] = [];
+  const cdK: number[] = [];
+  const cdCd: number[] = [];
+  const cdR: number[] = [];
+  const cdL: number[] = [];
+  const cdG: number[] = [];
+
+  // ── componentUsages ──
+  const uU: number[] = [];
+  const uN: number[] = [];
+  const uC: number[] = [];
+  const uL: number[] = [];
+  const uT: number[] = [];
+  const uIm: number[] = [];
+  const uFl: number[] = [];
+  const uP: number[] = [];
+  const uE: number[] = [];
+  const uS: number[] = [];
+
+  // ── 1. components ──
+  for (const c of react.components ?? []) {
+    cF.push(fileIdx(c.fileId));
+    cM.push(c.moduleId ? addString(dict, c.moduleId) : -1);
+    cN.push(addString(dict, c.name));
+    cK.push(REACT_COMPONENT_KIND_CODES[c.kind] ?? 0);
+    cL.push(c.line);
+
+    const pStart = cP.reduce((s, x) => s + x[1], 0);
+    for (const p of c.props ?? []) {
+      void addString(dict, p);
+    }
+    cP.push([pStart, (c.props ?? []).length]);
+
+    cH.push([0, (c.hooks ?? []).length]);
+    cJ.push([0, (c.jsxElements ?? []).length]);
+
+    let flags = 0;
+    if (c.isMemoized) flags |= 1;
+    if (c.isForwardRef) flags |= 2;
+    if (c.isDefaultExport) flags |= 4;
+    if (c.isExported) flags |= 8;
+    cFl.push(flags);
+  }
+
+  // ── 2. hooks ──
+  for (const h of react.hooks ?? []) {
+    hF.push(fileIdx(h.fileId));
+    hC.push(-1);
+    hK.push(REACT_HOOK_KIND_CODES[h.kind] ?? 0);
+    hL.push(h.line);
+    hSn.push(h.stateName ? addString(dict, h.stateName) : -1);
+    hTn.push(h.setterName ? addString(dict, h.setterName) : -1);
+    hIv.push(h.initialValue ? addString(dict, h.initialValue) : -1);
+    hD.push(h.deps ? addString(dict, h.deps.join('\u0002')) : -1);
+
+    let flags = 0;
+    if (h.hasCleanup) flags |= 1;
+    if (h.usedInRender) flags |= 2;
+    hFl.push(flags);
+  }
+
+  // ── 3. effects ──
+  for (const e of react.effects ?? []) {
+    eF.push(fileIdx(e.fileId));
+    eC.push(-1);
+    eHk.push(-1);
+    eK.push(REACT_EFFECT_KIND_CODES[e.kind] ?? 0);
+    eL.push(e.line);
+    eD.push(e.deps ? addString(dict, e.deps.join('\u0002')) : -1);
+    eFl.push(e.hasCleanup ? 1 : 0);
+    eR.push(e.reads ? addString(dict, e.reads.join('\u0002')) : -1);
+    eMu.push(e.mutates ? addString(dict, e.mutates.join('\u0002')) : -1);
+  }
+
+  // ── 4. contexts ──
+  for (const c of react.contexts ?? []) {
+    ctxF.push(fileIdx(c.fileId));
+    ctxC.push(-1);
+    ctxK.push(REACT_CONTEXT_KIND_CODES[c.kind] ?? 0);
+    ctxL.push(c.line);
+    ctxN.push(c.name ? addString(dict, c.name) : -1);
+  }
+
+  // ── 5. memoization ──
+  for (const m of react.memoization ?? []) {
+    mF.push(fileIdx(m.fileId));
+    mC.push(-1);
+    mK.push(REACT_MEMO_KIND_CODES[m.kind] ?? 0);
+    mL.push(m.line);
+    mD.push(m.deps ? addString(dict, m.deps.join('\u0002')) : -1);
+  }
+
+  // ── 6. refs ──
+  for (const r of react.refs ?? []) {
+    rF.push(fileIdx(r.fileId));
+    rC.push(-1);
+    rL.push(r.line);
+    rN.push(r.name ? addString(dict, r.name) : -1);
+    rFl.push(r.isForwardRef ? 1 : 0);
+  }
+
+  // ── 7. jsxElements ──
+  for (const el of react.jsxElements ?? []) {
+    jF.push(fileIdx(el.fileId));
+    jC.push(-1);
+    jK.push(JSX_NODE_KIND_CODES[el.kind] ?? 0);
+    jN.push(addString(dict, el.tagName || ''));
+    jL.push(el.line);
+
+    if (el.attrs && el.attrs.length > 0) {
+      const attrsStr = JSON.stringify(el.attrs.map((a) => ({
+        n: a.name,
+        v: a.value,
+        k: a.kind,
+        r: a.refs ?? [],
+      })));
+      jA.push(addString(dict, attrsStr));
+    } else {
+      jA.push(-1);
+    }
+
+    jCh.push(el.children && el.children.length > 0
+      ? addString(dict, el.children.join('\u0002'))
+      : -1);
+
+    jTx.push(el.textContent ? addString(dict, el.textContent) : -1);
+    jEx.push(el.expression ? addString(dict, el.expression) : -1);
+    jPa.push(-1);
+    jCk.push(el.conditionalKind ? (REACT_CONDITIONAL_KIND_CODES[el.conditionalKind] ?? -1) : -1);
+  }
+
+  // ── 8. jsxEvents ──
+  for (const ev of react.jsxEvents ?? []) {
+    evF.push(fileIdx(ev.fileId));
+    evE.push(-1);
+    evN.push(addString(dict, ev.eventName));
+    evL.push(ev.line);
+    evH.push(addString(dict, ev.handler));
+    evHf.push(-1);
+    evS.push(EVENT_HANDLER_SOURCE_CODES[ev.source] ?? 4);
+  }
+
+  // ── 9. conditionals ──
+  for (const cd of react.conditionals ?? []) {
+    cdF.push(fileIdx(cd.fileId));
+    cdC.push(-1);
+    cdK.push(REACT_CONDITIONAL_KIND_CODES[cd.kind] ?? 0);
+    cdCd.push(addString(dict, cd.condition));
+    cdR.push(cd.refs ? addString(dict, cd.refs.join('\u0002')) : -1);
+    cdL.push(cd.line);
+    cdG.push(cd.guards ? addString(dict, cd.guards.join('\u0002')) : -1);
+  }
+
+  // ── 10. componentUsages ──
+  for (const u of react.componentUsages ?? []) {
+    uU.push(-1);
+    uN.push(addString(dict, u.tagName));
+    uC.push(-1);
+    uL.push(u.line);
+    uT.push(-1);
+    uIm.push(u.importedFrom ? addString(dict, u.importedFrom) : -1);
+    uFl.push(u.isExternal ? 1 : 0);
+    uP.push(u.props ? addString(dict, u.props.join('\u0002')) : -1);
+    uE.push(u.events ? addString(dict, u.events.join('\u0002')) : -1);
+    uS.push(u.slots ? addString(dict, u.slots.join('\u0002')) : -1);
+  }
+
+  return {
+    components: { f: cF, m: cM, n: cN, k: cK, l: cL, p: cP, h: cH, j: cJ, fl: cFl },
+    hooks: { f: hF, c: hC, k: hK, l: hL, sn: hSn, tn: hTn, iv: hIv, d: hD, fl: hFl },
+    effects: { f: eF, c: eC, hk: eHk, k: eK, l: eL, d: eD, fl: eFl, r: eR, mu: eMu },
+    contexts: { f: ctxF, c: ctxC, k: ctxK, l: ctxL, n: ctxN },
+    memoization: { f: mF, c: mC, k: mK, l: mL, d: mD },
+    refs: { f: rF, c: rC, l: rL, n: rN, fl: rFl },
+    jsxElements: { f: jF, c: jC, k: jK, n: jN, l: jL, a: jA, ch: jCh, tx: jTx, ex: jEx, pa: jPa, ck: jCk },
+    jsxEvents: { f: evF, e: evE, n: evN, l: evL, h: evH, hf: evHf, s: evS },
+    conditionals: { f: cdF, c: cdC, k: cdK, cd: cdCd, r: cdR, l: cdL, g: cdG },
+    componentUsages: { u: uU, n: uN, c: uC, l: uL, t: uT, im: uIm, fl: uFl, p: uP, e: uE, s: uS },
+  };
 }
 
 // ============================================
@@ -1466,7 +1645,7 @@ function encodeDomApiArgs(_full: any, dict: DictBuilder): any {
 // ============================================
 
 /**
- * Кодирует полный JSON в сжатый (v16.2.0).
+ * Кодирует полный JSON в сжатый (v17.0.0).
  */
 export function encode(
   payload: FullJSON,
@@ -1554,7 +1733,7 @@ export function encode(
   const fnsRt: number[] = [];
   const fnsParent: number[] = [];
   const fnsVk: number[] = [];
-  const fnsHv: number[] = []; // ✅ v16.0.1
+  const fnsHv: number[] = [];
 
   for (const func of functions) {
     if (!func) continue;
@@ -1579,7 +1758,6 @@ export function encode(
     const vk = func.vueKind ?? 'function';
     fnsVk.push(VUE_KIND_CODES[vk] ?? 0);
 
-    // ✅ v16.0.1: isHtmlVisible → 0/1
     fnsHv.push(func.isHtmlVisible === true ? 1 : 0);
   }
 
@@ -1587,7 +1765,7 @@ export function encode(
   const fnsFRle = rle(fnsF);
   const fnsParentRle = rle(fnsParent);
   const fnsVkRle = rle(fnsVk);
-  const fnsHvRle = rle(fnsHv); // ✅ v16.0.1
+  const fnsHvRle = rle(fnsHv);
 
   // ============================================
   // 7. cls — columnar
@@ -1871,6 +2049,14 @@ export function encode(
     vue = encodeVueSection(canonical.vue, dict, fileReverse);
   }
 
+  // ============================================
+  // 12.7.5. ✅ v17.0.0: react — React-сущности
+  // ============================================
+  let react: ReactSectionCompact | undefined;
+  if ((canonical as any).react) {
+    react = encodeReactSection((canonical as any).react, dict, fileReverse);
+  }
+
   // ============================================================
   // 12.7.1 ✅ v16.1.0-FIX: top-level component* = vue.* (+ fallback)
   // ============================================================
@@ -1898,12 +2084,6 @@ export function encode(
   //
   //   Это гарантирует, что данные не потеряются ни при каком
   //   порядке сборки FullJSON.
-  //
-  // ⚠️ v16.1.0-FIX (identifier / literalValue):
-  //   Основное исправление находится в `encodeVueSection`:
-  //   теперь `allComponentProps` дозаполняются `identifier`,
-  //   `memberChain`, `literalValue`. Здесь ничего менять не нужно —
-  //   top-level получает уже готовый результат из vue.
   // ============================================================
 
   const topLevelComponentProps =
@@ -2036,7 +2216,7 @@ export function encode(
       rt: fnsRt,
       parent: fnsParentRle,
       vk: fnsVkRle,
-      hv: fnsHvRle, // ✅ v16.0.1
+      hv: fnsHvRle,
     },
     cls: { n: clsN, m: clsMRle, f: clsFRle, l: clsL, fl: clsFl, methods: clsMethods },
     cn: { n: cnN, m: cnMRle, f: cnFRle, l: cnL, fl: cnFl, nonEmptyV: finalNonEmptyV },
@@ -2086,6 +2266,9 @@ export function encode(
     },
 
     vue,
+
+    // ✅ v17.0.0: react-секция (опциональная)
+    react,
 
     // ✅ v16.0.0: новые top-level секции
     fnHtmlUsage: fnHtmlUsageData,
@@ -2138,7 +2321,7 @@ export function encode(
   // ✅ FIX v16.0.8: top-level component*-секции НЕ удаляем,
   // даже если пусты — симметрия с codec-decode.ts v16.0.4.
   const OPTIONAL_SECTIONS: (keyof CompactJSON)[] = [
-    'vt', 'lc', 'ef', 'inj', 'rx', 'cd', 'ty', 'tr', 'vue',
+    'vt', 'lc', 'ef', 'inj', 'rx', 'cd', 'ty', 'tr', 'vue', 'react',
     'fnHtmlUsage', 'domApiCalls', 'domApiArgs', 'ids', 'sourceChains',
     // ❌ 'componentProps', 'componentEvents', 'componentDirectives',
     //    'componentSlots', 'htmlInterpolations' — НЕ включать!
@@ -2187,14 +2370,11 @@ export default {
   rleArray,
   reverseLookup,
   asArray,
-  // ✅ v15.2.0 (P1)
   LEXICAL_RELATION_CODES,
-  // ✅ v15.3.0 (P2)
   CALL_KIND_CODES,
-  // ✅ v15.5.0
   VUE_KIND_CODES_LOCAL,
   encodeVueSection,
-  // ✅ v16.2.1-FIX: inline-энкодеры для fallback-блока 12.7.1
+  encodeReactSection,
   encodeComponentPropsInline,
   encodeComponentEventsInline,
   encodeComponentDirectivesInline,

@@ -1,322 +1,25 @@
 // src/reporters/codec/codec-types.ts
 // ============================================
-// ТИПЫ ДЛЯ КОДЕКА (v16.2.0)
+// ТИПЫ ДЛЯ КОДЕКА (v17.0.0)
 // ============================================
-// Версия: 16.2.0
+// Версия: 17.0.0
 //
-// ════════════════════════════════════════════════════════════
-// СВОДКА ВЕРСИЙ
-// ════════════════════════════════════════════════════════════
-//
-// v16.2.0 (usedInTemplate для reactivity):
-//   - ✅ ДОБАВЛЕНО: `usedInTemplate?: boolean` в `ReactivityEntity`.
-//     Показывает, используется ли переменная в <template>.
-//     Вычисляется в convert-analysis.ts на основе
-//     template.reactivityDeps.
-//   - ✅ ДОБАВЛЕНО: `usedInTemplate?: number[]` в
-//     `VueSectionCompact.reactivity`. Колонка 0/1.
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '16.2.0'
-//   - ✅ ОБНОВЛЕНО: схема `vue.reactivity` — 4 → 5 полей
-//   - ✅ СИНХРОНИЗИРОВАНО с:
-//       • codec-encode.ts     (v16.2.0)
-//       • codec-decode.ts     (v16.2.0)
-//       • codec-legend.ts     (v16.2.0)
-//       • verify-roundtrip.ts (v16.2.0)
-//
-// v16.1.0 (BREAKING: глобально уникальные cu.id/he.id):
-//   - ✅ ДОБАВЛЕНО: `cu_id`, `cu_pf`, `he_id`, `he_pf` в
-//     `VueSectionCompact.sfc`. Это массивы индексов в `ids[]`:
-//       • cu_id[k] — id k-го componentUsage
-//       • cu_pf[k] — parentFileId k-го componentUsage
-//                    (-1 = пусто, -2 = не закодировано)
-//       • he_id[k] — id k-го htmlElement
-//       • he_pf[k] — parentFileId k-го htmlElement
-//                    (-1 = пусто, -2 = не закодировано)
-//   - ✅ ПРИЧИНА: до v16.1.0 `he.id`/`cu.id` генерировались
-//     локально (сброс счётчика в каждом SFC), из-за чего
-//     `propsByUsage.get("he1")` возвращал props из разных SFC.
-//     Это ломало L1/L2/DL/DEC.
-//   - ✅ ПРИЧИНА 2: `he.parentFileId`/`cu.parentFileId` не
-//     кодировались — decode не мог восстановить их.
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '16.1.0'
-//   - ✅ ОБНОВЛЕНО: LEGEND_VERSION = '2.1.0'
-//   - ✅ ОБНОВЛЕНО: схема `vue.sfc` — 30 → 34 поля
-//
-// v16.0.8-FIX (round-trip: identifier + id для component*):
-//   - ✅ ИСПРАВЛЕНО: в VueSectionCompact.componentProps добавлено
-//     опциональное поле 'idn' (индекс в strs, -1 = нет).
-//   - ✅ ИСПРАВЛЕНО: в VueSectionCompact.componentEvents,
-//     componentDirectives, componentSlots, htmlInterpolations
-//     добавлено опциональное поле 'id' (индекс в ids[]).
-//   - ✅ СИНХРОНИЗИРОВАНО с codec-legend.ts (FIX), codec-encode.ts
-//     (FIX), codec-decode.ts (FIX).
-//
-// v16.0.8 (вынос типов Vue-шаблона + fix TS2304 + TS6196):
-//   - ✅ ВЫНЕСЕНЫ типы ComponentUsage, HtmlElementUsage, ComponentProp,
-//     ComponentEvent, ComponentDirective, ComponentSlot,
-//     HtmlInterpolation, SourceChainItem, DomApi* в
-//     src/types-vue-template.ts (разрыв циклического импорта
-//     types.ts ↔ codec-types.ts).
-//   - ✅ Реэкспорт из codec-types.ts сохранён для обратной совместимости.
-//   - ✅ FIX TS2304: добавлен ЛОКАЛЬНЫЙ `import type` для типов,
-//     которые реально используются ВНУТРИ файла (DomApiCall,
-//     SFCComponent, HtmlUsage, FullJSON и т.д.). Без него
-//     TypeScript не видит имена.
-//     `export type { X } from '...'` НЕ вводит X в локальную
-//     область видимости — нужны ДВА блока: import + export.
-//   - ✅ FIX TS6196: из `import type` УБРАНЫ типы, которые
-//     НЕ используются локально (только реэкспортируются):
-//       • SourceChainItem   (используется в types-vue-template.ts)
-//       • DomApiArgKind     (используется в types-vue-template.ts)
-//       • DomApiArgSource   (используется в types-vue-template.ts)
-//     Они остаются в `export type { ... }` для внешних потребителей.
-//
-// v16.0.7 (fix: projectRoot в GenerateReportOptions):
-//   - ✅ ДОБАВЛЕНО: `projectRoot?: string` в `GenerateReportOptions`.
-//     ПРИЧИНА: при запуске `compact-recursive ./infoenergo-ui/src/index.ts`
-//     из корня пакета `ast-analyzer`, `process.cwd()` = корень пакета,
-//     а Vue SFC лежат в `infoenergo-ui/src/`. В результате все 75 SFC
-//     не находились на диске (`componentUsages`/`htmlElements` = 0).
-//     РЕШЕНИЕ: проброс `projectRoot` из pipeline (ctx.options.projectRoot)
-//     через `GenerateReportOptions` → `generateCompactReport` →
-//     `collectFullJSON`.
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '16.0.7' (было '16.0.4').
-//   - ✅ СИНХРОНИЗИРОВАНО с:
-//       • codec-decode.ts     (v16.0.4)
-//       • codec-encode.ts     (v16.0.4)
-//       • codec-legend.ts     (v16.0.4)
-//       • compact-reporter.ts (v16.0.7)
-//       • pipeline/stages/build-report.ts (v2.1.0)
-//
-// v16.0.4 (fix: симметрия decode(compact) ↔ full по vue.componentProps*):
-//   - ✅ ОБНОВЛЕНО: CODEC_VERSION = '16.0.4' (было '16.0.1').
-//   - ✅ ПРИЧИНА: decode(compact) не возвращал поля верхнего уровня
-//     `vue.componentProps`, `vue.componentEvents`,
-//     `vue.componentDirectives`, `vue.componentSlots`,
-//     `vue.htmlInterpolations` — если они были пустыми. А
-//     compact-reporter.ts ВСЕГДА добавляет эти поля (даже []) в full.vue.
-//     Возникало расхождение L1/L2/DL и verify-consistency:
-//       $.vue.componentProps  a: []   b: undefined
-//     (5 расхождений × 3 уровня = 3 проваленных проверки).
-//   - ✅ ФИКС: codec-decode.ts v16.0.4 — убраны 5 `delete`-строк
-//     для этих полей из блока `if (!includeEmptyArrays)`. Теперь
-//     decode ВСЕГДА возвращает их (даже пустыми []).
-//   - ✅ СИНХРОНИЗИРОВАНО с:
-//       • codec-decode.ts     (v16.0.4)
-//       • codec-encode.ts     (v16.0.4)
-//       • codec-legend.ts     (v16.0.4)
-//       • compact-reporter.ts (v16.0.4)
-//       • verify-roundtrip.ts (v16.0.4)
-//       • verify-consistency.ts (v3.4.3)
-//
-// v16.0.1 (fix: экспорт PropUsage, DomApiHandlerUsage + hv в fns):
-//   - ✅ FIX: добавлен экспорт `PropUsage` (был только в теле FullJSON,
-//     но не как отдельный именованный экспорт — из-за этого
-//     `compact-reporter.ts` не мог его импортировать).
-//   - ✅ FIX: `DomApiHandlerUsage` уже был объявлен через `export interface`,
-//     проверено — экспорт присутствует.
-//   - ✅ FIX: `HtmlUsage` уже был объявлен через `export interface`,
-//     проверено — экспорт присутствует.
-//   - ✅ FIX: `SourceChainItem` уже был объявлен через `export interface`,
-//     проверено — экспорт присутствует.
-//   - ✅ NEW: добавлено поле `hv?: [number, number][]` в `CompactJSON.fns`
-//     для RLE-кодирования `isHtmlVisible` (0/1). Это устраняет
-//     расхождение L1/L2/DL: `decode(compact).functions[].isHtmlVisible`
-//     теперь восстанавливается как `false`, а не `undefined`.
-//   - ✅ NEW: `schemas.fns` расширена до 10 полей: добавлено `'hv'`.
-//     Синхронизировано с `codec-legend.ts` и `verify-roundtrip.ts`.
-//
-// v16.0.0 (Component Usage + DOM API + sourceChains):
-//   - ✅ CODEC_VERSION = '16.0.0' (breaking change)
-//   - ✅ LEGEND_VERSION = '2.0.0' (новое поле legend.version)
-//   - ✅ ДОБАВЛЕНО: ComponentUsage, ComponentProp, ComponentEvent,
-//     ComponentDirective, ComponentSlot, SourceChainItem
-//   - ✅ ДОБАВЛЕНО: HtmlElementUsage, HtmlInterpolation
-//   - ✅ ДОБАВЛЕНО: HtmlUsage, HtmlOutputKind, PropUsage
-//   - ✅ ДОБАВЛЕНО: DomApiCategory, DomApiEffect, DomApiTargetKind,
-//     DomApiCall, DomApiArg, DomApiContext, DomApiHandlerUsage
-//   - ✅ ДОБАВЛЕНО: FunctionData.htmlUsage / isHtmlVisible /
-//     usagesAsPropSource / domApiCalls / domApiUsagesAsHandler
-//   - ✅ ДОБАВЛЕНО: SFCComponent.componentUsages / htmlElements
-//   - ✅ ДОБАВЛЕНО: VueSectionFull.componentProps / componentEvents /
-//     componentDirectives / componentSlots / htmlInterpolations /
-//     fnHtmlUsage / domApiCalls / domApiArgs / ids / sourceChains
-//   - ✅ ДОБАВЛЕНО: FullJSON top-level поля (fnHtmlUsage, componentProps,
-//     ..., domApiCalls, domApiArgs, sourceChains, ids)
-//   - ✅ ДОБАВЛЕНО: CompactJSON top-level поля
-//   - ✅ ОБНОВЛЕНО: VueSectionCompact.sfc — 30 полей (было 8)
-//     Breaking change: p/e/x → pn/ps/en/es/xn/xs + cu_* / he_*
-//   - ✅ ОБНОВЛЕНО: CompactJSON.params → (string | number[])[]
-//   - ✅ ОБНОВЛЕНО: StatisticsData +8 счётчиков
-//   - ✅ ОБНОВЛЕНО: CodecLegend.version (новое поле)
-//   - ✅ ОБНОВЛЕНО: CodecLegend.codes +10 словарей
-//   - ✅ ОБНОВЛЕНО: CodecLegend.schemas +11 схем
-//
-// v15.7.3 (fix: vue.sfc.c — индексы в strs, а не в vue.composables):
-//   - ИСПРАВЛЕНО: VueSectionCompact.sfc.c — индексы в strs
-//   - ДОБАВЛЕНО: VueSectionCompact.sfc.cs — slices
-//
-// v15.7.2 (fix: vue.sfc.c/cs — восстановление moduleId + счётчики)
-// v15.7.1 (Vue-секция: ослабление проверки + moduleId)
-// v15.7.0 (Vue-сущности)
-// v15.6.0 (JSON-safe проверки)
-// v15.5.0 (Vue entities)
-// v15.4.3 (fix: единый источник истины для classifyValue)
-// v15.4.0 (P3 — cross-file resolution)
-// v15.3.0 (P2 — расширенный CallData)
-// v15.2.0 (P1 — lexicalLinks)
-// v15.1.0 (P0 — parentFunctionId)
-// v15.0.6 (gr.i.tf — индекс в fl.p)
-// v15.0.2 (устранение дублирования conditionals)
-// v15.0.1 (fix imports[].type)
-// v15.0.0 (100% round-trip расширенных секций)
+// ИЗМЕНЕНИЯ v17.0.0 (React-секция):
+//   - ✅ ДОБАВЛЕНО: FullJSON.react?: ReactSectionFull
+//   - ✅ ДОБАВЛЕНО: StatisticsData.totalReact* (10 полей)
+//   - ✅ ДОБАВЛЕНО: React-типы (ElementAttr, JsxElementEntity,
+//     ReactComponentEntity, ReactHookEntity, ReactEffectEntity,
+//     ReactContextEntity, ReactMemoEntity, ReactRefEntity,
+//     JsxEventEntity, ReactConditionalEntity, ReactComponentUsage)
+//   - ✅ ДОБАВЛЕНО: ReactSectionFull, ReactSectionCompact
+//   - ✅ ДОБАВЛЕНО: ElementAttrKind, JsxNodeKind, ReactComponentKind,
+//     ReactHookKind, ReactEffectKind, ReactContextKind, ReactMemoKind,
+//     EventHandlerSource
 // ============================================
 
-// ============================================================
-// ✅ v16.2.0: ВЕРСИИ CODEC И LEGEND
-// ============================================================
-// CODEC_VERSION используется в:
-//   - compact-reporter.ts (version в full.json)
-//   - codec-encode.ts     (v в compact.json)
-//   - codec-decode.ts     (version в full.json при decode)
-//   - codec-legend.ts     (заголовок)
-//   - verify-roundtrip.ts (codecVersion в jsonReport)
-//   - verify-consistency.ts (заголовок)
-//
-// LEGEND_VERSION — новое поле legend.version.
-// Инвариант I40 проверяет его значение.
-// ============================================================
+export const CODEC_VERSION = '17.0.0';
+export const LEGEND_VERSION = '3.0.0';
 
-export const CODEC_VERSION = '16.2.0';
-export const LEGEND_VERSION = '2.1.0';
-
-// ============================================================
-// ✅ v16.0.8: ИМПОРТ И РЕЭКСПОРТ ТИПОВ VUE-ШАБЛОНА
-// ============================================================
-//
-// ════════════════════════════════════════════════════════════
-// ЗАЧЕМ ЭТОТ БЛОК
-// ════════════════════════════════════════════════════════════
-//
-// Раньше типы ComponentUsage, HtmlElementUsage, ComponentProp,
-// ComponentEvent, ComponentDirective, ComponentSlot,
-// HtmlInterpolation, SourceChainItem, DomApi* были ОПРЕДЕЛЕНЫ
-// прямо в этом файле.
-//
-// Но это создавало ЦИКЛИЧЕСКИЙ ИМПОРТ:
-//
-//   types.ts → codec-types.ts → types.ts
-//
-// Потому что:
-//   - types.ts (v16.0.8) хочет импортировать ComponentUsage
-//     из codec-types.ts (для EntitiesResult.templateComponentUsages)
-//   - codec-types.ts импортирует TemplateEventHandler и др.
-//     из types.ts (для реэкспорта)
-//
-// TypeScript такое не любит: типы могут стать `any`,
-// ломается автодополнение, vitest/ts-node падают.
-//
-// ════════════════════════════════════════════════════════════
-// РЕШЕНИЕ
-// ════════════════════════════════════════════════════════════
-//
-// Все типы Vue-шаблона вынесены в `src/types-vue-template.ts` —
-// отдельный файл БЕЗ зависимостей от types.ts и codec-types.ts.
-//
-// Теперь:
-//   - `types.ts`        импортирует из types-vue-template.ts
-//   - `codec-types.ts`  импортирует из types-vue-template.ts
-//   - `codec-types.ts`  РЕЭКСПОРТИРУЕТ их для обратной совместимости
-//
-// Цикл разорван.
-//
-// ════════════════════════════════════════════════════════════
-// ⚠️ ВАЖНО: ТРИ ПРАВИЛА
-// ════════════════════════════════════════════════════════════
-//
-//   1. `import type { X } from '...'` — вводит X в ЛОКАЛЬНУЮ
-//      область видимости. Нужен, если X используется внутри
-//      этого файла (в объявлениях интерфейсов, type aliases).
-//      Без него TypeScript выдаст TS2304.
-//
-//   2. `export type { X } from '...'` — РЕЭКСПОРТИРУЕТ X для
-//      внешних потребителей. НЕ вводит X в локальную область
-//      видимости. НЕ помогает против TS2304.
-//
-//   3. Если X НЕ используется локально — НЕ добавляйте его
-//      в `import type`. Иначе TypeScript выдаст TS6196
-//      (`X is declared but never used`).
-//
-//   Правильная комбинация:
-//     • X используется локально  →  `import type` + `export type`
-//     • X только реэкспортируется →  только `export type`
-//     • X только локальный       →  только `import type`
-//
-// ════════════════════════════════════════════════════════════
-// ОБРАТНАЯ СОВМЕСТИМОСТЬ
-// ════════════════════════════════════════════════════════════
-//
-// Все, кто импортировал:
-//   import type { ComponentUsage } from './codec-types.js';
-//
-// продолжают работать без изменений.
-//
-// ════════════════════════════════════════════════════════════
-// ⚠️ ЕДИНСТВЕННЫЙ ИСТОЧНИК ИСТИНЫ
-// ════════════════════════════════════════════════════════════
-//
-// `src/types-vue-template.ts`. НЕ дублируйте определения здесь!
-// ============================================================
-
-// ────────────────────────────────────────────────────────────
-// 1. Локальный импорт (для использования внутри файла)
-// ────────────────────────────────────────────────────────────
-//
-// ⚠️ ВАЖНО: импортируем ТОЛЬКО те типы, которые реально
-// используются в объявлениях этого файла (DomApiCall,
-// SFCComponent, HtmlUsage, FullJSON, VueSectionFull и т.д.).
-//
-// Типы, которые НЕ используются локально (только реэкспортируются),
-// НЕ включаем сюда — иначе TS6196:
-//
-//   ❌ SourceChainItem
-//      Используется только в types-vue-template.ts:
-//        ComponentProp.sourceChain, ComponentEvent.handlerChain,
-//        HtmlInterpolation.sourceChain
-//
-//   ❌ DomApiArgKind
-//      Используется только в types-vue-template.ts:
-//        DomApiArg.kind
-//
-//   ❌ DomApiArgSource
-//      Используется только в types-vue-template.ts:
-//        DomApiArg.resolvedSource
-//
-// Все перечисленные типы (включая SourceChainItem, DomApiArgKind,
-// DomApiArgSource) реэкспортируются ниже через `export type { ... }`
-// для внешних потребителей.
-//
-// А те, что ниже — используются локально:
-//   ✅ ComponentProp        — SFCComponent.componentUsages[].props,
-//                             VueSectionFull.componentProps,
-//                             FullJSON.componentProps
-//   ✅ ComponentEvent       — VueSectionFull.componentEvents,
-//                             FullJSON.componentEvents
-//   ✅ ComponentDirective   — VueSectionFull.componentDirectives,
-//                             FullJSON.componentDirectives
-//   ✅ ComponentSlot        — VueSectionFull.componentSlots,
-//                             FullJSON.componentSlots
-//   ✅ HtmlInterpolation    — VueSectionFull.htmlInterpolations,
-//                             FullJSON.htmlInterpolations
-//   ✅ ComponentUsage       — SFCComponent.componentUsages
-//   ✅ HtmlElementUsage     — SFCComponent.htmlElements
-//   ✅ DomApiEffect         — DomApiCall.effect
-//   ✅ DomApiTargetKind     — DomApiCall.targetKind
-//   ✅ DomApiArg            — DomApiCall.argResolutions,
-//                             VueSectionFull.domApiArgs,
-//                             FullJSON.domApiArgs
-//   ✅ DomApiContext        — DomApiCall.context, HtmlUsage.domApiContext
-// ────────────────────────────────────────────────────────────
 import type {
   // === Component Prop / Event / Directive / Slot ===
   ComponentProp,
@@ -366,31 +69,7 @@ export type {
 // ============================================================
 // РЕЭКСПОРТ TEMPLATE-ТИПОВ ИЗ src/types.ts
 // ============================================================
-//
-// Эти типы — Vue-специфичные, но определены в src/types.ts.
-// Реэкспортируем их из codec-types.ts для обратной совместимости:
-// потребители codec-types.ts могут импортировать их отсюда.
-//
-// ⚠️ НЕ ПУТАТЬ с типами из types-vue-template.ts:
-//   - TemplateEventHandler       → EventHandlerUsage (vue-analyzer)
-//   - TemplateDynamicComponent   → DynamicComponentUsage (vue-analyzer)
-//   - TemplateRefUsage           → TemplateRefUsage (vue-analyzer)
-//   - TemplateCssVariable        → CssVariableUsage (vue-analyzer)
-//   - TemplateDeepSelector       → DeepSelectorUsage (vue-analyzer)
-//   - TemplateConditional        → расширяет TemplateConditionalUsage
-//
-// А типы из types-vue-template.ts — это ComponentUsage, ComponentProp
-// и т.д. — они описывают РЕЗУЛЬТАТ парсинга <template>.
-//
-// ⚠️ По той же причине, что и выше (TS2304/TS6196), здесь нужны
-// ОБА блока: import type + export type. Все шесть типов ниже
-// реально используются внутри файла (см. TemplateData,
-// ConditionalDirective), поэтому TS6196 здесь не сработает.
-// ============================================================
 
-// ────────────────────────────────────────────────────────────
-// 1. Локальный импорт (для использования внутри файла)
-// ────────────────────────────────────────────────────────────
 import type {
   TemplateEventHandler,
   TemplateDynamicComponent,
@@ -400,9 +79,6 @@ import type {
   TemplateConditional,
 } from '../../types.js';
 
-// ────────────────────────────────────────────────────────────
-// 2. Реэкспорт (для внешних потребителей codec-types.ts)
-// ────────────────────────────────────────────────────────────
 export type {
   /** Обработчик события из шаблона Vue (type alias на vue-analyzer) */
   TemplateEventHandler,
@@ -490,12 +166,6 @@ export type SfcBlockMask = number;
 
 /**
  * SFC-компонент (.vue).
- *
- * ✅ v16.0.0: добавлены componentUsages и htmlElements.
- * ✅ v16.0.8: componentUsages/htmlElements заполняются в
- *   compact-reporter.ts ИЗ enhancedMap (поля
- *   templateComponentUsages/templateHtmlElements),
- *   а НЕ через analyzeVueSFC.
  */
 export interface SFCComponent {
   /** ID файла (f1, f2, ...) */
@@ -522,23 +192,13 @@ export interface SFCComponent {
   /** Exposed (реальные имена — v16.0.0) */
   exposed: string[];
 
-  // ==========================================
-  // ✅ v16.0.0: Vue-шаблон
-  // ==========================================
-
   /**
    * Использования компонентов в <template>.
-   *
-   * ⚠️ v16.0.8: заполняется в compact-reporter.ts ИЗ enhancedMap
-   * (поле templateComponentUsages), а НЕ через analyzeVueSFC.
    */
   componentUsages?: ComponentUsage[];
 
   /**
    * Использования HTML-элементов в <template>.
-   *
-   * ⚠️ v16.0.8: заполняется в compact-reporter.ts ИЗ enhancedMap
-   * (поле templateHtmlElements), а НЕ через analyzeVueSFC.
    */
   htmlElements?: HtmlElementUsage[];
 }
@@ -578,14 +238,6 @@ export interface HookEntity {
 
 /**
  * Реактивный примитив или watcher.
- *
- * ✅ v16.2.0: добавлено поле usedInTemplate.
- *   Показывает, используется ли переменная в <template>.
- *   Вычисляется в convert-analysis.ts на основе
- *   template.reactivityDeps.
- *
- * ⚠️ СИНХРОНИЗИРОВАНО С src/types.ts::ReactivityEntity.
- *   При изменении полей — синхронизировать оба файла.
  */
 export interface ReactivityEntity {
   id: string;
@@ -596,28 +248,6 @@ export interface ReactivityEntity {
 
   /**
    * ✅ v16.2.0: используется ли переменная в <template>.
-   *
-   * ════════════════════════════════════════════════════════════
-   * ЛОГИКА
-   * ════════════════════════════════════════════════════════════
-   *
-   *   Заполняется в convert-analysis.ts:
-   *     usedInTemplate = template.reactivityDeps.includes(name)
-   *
-   *   ПРИМЕР:
-   *     const count = ref(0);                    // reactivity, name='count'
-   *     const displayText = computed(...);       // reactivity, name='displayText'
-   *     <template>{{ displayText }}</template>   // reactivityDeps=['displayText']
-   *     →
-   *       { name: 'count',       usedInTemplate: false }
-   *       { name: 'displayText', usedInTemplate: true  }
-   *
-   * ════════════════════════════════════════════════════════════
-   * ЗАЧЕМ
-   * ════════════════════════════════════════════════════════════
-   *
-   *   UI может отрисовать иконку 👁️ только для тех reactivity,
-   *   которые реально участвуют в рендеринге.
    */
   usedInTemplate?: boolean;
 }
@@ -638,8 +268,6 @@ export interface IconEntity {
 
 /**
  * Категория UI-вывода.
- *
- * kind='none' УБРАН — мёртвый enum.
  */
 export type HtmlOutputKind =
   // Vue-шаблон
@@ -675,11 +303,6 @@ export interface HtmlUsage {
 
 /**
  * Обратная связь: функция как источник prop.
- *
- * ✅ FIX v16.0.1: этот интерфейс теперь экспортируется как
- * отдельный именованный экспорт. Ранее он был доступен только
- * внутри FullJSON, из-за чего `compact-reporter.ts` не мог его
- * импортировать (TS2305 / TS6133).
  */
 export interface PropUsage {
   usageId: string;
@@ -695,12 +318,6 @@ export interface PropUsage {
 
 /**
  * Категория DOM API-вызова.
- *
- * 50 кодов (см. legend.codes.domApiCategory).
- *
- * ⚠️ DomApiCategory НЕ выносился в types-vue-template.ts:
- *    он не участвует в циклическом импорте и используется
- *    только внутри codec-types.ts.
  */
 export type DomApiCategory =
   // Слушатели событий (P0)
@@ -823,10 +440,6 @@ export interface DomApiHandlerUsage {
 
 /**
  * Секция Vue-сущностей в FullJSON.
- *
- * ✅ v16.0.0: добавлены componentProps, componentEvents,
- * componentDirectives, componentSlots, htmlInterpolations,
- * fnHtmlUsage, domApiCalls, domApiArgs, ids, sourceChains.
  */
 export interface VueSectionFull {
   /** SFC-компоненты */
@@ -870,36 +483,6 @@ export interface VueSectionFull {
 
 // ============================================================
 // ✅ v16.2.0: VUE SECTION (CompactJSON)
-// ============================================================
-//
-// СХЕМА (см. legend.schemas['vue.*'])
-//
-// ✅ v16.1.0: vue.sfc — 34 поля (было 30):
-//   f, n, b, c, cs,
-//   pn, ps, en, es, xn, xs,
-//   cu_id, cu_pf,                       ← NEW v16.1.0
-//   cu_sfc, cu_tag, cu_file, cu_src, cu_pkg, cu_l, cu_col,
-//   cu_cp, cu_ce, cu_cd, cu_csl,
-//   he_id, he_pf,                       ← NEW v16.1.0
-//   he_sfc, he_tag, he_l, he_col,
-//   he_cp, he_cd, he_ce, he_ci
-//
-// Breaking change v16.0.0:
-//   p (props placeholders)   → pn + ps
-//   e (emits placeholders)   → en + es
-//   x (exposed placeholders) → xn + xs
-//
-// Breaking change v16.1.0:
-//   + cu_id, cu_pf — id и parentFileId для componentUsages
-//   + he_id, he_pf — id и parentFileId для htmlElements
-//
-// Breaking change v16.2.0:
-//   + reactivity.usedInTemplate — 0/1 флаг использования в template
-//
-// ⚠️ Формат cu_pf/he_pf:
-//   -1  = пусто (parentFileId === '')
-//   -2  = не закодировано (использовать fileId(fileIdx))
-//   >=0 = индекс в ids[]
 // ============================================================
 
 export interface VueSectionCompact {
@@ -970,14 +553,6 @@ export interface VueSectionCompact {
     n: number[];
     l: number[];
   };
-  /**
-   * ⭐ v16.2.0: 5 полей (было 4).
-   *   f  — fileId (индекс в fl.p)
-   *   k  — kind код
-   *   l  — строка
-   *   n  — имя (индекс в strs)
-   *   usedInTemplate — 0/1 флаг использования в <template>
-   */
   reactivity: {
     f: number[];
     k: number[];
@@ -1003,7 +578,6 @@ export interface VueSectionCompact {
     lv: number[];
     sc: [number, number, number?][];
     fns: number[];
-    // ✅ v16.0.8-FIX: identifier (индекс в strs, -1 = нет)
     idn?: number[];
   };
   componentEvents?: {
@@ -1014,7 +588,6 @@ export interface VueSectionCompact {
     m: number[];
     l: number[];
     sc: [number, number, number?][];
-    // ✅ v16.0.8-FIX: id (индекс в ids[])
     id?: number[];
   };
   componentDirectives?: {
@@ -1023,7 +596,6 @@ export interface VueSectionCompact {
     m: number[];
     v: number[];
     l: number[];
-    // ✅ v16.0.8-FIX: id (индекс в ids[])
     id?: number[];
   };
   componentSlots?: {
@@ -1031,14 +603,12 @@ export interface VueSectionCompact {
     sc: number[];
     sn: number[];
     l: number[];
-    // ✅ v16.0.8-FIX: id (индекс в ids[])
     id?: number[];
   };
   htmlInterpolations?: {
     e: number[];
     sc: [number, number, number?][];
     l: number[];
-    // ✅ v16.0.8-FIX: id (индекс в ids[])
     id?: number[];
   };
 }
@@ -1049,11 +619,6 @@ export interface VueSectionCompact {
 
 /**
  * Полный (читаемый) JSON отчёта.
- *
- * ✅ v15.0.2: поле conditionals УДАЛЕНО с верхнего уровня.
- * ✅ v15.2.0 (P1): добавлено поле lexicalLinks.
- * ✅ v15.5.0: добавлено поле vue.
- * ✅ v16.0.0: добавлены top-level поля для обратных связей и DOM API.
  */
 export interface FullJSON {
   /** Версия формата отчёта */
@@ -1101,6 +666,9 @@ export interface FullJSON {
   /** ✅ v15.5.0: Vue-сущности */
   vue?: VueSectionFull;
 
+  /** ✅ v17.0.0: React-сущности */
+  react?: ReactSectionFull;
+
   /** Статистика */
   statistics: StatisticsData;
 
@@ -1129,16 +697,8 @@ export interface FullJSON {
   /** Рёбра использования типов */
   typeRefs?: TypeRefData[];
 
-  // ==========================================
-  // ✅ v12.0.0: values mode
-  // ==========================================
-
   /** Режим сериализации values */
   valuesMode?: 'full' | 'relations';
-
-  // ==========================================
-  // ✅ v16.0.0: top-level обратные связи
-  // ==========================================
 
   /** Function → html usage */
   fnHtmlUsage?: HtmlUsage[];
@@ -1167,13 +727,9 @@ export interface FullJSON {
 // ============================================
 
 export interface ModuleData {
-  /** Уникальный ID модуля (m1, m2, ...) */
   id: string;
-  /** Имя модуля (например, 'core') */
   name: string;
-  /** Путь к модулю */
   path: string;
-  /** ID файлов, входящих в этот модуль */
   fileIds: string[];
 }
 
@@ -1182,48 +738,30 @@ export interface ModuleData {
 // ============================================
 
 export interface FileData {
-  /** Уникальный ID файла (f1, f2, ...) */
   id: string;
-  /** Относительный путь к файлу */
   path: string;
-  /** ID модуля, которому принадлежит файл */
   moduleId: string;
 }
 
 // ============================================
 // ФУНКЦИЯ
 // ============================================
-//
-// ✅ v15.1.0 (P0): добавлено поле parentFunctionId.
-// ✅ v15.5.0: добавлено поле vueKind.
-// ✅ v16.0.0: добавлены htmlUsage, isHtmlVisible, usagesAsPropSource,
-//            domApiCalls, domApiUsagesAsHandler.
-// ============================================
 
 export interface FunctionData {
-  /** Уникальный ID (fn1, fn2, ...) */
   id: string;
-  /** Имя функции */
   name: string;
-  /** ID модуля */
   moduleId: string;
-  /** ID файла */
   fileId: string;
-  /** Строка объявления (1-based) */
   line: number;
 
-  // Флаги
   isExported: boolean;
   isAsync: boolean;
   isArrow: boolean;
   isMethod: boolean;
 
-  /** Параметры */
   params: string[];
-  /** Тип возвращаемого значения */
   returnType?: string;
 
-  // Дополнительные флаги (опциональные)
   isEventHandler?: boolean;
   isNested?: boolean;
   isSelf?: boolean;
@@ -1239,29 +777,13 @@ export interface FunctionData {
   isProtected?: boolean;
   isStatic?: boolean;
 
-  /** ✅ v15.1.0 (P0): ID лексического родителя */
   parentFunctionId?: string | null;
-
-  /** ✅ v15.5.0: Vue-классификация */
   vueKind?: VueKind;
 
-  // ==========================================
-  // ✅ v16.0.0: HTML / DOM API
-  // ==========================================
-
-  /** HTML-вывод функции */
   htmlUsage?: HtmlUsage[];
-
-  /** Влияет ли функция на UI */
   isHtmlVisible?: boolean;
-
-  /** Обратная связь: функция как источник props */
   usagesAsPropSource?: PropUsage[];
-
-  /** DOM API-вызовы (ID) */
   domApiCalls?: string[];
-
-  /** Обратная связь: функция как обработчик DOM-события */
   domApiUsagesAsHandler?: DomApiHandlerUsage[];
 }
 
@@ -1321,14 +843,12 @@ export interface ExportData {
 export interface ImportData {
   id: string;
   fromFileId: string;
-  /** ID файла-цели (f1, f2, ...) или null */
   toFileId: string | null;
   source: string;
   importedName: string;
   localName: string;
   line: number;
 
-  /** ✅ v15.0.1: вид импорта — БЕЗ 'type' */
   type: 'named' | 'default' | 'namespace';
   isDefault: boolean;
   isNamespace: boolean;
@@ -1336,7 +856,6 @@ export interface ImportData {
   isExternal: boolean;
   packageName?: string;
 
-  /** ✅ v15.0.4: признаки реэкспорта */
   isReExport?: boolean;
   isStarReExport?: boolean;
 }
@@ -1351,13 +870,10 @@ export interface CallData {
   toFunctionId: string;
   line: number;
 
-  /** Вид вызова (старое поле) */
   type: 'direct' | 'async' | 'method' | 'callback';
 
-  /** ✅ v15.3.0 (P2): точная колонка */
   column?: number;
 
-  /** ✅ v15.3.0 (P2): расширенный вид вызова */
   callKind?:
     | 'direct'
     | 'method'
@@ -1368,10 +884,7 @@ export interface CallData {
     | 'spread'
     | 'new';
 
-  /** ✅ v15.3.0 (P2): имя callee */
   calleeName?: string;
-
-  /** ✅ v15.3.0 (P2): индекс аргумента */
   argumentIndex?: number;
 }
 
@@ -1410,7 +923,6 @@ export interface TemplateData {
   slots: string[];
   complexity: number;
 
-  /** ✅ v15.0.2: условный рендеринг */
   conditionals?: TemplateConditional[];
 }
 
@@ -1520,7 +1032,8 @@ export interface TypeRefData {
 /**
  * Статистика.
  *
- * ✅ v16.0.0: добавлены 8 новых счётчиков.
+ * ✅ v16.0.0: 8 счётчиков.
+ * ✅ v17.0.0: +10 React-счётчиков.
  */
 export interface StatisticsData {
   // Существующие 18 (15.7.3)
@@ -1552,6 +1065,18 @@ export interface StatisticsData {
   totalSourceChains?: number;
   totalHtmlVisibleFns?: number;
   totalDomApiVisibleFns?: number;
+
+  // ✅ v17.0.0: React-счётчики (10 полей)
+  totalReactComponents?: number;
+  totalReactHooks?: number;
+  totalReactEffects?: number;
+  totalReactContexts?: number;
+  totalReactMemoization?: number;
+  totalReactRefs?: number;
+  totalJsxElements?: number;
+  totalJsxEvents?: number;
+  totalReactConditionals?: number;
+  totalReactComponentUsages?: number;
 }
 
 // ============================================
@@ -1567,7 +1092,7 @@ export interface EdgeData {
 }
 
 // ============================================================
-// СЖАТЫЙ JSON (v16.2.0)
+// СЖАТЫЙ JSON (v17.0.0)
 // ============================================================
 
 export interface CompactJSON {
@@ -1589,13 +1114,7 @@ export interface CompactJSON {
   /** Токенизированный stringDict */
   strs: (string | number[])[];
 
-  /**
-   * Токенизированный paramDict.
-   *
-   * ✅ v16.0.1: тип `(string | number[])[]` — массив может содержать
-   * либо строку, либо массив индексов токенов произвольной длины
-   * (encodeStr возвращает массив индексов, а не пару [number, number]).
-   */
+  /** Токенизированный paramDict. */
   params: (string | number[])[];
 
   /** Токенизированный methodDict */
@@ -1616,15 +1135,7 @@ export interface CompactJSON {
     m: [number, number][];
   };
 
-  /**
-   * Functions: columnar.
-   *
-   * ✅ v16.0.1: добавлено поле `hv` — RLE для `isHtmlVisible` (0/1).
-   * Это устраняет расхождение L1/L2/DL: `decode(compact).functions[].isHtmlVisible`
-   * теперь восстанавливается как `false`, а не `undefined`.
-   *
-   * Схема (10 полей): n, m, f, l, fl, p, rt, parent, vk, hv
-   */
+  /** Functions: columnar. */
   fns: {
     n: number[];
     m: [number, number][];
@@ -1635,7 +1146,6 @@ export interface CompactJSON {
     rt: number[];
     parent?: [number, number][];
     vk?: [number, number][];
-    /** ✅ v16.0.1: isHtmlVisible (0 | 1), RLE */
     hv?: [number, number][];
   };
 
@@ -1724,6 +1234,9 @@ export interface CompactJSON {
   /** ✅ v15.5.0: Vue-сущности (columnar + RLE) */
   vue?: VueSectionCompact;
 
+  /** ✅ v17.0.0: React-сущности (columnar + RLE) */
+  react?: ReactSectionCompact;
+
   // ==========================================
   // ✅ v16.0.0: НОВЫЕ TOP-LEVEL СЕКЦИИ
   // ==========================================
@@ -1752,7 +1265,6 @@ export interface CompactJSON {
     lv: number[];
     sc: [number, number, number?][];
     fns: number[];
-    // ✅ v16.0.8-FIX: identifier (индекс в strs, -1 = нет)
     idn?: number[];
   };
 
@@ -1765,7 +1277,6 @@ export interface CompactJSON {
     m: number[];
     l: number[];
     sc: [number, number, number?][];
-    // ✅ v16.0.8-FIX: id (индекс в ids[])
     id?: number[];
   };
 
@@ -1776,7 +1287,6 @@ export interface CompactJSON {
     m: number[];
     v: number[];
     l: number[];
-    // ✅ v16.0.8-FIX: id (индекс в ids[])
     id?: number[];
   };
 
@@ -1786,7 +1296,6 @@ export interface CompactJSON {
     sc: number[];
     sn: number[];
     l: number[];
-    // ✅ v16.0.8-FIX: id (индекс в ids[])
     id?: number[];
   };
 
@@ -1795,7 +1304,6 @@ export interface CompactJSON {
     e: number[];
     sc: [number, number, number?][];
     l: number[];
-    // ✅ v16.0.8-FIX: id (индекс в ids[])
     id?: number[];
   };
 
@@ -1844,7 +1352,7 @@ export interface CompactJSON {
 }
 
 // ============================================================
-// ЛЕГЕНДА (v16.2.0)
+// ЛЕГЕНДА (v17.0.0)
 // ============================================================
 
 /** Один бит в поле flags */
@@ -1861,17 +1369,6 @@ export interface CodesDict {
 
 /**
  * Легенда — все словари и схемы для декодирования.
- *
- * ✅ v16.0.0: добавлено поле `version` (в 15.7.3 отсутствовало).
- * ✅ v16.0.0: +10 словарей в codes, +11 схем.
- * ✅ v16.0.1: `schemas.fns` расширена до 10 полей (добавлено 'hv').
- * ✅ v16.0.8-FIX: `schemas['vue.componentProps']` — 10 полей (добавлено 'idn').
- *                `schemas['vue.componentEvents']` — 8 полей (добавлено 'id').
- *                `schemas['vue.componentDirectives']` — 6 полей (добавлено 'id').
- *                `schemas['vue.componentSlots']` — 5 полей (добавлено 'id').
- *                `schemas['vue.htmlInterpolations']` — 4 поля (добавлено 'id').
- * ✅ v16.1.0: `schemas['vue.sfc']` — 34 поля (добавлено cu_id/cu_pf/he_id/he_pf).
- * ✅ v16.2.0: `schemas['vue.reactivity']` — 5 полей (добавлено 'usedInTemplate').
  */
 export interface CodecLegend {
   /** ✅ v16.0.0: версия legend */
@@ -1911,6 +1408,16 @@ export interface CodecLegend {
     domApiTargetKind?: CodesDict;
     domApiArgKind?: CodesDict;
     domApiArgSource?: CodesDict;
+
+    // ✅ v17.0.0: React-словари
+    reactComponentKind?: CodesDict;
+    reactHookKind?: CodesDict;
+    reactEffectKind?: CodesDict;
+    reactContextKind?: CodesDict;
+    reactMemoKind?: CodesDict;
+    jsxNodeKind?: CodesDict;
+    reactConditionalKind?: CodesDict;
+    elementAttrKind?: CodesDict;
   };
 
   /** Расшифровка битовых флагов */
@@ -1922,14 +1429,7 @@ export interface CodecLegend {
   schemas: {
     mi: string[];
     fl: string[];
-
-    /**
-     * ✅ v16.0.1: 10 полей: n, m, f, l, fl, p, rt, parent, vk, hv.
-     * Ранее было 9 полей (без 'hv'). Изменение связано с добавлением
-     * RLE-массива для `isHtmlVisible` в CompactJSON.fns.
-     */
     fns: string[];
-
     cls: string[];
     cn: string[];
     'gr.e': string[];
@@ -1952,31 +1452,18 @@ export interface CodecLegend {
     ty: string[];
     tr: string[];
 
-    /** ✅ v15.2.0 (P1): схема lx */
     lx?: string[];
 
     // ==========================================
     // ✅ v15.5.0 + v16.0.0 + v16.1.0 + v16.2.0: схемы Vue-секции
     // ==========================================
 
-    /** ✅ v16.1.0: 34 поля (было 30) */
     'vue.sfc'?: string[];
-
     'vue.composables'?: string[];
     'vue.macros'?: string[];
     'vue.hooks'?: string[];
-
-    /**
-     * ✅ v16.2.0: 5 полей (было 4).
-     *   f, k, l, n — существующие
-     *   usedInTemplate — NEW v16.2.0
-     */
     'vue.reactivity'?: string[];
-
     'vue.icons'?: string[];
-
-    // ✅ v16.0.0: новые схемы
-    // ✅ v16.0.8-FIX: длины увеличены на 1 (добавлены idn / id)
     'vue.componentProps'?: string[];
     'vue.componentEvents'?: string[];
     'vue.componentDirectives'?: string[];
@@ -1986,7 +1473,21 @@ export interface CodecLegend {
     domApiCalls?: string[];
     domApiArgs?: string[];
     ids?: string[];
-    // sourceChains НЕ включается — это массив строк, а не объект
+
+    // ==========================================
+    // ✅ v17.0.0: React-схемы
+    // ==========================================
+
+    'react.components'?: string[];
+    'react.hooks'?: string[];
+    'react.effects'?: string[];
+    'react.contexts'?: string[];
+    'react.memoization'?: string[];
+    'react.refs'?: string[];
+    'react.jsxElements'?: string[];
+    'react.jsxEvents'?: string[];
+    'react.conditionals'?: string[];
+    'react.componentUsages'?: string[];
   };
 }
 
@@ -2006,65 +1507,10 @@ export interface GenerateReportOptions {
   saveEdges?: boolean;
   edgesJsonSuffix?: string;
 
-  /** ✅ v12.0.0: режим сериализации values */
   valuesMode?: 'full' | 'relations';
 
-  /** Включать тела функций в отчёт */
   includeBody?: boolean;
-
-  /** Включать VSCode-ссылки */
   includeVSCode?: boolean;
-
-  /**
-   * ✅ v16.0.7: корень проекта (абсолютный путь).
-   *
-   * ════════════════════════════════════════════════════════════
-   * ЗАЧЕМ ЭТО ПОЛЕ
-   * ════════════════════════════════════════════════════════════
-   *
-   * ПРИЧИНА БАГА v16.0.6:
-   *   При запуске `compact-recursive ./infoenergo-ui/src/index.ts`
-   *   из корня пакета `ast-analyzer`, `process.cwd()` = корень
-   *   пакета. Но Vue SFC лежат в `infoenergo-ui/src/`.
-   *
-   *   `DiscoverFilesStage` v1.1.0 нормализует пути относительно
-   *   `ctx.options.projectRoot` (например, `infoenergo-ui/src/`),
-   *   поэтому `sfcFile.path` = `components/icons/AiCrossIcon.vue`.
-   *
-   *   Но `compact-reporter.ts::collectFullJSON` использовал
-   *   `process.cwd()` для резолвинга, и получалось:
-   *     path.resolve('/.../ast-analyzer', 'components/icons/AiCrossIcon.vue')
-   *     = '/.../ast-analyzer/components/icons/AiCrossIcon.vue'
-   *
-   *   Файл не находился → все 75 SFC пропускались →
-   *   `componentUsages`/`htmlElements` = 0.
-   *
-   * ════════════════════════════════════════════════════════════
-   * РЕШЕНИЕ
-   * ════════════════════════════════════════════════════════════
-   *
-   *   Пробрасываем `ctx.options.projectRoot` из pipeline в
-   *   `generateCompactReport` через это поле. `collectFullJSON`
-   *   использует переданное значение вместо `process.cwd()`.
-   *
-   * ════════════════════════════════════════════════════════════
-   * ГДЕ УСТАНАВЛИВАЕТСЯ
-   * ════════════════════════════════════════════════════════════
-   *
-   *   - `pipeline/stages/build-report.ts`:
-   *       generateCompactReport(ctx.enhancedMap, outputPath, {
-   *         ...
-   *         projectRoot: options.projectRoot,
-   *       });
-   *
-   * ════════════════════════════════════════════════════════════
-   * ПОВЕДЕНИЕ ПО УМОЛЧАНИЮ
-   * ════════════════════════════════════════════════════════════
-   *
-   *   Если поле не задано — используется `process.cwd()`
-   *   (обратная совместимость). Но при работе через pipeline
-   *   это поле ВСЕГДА будет заполнено.
-   */
   projectRoot?: string;
 }
 
@@ -2106,7 +1552,6 @@ export interface DecodeOptions {
   includeEmptyArrays?: boolean;
   includeStatistics?: boolean;
 
-  /** ✅ v12.0.0: режим сериализации values */
   valuesMode?: 'full' | 'relations';
 }
 
@@ -2133,6 +1578,7 @@ export interface RoundTripResult {
     typeRefsDiff?: number;
     lexicalLinksDiff?: number;
     vueDiff?: number;
+    reactDiff?: number;
   };
 }
 
@@ -2183,6 +1629,377 @@ export interface ExtendedImportData extends ImportData {
  *   - value отсутствует → RLE последовательности индексов
  */
 export type RleArray = Array<[number, number, number?]>;
+
+// ============================================================
+// ✅ v17.0.0: REACT SECTION (FullJSON.react)
+// ============================================================
+
+/**
+ * Вид значения атрибута JSX.
+ */
+export type ElementAttrKind = 'string' | 'expression' | 'handler' | 'boolean' | 'spread';
+
+/**
+ * Структурированный атрибут JSX-элемента.
+ */
+export interface ElementAttr {
+  name: string;
+  rawValue: string;
+  value: string;
+  kind: ElementAttrKind;
+  refs: string[];
+  handlerFunctionId?: string;
+  stateRef?: string;
+}
+
+/**
+ * Вид JSX-элемента.
+ */
+export type JsxNodeKind =
+  'element' | 'component' | 'fragment' | 'text' | 'expression' | 'spread' | 'conditional';
+
+/**
+ * Вид React-компонента.
+ */
+export type ReactComponentKind = 'function' | 'arrow' | 'class' | 'memo' | 'forwardRef' | 'lazy';
+
+/**
+ * Вид React-хука.
+ */
+export type ReactHookKind =
+  | 'useState'
+  | 'useReducer'
+  | 'useEffect'
+  | 'useLayoutEffect'
+  | 'useInsertionEffect'
+  | 'useMemo'
+  | 'useCallback'
+  | 'useRef'
+  | 'useContext'
+  | 'useImperativeHandle'
+  | 'useTransition'
+  | 'useDeferredValue'
+  | 'useActionState'
+  | 'useOptimistic'
+  | 'useFormStatus'
+  | 'use';
+
+/**
+ * Вид эффекта.
+ */
+export type ReactEffectKind = 'mount' | 'update' | 'every' | 'layout' | 'insertion';
+
+/**
+ * Вид использования контекста.
+ */
+export type ReactContextKind = 'create' | 'provide' | 'consume';
+
+/**
+ * Вид мемоизации.
+ */
+export type ReactMemoKind = 'memo' | 'useMemo' | 'useCallback';
+
+/**
+ * Источник handler-функции.
+ */
+export type EventHandlerSource = 'local' | 'import' | 'global' | 'inline' | 'unknown';
+
+/**
+ * React-компонент.
+ */
+export interface ReactComponentEntity {
+  id: string;
+  fileId: string;
+  moduleId: string;
+  name: string;
+  kind: ReactComponentKind;
+  line: number;
+  props: string[];
+  hooks: string[];
+  jsxElements: string[];
+  isMemoized: boolean;
+  isForwardRef: boolean;
+  isDefaultExport: boolean;
+  isExported: boolean;
+}
+
+/**
+ * React-хук.
+ */
+export interface ReactHookEntity {
+  id: string;
+  fileId: string;
+  componentId: string;
+  kind: ReactHookKind;
+  line: number;
+  stateName?: string;
+  setterName?: string;
+  initialValue?: string;
+  deps?: string[];
+  hasCleanup?: boolean;
+  usedInRender?: boolean;
+}
+
+/**
+ * React-эффект.
+ */
+export interface ReactEffectEntity {
+  id: string;
+  fileId: string;
+  componentId: string;
+  hookId: string;
+  kind: ReactEffectKind;
+  line: number;
+  deps: string[];
+  hasCleanup: boolean;
+  reads: string[];
+  mutates: string[];
+}
+
+/**
+ * React-контекст.
+ */
+export interface ReactContextEntity {
+  id: string;
+  fileId: string;
+  componentId: string;
+  kind: ReactContextKind;
+  line: number;
+  name?: string;
+}
+
+/**
+ * React-мемоизация.
+ */
+export interface ReactMemoEntity {
+  id: string;
+  fileId: string;
+  componentId: string;
+  kind: ReactMemoKind;
+  line: number;
+  deps?: string[];
+}
+
+/**
+ * React-ref.
+ */
+export interface ReactRefEntity {
+  id: string;
+  fileId: string;
+  componentId: string;
+  line: number;
+  name?: string;
+  isForwardRef: boolean;
+}
+
+/**
+ * JSX-элемент.
+ */
+export interface JsxElementEntity {
+  id: string;
+  fileId: string;
+  componentId: string;
+  kind: JsxNodeKind;
+  tagName: string;
+  line: number;
+  column?: number;
+  attrs: ElementAttr[];
+  children: string[];
+  textContent?: string;
+  expression?: string;
+  expressionRefs?: string[];
+  parentElementId: string | null;
+  conditionalKind?: '&&' | '||' | '?:';
+  eventIds: string[];
+  stateUsages: string[];
+  propUsages: string[];
+  callExpressions: string[];
+}
+
+/**
+ * JSX-событие.
+ */
+export interface JsxEventEntity {
+  id: string;
+  fileId: string;
+  elementId: string;
+  eventName: string;
+  line: number;
+  handler: string;
+  handlerFunctionId?: string;
+  source: EventHandlerSource;
+  modifiers?: string[];
+}
+
+/**
+ * Условный рендеринг в JSX.
+ */
+export interface ReactConditionalEntity {
+  id: string;
+  fileId: string;
+  componentId: string;
+  kind: '&&' | '||' | '?:';
+  condition: string;
+  refs: string[];
+  line: number;
+  guards: string[];
+}
+
+/**
+ * Использование React-компонента.
+ */
+export interface ReactComponentUsage {
+  id: string;
+  usageId: string;
+  tagName: string;
+  parentComponentId: string;
+  line: number;
+  targetComponentId?: string;
+  importedFrom?: string;
+  isExternal: boolean;
+  props: string[];
+  events: string[];
+  slots: string[];
+}
+
+/**
+ * Полная (читаемая) структура React-секции.
+ */
+export interface ReactSectionFull {
+  components: ReactComponentEntity[];
+  hooks: ReactHookEntity[];
+  effects: ReactEffectEntity[];
+  contexts: ReactContextEntity[];
+  memoization: ReactMemoEntity[];
+  refs: ReactRefEntity[];
+  jsxElements: JsxElementEntity[];
+  jsxEvents: JsxEventEntity[];
+  conditionals: ReactConditionalEntity[];
+  componentUsages: ReactComponentUsage[];
+
+  // ✅ v17.0.0: flow-секции (Шаг 9+)
+  stateFlows?: any[];
+  eventFlows?: any[];
+  renderTree?: any[];
+  fnJsxUsage?: any[];
+
+  // Служебные
+  ids?: string[];
+  sourceChains?: string[];
+}
+
+// ============================================================
+// ✅ v17.0.0: REACT SECTION (CompactJSON.react)
+// ============================================================
+
+export interface ReactSectionCompact {
+  components: {
+    f: number[];
+    m: number[];
+    n: number[];
+    k: number[];
+    l: number[];
+    p: [number, number][];
+    h: [number, number][];
+    j: [number, number][];
+    fl: number[];
+  };
+
+  hooks: {
+    f: number[];
+    c: number[];
+    k: number[];
+    l: number[];
+    sn: number[];
+    tn: number[];
+    iv: number[];
+    d: number[];
+    fl: number[];
+  };
+
+  effects: {
+    f: number[];
+    c: number[];
+    hk: number[];
+    k: number[];
+    l: number[];
+    d: number[];
+    fl: number[];
+    r: number[];
+    mu: number[];
+  };
+
+  contexts: {
+    f: number[];
+    c: number[];
+    k: number[];
+    l: number[];
+    n: number[];
+  };
+
+  memoization: {
+    f: number[];
+    c: number[];
+    k: number[];
+    l: number[];
+    d: number[];
+  };
+
+  refs: {
+    f: number[];
+    c: number[];
+    l: number[];
+    n: number[];
+    fl: number[];
+  };
+
+  jsxElements: {
+    f: number[];
+    c: number[];
+    k: number[];
+    n: number[];
+    l: number[];
+    a: number[];
+    ch: number[];
+    tx: number[];
+    ex: number[];
+    pa: number[];
+    ck: number[];
+  };
+
+  jsxEvents: {
+    f: number[];
+    e: number[];
+    n: number[];
+    l: number[];
+    h: number[];
+    hf: number[];
+    s: number[];
+  };
+
+  conditionals: {
+    f: number[];
+    c: number[];
+    k: number[];
+    cd: number[];
+    r: number[];
+    l: number[];
+    g: number[];
+  };
+
+  componentUsages: {
+    u: number[];
+    n: number[];
+    c: number[];
+    l: number[];
+    t: number[];
+    im: number[];
+    fl: number[];
+    p: number[];
+    e: number[];
+    s: number[];
+  };
+}
 
 // ============================================
 // ЭКСПОРТ ПО УМОЛЧАНИЮ

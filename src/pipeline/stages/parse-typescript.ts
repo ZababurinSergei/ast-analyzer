@@ -2,109 +2,35 @@
 // ============================================================
 // STAGE 2a: PARSE TYPESCRIPT / JAVASCRIPT FILE
 // ============================================================
-// Версия: 1.1.0
+// Версия: 1.3.1
 //
-// ИЗМЕНЕНИЯ v1.1.0 (нормализация путей, Вариант B):
-//   - ✅ ДОБАВЛЕНО: резолвинг относительного пути в абсолютный
-//     перед вызовом parseFile и extractEntitiesFromAST.
-//     Причина: `file` приходит из ctx.files и является
-//     относительным от projectRoot (после DiscoverFilesStage v1.1.0).
-//     Для fs-операций, vscode-ссылок и idManager нужен абсолютный путь.
-//   - ✅ ДОБАВЛЕНО: нормализация entities.filePath обратно
-//     в относительный после extractEntitiesFromAST.
-//     Причина: в отчёте (FullJSON.files[].path) должны быть
-//     относительные пути — для переносимости и round-trip.
-//   - ✅ ОБНОВЛЕНО: лог-функция logSuccess теперь получает
-//     относительный путь (для красивого вывода в verbose-режиме).
+// ✅ v1.3.1: диагностические логи (для отладки React-интеграции)
+//   - Добавлен console.log в шаге 5.5 (перед записью react* полей).
+//   - Печатает: file, ext, absolutePath, reactAnalysis.components.length.
 //
-// ИЗМЕНЕНИЯ v1.0.0:
-//   - Базовая реализация.
-//   - Поддержка всех TS/JS-расширений.
-//   - Проверка расширения — защита от случайного вызова
-//     на Vue-файлах или неподдерживаемых расширениях.
-//   - Расширенное логирование в verbose-режиме.
-//   - Обработка ошибок через возврат `null` (не throw).
+// ✅ v1.3.0: React-анализ для .tsx/.jsx
+//   - После extractEntitiesFromAST вызывается analyzeReactComponent
+//     (только для .tsx/.jsx) и заполняются поля entities.react*:
+//       • reactComponents
+//       • reactHooks
+//       • reactEffects
+//       • reactContexts
+//       • reactMemoization
+//       • reactRefs
+//       • reactJsxElements
+//       • reactJsxEvents
+//       • reactConditionals
+//       • reactComponentUsages
+//   - Дальше pass7React собирает их через classifyReactEntities.
+//   - Ошибки React-анализа не роняют pipeline (опционально).
 //
-// НАЗНАЧЕНИЕ
-// ------------------------------------------------------------
-// Ветка pipeline для файлов TypeScript / JavaScript / JSX / TSX.
-// Вызывается из `ParseFileStage.dispatch()` для расширений:
-//   • .ts
-//   • .tsx
-//   • .js
-//   • .jsx
-//   • .mjs
-//   • .cjs
-//
-// Это ОСНОВНАЯ ветка. Vue-ветка (`.vue`) — отдельная
-// (см. `parse-vue.ts`). После обработки обе ветки возвращают
-// `EntitiesResult` в общий pipeline.
-//
-// СХЕМА
-// ------------------------------------------------------------
-//   file.ts / file.tsx / file.js / file.jsx / file.mjs / file.cjs
-//                              │
-//                              ▼
-//              ✅ absolutePath = path.resolve(projectRoot, file)
-//                              │
-//                              ▼
-//                     parseFile(absolutePath)
-//                              │
-//                              ▼
-//                    { ast, content, ... }
-//                              │
-//                              ▼
-//         extractEntitiesFromAST(ast, absolutePath)
-//                              │
-//                              ▼
-//                       EntitiesResult
-//                              │
-//                              ▼
-//         ✅ entities.filePath = file (относительный)
-//                              │
-//                              ▼
-//              возврат в ParseFileStage.dispatch()
-//
-// ЧТО ВОЗВРАЩАЕТСЯ
-// ------------------------------------------------------------
-// Стандартный `EntitiesResult`:
-//   • functions              — функции (обычные, стрелочные, методы)
-//   • classes                — классы
-//   • constants              — константы
-//   • interfaces             — интерфейсы
-//   • types                  — type aliases
-//   • variables              — переменные (let/var)
-//   • imports                — импорты
-//   • exports                — экспорты (включая re-exports)
-//   • callGraph              — граф вызовов
-//   • moduleName, filePath   — метаданные (filePath — относительный)
-//
-// ⚠️ ВАЖНО: templateXxx-поля (Vue-специфичные) НЕ заполняются.
-//     Это ожидаемо — в TS/JS-файлах нет `<template>`.
-//
-// ОСОБЕННОСТИ
-// ------------------------------------------------------------
-//   • Делегирует всю работу в ЕДИНЫЕ источники:
-//       - `parseFile`              — парсинг в ESTree AST
-//       - `extractEntitiesFromAST` — извлечение сущностей
-//   • Не выбрасывает исключения без необходимости —
-//     возвращает `null` для файлов, которые не удалось распарсить.
-//   • Возвращает `null` для CSS, JSON, иконок и других
-//     неподдерживаемых расширений (защита от случайного вызова).
-//   • Логирует результат в verbose-режиме.
-//
-// ЗАВИСИМОСТИ
-// ------------------------------------------------------------
-//   • `parseFile`               — парсер ESTree AST.
-//   • `extractEntitiesFromAST`  — единый извлекатель сущностей.
-//   • `PipelineContext`         — общий контекст pipeline.
-//
-// ============================================================
+// ✅ v1.2.0: пропуск .d.ts (декларации типов, не код)
 
 import path from 'path';
 
 import { parseFile } from '../../core/ast-parser.js';
 import { extractEntitiesFromAST } from '../../core/entity-extractor/ast/extract-entities-from-ast.js';
+import { analyzeReactComponent } from '../../modes/react-analyzer/index.js';
 import type { EntitiesResult } from '../../types.js';
 import type { PipelineContext } from '../types.js';
 
@@ -135,84 +61,12 @@ const SUPPORTED_EXTENSIONS = new Set<string>(['.ts', '.tsx', '.js', '.jsx', '.mj
  * ════════════════════════════════════════════════════════════
  *
  *   1. Проверка расширения
- *        • Если не TS/JS — возвращаем null (не наш файл).
- *          Это защита: если кто-то вызовет функцию напрямую
- *          для .vue — она не сломается, а просто вернёт null.
- *
- *   2. ✅ Резолвинг пути
- *        • `file` приходит из ctx.files и является ОТНОСИТЕЛЬНЫМ
- *          от projectRoot (после DiscoverFilesStage v1.1.0).
- *        • Для fs-операций, vscode-ссылок и idManager нужен
- *          АБСОЛЮТНЫЙ путь.
- *        • `absolutePath = path.isAbsolute(file) ? file
- *                        : path.resolve(projectRoot, file)`
- *
+ *   2. Резолвинг пути
  *   3. Парсинг в ESTree AST
- *        • `parseFile(absolutePath)` из `core/ast-parser.ts`.
- *        • Возвращает `ParsedFileInfo | null`.
- *        • Внутри обрабатывает:
- *            - Vue SFC (извлекает `<script>`)
- *            - JSON / CSS (пропускает)
- *            - битые файлы (возвращает null)
- *        • Для TS/JS-файлов возвращает полноценный AST.
- *
  *   4. Извлечение сущностей
- *        • `extractEntitiesFromAST(ast, absolutePath)` из
- *          `core/entity-extractor/ast/extract-entities-from-ast.ts`.
- *        • Возвращает `EntitiesResult` со всеми секциями:
- *            functions, classes, constants, interfaces,
- *            types, variables, imports, exports, callGraph.
- *        • Внутри: единый рекурсивный обход AST.
- *        • Включает сбор callbacks (v14.0.0).
- *        • ⚠️ Использует `absolutePath` для корректных
- *          vscode-ссылок и стабильных ID через idManager.
- *
- *   5. ✅ Нормализация entities.filePath
- *        • `extractEntitiesFromAST` записал АБСОЛЮТНЫЙ путь
- *          в `entities.filePath` (для vscode:// и idManager).
- *        • В отчёте мы хотим ОТНОСИТЕЛЬНЫЙ путь.
- *        • Заменяем: `entities.filePath = file` (относительный).
- *        • `entities.moduleName = path.basename(file)`.
- *
+ *   5. Нормализация entities.filePath
+ *   5.5. ✅ v1.3.0: React-анализ (только .tsx/.jsx)
  *   6. Возврат
- *        • `EntitiesResult` — при успехе (с относительным filePath).
- *        • `null` — если файл не распарсился.
- *
- * ════════════════════════════════════════════════════════════
- * ОБРАБОТКА ОШИБОК
- * ════════════════════════════════════════════════════════════
- *
- * Функция НЕ выбрасывает исключения:
- *   • parseFile — сам ловит ошибки и возвращает null.
- *   • extractEntitiesFromAST — оборачиваем в try/catch,
- *     чтобы одна ошибка не уронила весь pipeline.
- *
- * Логика:
- *   • Ошибка парсинга  → возвращаем null (файл пропускается).
- *   • Ошибка извлечения → логируем, возвращаем null.
- *
- * Это соответствует политике `ParseFileStage`:
- * при `continueOnError: true` битый файл не валит pipeline.
- *
- * ════════════════════════════════════════════════════════════
- * ПРИМЕРЫ
- * ════════════════════════════════════════════════════════════
- *
- *   // Успешный TS-файл (относительный путь из ctx.files)
- *   const entities = await parseTypeScriptFile(
- *     'src/utils.ts',
- *     ctx
- *   );
- *   // entities.functions = [...]
- *   // entities.filePath = 'src/utils.ts' (относительный)
- *
- *   // Битый файл
- *   const entities = await parseTypeScriptFile('src/broken.ts', ctx);
- *   // entities = null
- *
- *   // Не наш файл (защита от случайного вызова)
- *   const entities = await parseTypeScriptFile('src/App.vue', ctx);
- *   // entities = null
  *
  * @param file — путь к файлу (ОТНОСИТЕЛЬНЫЙ от projectRoot)
  * @param ctx  — контекст pipeline (для verbose-логирования)
@@ -227,6 +81,17 @@ export async function parseTypeScriptFile(
   // ────────────────────────────────────────────────────────
   // Шаг 1: Проверка расширения
   // ────────────────────────────────────────────────────────
+
+  // ✅ v1.2.0: .d.ts — декларации типов, не код.
+  if (file.endsWith('.d.ts')) {
+    if (options.verbose) {
+      console.warn(
+        `   ⏭️  parseTypeScriptFile: пропуск .d.ts (декларации типов) ` + `${path.basename(file)}`
+      );
+    }
+    return null;
+  }
+
   const ext = path.extname(file).toLowerCase();
 
   if (!SUPPORTED_EXTENSIONS.has(ext)) {
@@ -242,15 +107,6 @@ export async function parseTypeScriptFile(
   // ────────────────────────────────────────────────────────
   // Шаг 2: ✅ РЕЗОЛВИНГ ПУТИ
   // ────────────────────────────────────────────────────────
-  // `file` приходит из ctx.files и является ОТНОСИТЕЛЬНЫМ
-  // от projectRoot (после DiscoverFilesStage v1.1.0).
-  //
-  // Для парсинга, fs-операций, vscode-ссылок и idManager
-  // нужен АБСОЛЮТНЫЙ путь.
-  //
-  // После анализа нормализуем entities.filePath обратно
-  // в относительный — это то, что попадёт в отчёт.
-  // ────────────────────────────────────────────────────────
   const absolutePath = path.isAbsolute(file) ? file : path.resolve(options.projectRoot, file);
 
   // ────────────────────────────────────────────────────────
@@ -260,7 +116,6 @@ export async function parseTypeScriptFile(
   try {
     parsed = parseFile(absolutePath);
   } catch (error) {
-    // parseFile обычно не бросает, но подстрахуемся
     if (options.verbose) {
       console.warn(
         `   ⚠️  parseFile упал на ${path.basename(file)}: ` +
@@ -271,8 +126,6 @@ export async function parseTypeScriptFile(
   }
 
   if (!parsed) {
-    // Файл не существует, пустой, неподдерживаемый,
-    // или содержит синтаксические ошибки.
     if (options.verbose) {
       console.warn(`   ⏭️  Не удалось распарсить: ${path.basename(file)}`);
     }
@@ -284,21 +137,6 @@ export async function parseTypeScriptFile(
   // ────────────────────────────────────────────────────────
   let entities: EntitiesResult;
   try {
-    // ✅ ЕДИНЫЙ ИСТОЧНИК: extractEntitiesFromAST
-    //    Работает на ESTree AST, извлекает:
-    //      • functions (обычные, стрелочные, методы, вложенные)
-    //      • classes
-    //      • constants
-    //      • interfaces
-    //      • types
-    //      • variables
-    //      • imports
-    //      • exports (включая re-exports: export * from)
-    //      • callGraph (включая callback-рёбра, v14.0.0)
-    //
-    // ✅ Передаём АБСОЛЮТНЫЙ путь — чтобы vscode-ссылки
-    //    внутри extractEntitiesFromAST были валидными,
-    //    а idManager работал со стабильными ключами.
     entities = extractEntitiesFromAST(parsed.ast, absolutePath);
   } catch (error) {
     if (options.verbose) {
@@ -313,15 +151,208 @@ export async function parseTypeScriptFile(
   // ────────────────────────────────────────────────────────
   // Шаг 5: ✅ НОРМАЛИЗАЦИЯ entities.filePath
   // ────────────────────────────────────────────────────────
-  // extractEntitiesFromAST записал в entities.filePath
-  // АБСОЛЮТНЫЙ путь (для корректных vscode-ссылок и idManager).
-  // Но в отчёте мы хотим ОТНОСИТЕЛЬНЫЙ путь.
-  //
-  // Заменяем filePath на относительный из ctx.files.
-  // moduleName — basename относительного пути.
-  // ────────────────────────────────────────────────────────
   entities.filePath = file;
   entities.moduleName = path.basename(file);
+
+  // ────────────────────────────────────────────────────────
+  // ✅ v1.3.0: Шаг 5.5: REACT-АНАЛИЗ (только .tsx/.jsx)
+  // ────────────────────────────────────────────────────────
+  //
+  // ✅ v1.3.1: добавлен диагностический лог
+  // ────────────────────────────────────────────────────────
+  if (ext === '.tsx' || ext === '.jsx') {
+    try {
+      // 🔍 v1.3.1: диагностика перед вызовом
+      console.log(`[parseTypeScriptFile] → file=${file}, ext=${ext}, abs=${absolutePath}`);
+
+      const reactAnalysis = analyzeReactComponent(absolutePath, {
+        projectRoot: options.projectRoot,
+        verbose: options.verbose,
+      });
+
+      // 🔍 v1.3.1: диагностика после вызова
+      console.log(
+        `[parseTypeScriptFile] ← reactAnalysis? ${!!reactAnalysis}, components=${reactAnalysis?.components?.length ?? 'n/a'}`
+      );
+
+      if (reactAnalysis) {
+        // Инициализируем поля react* (даже пустыми — для симметрии)
+        entities.reactComponents = [];
+        entities.reactHooks = [];
+        entities.reactEffects = [];
+        entities.reactContexts = [];
+        entities.reactMemoization = [];
+        entities.reactRefs = [];
+        entities.reactJsxElements = [];
+        entities.reactJsxEvents = [];
+        entities.reactConditionals = [];
+        entities.reactComponentUsages = [];
+
+        for (const comp of reactAnalysis.components) {
+          // 1. Компонент
+          entities.reactComponents.push({
+            name: comp.name,
+            kind: comp.kind,
+            line: comp.line,
+            props: comp.props,
+            isExported: comp.isExported,
+            isDefaultExport: comp.isDefaultExport,
+            isMemoized: comp.isMemoized,
+            isForwardRef: comp.isForwardRef,
+          });
+
+          // 2. Хуки компонента
+          for (const h of comp.hooks) {
+            entities.reactHooks.push({
+              componentId: '',
+              kind: h.kind,
+              line: h.line,
+              stateName: h.stateName,
+              setterName: h.setterName,
+              initialValue: h.initialValue,
+              deps: h.deps,
+              hasCleanup: h.hasCleanup,
+              usedInRender: h.usedInRender,
+            });
+
+            // useEffect/useLayoutEffect/useInsertionEffect → reactEffects
+            if (
+              h.kind === 'useEffect' ||
+              h.kind === 'useLayoutEffect' ||
+              h.kind === 'useInsertionEffect'
+            ) {
+              entities.reactEffects.push({
+                componentId: '',
+                hookId: '',
+                kind: h.effectKind ?? 'update',
+                line: h.line,
+                deps: h.deps ?? [],
+                hasCleanup: h.hasCleanup ?? false,
+                reads: [],
+                mutates: [],
+              });
+            }
+
+            // useMemo/useCallback → reactMemoization
+            if (h.kind === 'useMemo' || h.kind === 'useCallback') {
+              entities.reactMemoization.push({
+                componentId: '',
+                kind: h.kind,
+                line: h.line,
+                deps: h.deps ?? [],
+              });
+            }
+
+            // useRef → reactRefs
+            if (h.kind === 'useRef') {
+              entities.reactRefs.push({
+                componentId: '',
+                line: h.line,
+                name: h.refName,
+                isForwardRef: false,
+              });
+            }
+
+            // useContext → reactContexts
+            if (h.kind === 'useContext') {
+              entities.reactContexts.push({
+                componentId: '',
+                kind: 'consume',
+                line: h.line,
+                name: h.contextName,
+              });
+            }
+          }
+
+          // 3. JSX-элементы
+          for (const jsx of comp.jsxElements) {
+            entities.reactJsxElements.push({
+              componentId: '',
+              kind: jsx.kind,
+              tagName: jsx.tagName,
+              line: jsx.line,
+              column: jsx.column,
+              attrs: jsx.attrs,
+              children: jsx.children,
+              textContent: jsx.textContent,
+              expression: jsx.expression,
+              expressionRefs: jsx.expressionRefs ?? [],
+              parentElementId: jsx.parentElementId,
+              conditionalKind: jsx.conditionalKind,
+              eventIds: [],
+              stateUsages: [],
+              propUsages: [],
+              callExpressions: [],
+            });
+          }
+
+          // 4. JSX-события
+          for (const ev of comp.jsxEvents) {
+            entities.reactJsxEvents.push({
+              elementId: ev.elementId,
+              eventName: ev.eventName,
+              line: ev.line,
+              handler: ev.handler,
+              source: ev.source,
+            });
+          }
+
+          // 5. Conditionals
+          for (const cd of comp.conditionals) {
+            entities.reactConditionals.push({
+              componentId: '',
+              kind: cd.kind,
+              condition: cd.condition,
+              refs: cd.refs,
+              line: cd.line,
+              guards: cd.guards,
+            });
+          }
+
+          // 6. Component usages
+          for (const u of comp.componentUsages) {
+            entities.reactComponentUsages.push({
+              usageId: u.usageId,
+              tagName: u.tagName,
+              parentComponentId: '',
+              line: u.line,
+              isExternal: u.isExternal,
+              props: u.props,
+              events: u.events,
+              slots: u.slots,
+            });
+          }
+        }
+
+        // 🔍 v1.3.1: финальная диагностика
+        console.log(
+          `[parseTypeScriptFile] ✅ entities.reactComponents=${entities.reactComponents.length}, reactHooks=${entities.reactHooks.length}, reactJsxElements=${entities.reactJsxElements.length}`
+        );
+
+        if (options.verbose) {
+          const total =
+            (entities.reactComponents?.length ?? 0) +
+            (entities.reactHooks?.length ?? 0) +
+            (entities.reactJsxElements?.length ?? 0);
+          if (total > 0) {
+            console.log(
+              `      ⚛️  React: ${entities.reactComponents?.length ?? 0} comp, ` +
+                `${entities.reactHooks?.length ?? 0} hooks, ` +
+                `${entities.reactJsxElements?.length ?? 0} JSX`
+            );
+          }
+        }
+      }
+    } catch (reactError) {
+      if (options.verbose) {
+        console.warn(
+          `   ⚠️  React-анализ упал на ${path.basename(file)}: ` +
+            `${reactError instanceof Error ? reactError.message : String(reactError)}`
+        );
+      }
+      // Не роняем pipeline — React-секция опциональна
+    }
+  }
 
   // ────────────────────────────────────────────────────────
   // Шаг 6: Логирование в verbose-режиме
@@ -339,64 +370,40 @@ export async function parseTypeScriptFile(
 
 /**
  * Логирует успешный парсинг TS/JS-файла.
- *
- * Формат:
- *   📄 utils.ts (12ƒ, 5const, 3imp, 2exp)
- *
- * Где:
- *   ƒ    — количество функций
- *   const — количество констант
- *   imp  — количество импортов
- *   exp  — количество экспортов
- *
- * Показываются только непустые секции — чтобы не было
- * шума из нулей.
- *
- * @param file     — путь к файлу (ОТНОСИТЕЛЬНЫЙ)
- * @param ext      — расширение (для иконки)
- * @param entities — результат парсинга
  */
 function logSuccess(file: string, ext: string, entities: EntitiesResult): void {
   const name = path.basename(file);
   const parts: string[] = [];
 
-  // Функции
   if (entities.functions.length > 0) {
     parts.push(`${entities.functions.length}ƒ`);
   }
 
-  // Классы
   if (entities.classes.length > 0) {
     parts.push(`${entities.classes.length}cls`);
   }
 
-  // Константы
   if (entities.constants.length > 0) {
     parts.push(`${entities.constants.length}const`);
   }
 
-  // Интерфейсы + типы (объединяем для краткости)
   const typesCount = (entities.interfaces?.length ?? 0) + (entities.types?.length ?? 0);
   if (typesCount > 0) {
     parts.push(`${typesCount}type`);
   }
 
-  // Переменные
   if (entities.variables.length > 0) {
     parts.push(`${entities.variables.length}var`);
   }
 
-  // Импорты
   if (entities.imports.length > 0) {
     parts.push(`${entities.imports.length}imp`);
   }
 
-  // Экспорты
   if (entities.exports.length > 0) {
     parts.push(`${entities.exports.length}exp`);
   }
 
-  // Иконка: TSX/JSX отличается от TS/JS
   const icon = ext === '.tsx' || ext === '.jsx' ? '⚛️' : '📄';
 
   const suffix = parts.length > 0 ? ` (${parts.join(', ')})` : '';
@@ -407,26 +414,10 @@ function logSuccess(file: string, ext: string, entities: EntitiesResult): void {
 // ДОПОЛНИТЕЛЬНЫЕ ЭКСПОРТЫ (ДЛЯ ТЕСТОВ И API)
 // ============================================================
 
-/**
- * Проверяет, поддерживается ли расширение этой веткой.
- *
- * Экспортируется для использования в тестах и в
- * `parse-file.ts::dispatch()` (если понадобится).
- *
- * @param ext — расширение (с точкой, любой регистр)
- * @returns true, если расширение обрабатывается TS/JS-веткой
- */
 export function isTypeScriptExtension(ext: string): boolean {
   return SUPPORTED_EXTENSIONS.has(ext.toLowerCase());
 }
 
-/**
- * Возвращает список поддерживаемых расширений.
- *
- * Экспортируется для документации и отладки.
- *
- * @returns массив расширений
- */
 export function getSupportedExtensions(): string[] {
   return Array.from(SUPPORTED_EXTENSIONS);
 }

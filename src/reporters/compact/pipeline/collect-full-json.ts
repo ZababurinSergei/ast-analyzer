@@ -2,166 +2,7 @@
 // ============================================
 // ГЛАВНЫЙ ОРКЕСТРАТОР СБОРА FULLJSON
 // ============================================
-// Версия: 16.2.0
-//
-// ════════════════════════════════════════════════════════════
-// СВОДКА ВЕРСИЙ
-// ════════════════════════════════════════════════════════════
-//
-// v16.2.0 (FIX: синхронизация full.ids с compact.ids):
-//   - ✅ ИСПРАВЛЕНО: после ШАГА 12 (collectUniqueIds) full.ids
-//     собирается в порядке, который может НЕ совпадать с
-//     порядком addId() в codec-encode.ts::encodeVueSection.
-//
-//     ПРИЧИНА РАССИНХРОНА:
-//       • codec-encode.ts пишет cu_id/he_id в порядке обхода
-//         SFC (interleaved: cu[0].id, he[0].id, cu[1].id, ...).
-//       • collectUniqueIds() собирает сначала все cu.id, потом
-//         все he.id, потом props.id и т.д. (batched).
-//       • Это давало разные индексы для одного и того же id
-//         в full.ids и compact.ids → L1/L2/DL/RE/ENC падали.
-//
-//     РЕШЕНИЕ:
-//       • ШАГ 12.1: collectUniqueIds() — как есть (сохраняем
-//         для обратной совместимости и диагностики).
-//       • ШАГ 12.2: перезаписываем result.ids = undefined и
-//         позволяем codec-encode.ts сформировать compact.ids
-//         в своём естественном порядке addId.
-//       • ШАГ 12.3: collectUniqueSourceChains() — как есть.
-//       • ШАГ 13 (final): после canonicalize, если результат
-//         доступен — синхронизируем full.ids с compact.ids
-//         через generateCompactReport.
-//
-//     ⚠️ Практически: collectFullJSON НЕ ЗНАЕТ про compact.ids.
-//     Синхронизация происходит в generate-report.ts после
-//     Codec.encode(full). Там full.ids ← compact.ids.
-//
-//   - ✅ ДОБАВЛЕНО: экспорт функции `syncIdsWithCompact()` —
-//     утилита для вызова из generate-report.ts.
-//   - ✅ СИНХРОНИЗИРОВАНО с codec-encode.ts v16.2.0 и
-//     codec-decode.ts v16.2.0.
-//
-// v16.1.0 (рефакторинг: разбиение на подсистемы):
-//   - ✅ ПЕРЕПИСАНО: разбит на 6 проходов + финальную сборку.
-//   - ✅ ВЫНЕСЕНО: collectUniqueIds → ../ids/collect-ids.ts
-//   - ✅ ВЫНЕСЕНО: collectUniqueSourceChains → ../ids/collect-source-chains.ts
-//   - ✅ ИСПОЛЬЗУЕТСЯ: CollectContext (../pipeline/context.ts)
-//   - ✅ ПОРЯДОК ПРОХОДОВ СОХРАНЁН 1:1 с v16.0.8:
-//         pass1 → pass4 → pass2 → pass3 → pass5 → pass6
-//   - ✅ 100% поведение сохранено (round-trip L0–L4, RE, DL, ENC, DEC).
-//
-// v16.0.7 (fix: projectRoot для Vue SFC):
-//   - ✅ projectRoot пробрасывается из options в collectFullJSON.
-//
-// v16.0.4 (симметрия top-level component* с codec-decode.ts):
-//   - ✅ componentProps/componentEvents/... ВСЕГДА (даже []).
-//
-// v16.0.3 (fix L2: vue.sfc[].componentUsages/htmlElements):
-//   - ✅ ВСЕГДА добавляются в FullJSON.
-//
-// v16.0.2 (fix round-trip: fns.hv → isHtmlVisible):
-//   - ✅ Чтение compact.fns.hv.
-//
-// v16.0.1 (Component Usage + DOM API + sourceChains):
-//   - ✅ Top-level component* + domApiCalls + ids + sourceChains.
-//
-// v15.7.x — Vue-сущности, миграция схем.
-// v15.5.x — P0/P1/P2: parentFunctionId, lexicalLinks, vueKind.
-// v15.4.x — P3: cross-file resolution.
-// v15.0.x — columnar + values-mode.
-//
-// ════════════════════════════════════════════════════════════
-// НАЗНАЧЕНИЕ
-// ════════════════════════════════════════════════════════════
-//
-//   Главный оркестратор сбора FullJSON. Разбит на 6 проходов,
-//   каждый из которых инкапсулирован в отдельный модуль.
-//
-// ════════════════════════════════════════════════════════════
-// ПОРЯДОК ПРОХОДОВ (критичен для round-trip)
-// ════════════════════════════════════════════════════════════
-//
-//   1. pass1Modules(ctx)
-//      → moduleMap, fileMap, sourceToFileIdMap, functionMap
-//      → modules, files, functions, classes, constants
-//
-//   2. pass4Extended(ctx)
-//      → templates (использует fileMap/moduleMap)
-//      → lifecycle, effects, injections, reactivity
-//      → types, typeRefs
-//      → lexicalLinks (использует functionMap)
-//
-//   3. pass2Exports(ctx)
-//      → exports, reExports, imports (использует functionMap)
-//
-//   4. pass3Calls(ctx)
-//      → calls + merge cross-file (использует functionMap)
-//
-//   5. pass5Vue(ctx)
-//      → vue section + allComponentProps/Events/.../HtmlInterpolations
-//
-//   6. pass6DomApi(ctx)
-//      → domApiCalls + fn.htmlUsage/isHtmlVisible/domApiCalls
-//
-//   ⚠️ ПОЧЕМУ ИМЕННО ТАКОЙ ПОРЯДОК:
-//     • pass4 до pass2 — в оригинале templates собирались раньше exports
-//     • pass3 до pass5 — вызовы нужны для статистики до Vue
-//     • pass5 до pass6 — allComponent* нужны для usagesAsPropSource
-//     • pass6 последний — обогащает functions[].htmlUsage
-//
-// ════════════════════════════════════════════════════════════
-// ФИНАЛЬНАЯ СБОРКА
-// ════════════════════════════════════════════════════════════
-//
-//   7. usagesAsPropSource — обратная связь prop → функция
-//   8. statistics — сбор всех счётчиков
-//   9. root — определение корневого модуля
-//  10. result — сборка FullJSON
-//  11. ids/sourceChains — v16.1.0
-//  12. canonicalizeFullJSON — финальная канонизация
-//  13. syncIdsWithCompact — v16.2.0, вызывается снаружи
-//
-// ════════════════════════════════════════════════════════════
-// СВЯЗАННЫЕ ФАЙЛЫ
-// ════════════════════════════════════════════════════════════
-//
-//   • ./context.ts             — CollectContext + фабрика
-//   • ./pass-1-modules.ts      — модули/файлы/функции/классы/константы
-//   • ./pass-2-exports.ts      — экспорты/реэкспорты/импорты
-//   • ./pass-3-calls.ts        — вызовы + merge cross-file
-//   • ./pass-4-extended.ts     — templates + extended + lexicalLinks
-//   • ./pass-5-vue.ts          — Vue-секция
-//   • ./pass-6-dom-api.ts      — DOM API
-//   • ../ids/collect-ids.ts    — сбор уникальных ids
-//   • ../ids/collect-source-chains.ts — сбор sourceChains
-//   • ../orchestration/generate-report.ts — вызывает syncIdsWithCompact
-//
-// ════════════════════════════════════════════════════════════
-// ИСПОЛЬЗОВАНИЕ
-// ════════════════════════════════════════════════════════════
-//
-//   import { collectFullJSON } from './collect-full-json.js';
-//
-//   const full = collectFullJSON(
-//     entitiesMap,
-//     verbose,
-//     'relations',
-//     crossFileCalls,
-//     projectRoot
-//   );
-//
-// ════════════════════════════════════════════════════════════
-// ГАРАНТИИ
-// ════════════════════════════════════════════════════════════
-//
-//   ✅ Порядок обхода файлов — стабильный (sortedFilePaths)
-//   ✅ Порядок проходов — фиксированный (1→4→2→3→5→6)
-//   ✅ Top-level component* — ВСЕГДА (даже [])
-//   ✅ vue.sfc[].componentUsages/htmlElements — ВСЕГДА (даже [])
-//   ✅ ids/sourceChains — только непустые
-//   ✅ canonicalizeFullJSON — в конце, ровно один раз
-//   ✅ v16.2.0: full.ids синхронизируется с compact.ids
-//     через syncIdsWithCompact() из generate-report.ts
+// Версия: 17.0.0 (v17.0.0: React-секция)
 // ============================================
 
 import path from 'path';
@@ -189,6 +30,7 @@ import { pass3Calls } from './pass-3-calls.js';
 import { pass4Extended } from './pass-4-extended.js';
 import { pass5Vue } from './pass-5-vue.js';
 import { pass6DomApi } from './pass-6-dom-api.js';
+import { pass7React } from './pass-7-react.js';
 
 import { collectUniqueIds } from '../ids/collect-ids.js';
 import { collectUniqueSourceChains } from '../ids/collect-source-chains.js';
@@ -224,33 +66,36 @@ const DEFAULT_VALUES_MODE: ValuesMode = 'relations';
  *     • sortedFilePaths
  *     • пустые массивы/Map'ы/счётчики
  *
- *   Шаги 2–7: 6 проходов
+ *   Шаги 2–8: 7 проходов (v17.0.0: +pass7React)
  *     • pass1Modules(ctx)
  *     • pass4Extended(ctx)
  *     • pass2Exports(ctx)
  *     • pass3Calls(ctx)
  *     • pass5Vue(ctx)
  *     • pass6DomApi(ctx)
+ *     • pass7React(ctx)   ← NEW v17.0.0
  *
- *   Шаг 8: usagesAsPropSource
+ *   Шаг 9: usagesAsPropSource
  *     • из allComponentProps → functions[].usagesAsPropSource
  *
- *   Шаг 9: statistics
+ *   Шаг 10: statistics
  *     • агрегация счётчиков из ctx
+ *     • + totalReact* (v17.0.0)
  *
- *   Шаг 10: root
+ *   Шаг 11: root
  *     • поиск src/index.ts → root module id
  *
- *   Шаг 11: result
+ *   Шаг 12: result
  *     • сборка FullJSON из ctx
  *     • top-level component* (ВСЕГДА)
  *     • vue.component* (дубликат)
+ *     • react (optional, v17.0.0)
  *
- *   Шаг 12: ids + sourceChains (v16.1.0)
+ *   Шаг 13: ids + sourceChains (v16.1.0)
  *     • collectUniqueIds()
  *     • collectUniqueSourceChains()
  *
- *   Шаг 13: canonicalizeFullJSON
+ *   Шаг 14: canonicalizeFullJSON
  *     • финальная канонизация
  *
  * ════════════════════════════════════════════════════════════
@@ -277,6 +122,7 @@ const DEFAULT_VALUES_MODE: ValuesMode = 'relations';
  *     • types/typeRefs (optional)
  *     • lexicalLinks (optional)
  *     • vue (optional)
+ *     • react (optional)            ← v17.0.0
  *     • statistics
  *     • componentProps/componentEvents/... (ВСЕГДА)
  *     • domApiCalls (optional)
@@ -343,7 +189,7 @@ export function collectFullJSON(
   }
 
   // ════════════════════════════════════════════════════════════
-  // ШАГИ 2–7: 6 ПРОХОДОВ
+  // ШАГИ 2–8: 7 ПРОХОДОВ
   // ════════════════════════════════════════════════════════════
   //
   // ⚠️ ПОРЯДОК КРИТИЧЕН (см. комментарий выше).
@@ -353,6 +199,10 @@ export function collectFullJSON(
   //    4. pass3Calls        — вызовы + merge cross-file
   //    5. pass5Vue          — Vue-секция + component usage
   //    6. pass6DomApi       — DOM API
+  //    7. pass7React        — React-секция (NEW v17.0.0)
+  //
+  // pass7React идёт ПОСЛЕ pass6DomApi — не ломает существующий
+  // pipeline (React не участвует в DOM API на этом этапе).
   // ════════════════════════════════════════════════════════════
 
   pass1Modules(ctx);
@@ -361,9 +211,10 @@ export function collectFullJSON(
   pass3Calls(ctx);
   pass5Vue(ctx);
   pass6DomApi(ctx);
+  pass7React(ctx);
 
   // ════════════════════════════════════════════════════════════
-  // ШАГ 8: usagesAsPropSource
+  // ШАГ 9: usagesAsPropSource
   // ════════════════════════════════════════════════════════════
   //
   // Обратная связь: prop → функция-источник.
@@ -404,7 +255,7 @@ export function collectFullJSON(
   }
 
   // ════════════════════════════════════════════════════════════
-  // ШАГ 9: statistics
+  // ШАГ 10: statistics
   // ════════════════════════════════════════════════════════════
   //
   // Агрегация счётчиков из ctx.
@@ -413,6 +264,8 @@ export function collectFullJSON(
   // потому что conditionalCounter в ctx.counters уже включает
   // все conditionals, но мы хотим гарантию совпадения с
   // countConditionals(full) в диагностике.
+  //
+  // ✅ v17.0.0: добавлены totalReact*-счётчики.
   // ════════════════════════════════════════════════════════════
 
   const totalConditionals = ctx.templates.reduce(
@@ -421,6 +274,7 @@ export function collectFullJSON(
   );
 
   const vue = ctx.vue as VueSectionFull | undefined;
+  const react = ctx.react as any;
 
   const statistics: StatisticsData = {
     // ── Базовые ──
@@ -455,6 +309,18 @@ export function collectFullJSON(
     totalHtmlVisibleFns: ctx.functions.filter(f => (f as any).isHtmlVisible).length,
     totalDomApiVisibleFns: ctx.functions.filter(f => ((f as any).domApiCalls?.length ?? 0) > 0)
       .length,
+
+    // ── v17.0.0: React-счётчики ──
+    totalReactComponents: react?.components?.length ?? 0,
+    totalReactHooks: react?.hooks?.length ?? 0,
+    totalReactEffects: react?.effects?.length ?? 0,
+    totalReactContexts: react?.contexts?.length ?? 0,
+    totalReactMemoization: react?.memoization?.length ?? 0,
+    totalReactRefs: react?.refs?.length ?? 0,
+    totalJsxElements: react?.jsxElements?.length ?? 0,
+    totalJsxEvents: react?.jsxEvents?.length ?? 0,
+    totalReactConditionals: react?.conditionals?.length ?? 0,
+    totalReactComponentUsages: react?.componentUsages?.length ?? 0,
   };
 
   // ✅ totalConditionals через any (нет в StatisticsData типе,
@@ -462,7 +328,7 @@ export function collectFullJSON(
   (statistics as any).totalConditionals = totalConditionals;
 
   // ════════════════════════════════════════════════════════════
-  // ШАГ 10: root
+  // ШАГ 11: root
   // ════════════════════════════════════════════════════════════
   //
   // Приоритет:
@@ -491,12 +357,14 @@ export function collectFullJSON(
   }
 
   // ════════════════════════════════════════════════════════════
-  // ШАГ 11: сборка FullJSON
+  // ШАГ 12: сборка FullJSON
   // ════════════════════════════════════════════════════════════
   //
   // Все опциональные секции добавляются только если непустые
   // (кроме component*, которые ВСЕГДА — для симметрии с
   // codec-decode.ts v16.0.4).
+  //
+  // ✅ v17.0.0: добавлено поле `react` (опциональное).
   // ════════════════════════════════════════════════════════════
 
   const result: FullJSON = {
@@ -529,6 +397,9 @@ export function collectFullJSON(
 
     // ── Vue-секция ──
     vue,
+
+    // ── v17.0.0: React-секция (опциональная) ──
+    react,
 
     // ── DOM API (top-level) ──
     domApiCalls: ctx.domApiCalls.length > 0 ? ctx.domApiCalls : undefined,
@@ -567,7 +438,7 @@ export function collectFullJSON(
   }
 
   // ════════════════════════════════════════════════════════════
-  // ШАГ 12: ids + sourceChains (v16.1.0)
+  // ШАГ 13: ids + sourceChains (v16.1.0)
   // ════════════════════════════════════════════════════════════
   //
   // ПРОБЛЕМА (до v16.1.0):
@@ -602,11 +473,11 @@ export function collectFullJSON(
   //     • generate-report.ts ПОСЛЕ Codec.encode(full) вызывает
   //       syncIdsWithCompact(full, compact) — перезаписывает
   //       full.ids значением compact.ids.
-  //     • ШАГ 13 (ниже) не трогает ids/sourceChains — просто
+  //     • ШАГ 14 (ниже) не трогает ids/sourceChains — просто
   //       canonicalize.
   // ════════════════════════════════════════════════════════════
 
-  // ── 12.1. ids — собираем для диагностики ──
+  // ── 13.1. ids — собираем для диагностики ──
   const uniqueIds = collectUniqueIds(
     vue,
     ctx.allComponentProps,
@@ -617,7 +488,7 @@ export function collectFullJSON(
   );
   (result as any).ids = uniqueIds.length > 0 ? uniqueIds : undefined;
 
-  // ── 12.2. sourceChains — интернирование ──
+  // ── 13.2. sourceChains — интернирование ──
   const uniqueSourceChains = collectUniqueSourceChains(
     ctx.allComponentProps,
     ctx.allComponentEvents,
@@ -626,7 +497,7 @@ export function collectFullJSON(
   (result as any).sourceChains = uniqueSourceChains.length > 0 ? uniqueSourceChains : undefined;
 
   // ════════════════════════════════════════════════════════════
-  // ШАГ 13: canonicalizeFullJSON
+  // ШАГ 14: canonicalizeFullJSON
   // ════════════════════════════════════════════════════════════
   //
   // Финальная канонизация:

@@ -33,9 +33,10 @@ const DEFAULT_OPTIONS: ScriptOptions = {
   checkLegend: true,
 };
 
-// ✅ v16.2.0: обновлено с 16.2.2 на 16.2.0 (CODEC_VERSION в codec-types.ts)
-const EXPECTED_CODEC_VERSION = '16.2.0';
-const EXPECTED_LEGEND_VERSION = '2.1.0';
+// ✅ v17.0.0: обновлено с 16.2.0 на 17.0.0 (CODEC_VERSION в codec-types.ts)
+// ✅ v17.0.0: обновлено с 2.1.0 на 3.0.0 (legend.version в codec-legend.ts)
+const EXPECTED_CODEC_VERSION = '17.0.0';
+const EXPECTED_LEGEND_VERSION = '3.0.0';
 
 // ============================================
 // ANSI-ЦВЕТА
@@ -2426,7 +2427,7 @@ async function main(): Promise<void> {
 
   const jsonReport = {
     timestamp: new Date().toISOString(),
-    // ✅ v16.2.0
+    // ✅ v17.0.0
     codecVersion: EXPECTED_CODEC_VERSION,
     legendVersion: EXPECTED_LEGEND_VERSION,
     originalFormat: 'compact',
