@@ -53,6 +53,7 @@
   "scripts": {
     "check": "npx tsc --noEmit --skipLibCheck --excludeDirectories ./src/process",
     "build:mkb": "tsx ./src/cli.ts compact-recursive ../mkb/src/main.js --preset standard --depth 1000 -o ./ast-graph-viewer/index.json",
+    "build:mkb:fs": "tsx ./src/cli.ts compact-recursive ../mkb/src/main.js --preset standard --depth 1000 -o ../../fs/MKB.json",
     "build:infoenergo-ai": "tsx ./src/cli.ts compact-recursive ../front-asuse-ai-infoenergo/src/main.js --preset standard --depth 1000 -o ./ast-graph-viewer/index.json",
     "build:infoenergo-ui": "tsx ./src/cli.ts compact-recursive ./infoenergo-ui/src/index.ts --preset standard --depth 1000 -o ./ast-graph-viewer/index.json",
     "build:ast-analizer": "tsx ./src/cli.ts compact-recursive ./src/index.ts --config ./src/ast-analyzer.config.json -o ./ast-graph-viewer/index.json",

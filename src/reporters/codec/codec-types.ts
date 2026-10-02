@@ -1,8 +1,15 @@
 // src/reporters/codec/codec-types.ts
 // ============================================
-// ТИПЫ ДЛЯ КОДЕКА (v17.0.0)
+// ТИПЫ ДЛЯ КОДЕКА (v17.1.0)
 // ============================================
-// Версия: 17.0.0
+// Версия: 17.1.0
+//
+// ИЗМЕНЕНИЯ v17.1.0 (React flow-секции):
+//   - ✅ ДОБАВЛЕНО: ReactSectionFull.stateFlows/eventFlows/
+//     renderTree/fnJsxUsage (опциональные, пока any[])
+//   - ✅ ДОБАВЛЕНО: ReactSectionCompact.stateFlows/eventFlows/
+//     renderTree/fnJsxUsage (опциональные, прямая сериализация)
+//   - ✅ ДОБАВЛЕНО: ReactSectionCompact.jsxElements.col (column)
 //
 // ИЗМЕНЕНИЯ v17.0.0 (React-секция):
 //   - ✅ ДОБАВЛЕНО: FullJSON.react?: ReactSectionFull
@@ -17,8 +24,8 @@
 //     EventHandlerSource
 // ============================================
 
-export const CODEC_VERSION = '17.0.0';
-export const LEGEND_VERSION = '3.0.0';
+export const CODEC_VERSION = '17.1.0';
+export const LEGEND_VERSION = '3.1.0';
 
 import type {
   // === Component Prop / Event / Directive / Slot ===
@@ -41,13 +48,6 @@ import type {
 
 // ────────────────────────────────────────────────────────────
 // 2. Реэкспорт (для внешних потребителей codec-types.ts)
-// ────────────────────────────────────────────────────────────
-//
-// Реэкспортируем ВСЕ типы из types-vue-template.ts, включая
-// те, что не используются локально (SourceChainItem,
-// DomApiArgKind, DomApiArgSource). Это сохраняет обратную
-// совместимость для тех, кто импортировал их из codec-types.ts
-// в версиях ≤ 16.0.7.
 // ────────────────────────────────────────────────────────────
 export type {
   SourceChainItem,
@@ -383,43 +383,18 @@ export type DomApiCategory =
  * DOM API-вызов.
  */
 export interface DomApiCall {
-  /** Уникальный ID (d1, d2, ...) — глобальный */
   id: string;
-
-  /** ID функции-источника */
   functionId: string;
-
-  /** ID файла */
   fileId: string;
-
-  /** Категория вызова */
   category: DomApiCategory;
-
-  /** Эффект (write/read/mixed) */
   effect: DomApiEffect;
-
-  /** Имя метода (appendChild, addEventListener) */
   method: string;
-
-  /** Target (document, window, ref:btn, ...) */
   target: string;
-
-  /** Вид target */
   targetKind: DomApiTargetKind;
-
-  /** Аргументы (сырые строки) */
   args: string[];
-
-  /** Разрешённые аргументы */
   argResolutions: DomApiArg[];
-
-  /** Номер строки */
   line: number;
-
-  /** Номер колонки */
   column?: number;
-
-  /** Контекст вызова */
   context: DomApiContext;
 }
 
@@ -493,7 +468,6 @@ export interface VueSectionCompact {
     c: number[];
     cs: Array<[number, number]>;
 
-    // ⭐ v16.0.0: реальные имена (замена старых p/e/x)
     pn?: number[];
     ps?: Array<[number, number]>;
     en?: number[];
@@ -501,13 +475,9 @@ export interface VueSectionCompact {
     xn?: number[];
     xs?: Array<[number, number]>;
 
-    // ⭐ v16.1.0: явные id и parentFileId для componentUsages
-    /** Индексы в ids[] (id k-го componentUsage) */
     cu_id?: number[];
-    /** Индексы в ids[] (-1 = пусто, -2 = не закодировано, >=0 = ids[]) */
     cu_pf?: number[];
 
-    // ⭐ v16.0.0: component usages — RLE
     cu_sfc?: [number, number, number?][];
     cu_tag?: number[];
     cu_file?: number[];
@@ -520,13 +490,9 @@ export interface VueSectionCompact {
     cu_cd?: Array<[number, number]>;
     cu_csl?: Array<[number, number]>;
 
-    // ⭐ v16.1.0: явные id и parentFileId для htmlElements
-    /** Индексы в ids[] (id k-го htmlElement) */
     he_id?: number[];
-    /** Индексы в ids[] (-1 = пусто, -2 = не закодировано, >=0 = ids[]) */
     he_pf?: number[];
 
-    // ⭐ v16.0.0: html elements — RLE
     he_sfc?: [number, number, number?][];
     he_tag?: number[];
     he_l?: number[];
@@ -558,7 +524,6 @@ export interface VueSectionCompact {
     k: number[];
     l: number[];
     n: number[];
-    /** ✅ v16.2.0: 0/1 флаг использования в <template> */
     usedInTemplate?: number[];
   };
   icons: {
@@ -567,7 +532,6 @@ export interface VueSectionCompact {
     c: number[];
   };
 
-  // ✅ v16.0.0: обратные связи (в CompactJSON они также на top-level)
   componentProps?: {
     n: number[];
     v: number[];
@@ -617,108 +581,47 @@ export interface VueSectionCompact {
 // ПОЛНЫЙ (ЧИТАЕМЫЙ) JSON
 // ============================================================
 
-/**
- * Полный (читаемый) JSON отчёта.
- */
 export interface FullJSON {
-  /** Версия формата отчёта */
   version: string;
-
-  /** Временная метка генерации (ISO 8601) */
   timestamp: string;
-
-  /** ID корневого модуля */
   root: string;
 
-  /** Список модулей (директорий) */
   modules: ModuleData[];
-
-  /** Список файлов */
   files: FileData[];
-
-  /** Список функций */
   functions: FunctionData[];
-
-  /** Список классов */
   classes: ClassData[];
-
-  /** Список констант */
   constants: ConstantData[];
-
-  /** Список экспортов */
   exports: ExportData[];
-
-  /** Список импортов */
   imports: ImportData[];
-
-  /** Список вызовов */
   calls: CallData[];
-
-  /** Список реэкспортов */
   reExports: ReExportData[];
 
-  /** Vue-шаблоны — отдельные сущности */
   templates?: TemplateData[];
-
-  /** ✅ v15.2.0 (P1): лексические связи (parent → child) */
   lexicalLinks?: LexicalLink[];
-
-  /** ✅ v15.5.0: Vue-сущности */
   vue?: VueSectionFull;
-
-  /** ✅ v17.0.0: React-сущности */
   react?: ReactSectionFull;
 
-  /** Статистика */
   statistics: StatisticsData;
-
-  /** Единый массив рёбер для сводного графа */
   edges?: EdgeData[];
 
-  // ==========================================
-  // РАСШИРЕННЫЕ СЕКЦИИ (v9.0.0+)
-  // ==========================================
-
-  /** Хуки жизненного цикла */
   lifecycle?: LifecycleHook[];
-
-  /** Side-effects */
   effects?: EffectEdge[];
-
-  /** Provide/Inject рёбра */
   injections?: InjectionEdge[];
-
-  /** Реактивные связи */
   reactivity?: ReactivityEdge[];
-
-  /** Узлы тип-графа */
   types?: TypeNodeData[];
-
-  /** Рёбра использования типов */
   typeRefs?: TypeRefData[];
 
-  /** Режим сериализации values */
   valuesMode?: 'full' | 'relations';
 
-  /** Function → html usage */
   fnHtmlUsage?: HtmlUsage[];
-  /** Component props (top-level) */
   componentProps?: ComponentProp[];
-  /** Component events (top-level) */
   componentEvents?: ComponentEvent[];
-  /** Component directives (top-level) */
   componentDirectives?: ComponentDirective[];
-  /** Component slots (top-level) */
   componentSlots?: ComponentSlot[];
-  /** HTML interpolations (top-level) */
   htmlInterpolations?: HtmlInterpolation[];
-  /** DOM API calls (top-level) */
   domApiCalls?: DomApiCall[];
-  /** DOM API args (top-level) */
   domApiArgs?: DomApiArg[];
-  /** Сериализованные sourceChain (интернированные) */
   sourceChains?: string[];
-  /** Сгенерированные id (cu1, he1, d1, cu1:cp6, ...) */
   ids?: string[];
 }
 
@@ -1029,12 +932,6 @@ export interface TypeRefData {
 // СТАТИСТИКА
 // ============================================
 
-/**
- * Статистика.
- *
- * ✅ v16.0.0: 8 счётчиков.
- * ✅ v17.0.0: +10 React-счётчиков.
- */
 export interface StatisticsData {
   // Существующие 18 (15.7.3)
   totalModules: number;
@@ -1092,50 +989,31 @@ export interface EdgeData {
 }
 
 // ============================================================
-// СЖАТЫЙ JSON (v17.0.0)
+// СЖАТЫЙ JSON (v17.1.0)
 // ============================================================
 
 export interface CompactJSON {
-  /** Version */
   v: string;
-
-  /** Timestamp */
   ts: string;
-
-  /** Root module index */
   r: number;
-
-  /** ✅ v12.0.0: режим сериализации values */
   valuesMode?: 'full' | 'relations';
 
-  /** Токены для словарей строк */
   tokens: (string | number)[];
-
-  /** Токенизированный stringDict */
   strs: (string | number[])[];
-
-  /** Токенизированный paramDict. */
   params: (string | number[])[];
-
-  /** Токенизированный methodDict */
   methods: (string | number[])[];
-
-  /** valueDict — без изменений */
   values: unknown[];
 
-  /** Module index: columnar */
   mi: {
     n: string[];
     f: [number, number][];
   };
 
-  /** File index: columnar */
   fl: {
     p: string[];
     m: [number, number][];
   };
 
-  /** Functions: columnar. */
   fns: {
     n: number[];
     m: [number, number][];
@@ -1149,7 +1027,6 @@ export interface CompactJSON {
     hv?: [number, number][];
   };
 
-  /** Classes: columnar */
   cls: {
     n: number[];
     m: [number, number][];
@@ -1159,7 +1036,6 @@ export interface CompactJSON {
     methods: number[][];
   };
 
-  /** Constants: columnar */
   cn: {
     n: number[];
     m: [number, number][];
@@ -1169,7 +1045,6 @@ export interface CompactJSON {
     nonEmptyV: [number, number][];
   };
 
-  /** Graph — все связи в одном месте */
   gr: {
     e: {
       m: number[];
@@ -1211,7 +1086,6 @@ export interface CompactJSON {
     };
   };
 
-  // Расширенные секции
   vt?: number[];
   lc?: number[];
   ef?: number[];
@@ -1221,7 +1095,6 @@ export interface CompactJSON {
   ty?: number[];
   tr?: number[];
 
-  /** ✅ v15.2.0 (P1): columnar-секция lx */
   lx?: {
     p: [number, number][];
     c: [number, number][];
@@ -1231,17 +1104,9 @@ export interface CompactJSON {
     cn: number[];
   };
 
-  /** ✅ v15.5.0: Vue-сущности (columnar + RLE) */
   vue?: VueSectionCompact;
-
-  /** ✅ v17.0.0: React-сущности (columnar + RLE) */
   react?: ReactSectionCompact;
 
-  // ==========================================
-  // ✅ v16.0.0: НОВЫЕ TOP-LEVEL СЕКЦИИ
-  // ==========================================
-
-  /** Function → html usage */
   fnHtmlUsage?: {
     fn: number[];
     k: number[];
@@ -1254,7 +1119,6 @@ export interface CompactJSON {
     dctx: number[];
   };
 
-  /** Component props */
   componentProps?: {
     n: number[];
     v: number[];
@@ -1268,7 +1132,6 @@ export interface CompactJSON {
     idn?: number[];
   };
 
-  /** Component events */
   componentEvents?: {
     n: number[];
     h: number[];
@@ -1280,7 +1143,6 @@ export interface CompactJSON {
     id?: number[];
   };
 
-  /** Component directives */
   componentDirectives?: {
     n: number[];
     a: number[];
@@ -1290,7 +1152,6 @@ export interface CompactJSON {
     id?: number[];
   };
 
-  /** Component slots */
   componentSlots?: {
     n: number[];
     sc: number[];
@@ -1299,7 +1160,6 @@ export interface CompactJSON {
     id?: number[];
   };
 
-  /** HTML interpolations */
   htmlInterpolations?: {
     e: number[];
     sc: [number, number, number?][];
@@ -1307,7 +1167,6 @@ export interface CompactJSON {
     id?: number[];
   };
 
-  /** DOM API calls */
   domApiCalls?: {
     fn: number[];
     f: [number, number, number?][];
@@ -1330,7 +1189,6 @@ export interface CompactJSON {
     oo: number[];
   };
 
-  /** DOM API args */
   domApiArgs?: {
     r: number[];
     k: number[];
@@ -1338,45 +1196,31 @@ export interface CompactJSON {
     s: number[];
   };
 
-  /** ✅ v16.0.0: сгенерированные id (append-only) */
   ids?: string[];
-
-  /** ✅ v16.0.0: сериализованные sourceChain (append-only) */
   sourceChains?: string[];
 
-  /** Statistics */
   st: StatisticsData;
-
-  /** Legend (version + codes + flags + schemas) */
   legend: CodecLegend;
 }
 
 // ============================================================
-// ЛЕГЕНДА (v17.0.0)
+// ЛЕГЕНДА (v17.1.0)
 // ============================================================
 
-/** Один бит в поле flags */
 export interface FlagBit {
   bit: number;
   name: string;
   description: string;
 }
 
-/** Словарь { код: описание } */
 export interface CodesDict {
   [code: string]: string;
 }
 
-/**
- * Легенда — все словари и схемы для декодирования.
- */
 export interface CodecLegend {
-  /** ✅ v16.0.0: версия legend */
   version?: string;
 
-  /** Расшифровка строковых кодов */
   codes: {
-    // Существующие 19 (15.7.3)
     export: CodesDict;
     import: CodesDict;
     call: CodesDict;
@@ -1397,7 +1241,6 @@ export interface CodecLegend {
     iconCategory?: CodesDict;
     composableKind?: CodesDict;
 
-    // ✅ v16.0.0: новые 10 словарей
     componentSource?: CodesDict;
     propKind?: CodesDict;
     eventHandlerSource?: CodesDict;
@@ -1420,12 +1263,10 @@ export interface CodecLegend {
     elementAttrKind?: CodesDict;
   };
 
-  /** Расшифровка битовых флагов */
   flags: {
     bits: Record<string, string>;
   };
 
-  /** Позиционные схемы кортежей */
   schemas: {
     mi: string[];
     fl: string[];
@@ -1454,10 +1295,7 @@ export interface CodecLegend {
 
     lx?: string[];
 
-    // ==========================================
-    // ✅ v15.5.0 + v16.0.0 + v16.1.0 + v16.2.0: схемы Vue-секции
-    // ==========================================
-
+    // Vue-схемы
     'vue.sfc'?: string[];
     'vue.composables'?: string[];
     'vue.macros'?: string[];
@@ -1474,10 +1312,7 @@ export interface CodecLegend {
     domApiArgs?: string[];
     ids?: string[];
 
-    // ==========================================
     // ✅ v17.0.0: React-схемы
-    // ==========================================
-
     'react.components'?: string[];
     'react.hooks'?: string[];
     'react.effects'?: string[];
@@ -1488,6 +1323,12 @@ export interface CodecLegend {
     'react.jsxEvents'?: string[];
     'react.conditionals'?: string[];
     'react.componentUsages'?: string[];
+
+    // ✅ v17.1.0: React flow-схемы
+    'react.stateFlows'?: string[];
+    'react.eventFlows'?: string[];
+    'react.renderTree'?: string[];
+    'react.fnJsxUsage'?: string[];
   };
 }
 
@@ -1621,27 +1462,14 @@ export interface ExtendedImportData extends ImportData {
 // RLE ТИП
 // ============================================
 
-/**
- * RLE-массив.
- *
- * Формат: [start, length, value?]
- *   - value определён  → RLE повторяющегося значения
- *   - value отсутствует → RLE последовательности индексов
- */
 export type RleArray = Array<[number, number, number?]>;
 
 // ============================================================
 // ✅ v17.0.0: REACT SECTION (FullJSON.react)
 // ============================================================
 
-/**
- * Вид значения атрибута JSX.
- */
 export type ElementAttrKind = 'string' | 'expression' | 'handler' | 'boolean' | 'spread';
 
-/**
- * Структурированный атрибут JSX-элемента.
- */
 export interface ElementAttr {
   name: string;
   rawValue: string;
@@ -1652,20 +1480,11 @@ export interface ElementAttr {
   stateRef?: string;
 }
 
-/**
- * Вид JSX-элемента.
- */
 export type JsxNodeKind =
   'element' | 'component' | 'fragment' | 'text' | 'expression' | 'spread' | 'conditional';
 
-/**
- * Вид React-компонента.
- */
 export type ReactComponentKind = 'function' | 'arrow' | 'class' | 'memo' | 'forwardRef' | 'lazy';
 
-/**
- * Вид React-хука.
- */
 export type ReactHookKind =
   | 'useState'
   | 'useReducer'
@@ -1684,29 +1503,14 @@ export type ReactHookKind =
   | 'useFormStatus'
   | 'use';
 
-/**
- * Вид эффекта.
- */
 export type ReactEffectKind = 'mount' | 'update' | 'every' | 'layout' | 'insertion';
 
-/**
- * Вид использования контекста.
- */
 export type ReactContextKind = 'create' | 'provide' | 'consume';
 
-/**
- * Вид мемоизации.
- */
 export type ReactMemoKind = 'memo' | 'useMemo' | 'useCallback';
 
-/**
- * Источник handler-функции.
- */
 export type EventHandlerSource = 'local' | 'import' | 'global' | 'inline' | 'unknown';
 
-/**
- * React-компонент.
- */
 export interface ReactComponentEntity {
   id: string;
   fileId: string;
@@ -1723,9 +1527,6 @@ export interface ReactComponentEntity {
   isExported: boolean;
 }
 
-/**
- * React-хук.
- */
 export interface ReactHookEntity {
   id: string;
   fileId: string;
@@ -1740,9 +1541,6 @@ export interface ReactHookEntity {
   usedInRender?: boolean;
 }
 
-/**
- * React-эффект.
- */
 export interface ReactEffectEntity {
   id: string;
   fileId: string;
@@ -1756,9 +1554,6 @@ export interface ReactEffectEntity {
   mutates: string[];
 }
 
-/**
- * React-контекст.
- */
 export interface ReactContextEntity {
   id: string;
   fileId: string;
@@ -1768,9 +1563,6 @@ export interface ReactContextEntity {
   name?: string;
 }
 
-/**
- * React-мемоизация.
- */
 export interface ReactMemoEntity {
   id: string;
   fileId: string;
@@ -1780,9 +1572,6 @@ export interface ReactMemoEntity {
   deps?: string[];
 }
 
-/**
- * React-ref.
- */
 export interface ReactRefEntity {
   id: string;
   fileId: string;
@@ -1792,9 +1581,6 @@ export interface ReactRefEntity {
   isForwardRef: boolean;
 }
 
-/**
- * JSX-элемент.
- */
 export interface JsxElementEntity {
   id: string;
   fileId: string;
@@ -1816,9 +1602,6 @@ export interface JsxElementEntity {
   callExpressions: string[];
 }
 
-/**
- * JSX-событие.
- */
 export interface JsxEventEntity {
   id: string;
   fileId: string;
@@ -1831,9 +1614,6 @@ export interface JsxEventEntity {
   modifiers?: string[];
 }
 
-/**
- * Условный рендеринг в JSX.
- */
 export interface ReactConditionalEntity {
   id: string;
   fileId: string;
@@ -1845,9 +1625,6 @@ export interface ReactConditionalEntity {
   guards: string[];
 }
 
-/**
- * Использование React-компонента.
- */
 export interface ReactComponentUsage {
   id: string;
   usageId: string;
@@ -1860,6 +1637,98 @@ export interface ReactComponentUsage {
   props: string[];
   events: string[];
   slots: string[];
+}
+
+// ============================================================
+// ✅ v17.1.0: REACT FLOW-СУЩНОСТИ
+// ============================================================
+
+/**
+ * Один шаг в цепочке eventFlow.
+ */
+export interface EventFlowStep {
+  step: 'event' | 'handler' | 'call' | 'state' | 'render';
+  refId: string;
+  label: string;
+  line: number;
+}
+
+/**
+ * Поток события: onClick → handler → call → setState → render.
+ */
+export interface ReactEventFlow {
+  id: string;
+  eventId: string;
+  eventName: string;
+  elementId: string;
+  handlerFunctionId: string;
+  handlerName: string;
+  calls: Array<{
+    functionId: string;
+    calleeName: string;
+    line: number;
+  }>;
+  mutatedStates: string[];
+  reRendered: string[];
+  chain: EventFlowStep[];
+}
+
+/**
+ * Поток состояния.
+ */
+export interface ReactStateFlow {
+  id: string;
+  hookId: string;
+  stateName: string;
+  setterName: string;
+  mutatedBy: Array<{
+    functionId: string;
+    callId: string;
+    line: number;
+  }>;
+  readBy: Array<{
+    functionId: string;
+    line: number;
+  }>;
+  renderedIn: Array<{
+    jsxElementId: string;
+    attrName: string;
+    kind: 'attr' | 'text' | 'conditional' | 'handler';
+    line: number;
+  }>;
+}
+
+/**
+ * Узел дерева рендера.
+ */
+export interface ReactRenderNode {
+  elementId: string;
+  tagName: string;
+  kind: 'element' | 'component' | 'fragment';
+  parentId: string | null;
+  dependsOn: {
+    stateIds: string[];
+    propIds: string[];
+    contextIds: string[];
+  };
+  conditionals: Array<{
+    kind: '&&' | '||' | '?:';
+    condition: string;
+    refs: string[];
+  }>;
+}
+
+/**
+ * Обратный индекс: функция → JSX-элементы.
+ */
+export interface ReactFnJsxUsage {
+  functionId: string;
+  functionName: string;
+  usedIn: Array<{
+    jsxElementId: string;
+    usage: 'handler' | 'value' | 'condition' | 'render';
+    line: number;
+  }>;
 }
 
 /**
@@ -1877,11 +1746,11 @@ export interface ReactSectionFull {
   conditionals: ReactConditionalEntity[];
   componentUsages: ReactComponentUsage[];
 
-  // ✅ v17.0.0: flow-секции (Шаг 9+)
-  stateFlows?: any[];
-  eventFlows?: any[];
-  renderTree?: any[];
-  fnJsxUsage?: any[];
+  // ✅ v17.1.0: flow-секции
+  stateFlows?: ReactStateFlow[];
+  eventFlows?: ReactEventFlow[];
+  renderTree?: ReactRenderNode[];
+  fnJsxUsage?: ReactFnJsxUsage[];
 
   // Служебные
   ids?: string[];
@@ -1889,7 +1758,7 @@ export interface ReactSectionFull {
 }
 
 // ============================================================
-// ✅ v17.0.0: REACT SECTION (CompactJSON.react)
+// ✅ v17.1.0: REACT SECTION (CompactJSON.react)
 // ============================================================
 
 export interface ReactSectionCompact {
@@ -1959,6 +1828,8 @@ export interface ReactSectionCompact {
     k: number[];
     n: number[];
     l: number[];
+    /** ✅ v17.1.0: column (позиция в строке) */
+    col: number[];
     a: number[];
     ch: number[];
     tx: number[];
@@ -1999,6 +1870,12 @@ export interface ReactSectionCompact {
     e: number[];
     s: number[];
   };
+
+  // ✅ v17.1.0: flow-секции (прямая сериализация, без columnar)
+  stateFlows?: any[];
+  eventFlows?: any[];
+  renderTree?: any[];
+  fnJsxUsage?: any[];
 }
 
 // ============================================

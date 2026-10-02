@@ -2,7 +2,16 @@
 // ============================================================
 // КОНВЕРТЕР REACT-СУЩНОСТЕЙ
 // ============================================================
-// Версия: 1.0.0
+// Версия: 1.1.0 (flow-секции)
+//
+// ИЗМЕНЕНИЯ v1.1.0:
+//   - ✅ ДОБАВЛЕНО: проброс flow-секций:
+//       • stateFlows
+//       • eventFlows
+//       • renderTree
+//       • fnJsxUsage
+//   - Эти секции уже построены в pass7React через билдеры
+//     из modes/react-analyzer/flows/*.
 //
 // НАЗНАЧЕНИЕ
 // ----------
@@ -71,6 +80,10 @@ import type { ReactEntities } from '../../../core/react-entity-classifier.js';
  *      • jsxEvents       — резолв fileId
  *      • conditionals    — резолв fileId
  *      • componentUsages — резолв fileId
+ *      • stateFlows      — без резолва (все ID уже в порядке)
+ *      • eventFlows      — без резолва
+ *      • renderTree      — без резолва
+ *      • fnJsxUsage      — без резолва
  *   3. Возврат.
  */
 export function convertReactEntitiesToFull(
@@ -269,6 +282,27 @@ export function convertReactEntitiesToFull(
       events: u.events ?? [],
       slots: u.slots ?? [],
     })),
+
+    // ======================================================
+    // ✅ v17.1.0: FLOW-секции
+    // ======================================================
+    //
+    // Все flow-секции УЖЕ построены в pass7React
+    // (через билдеры из modes/react-analyzer/flows/*).
+    //
+    // Здесь — просто проброс без резолва, потому что:
+    //   • stateFlows   — ID ссылаются на hooks/jsxElements
+    //   • eventFlows   — ID ссылаются на jsxEvents/functions/hooks
+    //   • renderTree   — ID ссылаются на jsxElements
+    //   • fnJsxUsage   — ID ссылаются на functions/jsxEvents/jsxElements
+    //
+    // Все эти ID уже согласованы внутри ReactEntities.
+    // ────────────────────────────────────────────────────────
+
+    stateFlows: reactEntities.stateFlows ?? [],
+    eventFlows: reactEntities.eventFlows ?? [],
+    renderTree: reactEntities.renderTree ?? [],
+    fnJsxUsage: reactEntities.fnJsxUsage ?? [],
 
     // ======================================================
     // Служебные поля (для codec, заполнятся позже)

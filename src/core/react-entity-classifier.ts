@@ -2,7 +2,18 @@
 // ============================================================
 // КЛАССИФИКАТОР REACT-СУЩНОСТЕЙ
 // ============================================================
-// Версия: 1.3.0 (убрана диагностика)
+// Версия: 1.4.0 (flow-секции)
+//
+// ИЗМЕНЕНИЯ v1.4.0:
+//   - ✅ ДОБАВЛЕНО: flow-типы:
+//       • EventFlowStep
+//       • ReactEventFlow
+//       • ReactStateFlow
+//       • ReactRenderNode
+//       • ReactFnJsxUsage
+//   - ✅ РАСШИРЕНО: ReactEntities полями stateFlows/eventFlows/
+//     renderTree/fnJsxUsage.
+//   - ✅ РАСШИРЕНО: инициализация result — новые секции как [].
 //
 // ИЗМЕНЕНИЯ v1.3.0:
 //   - ✅ УБРАНО: вся диагностика console.log с префиксом
@@ -11,8 +22,7 @@
 //
 // ИЗМЕНЕНИЯ v1.2.0:
 //   - ✅ ДОБАВЛЕНО: диагностический console.log для КАЖДОГО
-//     файла в sortedFilePaths — печатает filePath, isReactFilePath,
-//     наличие reactComponents/reactHooks/reactJsxElements.
+//     файла в sortedFilePaths.
 //   - ✅ ДОБАВЛЕНО: расширенный debugInfo (массивы tsxFilePaths
 //     и otherFilePaths).
 //
@@ -38,6 +48,10 @@
 //   • jsxEvents       — onClick/onChange/... с handler
 //   • conditionals    — && / || / ?: в JSX
 //   • componentUsages — где используются компоненты
+//   • stateFlows      — state ↔ mutation ↔ read ↔ render (v17.1.0)
+//   • eventFlows      — event → handler → call → state → render (v17.1.0)
+//   • renderTree      — иерархия JSX с зависимостями (v17.1.0)
+//   • fnJsxUsage      — обратный индекс: функция → JSX (v17.1.0)
 //
 // ПРИНЦИП
 // -------
@@ -52,6 +66,8 @@
 //        rj1, rj2, ... (React JSX element)
 //        rje1, rje2, ... (React JSX event)
 //        rcd1, rcd2, ... (React Conditional)
+//        rsf1, rsf2, ... (React State Flow)
+//        ref1, ref2, ... (React Event Flow)
 //   3. Опциональность — если React-кода нет, всё пустое.
 //
 // СВЯЗЬ С VUE
@@ -91,6 +107,16 @@ export interface ReactEntities {
   conditionals: ReactConditionalEntity[];
   /** Использования компонентов (обратный индекс) */
   componentUsages: ReactComponentUsage[];
+
+  // ✅ v17.1.0: FLOW-секции
+  /** Потоки состояния (state ↔ mutation ↔ read ↔ render) */
+  stateFlows: ReactStateFlow[];
+  /** Потоки событий (event → handler → call → state → render) */
+  eventFlows: ReactEventFlow[];
+  /** Дерево рендера (иерархия JSX с зависимостями) */
+  renderTree: ReactRenderNode[];
+  /** Обратный индекс: функция → JSX-элементы */
+  fnJsxUsage: ReactFnJsxUsage[];
 }
 
 // ============================================================
@@ -476,6 +502,138 @@ export interface ReactComponentUsage {
 }
 
 // ============================================================
+// 11. FLOW-СУЩНОСТИ (v17.1.0)
+// ============================================================
+//
+// Четыре новые секции для трассировки потоков:
+//   • stateFlows   — state ↔ mutation ↔ read ↔ render
+//   • eventFlows   — event → handler → call → state → render
+//   • renderTree   — иерархия JSX с зависимостями
+//   • fnJsxUsage   — обратный индекс: функция → JSX
+//
+// Все секции — производные от components/hooks/jsxElements/jsxEvents.
+// Строятся в modes/react-analyzer/flows/*.ts.
+// ============================================================
+
+/**
+ * Один шаг в цепочке eventFlow.
+ */
+export interface EventFlowStep {
+  /** Тип шага */
+  step: 'event' | 'handler' | 'call' | 'state' | 'render';
+  /** ID сущности (rjeN / fnN / cN / rhN / rjN) */
+  refId: string;
+  /** Человекочитаемая метка */
+  label: string;
+  /** Строка */
+  line: number;
+}
+
+/**
+ * Поток события: onClick → handler → call → setState → render.
+ */
+export interface ReactEventFlow {
+  /** ID (ref1, ref2, ...) */
+  id: string;
+  /** ID события (rjeN) */
+  eventId: string;
+  /** Имя события (onClick) */
+  eventName: string;
+  /** ID JSX-элемента (rjN) */
+  elementId: string;
+  /** ID функции handler (fnN или '') */
+  handlerFunctionId: string;
+  /** Имя handler-функции (handleClick) */
+  handlerName: string;
+  /** Что вызывает handler */
+  calls: Array<{
+    functionId: string;
+    calleeName: string;
+    line: number;
+  }>;
+  /** ID hooks, которые мутируются */
+  mutatedStates: string[];
+  /** ID компонентов, которые ре-рендерятся */
+  reRendered: string[];
+  /** Цепочка шагов */
+  chain: EventFlowStep[];
+}
+
+/**
+ * Поток состояния: где мутируется, где читается, где рендерится.
+ */
+export interface ReactStateFlow {
+  /** ID (rsf1, rsf2, ...) */
+  id: string;
+  /** ID hook (rhN) */
+  hookId: string;
+  /** Имя state-переменной (isOpen) */
+  stateName: string;
+  /** Имя setter-функции (setIsOpen) */
+  setterName: string;
+  /** Кто мутирует (вызывает setterName) */
+  mutatedBy: Array<{
+    functionId: string;
+    callId: string;
+    line: number;
+  }>;
+  /** Кто читает (stateName в теле функции) */
+  readBy: Array<{
+    functionId: string;
+    line: number;
+  }>;
+  /** Где используется в JSX */
+  renderedIn: Array<{
+    jsxElementId: string;
+    attrName: string;
+    kind: 'attr' | 'text' | 'conditional' | 'handler';
+    line: number;
+  }>;
+}
+
+/**
+ * Узел дерева рендера (плоский список с parentId).
+ */
+export interface ReactRenderNode {
+  /** ID JSX-элемента (rjN) */
+  elementId: string;
+  /** Имя тега/компонента */
+  tagName: string;
+  /** Вид */
+  kind: 'element' | 'component' | 'fragment';
+  /** ID родителя (или null) */
+  parentId: string | null;
+  /** Что влияет на рендер */
+  dependsOn: {
+    stateIds: string[];
+    propIds: string[];
+    contextIds: string[];
+  };
+  /** Условный рендеринг */
+  conditionals: Array<{
+    kind: '&&' | '||' | '?:';
+    condition: string;
+    refs: string[];
+  }>;
+}
+
+/**
+ * Обратный индекс: функция → JSX-элементы, где она используется.
+ */
+export interface ReactFnJsxUsage {
+  /** ID функции (fnN) */
+  functionId: string;
+  /** Имя функции (handleClick) */
+  functionName: string;
+  /** Где используется */
+  usedIn: Array<{
+    jsxElementId: string;
+    usage: 'handler' | 'value' | 'condition' | 'render';
+    line: number;
+  }>;
+}
+
+// ============================================================
 // ВСПОМОГАТЕЛЬНАЯ: ПРОВЕРКА РАСШИРЕНИЯ
 // ============================================================
 
@@ -528,6 +686,12 @@ export function classifyReactEntities(entitiesMap: Record<string, EntitiesResult
     jsxEvents: [],
     conditionals: [],
     componentUsages: [],
+
+    // ✅ v17.1.0: FLOW-секции
+    stateFlows: [],
+    eventFlows: [],
+    renderTree: [],
+    fnJsxUsage: [],
   };
 
   // Стабильный порядок обхода
@@ -786,8 +950,8 @@ export function classifyReactEntities(entitiesMap: Record<string, EntitiesResult
           importedFrom: u.importedFrom,
           isExternal: u.isExternal ?? false,
           props: u.props ?? [],
-          slots: u.slots ?? [],
           events: u.events ?? [],
+          slots: u.slots ?? [],
         });
       }
     }

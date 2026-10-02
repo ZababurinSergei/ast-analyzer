@@ -1,8 +1,35 @@
 // src/reporters/codec/codec-encode.ts
 // ============================================
-// КОДИРОВАНИЕ: FullJSON → CompactJSON (v16.2.0 → v17.0.0)
+// КОДИРОВАНИЕ: FullJSON → CompactJSON (v16.2.0 → v17.2.0)
 // ============================================
-// Версия: 17.0.0
+// Версия: 17.2.0
+//
+// ИЗМЕНЕНИЯ v17.2.0 (FIX React round-trip):
+//   - ✅ ИСПРАВЛЕНО: components.props теперь кодируются через strs
+//     (было: `void addString(...)` — терялись).
+//   - ✅ ИСПРАВЛЕНО: components.hooks/jsxElements кодируются через ids
+//     (было: `[0, N]` — терялись).
+//   - ✅ ИСПРАВЛЕНО: hooks.componentId через addId
+//     (было: -1).
+//   - ✅ ИСПРАВЛЕНО: effects.componentId/hookId через addId.
+//   - ✅ ИСПРАВЛЕНО: contexts.componentId через addId.
+//   - ✅ ИСПРАВЛЕНО: memoization.componentId через addId.
+//   - ✅ ИСПРАВЛЕНО: refs.componentId через addId.
+//   - ✅ ИСПРАВЛЕНО: jsxElements.componentId через addId.
+//   - ✅ ДОБАВЛЕНО: jsxElements.column (jCol).
+//   - ✅ ИСПРАВЛЕНО: jsxElements.parentElementId через addId.
+//   - ✅ ИСПРАВЛЕНО: jsxElements.attrs сохраняет rawValue, handlerFunctionId, stateRef.
+//   - ✅ ИСПРАВЛЕНО: jsxEvents.elementId через addId.
+//   - ✅ ИСПРАВЛЕНО: jsxEvents.handlerFunctionId через addId.
+//   - ✅ ИСПРАВЛЕНО: conditionals.componentId через addId.
+//   - ✅ ИСПРАВЛЕНО: componentUsages.usageId/parentComponentId/targetComponentId/importedFrom через addId.
+//   - ✅ ИСПРАВЛЕНО: в ReactSectionCompact для jsxElements добавлено поле col.
+//
+// ИЗМЕНЕНИЯ v17.1.0:
+//   - ✅ ДОБАВЛЕНО: в encodeReactSection кодирование flow-секций.
+//
+// ИЗМЕНЕНИЯ v17.0.0:
+//   - ✅ ДОБАВЛЕНО: encodeReactSection (React-секция).
 
 import type {
   FullJSON,
@@ -37,7 +64,6 @@ import type {
   ReactSectionFull,
   ReactSectionCompact,
   VueKind,
-  // ✅ v16.0.0
   ComponentProp,
   ComponentEvent,
   ComponentDirective,
@@ -98,8 +124,6 @@ import {
 import { serializeSourceChain } from '../../core/source-chain-resolver.js';
 
 // ✅ v16.1.0: извлечение identifier / memberChain / literalValue
-// Нужно для дозаполнения полей у ComponentProp, пришедших из
-// parseVueTemplate (там они null/undefined).
 import {
   extractIdentifierFromValue,
   extractMemberChainFromValue,
@@ -322,10 +346,8 @@ export interface DictBuilder {
   valueDict: unknown[];
   valueMap: Map<string, number>;
   valueMeta: ValueMeta[];
-  /** ✅ v16.0.0: интернирование сгенерированных id */
   idDict: string[];
   idMap: Map<string, number>;
-  /** ✅ v16.0.0: интернирование sourceChain */
   sourceChainDict: string[];
   sourceChainMap: Map<string, number>;
 }
@@ -348,13 +370,6 @@ export function createDictBuilder(): DictBuilder {
   };
 }
 
-/**
- * ✅ v16.0.0: добавить сгенерированный id в idDict.
- *
- * ⚠️ v16.1.0: возвращает -1 для пустой строки. Специальное
- * значение -2 (не закодировано) должно использоваться
- * ВЫЗЫВАЮЩИМ кодом, а не этой функцией.
- */
 export function addId(dict: DictBuilder, id: string): number {
   if (!id) return -1;
   const existing = dict.idMap.get(id);
@@ -365,9 +380,6 @@ export function addId(dict: DictBuilder, id: string): number {
   return idx;
 }
 
-/**
- * ✅ v16.0.0: добавить sourceChain в sourceChainDict (интернирование).
- */
 export function addSourceChain(dict: DictBuilder, chain: SourceChainItem[]): number {
   if (!chain || chain.length === 0) return -1;
   const serialized = serializeSourceChain(chain);
@@ -379,9 +391,6 @@ export function addSourceChain(dict: DictBuilder, chain: SourceChainItem[]): num
   return idx;
 }
 
-/**
- * ✅ v16.0.0: RLE-кодирование массива чисел.
- */
 export function rleArray(values: number[]): [number, number, number?][] {
   if (values.length === 0) return [];
   const result: [number, number, number?][] = [];
@@ -398,9 +407,6 @@ export function rleArray(values: number[]): [number, number, number?][] {
   return result;
 }
 
-/**
- * Добавить строку в stringDict, вернуть индекс.
- */
 export function addString(dict: DictBuilder, str: string | undefined | null): number {
   if (str === undefined || str === null || str === '') return -1;
   const existing = dict.stringMap.get(str);
@@ -411,9 +417,6 @@ export function addString(dict: DictBuilder, str: string | undefined | null): nu
   return idx;
 }
 
-/**
- * Добавить параметр в paramDict, вернуть индекс.
- */
 export function addParam(dict: DictBuilder, param: string): number {
   if (!param) return -1;
   const existing = dict.paramMap.get(param);
@@ -424,9 +427,6 @@ export function addParam(dict: DictBuilder, param: string): number {
   return idx;
 }
 
-/**
- * Добавить метод в methodDict, вернуть индекс.
- */
 export function addMethod(dict: DictBuilder, method: string): number {
   if (!method) return -1;
   const existing = dict.methodMap.get(method);
@@ -437,13 +437,6 @@ export function addMethod(dict: DictBuilder, method: string): number {
   return idx;
 }
 
-// ============================================
-// ADD VALUE
-// ============================================
-
-/**
- * Добавить значение в valueDict, вернуть индекс.
- */
 export function addValue(
   dict: DictBuilder,
   value: unknown,
@@ -491,10 +484,6 @@ export function addValue(
 
   return idx;
 }
-
-// ============================================
-// addAny — БЕЗ ДЕДУПЛИКАЦИИ + structuredClone
-// ============================================
 
 function addAny(dict: DictBuilder, value: unknown, key: string): number {
   if (value === undefined) return -1;
@@ -593,33 +582,12 @@ function encodeStr(str: string, tokenIndex: Map<string, number>): string | numbe
 // ============================================
 // ✅ v16.2.0: VUE SECTION ENCODER
 // ============================================
-//
-// ⚠️ ИЗМЕНЕНИЯ v16.2.0:
-//   1. В блоке `reactivity` добавлен массив `rxVueT` — 0/1 флаг
-//      для `usedInTemplate`.
-//   2. В `result.reactivity` записывается поле `usedInTemplate: rxVueT`.
-//
-// ⚠️ ИЗМЕНЕНИЯ v16.1.0:
-//   1. Добавлены массивы `cuId`, `cuPf`, `heId`, `hePf`.
-//   2. Для `cu.parentFileId` и `he.parentFileId` используем
-//      специальное значение -1 для пустой строки.
-//   3. В `result.sfc` добавлены поля: cu_id, cu_pf, he_id, he_pf.
-//
-// ⚠️ ИЗМЕНЕНИЯ v16.1.0:
-//   В блоках сбора `allComponentProps` (для cu.props и he.props)
-//   дозаполняем `identifier` / `memberChain` / `literalValue`,
-//   если они не заполнены. Это устраняет потерю этих полей
-//   при кодировании `vue.componentProps`.
-// ============================================
 
 export function encodeVueSection(
   vue: VueSectionFull,
   dict: DictBuilder,
   fileReverse: Map<string, number>
 ): VueSectionCompact {
-  // ────────────────────────────────────────────────────────
-  // sfc — расширенная схема (34 поля в v16.1.0)
-  // ────────────────────────────────────────────────────────
   const sfcF: number[] = [];
   const sfcN: number[] = [];
   const sfcB: number[] = [];
@@ -627,7 +595,6 @@ export function encodeVueSection(
   const sfcC: number[] = [];
   const sfcCS: Array<[number, number]> = [];
 
-  // ✅ v16.0.0: реальные имена
   const sfcPN: number[] = [];
   const sfcPS: Array<[number, number]> = [];
   const sfcEN: number[] = [];
@@ -635,13 +602,11 @@ export function encodeVueSection(
   const sfcXN: number[] = [];
   const sfcXS: Array<[number, number]> = [];
 
-  // ✅ v16.1.0: явные id и parentFileId
   const cuId: number[] = [];
   const cuPf: number[] = [];
   const heId: number[] = [];
   const hePf: number[] = [];
 
-  // ✅ v16.0.0: component usages (RLE)
   const cuSfc: number[] = [];
   const cuTag: number[] = [];
   const cuFile: number[] = [];
@@ -654,7 +619,6 @@ export function encodeVueSection(
   const cuCd: Array<[number, number]> = [];
   const cuCsl: Array<[number, number]> = [];
 
-  // ✅ v16.0.0: html elements (RLE)
   const heSfc: number[] = [];
   const heTag: number[] = [];
   const heL: number[] = [];
@@ -664,7 +628,6 @@ export function encodeVueSection(
   const heCe: Array<[number, number]> = [];
   const heCi: Array<[number, number]> = [];
 
-  // Накопители для componentProps/Events/Directives/Slots/Interpolations
   const allComponentProps: ComponentProp[] = [];
   const allComponentEvents: ComponentEvent[] = [];
   const allComponentDirectives: ComponentDirective[] = [];
@@ -677,7 +640,6 @@ export function encodeVueSection(
     sfcN.push(addString(dict, sfc.name));
     sfcB.push(sfc.blocks ?? 0);
 
-    // Composables — из sfc.composables
     const composables = sfc.composables ?? [];
     const startOffset = sfcC.length;
     for (const compName of composables) {
@@ -686,7 +648,6 @@ export function encodeVueSection(
     }
     sfcCS.push([startOffset, sfcC.length - startOffset]);
 
-    // ✅ v16.0.0: реальные имена props/emits/exposed
     const pStart = sfcPN.length;
     for (const p of sfc.props ?? []) {
       const idx = addString(dict, p);
@@ -708,13 +669,11 @@ export function encodeVueSection(
     }
     sfcXS.push([xStart, sfcXN.length - xStart]);
 
-    // ✅ v16.0.0 + v16.1.0: component usages
     const sfcIdxForCu = sfcF.length - 1;
     for (const cu of sfc.componentUsages ?? []) {
       cuSfc.push(sfcIdxForCu);
       cuTag.push(addString(dict, cu.tag));
 
-      // ✅ v16.1.0: id и parentFileId кодируются явно
       cuId.push(addId(dict, cu.id));
       cuPf.push(cu.parentFileId ? addId(dict, cu.parentFileId) : -1);
 
@@ -727,13 +686,8 @@ export function encodeVueSection(
       cuL.push(cu.line ?? 0);
       cuCol.push(cu.column ?? -1);
 
-      // Props
       const cpStart = allComponentProps.length;
       for (const p of cu.props ?? []) {
-        // ✅ v16.1.0: дозаполняем identifier / memberChain / literalValue,
-        // если они не заполнены (например, пришли из parseVueTemplate
-        // как null / undefined). Если уже заполнены (например,
-        // прошли через fillComponentAccumulators) — не трогаем.
         allComponentProps.push({
           ...p,
           identifier:
@@ -752,21 +706,18 @@ export function encodeVueSection(
       }
       cuCp.push([cpStart, allComponentProps.length - cpStart]);
 
-      // Events
       const ceStart = allComponentEvents.length;
       for (const e of cu.events ?? []) {
         allComponentEvents.push(e);
       }
       cuCe.push([ceStart, allComponentEvents.length - ceStart]);
 
-      // Directives
       const cdStart = allComponentDirectives.length;
       for (const d of cu.directives ?? []) {
         allComponentDirectives.push(d);
       }
       cuCd.push([cdStart, allComponentDirectives.length - cdStart]);
 
-      // Slots
       const cslStart = allComponentSlots.length;
       for (const sl of cu.slots ?? []) {
         allComponentSlots.push(sl);
@@ -774,23 +725,18 @@ export function encodeVueSection(
       cuCsl.push([cslStart, allComponentSlots.length - cslStart]);
     }
 
-    // ✅ v16.0.0 + v16.1.0: html elements
     for (const he of sfc.htmlElements ?? []) {
       heSfc.push(sfcIdxForCu);
       heTag.push(addString(dict, he.tag));
 
-      // ✅ v16.1.0: id и parentFileId кодируются явно
       heId.push(addId(dict, he.id));
       hePf.push(he.parentFileId ? addId(dict, he.parentFileId) : -1);
 
       heL.push(he.line ?? 0);
       heCol.push(he.column ?? -1);
 
-      // Props
       const hcpStart = allComponentProps.length;
       for (const p of he.props ?? []) {
-        // ✅ v16.1.0: аналогично cu.props — дозаполняем
-        // identifier / memberChain / literalValue.
         allComponentProps.push({
           ...p,
           identifier:
@@ -809,21 +755,18 @@ export function encodeVueSection(
       }
       heCp.push([hcpStart, allComponentProps.length - hcpStart]);
 
-      // Directives
       const hcdStart = allComponentDirectives.length;
       for (const d of he.directives ?? []) {
         allComponentDirectives.push(d);
       }
       heCd.push([hcdStart, allComponentDirectives.length - hcdStart]);
 
-      // Events
       const hceStart = allComponentEvents.length;
       for (const e of he.events ?? []) {
         allComponentEvents.push(e);
       }
       heCe.push([hceStart, allComponentEvents.length - hceStart]);
 
-      // Interpolations
       const hciStart = allHtmlInterpolations.length;
       for (const i of he.interpolations ?? []) {
         allHtmlInterpolations.push(i);
@@ -832,9 +775,6 @@ export function encodeVueSection(
     }
   }
 
-  // ────────────────────────────────────────────────────────
-  // composables
-  // ────────────────────────────────────────────────────────
   const compN: number[] = [];
   const compF: number[] = [];
   const compK: number[] = [];
@@ -850,9 +790,6 @@ export function encodeVueSection(
     compV.push([i, (c.returnedKeys ?? []).length]);
   }
 
-  // ────────────────────────────────────────────────────────
-  // macros
-  // ────────────────────────────────────────────────────────
   const macroF: number[] = [];
   const macroK: number[] = [];
   const macroL: number[] = [];
@@ -864,9 +801,6 @@ export function encodeVueSection(
     macroL.push(macro.line ?? 0);
   }
 
-  // ────────────────────────────────────────────────────────
-  // hooks
-  // ────────────────────────────────────────────────────────
   const hookF: number[] = [];
   const hookN: number[] = [];
   const hookL: number[] = [];
@@ -878,25 +812,11 @@ export function encodeVueSection(
     hookL.push(hook.line ?? 0);
   }
 
-  // ────────────────────────────────────────────────────────
-  // reactivity
-  // ────────────────────────────────────────────────────────
-  //
-  // ✅ v16.2.0: добавлен массив rxVueT — 0/1 флаг usedInTemplate.
-  //
-  // ⚠️ ПОЧЕМУ 0/1, А НЕ boolean:
-  //   CompactJSON — это columnar-формат. Массивы здесь числовые
-  //   для компактности. decode() превратит 1 → true, 0 → false.
-  //
-  // ⚠️ ПОЧЕМУ МАССИВ ВСЕГДА ЗАПОЛНЯЕТСЯ:
-  //   Даже если все значения false, массив записывается —
-  //   симметрия с decode() важнее экономии байтов.
-  //   decode() проверяет `vue.reactivity.usedInTemplate?.[i] === 1`.
   const rxVueF: number[] = [];
   const rxVueK: number[] = [];
   const rxVueL: number[] = [];
   const rxVueN: number[] = [];
-  const rxVueT: number[] = [];  // ✅ v16.2.0
+  const rxVueT: number[] = [];
 
   for (const r of vue.reactivity ?? []) {
     const rx: ReactivityEntity = r;
@@ -904,12 +824,9 @@ export function encodeVueSection(
     rxVueK.push(REACTIVITY_KIND_CODES[rx.kind] ?? 0);
     rxVueL.push(rx.line ?? 0);
     rxVueN.push(rx.name ? addString(dict, rx.name) : -1);
-    rxVueT.push(rx.usedInTemplate ? 1 : 0);  // ✅ v16.2.0
+    rxVueT.push(rx.usedInTemplate ? 1 : 0);
   }
 
-  // ────────────────────────────────────────────────────────
-  // icons
-  // ────────────────────────────────────────────────────────
   const iconF: number[] = [];
   const iconN: number[] = [];
   const iconC: number[] = [];
@@ -921,9 +838,6 @@ export function encodeVueSection(
     iconC.push(ICON_CATEGORY_CODES[icon.category] ?? 0);
   }
 
-  // ────────────────────────────────────────────────────────
-  // Сборка результата
-  // ────────────────────────────────────────────────────────
   const result: VueSectionCompact = {
     sfc: {
       f: sfcF,
@@ -931,20 +845,14 @@ export function encodeVueSection(
       b: sfcB,
       c: sfcC,
       cs: sfcCS,
-
-      // ✅ v16.0.0: реальные имена
       pn: sfcPN,
       ps: sfcPS,
       en: sfcEN,
       es: sfcES,
       xn: sfcXN,
       xs: sfcXS,
-
-      // ✅ v16.1.0: явные id и parentFileId для componentUsages
       cu_id: cuId,
       cu_pf: cuPf,
-
-      // Component usages
       cu_sfc: rleArray(cuSfc),
       cu_tag: cuTag,
       cu_file: cuFile,
@@ -956,12 +864,8 @@ export function encodeVueSection(
       cu_ce: cuCe,
       cu_cd: cuCd,
       cu_csl: cuCsl,
-
-      // ✅ v16.1.0: явные id и parentFileId для htmlElements
       he_id: heId,
       he_pf: hePf,
-
-      // Html elements
       he_sfc: rleArray(heSfc),
       he_tag: heTag,
       he_l: heL,
@@ -993,15 +897,13 @@ export function encodeVueSection(
       k: rxVueK,
       l: rxVueL,
       n: rxVueN,
-      usedInTemplate: rxVueT,  // ✅ v16.2.0
+      usedInTemplate: rxVueT,
     },
     icons: {
       f: iconF,
       n: iconN,
       c: iconC,
     },
-    // ✅ v16.0.0: component props/events/directives/slots/interpolations
-    // ⚠️ СОСЕДИ sfc, а не вложены в него.
     componentProps: encodeComponentPropsInline(allComponentProps, dict),
     componentEvents: encodeComponentEventsInline(allComponentEvents, dict),
     componentDirectives: encodeComponentDirectivesInline(allComponentDirectives, dict),
@@ -1014,14 +916,8 @@ export function encodeVueSection(
 
 // ============================================
 // ✅ v16.0.0: inline-энкодеры подсекций vue
-// ✅ v16.0.8-FIX: добавлены 'idn' и 'id'
-// ✅ v16.0.9-FIX: literalValue сохраняет тип (boolean/number/null/string)
-// ✅ v16.2.1-FIX: функции экспортированы (для fallback-блока 12.7.1)
 // ============================================
 
-/**
- * ✅ v16.0.9-FIX: кодирует literalValue с префиксом типа.
- */
 function encodeLiteralValue(
   value: string | number | boolean | null | undefined,
   dict: DictBuilder
@@ -1183,22 +1079,17 @@ export function encodeHtmlInterpolationsInline(
 
 // ============================================
 // ✅ v17.0.0: REACT SECTION ENCODER
+// ✅ v17.2.0: FIX round-trip
 // ============================================
 
 /**
  * Кодирует ReactSectionFull → ReactSectionCompact.
  *
- * Симметрична encodeVueSection.
- *
- * ⚠️ v17.0.0: упрощённая версия.
- *   Компоненты, хуки, JSX, события, conditionals кодируются
- *   как columnar-массивы. Поля componentId, hookId, elementId и
- *   parentElementId пока кодируются как -1 (разрешатся позже,
- *   когда будет Фаза 2 flow-графа).
- *
- * @param react       — ReactSectionFull
- * @param dict        — словарь
- * @param fileReverse — Map<fileId, fileIdx>
+ * ✅ v17.2.0: полная поддержка round-trip.
+ *   - components.props/hooks/jsxElements — через strs/ids.
+ *   - jsxElements.column — новая колонка col.
+ *   - jsxElements.attrs — с rawValue.
+ *   - jsxEvents.elementId — через addId.
  */
 export function encodeReactSection(
   react: ReactSectionFull | undefined,
@@ -1207,7 +1098,6 @@ export function encodeReactSection(
 ): ReactSectionCompact | undefined {
   if (!react) return undefined;
 
-  // Ранний выход, если всё пусто
   const hasAny =
     (react.components?.length ?? 0) > 0 ||
     (react.hooks?.length ?? 0) > 0 ||
@@ -1218,7 +1108,11 @@ export function encodeReactSection(
     (react.jsxElements?.length ?? 0) > 0 ||
     (react.jsxEvents?.length ?? 0) > 0 ||
     (react.conditionals?.length ?? 0) > 0 ||
-    (react.componentUsages?.length ?? 0) > 0;
+    (react.componentUsages?.length ?? 0) > 0 ||
+    (react.stateFlows?.length ?? 0) > 0 ||
+    (react.eventFlows?.length ?? 0) > 0 ||
+    (react.renderTree?.length ?? 0) > 0 ||
+    (react.fnJsxUsage?.length ?? 0) > 0;
 
   if (!hasAny) return undefined;
 
@@ -1287,6 +1181,7 @@ export function encodeReactSection(
   const jK: number[] = [];
   const jN: number[] = [];
   const jL: number[] = [];
+  const jCol: number[] = [];   // ✅ v17.2.0: column
   const jA: number[] = [];
   const jCh: number[] = [];
   const jTx: number[] = [];
@@ -1332,14 +1227,26 @@ export function encodeReactSection(
     cK.push(REACT_COMPONENT_KIND_CODES[c.kind] ?? 0);
     cL.push(c.line);
 
+    // ✅ v17.2.0: props → через strs
     const pStart = cP.reduce((s, x) => s + x[1], 0);
     for (const p of c.props ?? []) {
-      void addString(dict, p);
+      addString(dict, p);
     }
     cP.push([pStart, (c.props ?? []).length]);
 
-    cH.push([0, (c.hooks ?? []).length]);
-    cJ.push([0, (c.jsxElements ?? []).length]);
+    // ✅ v17.2.0: hooks → через ids
+    const hStart = cH.reduce((s, x) => s + x[1], 0);
+    for (const hookId of c.hooks ?? []) {
+      addId(dict, hookId);
+    }
+    cH.push([hStart, (c.hooks ?? []).length]);
+
+    // ✅ v17.2.0: jsxElements → через ids
+    const jStart = cJ.reduce((s, x) => s + x[1], 0);
+    for (const jId of c.jsxElements ?? []) {
+      addId(dict, jId);
+    }
+    cJ.push([jStart, (c.jsxElements ?? []).length]);
 
     let flags = 0;
     if (c.isMemoized) flags |= 1;
@@ -1352,7 +1259,8 @@ export function encodeReactSection(
   // ── 2. hooks ──
   for (const h of react.hooks ?? []) {
     hF.push(fileIdx(h.fileId));
-    hC.push(-1);
+    // ✅ v17.2.0: componentId через addId
+    hC.push(h.componentId ? addId(dict, h.componentId) : -1);
     hK.push(REACT_HOOK_KIND_CODES[h.kind] ?? 0);
     hL.push(h.line);
     hSn.push(h.stateName ? addString(dict, h.stateName) : -1);
@@ -1369,8 +1277,8 @@ export function encodeReactSection(
   // ── 3. effects ──
   for (const e of react.effects ?? []) {
     eF.push(fileIdx(e.fileId));
-    eC.push(-1);
-    eHk.push(-1);
+    eC.push(e.componentId ? addId(dict, e.componentId) : -1);
+    eHk.push(e.hookId ? addId(dict, e.hookId) : -1);
     eK.push(REACT_EFFECT_KIND_CODES[e.kind] ?? 0);
     eL.push(e.line);
     eD.push(e.deps ? addString(dict, e.deps.join('\u0002')) : -1);
@@ -1382,7 +1290,7 @@ export function encodeReactSection(
   // ── 4. contexts ──
   for (const c of react.contexts ?? []) {
     ctxF.push(fileIdx(c.fileId));
-    ctxC.push(-1);
+    ctxC.push(c.componentId ? addId(dict, c.componentId) : -1);
     ctxK.push(REACT_CONTEXT_KIND_CODES[c.kind] ?? 0);
     ctxL.push(c.line);
     ctxN.push(c.name ? addString(dict, c.name) : -1);
@@ -1391,7 +1299,7 @@ export function encodeReactSection(
   // ── 5. memoization ──
   for (const m of react.memoization ?? []) {
     mF.push(fileIdx(m.fileId));
-    mC.push(-1);
+    mC.push(m.componentId ? addId(dict, m.componentId) : -1);
     mK.push(REACT_MEMO_KIND_CODES[m.kind] ?? 0);
     mL.push(m.line);
     mD.push(m.deps ? addString(dict, m.deps.join('\u0002')) : -1);
@@ -1400,7 +1308,7 @@ export function encodeReactSection(
   // ── 6. refs ──
   for (const r of react.refs ?? []) {
     rF.push(fileIdx(r.fileId));
-    rC.push(-1);
+    rC.push(r.componentId ? addId(dict, r.componentId) : -1);
     rL.push(r.line);
     rN.push(r.name ? addString(dict, r.name) : -1);
     rFl.push(r.isForwardRef ? 1 : 0);
@@ -1409,17 +1317,22 @@ export function encodeReactSection(
   // ── 7. jsxElements ──
   for (const el of react.jsxElements ?? []) {
     jF.push(fileIdx(el.fileId));
-    jC.push(-1);
+    jC.push(el.componentId ? addId(dict, el.componentId) : -1);
     jK.push(JSX_NODE_KIND_CODES[el.kind] ?? 0);
     jN.push(addString(dict, el.tagName || ''));
     jL.push(el.line);
+    jCol.push(el.column ?? -1);   // ✅ v17.2.0: column
 
     if (el.attrs && el.attrs.length > 0) {
+      // ✅ v17.2.0: сохраняем rawValue, handlerFunctionId, stateRef
       const attrsStr = JSON.stringify(el.attrs.map((a) => ({
         n: a.name,
+        rv: a.rawValue,
         v: a.value,
         k: a.kind,
         r: a.refs ?? [],
+        hf: a.handlerFunctionId,
+        sr: a.stateRef,
       })));
       jA.push(addString(dict, attrsStr));
     } else {
@@ -1432,25 +1345,28 @@ export function encodeReactSection(
 
     jTx.push(el.textContent ? addString(dict, el.textContent) : -1);
     jEx.push(el.expression ? addString(dict, el.expression) : -1);
-    jPa.push(-1);
+    // ✅ v17.2.0: parentElementId через addId
+    jPa.push(el.parentElementId ? addId(dict, el.parentElementId) : -1);
     jCk.push(el.conditionalKind ? (REACT_CONDITIONAL_KIND_CODES[el.conditionalKind] ?? -1) : -1);
   }
 
   // ── 8. jsxEvents ──
   for (const ev of react.jsxEvents ?? []) {
     evF.push(fileIdx(ev.fileId));
-    evE.push(-1);
+    // ✅ v17.2.0: elementId через addId
+    evE.push(ev.elementId ? addId(dict, ev.elementId) : -1);
     evN.push(addString(dict, ev.eventName));
     evL.push(ev.line);
     evH.push(addString(dict, ev.handler));
-    evHf.push(-1);
+    // ✅ v17.2.0: handlerFunctionId через addId
+    evHf.push(ev.handlerFunctionId ? addId(dict, ev.handlerFunctionId) : -1);
     evS.push(EVENT_HANDLER_SOURCE_CODES[ev.source] ?? 4);
   }
 
   // ── 9. conditionals ──
   for (const cd of react.conditionals ?? []) {
     cdF.push(fileIdx(cd.fileId));
-    cdC.push(-1);
+    cdC.push(cd.componentId ? addId(dict, cd.componentId) : -1);
     cdK.push(REACT_CONDITIONAL_KIND_CODES[cd.kind] ?? 0);
     cdCd.push(addString(dict, cd.condition));
     cdR.push(cd.refs ? addString(dict, cd.refs.join('\u0002')) : -1);
@@ -1460,12 +1376,12 @@ export function encodeReactSection(
 
   // ── 10. componentUsages ──
   for (const u of react.componentUsages ?? []) {
-    uU.push(-1);
+    uU.push(u.usageId ? addId(dict, u.usageId) : -1);
     uN.push(addString(dict, u.tagName));
-    uC.push(-1);
+    uC.push(u.parentComponentId ? addId(dict, u.parentComponentId) : -1);
     uL.push(u.line);
-    uT.push(-1);
-    uIm.push(u.importedFrom ? addString(dict, u.importedFrom) : -1);
+    uT.push(u.targetComponentId ? addId(dict, u.targetComponentId) : -1);
+    uIm.push(u.importedFrom ? addId(dict, u.importedFrom) : -1);
     uFl.push(u.isExternal ? 1 : 0);
     uP.push(u.props ? addString(dict, u.props.join('\u0002')) : -1);
     uE.push(u.events ? addString(dict, u.events.join('\u0002')) : -1);
@@ -1479,10 +1395,15 @@ export function encodeReactSection(
     contexts: { f: ctxF, c: ctxC, k: ctxK, l: ctxL, n: ctxN },
     memoization: { f: mF, c: mC, k: mK, l: mL, d: mD },
     refs: { f: rF, c: rC, l: rL, n: rN, fl: rFl },
-    jsxElements: { f: jF, c: jC, k: jK, n: jN, l: jL, a: jA, ch: jCh, tx: jTx, ex: jEx, pa: jPa, ck: jCk },
+    jsxElements: { f: jF, c: jC, k: jK, n: jN, l: jL, col: jCol, a: jA, ch: jCh, tx: jTx, ex: jEx, pa: jPa, ck: jCk },
     jsxEvents: { f: evF, e: evE, n: evN, l: evL, h: evH, hf: evHf, s: evS },
     conditionals: { f: cdF, c: cdC, k: cdK, cd: cdCd, r: cdR, l: cdL, g: cdG },
     componentUsages: { u: uU, n: uN, c: uC, l: uL, t: uT, im: uIm, fl: uFl, p: uP, e: uE, s: uS },
+
+    stateFlows: react.stateFlows ?? undefined,
+    eventFlows: react.eventFlows ?? undefined,
+    renderTree: react.renderTree ?? undefined,
+    fnJsxUsage: react.fnJsxUsage ?? undefined,
   };
 }
 
@@ -1490,15 +1411,8 @@ export function encodeReactSection(
 // ✅ v16.0.0: TOP-LEVEL ENCODERS
 // ============================================
 
-/**
- * Аккумулятор для domApiArgs (собирается в encodeDomApiCalls,
- * потребляется в encodeDomApiArgs).
- */
 const domApiArgsAccumulator: DomApiArg[] = [];
 
-/**
- * ✅ v16.0.0: encode fnHtmlUsage.
- */
 function encodeFnHtmlUsage(full: any, dict: DictBuilder): any {
   const fns = full.functions || [];
   if (fns.length === 0) return undefined;
@@ -1543,9 +1457,6 @@ function encodeFnHtmlUsage(full: any, dict: DictBuilder): any {
   return { fn: fnIdx, k, u, t, tg, l, col, dcat, dctx };
 }
 
-/**
- * ✅ v16.0.0: encode domApiCalls (top-level).
- */
 function encodeDomApiCalls(full: any, dict: DictBuilder): any {
   const calls = full.domApiCalls || [];
   if (calls.length === 0) return undefined;
@@ -1616,9 +1527,6 @@ function encodeDomApiCalls(full: any, dict: DictBuilder): any {
   return { fn, f, cat, eff, m, t, tk, l, col, argSlices, en, hfn, hs, sel, hv, cn, sp, an, oo };
 }
 
-/**
- * ✅ v16.0.0: encode domApiArgs (top-level).
- */
 function encodeDomApiArgs(_full: any, dict: DictBuilder): any {
   const args = domApiArgsAccumulator;
   if (args.length === 0) return undefined;
@@ -1644,21 +1552,15 @@ function encodeDomApiArgs(_full: any, dict: DictBuilder): any {
 // ОСНОВНАЯ ФУНКЦИЯ ENCODE
 // ============================================
 
-/**
- * Кодирует полный JSON в сжатый (v17.0.0).
- */
 export function encode(
   payload: FullJSON,
   valuesMode: ValuesMode = 'relations'
 ): CompactJSON {
   const dict = createDictBuilder();
-  domApiArgsAccumulator.length = 0; // ✅ v16.0.0: очистка
+  domApiArgsAccumulator.length = 0;
 
   const canonical = canonicalizeFullJSON(payload);
 
-  // ============================================
-  // 1. Индексы модулей
-  // ============================================
   const modules = asArray<ModuleData>(canonical.modules);
   const moduleReverse = new Map<string, number>();
   for (let i = 0; i < modules.length; i++) {
@@ -1666,9 +1568,6 @@ export function encode(
     if (mod && mod.id) moduleReverse.set(mod.id, i);
   }
 
-  // ============================================
-  // 2. Индексы файлов
-  // ============================================
   const files = asArray<FileData>(canonical.files);
   const fileReverse = new Map<string, number>();
   for (let i = 0; i < files.length; i++) {
@@ -1676,9 +1575,6 @@ export function encode(
     if (file && file.id) fileReverse.set(file.id, i);
   }
 
-  // ============================================
-  // 3. Индексы функций
-  // ============================================
   const functions = asArray<FunctionData>(canonical.functions);
   const functionReverse = new Map<string, number>();
   for (let i = 0; i < functions.length; i++) {
@@ -1686,9 +1582,6 @@ export function encode(
     if (func && func.id) functionReverse.set(func.id, i);
   }
 
-  // ============================================
-  // 4. mi — columnar
-  // ============================================
   const miN: string[] = [];
   const miF: [number, number][] = [];
 
@@ -1709,9 +1602,6 @@ export function encode(
     miF.push([fileIdxs[0] ?? 0, fileIdxs.length]);
   }
 
-  // ============================================
-  // 5. fl — columnar
-  // ============================================
   const flP: string[] = [];
   const flM: number[] = [];
   for (const file of files) {
@@ -1721,9 +1611,6 @@ export function encode(
   }
   const flMRle = rle(flM);
 
-  // ============================================
-  // 6. fns — columnar (10 полей, включая hv)
-  // ============================================
   const fnsN: number[] = [];
   const fnsM: number[] = [];
   const fnsF: number[] = [];
@@ -1767,9 +1654,6 @@ export function encode(
   const fnsVkRle = rle(fnsVk);
   const fnsHvRle = rle(fnsHv);
 
-  // ============================================
-  // 7. cls — columnar
-  // ============================================
   const classes = asArray<ClassData>(canonical.classes);
   const clsN: number[] = [];
   const clsM: number[] = [];
@@ -1796,9 +1680,6 @@ export function encode(
   const clsMRle = rle(clsM);
   const clsFRle = rle(clsF);
 
-  // ============================================
-  // 8. cn — columnar
-  // ============================================
   const constants = asArray<ConstantData>(canonical.constants);
   const cnN: number[] = [];
   const cnM: number[] = [];
@@ -1834,9 +1715,6 @@ export function encode(
   const cnMRle = rle(cnM);
   const cnFRle = rle(cnF);
 
-  // ============================================
-  // 9. gr.e — columnar
-  // ============================================
   const exports = asArray<ExportData>(canonical.exports);
   const geM: number[] = [];
   const geF: number[] = [];
@@ -1869,9 +1747,6 @@ export function encode(
     geFlags.push(flags);
   }
 
-  // ============================================
-  // 10. gr.i — columnar
-  // ============================================
   const imports = asArray<ImportData>(canonical.imports);
   const giFf: number[] = [];
   const giTf: number[] = [];
@@ -1885,7 +1760,6 @@ export function encode(
     if (!imp) continue;
 
     const typeCode = imp.isDefault ? 1 : imp.isNamespace ? 2 : 0;
-
     const combinedTy =
       typeCode |
       (imp.isExternal ? 4 : 0) |
@@ -1904,9 +1778,6 @@ export function encode(
     giTy.push(combinedTy);
   }
 
-  // ============================================
-  // 11. gr.c — columnar
-  // ============================================
   const calls = asArray<CallData>(canonical.calls);
   const gcF: number[] = [];
   const gcT: number[] = [];
@@ -1933,16 +1804,12 @@ export function encode(
     );
     gcL.push(call.line);
     gcTy.push(combinedTy);
-
     gcCol.push(call.column ?? -1);
     gcCk.push(call.callKind ? (CALL_KIND_CODES[call.callKind] ?? -1) : -1);
     gcCn.push(call.calleeName ? addString(dict, call.calleeName) : -1);
     gcAi.push(call.argumentIndex ?? -1);
   }
 
-  // ============================================
-  // 12. gr.re — columnar
-  // ============================================
   const reExports = asArray<ReExportData>(canonical.reExports);
   const greM: number[] = [];
   const greFn: number[] = [];
@@ -1965,9 +1832,6 @@ export function encode(
     greTy.push(combinedTy);
   }
 
-  // ============================================
-  // 12.5. Расширенные секции
-  // ============================================
   function encodeExtendedSection<T>(items: T[] | undefined, prefix: string): number[] {
     if (!items || items.length === 0) return [];
     const result: number[] = [];
@@ -1997,9 +1861,6 @@ export function encode(
   const ty = encodeExtendedSection<TypeNodeData>(canonical.types, 'ty');
   const tr = encodeExtendedSection<TypeRefData>(canonical.typeRefs, 'tr');
 
-  // ============================================
-  // 12.6. lx — lexical links (columnar)
-  // ============================================
   const lexicalLinks = asArray<LexicalLink>((canonical as any).lexicalLinks);
 
   const lxP: number[] = [];
@@ -2034,57 +1895,19 @@ export function encode(
   const lxP_Rle = rle(lxP);
   const lxC_Rle = rle(lxC);
 
-  // ============================================
-  // 12.6.5. ✅ v16.0.0: новые top-level секции
-  // ============================================
   const fnHtmlUsageData = encodeFnHtmlUsage(canonical as any, dict);
   const domApiCallsData = encodeDomApiCalls(canonical as any, dict);
   const domApiArgsData = encodeDomApiArgs(canonical as any, dict);
 
-  // ============================================
-  // 12.7. vue — Vue-сущности
-  // ============================================
   let vue: VueSectionCompact | undefined;
   if (canonical.vue) {
     vue = encodeVueSection(canonical.vue, dict, fileReverse);
   }
 
-  // ============================================
-  // 12.7.5. ✅ v17.0.0: react — React-сущности
-  // ============================================
   let react: ReactSectionCompact | undefined;
   if ((canonical as any).react) {
     react = encodeReactSection((canonical as any).react, dict, fileReverse);
   }
-
-  // ============================================================
-  // 12.7.1 ✅ v16.1.0-FIX: top-level component* = vue.* (+ fallback)
-  // ============================================================
-  //
-  // ПРОБЛЕМА (v16.0.8):
-  //   Раньше top-level component* кодировались ПОВТОРНО через
-  //   encodeComponentPropsInline(fullComponentProps, dict) и т.д.
-  //
-  //   При этом `encodeVueSection` УЖЕ закодировал эти же данные
-  //   (в `vue.componentProps` и т.д.). Повторный вызов:
-  //     • наполнял dict.stringDict новыми строками (сдвиг индексов);
-  //     • наполнял dict.idDict новыми id;
-  //     • приводил к расхождению `componentProps.n` на +2..+78
-  //       между encode(full) и encode(decode(encode(full))).
-  //
-  // РЕШЕНИЕ v16.2.0:
-  //   Используем уже готовый результат из `vue` без повторного
-  //   кодирования. `vue.componentProps` идентичен тому, что было
-  //   бы в top-level.
-  //
-  // ⚠️ v16.2.1-FIX (round-trip L1/L2/DL):
-  //   Если `vue.componentProps` ОТСУТСТВУЕТ (например, vue-секция
-  //   не содержит component*, но top-level содержит) — кодируем
-  //   из `canonical.componentProps` как fallback.
-  //
-  //   Это гарантирует, что данные не потеряются ни при каком
-  //   порядке сборки FullJSON.
-  // ============================================================
 
   const topLevelComponentProps =
     vue?.componentProps ??
@@ -2121,9 +1944,6 @@ export function encode(
       ? encodeHtmlInterpolationsInline((canonical as any).htmlInterpolations, dict)
       : undefined);
 
-  // ============================================
-  // 13. ФИЛЬТРАЦИЯ VALUES
-  // ============================================
   let finalValueDict: unknown[] = dict.valueDict;
   let valueIndexMap: Map<number, number> | null = null;
 
@@ -2134,13 +1954,11 @@ export function encode(
 
     if (process.env.AST_DEBUG_CODEC === 'true') {
       console.log(
-        `   🗜️  values-mode=relations: ${dict.valueDict.length} → ${finalValueDict.length} значений ` +
-        `(${(((dict.valueDict.length - finalValueDict.length) / dict.valueDict.length) * 100).toFixed(1)}% сжатие)`
+        `   🗜️  values-mode=relations: ${dict.valueDict.length} → ${finalValueDict.length} значений`
       );
     }
   }
 
-  // Переиндексация ссылок в extended-секциях
   function remapIndices(indices: number[]): number[] {
     if (!valueIndexMap) return indices;
     const result: number[] = [];
@@ -2171,9 +1989,6 @@ export function encode(
     }
   }
 
-  // ============================================
-  // 14. Легенда
-  // ============================================
   const legend: CodecLegend = buildLegend({
     stringDict: dict.stringDict,
     paramDict: dict.paramDict,
@@ -2181,16 +1996,12 @@ export function encode(
     valueDict: finalValueDict,
   });
 
-  // ============================================
-  // 15. Сборка CompactJSON
-  // ============================================
   const compact: CompactJSON = {
     v: CODEC_VERSION,
     ts: canonical.timestamp,
     r: moduleReverse.get(canonical.root) ?? 0,
     valuesMode,
 
-    // ✅ v16.1.0: top-level component*-секции = vue.* (+ fallback)
     componentProps: topLevelComponentProps,
     componentEvents: topLevelComponentEvents,
     componentDirectives: topLevelComponentDirectives,
@@ -2266,17 +2077,12 @@ export function encode(
     },
 
     vue,
-
-    // ✅ v17.0.0: react-секция (опциональная)
     react,
 
-    // ✅ v16.0.0: новые top-level секции
     fnHtmlUsage: fnHtmlUsageData,
     domApiCalls: domApiCallsData,
     domApiArgs: domApiArgsData,
 
-    // ✅ v16.2.0-FIX: compact.ids = dict.idDict (естественный порядок addId).
-    // full.ids будет перезаписан compact.ids в collect-full-json.ts.
     ids: dict.idDict.length > 0 ? dict.idDict : undefined,
 
     sourceChains: dict.sourceChainDict.length > 0 ? dict.sourceChainDict : undefined,
@@ -2285,47 +2091,18 @@ export function encode(
     legend,
   };
 
-  // ============================================
-  // ✅ FIX v16.0.8: ДЕТЕРМИНИРОВАННАЯ ТОКЕНИЗАЦИЯ
-  // ============================================
-  // ПРОБЛЕМА:
-  //   `encodeStr()` зависит от частотного словаря токенов
-  //   (buildTokenDict). При повторном `encode(decode(...))`
-  //   словарь меняется → токенизация ломается:
-  //     $.params[10]  a: [562]      b: "overrides"
-  //     $.tokens.length  a: 612  b: 520
-  //
-  // РЕШЕНИЕ:
-  //   Токенизировать ТОЛЬКО `strs` (их много, выигрыш есть).
-  //   `params[]` и `methods[]` оставить БЕЗ токенизации —
-  //   они короткие, а нестабильность из-за них.
-  //
-  //   Это гарантирует:
-  //     encode(decode(encode(x))) === encode(x)   (L4)
-  //     encode(decode(compact)) === compact       (RE)
-  //     encode(full) === encode(decode(encode(full)))  (ENC)
-  // ============================================
   const allStringsForTokens = [...dict.stringDict];
   const tokens = buildTokenDict(allStringsForTokens);
   const tokenIndex = new Map(tokens.map((t, i) => [t, i]));
 
   compact.tokens = tokens;
   compact.strs = dict.stringDict.map(s => encodeStr(s, tokenIndex));
-  // ✅ FIX: params и methods — БЕЗ токенизации (детерминированно)
   compact.params = dict.paramDict.slice();
   compact.methods = dict.methodDict.slice();
 
-  // ============================================
-  // Удаление пустых опциональных секций
-  // ============================================
-  // ✅ FIX v16.0.8: top-level component*-секции НЕ удаляем,
-  // даже если пусты — симметрия с codec-decode.ts v16.0.4.
   const OPTIONAL_SECTIONS: (keyof CompactJSON)[] = [
     'vt', 'lc', 'ef', 'inj', 'rx', 'cd', 'ty', 'tr', 'vue', 'react',
     'fnHtmlUsage', 'domApiCalls', 'domApiArgs', 'ids', 'sourceChains',
-    // ❌ 'componentProps', 'componentEvents', 'componentDirectives',
-    //    'componentSlots', 'htmlInterpolations' — НЕ включать!
-    //    codec-decode.ts v16.0.4 всегда их восстанавливает (даже []).
   ];
 
   for (const key of OPTIONAL_SECTIONS) {

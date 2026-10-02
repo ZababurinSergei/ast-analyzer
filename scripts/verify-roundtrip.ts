@@ -33,9 +33,10 @@ const DEFAULT_OPTIONS: ScriptOptions = {
   checkLegend: true,
 };
 
+// ✅ v17.1.0: обновлено с 17.0.0 на 17.1.0 (CODEC_VERSION в codec-types.ts)
 // ✅ v17.0.0: обновлено с 16.2.0 на 17.0.0 (CODEC_VERSION в codec-types.ts)
-// ✅ v17.0.0: обновлено с 2.1.0 на 3.0.0 (legend.version в codec-legend.ts)
-const EXPECTED_CODEC_VERSION = '17.0.0';
+// ✅ v16.2.0: LEGEND_VERSION = '3.0.0'
+const EXPECTED_CODEC_VERSION = '17.1.0';
 const EXPECTED_LEGEND_VERSION = '3.0.0';
 
 // ============================================
@@ -161,13 +162,6 @@ function normalizeForCompare(value: any): string {
  *   - vue.hooks[].id
  *   - vue.reactivity[].id
  *   - vue.icons[].id
- *
- * ⚠️ v16.0.0: НЕ трогает новые секции (componentProps, domApiCalls, ...),
- * потому что их `id` — это индексы в `ids[]`, а не сгенерированные
- * клиентом значения.
- *
- * ⚠️ v16.2.0: `usedInTemplate` теперь присутствует в reactivity —
- * нормализация НЕ удаляет это поле (оно часть данных).
  */
 function normalizeVueForCompare(full: any): any {
   if (!full || typeof full !== 'object') return full;
@@ -192,11 +186,8 @@ function normalizeVueForCompare(full: any): any {
       composables: stripId(vue.composables),
       macros: stripId(vue.macros),
       hooks: stripId(vue.hooks),
-      // ✅ v16.2.0: reactivity теперь содержит usedInTemplate
-      // — не удаляем, это часть данных.
       reactivity: stripId(vue.reactivity),
       icons: stripId(vue.icons),
-      // ✅ v16.0.0: новые секции — как есть
       componentProps: vue.componentProps,
       componentEvents: vue.componentEvents,
       componentDirectives: vue.componentDirectives,
@@ -215,9 +206,6 @@ function normalizeVueForCompare(full: any): any {
 // ✅ v16.0.2: НОРМАЛИЗАЦИЯ ФУНКЦИЙ ДЛЯ СРАВНЕНИЯ
 // ============================================
 
-/**
- * ✅ v16.0.2: Нормализует функции для сравнения в L1/L2/DL.
- */
 function normalizeFunctionsForCompare(full: any): any {
   if (!full || typeof full !== 'object') return full;
 
@@ -231,22 +219,10 @@ function normalizeFunctionsForCompare(full: any): any {
 
       const result = { ...fn };
 
-      // htmlUsage: undefined/null → []
-      if (!Array.isArray(result.htmlUsage)) {
-        result.htmlUsage = [];
-      }
+      if (!Array.isArray(result.htmlUsage)) result.htmlUsage = [];
+      if (!Array.isArray(result.domApiCalls)) result.domApiCalls = [];
+      if (!Array.isArray(result.usagesAsPropSource)) result.usagesAsPropSource = [];
 
-      // domApiCalls: undefined/null → []
-      if (!Array.isArray(result.domApiCalls)) {
-        result.domApiCalls = [];
-      }
-
-      // usagesAsPropSource: undefined/null → []
-      if (!Array.isArray(result.usagesAsPropSource)) {
-        result.usagesAsPropSource = [];
-      }
-
-      // isHtmlVisible: undefined/null → false
       if (result.isHtmlVisible === undefined || result.isHtmlVisible === null) {
         result.isHtmlVisible = false;
       }
@@ -260,11 +236,6 @@ function normalizeFunctionsForCompare(full: any): any {
 // ✅ v16.0.3: НОРМАЛИЗАЦИЯ VUE.SFC[] ДЛЯ СРАВНЕНИЯ
 // ============================================
 
-/**
- * ✅ v16.0.3: Нормализует `vue.sfc[]` для сравнения в L1/L2/DL.
- *
- * Приводит `undefined`/`null` к `[]`.
- */
 function normalizeVueSfcForCompare(full: any): any {
   if (!full || typeof full !== 'object') return full;
 
@@ -287,12 +258,54 @@ function normalizeVueSfcForCompare(full: any): any {
   };
 }
 
+// ============================================
+// ✅ v17.1.0: НОРМАЛИЗАЦИЯ REACT-СЕКЦИИ ДЛЯ СРАВНЕНИЯ
+// ============================================
+
 /**
- * ✅ v16.0.3: Полная нормализация FullJSON для сравнения.
+ * ✅ v17.1.0: Нормализует React-секцию для сравнения в L1/L2/DL.
+ *
+ * Проблема:
+ *   - decode(compact) может возвращать react.stateFlows/eventFlows/
+ *     renderTree/fnJsxUsage как undefined, если массив пуст.
+ *   - full всегда содержит [].
+ *
+ * Решение: приводим undefined к [].
+ */
+function normalizeReactForCompare(full: any): any {
+  if (!full || typeof full !== 'object') return full;
+  if (!full.react) return full;
+
+  const react = { ...full.react };
+
+  // Базовые секции
+  for (const k of [
+    'components', 'hooks', 'effects', 'contexts',
+    'memoization', 'refs', 'jsxElements', 'jsxEvents',
+    'conditionals', 'componentUsages',
+  ]) {
+    if (!Array.isArray(react[k])) react[k] = [];
+  }
+
+  // ✅ v17.1.0: Flow-секции
+  for (const k of ['stateFlows', 'eventFlows', 'renderTree', 'fnJsxUsage']) {
+    if (!Array.isArray(react[k])) react[k] = [];
+  }
+
+  return {
+    ...full,
+    react,
+  };
+}
+
+/**
+ * ✅ v16.0.3 + v17.1.0: Полная нормализация FullJSON для сравнения.
  */
 function normalizeFullForCompare(full: any): any {
-  return normalizeVueSfcForCompare(
-    normalizeFunctionsForCompare(normalizeVueForCompare(full))
+  return normalizeReactForCompare(
+    normalizeVueSfcForCompare(
+      normalizeFunctionsForCompare(normalizeVueForCompare(full))
+    )
   );
 }
 
@@ -416,9 +429,6 @@ function printLevelResult(name: string, result: LevelResult, maxDiffs: number): 
 // RLE HELPER
 // ============================================
 
-/**
- * Распаковка RLE: [[value, count], ...] → [value, value, ...]
- */
 function unrle(rle: [number, number][]): number[] {
   const result: number[] = [];
   for (const [value, count] of rle) {
@@ -428,7 +438,7 @@ function unrle(rle: [number, number][]): number[] {
 }
 
 // ============================================
-// ✅ v15.0.2: ПОДСЧЁТ CONDITIONALS
+// ПОДСЧЁТЫ
 // ============================================
 
 function countConditionals(full: FullJSON): number {
@@ -439,17 +449,9 @@ function countConditionals(full: FullJSON): number {
   return count;
 }
 
-// ============================================
-// ✅ v15.2.0 (P1): ПОДСЧЁТ LEXICAL LINKS
-// ============================================
-
 function countLexicalLinks(full: FullJSON): number {
   return (full.lexicalLinks ?? []).length;
 }
-
-// ============================================
-// ✅ v15.7.0: ПОДСЧЁТ VUE-СУЩНОСТЕЙ
-// ============================================
 
 interface VueCounts {
   sfc: number;
@@ -473,7 +475,48 @@ function countVueEntities(full: FullJSON): VueCounts {
 }
 
 // ============================================
-// ✅ v15.6.0: ДИАГНОСТИКА РАССИНХРОНА values[]
+// ✅ v17.1.0: ПОДСЧЁТ REACT-СУЩНОСТЕЙ
+// ============================================
+
+interface ReactCounts {
+  components: number;
+  hooks: number;
+  effects: number;
+  contexts: number;
+  memoization: number;
+  refs: number;
+  jsxElements: number;
+  jsxEvents: number;
+  conditionals: number;
+  componentUsages: number;
+  stateFlows: number;
+  eventFlows: number;
+  renderTree: number;
+  fnJsxUsage: number;
+}
+
+function countReactEntities(full: FullJSON): ReactCounts {
+  const r = (full as any).react;
+  return {
+    components: r?.components?.length ?? 0,
+    hooks: r?.hooks?.length ?? 0,
+    effects: r?.effects?.length ?? 0,
+    contexts: r?.contexts?.length ?? 0,
+    memoization: r?.memoization?.length ?? 0,
+    refs: r?.refs?.length ?? 0,
+    jsxElements: r?.jsxElements?.length ?? 0,
+    jsxEvents: r?.jsxEvents?.length ?? 0,
+    conditionals: r?.conditionals?.length ?? 0,
+    componentUsages: r?.componentUsages?.length ?? 0,
+    stateFlows: r?.stateFlows?.length ?? 0,
+    eventFlows: r?.eventFlows?.length ?? 0,
+    renderTree: r?.renderTree?.length ?? 0,
+    fnJsxUsage: r?.fnJsxUsage?.length ?? 0,
+  };
+}
+
+// ============================================
+// ДИАГНОСТИКА РАССИНХРОНА values[]
 // ============================================
 
 function diagnoseValuesDesync(
@@ -537,7 +580,7 @@ function diagnoseValuesDesync(
 }
 
 // ============================================
-// ✅ v15.7.0 + v16.1.0 + v16.2.0: ПРОВЕРКА ЛЕГЕНДЫ
+// ПРОВЕРКА ЛЕГЕНДЫ
 // ============================================
 
 interface LegendCheck {
@@ -550,7 +593,6 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
   const legend = (compact as any).legend;
   const checks: LegendCheck[] = [];
 
-  // ✅ v16.0.0: расширенный список codes (29 словарей)
   const requiredCodes = [
     'export',
     'import',
@@ -563,24 +605,19 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     'conditional',
     'typeKind',
     'typeUsage',
-    // ✅ v15.2.0 (P1)
     'lexicalRelation',
-    // ✅ v15.3.0 (P2)
     'callKind',
-    // ✅ v15.7.0: Vue-сущности
     'vueKind',
     'sfcBlock',
     'hookName',
     'reactivityKind',
     'iconCategory',
     'composableKind',
-    // ✅ v16.0.0: Vue component usage
     'componentSource',
     'propKind',
     'eventHandlerSource',
     'htmlOutputKind',
     'sourceChainKind',
-    // ✅ v16.0.0: DOM API
     'domApiCategory',
     'domApiEffect',
     'domApiTargetKind',
@@ -598,14 +635,12 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     });
   }
 
-  // ✅ v16.1.0: legend.version
   checks.push({
     name: `legend.version = ${EXPECTED_LEGEND_VERSION}`,
     ok: legend?.version === EXPECTED_LEGEND_VERSION,
     note: legend?.version ? `"${legend.version}"` : 'отсутствует',
   });
 
-  // flags.bits
   const bitsCount = legend?.flags?.bits ? Object.keys(legend.flags.bits).length : 0;
   checks.push({
     name: 'legend.flags.bits (18 битов)',
@@ -613,13 +648,10 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     note: legend?.flags?.bits ? `${bitsCount} битов` : 'отсутствует',
   });
 
-  // ✅ v16.1.0 + v16.2.0: расширенный список schemas
-  // ✅ v16.1.0: fns — 10 полей, vue.sfc — 34 поля
-  // ✅ v16.2.0: vue.reactivity — 5 полей (было 4)
   const schemaChecks: Array<{ key: string; expectedLength: number }> = [
     { key: 'mi', expectedLength: 2 },
     { key: 'fl', expectedLength: 2 },
-    { key: 'fns', expectedLength: 10 },   // ✅ v16.0.2
+    { key: 'fns', expectedLength: 10 },
     { key: 'cls', expectedLength: 6 },
     { key: 'cn', expectedLength: 6 },
     { key: 'gr.e', expectedLength: 9 },
@@ -639,15 +671,12 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     { key: 'ty', expectedLength: 7 },
     { key: 'tr', expectedLength: 5 },
     { key: 'lx', expectedLength: 6 },
-    // ✅ v16.1.0: vue.sfc — 34 поля (было 30)
     { key: 'vue.sfc', expectedLength: 34 },
     { key: 'vue.composables', expectedLength: 5 },
     { key: 'vue.macros', expectedLength: 3 },
     { key: 'vue.hooks', expectedLength: 3 },
-    // ✅ v16.2.0: vue.reactivity — 5 полей (было 4)
     { key: 'vue.reactivity', expectedLength: 5 },
     { key: 'vue.icons', expectedLength: 3 },
-    // ✅ v16.0.0: новые схемы
     { key: 'vue.componentProps', expectedLength: 10 },
     { key: 'vue.componentEvents', expectedLength: 8 },
     { key: 'vue.componentDirectives', expectedLength: 6 },
@@ -657,6 +686,24 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     { key: 'domApiCalls', expectedLength: 19 },
     { key: 'domApiArgs', expectedLength: 4 },
     { key: 'ids', expectedLength: 1 },
+
+    // ✅ v17.0.0: React-схемы
+    { key: 'react.components', expectedLength: 9 },
+    { key: 'react.hooks', expectedLength: 9 },
+    { key: 'react.effects', expectedLength: 9 },
+    { key: 'react.contexts', expectedLength: 5 },
+    { key: 'react.memoization', expectedLength: 5 },
+    { key: 'react.refs', expectedLength: 5 },
+    { key: 'react.jsxElements', expectedLength: 12 },
+    { key: 'react.jsxEvents', expectedLength: 7 },
+    { key: 'react.conditionals', expectedLength: 7 },
+    { key: 'react.componentUsages', expectedLength: 10 },
+
+    // ✅ v17.1.0: React flow-схемы
+    { key: 'react.stateFlows', expectedLength: 7 },
+    { key: 'react.eventFlows', expectedLength: 10 },
+    { key: 'react.renderTree', expectedLength: 6 },
+    { key: 'react.fnJsxUsage', expectedLength: 3 },
   ];
 
   for (const { key, expectedLength } of schemaChecks) {
@@ -673,7 +720,7 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
 }
 
 // ============================================
-// ✅ v15.6.0: ИНВАРИАНТ I15
+// ИНВАРИАНТЫ
 // ============================================
 
 function invariantI15(compact: CompactJSON, limit: number): LevelResult {
@@ -703,10 +750,6 @@ function invariantI15(compact: CompactJSON, limit: number): LevelResult {
   };
 }
 
-// ============================================
-// ✅ v15.6.0: ИНВАРИАНТ I16
-// ============================================
-
 function invariantI16(full: FullJSON, limit: number): LevelResult {
   const violations: string[] = [];
 
@@ -735,10 +778,6 @@ function invariantI16(full: FullJSON, limit: number): LevelResult {
   };
 }
 
-// ============================================
-// ✅ v15.7.3: ИНВАРИАНТ I17 — vue.sfc.c/cs согласованность
-// ============================================
-
 function invariantI17(compact: CompactJSON, decoded: FullJSON, limit: number): LevelResult {
   const violations: string[] = [];
 
@@ -756,7 +795,6 @@ function invariantI17(compact: CompactJSON, decoded: FullJSON, limit: number): L
   const sfcE = compactVue.sfc?.e ?? [];
   const sfcX = compactVue.sfc?.x ?? [];
 
-  // ✅ v16.0.0: новые срезы
   const sfcPS = (compactVue.sfc as any)?.ps ?? [];
   const sfcES = (compactVue.sfc as any)?.es ?? [];
   const sfcXS = (compactVue.sfc as any)?.xs ?? [];
@@ -786,7 +824,6 @@ function invariantI17(compact: CompactJSON, decoded: FullJSON, limit: number): L
       );
     }
 
-    // ✅ v16.0.0: приоритет ps/es/xs, fallback — p/e/x
     const declaredP = Array.isArray(sfcPS[i])
       ? ((sfcPS[i] as any)[1] ?? 0)
       : (sfcP[i]?.[1] ?? 0);
@@ -827,10 +864,6 @@ function invariantI17(compact: CompactJSON, decoded: FullJSON, limit: number): L
   };
 }
 
-// ============================================
-// ✅ v16.1.0: ИНВАРИАНТ I51 — he.id глобально уникальны
-// ============================================
-
 function invariantI51(full: FullJSON, limit: number): LevelResult {
   const violations: string[] = [];
   const vue = (full as any).vue;
@@ -839,7 +872,7 @@ function invariantI51(full: FullJSON, limit: number): LevelResult {
     return { ok: true, diffCount: 0, diff: null };
   }
 
-  const seen = new Map<string, string>(); // id → fileId
+  const seen = new Map<string, string>();
 
   for (const sfc of vue.sfc) {
     if (!sfc || !Array.isArray(sfc.htmlElements)) continue;
@@ -866,10 +899,6 @@ function invariantI51(full: FullJSON, limit: number): LevelResult {
     diff: violations.map(v => ({ path: '$.vue.sfc[].htmlElements[].id', a: v, b: 'unique' })),
   };
 }
-
-// ============================================
-// ✅ v16.1.0: ИНВАРИАНТ I52 — cu.id глобально уникальны
-// ============================================
 
 function invariantI52(full: FullJSON, limit: number): LevelResult {
   const violations: string[] = [];
@@ -907,10 +936,6 @@ function invariantI52(full: FullJSON, limit: number): LevelResult {
   };
 }
 
-// ============================================
-// ✅ v16.1.0: ИНВАРИАНТ I53 — he.parentFileId согласован
-// ============================================
-
 function invariantI53(full: FullJSON, limit: number): LevelResult {
   const violations: string[] = [];
   const vue = (full as any).vue;
@@ -931,7 +956,6 @@ function invariantI53(full: FullJSON, limit: number): LevelResult {
       if (!he) continue;
       const pf = he.parentFileId;
 
-      // parentFileId должен быть либо '', либо валидным fileId
       if (pf !== '' && pf !== sfcFileId && !fileIdSet.has(pf)) {
         violations.push(
           `he.id="${he.id}" в SFC "${sfcFileId}": parentFileId="${pf}" не найден в files[]`
@@ -948,10 +972,6 @@ function invariantI53(full: FullJSON, limit: number): LevelResult {
     diff: violations.map(v => ({ path: '$.vue.sfc[].htmlElements[].parentFileId', a: v, b: 'valid fileId' })),
   };
 }
-
-// ============================================
-// ✅ v15.6.0: ПРОВЕРКА JSON-SAFE "НА ДИСКЕ"
-// ============================================
 
 function checkJsonSafetyInFile(compact: CompactJSON, limit: number): LevelResult {
   const violations: string[] = [];
@@ -984,13 +1004,6 @@ function checkJsonSafetyInFile(compact: CompactJSON, limit: number): LevelResult
   };
 }
 
-// ============================================
-// ✅ v16.0.0: I45–I50
-// ============================================
-
-/**
- * I45: len(ids) >= max(componentProps.id, fnHtmlUsage.u, domApiCalls.t)
- */
 function invariantI45(compact: CompactJSON): LevelResult {
   const ids = (compact as any).ids || [];
   const cpMax = Math.max(-1, ...(((compact as any).componentProps?.id) || []));
@@ -1008,9 +1021,6 @@ function invariantI45(compact: CompactJSON): LevelResult {
   };
 }
 
-/**
- * I46: values[] — JSON-safe
- */
 function invariantI46(compact: CompactJSON): LevelResult {
   const values = compact.values || [];
   const violations: any[] = [];
@@ -1025,9 +1035,6 @@ function invariantI46(compact: CompactJSON): LevelResult {
   return { ok: violations.length === 0, diffCount: violations.length, diff: violations };
 }
 
-/**
- * I47: params[] — (string | number[])[]
- */
 function invariantI47(compact: CompactJSON): LevelResult {
   const params = compact.params || [];
   const violations: any[] = [];
@@ -1035,7 +1042,6 @@ function invariantI47(compact: CompactJSON): LevelResult {
     const p = params[i];
     const t = typeof p;
     const isString = t === 'string';
-    // ✅ FIX v16.0.2: массив любой длины из чисел
     const isNumberArray = Array.isArray(p) && p.every((x: any) => typeof x === 'number');
     if (!isString && !isNumberArray) {
       violations.push({
@@ -1049,9 +1055,6 @@ function invariantI47(compact: CompactJSON): LevelResult {
   return { ok: violations.length === 0, diffCount: violations.length, diff: violations };
 }
 
-/**
- * I48: legend.schemas['vue.sfc'] содержит pn/ps/en/es/xn/xs
- */
 function invariantI48(compact: CompactJSON): LevelResult {
   const schema = (compact as any).legend?.schemas?.['vue.sfc'];
   if (!Array.isArray(schema)) {
@@ -1070,9 +1073,6 @@ function invariantI48(compact: CompactJSON): LevelResult {
   };
 }
 
-/**
- * I49: legend.schemas['ids'] присутствует
- */
 function invariantI49(compact: CompactJSON): LevelResult {
   const schema = (compact as any).legend?.schemas?.ids;
   const ok = Array.isArray(schema) && schema.length === 1;
@@ -1085,9 +1085,6 @@ function invariantI49(compact: CompactJSON): LevelResult {
   };
 }
 
-/**
- * I50 (усиление I24): RLE для sc-массивов — max(start + length) < sourceChains.length
- */
 function invariantI50(compact: CompactJSON): LevelResult {
   const violations: any[] = [];
   const scLen = ((compact as any).sourceChains || []).length;
@@ -1115,6 +1112,107 @@ function invariantI50(compact: CompactJSON): LevelResult {
     }
   }
   return { ok: violations.length === 0, diffCount: violations.length, diff: violations };
+}
+
+// ============================================
+// ✅ v17.1.0: ИНВАРИАНТЫ REACT
+// ============================================
+
+/**
+ * I60: react.components[].hooks — все ссылки валидны
+ */
+function invariantI60(full: FullJSON, limit: number): LevelResult {
+  const violations: string[] = [];
+  const r = (full as any).react;
+  if (!r) return { ok: true, diffCount: 0, diff: null };
+
+  const hookIds = new Set<string>((r.hooks ?? []).map((h: any) => h.id));
+  for (const comp of r.components ?? []) {
+    for (const hid of comp.hooks ?? []) {
+      if (hid && !hookIds.has(hid)) {
+        violations.push(`components[${comp.id}].hooks: "${hid}" не найден в react.hooks[]`);
+        if (violations.length >= limit) break;
+      }
+    }
+    if (violations.length >= limit) break;
+  }
+  return {
+    ok: violations.length === 0,
+    diffCount: violations.length,
+    diff: violations.map(v => ({ path: '$.react.components[].hooks', a: v, b: 'valid hookId' })),
+  };
+}
+
+/**
+ * I61: react.stateFlows[].hookId ∈ react.hooks[].id
+ */
+function invariantI61(full: FullJSON, limit: number): LevelResult {
+  const violations: string[] = [];
+  const r = (full as any).react;
+  if (!r || !Array.isArray(r.stateFlows)) {
+    return { ok: true, diffCount: 0, diff: null };
+  }
+
+  const hookIds = new Set<string>((r.hooks ?? []).map((h: any) => h.id));
+  for (const sf of r.stateFlows) {
+    if (sf.hookId && !hookIds.has(sf.hookId)) {
+      violations.push(`stateFlows[${sf.id}].hookId: "${sf.hookId}" не найден в react.hooks[]`);
+      if (violations.length >= limit) break;
+    }
+  }
+  return {
+    ok: violations.length === 0,
+    diffCount: violations.length,
+    diff: violations.map(v => ({ path: '$.react.stateFlows[].hookId', a: v, b: 'valid hookId' })),
+  };
+}
+
+/**
+ * I62: react.eventFlows[].elementId ∈ react.jsxElements[].id
+ */
+function invariantI62(full: FullJSON, limit: number): LevelResult {
+  const violations: string[] = [];
+  const r = (full as any).react;
+  if (!r || !Array.isArray(r.eventFlows)) {
+    return { ok: true, diffCount: 0, diff: null };
+  }
+
+  const elementIds = new Set<string>((r.jsxElements ?? []).map((e: any) => e.id));
+  for (const ef of r.eventFlows) {
+    if (ef.elementId && !elementIds.has(ef.elementId)) {
+      violations.push(`eventFlows[${ef.id}].elementId: "${ef.elementId}" не найден в react.jsxElements[]`);
+      if (violations.length >= limit) break;
+    }
+  }
+  return {
+    ok: violations.length === 0,
+    diffCount: violations.length,
+    diff: violations.map(v => ({ path: '$.react.eventFlows[].elementId', a: v, b: 'valid jsxElementId' })),
+  };
+}
+
+/**
+ * I63: react.renderTree[].elementId ∈ react.jsxElements[].id
+ */
+function invariantI63(full: FullJSON, limit: number): LevelResult {
+  const violations: string[] = [];
+  const r = (full as any).react;
+  if (!r || !Array.isArray(r.renderTree)) {
+    return { ok: true, diffCount: 0, diff: null };
+  }
+
+  const elementIds = new Set<string>((r.jsxElements ?? []).map((e: any) => e.id));
+  for (const node of r.renderTree) {
+    if (node.elementId && !elementIds.has(node.elementId)) {
+      violations.push(`renderTree[${node.elementId}]: не найден в react.jsxElements[]`);
+      if (violations.length >= limit) break;
+    }
+  }
+  return {
+    ok: violations.length === 0,
+    diffCount: violations.length,
+    diff: violations.map(v => ({ path: '$.react.renderTree[].elementId', a: v, b: 'valid jsxElementId' })),
+  };
 }
 
 // ============================================
@@ -1160,10 +1258,7 @@ async function main(): Promise<void> {
     info(`JSON report: ${path.resolve(options.jsonReportPath)}`);
   }
 
-  // ============================================
   // 1. ЗАГРУЗКА ФАЙЛОВ
-  // ============================================
-
   section('📂 ЗАГРУЗКА ФАЙЛОВ');
 
   const compact = readJson<CompactJSON>(options.compactPath);
@@ -1176,15 +1271,13 @@ async function main(): Promise<void> {
   info(`Full size:    ${formatSize(fullSize)}`);
   info(`Compression:  ${((compactSize / fullSize) * 100).toFixed(2)}%`);
 
-  // ============================================
   // 2. БАЗОВАЯ СТРУКТУРА
-  // ============================================
-
   section('🧱 БАЗОВАЯ СТРУКТУРА');
 
   const conditionalsCount = countConditionals(full);
   const lexicalLinksCount = countLexicalLinks(full);
   const vueCounts = countVueEntities(full);
+  const reactCounts = countReactEntities(full);
 
   const sections: Record<string, number> = {
     modules: full.modules?.length ?? 0,
@@ -1211,7 +1304,6 @@ async function main(): Promise<void> {
     'vue.hooks': vueCounts.hooks,
     'vue.reactivity': vueCounts.reactivity,
     'vue.icons': vueCounts.icons,
-    // ✅ v16.0.0
     fnHtmlUsage: (full as any).fnHtmlUsage?.length ?? 0,
     componentProps: (full as any).componentProps?.length ?? 0,
     componentEvents: (full as any).componentEvents?.length ?? 0,
@@ -1222,6 +1314,24 @@ async function main(): Promise<void> {
     domApiArgs: (full as any).domApiArgs?.length ?? 0,
     ids: (full as any).ids?.length ?? 0,
     sourceChains: (full as any).sourceChains?.length ?? 0,
+
+    // ✅ v17.0.0: React
+    'react.components': reactCounts.components,
+    'react.hooks': reactCounts.hooks,
+    'react.effects': reactCounts.effects,
+    'react.contexts': reactCounts.contexts,
+    'react.memoization': reactCounts.memoization,
+    'react.refs': reactCounts.refs,
+    'react.jsxElements': reactCounts.jsxElements,
+    'react.jsxEvents': reactCounts.jsxEvents,
+    'react.conditionals': reactCounts.conditionals,
+    'react.componentUsages': reactCounts.componentUsages,
+
+    // ✅ v17.1.0: React flow
+    'react.stateFlows': reactCounts.stateFlows,
+    'react.eventFlows': reactCounts.eventFlows,
+    'react.renderTree': reactCounts.renderTree,
+    'react.fnJsxUsage': reactCounts.fnJsxUsage,
   };
 
   log('  FullJSON секции:');
@@ -1229,10 +1339,7 @@ async function main(): Promise<void> {
     log(`    ${key.padEnd(22)} ${value}`);
   }
 
-  // ============================================
   // 2.5. ПРОВЕРКА СТРУКТУРЫ ЛЕГЕНДЫ
-  // ============================================
-
   let legendChecks: LegendCheck[] = [];
   let legendPassed = 0;
   let legendFailed = 0;
@@ -1264,10 +1371,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // ============================================
   // 3. ROUND-TRIP УРОВНИ
-  // ============================================
-
   section('🔁 ВСЕ УРОВНИ ROUND-TRIP');
 
   const baseReport = verifyRoundTripBoth(full, compact);
@@ -1405,10 +1509,7 @@ async function main(): Promise<void> {
     fail('compact_self_contained — decode(compact) зависит от full');
   }
 
-  // ============================================
   // 3.5. ПРОВЕРКА СЕКЦИЙ
-  // ============================================
-
   section('🎨 ПРОВЕРКА СЕКЦИЙ (vt/lc/ef/inj/rx/ty/tr/lx/vue)');
 
   const sectionNames = [
@@ -1464,9 +1565,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // ============================================
-  // ✅ v15.7.3 + v16.0.0: VUE-СЕКЦИЯ
-  // ============================================
+  // VUE-СЕКЦИЯ
   subsection('vue (специальная проверка с нормализацией)');
 
   const decodedVue = (decoded as any).vue;
@@ -1484,7 +1583,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // I18: fns.vk ↔ functions[].vueKind
+  // I18
   {
     const violations: string[] = [];
     const fnsVkRaw = compact.fns?.vk;
@@ -1531,7 +1630,6 @@ async function main(): Promise<void> {
     }
   }
 
-  // Сравнение vue-секций decoded ↔ full с нормализацией
   const normalizeSfc = (arr: any[]): any[] => {
     return arr.map(s => ({
       fileId: s.fileId,
@@ -1542,7 +1640,6 @@ async function main(): Promise<void> {
       propsCount: Array.isArray(s.props) ? s.props.length : 0,
       emitsCount: Array.isArray(s.emits) ? s.emits.length : 0,
       exposedCount: Array.isArray(s.exposed) ? s.exposed.length : 0,
-      // ✅ v16.0.0
       componentUsagesCount: Array.isArray(s.componentUsages) ? s.componentUsages.length : 0,
       htmlElementsCount: Array.isArray(s.htmlElements) ? s.htmlElements.length : 0,
     }));
@@ -1564,9 +1661,6 @@ async function main(): Promise<void> {
     { name: 'composables', normalize: normalizeWithoutId },
     { name: 'macros', normalize: normalizeWithoutId },
     { name: 'hooks', normalize: normalizeWithoutId },
-    // ✅ v16.2.0: reactivity теперь содержит usedInTemplate —
-    // это часть данных, но comparison идёт через normalizeWithoutId
-    // (удаляется только id, usedInTemplate сохраняется)
     { name: 'reactivity', normalize: normalizeWithoutId },
     { name: 'icons', normalize: normalizeWithoutId },
   ];
@@ -1599,9 +1693,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // ============================================
-  // ✅ v15.0.2: conditionals (через templates[])
-  // ============================================
+  // conditionals
   subsection('conditionals (через templates[])');
   const decodedConditionals = countConditionals(decoded);
   const fullConditionals = countConditionals(full);
@@ -1613,10 +1705,63 @@ async function main(): Promise<void> {
     fail(`conditionals — FAIL (full=${fullConditionals}, decoded=${decodedConditionals})`);
   }
 
-  // ============================================
-  // 4. ТОЧЕЧНЫЕ ПРОВЕРКИ
-  // ============================================
+  // ✅ v17.0.0: REACT-СЕКЦИЯ
+  subsection('react (специальная проверка с нормализацией)');
 
+  const decodedReact = (decoded as any).react;
+  const fullReact = (full as any).react;
+
+  const reactSubsections: Array<{
+    name: string;
+    normalize: (arr: any[]) => any[];
+  }> = [
+    { name: 'components', normalize: normalizeWithoutId },
+    { name: 'hooks', normalize: normalizeWithoutId },
+    { name: 'effects', normalize: normalizeWithoutId },
+    { name: 'contexts', normalize: normalizeWithoutId },
+    { name: 'memoization', normalize: normalizeWithoutId },
+    { name: 'refs', normalize: normalizeWithoutId },
+    { name: 'jsxElements', normalize: normalizeWithoutId },
+    { name: 'jsxEvents', normalize: normalizeWithoutId },
+    { name: 'conditionals', normalize: normalizeWithoutId },
+    { name: 'componentUsages', normalize: normalizeWithoutId },
+
+    // ✅ v17.1.0: React flow
+    { name: 'stateFlows', normalize: (arr) => arr },
+    { name: 'eventFlows', normalize: (arr) => arr },
+    { name: 'renderTree', normalize: (arr) => arr },
+    { name: 'fnJsxUsage', normalize: (arr) => arr },
+  ];
+
+  for (const sub of reactSubsections) {
+    const a = decodedReact?.[sub.name] ?? null;
+    const b = fullReact?.[sub.name] ?? null;
+
+    const aArr = Array.isArray(a) ? a : a === null ? [] : [a];
+    const bArr = Array.isArray(b) ? b : b === null ? [] : [b];
+
+    const normA = sub.normalize(aArr);
+    const normB = sub.normalize(bArr);
+
+    const result = semanticCompare(normA, normB, options.maxDiffs);
+
+    if (result.ok) {
+      ok(`react.${sub.name} — PASS (${normA.length} элементов)`);
+    } else {
+      fail(
+        `react.${sub.name} — FAIL (decoded=${normA.length}, full=${normB.length}, diffCount=${result.diffCount})`
+      );
+      if (options.verbose && result.diff) {
+        for (const d of result.diff.slice(0, Math.min(options.maxDiffs, 5))) {
+          log(`    ${C.red}•${C.reset} ${d.path}`);
+          log(`        a: ${JSON.stringify(d.a)}`);
+          log(`        b: ${JSON.stringify(d.b)}`);
+        }
+      }
+    }
+  }
+
+  // 4. ТОЧЕЧНЫЕ ПРОВЕРКИ
   section('🎯 ТОЧЕЧНЫЕ ПРОВЕРКИ');
 
   const spotChecks: Array<{ name: string; result: LevelResult }> = [
@@ -1654,7 +1799,6 @@ async function main(): Promise<void> {
       name: 'functions[].vueKind',
       result: spotCheckVueKind(decoded, full, options.maxDiffs),
     },
-    // ✅ v16.0.0
     {
       name: 'functions[].htmlUsage',
       result: spotCheckHtmlUsage(decoded, full, options.maxDiffs),
@@ -1671,7 +1815,6 @@ async function main(): Promise<void> {
       name: 'ids / sourceChains',
       result: spotCheckIdsAndSourceChains(decoded, full, options.maxDiffs),
     },
-    // ✅ v16.0.3: спот-чек vue.sfc[].componentUsages/htmlElements
     {
       name: 'vue.sfc[].componentUsages',
       result: spotCheckVueSfcComponentUsages(decoded, full, options.maxDiffs),
@@ -1680,7 +1823,6 @@ async function main(): Promise<void> {
       name: 'vue.sfc[].htmlElements',
       result: spotCheckVueSfcHtmlElements(decoded, full, options.maxDiffs),
     },
-    // ✅ v16.1.0: новые спот-чеки
     {
       name: 'vue.sfc[].htmlElements[].parentFileId',
       result: spotCheckVueSfcHtmlElementsParentFileId(decoded, full, options.maxDiffs),
@@ -1693,7 +1835,6 @@ async function main(): Promise<void> {
       name: 'vue.sfc[].componentUsages[].id uniqueness',
       result: spotCheckVueSfcComponentUsagesIdUnique(decoded, full, options.maxDiffs),
     },
-    // ✅ v16.2.0: спот-чек reactivity[].usedInTemplate
     {
       name: 'vue.reactivity[].usedInTemplate',
       result: spotCheckUsedInTemplate(decoded, full, options.maxDiffs),
@@ -1715,10 +1856,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // ============================================
   // 4.5. СТРУКТУРНЫЕ ПРОВЕРКИ
-  // ============================================
-
   section('🏗️  СТРУКТУРНЫЕ ПРОВЕРКИ');
 
   const jsonSafeCheck = checkJsonSafetyInFile(compact, options.maxDiffs);
@@ -1746,10 +1884,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // ============================================
   // 5. СЕМАНТИЧЕСКИЕ ИНВАРИАНТЫ
-  // ============================================
-
   section('🧭 СЕМАНТИЧЕСКИЕ ИНВАРИАНТЫ');
 
   interface InvariantResult {
@@ -1900,7 +2035,7 @@ async function main(): Promise<void> {
     });
   }
 
-  // I7 — columnar structure
+  // I7
   {
     const violations: string[] = [];
 
@@ -1930,7 +2065,7 @@ async function main(): Promise<void> {
     });
   }
 
-  // I8 — gr.i.tf ∈ [-1, fl.p.length)
+  // I8
   {
     const violations: string[] = [];
     const flPLength = compact.fl?.p?.length ?? 0;
@@ -1952,7 +2087,7 @@ async function main(): Promise<void> {
     });
   }
 
-  // I9 — fns.parent — валидный индекс или -1
+  // I9
   {
     const violations: string[] = [];
     const fnsLength = (full.functions || []).length;
@@ -1976,7 +2111,7 @@ async function main(): Promise<void> {
     });
   }
 
-  // I10 — parentFunctionId целостность
+  // I10
   {
     const violations: string[] = [];
     const fnIds = new Set((full.functions || []).map(f => f.id));
@@ -1993,7 +2128,7 @@ async function main(): Promise<void> {
     });
   }
 
-  // I11 — lx.p/lx.c — валидные индексы
+  // I11
   {
     const violations: string[] = [];
     const fnsLength = (full.functions || []).length;
@@ -2023,7 +2158,7 @@ async function main(): Promise<void> {
     });
   }
 
-  // I12 — lexicalLinks целостность
+  // I12
   {
     const violations: string[] = [];
     const fnIds = new Set((full.functions || []).map(f => f.id));
@@ -2043,7 +2178,7 @@ async function main(): Promise<void> {
     });
   }
 
-  // I13 — gr.c.col/ck/cn/ai — согласованность длин
+  // I13
   {
     const violations: string[] = [];
     const gc = compact.gr?.c;
@@ -2065,7 +2200,7 @@ async function main(): Promise<void> {
     });
   }
 
-  // I15 — compact.values[] — только JSON-safe значения
+  // I15
   {
     const i15 = invariantI15(compact, options.maxDiffs);
     invariantResults.push({
@@ -2075,7 +2210,7 @@ async function main(): Promise<void> {
     });
   }
 
-  // I16 — full.constants[].value — только JSON-safe значения
+  // I16
   {
     const i16 = invariantI16(full, options.maxDiffs);
     invariantResults.push({
@@ -2085,7 +2220,7 @@ async function main(): Promise<void> {
     });
   }
 
-  // I17 — vue.sfc.c/cs — согласованность с decoded
+  // I17
   {
     const i17 = invariantI17(compact, decoded, options.maxDiffs);
     invariantResults.push({
@@ -2095,7 +2230,7 @@ async function main(): Promise<void> {
     });
   }
 
-  // ✅ v16.0.0: I45–I50
+  // I45–I50
   {
     const r = invariantI45(compact);
     invariantResults.push({
@@ -2145,7 +2280,7 @@ async function main(): Promise<void> {
     });
   }
 
-  // ✅ v16.1.0: I51–I53
+  // I51–I53
   {
     const r = invariantI51(full, options.maxDiffs);
     invariantResults.push({
@@ -2171,6 +2306,40 @@ async function main(): Promise<void> {
     });
   }
 
+  // ✅ v17.1.0: I60–I63
+  {
+    const r = invariantI60(full, options.maxDiffs);
+    invariantResults.push({
+      name: 'I60: react.components[].hooks — валидные hookId',
+      ok: r.ok,
+      violations: (r.diff || []).map((d: any) => d.a),
+    });
+  }
+  {
+    const r = invariantI61(full, options.maxDiffs);
+    invariantResults.push({
+      name: 'I61: react.stateFlows[].hookId ∈ react.hooks[].id',
+      ok: r.ok,
+      violations: (r.diff || []).map((d: any) => d.a),
+    });
+  }
+  {
+    const r = invariantI62(full, options.maxDiffs);
+    invariantResults.push({
+      name: 'I62: react.eventFlows[].elementId ∈ react.jsxElements[].id',
+      ok: r.ok,
+      violations: (r.diff || []).map((d: any) => d.a),
+    });
+  }
+  {
+    const r = invariantI63(full, options.maxDiffs);
+    invariantResults.push({
+      name: 'I63: react.renderTree[].elementId ∈ react.jsxElements[].id',
+      ok: r.ok,
+      violations: (r.diff || []).map((d: any) => d.a),
+    });
+  }
+
   for (const inv of invariantResults) {
     if (inv.ok) {
       ok(`${inv.name} — PASS`);
@@ -2185,10 +2354,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // ============================================
   // 6. ЭТАЛОНЫ (GOLDEN)
-  // ============================================
-
   interface GoldenResult {
     name: string;
     ok: boolean;
@@ -2250,10 +2416,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // ============================================
   // 7. РАЗМЕРЫ
-  // ============================================
-
   section('📊 РАЗМЕРЫ');
 
   const encodedSize = Buffer.byteLength(encodedRaw, 'utf-8');
@@ -2262,10 +2425,7 @@ async function main(): Promise<void> {
   log(`  full file size:       ${formatSize(fullSize)}`);
   log(`  compression ratio:    ${((compactSize / fullSize) * 100).toFixed(2)}%`);
 
-  // ============================================
   // 8. ИТОГИ
-  // ============================================
-
   section('📊 ИТОГИ');
 
   const levels: Array<{ name: string; ok: boolean }> = [
@@ -2314,7 +2474,6 @@ async function main(): Promise<void> {
       name: 'spotCheck: functions[].vueKind',
       ok: spotChecks.find(s => s.name === 'functions[].vueKind')!.result.ok,
     },
-    // ✅ v16.0.0
     {
       name: 'spotCheck: functions[].htmlUsage',
       ok: spotChecks.find(s => s.name === 'functions[].htmlUsage')!.result.ok,
@@ -2331,7 +2490,6 @@ async function main(): Promise<void> {
       name: 'spotCheck: ids / sourceChains',
       ok: spotChecks.find(s => s.name === 'ids / sourceChains')!.result.ok,
     },
-    // ✅ v16.0.3
     {
       name: 'spotCheck: vue.sfc[].componentUsages',
       ok: spotChecks.find(s => s.name === 'vue.sfc[].componentUsages')!.result.ok,
@@ -2340,7 +2498,6 @@ async function main(): Promise<void> {
       name: 'spotCheck: vue.sfc[].htmlElements',
       ok: spotChecks.find(s => s.name === 'vue.sfc[].htmlElements')!.result.ok,
     },
-    // ✅ v16.1.0: новые спот-чеки
     {
       name: 'spotCheck: vue.sfc[].htmlElements[].parentFileId',
       ok: spotChecks.find(s => s.name === 'vue.sfc[].htmlElements[].parentFileId')!.result.ok,
@@ -2353,7 +2510,6 @@ async function main(): Promise<void> {
       name: 'spotCheck: vue.sfc[].componentUsages[].id uniqueness',
       ok: spotChecks.find(s => s.name === 'vue.sfc[].componentUsages[].id uniqueness')!.result.ok,
     },
-    // ✅ v16.2.0: спот-чек reactivity[].usedInTemplate
     {
       name: 'spotCheck: vue.reactivity[].usedInTemplate',
       ok: spotChecks.find(s => s.name === 'vue.reactivity[].usedInTemplate')!.result.ok,
@@ -2421,13 +2577,9 @@ async function main(): Promise<void> {
     log(`${C.red}${C.bold}💥 ЕСТЬ РАСХОЖДЕНИЯ — ROUND-TRIP НЕ 100%${C.reset}`);
   }
 
-  // ============================================
   // 9. JSON-ОТЧЁТ
-  // ============================================
-
   const jsonReport = {
     timestamp: new Date().toISOString(),
-    // ✅ v17.0.0
     codecVersion: EXPECTED_CODEC_VERSION,
     legendVersion: EXPECTED_LEGEND_VERSION,
     originalFormat: 'compact',
@@ -2460,6 +2612,11 @@ async function main(): Promise<void> {
     vueCheck: {
       counts: vueCounts,
       ok: sectionResults.find(s => s.name === 'vue')?.ok ?? true,
+    },
+
+    // ✅ v17.0.0: React
+    reactCheck: {
+      counts: reactCounts,
     },
 
     legend: {
@@ -2496,8 +2653,7 @@ async function main(): Promise<void> {
 }
 
 // ============================================
-// ДОПОЛНИТЕЛЬНЫЕ ПРОВЕРКИ
-// ============================================
+// ДОПОЛНИТЕЛЬНЫЕ ПРОВЕРКИ// ============================================
 
 function spotCheckImportsIsTypeOnly(decoded: FullJSON, full: FullJSON, limit: number): LevelResult {
   const a = (decoded.imports || []).map((i: any, idx: number) => ({
@@ -2762,10 +2918,6 @@ function spotCheckArgumentIndex(decoded: FullJSON, full: FullJSON, limit: number
   return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
 }
 
-// ============================================
-// ✅ v16.0.0: SPOT-CHECKS
-// ============================================
-
 function spotCheckHtmlUsage(decoded: FullJSON, full: FullJSON, limit: number): LevelResult {
   const a = (decoded.functions || []).map((f: any) => ({
     id: f.id,
@@ -2799,11 +2951,6 @@ function spotCheckHtmlUsage(decoded: FullJSON, full: FullJSON, limit: number): L
   return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
 }
 
-/**
- * ✅ v16.0.2: Нормализует isHtmlVisible для сравнения.
- *
- * `undefined`, `null`, `false` — эквивалентны (все означают "не видимо").
- */
 function normalizeIsHtmlVisible(v: any): boolean {
   return v === true;
 }
@@ -2892,14 +3039,6 @@ function spotCheckIdsAndSourceChains(decoded: FullJSON, full: FullJSON, _limit: 
   return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
 }
 
-// ============================================
-// ✅ v16.0.3: SPOT-CHECKS ДЛЯ vue.sfc[]
-// ============================================
-
-/**
- * ✅ v16.0.3: Проверяет, что у каждого SFC в decoded и full
- * есть `componentUsages` (массив), и количества совпадают.
- */
 function spotCheckVueSfcComponentUsages(
   decoded: FullJSON,
   full: FullJSON,
@@ -2939,10 +3078,6 @@ function spotCheckVueSfcComponentUsages(
   return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
 }
 
-/**
- * ✅ v16.0.3: Проверяет, что у каждого SFC в decoded и full
- * есть `htmlElements` (массив), и количества совпадают.
- */
 function spotCheckVueSfcHtmlElements(
   decoded: FullJSON,
   full: FullJSON,
@@ -2982,14 +3117,6 @@ function spotCheckVueSfcHtmlElements(
   return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
 }
 
-// ============================================
-// ✅ v16.1.0: SPOT-CHECKS ДЛЯ vue.sfc[].htmlElements[].parentFileId
-// ============================================
-
-/**
- * ✅ v16.1.0: Проверяет, что `parentFileId` совпадает между
- * decoded и full для каждого htmlElement.
- */
 function spotCheckVueSfcHtmlElementsParentFileId(
   decoded: FullJSON,
   full: FullJSON,
@@ -3026,14 +3153,6 @@ function spotCheckVueSfcHtmlElementsParentFileId(
   return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
 }
 
-// ============================================
-// ✅ v16.1.0: SPOT-CHECKS ДЛЯ УНИКАЛЬНОСТИ id
-// ============================================
-
-/**
- * ✅ v16.1.0: Проверяет, что `htmlElements[].id` глобально уникальны
- * в decoded и full.
- */
 function spotCheckVueSfcHtmlElementsIdUnique(
   decoded: FullJSON,
   full: FullJSON,
@@ -3069,10 +3188,6 @@ function spotCheckVueSfcHtmlElementsIdUnique(
   return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
 }
 
-/**
- * ✅ v16.1.0: Проверяет, что `componentUsages[].id` глобально
- * уникальны в decoded и full.
- */
 function spotCheckVueSfcComponentUsagesIdUnique(
   decoded: FullJSON,
   full: FullJSON,
@@ -3108,21 +3223,6 @@ function spotCheckVueSfcComponentUsagesIdUnique(
   return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
 }
 
-// ============================================
-// ✅ v16.2.0: SPOT-CHECK ДЛЯ vue.reactivity[].usedInTemplate
-// ============================================
-
-/**
- * ✅ v16.2.0: Проверяет, что `usedInTemplate` совпадает между
- * decoded и full для каждого reactivity.
- *
- * ⚠️ Нормализация:
- *   - undefined, null, 0, false  → false
- *   - 1, true                    → true
- *
- * Это устраняет разницу между "поле отсутствует" и "false",
- * которая может возникнуть при обратной совместимости.
- */
 function spotCheckUsedInTemplate(
   decoded: FullJSON,
   full: FullJSON,
@@ -3166,10 +3266,6 @@ function spotCheckUsedInTemplate(
   return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
 }
 
-// ============================================
-// ТОКЕНИЗИРОВАННЫЕ СТРОКИ
-// ============================================
-
 function checkTokenizedStrings(compact: CompactJSON): LevelResult {
   const diffs: any[] = [];
 
@@ -3191,10 +3287,6 @@ function checkTokenizedStrings(compact: CompactJSON): LevelResult {
 
   return { ok: diffs.length === 0, diffCount: diffs.length, diff: diffs };
 }
-
-// ============================================
-// HELP
-// ============================================
 
 function printHelp(): void {
   console.log(`

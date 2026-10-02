@@ -2,7 +2,17 @@
 // ============================================================
 // ПРОХОД 7: REACT-СУЩНОСТИ
 // ============================================================
-// Версия: 1.2.0 (убрана диагностика)
+// Версия: 1.3.0 (flow-секции)
+//
+// ✅ v1.3.0: FLOW-секции (v17.1.0)
+//   - Добавлены билдеры flow:
+//       • buildStateFlows  — state ↔ mutation ↔ read ↔ render
+//       • buildEventFlows  — event → handler → call → state → render
+//       • buildRenderTree  — иерархия JSX с зависимостями
+//       • buildFnJsxUsage  — обратный индекс: функция → JSX
+//   - Все 4 секции сохраняются в reactEntities.stateFlows /
+//     eventFlows / renderTree / fnJsxUsage и попадают в ctx.react
+//     через convertReactEntitiesToFull.
 //
 // ✅ v1.2.0: убрана диагностика
 //   - Удалены все console.log('[pass7React] ...') временные
@@ -12,7 +22,6 @@
 // ✅ v1.1.0: диагностика
 //   - Добавлен console.log с информацией о entitiesMap
 //     и результате classifyReactEntities.
-//   - Это временно, для отладки интеграции React-секции.
 //
 // НАЗНАЧЕНИЕ
 // ----------
@@ -32,6 +41,7 @@
 //   React: reporters/compact/pipeline/pass-7-react.ts ← этот файл
 //            → pass7React(ctx)
 //              • classifyReactEntities
+//              • buildStateFlows / buildEventFlows / buildRenderTree / buildFnJsxUsage
 //              • convertReactEntitiesToFull
 //              → ctx.react
 //
@@ -54,6 +64,12 @@
 import { classifyReactEntities } from '../../../core/react-entity-classifier.js';
 import type { ReactEntities } from '../../../core/react-entity-classifier.js';
 import { convertReactEntitiesToFull } from '../react/convert-section.js';
+import {
+  buildStateFlows,
+  buildEventFlows,
+  buildRenderTree,
+  buildFnJsxUsage,
+} from '../../../modes/react-analyzer/flows/index.js';
 import type { CollectContext } from './context.js';
 
 // ============================================================
@@ -72,11 +88,15 @@ import type { CollectContext } from './context.js';
  *                       memoization, refs, jsxElements, jsxEvents,
  *                       conditionals, componentUsages)
  *
- *   2. Проверка hasAnyReact:
+ *   2. buildStateFlows / buildEventFlows / buildRenderTree /
+ *      buildFnJsxUsage
+ *      → flow-секции (stateFlows, eventFlows, renderTree, fnJsxUsage)
+ *
+ *   3. Проверка hasAnyReact:
  *      если все массивы пусты → early return.
  *      ctx.react остаётся undefined.
  *
- *   3. convertReactEntitiesToFull(reactEntities, fileMap, projectRoot)
+ *   4. convertReactEntitiesToFull(reactEntities, fileMap, projectRoot)
  *      → ctx.react (ReactSectionFull-совместимая структура)
  *
  * ════════════════════════════════════════════════════════════
@@ -104,6 +124,71 @@ export function pass7React(ctx: CollectContext): void {
     // Шаг 1: классификация React-сущностей
     // ────────────────────────────────────────────────────────
     const reactEntities: ReactEntities = classifyReactEntities(entitiesMap);
+
+    // ────────────────────────────────────────────────────────
+    // Шаг 1.5: построение flow-секций (v17.1.0)
+    // ────────────────────────────────────────────────────────
+    //
+    // Четыре билдера, симметричные Vue:
+    //   • buildStateFlows  — state ↔ mutation ↔ read ↔ render
+    //   • buildEventFlows  — event → handler → call → state → render
+    //   • buildRenderTree  — иерархия JSX с зависимостями
+    //   • buildFnJsxUsage  — обратный индекс: функция → JSX
+    //
+    // Все — производные от уже собранных сущностей. Не требуют
+    // дополнительных проходов по AST.
+    //
+    // Источник функций — плоский список из entitiesMap.
+    // Собираем один раз, используем во всех билдерах.
+    // ────────────────────────────────────────────────────────
+
+    // Собираем плоский список функций из entitiesMap
+    const allFunctions: Array<{
+      id: string;
+      name: string;
+      line?: number;
+      calls?: Array<{ id?: string; callee: string; line: number }>;
+    }> = [];
+
+    let fnCounter = 0;
+    for (const filePath of Object.keys(entitiesMap).sort()) {
+      const ent = entitiesMap[filePath] as any;
+      if (!ent || !Array.isArray(ent.functions)) continue;
+      for (const fn of ent.functions) {
+        fnCounter++;
+        allFunctions.push({
+          id: fn.id ?? `fn${fnCounter}`,
+          name: fn.name ?? '',
+          line: fn.line,
+          calls: fn.calls ?? [],
+        });
+      }
+    }
+
+    // ─── State flows ───
+    reactEntities.stateFlows = buildStateFlows(
+      reactEntities.hooks,
+      reactEntities.jsxElements,
+      allFunctions
+    );
+
+    // ─── Event flows ───
+    reactEntities.eventFlows = buildEventFlows(
+      reactEntities.jsxEvents,
+      reactEntities.hooks,
+      reactEntities.components,
+      allFunctions
+    );
+
+    // ─── Render tree ───
+    reactEntities.renderTree = buildRenderTree(reactEntities.jsxElements, reactEntities.hooks);
+
+    // ─── Fn JSX usage ───
+    reactEntities.fnJsxUsage = buildFnJsxUsage(
+      reactEntities.jsxEvents,
+      reactEntities.jsxElements,
+      allFunctions
+    );
 
     // ────────────────────────────────────────────────────────
     // Шаг 2: проверка наличия React-кода
@@ -147,6 +232,10 @@ export function pass7React(ctx: CollectContext): void {
       console.log(`   🖱️  JSX Events: ${r.jsxEvents?.length ?? 0}`);
       console.log(`   ❓ Conditionals: ${r.conditionals?.length ?? 0}`);
       console.log(`   🔗 Component Usages: ${r.componentUsages?.length ?? 0}`);
+      console.log(`   🔗 State Flows: ${r.stateFlows?.length ?? 0}`);
+      console.log(`   🔗 Event Flows: ${r.eventFlows?.length ?? 0}`);
+      console.log(`   🔗 Render Tree: ${r.renderTree?.length ?? 0}`);
+      console.log(`   🔗 Fn JSX Usage: ${r.fnJsxUsage?.length ?? 0}`);
     }
   } catch (err) {
     // ────────────────────────────────────────────────────────

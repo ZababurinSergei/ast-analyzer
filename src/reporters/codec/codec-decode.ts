@@ -1,8 +1,31 @@
 // src/reporters/codec/codec-decode.ts
 // ============================================
-// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v16.2.0)
+// ДЕКОДИРОВАНИЕ: CompactJSON → FullJSON (v17.1.1)
 // ============================================
-// Версия: 16.2.3 (v17.0.0: React-секция)
+// Версия: 17.1.1 (fix React fileId/column/attrs/props/elementId)
+//
+// ИЗМЕНЕНИЯ v17.1.1:
+//   - ✅ FIX: decodeReactSection принимает files[] и резолвит fileId.
+//   - ✅ FIX: decodeReactSection восстанавливает props/hooks/jsxElements
+//     через RLE-срезы (p, h, j).
+//   - ✅ FIX: decodeReactSection восстанавливает column для jsxElements.
+//   - ✅ FIX: decodeReactSection восстанавливает rawValue и handlerFunctionId/
+//     stateRef для attrs.
+//   - ✅ FIX: decodeReactSection восстанавливает elementId для jsxEvents.
+//   - ✅ FIX: decodeReactSection резолвит componentId/hookId/parentElementId
+//     через ids[].
+//
+// ИЗМЕНЕНИЯ v17.1.0:
+//   - ✅ ДОБАВЛЕНО: проброс flow-секций в decodeReactSection:
+//       • stateFlows
+//       • eventFlows
+//       • renderTree
+//       • fnJsxUsage
+//
+// ИЗМЕНЕНИЯ v17.0.0:
+//   - ✅ ДОБАВЛЕНО: decodeReactSection — декодирует 10 секций
+//     React (components, hooks, effects, contexts, memoization,
+//     refs, jsxElements, jsxEvents, conditionals, componentUsages).
 // ============================================
 
 import type {
@@ -887,21 +910,46 @@ function decodeFnHtmlUsage(
 }
 
 // ============================================
-// ✅ v17.0.0: DECODE REACT SECTION
+// ✅ v17.1.1: DECODE REACT SECTION
 // ============================================
 
+/**
+ * Декодирует React-секцию из компактного формата.
+ *
+ * ════════════════════════════════════════════════════════════
+ * v17.1.1 (fix):
+ *   • fileId резолвится через files[]
+ *   • props/hooks/jsxElements восстанавливаются через RLE-срезы
+ *   • column сохраняется
+ *   • attrs.rawValue и handlerFunctionId/stateRef восстанавливаются
+ *   • elementId jsxEvents резолвится через ids[]
+ *   • componentId/hookId/parentElementId резолвятся через ids[]
+ * ════════════════════════════════════════════════════════════
+ */
 function decodeReactSection(
   react: any,
   stringDict: string[],
-  ids: string[] = []
+  ids: string[] = [],
+  files: FileData[] = []
 ): any {
   if (!react) return undefined;
 
-  const readStr = (idx: number): string => (idx < 0 || idx == null ? '' : (stringDict[idx] ?? ''));
-  const readId = (idx: number): string => (idx < 0 || idx == null ? '' : (ids[idx] ?? ''));
+  const readStr = (idx: number): string =>
+    idx < 0 || idx == null ? '' : (stringDict[idx] ?? '');
+  const readId = (idx: number): string =>
+    idx < 0 || idx == null ? '' : (ids[idx] ?? '');
   const readIdOrUndef = (idx: number): string | undefined =>
     idx < 0 || idx == null ? undefined : ids[idx];
-  const splitParts = (s: string): string[] => (s ? s.split('\u0002').filter(Boolean) : []);
+  const readFileId = (idx: number): string => {
+    if (idx < 0 || idx == null) return '';
+    return files[idx]?.id ?? '';
+  };
+  const readModuleIdForFile = (idx: number): string => {
+    if (idx < 0 || idx == null) return '';
+    return files[idx]?.moduleId ?? '';
+  };
+  const splitParts = (s: string): string[] =>
+    s ? s.split('\u0002').filter(Boolean) : [];
 
   // ────────────────────────────────────────────────────────
   // 1. COMPONENTS
@@ -911,24 +959,41 @@ function decodeReactSection(
   const cLen = c.f?.length ?? 0;
 
   for (let i = 0; i < cLen; i++) {
+    const fileIdxVal = c.f?.[i] ?? -1;
     const [pStart, pLen] = c.p?.[i] ?? [0, 0];
-    void pStart;
-    const [, hLen] = c.h?.[i] ?? [0, 0];
-    const [, jLen] = c.j?.[i] ?? [0, 0];
-    void pLen;
+    const [hStart, hLen] = c.h?.[i] ?? [0, 0];
+    const [jStart, jLen] = c.j?.[i] ?? [0, 0];
+
+    // props — из strs через RLE-срез
+    const props: string[] = [];
+    for (let k = 0; k < pLen; k++) {
+      props.push(readStr(pStart + k));
+    }
+
+    // hooks — из ids через RLE-срез
+    const hooks: string[] = [];
+    for (let k = 0; k < hLen; k++) {
+      hooks.push(readId(hStart + k));
+    }
+
+    // jsxElements — из ids через RLE-срез
+    const jsxElements: string[] = [];
+    for (let k = 0; k < jLen; k++) {
+      jsxElements.push(readId(jStart + k));
+    }
 
     const flags = c.fl?.[i] ?? 0;
 
     components.push({
       id: `rc${i + 1}`,
-      fileId: '',
-      moduleId: c.m?.[i] >= 0 ? readStr(c.m[i]) : '',
+      fileId: readFileId(fileIdxVal),
+      moduleId: readModuleIdForFile(fileIdxVal),
       name: readStr(c.n?.[i] ?? -1),
       kind: REACT_COMPONENT_KIND_NAMES[c.k?.[i] ?? 0] ?? 'function',
       line: c.l?.[i] ?? 0,
-      props: [] as string[],
-      hooks: new Array(hLen).fill('') as string[],
-      jsxElements: new Array(jLen).fill('') as string[],
+      props,
+      hooks,
+      jsxElements,
       isMemoized: (flags & 1) !== 0,
       isForwardRef: (flags & 2) !== 0,
       isDefaultExport: (flags & 4) !== 0,
@@ -948,7 +1013,7 @@ function decodeReactSection(
     const depsRaw = readStr(h.d?.[i] ?? -1);
     hooks.push({
       id: `rh${i + 1}`,
-      fileId: '',
+      fileId: readFileId(h.f?.[i] ?? -1),
       componentId: readId(h.c?.[i] ?? -1),
       kind: REACT_HOOK_KIND_NAMES[h.k?.[i] ?? 0] ?? 'useState',
       line: h.l?.[i] ?? 0,
@@ -974,7 +1039,7 @@ function decodeReactSection(
     const mutatesRaw = readStr(e.mu?.[i] ?? -1);
     effects.push({
       id: `re${i + 1}`,
-      fileId: '',
+      fileId: readFileId(e.f?.[i] ?? -1),
       componentId: readId(e.c?.[i] ?? -1),
       hookId: readId(e.hk?.[i] ?? -1),
       kind: REACT_EFFECT_KIND_NAMES[e.k?.[i] ?? 0] ?? 'mount',
@@ -996,7 +1061,7 @@ function decodeReactSection(
   for (let i = 0; i < ctxLen; i++) {
     contexts.push({
       id: `rctx${i + 1}`,
-      fileId: '',
+      fileId: readFileId(ctx.f?.[i] ?? -1),
       componentId: readId(ctx.c?.[i] ?? -1),
       kind: REACT_CONTEXT_KIND_NAMES[ctx.k?.[i] ?? 0] ?? 'create',
       line: ctx.l?.[i] ?? 0,
@@ -1015,7 +1080,7 @@ function decodeReactSection(
     const depsRaw = readStr(m.d?.[i] ?? -1);
     memoization.push({
       id: `rm${i + 1}`,
-      fileId: '',
+      fileId: readFileId(m.f?.[i] ?? -1),
       componentId: readId(m.c?.[i] ?? -1),
       kind: REACT_MEMO_KIND_NAMES[m.k?.[i] ?? 0] ?? 'memo',
       line: m.l?.[i] ?? 0,
@@ -1033,7 +1098,7 @@ function decodeReactSection(
   for (let i = 0; i < rLen; i++) {
     refs.push({
       id: `rr${i + 1}`,
-      fileId: '',
+      fileId: readFileId(r.f?.[i] ?? -1),
       componentId: readId(r.c?.[i] ?? -1),
       line: r.l?.[i] ?? 0,
       name: r.n?.[i] >= 0 ? readStr(r.n[i]) : undefined,
@@ -1057,10 +1122,12 @@ function decodeReactSection(
         if (Array.isArray(parsed)) {
           attrs = parsed.map((a: any) => ({
             name: a.n ?? '',
-            rawValue: a.v ?? '',
+            rawValue: a.rv ?? a.v ?? '',
             value: a.v ?? '',
             kind: a.k ?? 'expression',
             refs: a.r ?? [],
+            handlerFunctionId: a.hf,
+            stateRef: a.sr,
           }));
         }
       } catch {
@@ -1073,18 +1140,18 @@ function decodeReactSection(
 
     jsxElements.push({
       id: `rj${i + 1}`,
-      fileId: '',
+      fileId: readFileId(j.f?.[i] ?? -1),
       componentId: readId(j.c?.[i] ?? -1),
       kind: REACT_JSX_KIND_NAMES[j.k?.[i] ?? 0] ?? 'element',
       tagName: readStr(j.n?.[i] ?? -1),
       line: j.l?.[i] ?? 0,
-      column: undefined,
+      column: j.col?.[i] >= 0 ? j.col[i] : undefined,
       attrs,
       children,
       textContent: j.tx?.[i] >= 0 ? readStr(j.tx[i]) : undefined,
       expression: j.ex?.[i] >= 0 ? readStr(j.ex[i]) : undefined,
       expressionRefs: [] as string[],
-      parentElementId: j.pa?.[i] >= 0 ? readIdOrUndef(j.pa[i]) ?? null : null,
+      parentElementId: j.pa?.[i] >= 0 ? (ids[j.pa[i]] ?? null) : null,
       conditionalKind: j.ck?.[i] >= 0 ? REACT_COND_KIND_NAMES[j.ck[i]] : undefined,
       eventIds: [] as string[],
       stateUsages: [] as string[],
@@ -1103,7 +1170,7 @@ function decodeReactSection(
   for (let i = 0; i < evLen; i++) {
     jsxEvents.push({
       id: `rje${i + 1}`,
-      fileId: '',
+      fileId: readFileId(ev.f?.[i] ?? -1),
       elementId: readId(ev.e?.[i] ?? -1),
       eventName: readStr(ev.n?.[i] ?? -1),
       line: ev.l?.[i] ?? 0,
@@ -1125,7 +1192,7 @@ function decodeReactSection(
     const guardsRaw = readStr(cd.g?.[i] ?? -1);
     conditionals.push({
       id: `rcd${i + 1}`,
-      fileId: '',
+      fileId: readFileId(cd.f?.[i] ?? -1),
       componentId: readId(cd.c?.[i] ?? -1),
       kind: REACT_COND_KIND_NAMES[cd.k?.[i] ?? 0] ?? '&&',
       condition: readStr(cd.cd?.[i] ?? -1),
@@ -1162,6 +1229,14 @@ function decodeReactSection(
   }
 
   // ────────────────────────────────────────────────────────
+  // 11-14. FLOW-СЕКЦИИ (прямая десериализация)
+  // ────────────────────────────────────────────────────────
+  const stateFlows = Array.isArray(react.stateFlows) ? react.stateFlows : [];
+  const eventFlows = Array.isArray(react.eventFlows) ? react.eventFlows : [];
+  const renderTree = Array.isArray(react.renderTree) ? react.renderTree : [];
+  const fnJsxUsage = Array.isArray(react.fnJsxUsage) ? react.fnJsxUsage : [];
+
+  // ────────────────────────────────────────────────────────
   // Результат
   // ────────────────────────────────────────────────────────
   return {
@@ -1175,6 +1250,10 @@ function decodeReactSection(
     jsxEvents,
     conditionals,
     componentUsages,
+    stateFlows,
+    eventFlows,
+    renderTree,
+    fnJsxUsage,
     ids: [],
     sourceChains: [],
   };
@@ -2000,12 +2079,13 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   );
 
   // ============================================
-  // 10.6.1. ✅ v17.0.0: REACT-СЕКЦИЯ
+  // 10.6.1. ✅ v17.1.1: REACT-СЕКЦИЯ
   // ============================================
   const react = decodeReactSection(
     (compact as any).react,
     stringDict,
-    ids
+    ids,
+    files   // ✅ v17.1.1: передаём files для резолва fileId
   );
 
   // ============================================

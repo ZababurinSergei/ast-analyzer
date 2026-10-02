@@ -1,8 +1,15 @@
 // src/reporters/codec/codec-legend.ts
 // ============================================
-// ЛЕГЕНДА КОДЕКА (v17.0.0)
+// ЛЕГЕНДА КОДЕКА (v17.1.0)
 // ============================================
-// Версия: 17.0.0
+// Версия: 17.1.0
+//
+// v17.1.0: добавлены flow-схемы:
+//   • 'react.stateFlows'
+//   • 'react.eventFlows'
+//   • 'react.renderTree'
+//   • 'react.fnJsxUsage'
+//   • 'react.jsxElements' — добавлено поле 'col' (column)
 //
 // v17.0.0: добавлены React-коды и схемы:
 //   • REACT_COMPONENT_KIND_CODES (0..5)
@@ -146,10 +153,6 @@ export const MACRO_KIND_CODES: Record<string, number> = {
 
 /**
  * Коды для domApiCategory: 0..49.
- *
- * ⚠️ Синхронизировано с legend.codes.domApiCategory.
- * ⚠️ Синхронизировано с DOM_METHOD_MAP + DOM_PROPERTY_MAP +
- *    DOM_OBSERVER_MAP в dom-api-detector.ts.
  */
 export const DOM_CATEGORY_CODES: Record<string, number> = {
   'add-event-listener': 0,
@@ -421,17 +424,7 @@ export const ELEMENT_ATTR_KIND_CODES: Record<string, number> = {
 // SCHEMAS — ПОЗИЦИОННЫЕ СХЕМЫ КОРТЕЖЕЙ
 // ============================================================
 //
-// Схемы отражают columnar-структуру compact.json.
-//
-// ✅ v16.0.0: добавлены 11 новых схем (итого 28+11=39+).
-// ✅ v16.0.2: schemas.fns расширена до 10 полей (добавлено 'hv').
-//            Схема vue.sfc — 30 полей (было 8 в v15.7.3).
-// ✅ v16.0.2-FIX: схемы vue.componentProps/Events/Directives/Slots/
-//    htmlInterpolations расширены полем 'idn' (identifier) и 'id'
-//    (индекс в ids[]).
-// ✅ v16.1.0: схема vue.sfc расширена до 34 полей.
-// ✅ v16.2.0: схема vue.reactivity расширена до 5 полей.
-// ✅ v17.0.0: добавлены 10 схем 'react.*'.
+// ✅ v17.1.0: react.jsxElements расширено полем 'col' (12 полей).
 // ============================================================
 
 export const SCHEMAS: CodecLegend['schemas'] = {
@@ -731,9 +724,9 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   'react.refs': ['f', 'c', 'l', 'n', 'fl'],
 
   // ==========================================
-  // ✅ v17.0.0: react.jsxElements
+  // ✅ v17.0.0: react.jsxElements — 12 полей (v17.1.0: +col)
   // ==========================================
-  'react.jsxElements': ['f', 'c', 'k', 'n', 'l', 'a', 'ch', 'tx', 'ex', 'pa', 'ck'],
+  'react.jsxElements': ['f', 'c', 'k', 'n', 'l', 'col', 'a', 'ch', 'tx', 'ex', 'pa', 'ck'],
 
   // ==========================================
   // ✅ v17.0.0: react.jsxEvents
@@ -749,17 +742,39 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   // ✅ v17.0.0: react.componentUsages
   // ==========================================
   'react.componentUsages': ['u', 'n', 'c', 'l', 't', 'im', 'fl', 'p', 'e', 's'],
+
+  // ==========================================
+  // ✅ v17.1.0: react flow-секции
+  // ==========================================
+  'react.stateFlows': [
+    'id',
+    'hookId',
+    'stateName',
+    'setterName',
+    'mutatedBy',
+    'readBy',
+    'renderedIn',
+  ],
+  'react.eventFlows': [
+    'id',
+    'eventId',
+    'eventName',
+    'elementId',
+    'handlerFunctionId',
+    'handlerName',
+    'calls',
+    'mutatedStates',
+    'reRendered',
+    'chain',
+  ],
+  'react.renderTree': ['elementId', 'tagName', 'kind', 'parentId', 'dependsOn', 'conditionals'],
+  'react.fnJsxUsage': ['functionId', 'functionName', 'usedIn'],
 };
 
 // ============================================================
 // СБОРКА КОДОВ
 // ============================================================
 
-/**
- * Собирает словарь кодов.
- *
- * ⚠️ Синхронизировано с codec-encode.ts и codec-decode.ts.
- */
 function mergeDict(base: Record<string, string>, overrides: CodesDict): CodesDict {
   const result: CodesDict = {};
 
@@ -776,9 +791,6 @@ function mergeDict(base: Record<string, string>, overrides: CodesDict): CodesDic
   return result;
 }
 
-/**
- * Преобразует словарь { name: code } → { code: name }.
- */
 function reverseCodeDict(dict: Record<string, number>): CodesDict {
   const result: CodesDict = {};
   for (const [name, code] of Object.entries(dict)) {
@@ -791,17 +803,8 @@ function reverseCodeDict(dict: Record<string, number>): CodesDict {
 // СОБОРКА ЛЕГЕНДЫ КОДОВ
 // ============================================================
 
-/**
- * Собирает все словари кодов.
- *
- * ✅ v16.0.0: 29 словарей.
- * ✅ v17.0.0: +9 словарей React.
- */
 function buildCodesLegend(): CodecLegend['codes'] {
   return {
-    // ==========================================
-    // ЭКСПОРТЫ
-    // ==========================================
     export: mergeDict(EXPORT_TYPES, {
       ne: 'named (именованный экспорт)',
       de: 'default (экспорт по умолчанию)',
@@ -809,18 +812,12 @@ function buildCodesLegend(): CodecLegend['codes'] {
       re: 're-export (реэкспорт)',
     }),
 
-    // ==========================================
-    // ИМПОРТЫ
-    // ==========================================
     import: {
       n: 'named (именованный импорт)',
       df: 'default (импорт по умолчанию)',
       ns: 'namespace (import * as)',
     },
 
-    // ==========================================
-    // ВЫЗОВЫ
-    // ==========================================
     call: mergeDict(CALL_TYPES, {
       d: 'direct (прямой вызов func())',
       a: 'async (await func())',
@@ -828,18 +825,12 @@ function buildCodesLegend(): CodecLegend['codes'] {
       c: 'callback (функция как аргумент)',
     }),
 
-    // ==========================================
-    // РЕЭКСПОРТЫ
-    // ==========================================
     reExport: mergeDict(RE_EXPORT_TYPES, {
       n: 'named (именованный)',
       df: 'default (по умолчанию)',
       all: 'export * from',
     }),
 
-    // ==========================================
-    // LIFECYCLE
-    // ==========================================
     lifecycle: mergeDict(LIFECYCLE_TYPES, {
       m: 'onMounted',
       u: 'onUnmounted',
@@ -851,9 +842,6 @@ function buildCodesLegend(): CodecLegend['codes'] {
       e: 'onErrorCaptured',
     }),
 
-    // ==========================================
-    // EFFECTS
-    // ==========================================
     effect: mergeDict(EFFECT_TYPES, {
       t: 'timer (setTimeout / setInterval)',
       c: 'cleanup (clearTimeout / abort)',
@@ -862,17 +850,11 @@ function buildCodesLegend(): CodecLegend['codes'] {
       s: 'subscription (.subscribe)',
     }),
 
-    // ==========================================
-    // INJECTIONS
-    // ==========================================
     injection: mergeDict(INJECTION_TYPES, {
       p: 'provide',
       i: 'inject',
     }),
 
-    // ==========================================
-    // REACTIVITY
-    // ==========================================
     reactivity: mergeDict(REACTIVITY_TYPES, {
       c: 'computed',
       w: 'watch',
@@ -883,18 +865,12 @@ function buildCodesLegend(): CodecLegend['codes'] {
       o: 'readonly',
     }),
 
-    // ==========================================
-    // CONDITIONALS
-    // ==========================================
     conditional: mergeDict(CONDITIONAL_TYPES, {
       i: 'v-if',
       e: 'v-else-if',
       E: 'v-else',
     }),
 
-    // ==========================================
-    // TYPE KINDS
-    // ==========================================
     typeKind: mergeDict(TYPE_KINDS, {
       i: 'interface',
       t: 'type-alias',
@@ -902,9 +878,6 @@ function buildCodesLegend(): CodecLegend['codes'] {
       c: 'class',
     }),
 
-    // ==========================================
-    // TYPE USAGE
-    // ==========================================
     typeUsage: mergeDict(TYPE_USAGE_KINDS, {
       p: 'param (тип параметра)',
       r: 'return (тип возврата)',
@@ -914,99 +887,26 @@ function buildCodesLegend(): CodecLegend['codes'] {
       x: 'extends (расширяемый тип)',
     }),
 
-    // ==========================================
-    // LEXICAL RELATION
-    // ==========================================
     lexicalRelation: reverseCodeDict(LEXICAL_RELATION_CODES),
-
-    // ==========================================
-    // CALL KIND
-    // ==========================================
     callKind: reverseCodeDict(CALL_KIND_CODES),
-
-    // ==========================================
-    // VUE KIND
-    // ==========================================
     vueKind: reverseCodeDict(VUE_KIND_CODES),
-
-    // ==========================================
-    // SFC BLOCK
-    // ==========================================
     sfcBlock: reverseCodeDict(SFC_BLOCK_CODES),
-
-    // ==========================================
-    // HOOK NAME
-    // ==========================================
     hookName: reverseCodeDict(HOOK_NAME_CODES),
-
-    // ==========================================
-    // REACTIVITY KIND
-    // ==========================================
     reactivityKind: reverseCodeDict(REACTIVITY_KIND_CODES),
-
-    // ==========================================
-    // ICON CATEGORY
-    // ==========================================
     iconCategory: reverseCodeDict(ICON_CATEGORY_CODES),
-
-    // ==========================================
-    // COMPOSABLE KIND
-    // ==========================================
     composableKind: reverseCodeDict(COMPOSABLE_KIND_CODES),
-
-    // ==========================================
-    // ✅ v16.0.0: COMPONENT SOURCE
-    // ==========================================
     componentSource: reverseCodeDict(COMPONENT_SOURCE_CODES),
-
-    // ==========================================
-    // ✅ v16.0.0: PROP KIND
-    // ==========================================
     propKind: reverseCodeDict(PROP_KIND_CODES),
-
-    // ==========================================
-    // ✅ v16.0.0: EVENT HANDLER SOURCE
-    // ==========================================
     eventHandlerSource: reverseCodeDict(EVENT_HANDLER_SOURCE_CODES),
-
-    // ==========================================
-    // ✅ v16.0.0: HTML OUTPUT KIND
-    // ==========================================
     htmlOutputKind: reverseCodeDict(HTML_OUTPUT_KIND_CODES),
-
-    // ==========================================
-    // ✅ v16.0.0: SOURCE CHAIN KIND
-    // ==========================================
     sourceChainKind: reverseCodeDict(SOURCE_CHAIN_KIND_CODES),
-
-    // ==========================================
-    // ✅ v16.0.0: DOM API CATEGORY
-    // ==========================================
     domApiCategory: reverseCodeDict(DOM_CATEGORY_CODES),
-
-    // ==========================================
-    // ✅ v16.0.0: DOM API EFFECT
-    // ==========================================
     domApiEffect: reverseCodeDict(DOM_EFFECT_CODES),
-
-    // ==========================================
-    // ✅ v16.0.0: DOM API TARGET KIND
-    // ==========================================
     domApiTargetKind: reverseCodeDict(DOM_TARGET_KIND_CODES),
-
-    // ==========================================
-    // ✅ v16.0.0: DOM API ARG KIND
-    // ==========================================
     domApiArgKind: reverseCodeDict(DOM_ARG_KIND_CODES),
-
-    // ==========================================
-    // ✅ v16.0.0: DOM API ARG SOURCE
-    // ==========================================
     domApiArgSource: reverseCodeDict(DOM_ARG_SOURCE_CODES),
 
-    // ==========================================
     // ✅ v17.0.0: REACT CODES
-    // ==========================================
     reactComponentKind: reverseCodeDict(REACT_COMPONENT_KIND_CODES),
     reactHookKind: reverseCodeDict(REACT_HOOK_KIND_CODES),
     reactEffectKind: reverseCodeDict(REACT_EFFECT_KIND_CODES),
@@ -1022,9 +922,6 @@ function buildCodesLegend(): CodecLegend['codes'] {
 // СБОРКА ФЛАГОВ
 // ============================================================
 
-/**
- * Собирает словарь флагов: { "1": "isAsync", ... }.
- */
 function buildFlagsLegend(): CodecLegend['flags'] {
   const bits: Record<string, string> = {};
 
@@ -1049,27 +946,19 @@ export interface LegendDictionaries {
 /**
  * Собирает полную легенду.
  *
- * ✅ v16.0.0: добавлено поле `version` = '2.0.0'.
- * ✅ v16.0.2: schemas.fns — 10 полей.
- * ✅ v16.0.2-FIX: schemas vue.component* — +1 поле (idn / id).
- * ✅ v16.1.0: legend.version = '2.1.0'.
- *            schemas['vue.sfc'] — 34 поля (было 30).
- * ✅ v16.2.0: schemas['vue.reactivity'] — 5 полей (было 4).
- * ✅ v17.0.0: добавлены 10 схем 'react.*', 8 кодов React.
- *            legend.version = '3.0.0'.
+ * ✅ v17.1.0: schemas['react.jsxElements'] — 12 полей (было 11).
+ *            Добавлено поле 'col' (column).
+ *            legend.version остаётся '3.0.0'.
  */
 export function buildLegend(_dict: LegendDictionaries): CodecLegend {
   return {
-    version: '3.0.0', // ✅ v17.0.0
+    version: '3.0.0',
     codes: buildCodesLegend(),
     flags: buildFlagsLegend(),
     schemas: SCHEMAS,
   };
 }
 
-/**
- * Собирает пустую легенду (для getLegend()).
- */
 export function buildEmptyLegend(): CodecLegend {
   return buildLegend({
     stringDict: [],
@@ -1087,7 +976,6 @@ export default {
   buildLegend,
   buildEmptyLegend,
   SCHEMAS,
-  // ✅ v15.5.0
   VUE_KIND_CODES,
   SFC_BLOCK_CODES,
   HOOK_NAME_CODES,
@@ -1096,7 +984,6 @@ export default {
   COMPOSABLE_KIND_CODES,
   COMPOSABLE_RETURN_SHAPE_CODES,
   MACRO_KIND_CODES,
-  // ✅ v16.0.0
   DOM_CATEGORY_CODES,
   DOM_EFFECT_CODES,
   DOM_TARGET_KIND_CODES,
@@ -1107,7 +994,6 @@ export default {
   EVENT_HANDLER_SOURCE_CODES,
   SOURCE_CHAIN_KIND_CODES,
   HTML_OUTPUT_KIND_CODES,
-  // ✅ v17.0.0
   REACT_COMPONENT_KIND_CODES,
   REACT_HOOK_KIND_CODES,
   REACT_EFFECT_KIND_CODES,
