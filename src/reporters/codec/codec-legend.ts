@@ -23,6 +23,7 @@
 //   • 10 схем 'react.*'
 
 import type { CodecLegend, CodesDict } from './codec-types.js';
+import { LEGEND_VERSION } from './codec-types.js';
 
 import {
   // ✅ Существующие словари
@@ -948,11 +949,11 @@ export interface LegendDictionaries {
  *
  * ✅ v17.1.0: schemas['react.jsxElements'] — 12 полей (было 11).
  *            Добавлено поле 'col' (column).
- *            legend.version остаётся '3.0.0'.
+ *            legend.version = LEGEND_VERSION ('3.1.0').
  */
 export function buildLegend(_dict: LegendDictionaries): CodecLegend {
   return {
-    version: '3.0.0',
+    version: LEGEND_VERSION,
     codes: buildCodesLegend(),
     flags: buildFlagsLegend(),
     schemas: SCHEMAS,

@@ -5,6 +5,7 @@ import path from 'path';
 import { Codec } from '../src/reporters/codec/codec.js';
 import { verifyRoundTripBoth } from '../src/reporters/codec/codec-verify.js';
 import type { CompactJSON, FullJSON, CallData } from '../src/reporters/codec/codec-types.js';
+import { CODEC_VERSION, LEGEND_VERSION } from '../src/reporters/codec/codec-types.js';
 
 // ✅ v15.6.0: импорт isJsonSafe для I15/I16
 import { isJsonSafe } from '../src/reporters/codec/stable-stringify.js';
@@ -33,11 +34,11 @@ const DEFAULT_OPTIONS: ScriptOptions = {
   checkLegend: true,
 };
 
-// ✅ v17.1.0: обновлено с 17.0.0 на 17.1.0 (CODEC_VERSION в codec-types.ts)
+// ✅ v17.2.0: CODEC_VERSION берётся из codec-types (SSOT).
 // ✅ v17.0.0: обновлено с 16.2.0 на 17.0.0 (CODEC_VERSION в codec-types.ts)
-// ✅ v16.2.0: LEGEND_VERSION = '3.0.0'
-const EXPECTED_CODEC_VERSION = '17.1.0';
-const EXPECTED_LEGEND_VERSION = '3.0.0';
+// ✅ v17.2.0: LEGEND_VERSION берётся из codec-types (SSOT).
+const EXPECTED_CODEC_VERSION = CODEC_VERSION;
+const EXPECTED_LEGEND_VERSION = LEGEND_VERSION;
 
 // ============================================
 // ANSI-ЦВЕТА
