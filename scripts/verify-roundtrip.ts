@@ -192,11 +192,11 @@ function normalizeVueForCompare(full: any): any {
       hooks: stripId(vue.hooks),
       reactivity: stripId(vue.reactivity),
       icons: stripId(vue.icons),
-      componentProps: vue.componentProps,
-      componentEvents: vue.componentEvents,
-      componentDirectives: vue.componentDirectives,
-      componentSlots: vue.componentSlots,
-      htmlInterpolations: vue.htmlInterpolations,
+      componentProps: Array.isArray(vue.componentProps) ? vue.componentProps : [],
+      componentEvents: Array.isArray(vue.componentEvents) ? vue.componentEvents : [],
+      componentDirectives: Array.isArray(vue.componentDirectives) ? vue.componentDirectives : [],
+      componentSlots: Array.isArray(vue.componentSlots) ? vue.componentSlots : [],
+      htmlInterpolations: Array.isArray(vue.htmlInterpolations) ? vue.htmlInterpolations : [],
       fnHtmlUsage: vue.fnHtmlUsage,
       domApiCalls: vue.domApiCalls,
       domApiArgs: vue.domApiArgs,
@@ -306,11 +306,19 @@ function normalizeReactForCompare(full: any): any {
  * ✅ v16.0.3 + v17.1.0: Полная нормализация FullJSON для сравнения.
  */
 function normalizeFullForCompare(full: any): any {
-  return normalizeReactForCompare(
+  if (!full || typeof full !== "object") return full;
+  const normalized = normalizeReactForCompare(
     normalizeVueSfcForCompare(
       normalizeFunctionsForCompare(normalizeVueForCompare(full))
     )
   );
+  // ✅ v18.0.0: top-level component* поля — приводим undefined → []
+  if (!Array.isArray(normalized.componentProps)) normalized.componentProps = [];
+  if (!Array.isArray(normalized.componentEvents)) normalized.componentEvents = [];
+  if (!Array.isArray(normalized.componentDirectives)) normalized.componentDirectives = [];
+  if (!Array.isArray(normalized.componentSlots)) normalized.componentSlots = [];
+  if (!Array.isArray(normalized.htmlInterpolations)) normalized.htmlInterpolations = [];
+  return normalized;
 }
 
 // ============================================

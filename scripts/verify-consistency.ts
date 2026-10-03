@@ -9,6 +9,7 @@ import { deepEqual, collectDiffs } from '../src/reporters/codec/codec-verify.js'
 import { isValueKept } from '../src/reporters/codec/values-filter.js';
 import { isJsonSafe, stableStringify } from '../src/reporters/codec/stable-stringify.js';
 
+import { CODEC_VERSION, LEGEND_VERSION } from '../src/reporters/codec/codec-types.js';
 import type { FullJSON, CompactJSON } from '../src/reporters/codec/codec-types.js';
 
 function diffObjects(a: unknown, b: unknown, limit = 20) {
@@ -569,7 +570,7 @@ function checkHtmlElementIds(compact: CompactJSON): {
 }
 
 // ============================================================
-// ✅ v3.4.5: checkLegendVersion — теперь '2.1.0'
+// ✅ v3.4.5 / v18.0.0: checkLegendVersion — использует LEGEND_VERSION из SSOT
 // ============================================================
 
 function checkLegendVersion(compact: CompactJSON): {
@@ -578,15 +579,15 @@ function checkLegendVersion(compact: CompactJSON): {
   violations: string[];
 } {
   const version = (compact as any).legend?.version;
-  // ✅ v3.4.5: было '2.0.1' → стало '2.1.0'
-  if (version !== '2.1.0') {
+  // ✅ v18.0.0: версия берётся из LEGEND_VERSION (codec-types.ts)
+  if (version !== LEGEND_VERSION) {
     return {
       ok: false,
-      detail: `legend.version = ${version}, ожидается '2.1.0'`,
+      detail: `legend.version = ${version}, ожидается '${LEGEND_VERSION}'`,
       violations: [`legend.version = ${version}`],
     };
   }
-  return { ok: true, detail: "'2.1.0'", violations: [] };
+  return { ok: true, detail: `'${LEGEND_VERSION}'`, violations: [] };
 }
 
 function checkTokensType(compact: CompactJSON): {
@@ -1522,8 +1523,8 @@ async function main(): Promise<void> {
 
   {
     const r = checkLegendVersion(compact);
-    // ✅ v3.4.5: ожидается '2.1.0'
-    printResult('legend.version = 2.1.0', r.ok, r.detail);
+    // ✅ v18.0.0: ожидается LEGEND_VERSION
+    printResult(`legend.version = ${LEGEND_VERSION}`, r.ok, r.detail);
     if (!r.ok) for (const v of r.violations) console.log(`     ${C.red}•${C.reset} ${v}`);
     checks.push({ name: 'legend.version', ok: r.ok, detail: r.detail });
   }
@@ -1845,13 +1846,13 @@ async function main(): Promise<void> {
     console.log(`  ${C.bold}1. Пересобрать index.full.json${C.reset} из тех же исходников,`);
     console.log(`     что и index.json, ОДНИМ прогоном.`);
     console.log('');
-    // ✅ v3.4.5: CODEC_VERSION = '16.1.0'
+    // ✅ v18.0.0: CODEC_VERSION из SSOT
     console.log(`  ${C.bold}2. Проверить CODEC_VERSION${C.reset} в обоих файлах — должен`);
-    console.log(`     быть ${C.cyan}'16.1.0'${C.reset}.`);
+    console.log(`     быть ${C.cyan}'${CODEC_VERSION}'${C.reset}.`);
     console.log('');
-    // ✅ v3.4.5: legend.version = '2.1.0'
+    // ✅ v18.0.0: legend.version = LEGEND_VERSION
     console.log(`  ${C.bold}3. Проверить legend.version${C.reset} — должен быть`);
-    console.log(`     ${C.cyan}'2.1.0'${C.reset}.`);
+    console.log(`     ${C.cyan}'${LEGEND_VERSION}'${C.reset}.`);
     console.log('');
     console.log(`  ${C.bold}4. Если расхождение в vue.sfc${C.reset} — проверить миграцию`);
     console.log(`     8 → 34 поля (см. checkVueSfcMigration).`);
