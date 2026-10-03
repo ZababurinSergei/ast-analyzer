@@ -1635,10 +1635,10 @@ function decodeVueSection(
     htmlInterpolations: allHtmlInterpolations,
 
     // ✅ A4.2.11h: Vue flow-секции (симметрия с React)
-    stateFlows: vStateFlows.length > 0 ? vStateFlows : undefined,
-    eventFlows: vEventFlows.length > 0 ? vEventFlows : undefined,
-    renderTree: vRenderTree.length > 0 ? vRenderTree : undefined,
-    flowFnHtmlUsage: vFlowFnHtmlUsage.length > 0 ? vFlowFnHtmlUsage : undefined,
+    stateFlows: vStateFlows,
+    eventFlows: vEventFlows,
+    renderTree: vRenderTree,
+    flowFnHtmlUsage: vFlowFnHtmlUsage,
   };
 }
 
