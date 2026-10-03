@@ -332,17 +332,22 @@ export class CLIExecutor {
 
   private registerTraceFlowCommand(): void {
     this.program
-      .command('trace-flow <flowId>')
-      .description('Trace Vue state flow by id (vsfN, vefN) — mutatedBy, readBy, renderedIn')
+      .command('trace-flow [flowId]')
+      .description('Trace Vue/React flow by id (vsfN, vefN, rsfN) or "all"/"summary"')
       .option('-i, --input <file>', 'Compact JSON file', './ast-graph-viewer/index.json')
       .option('--json', 'Output as JSON')
-      .option('--verbose', 'Show full details (including HTML context)')
-      .action(async (flowId: string, options: any) => {
+      .option('--verbose', 'Show full details')
+      .option('--filter <expr>', 'Filter: stateName=X | kind=ref | hasMutatedBy=true')
+      .option('--include <fields>', 'Only these fields (comma-separated)')
+      .option('--exclude <fields>', 'Exclude these fields (comma-separated)')
+      .option('--top <n>', 'Top-N for summary (default: 5)', '5')
+      .option('--report <path>', 'Save summary/all as markdown report')
+      .action(async (flowId: string | undefined, options: any) => {
         await this.traceFlow(flowId, options);
       });
   }
 
-  private async traceFlow(flowId: string, options: any): Promise<void> {
+  private async traceFlow(flowId: string | undefined, options: any): Promise<void> {
     const fs = await import('fs');
     const path = await import('path');
 
@@ -362,98 +367,536 @@ export class CLIExecutor {
     const full = Codec.decode(compact);
 
     const vue = (full as any).vue;
-    if (!vue) {
-      console.error(`❌ В файле нет vue-секции`);
-      process.exit(1);
+    const react = (full as any).react;
+
+    // 3. Разбираем фильтры
+    const filter = this.parseFilter(options.filter);
+    const includeFields = options.include ? String(options.include).split(',').map((s: string) => s.trim()) : null;
+    const excludeFields = options.exclude ? String(options.exclude).split(',').map((s: string) => s.trim()) : null;
+
+    // 3.5. Режим "summary"
+    if (flowId === 'summary') {
+      const summary = this.buildFlowSummary(full, parseInt(options.top ?? '5', 10));
+
+      if (options.json) {
+        console.log(JSON.stringify(summary, null, 2));
+      } else {
+        this.printFlowSummary(summary);
+      }
+
+      if (options.report) {
+        const md = this.generateFlowSummaryMarkdown(summary, full);
+        const fsMod = await import('fs');
+        fsMod.writeFileSync(String(options.report), md, 'utf-8');
+        console.log('\n📄 Отчёт сохранён: ' + options.report);
+      }
+
+      return;
     }
 
-    // 3. Ищем flow по id
+    // 4. Режим "all" или без flowId
+    if (!flowId || flowId === 'all') {
+      const vueFlows = this.applyFilter(vue?.stateFlows ?? [], filter);
+      const reactFlows = this.applyFilter(react?.stateFlows ?? [], filter);
+
+      if (options.json) {
+        console.log(JSON.stringify({ vue: vueFlows, react: reactFlows }, null, 2));
+      } else {
+        this.printAllFlows(vueFlows, reactFlows, options.filter);
+      }
+
+      if (options.report) {
+        const md = this.generateAllFlowsMarkdown(vueFlows, reactFlows, options.filter);
+        const fsMod = await import('fs');
+        fsMod.writeFileSync(String(options.report), md, 'utf-8');
+        console.log('\n📄 Отчёт сохранён: ' + options.report);
+      }
+
+      return;
+
+      console.log(`\n📊 Все flow (filter: ${options.filter ?? 'нет'})`);
+      console.log('');
+
+      if (vueFlows.length > 0) {
+        console.log(`   Vue stateFlows: ${vueFlows.length}`);
+        for (const sf of vueFlows) {
+          console.log(
+            `     ${sf.id} | ${sf.kind} | ${sf.stateName ?? '(unnamed)'} | ` +
+            `mut=${(sf.mutatedBy ?? []).length} rd=${(sf.readBy ?? []).length} rend=${(sf.renderedIn ?? []).length}`
+          );
+        }
+      }
+
+      if (reactFlows.length > 0) {
+        console.log(`   React stateFlows: ${reactFlows.length}`);
+        for (const sf of reactFlows) {
+          console.log(
+            `     ${sf.id} | ${sf.stateName ?? '(unnamed)'} → ${sf.setterName ?? '(no setter)'} | ` +
+            `mut=${(sf.mutatedBy ?? []).length} rd=${(sf.readBy ?? []).length}`
+          );
+        }
+      }
+
+      if (vueFlows.length === 0 && reactFlows.length === 0) {
+        console.log('   (нет совпадений)');
+      }
+      console.log('');
+      return;
+    }
+
+    // 5. Поиск по id
     const isVueStateFlow = /^vsf\d+$/.test(flowId);
     const isVueEventFlow = /^vef\d+$/.test(flowId);
+    const isReactStateFlow = /^rsf\d+$/.test(flowId);
 
     if (isVueStateFlow) {
-      const sf = (vue.stateFlows ?? []).find((f: any) => f.id === flowId);
-      if (!sf) {
+      const sfRaw = (vue?.stateFlows ?? []).find((f: any) => f.id === flowId);
+      if (!sfRaw) {
         console.error(`❌ stateFlow не найден: ${flowId}`);
-        console.error(`   Всего stateFlows: ${(vue.stateFlows ?? []).length}`);
+        console.error(`   Всего Vue stateFlows: ${(vue?.stateFlows ?? []).length}`);
         process.exit(1);
       }
+
+      // ✅ A5.2: применяем фильтр полей СРАЗУ — чтобы и JSON, и pretty-print уважали его
+      const sf = this.applyFields(sfRaw, includeFields, excludeFields);
 
       if (options.json) {
         console.log(JSON.stringify(sf, null, 2));
         return;
       }
 
-      // 4. Красивый вывод
-      console.log(`\n🔍 StateFlow: ${sf.id}`);
-      console.log(`   reactivityId: ${sf.reactivityId ?? '(none)'}`);
-      console.log(`   stateName:    ${sf.stateName ?? '(unnamed)'}`);
-      console.log(`   kind:         ${sf.kind ?? 'unknown'}`);
-      console.log('');
+      const headerId = sf.id ?? sfRaw.id;
+      console.log(`\n🔍 Vue StateFlow: ${headerId}`);
 
-      const mutatedBy = sf.mutatedBy ?? [];
-      console.log(`   ✏️  mutatedBy (${mutatedBy.length}):`);
-      for (const m of mutatedBy) {
-        console.log(`       • ${m.functionId ?? '?'} (line ${m.line ?? '?'})`);
-      }
-
-      const readBy = sf.readBy ?? [];
-      console.log(`   📖 readBy (${readBy.length}):`);
-      for (const r of readBy) {
-        console.log(`       • ${r.functionId ?? '?'} (line ${r.line ?? '?'})`);
-      }
-
-      const renderedIn = sf.renderedIn ?? [];
-      console.log(`   🎨 renderedIn (${renderedIn.length}):`);
-      for (const r of renderedIn) {
-        console.log(`       • htmlElementId=${r.htmlElementId ?? '?'} attr=${r.attrName ?? '?'} kind=${r.kind ?? '?'} line=${r.line ?? '?'}`);
-      }
-
-      if (options.verbose && renderedIn.length > 0) {
-        console.log('');
-        console.log(`   🔍 HTML-контекст:`);
-        for (const r of renderedIn) {
-          const sfc = (vue.sfc ?? []).find((s: any) =>
-            (s.htmlElements ?? []).some((he: any) => he.id === r.htmlElementId)
-          );
-          if (sfc) {
-            const he = (sfc.htmlElements ?? []).find((h: any) => h.id === r.htmlElementId);
-            if (he) {
-              console.log(`       [${sfc.fileId}] <${he.tag ?? '?'}> line ${he.line ?? '?'}`);
-            }
-          }
+      // ✅ A5.2: выводим только те поля, что не отфильтрованы
+      const headerFields: Array<[string, any]> = [
+        ['reactivityId', sf.reactivityId],
+        ['stateName', sf.stateName],
+        ['kind', sf.kind],
+      ];
+      for (const [key, value] of headerFields) {
+        if (value !== undefined) {
+          console.log(`   ${key.padEnd(13)}${value ?? '(none)'}`);
         }
       }
+      console.log('');
 
+      this.printMutations(sf, 'mutatedBy', 'readBy', 'renderedIn');
       console.log('');
       return;
     }
 
     if (isVueEventFlow) {
-      const ef = (vue.eventFlows ?? []).find((f: any) => f.id === flowId);
-      if (!ef) {
+      const efRaw = (vue?.eventFlows ?? []).find((f: any) => f.id === flowId);
+      if (!efRaw) {
         console.error(`❌ eventFlow не найден: ${flowId}`);
-        console.error(`   Всего eventFlows: ${(vue.eventFlows ?? []).length}`);
         process.exit(1);
       }
+
+      const ef = this.applyFields(efRaw, includeFields, excludeFields);
 
       if (options.json) {
         console.log(JSON.stringify(ef, null, 2));
         return;
       }
 
-      console.log(`\n🎬 EventFlow: ${ef.id}`);
-      console.log(`   eventId:           ${ef.eventId ?? '?'}`);
-      console.log(`   eventName:         ${ef.eventName ?? '?'}`);
-      console.log(`   elementId:         ${ef.elementId ?? '?'}`);
-      console.log(`   handlerFunctionId: ${ef.handlerFunctionId || '(none)'}`);
+      const headerId = ef.id ?? efRaw.id;
+      console.log(`\n🎬 Vue EventFlow: ${headerId}`);
+
+      const efFields: Array<[string, any]> = [
+        ['eventId', ef.eventId],
+        ['eventName', ef.eventName],
+        ['elementId', ef.elementId],
+        ['handlerFunctionId', ef.handlerFunctionId],
+      ];
+      for (const [key, value] of efFields) {
+        if (value !== undefined) {
+          console.log(`   ${key.padEnd(20)}${value || '(none)'}`);
+        }
+      }
+      console.log('');
+      return;
+    }
+
+    if (isReactStateFlow) {
+      const sfRaw = (react?.stateFlows ?? []).find((f: any) => f.id === flowId);
+      if (!sfRaw) {
+        console.error(`❌ React stateFlow не найден: ${flowId}`);
+        console.error(`   Всего React stateFlows: ${(react?.stateFlows ?? []).length}`);
+        process.exit(1);
+      }
+
+      const sf = this.applyFields(sfRaw, includeFields, excludeFields);
+
+      if (options.json) {
+        console.log(JSON.stringify(sf, null, 2));
+        return;
+      }
+
+      const headerId = sf.id ?? sfRaw.id;
+      console.log(`\n⚛️  React StateFlow: ${headerId}`);
+
+      const rHeaderFields: Array<[string, any]> = [
+        ['hookId', sf.hookId],
+        ['stateName', sf.stateName],
+        ['setterName', sf.setterName],
+      ];
+      for (const [key, value] of rHeaderFields) {
+        if (value !== undefined) {
+          console.log(`   ${key.padEnd(13)}${value ?? '(none)'}`);
+        }
+      }
+      console.log('');
+
+      this.printMutations(sf, 'mutatedBy', 'readBy', 'renderedIn');
       console.log('');
       return;
     }
 
     console.error(`❌ Неизвестный формат id: ${flowId}`);
-    console.error(`   Ожидается: vsfN (stateFlow) или vefN (eventFlow)`);
+    console.error(`   Ожидается: vsfN, vefN, rsfN, или all`);
     process.exit(1);
+  }
+
+  /**
+   * ✅ A5.7: строит агрегированную сводку по flow.
+   */
+  private buildFlowSummary(full: any, topN: number): any {
+    const vue = full.vue ?? {};
+    const react = full.react ?? {};
+
+    const vueStateFlows = vue.stateFlows ?? [];
+    const vueEventFlows = vue.eventFlows ?? [];
+    const reactStateFlows = react.stateFlows ?? [];
+
+    const countNonEmpty = (arr: any[], field: string): number =>
+      arr.filter((x) => Array.isArray(x[field]) && x[field].length > 0).length;
+
+    const topByField = (arr: any[], field: string, n: number): any[] =>
+      [...arr]
+        .filter((x) => Array.isArray(x[field]) && x[field].length > 0)
+        .sort((a, b) => (b[field]?.length ?? 0) - (a[field]?.length ?? 0))
+        .slice(0, n)
+        .map((x) => ({
+          id: x.id,
+          kind: x.kind,
+          stateName: x.stateName,
+          count: x[field]?.length ?? 0,
+        }));
+
+    return {
+      vue: {
+        stateFlows: {
+          total: vueStateFlows.length,
+          withMutatedBy: countNonEmpty(vueStateFlows, 'mutatedBy'),
+          withReadBy: countNonEmpty(vueStateFlows, 'readBy'),
+          withRenderedIn: countNonEmpty(vueStateFlows, 'renderedIn'),
+          topByMutatedBy: topByField(vueStateFlows, 'mutatedBy', topN),
+          topByReadBy: topByField(vueStateFlows, 'readBy', topN),
+          topByRenderedIn: topByField(vueStateFlows, 'renderedIn', topN),
+          critical: vueStateFlows
+            .filter((x: any) => (x.mutatedBy?.length ?? 0) >= 5)
+            .map((x: any) => x.id),
+        },
+        eventFlows: { total: vueEventFlows.length },
+        renderTree: { total: (vue.renderTree ?? []).length },
+        flowFnHtmlUsage: { total: (vue.flowFnHtmlUsage ?? []).length },
+      },
+      react: {
+        stateFlows: {
+          total: reactStateFlows.length,
+          withMutatedBy: countNonEmpty(reactStateFlows, 'mutatedBy'),
+          withReadBy: countNonEmpty(reactStateFlows, 'readBy'),
+          topByMutatedBy: topByField(reactStateFlows, 'mutatedBy', topN),
+          topByReadBy: topByField(reactStateFlows, 'readBy', topN),
+          critical: reactStateFlows
+            .filter((x: any) => (x.mutatedBy?.length ?? 0) >= 5)
+            .map((x: any) => x.id),
+        },
+      },
+    };
+  }
+
+  private printFlowSummary(s: any): void {
+    console.log('\n📊 Flow Summary');
+
+    const v = s.vue;
+    if (v.stateFlows.total > 0 || v.eventFlows.total > 0) {
+      console.log('');
+      console.log('   🔷 Vue:');
+      console.log('      StateFlows:       ' + v.stateFlows.total);
+
+      const mutPct = v.stateFlows.total > 0
+        ? Math.round((v.stateFlows.withMutatedBy / v.stateFlows.total) * 100)
+        : 0;
+      const rdPct = v.stateFlows.total > 0
+        ? Math.round((v.stateFlows.withReadBy / v.stateFlows.total) * 100)
+        : 0;
+      const rendPct = v.stateFlows.total > 0
+        ? Math.round((v.stateFlows.withRenderedIn / v.stateFlows.total) * 100)
+        : 0;
+
+      console.log('        • с mutations:  ' + v.stateFlows.withMutatedBy + ' (' + mutPct + '%)');
+      console.log('        • с readBy:     ' + v.stateFlows.withReadBy + ' (' + rdPct + '%)');
+      console.log('        • с renderedIn: ' + v.stateFlows.withRenderedIn + ' (' + rendPct + '%)');
+      console.log('      EventFlows:       ' + v.eventFlows.total);
+      console.log('      RenderTree:       ' + v.renderTree.total);
+      console.log('      FnHtmlUsage:      ' + v.flowFnHtmlUsage.total);
+
+      if (v.stateFlows.topByMutatedBy.length > 0) {
+        console.log('');
+        console.log('   ✏️  Топ по mutatedBy:');
+        v.stateFlows.topByMutatedBy.forEach((x: any, i: number) => {
+          console.log('      ' + (i + 1) + '. ' + x.id + ' (' + x.kind + ', ' + x.stateName + ') — ' + x.count);
+        });
+      }
+
+      if (v.stateFlows.topByReadBy.length > 0) {
+        console.log('');
+        console.log('   📖 Топ по readBy:');
+        v.stateFlows.topByReadBy.forEach((x: any, i: number) => {
+          console.log('      ' + (i + 1) + '. ' + x.id + ' (' + x.kind + ', ' + x.stateName + ') — ' + x.count);
+        });
+      }
+
+      if (v.stateFlows.topByRenderedIn.length > 0) {
+        console.log('');
+        console.log('   🎨 Топ по renderedIn:');
+        v.stateFlows.topByRenderedIn.forEach((x: any, i: number) => {
+          console.log('      ' + (i + 1) + '. ' + x.id + ' (' + x.kind + ', ' + x.stateName + ') — ' + x.count);
+        });
+      }
+
+      if (v.stateFlows.critical.length > 0) {
+        console.log('');
+        console.log('   🔥 Критичные (mutatedBy >= 5): ' + v.stateFlows.critical.join(', '));
+      }
+    }
+
+    const r = s.react;
+    if (r.stateFlows.total > 0) {
+      console.log('');
+      console.log('   ⚛️  React:');
+      console.log('      StateFlows:       ' + r.stateFlows.total);
+      console.log('        • с mutations:  ' + r.stateFlows.withMutatedBy);
+      console.log('        • с readBy:     ' + r.stateFlows.withReadBy);
+    }
+
+    console.log('');
+  }
+
+  private printAllFlows(vueFlows: any[], reactFlows: any[], filterExpr: string | undefined): void {
+    console.log('\n📊 Все flow (filter: ' + (filterExpr ?? 'нет') + ')');
+    console.log('');
+
+    if (vueFlows.length > 0) {
+      console.log('   Vue stateFlows: ' + vueFlows.length);
+      for (const sf of vueFlows as any[]) {
+        console.log(
+          '     ' + sf.id + ' | ' + sf.kind + ' | ' + (sf.stateName ?? '(unnamed)') + ' | ' +
+          'mut=' + (sf.mutatedBy ?? []).length + ' rd=' + (sf.readBy ?? []).length + ' rend=' + (sf.renderedIn ?? []).length
+        );
+      }
+    }
+
+    if (reactFlows.length > 0) {
+      console.log('   React stateFlows: ' + reactFlows.length);
+      for (const sf of reactFlows as any[]) {
+        console.log(
+          '     ' + sf.id + ' | ' + (sf.stateName ?? '(unnamed)') + ' → ' + (sf.setterName ?? '(no setter)') + ' | ' +
+          'mut=' + (sf.mutatedBy ?? []).length + ' rd=' + (sf.readBy ?? []).length
+        );
+      }
+    }
+
+    if (vueFlows.length === 0 && reactFlows.length === 0) {
+      console.log('   (нет совпадений)');
+    }
+    console.log('');
+  }
+
+  private generateFlowSummaryMarkdown(s: any, _full: any): string {
+    const lines: string[] = [];
+    lines.push('# Flow Summary');
+    lines.push('');
+    lines.push('Generated: ' + new Date().toISOString());
+    lines.push('');
+
+    const v = s.vue;
+    if (v.stateFlows.total > 0) {
+      lines.push('## Vue');
+      lines.push('');
+      lines.push('- **StateFlows:** ' + v.stateFlows.total);
+      lines.push('  - с mutations: ' + v.stateFlows.withMutatedBy);
+      lines.push('  - с readBy: ' + v.stateFlows.withReadBy);
+      lines.push('  - с renderedIn: ' + v.stateFlows.withRenderedIn);
+      lines.push('- **EventFlows:** ' + v.eventFlows.total);
+      lines.push('- **RenderTree:** ' + v.renderTree.total);
+      lines.push('- **FnHtmlUsage:** ' + v.flowFnHtmlUsage.total);
+      lines.push('');
+
+      if (v.stateFlows.topByMutatedBy.length > 0) {
+        lines.push('### Топ по mutatedBy');
+        lines.push('');
+        lines.push('| # | id | kind | stateName | count |');
+        lines.push('|---|-----|------|-----------|-------|');
+        v.stateFlows.topByMutatedBy.forEach((x: any, i: number) => {
+          lines.push('| ' + (i + 1) + ' | `' + x.id + '` | ' + x.kind + ' | `' + x.stateName + '` | ' + x.count + ' |');
+        });
+        lines.push('');
+      }
+
+      if (v.stateFlows.critical.length > 0) {
+        lines.push('### 🔥 Критичные (mutatedBy >= 5)');
+        lines.push('');
+        for (const id of v.stateFlows.critical) {
+          lines.push('- `' + id + '`');
+        }
+        lines.push('');
+      }
+    }
+
+    const r = s.react;
+    if (r.stateFlows.total > 0) {
+      lines.push('## React');
+      lines.push('');
+      lines.push('- **StateFlows:** ' + r.stateFlows.total);
+      lines.push('  - с mutations: ' + r.stateFlows.withMutatedBy);
+      lines.push('  - с readBy: ' + r.stateFlows.withReadBy);
+      lines.push('');
+    }
+
+    return lines.join('\n');
+  }
+
+  private generateAllFlowsMarkdown(vueFlows: any[], reactFlows: any[], filterExpr: string | undefined): string {
+    const lines: string[] = [];
+    lines.push('# Flow Report');
+    lines.push('');
+    lines.push('Filter: `' + (filterExpr ?? 'нет') + '`');
+    lines.push('Generated: ' + new Date().toISOString());
+    lines.push('');
+
+    if (vueFlows.length > 0) {
+      lines.push('## Vue stateFlows (' + vueFlows.length + ')');
+      lines.push('');
+      lines.push('| id | kind | stateName | mut | rd | rend |');
+      lines.push('|-----|------|-----------|-----|-----|------|');
+      for (const sf of vueFlows as any[]) {
+        lines.push(
+          '| `' + sf.id + '` | ' + sf.kind + ' | `' + (sf.stateName ?? '') + '` | ' + (sf.mutatedBy ?? []).length + ' | ' + (sf.readBy ?? []).length + ' | ' + (sf.renderedIn ?? []).length + ' |'
+        );
+      }
+      lines.push('');
+    }
+
+    if (reactFlows.length > 0) {
+      lines.push('## React stateFlows (' + reactFlows.length + ')');
+      lines.push('');
+      lines.push('| id | stateName | setterName | mut | rd |');
+      lines.push('|-----|-----------|------------|-----|-----|');
+      for (const sf of reactFlows as any[]) {
+        lines.push(
+          '| `' + sf.id + '` | `' + (sf.stateName ?? '') + '` | `' + (sf.setterName ?? '') + '` | ' + (sf.mutatedBy ?? []).length + ' | ' + (sf.readBy ?? []).length + ' |'
+        );
+      }
+      lines.push('');
+    }
+
+    return lines.join('\n');
+  }
+
+
+  /**
+   * Разбор --filter expression: "stateName=show | kind=ref | hasMutatedBy=true"
+   */
+  private parseFilter(expr: string | undefined): ((sf: any) => boolean) | null {
+    if (!expr) return null;
+    const parts = String(expr).split('|').map(s => s.trim()).filter(Boolean);
+
+    return (sf: any) => {
+      for (const part of parts) {
+        if (part.startsWith('stateName=')) {
+          const v = part.slice('stateName='.length);
+          if (String(sf.stateName ?? '') !== v) return false;
+        } else if (part.startsWith('kind=')) {
+          const v = part.slice('kind='.length);
+          if (String(sf.kind ?? '') !== v) return false;
+        } else if (part === 'hasMutatedBy=true') {
+          if ((sf.mutatedBy ?? []).length === 0) return false;
+        } else if (part === 'hasReadBy=true') {
+          if ((sf.readBy ?? []).length === 0) return false;
+        } else if (part === 'hasRenderedIn=true') {
+          if ((sf.renderedIn ?? []).length === 0) return false;
+        }
+      }
+      return true;
+    };
+  }
+
+  private applyFilter(flows: any[], filter: ((sf: any) => boolean) | null): any[] {
+    if (!filter) return flows;
+    return flows.filter(filter);
+  }
+
+  private applyFields(obj: any, include: string[] | null, exclude: string[] | null): any {
+    if (!include && !exclude) return obj;
+    const result: any = {};
+    const keys = Object.keys(obj);
+    for (const k of keys) {
+      if (include && !include.includes(k)) continue;
+      if (exclude && exclude.includes(k)) continue;
+      result[k] = obj[k];
+    }
+    return result;
+  }
+
+  /**
+   * ✅ A5.2: печатает mutatedBy/readBy/renderedIn.
+   *   Использует уже отфильтрованный объект `sf` (applyFields).
+   *   Печатает ТОЛЬКО те поля, которые не были исключены.
+   */
+  private printMutations(sf: any, mutField: string, readField: string, rendField: string): void {
+    if (Object.prototype.hasOwnProperty.call(sf, mutField)) {
+      const mutatedBy = Array.isArray(sf[mutField]) ? sf[mutField] : [];
+      console.log(`   ✏️  ${mutField} (${mutatedBy.length}):`);
+      for (const m of mutatedBy) {
+        const fid = this.shortenFunctionId(m.functionId ?? '?');
+        console.log(`       • ${fid} (line ${m.line ?? '?'})`);
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(sf, readField)) {
+      const readBy = Array.isArray(sf[readField]) ? sf[readField] : [];
+      console.log(`   📖 ${readField} (${readBy.length}):`);
+      for (const r of readBy) {
+        const fid = this.shortenFunctionId(r.functionId ?? '?');
+        console.log(`       • ${fid} (line ${r.line ?? '?'})`);
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(sf, rendField)) {
+      const renderedIn = Array.isArray(sf[rendField]) ? sf[rendField] : [];
+      console.log(`   🎨 ${rendField} (${renderedIn.length}):`);
+      for (const r of renderedIn) {
+        console.log(
+          `       • htmlElementId=${r.htmlElementId ?? '?'} attr=${r.attrName ?? '?'} kind=${r.kind ?? '?'} line=${r.line ?? '?'}`
+        );
+      }
+    }
+  }
+
+  /**
+   * ✅ A5.0.1: укорачиваем длинные functionId
+   *   "components/ui/AiModal/AiModal.vue:handleUpdateShow:17" → "AiModal.vue:handleUpdateShow:17"
+   *   "f230_18" → "f230_18" (не резолвится)
+   */
+  private shortenFunctionId(fid: string): string {
+    if (fid.includes('/')) {
+      const lastSlash = fid.lastIndexOf('/');
+      return fid.slice(lastSlash + 1);
+    }
+    return fid;
   }
 
   private registerImpactCommand(): void {
