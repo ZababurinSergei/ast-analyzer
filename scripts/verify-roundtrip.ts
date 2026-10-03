@@ -1229,6 +1229,7 @@ async function main(): Promise<void> {
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
+    if (!arg) continue;   // ✅ TS18048: guard against undefined
     if (arg === '--compact' && args[i + 1]) {
       options.compactPath = args[++i]!;
     } else if (arg.startsWith('--compact=')) {
