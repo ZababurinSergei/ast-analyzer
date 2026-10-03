@@ -21,6 +21,8 @@ interface ScriptOptions {
   maxDiffs: number;
   jsonReportPath: string | null;
   goldenDir: string | null;
+  /** ✅ v17.4.0: имя проекта для golden-фикстур (<project>.golden.json) */
+  projectName: string | null;
   checkLegend: boolean;
 }
 
@@ -31,6 +33,7 @@ const DEFAULT_OPTIONS: ScriptOptions = {
   maxDiffs: 10,
   jsonReportPath: null,
   goldenDir: './scripts/fixtures',
+  projectName: null,
   checkLegend: true,
 };
 
@@ -1228,18 +1231,32 @@ async function main(): Promise<void> {
     const arg = args[i];
     if (arg === '--compact' && args[i + 1]) {
       options.compactPath = args[++i]!;
+    } else if (arg.startsWith('--compact=')) {
+      options.compactPath = arg.substring('--compact='.length);
     } else if (arg === '--full' && args[i + 1]) {
       options.fullPath = args[++i]!;
+    } else if (arg.startsWith('--full=')) {
+      options.fullPath = arg.substring('--full='.length);
     } else if (arg === '--verbose' || arg === '-v') {
       options.verbose = true;
     } else if (arg === '--max-diffs' && args[i + 1]) {
       options.maxDiffs = parseInt(args[++i]!, 10);
+    } else if (arg.startsWith('--max-diffs=')) {
+      options.maxDiffs = parseInt(arg.substring('--max-diffs='.length), 10);
     } else if (arg === '--json-report' && args[i + 1]) {
       options.jsonReportPath = args[++i]!;
+    } else if (arg.startsWith('--json-report=')) {
+      options.jsonReportPath = arg.substring('--json-report='.length);
     } else if (arg === '--golden' && args[i + 1]) {
       options.goldenDir = args[++i]!;
+    } else if (arg.startsWith('--golden=')) {
+      options.goldenDir = arg.substring('--golden='.length);
     } else if (arg === '--no-golden') {
       options.goldenDir = null;
+    } else if (arg === '--project' && args[i + 1]) {
+      options.projectName = args[++i]!;
+    } else if (arg.startsWith('--project=')) {
+      options.projectName = arg.substring('--project='.length);
     } else if (arg === '--no-check-legend') {
       options.checkLegend = false;
     } else if (arg === '--help' || arg === '-h') {
@@ -1253,7 +1270,7 @@ async function main(): Promise<void> {
   info(`Full:    ${path.resolve(options.fullPath)}`);
   info(`Verbose: ${options.verbose}`);
   info(`MaxDiffs: ${options.maxDiffs}`);
-  info(`Golden:  ${options.goldenDir ? path.resolve(options.goldenDir) : 'disabled'}`);
+  info(`Golden:  ${options.goldenDir ? path.resolve(options.goldenDir) : 'disabled'}${options.projectName ? ` (project: ${options.projectName})` : ''}`);
   info(`CheckLegend: ${options.checkLegend}`);
   if (options.jsonReportPath) {
     info(`JSON report: ${path.resolve(options.jsonReportPath)}`);
@@ -2369,8 +2386,15 @@ async function main(): Promise<void> {
   if (options.goldenDir) {
     section('🏆 ЭТАЛОН (GOLDEN)');
 
-    const goldenCompactPath = path.join(options.goldenDir, 'index.golden.json');
-    const goldenFullPath = path.join(options.goldenDir, 'index.full.golden.json');
+    // ✅ v17.4.0: два режима:
+    //   1. --project=<name>   → <name>.golden.json
+    //   2. без --project      → index.golden.json (legacy)
+    const goldenCompactPath = options.projectName
+      ? path.join(options.goldenDir, `${options.projectName}.golden.json`)
+      : path.join(options.goldenDir, 'index.golden.json');
+    const goldenFullPath = options.projectName
+      ? path.join(options.goldenDir, `${options.projectName}.full.golden.json`)
+      : path.join(options.goldenDir, 'index.full.golden.json');
 
     if (fileExists(goldenFullPath)) {
       const goldenFull = readJson<FullJSON>(goldenFullPath);

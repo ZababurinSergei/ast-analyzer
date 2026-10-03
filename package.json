@@ -60,7 +60,7 @@
     "build:ast-analizer:fs": "tsx ./src/cli.ts compact-recursive ./src/index.ts --config ./src/ast-analyzer.config.json -o ../../fs/astAnalizer.json",
     "build:ast-graph-viewer": "tsx ./src/cli.ts compact-recursive ./ast-graph-viewer/main.js --config ./src/ast-analyzer.config.json -o ./ast-graph-viewer/index.json",
     "build:ast-graph-viewer:fs": "tsx ./src/cli.ts compact-recursive ./ast-graph-viewer/main.js --config ./src/ast-analyzer.config.json -o ../../fs/astGraphViewer.json",
-    "check:roundtrip": "tsx scripts/verify-roundtrip.ts -v --max-diffs 20",
+    "check:roundtrip": "tsx scripts/verify-roundtrip.ts -v --max-diffs 20 --no-golden",
     "check:consistency": "tsx scripts/verify-consistency.ts -v --max-diffs 20",
     "check:wildCard": "npx tsx scripts/verify-wild-card.ts",
     "build": "tsc -p tsconfig.json",
@@ -265,7 +265,9 @@
     "test:debug:imports": "vitest src/refactor/__tests__/import-fixes.test.ts --inspect-brk --no-file-parallelism",
     "test:debug:analyzers": "vitest src/refactor/__tests__/analyzers-comprehensive.test.ts --inspect-brk --no-file-parallelism",
     "test:debug:jsx": "vitest src/refactor/__tests__/jsx-vue-analyzers.test.ts --inspect-brk --no-file-parallelism",
-    "test:debug:jsx-edge": "vitest src/refactor/__tests__/jsx-vue-advanced-edge.test.ts --inspect-brk --no-file-parallelism"
+    "test:debug:jsx-edge": "vitest src/refactor/__tests__/jsx-vue-advanced-edge.test.ts --inspect-brk --no-file-parallelism",
+    "check:golden": "tsx scripts/verify-roundtrip.ts -v --max-diffs 10 --project=ast-graph-viewer",
+    "save:golden": "tsx scripts/save-golden.ts --project=ast-graph-viewer"
   },
   "keywords": [
     "ast",

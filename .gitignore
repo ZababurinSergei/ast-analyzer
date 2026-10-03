@@ -59,3 +59,6 @@ declaration
 ./_sandbox_1
 **/index.bundle.mjs/**
 **/index.bundle.mjs.map/**
+
+# Temp test artifacts
+tmp/
