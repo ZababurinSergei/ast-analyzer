@@ -659,12 +659,6 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   // ==========================================
   'vue.fnHtmlUsage': ['fn', 'k', 'u', 't', 'tg', 'l', 'col', 'dcat', 'dctx'],
 
-  // ✅ A4.14: Vue flow-секции (симметрия с React)
-  'vue.stateFlows': ['id', 'reactivityId', 'stateName', 'kind', 'mutatedBy', 'readBy', 'renderedIn'],
-  'vue.eventFlows': ['id', 'eventId', 'eventName', 'elementId', 'handlerFunctionId'],
-  'vue.renderTree': ['elementId', 'tagName', 'kind', 'parentId', 'dependsOn'],
-  'vue.flowFnHtmlUsage': ['functionId', 'functionName', 'usedIn'],
-
   // ==========================================
   // domApiCalls
   // ==========================================

@@ -1537,7 +1537,13 @@ function decodeVueSection(
       });
     }
 
-    return {
+    // ✅ A4.2.11f: Vue flow-секции (симметрия с React)
+  const vStateFlows = Array.isArray(vue.stateFlows) ? vue.stateFlows : [];
+  const vEventFlows = Array.isArray(vue.eventFlows) ? vue.eventFlows : [];
+  const vRenderTree = Array.isArray(vue.renderTree) ? vue.renderTree : [];
+  const vFlowFnHtmlUsage = Array.isArray((vue as any).flowFnHtmlUsage) ? (vue as any).flowFnHtmlUsage : [];
+
+  return {
       fileId: fileId(fileIdx),
       moduleId: moduleIdForFile(fileIdx),
       name: readStr(vue.sfc.n[i] ?? -1),
@@ -1615,12 +1621,6 @@ function decodeVueSection(
     category: ICON_CATEGORY_BY_CODE[vue.icons.c[i] ?? 0] ?? 'base',
   }));
 
-  // ✅ A4.2.11j: Vue flow-секции — читаем из compact JSON
-  const vStateFlows = Array.isArray(vue.stateFlows) ? vue.stateFlows : [];
-  const vEventFlows = Array.isArray(vue.eventFlows) ? vue.eventFlows : [];
-  const vRenderTree = Array.isArray(vue.renderTree) ? vue.renderTree : [];
-  const vFlowFnHtmlUsage = Array.isArray((vue as any).flowFnHtmlUsage) ? (vue as any).flowFnHtmlUsage : [];
-
   return {
     sfc,
     composables,
@@ -1633,12 +1633,6 @@ function decodeVueSection(
     componentDirectives: allComponentDirectives,
     componentSlots: allComponentSlots,
     htmlInterpolations: allHtmlInterpolations,
-
-    // ✅ A4.2.11h: Vue flow-секции (симметрия с React)
-    stateFlows: vStateFlows.length > 0 ? vStateFlows : undefined,
-    eventFlows: vEventFlows.length > 0 ? vEventFlows : undefined,
-    renderTree: vRenderTree.length > 0 ? vRenderTree : undefined,
-    flowFnHtmlUsage: vFlowFnHtmlUsage.length > 0 ? vFlowFnHtmlUsage : undefined,
   };
 }
 

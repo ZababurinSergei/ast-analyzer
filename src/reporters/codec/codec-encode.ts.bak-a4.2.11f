@@ -909,12 +909,6 @@ export function encodeVueSection(
     componentDirectives: encodeComponentDirectivesInline(allComponentDirectives, dict),
     componentSlots: encodeComponentSlotsInline(allComponentSlots, dict),
     htmlInterpolations: encodeHtmlInterpolationsInline(allHtmlInterpolations, dict),
-
-    // ✅ A4.2.11f: Vue flow-секции (симметрия с React)
-    stateFlows: vue.stateFlows ?? undefined,
-    eventFlows: vue.eventFlows ?? undefined,
-    renderTree: vue.renderTree ?? undefined,
-    flowFnHtmlUsage: (vue as any).flowFnHtmlUsage ?? undefined,
   };
 
   return result;

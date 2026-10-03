@@ -2,13 +2,15 @@
 // НОВЫЙ ФАЙЛ - Полный текст
 // ✅ ИСПРАВЛЕНО: обновлён под новую структуру GenerateReportResult (v6.0.0)
 // ✅ ИСПРАВЛЕНО v2: пути к entity-extractor (index.js), типы параметров c: string
+// ✅ v18.0.0: registerCompactCommand делегирует в CompactCommand (фикс EISDIR на директориях)
 
 import { Command } from 'commander';
 import path from 'path';
 import fs from 'fs';
 
-// Импортируем новую команду
+// Импортируем новые команды
 import { CompactRecursiveCommand } from './commands/CompactRecursiveCommand.js';
+import { CompactCommand } from './commands/CompactCommand.js';
 
 /**
  * Исполнитель CLI команд
@@ -599,91 +601,14 @@ export class CLIExecutor {
 
   // ============================================
   // 13. COMPACT COMMAND
-  // ✅ ИСПРАВЛЕНО: обновлено под новую структуру GenerateReportResult (v6.0.0)
+  // ✅ v18.0.0: делегируем в CompactCommand (использует AnalysisPipeline
+  //            и корректно обрабатывает директории через collectFilesForAnalysis).
+  //            Старая inline-регистрация удалена — она вызывала parseFile(file)
+  //            напрямую, что приводило к EISDIR на директориях.
   // ============================================
 
   private registerCompactCommand(): void {
-    this.program
-      .command('compact <file>')
-      .description('Generate compact entity report (minimized, with short IDs)')
-      .option('-o, --output <file>', 'Output file', 'entities.json')
-      .option('--ultra', 'Ultra-compact mode (max compression)')
-      .option('--no-bit-flags', 'Disable bit flags (use full booleans)')
-      .option('--no-dictionaries', 'Disable dictionaries')
-      .option('--minify-keys', 'Minify keys (shorter JSON)')
-      .option('--max-depth <n>', 'Maximum depth', '10')
-      .option(
-        '--preset <name>',
-        'Preset: minimal, standard, full, relationshipsOnly, ultraCompact',
-        'standard'
-      )
-      .action(async (file, options) => {
-        console.log(`📋 Generating compact report: ${file}`);
-        console.log(`🚀 Ultra-compact: ${options.ultra ? 'ON' : 'OFF'}`);
-        console.log(`📋 Preset: ${options.preset}`);
-
-        const { parseFile } = await import('../core/ast-parser.js');
-        const { extractEntities } = await import('../core/entity-extractor/index.js');
-        const { generateCompactReport } = await import('../reporters/compact-reporter.js');
-
-        const parsed = parseFile(file);
-        if (!parsed) {
-          console.error('❌ Failed to parse file');
-          process.exit(1);
-        }
-
-        const entities = extractEntities(parsed.ast, file);
-        const entitiesMap = { [file]: entities };
-
-        // Применяем пресет
-        const presets = ['minimal', 'standard', 'full', 'relationshipsOnly', 'ultraCompact'];
-        if (!presets.includes(options.preset)) {
-          console.warn(`⚠️ Unknown preset: ${options.preset}, using 'standard'`);
-        }
-
-        const outputPath = path.resolve(options.output);
-        const outputDir = path.dirname(outputPath);
-        if (!fs.existsSync(outputDir)) {
-          fs.mkdirSync(outputDir, { recursive: true });
-        }
-
-        // ✅ ИСПРАВЛЕНО: используем новую структуру GenerateReportOptions
-        const report = generateCompactReport(entitiesMap, outputPath, {
-          compress: true,
-          saveFullJson: true,
-          verbose: options.verbose,
-        });
-
-        // ✅ ИСПРАВЛЕНО: используем report.full.statistics вместо report.stats.tm/tf/...
-        console.log(`\n✅ Report saved: ${outputPath}`);
-        console.log(`📊 Stats:`);
-
-        const fullStats = report.full?.statistics;
-        if (fullStats) {
-          console.log(`   • Modules: ${fullStats.totalModules}`);
-          console.log(`   • Files: ${fullStats.totalFiles}`);
-          console.log(`   • Functions: ${fullStats.totalFunctions}`);
-          console.log(`   • Classes: ${fullStats.totalClasses}`);
-          console.log(`   • Constants: ${fullStats.totalConstants}`);
-          console.log(`   • Exports: ${fullStats.totalExports}`);
-          console.log(`   • Imports: ${fullStats.totalImports}`);
-          console.log(`   • Calls: ${fullStats.totalCalls}`);
-          console.log(`   • Re-exports: ${fullStats.totalReExports}`);
-        }
-
-        // ✅ ИСПРАВЛЕНО: используем report.stats для информации о сжатии
-        if (report.stats.compactSize !== undefined) {
-          console.log(`\n📦 Compression:`);
-          console.log(`   • Compact size: ${(report.stats.compactSize / 1024).toFixed(2)} KB`);
-        }
-        if (report.stats.fullSize !== undefined) {
-          console.log(`   • Full size: ${(report.stats.fullSize / 1024).toFixed(2)} KB`);
-        }
-        if (report.stats.compressionRatio !== undefined) {
-          console.log(`   • Ratio: ${report.stats.compressionRatio.toFixed(1)}%`);
-        }
-        console.log(`   • Duration: ${(report.stats.duration / 1000).toFixed(2)}s`);
-      });
+    new CompactCommand(this.program);
   }
 
   // ============================================

@@ -1,8 +1,16 @@
 // src/reporters/codec/codec-types.ts
 // ============================================
-// ТИПЫ ДЛЯ КОДЕКА (v17.1.0)
+// ТИПЫ ДЛЯ КОДЕКА (v18.0.0)
 // ============================================
-// Версия: 17.1.0
+// Версия: 18.0.0
+//
+// ИЗМЕНЕНИЯ v18.0.0 (Vue flow-секции — симметрия с React):
+//   - ✅ ДОБАВЛЕНО: импорт VueStateFlow, VueEventFlow,
+//     VueRenderNode, VueFnHtmlUsage из modes/vue-analyzer/types.js
+//   - ✅ ДОБАВЛЕНО: VueSectionFull.stateFlows/eventFlows/
+//     renderTree/fnHtmlUsage (опциональные, прямая сериализация)
+//   - ✅ ДОБАВЛЕНО: VueSectionCompact.stateFlows/eventFlows/
+//     renderTree/fnHtmlUsage (опциональные, прямая сериализация)
 //
 // ИЗМЕНЕНИЯ v17.1.0 (React flow-секции):
 //   - ✅ ДОБАВЛЕНО: ReactSectionFull.stateFlows/eventFlows/
@@ -24,7 +32,7 @@
 //     EventHandlerSource
 // ============================================
 
-export const CODEC_VERSION = '17.1.0';
+export const CODEC_VERSION = '18.0.0';
 export const LEGEND_VERSION = '3.1.0';
 
 import type {
@@ -45,6 +53,14 @@ import type {
   DomApiArg,
   DomApiContext,
 } from '../../types-vue-template.js';
+
+// ✅ v18.0.0: Vue-flow типы (симметрия с React)
+import type {
+  VueStateFlow,
+  VueEventFlow,
+  VueRenderNode,
+  VueFnHtmlUsage,
+} from '../../modes/vue-analyzer/types.js';
 
 // ────────────────────────────────────────────────────────────
 // 2. Реэкспорт (для внешних потребителей codec-types.ts)
@@ -454,6 +470,35 @@ export interface VueSectionFull {
   ids?: string[];
   /** Сериализованные sourceChain */
   sourceChains?: string[];
+
+  // ==========================================
+  // ✅ v18.0.0: Vue-flow секции (симметрия с React)
+  // ==========================================
+  //
+  // Заполняются в pass-5-vue.ts через билдеры из
+  // modes/vue-analyzer/flows/*.ts.
+  //
+  // Симметрия с ReactSectionFull:
+  //   ReactSectionFull.stateFlows ↔ VueSectionFull.stateFlows
+  //   ReactSectionFull.eventFlows ↔ VueSectionFull.eventFlows
+  //   ReactSectionFull.renderTree ↔ VueSectionFull.renderTree
+  //   ReactSectionFull.fnJsxUsage ↔ VueSectionFull.fnHtmlUsage
+  //
+  // ⚠️ В codec-encode.ts / codec-decode.ts сериализуются
+  //    НАПРЯМУЮ (как React flow) — без RLE-кодирования.
+  // ==========================================
+
+  /** Потоки состояния: reactivity ↔ mutation ↔ read ↔ render */
+  stateFlows?: VueStateFlow[];
+
+  /** Потоки событий: @click → handler → call → state → render */
+  eventFlows?: VueEventFlow[];
+
+  /** Дерево рендера template (плоский список) */
+  renderTree?: VueRenderNode[];
+
+  /** Обратный индекс: функция → HTML-элементы (flow-версия) */
+  flowFnHtmlUsage?: VueFnHtmlUsage[];
 }
 
 // ============================================================
@@ -575,6 +620,23 @@ export interface VueSectionCompact {
     l: number[];
     id?: number[];
   };
+
+  // ==========================================
+  // ✅ v18.0.0: Vue-flow секции (Compact)
+  // ==========================================
+  //
+  // Сериализуются НАПРЯМУЮ (без RLE).
+  // Симметрия с ReactSectionCompact.
+  //
+  // Формат — плоский JSON (тот же, что в Full).
+  // При encode: vue.stateFlows ?? undefined
+  // При decode: Array.isArray(vue.stateFlows) ? vue.stateFlows : []
+  // ==========================================
+
+  stateFlows?: VueStateFlow[];
+  eventFlows?: VueEventFlow[];
+  renderTree?: VueRenderNode[];
+  flowFnHtmlUsage?: VueFnHtmlUsage[];
 }
 
 // ============================================================
@@ -974,6 +1036,12 @@ export interface StatisticsData {
   totalJsxEvents?: number;
   totalReactConditionals?: number;
   totalReactComponentUsages?: number;
+
+  // ✅ v18.0.0: Vue-flow счётчики
+  totalVueStateFlows?: number;
+  totalVueEventFlows?: number;
+  totalVueRenderTree?: number;
+  totalVueFlowFnHtmlUsage?: number;
 }
 
 // ============================================
@@ -989,7 +1057,7 @@ export interface EdgeData {
 }
 
 // ============================================================
-// СЖАТЫЙ JSON (v17.1.0)
+// СЖАТЫЙ JSON (v18.0.0)
 // ============================================================
 
 export interface CompactJSON {
@@ -1204,7 +1272,7 @@ export interface CompactJSON {
 }
 
 // ============================================================
-// ЛЕГЕНДА (v17.1.0)
+// ЛЕГЕНДА (v18.0.0)
 // ============================================================
 
 export interface FlagBit {
@@ -1311,6 +1379,12 @@ export interface CodecLegend {
     domApiCalls?: string[];
     domApiArgs?: string[];
     ids?: string[];
+
+    // ✅ v18.0.0: Vue flow-схемы (симметрия с React)
+    'vue.stateFlows'?: string[];
+    'vue.eventFlows'?: string[];
+    'vue.renderTree'?: string[];
+    'vue.flowFnHtmlUsage'?: string[];
 
     // ✅ v17.0.0: React-схемы
     'react.components'?: string[];

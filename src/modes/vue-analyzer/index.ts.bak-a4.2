@@ -156,6 +156,13 @@ export interface AnalyzeVueOptions extends AnalysisOptions {
 // ✅ v5.2.0 (v16.2.0): КОНСТАНТЫ ДЛЯ ОБОГАЩЕНИЯ REACTIVITY
 // ============================================
 
+/**
+ * Regex для проверки, что value константы — это вызов reactivity-функции.
+ * Используется для фильтрации constants при обогащении reactivity именами.
+ */
+const REACTIVITY_VALUE_REGEX =
+  /^(ref|computed|reactive|watch|watchEffect|shallowRef|readonly|toRef|toRefs)\s*\(/;
+
 // ============================================
 // ОСНОВНАЯ ФУНКЦИЯ
 // ============================================
@@ -380,44 +387,15 @@ export function analyzeVueComponent(
     try {
       const rawReactivity = extractReactivity(originalScriptContent);
 
-      // ✅ A4.2 FIX (v5.2.1): группируем по kind + порядку.
-      //
-      // КОРНЕВАЯ ПРИЧИНА (диагностика A4.2.4):
-      //   extractReactivity (regex) возвращает line, СДВИНУТЫЙ на +1..+3
-      //   относительно constants (AST). Сопоставление по индексу работает
-      //   случайно — только когда сдвиг компенсирует отсутствующие записи.
-      //
-      // РЕШЕНИЕ:
-      //   Группируем reactivityConstants по kind. Затем для каждой
-      //   rawReactivity берём СЛЕДУЮЩУЮ неиспользованную const того же kind.
-      //   Это устраняет влияние сдвига line.
-      const STRICT_REACTIVITY_RE = /\b(ref|computed|reactive|shallowRef|readonly|toRef|toRefs)\s*(?:<[^>]*>)?\s*\(/;
+      // Шаг 1: фильтруем constants — только reactivity-вызовы
+      const reactivityConstants = constants.filter(
+        c => c.value && REACTIVITY_VALUE_REGEX.test(c.value)
+      );
 
-      const reactivityConstants = constants.filter(c => {
-        if (!c.value) return false;
-        // Исключаем Vue-макросы
-        if (/\bdefineProps\b|\bwithDefaults\b|\bdefineEmits\b|\bdefineExpose\b/.test(String(c.value))) {
-          return false;
-        }
-        return STRICT_REACTIVITY_RE.test(String(c.value));
-      });
-
-      const constByKind = new Map<string, typeof reactivityConstants>();
-      for (const c of reactivityConstants) {
-        const m = STRICT_REACTIVITY_RE.exec(String(c.value));
-        if (!m || !m[1]) continue;
-        const kind = m[1];
-        if (!constByKind.has(kind)) constByKind.set(kind, []);
-        constByKind.get(kind)!.push(c);
-      }
-
-      const usedByKind = new Map<string, number>();
-      reactivity = rawReactivity.map(rx => {
-        const list = constByKind.get(rx.kind) || [];
-        const used = usedByKind.get(rx.kind) ?? 0;
-        const constant = list[used];
-        if (constant) {
-          usedByKind.set(rx.kind, used + 1);
+      // Шаг 2 + 3: сопоставляем по индексу с проверкой kind
+      reactivity = rawReactivity.map((rx, i) => {
+        const constant = reactivityConstants[i];
+        if (constant && constant.value?.includes(rx.kind + '(')) {
           return { ...rx, name: constant.name };
         }
         return rx;

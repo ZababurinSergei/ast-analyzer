@@ -2,7 +2,16 @@
 // ============================================================
 // КОНВЕРТЕР СУЩНОСТЕЙ: EntitiesResult → EnhancedEntityInfo
 // ============================================================
-// Версия: 2.3.0
+// Версия: 2.4.0
+//
+// ИЗМЕНЕНИЯ v2.4.0 (v18.0.0 ENTERPRISE: Vue-flow data):
+//   - ✅ ДОБАВЛЕНО: convertEntitiesToEnhanced пробрасывает
+//     Vue-flow поля из EntitiesResult в EnhancedEntityInfo:
+//       • templateFunctions       — функции из <script setup> с calls
+//       • templateReactivityInfo  — reactivity с reads/writes
+//   - 🎯 Без этих полей pass-5-vue.ts не видит Vue-flow данные:
+//     collectFullJSON получает enhancedMap, а не raw entitiesMap.
+//   - 📌 Симметрично пробросу React-полей (v2.3.0).
 //
 // ИЗМЕНЕНИЯ v2.3.0 (v17.0.0: React-сущности):
 //   - ✅ ДОБАВЛЕНО: convertEntitiesToEnhanced пробрасывает
@@ -118,6 +127,7 @@ export function createEmptyEntitiesResult(filePath: string = ''): EntitiesResult
  * С v2.0.0: пробрасывает все template-поля Vue и тип-граф.
  * С v2.1.0: пробрасывает lexicalLinks (P1 — лексические связи).
  * С v2.3.0: пробрасывает все React-поля (v17.0.0).
+ * С v2.4.0: пробрасывает Vue-flow поля (v18.0.0 ENTERPRISE).
  *
  * Без этого:
  *   - vt-секция в compact-отчёте была бы пустой
@@ -125,6 +135,7 @@ export function createEmptyEntitiesResult(filePath: string = ''): EntitiesResult
  *   - types/typeRefs потерялись бы
  *   - full.lexicalLinks = [] и compact.lx = { p: [], c: [], ... }
  *   - pass7React не видит React-сущности (нет react-секции в JSON)
+ *   - pass5Vue не видит Vue-flow данные (пустые stateFlows/eventFlows)
  *
  * @param entities — результат extractEntities / extractEntitiesFromFile
  * @returns EnhancedEntityInfo
@@ -199,6 +210,30 @@ export function convertEntitiesToEnhanced(entities: EntitiesResult): EnhancedEnt
 
     /** ✅ Реактивные связи (computed, watch, ref, reactive, ...) */
     templateReactivity: entities.templateReactivity,
+
+    // ============================================================
+    // ✅ v2.4.0 (v18.0.0 ENTERPRISE): Vue-flow data
+    // ============================================================
+    //
+    // ⚠️ КРИТИЧНО: без этого проброса pipeline не видит эти поля,
+    //    потому что pass-5-vue.ts получает enhancedMap (после
+    //    convertEntitiesToEnhanced), а не raw entitiesMap.
+    //
+    // Цепочка:
+    //   extractEntitiesFromFile
+    //     → EntitiesResult.templateFunctions/templateReactivityInfo
+    //     → convertEntitiesToEnhanced (ЭТОТ БЛОК)
+    //     → EnhancedEntityInfo.templateFunctions/templateReactivityInfo
+    //     → pass-5-vue.ts (ЧИТАЕТ для Vue-flow)
+    //
+    // Симметрично пробросу React-полей ниже (v2.3.0).
+    // ============================================================
+
+    /** ✅ v18.0.0: функции из <script setup> с calls/body */
+    templateFunctions: entities.templateFunctions,
+
+    /** ✅ v18.0.0: reactivity с reads/writes (для mutatedBy/readBy) */
+    templateReactivityInfo: entities.templateReactivityInfo,
 
     // ============================================================
     // ✅ v2.0.0: тип-граф.

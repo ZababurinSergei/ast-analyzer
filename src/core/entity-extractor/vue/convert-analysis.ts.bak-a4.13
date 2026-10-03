@@ -122,10 +122,7 @@ function extractFunctionBodyFromScript(
     `\\b(?:const|let|var|function)\\s+${escaped}\\b|\\b${escaped}\\s*[:=]|\\b${escaped}\\s*\\(`
   );
 
-  // ✅ A4.13-fix3: расширен диапазон.
-  //   fn.line из AST может быть сдвинут на +2..+3 относительно
-  //   реального header (из-за макросов/import в начале).
-  const candidates = [fnLine - 1, fnLine, fnLine - 2, fnLine - 3, fnLine - 4, fnLine + 1];
+  const candidates = [fnLine - 1, fnLine, fnLine - 2, fnLine + 1];
 
   for (const idx of candidates) {
     if (idx < 0 || idx >= lines.length) continue;
@@ -135,35 +132,22 @@ function extractFunctionBodyFromScript(
     if (!nameRe.test(headerLine)) continue;
 
     const startCharIdx = lines.slice(0, idx).join('\n').length + (idx > 0 ? 1 : 0);
-    // ✅ A4.13-fix3: два tail.
-    //   headerTail = ОДНА строка (для expression body / ref(...)),
-    //   fullTail   = до конца файла (для brace body `{ ... }`).
-    const headerLineEnd = startCharIdx + headerLine.length;
-    const headerTail = scriptContent.slice(startCharIdx, headerLineEnd);
-    const fullTail = scriptContent.slice(startCharIdx);
+    const tail = scriptContent.slice(startCharIdx);
 
-    const arrowIdx = headerTail.indexOf('=>');
+    const arrowIdx = tail.indexOf('=>');
     let bodyStart = -1;
 
     if (arrowIdx >= 0) {
-      const afterArrow = headerTail.slice(arrowIdx + 2);
+      const afterArrow = tail.slice(arrowIdx + 2);
       const trimmedAfterArrow = afterArrow.replace(/^\s+/, '');
       const leadingWs = afterArrow.length - trimmedAfterArrow.length;
 
       if (trimmedAfterArrow.startsWith('{')) {
-        // ✅ A4.13-fix3: brace body — используем fullTail
         bodyStart = arrowIdx + 2 + leadingWs;
-        // Переключаемся на fullTail для brace-balance
-        // (переменная `tail` ниже используется в braceBalance)
-        // → сделаем это ниже через аргумент
       } else {
-        // ✅ A4.13 FIX: expression body.
-        //   depth начинается с 1 — мы уже внутри внешней скобки
-        //   (например, computed(...) или ref(...)), которая закрывается
-        //   первой ')' в afterArrow. Без этого depth уходил в -1 и
-        //   балансировка захватывала весь хвост файла.
+        // Expression body
         let i = 0;
-        let depth = 1;
+        let depth = 0;
         let inString: string | null = null;
 
         while (i < trimmedAfterArrow.length) {
@@ -184,24 +168,20 @@ function extractFunctionBodyFromScript(
             continue;
           }
           if (c === '(' || c === '[' || c === '{') depth++;
-          if ((c === ')' || c === ']' || c === '}') && depth > 0) depth--;
+          if (c === ')' || c === ']' || c === '}') depth--;
           if ((c === ';' || c === '\n') && depth === 0) break;
 
           i++;
         }
 
-        // ✅ A4.13-fix2: убираем ЗАКРЫВАЮЩУЮ ) внешней функции
-        //   (она уже отбалансирована в depth, но попала в slice)
-        return trimmedAfterArrow.slice(0, i).trim().replace(/\)$/, '');
+        return trimmedAfterArrow.slice(0, i).trim();
       }
     }
 
     if (bodyStart < 0) {
-      // ✅ A4.13-fix5: используем fullTail (до конца файла),
-      //   т.к. `{` может быть на следующей строке после header
-      const closeParenIdx = fullTail.indexOf(')');
+      const closeParenIdx = tail.indexOf(')');
       const braceSearchStart = closeParenIdx >= 0 ? closeParenIdx : 0;
-      const braceIdx = fullTail.indexOf('{', braceSearchStart);
+      const braceIdx = tail.indexOf('{', braceSearchStart);
 
       if (braceIdx < 0) continue;
       if (braceIdx > 300) continue;
@@ -214,11 +194,9 @@ function extractFunctionBodyFromScript(
     let inString: string | null = null;
     let inComment: '//' | '/*' | null = null;
 
-    // ✅ A4.13-fix3: используем fullTail (до конца файла) для brace-balance
-    const braceTail = fullTail;
-    while (i < braceTail.length && depth > 0) {
-      const c = braceTail[i];
-      const c2 = braceTail[i + 1];
+    while (i < tail.length && depth > 0) {
+      const c = tail[i];
+      const c2 = tail[i + 1];
 
       if (inComment === '//') {
         if (c === '\n') inComment = null;
@@ -270,7 +248,7 @@ function extractFunctionBodyFromScript(
       i++;
     }
 
-    return braceTail.slice(bodyStart + 1, i).trim();
+    return tail.slice(bodyStart + 1, i).trim();
   }
 
   return '';

@@ -2,7 +2,25 @@
 // ============================================
 // ТИПЫ ДЛЯ VUE-АНАЛИЗАТОРА
 // ============================================
-// Версия: 5.2.0
+// Версия: 18.0.0
+//
+// ИЗМЕНЕНИЯ v18.0.0 (Vue-flow типы — симметрия с React):
+//   - ✅ ДОБАВЛЕНО: VueFlowStep       — шаг цепочки flow
+//   - ✅ ДОБАВЛЕНО: VueStateFlow      — reactivity ↔ mutation ↔ read ↔ render
+//   - ✅ ДОБАВЛЕНО: VueEventFlow      — @click → handler → call → state → render
+//   - ✅ ДОБАВЛЕНО: VueRenderNode     — узел дерева рендера
+//   - ✅ ДОБАВЛЕНО: VueFnHtmlUsage    — обратный индекс функция → HTML
+//   - 📌 Симметрия с React (core/react-entity-classifier.ts):
+//         ReactStateFlow  ↔ VueStateFlow
+//         ReactEventFlow  ↔ VueEventFlow
+//         ReactRenderNode ↔ VueRenderNode
+//         ReactFnJsxUsage ↔ VueFnHtmlUsage
+//         EventFlowStep   ↔ VueFlowStep
+//   - 📌 Используется в:
+//         • modes/vue-analyzer/flows/*.ts   (билдеры)
+//         • reporters/codec/codec-types.ts  (VueSectionFull)
+//         • reporters/codec/codec-legend.ts (схемы)
+//         • scripts/verify-roundtrip.ts     (инварианты)
 //
 // ИЗМЕНЕНИЯ v5.2.0 (v16.0.8: Component Usage + HTML Elements):
 //   - ✅ ДОБАВЛЕНО: импорт ComponentUsage, HtmlElementUsage
@@ -496,4 +514,250 @@ export interface ReactivityInfo {
   /** Является ли computed writeable ({ get, set }) */
   isWriteable: boolean;
   name?: string;
+}
+
+// ============================================
+// ✅ v18.0.0: VUE FLOW-ТИПЫ (симметрия с React)
+// ============================================
+//
+// Симметрия с React (`core/react-entity-classifier.ts`):
+//   ReactStateFlow  ↔ VueStateFlow
+//   ReactEventFlow  ↔ VueEventFlow
+//   ReactRenderNode ↔ VueRenderNode
+//   ReactFnJsxUsage ↔ VueFnHtmlUsage
+//   EventFlowStep   ↔ VueFlowStep
+//
+// Используется в:
+//   • modes/vue-analyzer/flows/*.ts   (билдеры)
+//   • reporters/codec/codec-types.ts  (VueSectionFull, VueSectionCompact)
+//   • reporters/codec/codec-legend.ts (схемы)
+//   • scripts/verify-roundtrip.ts     (инварианты)
+//
+// Данные источника:
+//   • vue.sfc[].htmlElements[]        — HTML-элементы с props/events/directives/interpolations
+//   • vue.sfc[].componentUsages[]     — использования компонентов
+//   • vue.reactivity[]                — ref/reactive/computed/watch
+//   • vue.componentEvents[]           — @click, @change и т.д.
+//   • vue.componentProps[]            — обратные связи props
+//   • vue.componentDirectives[]       — v-if, v-for и т.д.
+//   • vue.htmlInterpolations[]        — {{ ... }}
+//   • entitiesMap[file].templateEventHandlers[]  — «сырые» eventHandlers
+//   • entitiesMap[file].templateReactivityDeps[] — reactivity в template
+//
+// ============================================
+
+/**
+ * Шаг цепочки flow.
+ *
+ * Симметрично `EventFlowStep` из React.
+ *
+ * Пример (event flow):
+ *   [
+ *     { step: 'event',   refId: 'cu1:ce1', label: 'click on AiButton', line: 7 },
+ *     { step: 'handler', refId: 'fn42',    label: 'onClick()',          line: 22 },
+ *     { step: 'call',    refId: 'fn42:c1', label: 'setIsOpen(true)',    line: 25 },
+ *     { step: 'state',   refId: 'rx3',     label: 'isOpen (mutated)',   line: 18 },
+ *     { step: 'render',  refId: 'he5',     label: '<Modal v-if="isOpen">', line: 30 },
+ *   ]
+ */
+export interface VueFlowStep {
+  step: 'event' | 'handler' | 'call' | 'state' | 'render';
+  /** ID шага (eventId, functionId, callId, reactivityId, htmlElementId) */
+  refId: string;
+  /** Человеко-читаемая метка */
+  label: string;
+  /** Номер строки */
+  line: number;
+}
+
+/**
+ * Поток состояния: reactivity ↔ mutation ↔ read ↔ render.
+ *
+ * Пример:
+ *   const isOpen = ref(false)   → reactivityId: 'rx3', kind: 'ref', name: 'isOpen'
+ *   isOpen.value = true         → mutatedBy[0] = { functionId: 'fn42', ... }
+ *   if (isOpen.value) ...       → readBy[0]    = { functionId: 'fn50', ... }
+ *   <Modal v-if="isOpen">       → renderedIn[0] = { htmlElementId: 'he5', kind: 'conditional' }
+ */
+export interface VueStateFlow {
+  /** Уникальный ID (vsf1, vsf2, ...) */
+  id: string;
+
+  /** ID reactivity из vue.reactivity[] */
+  reactivityId: string;
+
+  /** Имя реактивной переменной (isOpen, count, ...) */
+  stateName: string;
+
+  /**
+   * Вид реактивности.
+   *
+   * Допустимые значения — подмножество `ReactivityInfo['kind']`:
+   *   'ref'      — ref() / shallowRef()
+   *   'reactive' — reactive()
+   *   'computed' — computed()
+   *   'readonly' — readonly()
+   *   'watch'    — watch() / watchEffect()
+   */
+  kind: 'ref' | 'reactive' | 'computed' | 'readonly' | 'watch';
+
+  /**
+   * Где переменная **мутируется** (X.value = ..., X.value.push, reactive.X = ...).
+   *
+   * Источник: entitiesMap[file].functions[].calls — если call совпадает
+   * с stateName или `${stateName}.value`.
+   */
+  mutatedBy: Array<{
+    /** ID функции, в которой мутация */
+    functionId: string;
+    /** ID вызова (fn42:line) */
+    callId: string;
+    /** Номер строки */
+    line: number;
+  }>;
+
+  /**
+   * Где переменная **читается** (X.value, computed(() => X.value), etc).
+   *
+   * Источник: entitiesMap[file].functions[].calls.
+   */
+  readBy: Array<{
+    /** ID функции, в которой чтение */
+    functionId: string;
+    /** Номер строки */
+    line: number;
+  }>;
+
+  /**
+   * Где переменная **используется в шаблоне** (HTML).
+   *
+   * Источник: vue.sfc[].htmlElements[].props / directives / interpolations.
+   */
+  renderedIn: Array<{
+    /** ID HTML-элемента (he1) */
+    htmlElementId: string;
+    /** Имя атрибута или '<expression>' для интерполяций */
+    attrName: string;
+    /** Вид использования */
+    kind: 'text' | 'attr' | 'conditional' | 'handler';
+    /** Номер строки */
+    line: number;
+  }>;
+}
+
+/**
+ * Поток события: @click → handler → call → state → render.
+ *
+ * Пример:
+ *   <AiButton @click="onClick">   → eventId: 'cu1:ce1', eventName: 'click', elementId: 'cu1'
+ *   const onClick = () => {       → handlerFunctionId: 'fn42', handlerName: 'onClick'
+ *     setIsOpen(true);            → calls[0] = { calleeName: 'setIsOpen', ... }
+ *     console.log(isOpen.value);  → calls[1] = ...
+ *   }
+ *   <Modal v-if="isOpen">         → chain[last] = { step: 'render', ... }
+ */
+export interface VueEventFlow {
+  /** Уникальный ID (vef1, vef2, ...) */
+  id: string;
+
+  /** ID события (cu1:ce1 для компонента, he1:ce1 для HTML) */
+  eventId: string;
+
+  /** Имя события (click, change, ...) */
+  eventName: string;
+
+  /** ID элемента (cu1, he1) */
+  elementId: string;
+
+  /** ID функции-обработчика (fn42) или '' если не найдена */
+  handlerFunctionId: string;
+
+  /** Имя обработчика (onClick, handleClick, ...) */
+  handlerName: string;
+
+  /** Вызовы внутри обработчика */
+  calls: Array<{
+    /** ID функции (или fn42:line для синтетического) */
+    functionId: string;
+    /** Имя вызываемой функции */
+    calleeName: string;
+    /** Номер строки */
+    line: number;
+  }>;
+
+  /** ID reactivity, которые мутируются этим обработчиком */
+  mutatedStates: string[];
+
+  /** ID SFC, которые перерисовываются */
+  reRendered: string[];
+
+  /** Плоская цепочка шагов */
+  chain: VueFlowStep[];
+}
+
+/**
+ * Узел дерева рендера.
+ *
+ * Плоский список (как ReactRenderNode), а не дерево.
+ * Родитель указывается через `parentId`.
+ *
+ * Для HTML-элементов: elementId = he1, he2, ...
+ * Для компонентов:   elementId = cu1, cu2, ...
+ * Для slot:          elementId = csl1, ...
+ */
+export interface VueRenderNode {
+  /** ID элемента (he1, cu1) */
+  elementId: string;
+
+  /** Имя тега (div, AiButton, slot) */
+  tagName: string;
+
+  /** Вид узла */
+  kind: 'element' | 'component' | 'slot';
+
+  /** ID родителя (null для корневых) */
+  parentId: string | null;
+
+  /** Зависимости: что влияет на рендеринг */
+  dependsOn: {
+    /** ID reactivity (rx1, rx2, ...) */
+    reactivityIds: string[];
+    /** ID props (если компонент) */
+    propIds: string[];
+  };
+
+  /** Условный рендеринг (v-if / v-else-if / v-else / v-for) */
+  conditionals: Array<{
+    kind: 'v-if' | 'v-else-if' | 'v-else' | 'v-for';
+    /** Условие: 'isOpen', 'item in items', ... */
+    condition: string;
+    /** Root-идентификаторы условия: ['isOpen'], ['items'] */
+    refs: string[];
+  }>;
+}
+
+/**
+ * Обратный индекс: функция → HTML-элементы.
+ *
+ * Симметрично `ReactFnJsxUsage`.
+ *
+ * Используется для быстрого поиска:
+ *   «где эта функция используется в шаблоне?»
+ */
+export interface VueFnHtmlUsage {
+  /** ID функции */
+  functionId: string;
+
+  /** Имя функции */
+  functionName: string;
+
+  /** Где используется */
+  usedIn: Array<{
+    /** ID HTML-элемента (he1) или компонента (cu1) */
+    htmlElementId: string;
+    /** Вид использования */
+    usage: 'handler' | 'value' | 'condition' | 'render';
+    /** Номер строки */
+    line: number;
+  }>;
 }

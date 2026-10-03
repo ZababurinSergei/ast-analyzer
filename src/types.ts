@@ -1022,6 +1022,51 @@ export interface EntitiesResult {
   templateHtmlElements?: HtmlElementUsage[];
 
   // ==========================================
+  // ✅ v18.0.0 (ENTERPRISE): Vue-flow данные
+  // ==========================================
+  //
+  // Пробрасываются из полного VueComponentAnalysis
+  // через convertVueAnalysisToEntities.
+  //
+  // Используются в pass-5-vue.ts для:
+  //   • buildVueStateFlows (reactivity[].reads/writes)
+  //   • buildVueEventFlows (functions[].calls)
+  //   • buildVueRenderTree (templateReactivityDeps)
+  //   • buildVueFnHtmlUsage (templateEventHandlers)
+  //
+  // ⚠️ Отдельные поля от template* (которые уже есть):
+  //    • templateFunctions — функции из <script setup> с calls/body
+  //    • templateReactivityInfo — reactivity с reads/writes
+  //    • templateEventHandlers — уже есть в template* (см. выше)
+  //    • templateReactivityDeps — уже есть в template* (см. выше)
+  // ==========================================
+
+  /** ✅ v18.0.0: функции из <script setup> с calls/body */
+  templateFunctions?: Array<{
+    name: string;
+    line: number;
+    isAsync: boolean;
+    isExported: boolean;
+    params: string[];
+    returnType?: string;
+    body?: string;
+    calls?: string[];
+    calledBy?: string[];
+    isExposed?: boolean;
+  }>;
+
+  /** ✅ v18.0.0: reactivity с reads/writes (для mutatedBy/readBy) */
+  templateReactivityInfo?: Array<{
+    kind: 'computed' | 'watch' | 'watchEffect' | 'ref' | 'reactive' | 'shallowRef' | 'readonly';
+    line: number;
+    functionName?: string;
+    reads: string[];
+    writes: string[];
+    isWriteable: boolean;
+    name?: string;
+  }>;
+
+  // ==========================================
   // ✅ v17.0.0: React-сущности
   // ==========================================
   //
@@ -1434,6 +1479,11 @@ export interface ProjectSummary {
 // ==========================================
 // ТИПЫ ДЛЯ VUE АНАЛИЗА
 // ==========================================
+//
+// ✅ v18.0.0 (ENTERPRISE): добавлены Vue-flow данные.
+//    Пробрасываются из VueComponentAnalysis через
+//    convertVueAnalysisToEntities.
+// ==========================================
 
 export interface VueAnalysis {
   props: {
@@ -1456,6 +1506,95 @@ export interface VueAnalysis {
     templateLines: number;
     styleCount: number;
   };
+
+  // ==========================================
+  // ✅ v18.0.0 (ENTERPRISE): Vue-flow данные
+  // ==========================================
+  //
+  // Пробрасываются из полного VueComponentAnalysis
+  // через convertVueAnalysisToEntities.
+  //
+  // Используются в pass-5-vue.ts для:
+  //   • buildVueStateFlows (reactivity[].reads/writes)
+  //   • buildVueEventFlows (functions[].calls)
+  //   • buildVueRenderTree (templateReactivityDeps)
+  //   • buildVueFnHtmlUsage (templateEventHandlers)
+  //
+  // ⚠️ Опциональные — обратная совместимость.
+  //    Старый код (без этих полей) продолжает работать.
+  // ==========================================
+
+  /**
+   * Функции из <script setup> с calls/body.
+   *
+   * Источник: VueComponentAnalysis.functions[]
+   * Заполняется в convertVueAnalysisToEntities.
+   *
+   * ⚠️ Это ОТДЕЛЬНЫЙ список от EntitiesResult.functions[]:
+   *    • EntitiesResult.functions[]  — только импорты + общий парсер
+   *    • VueAnalysis.functions[]     — реальные функции из .vue
+   */
+  functions?: Array<{
+    name: string;
+    line: number;
+    isAsync: boolean;
+    isExported: boolean;
+    params: string[];
+    returnType?: string;
+    body?: string;
+    calls?: string[];
+    calledBy?: string[];
+    isExposed?: boolean;
+  }>;
+
+  /**
+   * Reactivity с reads/writes.
+   *
+   * Источник: VueComponentAnalysis.reactivity[]
+   * Заполняется в convertVueAnalysisToEntities.
+   *
+   * Используется в buildVueStateFlows для:
+   *   • mutatedBy  — из writes[]
+   *   • readBy     — из reads[]
+   */
+  reactivity?: Array<{
+    kind: 'computed' | 'watch' | 'watchEffect' | 'ref' | 'reactive' | 'shallowRef' | 'readonly';
+    line: number;
+    functionName?: string;
+    reads: string[];
+    writes: string[];
+    isWriteable: boolean;
+    name?: string;
+  }>;
+
+  /**
+   * Event handlers с правильными именами.
+   *
+   * Источник: VueComponentAnalysis.template.eventHandlers[]
+   * Заполняется в convertVueAnalysisToEntities.
+   *
+   * Используется в buildVueEventFlows для:
+   *   • handlerName → handlerFunctionId
+   *   • Соответствие event ↔ handler ↔ function
+   */
+  templateEventHandlers?: Array<{
+    eventName: string;
+    handlerName: string;
+    tag: string;
+    line: number;
+    modifiers: string[];
+    isExternal?: boolean;
+  }>;
+
+  /**
+   * Root-идентификаторы шаблона.
+   *
+   * Источник: VueComponentAnalysis.template.reactivityDeps[]
+   * Заполняется в convertVueAnalysisToEntities.
+   *
+   * Используется в buildVueStateFlows для renderedIn.
+   */
+  templateReactivityDeps?: string[];
 }
 
 // ==========================================
@@ -2119,6 +2258,7 @@ export interface EnhancedPackageLockReport {
 // ✅ v15.2.0 (P1): добавлены template-поля + lexicalLinks.
 // ✅ v16.0.8: добавлены templateComponentUsages/templateHtmlElements.
 // ✅ v17.0.0: добавлены React-поля (reactComponents, reactHooks, ...).
+// ✅ v18.0.0 (ENTERPRISE): добавлены templateFunctions/templateReactivityInfo.
 // ==========================================
 
 export interface EnhancedEntityInfo {
@@ -2247,6 +2387,39 @@ export interface EnhancedEntityInfo {
 
   /** Использования HTML-элементов в <template> */
   templateHtmlElements?: HtmlElementUsage[];
+
+  // ==========================================
+  // ✅ НОВОЕ v18.0.0 (ENTERPRISE): Vue-flow данные
+  // ==========================================
+  //
+  // Проброшены из EntitiesResult через convertEntitiesToEnhanced.
+  // Используются в pass-5-vue.ts для построения Vue-flow.
+  // ==========================================
+
+  /** ✅ v18.0.0: функции из <script setup> с calls/body */
+  templateFunctions?: Array<{
+    name: string;
+    line: number;
+    isAsync: boolean;
+    isExported: boolean;
+    params: string[];
+    returnType?: string;
+    body?: string;
+    calls?: string[];
+    calledBy?: string[];
+    isExposed?: boolean;
+  }>;
+
+  /** ✅ v18.0.0: reactivity с reads/writes (для mutatedBy/readBy) */
+  templateReactivityInfo?: Array<{
+    kind: 'computed' | 'watch' | 'watchEffect' | 'ref' | 'reactive' | 'shallowRef' | 'readonly';
+    line: number;
+    functionName?: string;
+    reads: string[];
+    writes: string[];
+    isWriteable: boolean;
+    name?: string;
+  }>;
 
   // ==========================================
   // ✅ НОВОЕ v17.0.0: React-сущности
