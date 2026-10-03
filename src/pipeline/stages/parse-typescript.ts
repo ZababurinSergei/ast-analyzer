@@ -267,6 +267,7 @@ export async function parseTypeScriptFile(
           // 3. JSX-элементы
           for (const jsx of comp.jsxElements) {
             entities.reactJsxElements.push({
+              usageId: (jsx as any).usageId,
               componentId: '',
               kind: jsx.kind,
               tagName: jsx.tagName,

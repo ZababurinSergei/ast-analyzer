@@ -960,14 +960,14 @@ function decodeReactSection(
 
   for (let i = 0; i < cLen; i++) {
     const fileIdxVal = c.f?.[i] ?? -1;
-    const [pStart, pLen] = c.p?.[i] ?? [0, 0];
+    const pIndices = c.p?.[i] ?? [];
     const [hStart, hLen] = c.h?.[i] ?? [0, 0];
     const [jStart, jLen] = c.j?.[i] ?? [0, 0];
 
-    // props — из strs через RLE-срез
+    // ✅ v17.3.0: props — из массива индексов (учитывает дедупликацию addString)
     const props: string[] = [];
-    for (let k = 0; k < pLen; k++) {
-      props.push(readStr(pStart + k));
+    for (const idx of pIndices) {
+      if (idx >= 0) props.push(readStr(idx));
     }
 
     // hooks — из ids через RLE-срез
@@ -1150,7 +1150,7 @@ function decodeReactSection(
       children,
       textContent: j.tx?.[i] >= 0 ? readStr(j.tx[i]) : undefined,
       expression: j.ex?.[i] >= 0 ? readStr(j.ex[i]) : undefined,
-      expressionRefs: [] as string[],
+      expressionRefs: j.exr?.[i] >= 0 ? splitParts(readStr(j.exr[i])) : [],
       parentElementId: j.pa?.[i] >= 0 ? (ids[j.pa[i]] ?? null) : null,
       conditionalKind: j.ck?.[i] >= 0 ? REACT_COND_KIND_NAMES[j.ck[i]] : undefined,
       eventIds: [] as string[],
@@ -1177,6 +1177,7 @@ function decodeReactSection(
       handler: readStr(ev.h?.[i] ?? -1),
       handlerFunctionId: ev.hf?.[i] >= 0 ? readIdOrUndef(ev.hf[i]) : undefined,
       source: REACT_SOURCE_KIND_NAMES[ev.s?.[i] ?? 4] ?? 'unknown',
+      modifiers: ev.m?.[i] >= 0 ? splitParts(readStr(ev.m[i])) : [],
     });
   }
 

@@ -152,6 +152,8 @@ export interface AnalyzedHook {
  * Проанализированный JSX-элемент.
  */
 export interface AnalyzedJsxElement {
+  /** Внутренний ID (jsx_0, jsx_1) — для маппинга в classifier */
+  usageId?: string;
   kind: JsxNodeKind;
   tagName: string;
   line: number;

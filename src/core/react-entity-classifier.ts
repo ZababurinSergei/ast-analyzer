@@ -867,13 +867,24 @@ export function classifyReactEntities(entitiesMap: Record<string, EntitiesResult
     }
 
     // ============================================================
-    // 7. JSX ELEMENTS
+    // 7. JSX ELEMENTS (v1.4.0: маппинг jsx_N → rjN)
     // ============================================================
+    //
+    // Parser генерирует внутренние ID (`jsx_0`, `jsx_1`), а classifier
+    // присваивает глобальные (`rj1`, `rj2`). Все ссылки (parentElementId,
+    // jsxEvents.elementId, componentUsages.usageId) содержат внутренние ID.
+    // Строим маппинг `usageId → globalId` и резолвим ссылки.
+    // ============================================================
+    const usageIdMap = new Map<string, string>();
     if (Array.isArray(e.reactJsxElements)) {
       for (const el of e.reactJsxElements) {
         jsxCounter++;
+        const globalId = `rj${jsxCounter}`;
+        const usageId = (el as any).usageId ?? '';
+        if (usageId) usageIdMap.set(usageId, globalId);
+
         result.jsxElements.push({
-          id: `rj${jsxCounter}`,
+          id: globalId,
           fileId: filePath,
           componentId: el.componentId ?? '',
           kind: el.kind ?? 'element',
@@ -895,16 +906,29 @@ export function classifyReactEntities(entitiesMap: Record<string, EntitiesResult
       }
     }
 
+    // ── Резолв parentElementId через маппинг ──
+    for (const el of result.jsxElements) {
+      if (el.parentElementId) {
+        if (usageIdMap.has(el.parentElementId)) {
+          el.parentElementId = usageIdMap.get(el.parentElementId)!;
+        } else if (el.parentElementId.startsWith('jsx_')) {
+          el.parentElementId = null;
+        }
+      }
+    }
+
     // ============================================================
     // 8. JSX EVENTS
     // ============================================================
     if (Array.isArray(e.reactJsxEvents)) {
       for (const ev of e.reactJsxEvents) {
         jsxEventCounter++;
+        const rawElementId = ev.elementId ?? '';
+        const resolvedElementId = usageIdMap.get(rawElementId) ?? rawElementId;
         result.jsxEvents.push({
           id: `rje${jsxEventCounter}`,
           fileId: filePath,
-          elementId: ev.elementId ?? '',
+          elementId: resolvedElementId,
           eventName: ev.eventName ?? '',
           line: ev.line ?? 0,
           handler: ev.handler ?? '',
@@ -940,9 +964,11 @@ export function classifyReactEntities(entitiesMap: Record<string, EntitiesResult
     if (Array.isArray(e.reactComponentUsages)) {
       for (const u of e.reactComponentUsages) {
         usageCounter++;
+        const rawUsageId = u.usageId ?? '';
+        const resolvedUsageId = usageIdMap.get(rawUsageId) ?? rawUsageId;
         result.componentUsages.push({
           id: `rcu${usageCounter}`,
-          usageId: u.usageId ?? '',
+          usageId: resolvedUsageId,
           tagName: u.tagName ?? '',
           parentComponentId: u.parentComponentId ?? '',
           line: u.line ?? 0,

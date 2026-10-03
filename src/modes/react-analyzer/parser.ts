@@ -390,6 +390,7 @@ function parseJsx(
 
     const id = `jsx_${elements.length}`;
     const element: AnalyzedJsxElement = {
+      usageId: id,
       kind,
       tagName,
       line,
@@ -438,6 +439,7 @@ function parseJsx(
         if (text) {
           const childId = `jsx_${elements.length}`;
           elements.push({
+            usageId: childId,
             kind: 'text',
             tagName: '',
             line: child.loc?.start?.line ?? line,
@@ -516,6 +518,7 @@ function parseJsx(
         // Expression (например, {user.name})
         const childId = `jsx_${elements.length}`;
         elements.push({
+          usageId: childId,
           kind: 'expression',
           tagName: '',
           line: expr.loc?.start?.line ?? line,
@@ -542,6 +545,7 @@ function parseJsx(
   if (node.type === T.JSXFragment) {
     const id = `jsx_${elements.length}`;
     const element: AnalyzedJsxElement = {
+      usageId: id,
       kind: 'fragment',
       tagName: '',
       line: node.loc?.start?.line ?? 0,

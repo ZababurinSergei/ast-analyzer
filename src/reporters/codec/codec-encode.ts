@@ -408,7 +408,7 @@ export function rleArray(values: number[]): [number, number, number?][] {
 }
 
 export function addString(dict: DictBuilder, str: string | undefined | null): number {
-  if (str === undefined || str === null || str === '') return -1;
+  if (str === undefined || str === null) return -1;   // ✅ v17.3.0: разрешить ''
   const existing = dict.stringMap.get(str);
   if (existing !== undefined) return existing;
   const idx = dict.stringDict.length;
@@ -1127,7 +1127,7 @@ export function encodeReactSection(
   const cN: number[] = [];
   const cK: number[] = [];
   const cL: number[] = [];
-  const cP: [number, number][] = [];
+  const cP: number[][] = [];
   const cH: [number, number][] = [];
   const cJ: [number, number][] = [];
   const cFl: number[] = [];
@@ -1186,6 +1186,7 @@ export function encodeReactSection(
   const jCh: number[] = [];
   const jTx: number[] = [];
   const jEx: number[] = [];
+  const jExr: number[] = [];   // ✅ expressionRefs
   const jPa: number[] = [];
   const jCk: number[] = [];
 
@@ -1197,6 +1198,7 @@ export function encodeReactSection(
   const evH: number[] = [];
   const evHf: number[] = [];
   const evS: number[] = [];
+  const evM: number[] = [];   // ✅ modifiers
 
   // ── conditionals ──
   const cdF: number[] = [];
@@ -1227,12 +1229,12 @@ export function encodeReactSection(
     cK.push(REACT_COMPONENT_KIND_CODES[c.kind] ?? 0);
     cL.push(c.line);
 
-    // ✅ v17.2.0: props → через strs
-    const pStart = cP.reduce((s, x) => s + x[1], 0);
+    // ✅ v17.3.0: props → массив индексов в strs (учитывает дедупликацию addString)
+    const pIndices: number[] = [];
     for (const p of c.props ?? []) {
-      addString(dict, p);
+      pIndices.push(addString(dict, p));
     }
-    cP.push([pStart, (c.props ?? []).length]);
+    cP.push(pIndices);
 
     // ✅ v17.2.0: hooks → через ids
     const hStart = cH.reduce((s, x) => s + x[1], 0);
@@ -1265,7 +1267,7 @@ export function encodeReactSection(
     hL.push(h.line);
     hSn.push(h.stateName ? addString(dict, h.stateName) : -1);
     hTn.push(h.setterName ? addString(dict, h.setterName) : -1);
-    hIv.push(h.initialValue ? addString(dict, h.initialValue) : -1);
+    hIv.push(h.initialValue !== undefined ? addString(dict, h.initialValue) : -1);
     hD.push(h.deps ? addString(dict, h.deps.join('\u0002')) : -1);
 
     let flags = 0;
@@ -1345,6 +1347,7 @@ export function encodeReactSection(
 
     jTx.push(el.textContent ? addString(dict, el.textContent) : -1);
     jEx.push(el.expression ? addString(dict, el.expression) : -1);
+    jExr.push(el.expressionRefs?.length ? addString(dict, el.expressionRefs.join('\u0002')) : -1);
     // ✅ v17.2.0: parentElementId через addId
     jPa.push(el.parentElementId ? addId(dict, el.parentElementId) : -1);
     jCk.push(el.conditionalKind ? (REACT_CONDITIONAL_KIND_CODES[el.conditionalKind] ?? -1) : -1);
@@ -1361,6 +1364,7 @@ export function encodeReactSection(
     // ✅ v17.2.0: handlerFunctionId через addId
     evHf.push(ev.handlerFunctionId ? addId(dict, ev.handlerFunctionId) : -1);
     evS.push(EVENT_HANDLER_SOURCE_CODES[ev.source] ?? 4);
+    evM.push(ev.modifiers?.length ? addString(dict, ev.modifiers.join("\u0002")) : -1);
   }
 
   // ── 9. conditionals ──
@@ -1395,8 +1399,8 @@ export function encodeReactSection(
     contexts: { f: ctxF, c: ctxC, k: ctxK, l: ctxL, n: ctxN },
     memoization: { f: mF, c: mC, k: mK, l: mL, d: mD },
     refs: { f: rF, c: rC, l: rL, n: rN, fl: rFl },
-    jsxElements: { f: jF, c: jC, k: jK, n: jN, l: jL, col: jCol, a: jA, ch: jCh, tx: jTx, ex: jEx, pa: jPa, ck: jCk },
-    jsxEvents: { f: evF, e: evE, n: evN, l: evL, h: evH, hf: evHf, s: evS },
+    jsxElements: { f: jF, c: jC, k: jK, n: jN, l: jL, col: jCol, a: jA, ch: jCh, tx: jTx, ex: jEx, exr: jExr, pa: jPa, ck: jCk },
+    jsxEvents: { f: evF, e: evE, n: evN, l: evL, h: evH, hf: evHf, s: evS, m: evM },
     conditionals: { f: cdF, c: cdC, k: cdK, cd: cdCd, r: cdR, l: cdL, g: cdG },
     componentUsages: { u: uU, n: uN, c: uC, l: uL, t: uT, im: uIm, fl: uFl, p: uP, e: uE, s: uS },
 

@@ -1768,7 +1768,8 @@ export interface ReactSectionCompact {
     n: number[];
     k: number[];
     l: number[];
-    p: [number, number][];
+    /** ✅ v17.3.0: массив индексов в strs (учитывает дедупликацию addString) */
+    p: number[][];
     h: [number, number][];
     j: [number, number][];
     fl: number[];
@@ -1834,6 +1835,7 @@ export interface ReactSectionCompact {
     ch: number[];
     tx: number[];
     ex: number[];
+    exr: number[];
     pa: number[];
     ck: number[];
   };
@@ -1846,6 +1848,7 @@ export interface ReactSectionCompact {
     h: number[];
     hf: number[];
     s: number[];
+    m: number[];
   };
 
   conditionals: {

@@ -727,12 +727,12 @@ export const SCHEMAS: CodecLegend['schemas'] = {
   // ==========================================
   // ✅ v17.0.0: react.jsxElements — 12 полей (v17.1.0: +col)
   // ==========================================
-  'react.jsxElements': ['f', 'c', 'k', 'n', 'l', 'col', 'a', 'ch', 'tx', 'ex', 'pa', 'ck'],
+  'react.jsxElements': ['f', 'c', 'k', 'n', 'l', 'col', 'a', 'ch', 'tx', 'ex', 'exr', 'pa', 'ck'],
 
   // ==========================================
   // ✅ v17.0.0: react.jsxEvents
   // ==========================================
-  'react.jsxEvents': ['f', 'e', 'n', 'l', 'h', 'hf', 's'],
+  'react.jsxEvents': ['f', 'e', 'n', 'l', 'h', 'hf', 's', 'm'],
 
   // ==========================================
   // ✅ v17.0.0: react.conditionals

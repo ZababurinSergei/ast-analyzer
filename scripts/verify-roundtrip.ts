@@ -695,8 +695,8 @@ function checkLegendStructure(compact: CompactJSON): LegendCheck[] {
     { key: 'react.contexts', expectedLength: 5 },
     { key: 'react.memoization', expectedLength: 5 },
     { key: 'react.refs', expectedLength: 5 },
-    { key: 'react.jsxElements', expectedLength: 12 },
-    { key: 'react.jsxEvents', expectedLength: 7 },
+    { key: 'react.jsxElements', expectedLength: 13 },
+    { key: 'react.jsxEvents', expectedLength: 8 },
     { key: 'react.conditionals', expectedLength: 7 },
     { key: 'react.componentUsages', expectedLength: 10 },
 
