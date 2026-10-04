@@ -51,7 +51,7 @@
     }
   },
   "scripts": {
-    "server": "npx http-server -p 3000",
+    "server": "cd ./ast-graph-viewer && npx http-server -p 3000",
     "check": "npx tsc --noEmit --skipLibCheck --excludeDirectories ./src/process",
     "build:mkb": "tsx ./src/cli.ts compact-recursive ../mkb/src/main.js --preset standard --depth 1000 -o ./ast-graph-viewer/index.json",
     "build:mkb:fs": "tsx ./src/cli.ts compact-recursive ../mkb/src/main.js --preset standard --depth 1000 -o ../../fs/MKB.json",
