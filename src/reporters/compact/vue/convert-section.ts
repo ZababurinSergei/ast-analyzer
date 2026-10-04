@@ -190,11 +190,41 @@ export function convertVueEntitiesToFull(
    * Резолвит абсолютный путь в короткий fileId (f1, f2, ...).
    * Fallback — 'f1', если файл не найден в fileMap.
    */
+  // ✅ WS-18 FIX: filePath от classifier — УЖЕ относительный от projectRoot.
+  //    Раньше path.resolve(filePath) резолвил относительно process.cwd(),
+  //    что давало неверный absolutePath → fileMap.get() → undefined → 'f1'.
   const resolveFileId = (filePath: string): string => {
-    const absolutePath = path.resolve(filePath);
+    if (!filePath) return 'f1';
+
+    // Нормализуем слэши
+    const normalized = filePath.replace(/\\/g, '/');
+
+    // 1. Если filePath относительный (как от classifier) — ищем как есть
+    if (!path.isAbsolute(normalized)) {
+      const file = fileMap.get(normalized);
+      if (file) return file.id;
+
+      // 1b. Может быть './App.vue' — уберём ведущие './'
+      const stripped = normalized.replace(/^\.\//, '');
+      const file2 = fileMap.get(stripped);
+      if (file2) return file2.id;
+    }
+
+    // 2. Если filePath абсолютный — резолвим относительно projectRoot
+    if (path.isAbsolute(normalized)) {
+      const rel = path.relative(projectRoot, normalized).replace(/\\/g, '/');
+      const file = fileMap.get(rel);
+      if (file) return file.id;
+    }
+
+    // 3. Fallback: resolve от projectRoot
+    const absolutePath = path.resolve(projectRoot, normalized);
     const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
-    const file = fileMap.get(relativePath);
-    return file?.id ?? 'f1';
+    const file3 = fileMap.get(relativePath);
+    if (file3) return file3.id;
+
+    // 4. Последний fallback
+    return 'f1';
   };
 
   /**
