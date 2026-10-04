@@ -986,6 +986,39 @@ export function classifyReactEntities(entitiesMap: Record<string, EntitiesResult
   // ✅ v1.1.0: сохраняем debug-информацию на результате
   (result as any).__debug = debugInfo;
 
+  // ============================================================
+  // ✅ WS-64: РАЗЛОЖИТЬ hooks ПО components
+  // ============================================================
+  // После сбора result.hooks (плоский список) и result.components —
+  // связываем их: для каждого component находим все hooks
+  // с componentId === c.name и записываем их id в c.hooks.
+  //
+  // ПРИЧИНА:
+  //   parseHook в parser.ts теперь заполняет hook.componentId = name.
+  //   react-entity-classifier передаёт h.componentId в result.hooks.
+  //   Но components[].hooks оставался пустым — этот блок исправляет.
+  {
+    const hooksByComponentName = new Map<string, string[]>();
+    for (const h of result.hooks) {
+      const cid = h.componentId;
+      if (!cid) continue;
+      if (!hooksByComponentName.has(cid)) {
+        hooksByComponentName.set(cid, []);
+      }
+      hooksByComponentName.get(cid)!.push(h.id);
+    }
+
+    for (const c of result.components) {
+      const hookIds = hooksByComponentName.get(c.name);
+      if (hookIds && hookIds.length > 0) {
+        c.hooks = hookIds;
+      }
+    }
+  }
+
+
+
+
   return result;
 }
 

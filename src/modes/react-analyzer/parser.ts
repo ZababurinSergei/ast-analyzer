@@ -293,11 +293,12 @@ function buildComponent(
   const props = extractPropsFromParams(node);
 
   // Хуки внутри тела (плоско, с проходом по всем вложенным)
+  // ✅ WS-64: пробрасываем name в parseHook
   walkNode(node.body, n => {
     if (n.type === T.CallExpression && n.callee?.type === T.Identifier) {
       const hookName = n.callee.name;
       if (KNOWN_HOOKS.has(hookName)) {
-        const hook = parseHook(hookName as ReactHookKind, n);
+        const hook = parseHook(hookName as ReactHookKind, n, name);
         if (hook) hooks.push(hook);
       }
     }
@@ -331,12 +332,14 @@ function buildComponent(
 // 3. PARSE HOOK
 // ============================================================
 
-function parseHook(kind: ReactHookKind, node: any): AnalyzedHook | null {
+function parseHook(kind: ReactHookKind, node: any, componentName?: string): AnalyzedHook | null {
   const line = node.loc?.start?.line ?? 0;
   const column = node.loc?.start?.column;
   const args = node.arguments ?? [];
 
+  // ✅ WS-64: пробрасываем componentId (имя компонента)
   const hook: AnalyzedHook = { kind, line, column };
+  if (componentName) hook.componentId = componentName;
 
   if (kind === 'useState' || kind === 'useReducer') {
     hook.initialValue = args[0] ? sourceText(args[0]) : undefined;

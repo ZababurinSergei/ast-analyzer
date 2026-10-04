@@ -2,13 +2,14 @@
 // scripts/verify-roundtrip.ts
 import fs from 'fs';
 import path from 'path';
-import { Codec } from '../src/reporters/codec/codec.js';
-import { verifyRoundTripBoth } from '../src/reporters/codec/codec-verify.js';
-import type { CompactJSON, FullJSON, CallData } from '../src/reporters/codec/codec-types.js';
-import { CODEC_VERSION, LEGEND_VERSION } from '../src/reporters/codec/codec-types.js';
+import { Codec } from '../src/reporters/codec/codec.ts';
+import { verifyRoundTripBoth } from '../src/reporters/codec/codec-verify.ts';
+import type { CompactJSON, FullJSON, CallData } from '../src/reporters/codec/codec-types.ts';
+import { CODEC_VERSION, LEGEND_VERSION } from '../src/reporters/codec/codec-types.ts';
 
 // ✅ v15.6.0: импорт isJsonSafe для I15/I16
-import { isJsonSafe } from '../src/reporters/codec/stable-stringify.js';
+import { isJsonSafe } from '../src/reporters/codec/stable-stringify.ts';
+
 
 // ============================================
 // КОНФИГУРАЦИЯ
@@ -312,13 +313,30 @@ function normalizeFullForCompare(full: any): any {
       normalizeFunctionsForCompare(normalizeVueForCompare(full))
     )
   );
-  // ✅ v18.0.0: top-level component* поля — приводим undefined → []
-  if (!Array.isArray(normalized.componentProps)) normalized.componentProps = [];
-  if (!Array.isArray(normalized.componentEvents)) normalized.componentEvents = [];
-  if (!Array.isArray(normalized.componentDirectives)) normalized.componentDirectives = [];
-  if (!Array.isArray(normalized.componentSlots)) normalized.componentSlots = [];
-  if (!Array.isArray(normalized.htmlInterpolations)) normalized.htmlInterpolations = [];
-  return normalized;
+  // ✅ WS-57-FIX: НЕ мутируем аргумент — создаём НОВЫЙ объект.
+  //
+  // ПРИЧИНА:
+  //   normalizeVueForCompare / normalizeFunctionsForCompare /
+  //   normalizeVueSfcForCompare / normalizeReactForCompare могут
+  //   вернуть ИСХОДНЫЙ объект (return full, если нечего менять).
+  //   Тогда `normalized === full`, и мутация `normalized.X = []`
+  //   мутирует оригинал.
+  //
+  // СИМПТОМ:
+  //   encodedRaw.length после Codec.encode = 729412
+  //   encodedRaw.length после semanticCompare = 729522 (+110 байт)
+  //   → L3 FAIL (compactRaw 729412 !== encodedRaw 729522)
+  //
+  // ИСПРАВЛЕНИЕ:
+  //   Возвращаем новый объект через spread. Не трогаем оригинал.
+  return {
+    ...normalized,
+    componentProps: Array.isArray(normalized.componentProps) ? normalized.componentProps : [],
+    componentEvents: Array.isArray(normalized.componentEvents) ? normalized.componentEvents : [],
+    componentDirectives: Array.isArray(normalized.componentDirectives) ? normalized.componentDirectives : [],
+    componentSlots: Array.isArray(normalized.componentSlots) ? normalized.componentSlots : [],
+    htmlInterpolations: Array.isArray(normalized.htmlInterpolations) ? normalized.htmlInterpolations : [],
+  };
 }
 
 // ============================================
@@ -1569,7 +1587,8 @@ async function main(): Promise<void> {
   printLevelResult('L2', l2, options.maxDiffs);
 
   subsection('L3: compact (на диске) === encode(full) (побайтово, буквально)');
-  const compactRaw = JSON.stringify(compact);
+  const compactFresh = readJson<CompactJSON>(options.compactPath);
+  const compactRaw = JSON.stringify(compactFresh);
   const encodedRaw = JSON.stringify(encoded);
   let l3: LevelResult;
   if (compactRaw === encodedRaw) {

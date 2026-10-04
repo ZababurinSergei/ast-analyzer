@@ -121,6 +121,8 @@ export interface AnalyzedComponent {
  * Проанализированный React-хук.
  */
 export interface AnalyzedHook {
+  /** ✅ WS-64: ID родительского компонента (имя, не rcN) */
+  componentId?: string;
   kind: ReactHookKind;
   line: number;
   column?: number;
@@ -152,6 +154,8 @@ export interface AnalyzedHook {
  * Проанализированный JSX-элемент.
  */
 export interface AnalyzedJsxElement {
+  /** ✅ WS-64: ID родительского компонента (имя) */
+  componentId?: string;
   /** Внутренний ID (jsx_0, jsx_1) — для маппинга в classifier */
   usageId?: string;
   kind: JsxNodeKind;
@@ -182,6 +186,8 @@ export interface AnalyzedJsxElement {
  * Проанализированное JSX-событие.
  */
 export interface AnalyzedJsxEvent {
+  /** ✅ WS-64: ID родительского компонента (имя) */
+  componentId?: string;
   /** Индекс JSX-элемента внутри компонента */
   elementId: string;
   /** Имя события: onClick, onChange */
@@ -202,6 +208,8 @@ export interface AnalyzedJsxEvent {
  * Проанализированное условие в JSX.
  */
 export interface AnalyzedConditional {
+  /** ✅ WS-64: ID родительского компонента (имя) */
+  componentId?: string;
   kind: '&&' | '||' | '?:';
   condition: string;
   refs: string[];

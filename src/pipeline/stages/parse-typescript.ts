@@ -204,7 +204,7 @@ export async function parseTypeScriptFile(
           // 2. Хуки компонента
           for (const h of comp.hooks) {
             entities.reactHooks.push({
-              componentId: '',
+              componentId: (h as any).componentId ?? comp.name,  // ✅ WS-67
               kind: h.kind,
               line: h.line,
               stateName: h.stateName,
@@ -222,7 +222,7 @@ export async function parseTypeScriptFile(
               h.kind === 'useInsertionEffect'
             ) {
               entities.reactEffects.push({
-                componentId: '',
+                componentId: (h as any).componentId ?? comp.name,  // ✅ WS-67
                 hookId: '',
                 kind: h.effectKind ?? 'update',
                 line: h.line,
@@ -236,7 +236,7 @@ export async function parseTypeScriptFile(
             // useMemo/useCallback → reactMemoization
             if (h.kind === 'useMemo' || h.kind === 'useCallback') {
               entities.reactMemoization.push({
-                componentId: '',
+                componentId: (h as any).componentId ?? comp.name,  // ✅ WS-67
                 kind: h.kind,
                 line: h.line,
                 deps: h.deps ?? [],
@@ -246,7 +246,7 @@ export async function parseTypeScriptFile(
             // useRef → reactRefs
             if (h.kind === 'useRef') {
               entities.reactRefs.push({
-                componentId: '',
+                componentId: (h as any).componentId ?? comp.name,  // ✅ WS-67
                 line: h.line,
                 name: h.refName,
                 isForwardRef: false,
@@ -256,7 +256,7 @@ export async function parseTypeScriptFile(
             // useContext → reactContexts
             if (h.kind === 'useContext') {
               entities.reactContexts.push({
-                componentId: '',
+                componentId: (h as any).componentId ?? comp.name,  // ✅ WS-68
                 kind: 'consume',
                 line: h.line,
                 name: h.contextName,
@@ -268,7 +268,7 @@ export async function parseTypeScriptFile(
           for (const jsx of comp.jsxElements) {
             entities.reactJsxElements.push({
               usageId: (jsx as any).usageId,
-              componentId: '',
+              componentId: (jsx as any).componentId ?? comp.name,  // ✅ WS-68
               kind: jsx.kind,
               tagName: jsx.tagName,
               line: jsx.line,
@@ -301,7 +301,7 @@ export async function parseTypeScriptFile(
           // 5. Conditionals
           for (const cd of comp.conditionals) {
             entities.reactConditionals.push({
-              componentId: '',
+              componentId: (cd as any).componentId ?? comp.name,  // ✅ WS-68
               kind: cd.kind,
               condition: cd.condition,
               refs: cd.refs,

@@ -858,6 +858,7 @@ function decodeDomApiCalls(
       ctx.observeOptions = (stringDict[data.oo[i]] || '').split('\u0002');
     }
 
+    // ✅ WS-67-FIX: `as any` — category/effect добавляются ниже условно
     result.push({
       id: `d${i + 1}`, // ✅ P26-FIX-A: id = порядковый номер, симметрично full.json
       functionId: fn?.id ?? '',
@@ -872,7 +873,7 @@ function decodeDomApiCalls(
       line: data.l[i] ?? 0,
       column: data.col?.[i] >= 0 ? data.col[i] : undefined,
       context: ctx,
-    });
+    } as any);
 
     // ✅ P36-FIX: category/effect только для классифицированных вызовов.
     //   Если cat === 49 ('other'), это НЕ DOM API — поля не создаются

@@ -1243,18 +1243,36 @@ export function encodeReactSection(
     cP.push(pIndices);
 
     // ✅ v17.2.0: hooks → через ids
-    const hStart = cH.reduce((s, x) => s + x[1], 0);
+    // ✅ WS-75-FIX: hStart — это ИНДЕКС ПЕРВОГО hook'а в ids[].
+    //   Раньше (WS-71): hStart = dict.idDict.length ДО добавления.
+    //   Это работает для "свежих" hooks, но ЛОМАЕТСЯ для дубликатов:
+    //     rc2.hooks = [rh5..rh309] → ids[186..209]
+    //     rc5.hooks = [rh9]        → ids[210]
+    //     rc10.hooks = [rh5..rh309] (дубль) → idDict.length=211, но addId вернёт 186
+    //   Теперь: hStart = индекс, который вернул ПЕРВЫЙ addId.
+    //   Для дублей addId возвращает СУЩЕСТВУЮЩИЙ индекс → hStart = 186 ✅
+    let hStart = -1;
+    let hLen = 0;
     for (const hookId of c.hooks ?? []) {
-      addId(dict, hookId);
+      const idx = addId(dict, hookId);
+      if (hStart === -1) hStart = idx;
+      hLen++;
     }
-    cH.push([hStart, (c.hooks ?? []).length]);
+    if (hStart === -1) hStart = dict.idDict.length;
+    cH.push([hStart, hLen]);
 
     // ✅ v17.2.0: jsxElements → через ids
-    const jStart = cJ.reduce((s, x) => s + x[1], 0);
+    // ✅ WS-75-FIX: jStart — ИНДЕКС ПЕРВОГО jsxElement в ids[].
+    //   Симметрично hStart. Работает для дубликатов.
+    let jStart = -1;
+    let jLen = 0;
     for (const jId of c.jsxElements ?? []) {
-      addId(dict, jId);
+      const idx = addId(dict, jId);
+      if (jStart === -1) jStart = idx;
+      jLen++;
     }
-    cJ.push([jStart, (c.jsxElements ?? []).length]);
+    if (jStart === -1) jStart = dict.idDict.length;
+    cJ.push([jStart, jLen]);
 
     let flags = 0;
     if (c.isMemoized) flags |= 1;
@@ -2113,6 +2131,12 @@ export function encode(
   const OPTIONAL_SECTIONS: (keyof CompactJSON)[] = [
     'vt', 'lc', 'ef', 'inj', 'rx', 'cd', 'ty', 'tr', 'vue', 'react',
     'fnHtmlUsage', 'domApiCalls', 'domApiArgs', 'ids', 'sourceChains',
+    // ✅ WS-46: top-level component* секции — приводим к 'undefined' при пустом.
+    //   Причина: compact-encode создаёт compact.componentProps = undefined,
+    //   но ключ остаётся в Object.keys(compact). L3 FAIL из-за этого.
+    //   Теперь: если componentProps = undefined → delete ключа.
+    'componentProps', 'componentEvents', 'componentDirectives',
+    'componentSlots', 'htmlInterpolations',
   ];
 
   for (const key of OPTIONAL_SECTIONS) {
