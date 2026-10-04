@@ -52,6 +52,28 @@ import { Node as TsNode } from 'ts-morph';
 import type { EntitiesResult } from '../../../types.js';
 import type { ScopeInternal, ScopeLocal } from './types.js';
 
+// ════════════════════════════════════════════════════════════
+// ✅ P12: КЭШ SCOPE ПО fileId
+// ════════════════════════════════════════════════════════════
+//
+// Кэш на уровне модуля. Ключ — fileId. Значение — ScopeInternal.
+//
+// ЗАЧЕМ:
+//   Scope зависит ТОЛЬКО от файла (locals, imports, refs
+//   берутся из entitiesMap[scriptPath]). Он НЕ зависит от fn.
+//
+//   Раньше (P6/P8): buildScopeForFunction вызывался 798 раз
+//   (по разу на функцию), и КАЖДЫЙ раз делал sf.forEachDescendant
+//   по всему файлу (O(N)).
+//
+//   Теперь (P12): scope строится ОДИН раз на файл (по fileId).
+//   При повторных вызовах для того же файла — кэш.
+//
+// Ускорение: sf.forEachDescendant × 798 → × 71 (по числу файлов).
+// ════════════════════════════════════════════════════════════
+
+const _scopeCache = new Map<string, ScopeInternal>();
+
 // ============================================================
 // ЭВРИСТИКИ
 // ============================================================
@@ -174,8 +196,16 @@ export function buildScopeForFunction(
     fileId: string,
     entitiesMap: Record<string, EntitiesResult>,
     tsProject: any,
-    originalAbsolutePath?: string
+    originalAbsolutePath?: string,
+    // ✅ P12: опциональный индекс fnName → targetFn.
+    //    Сейчас не используется напрямую, но может быть полезен
+    //    для varIndex (если добавим).
+    _fnIndex?: Map<string, any>
 ): ScopeInternal | null {
+    // ✅ P12: проверяем кэш по fileId
+    const cached = _scopeCache.get(fileId);
+    if (cached) return cached;
+
     // ────────────────────────────────────────────────────────
     // Шаг 1: базовый ScopeInternal
     // ────────────────────────────────────────────────────────
@@ -309,5 +339,15 @@ export function buildScopeForFunction(
         }
     }
 
+    // ✅ P12: сохраняем в кэш
+    _scopeCache.set(fileId, scope);
     return scope;
+}
+
+/**
+ * ✅ P12: Сброс кэша scope.
+ * Вызывается между прогонами pipeline (если тот же процесс).
+ */
+export function resetScopeCache(): void {
+    _scopeCache.clear();
 }

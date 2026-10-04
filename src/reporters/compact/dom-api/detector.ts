@@ -128,7 +128,10 @@ export function detectDomApiCallsForFunction(
     entitiesMap: Record<string, EntitiesResult>,
     tsProject: any,
     idCounter: { value: number },
-    originalAbsolutePath?: string
+    originalAbsolutePath?: string,
+    // ✅ P12: опциональный индекс fnName → targetFn, построенный ОДИН раз на файл.
+    //    Если передан — используется ВМЕСТО sf.forEachDescendant для поиска targetFn.
+    fnIndex?: Map<string, any>
 ): any[] {
     // ────────────────────────────────────────────────────────
     // Шаг 1: построить scope
@@ -139,7 +142,8 @@ export function detectDomApiCallsForFunction(
         fileId,
         entitiesMap,
         tsProject,
-        originalAbsolutePath
+        originalAbsolutePath,
+        fnIndex  // ✅ P12: для scope-builder (может использовать для varIndex)
     );
 
     if (!scope) return [];
@@ -159,25 +163,42 @@ export function detectDomApiCallsForFunction(
 
     // ────────────────────────────────────────────────────────
     // Шаг 3: найти узел функции (targetFn)
+    //
+    // ✅ P12 ФИКС O(N²): если fnIndex передан — O(1) lookup.
+    //
+    //   РАНЬШЕ (P6/P8/P9/P10/P11):
+    //     sf.forEachDescendant(...) — обход ВСЕГО SourceFile.
+    //     Вызывался 798 раз (по разу на функцию).
+    //     Для файла f174 (71 функция) — 71 × N узлов.
+    //     ИТОГО: O(N²) — 3427 ms.
+    //
+    //   ТЕПЕРЬ (P12):
+    //     fnIndex построен ОДИН раз на файл в pass-6.
+    //     fnIndex.get(fn.name) — O(1).
+    //     ИТОГО: O(N) — ~50 ms.
     // ────────────────────────────────────────────────────────
     let targetFn: any = null;
 
-    sf.forEachDescendant((node: any) => {
-        if (targetFn) return;
+    if (fnIndex) {
+        // O(1) lookup
+        targetFn = fnIndex.get(fn.name) ?? null;
+    } else {
+        // Fallback (обратная совместимость): старый O(N) поиск
+        sf.forEachDescendant((node: any) => {
+            if (targetFn) return;
 
-        // FunctionDeclaration с именем fn.name
-        if (TsNode.isFunctionDeclaration(node) && node.getName() === fn.name) {
-            targetFn = node;
-        }
-
-        // VariableDeclaration с именем fn.name (init — arrow/function)
-        if (TsNode.isVariableDeclaration(node) && node.getName() === fn.name) {
-            const init = node.getInitializer();
-            if (init && (TsNode.isArrowFunction(init) || TsNode.isFunctionExpression(init))) {
-                targetFn = init;
+            if (TsNode.isFunctionDeclaration(node) && node.getName() === fn.name) {
+                targetFn = node;
             }
-        }
-    });
+
+            if (TsNode.isVariableDeclaration(node) && node.getName() === fn.name) {
+                const init = node.getInitializer();
+                if (init && (TsNode.isArrowFunction(init) || TsNode.isFunctionExpression(init))) {
+                    targetFn = init;
+                }
+            }
+        });
+    }
 
     if (!targetFn) {
         if (process.env.AST_DEBUG_VUE === 'true') {

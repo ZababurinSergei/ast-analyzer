@@ -164,7 +164,10 @@ export function collectFullJSON(
     clearTsConfigCache();
 
     const firstTsFile = Object.keys(entitiesMap).find(f => f.endsWith('.ts') || f.endsWith('.tsx'));
-    const startDir = firstTsFile ? path.dirname(path.resolve(firstTsFile)) : process.cwd();
+    // ✅ ФИКС R7: path.resolve от projectRoot, а не от cwd.
+  const startDir = firstTsFile
+    ? path.dirname(path.resolve(projectRoot, firstTsFile))
+    : process.cwd();
 
     loadTsConfig(startDir);
 

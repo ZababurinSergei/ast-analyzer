@@ -173,7 +173,7 @@ export function pass1Modules(ctx: CollectContext): void {
         if (!entities) continue;
 
         // Абсолютный путь — для sourceToFileIdMap
-        const absolutePath = path.resolve(filePath);
+        const absolutePath = path.resolve((ctx as any).projectRoot || process.cwd(), filePath);
 
         // Относительный путь от projectRoot — для FileData.path
         const relativePath = getRelativePath(ctx, filePath);

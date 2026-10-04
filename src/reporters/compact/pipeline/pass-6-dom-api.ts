@@ -221,8 +221,10 @@
 import fs from 'fs';
 import path from 'path';
 import { Project as TsMorphProject } from 'ts-morph';
+import { Node as TsNode } from 'ts-morph';
 import { parseVueFile } from '../../../modes/vue-analyzer/parser.js';
 import { detectDomApiCallsForFunction } from '../dom-api/detector.js';
+import { resetScopeCache } from '../dom-api/scope-builder.js';
 import type { CollectContext } from './context.js';
 
 // ============================================================
@@ -266,6 +268,10 @@ import type { CollectContext } from './context.js';
 export function pass6DomApi(ctx: CollectContext): void {
     const { files, functions, entitiesMap, projectRoot, verbose } = ctx;
 
+    // ✅ P13: сброс кэша scope в начале прохода.
+    //   (чтобы между прогонами pipeline данные не текли)
+    resetScopeCache();
+
     // ────────────────────────────────────────────────────────────
     // Шаг 1: Создание ts-morph Project
     // ────────────────────────────────────────────────────────────
@@ -292,6 +298,8 @@ export function pass6DomApi(ctx: CollectContext): void {
             checkJs: false,
             skipLibCheck: true,
             jsx: 2,
+            // ✅ P6: isolatedModules (без noResolve, noEmit, skipDefaultLibCheck)
+            isolatedModules: true,
         },
     });
 
@@ -316,15 +324,32 @@ export function pass6DomApi(ctx: CollectContext): void {
     // ════════════════════════════════════════════════════════════
     // Шаг 2: Обход всех функций
     // ════════════════════════════════════════════════════════════
+    // ✅ P9: O(1) индекс files по id
+    const fileById = new Map<string, any>(files.map((f: any) => [f.id, f]));
+
+    // ✅ P9: ГРУППИРОВКА ФУНКЦИЙ ПО fileId — ОДИН раз на файл.
+    //
+    //   Раньше (P6/P8): цикл шёл по 798 функциям, и для каждой
+    //   вызывались path.resolve, fs.existsSync, parseVueFile (для .vue),
+    //   fs.readFileSync (для .ts), createSourceFile.
+    //
+    //   Теперь (P9): цикл идёт по ~71 файлу, и для каждого
+    //   файла все эти операции выполняются ОДИН РАЗ.
+    //   Внутри — цикл по функциям этого файла.
+    //
+    //   Ожидаемое ускорение: build-report 5330 ms → ~500-800 ms.
+    const fnsByFile = new Map<string, any[]>();
     for (const fn of functions) {
-        // ── 2.1. Найти sfcFile по fn.fileId ──
-        const sfcFile = files.find(f => f.id === fn.fileId);
+        if (!fnsByFile.has(fn.fileId)) fnsByFile.set(fn.fileId, []);
+        fnsByFile.get(fn.fileId)!.push(fn);
+    }
+
+    for (const [fileId, fileFns] of fnsByFile) {
+        // ── 2.1. Найти sfcFile по fileId (один раз на файл) ──
+        const sfcFile = fileById.get(fileId); // ✅ P9: O(1)
         if (!sfcFile) continue;
 
-        // ── 2.2. Вычислить absolutePath ──
-        //
-        // sfcFile.path — относительный от projectRoot.
-        // path.resolve(projectRoot, sfcFile.path) → абсолютный.
+        // ── 2.2. Вычислить absolutePath (один раз на файл) ──
         const absolutePath = path.resolve(projectRoot, sfcFile.path);
         if (!fs.existsSync(absolutePath)) continue;
 
@@ -344,8 +369,8 @@ export function pass6DomApi(ctx: CollectContext): void {
                     if (verbose) {
                         console.warn(`   ⚠️ parseVueFile вернул null для ${sfcFile.path}`);
                     }
-                    skippedFns++;
-                    continue;
+                    skippedFns += fileFns.length;
+                    continue;  // ✅ P9: continue внешнего цикла (по файлам)
                 }
 
                 // ── Извлечь script ──
@@ -358,8 +383,8 @@ export function pass6DomApi(ctx: CollectContext): void {
                     if (verbose) {
                         console.warn(`   ⚠️ Пустой <script> в ${sfcFile.path}`);
                     }
-                    skippedFns++;
-                    continue;
+                    skippedFns += fileFns.length;
+                    continue;  // ✅ P9: continue внешнего цикла (по файлам)
                 }
 
                 // ── Создать виртуальный SourceFile ──
@@ -384,43 +409,102 @@ export function pass6DomApi(ctx: CollectContext): void {
                 if (verbose) {
                     console.warn(`   ⚠️ Не удалось извлечь script из ${sfcFile.path}: ${err}`);
                 }
-                skippedFns++;
-                continue;
+                skippedFns += fileFns.length;
+                continue;  // ✅ P9: continue внешнего цикла (по файлам)
+            }
+        }
+        else {
+            // ✅ ФИКС (pass6-ts-fix): для .ts/.tsx/.js/.jsx —
+            // добавить SourceFile в tsProject, чтобы
+            // detectDomApiCallsForFunction мог найти sourceFile
+            // и построить scope.
+            //
+            // БЕЗ ЭТОГО: detectDomApiCallsForFunction возвращает []
+            // для всех .ts файлов, потому что buildScopeForFunction
+            // не находит sourceFile в tsProject.
+            //
+            // СИМПТОМ до фикса: totalDomApiCalls = 0 даже когда
+            // в .ts файлах есть document.createElement / addEventListener.
+            try {
+                const source = fs.readFileSync(absolutePath, 'utf8');
+                tsProject.createSourceFile(scriptPath, source, { overwrite: true });
+            } catch (err) {
+                if (verbose) {
+                    console.warn(`   ⚠️ Не удалось прочитать ${sfcFile.path}: ${err}`);
+                }
+                skippedFns += fileFns.length;
+                continue;  // ✅ P9: continue внешнего цикла (по файлам)
             }
         }
 
-        // ── 2.4. Детектирование DOM API-вызовов ──
+
+        // ════════════════════════════════════════════════════════════
+        // ✅ P12 ФИКС O(N²): строим fnIndex ОДИН раз на файл.
         //
-        // detectDomApiCallsForFunction:
-        //   1. Строит scope через buildScopeForFunction
-        //      (locals/imports/globals/refs)
-        //   2. Находит targetFn в SourceFile по fn.name
-        //   3. Обходит targetFn.forEachDescendant:
-        //      a. CallExpression → DOM_METHOD_MAP_LOCAL
-        //      b. BinaryExpression '=' → DOM_PROPERTY_MAP_LOCAL
-        //      c. NewExpression → DOM_OBSERVER_MAP_LOCAL
-        //   4. Для каждого совпадения проверяет isLikelyDomReceiver
-        //   5. Собирает DomApiCall с args/argResolutions/context
+        //   РАНЬШЕ (P6–P11):
+        //     detectDomApiCallsForFunction сам искал targetFn через
+        //     sf.forEachDescendant. Для файла f174 (71 функция) —
+        //     71 × N узлов. ИТОГО: 3427 ms.
         //
-        // ⚠️ originalAbsolutePath — fallback для buildScopeForFunction,
-        //    если виртуальный scriptPath не найден в tsProject.
+        //   ТЕПЕРЬ (P12):
+        //     fnIndex построен ОДИН раз на файл: 1 × N узлов.
+        //     detectDomApiCallsForFunction использует O(1) lookup.
+        //
+        //   ОЖИДАНИЕ: 3427 ms → ~300 ms.
+        // ════════════════════════════════════════════════════════════
+        const fnIndex = new Map<string, any>();
         try {
-            const calls = detectDomApiCallsForFunction(
-                fn,
-                scriptPath,
-                fn.fileId,
-                entitiesMap,
-                tsProject,
-                domIdCounter,
-                absolutePath
-            );
-            ctx.domApiCalls.push(...calls);
-            analyzedFns++;
-        } catch (err) {
-            if (verbose) {
-                console.warn(`   ⚠️ DOM API analysis failed for ${fn.name}: ${err}`);
+            const sf = tsProject.getSourceFile(scriptPath)
+                || tsProject.getSourceFile(absolutePath)
+                || null;
+            if (sf) {
+                // ✅ P13: TsNode импортирован в шапке — БЕЗ require
+                sf.forEachDescendant((node: any) => {
+                    if (TsNode.isFunctionDeclaration(node)) {
+                        const name = node.getName();
+                        if (name && !fnIndex.has(name)) fnIndex.set(name, node);
+                    }
+                    if (TsNode.isVariableDeclaration(node)) {
+                        const name = node.getName();
+                        if (!name || fnIndex.has(name)) return;
+                        const init = node.getInitializer();
+                        if (init && (TsNode.isArrowFunction(init) || TsNode.isFunctionExpression(init))) {
+                            fnIndex.set(name, init);
+                        }
+                    }
+                });
             }
-            skippedFns++;
+            if (verbose) {
+                console.log(`   🔍 P13: fnIndex построен для файла ${fileId}: ${fnIndex.size} функций`);
+            }
+        } catch (err) {
+            if (verbose) console.warn(`   ⚠️ P13: fnIndex build failed: ${err}`);
+        }
+
+        // ✅ P9: ВНУТРЕННИЙ цикл — по функциям этого файла.
+        //    createSourceFile уже вызван ОДИН раз выше.
+        //    Здесь — только detectDomApiCallsForFunction.
+        for (const fn of fileFns) {
+            // ── 2.4. Детектирование DOM API-вызовов ──
+            try {
+                const calls = detectDomApiCallsForFunction(
+                    fn,
+                    scriptPath,
+                    fn.fileId,
+                    entitiesMap,
+                    tsProject,
+                    domIdCounter,
+                    absolutePath,
+                    fnIndex  // ✅ P12: O(1) lookup targetFn
+                );
+                ctx.domApiCalls.push(...calls);
+                analyzedFns++;
+            } catch (err) {
+                if (verbose) {
+                    console.warn(`   ⚠️ DOM API analysis failed for ${fn.name}: ${err}`);
+                }
+                skippedFns++;
+            }
         }
     }
 
@@ -444,16 +528,39 @@ export function pass6DomApi(ctx: CollectContext): void {
     // Шаг 3: Обогащение функций
     // ════════════════════════════════════════════════════════════
     //
-    // Для каждой функции:
-    //   • Собрать её DOM API-вызовы (по functionId)
-    //   • Заполнить htmlUsage[] (только write/mixed)
-    //   • Установить isHtmlVisible
-    //   • Заполнить domApiCalls[] (ВСЕ вызовы, включая read)
-    //   • Обогатить handler-функции через domApiUsagesAsHandler
+    // ✅ P9: O(1) индексы вместо O(N×M) filter и O(N) find.
+    //
+    //   Раньше (P6/P8):
+    //     for (const fn of functions) {
+    //       const calls = ctx.domApiCalls.filter(c => c.functionId === fn.id);  // O(N×M)
+    //       ...
+    //       const handlerFn = functions.find(f => f.id === ...);  // O(N)
+    //     }
+    //     → 798 × 150 = 119 700 операций + 798 × N find
+    //
+    //   Теперь (P9):
+    //     domApiCallsByFn — O(1) доступ к вызовам по functionId.
+    //     fnById        — O(1) доступ к функции по id.
     // ════════════════════════════════════════════════════════════
+
+    // O(N) — один проход по всем вызовам
+    const domApiCallsByFn = new Map<string, any[]>();
+    for (const call of ctx.domApiCalls) {
+        if (!domApiCallsByFn.has(call.functionId)) {
+            domApiCallsByFn.set(call.functionId, []);
+        }
+        domApiCallsByFn.get(call.functionId)!.push(call);
+    }
+
+    // O(N) — один проход по всем функциям
+    const fnById = new Map<string, any>();
     for (const fn of functions) {
-        // ── Собрать DOM API-вызовы этой функции ──
-        const calls = ctx.domApiCalls.filter((c: any) => c.functionId === fn.id);
+        fnById.set(fn.id, fn);
+    }
+
+    for (const fn of functions) {
+        // ── Собрать DOM API-вызовы этой функции (O(1)) ──
+        const calls = domApiCallsByFn.get(fn.id) || [];
 
         // ── Инициализировать htmlUsage ──
         if (!(fn as any).htmlUsage) (fn as any).htmlUsage = [];
@@ -504,7 +611,7 @@ export function pass6DomApi(ctx: CollectContext): void {
         // клика по кнопке X".
         for (const call of calls) {
             if (call.category === 'add-event-listener' && call.context?.handlerFunctionId) {
-                const handlerFn = functions.find(f => f.id === call.context.handlerFunctionId);
+                const handlerFn = fnById.get(call.context.handlerFunctionId);  // ✅ P9: O(1)
 
                 if (handlerFn) {
                     // Инициализировать массив

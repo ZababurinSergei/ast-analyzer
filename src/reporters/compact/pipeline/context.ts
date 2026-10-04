@@ -440,7 +440,9 @@ export function createCollectContext(
  * @returns относительный путь с прямыми слэшами
  */
 export function getRelativePath(ctx: CollectContext, filePath: string): string {
-  const absolutePath = path.resolve(filePath);
+  // ✅ ФИКС R7: path.resolve от ctx.projectRoot, а не от cwd.
+  //   filePath — относительный от projectRoot (после discover-files).
+  const absolutePath = path.resolve(ctx.projectRoot, filePath);
   return path.relative(ctx.projectRoot, absolutePath).replace(/\\/g, '/');
 }
 

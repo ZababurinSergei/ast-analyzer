@@ -820,6 +820,11 @@ function decodeDomApiCalls(
     const length = Array.isArray(slice) ? slice[1] : 0;
     const argsResolved = domApiArgs.slice(start, start + length);
 
+    // ✅ P26-FIX-B: локальный index (0, 1, 2, ...) внутри вызова.
+    //   В compact.domApiArgs[].index — глобальный индекс в domApiArgs[].
+    //   В full.json domApiCalls[].argResolutions[].index — локальный.
+    const argsResolvedLocal = argsResolved.map((a, idx) => ({ ...a, index: idx }));
+
     const ctx: DomApiContext = {};
     if (data.en?.[i] >= 0) ctx.eventName = stringDict[data.en[i]];
     if (data.hfn?.[i] >= 0) ctx.handlerFunctionId = `fn${data.hfn[i] + 1}`;
@@ -828,7 +833,24 @@ function decodeDomApiCalls(
       if (hsValue) ctx.handlerSource = hsValue;
     }
     if (data.sel?.[i] >= 0) ctx.cssSelector = stringDict[data.sel[i]];
-    if (data.hv?.[i] >= 0) ctx.htmlValue = stringDict[data.hv[i]];
+    if (data.hv?.[i] >= 0) {
+      ctx.htmlValue = stringDict[data.hv[i]];
+    } else {
+      // ✅ P30-FIX-A (узкий): htmlValue = "" ТОЛЬКО для HTML-устанавливающих
+      //   операций (innerHTML, outerHTML, insertAdjacentHTML).
+      //   У остальных вызовов (addEventListener и т.п.) — НЕТ поля htmlValue.
+      const catCode = data.cat?.[i];
+      const catName = catCode !== undefined ? DOM_CATEGORY_BY_CODE[catCode] : '';
+      const methodName = stringDict[data.m[i]] || '';
+      const isHtmlSetter =
+        catName === 'inner-html' ||
+        catName === 'outer-html' ||
+        catName === 'insert-adjacent-html' ||
+        /innerHTML|outerHTML|insertAdjacentHTML/.test(methodName);
+      if (isHtmlSetter) {
+        ctx.htmlValue = '';
+      }
+    }
     if (data.cn?.[i] >= 0) ctx.className = stringDict[data.cn[i]];
     if (data.sp?.[i] >= 0) ctx.styleProp = stringDict[data.sp[i]];
     if (data.an?.[i] >= 0) ctx.attributeName = stringDict[data.an[i]];
@@ -837,20 +859,45 @@ function decodeDomApiCalls(
     }
 
     result.push({
-      id: data.t?.[i] >= 0 && ids[data.t[i]] ? ids[data.t[i]]! : `d${i + 1}`,
+      id: `d${i + 1}`, // ✅ P26-FIX-A: id = порядковый номер, симметрично full.json
       functionId: fn?.id ?? '',
       fileId,
-      category: DOM_CATEGORY_BY_CODE[data.cat?.[i] ?? 49] ?? 'other',
-      effect: DOM_EFFECT_BY_CODE[data.eff?.[i] ?? 0] ?? 'write',
+      // P36-FIX: category добавляется условно (см. ниже)
+      // P36-FIX: effect добавляется условно (см. ниже)
       method: stringDict[data.m[i]] || '',
       target: data.t?.[i] >= 0 ? (ids[data.t[i]] ?? '') : '',
       targetKind: DOM_TARGET_KIND_BY_CODE[data.tk?.[i] ?? 6] ?? 'unknown',
-      args: argsResolved.map(a => a.raw),
-      argResolutions: argsResolved,
+      args: argsResolvedLocal.map(a => a.raw),
+      argResolutions: argsResolvedLocal,
       line: data.l[i] ?? 0,
       column: data.col?.[i] >= 0 ? data.col[i] : undefined,
       context: ctx,
     });
+
+    // ✅ P36-FIX: category/effect только для классифицированных вызовов.
+    //   Если cat === 49 ('other'), это НЕ DOM API — поля не создаются
+    //   (симметрично full.json, где их нет).
+    if (data.cat?.[i] !== undefined && data.cat[i] !== 49) {
+      const catName = DOM_CATEGORY_BY_CODE[data.cat[i]];
+      if (catName !== undefined) {
+        (result[result.length - 1] as any).category = catName;
+      }
+      const effCode = data.eff?.[i];
+      if (effCode !== undefined && effCode >= 0) {
+        const effName = DOM_EFFECT_BY_CODE[effCode];
+        if (effName !== undefined) {
+          (result[result.length - 1] as any).effect = effName;
+        }
+      }
+    }
+
+    // ✅ P24-FIX-A: обогатить fn.domApiCalls ссылкой на этот call.
+    //   callId = `d${i + 1}` — порядковый номер, симметрично full.json.
+    const callId = `d${i + 1}`;
+    if (fn) {
+      if (!Array.isArray(fn.domApiCalls)) fn.domApiCalls = [];
+      fn.domApiCalls.push(callId);
+    }
   }
   return result;
 }
@@ -903,6 +950,18 @@ function decodeFnHtmlUsage(
     if (dctx[i] >= 0) {
       const parsed = safeJsonParse<DomApiContext>(stringDict[dctx[i]]);
       if (parsed) usage.domApiContext = parsed;
+    }
+
+        // ✅ P24-FIX-B: восстановить domApiMethod / domApiTarget.
+    //   В compact.fnHtmlUsage НЕТ отдельных полей — они дублируют
+    //   target (method) и tag (target).
+    if (usage.kind === 'dom-api') {
+      if (typeof usage.target === 'string' && usage.target) {
+        usage.domApiMethod = usage.target;
+      }
+      if (typeof usage.tag === 'string' && usage.tag) {
+        usage.domApiTarget = usage.tag;
+      }
     }
 
     f.htmlUsage.push(usage);
@@ -2242,11 +2301,11 @@ export function decode(compact: CompactJSON, options: DecodeOptions = {}): FullJ
   // ✅ v16.0.4: Top-level component* — ВСЕГДА
   // ============================================
   (result as any).domApiCalls = domApiCalls.length > 0 ? domApiCalls : undefined;
-  (result as any).domApiArgs = domApiArgs.length > 0 ? domApiArgs : undefined;
+  // ✅ P34-FIX-B1: не создавать top-level domApiArgs (в full.json его нет)
   (result as any).ids = ids.length > 0 ? ids : undefined;
   (result as any).sourceChains = sourceChains.length > 0 ? sourceChains : undefined;
 
-  (result as any).fnHtmlUsage = fnHtmlUsageTopLevel.length > 0 ? fnHtmlUsageTopLevel : undefined;
+  // ✅ P34-FIX-B2: не создавать top-level fnHtmlUsage (в full.json его нет)
 
   (result as any).componentProps = vue?.componentProps ?? [];
   (result as any).componentEvents = vue?.componentEvents ?? [];

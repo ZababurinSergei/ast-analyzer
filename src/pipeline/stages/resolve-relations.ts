@@ -219,8 +219,12 @@ export class ResolveRelationsStage implements PipelineStage {
         fileCounter++;
         const fileId = `f${fileCounter}`;
 
-        const absolutePath = path.resolve(filePath);
-        const relativePath = path.relative(process.cwd(), absolutePath).replace(/\\/g, '/');
+        // ✅ ФИКС R7: path.resolve от projectRoot, а не от cwd.
+        //   filePath — относительный от projectRoot (после discover-files).
+        //   Без этого абсолютный путь получался на 2 уровня выше реального.
+        const projectRoot = ctx.options.projectRoot || process.cwd();
+        const absolutePath = path.resolve(projectRoot, filePath);
+        const relativePath = path.relative(projectRoot, absolutePath).replace(/\\/g, '/');
 
         // Регистрируем файл
         files.set(fileId, {
