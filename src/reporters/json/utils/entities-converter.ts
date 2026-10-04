@@ -399,6 +399,9 @@ function convertFunctions(functions: FunctionInfo[]): EnhancedEntityInfo['functi
       isComposable: func.isComposable,
       source: func.source,
       isExposed: func.isExposed,
+
+      // ✅ v15.5.0: Vue-классификация (проброс из FunctionInfo)
+      vueKind: func.vueKind,
     };
 
     // ✅ v2.2.0 (P2): boundTo добавляем только если задан.

@@ -5,6 +5,7 @@ import type { VueComponentAnalysis } from '../../../modes/vue-analyzer.js';
 import type { FunctionInfo, EntitiesResult, ConstantInfo } from '../../../types.js';
 // ✅ A4.2.11j: idManager убран — не используется после A4.2.11f
 import { createEmptyEntitiesResult } from '../helpers/create-empty-result.js';
+import { classifyVueKind } from '../helpers/classify-vue-kind.js';
 import { convertVueImportsToImportInfo } from './convert-imports.js';
 
 // ============================================================
@@ -476,6 +477,7 @@ export function convertVueAnalysisToEntities(
   //    buildVueStateFlows.readBy нашёл эту связь, нужно, чтобы
   //    highlightedParts.calls содержал 'displayText'.
   const explicitFunctions = (vueAnalysis.functions || []).map((fn: any) => {
+    const vueKind = classifyVueKind(fn.name, fn.isArrow ?? false, fn.parentType);
     let calls = fn.calls ?? [];
     let body = fn.body ?? '';
 
@@ -494,6 +496,7 @@ export function convertVueAnalysisToEntities(
 
     return {
       name: fn.name,
+      vueKind,
       line: fn.line,
       isAsync: fn.isAsync ?? false,
       isExported: fn.isExported ?? false,

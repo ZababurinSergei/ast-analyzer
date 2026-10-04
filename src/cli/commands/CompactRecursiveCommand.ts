@@ -475,8 +475,8 @@ export class CompactRecursiveCommand {
     // ✅ v11.0.0 + v12.0.0: применяем outputOptions из конфига
     // ============================================================
     const report = generateCompactReport(pipelineResult.enhancedMap as any, outputPath, {
-      projectRoot, // ✅ ФИКС: проброс в pass-6 для .ts файлов
       ...genOptions,
+      projectRoot, // ✅ ФИКС: проброс в pass-6 для .ts файлов (ПОСЛЕ spread)
       ultra: options.ultra || false,
       preset: options.preset,
       verbose: options.verbose,
