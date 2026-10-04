@@ -160,7 +160,24 @@ export async function parseTypeScriptFile(
   //
   // ✅ v1.3.1: добавлен диагностический лог
   // ────────────────────────────────────────────────────────
-  if (ext === '.tsx' || ext === '.jsx') {
+  // ────────────────────────────────────────────────────────────
+    // FE-43-FIX: добавлен .js — React-компоненты бывают и в .js
+    // ────────────────────────────────────────────────────────────
+    // ПРИЧИНА:
+    //   modules/Main/components/Main/index.js — это React-компонент
+    //   (`export const Main = () => {...}; export default Main;`),
+    //   но расширение .js, а не .jsx. parse-typescript.ts пропускал
+    //   его, поэтому Main не попадал в react.components[].
+    //
+    // РЕШЕНИЕ:
+    //   Разрешить .js наравне с .tsx/.jsx. Внутри analyzeReactComponent
+    //   будет вызван isReactComponentSource, который вернёт false для
+    //   обычных утилит (без React-паттернов), так что ложно-положительных
+    //   срабатываний не будет.
+    //
+    // СИММЕТРИЯ с DotsDropdown (components/DotsDropdown/index.jsx) —
+    // работает, потому что .jsx.
+    if (ext === '.tsx' || ext === '.jsx' || ext === '.js') {
     try {
       // 🔍 v1.3.1: диагностика перед вызовом
       console.log(`[parseTypeScriptFile] → file=${file}, ext=${ext}, abs=${absolutePath}`);

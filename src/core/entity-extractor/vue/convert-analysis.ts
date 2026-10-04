@@ -477,7 +477,8 @@ export function convertVueAnalysisToEntities(
   //    buildVueStateFlows.readBy нашёл эту связь, нужно, чтобы
   //    highlightedParts.calls содержал 'displayText'.
   const explicitFunctions = (vueAnalysis.functions || []).map((fn: any) => {
-    const vueKind = classifyVueKind(fn.name, fn.isArrow ?? false, fn.parentType);
+    // FE-34-FIX: передаём isNested — симметрично extract-entities-from-ast.ts
+    const vueKind = classifyVueKind(fn.name, fn.isArrow ?? false, fn.parentType, fn.isNested);
     let calls = fn.calls ?? [];
     let body = fn.body ?? '';
 

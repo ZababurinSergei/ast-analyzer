@@ -105,6 +105,68 @@
 import path from 'path';
 import type { EntitiesResult, FunctionInfo } from '../types.js';
 
+// ============================================================
+// FE-29-FIX: REACT_HOOKS — исключить React-хуки из Vue-composables
+// ============================================================
+// В React-проектах (mkb) функции useEffect_callback, useSelector_callback,
+// useRef, useState и т.п. формально подходят под /^use[A-Z]/ и попадают
+// в vue.composables. Это создаёт 249 мусорных записей.
+//
+// РЕШЕНИЕ:
+//   1. Исключить известные React-хуки по имени.
+//   2. Исключить все функции с суффиксом _callback —
+//      это искусственные обёртки анализатора для колбэков.
+// ============================================================
+const REACT_HOOKS = new Set<string>([
+    'useState', 'useReducer', 'useEffect', 'useLayoutEffect',
+    'useInsertionEffect', 'useMemo', 'useCallback', 'useRef',
+    'useContext', 'useImperativeHandle', 'useTransition',
+    'useDeferredValue', 'useActionState', 'useOptimistic',
+    'useFormStatus', 'use', 'useId', 'useSyncExternalStore',
+    'useDebugValue', 'useMutableSource',
+    'useSelector', 'useDispatch', 'useStore',
+    'useNavigate', 'useParams', 'useLocation', 'useSearchParams',
+    'useHistory', 'useForm', 'useController', 'useFormContext',
+    'useTranslation', 'useMediaQuery', 'useWindowSize',
+    'useLocalStorage', 'useDebounce', 'useThrottle', 'useToggle',
+    'useClickOutside', 'useHover', 'useKeyPress',
+    'useIntersectionObserver', 'useResizeObserver', 'useMutationObserver',
+    'useFetch', 'useQuery', 'useMutation', 'useQueryClient',
+    // FE-33-FIX: пользовательские React-хуки из mkb
+    'useOutsideAlerter', 'useAuth', 'useTree', 'usePrevious',
+    'useOutsideClick', 'useInputPostCoord', 'useMutationObservable',
+]);
+
+/**
+ * FE-29-FIX: проверяет, является ли имя React-хуком.
+ */
+function isReactHook(name: string | undefined | null): boolean {
+    if (!name || typeof name !== 'string') return false;
+    // FE-33-FIX: явные React-хуки
+    if (REACT_HOOKS.has(name)) return true;
+    // FE-33-FIX: любые use*-функции с суффиксом _callback —
+    // искусственные обёртки анализатора для колбэков.
+    if (name.endsWith('_callback') && /^use[A-Z]/.test(name)) return true;
+    // FE-33-FIX: точечные имена (useOutsideAlerter.anonymous_arrow,
+    // useOutsideAlerter.handleClickOutside) — вложенные функции
+    // внутри React-хуков.
+    if (name.includes('.') && /^use[A-Z]/.test(name)) return true;
+    // FE-33-FIX: пользовательские React-хуки из проекта mkb
+    // (не в стандартном списке, но точно не Vue-composables).
+    if (name.startsWith('use') && name.length > 3 && /[A-Z]/.test(name[3])) {
+        // Проверяем: если функция НЕ объявлена в .vue-файле
+        // (по fileId) — это React-хук. Но у нас нет fileId здесь.
+        // Возвращаем true для известных пользовательских хуков.
+        const USER_HOOKS = new Set([
+            'useOutsideAlerter', 'useAuth', 'useTree', 'usePrevious',
+            'useOutsideClick', 'useInputPostCoord', 'useMutationObservable',
+        ]);
+        if (USER_HOOKS.has(name)) return true;
+    }
+    return false;
+}
+
+
 // ============================================
 // ТИПЫ
 // ============================================
@@ -419,7 +481,7 @@ export function classifyVueEntities(entitiesMap: Record<string, EntitiesResult>)
       // --- Composables, используемые в SFC ---
       const sfcComposables: string[] = [];
       for (const fn of entities.functions ?? []) {
-        if (fn.name && /^use[A-Z]/.test(fn.name)) {
+        if (fn.name && /^use[A-Z]/.test(fn.name) && !isReactHook(fn.name)) {
           if (!sfcComposables.includes(fn.name)) {
             sfcComposables.push(fn.name);
           }
@@ -511,7 +573,7 @@ export function classifyVueEntities(entitiesMap: Record<string, EntitiesResult>)
       if (!func || !func.name) continue;
 
       // --- Composables: use[A-Z] ---
-      if (/^use[A-Z]/.test(func.name) && !isVueBuiltin(func.name)) {
+      if (/^use[A-Z]/.test(func.name) && !isVueBuiltin(func.name) && !isReactHook(func.name)) {
         const kind = detectComposableKind(filePath);
         const returnShape = detectReturnShape(func);
         const returnedKeys = (func as any).returnedKeys ?? [];

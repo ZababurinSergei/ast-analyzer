@@ -148,6 +148,117 @@ const VUE_BUILTINS = new Set<string>([
 ]);
 
 /**
+ * React-хуки (React 18/19).
+ *
+ * ════════════════════════════════════════════════════════════
+ * ЗАЧЕМ
+ * ════════════════════════════════════════════════════════════
+ *
+ * В React-проектах функции useState/useRef/useEffect/useCallback
+ * формально подходят под паттерн /^use[A-Z]/ и ошибочно
+ * классифицируются как Vue-composables. Это создаёт 249
+ * мусорных записей в vue.composables для React-проекта mkb.
+ *
+ * РЕШЕНИЕ: исключить React-хуки из Vue-composable-детекции.
+ * Они принадлежат React-секции (react.hooks).
+ *
+ * ════════════════════════════════════════════════════════════
+ * СИНХРОНИЗАЦИЯ
+ * ════════════════════════════════════════════════════════════
+ *
+ * Должно быть синхронизировано с:
+ *   - src/core/react-entity-classifier.ts (REACT_HOOK_NAMES)
+ *   - core/constants/codec-maps.js (REACT_HOOK_KIND_CODES)
+ */
+const REACT_HOOKS = new Set<string>([
+    'useState',
+    'useReducer',
+    'useEffect',
+    'useLayoutEffect',
+    'useInsertionEffect',
+    'useMemo',
+    'useCallback',
+    'useRef',
+    'useContext',
+    'useImperativeHandle',
+    'useTransition',
+    'useDeferredValue',
+    'useActionState',
+    'useOptimistic',
+    'useFormStatus',
+    'use',
+    // React 18 legacy / community
+    'useId',
+    'useSyncExternalStore',
+    'useDebugValue',
+    'useDebugValue',
+    'useMutableSource',
+    'useTransition',
+    // Third-party / common
+    'useSelector',
+    'useDispatch',
+    'useStore',
+    'useNavigate',
+    'useParams',
+    'useLocation',
+    'useSearchParams',
+    'useHistory',
+    'useForm',
+    'useController',
+    'useFormContext',
+    'useTranslation',
+    'useMediaQuery',
+    'useWindowSize',
+    'useLocalStorage',
+    'useDebounce',
+    'useThrottle',
+    'useToggle',
+    'useClickOutside',
+    'useHover',
+    'useKeyPress',
+    'useIntersectionObserver',
+    'useResizeObserver',
+    'useMutationObserver',
+    'useFetch',
+    'useQuery',
+    'useMutation',
+    'useQueryClient',
+    // FE-33-FIX: пользовательские React-хуки
+    'useOutsideAlerter', 'useAuth', 'useTree', 'usePrevious',
+    'useOutsideClick', 'useInputPostCoord', 'useMutationObservable',
+]);
+
+/**
+ * FE-33-FIX: расширенная проверка React-хука.
+ *
+ * Отличия от REACT_HOOKS.has(name):
+ *   - _callback суффикс: useEffect_callback, useSelector_callback
+ *   - точечные имена: useOutsideAlerter.anonymous_arrow
+ *   - пользовательские React-хуки (см. USER_HOOKS)
+ */
+function isReactHookName(name: string | undefined | null): boolean {
+    if (!name || typeof name !== 'string') return false;
+    // Стандартные React-хуки
+    if (REACT_HOOKS.has(name)) return true;
+    // FE-34-FIX: любые функции с суффиксом _callback —
+    // это искусственные обёртки анализатора для колбэков.
+    // Не проверяем /^use[A-Z]/ — analyzer может создавать
+    // setPage_callback, setExclusionsFromAboveLevels_callback и т.п.
+    if (name.endsWith('_callback')) return true;
+    // Точечные имена: useOutsideAlerter.anonymous_arrow
+    if (name.includes('.') && /^use[A-Z]/.test(name)) return true;
+    // Пользовательские React-хуки из проекта mkb
+    const USER_HOOKS = new Set([
+        'useOutsideAlerter', 'useAuth', 'useTree', 'usePrevious',
+        'useOutsideClick', 'useInputPostCoord', 'useMutationObservable',
+    ]);
+    if (USER_HOOKS.has(name)) return true;
+    return false;
+}
+
+
+
+/**
  * Lifecycle hooks Vue 3.
  *
  * Все `on[A-Z]*`, которые вызывает пользователь, а не объявляет.
@@ -273,7 +384,11 @@ const REACTIVITY_NAMES = new Set<string>([
 export function classifyVueKind(
     name: string | undefined | null,
     isArrow: boolean,
-    parentType?: string
+    parentType?: string,
+    // FE-26-FIX: isNested — признак вложенной функции.
+    // useEffect_callback (React) — это стрелка-колбэк, isNested=true.
+    // Формально /^use[A-Z]/, но НЕ пользовательский composable.
+    isNested?: boolean
 ): VueKind {
     // ────────────────────────────────────────────────────────
     // Шаг 1: защита от некорректного входа
@@ -283,9 +398,23 @@ export function classifyVueKind(
     }
 
     // ────────────────────────────────────────────────────────
-    // Шаг 2: composable — use[A-Z]*
+    // Шаг 2: composable — use[A-Z]*    // ────────────────────────────────────────────────────────
+    // FE-96-FIX: isNested → callback, НО use* в SFC — composable
     // ────────────────────────────────────────────────────────
-    if (/^use[A-Z]/.test(name) && !VUE_BUILTINS.has(name)) {
+    // ПРОБЛЕМА: скрипт Vue SFC с script-setup компилируется так, что
+    // ВСЕ объявления (включая useDataState, useRouter) находятся
+    // внутри setup() — то есть isNested=true. Раньше это превращало
+    // ВСЕ use* в callback, и vue.composables оставался почти пустым.
+    //
+    // РЕШЕНИЕ: use* (и define*) внутри setup() — это composables
+    // и macros, а не callbacks. Их НЕ понижаем до callback по isNested.
+    //
+    // Также для top-level use* (isNested=false) ничего не меняется.
+    const _isUseOrDefine = /^(use[A-Z]|define[A-Z])/.test(name);
+    if (isNested && !_isUseOrDefine && isArrow) return 'callback';
+    if (isNested && !_isUseOrDefine) return 'callback';
+
+    if (/^use[A-Z]/.test(name) && !VUE_BUILTINS.has(name) && !isReactHookName(name)) {
         return 'composable';
     }
 

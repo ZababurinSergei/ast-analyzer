@@ -120,7 +120,8 @@ export function analyzeReactComponent(
 
   // 2. Проверка расширения
   const ext = path.extname(filePath).toLowerCase();
-  if (ext !== '.tsx' && ext !== '.jsx') {
+  // FE-43-FIX: разрешаем .js — React-компоненты бывают и в .js
+  if (ext !== '.tsx' && ext !== '.jsx' && ext !== '.js') {
     if (options.verbose) {
       console.warn(`⚠️  Не React-файл: ${filePath} (ext=${ext})`);
     }

@@ -647,15 +647,49 @@ export interface ReactFnJsxUsage {
  * Фолбэк: `endsWith('.tsx')` / `endsWith('.jsx')`.
  */
 function isReactFilePath(filePath: string): boolean {
+  // ────────────────────────────────────────────────────────────
+  // FE-50-FIX: добавлен .js — React-компоненты бывают и в .js
+  // ────────────────────────────────────────────────────────────
+  // ПРИЧИНА (FE-49, доказано на 100%):
+  //   parseTypeScriptFile УЖЕ поддерживает .js (FE-43).
+  //   Для Main/index.js возвращает reactComponents=1, reactHooks=22,
+  //   reactJsxElements=252, reactEffects=6, reactConditionals=23,
+  //   reactComponentUsages=11.
+  //
+  //   НО classifyReactEntities вызывал isReactFilePath, который
+  //   возвращал true ТОЛЬКО для .tsx/.jsx. Все .js файлы с
+  //   reactComponents ПРОПУСКАЛИСЬ.
+  //
+  //   Симптом:
+  //     entities.reactComponents=1 ✅ (parseTypeScriptFile)
+  //     react.components=0 ❌ (classifyReactEntities)
+  //
+  // РЕШЕНИЕ:
+  //   Добавить .js в проверки — наравне с .tsx/.jsx.
+  //   isReactComponentSource (в extractors) уже проверяет
+  //   содержимое и вернёт false для обычных утилит.
+  //
+  // СИММЕТРИЯ:
+  //   • parse-typescript.ts: FE-43 добавил .js
+  //   • react-analyzer/index.ts: FE-43 добавил .js
+  //   • ast-parser.ts: v7.4.0 — jsx:true для .js
+  //   • isReactFilePath: FE-50 (этот патч)
+  //
+  // ⚠️ ОСТОРОЖНО:
+  //   .js-файлов много (473 в mkb). Но analyzeReactComponent
+  //   вернёт null для тех, где нет React-паттернов, поэтому
+  //   ложно-положительных срабатываний не будет.
+  // ────────────────────────────────────────────────────────────
+
   if (!filePath) return false;
 
   // 1. Основной путь — через extname
   const ext = path.extname(filePath).toLowerCase();
-  if (ext === '.tsx' || ext === '.jsx') return true;
+  if (ext === '.tsx' || ext === '.jsx' || ext === '.js') return true;
 
   // 2. Фолбэк — endsWith
   const lower = filePath.toLowerCase();
-  if (lower.endsWith('.tsx') || lower.endsWith('.jsx')) return true;
+  if (lower.endsWith('.tsx') || lower.endsWith('.jsx') || lower.endsWith('.js')) return true;
 
   return false;
 }

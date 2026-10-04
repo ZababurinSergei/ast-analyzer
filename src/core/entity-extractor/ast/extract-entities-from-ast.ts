@@ -290,7 +290,9 @@ export function extractEntitiesFromAST(
 
     // ✅ v17.4.0: parentType через parentMap
     const parentType = parentMap.get(node)?.type;
-    const vueKind = classifyVueKind(name, opts.isArrow, parentType);
+    // FE-34-FIX: передаём isNested — без него useEffect_callback
+    // (isNested=true) не классифицируется как callback.
+    const vueKind = classifyVueKind(name, opts.isArrow, parentType, opts.isNested);
 
     const funcInfo: FunctionInfo = {
       name,
