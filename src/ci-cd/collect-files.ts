@@ -219,9 +219,15 @@ export async function collectFilesForAnalysis(
       // 4. Если это директория
     // ─────────────────────────────────────────────
     else if (stat.isDirectory()) {
+      // FIX(win): нормализуем путь к POSIX-виду (прямые слэши) —
+      // glob (npm) не понимает Windows-разделители `\`, потому что
+      // `\` — escape-символ в синтаксисе glob. На Windows без этой
+      // нормализации glob возвращает пустой массив, и мы видим
+      // "Найдено файлов: 0".
+      const posixInputPath = path.resolve(inputPath).replace(/\\/g, '/');
       const pattern = recursive
-        ? `${inputPath}/**/*{${DEFAULT_EXTENSIONS.join(',')}}`
-        : `${inputPath}/*{${DEFAULT_EXTENSIONS.join(',')}}`;
+        ? `${posixInputPath}/**/*{${DEFAULT_EXTENSIONS.join(',')}}`
+        : `${posixInputPath}/*{${DEFAULT_EXTENSIONS.join(',')}}`;
 
       try {
         const matched = await glob(pattern, {

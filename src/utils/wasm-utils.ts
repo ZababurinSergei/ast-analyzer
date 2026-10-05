@@ -101,13 +101,28 @@ export function createWasmSymlink(targetPath: string = './grammars'): boolean {
   const target = path.resolve(process.cwd(), targetPath);
 
   try {
-    // Удаляем существующий симлинк если есть
+    // Удаляем существующий target (симлинк, файл или папку)
     if (fs.existsSync(target)) {
-      fs.unlinkSync(target);
+      const st = fs.lstatSync(target);
+      if (st.isDirectory() && !st.isSymbolicLink()) {
+        fs.rmSync(target, { recursive: true, force: true });
+      } else {
+        fs.unlinkSync(target);
+      }
     }
 
-    // Создаем симлинк
-    fs.symlinkSync(wasmSource, target, 'dir');
+    // Создаем симлинк.
+    // Windows: 'junction' работает без Developer Mode на NTFS.
+    // Unix: 'dir' — обычный symlink на директорию.
+    if (process.platform === 'win32') {
+      try {
+        fs.symlinkSync(wasmSource, target, 'junction');
+      } catch (winErr) {
+        fs.cpSync(wasmSource, target, { recursive: true });
+      }
+    } else {
+      fs.symlinkSync(wasmSource, target, 'dir');
+    }
     console.log(`✅ Symlink created: ${target} -> ${wasmSource}`);
     return true;
   } catch (error) {

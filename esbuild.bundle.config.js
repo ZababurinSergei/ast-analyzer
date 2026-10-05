@@ -240,7 +240,9 @@ const buildOptions = {
               for (const file of files) {
                 if (file.endsWith('.wasm')) {
                   const filePath = join(wasmDir, file);
-                  fs.chmodSync(filePath, 0o644);
+                  if (process.platform !== 'win32') {
+                    fs.chmodSync(filePath, 0o644);
+                  }
                 }
               }
               console.log('   ✅ WASM file permissions set');
