@@ -28,8 +28,8 @@ interface ScriptOptions {
 }
 
 const DEFAULT_OPTIONS: ScriptOptions = {
-  compactPath: './ast-graph-viewer/index.json',
-  fullPath: './ast-graph-viewer/index.full.json',
+  compactPath: '../ast-graph-viewer/index.json',
+  fullPath: '../ast-graph-viewer/index.full.json',
   verbose: false,
   maxDiffs: 10,
   jsonReportPath: null,
